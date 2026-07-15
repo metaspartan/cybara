@@ -534,6 +534,53 @@ export type MarkdownBlock =
   | { type: "rule" }
   | { type: "table"; header: MarkdownInline[][]; rows: MarkdownInline[][][] };
 
+export interface MobileMarkdownImageReference {
+  alt: string;
+  source: string;
+  filePath?: string;
+}
+
+export interface MobileMarkdownImageExtraction {
+  content: string;
+  images: MobileMarkdownImageReference[];
+}
+
+function mobileMarkdownImageReference(
+  alt: string,
+  source: string
+): MobileMarkdownImageReference | null {
+  const trimmed = source.trim();
+  if (
+    /^https?:\/\//i.test(trimmed) ||
+    /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(trimmed)
+  ) {
+    return { alt, source: trimmed };
+  }
+  if (!trimmed.toLowerCase().startsWith("file://")) return null;
+  try {
+    const filePath = decodeURIComponent(new URL(trimmed).pathname);
+    if (!/[\\/]screenshots[\\/][^\\/]+\.(?:png|jpe?g|gif|webp)$/i.test(filePath)) return null;
+    return { alt, source: trimmed, filePath };
+  } catch {
+    return null;
+  }
+}
+
+export function extractMobileMarkdownImages(input: string): MobileMarkdownImageExtraction {
+  const images: MobileMarkdownImageReference[] = [];
+  const pattern = /!\[([^\]]*)\]\(\s*(?:<([^>\n]+)>|([^\s)]+))(?:\s+["'][^"'\n]*["'])?\s*\)/gi;
+  const content = input.replace(
+    pattern,
+    (full: string, alt: string, wrappedSource: string | undefined, source: string | undefined) => {
+      const reference = mobileMarkdownImageReference(alt, wrappedSource || source || "");
+      if (!reference) return full;
+      if (!images.some((image) => image.source === reference.source)) images.push(reference);
+      return "";
+    }
+  );
+  return { content, images };
+}
+
 /** Tokenize a single line of inline markdown into styled spans. */
 export function parseInlineMarkdown(input: string): MarkdownInline[] {
   const tokens: MarkdownInline[] = [];

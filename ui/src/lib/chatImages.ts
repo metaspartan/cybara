@@ -40,6 +40,7 @@ export function screenshotMediaSrc(filePath: string): string {
 
 export function chatMarkdownImageSrc(source: string): string | null {
   if (/^(https?:|data:image\/)/i.test(source)) return source;
+  if (source.startsWith("/") && source.includes("/api/media?path=")) return source;
   if (!source.toLowerCase().startsWith("file://")) return null;
   try {
     const path = decodeURIComponent(new URL(source).pathname);
@@ -48,6 +49,19 @@ export function chatMarkdownImageSrc(source: string): string | null {
   } catch {
     return null;
   }
+}
+
+export function chatMarkdownImageSources(content: string): string[] {
+  const sources: string[] = [];
+  const seenSources = new Set<string>();
+  const pattern = /!\[[^\]]*\]\(\s*(?:<([^>\n]+)>|([^\s)]+))(?:\s+["'][^"'\n]*["'])?\s*\)/g;
+  for (const match of content.matchAll(pattern)) {
+    const source = chatMarkdownImageSrc(match[1] || match[2] || "");
+    if (!source || seenSources.has(source)) continue;
+    seenSources.add(source);
+    sources.push(source);
+  }
+  return sources;
 }
 
 export const MAX_TEXT_FILE_BYTES = 256 * 1024;
@@ -127,4 +141,18 @@ export function imageToolResultSrc(result: unknown): string | null {
   const isImage = /^image\//i.test(contentType) || IMAGE_EXTENSION.test(filePath);
   if (filePath && isImage) return screenshotMediaSrc(filePath);
   return null;
+}
+
+export function toolOutputImageSources(
+  toolCalls: Array<{ result?: unknown }>,
+  markdownContent: string
+): string[] {
+  const embeddedImages = new Set(chatMarkdownImageSources(markdownContent));
+  return Array.from(
+    new Set(
+      toolCalls
+        .map((toolCall) => imageToolResultSrc(toolCall.result))
+        .filter((source): source is string => !!source && !embeddedImages.has(source))
+    )
+  );
 }

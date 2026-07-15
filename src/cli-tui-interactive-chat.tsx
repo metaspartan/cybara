@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
 import { resolveAgentIdentifier } from "./cli-agent-resolution";
+import { formatTUIAgentLabel } from "./cli-tui-agent-label";
 import type { TUIFetchAPI } from "./cli-tui-chat";
 import {
   approvalDecisionForInput,
@@ -30,7 +31,7 @@ import {
   chatEscapeAction,
   composerWindow,
   copyTextToClipboard,
-  transcriptWindow,
+  transcriptMessageLimit,
   useTerminalLayout,
 } from "./cli-tui-terminal";
 import {
@@ -41,7 +42,10 @@ import {
   memoryStatusLine,
   skillStatusLines,
 } from "./cli-tui-chat-inspection";
-import { parseTerminalListItem, splitTerminalInline } from "./cli-tui-markdown";
+import {
+  TerminalInlineText,
+  TerminalMessageBody,
+} from "./cli-tui-markdown-render";
 import {
   formatTUIWorkedDuration,
   limitTUIActivityDetails,
@@ -230,19 +234,7 @@ function agentsFrom(value: unknown): AgentSummary[] {
 }
 
 function agentLine(agent: AgentSummary): string {
-  const name =
-    typeof agent.name === "string" && agent.name.trim()
-      ? agent.name.trim()
-      : agent.id;
-  const model =
-    typeof agent.model === "string" && agent.model.trim()
-      ? agent.model.trim()
-      : "";
-  const status =
-    typeof agent.status === "string" && agent.status.trim()
-      ? agent.status.trim()
-      : "";
-  return [name, model, status].filter(Boolean).join(" · ") || "Unnamed agent";
+  return formatTUIAgentLabel(agent);
 }
 
 function agentReasoningEffort(agent: AgentSummary | undefined): string {
@@ -374,109 +366,6 @@ function relativeTime(value?: number): string {
   return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
 }
 
-function InlineMarkdown({ line }: { line: string }): React.ReactElement {
-  return (
-    <Text wrap="wrap">
-      {splitTerminalInline(line).map((part, index) => (
-        <Text
-          key={index}
-          bold={part.bold}
-          dimColor={part.dim}
-          italic={part.italic}
-          strikethrough={part.strikethrough}
-          color={part.code ? "magenta" : undefined}
-        >
-          {part.text}
-        </Text>
-      ))}
-    </Text>
-  );
-}
-
-function MessageBody({
-  content,
-  maxLines,
-}: {
-  content: string;
-  maxLines?: number;
-}): React.ReactElement {
-  const lines = transcriptWindow(content, maxLines ?? Number.MAX_SAFE_INTEGER);
-  return (
-    <Box flexDirection="column" width="100%">
-      {lines.map((line, index) => {
-        if (line.hidden) {
-          return (
-            <Text key={index} color="#9ca6b4" wrap="wrap">
-              {line.text}
-            </Text>
-          );
-        }
-        if (line.fence) {
-          return (
-            <Text key={index} color="magenta" wrap="wrap">
-              {line.fence === "open"
-                ? `code${line.language ? ` · ${line.language}` : ""}`
-                : "end code"}
-            </Text>
-          );
-        }
-        if (line.code) {
-          return (
-            <Text key={index} color="green" wrap="wrap">
-              {line.text || " "}
-            </Text>
-          );
-        }
-        const listItem = parseTerminalListItem(line.text);
-        if (listItem?.kind === "task") {
-          return (
-            <Text key={index} wrap="wrap">
-              {listItem.indent}
-              <Text color={listItem.checked ? "green" : "gray"}>
-                {listItem.checked ? "☑ " : "☐ "}
-              </Text>
-              <InlineMarkdown line={listItem.content} />
-            </Text>
-          );
-        }
-        if (listItem?.kind === "bullet") {
-          return (
-            <Text key={index} wrap="wrap">
-              {listItem.indent}
-              <Text color="cyan">• </Text>
-              <InlineMarkdown line={listItem.content} />
-            </Text>
-          );
-        }
-        if (listItem?.kind === "ordered") {
-          return (
-            <Text key={index} wrap="wrap">
-              {listItem.indent}
-              <Text color="cyan">{listItem.number}. </Text>
-              <InlineMarkdown line={listItem.content} />
-            </Text>
-          );
-        }
-        if (/^#{1,6}\s/.test(line.text)) {
-          return (
-            <Text key={index} bold wrap="wrap">
-              {line.text.replace(/^#{1,6}\s/, "")}
-            </Text>
-          );
-        }
-        if (/^\s*>\s?/.test(line.text)) {
-          return (
-            <Text key={index} color="gray" wrap="wrap">
-              ▏ {line.text.replace(/^\s*>\s?/, "")}
-            </Text>
-          );
-        }
-        return <InlineMarkdown key={index} line={line.text} />;
-      })}
-    </Box>
-  );
-}
-
 function ActivitySummary({
   expanded = false,
   live = false,
@@ -527,7 +416,7 @@ function ActivitySummary({
         ? rows.map((row, rowIndex) => (
             <Box key={`${row.id}-${rowIndex}`} flexDirection="column">
               {row.thought ? (
-                <InlineMarkdown line={row.label} />
+                <TerminalInlineText line={row.label} />
               ) : (
                 <Text
                   color={
@@ -600,7 +489,7 @@ function MessageView({
         </Text>
       ))}
       <Box paddingLeft={2} width="100%">
-        <MessageBody content={message.content} maxLines={maxLines} />
+          <TerminalMessageBody content={message.content} maxLines={maxLines} />
       </Box>
     </Box>
   );
@@ -637,7 +526,7 @@ function LiveRunView({
       />
       {content ? (
         <Box paddingLeft={2} width="100%">
-          <MessageBody content={content} />
+          <TerminalMessageBody content={content} />
         </Box>
       ) : detail ? (
         <Text color="gray" wrap="wrap">
@@ -2136,7 +2025,10 @@ export function InteractiveChatTUI({
   const transcriptMessages = messages.filter(
     (message) => message.role !== "system",
   );
-  const visibleMessageLimit = layout.transcriptMessages;
+  const visibleMessageLimit = transcriptMessageLimit(
+    layout.transcriptMessages,
+    expandedTranscript,
+  );
   const maximumTranscriptOffset = Math.max(
     0,
     transcriptMessages.length - visibleMessageLimit,

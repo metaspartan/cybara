@@ -34,6 +34,10 @@ export function parseMainSidebarChatHeight(value: string | null): number {
   return clampMainSidebarChatHeight(Number(value));
 }
 
+export function usesAvailableMainSidebarChatHeight(configuredHeight: number): boolean {
+  return clampMainSidebarChatHeight(configuredHeight) === MAIN_SIDEBAR_CHAT_HEIGHT_DEFAULT;
+}
+
 export function resolveMainSidebarChatHeight(
   configuredHeight: number,
   expandedItemCount: number

@@ -108,6 +108,33 @@ final class NativeMarkdownTests: XCTestCase {
         XCTAssertEqual(blocks[2].kind, .table([["Item", "Status"], ["Chat", "Done"]]))
     }
 
+    func testParseScreenshotMarkdownAsImageBlock() {
+        let blocks = NativeMarkdown.parse(
+            """
+            Result
+
+            ![screenshot](file:///Users/test/.cybara/screenshots/solar.png)
+            """
+        )
+
+        XCTAssertEqual(blocks.count, 2)
+        XCTAssertEqual(blocks[0].kind, .paragraph("Result"))
+        XCTAssertEqual(
+            blocks[1].kind,
+            .image(
+                alt: "screenshot",
+                source: "file:///Users/test/.cybara/screenshots/solar.png"
+            )
+        )
+    }
+
+    func testUnsafeLocalImageMarkdownRemainsVisibleText() {
+        let blocks = NativeMarkdown.parse("![private](file:///Users/test/private.png)")
+
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks[0].kind, .paragraph("![private](file:///Users/test/private.png)"))
+    }
+
     func testNormalizeCodeLanguageAliases() {
         XCTAssertEqual(NativeMarkdown.normalizeCodeLanguage("zsh"), "bash")
         XCTAssertEqual(NativeMarkdown.normalizeCodeLanguage("js"), "javascript")

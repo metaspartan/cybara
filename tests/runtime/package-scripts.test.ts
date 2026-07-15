@@ -39,10 +39,16 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["mobile:android"]).toBe("cd apps/mobile && bun run android");
     expect(pkg.scripts?.["mobile:expo-check"]).toBe("cd apps/mobile && bunx expo install --check");
     expect(pkg.scripts?.["mobile:typecheck"]).toBe("cd apps/mobile && bun run typecheck");
+    expect(pkg.scripts?.["doctor"]).toContain("bunx --bun react-doctor");
+    expect(pkg.scripts?.["doctor"]).toContain("--project ui,apps/mobile");
+    expect(pkg.scripts?.["doctor"]).toContain("--scope lines");
+    expect(pkg.scripts?.["doctor"]).toContain("--no-score");
+    expect(pkg.scripts?.["doctor"]).toContain("--blocking error");
     expect(pkg.scripts?.["test:mobile"]).toBe("bun run test:isolated tests/mobile");
     expect(pkg.scripts?.["test:smoke"]).toContain("bun run test:isolated tests/mobile");
     expect(pkg.scripts?.["check:ci"]).toContain("bun run mobile:expo-check");
     expect(pkg.scripts?.["check:ci"]).toContain("bun run mobile:typecheck");
+    expect(pkg.scripts?.["check:ci"]).toContain("bun run doctor");
     expect(pkg.scripts?.["format"]).toBe("biome format --write");
     expect(pkg.scripts?.["format:check"]).toBe("biome format");
     expect(pkg.scripts?.["deadcode"]).toBe("knip --no-progress");
@@ -50,6 +56,7 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["check:ci"]).toContain("bun run deadcode");
     expect(pkg.devDependencies?.["@biomejs/biome"]).toMatch(/^\d+\.\d+\.\d+/);
     expect(pkg.devDependencies?.["knip"]).toMatch(/^\d+\.\d+\.\d+/);
+    expect(pkg.devDependencies?.["react-doctor"]).toBe("0.7.8");
     expect(pkg.devDependencies?.["prettier"]).toBeUndefined();
     expect(pkg.devDependencies?.["eslint-plugin-prettier"]).toBeUndefined();
     expect(pkg.devDependencies?.["eslint-config-prettier"]).toBeUndefined();

@@ -6,7 +6,12 @@ import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
 import { PageLayout } from "@/components/layout";
 import { Badge, Button, GlassCard, Input, Modal } from "@/components/ui";
 import { useAgentSummaries, useInfo, useSubagents, useUpdateAgentReasoning } from "@/hooks/useApi";
-import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
+import {
+  useChat,
+  useLoadSession,
+  useUpdateSessionAgent,
+  type LoadedChatSession,
+} from "@/hooks/useChat";
 import { useNearbyStatus } from "@/hooks/useNearbyStatus";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import {
@@ -2544,26 +2549,35 @@ export function Chat() {
       options?: { replaceRoute?: boolean }
     ) => {
       if (!targetSessionId || targetSessionId === sessionId) return true;
-      try {
-        const result = await loadSessionMutation.mutateAsync(targetSessionId);
-        if (!result?.messagesList) return false;
-        if (restoreSessionGenerationRef.current !== restoreGeneration || activeSessionRef.current) {
-          return true;
-        }
+      const applyRestoredSession = (result: LoadedChatSession) => {
         activeSessionRef.current = targetSessionId;
         loadSession(
           targetSessionId,
           result.messagesList as ChatMessage[],
-          (result as { workspace_dir?: string | null }).workspace_dir || null
+          result.workspace_dir || null
         );
-        syncSessionAgentSelection((result as { agent_id?: string | null }).agent_id || null);
+        syncSessionAgentSelection(result.agent_id || null);
         setSessionContextUsage(
           (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
         );
         setSessionTokenUsage(
           (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
         );
-        void hydrateSessionStatus(targetSessionId);
+      };
+      try {
+        const cached = loadSessionMutation.getCached(targetSessionId);
+        if (cached?.messagesList) applyRestoredSession(cached);
+        const statusHydration = hydrateSessionStatus(targetSessionId);
+        const result = await loadSessionMutation.loadFresh(targetSessionId);
+        if (!result?.messagesList) return false;
+        if (
+          restoreSessionGenerationRef.current !== restoreGeneration ||
+          (activeSessionRef.current !== null && activeSessionRef.current !== targetSessionId)
+        ) {
+          return true;
+        }
+        applyRestoredSession(result);
+        await statusHydration;
         if (options?.replaceRoute) {
           window.history.replaceState({}, "", "/chat");
         }

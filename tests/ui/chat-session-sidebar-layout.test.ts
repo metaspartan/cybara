@@ -93,8 +93,7 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain("const cached = loadSession.getCached(sessionId)");
     expect(source).toContain("applyLoadedSession(sessionId, cached, sessionIsActive)");
     expect(source).toContain("const sessionIsActive = activeSessionIds.includes(sessionId)");
-    expect(source).toContain("? await loadSession.loadFresh(sessionId)");
-    expect(source).toContain(": await loadSession.mutateAsync(sessionId)");
+    expect(source).toContain("const result = await loadSession.loadFresh(sessionId)");
     expect(source).not.toContain("warmSessionDetail");
     expect(source).not.toContain("loadSession.prefetch");
     expect(source).not.toContain("SIDEBAR_IDLE_PREFETCH");
@@ -116,10 +115,19 @@ describe("chat session sidebar layout", () => {
     expect(hookSource).toContain("queryKey: sessionDetailQueryKey(sessionId)");
     expect(hookSource).toContain("staleTime: SESSION_DETAIL_STALE_MS");
     expect(hookSource).toContain("getCached: (sessionId: string)");
+    expect(hookSource).toContain(
+      'return [SESSION_DETAIL_QUERY_KEY, sessionId, "compact"] as const'
+    );
+    expect(hookSource).toContain("staleTime: 0");
     expect(hookSource).not.toContain("prefetch: (sessionId: string)");
     expect(hookSource).toContain("invalidateSessionDetail(queryClient");
     expect(hookSource).toContain("preserveReferenceTail = false");
     expect(hookSource).toContain("messagesList: [...cached.messagesList, userMessage]");
+    expect(source).toContain("const cached = loadSessionMutation.getCached(targetSessionId)");
+    expect(source).toContain("if (cached?.messagesList) applyRestoredSession(cached)");
+    expect(source).toContain("const statusHydration = hydrateSessionStatus(targetSessionId)");
+    expect(source).toContain("loadSessionMutation.loadFresh(targetSessionId)");
+    expect(source).toContain("await statusHydration");
   });
 
   test("groups chat sessions into pinned and workspace sections", () => {

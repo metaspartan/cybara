@@ -104,7 +104,7 @@ cybara skill install https://github.com/user/skill.git
 
 ### Via UI
 
-1. Navigate to Skills page
+1. Open Settings → Skills
 2. Click "Browse Registry"
 3. Search and click "Install"
 

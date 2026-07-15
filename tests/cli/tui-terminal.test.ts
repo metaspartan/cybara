@@ -5,6 +5,7 @@ import {
   composerWindow,
   resolveTerminalLayout,
   terminalScreenSequence,
+  transcriptMessageLimit,
   transcriptWindow,
 } from "../../src/cli-tui-terminal";
 
@@ -69,6 +70,12 @@ describe("CLI TUI terminal behavior", () => {
     expect(transcriptWindow("`a-very-long-inline-code-value`", 2)[0]?.text).toBe(
       "`a-very-long-inline-code-value`"
     );
+  });
+
+  test("shows one complete message in expanded transcript mode", () => {
+    expect(transcriptMessageLimit(5, true)).toBe(1);
+    expect(transcriptMessageLimit(5, false)).toBe(5);
+    expect(transcriptMessageLimit(0, false)).toBe(1);
   });
 
   test("selects native clipboard helpers without invoking a shell", () => {

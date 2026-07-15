@@ -18,6 +18,7 @@ struct NativeMarkdownBlock: Identifiable, Equatable {
         case code(language: String, code: String, isDiff: Bool)
         case blockquote(String)
         case table([[String]])
+        case image(alt: String, source: String)
         case horizontalRule
     }
 
@@ -94,6 +95,12 @@ enum NativeMarkdown {
 
             if let heading = parseHeading(trimmed) {
                 append(.heading(level: heading.level, text: heading.text))
+                index += 1
+                continue
+            }
+
+            if let image = parseImage(trimmed) {
+                append(.image(alt: image.alt, source: image.source))
                 index += 1
                 continue
             }
@@ -235,7 +242,24 @@ enum NativeMarkdown {
     private static func startsBlock(_ line: String, lines: [String], index: Int) -> Bool {
         line.hasPrefix("```") || isHorizontalRule(line) || parseHeading(line) != nil
             || parseUnorderedItem(line) != nil || parseOrderedItem(line) != nil
-            || line.hasPrefix(">") || isTableStart(lines, at: index)
+            || parseImage(line) != nil || line.hasPrefix(">") || isTableStart(lines, at: index)
+    }
+
+    private static func parseImage(_ line: String) -> (alt: String, source: String)? {
+        let matches = regexMatches(#"^!\[([^\]]*)\]\(\s*(?:<([^>\n]+)>|([^\s\)]+))(?:\s+[\"'][^\"'\n]*[\"'])?\s*\)$"#, in: line)
+        guard let match = matches.first, match.count >= 3 else { return nil }
+        let source = match.last?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if source.hasPrefix("file://") {
+            guard let fileURL = URL(string: source),
+                  fileURL.path.range(
+                    of: #"/screenshots/[^/]+\.(?:png|jpe?g|gif|webp)$"#,
+                    options: [.regularExpression, .caseInsensitive]
+                  ) != nil else { return nil }
+        } else {
+            guard source.hasPrefix("https://") || source.hasPrefix("http://")
+                || source.hasPrefix("data:image/") else { return nil }
+        }
+        return (match[1], source)
     }
 
     private static func stripInboundContextBlocks(_ raw: String) -> String {

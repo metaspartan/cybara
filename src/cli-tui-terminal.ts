@@ -72,6 +72,10 @@ export function resolveTerminalLayout(columns?: number, rows?: number): Terminal
   };
 }
 
+export function transcriptMessageLimit(layoutLimit: number, expanded: boolean): number {
+  return expanded ? 1 : Math.max(1, layoutLimit);
+}
+
 export function useTerminalLayout(): TerminalLayout {
   const [size, setSize] = React.useState(() => ({
     columns: process.stdout.columns,

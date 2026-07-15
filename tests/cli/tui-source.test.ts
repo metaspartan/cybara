@@ -17,6 +17,10 @@ const cliTuiInteractiveChatSource = readFileSync(
   join(root, "src", "cli-tui-interactive-chat.tsx"),
   "utf8"
 );
+const cliTuiMarkdownRenderSource = readFileSync(
+  join(root, "src", "cli-tui-markdown-render.tsx"),
+  "utf8"
+);
 const cliTuiCommandsSource = readFileSync(join(root, "src", "cli-tui-commands.ts"), "utf8");
 const cliTuiChatEnvironmentSource = readFileSync(
   join(root, "src", "cli-tui-chat-environment.ts"),
@@ -332,7 +336,7 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain(
       "const [expandedTranscript, setExpandedTranscript] = React.useState(true)"
     );
-    expect(cliTuiInteractiveChatSource).toContain("<InlineMarkdown line={row.label} />");
+    expect(cliTuiInteractiveChatSource).toContain("<TerminalInlineText line={row.label} />");
     expect(cliTuiInteractiveChatSource).not.toContain("compact(row.label");
     expect(cliTuiInteractiveChatSource).not.toContain(
       "<MessageBody content={content} maxLines={8} />"
@@ -358,13 +362,13 @@ describe("CLI TUI source wiring", () => {
       "maxActivityDetails={expandedActivities ? undefined : 0}"
     );
     expect(cliTuiInteractiveChatSource).toContain('normalizedCommand === "details"');
-    expect(cliTuiInteractiveChatSource).toContain("strikethrough={part.strikethrough}");
-    expect(cliTuiInteractiveChatSource).toContain("splitTerminalInline(line)");
-    expect(cliTuiInteractiveChatSource).toContain('<Text wrap="wrap">');
-    expect(cliTuiInteractiveChatSource).toContain('flexDirection="column" width="100%"');
+    expect(cliTuiMarkdownRenderSource).toContain("strikethrough={part.strikethrough}");
+    expect(cliTuiMarkdownRenderSource).toContain("splitTerminalInline(line)");
+    expect(cliTuiMarkdownRenderSource).toContain('<Text wrap="wrap">');
+    expect(cliTuiMarkdownRenderSource).toContain('flexDirection="column" width="100%"');
     expect(cliTuiInteractiveChatSource).toContain('overflow="hidden"');
     expect(cliTuiInteractiveChatSource).toContain("flexShrink={0}");
-    expect(cliTuiInteractiveChatSource).toContain("parseTerminalListItem(line.text)");
+    expect(cliTuiMarkdownRenderSource).toContain("parseTerminalListItem(line.text)");
   });
 
   test("chat session picker supports pinning and guarded deletion", () => {

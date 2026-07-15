@@ -447,9 +447,7 @@ export function SessionsPanel({
       setPendingSessionLoadId(sessionId);
     }
     try {
-      const result = sessionIsActive
-        ? await loadSession.loadFresh(sessionId)
-        : await loadSession.mutateAsync(sessionId);
+      const result = await loadSession.loadFresh(sessionId);
       if (sessionLoadSequenceRef.current === loadSequence && result?.messagesList) {
         applyLoadedSession(sessionId, result as LoadedChatSession, sessionIsActive);
       }

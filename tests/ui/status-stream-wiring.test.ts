@@ -179,7 +179,8 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("const activeSessionLookup = resolveFreshestActiveSessionId()");
     expect(source).toContain("const restored = await restoreSessionFromId(persistedSessionId)");
     expect(source).toContain("const freshestActiveSessionId = await activeSessionLookup");
-    expect(source).toContain("void hydrateSessionStatus(targetSessionId)");
+    expect(source).toContain("const statusHydration = hydrateSessionStatus(targetSessionId)");
+    expect(source).toContain("await statusHydration");
     expect(source).toContain("if (restored) return;");
     expect(source).toContain("restoreSessionGenerationRef.current !== restoreGeneration");
     expect(source).toContain('!value.startsWith("agent:")');

@@ -93,6 +93,18 @@ describe("mobile: chat management", () => {
     );
     expect(liveCache).not.toContain("return next.slice(-12)");
     expect(optimisticTranscript).toContain("acknowledgedByPersistedHistory");
+    expect(read("lib/api.ts")).not.toContain("calls.slice(0, 20)");
+  });
+
+  test("persisted screenshot markdown uses the authenticated mobile media gallery", () => {
+    const chat = read("screens/dashboardChat.tsx");
+    const formatter = read("lib/chat-format.ts");
+
+    expect(formatter).toContain("export function extractMobileMarkdownImages");
+    expect(chat).toContain("const markdown = extractMobileMarkdownImages(message.content");
+    expect(chat).toContain("mediaUrl(image.filePath)");
+    expect(chat).toContain("new Set([...markdownImageUris, ...toolImageUris])");
+    expect(chat).toContain("content = markdown.content");
   });
 
   test("queued follow-ups stay above the composer instead of entering the message transcript", () => {

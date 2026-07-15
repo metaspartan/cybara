@@ -4,7 +4,16 @@ import SwiftUI
 struct NativeMarkdownView: View {
     let content: String
     let isUser: Bool
+    let mediaBaseURL: URL?
+    let mediaToken: String?
     @Environment(\.nativeChatAppearance) private var appearance
+
+    init(content: String, isUser: Bool, mediaBaseURL: URL? = nil, mediaToken: String? = nil) {
+        self.content = content
+        self.isUser = isUser
+        self.mediaBaseURL = mediaBaseURL
+        self.mediaToken = mediaToken
+    }
 
     private var blocks: [NativeMarkdownBlock] {
         NativeMarkdown.parse(content, stripAssistantMarkup: !isUser)
@@ -55,6 +64,13 @@ struct NativeMarkdownView: View {
             .padding(.vertical, 2)
         case .table(let rows):
             NativeMarkdownTable(rows: rows)
+        case .image(let alt, let source):
+            NativeMarkdownImageView(
+                alt: alt,
+                source: source,
+                mediaBaseURL: mediaBaseURL,
+                mediaToken: mediaToken
+            )
         case .horizontalRule:
             Divider()
                 .padding(.vertical, 4)
@@ -92,6 +108,71 @@ struct NativeMarkdownView: View {
         case 3: return 15
         default: return 13.5
         }
+    }
+}
+
+private struct NativeMarkdownImageView: View {
+    let alt: String
+    let source: String
+    let mediaBaseURL: URL?
+    let mediaToken: String?
+
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 720, maxHeight: 520)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .accessibilityLabel(alt.isEmpty ? "Image" : alt)
+            }
+        }
+        .task(id: source) {
+            image = await loadImage()
+        }
+    }
+
+    private func loadImage() async -> NSImage? {
+        if source.lowercased().hasPrefix("data:image/"),
+           let marker = source.firstIndex(of: ","),
+           let data = Data(base64Encoded: String(source[source.index(after: marker)...])) {
+            return NSImage(data: data)
+        }
+
+        guard let requestTarget = requestTarget() else { return nil }
+        var request = URLRequest(url: requestTarget.url)
+        if requestTarget.authenticated, let mediaToken, !mediaToken.isEmpty {
+            request.setValue("Bearer \(mediaToken)", forHTTPHeaderField: "Authorization")
+        }
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200 ..< 300).contains(http.statusCode) else { return nil }
+        return NSImage(data: data)
+    }
+
+    private func requestTarget() -> (url: URL, authenticated: Bool)? {
+        if source.lowercased().hasPrefix("file://") {
+            guard let mediaBaseURL,
+                  let fileURL = URL(string: source),
+                  fileURL.path.range(of: #"/screenshots/[^/]+\.(?:png|jpe?g|gif|webp)$"#, options: [.regularExpression, .caseInsensitive]) != nil,
+                  var components = URLComponents(
+                    url: URL(string: "api/media", relativeTo: mediaBaseURL)?.absoluteURL
+                        ?? mediaBaseURL.appendingPathComponent("api/media"),
+                    resolvingAgainstBaseURL: false
+                  ) else { return nil }
+            components.queryItems = [
+                URLQueryItem(name: "path", value: "screenshots/\(fileURL.lastPathComponent)"),
+            ]
+            guard let url = components.url else { return nil }
+            return (url, true)
+        }
+        guard let url = URL(string: source), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
+            return nil
+        }
+        return (url, false)
     }
 }
 

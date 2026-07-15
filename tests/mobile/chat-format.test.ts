@@ -6,6 +6,7 @@ import {
   MOBILE_VISIBLE_CHAT_MESSAGE_LIMIT,
   buildMobileWorkTimeline,
   chatIsWaitingForAssistant,
+  extractMobileMarkdownImages,
   formatMobileWorkedDuration,
   hasUnicodeTextFallback,
   latestVisibleChatMessages,
@@ -29,6 +30,34 @@ const messages: SessionMessageSummary[] = [
 ];
 
 describe("mobile chat formatting", () => {
+  test("extracts safe screenshot markdown without leaving alt text in the transcript", () => {
+    const extracted = extractMobileMarkdownImages(
+      [
+        "Analysis complete.",
+        "![screenshot](file:///Users/test/.cybara/screenshots/solar-one.png)",
+        "![screenshot](file:///Users/test/.cybara/screenshots/solar-two.png)",
+        "![unsafe](file:///Users/test/private.png)",
+      ].join("\n\n")
+    );
+
+    expect(extracted.content).toContain("Analysis complete.");
+    expect(extracted.content).not.toContain("solar-one.png");
+    expect(extracted.content).not.toContain("solar-two.png");
+    expect(extracted.content).toContain("![unsafe](file:///Users/test/private.png)");
+    expect(extracted.images).toEqual([
+      {
+        alt: "screenshot",
+        source: "file:///Users/test/.cybara/screenshots/solar-one.png",
+        filePath: "/Users/test/.cybara/screenshots/solar-one.png",
+      },
+      {
+        alt: "screenshot",
+        source: "file:///Users/test/.cybara/screenshots/solar-two.png",
+        filePath: "/Users/test/.cybara/screenshots/solar-two.png",
+      },
+    ]);
+  });
+
   test("hides system messages without changing gateway message order", () => {
     expect(visibleChatMessages(messages)).toEqual([messages[1]]);
   });

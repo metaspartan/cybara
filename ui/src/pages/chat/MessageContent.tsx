@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -17,6 +17,10 @@ import { chatMarkdownImageSrc } from "@/lib/chatImages";
 import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
 import { cn } from "@/lib/utils";
 import { MermaidCodeBlock } from "./MermaidCodeBlock";
+
+function transformChatMarkdownUrl(url: string): string {
+  return chatMarkdownImageSrc(url) ?? defaultUrlTransform(url);
+}
 
 const CODE_LANGUAGE_ALIASES: Record<string, string> = {
   ts: "typescript",
@@ -280,6 +284,7 @@ export function MessageContent({
   return (
     <div className="chat-markdown max-w-none text-gray-200">
       <ReactMarkdown
+        urlTransform={transformChatMarkdownUrl}
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
           [
@@ -348,7 +353,7 @@ export function MessageContent({
           img: ({ src, alt }) => {
             const source = typeof src === "string" ? src : "";
             const imageSource = chatMarkdownImageSrc(source);
-            if (!imageSource) return <span>{alt || ""}</span>;
+            if (!imageSource) return null;
             return (
               <button
                 type="button"

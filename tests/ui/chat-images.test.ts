@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
   chatImageSrc,
   chatMarkdownImageSrc,
+  chatMarkdownImageSources,
   imageToolResultSrc,
   screenshotMediaSrc,
+  toolOutputImageSources,
 } from "../../ui/src/lib/chatImages";
 import { clampLightboxZoom, nextLightboxIndex } from "../../ui/src/pages/chat/imageLightboxModel";
 
@@ -47,6 +49,20 @@ describe("chat image rendering", () => {
     expect(chatMarkdownImageSrc("javascript:alert(1)")).toBeNull();
   });
 
+  test("recognizes transformed media URLs and extracts unique screenshot markdown sources", () => {
+    const content = [
+      "![screenshot](file:///Users/carsen/.cybara/screenshots/first.png)",
+      "![screenshot](file:///Users/carsen/.cybara/screenshots/second.png)",
+      "![duplicate](file:///Users/carsen/.cybara/screenshots/first.png)",
+    ].join("\n\n");
+    const sources = chatMarkdownImageSources(content);
+
+    expect(sources).toHaveLength(2);
+    expect(sources[0]).toContain("screenshots%2Ffirst.png");
+    expect(sources[1]).toContain("screenshots%2Fsecond.png");
+    expect(chatMarkdownImageSrc(sources[0] || "")).toBe(sources[0]);
+  });
+
   test("restores persisted tool screenshots from compact objects and legacy JSON strings", () => {
     const result = {
       filePath: "/Users/test/.cybara/screenshots/screen.png",
@@ -56,11 +72,33 @@ describe("chat image rendering", () => {
     expect(imageToolResultSrc(JSON.stringify(result))).toContain("screenshots%2Fscreen.png");
   });
 
+  test("does not repeat markdown screenshots in the tool output gallery", () => {
+    const first = "/Users/test/.cybara/screenshots/first.png";
+    const second = "/Users/test/.cybara/screenshots/second.png";
+    const content = `![screenshot](file://${first})`;
+    const sources = toolOutputImageSources(
+      [
+        { result: { filePath: first, contentType: "image/png" } },
+        { result: { filePath: second, contentType: "image/png" } },
+        { result: { filePath: second, contentType: "image/png" } },
+      ],
+      content
+    );
+
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toContain("screenshots%2Fsecond.png");
+  });
+
   test("chat attachments, markdown images, and tool screenshots open one gallery", () => {
     expect(chatSource).toContain("<ChatImageLightbox");
     expect(chatSource).toContain("data-chat-lightbox-src={src}");
     expect(chatSource).toContain("onOpenImage={openChatImage}");
     expect(messageSource).toContain("data-chat-lightbox-src={imageSource}");
+    expect(messageSource).toContain("urlTransform={transformChatMarkdownUrl}");
+    expect(messageSource).toContain("if (!imageSource) return null");
+    expect(chatSource).toContain(
+      "toolOutputImageSources(message.tool_calls || [], message.content)"
+    );
     expect(messageSource).not.toContain("href={imageSource}");
   });
 

@@ -42,6 +42,36 @@ const systemPromptFixture: SystemPromptConfig = {
 };
 
 describe("mobile API client", () => {
+  test("preserves every persisted tool call in a long chat response", async () => {
+    const originalFetch = globalThis.fetch;
+    const toolCalls = Array.from({ length: 32 }, (_, index) => ({
+      id: `tool-${index + 1}`,
+      name: "read",
+      status: "completed",
+      args: { path: `file-${index + 1}.ts` },
+    }));
+    globalThis.fetch = (async () =>
+      Response.json({
+        id: "long-session",
+        messagesList: [
+          {
+            id: "assistant-long",
+            role: "assistant",
+            content: "Done",
+            tool_calls: toolCalls,
+          },
+        ],
+      })) as typeof fetch;
+
+    try {
+      const detail = await new CybaraMobileApi(profile).session("long-session");
+      expect(detail.messages[0].toolCalls).toHaveLength(32);
+      expect(detail.messages[0].toolCalls?.at(-1)?.id).toBe("tool-32");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("manages MCP servers through scoped gateway routes", async () => {
     const calls: Array<{ method: string; path: string; body: unknown }> = [];
     const originalFetch = globalThis.fetch;

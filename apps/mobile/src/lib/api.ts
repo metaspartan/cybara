@@ -1761,7 +1761,7 @@ function normalizeSessionTokenUsage(value: unknown): SessionTokenUsage | undefin
 function normalizeMessageToolCalls(value: unknown): SessionToolCallSummary[] | undefined {
   const calls = normalizeArrayResponse(value, ["tool_calls", "toolCalls", "items"]);
   if (calls.length === 0) return undefined;
-  return calls.slice(0, 20).map((call, index) => {
+  return calls.map((call, index) => {
     const record = asRecord(call);
     const name = readString(record, ["name", "toolName"]) || `tool ${index + 1}`;
     const status = readString(record, ["status", "state"]) || "completed";

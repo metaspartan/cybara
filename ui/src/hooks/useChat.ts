@@ -41,7 +41,7 @@ export interface LoadedChatSession {
 }
 
 function sessionDetailQueryKey(sessionId: string) {
-  return [SESSION_DETAIL_QUERY_KEY, sessionId, "fullToolCalls"] as const;
+  return [SESSION_DETAIL_QUERY_KEY, sessionId, "compact"] as const;
 }
 
 function invalidateSessionDetail(queryClient: QueryClient, sessionId?: string | null) {
@@ -470,11 +470,13 @@ export function useLoadSession() {
     []
   );
   const loadFresh = useCallback(
-    async (sessionId: string): Promise<LoadedChatSession> => {
-      const result = await loadSessionDetail(sessionId);
-      queryClient.setQueryData(sessionDetailQueryKey(sessionId), result);
-      return result;
-    },
+    (sessionId: string): Promise<LoadedChatSession> =>
+      queryClient.fetchQuery({
+        queryKey: sessionDetailQueryKey(sessionId),
+        staleTime: 0,
+        gcTime: SESSION_DETAIL_GC_MS,
+        queryFn: ({ signal }) => loadSessionDetail(sessionId, signal),
+      }),
     [loadSessionDetail, queryClient]
   );
 

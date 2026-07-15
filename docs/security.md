@@ -15,9 +15,9 @@ cybara start --expose          # Binds to 0.0.0.0
 CYBARA_HOST=0.0.0.0 cybara start  # Same via env var
 ```
 
-The Web/Tauri Settings → Auth page also has a **Listen on local network** switch. It toggles between
+Web/Tauri Settings → Gateway also has a **Listen on local network** switch. It toggles between
 `127.0.0.1` and `0.0.0.0` with a controlled listener rebind, so a full gateway restart is not needed.
-The Mobile page only defaults to a LAN QR URL after the running gateway is actually LAN-bound.
+Settings → Mobile only defaults to a LAN QR URL after the running gateway is actually LAN-bound.
 
 > **⚠️ Warning**: Only use `--expose` on trusted networks. See "Best Practices" below.
 

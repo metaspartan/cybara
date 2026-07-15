@@ -17,7 +17,7 @@ import {
   mergeActivityLists,
   suppressRecoveredWebFailureActivities,
 } from "@/lib/chatActivities";
-import { chatImageSrc, imageToolResultSrc } from "@/lib/chatImages";
+import { chatImageSrc, toolOutputImageSources } from "@/lib/chatImages";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { LiveActivityTimeline } from "./ActivityTimeline";
 import { AgentTransferTimeline } from "./AgentTransferTimeline";
@@ -324,9 +324,7 @@ function ToolOutputImages({
   messageIndex: number;
   onOpenImage: (src: string, alt: string) => void;
 }): ReactElement | null {
-  const outputImages = (message.tool_calls || [])
-    .map((toolCall) => imageToolResultSrc(toolCall.result))
-    .filter((src): src is string => !!src);
+  const outputImages = toolOutputImageSources(message.tool_calls || [], message.content);
   if (outputImages.length === 0) return null;
 
   return (

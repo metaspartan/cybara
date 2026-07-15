@@ -34,6 +34,7 @@ import { styles } from "./dashboardStyles";
 import { relativeTimestamp } from "./dashboardHelpers";
 import {
   buildMobileWorkTimeline,
+  extractMobileMarkdownImages,
   groupMobileActivities,
   type MobileWorkActivity,
   type MobileActivityGroupKind,
@@ -584,6 +585,11 @@ export function ChatMessageRow({
   onRevert?: (message: SessionDetailSummary["messages"][number]) => void;
   mediaUrl?: (filePath: string) => string;
 }) {
+  const markdown = extractMobileMarkdownImages(message.content || "");
+  const markdownImageUris = markdown.images.flatMap((image) => {
+    const uri = image.filePath && mediaUrl ? mediaUrl(image.filePath) : image.source;
+    return uri ? [uri] : [];
+  });
   const toolImageUris = mediaUrl
     ? (message.toolCalls || [])
         .filter((toolCall) => Boolean(toolCall.filePath))
@@ -592,6 +598,8 @@ export function ChatMessageRow({
   const userImageUris = (message.images || [])
     .map(resolveUserImageUri)
     .filter((uri): uri is string => uri !== null);
+  const assistantImageUris = Array.from(new Set([...markdownImageUris, ...toolImageUris]));
+  const combinedUserImageUris = Array.from(new Set([...userImageUris, ...markdownImageUris]));
   const isUser = message.role === "user";
   if (!isUser) {
     const hasWorkTimeline = Boolean(
@@ -608,11 +616,11 @@ export function ChatMessageRow({
         <View style={styles.agentMessageRow}>
           <WorkTimeline appearance={appearance} message={message} nowMs={nowMs} live />
           {fileChanges ? <MobileFileChangesCard summary={fileChanges} /> : null}
-          <ChatImageAttachments uris={toolImageUris} />
+          <ChatImageAttachments uris={assistantImageUris} />
         </View>
       );
     }
-    const content = message.content || "";
+    const content = markdown.content;
     const hasContent = content.trim().length > 0;
     return (
       <View style={styles.agentMessageRow}>
@@ -620,7 +628,7 @@ export function ChatMessageRow({
           <WorkTimeline appearance={appearance} message={message} nowMs={nowMs} />
         ) : null}
         <MobileAgentTransferTimeline transfers={message.agentTransfers} />
-        <ChatImageAttachments uris={toolImageUris} />
+        <ChatImageAttachments uris={assistantImageUris} />
         {hasContent || !hasWorkTimeline ? (
           <MessageContent
             appearance={appearance}
@@ -649,8 +657,8 @@ export function ChatMessageRow({
             { borderColor: `${accentColor}55` },
           ]}
         >
-          <MessageContent appearance={appearance} content={message.content || "(empty message)"} />
-          <ChatImageAttachments uris={userImageUris} />
+          <MessageContent appearance={appearance} content={markdown.content || "(empty message)"} />
+          <ChatImageAttachments uris={combinedUserImageUris} />
         </View>
         <MessageActionsRow
           alignEnd

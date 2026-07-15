@@ -33,6 +33,10 @@
 
 ## Quick Install
 
+Prefer the desktop GUI? Download Cybara for macOS, Windows, or Linux from
+[cybara.ai/download](https://cybara.ai/download), or get every installer directly from
+[GitHub Releases](https://github.com/metaspartan/cybara/releases).
+
 Install the latest Cybara CLI on macOS or Linux:
 
 ```bash
@@ -58,16 +62,16 @@ The installer selects the correct release for the current platform and verifies 
 ## Cybara in Action
 
 <p align="center">
-  <img src="docs/images/cybara-web-chat.jpg" alt="Cybara web chat showing a repository security and performance audit" width="100%" />
+  <img src="docs/images/cybara-web-chat.jpg" alt="Cybara web chat showing MiniMax building and verifying a SolarFlow energy dashboard" width="100%" />
 </p>
 
-<p align="center"><strong>Web and desktop chat</strong> with persisted workspaces, grouped live activity, structured responses, context controls, and agent selection.</p>
+<p align="center"><strong>Web and desktop chat</strong> with persisted workspaces, plans, grouped live activity, file changes, embedded previews, context controls, and agent selection.</p>
 
 <p align="center">
-  <img src="docs/images/cybara-tui-chat.png" alt="Cybara terminal chat showing a repository audit conversation" width="100%" />
+  <img src="docs/images/cybara-tui-chat.png" alt="Cybara terminal chat showing the MiniMax SolarFlow build handoff" width="100%" />
 </p>
 
-<p align="center"><strong>Terminal chat</strong> with responsive layouts, grouped live activity, capability completion, session history, queueing, steering, approvals, and slash commands.</p>
+<p align="center"><strong>Terminal chat</strong> with responsive layouts, wrapped Markdown, persisted sessions, queueing, steering, approvals, capability completion, and slash commands.</p>
 
 ---
 
@@ -295,7 +299,7 @@ See provider details: [docs/providers.md](docs/providers.md)
 
 Cybara both **consumes** external MCP servers (extending agent capabilities) and **exposes itself** as an MCP server so other clients can call cybara's tools:
 
-- **Consume** (client): register servers in Settings → MCP or via the CLI; tools are automatically exposed to agents
+- **Consume** (client): register servers in Settings → MCP Servers or via the CLI; tools are automatically exposed to agents
 - **Host** (server): run `cybara mcp serve` to expose built-in tools to MCP clients over stdio JSON-RPC
 
 MCP server management and registry integration:
@@ -309,12 +313,12 @@ MCP server management and registry integration:
 - **Popular Pre-configured Servers**: Filesystem, GitHub, GitLab, PostgreSQL, SQLite, Puppeteer, Brave Search, Google Maps, Slack, Fetch, Obsidian, Raycast, and more
 - **Tool Exposure**: MCP server tools are automatically exposed to agents with full JSON-RPC communication
 
-UI: MCP services are available from Plugins and the dedicated management page (`/mcp`)
+UI: manage MCP services in Settings → MCP Servers and bundled extensions in Settings → Plugins.
 CLI: `cybara mcp list`, `cybara mcp search <query>`, `cybara mcp install <package>`, `cybara mcp popular`, `cybara mcp serve`
 
 ### Plugins
 
-The Plugins screen brings installed skill bundles, a searchable built-in catalog, MCP services, and account apps into one extension surface. Installed plugins can be enabled or disabled without restarting the gateway. Google Workspace, Microsoft 365, Dropbox, and Notion account apps default to read-only access; optional writes remain subject to Cybara's normal tool approval policy. Credentials and OAuth tokens use the encrypted secret store.
+Settings → Plugins brings installed skill bundles, a searchable built-in catalog, MCP services, and account apps into one extension surface. Installed plugins can be enabled or disabled without restarting the gateway. Google Workspace, Microsoft 365, Dropbox, and Notion account apps default to read-only access; optional writes remain subject to Cybara's normal tool approval policy. Credentials and OAuth tokens use the encrypted secret store.
 
 Plugins can be discovered from bundled, local, and workspace directories. Additional services can be connected through HTTPS or trusted local MCP servers.
 

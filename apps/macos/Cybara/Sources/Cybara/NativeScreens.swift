@@ -635,8 +635,9 @@ struct ChatScreen: View {
                 subagentTaskDraft = ""
                 return
             }
-            await loadMessages(selectedSessionID)
-            await hydrateStatus(selectedSessionID)
+            async let messagesLoad: Void = loadMessages(selectedSessionID)
+            async let statusLoad: Void = hydrateStatus(selectedSessionID)
+            _ = await (messagesLoad, statusLoad)
             await loadSubagents()
             await loadNearbyShare()
         }
@@ -1890,7 +1891,12 @@ struct ChatScreen: View {
                         NativeAttachedImagesStrip(images: message.attachedImages)
                     }
                     if !visibleContent.isEmpty {
-                        NativeMarkdownView(content: visibleContent, isUser: isUser)
+                        NativeMarkdownView(
+                            content: visibleContent,
+                            isUser: isUser,
+                            mediaBaseURL: client.baseURL,
+                            mediaToken: GatewayClient.loadAPIKey()
+                        )
                     }
                 }
                 .padding(.horizontal, isUser ? 14 : 0)
@@ -2763,6 +2769,8 @@ struct ChatScreen: View {
                 ScrollView {
                     NativeSubagentRunDetail(
                         subagent: selectedSubagent,
+                        mediaBaseURL: client.baseURL,
+                        mediaToken: GatewayClient.loadAPIKey(),
                         onStop: ["running", "pending"].contains(selectedSubagent.status)
                             ? { Task { await stopSubagent(selectedSubagent.id) } }
                             : nil,
@@ -3940,6 +3948,8 @@ private struct NativeSubagentDetailRow: View {
 
 private struct NativeSubagentRunDetail: View {
     let subagent: NativeSubagentSummary
+    let mediaBaseURL: URL
+    let mediaToken: String?
     let onStop: (() -> Void)?
     let onClear: (() -> Void)?
 
@@ -4033,7 +4043,12 @@ private struct NativeSubagentRunDetail: View {
             if let output = firstNonEmptyGatewayString(subagent.result)
                 ?? firstNonEmptyGatewayString(subagent.error) {
                 nativeSubagentSection("Final Output") {
-                    NativeMarkdownView(content: output, isUser: false)
+                    NativeMarkdownView(
+                        content: output,
+                        isUser: false,
+                        mediaBaseURL: mediaBaseURL,
+                        mediaToken: mediaToken
+                    )
                         .textSelection(.enabled)
                 }
             }

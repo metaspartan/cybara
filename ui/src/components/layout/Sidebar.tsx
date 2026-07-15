@@ -54,6 +54,7 @@ import {
   parseMainSidebarWidth,
   resolveMainSidebarChatHeight,
   resolveMainSidebarChatMaxHeight,
+  usesAvailableMainSidebarChatHeight,
 } from "./sidebarSizing";
 import { UpdateButton } from "./UpdateButton";
 
@@ -263,6 +264,7 @@ export function Sidebar() {
     chatHistoryHeight,
     moreOpen ? navigationLayout.more.length : 0
   );
+  const chatHistoryUsesAvailableHeight = usesAvailableMainSidebarChatHeight(chatHistoryHeight);
   const chatHistoryMaxHeight = resolveMainSidebarChatMaxHeight(
     moreOpen ? navigationLayout.more.length : 0
   );
@@ -505,7 +507,7 @@ export function Sidebar() {
               </div>
 
               <nav className="flex min-h-0 flex-1 flex-col p-2 pb-3">
-                <div className="min-h-[108px] flex-1 space-y-0.5 overflow-y-auto pb-2">
+                <div className="min-h-[108px] shrink-0 space-y-0.5 overflow-y-auto pb-2">
                   <NavLink
                     to="/chat?fresh=1"
                     title={collapsed ? t("chat.sidebar.newChat") : undefined}
@@ -549,13 +551,20 @@ export function Sidebar() {
                       <GripHorizontal className="theme-text-subtle h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
                     </div>
                     <div
-                      className="min-w-0 shrink-0 transition-[height,min-height,max-height] duration-200 ease-out"
+                      className={cn(
+                        "min-w-0 transition-[height,min-height,max-height] duration-200 ease-out",
+                        chatHistoryUsesAvailableHeight ? "min-h-0 flex-1" : "shrink-0"
+                      )}
                       style={{
-                        height: visibleChatHistoryHeight,
+                        height: chatHistoryUsesAvailableHeight
+                          ? undefined
+                          : visibleChatHistoryHeight,
                         minHeight: moreOpen
                           ? MAIN_SIDEBAR_CHAT_HEIGHT_MORE_OPEN_MIN
                           : MAIN_SIDEBAR_CHAT_HEIGHT_MIN,
-                        maxHeight: chatHistoryMaxHeight,
+                        maxHeight: chatHistoryUsesAvailableHeight
+                          ? undefined
+                          : chatHistoryMaxHeight,
                       }}
                     >
                       <SessionsPanel

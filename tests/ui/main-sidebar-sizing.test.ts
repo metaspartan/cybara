@@ -13,6 +13,7 @@ import {
   parseMainSidebarWidth,
   resolveMainSidebarChatHeight,
   resolveMainSidebarChatMaxHeight,
+  usesAvailableMainSidebarChatHeight,
 } from "../../ui/src/components/layout/sidebarSizing";
 
 describe("main sidebar sizing", () => {
@@ -36,6 +37,8 @@ describe("main sidebar sizing", () => {
     expect(resolveMainSidebarChatHeight(400, 20)).toBe(48);
     expect(resolveMainSidebarChatMaxHeight(0)).toBe("calc(100% - 140px)");
     expect(resolveMainSidebarChatMaxHeight(4)).toBe("calc(100% - 288px)");
+    expect(usesAvailableMainSidebarChatHeight(MAIN_SIDEBAR_CHAT_HEIGHT_DEFAULT)).toBe(true);
+    expect(usesAvailableMainSidebarChatHeight(720)).toBe(false);
   });
 
   test("persists resizing and shares the width with main content", () => {
@@ -52,9 +55,17 @@ describe("main sidebar sizing", () => {
     expect(sidebar).toContain('aria-label="Resize chat history"');
     expect(sidebar).toContain("onPointerDown={beginResizeChatHistory}");
     expect(sidebar).toContain("onKeyDown={resizeChatHistoryWithKeyboard}");
-    expect(sidebar).toContain("maxHeight: chatHistoryMaxHeight");
+    expect(sidebar).toContain(
+      "maxHeight: chatHistoryUsesAvailableHeight\n                          ? undefined\n                          : chatHistoryMaxHeight"
+    );
     expect(sidebar).toContain("resolveMainSidebarChatMaxHeight");
-    expect(sidebar).toContain("height: visibleChatHistoryHeight");
+    expect(sidebar).toContain(
+      "height: chatHistoryUsesAvailableHeight\n                          ? undefined\n                          : visibleChatHistoryHeight"
+    );
+    expect(sidebar).toContain('chatHistoryUsesAvailableHeight ? "min-h-0 flex-1" : "shrink-0"');
+    expect(sidebar).toContain(
+      'className="min-h-[108px] shrink-0 space-y-0.5 overflow-y-auto pb-2"'
+    );
     expect(sidebar).toContain("moreOpen ? navigationLayout.more.length : 0");
     expect(sidebar).toContain("transition-[height,min-height,max-height]");
     expect(sidebar).toContain('aria-label="Search chats"');
