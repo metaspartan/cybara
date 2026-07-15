@@ -165,7 +165,7 @@ function insertSourceSession(fixture: GatewayFixture, marker: string): string {
       .run(
         sessionId,
         "source-agent",
-        "Nearby transfer smoke",
+        `Nearby ${marker}`,
         JSON.stringify(messages),
         timestamp,
         timestamp
@@ -242,6 +242,15 @@ describe("Nearby two-gateway e2e", () => {
 
     await enableNearby(first, "Nearby First");
     await enableNearby(second, "Nearby Second");
+
+    await waitFor(async () => {
+      const firstStatus = asRecord((await api(first, "GET", "/api/nearby")).data);
+      const secondStatus = asRecord((await api(second, "GET", "/api/nearby")).data);
+      return (
+        asRecords(firstStatus.discoveredPeers).some((peer) => peer.name === "Nearby Second") &&
+        asRecords(secondStatus.discoveredPeers).some((peer) => peer.name === "Nearby First")
+      );
+    });
 
     const discoverable = await api(second, "POST", "/api/nearby/discoverable");
     expect(discoverable.status).toBe(200);
@@ -325,6 +334,38 @@ describe("Nearby two-gateway e2e", () => {
     expect(importedMessages.some((message) => String(message.content).includes(marker))).toBe(true);
     expect(JSON.stringify(importedMessages)).not.toContain("sk-nearby-secret-value");
     expect(JSON.stringify(importedMessages)).toContain("Ran transfer verification");
+
+    const trustResult = await api(
+      second,
+      "PUT",
+      `/api/nearby/peers/${encodeURIComponent(String(firstIdentity.id))}`,
+      { syncEnabled: true }
+    );
+    expect(trustResult.status).toBe(200);
+    expect(asRecord(trustResult.data).syncEnabled).toBe(true);
+
+    const automaticMarker = `nearby-auto-${Date.now()}`;
+    const automaticSourceSessionId = insertSourceSession(first, automaticMarker);
+    const automaticSend = await api(
+      first,
+      "POST",
+      `/api/nearby/peers/${encodeURIComponent(String(secondIdentity.id))}/sessions`,
+      { sessionId: automaticSourceSessionId }
+    );
+    expect(automaticSend.status).toBe(200);
+    const automaticTransferId = String(asRecord(automaticSend.data).transferId || "");
+
+    await waitFor(async () => {
+      const list = (await api(second, "GET", "/api/sessions")).data;
+      const sessions = Array.isArray(list) ? asRecords(list) : asRecords(asRecord(list).sessions);
+      return sessions.some((session) => session.title === `Nearby ${automaticMarker}`);
+    });
+    const statusAfterAutomaticImport = asRecord((await api(second, "GET", "/api/nearby")).data);
+    expect(
+      asRecords(statusAfterAutomaticImport.incomingTransfers).some(
+        (transfer) => transfer.id === automaticTransferId
+      )
+    ).toBe(false);
 
     await stopGateway(second);
     startGateway(second);

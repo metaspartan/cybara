@@ -85,6 +85,12 @@ export function createNativeMacOSInfoPlist(version: string): string {
   <string>Cybara uses the microphone for voice/audio capture features you initiate.</string>
   <key>NSSpeechRecognitionUsageDescription</key>
   <string>Cybara transcribes speech on device when you choose native dictation.</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Cybara discovers and securely pairs with your other Cybara installations on the local network.</string>
+  <key>NSBonjourServices</key>
+  <array>
+    <string>_cybara-nearby._tcp</string>
+  </array>
   <key>NSAppleEventsUsageDescription</key>
   <string>Cybara controls other apps (e.g. Finder) only when you ask an agent to via computer use.</string>
   <key>NSDesktopFolderUsageDescription</key>

@@ -1,4 +1,4 @@
-import { FileText, MessageSquare, PanelRightOpen, Share2, SlidersHorizontal } from "lucide-react";
+import { FileText, PanelRightOpen, Share2, SlidersHorizontal } from "lucide-react";
 import type { ComponentProps, ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import { ChatEnvironmentOverview } from "./ChatEnvironmentOverview";
@@ -12,14 +12,12 @@ interface ChatPageHeaderProps {
   fileReviewActive: boolean;
   nearbyEnabled: boolean;
   sessionTitle: ComponentProps<typeof ChatHeaderTitleMenu> | null;
-  sessionsPanelOpen: boolean;
   workspaceMenu: ComponentProps<typeof WorkspaceOpenMenu>;
   workspacePanelOpen: boolean;
   subagentsActive: boolean;
   onOpenNearbyShare: () => void;
   onToggleEnvironment: () => void;
   onToggleFileReview: () => void;
-  onToggleSessionsPanel: () => void;
   onToggleSubagents: () => void;
   onToggleWorkspacePanel: () => void;
 }
@@ -30,31 +28,18 @@ export function ChatPageHeader({
   fileReviewActive,
   nearbyEnabled,
   sessionTitle,
-  sessionsPanelOpen,
   workspaceMenu,
   workspacePanelOpen,
   subagentsActive,
   onOpenNearbyShare,
   onToggleEnvironment,
   onToggleFileReview,
-  onToggleSessionsPanel,
   onToggleSubagents,
   onToggleWorkspacePanel,
 }: ChatPageHeaderProps): ReactElement {
   return (
     <div className="relative flex items-center justify-between px-3 sm:px-4 py-2 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl flex-shrink-0">
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-        <button
-          type="button"
-          onClick={onToggleSessionsPanel}
-          className={cn(
-            "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-            sessionsPanelOpen ? "accent-text" : "text-gray-500"
-          )}
-          title="Sessions"
-        >
-          <MessageSquare className="w-4 h-4" />
-        </button>
         {sessionTitle ? <ChatHeaderTitleMenu {...sessionTitle} /> : <NewChatTitle />}
       </div>
       <div className="flex items-center gap-1 sm:gap-2">

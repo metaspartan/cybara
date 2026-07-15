@@ -109,7 +109,6 @@ import {
   writeCachedOptimisticPendingMessages,
 } from "./chat/pendingQueueCache";
 import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
-import { SessionsPanel } from "./chat/SessionSidebar";
 import { useChatAttachments } from "./chat/useChatAttachments";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { useChatDictation } from "./chat/useChatDictation";
@@ -289,7 +288,6 @@ export function Chat() {
     [speakingMessageIndex]
   );
   const [reverting, setReverting] = useState(false);
-  const [showSessionsPanel, setShowSessionsPanel] = useState(true);
   const [showEnvironmentOverview, setShowEnvironmentOverview] = useState(false);
   const closeEnvironmentOverview = useCallback(() => setShowEnvironmentOverview(false), []);
   const {
@@ -622,10 +620,6 @@ export function Chat() {
       window.clearInterval(interval);
     };
   }, []);
-
-  useEffect(() => {
-    setShowSessionsPanel(true);
-  }, [sessionId]);
 
   useEffect(() => {
     if (!sessionAgentId) return;
@@ -2605,6 +2599,11 @@ export function Chat() {
       if (initialChatRoute.startFresh) {
         suppressAutoRestoreRef.current = true;
         persistSessionId(null);
+        if (initialChatRoute.workspaceDir) {
+          setWorkspaceDir(initialChatRoute.workspaceDir);
+          persistWorkspaceDir(initialChatRoute.workspaceDir);
+          setLastWorkspaceDir(initialChatRoute.workspaceDir);
+        }
         window.history.replaceState({}, "", "/chat");
         return;
       }
@@ -2737,7 +2736,6 @@ export function Chat() {
               }
             : null
         }
-        sessionsPanelOpen={showSessionsPanel}
         subagentsActive={showWorkspacePanel && activeWorkspaceKind === "subagents"}
         workspaceMenu={{
           workspaceDir: effectiveWorkspaceDir,
@@ -2749,47 +2747,11 @@ export function Chat() {
         onOpenNearbyShare={() => setShowNearbyShare(true)}
         onToggleEnvironment={() => setShowEnvironmentOverview((value) => !value)}
         onToggleFileReview={() => toggleWorkspaceTab("review")}
-        onToggleSessionsPanel={() => setShowSessionsPanel((value) => !value)}
         onToggleSubagents={() => toggleWorkspaceTab("subagents")}
         onToggleWorkspacePanel={() => setShowWorkspacePanel((value) => !value)}
       />
 
       <div className="flex-1 flex overflow-hidden">
-        {!artifactViewerTarget && showSessionsPanel && (
-          <SessionsPanel
-            isOpen={showSessionsPanel}
-            onClose={() => setShowSessionsPanel(false)}
-            currentSessionId={sessionId}
-            activeSessionIds={activeSessionIds}
-            currentSessionLoading={isLoading}
-            onLoadSession={(
-              id,
-              msgs,
-              loadedWorkspaceDir,
-              loadedAgentId,
-              loadedContextUsage,
-              loadedTokenUsage,
-              preserveReferenceTail
-            ) => {
-              suppressAutoRestoreRef.current = false;
-              activeSessionRef.current = id;
-              setUseModelRouter(false);
-              loadSession(id, msgs, loadedWorkspaceDir, preserveReferenceTail);
-              syncSessionAgentSelection(loadedAgentId);
-              setSessionContextUsage(loadedContextUsage ?? null);
-              setSessionTokenUsage(loadedTokenUsage ?? null);
-            }}
-            onNewSession={(nextWorkspaceDir) => {
-              resetChatSession({ resetAgentSelection: true });
-              if (nextWorkspaceDir) {
-                setWorkspaceDir(nextWorkspaceDir);
-                persistWorkspaceDir(nextWorkspaceDir);
-                setLastWorkspaceDir(nextWorkspaceDir);
-              }
-            }}
-          />
-        )}
-
         <div className="relative flex-1 flex flex-col min-w-0">
           <PendingApprovalsBanner />
           {artifactViewerTarget ? (
@@ -2816,7 +2778,7 @@ export function Chat() {
                         src="/cybara.png"
                         alt=""
                         aria-hidden="true"
-                        className="mx-auto mb-3 h-10 w-10 object-contain opacity-35 grayscale brightness-[1.7] contrast-150"
+                        className="mx-auto mb-4 h-16 w-16 object-contain opacity-40 grayscale brightness-[1.7] contrast-150"
                       />
                       <p className="text-sm font-medium">Start a conversation</p>
                       <p className="mt-1 text-[12px] text-gray-600">

@@ -7,9 +7,16 @@ interface RequestCall {
 }
 
 const status = {
-  settings: { enabled: false, displayName: "Workstation", port: 4270, discoveryMinutes: 10 },
+  settings: {
+    enabled: false,
+    displayName: "Workstation",
+    port: 4270,
+    discoveryMinutes: 10,
+    autoAdvertise: true,
+  },
   running: false,
   discoverableUntil: null,
+  localAddresses: ["http://192.168.1.15:4270"],
   discoveredPeers: [],
   pairedPeers: [],
   pairings: [],
@@ -43,5 +50,17 @@ describe("nearby CLI", () => {
     expect(calls[0]?.endpoint).toBe("/api/nearby/peers/peer%2Fa/sessions");
     expect(calls[0]?.options?.method).toBe("POST");
     expect(JSON.parse(String(calls[0]?.options?.body))).toEqual({ sessionId: "session-1" });
+  });
+
+  test("changes automatic import only for the selected paired device", async () => {
+    const calls: RequestCall[] = [];
+    const fetchAPI = async <T>(endpoint: string, options?: RequestInit): Promise<T | null> => {
+      calls.push({ endpoint, options });
+      return { syncEnabled: true } as T;
+    };
+    await runNearbyCommand(["auto-import", "peer/a", "on"], fetchAPI);
+    expect(calls[0]?.endpoint).toBe("/api/nearby/peers/peer%2Fa");
+    expect(calls[0]?.options?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[0]?.options?.body))).toEqual({ syncEnabled: true });
   });
 });

@@ -103,6 +103,7 @@ export interface NearbyStatus {
   running: boolean;
   advertising: boolean;
   discoverableUntil: string | null;
+  localAddresses: string[];
   discoveredPeers: NearbyDiscoveredPeer[];
   pairedPeers: Array<Omit<NearbyPeer, "sharedKey" | "publicKey">>;
   pairings: NearbyPairingView[];

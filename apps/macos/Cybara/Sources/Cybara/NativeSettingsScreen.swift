@@ -17,7 +17,7 @@ private extension View {
     }
 }
 
-enum NativeSettingsTab {
+enum NativeSettingsTab: String, CaseIterable, Identifiable {
     case general
     case accessibility
     case gateway
@@ -28,6 +28,68 @@ enum NativeSettingsTab {
     case migration
     case features
     case advanced
+    case agents
+    case providers
+    case router
+    case channels
+    case mobile
+    case plugins
+    case mcp
+    case skills
+    case tools
+    case logs
+
+    var id: String { rawValue }
+
+    var titleKey: String {
+        switch self {
+        case .general: return "settings.general"
+        case .accessibility: return "settings.accessibility"
+        case .gateway: return "settings.gateway"
+        case .model: return "settings.ai"
+        case .speech: return "settings.voice"
+        case .memory: return "nav.memory"
+        case .wallet: return "nav.wallet"
+        case .migration: return "settings.migration"
+        case .features: return "settings.safety"
+        case .advanced: return "nav.system"
+        case .agents: return "nav.agents"
+        case .providers: return "nav.providers"
+        case .router: return "nav.router"
+        case .channels: return "nav.channels"
+        case .mobile: return "nav.mobile"
+        case .plugins: return "nav.plugins"
+        case .mcp: return "nav.mcp"
+        case .skills: return "nav.skills"
+        case .tools: return "nav.tools"
+        case .logs: return "nav.logs"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .general: return "switch.2"
+        case .accessibility: return "accessibility"
+        case .gateway: return "server.rack"
+        case .model: return "brain"
+        case .speech: return "waveform"
+        case .memory: return "memorychip"
+        case .wallet: return "creditcard"
+        case .migration: return "folder.badge.gearshape"
+        case .features: return "checkmark.shield"
+        case .advanced: return "gearshape.2"
+        case .agents: return "cpu"
+        case .providers: return "server.rack"
+        case .router: return "point.3.connected.trianglepath.dotted"
+        case .channels: return "link"
+        case .mobile: return "iphone.gen3"
+        case .plugins: return "puzzlepiece.extension"
+        case .mcp: return "network"
+        case .skills: return "wand.and.stars"
+        case .tools: return "wrench.and.screwdriver"
+        case .logs: return "list.bullet.rectangle"
+        }
+    }
 }
 
 struct NativeSettingsScreen: View {
@@ -183,18 +245,39 @@ struct NativeSettingsScreen: View {
         VStack(alignment: .leading, spacing: 14) {
             ScreenHeader(title: NativeI18n.t("nav.settings"), subtitle: NativeI18n.t("settings.subtitle"))
 
-            TabView(selection: $selectedTab) {
-                generalTab.tabItem { Label(NativeI18n.t("settings.general"), systemImage: "switch.2") }.tag(NativeSettingsTab.general)
-                accessibilityTab.tabItem { Label(NativeI18n.t("settings.accessibility"), systemImage: "accessibility") }.tag(NativeSettingsTab.accessibility)
-                gatewayTab.tabItem { Label(NativeI18n.t("settings.gateway"), systemImage: "server.rack") }.tag(NativeSettingsTab.gateway)
-                modelTab.tabItem { Label(NativeI18n.t("settings.ai"), systemImage: "brain") }.tag(NativeSettingsTab.model)
-                memoryTab.tabItem { Label(NativeI18n.t("nav.memory"), systemImage: "memorychip") }.tag(NativeSettingsTab.memory)
-                speechTab.tabItem { Label(NativeI18n.t("settings.voice"), systemImage: "waveform") }.tag(NativeSettingsTab.speech)
-                featuresTab.tabItem { Label(NativeI18n.t("settings.safety"), systemImage: "slider.horizontal.3") }.tag(NativeSettingsTab.features)
-                WalletScreen(client: client).tabItem { Label(NativeI18n.t("nav.wallet"), systemImage: "creditcard") }.tag(NativeSettingsTab.wallet)
-                migrationTab.tabItem { Label(NativeI18n.t("settings.migration"), systemImage: "folder.badge.gearshape") }.tag(NativeSettingsTab.migration)
-                advancedTab.tabItem { Label(NativeI18n.t("nav.system"), systemImage: "square.grid.3x3") }.tag(NativeSettingsTab.advanced)
+            HStack(spacing: 0) {
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(NativeSettingsTab.allCases) { tab in
+                            Button {
+                                selectedTab = tab
+                            } label: {
+                                Label(NativeI18n.t(tab.titleKey), systemImage: tab.systemImage)
+                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 7)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .background {
+                                if selectedTab == tab {
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .fill(Color.accentColor.opacity(0.14))
+                                }
+                            }
+                        }
+                    }
+                    .padding(8)
+                }
+                .frame(width: 180)
+
+                Divider()
+
+                settingsDetail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             if let error {
                 Text(error)
@@ -219,6 +302,38 @@ struct NativeSettingsScreen: View {
                     gatewayLogs = page.logs
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var settingsDetail: some View {
+        switch selectedTab {
+        case .general: generalTab
+        case .accessibility: accessibilityTab
+        case .gateway: gatewayTab
+        case .model: modelTab
+        case .speech: speechTab
+        case .memory:
+            TabView {
+                memoryTab
+                    .tabItem { Label("Behavior", systemImage: "slider.horizontal.3") }
+                MemoryScreen(client: client)
+                    .tabItem { Label("Stored Memory", systemImage: "tray.full") }
+            }
+        case .wallet: WalletScreen(client: client)
+        case .migration: migrationTab
+        case .features: featuresTab
+        case .advanced: advancedTab
+        case .agents: AgentsScreen(client: client)
+        case .providers: ProvidersScreen(client: client)
+        case .router: RouterScreen(client: client)
+        case .channels: ChannelsScreen(client: client)
+        case .mobile: MobileScreen(client: client, defaultBaseURL: sidecar.serverURL)
+        case .plugins: PluginsScreen(client: client)
+        case .mcp: MCPScreen(client: client)
+        case .skills: NativeSkillsScreen(client: client)
+        case .tools: ToolsScreen(client: client)
+        case .logs: LogsScreen(client: client)
         }
     }
 

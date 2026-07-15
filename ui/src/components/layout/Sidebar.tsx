@@ -1,8 +1,7 @@
 import {
+  ArrowLeft,
   AudioLines,
   BarChart3,
-  Bot,
-  Brain,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -11,44 +10,50 @@ import {
   FlaskConical,
   FolderOpen,
   Gauge,
+  GripHorizontal,
   LayoutDashboard,
-  LibraryBig,
   ListTodo,
-  Logs,
   Menu,
-  MessageSquare,
   MessageSquarePlus,
   MessagesSquare,
-  Network,
-  Package,
-  Plug,
+  MoreHorizontal,
+  Search,
   Settings,
-  Smartphone,
   Sparkles,
   SquareTerminal,
-  TabletSmartphone,
-  Terminal,
   Wallet as WalletIcon,
-  Wrench,
   X,
 } from "lucide-react";
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { CybaraThinkingMark } from "@/components/CybaraThinkingMark";
-import { providerPlansApi } from "@/lib/api";
+import { SettingsNavigation } from "@/components/settings/SettingsNavigation";
 import { useInfo } from "@/hooks/useApi";
+import { useSidebarNavigationLayout } from "@/hooks/useSidebarNavigationLayout";
 import { useI18n } from "@/lib/i18n";
+import { resolveSettingsSectionId, type SettingsSectionId } from "@/lib/settingsNavigation";
+import type { SidebarDestinationId, SidebarPrimaryItemId } from "@/lib/sidebarNavigation";
 import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
+import { SessionsPanel } from "@/pages/chat/SessionSidebar";
 import type { TranslationKey } from "../../../../shared/i18n/catalog";
 import {
+  clampMainSidebarChatHeight,
   clampMainSidebarWidth,
+  MAIN_SIDEBAR_CHAT_HEIGHT_DEFAULT,
+  MAIN_SIDEBAR_CHAT_HEIGHT_MAX,
+  MAIN_SIDEBAR_CHAT_HEIGHT_MIN,
+  MAIN_SIDEBAR_CHAT_HEIGHT_MORE_OPEN_MIN,
+  MAIN_SIDEBAR_CHAT_HEIGHT_STORAGE_KEY,
   MAIN_SIDEBAR_DEFAULT_WIDTH,
   MAIN_SIDEBAR_MAX_WIDTH,
   MAIN_SIDEBAR_MIN_WIDTH,
   MAIN_SIDEBAR_WIDTH_STORAGE_KEY,
+  parseMainSidebarChatHeight,
   parseMainSidebarWidth,
+  resolveMainSidebarChatHeight,
+  resolveMainSidebarChatMaxHeight,
 } from "./sidebarSizing";
 import { UpdateButton } from "./UpdateButton";
 
@@ -110,6 +115,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
 function useAgentStatus() {
   const [status, setStatus] = useState<"idle" | "active">("idle");
+  const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
   const activeSessionLastSeenRef = useRef<Map<string, number>>(new Map());
   const globalLastSeenRef = useRef<number>(0);
 
@@ -128,6 +134,7 @@ function useAgentStatus() {
         globalLastSeenRef.current > 0 && now - globalLastSeenRef.current <= ACTIVE_WINDOW_MS;
       const hasActiveSessions = activeSessionLastSeenRef.current.size > 0;
       setStatus(globalActive || hasActiveSessions ? "active" : "idle");
+      setActiveSessionIds([...activeSessionLastSeenRef.current.keys()]);
     };
 
     const sweepInterval = setInterval(() => {
@@ -210,7 +217,7 @@ function useAgentStatus() {
     };
   }, []);
 
-  return status;
+  return { activeSessionIds, status };
 }
 
 type SidebarNavItem = {
@@ -218,115 +225,58 @@ type SidebarNavItem = {
   icon: React.ComponentType<{ className?: string }>;
   label?: string;
   labelKey?: TranslationKey;
-  requiresUsage?: boolean;
 };
 
-type SidebarNavCategory = {
-  id: string;
-  labelKey: TranslationKey | null;
-  items: SidebarNavItem[];
+const sidebarDestinations: Record<SidebarDestinationId, SidebarNavItem> = {
+  dashboard: { path: "/", icon: LayoutDashboard, labelKey: "nav.dashboard" },
+  ide: { path: "/ide", icon: FolderOpen, labelKey: "nav.ide" },
+  usage: { path: "/usage", icon: Gauge, labelKey: "nav.usage" },
+  voice: { path: "/voice", icon: AudioLines, label: "Voice" },
+  lab: { path: "/lab", icon: FlaskConical, label: "Lab" },
+  terminal: { path: "/terminal", icon: SquareTerminal, labelKey: "nav.terminal" },
+  lsp: { path: "/lsp", icon: Code, labelKey: "nav.lsp" },
+  sessions: { path: "/sessions", icon: MessagesSquare, labelKey: "nav.sessions" },
+  journey: { path: "/journey", icon: Sparkles, labelKey: "nav.journey" },
+  wallet: { path: "/wallet", icon: WalletIcon, labelKey: "nav.wallet" },
+  artifacts: { path: "/artifacts", icon: FileText, labelKey: "nav.artifacts" },
+  metrics: { path: "/metrics", icon: BarChart3, labelKey: "nav.metrics" },
+  tasks: { path: "/tasks", icon: ListTodo, labelKey: "nav.tasks" },
 };
-
-const navCategories: SidebarNavCategory[] = [
-  {
-    id: "main",
-    labelKey: null,
-    items: [
-      { path: "/", icon: LayoutDashboard, labelKey: "nav.dashboard" },
-      { path: "/agents", icon: Bot, labelKey: "nav.agents" },
-      { path: "/providers", icon: Plug, labelKey: "nav.providers" },
-      { path: "/router", icon: Network, labelKey: "nav.router" },
-      { path: "/channels", icon: Smartphone, labelKey: "nav.channels" },
-      { path: "/mobile", icon: TabletSmartphone, labelKey: "nav.mobile" },
-      { path: "/plugins", icon: Package, labelKey: "nav.plugins" },
-    ],
-  },
-  {
-    id: "developer",
-    labelKey: "nav.developer",
-    items: [
-      { path: "/mcp", icon: Terminal, labelKey: "nav.mcp" },
-      { path: "/lsp", icon: Code, labelKey: "nav.lsp" },
-      { path: "/ide", icon: FolderOpen, labelKey: "nav.ide" },
-      { path: "/sessions", icon: MessagesSquare, labelKey: "nav.sessions" },
-      {
-        path: "/usage",
-        icon: Gauge,
-        labelKey: "nav.usage",
-        requiresUsage: true,
-      },
-      { path: "/lab", icon: FlaskConical, label: "Lab" },
-      { path: "/skills", icon: LibraryBig, labelKey: "nav.skills" },
-      { path: "/tools", icon: Wrench, labelKey: "nav.tools" },
-      { path: "/terminal", icon: SquareTerminal, labelKey: "nav.terminal" },
-    ],
-  },
-  {
-    id: "chat",
-    labelKey: null,
-    items: [
-      { path: "/chat", icon: MessageSquare, labelKey: "nav.chat" },
-      { path: "/voice", icon: AudioLines, label: "Voice" },
-    ],
-  },
-  {
-    id: "system",
-    labelKey: "nav.system",
-    items: [
-      { path: "/memory", icon: Brain, labelKey: "nav.memory" },
-      { path: "/journey", icon: Sparkles, labelKey: "nav.journey" },
-      { path: "/wallet", icon: WalletIcon, labelKey: "nav.wallet" },
-      { path: "/artifacts", icon: FileText, labelKey: "nav.artifacts" },
-      { path: "/metrics", icon: BarChart3, labelKey: "nav.metrics" },
-      { path: "/tasks", icon: ListTodo, labelKey: "nav.tasks" },
-      { path: "/logs", icon: Logs, labelKey: "nav.logs" },
-    ],
-  },
-];
 
 export function Sidebar() {
   const location = useLocation();
-  const status = useAgentStatus();
+  const navigate = useNavigate();
+  const { activeSessionIds, status } = useAgentStatus();
   const { data: info } = useInfo();
   const onChatPage = location.pathname === "/chat" || location.pathname.startsWith("/chat/");
+  const settingsMode = location.pathname === "/settings";
   const hasAgents = (info?.stats?.agents?.total ?? 0) > 0;
-  const showNewChatShortcut = hasAgents && !onChatPage;
   const { t } = useI18n();
   const { collapsed, setCollapsed, width, setWidth, mobileOpen, setMobileOpen } = useSidebar();
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    developer: false,
-    system: true,
-  });
-  const [usageAvailable, setUsageAvailable] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+  const { layout: navigationLayout } = useSidebarNavigationLayout();
+  const [chatHistoryHeight, setChatHistoryHeight] = useState(() =>
+    parseMainSidebarChatHeight(localStorage.getItem(MAIN_SIDEBAR_CHAT_HEIGHT_STORAGE_KEY))
+  );
+  const visibleChatHistoryHeight = resolveMainSidebarChatHeight(
+    chatHistoryHeight,
+    moreOpen ? navigationLayout.more.length : 0
+  );
+  const chatHistoryMaxHeight = resolveMainSidebarChatMaxHeight(
+    moreOpen ? navigationLayout.more.length : 0
+  );
 
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname, setMobileOpen]);
 
-  useEffect(() => {
-    let mounted = true;
-    const loadUsageAvailability = async () => {
-      try {
-        const response = await providerPlansApi.availability();
-        if (!mounted || !response.success) return;
-        setUsageAvailable(response.data?.available === true);
-      } catch {
-        if (mounted) setUsageAvailable(false);
-      }
-    };
-    void loadUsageAvailability();
-    const interval = window.setInterval(() => void loadUsageAvailability(), 60000);
-    return () => {
-      mounted = false;
-      window.clearInterval(interval);
-    };
-  }, []);
+  const currentSessionId = onChatPage ? new URLSearchParams(location.search).get("session") : null;
+  const activeSettingsSection =
+    resolveSettingsSectionId(new URLSearchParams(location.search).get("section")) ?? "general";
 
-  const toggleSection = (id: string) => {
-    setExpandedSections((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
+  const selectSettingsSection = (section: SettingsSectionId) => {
+    navigate(section === "general" ? "/settings" : `/settings?section=${section}`);
   };
 
   const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -360,6 +310,51 @@ export function Sidebar() {
     setWidth((current) => clampMainSidebarWidth(current + delta));
   };
 
+  const beginResizeChatHistory = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startY = event.clientY;
+    const historyElement = event.currentTarget.nextElementSibling;
+    const startHeight =
+      historyElement instanceof HTMLElement
+        ? historyElement.getBoundingClientRect().height
+        : chatHistoryHeight;
+
+    const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+      setChatHistoryHeight(clampMainSidebarChatHeight(startHeight + startY - moveEvent.clientY));
+    };
+
+    const handlePointerUp = (upEvent: globalThis.PointerEvent) => {
+      const nextHeight = clampMainSidebarChatHeight(startHeight + startY - upEvent.clientY);
+      setChatHistoryHeight(nextHeight);
+      localStorage.setItem(MAIN_SIDEBAR_CHAT_HEIGHT_STORAGE_KEY, String(nextHeight));
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+  };
+
+  const resizeChatHistoryWithKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    const delta = event.key === "ArrowUp" ? 16 : -16;
+    const historyElement = event.currentTarget.nextElementSibling;
+    const currentHeight =
+      historyElement instanceof HTMLElement
+        ? historyElement.getBoundingClientRect().height
+        : chatHistoryHeight;
+    const nextHeight = clampMainSidebarChatHeight(currentHeight + delta);
+    setChatHistoryHeight(nextHeight);
+    localStorage.setItem(MAIN_SIDEBAR_CHAT_HEIGHT_STORAGE_KEY, String(nextHeight));
+  };
+
   const renderNavItem = (item: SidebarNavItem) => {
     const Icon = item.icon;
     const label = item.label ?? (item.labelKey ? t(item.labelKey) : "");
@@ -375,7 +370,7 @@ export function Sidebar() {
         className={cn(
           "flex items-center gap-2.5 rounded-lg text-[13px] font-medium transition-all duration-200",
           "!ring-0 !border-transparent",
-          collapsed ? "px-3 py-2.5 justify-center" : "px-3.5 py-2.5",
+          collapsed ? "px-3 py-2.5 justify-center" : "px-3.5 py-1.5",
           isActive
             ? "bg-[rgba(var(--accent-primary),0.15)] text-white border border-[rgba(var(--accent-primary),0.3)] shadow-lg"
             : "text-gray-400 hover:text-white hover:bg-white/5"
@@ -393,6 +388,41 @@ export function Sidebar() {
         {!collapsed && <span className="truncate">{label}</span>}
       </NavLink>
     );
+  };
+
+  const renderMoreNavigation = () => (
+    <div key="more" className="space-y-0.5">
+      <button
+        type="button"
+        onClick={() => setMoreOpen((open) => !open)}
+        title={collapsed ? "More" : undefined}
+        aria-expanded={moreOpen}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-lg text-[13px] font-medium text-gray-400 transition-all duration-200 hover:bg-white/5 hover:text-white !border-0 !ring-0",
+          collapsed ? "justify-center px-3 py-2.5" : "px-3.5 py-1.5"
+        )}
+      >
+        <MoreHorizontal className="h-4 w-4 flex-shrink-0 text-gray-500" />
+        {!collapsed ? (
+          <>
+            <span className="min-w-0 flex-1 truncate text-left">More</span>
+            <ChevronDown
+              className={cn("h-3.5 w-3.5 transition-transform", !moreOpen && "-rotate-90")}
+            />
+          </>
+        ) : null}
+      </button>
+      {!collapsed && moreOpen ? (
+        <div className="animate-in space-y-0.5 py-1 pl-2 duration-150 fade-in slide-in-from-top-1">
+          {navigationLayout.more.map((item) => renderNavItem(sidebarDestinations[item]))}
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const renderOrderedNavigationItem = (item: SidebarPrimaryItemId) => {
+    if (item === "more") return renderMoreNavigation();
+    return renderNavItem(sidebarDestinations[item]);
   };
 
   return (
@@ -416,146 +446,175 @@ export function Sidebar() {
         style={{ "--main-sidebar-width": `${width}px` } as React.CSSProperties}
         className={cn(
           "fixed left-0 top-0 h-full glass border-r border-white/5 z-40 overflow-hidden transition-[width,transform] duration-200",
-          collapsed ? "md:w-16" : "md:w-[var(--main-sidebar-width)]",
+          settingsMode || !collapsed ? "md:w-[var(--main-sidebar-width)]" : "md:w-16",
           "max-md:-translate-x-full max-md:w-64",
           mobileOpen && "max-md:translate-x-0"
         )}
       >
         <div className="h-full flex flex-col">
-          <div
-            className={cn(
-              "border-b border-white/5 flex items-center",
-              collapsed ? "px-3 py-4 justify-center" : "px-5 py-4 gap-3"
-            )}
-          >
-            <div className="relative flex-shrink-0 w-10 h-10">
+          {settingsMode ? (
+            <>
+              <div className="border-b border-white/5 px-3 py-3">
+                <button
+                  type="button"
+                  onClick={() => navigate("/chat")}
+                  className="theme-text-secondary flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span>Back to Cybara</span>
+                </button>
+              </div>
+              <SettingsNavigation
+                activeSection={activeSettingsSection}
+                onSelect={selectSettingsSection}
+              />
+            </>
+          ) : (
+            <>
               <div
                 className={cn(
-                  "w-10 h-10 rounded-xl overflow-hidden",
-                  status === "active" && "opacity-0"
+                  "border-b border-white/5 flex items-center",
+                  collapsed ? "px-3 py-4 justify-center" : "px-5 py-4 gap-3"
                 )}
               >
-                <img src="/cybara.png" alt="Cybara" className="h-full w-full object-contain" />
-              </div>
-              {status === "active" && <CybaraThinkingMark />}
-            </div>
-            {!collapsed && (
-              <div className="flex-1 min-w-0">
-                <h1 className="font-bold text-lg text-white">Cybara</h1>
-                <p className="text-[10px] text-gray-400 leading-tight">{t("app.tagline")}</p>
-              </div>
-            )}
-          </div>
-
-          <nav
-            className={cn(
-              "flex-1 p-2 space-y-1 pb-20",
-              collapsed ? "overflow-hidden" : "overflow-y-auto"
-            )}
-          >
-            {showNewChatShortcut ? (
-              <div className="mb-1 pb-2 border-b border-white/5">
-                <NavLink
-                  to="/chat?fresh=1"
-                  title={collapsed ? t("chat.sidebar.newChat") : undefined}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-lg text-[13px] font-semibold transition-all duration-200 !ring-0",
-                    "border border-[rgba(var(--accent-primary),0.3)] bg-[rgba(var(--accent-primary),0.12)] text-white hover:bg-[rgba(var(--accent-primary),0.2)]",
-                    collapsed ? "px-3 py-2.5 justify-center" : "px-3.5 py-2.5"
-                  )}
-                >
-                  <MessageSquarePlus className="w-4 h-4 flex-shrink-0 accent-text" />
-                  {!collapsed && <span className="truncate">{t("chat.sidebar.newChat")}</span>}
-                </NavLink>
-              </div>
-            ) : null}
-            {navCategories.map((category) => (
-              <div key={category.id}>
-                {category.labelKey && !collapsed ? (
-                  <>
+                <div className="relative flex-shrink-0 w-10 h-10">
+                  <div
+                    className={cn(
+                      "w-10 h-10 rounded-xl overflow-hidden",
+                      status === "active" && "opacity-0"
+                    )}
+                  >
+                    <img src="/cybara.png" alt="Cybara" className="h-full w-full object-contain" />
+                  </div>
+                  {status === "active" && <CybaraThinkingMark />}
+                </div>
+                {!collapsed && (
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-white">Cybara</h1>
                     <button
-                      onClick={() => toggleSection(category.id)}
-                      className="w-full flex items-center justify-between px-3 py-1.5 mt-3 mb-1 text-[11px] font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-400 transition-colors !ring-0"
+                      type="button"
+                      onClick={() => setSessionSearchOpen(true)}
+                      className="theme-muted-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                      aria-label="Search chats"
+                      title="Search chats"
                     >
-                      <span>{t(category.labelKey)}</span>
-                      <ChevronDown
-                        className={cn(
-                          "w-3.5 h-3.5 transition-transform duration-200",
-                          !expandedSections[category.id] && "-rotate-90"
-                        )}
-                      />
+                      <Search className="h-4 w-4" />
                     </button>
-                    <div
-                      className={cn(
-                        "space-y-0.5 overflow-hidden transition-all duration-200",
-                        expandedSections[category.id] ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
-                      )}
-                    >
-                      {category.items
-                        .filter((item) => !item.requiresUsage || usageAvailable)
-                        .map(renderNavItem)}
-                    </div>
-                  </>
-                ) : (
-                  <div className="space-y-0.5">
-                    {category.items
-                      .filter((item) => !item.requiresUsage || usageAvailable)
-                      .map(renderNavItem)}
                   </div>
                 )}
               </div>
-            ))}
-          </nav>
 
-          <div className="sidebar-footer border-t border-white/5 p-2 backdrop-blur-md">
-            <div className={cn("mb-2 flex items-center gap-2", collapsed && "flex-col")}>
-              <NavLink
-                to="/settings"
-                title={collapsed ? t("nav.settings") : undefined}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-lg text-[13px] font-medium transition-all duration-200",
-                  "!ring-0 !border-transparent",
-                  collapsed ? "px-3 py-2.5 justify-center" : "min-w-0 flex-1 px-3.5 py-2.5",
-                  location.pathname === "/settings"
-                    ? "bg-[rgba(var(--accent-primary),0.15)] text-white border border-[rgba(var(--accent-primary),0.3)] shadow-lg"
-                    : "text-gray-400 hover:text-white hover:bg-white/5"
-                )}
-                style={
-                  location.pathname === "/settings"
-                    ? {
-                        boxShadow: "inset 0 1px 8px rgba(var(--accent-primary), 0.15)",
-                      }
-                    : undefined
-                }
-              >
-                <Settings
-                  className={cn(
-                    "w-4 h-4 flex-shrink-0 transition-colors",
-                    location.pathname === "/settings" ? "accent-text" : "text-gray-500"
+              <nav className="flex min-h-0 flex-1 flex-col p-2 pb-3">
+                <div className="min-h-[108px] flex-1 space-y-0.5 overflow-y-auto pb-2">
+                  <NavLink
+                    to="/chat?fresh=1"
+                    title={collapsed ? t("chat.sidebar.newChat") : undefined}
+                    aria-disabled={!hasAgents}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-lg text-[13px] font-medium text-gray-400 transition-all duration-200 hover:bg-white/5 hover:text-white !ring-0 !border-transparent",
+                      collapsed ? "justify-center px-3 py-2.5" : "px-3.5 py-1.5",
+                      !hasAgents && "pointer-events-none opacity-45"
+                    )}
+                  >
+                    <MessageSquarePlus className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                    {!collapsed ? (
+                      <span className="truncate">{t("chat.sidebar.newChat")}</span>
+                    ) : null}
+                  </NavLink>
+                  {navigationLayout.primary.map(renderOrderedNavigationItem)}
+                </div>
+
+                {!collapsed ? (
+                  <>
+                    <div
+                      role="separator"
+                      aria-orientation="horizontal"
+                      aria-label="Resize chat history"
+                      aria-valuemin={MAIN_SIDEBAR_CHAT_HEIGHT_MIN}
+                      aria-valuemax={MAIN_SIDEBAR_CHAT_HEIGHT_MAX}
+                      aria-valuenow={chatHistoryHeight}
+                      tabIndex={0}
+                      onPointerDown={beginResizeChatHistory}
+                      onKeyDown={resizeChatHistoryWithKeyboard}
+                      onDoubleClick={() => {
+                        setChatHistoryHeight(MAIN_SIDEBAR_CHAT_HEIGHT_DEFAULT);
+                        localStorage.setItem(
+                          MAIN_SIDEBAR_CHAT_HEIGHT_STORAGE_KEY,
+                          String(MAIN_SIDEBAR_CHAT_HEIGHT_DEFAULT)
+                        );
+                      }}
+                      className="group relative z-10 flex h-3 shrink-0 cursor-row-resize touch-none items-center justify-center border-t border-[var(--surface-border)]"
+                      title="Drag to resize chat history · Double-click to reset"
+                    >
+                      <GripHorizontal className="theme-text-subtle h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+                    </div>
+                    <div
+                      className="min-w-0 shrink-0 transition-[height,min-height,max-height] duration-200 ease-out"
+                      style={{
+                        height: visibleChatHistoryHeight,
+                        minHeight: moreOpen
+                          ? MAIN_SIDEBAR_CHAT_HEIGHT_MORE_OPEN_MIN
+                          : MAIN_SIDEBAR_CHAT_HEIGHT_MIN,
+                        maxHeight: chatHistoryMaxHeight,
+                      }}
+                    >
+                      <SessionsPanel
+                        isOpen
+                        placement="main"
+                        showNewChatButton={false}
+                        searchOpen={sessionSearchOpen}
+                        onSearchOpenChange={setSessionSearchOpen}
+                        currentSessionId={currentSessionId}
+                        activeSessionIds={activeSessionIds}
+                        currentSessionLoading={false}
+                        onClose={() => undefined}
+                        onLoadSession={() => undefined}
+                        onNewSession={(workspaceDir) => {
+                          const params = new URLSearchParams({ fresh: "1" });
+                          if (workspaceDir) params.set("workspace", workspaceDir);
+                          navigate(`/chat?${params.toString()}`);
+                        }}
+                      />
+                    </div>
+                  </>
+                ) : null}
+              </nav>
+
+              <div className="sidebar-footer border-t border-white/5 p-2 backdrop-blur-md">
+                <div className={cn("mb-1.5 flex items-center gap-1.5", collapsed && "flex-col")}>
+                  <NavLink
+                    to="/settings"
+                    title={collapsed ? t("nav.settings") : undefined}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg text-[12px] font-medium text-gray-400 transition-all duration-200 hover:bg-white/5 hover:text-white !ring-0 !border-transparent",
+                      collapsed ? "justify-center px-2.5 py-2" : "min-w-0 flex-1 px-3 py-1.5"
+                    )}
+                  >
+                    <Settings className="h-3.5 w-3.5 flex-shrink-0 text-gray-500" />
+                    {!collapsed && <span className="truncate">{t("nav.settings")}</span>}
+                  </NavLink>
+                  <UpdateButton collapsed={collapsed} />
+                </div>
+
+                <button
+                  onClick={() => setCollapsed(!collapsed)}
+                  className="hidden w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1 text-[11px] text-gray-500 transition-colors hover:bg-white/5 hover:text-white md:flex"
+                  title={collapsed ? t("nav.expand") : t("nav.collapse")}
+                >
+                  {collapsed ? (
+                    <ChevronRight className="h-3 w-3" />
+                  ) : (
+                    <>
+                      <ChevronLeft className="h-3 w-3" />
+                      <span>{t("nav.collapse")}</span>
+                    </>
                   )}
-                />
-                {!collapsed && <span className="truncate">{t("nav.settings")}</span>}
-              </NavLink>
-              <UpdateButton collapsed={collapsed} />
-            </div>
-
-            <button
-              onClick={() => setCollapsed(!collapsed)}
-              className="hidden md:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-white hover:bg-white/5 transition-colors"
-              title={collapsed ? t("nav.expand") : t("nav.collapse")}
-            >
-              {collapsed ? (
-                <ChevronRight className="w-3.5 h-3.5" />
-              ) : (
-                <>
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                  <span className="text-xs">{t("nav.collapse")}</span>
-                </>
-              )}
-            </button>
-          </div>
+                </button>
+              </div>
+            </>
+          )}
         </div>
-        {!collapsed && (
+        {(settingsMode || !collapsed) && (
           <div
             role="separator"
             aria-orientation="vertical"

@@ -11,6 +11,7 @@ describe("chat route state", () => {
       agentId: "agent-1",
       sessionId: "s1",
       startFresh: true,
+      workspaceDir: null,
     });
   });
 
@@ -19,6 +20,16 @@ describe("chat route state", () => {
       agentId: null,
       sessionId: null,
       startFresh: false,
+      workspaceDir: null,
+    });
+  });
+
+  test("parses a workspace for a fresh workspace chat", () => {
+    expect(parseInitialChatRoute("?fresh=1&workspace=%2Ftmp%2Fcybara")).toEqual({
+      agentId: null,
+      sessionId: null,
+      startFresh: true,
+      workspaceDir: "/tmp/cybara",
     });
   });
 });

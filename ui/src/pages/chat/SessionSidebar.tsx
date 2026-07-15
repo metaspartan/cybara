@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { Button, Modal } from "@/components/ui";
 import { useTasks } from "@/hooks/useApi";
 import {
@@ -67,6 +68,10 @@ interface SessionsPanelProps {
     preserveReferenceTail?: boolean
   ) => void;
   onNewSession: (workspaceDir?: string | null) => void;
+  placement?: "chat" | "main";
+  showNewChatButton?: boolean;
+  searchOpen?: boolean;
+  onSearchOpenChange?: (open: boolean) => void;
 }
 
 const PINNED_WORKSPACE_GROUPS_STORAGE_KEY = "cybara.chat.pinnedWorkspaceGroupIds";
@@ -172,7 +177,7 @@ function SessionHoverCard({ tooltip }: { tooltip: SessionTooltipState | null }) 
   const top = Math.max(10, Math.min(tooltip.anchor.top - 8, window.innerHeight - 216));
   const updated = tooltip.session.updated_at || tooltip.session.created_at;
 
-  return (
+  return createPortal(
     <div
       className="theme-tooltip-panel pointer-events-none fixed z-[80] w-72 rounded-xl border p-3 text-left"
       style={{ left, top }}
@@ -201,7 +206,8 @@ function SessionHoverCard({ tooltip }: { tooltip: SessionTooltipState | null }) 
           {tooltip.previewText}
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -267,6 +273,10 @@ export function SessionsPanel({
   currentSessionLoading,
   onLoadSession,
   onNewSession,
+  placement = "chat",
+  showNewChatButton = true,
+  searchOpen = false,
+  onSearchOpenChange,
 }: SessionsPanelProps) {
   const navigate = useNavigate();
   const { t } = useI18n();
@@ -294,7 +304,7 @@ export function SessionsPanel({
   const sessionsRefreshTimerRef = useRef<number | null>(null);
   const sessionLoadSequenceRef = useRef(0);
   const sessionGroups = useMemo(() => {
-    const groups = groupSessionsForSidebar(sessions, deferredSearchQuery);
+    const groups = groupSessionsForSidebar(sessions, "");
     return [...groups].sort((a, b) => {
       if (a.kind === "pinned") return -1;
       if (b.kind === "pinned") return 1;
@@ -303,16 +313,11 @@ export function SessionsPanel({
       if (aPinned !== bPinned) return aPinned ? -1 : 1;
       return 0;
     });
-  }, [sessions, deferredSearchQuery, pinnedWorkspaceGroupIds]);
+  }, [sessions, pinnedWorkspaceGroupIds]);
   const activeTasks = useMemo(() => {
-    const query = deferredSearchQuery.trim().toLowerCase();
     return tasks
       .filter(
-        (task) =>
-          (task.enabled === true || task.status === "pending" || task.status === "running") &&
-          (!query ||
-            task.name.toLowerCase().includes(query) ||
-            (task.action || "").toLowerCase().includes(query))
+        (task) => task.enabled === true || task.status === "pending" || task.status === "running"
       )
       .sort((left, right) => {
         if (left.status === "running" && right.status !== "running") return -1;
@@ -324,7 +329,26 @@ export function SessionsPanel({
         if (Number.isFinite(rightRun)) return 1;
         return left.name.localeCompare(right.name);
       });
-  }, [tasks, deferredSearchQuery]);
+  }, [tasks]);
+  const searchResults = useMemo(() => {
+    const query = deferredSearchQuery.trim().toLowerCase();
+    return (sessions ?? [])
+      .filter((session) => {
+        if (!query) return true;
+        const record = session as unknown as Record<string, unknown>;
+        const searchable = [
+          sessionDisplayTitle(record),
+          session.workspace_dir,
+          sessionRouteLabel(record),
+          sessionPreviewText(session.last_message?.content),
+        ]
+          .filter((value): value is string => typeof value === "string")
+          .join(" ")
+          .toLowerCase();
+        return searchable.includes(query);
+      })
+      .slice(0, 12);
+  }, [deferredSearchQuery, sessions]);
   const hasPinnedGroup = sessionGroups.some((group) => group.kind === "pinned");
 
   const handleTogglePin = useCallback(
@@ -409,6 +433,10 @@ export function SessionsPanel({
   );
 
   const handleLoadSession = async (sessionId: string) => {
+    if (placement === "main") {
+      navigate(`/chat?session=${encodeURIComponent(sessionId)}`);
+      return;
+    }
     if (pendingSessionLoadId === sessionId) return;
     const loadSequence = sessionLoadSequenceRef.current + 1;
     sessionLoadSequenceRef.current = loadSequence;
@@ -439,6 +467,10 @@ export function SessionsPanel({
 
   const openTask = (task: Task) => {
     if (task.session_id) {
+      if (placement === "main") {
+        navigate(`/chat?session=${encodeURIComponent(task.session_id)}`);
+        return;
+      }
       void handleLoadSession(task.session_id);
       return;
     }
@@ -528,48 +560,23 @@ export function SessionsPanel({
   return (
     <>
       <div
-        className="relative glass-strong border-r border-white/5 flex shrink-0 flex-col"
-        style={{ width: sidebarWidth }}
-        data-testid="chat-session-sidebar"
+        className={cn(
+          "relative flex min-h-0 flex-col",
+          placement === "chat" ? "glass-strong shrink-0 border-r border-white/5" : "h-full min-w-0"
+        )}
+        style={placement === "chat" ? { width: sidebarWidth } : undefined}
+        data-testid={placement === "chat" ? "chat-session-sidebar" : "main-session-sidebar"}
       >
-        <div className="px-3 pt-3 pb-2 border-b border-white/5">
-          <div className="relative">
-            <Search className="theme-text-subtle absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5" />
-            <input
-              type="search"
-              aria-label="Search sessions"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape" && searchQuery) {
-                  event.preventDefault();
-                  setSearchQuery("");
-                }
-              }}
-              placeholder={t("chat.sidebar.search")}
-              className="themed-form-control w-full rounded-lg border pl-8 pr-7 py-1.5 text-[12px]"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="theme-muted-icon-button absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer"
-                title="Clear search"
-                aria-label="Clear session search"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-        </div>
-
         <div className="flex-1 overflow-y-auto p-2 space-y-3">
-          <button
-            onClick={() => onNewSession()}
-            className="w-full p-2.5 rounded-lg bg-[rgba(var(--accent-primary),0.1)] border border-[rgba(var(--accent-primary),0.2)] hover:bg-[rgba(var(--accent-primary),0.15)] text-white text-[12px] font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            {t("chat.sidebar.newChat")}
-          </button>
+          {showNewChatButton ? (
+            <button
+              onClick={() => onNewSession()}
+              className="w-full p-2.5 rounded-lg bg-[rgba(var(--accent-primary),0.1)] border border-[rgba(var(--accent-primary),0.2)] hover:bg-[rgba(var(--accent-primary),0.15)] text-white text-[12px] font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {t("chat.sidebar.newChat")}
+            </button>
+          ) : null}
 
           {isLoading || tasksLoading ? (
             <div className="text-center py-8 text-gray-500">
@@ -597,7 +604,7 @@ export function SessionsPanel({
             />
           ) : (
             sessionGroups.map((group, index) => (
-              <section key={group.id} className="space-y-1.5">
+              <section key={group.id} className="space-y-1">
                 {!hasPinnedGroup && index === 0 && (
                   <ActiveTasksSection
                     tasks={activeTasks}
@@ -731,7 +738,7 @@ export function SessionsPanel({
                     return (
                       <div
                         key={session.id}
-                        className={`deferred-list-row relative px-2.5 py-2 rounded-lg transition-all cursor-pointer group ${
+                        className={`deferred-list-row relative px-2.5 py-1.5 rounded-lg transition-all cursor-pointer group ${
                           isSessionSelected
                             ? "bg-[rgba(var(--accent-primary),0.12)] border border-transparent"
                             : "bg-white/[0.03] border border-white/5 hover:border-white/15"
@@ -881,15 +888,98 @@ export function SessionsPanel({
             ))
           )}
         </div>
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize chat sidebar"
-          onMouseDown={beginResizeSidebar}
-          className="absolute right-[-3px] top-0 z-40 h-full w-1.5 cursor-col-resize touch-none bg-transparent transition-colors hover:bg-[rgba(var(--accent-primary),0.45)]"
-        />
+        {placement === "chat" ? (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize chat sidebar"
+            onMouseDown={beginResizeSidebar}
+            className="absolute right-[-3px] top-0 z-40 h-full w-1.5 cursor-col-resize touch-none bg-transparent transition-colors hover:bg-[rgba(var(--accent-primary),0.45)]"
+          />
+        ) : null}
       </div>
       <SessionHoverCard tooltip={hoveredSessionTooltip} />
+
+      <Modal
+        isOpen={searchOpen}
+        onClose={() => {
+          onSearchOpenChange?.(false);
+          setSearchQuery("");
+        }}
+        size="md"
+        surface="bare"
+      >
+        <div className="space-y-2">
+          <div className="theme-tooltip-panel relative rounded-xl p-2 shadow-2xl">
+            <Search className="theme-text-subtle absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+            <input
+              type="text"
+              role="searchbox"
+              aria-label="Search sessions"
+              data-autofocus
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || !searchResults[0]) return;
+                event.preventDefault();
+                onSearchOpenChange?.(false);
+                setSearchQuery("");
+                void handleLoadSession(searchResults[0].id);
+              }}
+              placeholder={t("chat.sidebar.search")}
+              className="themed-form-control w-full rounded-lg !border-0 py-2.5 pl-10 pr-9 text-sm !outline-none !ring-0 !shadow-none hover:!border-0 focus:!border-0 focus:!outline-none focus:!ring-0 focus:!shadow-none"
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="theme-muted-icon-button absolute right-2.5 top-1/2 -translate-y-1/2"
+                title="Clear search"
+                aria-label="Clear session search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
+          <div className="theme-tooltip-panel max-h-[min(55vh,28rem)] space-y-1 overflow-y-auto rounded-xl p-1 shadow-2xl">
+            {searchResults.length > 0 ? (
+              searchResults.map((session) => {
+                const record = session as unknown as Record<string, unknown>;
+                const title = sessionDisplayTitle(record);
+                const route = sessionRouteLabel(record);
+                return (
+                  <button
+                    key={session.id}
+                    type="button"
+                    onClick={() => {
+                      onSearchOpenChange?.(false);
+                      setSearchQuery("");
+                      void handleLoadSession(session.id);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-hover)]"
+                  >
+                    <MessageSquare className="theme-text-subtle h-4 w-4 shrink-0" />
+                    <span className="min-w-0 flex-1">
+                      <span className="theme-text-primary block truncate text-sm font-medium">
+                        {title}
+                      </span>
+                      <span className="theme-text-muted block truncate text-xs">
+                        {[session.workspace_dir, route].filter(Boolean).join(" · ") ||
+                          "No workspace"}
+                      </span>
+                    </span>
+                    <span className="theme-text-subtle shrink-0 text-xs">
+                      {compactSidebarRelativeTime(session.updated_at || session.created_at)}
+                    </span>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="theme-text-muted py-8 text-center text-sm">No matching chats</div>
+            )}
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={!!showDeleteModal}

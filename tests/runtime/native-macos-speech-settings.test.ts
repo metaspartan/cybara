@@ -8,9 +8,8 @@ const settingsSource = readFileSync(
 
 describe("native macOS speech settings wiring", () => {
   test("exposes speech tab and persists the shared speech config key", () => {
-    expect(settingsSource).toContain(
-      'Label(NativeI18n.t("settings.voice"), systemImage: "waveform")'
-    );
+    expect(settingsSource).toContain('case .speech: return "settings.voice"');
+    expect(settingsSource).toContain('case .speech: return "waveform"');
     expect(settingsSource).toContain("private var speechTab: some View");
     expect(settingsSource).toContain('"speech": [');
     expect(settingsSource).toContain('"provider": speechTTSProvider');

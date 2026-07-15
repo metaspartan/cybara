@@ -16,6 +16,8 @@ import {
 
 const chatSourcePath = join(process.cwd(), "ui", "src", "pages", "Chat.tsx");
 const chatModelPath = join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts");
+const sidebarPath = join(process.cwd(), "ui", "src", "components", "layout", "Sidebar.tsx");
+const sessionSidebarPath = join(process.cwd(), "ui", "src", "pages", "chat", "SessionSidebar.tsx");
 const chatDictationPath = join(process.cwd(), "ui", "src", "pages", "chat", "useChatDictation.ts");
 const chatComposerPath = join(process.cwd(), "ui", "src", "pages", "chat", "ChatComposer.tsx");
 const assistantMetaModelPath = join(
@@ -566,17 +568,20 @@ describe("Chat live activity persistence", () => {
     ).toBe("recording");
   });
 
-  test("keeps sessions panel open on session switch/new session callbacks", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
-    expect(source).toContain("setShowSessionsPanel(true);");
-    expect(source).toContain("onLoadSession={(");
-    expect(source).toContain("loadedWorkspaceDir,");
-    expect(source).toContain("loadedAgentId,");
-    expect(source).toContain("syncSessionAgentSelection(loadedAgentId);");
-    expect(source).toContain("onNewSession={(nextWorkspaceDir) => {");
-    expect(source).toContain("setWorkspaceDir(nextWorkspaceDir);");
-    expect(source).toContain("persistWorkspaceDir(nextWorkspaceDir);");
-    expect(source).toContain("setSessionAgentId(null);");
+  test("keeps session navigation durable in the main sidebar", () => {
+    const chatSource = readFileSync(chatSourcePath, "utf8");
+    const sidebarSource = readFileSync(sidebarPath, "utf8");
+    const sessionSidebarSource = readFileSync(sessionSidebarPath, "utf8");
+
+    expect(chatSource).not.toContain("setShowSessionsPanel");
+    expect(sidebarSource).toContain("<SessionsPanel");
+    expect(sidebarSource).toContain('placement="main"');
+    expect(sidebarSource).toContain('const params = new URLSearchParams({ fresh: "1" });');
+    expect(sidebarSource).toContain('if (workspaceDir) params.set("workspace", workspaceDir);');
+    expect(sessionSidebarSource).toContain('if (placement === "main")');
+    expect(sessionSidebarSource).toContain(
+      "navigate(`/chat?session=${encodeURIComponent(sessionId)}`);"
+    );
   });
 
   test("stopping a response reloads the durable session timeline without stopping its agent", () => {

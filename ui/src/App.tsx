@@ -28,30 +28,14 @@ import { readChatAppearanceFromConfig } from "../../shared/chat-appearance";
 const Dashboard = lazy(() =>
   import("@/pages/Dashboard").then((module) => ({ default: module.Dashboard }))
 );
-const Agents = lazy(() => import("@/pages/Agents").then((module) => ({ default: module.Agents })));
-const Providers = lazy(() =>
-  import("@/pages/Providers").then((module) => ({ default: module.Providers }))
-);
-const RouterSettings = lazy(() =>
-  import("@/pages/RouterSettings").then((module) => ({
-    default: module.RouterSettings,
-  }))
-);
-const Channels = lazy(() =>
-  import("@/pages/Channels").then((module) => ({ default: module.Channels }))
-);
 const Tasks = lazy(() => import("@/pages/Tasks").then((module) => ({ default: module.Tasks })));
-const Skills = lazy(() => import("@/pages/Skills").then((module) => ({ default: module.Skills })));
 const Journey = lazy(() =>
   import("@/pages/Journey").then((module) => ({ default: module.Journey }))
 );
-const Tools = lazy(() => import("@/pages/Tools").then((module) => ({ default: module.Tools })));
-const Memory = lazy(() => import("@/pages/Memory").then((module) => ({ default: module.Memory })));
 const Settings = lazy(() =>
   import("@/pages/Settings").then((module) => ({ default: module.Settings }))
 );
 const Chat = lazy(() => import("@/pages/Chat").then((module) => ({ default: module.Chat })));
-const Logs = lazy(() => import("@/pages/Logs").then((module) => ({ default: module.Logs })));
 const Sessions = lazy(() =>
   import("@/pages/Sessions").then((module) => ({ default: module.Sessions }))
 );
@@ -60,14 +44,6 @@ const Metrics = lazy(() =>
 );
 const Usage = lazy(() => import("@/pages/Usage").then((module) => ({ default: module.Usage })));
 const Evals = lazy(() => import("@/pages/Evals").then((module) => ({ default: module.Evals })));
-const MCPServers = lazy(() =>
-  import("@/pages/MCPServers").then((module) => ({
-    default: module.MCPServers,
-  }))
-);
-const Plugins = lazy(() =>
-  import("@/pages/Plugins").then((module) => ({ default: module.Plugins }))
-);
 const LSP = lazy(() => import("@/pages/LSP").then((module) => ({ default: module.LSP })));
 const IDE = lazy(() => import("@/pages/IDE").then((module) => ({ default: module.IDE })));
 const TerminalPage = lazy(() =>
@@ -79,7 +55,6 @@ const Wallet = lazy(() => import("@/pages/Wallet").then((module) => ({ default: 
 const Artifacts = lazy(() =>
   import("@/pages/Artifacts").then((module) => ({ default: module.Artifacts }))
 );
-const Mobile = lazy(() => import("@/pages/Mobile").then((module) => ({ default: module.Mobile })));
 const Voice = lazy(() => import("@/pages/Voice").then((module) => ({ default: module.Voice })));
 const Setup = lazy(() => import("@/pages/Setup").then((module) => ({ default: module.Setup })));
 
@@ -89,6 +64,11 @@ function PageLoader() {
       <Loader2 className="h-7 w-7 animate-spin text-indigo-500" />
     </div>
   );
+}
+
+function ChatRoute() {
+  const location = useLocation();
+  return <Chat key={location.search} />;
 }
 
 function SetupGuard({ children }: { children: React.ReactNode }) {
@@ -152,13 +132,15 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 
 function MainContent({ children }: { children: React.ReactNode }) {
   const { collapsed, width } = useSidebar();
+  const location = useLocation();
+  const settingsMode = location.pathname === "/settings";
 
   return (
     <div
       style={{ "--main-sidebar-width": `${width}px` } as React.CSSProperties}
       className={cn(
         "flex-1 overflow-auto transition-[margin] duration-200",
-        collapsed ? "md:ml-16" : "md:ml-[var(--main-sidebar-width)]",
+        settingsMode || !collapsed ? "md:ml-[var(--main-sidebar-width)]" : "md:ml-16",
         "ml-0"
       )}
     >
@@ -223,30 +205,30 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/agents" element={<Agents />} />
-        <Route path="/providers" element={<Providers />} />
-        <Route path="/router" element={<RouterSettings />} />
-        <Route path="/mcp" element={<MCPServers />} />
-        <Route path="/plugins" element={<Plugins />} />
-        <Route path="/connectors" element={<Navigate to="/plugins" replace />} />
-        <Route path="/channels" element={<Channels />} />
-        <Route path="/mobile" element={<Mobile />} />
+        <Route path="/agents" element={<Navigate to="/settings?section=agents" replace />} />
+        <Route path="/providers" element={<Navigate to="/settings?section=providers" replace />} />
+        <Route path="/router" element={<Navigate to="/settings?section=router" replace />} />
+        <Route path="/mcp" element={<Navigate to="/settings?section=mcp" replace />} />
+        <Route path="/plugins" element={<Navigate to="/settings?section=plugins" replace />} />
+        <Route path="/connectors" element={<Navigate to="/settings?section=plugins" replace />} />
+        <Route path="/channels" element={<Navigate to="/settings?section=channels" replace />} />
+        <Route path="/mobile" element={<Navigate to="/settings?section=mobile" replace />} />
         <Route path="/tasks" element={<Tasks />} />
-        <Route path="/skills" element={<Skills />} />
+        <Route path="/skills" element={<Navigate to="/settings?section=skills" replace />} />
         <Route path="/journey" element={<Journey />} />
         <Route path="/lsp" element={<LSP />} />
         <Route path="/ide" element={<IDE />} />
         <Route path="/terminal" element={<TerminalPage />} />
-        <Route path="/tools" element={<Tools />} />
-        <Route path="/memory" element={<Memory />} />
+        <Route path="/tools" element={<Navigate to="/settings?section=tools" replace />} />
+        <Route path="/memory" element={<Navigate to="/settings?section=memory" replace />} />
         <Route path="/metrics" element={<Metrics />} />
         <Route path="/usage" element={<Usage />} />
         <Route path="/lab" element={<Evals />} />
         <Route path="/evals" element={<Navigate to="/lab" replace />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="/chat" element={<Chat />} />
+        <Route path="/chat" element={<ChatRoute />} />
         <Route path="/voice" element={<Voice />} />
-        <Route path="/logs" element={<Logs />} />
+        <Route path="/logs" element={<Navigate to="/settings?section=logs" replace />} />
         <Route path="/sessions" element={<Sessions />} />
         <Route path="/wallet" element={<Wallet />} />
         <Route path="/artifacts" element={<Artifacts />} />

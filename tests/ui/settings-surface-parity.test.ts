@@ -99,7 +99,8 @@ describe("settings surface parity", () => {
   test("native clients consume the shared chat appearance settings", () => {
     expect(mobileSettings).toContain('title="Readability"');
     expect(mobileSettings).toContain("chat_appearance: { ...chatAppearance");
-    expect(nativeSettings).toContain('NativeI18n.t("settings.accessibility")');
+    expect(nativeSettings).toContain('case .accessibility: return "settings.accessibility"');
+    expect(nativeSettings).toContain("NativeI18n.t(tab.titleKey)");
     expect(nativeSettings).toContain('["chat_appearance": chatAppearance.payload]');
     expect(nativeChatAppearance).toContain('config["chat_appearance"]');
     expect(nativeChatAppearance).toContain("var activityFontSize: CGFloat");

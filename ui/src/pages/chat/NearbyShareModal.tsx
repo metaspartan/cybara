@@ -25,6 +25,11 @@ export function NearbyShareModal({
     if (result.success && result.data) setStatus(result.data);
   }, []);
 
+  const discover = useCallback(async () => {
+    const result = await nearbyApi.refresh();
+    if (result.success && result.data?.status) setStatus(result.data.status);
+  }, []);
+
   useEffect(() => {
     if (!isOpen) return;
     void refresh();
@@ -61,11 +66,13 @@ export function NearbyShareModal({
       const done = await run(
         `send:${peerId}`,
         () => nearbyApi.sendSession(peerId, sessionId),
-        "Chat sent for approval on the other device"
+        status?.pairedPeers.find((peer) => peer.id === peerId)?.syncEnabled
+          ? "Chat imported on the other device"
+          : "Chat sent for approval on the other device"
       );
       if (done) onClose();
     },
-    [run, sessionId, onClose]
+    [run, sessionId, onClose, status]
   );
 
   const pairedIds = new Set(status?.pairedPeers.map((peer) => peer.id) ?? []);
@@ -176,6 +183,55 @@ export function NearbyShareModal({
             </section>
           ) : null}
 
+          {status?.incomingTransfers.length ? (
+            <section className="space-y-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                Received chats
+              </h4>
+              {status.incomingTransfers.map((transfer) => (
+                <div
+                  key={transfer.id}
+                  className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-3"
+                >
+                  <p className="truncate text-sm font-medium text-[var(--text-primary)]">
+                    {transfer.title || "Shared chat"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                    From {transfer.peerName} · {transfer.messageCount} messages
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        void run(
+                          `accept:${transfer.id}`,
+                          () => nearbyApi.acceptTransfer(transfer.id),
+                          "Chat imported"
+                        )
+                      }
+                    >
+                      <Check className="h-4 w-4" /> Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        void run(`dismiss:${transfer.id}`, () =>
+                          nearbyApi.dismissTransfer(transfer.id)
+                        )
+                      }
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </section>
+          ) : null}
+
           {availablePeers.length ? (
             <section className="space-y-2">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
@@ -220,7 +276,7 @@ export function NearbyShareModal({
               </h4>
               <button
                 type="button"
-                onClick={() => void refresh()}
+                onClick={() => void discover()}
                 className="flex items-center gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 title="Refresh nearby devices"
               >

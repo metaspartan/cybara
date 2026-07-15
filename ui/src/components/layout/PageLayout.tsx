@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { createContext, type ReactNode, useContext } from "react";
 import { cn } from "@/lib/utils";
 
 interface PageLayoutProps {
@@ -9,7 +9,34 @@ interface PageLayoutProps {
   noPadding?: boolean;
 }
 
+const EmbeddedPageLayoutContext = createContext(false);
+
+export function EmbeddedPageLayout({ children }: { children: ReactNode }) {
+  return (
+    <EmbeddedPageLayoutContext.Provider value={true}>{children}</EmbeddedPageLayoutContext.Provider>
+  );
+}
+
 export function PageLayout({ children, title, subtitle, actions, noPadding }: PageLayoutProps) {
+  const embedded = useContext(EmbeddedPageLayoutContext);
+
+  if (embedded) {
+    return (
+      <section className="min-w-0 space-y-4" data-embedded-page-layout={title}>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-3">
+          <div className="min-w-0">
+            <h2 className="theme-text-primary text-base font-semibold">{title}</h2>
+            {subtitle ? <p className="theme-text-muted mt-1 text-xs">{subtitle}</p> : null}
+          </div>
+          {actions ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div>
+          ) : null}
+        </div>
+        <div className={cn("min-w-0", !noPadding && "pb-2")}>{children}</div>
+      </section>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-30 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl">

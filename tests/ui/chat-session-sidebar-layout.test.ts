@@ -4,6 +4,7 @@ import { join } from "path";
 
 const chatSource = () =>
   readFileSync(join(process.cwd(), "ui", "src", "pages", "Chat.tsx"), "utf8") +
+  readFileSync(join(process.cwd(), "ui", "src", "components", "layout", "Sidebar.tsx"), "utf8") +
   readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts"), "utf8") +
   readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "SessionSidebar.tsx"), "utf8") +
   readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "sessionGrouping.ts"), "utf8");
@@ -21,7 +22,7 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain(
       "const previewText = sessionPreviewText(session.last_message?.content)"
     );
-    expect(source).toContain("deferred-list-row relative px-2.5 py-2");
+    expect(source).toContain("deferred-list-row relative px-2.5 py-1.5");
     expect(source).toContain('className="min-w-0 w-full"');
     expect(source).toContain('className="text-[12px] text-white font-medium flex w-full min-w-0');
     expect(source).toContain('className="min-w-0 flex-1 truncate">{displayTitle}</span>');
@@ -37,6 +38,8 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain("aria-label={tooltip}");
     expect(source).toContain('data-testid="chat-session-hover-card"');
     expect(source).toContain("setHoveredSessionTooltip");
+    expect(source).toContain("createPortal(");
+    expect(source).toContain("document.body");
     expect(source).toContain("compactSidebarRelativeTime(");
     expect(source).toContain("session.updated_at || session.created_at");
     expect(source).toContain("activeSessionIds.includes(session.id)");
@@ -44,11 +47,20 @@ describe("chat session sidebar layout", () => {
     expect(source).not.toContain("session.last_message.content");
   });
 
-  test("session search is accessible and clears on Escape", () => {
+  test("session search uses a themed autocomplete modal launched from the brand row", () => {
     const source = chatSource();
     expect(source).toContain('aria-label="Search sessions"');
     expect(source).toContain('aria-label="Clear session search"');
-    expect(source).toContain('event.key === "Escape" && searchQuery');
+    expect(source).toContain('title="Search chats"');
+    expect(source).toContain("searchResults.map");
+    expect(source).toContain("data-autofocus");
+    expect(source).toContain('surface="bare"');
+    expect(source).toContain('role="searchbox"');
+    expect(source).not.toContain('type="search"');
+    expect(source).toContain("!border-0");
+    expect(source).toContain(
+      "focus:!border-0 focus:!outline-none focus:!ring-0 focus:!shadow-none"
+    );
     expect(source).toContain('setSearchQuery("")');
   });
 
@@ -104,7 +116,7 @@ describe("chat session sidebar layout", () => {
 
   test("groups chat sessions into pinned and workspace sections", () => {
     const source = chatSource();
-    expect(source).toContain("groupSessionsForSidebar(sessions, deferredSearchQuery)");
+    expect(source).toContain('groupSessionsForSidebar(sessions, "")');
     expect(source).toContain('label: "Pinned"');
     expect(source).toContain("workspaceSidebarLabel(session.workspace_dir)");
     expect(source).toContain('group.kind === "pinned"');

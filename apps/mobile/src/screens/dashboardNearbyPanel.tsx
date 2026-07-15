@@ -18,9 +18,11 @@ export function NearbyMobileSettings({ api }: { api: CybaraMobileApi }) {
     displayName: "Cybara",
     port: 4270,
     discoveryMinutes: 10,
+    autoAdvertise: true,
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pairAddress, setPairAddress] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -57,10 +59,6 @@ export function NearbyMobileSettings({ api }: { api: CybaraMobileApi }) {
     }
   }
 
-  const discoverable = Boolean(
-    status?.discoverableUntil && Date.parse(status.discoverableUntil) > Date.now()
-  );
-
   return (
     <SettingsSection title="Nearby Cybara">
       <View style={styles.settingsInfoBox}>
@@ -93,6 +91,17 @@ export function NearbyMobileSettings({ api }: { api: CybaraMobileApi }) {
             />
             {settings.enabled ? (
               <>
+                <SettingToggle
+                  disabled={busy}
+                  label="Discoverable whenever enabled"
+                  onPress={() => {
+                    const next = { ...settings, autoAdvertise: !settings.autoAdvertise };
+                    setSettings(next);
+                    void run(() => api.updateNearbySettings(next));
+                  }}
+                  tone={colors.cyan}
+                  value={settings.autoAdvertise}
+                />
                 <SettingsTextField
                   label="Device name"
                   value={settings.displayName}
@@ -111,12 +120,8 @@ export function NearbyMobileSettings({ api }: { api: CybaraMobileApi }) {
                     Icon={RefreshCw}
                     busy={busy}
                     disabled={busy}
-                    label={discoverable ? "Stop Discovery" : "Find Nearby"}
-                    onPress={() =>
-                      void run(() =>
-                        discoverable ? api.stopNearbyDiscovery() : api.makeNearbyDiscoverable()
-                      )
-                    }
+                    label="Refresh Devices"
+                    onPress={() => void run(() => api.refreshNearbyDiscovery())}
                     tone={colors.cyan}
                   />
                 </View>
@@ -125,6 +130,33 @@ export function NearbyMobileSettings({ api }: { api: CybaraMobileApi }) {
           </>
         ) : null}
       </View>
+
+      {settings.enabled ? (
+        <View style={styles.settingsInfoBox}>
+          <Text style={styles.settingsInfoTitle}>Connect by LAN address</Text>
+          <Text style={styles.settingsFieldHelp}>
+            Use an address shown on the other Cybara when automatic discovery is unavailable.
+          </Text>
+          <SettingsTextField label="Address" value={pairAddress} onChangeText={setPairAddress} />
+          <DetailActionButton
+            Icon={Link2}
+            busy={busy}
+            disabled={busy || !pairAddress.trim()}
+            label="Connect"
+            onPress={() => {
+              const value = pairAddress.trim();
+              const baseUrl = /^https?:\/\//i.test(value) ? value : `http://${value}`;
+              void run(() => api.pairNearbyByAddress(baseUrl));
+            }}
+            tone={colors.cyan}
+          />
+          {status?.localAddresses.map((address) => (
+            <Text key={address} selectable style={styles.settingsFieldHelp}>
+              This device: {address.replace(/^https?:\/\//, "")}
+            </Text>
+          ))}
+        </View>
+      ) : null}
 
       {status?.discoveredPeers.map((peer) => (
         <View key={peer.id} style={styles.settingsInfoBox}>
@@ -174,6 +206,13 @@ export function NearbyMobileSettings({ api }: { api: CybaraMobileApi }) {
               <Text style={styles.settingsFieldHelp}>Verified {peer.fingerprint.slice(0, 12)}</Text>
             </View>
           </View>
+          <SettingToggle
+            disabled={busy}
+            label="Auto-import shared chats"
+            onPress={() => void run(() => api.updateNearbyPeer(peer.id, !peer.syncEnabled))}
+            tone={colors.cyan}
+            value={peer.syncEnabled}
+          />
           <DetailActionButton
             Icon={Trash2}
             busy={busy}

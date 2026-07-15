@@ -5,6 +5,7 @@ interface NearbySettings {
   displayName: string;
   port: number;
   discoveryMinutes: number;
+  autoAdvertise: boolean;
 }
 
 interface NearbyPeerSummary {
@@ -12,6 +13,7 @@ interface NearbyPeerSummary {
   name: string;
   baseUrl: string;
   fingerprint: string;
+  syncEnabled: boolean;
 }
 
 interface NearbyPairingSummary {
@@ -32,6 +34,7 @@ interface NearbyStatus {
   settings: NearbySettings;
   running: boolean;
   discoverableUntil: string | null;
+  localAddresses: string[];
   discoveredPeers: NearbyPeerSummary[];
   pairedPeers: NearbyPeerSummary[];
   pairings: NearbyPairingSummary[];
@@ -43,9 +46,11 @@ function nearbyHelp(): void {
   console.log("  cybara nearby status                         Show discovery and trusted devices");
   console.log("  cybara nearby enable|disable                 Change the off-by-default setting");
   console.log("  cybara nearby discover|stop                  Start or stop temporary discovery");
+  console.log("  cybara nearby refresh                        Refresh automatic discovery");
   console.log("  cybara nearby pair <peer-id> [--url URL]     Begin verified pairing");
   console.log("  cybara nearby confirm <pairing-id>           Confirm the matching code");
   console.log("  cybara nearby remove <peer-id>               Remove a trusted device");
+  console.log("  cybara nearby auto-import <peer-id> on|off   Change chat approval for a device");
   console.log("  cybara nearby send <peer-id> <session-id>    Send a chat for approval");
   console.log("  cybara nearby accept <transfer-id>           Import a received chat");
   console.log("  cybara nearby dismiss <transfer-id>          Dismiss a received chat");
@@ -55,10 +60,13 @@ function printNearbyStatus(status: NearbyStatus): void {
   console.log(`Nearby Cybara: ${status.settings.enabled ? "enabled" : "disabled"}`);
   console.log(`Listener: ${status.running ? `port ${status.settings.port}` : "stopped"}`);
   console.log(`Discovery: ${status.discoverableUntil || "off"}`);
+  for (const address of status.localAddresses || []) console.log(`Address: ${address}`);
   console.log("");
   console.log(`Trusted devices (${status.pairedPeers.length})`);
   for (const peer of status.pairedPeers) {
-    console.log(`  ${peer.name}  ${peer.id}  ${peer.fingerprint.slice(0, 12)}`);
+    console.log(
+      `  ${peer.name}  ${peer.id}  ${peer.fingerprint.slice(0, 12)}  ${peer.syncEnabled ? "auto-import" : "approval required"}`
+    );
   }
   console.log(`Available devices (${status.discoveredPeers.length})`);
   for (const peer of status.discoveredPeers) console.log(`  ${peer.name}  ${peer.id}`);
@@ -100,6 +108,16 @@ async function remove(endpoint: string, fetchAPI: NearbyFetchAPI): Promise<boole
   return (await fetchAPI<unknown>(endpoint, { method: "DELETE" })) !== null;
 }
 
+async function put(
+  endpoint: string,
+  fetchAPI: NearbyFetchAPI,
+  body: Record<string, unknown>
+): Promise<boolean> {
+  return (
+    (await fetchAPI<unknown>(endpoint, { method: "PUT", body: JSON.stringify(body) })) !== null
+  );
+}
+
 export async function runNearbyCommand(args: string[], fetchAPI: NearbyFetchAPI): Promise<void> {
   const command = args[0] || "status";
   if (command === "status" || command === "list") {
@@ -118,6 +136,11 @@ export async function runNearbyCommand(args: string[], fetchAPI: NearbyFetchAPI)
         : await remove("/api/nearby/discoverable", fetchAPI);
     if (ok)
       console.log(command === "discover" ? "Temporary discovery started." : "Discovery stopped.");
+    return;
+  }
+  if (command === "refresh") {
+    const ok = await post("/api/nearby/refresh", fetchAPI);
+    if (ok) console.log("Nearby discovery refreshed.");
     return;
   }
   if (command === "pair") {
@@ -162,6 +185,16 @@ export async function runNearbyCommand(args: string[], fetchAPI: NearbyFetchAPI)
       sessionId,
     });
     if (ok) console.log("Chat sent for approval on the other device.");
+    return;
+  }
+  if (command === "auto-import") {
+    const peerId = args[1];
+    const mode = args[2];
+    if (!peerId || (mode !== "on" && mode !== "off")) return nearbyHelp();
+    const ok = await put(`/api/nearby/peers/${encodeURIComponent(peerId)}`, fetchAPI, {
+      syncEnabled: mode === "on",
+    });
+    if (ok) console.log(`Automatic chat import ${mode === "on" ? "enabled" : "disabled"}.`);
     return;
   }
   nearbyHelp();

@@ -4,14 +4,16 @@ import { join } from "path";
 const root = join(import.meta.dir, "../..");
 
 describe("plugin UI", () => {
-  test("exposes a lazy plugin route and preserves the connector compatibility redirect", async () => {
+  test("embeds plugins in settings and preserves old route compatibility", async () => {
     const app = await Bun.file(join(root, "ui/src/App.tsx")).text();
     const sidebar = await Bun.file(join(root, "ui/src/components/layout/Sidebar.tsx")).text();
+    const settings = await Bun.file(join(root, "ui/src/pages/Settings.tsx")).text();
     expect(app).toContain('path="/connectors"');
     expect(app).toContain('path="/plugins"');
-    expect(app).toContain('import("@/pages/Plugins")');
-    expect(app).toContain('<Navigate to="/plugins" replace />');
-    expect(sidebar).toContain('path: "/plugins"');
+    expect(settings).toContain('import { Plugins as PluginsSettings } from "./Plugins"');
+    expect(settings).toContain('activeSection === "plugins"');
+    expect(app).toContain('<Navigate to="/settings?section=plugins" replace />');
+    expect(sidebar).not.toContain('path: "/plugins"');
     expect(sidebar).not.toContain('label: "Connectors"');
   });
 

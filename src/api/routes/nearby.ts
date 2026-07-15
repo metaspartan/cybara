@@ -22,6 +22,10 @@ export const nearbyRoutes: Record<string, RouteHandler> = {
     success: true,
     discoverableUntil: await nearbyService.makeDiscoverable(),
   }),
+  "POST /api/nearby/refresh": async () => {
+    await nearbyService.refreshDiscovery();
+    return { success: true, status: await nearbyService.status() };
+  },
   "DELETE /api/nearby/discoverable": () => {
     nearbyService.stopAdvertising();
     return { success: true };

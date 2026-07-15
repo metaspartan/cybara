@@ -538,19 +538,7 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_SURFACES).toEqual(
       MOBILE_FEATURE_SECTIONS.filter((surface) => surface !== "sessions")
     );
-    expect(MOBILE_SETTINGS_SURFACES).toEqual([
-      "agents",
-      "providers",
-      "skills",
-      "tools",
-      "approvals",
-      "channels",
-      "tasks",
-      "memory",
-      "logs",
-      "monitor",
-      "wallet",
-    ]);
+    expect(MOBILE_SETTINGS_SURFACES).toEqual(["approvals", "tasks", "monitor"]);
     expect(MOBILE_RECENT_ACTIVITY_CHROME.showTerminalRows).toBe(false);
   });
 
@@ -709,15 +697,22 @@ describe("mobile dashboard model", () => {
       "Accessibility",
       "Gateway",
       "AI",
+      "Agents",
+      "Providers",
+      "Router",
+      "Channels",
       "Lab",
       "Memory",
       "Voice",
       "MCP",
       "Plugins",
+      "Skills",
+      "Tools",
       "Safety",
       "Wallet",
       "Migration",
       "System",
+      "Logs",
     ]);
     expect(dashboardScreenSource).toContain("const [selectedSettingsTab, setSelectedSettingsTab]");
     expect(dashboardScreenSource).toContain("MOBILE_SETTINGS_TABS.some");

@@ -5,6 +5,7 @@ struct NativeNearbySettings: Codable, Hashable {
     var displayName: String
     var port: Int
     var discoveryMinutes: Int
+    var autoAdvertise: Bool
 }
 
 struct NativeNearbyPairing: Decodable, Identifiable, Hashable {
@@ -63,6 +64,7 @@ struct NativeNearbyStatus: Decodable, Hashable {
     let identity: Identity
     let running: Bool
     let discoverableUntil: String?
+    let localAddresses: [String]?
     let discoveredPeers: [NativeNearbyDiscoveredPeer]
     let pairedPeers: [NativeNearbyPairedPeer]
     let pairings: [NativeNearbyPairing]
@@ -84,12 +86,20 @@ private struct NativeNearbyPairRequest: Encodable {
     let baseUrl: String
 }
 
+private struct NativeNearbyAddressRequest: Encodable {
+    let baseUrl: String
+}
+
 private struct NativeNearbyAcceptRequest: Encodable {
     let workspaceDir: String?
 }
 
 private struct NativeNearbySendRequest: Encodable {
     let sessionId: String
+}
+
+private struct NativeNearbyPeerUpdateRequest: Encodable {
+    let syncEnabled: Bool
 }
 
 extension GatewayClient {
@@ -115,11 +125,23 @@ extension GatewayClient {
         _ = try await request("api/nearby/discoverable", method: "DELETE")
     }
 
+    func refreshNearbyDiscovery() async throws {
+        _ = try await request("api/nearby/refresh", method: "POST")
+    }
+
     func pairNearby(_ peer: NativeNearbyDiscoveredPeer) async throws {
         _ = try await request(
             "api/nearby/pair",
             method: "POST",
             body: try JSONEncoder().encode(NativeNearbyPairRequest(peerId: peer.id, baseUrl: peer.baseUrl))
+        )
+    }
+
+    func pairNearbyByAddress(_ baseUrl: String) async throws {
+        _ = try await request(
+            "api/nearby/pair-address",
+            method: "POST",
+            body: try JSONEncoder().encode(NativeNearbyAddressRequest(baseUrl: baseUrl))
         )
     }
 
@@ -133,6 +155,14 @@ extension GatewayClient {
 
     func removeNearbyPeer(_ id: String) async throws {
         _ = try await request("api/nearby/peers/\(pathSegment(id))", method: "DELETE")
+    }
+
+    func updateNearbyPeer(_ id: String, syncEnabled: Bool) async throws {
+        _ = try await request(
+            "api/nearby/peers/\(pathSegment(id))",
+            method: "PUT",
+            body: try JSONEncoder().encode(NativeNearbyPeerUpdateRequest(syncEnabled: syncEnabled))
+        )
     }
 
     func acceptNearbyTransfer(_ id: String) async throws {
@@ -164,16 +194,12 @@ struct NativeNearbySettingsSection: View {
         enabled: false,
         displayName: "Cybara",
         port: 4270,
-        discoveryMinutes: 10
+        discoveryMinutes: 10,
+        autoAdvertise: true
     )
     @State private var busy = false
     @State private var error: String?
-
-    private var discoverable: Bool {
-        guard let value = status?.discoverableUntil,
-              let date = ISO8601DateFormatter().date(from: value) else { return false }
-        return date > Date()
-    }
+    @State private var pairAddress = ""
 
     var body: some View {
         GlassCard {
@@ -200,7 +226,7 @@ struct NativeNearbySettingsSection: View {
                 }
 
                 Label(
-                    "Off by default. Discovery is temporary and both devices must confirm the same code.",
+                    "Off by default. Both devices must confirm the same code before sharing.",
                     systemImage: "lock.shield"
                 )
                 .font(.system(size: 11, design: .rounded))
@@ -215,8 +241,8 @@ struct NativeNearbySettingsSection: View {
                     HStack(spacing: 8) {
                         Button("Save") { Task { await saveSettings() } }
                             .buttonStyle(.borderedProminent)
-                        Button(discoverable ? "Stop Discovery" : "Find Nearby") {
-                            Task { await toggleDiscovery() }
+                        Button("Refresh Devices") {
+                            Task { await refreshDiscovery() }
                         }
                         .buttonStyle(.bordered)
                         if busy { ProgressView().controlSize(.small) }
@@ -224,6 +250,24 @@ struct NativeNearbySettingsSection: View {
                         Text(status?.running == true ? "Listening privately" : "Stopped")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(status?.running == true ? Color.green : Color.secondary)
+                    }
+
+                    Toggle("Discoverable whenever enabled", isOn: Binding(
+                        get: { settings.autoAdvertise },
+                        set: { enabled in
+                            settings.autoAdvertise = enabled
+                            Task { await saveSettings() }
+                        }
+                    ))
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+
+                    HStack(spacing: 8) {
+                        TextField("192.168.1.73:4270", text: $pairAddress)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Connect by Address") { Task { await pairByAddress() } }
+                            .buttonStyle(.bordered)
+                            .disabled(pairAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
 
                     if let status {
@@ -260,6 +304,17 @@ struct NativeNearbySettingsSection: View {
 
     @ViewBuilder
     private func nearbyContent(_ value: NativeNearbyStatus) -> some View {
+        if let addresses = value.localAddresses, !addresses.isEmpty {
+            Divider().opacity(0.45)
+            Text("This Device").font(.system(size: 12, weight: .semibold, design: .rounded))
+            ForEach(addresses, id: \.self) { address in
+                Text(address.replacingOccurrences(of: "http://", with: ""))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
+
         if !value.discoveredPeers.isEmpty {
             Divider().opacity(0.45)
             Text("Available Nearby").font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -308,7 +363,7 @@ struct NativeNearbySettingsSection: View {
             Divider().opacity(0.45)
             Text("Paired Devices").font(.system(size: 12, weight: .semibold, design: .rounded))
             ForEach(value.pairedPeers) { peer in
-                HStack {
+                HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(peer.name)
                         Text("Verified \(peer.fingerprint.prefix(12))")
@@ -316,6 +371,12 @@ struct NativeNearbySettingsSection: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    Toggle("Auto-import", isOn: Binding(
+                        get: { peer.syncEnabled },
+                        set: { enabled in Task { await update(peer.id, syncEnabled: enabled) } }
+                    ))
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
                     Button(role: .destructive) { Task { await remove(peer.id) } } label: {
                         Image(systemName: "trash")
                     }
@@ -374,15 +435,20 @@ struct NativeNearbySettingsSection: View {
         await run { status = try await client.updateNearbySettings(settings) }
     }
 
-    private func toggleDiscovery() async {
-        await run {
-            if discoverable { try await client.stopNearbyDiscovery() }
-            else { try await client.makeNearbyDiscoverable() }
-        }
+    private func refreshDiscovery() async {
+        await run { try await client.refreshNearbyDiscovery() }
     }
 
     private func pair(_ peer: NativeNearbyDiscoveredPeer) async {
         await run { try await client.pairNearby(peer) }
+    }
+
+    private func pairByAddress() async {
+        let value = pairAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseURL = value.hasPrefix("http://") || value.hasPrefix("https://")
+            ? value
+            : "http://\(value)"
+        await run { try await client.pairNearbyByAddress(baseURL) }
     }
 
     private func confirm(_ id: String) async {
@@ -395,6 +461,10 @@ struct NativeNearbySettingsSection: View {
 
     private func remove(_ id: String) async {
         await run { try await client.removeNearbyPeer(id) }
+    }
+
+    private func update(_ id: String, syncEnabled: Bool) async {
+        await run { try await client.updateNearbyPeer(id, syncEnabled: syncEnabled) }
     }
 
     private func accept(_ id: String) async {

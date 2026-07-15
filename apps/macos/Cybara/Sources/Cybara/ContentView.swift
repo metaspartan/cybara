@@ -250,33 +250,57 @@ struct ContentView: View {
             .padding(.top, 14)
             .padding(.bottom, 8)
 
-            List(selection: $destination) {
-                Section {
-                    ForEach([NativeDestination.dashboard, .agents, .providers, .router, .channels, .mobile, .plugins]) { item in
-                        Label(item.title, systemImage: item.systemImage)
-                            .tag(item)
-                    }
+            VStack(spacing: 2) {
+                Button {
+                    selectedChatSessionID = nil
+                    destination = .chat
+                } label: {
+                    Label("New Chat", systemImage: "square.and.pencil")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
                 }
-                Section(NativeI18n.t("nav.developer")) {
-                    ForEach([NativeDestination.mcp, .lsp, .ide, .sessions, .usage, .evals, .skills, .tools, .terminal]) { item in
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.secondary)
+
+                ForEach([NativeDestination.dashboard, .usage]) { item in
+                    Button {
+                        destination = item
+                    } label: {
                         Label(item.title, systemImage: item.systemImage)
-                            .tag(item)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(destination == item ? accent.opacity(0.14) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
                 }
-                Section {
-                    ForEach([NativeDestination.chat, .voice]) { item in
-                        Label(item.title, systemImage: item.systemImage)
-                            .tag(item)
+
+                Menu {
+                    ForEach([NativeDestination.ide, .voice, .evals, .terminal, .lsp, .sessions, .journey, .wallet, .artifacts, .metrics, .tasks]) { item in
+                        Button {
+                            destination = item
+                        } label: {
+                            Label(item.title, systemImage: item.systemImage)
+                        }
                     }
+                } label: {
+                    Label("More", systemImage: "ellipsis")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
                 }
-                Section(NativeI18n.t("nav.system")) {
-                    ForEach([NativeDestination.memory, .journey, .wallet, .artifacts, .metrics, .tasks, .logs]) { item in
-                        Label(item.title, systemImage: item.systemImage)
-                            .tag(item)
-                    }
-                }
+                .menuStyle(.borderlessButton)
             }
-            .listStyle(.sidebar)
+            .padding(.horizontal, 10)
+            .padding(.bottom, 6)
+
+            Divider()
+
+            NativePrimarySessionList(client: client, selectedSessionID: $selectedChatSessionID) {
+                destination = .chat
+            }
 
             Divider()
 
@@ -319,6 +343,7 @@ struct ContentView: View {
                 ChatScreen(
                     client: client,
                     selectedSessionID: $selectedChatSessionID,
+                    showsSessionList: false,
                     openCybaraIDEWorkspace: { workspace in
                         UserDefaults.standard.set(workspace, forKey: "cybara.ide.pendingWorkspacePath")
                         destination = .ide
@@ -402,6 +427,106 @@ struct ContentView: View {
         .padding(32)
         .cybaraGlass(cornerRadius: 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct NativePrimarySessionList: View {
+    let client: GatewayClient
+    @Binding var selectedSessionID: String?
+    let openChat: () -> Void
+
+    @State private var sessions: [GatewaySession] = []
+    @State private var searchText = ""
+    @State private var collapsedGroupIDs: Set<String> = []
+
+    private var filteredSessions: [GatewaySession] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return sessions }
+        return sessions.filter {
+            $0.displayTitle.lowercased().contains(query)
+                || ($0.workspace_dir ?? "").lowercased().contains(query)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TextField("Search chats", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+
+            List {
+                if filteredSessions.isEmpty {
+                    Text(searchText.isEmpty ? "No chats yet" : "No matching chats")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(nativeSessionGroups(filteredSessions)) { group in
+                    Section {
+                        if group.kind == .pinned || !collapsedGroupIDs.contains(group.id) {
+                            ForEach(group.sessions) { session in
+                                Button {
+                                    selectedSessionID = session.id
+                                    openChat()
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        if session.pinned == true {
+                                            Image(systemName: "pin.fill")
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Text(session.displayTitle)
+                                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                                            .lineLimit(1)
+                                        Spacer(minLength: 4)
+                                        Text(compactRelativeTimestamp(session.updated_at ?? session.created_at))
+                                            .font(.system(size: 10, design: .rounded))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    } header: {
+                        Button {
+                            guard group.kind != .pinned else { return }
+                            if collapsedGroupIDs.contains(group.id) {
+                                collapsedGroupIDs.remove(group.id)
+                            } else {
+                                collapsedGroupIDs.insert(group.id)
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                if group.kind != .pinned {
+                                    Image(systemName: collapsedGroupIDs.contains(group.id) ? "chevron.right" : "chevron.down")
+                                        .font(.system(size: 9, weight: .semibold))
+                                }
+                                if group.kind == .workspace {
+                                    Image(systemName: "folder")
+                                }
+                                Text(group.label).lineLimit(1)
+                                Spacer(minLength: 4)
+                                Text("\(group.sessions.count)")
+                            }
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+        }
+        .task {
+            while !Task.isCancelled {
+                if let loaded = try? await client.sessions(limit: 150) {
+                    sessions = loaded
+                }
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+            }
+        }
     }
 }
 

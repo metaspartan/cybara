@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import db from "../../src/core/database";
 import {
   createNearbyIdentity,
+  createWindowsNearbyFirewallScript,
   createNearbyPairingProof,
   decryptNearbyEnvelope,
   deriveNearbySharedKey,
@@ -15,6 +16,7 @@ import {
   NearbyService,
   normalizeNearbySettings,
   parseNearbyBaseUrl,
+  selectNearbyAddress,
   setNearbySettings,
   verifyNearbyPairingProof,
 } from "../../src/core/nearby";
@@ -80,6 +82,24 @@ describe("nearby network and settings boundaries", () => {
     expect(() => parseNearbyBaseUrl("http://user:pass@192.168.1.15:4270")).toThrow();
   });
 
+  test("prefers a peer address on the local subnet over virtual adapter addresses", () => {
+    expect(
+      selectNearbyAddress(
+        ["172.23.112.1", "192.168.1.73", "fe80::1"],
+        [{ address: "192.168.1.155", netmask: "255.255.255.0" }]
+      )
+    ).toBe("192.168.1.73");
+    expect(selectNearbyAddress(["8.8.8.8"], [])).toBeNull();
+  });
+
+  test("repairs a missing Windows multicast rule even when the peer rule exists", () => {
+    const script = createWindowsNearbyFirewallScript(4270, true, false);
+    expect(script).not.toContain("protocol=TCP");
+    expect(script).toContain("protocol=UDP localport=5353");
+    expect(script).toContain("remoteip=LocalSubnet");
+    expect(script).toContain('del "%~f0"');
+  });
+
   test("rolls settings back when the listener cannot start", async () => {
     const previous = getNearbySettings();
     const blocker = Bun.serve({
@@ -129,6 +149,12 @@ describe("nearby network and settings boundaries", () => {
       expect(body.protocol).toBe("cybara-nearby-v1");
       expect(typeof body.peerId).toBe("string");
       expect(body.peerId.length).toBeGreaterThan(0);
+      await service.refreshDiscovery();
+      expect((await service.status()).advertising).toBe(true);
+      const refreshedInfo = await fetch(`http://127.0.0.1:${nearbyPort}/v1/info`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      expect(refreshedInfo.status).toBe(200);
     } finally {
       service.stop();
       setNearbySettings(previous);

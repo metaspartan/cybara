@@ -1,10 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { PageLayout } from "@/components/layout";
+import { EmbeddedPageLayout, PageLayout } from "@/components/layout";
 import { GatewayPathSettingsSection } from "@/components/settings/GatewayPathSettingsSection";
 import { GatewayRemoteAccessSection } from "@/components/settings/GatewayRemoteAccessSection";
 import { NearbySettingsSection } from "@/components/settings/NearbySettingsSection";
-import { SettingsNavigation } from "@/components/settings/SettingsNavigation";
 import { SystemBackupSettingsSection } from "@/components/settings/SystemBackupSettingsSection";
 import { SystemMonitorPanel } from "@/components/settings/SystemMonitorPanel";
 import { AiFeatureSettings } from "./settings/AiFeatureSettings";
@@ -19,7 +18,19 @@ import { SpeechSettingsSection } from "./settings/SpeechSettingsSection";
 import { WebToolPolicySettings } from "./settings/WebToolPolicySettings";
 import { WebResearchSettings } from "./settings/WebResearchSettings";
 import { SystemPromptSection } from "./settings/SystemPromptSection";
+import { SidebarNavigationSettings } from "./settings/SidebarNavigationSettings";
 import { asSettingsRecord, readIntegerSetting } from "./settings/settingsValueReaders";
+import { Agents as AgentsSettings } from "./Agents";
+import { Channels as ChannelsSettings } from "./Channels";
+import { Logs as LogsSettings } from "./Logs";
+import { MCPServers as MCPSettings } from "./MCPServers";
+import { Memory as MemorySettings } from "./Memory";
+import { Mobile as MobileSettings } from "./Mobile";
+import { Plugins as PluginsSettings } from "./Plugins";
+import { Providers as ProvidersSettings } from "./Providers";
+import { RouterSettings as RouterSettingsPanel } from "./RouterSettings";
+import { Skills as SkillsSettings } from "./Skills";
+import { Tools as ToolsSettings } from "./Tools";
 import {
   useHealth,
   useInfo,
@@ -80,7 +91,7 @@ import {
   type ThemeAccent,
   type ThemeMode,
 } from "@/stores/uiStore";
-import { resolveSettingsSectionId, type SettingsSectionId } from "@/lib/settingsNavigation";
+import { resolveSettingsSectionId } from "@/lib/settingsNavigation";
 import { persistPetEnabled, readPetEnabled } from "@/lib/petPreferences";
 import { languageOptions, useI18n } from "@/lib/i18n";
 import { cn, formatByteCount } from "@/lib/settingsFormat";
@@ -103,9 +114,14 @@ import {
   MonitorUp,
   Monitor,
   Network,
+  Radio,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
+
+function SettingsSurface({ children }: { children: React.ReactNode }) {
+  return <EmbeddedPageLayout>{children}</EmbeddedPageLayout>;
+}
 
 function getCheckStatus(value: unknown): {
   status: "healthy" | "warning" | "error";
@@ -2608,7 +2624,7 @@ function GatewayAuthSettingsSection() {
   );
 }
 
-type GatewaySettingsPanel = "overview" | "connection" | "storage" | "nearby";
+type GatewaySettingsPanel = "overview" | "connection" | "storage" | "telemetry" | "nearby";
 
 const gatewaySettingsPanels: Array<{
   id: GatewaySettingsPanel;
@@ -2618,6 +2634,7 @@ const gatewaySettingsPanels: Array<{
   { id: "overview", label: "Overview", icon: Activity },
   { id: "connection", label: "Connection", icon: Shield },
   { id: "storage", label: "Storage", icon: Database },
+  { id: "telemetry", label: "Telemetry", icon: Radio },
   { id: "nearby", label: "Nearby", icon: Network },
 ];
 
@@ -2629,7 +2646,7 @@ function GatewaySettingsContent({ infoData }: { infoData: InfoData }) {
       <div
         role="tablist"
         aria-label="Gateway settings"
-        className="grid grid-cols-2 rounded-lg bg-[var(--surface-panel)] p-1 sm:grid-cols-4"
+        className="grid grid-cols-2 rounded-lg bg-[var(--surface-panel)] p-1 sm:grid-cols-5"
       >
         {gatewaySettingsPanels.map((item) => {
           const Icon = item.icon;
@@ -2658,6 +2675,7 @@ function GatewaySettingsContent({ infoData }: { infoData: InfoData }) {
       {panel === "overview" ? <GatewayControlSection /> : null}
       {panel === "connection" ? <GatewayAuthSettingsSection /> : null}
       {panel === "storage" ? <GatewayPathSettingsSection infoData={infoData} /> : null}
+      {panel === "telemetry" ? <ExternalTelemetrySettings /> : null}
       {panel === "nearby" ? <NearbySettingsSection /> : null}
     </div>
   );
@@ -2681,10 +2699,6 @@ export function Settings() {
     }
   }, [sectionParam, setSearchParams]);
 
-  const selectSection = (section: SettingsSectionId) => {
-    setSearchParams(section === "general" ? {} : { section }, { replace: true });
-  };
-
   const healthData = (health || {}) as HealthData;
   const infoData = (info || {}) as InfoData;
 
@@ -2696,148 +2710,211 @@ export function Settings() {
 
   return (
     <PageLayout title={t("settings.title")}>
-      <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <SettingsNavigation activeSection={activeSection} onSelect={selectSection} />
+      <div className="mx-auto w-full max-w-6xl min-w-0 space-y-6">
+        {activeSection === "general" && (
+          <>
+            <ThemeSettings />
+            <SidebarNavigationSettings />
+            <HotkeySettings />
+          </>
+        )}
 
-        <div className="min-w-0 space-y-6">
-          {activeSection === "general" && (
-            <>
-              <ThemeSettings />
-              <HotkeySettings />
-            </>
-          )}
+        {activeSection === "accessibility" && <ChatAccessibilitySettings />}
 
-          {activeSection === "accessibility" && <ChatAccessibilitySettings />}
+        {activeSection === "gateway" && <GatewaySettingsContent infoData={infoData} />}
 
-          {activeSection === "gateway" && <GatewaySettingsContent infoData={infoData} />}
+        {activeSection === "ai" && (
+          <>
+            <AiFeatureSettings />
+            <SystemPromptSection />
+            <LlmTimeoutSettingsSection />
+          </>
+        )}
 
-          {activeSection === "ai" && (
-            <>
-              <AiFeatureSettings />
-              <SystemPromptSection />
-              <LlmTimeoutSettingsSection />
-            </>
-          )}
+        {activeSection === "agents" && (
+          <SettingsSurface>
+            <AgentsSettings />
+          </SettingsSurface>
+        )}
 
-          {activeSection === "memory" && <MemoryBehaviorSettings />}
+        {activeSection === "providers" && (
+          <SettingsSurface>
+            <ProvidersSettings />
+          </SettingsSurface>
+        )}
 
-          {activeSection === "voice" && <SpeechSettingsSection />}
+        {activeSection === "router" && (
+          <SettingsSurface>
+            <RouterSettingsPanel />
+          </SettingsSurface>
+        )}
 
-          {activeSection === "safety" && (
-            <>
-              <FeatureSettings />
-              <ToolCapabilitySettings />
-              <WebResearchSettings />
-              <WebToolPolicySettings />
-              <SandboxBrowserSettings />
-              <BrowserSupervisionSettings />
-              <ComputerUseSettings />
-            </>
-          )}
+        {activeSection === "channels" && (
+          <SettingsSurface>
+            <ChannelsSettings />
+          </SettingsSurface>
+        )}
 
-          {activeSection === "wallet" && <WalletSettings />}
+        {activeSection === "mobile" && (
+          <SettingsSurface>
+            <MobileSettings />
+          </SettingsSurface>
+        )}
 
-          {activeSection === "migration" && <MigrationSettingsSection />}
+        {activeSection === "plugins" && (
+          <SettingsSurface>
+            <PluginsSettings />
+          </SettingsSurface>
+        )}
 
-          {activeSection === "system" && (
-            <>
-              <SystemBackupSettingsSection />
-              <DesktopUpdateSettings
-                currentVersion={String(infoData.version || "unknown")}
-                releaseRepositoryUrl={infoData.releaseRepositoryUrl}
-              />
-              <SystemMonitorPanel />
-              <ExternalTelemetrySettings />
+        {activeSection === "mcp" && (
+          <SettingsSurface>
+            <MCPSettings />
+          </SettingsSurface>
+        )}
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card variant="liquid">
-                  <CardHeader>
-                    <CardTitle>System Information</CardTitle>
-                    <CardDescription>Platform details and version info</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex justify-between py-2 border-b border-white/10">
-                      <span className="text-gray-400">Platform Name</span>
-                      <span className="text-white">{infoData?.name || "Cybara"}</span>
+        {activeSection === "skills" && (
+          <SettingsSurface>
+            <SkillsSettings />
+          </SettingsSurface>
+        )}
+
+        {activeSection === "tools" && (
+          <SettingsSurface>
+            <ToolsSettings />
+          </SettingsSurface>
+        )}
+
+        {activeSection === "memory" && (
+          <>
+            <MemoryBehaviorSettings />
+            <SettingsSurface>
+              <MemorySettings />
+            </SettingsSurface>
+          </>
+        )}
+
+        {activeSection === "voice" && <SpeechSettingsSection />}
+
+        {activeSection === "safety" && (
+          <>
+            <FeatureSettings />
+            <ToolCapabilitySettings />
+            <WebResearchSettings />
+            <WebToolPolicySettings />
+            <SandboxBrowserSettings />
+            <BrowserSupervisionSettings />
+            <ComputerUseSettings />
+          </>
+        )}
+
+        {activeSection === "wallet" && <WalletSettings />}
+
+        {activeSection === "migration" && <MigrationSettingsSection />}
+
+        {activeSection === "logs" && (
+          <SettingsSurface>
+            <LogsSettings />
+          </SettingsSurface>
+        )}
+
+        {activeSection === "system" && (
+          <>
+            <SystemBackupSettingsSection />
+            <DesktopUpdateSettings
+              currentVersion={String(infoData.version || "unknown")}
+              releaseRepositoryUrl={infoData.releaseRepositoryUrl}
+            />
+            <SystemMonitorPanel />
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card variant="liquid">
+                <CardHeader>
+                  <CardTitle>System Information</CardTitle>
+                  <CardDescription>Platform details and version info</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex justify-between py-2 border-b border-white/10">
+                    <span className="text-gray-400">Platform Name</span>
+                    <span className="text-white">{infoData?.name || "Cybara"}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-white/10">
+                    <span className="text-gray-400">Version</span>
+                    <span className="text-white">{infoData?.version || "unknown"}</span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-white/10">
+                    <span className="text-gray-400">Setup Complete</span>
+                    <Badge variant={infoData?.setupComplete ? "success" : "warning"}>
+                      {infoData?.setupComplete ? "Yes" : "No"}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-white/10">
+                    <span className="text-gray-400">Server Time</span>
+                    <span className="text-white">
+                      {healthData?.timestamp
+                        ? new Date(healthData.timestamp).toLocaleString()
+                        : "N/A"}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card variant="liquid">
+                <CardHeader>
+                  <CardTitle>Health Checks</CardTitle>
+                  <CardDescription>Component status overview</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {checks.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <Activity className="w-8 h-8 mx-auto mb-2" />
+                      <p>No health checks available</p>
                     </div>
-                    <div className="flex justify-between py-2 border-b border-white/10">
-                      <span className="text-gray-400">Version</span>
-                      <span className="text-white">{infoData?.version || "unknown"}</span>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-white/10">
-                      <span className="text-gray-400">Setup Complete</span>
-                      <Badge variant={infoData?.setupComplete ? "success" : "warning"}>
-                        {infoData?.setupComplete ? "Yes" : "No"}
-                      </Badge>
-                    </div>
-                    <div className="flex justify-between py-2 border-b border-white/10">
-                      <span className="text-gray-400">Server Time</span>
-                      <span className="text-white">
-                        {healthData?.timestamp
-                          ? new Date(healthData.timestamp).toLocaleString()
-                          : "N/A"}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
+                  ) : (
+                    checks.map(([key, value]) => {
+                      const check = getCheckStatus(value);
+                      const icons: Record<string, React.ReactNode> = {
+                        database: <Database className="w-5 h-5" />,
+                        agents: <Bot className="w-5 h-5" />,
+                        providers: <Cloud className="w-5 h-5" />,
+                        memory: <HardDrive className="w-5 h-5" />,
+                      };
 
-                <Card variant="liquid">
-                  <CardHeader>
-                    <CardTitle>Health Checks</CardTitle>
-                    <CardDescription>Component status overview</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {checks.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">
-                        <Activity className="w-8 h-8 mx-auto mb-2" />
-                        <p>No health checks available</p>
-                      </div>
-                    ) : (
-                      checks.map(([key, value]) => {
-                        const check = getCheckStatus(value);
-                        const icons: Record<string, React.ReactNode> = {
-                          database: <Database className="w-5 h-5" />,
-                          agents: <Bot className="w-5 h-5" />,
-                          providers: <Cloud className="w-5 h-5" />,
-                          memory: <HardDrive className="w-5 h-5" />,
-                        };
-
-                        return (
-                          <div
-                            key={key}
-                            className="flex items-center justify-between p-3 rounded-xl bg-white/5"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div
-                                className={cn(
-                                  "w-10 h-10 rounded-lg flex items-center justify-center",
-                                  check.status === "healthy"
-                                    ? "bg-emerald-500/20 text-emerald-400"
-                                    : "bg-red-500/20 text-red-400"
-                                )}
-                              >
-                                {icons[key] || <Server className="w-5 h-5" />}
-                              </div>
-                              <div>
-                                <span className="text-white capitalize">{key}</span>
-                                {check.details && (
-                                  <p className="text-xs text-gray-500">{check.details}</p>
-                                )}
-                              </div>
+                      return (
+                        <div
+                          key={key}
+                          className="flex items-center justify-between p-3 rounded-xl bg-white/5"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={cn(
+                                "w-10 h-10 rounded-lg flex items-center justify-center",
+                                check.status === "healthy"
+                                  ? "bg-emerald-500/20 text-emerald-400"
+                                  : "bg-red-500/20 text-red-400"
+                              )}
+                            >
+                              {icons[key] || <Server className="w-5 h-5" />}
                             </div>
-                            <Badge variant={check.status === "healthy" ? "success" : "error"}>
-                              {check.status}
-                            </Badge>
+                            <div>
+                              <span className="text-white capitalize">{key}</span>
+                              {check.details && (
+                                <p className="text-xs text-gray-500">{check.details}</p>
+                              )}
+                            </div>
                           </div>
-                        );
-                      })
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            </>
-          )}
-        </div>
+                          <Badge variant={check.status === "healthy" ? "success" : "error"}>
+                            {check.status}
+                          </Badge>
+                        </div>
+                      );
+                    })
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </>
+        )}
       </div>
     </PageLayout>
   );

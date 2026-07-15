@@ -72,6 +72,7 @@ export interface NearbyStatus {
   running: boolean;
   advertising: boolean;
   discoverableUntil: string | null;
+  localAddresses: string[];
   discoveredPeers: Array<{
     id: string;
     name: string;
@@ -2598,6 +2599,8 @@ export const nearbyApi = {
     }),
   stopDiscoverable: () =>
     fetchApi<{ success: boolean }>("/nearby/discoverable", { method: "DELETE" }),
+  refresh: () =>
+    fetchApi<{ success: boolean; status: NearbyStatus }>("/nearby/refresh", { method: "POST" }),
   pair: (peerId: string, baseUrl?: string) =>
     fetchApi<NearbyPairing>("/nearby/pair", {
       method: "POST",
@@ -2619,6 +2622,11 @@ export const nearbyApi = {
   removePeer: (peerId: string) =>
     fetchApi<{ success: boolean }>(`/nearby/peers/${encodeURIComponent(peerId)}`, {
       method: "DELETE",
+    }),
+  updatePeer: (peerId: string, syncEnabled: boolean) =>
+    fetchApi<NearbyStatus["pairedPeers"][number]>(`/nearby/peers/${encodeURIComponent(peerId)}`, {
+      method: "PUT",
+      body: JSON.stringify({ syncEnabled }),
     }),
   sendSession: (peerId: string, sessionId: string) =>
     fetchApi<{ transferId: string }>(`/nearby/peers/${encodeURIComponent(peerId)}/sessions`, {

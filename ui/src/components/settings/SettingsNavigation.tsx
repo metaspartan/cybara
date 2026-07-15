@@ -12,16 +12,16 @@ export function SettingsNavigation({
   const { t } = useI18n();
 
   return (
-    <nav
-      aria-label="Settings sections"
-      className="rounded-xl border border-white/10 bg-white/[0.03] p-2 lg:sticky lg:top-4"
-    >
-      <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-1">
+    <nav aria-label="Settings sections" className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+      <div className="space-y-3">
         {settingsSectionGroups.map((group) => (
           <div key={group.labelKey} className="space-y-1">
-            <p className="px-2 pt-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-              {t(group.labelKey)}
-            </p>
+            <div className="flex items-center gap-2 px-2 pt-1">
+              <span className="theme-text-subtle text-[10px] font-semibold uppercase tracking-wide">
+                {t(group.labelKey)}
+              </span>
+              <span className="h-px min-w-4 flex-1 bg-[var(--surface-border)]" />
+            </div>
             {group.sections.map((section) => {
               const active = activeSection === section.id;
               return (
@@ -30,14 +30,16 @@ export function SettingsNavigation({
                   type="button"
                   onClick={() => onSelect(section.id)}
                   className={cn(
-                    "w-full rounded-lg px-3 py-2 text-left transition-colors",
+                    "w-full rounded-lg px-3 py-1.5 text-left transition-colors",
                     active
-                      ? "bg-amber-500/12 text-white ring-1 ring-amber-400/35"
-                      : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
+                      ? "bg-[rgba(var(--accent-primary),0.14)] text-[var(--text-primary)]"
+                      : "theme-text-secondary hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
                   )}
                   aria-current={active ? "page" : undefined}
                 >
-                  <span className="block text-sm font-medium leading-5">{t(section.labelKey)}</span>
+                  <span className="block truncate text-[13px] font-medium leading-5">
+                    {t(section.labelKey)}
+                  </span>
                 </button>
               );
             })}

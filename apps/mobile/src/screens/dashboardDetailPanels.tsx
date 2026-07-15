@@ -672,6 +672,7 @@ export function SettingsPanel({
   const showAccessibilitySettings = selectedSettingsTab === "accessibility";
   const showGatewaySettings = selectedSettingsTab === "gateway";
   const showAiSettings = selectedSettingsTab === "ai";
+  const showRouterSettings = selectedSettingsTab === "router";
   const showEvalsSettings = selectedSettingsTab === "evals";
   const showMemorySettings = selectedSettingsTab === "memory";
   const showVoiceSettings = selectedSettingsTab === "voice";
@@ -681,6 +682,17 @@ export function SettingsPanel({
   const showWalletSettings = selectedSettingsTab === "wallet";
   const showMigrationSettings = selectedSettingsTab === "migration";
   const showSystemSettings = selectedSettingsTab === "system";
+  const selectedManagementSurface: MobileSurfaceKey | null =
+    (
+      {
+        agents: "agents",
+        providers: "providers",
+        channels: "channels",
+        skills: "skills",
+        tools: "tools",
+        logs: "logs",
+      } as Partial<Record<MobileSettingsTab, MobileSurfaceKey>>
+    )[selectedSettingsTab] ?? null;
   const chatAppearance = normalizeChatAppearanceSettings(summary?.config?.chat_appearance);
 
   const saveConfigPatch = async (
@@ -754,6 +766,69 @@ export function SettingsPanel({
           selected={selectedSettingsTab}
           tone={accentColor}
         />
+        {selectedManagementSurface ? (
+          <SettingsSection title={surfaceMeta[selectedManagementSurface].title}>
+            <Pressable
+              accessibilityRole="button"
+              style={styles.settingsNavigationRow}
+              onPress={() => openSurface(selectedManagementSurface)}
+            >
+              <View
+                style={[
+                  styles.settingsNavigationIcon,
+                  { backgroundColor: `${surfaceMeta[selectedManagementSurface].tone}18` },
+                ]}
+              >
+                {(() => {
+                  const Icon = surfaceMeta[selectedManagementSurface].Icon;
+                  return (
+                    <Icon
+                      color={surfaceMeta[selectedManagementSurface].tone}
+                      size={20}
+                      strokeWidth={2.1}
+                    />
+                  );
+                })()}
+              </View>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>
+                  Manage {surfaceMeta[selectedManagementSurface].title.toLowerCase()}
+                </Text>
+                <Text style={styles.listDetail} numberOfLines={2}>
+                  {surfaceMenuDetail(
+                    selectedManagementSurface,
+                    summary,
+                    counts,
+                    surfaceRows(selectedManagementSurface, summary).length
+                  )}
+                </Text>
+              </View>
+              <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+            </Pressable>
+          </SettingsSection>
+        ) : null}
+        {showRouterSettings ? (
+          <SettingsSection title="Model Router">
+            <Pressable
+              accessibilityRole="button"
+              style={styles.settingsNavigationRow}
+              onPress={openModelRouter}
+            >
+              <View
+                style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}
+              >
+                <Network color={accentColor} size={20} strokeWidth={2.1} />
+              </View>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>Routing strategy</Text>
+                <Text style={styles.listDetail} numberOfLines={2}>
+                  Choose eligible agents, automatic plan data, and routing constraints.
+                </Text>
+              </View>
+              <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+            </Pressable>
+          </SettingsSection>
+        ) : null}
         {showAccessibilitySettings ? (
           <>
             <SettingsSection title="Readability">

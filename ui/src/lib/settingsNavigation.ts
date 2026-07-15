@@ -5,10 +5,20 @@ export type SettingsSectionId =
   | "accessibility"
   | "gateway"
   | "ai"
+  | "agents"
+  | "providers"
+  | "router"
+  | "channels"
+  | "mobile"
+  | "plugins"
+  | "mcp"
+  | "skills"
+  | "tools"
   | "memory"
   | "voice"
   | "safety"
   | "wallet"
+  | "logs"
   | "migration"
   | "system";
 
@@ -50,8 +60,22 @@ export const settingsSectionGroups: SettingsSectionGroup[] = [
     ],
   },
   {
+    labelKey: "settings.agentModels",
+    sections: [
+      { id: "agents", labelKey: "nav.agents", description: "Agent profiles and defaults" },
+      { id: "providers", labelKey: "nav.providers", description: "Model provider connections" },
+      { id: "router", labelKey: "nav.router", description: "Automatic agent routing" },
+      { id: "channels", labelKey: "nav.channels", description: "Messaging channel connections" },
+      { id: "mobile", labelKey: "nav.mobile", description: "Mobile pairing and devices" },
+    ],
+  },
+  {
     labelKey: "settings.capabilities",
     sections: [
+      { id: "plugins", labelKey: "nav.plugins", description: "Installed and discoverable plugins" },
+      { id: "mcp", labelKey: "nav.mcp", description: "MCP server connections" },
+      { id: "skills", labelKey: "nav.skills", description: "Agent skills and registries" },
+      { id: "tools", labelKey: "nav.tools", description: "Tool catalog and permissions" },
       {
         id: "memory",
         labelKey: "nav.memory",
@@ -91,6 +115,11 @@ export const settingsSectionGroups: SettingsSectionGroup[] = [
         id: "system",
         labelKey: "nav.system",
         description: "Updates, metrics, diagnostics, and health",
+      },
+      {
+        id: "logs",
+        labelKey: "nav.logs",
+        description: "Gateway and application logs",
       },
     ],
   },

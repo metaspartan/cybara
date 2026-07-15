@@ -74,6 +74,7 @@ export type TranslationKey =
   | "settings.accessibility"
   | "settings.gateway"
   | "settings.ai"
+  | "settings.agentModels"
   | "settings.voice"
   | "settings.safety"
   | "settings.migration"
@@ -242,6 +243,7 @@ const englishTranslations: TranslationCatalog = {
     "settings.accessibility": "Accessibility",
     "settings.gateway": "Gateway",
     "settings.ai": "AI",
+    "settings.agentModels": "Agents & Models",
     "settings.voice": "Voice",
     "settings.safety": "Safety",
     "settings.migration": "Migration",
@@ -361,6 +363,7 @@ export const translations: { en: TranslationCatalog } & Record<
     "settings.general": "General",
     "settings.gateway": "Puerta de enlace",
     "settings.ai": "IA",
+    "settings.agentModels": "Agentes y modelos",
     "settings.voice": "Voz",
     "settings.safety": "Seguridad",
     "settings.migration": "Migración",
@@ -473,6 +476,7 @@ export const translations: { en: TranslationCatalog } & Record<
     "settings.general": "通用",
     "settings.gateway": "网关",
     "settings.ai": "AI",
+    "settings.agentModels": "智能体与模型",
     "settings.voice": "语音",
     "settings.safety": "安全",
     "settings.migration": "迁移",
@@ -585,6 +589,7 @@ export const translations: { en: TranslationCatalog } & Record<
     "settings.general": "一般",
     "settings.gateway": "ゲートウェイ",
     "settings.ai": "AI",
+    "settings.agentModels": "エージェントとモデル",
     "settings.voice": "音声",
     "settings.safety": "安全",
     "settings.migration": "移行",
@@ -697,6 +702,7 @@ export const translations: { en: TranslationCatalog } & Record<
     "settings.general": "Général",
     "settings.gateway": "Passerelle",
     "settings.ai": "IA",
+    "settings.agentModels": "Agents et modèles",
     "settings.voice": "Voix",
     "settings.safety": "Sécurité",
     "settings.migration": "Migration",

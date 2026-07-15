@@ -10,9 +10,18 @@ interface ModalProps {
   description?: string;
   children: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
+  surface?: "default" | "bare";
 }
 
-export function Modal({ isOpen, onClose, title, description, children, size = "md" }: ModalProps) {
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  description,
+  children,
+  size = "md",
+  surface = "default",
+}: ModalProps) {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -124,12 +133,14 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
           "transform transition-all duration-300 ease-out",
           "animate-in zoom-in-95 slide-in-from-bottom-4",
           sizes[size],
-          "glass-strong"
+          surface === "default" ? "glass-strong" : "bg-transparent shadow-none"
         )}
       >
-        <div className="absolute inset-0 rounded-2xl pointer-events-none">
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/20 via-transparent to-white/10" />
-        </div>
+        {surface === "default" ? (
+          <div className="absolute inset-0 rounded-2xl pointer-events-none">
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/20 via-transparent to-white/10" />
+          </div>
+        ) : null}
 
         {(title || description) && (
           <div className="relative shrink-0 flex items-start justify-between px-6 py-4 border-b border-white/10">
@@ -156,7 +167,14 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
           </div>
         )}
 
-        <div className="relative flex-1 min-h-0 overflow-y-auto p-6">{children}</div>
+        <div
+          className={cn(
+            "relative flex-1 min-h-0 overflow-y-auto",
+            surface === "default" ? "p-6" : "p-0"
+          )}
+        >
+          {children}
+        </div>
       </div>
     </div>,
     document.body

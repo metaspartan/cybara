@@ -13,15 +13,22 @@ export type MobileSettingsTab =
   | "accessibility"
   | "gateway"
   | "ai"
+  | "agents"
+  | "providers"
+  | "router"
+  | "channels"
   | "evals"
   | "memory"
   | "voice"
   | "mcp"
   | "plugins"
+  | "skills"
+  | "tools"
   | "safety"
   | "wallet"
   | "migration"
-  | "system";
+  | "system"
+  | "logs";
 export type MobileSurfaceKey =
   | "agents"
   | "providers"
@@ -73,15 +80,22 @@ export const MOBILE_SETTINGS_TABS: Array<{ label: string; value: MobileSettingsT
   { label: "Accessibility", value: "accessibility" },
   { label: "Gateway", value: "gateway" },
   { label: "AI", value: "ai" },
+  { label: "Agents", value: "agents" },
+  { label: "Providers", value: "providers" },
+  { label: "Router", value: "router" },
+  { label: "Channels", value: "channels" },
   { label: "Lab", value: "evals" },
   { label: "Memory", value: "memory" },
   { label: "Voice", value: "voice" },
   { label: "MCP", value: "mcp" },
   { label: "Plugins", value: "plugins" },
+  { label: "Skills", value: "skills" },
+  { label: "Tools", value: "tools" },
   { label: "Safety", value: "safety" },
   { label: "Wallet", value: "wallet" },
   { label: "Migration", value: "migration" },
   { label: "System", value: "system" },
+  { label: "Logs", value: "logs" },
 ];
 
 export const MOBILE_HOME_CHROME = {
@@ -535,19 +549,7 @@ export const MOBILE_SURFACES: MobileSurfaceKey[] = [
   "monitor",
 ];
 
-export const MOBILE_SETTINGS_SURFACES: MobileSurfaceKey[] = [
-  "agents",
-  "providers",
-  "skills",
-  "tools",
-  "approvals",
-  "channels",
-  "tasks",
-  "memory",
-  "logs",
-  "monitor",
-  "wallet",
-];
+export const MOBILE_SETTINGS_SURFACES: MobileSurfaceKey[] = ["approvals", "tasks", "monitor"];
 
 function countArray(value: unknown[] | undefined): number {
   return Array.isArray(value) ? value.length : 0;

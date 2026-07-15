@@ -3,7 +3,7 @@ import type Browser from "bonjour-service/dist/lib/browser";
 import type Service from "bonjour-service/dist/lib/service";
 import { randomUUID } from "crypto";
 import { writeFileSync } from "fs";
-import { networkInterfaces, tmpdir } from "os";
+import { tmpdir } from "os";
 import { join } from "path";
 import { createLogger } from "../logger";
 import { isWindows } from "../platform";
@@ -17,7 +17,13 @@ import {
   verifyNearbyPairingProof,
   verifyNearbyPeerIdentity,
 } from "./crypto";
-import { isNearbyPrivateAddress, normalizeNearbyAddress, parseNearbyBaseUrl } from "./network";
+import {
+  isNearbyPrivateAddress,
+  nearbyLanInterfaces,
+  normalizeNearbyAddress,
+  parseNearbyBaseUrl,
+  selectNearbyAddress,
+} from "./network";
 import {
   getNearbyIdentity,
   getNearbyIncomingTransfers,
@@ -266,17 +272,33 @@ function windowsFirewallRuleExists(name: string): boolean {
   }
 }
 
+export function createWindowsNearbyFirewallScript(
+  port: number,
+  peerRuleExists: boolean,
+  mdnsRuleExists: boolean
+): string {
+  const commands = ["@echo off"];
+  if (!peerRuleExists) {
+    commands.push(
+      `netsh advfirewall firewall add rule name="${PEER_RULE_NAME}" dir=in action=allow protocol=TCP localport=${port} profile=private,public remoteip=LocalSubnet`
+    );
+  }
+  if (!mdnsRuleExists) {
+    commands.push(
+      `netsh advfirewall firewall add rule name="${MDNS_RULE_NAME}" dir=in action=allow protocol=UDP localport=${MDNS_PORT} profile=private,public remoteip=LocalSubnet`
+    );
+  }
+  commands.push('del "%~f0"');
+  return commands.join("\r\n");
+}
+
 function ensureWindowsFirewallRules(port: number): void {
   if (!isWindows()) return;
-  if (windowsFirewallRuleExists(PEER_RULE_NAME)) return;
+  const peerRuleExists = windowsFirewallRuleExists(PEER_RULE_NAME);
+  const mdnsRuleExists = windowsFirewallRuleExists(MDNS_RULE_NAME);
+  if (peerRuleExists && mdnsRuleExists) return;
   try {
-    const script = [
-      "@echo off",
-      `netsh advfirewall firewall delete rule name="${PEER_RULE_NAME}" >nul 2>&1`,
-      `netsh advfirewall firewall add rule name="${PEER_RULE_NAME}" dir=in action=allow protocol=TCP localport=${port} profile=any`,
-      `netsh advfirewall firewall delete rule name="${MDNS_RULE_NAME}" >nul 2>&1`,
-      `netsh advfirewall firewall add rule name="${MDNS_RULE_NAME}" dir=in action=allow protocol=UDP localport=${MDNS_PORT} profile=any`,
-    ].join("\r\n");
+    const script = createWindowsNearbyFirewallScript(port, peerRuleExists, mdnsRuleExists);
     const scriptPath = join(tmpdir(), `cybara-nearby-firewall-${port}.cmd`);
     writeFileSync(scriptPath, `${script}\r\n`);
     Bun.spawn(
@@ -300,18 +322,6 @@ function ensureWindowsFirewallRules(port: number): void {
       { port, error: safeError(error) }
     );
   }
-}
-
-function externalIpv4Interfaces(): string[] {
-  const addresses: string[] = [];
-  for (const entries of Object.values(networkInterfaces())) {
-    for (const entry of entries || []) {
-      if (entry.family === "IPv4" && !entry.internal && entry.address) {
-        addresses.push(entry.address);
-      }
-    }
-  }
-  return [...new Set(addresses)];
 }
 
 export class NearbyService {
@@ -370,22 +380,7 @@ export class NearbyService {
       fetch: (req, server) => this.handlePeerRequest(req, server),
     });
     ensureWindowsFirewallRules(settings.port);
-    const interfaceIps = externalIpv4Interfaces();
-    const bindTargets: Array<string | null> = interfaceIps.length ? interfaceIps : [null];
-    for (const interfaceIp of bindTargets) {
-      const bonjourOptions: BonjourBindOptions = interfaceIp
-        ? { interface: interfaceIp, bind: "0.0.0.0" }
-        : {};
-      const bonjour = new BonjourWithBindOptions(bonjourOptions, (error: Error) => {
-        log.warn("Nearby discovery error", { error: error.message, interfaceIp });
-      });
-      const browser = bonjour.find({ type: NEARBY_SERVICE_TYPE, protocol: "tcp" });
-      browser.on("up", (service) => this.onServiceUp(service));
-      browser.on("srv-update", (service) => this.onServiceUp(service));
-      browser.on("txt-update", (service) => this.onServiceUp(service));
-      browser.on("down", (service) => this.onServiceDown(service));
-      this.multicast.push({ bonjour, browser, published: null, interfaceIp });
-    }
+    this.startMulticast();
     this.discoveryQueryTimer = setInterval(() => {
       for (const node of this.multicast) {
         try {
@@ -397,9 +392,33 @@ export class NearbyService {
     }, DISCOVERY_QUERY_INTERVAL_MS);
     log.info("Nearby listener started", {
       port: settings.port,
-      interfaces: interfaceIps.length ? interfaceIps.join(",") : "default",
+      interfaces:
+        nearbyLanInterfaces()
+          .map((entry) => entry.address)
+          .join(",") || "default",
     });
     if (settings.autoAdvertise) this.advertise();
+  }
+
+  private startMulticast(): void {
+    const bonjour = new BonjourWithBindOptions({}, (error: Error) => {
+      log.warn("Nearby discovery error", { error: error.message });
+    });
+    const browser = bonjour.find({ type: NEARBY_SERVICE_TYPE, protocol: "tcp" });
+    browser.on("up", (service) => this.onServiceUp(service));
+    browser.on("srv-update", (service) => this.onServiceUp(service));
+    browser.on("txt-update", (service) => this.onServiceUp(service));
+    browser.on("down", (service) => this.onServiceDown(service));
+    this.multicast.push({ bonjour, browser, published: null, interfaceIp: null });
+  }
+
+  private stopMulticast(): void {
+    for (const node of this.multicast) {
+      node.published?.stop();
+      node.browser.stop();
+      node.bonjour.destroy();
+    }
+    this.multicast = [];
   }
 
   private advertise(): void {
@@ -455,12 +474,7 @@ export class NearbyService {
     if (this.discoveryQueryTimer) clearInterval(this.discoveryQueryTimer);
     this.discoveryQueryTimer = null;
     this.discoverableUntilMs = 0;
-    for (const node of this.multicast) {
-      node.published?.stop();
-      node.browser.stop();
-      node.bonjour.destroy();
-    }
-    this.multicast = [];
+    this.stopMulticast();
     this.server?.stop(true);
     this.server = null;
     this.discovered.clear();
@@ -478,6 +492,17 @@ export class NearbyService {
       settings.discoveryMinutes * 60 * 1000
     );
     return new Date(this.discoverableUntilMs).toISOString();
+  }
+
+  async refreshDiscovery(): Promise<void> {
+    if (!getNearbySettings().enabled) throw new Error("Nearby Cybara is disabled");
+    await this.start();
+    this.discovered.clear();
+    this.stopMulticast();
+    this.startMulticast();
+    const settings = getNearbySettings();
+    if (settings.autoAdvertise || this.discoverableUntilMs > Date.now()) this.advertise();
+    for (const node of this.multicast) node.browser.update();
   }
 
   stopAdvertising(): void {
@@ -647,6 +672,9 @@ export class NearbyService {
         this.discoverableUntilMs > Date.now()
           ? new Date(this.discoverableUntilMs).toISOString()
           : null,
+      localAddresses: nearbyLanInterfaces().map(
+        (entry) => `http://${entry.address}:${getNearbySettings().port}`
+      ),
       discoveredPeers: [...this.discovered.values()].sort((a, b) => a.name.localeCompare(b.name)),
       pairedPeers: peers.map(({ sharedKey, publicKey, ...peer }) => peer),
       pairings: [...this.pairings.values()]
@@ -683,7 +711,7 @@ export class NearbyService {
         return jsonResponse(this.handlePairStatus(await readJson(req)));
       }
       if (req.method === "POST" && url.pathname === "/v1/transfer") {
-        return jsonResponse(this.handleTransfer(await readJson(req)));
+        return jsonResponse(await this.handleTransfer(await readJson(req)));
       }
       return jsonResponse({ error: "Not found" }, 404);
     } catch (error) {
@@ -820,7 +848,7 @@ export class NearbyService {
     };
   }
 
-  private handleTransfer(value: unknown): Record<string, unknown> {
+  private async handleTransfer(value: unknown): Promise<Record<string, unknown>> {
     if (!isNearbyEncryptedEnvelope(value)) throw new Error("Invalid nearby message");
     const envelope = value;
     const peer = getNearbyPeers().find((candidate) => candidate.id === envelope.senderId);
@@ -829,6 +857,24 @@ export class NearbyService {
       throw new Error("Nearby message was already received");
     const payload = decryptNearbyEnvelope(envelope, peer.sharedKey);
     if (!isNearbySessionBundle(payload)) throw new Error("Unsupported nearby payload");
+    if (peer.syncEnabled) {
+      try {
+        const imported = await importNearbySessionBundle(payload, null);
+        this.replayIds.set(envelope.requestId, Date.now());
+        return {
+          accepted: true,
+          imported: true,
+          transferId: payload.transferId,
+          sessionId: imported.sessionId,
+        };
+      } catch (error) {
+        log.warn("Automatic nearby import failed; transfer requires approval", {
+          error: safeError(error),
+          peerId: peer.id,
+          transferId: payload.transferId,
+        });
+      }
+    }
     const transfers = getNearbyIncomingTransfers();
     if (!transfers.some((transfer) => transfer.bundle.transferId === payload.transferId)) {
       const incoming: NearbyIncomingTransfer = {
@@ -854,10 +900,8 @@ export class NearbyService {
     ) {
       return;
     }
-    const baseUrl = [...(service.addresses || [])]
-      .sort((left, right) => Number(left.includes(":")) - Number(right.includes(":")))
-      .map((address) => addressUrl(address, service.port))
-      .find((value): value is string => typeof value === "string");
+    const selectedAddress = selectNearbyAddress(service.addresses || []);
+    const baseUrl = selectedAddress ? addressUrl(selectedAddress, service.port) : null;
     if (!baseUrl) return;
     this.discovered.set(txt.id, {
       id: txt.id,

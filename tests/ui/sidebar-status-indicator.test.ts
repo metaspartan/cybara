@@ -16,20 +16,17 @@ function readSidebarSource(): string {
 }
 
 describe("Sidebar status indicator behavior", () => {
-  test("keeps Sessions under Developer and leaves Chat as its own quick entry", () => {
+  test("keeps chat history in the main sidebar and Sessions in More", () => {
     const source = readSidebarSource();
-    const developerStart = source.indexOf('id: "developer"');
-    const chatStart = source.indexOf('id: "chat"');
-    const sessionsItem = source.indexOf(
+
+    expect(source).toContain("const sidebarDestinations");
+    expect(source).toContain('to="/chat?fresh=1"');
+    expect(source).toContain(
       '{ path: "/sessions", icon: MessagesSquare, labelKey: "nav.sessions" }'
     );
-    const chatItem = source.indexOf('{ path: "/chat", icon: MessageSquare, labelKey: "nav.chat" }');
-
-    expect(developerStart).toBeGreaterThan(-1);
-    expect(chatStart).toBeGreaterThan(developerStart);
-    expect(sessionsItem).toBeGreaterThan(developerStart);
-    expect(sessionsItem).toBeLessThan(chatStart);
-    expect(chatItem).toBeGreaterThan(chatStart);
+    expect(source).toContain("<SessionsPanel");
+    expect(source).toContain('placement="main"');
+    expect(source).not.toContain('id: "developer"');
   });
 
   test("treats every in-turn status event as activity so the indicator never flickers", () => {

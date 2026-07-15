@@ -200,9 +200,12 @@ describe("native macOS shell wiring", () => {
       expect(source).toContain(gatewayRoute);
     }
 
-    expect(contentView).toContain('Section(NativeI18n.t("nav.developer"))');
-    expect(contentView).toContain('Section(NativeI18n.t("nav.system"))');
-    expect(contentView).toContain("ForEach([NativeDestination.chat, .voice])");
+    expect(contentView).toContain('Label("New Chat", systemImage: "square.and.pencil")');
+    expect(contentView).toContain("ForEach([NativeDestination.dashboard, .usage])");
+    expect(contentView).toContain("ForEach([NativeDestination.ide, .voice, .evals");
+    expect(contentView).not.toContain(".buttonStyle(.borderedProminent)");
+    expect(contentView).toContain('Label("More", systemImage: "ellipsis")');
+    expect(contentView).toContain("NativePrimarySessionList(");
     expect(contentView).toContain("destination = .settings");
     expect(contentView).toContain(".navigationSplitViewStyle(.balanced)");
     expect(nativeScreens).toContain("GridItem(.adaptive(minimum: 168)");
@@ -298,9 +301,8 @@ describe("native macOS shell wiring", () => {
     const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
 
-    expect(settings).toContain(
-      'memoryTab.tabItem { Label(NativeI18n.t("nav.memory"), systemImage: "memorychip") }'
-    );
+    expect(settings).toContain("case .memory:");
+    expect(settings).toContain("MemoryScreen(client: client)");
     for (const provider of ["supermemory", "mem0", "honcho", "openviking", "hindsight"]) {
       expect(settings).toContain(`"${provider}"`);
     }
@@ -320,22 +322,33 @@ describe("native macOS shell wiring", () => {
   test("native settings follows the shared grouped settings navigation", () => {
     const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
 
-    for (const label of [
-      'Label(NativeI18n.t("settings.general"), systemImage: "switch.2")',
-      'Label(NativeI18n.t("settings.accessibility"), systemImage: "accessibility")',
-      'Label(NativeI18n.t("settings.gateway"), systemImage: "server.rack")',
-      'Label(NativeI18n.t("settings.ai"), systemImage: "brain")',
-      'Label(NativeI18n.t("nav.memory"), systemImage: "memorychip")',
-      'Label(NativeI18n.t("settings.voice"), systemImage: "waveform")',
-      'Label(NativeI18n.t("settings.safety"), systemImage: "slider.horizontal.3")',
-      'Label(NativeI18n.t("nav.wallet"), systemImage: "creditcard")',
-      'Label(NativeI18n.t("settings.migration"), systemImage: "folder.badge.gearshape")',
-      'Label(NativeI18n.t("nav.system"), systemImage: "square.grid.3x3")',
+    for (const tab of [
+      "general",
+      "accessibility",
+      "gateway",
+      "model",
+      "agents",
+      "providers",
+      "router",
+      "channels",
+      "mobile",
+      "plugins",
+      "mcp",
+      "skills",
+      "tools",
+      "memory",
+      "speech",
+      "features",
+      "wallet",
+      "migration",
+      "logs",
+      "advanced",
     ]) {
-      expect(settings).toContain(label);
+      expect(settings).toContain(`case ${tab}`);
     }
 
-    expect(settings).toContain("WalletScreen(client: client).tabItem");
+    expect(settings).toContain("ForEach(NativeSettingsTab.allCases)");
+    expect(settings).toContain("case .wallet: WalletScreen(client: client)");
     expect(settings).toContain("appearanceSettingsCard");
     expect(settings).not.toContain("appearanceTab.tabItem");
     expect(settings).not.toContain('Label("Advanced"');
@@ -432,7 +445,7 @@ describe("native macOS shell wiring", () => {
     expect(gatewayClient).toContain('request("api/migrations/preview", method: "POST"');
     expect(gatewayClient).toContain("func runMigration(body: Data)");
     expect(gatewayClient).toContain('request("api/migrations/run", method: "POST"');
-    expect(settings).toContain('migrationTab.tabItem { Label(NativeI18n.t("settings.migration")');
+    expect(settings).toContain("case .migration: migrationTab");
     expect(settings).toContain('Text("OpenClaw").tag("openclaw")');
     expect(settings).toContain('Text("Hermes").tag("hermes")');
     expect(settings).toContain("migrationImportSecrets");
@@ -785,7 +798,7 @@ describe("native macOS shell wiring", () => {
   test("native chat sidebar groups sessions compactly by workspace", () => {
     const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
 
-    expect(nativeScreens).toContain("private struct NativeSessionGroup");
+    expect(nativeScreens).toContain("struct NativeSessionGroup");
     expect(nativeScreens).toContain("collapsedSessionGroupIDs");
     expect(nativeScreens).toContain("toggleSessionGroup(group.id)");
     expect(nativeScreens).toContain("if $0.kind == .workspace && $1.kind == .unassigned");

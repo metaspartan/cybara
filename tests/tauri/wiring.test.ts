@@ -12,7 +12,11 @@ describe("Tauri wiring", () => {
     const confPath = join(ROOT_DIR, "src-tauri", "tauri.conf.json");
     const conf = JSON.parse(readFileSync(confPath, "utf8")) as {
       build?: { frontendDist?: string; beforeDevCommand?: string; beforeBuildCommand?: string };
-      bundle?: { resources?: string[] | Record<string, string>; externalBin?: string[] };
+      bundle?: {
+        resources?: string[] | Record<string, string>;
+        externalBin?: string[];
+        macOS?: { infoPlist?: string; entitlements?: string };
+      };
     };
 
     expect(conf.build?.frontendDist).toBe("../ui/dist");
@@ -28,6 +32,14 @@ describe("Tauri wiring", () => {
       });
     }
     expect(conf.bundle?.externalBin).toContain("bin/cybara");
+    expect(conf.bundle?.macOS?.infoPlist).toBe("Info.plist");
+    expect(conf.bundle?.macOS?.entitlements).toBe("entitlements.plist");
+    const infoPlist = readFileSync(join(ROOT_DIR, "src-tauri", "Info.plist"), "utf8");
+    const entitlements = readFileSync(join(ROOT_DIR, "src-tauri", "entitlements.plist"), "utf8");
+    expect(infoPlist).toContain("NSLocalNetworkUsageDescription");
+    expect(infoPlist).toContain("_cybara-nearby._tcp");
+    expect(entitlements).toContain("com.apple.security.network.client");
+    expect(entitlements).toContain("com.apple.security.network.server");
   });
 
   test("stages the freshly built UI that the packaged sidecar serves", () => {

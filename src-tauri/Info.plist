@@ -4,5 +4,11 @@
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Cybara uses the microphone for voice conversations and dictation when you choose to record.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Cybara discovers and securely pairs with your other Cybara installations on the local network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_cybara-nearby._tcp</string>
+	</array>
 </dict>
 </plist>

@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Laptop, Link2, Network, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Laptop,
+  Link2,
+  Network,
+  RefreshCw,
+  ShieldCheck,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -107,6 +117,15 @@ export function NearbySettingsSection() {
       () => nearbyApi.pairByAddress(baseUrl),
       "Verify the code on both devices"
     );
+  }
+
+  async function copyAddress(address: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(address);
+      addToast("success", "Nearby address copied");
+    } catch {
+      addToast("error", "Could not copy the Nearby address");
+    }
   }
 
   return (
@@ -239,7 +258,42 @@ export function NearbySettingsSection() {
               {status?.running ? "Listening privately" : "Stopped"}
             </Badge>
             {advertising ? <Badge variant="info">Discoverable now</Badge> : null}
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy !== null}
+              isLoading={busy === "refresh"}
+              onClick={() =>
+                void action("refresh", () => nearbyApi.refresh(), "Nearby devices refreshed")
+              }
+            >
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </Button>
           </div>
+        ) : null}
+
+        {settings.enabled && status?.localAddresses?.length ? (
+          <section className="space-y-2">
+            <div>
+              <h4 className="text-sm font-medium text-[var(--text-primary)]">This device</h4>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                Use one of these addresses on another device when automatic discovery is blocked.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(status.localAddresses || []).map((address) => (
+                <button
+                  key={address}
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-md border border-[var(--surface-border)] bg-[var(--surface-panel)] px-2.5 py-1.5 font-mono text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)]"
+                  onClick={() => void copyAddress(address)}
+                >
+                  {address.replace(/^https?:\/\//, "")}
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              ))}
+            </div>
+          </section>
         ) : null}
 
         {showPeers ? (
@@ -388,7 +442,7 @@ export function NearbySettingsSection() {
             {status.pairedPeers.map((peer) => (
               <div
                 key={peer.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <Laptop className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
@@ -401,21 +455,41 @@ export function NearbySettingsSection() {
                     </p>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  title="Remove paired device"
-                  disabled={busy !== null}
-                  onClick={() =>
-                    void action(
-                      `remove:${peer.id}`,
-                      () => nearbyApi.removePeer(peer.id),
-                      "Paired device removed"
-                    )
-                  }
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-xs font-medium text-[var(--text-secondary)]">Auto-import</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">Skip approval for chats</p>
+                  </div>
+                  <Switch
+                    checked={peer.syncEnabled}
+                    disabled={busy !== null}
+                    ariaLabel={`Automatically import chats from ${peer.name}`}
+                    onChange={(syncEnabled) =>
+                      void action(
+                        `trust:${peer.id}`,
+                        () => nearbyApi.updatePeer(peer.id, syncEnabled),
+                        syncEnabled
+                          ? `Chats from ${peer.name} will import automatically`
+                          : `Chats from ${peer.name} will require approval`
+                      )
+                    }
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title="Remove paired device"
+                    disabled={busy !== null}
+                    onClick={() =>
+                      void action(
+                        `remove:${peer.id}`,
+                        () => nearbyApi.removePeer(peer.id),
+                        "Paired device removed"
+                      )
+                    }
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             ))}
           </section>

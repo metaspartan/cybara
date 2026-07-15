@@ -1,6 +1,7 @@
 export interface InitialChatRoute {
   agentId: string | null;
   sessionId: string | null;
+  workspaceDir: string | null;
   startFresh: boolean;
 }
 
@@ -14,6 +15,7 @@ export function parseInitialChatRoute(search: string): InitialChatRoute {
   return {
     agentId: normalizedParam(params, "agent"),
     sessionId: normalizedParam(params, "session"),
+    workspaceDir: normalizedParam(params, "workspace"),
     startFresh: params.get("fresh") === "1",
   };
 }

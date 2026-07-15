@@ -107,17 +107,17 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(source).toContain('providerPlanWindowDisplay(plan, "rolling_week")');
   });
 
-  test("usage page is conditional and renders compact automatic provider limits", () => {
+  test("usage page is a primary destination and renders compact automatic provider limits", () => {
     const app = read("ui/src/App.tsx");
     const sidebar = read("ui/src/components/layout/Sidebar.tsx");
     const usage = read("ui/src/pages/Usage.tsx");
 
     expect(app).toContain('path="/usage"');
     expect(app).toContain("element={<Usage />}");
-    expect(sidebar).toContain('path: "/usage"');
-    expect(sidebar).toContain("requiresUsage: true");
-    expect(sidebar).toContain("providerPlansApi.availability()");
-    expect(sidebar).toContain("setUsageAvailable(response.data?.available === true)");
+    expect(sidebar).toContain('{ path: "/usage", icon: Gauge, labelKey: "nav.usage" }');
+    expect(sidebar).not.toContain("requiresUsage");
+    expect(sidebar).not.toContain("providerPlansApi.availability()");
+    expect(sidebar).not.toContain("setUsageAvailable");
     expect(usage).toContain('providerPlanWindowDisplay(plan, "rolling_5h")');
     expect(usage).toContain('providerPlanWindowDisplay(plan, "rolling_week")');
     expect(usage).toContain("providerPlanUsageClasses(usage)");

@@ -378,6 +378,7 @@ export interface MobileNearbySettings {
   displayName: string;
   port: number;
   discoveryMinutes: number;
+  autoAdvertise: boolean;
 }
 
 export interface MobileNearbyStatus {
@@ -385,6 +386,7 @@ export interface MobileNearbyStatus {
   identity: { id: string; fingerprint: string };
   running: boolean;
   discoverableUntil: string | null;
+  localAddresses: string[];
   discoveredPeers: Array<{
     id: string;
     name: string;
@@ -3251,10 +3253,21 @@ export class CybaraMobileApi {
     await this.request<unknown>("/api/nearby/discoverable", { method: "DELETE" });
   }
 
+  async refreshNearbyDiscovery(): Promise<void> {
+    await this.request<unknown>("/api/nearby/refresh", { method: "POST" });
+  }
+
   async pairNearby(peerId: string, baseUrl: string): Promise<void> {
     await this.request<unknown>("/api/nearby/pair", {
       method: "POST",
       body: JSON.stringify({ peerId, baseUrl }),
+    });
+  }
+
+  async pairNearbyByAddress(baseUrl: string): Promise<void> {
+    await this.request<unknown>("/api/nearby/pair-address", {
+      method: "POST",
+      body: JSON.stringify({ baseUrl }),
     });
   }
 
@@ -3267,6 +3280,13 @@ export class CybaraMobileApi {
   async removeNearbyPeer(peerId: string): Promise<void> {
     await this.request<unknown>(`/api/nearby/peers/${encodeURIComponent(peerId)}`, {
       method: "DELETE",
+    });
+  }
+
+  async updateNearbyPeer(peerId: string, syncEnabled: boolean): Promise<void> {
+    await this.request<unknown>(`/api/nearby/peers/${encodeURIComponent(peerId)}`, {
+      method: "PUT",
+      body: JSON.stringify({ syncEnabled }),
     });
   }
 

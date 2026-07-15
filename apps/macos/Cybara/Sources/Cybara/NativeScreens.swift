@@ -412,7 +412,7 @@ struct DashboardScreen: View {
 
 // ─── Chat ────────────────────────────────────────────────────────────────────
 
-private struct NativeSessionGroup: Identifiable {
+struct NativeSessionGroup: Identifiable {
     enum Kind: Equatable {
         case pinned
         case workspace
@@ -437,7 +437,7 @@ private func nativeWorkspaceSectionLabel(_ path: String?) -> String {
     return normalized.split(separator: "/").last.map(String.init) ?? normalized
 }
 
-private func nativeSessionGroups(
+func nativeSessionGroups(
     _ sessions: [GatewaySession],
     pinnedWorkspaceGroupIDs: Set<String> = []
 ) -> [NativeSessionGroup] {
@@ -513,6 +513,7 @@ private func nativeMergeReloadedSessionMessages(
 struct ChatScreen: View {
     let client: GatewayClient
     @Binding var selectedSessionID: String?
+    var showsSessionList = true
     var openCybaraIDEWorkspace: (String) -> Void = { _ in }
     @Environment(\.cybaraAccent) private var accentTint
 
@@ -594,8 +595,10 @@ struct ChatScreen: View {
 
     var body: some View {
         HSplitView {
-            sessionList
-                .frame(minWidth: 220, idealWidth: 260, maxWidth: 340)
+            if showsSessionList {
+                sessionList
+                    .frame(minWidth: 220, idealWidth: 260, maxWidth: 340)
+            }
             transcript
                 .frame(minWidth: 380, maxWidth: .infinity)
             if showWorkspacePanel {

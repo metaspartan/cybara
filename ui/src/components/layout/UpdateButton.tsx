@@ -8,7 +8,10 @@ function ProgressDonut({ progress }: { progress: number }) {
   const clamped = Math.max(0, Math.min(1, progress));
   const indeterminate = clamped <= 0;
   return (
-    <svg viewBox="0 0 18 18" className={cn("h-4 w-4 -rotate-90", indeterminate && "update-spin")}>
+    <svg
+      viewBox="0 0 18 18"
+      className={cn("h-3.5 w-3.5 -rotate-90", indeterminate && "update-spin")}
+    >
       <circle
         cx="9"
         cy="9"
@@ -76,24 +79,24 @@ export function UpdateButton({ collapsed }: { collapsed?: boolean }) {
       aria-label={available ? `Update to ${available.version}` : "Update"}
       title={title}
       className={cn(
-        "update-pill group flex h-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border text-xs font-medium transition-all duration-300",
+        "update-pill group flex h-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border text-[11px] font-medium transition-all duration-300",
         done ? "update-pop-shell" : "",
         done
           ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
           : error
             ? "border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/15"
             : "border-[rgba(var(--accent-primary),0.4)] bg-[rgba(var(--accent-primary),0.14)] text-[var(--text-primary)] hover:bg-[rgba(var(--accent-primary),0.22)]",
-        collapsed ? "w-9" : "px-2.5",
+        collapsed ? "w-8" : "px-2",
         busy && "cursor-default"
       )}
     >
-      <span className="relative flex h-4 w-4 flex-shrink-0 items-center justify-center">
+      <span className="relative flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center">
         {busy ? (
           <ProgressDonut progress={progress} />
         ) : done ? (
-          <Check className="update-pop h-4 w-4" />
+          <Check className="update-pop h-3.5 w-3.5" />
         ) : (
-          <Download className="h-4 w-4" />
+          <Download className="h-3.5 w-3.5" />
         )}
       </span>
       {!collapsed && (

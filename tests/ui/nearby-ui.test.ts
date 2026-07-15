@@ -23,6 +23,10 @@ describe("nearby UI", () => {
     expect(source).toContain("settings.autoAdvertise");
     expect(source).toContain("Connect by LAN address");
     expect(source).toContain("nearbyApi.pairByAddress");
+    expect(source).toContain("nearbyApi.updatePeer");
+    expect(source).toContain("Auto-import");
+    expect(source).toContain("status.localAddresses");
+    expect(source).toContain("nearbyApi.refresh");
     expect(source).toContain("queryClient.setQueryData(nearbyStatusQueryKey");
   });
 
@@ -34,19 +38,23 @@ describe("nearby UI", () => {
     expect(source).toContain("Send chat to nearby Cybara");
     expect(source).toContain("nearbyApi.sendSession");
     expect(source).toContain("Chat sent for approval on the other device");
+    expect(source).toContain("Received chats");
+    expect(source).toContain("nearbyApi.acceptTransfer");
     expect(source).toContain(
       "nearbyEnabled={Boolean(sessionId && nearbyStatus?.settings.enabled)}"
     );
     expect(source).toContain("useNearbyStatus(Boolean(sessionId))");
   });
 
-  test("gateway settings separate runtime, connection, storage, and nearby controls", () => {
+  test("gateway settings separate runtime, connection, storage, telemetry, and nearby controls", () => {
     const source = readFileSync(join(root, "ui/src/pages/Settings.tsx"), "utf8");
     expect(source).toContain('aria-label="Gateway settings"');
     expect(source).toContain('{ id: "overview", label: "Overview"');
     expect(source).toContain('{ id: "connection", label: "Connection"');
     expect(source).toContain('{ id: "storage", label: "Storage"');
+    expect(source).toContain('{ id: "telemetry", label: "Telemetry"');
     expect(source).toContain('{ id: "nearby", label: "Nearby"');
+    expect(source).toContain('panel === "telemetry" ? <ExternalTelemetrySettings />');
   });
 
   test("mobile chat keeps nearby sharing in the session settings sheet", () => {
