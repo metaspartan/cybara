@@ -91,23 +91,30 @@ describe("mobile live chat cache", () => {
     const sessionId = `mobile-live-${Date.now()}`;
     const live = liveAssistantMessage(sessionId, null, 1783015200000);
 
-    writeCachedMobileLiveAssistant(sessionId, {
-      ...live,
-      content: "partial answer",
-      processActivities: [
-        {
-          id: "activity-1",
-          phase: "start",
-          text: "Running bun test",
-          timestamp: 1783015200100,
-          toolName: "exec_command",
-        },
-      ],
-    });
+    writeCachedMobileLiveAssistant(
+      sessionId,
+      {
+        ...live,
+        content: "partial answer",
+        processActivities: [
+          {
+            id: "activity-1",
+            phase: "start",
+            text: "Running bun test",
+            timestamp: 1783015200100,
+            toolName: "exec_command",
+          },
+        ],
+      },
+      1783015200000,
+      { runId: "run-1", sequence: 7 }
+    );
 
     const cached = readCachedMobileLiveAssistant(sessionId);
     expect(cached?.message.content).toBe("partial answer");
     expect(cached?.message.processActivities?.[0]?.text).toBe("Running bun test");
+    expect(cached?.runId).toBe("run-1");
+    expect(cached?.sequence).toBe(7);
 
     clearCachedMobileLiveAssistant(sessionId);
     expect(readCachedMobileLiveAssistant(sessionId)).toBeNull();

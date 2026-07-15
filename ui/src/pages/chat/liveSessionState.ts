@@ -5,7 +5,15 @@ export interface CachedLiveSessionState {
   activities: LiveActivityItem[];
   currentStep: string | null;
   streamingContent: string | null;
+  runId: string | null;
+  startedAtMs: number | null;
   updatedAt: number;
+}
+
+interface CachedLiveSessionWrite extends Omit<CachedLiveSessionState, "updatedAt" | "runId" | "startedAtMs"> {
+  runId?: string | null;
+  startedAtMs?: number | null;
+  updatedAt?: number;
 }
 
 const LIVE_SESSION_STATE_STALE_MS = 15 * 60 * 1000;
@@ -35,13 +43,17 @@ export function readCachedLiveSessionState(
 
 export function writeCachedLiveSessionState(
   sessionId: string | null | undefined,
-  state: Omit<CachedLiveSessionState, "updatedAt"> & { updatedAt?: number }
+  state: CachedLiveSessionWrite
 ): void {
   const key = normalizeSessionId(sessionId);
   if (!key) return;
+  const previous = liveSessionStateCache.get(key);
   liveSessionStateCache.set(key, {
     ...state,
     activities: state.activities.map((activity) => ({ ...activity })),
+    runId: state.runId === undefined ? previous?.runId ?? null : state.runId,
+    startedAtMs:
+      state.startedAtMs === undefined ? previous?.startedAtMs ?? null : state.startedAtMs,
     updatedAt: state.updatedAt ?? Date.now(),
   });
 }

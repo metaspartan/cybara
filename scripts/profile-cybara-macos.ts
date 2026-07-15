@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { isCybaraProfileProcess } from "./cybara-process-match";
 
 interface ProcessSample {
   pid: number;
@@ -49,22 +50,6 @@ function outputPath(): string | null {
   return Bun.argv[index + 1] || null;
 }
 
-function includeProcess(command: string): boolean {
-  const lower = command.toLowerCase();
-  if (lower.includes("profile-cybara-macos")) return false;
-  if (lower.includes("/.cybara/browser/")) return true;
-  if (lower.includes("cybaranative.app")) return true;
-  if (lower.includes("/cybara.app/")) return true;
-  if (lower.includes("bun src/index.ts")) return true;
-  if (lower.includes("bun dist/index.js")) return true;
-  if (lower.includes("/documents/github/cybara/") && lower.includes("vite")) return true;
-  if (lower.includes("/documents/github/cybara/") && lower.includes("bun src/index.ts"))
-    return true;
-  if (lower.includes("/documents/github/cybara/") && lower.includes("dist/index.js")) return true;
-  if (lower.includes("/documents/github/cybara/") && lower.includes("cybara")) return true;
-  return false;
-}
-
 function parsePsLine(line: string): ProcessSample | null {
   const match = line.trim().match(/^(\d+)\s+(\d+)\s+([\d.]+)\s+(\d+)\s+(.+)$/);
   if (!match) return null;
@@ -76,7 +61,7 @@ function parsePsLine(line: string): ProcessSample | null {
   if (!Number.isFinite(pid) || !Number.isFinite(ppid) || !Number.isFinite(rssBytes)) {
     return null;
   }
-  if (!includeProcess(command)) return null;
+  if (!isCybaraProfileProcess(command, process.cwd())) return null;
   return { pid, ppid, cpuPercent, rssBytes, command };
 }
 

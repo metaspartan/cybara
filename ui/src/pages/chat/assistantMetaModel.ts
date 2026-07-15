@@ -115,11 +115,25 @@ export function resolveWorkedDurationMs(
   toolCalls?: ToolCall[],
   options?: WorkedDurationOptions
 ): number | undefined {
-  const activityTimestamps = (processActivities ?? [])
-    .map((activity) => activity.timestamp)
-    .filter((timestamp): timestamp is number => Number.isFinite(timestamp));
   const assistantTimestampMs = parseTimestampMs(options?.assistantTimestamp);
   const turnStartedAtMs = options?.turnStartedAtMs;
+  const withinTurnBounds = (timestamp: number): boolean => {
+    if (!Number.isFinite(timestamp)) return false;
+    if (
+      typeof turnStartedAtMs === "number" &&
+      Number.isFinite(turnStartedAtMs) &&
+      turnStartedAtMs > 0 &&
+      timestamp + 1_000 < turnStartedAtMs
+    ) {
+      return false;
+    }
+    return !(
+      typeof assistantTimestampMs === "number" && timestamp > assistantTimestampMs + 1_000
+    );
+  };
+  const activityTimestamps = (processActivities ?? [])
+    .map((activity) => activity.timestamp)
+    .filter((timestamp): timestamp is number => withinTurnBounds(timestamp));
   const granularDurationCandidates: number[] = [];
   const addGranularDuration = (value: number | undefined): void => {
     if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return;
@@ -135,12 +149,15 @@ export function resolveWorkedDurationMs(
 
   const toolStartTimestamps = (toolCalls ?? [])
     .map((toolCall) => parseTimestampMs(toolCall.started_at))
-    .filter((timestamp): timestamp is number => typeof timestamp === "number");
+    .filter(
+      (timestamp): timestamp is number =>
+        typeof timestamp === "number" && withinTurnBounds(timestamp)
+    );
   if (toolStartTimestamps.length > 0) {
     const minStart = Math.min(...toolStartTimestamps);
     const maxEnd = (toolCalls ?? []).reduce((currentMax, toolCall) => {
       const startedAt = parseTimestampMs(toolCall.started_at);
-      if (typeof startedAt !== "number") return currentMax;
+      if (typeof startedAt !== "number" || !withinTurnBounds(startedAt)) return currentMax;
       const duration = parseDurationMs(toolCall.duration);
       return Math.max(currentMax, duration > 0 ? startedAt + duration : startedAt);
     }, minStart);

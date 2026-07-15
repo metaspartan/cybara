@@ -270,6 +270,7 @@ import { externalTelemetryRoutes } from "./routes/external-telemetry";
 import { toolCapabilityPolicyRoutes } from "./routes/tool-capability-policy";
 import { browserSupervisionRoutes } from "./routes/browser-supervision";
 import { nearbyRoutes } from "./routes/nearby";
+import { createRouteMatcher } from "./route-matcher";
 import {
   validateProviderBaseUrlShape,
   validateProviderCredentialShape,
@@ -3291,6 +3292,7 @@ const routes: Record<string, RouteHandler> = {
 
 cacheMetricsRoutes(routes);
 prewarmMetricsRoutes(routes);
+const routeMatcher = createRouteMatcher(Object.keys(routes));
 
 function checkDatabaseHealth(): { status: string; error?: string } {
   try {
@@ -3620,64 +3622,5 @@ function findRoute(
   method: string,
   path: string
 ): { routeKey: string | null; params: Record<string, string> } {
-  const keys = Object.keys(routes);
-  let bestMatch: {
-    routeKey: string;
-    params: Record<string, string>;
-    dynamicSegments: number;
-    staticSegments: number;
-  } | null = null;
-
-  for (const key of keys) {
-    const [routeMethod, routePath] = key.split(" ");
-    if (routeMethod !== method) continue;
-
-    const routeParts = routePath.split("/");
-    const actualParts = path.split("/");
-
-    if (routeParts.length !== actualParts.length) continue;
-
-    const localParams: Record<string, string> = {};
-    let dynamicSegments = 0;
-    let staticSegments = 0;
-    let match = true;
-    for (let i = 0; i < routeParts.length; i++) {
-      if (routeParts[i].startsWith(":")) {
-        localParams[routeParts[i].slice(1)] = actualParts[i];
-        dynamicSegments += 1;
-      } else if (routeParts[i] !== actualParts[i]) {
-        match = false;
-        break;
-      } else {
-        staticSegments += 1;
-      }
-    }
-
-    if (!match) continue;
-
-    if (!bestMatch) {
-      bestMatch = {
-        routeKey: key,
-        params: localParams,
-        dynamicSegments,
-        staticSegments,
-      };
-      continue;
-    }
-
-    if (
-      dynamicSegments < bestMatch.dynamicSegments ||
-      (dynamicSegments === bestMatch.dynamicSegments && staticSegments > bestMatch.staticSegments)
-    ) {
-      bestMatch = {
-        routeKey: key,
-        params: localParams,
-        dynamicSegments,
-        staticSegments,
-      };
-    }
-  }
-
-  if (!bestMatch) return { routeKey: null, params: {} };
-  return { routeKey: bestMatch.routeKey, params: bestMatch.params };
+  return routeMatcher.match(method, path);
 }

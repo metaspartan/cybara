@@ -90,6 +90,21 @@ describe("chat assistant metadata", () => {
     expect(resolveWorkedDurationMs(undefined, undefined)).toBeUndefined();
   });
 
+  test("ignores stale activity timestamps from an earlier steered run", () => {
+    const turnStartedAtMs = 7_200_000;
+    expect(
+      resolveWorkedDurationMs(
+        [
+          { id: "stale", phase: "result", text: "Old work", timestamp: 1_000 },
+          { id: "start", phase: "start", text: "New work", timestamp: 7_205_000 },
+          { id: "done", phase: "result", text: "Done", timestamp: 7_230_000 },
+        ],
+        undefined,
+        { assistantTimestamp: "7230000", turnStartedAtMs }
+      )
+    ).toBe(25_000);
+  });
+
   test("collects only artifact mutation results", () => {
     const artifacts = collectMessageArtifacts(
       [

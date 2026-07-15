@@ -51,7 +51,7 @@ function invalidateSessionDetail(queryClient: QueryClient, sessionId?: string | 
 }
 
 export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boolean }) {
-  const activeRequestAbortRef = useRef<AbortController | null>(null);
+  const activeRequestControllersRef = useRef<Map<string, AbortController>>(new Map());
   const queryClient = useQueryClient();
   const [state, setState] = useState<ChatState>({
     messages: [],
@@ -72,14 +72,12 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
   ) => {
     const queueMode = options?.queueMode;
     const queuedSend = !!queueMode;
-    if (!queuedSend) {
-      activeRequestAbortRef.current?.abort();
-    }
-    const controller = new AbortController();
     const requestSessionId =
       options?.sessionId ?? state.sessionId ?? (!queuedSend ? crypto.randomUUID() : null);
-    if (!queuedSend) {
-      activeRequestAbortRef.current = controller;
+    const controller = new AbortController();
+    if (!queuedSend && requestSessionId) {
+      activeRequestControllersRef.current.get(requestSessionId)?.abort();
+      activeRequestControllersRef.current.set(requestSessionId, controller);
     }
     const userMessage: ChatMessage = {
       role: "user",
@@ -136,7 +134,11 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
             );
 
       if (response.success && response.data) {
-        if (!queuedSend && activeRequestAbortRef.current !== controller) {
+        if (
+          !queuedSend &&
+          requestSessionId &&
+          activeRequestControllersRef.current.get(requestSessionId) !== controller
+        ) {
           return null;
         }
         const resolvedWorkspaceDir =
@@ -187,7 +189,11 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
       }
       throw new Error(response.error || "Failed to send message");
     } catch (error) {
-      if (!queuedSend && activeRequestAbortRef.current === controller) {
+      if (
+        !queuedSend &&
+        requestSessionId &&
+        activeRequestControllersRef.current.get(requestSessionId) === controller
+      ) {
         setState((prev) =>
           prev.sessionId === requestSessionId ? { ...prev, isLoading: false } : prev
         );
@@ -204,15 +210,17 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
       }
       throw error;
     } finally {
-      if (!queuedSend && activeRequestAbortRef.current === controller) {
-        activeRequestAbortRef.current = null;
+      if (
+        !queuedSend &&
+        requestSessionId &&
+        activeRequestControllersRef.current.get(requestSessionId) === controller
+      ) {
+        activeRequestControllersRef.current.delete(requestSessionId);
       }
     }
   };
 
   const clearChat = () => {
-    activeRequestAbortRef.current?.abort();
-    activeRequestAbortRef.current = null;
     setState({
       messages: [],
       sessionId: null,
@@ -221,9 +229,11 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
     });
   };
 
-  const stopGenerating = useCallback(() => {
-    activeRequestAbortRef.current?.abort();
-    activeRequestAbortRef.current = null;
+  const stopGenerating = useCallback((targetSessionId?: string | null) => {
+    if (targetSessionId) {
+      activeRequestControllersRef.current.get(targetSessionId)?.abort();
+      activeRequestControllersRef.current.delete(targetSessionId);
+    }
     setState((prev) => ({ ...prev, isLoading: false }));
   }, []);
 

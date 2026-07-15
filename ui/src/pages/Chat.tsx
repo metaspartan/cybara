@@ -39,6 +39,11 @@ import {
 } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
+import {
+  resolveSessionEventOrder,
+  type SessionEventCursor,
+  type SessionEventIdentity,
+} from "../../../shared/session-event-order";
 import type {
   Agent,
   ProviderPlanSnapshot,
@@ -334,6 +339,7 @@ export function Chat() {
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [liveCurrentStep, setLiveCurrentStep] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
+  const [liveRunStartedAtMs, setLiveRunStartedAtMs] = useState<number | null>(null);
   const [pendingMessages, setPendingMessages] = useState<PendingChatMessage[]>([]);
   const [sessionContextUsage, setSessionContextUsage] = useState<SessionContextUsage | null>(null);
   const [sessionTokenUsage, setSessionTokenUsage] = useState<SessionTokenUsage | null>(null);
@@ -396,8 +402,10 @@ export function Chat() {
   const pendingProcessCaptureRef = useRef<PendingProcessCapture | null>(null);
   const runActivityBufferRef = useRef<LiveActivityItem[]>([]);
   const liveActivitiesRef = useRef<LiveActivityItem[]>([]);
+  const liveRunStartedAtMsRef = useRef<number | null>(null);
   const latestStatusTimestampBySessionRef = useRef<Record<string, number>>({});
   const latestRunIdBySessionRef = useRef<Record<string, string>>({});
+  const eventCursorBySessionRef = useRef<Record<string, SessionEventCursor>>({});
   const stoppedRunSuppressionsRef = useRef<StoppedRunSuppressions>({});
   const configuredWorkspaceDir =
     typeof info?.defaultWorkspaceDir === "string" && info.defaultWorkspaceDir.trim().length > 0
@@ -422,6 +430,41 @@ export function Chat() {
       STOPPED_SESSION_STATUS_SUPPRESSION_MS
     );
   }, []);
+  const acceptSessionEvent = useCallback(
+    (targetSessionId: string | null | undefined, identity: SessionEventIdentity): boolean => {
+      const key = typeof targetSessionId === "string" ? targetSessionId.trim() : "";
+      if (!key) return false;
+      const decision = resolveSessionEventOrder(eventCursorBySessionRef.current[key], identity);
+      if (!decision.accepted) return false;
+      eventCursorBySessionRef.current[key] = decision.cursor;
+      if (decision.cursor.runId) {
+        latestRunIdBySessionRef.current[key] = decision.cursor.runId;
+      }
+      const visible = activeSessionRef.current === key;
+      if (decision.runChanged) {
+        clearCachedLiveSessionState(key);
+        runStartSyncedSessionsRef.current.delete(key);
+        if (visible) {
+          const startedAt = decision.cursor.timestamp || Date.now();
+          liveRunStartedAtMsRef.current = startedAt;
+          setLiveRunStartedAtMs(startedAt);
+          setLiveActivities([]);
+          liveActivitiesRef.current = [];
+          runActivityBufferRef.current = [];
+          pendingProcessCaptureRef.current = null;
+          setStreamingContent(null);
+          setLiveCurrentStep(null);
+          void refreshSessionMessagesRef.current(key);
+        }
+      } else if (visible && liveRunStartedAtMsRef.current === null) {
+        const startedAt = decision.cursor.timestamp || Date.now();
+        liveRunStartedAtMsRef.current = startedAt;
+        setLiveRunStartedAtMs(startedAt);
+      }
+      return true;
+    },
+    []
+  );
   const isSessionStopSuppressed = useCallback(
     (targetSessionId?: string | null, runId?: string | null) =>
       isStoppedRunSuppressed(stoppedRunSuppressionsRef.current, targetSessionId, runId, Date.now()),
@@ -954,6 +997,9 @@ export function Chat() {
     );
 
     if (isLoading && !wasLoadingRef.current) {
+      const startedAt = Date.now();
+      liveRunStartedAtMsRef.current = startedAt;
+      setLiveRunStartedAtMs(startedAt);
       setLoadingSessionId(sessionId ?? null);
       runActivityBufferRef.current = [];
       setLiveActivities([]);
@@ -1174,20 +1220,28 @@ export function Chat() {
         typeof snapshot.sessionId === "string" && snapshot.sessionId.trim()
           ? snapshot.sessionId.trim()
           : null;
-      if (!snapshotSessionId) return;
+      if (!snapshotSessionId) return false;
       const snapshotStatus = typeof snapshot.status === "string" ? snapshot.status : "";
-      if (snapshot.runId) latestRunIdBySessionRef.current[snapshotSessionId] = snapshot.runId;
       if (
         isSessionStopSuppressed(snapshotSessionId, snapshot.runId) &&
         snapshotStatus !== "idle" &&
         snapshotStatus !== "error"
       ) {
-        return;
+        return false;
+      }
+      const latestTimestamp = snapshotLatestTimestamp(snapshot);
+      if (
+        !acceptSessionEvent(snapshotSessionId, {
+          runId: snapshot.runId,
+          sequence: snapshot.sequence,
+          timestamp: latestTimestamp,
+        })
+      ) {
+        return false;
       }
       const cached = readCachedLiveSessionState(snapshotSessionId);
       const localActivities = cached?.activities || [];
       const next = resolveSnapshotLiveState(snapshot, localActivities);
-      const latestTimestamp = snapshotLatestTimestamp(snapshot);
       if (latestTimestamp > 0) {
         const previousTimestamp = latestStatusTimestampBySessionRef.current[snapshotSessionId] || 0;
         if (latestTimestamp > previousTimestamp) {
@@ -1199,9 +1253,17 @@ export function Chat() {
         activities: next.activities,
         currentStep: next.currentStep,
         streamingContent: cached?.streamingContent ?? null,
+        runId: eventCursorBySessionRef.current[snapshotSessionId]?.runId ?? null,
+        startedAtMs: cached?.startedAtMs ?? (latestTimestamp || Date.now()),
       });
+      return true;
     },
-    [isSessionStopSuppressed, resolveSnapshotLiveState, snapshotLatestTimestamp]
+    [
+      acceptSessionEvent,
+      isSessionStopSuppressed,
+      resolveSnapshotLiveState,
+      snapshotLatestTimestamp,
+    ]
   );
 
   const cacheAssistantToken = useCallback(
@@ -1211,9 +1273,17 @@ export function Chat() {
           ? payload.sessionId.trim()
           : null;
       const delta = typeof payload.delta === "string" ? payload.delta : "";
-      if (!tokenSessionId || !delta) return;
-      if (payload.runId) latestRunIdBySessionRef.current[tokenSessionId] = payload.runId;
-      if (isSessionStopSuppressed(tokenSessionId, payload.runId)) return;
+      if (!tokenSessionId || !delta) return false;
+      if (isSessionStopSuppressed(tokenSessionId, payload.runId)) return false;
+      if (
+        !acceptSessionEvent(tokenSessionId, {
+          runId: payload.runId,
+          sequence: payload.sequence,
+          timestamp: payload.timestamp,
+        })
+      ) {
+        return false;
+      }
       markFirstTokenLatency(tokenSessionId);
       const cached = readCachedLiveSessionState(tokenSessionId);
       writeCachedLiveSessionState(tokenSessionId, {
@@ -1221,9 +1291,12 @@ export function Chat() {
         activities: cached?.activities || [],
         currentStep: cached?.currentStep || "Generating response...",
         streamingContent: `${cached?.streamingContent || ""}${delta}`,
+        runId: eventCursorBySessionRef.current[tokenSessionId]?.runId ?? null,
+        startedAtMs: cached?.startedAtMs ?? (payload.timestamp || Date.now()),
       });
+      return true;
     },
-    [isSessionStopSuppressed, markFirstTokenLatency]
+    [acceptSessionEvent, isSessionStopSuppressed, markFirstTokenLatency]
   );
 
   const cacheLiveStatusEvent = useCallback(
@@ -1232,25 +1305,33 @@ export function Chat() {
         typeof payload.sessionId === "string" && payload.sessionId.trim()
           ? payload.sessionId.trim()
           : null;
-      if (!payloadSessionId) return;
-      if (payload.runId) latestRunIdBySessionRef.current[payloadSessionId] = payload.runId;
+      if (!payloadSessionId) return false;
       const status = typeof payload.status === "string" ? payload.status : "";
-      if (!status) return;
+      if (!status) return false;
       if (
         isSessionStopSuppressed(payloadSessionId, payload.runId) &&
         status !== "idle" &&
         status !== "error"
       ) {
-        return;
+        return false;
+      }
+      if (
+        !acceptSessionEvent(payloadSessionId, {
+          runId: payload.runId,
+          sequence: payload.sequence,
+          timestamp: payload.timestamp,
+        })
+      ) {
+        return false;
       }
       const statusDetail = typeof payload.detail === "string" ? payload.detail.trim() : "";
       const isSteeringHandoff =
         status === "idle" && statusDetail.toLowerCase() === "steering to follow-up...";
       if (status === "error") {
         clearCachedLiveSessionState(payloadSessionId);
-        return;
+        return true;
       }
-      if (status === "idle" && !isSteeringHandoff) return;
+      if (status === "idle" && !isSteeringHandoff) return true;
 
       const cached = readCachedLiveSessionState(payloadSessionId);
       const eventTimestamp =
@@ -1291,8 +1372,10 @@ export function Chat() {
           activities,
           currentStep,
           streamingContent: cached?.streamingContent ?? null,
+          runId: eventCursorBySessionRef.current[payloadSessionId]?.runId ?? null,
+          startedAtMs: cached?.startedAtMs ?? (eventTimestamp || Date.now()),
         });
-        return;
+        return true;
       }
 
       if (isSteeringHandoff) {
@@ -1307,8 +1390,10 @@ export function Chat() {
           activities,
           currentStep: statusDetail,
           streamingContent: cached?.streamingContent ?? null,
+          runId: eventCursorBySessionRef.current[payloadSessionId]?.runId ?? null,
+          startedAtMs: cached?.startedAtMs ?? (eventTimestamp || Date.now()),
         });
-        return;
+        return true;
       }
 
       if (status === "tool_executing" || status === "tool_completed") {
@@ -1333,10 +1418,13 @@ export function Chat() {
                 : text
               : getLatestInFlightStep(activities),
           streamingContent: cached?.streamingContent ?? null,
+          runId: eventCursorBySessionRef.current[payloadSessionId]?.runId ?? null,
+          startedAtMs: cached?.startedAtMs ?? (eventTimestamp || Date.now()),
         });
       }
+      return true;
     },
-    [isSessionStopSuppressed]
+    [acceptSessionEvent, isSessionStopSuppressed]
   );
 
   const hydrateSessionStatus = useCallback(
@@ -1394,7 +1482,15 @@ export function Chat() {
           mergePendingChatMessages(snapshot?.pendingMessages, current)
         );
         if (snapshot && snapshotFresh) {
-          cacheLiveStatusSnapshot(snapshot);
+          const snapshotAccepted = cacheLiveStatusSnapshot(snapshot);
+          if (
+            !snapshotAccepted &&
+            snapshot.runId &&
+            latestRunIdBySessionRef.current[resolvedSessionId] &&
+            snapshot.runId !== latestRunIdBySessionRef.current[resolvedSessionId]
+          ) {
+            return;
+          }
         }
 
         if (!isActive || !snapshot) {
@@ -1509,6 +1605,8 @@ export function Chat() {
       setLiveStatus("idle");
       setLiveCurrentStep(null);
       setStreamingContent("");
+      liveRunStartedAtMsRef.current = null;
+      setLiveRunStartedAtMs(null);
       setPendingMessages([]);
       setSessionContextUsage(null);
       setSessionTokenUsage(null);
@@ -1560,6 +1658,16 @@ export function Chat() {
   useEffect(() => {
     const cached = readCachedLiveSessionState(sessionId);
     if (cached) {
+      if (sessionId) {
+        eventCursorBySessionRef.current[sessionId] = {
+          runId: cached.runId,
+          sequence: 0,
+          timestamp: cached.updatedAt,
+        };
+        if (cached.runId) latestRunIdBySessionRef.current[sessionId] = cached.runId;
+      }
+      liveRunStartedAtMsRef.current = cached.startedAtMs;
+      setLiveRunStartedAtMs(cached.startedAtMs);
       setLiveStatus(cached.status);
       setLiveActivities(cached.activities);
       liveActivitiesRef.current = cached.activities.map((activity) => ({
@@ -1571,6 +1679,8 @@ export function Chat() {
         ...activity,
       }));
     } else {
+      liveRunStartedAtMsRef.current = null;
+      setLiveRunStartedAtMs(null);
       setLiveStatus("idle");
       setLiveActivities([]);
       liveActivitiesRef.current = [];
@@ -1658,8 +1768,18 @@ export function Chat() {
       activities: liveActivities,
       currentStep: liveCurrentStep,
       streamingContent,
+      runId: latestRunIdBySessionRef.current[sessionId] ?? null,
+      startedAtMs: liveRunStartedAtMs,
     });
-  }, [activeSessionIds, liveActivities, liveCurrentStep, liveStatus, sessionId, streamingContent]);
+  }, [
+    activeSessionIds,
+    liveActivities,
+    liveCurrentStep,
+    liveRunStartedAtMs,
+    liveStatus,
+    sessionId,
+    streamingContent,
+  ]);
 
   useEffect(() => {
     refreshSessionMessagesRef.current = async (sid: string) => {
@@ -1718,11 +1838,8 @@ export function Chat() {
             const delta = typeof payload.delta === "string" ? payload.delta : "";
             if (delta) {
               const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : "";
-              if (payload.runId && sessionId) {
-                latestRunIdBySessionRef.current[sessionId] = payload.runId;
-              }
               if (isSessionStopSuppressed(sessionId, payload.runId)) return;
-              cacheAssistantToken(payload);
+              if (!cacheAssistantToken(payload)) return;
               const activeSession = activeSessionRef.current;
               if (activeSession && sessionId === activeSession) {
                 setStreamingContent((prev) => (prev === null ? delta : prev + delta));
@@ -1740,9 +1857,6 @@ export function Chat() {
           typeof payload.sessionId === "string" && payload.sessionId.trim()
             ? payload.sessionId
             : null;
-        if (payloadSessionId && payload.runId) {
-          latestRunIdBySessionRef.current[payloadSessionId] = payload.runId;
-        }
         const statusIsActive =
           status === "thinking" ||
           status === "generating" ||
@@ -1766,7 +1880,7 @@ export function Chat() {
           runStartSyncedSessionsRef.current.delete(payloadSessionId);
           return;
         }
-        cacheLiveStatusEvent(payload);
+        if (!cacheLiveStatusEvent(payload)) return;
         const payloadTimestamp =
           typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
             ? payload.timestamp
@@ -1882,6 +1996,8 @@ export function Chat() {
           if (!loadingRef.current) {
             const sessionToRefresh = payloadSessionId || activeSession;
             const finalizeLiveState = () => {
+              liveRunStartedAtMsRef.current = null;
+              setLiveRunStartedAtMs(null);
               setStreamingContent(null);
               setLiveActivities([]);
               runActivityBufferRef.current = [];
@@ -2051,6 +2167,7 @@ export function Chat() {
         clientPendingId: optimisticPendingMessageId || undefined,
         images: images.length ? images : undefined,
       });
+      if (requestSessionId && activeSessionRef.current !== requestSessionId) return;
       if (response?.queued) {
         setPendingMessages(normalizePendingChatMessages(response.pendingMessages));
         return;
@@ -2284,7 +2401,7 @@ export function Chat() {
     if (!activeChatSessionId || isStoppingSession) return;
     setIsStoppingSession(true);
     markSessionStopped(activeChatSessionId);
-    stopGenerating();
+    stopGenerating(activeChatSessionId);
     try {
       const stopped = await chatApi.stopSession(activeChatSessionId);
       if (!stopped.success || !stopped.data?.stopped) {
@@ -2736,8 +2853,13 @@ export function Chat() {
   const timelineStatus =
     currentSessionIsActive && liveStatus === "idle" ? ("thinking" as const) : liveStatus;
   const timelineStartedAtMs = [
+    liveRunStartedAtMs ?? undefined,
     pendingCaptureForCurrentSession ? pendingCapture?.createdAt : undefined,
-    ...timelineActivities.map((activity) => activity.timestamp),
+    ...timelineActivities.map((activity) =>
+      liveRunStartedAtMs && activity.timestamp + 1_000 < liveRunStartedAtMs
+        ? undefined
+        : activity.timestamp
+    ),
   ]
     .filter(
       (timestamp): timestamp is number =>

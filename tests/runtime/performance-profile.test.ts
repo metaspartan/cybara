@@ -1,10 +1,36 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { isCybaraProfileProcess } from "../../scripts/cybara-process-match";
 
 const ROOT_DIR = join(import.meta.dir, "..", "..");
 
 describe("macOS performance profiler", () => {
+  test("includes product processes without counting unrelated repo tooling", () => {
+    expect(isCybaraProfileProcess("bun src/index.ts", ROOT_DIR)).toBe(true);
+    expect(
+      isCybaraProfileProcess(`${ROOT_DIR}/ui/node_modules/.bin/vite --port 5200`, ROOT_DIR)
+    ).toBe(true);
+    expect(
+      isCybaraProfileProcess(
+        "/Applications/Google Chrome.app/Chrome --user-data-dir=/Users/test/.cybara/browser/default",
+        ROOT_DIR
+      )
+    ).toBe(true);
+    expect(
+      isCybaraProfileProcess(
+        `${ROOT_DIR}/node_modules/typescript/lib/tsserver.js --useNodeIpc`,
+        ROOT_DIR
+      )
+    ).toBe(false);
+    expect(
+      isCybaraProfileProcess(
+        "/Applications/Google Chrome.app/Chrome --user-data-dir=/Users/test/.cybara/channels/whatsapp-auth",
+        ROOT_DIR
+      )
+    ).toBe(false);
+  });
+
   test("package exposes a Bun-only profiler command", () => {
     const packageJson = JSON.parse(readFileSync(join(ROOT_DIR, "package.json"), "utf8"));
     expect(packageJson.scripts["profile:macos"]).toBe("bun run scripts/profile-cybara-macos.ts");

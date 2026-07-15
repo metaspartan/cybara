@@ -27,6 +27,27 @@ export function trackMetric(
   }
 }
 
+function trackAggregateMetric(
+  type: string,
+  key: string,
+  value: number,
+  metadata: Record<string, unknown>,
+  daily: boolean
+): void {
+  try {
+    tables.metrics.addAggregate({
+      type,
+      key,
+      value,
+      metadata: serializeMetricMetadata(metadata),
+      date: daily ? new Date().toISOString().slice(0, 10) : undefined,
+    });
+    recordExternalMetric(type, key, value, metadata);
+  } catch {
+    void 0;
+  }
+}
+
 export function trackToolCall(toolName: string, duration: number, success: boolean): void {
   trackMetric("tool_call", toolName, 1, { success });
   trackMetric("tool_call", "all", 1, { tool: toolName, success });
@@ -57,8 +78,29 @@ export function trackApiCall(
 ): void {
   const success = status >= 200 && status < 400;
   const metadata = { endpoint, method, status };
-  trackMetric("api_call", success ? "success" : "error", 1, metadata);
-  trackMetric("api_endpoint", `${method} ${endpoint}`, durationMs, { status, success });
+  trackAggregateMetric("api_call", success ? "success" : "error", 1, metadata, true);
+  trackAggregateMetric(
+    "api_endpoint",
+    `${method} ${endpoint}`,
+    durationMs,
+    { status, success },
+    false
+  );
+}
+
+const GATEWAY_TELEMETRY_COMPACTION_BATCH = 2_000;
+const GATEWAY_TELEMETRY_COMPACTION_INTERVAL_MS = 1_000;
+let gatewayTelemetryMaintenanceStarted = false;
+
+export function startGatewayTelemetryMaintenance(): void {
+  if (gatewayTelemetryMaintenanceStarted || process.env.NODE_ENV === "test") return;
+  gatewayTelemetryMaintenanceStarted = true;
+  const compact = (): void => {
+    const deleted = tables.metrics.compactGatewayTelemetry(GATEWAY_TELEMETRY_COMPACTION_BATCH);
+    if (deleted <= 0) return;
+    setTimeout(compact, GATEWAY_TELEMETRY_COMPACTION_INTERVAL_MS);
+  };
+  setTimeout(compact, 5_000);
 }
 
 export function trackFileOperation(

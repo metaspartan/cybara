@@ -72,6 +72,7 @@ let lastExportAt: string | null = null;
 let lastError: string | null = null;
 let exportedMetrics = 0;
 let exportedSpans = 0;
+let runtimeTelemetrySettings: ExternalTelemetrySettings | null = null;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -195,9 +196,17 @@ export function setExternalTelemetrySettings(value: unknown): ExternalTelemetryS
     otlpEndpoint: requestedEndpoint,
     otlpHeaders: mergedHeaders,
   });
+  runtimeTelemetrySettings = normalized;
   config.set("external_telemetry", storedSettings(normalized));
   configureTelemetryFlush(normalized);
   return publicSettings(normalized);
+}
+
+function getRuntimeTelemetrySettings(): ExternalTelemetrySettings {
+  if (!runtimeTelemetrySettings) {
+    runtimeTelemetrySettings = normalizeSettings(config.get<unknown>("external_telemetry"));
+  }
+  return runtimeTelemetrySettings;
 }
 
 function sanitizeMetricName(value: string): string {
@@ -225,7 +234,7 @@ export function recordExternalMetric(
   metadata?: Record<string, unknown>
 ): void {
   if (!Number.isFinite(value)) return;
-  const settings = getExternalTelemetrySettings({ redactHeaders: false });
+  const settings = getRuntimeTelemetrySettings();
   const name = sanitizeMetricName(`cybara_${type}_${key}`);
   prometheusCounters.set(name, (prometheusCounters.get(name) || 0) + value);
   if (!settings.enabled || !settings.metricsEnabled || !settings.otlpEnabled) return;
@@ -253,7 +262,7 @@ export function recordExternalSpan(input: {
   statusCode: number;
   attributes?: Record<string, unknown>;
 }): void {
-  const settings = getExternalTelemetrySettings({ redactHeaders: false });
+  const settings = getRuntimeTelemetrySettings();
   if (!settings.enabled || !settings.tracesEnabled || !settings.otlpEnabled) return;
   spanQueue.push({
     traceId: randomHex(16),

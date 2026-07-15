@@ -1,4 +1,4 @@
-import { trackApiCall, trackMetric } from "../../core/metrics";
+import { trackApiCall } from "../../core/metrics";
 import { recordExternalSpan } from "../../core/external-telemetry";
 
 export interface RequestLog {
@@ -51,7 +51,6 @@ export function recordApiMetrics(
   durationMs: number
 ): void {
   trackApiCall(path, method, status, durationMs);
-  trackMetric("api_status", String(status), 1, { method, path, durationMs });
   const endedAt = Date.now();
   recordExternalSpan({
     name: `${method} ${path}`,

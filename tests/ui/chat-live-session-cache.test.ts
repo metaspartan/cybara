@@ -12,6 +12,8 @@ describe("web chat live session cache", () => {
       status: "thinking",
       currentStep: "Running bun test",
       streamingContent: "partial answer",
+      runId: "run-1",
+      startedAtMs: 1783015199000,
       activities: [
         {
           id: "activity-1",
@@ -27,6 +29,8 @@ describe("web chat live session cache", () => {
     expect(cached?.status).toBe("thinking");
     expect(cached?.currentStep).toBe("Running bun test");
     expect(cached?.streamingContent).toBe("partial answer");
+    expect(cached?.runId).toBe("run-1");
+    expect(cached?.startedAtMs).toBe(1783015199000);
     expect(cached?.activities[0]?.text).toBe("Running bun test");
 
     clearCachedLiveSessionState(sessionId);

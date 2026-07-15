@@ -4,12 +4,15 @@ import type {
   SessionDetailSummary,
   SessionProcessActivitySummary,
 } from "../lib/api";
+import type { SessionEventIdentity } from "cybara-shared/session-event-order";
 
 type StatusEvent = Extract<MobileStatusStreamEvent, { type: "status" }>;
 
 interface CachedMobileLiveAssistant {
   message: SessionDetailSummary["messages"][number];
   nowMs: number;
+  runId: string | null;
+  sequence: number;
   updatedAt: number;
 }
 
@@ -43,6 +46,8 @@ export function readCachedMobileLiveAssistant(
       toolCalls: cached.message.toolCalls?.map((toolCall) => ({ ...toolCall })),
     },
     nowMs: cached.nowMs,
+    runId: cached.runId,
+    sequence: cached.sequence,
     updatedAt: cached.updatedAt,
   };
 }
@@ -50,10 +55,12 @@ export function readCachedMobileLiveAssistant(
 export function writeCachedMobileLiveAssistant(
   sessionId: string | null | undefined,
   message: SessionDetailSummary["messages"][number],
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  identity?: SessionEventIdentity
 ): void {
   const key = normalizeLiveSessionId(sessionId);
   if (!key) return;
+  const previous = mobileLiveAssistantCache.get(key);
   mobileLiveAssistantCache.set(key, {
     message: {
       ...message,
@@ -61,6 +68,14 @@ export function writeCachedMobileLiveAssistant(
       toolCalls: message.toolCalls?.map((toolCall) => ({ ...toolCall })),
     },
     nowMs,
+    runId:
+      typeof identity?.runId === "string" && identity.runId.trim()
+        ? identity.runId.trim()
+        : previous?.runId ?? null,
+    sequence:
+      typeof identity?.sequence === "number" && Number.isFinite(identity.sequence)
+        ? identity.sequence
+        : previous?.sequence ?? 0,
     updatedAt: Date.now(),
   });
   const cached = readCachedMobileLiveAssistant(key);

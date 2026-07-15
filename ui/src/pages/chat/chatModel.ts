@@ -121,6 +121,7 @@ export interface SessionStatusActivity {
 export interface SessionStatusSnapshot {
   sessionId: string;
   runId?: string;
+  sequence?: number;
   status: string;
   timestamp: number;
   detail?: string;

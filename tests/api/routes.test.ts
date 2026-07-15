@@ -381,6 +381,7 @@ beforeAll(async () => {
       HOME: testHome,
       USERPROFILE: testHome,
       CYBARA_HOME: "",
+      CYBARA_MCP_REGISTRY_OFFLINE: "true",
       PORT: String(port),
     },
     stdout: "ignore",

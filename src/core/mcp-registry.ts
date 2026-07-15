@@ -285,7 +285,7 @@ class MCPRegistryManager {
       return matchesRegistry && matchesQuery;
     });
 
-    if (q) {
+    if (q && process.env.CYBARA_MCP_REGISTRY_OFFLINE !== "true") {
       let external: MCPRegistryServer[] = [];
       if (!registry || registry === "official") {
         external = await this.searchOfficial(q).catch(() => []);

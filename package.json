@@ -38,6 +38,7 @@
     "deadcode": "knip --no-progress",
     "deadcode:report": "knip --no-progress --reporter compact --no-exit-code",
     "profile:macos": "bun run scripts/profile-cybara-macos.ts",
+    "benchmark:gateway": "bun run build && bun run scripts/benchmark-gateway.ts",
     "audit:root": "bun audit --audit-level=moderate",
     "audit:ui": "cd ui && bun audit --audit-level=moderate",
     "audit:mobile": "cd apps/mobile && bun audit --audit-level=moderate",

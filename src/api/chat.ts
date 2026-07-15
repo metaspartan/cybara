@@ -535,7 +535,7 @@ async function finishInterruptedChatTurn(
     });
   }
   broadcastStatus({
-    status: "thinking",
+    status: "idle",
     timestamp: Date.now(),
     detail: "Steering to follow-up...",
     sessionId: session.id,

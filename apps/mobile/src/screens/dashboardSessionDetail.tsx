@@ -88,6 +88,11 @@ import { Clipboard, ImagePicker } from "../lib/expoNativeModules";
 import { haptics } from "../lib/haptics";
 import { colors, spacing } from "../theme/liquidGlass";
 import { normalizeChatAppearanceSettings } from "cybara-shared/chat-appearance";
+import {
+  resolveSessionEventOrder,
+  type SessionEventCursor,
+  type SessionEventIdentity,
+} from "cybara-shared/session-event-order";
 import { ChatMessageRow, MobilePlanSummaryCard } from "./dashboardChat";
 import { absoluteTimestampLabel, relativeTimestamp } from "./dashboardHelpers";
 import {
@@ -548,6 +553,15 @@ export function SessionDetailPanel({
     SessionDetailSummary["messages"][number] | null
   >(() => cachedLiveAssistant?.message ?? null);
   const [liveNowMs, setLiveNowMs] = useState(() => cachedLiveAssistant?.nowMs ?? Date.now());
+  const liveEventCursorRef = useRef<SessionEventCursor | undefined>(
+    cachedLiveAssistant
+      ? {
+          runId: cachedLiveAssistant.runId,
+          sequence: cachedLiveAssistant.sequence,
+          timestamp: cachedLiveAssistant.updatedAt,
+        }
+      : undefined
+  );
 
   useEffect(() => {
     let active = true;
@@ -596,7 +610,7 @@ export function SessionDetailPanel({
       setLiveAssistant((current) => {
         const next = updater(current);
         if (next) {
-          writeCachedMobileLiveAssistant(sessionId, next, nowMs);
+          writeCachedMobileLiveAssistant(sessionId, next, nowMs, liveEventCursorRef.current);
         } else {
           clearCachedMobileLiveAssistant(sessionId);
         }
@@ -604,6 +618,17 @@ export function SessionDetailPanel({
       });
     },
     [sessionId]
+  );
+
+  const acceptLiveEvent = useCallback(
+    (identity: SessionEventIdentity): boolean => {
+      const decision = resolveSessionEventOrder(liveEventCursorRef.current, identity);
+      if (!decision.accepted) return false;
+      liveEventCursorRef.current = decision.cursor;
+      if (decision.runChanged) commitLiveAssistant(() => null);
+      return true;
+    },
+    [commitLiveAssistant]
   );
 
   const applySessionDetail = useCallback(
@@ -674,6 +699,17 @@ export function SessionDetailPanel({
           ? Date.now() - snapshot.timestamp
           : Infinity;
       const snapshotFresh = snapshotAgeMs <= 15 * 60 * 1000;
+      if (snapshot && snapshotFresh) {
+        const snapshotAccepted = acceptLiveEvent(snapshot);
+        if (
+          !snapshotAccepted &&
+          snapshot.runId &&
+          liveEventCursorRef.current?.runId &&
+          snapshot.runId !== liveEventCursorRef.current.runId
+        ) {
+          return;
+        }
+      }
       const snapshotStatus = String(snapshot?.status || "").toLowerCase();
       const active =
         !!snapshot &&
@@ -717,7 +753,7 @@ export function SessionDetailPanel({
     } catch {
       /* best effort */
     }
-  }, [api, commitLiveAssistant, sessionId, shouldPreserveOptimisticPending]);
+  }, [acceptLiveEvent, api, commitLiveAssistant, sessionId, shouldPreserveOptimisticPending]);
 
   const hydratePendingMessages = useCallback(async () => {
     try {
@@ -755,6 +791,13 @@ export function SessionDetailPanel({
 
   useEffect(() => {
     const cached = readCachedMobileLiveAssistant(sessionId);
+    liveEventCursorRef.current = cached
+      ? {
+          runId: cached.runId,
+          sequence: cached.sequence,
+          timestamp: cached.updatedAt,
+        }
+      : undefined;
     setLiveAssistant(cached?.message ?? null);
     setLiveNowMs(cached?.nowMs ?? Date.now());
     const cachedOptimistic = readCachedMobileOptimisticPendingMessages(sessionId);
@@ -794,6 +837,7 @@ export function SessionDetailPanel({
       onEvent: (event) => {
         if (event.type === "assistant_token") {
           if (event.sessionId !== sessionId) return;
+          if (!acceptLiveEvent(event)) return;
           if (!responseHapticActiveRef.current) {
             responseHapticActiveRef.current = true;
             haptics.agentStarted();
@@ -824,6 +868,7 @@ export function SessionDetailPanel({
             );
             return;
           }
+          if (!acceptLiveEvent(snapshot)) return;
           const pendingMessages = snapshot.pendingMessages ?? [];
           const preserveOptimisticPending = shouldPreserveOptimisticPending();
           if (!preserveOptimisticPending && pendingMessages.length === 0) {
@@ -842,7 +887,15 @@ export function SessionDetailPanel({
         }
 
         if (event.type !== "status" || event.sessionId !== sessionId) return;
+        if (!acceptLiveEvent(event)) return;
         if (event.status === "idle") {
+          const steeringHandoff =
+            (event.detail || "").trim().toLowerCase() === "steering to follow-up...";
+          if (steeringHandoff) {
+            setSessionActive(true);
+            void loadSession(false);
+            return;
+          }
           setSessionActive(false);
           if (responseHapticActiveRef.current) {
             responseHapticActiveRef.current = false;
@@ -875,6 +928,7 @@ export function SessionDetailPanel({
     });
     return disconnect;
   }, [
+    acceptLiveEvent,
     api,
     commitLiveAssistant,
     hydrateLiveAssistant,

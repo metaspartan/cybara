@@ -1219,7 +1219,7 @@ describe("handleChat per-session serialization", () => {
       steeringStatuses.some(
         (entry) => entry.status === "idle" && entry.detail === "Steering to follow-up..."
       )
-    ).toBe(false);
+    ).toBe(true);
     expect(
       steeringStatuses.some(
         (entry) => entry.status === "thinking" && entry.detail === "Steering to follow-up..."

@@ -876,6 +876,11 @@ const stmts = {
          metadata = COALESCE(excluded.metadata, metadata),
          updated_at = CURRENT_TIMESTAMP`
     ),
+    incrementDaily: prepare(
+      `INSERT INTO metrics_daily (id, date, type, key, value) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(date, type, key) DO UPDATE SET
+         value = value + excluded.value`
+    ),
     getByType: prepare("SELECT * FROM metrics WHERE type = ? ORDER BY created_at DESC"),
     getByTypeSince: prepare(
       "SELECT * FROM metrics WHERE type = ? AND created_at >= ? ORDER BY created_at DESC"
@@ -938,6 +943,14 @@ const stmts = {
     ),
     deleteOlderThan: prepare(
       "DELETE FROM metrics WHERE created_at < datetime('now', '-' || ? || ' days')"
+    ),
+    compactGatewayTelemetry: prepare(
+      `DELETE FROM metrics WHERE rowid IN (
+         SELECT rowid FROM metrics
+         WHERE type IN ('api_status', 'api_endpoint')
+            OR (type = 'api_call' AND metadata LIKE '%"endpoint"%')
+         LIMIT ?
+       )`
     ),
     count: prepare("SELECT COUNT(*) as count FROM metrics"),
   },
@@ -1432,6 +1445,18 @@ export const tables = {
       stmts.metrics?.add.run(m.id, m.type, m.key, m.value, m.metadata || null);
       stmts.metrics?.addTotal.run(m.type, m.key, m.value, m.metadata || null);
     },
+    addAggregate: (m: {
+      type: string;
+      key: string;
+      value: number;
+      metadata?: string;
+      date?: string;
+    }) => {
+      stmts.metrics?.addTotal.run(m.type, m.key, m.value, m.metadata || null);
+      if (m.date) {
+        stmts.metrics?.incrementDaily.run(crypto.randomUUID(), m.date, m.type, m.key, m.value);
+      }
+    },
     getByType: (type: string) => stmts.metrics?.getByType.all(type) || [],
     getByTypeSince: (type: string, sinceSql: string) =>
       stmts.metrics?.getByTypeSince.all(type, sinceSql) || [],
@@ -1539,6 +1564,8 @@ export const tables = {
         total: number;
       }>,
     deleteOlderThan: (days: number) => stmts.metrics?.deleteOlderThan.run(days),
+    compactGatewayTelemetry: (limit: number): number =>
+      stmts.metrics?.compactGatewayTelemetry.run(limit).changes ?? 0,
     count: () => (stmts.metrics?.count.get() as { count: number } | null)?.count || 0,
   },
 };
