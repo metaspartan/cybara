@@ -24,7 +24,7 @@
     "mobile:android": "cd apps/mobile && bun run android",
     "mobile:expo-check": "cd apps/mobile && bunx expo install --check",
     "mobile:typecheck": "cd apps/mobile && bun run typecheck",
-    "doctor": "bunx --bun react-doctor . --yes --project ui,apps/mobile --scope lines --include-untracked --no-score --no-dead-code --no-supply-chain --blocking error --max-duration 60",
+    "doctor": "bun run scripts/react-doctor.ts",
     "ui:lint": "cd ui && bun run lint",
     "ui:typecheck": "cd ui && bun run typecheck",
     "build:all": "bun run ui:build && bun run build && bun run build:cli && bun run build:main",

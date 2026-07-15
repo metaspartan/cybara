@@ -7,6 +7,8 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SIDECAR_SCRIPT = join(ROOT_DIR, "scripts", "build-sidecar.ts");
 const CI_INSTALL_SCRIPT = join(ROOT_DIR, "scripts", "ci-install.sh");
 const PACKAGE_SCRIPT = join(ROOT_DIR, "scripts", "package.ts");
+const REACT_DOCTOR_SCRIPT = join(ROOT_DIR, "scripts", "react-doctor.ts");
+const KNIP_CONFIG = join(ROOT_DIR, "knip.json");
 
 describe("package.json script wiring", () => {
   test("exposes cybara CLI bin and expected build/dev scripts", () => {
@@ -39,11 +41,14 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["mobile:android"]).toBe("cd apps/mobile && bun run android");
     expect(pkg.scripts?.["mobile:expo-check"]).toBe("cd apps/mobile && bunx expo install --check");
     expect(pkg.scripts?.["mobile:typecheck"]).toBe("cd apps/mobile && bun run typecheck");
-    expect(pkg.scripts?.["doctor"]).toContain("bunx --bun react-doctor");
-    expect(pkg.scripts?.["doctor"]).toContain("--project ui,apps/mobile");
-    expect(pkg.scripts?.["doctor"]).toContain("--scope lines");
-    expect(pkg.scripts?.["doctor"]).toContain("--no-score");
-    expect(pkg.scripts?.["doctor"]).toContain("--blocking error");
+    expect(pkg.scripts?.["doctor"]).toBe("bun run scripts/react-doctor.ts");
+    const reactDoctorSource = readFileSync(REACT_DOCTOR_SCRIPT, "utf8");
+    expect(reactDoctorSource).toContain('"ui,apps/mobile"');
+    expect(reactDoctorSource).toContain('"lines"');
+    expect(reactDoctorSource).toContain('"--no-score"');
+    expect(reactDoctorSource).toContain('"error"');
+    expect(reactDoctorSource).toContain('environment.CI === "true"');
+    expect(reactDoctorSource).toContain('Bun.spawnSync(["git", "rev-parse", "HEAD^"]');
     expect(pkg.scripts?.["test:mobile"]).toBe("bun run test:isolated tests/mobile");
     expect(pkg.scripts?.["test:smoke"]).toContain("bun run test:isolated tests/mobile");
     expect(pkg.scripts?.["check:ci"]).toContain("bun run mobile:expo-check");
@@ -57,6 +62,10 @@ describe("package.json script wiring", () => {
     expect(pkg.devDependencies?.["@biomejs/biome"]).toMatch(/^\d+\.\d+\.\d+/);
     expect(pkg.devDependencies?.["knip"]).toMatch(/^\d+\.\d+\.\d+/);
     expect(pkg.devDependencies?.["react-doctor"]).toBe("0.7.8");
+    const knipConfig = JSON.parse(readFileSync(KNIP_CONFIG, "utf8")) as {
+      workspaces?: Record<string, { ignoreDependencies?: string[] }>;
+    };
+    expect(knipConfig.workspaces?.["."]?.ignoreDependencies).toContain("react-doctor");
     expect(pkg.devDependencies?.["prettier"]).toBeUndefined();
     expect(pkg.devDependencies?.["eslint-plugin-prettier"]).toBeUndefined();
     expect(pkg.devDependencies?.["eslint-config-prettier"]).toBeUndefined();

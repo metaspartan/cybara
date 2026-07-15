@@ -14,6 +14,7 @@
       "ignoreDependencies": [
         "@huggingface/transformers",
         "@typescript/native",
+        "react-doctor",
         "typescript-language-server"
       ],
       "ignoreBinaries": [

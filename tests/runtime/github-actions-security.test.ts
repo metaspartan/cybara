@@ -63,4 +63,12 @@ describe("GitHub Actions security posture", () => {
     expect(workflow).toContain("swift build --package-path apps/macos/Cybara");
     expect(workflow).toContain("swift test --package-path apps/macos/Cybara");
   });
+
+  test("React Doctor compares only changes from the push or pull request base", () => {
+    const workflow = read(".github/workflows/ci.yml");
+
+    expect(workflow).toContain("fetch-depth: 0");
+    expect(workflow).toContain("REACT_DOCTOR_BASE:");
+    expect(workflow).toContain("github.event.pull_request.base.sha || github.event.before");
+  });
 });
