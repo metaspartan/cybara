@@ -205,7 +205,17 @@ export function buildChatExecutionMessagesForAgent(
   }
 ): AgentMessage[] {
   const supportsImages = options?.supportsImages !== false;
-  const executionMessages: AgentMessage[] = sessionMessages.map((sessionMessage) => {
+  const latestUserIndex = sessionMessages.findLastIndex((message) => message.role === "user");
+  const previousUserIndex = sessionMessages.findLastIndex(
+    (message, index) => message.role === "user" && index < latestUserIndex
+  );
+  const executionSource =
+    options?.materializedSteeringTurn &&
+    previousUserIndex >= 0 &&
+    latestUserIndex > previousUserIndex
+      ? [...sessionMessages.slice(0, previousUserIndex), ...sessionMessages.slice(latestUserIndex)]
+      : sessionMessages;
+  const executionMessages: AgentMessage[] = executionSource.map((sessionMessage) => {
     const content = compactChatContentForPrompt(sessionMessage);
     const imageContext = sessionMessage.image_context?.trim();
     return {
@@ -636,7 +646,9 @@ function findMaterializedSteeringMessage(
   session: InMemoryChatSession,
   pendingMessageId: string
 ): ChatMessage | undefined {
-  return session.messages.find((message) => message._pendingSteeringId === pendingMessageId);
+  return session.messages.find(
+    (message) => message.role === "user" && message._pendingSteeringId === pendingMessageId
+  );
 }
 
 function materializeSteeringMessage(
@@ -756,6 +768,19 @@ function isSteeringHandoffProcessActivity(activity: ProcessActivityInfo): boolea
   return text === "steering to follow-up..." || text === "starting queued follow-up";
 }
 
+function buildSteeringCompletionActivity(
+  pendingSteeringId: string | undefined,
+  timestamp: number
+): ProcessActivityInfo {
+  return {
+    id: pendingSteeringId ? `steered-${pendingSteeringId}` : `steered-${timestamp}`,
+    phase: "result",
+    text: "Conversation steered.",
+    timestamp,
+    toolName: "__steering",
+  };
+}
+
 function materializeInterruptedAssistantBeforeSteering(
   session: InMemoryChatSession,
   observedActivities?: ProcessActivityInfo[],
@@ -786,7 +811,15 @@ function materializeInterruptedAssistantBeforeSteering(
         ? session.messages[existingInterruptedIndex]
         : undefined;
 
-  const processActivities = dedupeProcessActivities([
+  if (steeringIndex < 0 && !previousInterruptedAssistant) return undefined;
+
+  const steeringTimestampMs =
+    (steeringIndex >= 0
+      ? parseIsoTimestampMs(session.messages[steeringIndex]?.timestamp)
+      : parseIsoTimestampMs(previousInterruptedAssistant?.timestamp)) || Date.now();
+  const resolvedPendingSteeringId =
+    pendingSteeringId || previousInterruptedAssistant?._pendingSteeringId;
+  const interruptedActivities = dedupeProcessActivities([
     ...(observedActivities || []),
     ...(getSessionProcessActivities(session.id, {
       excludeActivityIds: previousInterruptedAssistant
@@ -794,9 +827,15 @@ function materializeInterruptedAssistantBeforeSteering(
         : collectAttachedProcessActivityIds(session.messages),
     }) || []),
   ]).filter((activity) => !isSteeringHandoffProcessActivity(activity));
-  if ((!processActivities || processActivities.length === 0) && !options?.createEmptyBoundary) {
-    return previousInterruptedAssistant;
-  }
+  const latestActivityTimestamp = interruptedActivities.reduce(
+    (latest, activity) => Math.max(latest, activity.timestamp),
+    0
+  );
+  const steeringCompletion = buildSteeringCompletionActivity(
+    resolvedPendingSteeringId,
+    Math.max(0, steeringTimestampMs - 1, latestActivityTimestamp + 1)
+  );
+  const processActivities = dedupeProcessActivities([...interruptedActivities, steeringCompletion]);
 
   if (previousInterruptedAssistant) {
     const merged = dedupeProcessActivities([
@@ -807,14 +846,11 @@ function materializeInterruptedAssistantBeforeSteering(
     return previousInterruptedAssistant;
   }
 
-  if (steeringIndex < 0) return undefined;
-  const steeringTimestampMs =
-    parseIsoTimestampMs(session.messages[steeringIndex]?.timestamp) || Date.now();
   const assistantMessage: ChatMessage = {
     role: "assistant",
     content: "",
     timestamp: new Date(Math.max(0, steeringTimestampMs - 1)).toISOString(),
-    process_activities: processActivities || [],
+    process_activities: processActivities,
     ...(pendingSteeringId ? { _pendingSteeringId: pendingSteeringId } : {}),
   };
   session.messages.splice(steeringIndex, 0, assistantMessage);

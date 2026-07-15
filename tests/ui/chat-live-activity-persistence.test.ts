@@ -470,10 +470,11 @@ describe("Chat live activity persistence", () => {
     );
   });
 
-  test("prefers the best worked duration candidate instead of tiny synthetic tool ranges", () => {
+  test("prefers granular worked duration evidence over stale turn wall time", () => {
     const source = readChatMetadataSource();
-    expect(source).toContain("const durationCandidates: number[] = [];");
-    expect(source).toContain("Math.max(...durationCandidates)");
+    expect(source).toContain("const granularDurationCandidates: number[] = [];");
+    expect(source).toContain("Math.max(...granularDurationCandidates)");
+    expect(source).toContain("const wallDuration = assistantTimestampMs - turnStartedAtMs;");
   });
 
   test("restores process thoughts from persisted message metadata", () => {

@@ -490,13 +490,19 @@ function ActivitySummary({
   maxDetails?: number;
   maxColumns: number;
 }): React.ReactElement | null {
+  const steeringActivities = (message.process_activities || []).filter(
+    (activity) => activity.toolName === "__steering",
+  );
+  const workActivities = (message.process_activities || []).filter(
+    (activity) => activity.toolName !== "__steering",
+  );
   const rows = presentTUIActivities(
-    message.process_activities || [],
+    workActivities,
     message.tool_calls || [],
   );
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && steeringActivities.length === 0) return null;
   const workedDuration = formatTUIWorkedDuration(
-    message.process_activities || [],
+    workActivities,
     message.tool_calls || [],
   );
   return (
@@ -506,11 +512,18 @@ function ActivitySummary({
       flexDirection="column"
       width={Math.max(12, maxColumns)}
     >
-      <Text color="gray" dimColor>
-        {live ? "◌" : expanded ? "▾" : "▸"} {live ? "Working" : "Worked"} for{" "}
-        {workedDuration}
-      </Text>
-      {live || expanded
+      {steeringActivities.map((activity, index) => (
+        <Text key={activity.id || `steered-${index}`} color="gray" dimColor wrap="wrap">
+          ↔ {activity.text || "Conversation steered."}
+        </Text>
+      ))}
+      {rows.length > 0 ? (
+        <Text color="gray" dimColor>
+          {live ? "◌" : expanded ? "▾" : "▸"} {live ? "Working" : "Worked"} for{" "}
+          {workedDuration}
+        </Text>
+      ) : null}
+      {rows.length > 0 && (live || expanded)
         ? rows.map((row, rowIndex) => (
             <Box key={`${row.id}-${rowIndex}`} flexDirection="column">
               {row.thought ? (

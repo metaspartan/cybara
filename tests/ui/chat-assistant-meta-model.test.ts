@@ -47,7 +47,7 @@ describe("chat assistant metadata", () => {
     expect(inferThoughtActivitiesFromThinking("Check state\nVerify output", 200)).toHaveLength(2);
   });
 
-  test("uses the widest reliable duration evidence", () => {
+  test("measures from the first observed activity through assistant completion", () => {
     expect(
       resolveWorkedDurationMs(
         [
@@ -57,7 +57,36 @@ describe("chat assistant metadata", () => {
         [toolCall({ started_at: 2_500, duration: 1_000 })],
         { assistantTimestamp: "7000", turnStartedAtMs: 1_000 }
       )
-    ).toBe(6_000);
+    ).toBe(5_000);
+    expect(
+      resolveWorkedDurationMs(
+        [
+          { id: "tool-start", phase: "start", text: "Running", timestamp: 8_700_000 },
+          { id: "tool-result", phase: "result", text: "Ran", timestamp: 8_725_000 },
+        ],
+        undefined,
+        { assistantTimestamp: "8725000", turnStartedAtMs: 0 }
+      )
+    ).toBe(25_000);
+    expect(
+      resolveWorkedDurationMs(
+        [
+          { id: "thought", phase: "result", text: "Working", timestamp: 14_500 },
+          { id: "tool-result", phase: "result", text: "Ran", timestamp: 21_500 },
+        ],
+        undefined,
+        { assistantTimestamp: "49500", turnStartedAtMs: 14_000 }
+      )
+    ).toBe(35_000);
+  });
+
+  test("falls back to turn wall time when no granular timing exists", () => {
+    expect(
+      resolveWorkedDurationMs(undefined, undefined, {
+        assistantTimestamp: "26000",
+        turnStartedAtMs: 1_000,
+      })
+    ).toBe(25_000);
     expect(resolveWorkedDurationMs(undefined, undefined)).toBeUndefined();
   });
 

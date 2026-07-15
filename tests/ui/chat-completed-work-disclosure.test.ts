@@ -13,11 +13,14 @@ describe("completed chat work disclosure parity", () => {
     const assistantMeta = source("ui/src/pages/chat/AssistantMetaInline.tsx");
 
     expect(timeline).toContain("export function CompletedActivityTimeline");
+    expect(timeline).toContain("Working for {formatWorkedDuration(now - validStart)}");
+    expect(timeline).toContain('activity.toolName === "__steering"');
     expect(timeline).toContain("const [expanded, setExpanded] = useState(false)");
     expect(timeline).toContain("aria-expanded={expanded}");
     expect(timeline).toContain('<ChevronDown className="h-3 w-3 shrink-0 text-current" />');
     expect(timeline).toContain('<ChevronRight className="h-3 w-3 shrink-0 text-current" />');
-    expect(timeline).toContain("<ProcessActivityList activities={visibleActivities} />");
+    expect(timeline).toContain("<ProcessActivityList activities={steeringActivities} />");
+    expect(timeline).toContain("<ProcessActivityList activities={workActivities} />");
     expect(assistantMeta).toContain("<CompletedActivityTimeline");
     expect(assistantMeta).toContain('t("chat.workedFor", {');
     expect(chat).not.toContain("hasAssistantToolCalls");
@@ -31,7 +34,8 @@ describe("completed chat work disclosure parity", () => {
     expect(chat).toContain("setExpanded(live)");
     expect(chat).toContain("Working for {timeline.workedDuration}");
     expect(chat).toContain("Worked for {timeline.workedDuration}");
-    expect(chat).toContain("{live || expanded ? (");
+    expect(chat).toContain('activity.toolName === "__steering"');
+    expect(chat).toContain("workActivities.length > 0 && (live || expanded)");
     expect(chat).toContain("accessibilityState={{ expanded }}");
     expect(chat).toContain("<ChevronDown color={colors.textMuted} size={13} strokeWidth={2.2} />");
     expect(chat).toContain("<ChevronRight color={colors.textMuted} size={13} strokeWidth={2.2} />");
@@ -42,8 +46,9 @@ describe("completed chat work disclosure parity", () => {
 
     expect(completed).toContain("@State private var expanded = false");
     expect(completed).toContain("nativeWorkedDurationLabel(for: message)");
+    expect(completed).toContain('$0.toolName == "__steering"');
     expect(completed).toContain('expanded ? "chevron.down" : "chevron.right"');
-    expect(completed).toContain("if expanded {");
+    expect(completed).toContain("if hasWorkContent && expanded {");
     expect(completed).toContain("NativeLiveToolTimelineView");
     expect(completed).toContain("nativeLiveWorkedDurationLabel(startedAt:");
   });
@@ -55,7 +60,8 @@ describe("completed chat work disclosure parity", () => {
       "const [expandedActivities, setExpandedActivities] = React.useState(false)"
     );
     expect(tui).toContain('{live ? "◌" : expanded ? "▾" : "▸"}');
-    expect(tui).toContain("{live || expanded");
+    expect(tui).toContain('activity.toolName === "__steering"');
+    expect(tui).toContain("rows.length > 0 && (live || expanded)");
     expect(tui).toContain('normalizedCommand === "details"');
     expect(tui).toContain("expandedActivities={expandedActivities}");
   });

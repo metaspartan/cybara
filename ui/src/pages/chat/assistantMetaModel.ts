@@ -120,28 +120,17 @@ export function resolveWorkedDurationMs(
     .filter((timestamp): timestamp is number => Number.isFinite(timestamp));
   const assistantTimestampMs = parseTimestampMs(options?.assistantTimestamp);
   const turnStartedAtMs = options?.turnStartedAtMs;
-  const durationCandidates: number[] = [];
-  const addDurationCandidate = (value: number | undefined): void => {
+  const granularDurationCandidates: number[] = [];
+  const addGranularDuration = (value: number | undefined): void => {
     if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return;
-    durationCandidates.push(value);
+    granularDurationCandidates.push(value);
   };
 
   if (activityTimestamps.length >= 2) {
-    addDurationCandidate(Math.max(...activityTimestamps) - Math.min(...activityTimestamps));
+    addGranularDuration(Math.max(...activityTimestamps) - Math.min(...activityTimestamps));
   }
-
-  if (activityTimestamps.length > 0) {
-    const minTimestamp = Math.min(...activityTimestamps);
-    const maxTimestamp = Math.max(...activityTimestamps);
-    const inferredStart =
-      typeof turnStartedAtMs === "number" && Number.isFinite(turnStartedAtMs)
-        ? Math.min(turnStartedAtMs, minTimestamp)
-        : minTimestamp;
-    const inferredEnd =
-      typeof assistantTimestampMs === "number"
-        ? Math.max(assistantTimestampMs, maxTimestamp)
-        : maxTimestamp;
-    addDurationCandidate(inferredEnd - inferredStart);
+  if (activityTimestamps.length > 0 && typeof assistantTimestampMs === "number") {
+    addGranularDuration(assistantTimestampMs - Math.min(...activityTimestamps));
   }
 
   const toolStartTimestamps = (toolCalls ?? [])
@@ -155,22 +144,27 @@ export function resolveWorkedDurationMs(
       const duration = parseDurationMs(toolCall.duration);
       return Math.max(currentMax, duration > 0 ? startedAt + duration : startedAt);
     }, minStart);
-    addDurationCandidate(maxEnd - minStart);
+    addGranularDuration(maxEnd - minStart);
   }
 
-  addDurationCandidate(
+  addGranularDuration(
     (toolCalls ?? []).reduce((sum, toolCall) => sum + parseDurationMs(toolCall.duration), 0)
   );
+
+  if (granularDurationCandidates.length > 0) {
+    return Math.max(...granularDurationCandidates);
+  }
 
   if (
     typeof assistantTimestampMs === "number" &&
     typeof turnStartedAtMs === "number" &&
     Number.isFinite(turnStartedAtMs)
   ) {
-    addDurationCandidate(assistantTimestampMs - turnStartedAtMs);
+    const wallDuration = assistantTimestampMs - turnStartedAtMs;
+    return Number.isFinite(wallDuration) && wallDuration > 0 ? wallDuration : undefined;
   }
 
-  return durationCandidates.length > 0 ? Math.max(...durationCandidates) : undefined;
+  return undefined;
 }
 
 const ARTIFACT_MUTATION_ACTIONS = new Set(["create", "update", "append", "check"]);

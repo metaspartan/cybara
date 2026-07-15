@@ -2659,6 +2659,18 @@ export function Chat() {
         : [];
   const timelineStatus =
     currentSessionIsActive && liveStatus === "idle" ? ("thinking" as const) : liveStatus;
+  const timelineStartedAtMs = [
+    pendingCaptureForCurrentSession ? pendingCapture?.createdAt : undefined,
+    ...timelineActivities.map((activity) => activity.timestamp),
+  ]
+    .filter(
+      (timestamp): timestamp is number =>
+        typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp > 0
+    )
+    .reduce<number | undefined>(
+      (earliest, timestamp) => (earliest === undefined ? timestamp : Math.min(earliest, timestamp)),
+      undefined
+    );
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
@@ -2842,6 +2854,7 @@ export function Chat() {
                   liveActivities={timelineActivities}
                   liveCurrentStep={liveCurrentStep}
                   liveStatus={timelineStatus}
+                  liveStartedAtMs={timelineStartedAtMs}
                   messageProcessMap={messageProcessMap}
                   savingGoldenMessageIndex={savingGoldenMessageIndex}
                   sessionId={sessionId}

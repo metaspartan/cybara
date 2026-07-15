@@ -83,6 +83,42 @@ describe("chat goal commands", () => {
     ]);
   });
 
+  test("steering excludes the abandoned turn from provider context", () => {
+    const chatMessages: ChatMessage[] = [
+      { role: "system", content: "You are a helpful assistant." },
+      { role: "user", content: "Keep this earlier context." },
+      { role: "assistant", content: "Earlier context acknowledged." },
+      { role: "user", content: "Run the abandoned command." },
+      {
+        role: "assistant",
+        content: "",
+        process_activities: [
+          {
+            id: "steered",
+            phase: "result",
+            text: "Conversation steered.",
+            timestamp: 2,
+            toolName: "__steering",
+          },
+        ],
+      },
+      { role: "user", content: "Reply with the new answer only." },
+    ];
+
+    const executionMessages = buildChatExecutionMessagesForAgent(chatMessages, {
+      materializedSteeringTurn: true,
+    });
+
+    expect(executionMessages.map((message) => message.content)).toEqual([
+      "You are a helpful assistant.",
+      "The previous assistant turn was interrupted by user steering. Treat the latest user message as the active instruction. Do not continue abandoned earlier work unless the latest user message explicitly asks for it.",
+      "Keep this earlier context.",
+      "Earlier context acknowledged.",
+      "Reply with the new answer only.",
+    ]);
+    expect(chatMessages).toHaveLength(6);
+  });
+
   test("goal and steering context preserve media and deterministic instruction order", () => {
     const sessionId = `goal-steer-media-${Date.now()}`;
     handleSessionGoalCommand(sessionId, "/goal audit cross-client chat parity");

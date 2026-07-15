@@ -40,8 +40,20 @@ struct NativeToolTimelineView: View {
         nativeToolActivities(for: message)
     }
 
+    private var steeringActivities: [NativeToolActivity] {
+        activities.filter { $0.toolName == "__steering" }
+    }
+
+    private var workActivities: [NativeToolActivity] {
+        activities.filter { $0.toolName != "__steering" }
+    }
+
     private var hasContent: Bool {
         !activities.isEmpty || !orderedToolCalls.isEmpty || hiddenToolCallCount > 0
+    }
+
+    private var hasWorkContent: Bool {
+        !workActivities.isEmpty || !orderedToolCalls.isEmpty || hiddenToolCallCount > 0
     }
 
     private var hiddenToolCallCount: Int {
@@ -51,32 +63,38 @@ struct NativeToolTimelineView: View {
     var body: some View {
         if hasContent {
             VStack(alignment: .leading, spacing: 8) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.16)) {
-                        expanded.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 9.5, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "clock")
-                            .font(.system(size: 11.5, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Text("Worked for \(nativeWorkedDurationLabel(for: message))")
-                            .font(.system(size: appearance.activityFontSize, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 0)
-                    }
+                if !steeringActivities.isEmpty {
+                    NativeGroupedActivities(activities: steeringActivities)
                 }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .accessibilityLabel(expanded ? "Hide work details" : "Show work details")
 
-                if expanded {
+                if hasWorkContent {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            expanded.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 7) {
+                            Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "clock")
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Text("Worked for \(nativeWorkedDurationLabel(for: message))")
+                                .font(.system(size: appearance.activityFontSize, weight: .medium, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel(expanded ? "Hide work details" : "Show work details")
+                }
+
+                if hasWorkContent && expanded {
                     VStack(alignment: .leading, spacing: 8) {
-                        if !activities.isEmpty {
-                            NativeGroupedActivities(activities: activities)
+                        if !workActivities.isEmpty {
+                            NativeGroupedActivities(activities: workActivities)
                         }
 
                         if !orderedToolCalls.isEmpty {
@@ -232,7 +250,9 @@ private struct NativeToolActivityRow: View {
     }
 
     private var icon: String {
-        if activity.toolName == "sessions_transfer" { return "arrow.left.arrow.right" }
+        if activity.toolName == "sessions_transfer" || activity.toolName == "__steering" {
+            return "arrow.left.arrow.right"
+        }
         switch activity.phase {
         case .start: return "clock"
         case .result: return "checkmark.circle.fill"

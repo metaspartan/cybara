@@ -1187,7 +1187,13 @@ describe("handleChat per-session serialization", () => {
     expect(steered.success).toBe(true);
     expect(steered.pendingMessages).toEqual([]);
     expect(steered.interruptedMessage?.role).toBe("assistant");
-    expect(steered.interruptedMessage?.process_activities).toEqual([]);
+    expect(steered.interruptedMessage?.process_activities).toEqual([
+      expect.objectContaining({
+        phase: "result",
+        text: "Conversation steered.",
+        toolName: "__steering",
+      }),
+    ]);
     expect(listPendingChatMessages(sessionId)).toEqual([]);
 
     const materializedMessages = await waitForVisibleSessionMessages(sessionId, 3);
@@ -1394,6 +1400,9 @@ describe("handleChat per-session serialization", () => {
       expect(messages[3]?.process_activities?.map((activity) => activity.text)).toContain(
         "Ran long command before steering"
       );
+      expect(messages[3]?.process_activities?.map((activity) => activity.text)).toContain(
+        "Conversation steered."
+      );
       expect(messages[3]?.process_activities?.map((activity) => activity.text)).not.toContain(
         "Steering to follow-up..."
       );
@@ -1517,13 +1526,14 @@ describe("handleChat per-session serialization", () => {
     expect(steered.success).toBe(true);
     expect(
       steered.interruptedMessage?.process_activities?.map((activity) => activity.text)
-    ).toEqual(["Ran repo inspection before steering"]);
+    ).toEqual(["Ran repo inspection before steering", "Conversation steered."]);
 
     const remountedMessages = await waitForVisibleSessionMessages(sessionId, 3);
     expect(remountedMessages.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
     expect(remountedMessages[1]?.content).toBe("");
     expect(remountedMessages[1]?.process_activities?.map((activity) => activity.text)).toEqual([
       "Ran repo inspection before steering",
+      "Conversation steered.",
     ]);
     expect(remountedMessages[2]?.content).toBe("focus on cost too");
 
@@ -1534,6 +1544,7 @@ describe("handleChat per-session serialization", () => {
     expect(durableMessages.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
     expect(durableMessages[1]?.process_activities?.map((activity) => activity.text)).toEqual([
       "Ran repo inspection before steering",
+      "Conversation steered.",
     ]);
 
     await firstTurn;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -31,6 +31,7 @@ import {
   type LiveActivityItem,
 } from "@/lib/chatActivities";
 import { SubagentIcon } from "./SubagentIcon";
+import { formatWorkedDuration } from "./assistantMetaModel";
 
 const GROUP_ICONS: Record<ActivityGroupKind, LucideIcon> = {
   read: FileText,
@@ -52,7 +53,7 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
   }
   return (
     <div className="chat-activity-text flex items-start gap-2 px-0.5 text-gray-400">
-      {activity.toolName === "sessions_transfer" ? (
+      {activity.toolName === "sessions_transfer" || activity.toolName === "__steering" ? (
         <ArrowRightLeft className="w-3 h-3 text-current opacity-70 mt-0.5 flex-shrink-0" />
       ) : activity.phase === "start" ? (
         <Loader2 className="w-3 h-3 animate-spin text-current opacity-70 mt-0.5 flex-shrink-0" />
@@ -202,10 +203,12 @@ export function LiveActivityTimeline({
   status,
   activities,
   currentStep,
+  startedAtMs,
 }: {
   status: "thinking" | "generating" | "compacting" | "idle";
   activities: LiveActivityItem[];
   currentStep?: string | null;
+  startedAtMs?: number;
 }) {
   const visibleActivities = activities.filter((activity) => !isGenericStatusLabel(activity.text));
   const activeStartStep = getLatestInFlightStep(visibleActivities);
@@ -226,6 +229,7 @@ export function LiveActivityTimeline({
 
   return (
     <div className="space-y-1">
+      <LiveWorkedDuration startedAtMs={startedAtMs} />
       {visibleActivities.length > 0 && <GroupedActivityRows activities={visibleActivities} />}
       {displayCurrentStep ? (
         <div className="chat-activity-text flex items-start gap-2 px-0.5 text-gray-300">
@@ -252,6 +256,26 @@ export function LiveActivityTimeline({
   );
 }
 
+function LiveWorkedDuration({ startedAtMs }: { startedAtMs?: number }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const validStart =
+    typeof startedAtMs === "number" && Number.isFinite(startedAtMs) && startedAtMs > 0
+      ? Math.min(startedAtMs, now)
+      : now;
+
+  return (
+    <div className="chat-activity-text px-0.5 text-gray-500">
+      Working for {formatWorkedDuration(now - validStart)}
+    </div>
+  );
+}
+
 export function ProcessActivityList({ activities }: { activities: LiveActivityItem[] }) {
   if (activities.length === 0) return null;
 
@@ -271,27 +295,38 @@ export function CompletedActivityTimeline({
   const [expanded, setExpanded] = useState(false);
   const visibleActivities = activities.filter((activity) => !isGenericStatusLabel(activity.text));
   if (visibleActivities.length === 0) return null;
+  const steeringActivities = visibleActivities.filter(
+    (activity) => activity.toolName === "__steering"
+  );
+  const workActivities = visibleActivities.filter((activity) => activity.toolName !== "__steering");
 
   return (
     <div className="space-y-1.5">
-      <button
-        type="button"
-        onClick={() => setExpanded((value) => !value)}
-        className="chat-activity-text flex w-full items-center gap-1.5 px-0.5 text-left text-gray-500 transition-colors hover:text-gray-300 cursor-pointer"
-        aria-expanded={expanded}
-        title={expanded ? "Hide work details" : "Show work details"}
-      >
-        {expanded ? (
-          <ChevronDown className="h-3 w-3 shrink-0 text-current" />
-        ) : (
-          <ChevronRight className="h-3 w-3 shrink-0 text-current" />
-        )}
-        <span>{label}</span>
-      </button>
-      {expanded ? (
-        <div className="ml-1 border-l border-white/10 pl-2.5">
-          <ProcessActivityList activities={visibleActivities} />
-        </div>
+      {steeringActivities.length > 0 ? (
+        <ProcessActivityList activities={steeringActivities} />
+      ) : null}
+      {workActivities.length > 0 ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            className="chat-activity-text flex w-full items-center gap-1.5 px-0.5 text-left text-gray-500 transition-colors hover:text-gray-300 cursor-pointer"
+            aria-expanded={expanded}
+            title={expanded ? "Hide work details" : "Show work details"}
+          >
+            {expanded ? (
+              <ChevronDown className="h-3 w-3 shrink-0 text-current" />
+            ) : (
+              <ChevronRight className="h-3 w-3 shrink-0 text-current" />
+            )}
+            <span>{label}</span>
+          </button>
+          {expanded ? (
+            <div className="ml-1 border-l border-white/10 pl-2.5">
+              <ProcessActivityList activities={workActivities} />
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

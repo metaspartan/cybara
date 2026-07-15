@@ -44,6 +44,7 @@ interface ChatMessageTimelineProps {
   liveActivities: LiveActivityItem[];
   liveCurrentStep: string | null;
   liveStatus: "thinking" | "generating" | "compacting" | "idle";
+  liveStartedAtMs?: number;
   messageProcessMap: Record<string, LiveActivityItem[]>;
   savingGoldenMessageIndex: number | null;
   sessionId: string | null;
@@ -66,6 +67,7 @@ export function ChatMessageTimeline({
   liveActivities,
   liveCurrentStep,
   liveStatus,
+  liveStartedAtMs,
   messageProcessMap,
   savingGoldenMessageIndex,
   sessionId,
@@ -305,6 +307,7 @@ export function ChatMessageTimeline({
             status={liveStatus}
             activities={liveActivities}
             currentStep={liveCurrentStep}
+            startedAtMs={liveStartedAtMs}
           />
         </div>
       )}

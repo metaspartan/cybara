@@ -693,7 +693,7 @@ export function WorkActivityIcon({ phase, toolName }: { phase: string; toolName?
   if (toolName === "__thought") {
     return <View style={styles.messageActivityDot} />;
   }
-  if (toolName === "sessions_transfer") {
+  if (toolName === "sessions_transfer" || toolName === "__steering") {
     return <ArrowRightLeft color={colors.textMuted} size={13} strokeWidth={2.2} />;
   }
   if (phase === "start") {
@@ -759,7 +759,13 @@ export function WorkTimeline({
   }, [live]);
   if (timeline.activities.length === 0) return null;
 
-  const entries = groupMobileActivities(timeline.activities);
+  const steeringActivities = timeline.activities.filter(
+    (activity) => activity.toolName === "__steering"
+  );
+  const workActivities = timeline.activities.filter(
+    (activity) => activity.toolName !== "__steering"
+  );
+  const entries = groupMobileActivities(workActivities);
   const fontSize = Math.max(11, getChatFontSizePixels(appearance.fontSize) * 0.84);
   const activityStyle: TextStyle = {
     color: appearance.highContrast ? colors.text : colors.textMuted,
@@ -769,13 +775,16 @@ export function WorkTimeline({
 
   return (
     <View style={styles.workTimeline}>
-      {live ? (
+      {steeringActivities.map((activity) => (
+        <MobileActivityRow key={activity.id} activity={activity} appearance={appearance} />
+      ))}
+      {workActivities.length > 0 && live ? (
         <View style={styles.workTimelineHeader}>
           <Text selectable style={[styles.workedForText, activityStyle]}>
             Working for {timeline.workedDuration}
           </Text>
         </View>
-      ) : (
+      ) : workActivities.length > 0 ? (
         <Pressable
           accessibilityLabel={expanded ? "Hide work details" : "Show work details"}
           accessibilityRole="button"
@@ -792,8 +801,8 @@ export function WorkTimeline({
             Worked for {timeline.workedDuration}
           </Text>
         </Pressable>
-      )}
-      {live || expanded ? (
+      ) : null}
+      {workActivities.length > 0 && (live || expanded) ? (
         <View style={styles.messageActivityList}>
           {entries.map((entry) => {
             if (entry.type === "single") {
