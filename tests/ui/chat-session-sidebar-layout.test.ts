@@ -137,14 +137,27 @@ describe("chat session sidebar layout", () => {
     expect(source).not.toContain("hover:bg-red-500/20 text-red-400");
   });
 
+  test("places active tasks directly after pinned chats", () => {
+    const source = chatSource();
+
+    expect(source).toContain("useTasks()");
+    expect(source).toContain('data-testid="chat-sidebar-active-tasks"');
+    expect(source).toContain("const hasPinnedGroup");
+    expect(source).toContain('group.kind === "pinned"');
+    expect(source).toContain("const openTask = (task: Task) =>");
+    expect(source).toContain("void handleLoadSession(task.session_id)");
+    expect(source).toContain('navigate("/tasks")');
+    expect(source).toContain("compactTaskRunTime(task.next_run || task.last_run)");
+  });
+
   test("selects sessions without drawing an accent outline", () => {
     const source = chatSource();
 
-    expect(source).toContain(
-      'isSessionSelected\n                            ? "bg-[rgba(var(--accent-primary),0.12)] border border-transparent"'
+    expect(source).toMatch(
+      /isSessionSelected\s*\?\s*"bg-\[rgba\(var\(--accent-primary\),0\.12\)\] border border-transparent"/
     );
-    expect(source).not.toContain(
-      'isSessionSelected\n                            ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"'
+    expect(source).not.toMatch(
+      /isSessionSelected\s*\?\s*"bg-\[rgba\(var\(--accent-primary\),0\.12\)\] border border-\[rgba\(var\(--accent-primary\),0\.3\)\]"/
     );
   });
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,9 +8,9 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { CalendarCheck } from "lucide-react-native";
+import { CalendarCheck, MessageSquare } from "lucide-react-native";
 import { GlassPanel } from "./Glass";
-import { CybaraMobileApi, type AgentSummary } from "../lib/api";
+import { CybaraMobileApi, type AgentSummary, type SessionSummary } from "../lib/api";
 import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 
 const SCHEDULE_PRESETS: Array<{ value: string; label: string }> = [
@@ -39,12 +39,29 @@ export function NewTaskPanel({
     agents.find((agent) => agent.status === "running")?.id || agents[0]?.id
   );
   const [schedulePreset, setSchedulePreset] = useState<string>("0 9 * * *");
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>();
   const [customCron, setCustomCron] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const schedule = schedulePreset === "custom" ? customCron.trim() : schedulePreset;
   const canCreate = Boolean(name.trim() && action.trim() && schedule);
+
+  useEffect(() => {
+    let active = true;
+    void api
+      .sessions()
+      .then((items) => {
+        if (active) setSessions(items);
+      })
+      .catch(() => {
+        if (active) setSessions([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api]);
 
   const create = async () => {
     if (!canCreate || creating) return;
@@ -55,6 +72,7 @@ export function NewTaskPanel({
         name: name.trim(),
         action: action.trim(),
         agent_id: selectedAgentId,
+        session_id: selectedSessionId,
         schedule,
         enabled: true,
       });
@@ -116,6 +134,55 @@ export function NewTaskPanel({
               </Text>
               <Text numberOfLines={1} style={styles.agentChipDetail}>
                 {[agent.model, agent.status].filter(Boolean).join(" - ") || "Configured"}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      <Text style={styles.sectionTitle}>Chat context</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.picker}>
+        <Pressable
+          onPress={() => setSelectedSessionId(undefined)}
+          style={[
+            styles.agentChip,
+            !selectedSessionId && [styles.agentChipActive, { borderColor: accentColor }],
+          ]}
+        >
+          <CalendarCheck
+            color={!selectedSessionId ? accentColor : colors.textMuted}
+            size={17}
+            strokeWidth={2.2}
+          />
+          <Text style={[styles.agentChipTitle, !selectedSessionId && { color: accentColor }]}>
+            New chat
+          </Text>
+          <Text style={styles.agentChipDetail}>Separate chat each run</Text>
+        </Pressable>
+        {sessions.map((session) => {
+          const selected = selectedSessionId === session.id;
+          return (
+            <Pressable
+              key={session.id}
+              onPress={() => setSelectedSessionId(session.id)}
+              style={[
+                styles.agentChip,
+                selected && [styles.agentChipActive, { borderColor: accentColor }],
+              ]}
+            >
+              <MessageSquare
+                color={selected ? accentColor : colors.textMuted}
+                size={17}
+                strokeWidth={2.2}
+              />
+              <Text
+                numberOfLines={1}
+                style={[styles.agentChipTitle, selected && { color: accentColor }]}
+              >
+                {session.title?.trim() || `Chat ${session.id.slice(0, 8)}`}
+              </Text>
+              <Text numberOfLines={1} style={styles.agentChipDetail}>
+                {session.message_count} messages
               </Text>
             </Pressable>
           );

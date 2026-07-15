@@ -15,6 +15,7 @@ interface Attempt {
 interface TaskSnapshot {
   id: string;
   name: string;
+  session_id?: string;
   type?: string;
   schedule?: string | null;
   config?: Record<string, unknown> | string | null;
@@ -31,6 +32,7 @@ interface WorkerReport {
   errEmptyName: Attempt;
   errBadCron: Attempt;
   errShortCron: Attempt;
+  errMissingSession: Attempt;
   fuzz: Attempt[];
   everyFive: TaskSnapshot;
   daily: TaskSnapshot;
@@ -39,6 +41,9 @@ interface WorkerReport {
   noSchedule: TaskSnapshot;
   emptySchedule: TaskSnapshot;
   disabled: TaskSnapshot;
+  selectedSession: TaskSnapshot;
+  selectedSessionUpdated: TaskSnapshot;
+  selectedSessionCleared: TaskSnapshot;
   fetched: TaskSnapshot | null;
   listIds: string[];
   listEveryFive: TaskSnapshot | null;
@@ -61,6 +66,7 @@ interface WorkerReport {
 // scheduler and exits before any interval tick could fire.
 const WORKER_SOURCE = `
 import { taskScheduler } from "${join(ROOT_DIR, "src", "core", "scheduler.ts").replace(/\\/g, "/")}";
+import { tables } from "${join(ROOT_DIR, "src", "core", "database.ts").replace(/\\/g, "/")}";
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -102,6 +108,7 @@ report.errNoName = attempt(() =>
 report.errEmptyName = attempt(() => taskScheduler.create({ name: "   " }));
 report.errBadCron = attempt(() => taskScheduler.create({ name: "bad", schedule: "not a cron at all x" }));
 report.errShortCron = attempt(() => taskScheduler.create({ name: "short", schedule: "* * *" }));
+report.errMissingSession = attempt(() => taskScheduler.create({ name: "missing-session", session_id: "missing" }));
 
 const fuzz: unknown[] = [];
 for (let i = 0; i < 60; i++) {
@@ -129,6 +136,24 @@ report.monthly = taskScheduler.create({ name: "monthly", schedule: "0 0 1 * *", 
 report.noSchedule = taskScheduler.create({ name: "no-sched" });
 report.emptySchedule = taskScheduler.create({ name: "empty-sched", schedule: "" });
 report.disabled = taskScheduler.create({ name: "disabled", enabled: false });
+tables.chatSessions.upsert({
+  id: "task-chat",
+  agent_id: "task-agent",
+  title: "Task destination",
+  messages: "[]",
+  created_at: new Date().toISOString(),
+});
+report.selectedSession = taskScheduler.create({
+  name: "selected-session",
+  session_id: "task-chat",
+  enabled: false,
+});
+report.selectedSessionUpdated = taskScheduler.update(report.selectedSession.id, {
+  sessionId: "task-chat",
+}) ?? null;
+report.selectedSessionCleared = taskScheduler.update(report.selectedSession.id, {
+  session_id: null,
+}) ?? null;
 report.nowAfter = Date.now();
 
 report.fetched = taskScheduler.get(everyFive.id) ?? null;
@@ -214,6 +239,11 @@ describe("taskScheduler.create validation", () => {
     expect(report.errShortCron.error).toContain("5 fields");
   });
 
+  test("nonexistent chat sessions are rejected", () => {
+    expect(report.errMissingSession.ok).toBe(false);
+    expect(report.errMissingSession.error).toContain("Selected chat session was not found");
+  });
+
   test("fuzzed schedules either parse as cron or fail with a validation error", () => {
     expect(report.fuzz.length).toBe(60);
     expect(report.fuzz.some((f) => !f.ok)).toBe(true);
@@ -255,6 +285,12 @@ describe("created task shape", () => {
   test("enabled:false creates a paused task", () => {
     expect(report.disabled.status).toBe("paused");
     expect(report.disabled.enabled).toBe(false);
+  });
+
+  test("an existing chat can be assigned and cleared", () => {
+    expect(report.selectedSession.session_id).toBe("task-chat");
+    expect(report.selectedSessionUpdated.session_id).toBe("task-chat");
+    expect(report.selectedSessionCleared.session_id).toBeUndefined();
   });
 });
 

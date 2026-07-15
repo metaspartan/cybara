@@ -2748,6 +2748,7 @@ export const sessionsApi = {
       {
         id: string;
         agent_id: string;
+        title?: string | null;
         created_at: string;
         updated_at: string;
         workspace_dir?: string | null;

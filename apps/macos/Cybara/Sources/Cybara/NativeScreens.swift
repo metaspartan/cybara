@@ -517,6 +517,7 @@ struct ChatScreen: View {
     @Environment(\.cybaraAccent) private var accentTint
 
     @State private var sessions: [GatewaySession] = []
+    @State private var activeTasks: [GatewayTask] = []
     @State private var agents: [GatewayAgent] = []
     @State private var providers: [GatewayProvider] = []
     @State private var providerPlanStatus: ProviderPlanStatusResponse?
@@ -764,6 +765,31 @@ struct ChatScreen: View {
         nativeSessionGroups(filteredSessions, pinnedWorkspaceGroupIDs: pinnedWorkspaceGroupIDs)
     }
 
+    private var filteredActiveTasks: [GatewayTask] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return activeTasks
+            .filter(\.isRunning)
+            .filter { task in
+                query.isEmpty
+                    || task.name.lowercased().contains(query)
+                    || (task.action ?? "").lowercased().contains(query)
+            }
+            .sorted { left, right in
+                if left.status?.lowercased() == "running" && right.status?.lowercased() != "running" {
+                    return true
+                }
+                if right.status?.lowercased() == "running" && left.status?.lowercased() != "running" {
+                    return false
+                }
+                return (parseGatewayDate(left.next_run) ?? .distantFuture)
+                    < (parseGatewayDate(right.next_run) ?? .distantFuture)
+            }
+    }
+
+    private var hasPinnedSessionGroup: Bool {
+        groupedSessions.contains { $0.kind == .pinned }
+    }
+
     private var pinnedWorkspaceGroupIDs: Set<String> {
         Set(pinnedWorkspaceGroupIdsRaw.split(separator: "\n").map(String.init))
     }
@@ -789,11 +815,14 @@ struct ChatScreen: View {
             .help("New chat")
 
             List(selection: $selectedSessionID) {
-                if filteredSessions.isEmpty {
+                if filteredSessions.isEmpty && filteredActiveTasks.isEmpty {
                     Text("No matching chats")
                         .font(.system(size: 12, design: .rounded))
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 8)
+                }
+                if !hasPinnedSessionGroup {
+                    activeTaskSidebarSection
                 }
                 ForEach(groupedSessions) { group in
                     Section {
@@ -875,9 +904,60 @@ struct ChatScreen: View {
                             hoveredSessionGroupID = hovering ? group.id : nil
                         }
                     }
+                    if group.kind == .pinned {
+                        activeTaskSidebarSection
+                    }
                 }
             }
             .listStyle(.sidebar)
+        }
+    }
+
+    @ViewBuilder
+    private var activeTaskSidebarSection: some View {
+        if !filteredActiveTasks.isEmpty {
+            Section {
+                ForEach(filteredActiveTasks) { task in
+                    Button {
+                        if let sessionID = firstNonEmptyGatewayString(task.session_id) {
+                            selectedSessionID = sessionID
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if task.status?.lowercased() == "running" {
+                                ProgressView()
+                                    .controlSize(.mini)
+                            } else {
+                                Image(systemName: "calendar.badge.clock")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(task.name)
+                                .lineLimit(1)
+                            Spacer(minLength: 4)
+                            if firstNonEmptyGatewayString(task.session_id) == nil {
+                                Text("New chat")
+                                    .font(.system(size: 9, design: .rounded))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(firstNonEmptyGatewayString(task.session_id) == nil)
+                    .help(firstNonEmptyGatewayString(task.session_id) == nil ? "Runs in a new chat" : "Open assigned chat")
+                }
+            } header: {
+                HStack(spacing: 5) {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 10, weight: .medium))
+                    Text("Tasks")
+                    Spacer(minLength: 4)
+                    Text("\(filteredActiveTasks.count)")
+                }
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -2761,10 +2841,12 @@ struct ChatScreen: View {
     private func loadSessions() async {
         do {
             async let loadedSessions = client.sessions(limit: 150)
+            async let loadedTasks = client.tasks()
             async let loadedAgents = client.agents()
             async let loadedProviders = client.providers()
             async let loadedProviderPlans = loadProviderPlanStatus()
             sessions = try await loadedSessions
+            activeTasks = try await loadedTasks
             agents = try await loadedAgents
             providers = try await loadedProviders
             providerPlanStatus = await loadedProviderPlans
@@ -4301,6 +4383,7 @@ struct TasksScreen: View {
 
     @State private var tasks: [GatewayTask] = []
     @State private var agents: [GatewayAgent] = []
+    @State private var sessions: [GatewaySession] = []
     @State private var searchText = ""
     @State private var expandedTaskID: String?
     @State private var taskRuns: [String: [GatewayTaskRun]] = [:]
@@ -4367,7 +4450,7 @@ struct TasksScreen: View {
         }
         .task { await load() }
         .sheet(isPresented: $showingEditor) {
-            TaskEditorSheet(task: editingTask, agents: agents) { draft in
+            TaskEditorSheet(task: editingTask, agents: agents, sessions: sessions) { draft in
                 try await saveTask(draft)
             }
             .frame(minWidth: 520, idealWidth: 560, minHeight: 620)
@@ -4637,6 +4720,11 @@ struct TasksScreen: View {
         } else {
             parts.append("Automatic agent")
         }
+        if let session = sessions.first(where: { $0.id == task.session_id }) {
+            parts.append(session.displayTitle)
+        } else if task.session_id != nil {
+            parts.append("Assigned chat")
+        }
         let lastRun = relativeTimestamp(task.last_run)
         if !lastRun.isEmpty { parts.append("Last \(lastRun)") }
         let nextRun = relativeTimestamp(task.next_run)
@@ -4666,8 +4754,10 @@ struct TasksScreen: View {
         do {
             async let loadedTasks = client.tasks()
             async let loadedAgents = client.agents()
+            async let loadedSessions = client.sessions(limit: 200)
             tasks = try await loadedTasks
             agents = try await loadedAgents
+            sessions = try await loadedSessions
             error = nil
         } catch {
             self.error = error.localizedDescription
@@ -4681,6 +4771,7 @@ struct TasksScreen: View {
                 name: draft.name,
                 description: draft.description,
                 agentID: draft.agentID,
+                sessionID: draft.sessionID,
                 action: draft.action,
                 schedule: draft.schedule,
                 enabled: draft.enabled
@@ -4690,6 +4781,7 @@ struct TasksScreen: View {
                 name: draft.name,
                 description: draft.description,
                 agentID: draft.agentID,
+                sessionID: draft.sessionID,
                 action: draft.action,
                 schedule: draft.schedule,
                 enabled: draft.enabled
@@ -4770,6 +4862,7 @@ private struct NativeTaskDraft {
     let name: String
     let description: String
     let agentID: String?
+    let sessionID: String?
     let action: String
     let schedule: String
     let enabled: Bool
@@ -4796,6 +4889,7 @@ private func formatTaskSchedule(_ schedule: String) -> String {
 private struct TaskEditorSheet: View {
     let task: GatewayTask?
     let agents: [GatewayAgent]
+    let sessions: [GatewaySession]
     let onSave: (NativeTaskDraft) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -4803,6 +4897,7 @@ private struct TaskEditorSheet: View {
     @State private var name: String
     @State private var description: String
     @State private var agentID: String
+    @State private var sessionID: String
     @State private var action: String
     @State private var schedulePreset: String
     @State private var customSchedule: String
@@ -4813,16 +4908,19 @@ private struct TaskEditorSheet: View {
     init(
         task: GatewayTask?,
         agents: [GatewayAgent],
+        sessions: [GatewaySession],
         onSave: @escaping (NativeTaskDraft) async throws -> Void
     ) {
         self.task = task
         self.agents = agents
+        self.sessions = sessions
         self.onSave = onSave
         let schedule = task?.schedule ?? "0 * * * *"
         let isPreset = nativeTaskSchedulePresets.contains { $0.id == schedule }
         _name = State(initialValue: task?.name ?? "")
         _description = State(initialValue: task?.description ?? "")
         _agentID = State(initialValue: task?.agent_id ?? "")
+        _sessionID = State(initialValue: task?.session_id ?? "")
         _action = State(initialValue: task?.action ?? "")
         _schedulePreset = State(initialValue: isPreset ? schedule : "custom")
         _customSchedule = State(initialValue: isPreset ? "*/5 * * * *" : schedule)
@@ -4865,9 +4963,17 @@ private struct TaskEditorSheet: View {
                     .textFieldStyle(.roundedBorder)
 
                 Picker("Agent", selection: $agentID) {
-                    Text("Automatic").tag("")
+                    Text(sessionID.isEmpty ? "Gateway default" : "Use chat's agent").tag("")
                     ForEach(agents) { agent in
                         Text(agent.name).tag(agent.id)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Picker("Chat context", selection: $sessionID) {
+                    Text("New chat for each run").tag("")
+                    ForEach(sessions) { session in
+                        Text(session.displayTitle).tag(session.id)
                     }
                 }
                 .pickerStyle(.menu)
@@ -4941,6 +5047,7 @@ private struct TaskEditorSheet: View {
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             description: description.trimmingCharacters(in: .whitespacesAndNewlines),
             agentID: firstNonEmptyGatewayString(agentID),
+            sessionID: firstNonEmptyGatewayString(sessionID),
             action: action.trimmingCharacters(in: .whitespacesAndNewlines),
             schedule: selectedSchedule.trimmingCharacters(in: .whitespacesAndNewlines),
             enabled: enabled

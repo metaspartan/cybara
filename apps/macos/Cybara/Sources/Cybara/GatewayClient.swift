@@ -440,6 +440,7 @@ struct GatewayClient: Sendable {
         name: String,
         description: String,
         agentID: String?,
+        sessionID: String?,
         action: String,
         schedule: String,
         enabled: Bool
@@ -449,6 +450,7 @@ struct GatewayClient: Sendable {
                 name: name,
                 description: description,
                 agentID: agentID,
+                sessionID: sessionID,
                 action: action,
                 schedule: schedule,
                 enabled: enabled
@@ -463,6 +465,7 @@ struct GatewayClient: Sendable {
         name: String,
         description: String,
         agentID: String?,
+        sessionID: String?,
         action: String,
         schedule: String,
         enabled: Bool
@@ -472,6 +475,7 @@ struct GatewayClient: Sendable {
                 name: name,
                 description: description,
                 agentID: agentID,
+                sessionID: sessionID,
                 action: action,
                 schedule: schedule,
                 enabled: enabled
@@ -509,6 +513,7 @@ struct GatewayClient: Sendable {
         name: String,
         description: String,
         agentID: String?,
+        sessionID: String?,
         action: String,
         schedule: String,
         enabled: Bool
@@ -524,6 +529,11 @@ struct GatewayClient: Sendable {
             payload["agent_id"] = agentID
         } else {
             payload["agent_id"] = NSNull()
+        }
+        if let sessionID = firstNonEmptyGatewayString(sessionID) {
+            payload["session_id"] = sessionID
+        } else {
+            payload["session_id"] = NSNull()
         }
         return payload
     }

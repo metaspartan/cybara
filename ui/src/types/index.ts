@@ -244,6 +244,8 @@ export interface Task {
   description?: string;
   agentId?: string;
   agent_id?: string;
+  sessionId?: string | null;
+  session_id?: string | null;
   action?: string;
   status?: "pending" | "running" | "completed" | "failed" | "active" | "paused";
   enabled?: boolean;

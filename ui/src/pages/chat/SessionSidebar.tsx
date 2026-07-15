@@ -1,5 +1,6 @@
 import {
   Check,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   Folder,
@@ -26,6 +27,7 @@ import {
   useState,
 } from "react";
 import { Button, Modal } from "@/components/ui";
+import { useTasks } from "@/hooks/useApi";
 import {
   type LoadedChatSession,
   useDeleteSession,
@@ -39,6 +41,8 @@ import { useI18n } from "@/lib/i18n";
 import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import type { SessionContextUsage, SessionTokenUsage } from "@/types";
+import type { Task } from "@/types";
+import { useNavigate } from "react-router-dom";
 import type { ChatMessage } from "./chatModel";
 import { sessionDisplayTitle, sessionPreviewText, sessionRouteLabel } from "./chatModel";
 import {
@@ -129,6 +133,20 @@ function compactSidebarRelativeTime(value?: string | null): string {
   return `${Math.floor(days / 365)}y`;
 }
 
+function compactTaskRunTime(value?: string | null): string {
+  const parsed = Date.parse(value || "");
+  if (!Number.isFinite(parsed)) return "active";
+  const seconds = Math.floor((parsed - Date.now()) / 1000);
+  if (seconds <= 0) return compactSidebarRelativeTime(value);
+  if (seconds < 60) return "<1m";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `in ${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `in ${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `in ${days}d`;
+}
+
 function sessionTooltipText(
   session: ChatSidebarSession,
   displayTitle: string,
@@ -187,6 +205,61 @@ function SessionHoverCard({ tooltip }: { tooltip: SessionTooltipState | null }) 
   );
 }
 
+function ActiveTasksSection({
+  tasks,
+  collapsed,
+  onToggle,
+  onOpen,
+}: {
+  tasks: Task[];
+  collapsed: boolean;
+  onToggle: () => void;
+  onOpen: (task: Task) => void;
+}) {
+  if (tasks.length === 0) return null;
+  return (
+    <div className="space-y-1.5" data-testid="chat-sidebar-active-tasks">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="theme-text-muted flex w-full items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-[11px] font-medium transition-colors hover:bg-white/[0.04]"
+        aria-expanded={!collapsed}
+      >
+        {collapsed ? (
+          <ChevronRight className="h-3 w-3 shrink-0" />
+        ) : (
+          <ChevronDown className="h-3 w-3 shrink-0" />
+        )}
+        <CalendarClock className="h-3 w-3 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">Tasks</span>
+        <span className="theme-text-muted text-[10px] opacity-70">{tasks.length}</span>
+      </button>
+      {!collapsed &&
+        tasks.map((task) => (
+          <button
+            key={task.id}
+            type="button"
+            onClick={() => onOpen(task)}
+            className="theme-text-primary deferred-list-row flex w-full min-w-0 items-center gap-1.5 rounded-lg border border-white/5 bg-white/[0.03] px-2.5 py-2 text-left text-[12px] font-medium transition-all hover:border-white/15"
+            title={task.session_id ? "Open assigned chat" : "Open task details"}
+          >
+            {task.status === "running" ? (
+              <Loader2 className="theme-text-muted h-3 w-3 shrink-0 animate-spin" />
+            ) : (
+              <CalendarClock className="theme-text-muted h-3 w-3 shrink-0" />
+            )}
+            <span className="min-w-0 flex-1 truncate">{task.name}</span>
+            <span className="theme-text-muted ml-1 shrink-0 text-[11px]">
+              {task.status === "running"
+                ? "now"
+                : compactTaskRunTime(task.next_run || task.last_run)}
+            </span>
+          </button>
+        ))}
+    </div>
+  );
+}
+
 export function SessionsPanel({
   isOpen,
   currentSessionId,
@@ -195,8 +268,10 @@ export function SessionsPanel({
   onLoadSession,
   onNewSession,
 }: SessionsPanelProps) {
+  const navigate = useNavigate();
   const { t } = useI18n();
   const { data: sessions, isLoading, refetch } = useSessions();
+  const { data: tasks = [], isLoading: tasksLoading } = useTasks();
   const deleteSession = useDeleteSession();
   const loadSession = useLoadSession();
   const renameSession = useRenameSession();
@@ -229,6 +304,28 @@ export function SessionsPanel({
       return 0;
     });
   }, [sessions, deferredSearchQuery, pinnedWorkspaceGroupIds]);
+  const activeTasks = useMemo(() => {
+    const query = deferredSearchQuery.trim().toLowerCase();
+    return tasks
+      .filter(
+        (task) =>
+          (task.enabled === true || task.status === "pending" || task.status === "running") &&
+          (!query ||
+            task.name.toLowerCase().includes(query) ||
+            (task.action || "").toLowerCase().includes(query))
+      )
+      .sort((left, right) => {
+        if (left.status === "running" && right.status !== "running") return -1;
+        if (right.status === "running" && left.status !== "running") return 1;
+        const leftRun = Date.parse(left.next_run || "");
+        const rightRun = Date.parse(right.next_run || "");
+        if (Number.isFinite(leftRun) && Number.isFinite(rightRun)) return leftRun - rightRun;
+        if (Number.isFinite(leftRun)) return -1;
+        if (Number.isFinite(rightRun)) return 1;
+        return left.name.localeCompare(right.name);
+      });
+  }, [tasks, deferredSearchQuery]);
+  const hasPinnedGroup = sessionGroups.some((group) => group.kind === "pinned");
 
   const handleTogglePin = useCallback(
     (event: MouseEvent, sessionId: string, pinned: boolean) => {
@@ -338,6 +435,14 @@ export function SessionsPanel({
         setPendingSessionLoadId(null);
       }
     }
+  };
+
+  const openTask = (task: Task) => {
+    if (task.session_id) {
+      void handleLoadSession(task.session_id);
+      return;
+    }
+    navigate("/tasks");
   };
 
   const beginRenameSession = (
@@ -466,26 +571,41 @@ export function SessionsPanel({
             {t("chat.sidebar.newChat")}
           </button>
 
-          {isLoading ? (
+          {isLoading || tasksLoading ? (
             <div className="text-center py-8 text-gray-500">
               <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
               <p className="text-xs">Loading...</p>
             </div>
-          ) : sessions?.length === 0 ? (
+          ) : sessions?.length === 0 && activeTasks.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <MessageSquare className="w-6 h-6 mx-auto mb-2 opacity-30" />
               <p className="text-xs">No chats yet</p>
               <p className="text-[10px] mt-1 text-gray-600">Start chatting to create one</p>
             </div>
-          ) : sessionGroups.length === 0 ? (
+          ) : sessionGroups.length === 0 && activeTasks.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Search className="w-6 h-6 mx-auto mb-2 opacity-30" />
               <p className="text-xs">No matching chats</p>
               <p className="text-[10px] mt-1 text-gray-600">Try a different search</p>
             </div>
+          ) : sessionGroups.length === 0 ? (
+            <ActiveTasksSection
+              tasks={activeTasks}
+              collapsed={collapsedGroupIds.has("active-tasks")}
+              onToggle={() => toggleGroupCollapsed("active-tasks")}
+              onOpen={openTask}
+            />
           ) : (
-            sessionGroups.map((group) => (
+            sessionGroups.map((group, index) => (
               <section key={group.id} className="space-y-1.5">
+                {!hasPinnedGroup && index === 0 && (
+                  <ActiveTasksSection
+                    tasks={activeTasks}
+                    collapsed={collapsedGroupIds.has("active-tasks")}
+                    onToggle={() => toggleGroupCollapsed("active-tasks")}
+                    onOpen={openTask}
+                  />
+                )}
                 <div
                   className={cn(
                     "group/session-folder relative flex w-full items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-gray-500 transition-colors",
@@ -749,6 +869,14 @@ export function SessionsPanel({
                       </div>
                     );
                   })}
+                {group.kind === "pinned" && (
+                  <ActiveTasksSection
+                    tasks={activeTasks}
+                    collapsed={collapsedGroupIds.has("active-tasks")}
+                    onToggle={() => toggleGroupCollapsed("active-tasks")}
+                    onOpen={openTask}
+                  />
+                )}
               </section>
             ))
           )}

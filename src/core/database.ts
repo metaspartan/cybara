@@ -134,6 +134,7 @@ try {
   CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     agent_id TEXT,
+    session_id TEXT,
     name TEXT NOT NULL,
     type TEXT DEFAULT 'scheduled',
     schedule TEXT,
@@ -452,6 +453,11 @@ try {
     // Column already exists, ignore
   }
 
+  try {
+    db.exec("ALTER TABLE tasks ADD COLUMN session_id TEXT");
+    console.error("[Database] Migration: Added session_id column to tasks");
+  } catch {}
+
   for (const sql of [
     "ALTER TABLE agent_benchmark_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'",
     "ALTER TABLE agent_benchmark_runs ADD COLUMN current_task INTEGER NOT NULL DEFAULT 0",
@@ -558,6 +564,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     agent_id TEXT,
+    session_id TEXT,
     name TEXT NOT NULL,
     type TEXT DEFAULT 'scheduled',
     schedule TEXT,
@@ -714,11 +721,11 @@ const stmts = {
     all: prepare("SELECT * FROM tasks ORDER BY created_at DESC"),
     get: prepare("SELECT * FROM tasks WHERE id = ?"),
     create: prepare(
-      "INSERT INTO tasks (id, agent_id, name, type, schedule, config, status, next_run) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO tasks (id, agent_id, session_id, name, type, schedule, config, status, next_run) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ),
     update: prepare("UPDATE tasks SET status=?, last_run=?, next_run=? WHERE id=?"),
     replace: prepare(
-      "UPDATE tasks SET agent_id=?, name=?, type=?, schedule=?, config=?, status=?, next_run=? WHERE id=?"
+      "UPDATE tasks SET agent_id=?, session_id=?, name=?, type=?, schedule=?, config=?, status=?, next_run=? WHERE id=?"
     ),
     delete: prepare("DELETE FROM tasks WHERE id = ?"),
   },
@@ -1195,6 +1202,7 @@ export const tables = {
       stmts.tasks.create.run(
         t.id,
         t.agent_id || null,
+        t.session_id || null,
         t.name,
         t.type || "scheduled",
         t.schedule || null,
@@ -1207,6 +1215,7 @@ export const tables = {
     replace: (id: string, t: Task) =>
       stmts.tasks.replace.run(
         t.agent_id || null,
+        t.session_id || null,
         t.name,
         t.type || "scheduled",
         t.schedule || null,
@@ -1635,6 +1644,7 @@ export interface Channel {
 export interface Task {
   id: string;
   agent_id?: string;
+  session_id?: string;
   name: string;
   type?: "scheduled" | "triggered" | "recurring";
   schedule?: string;

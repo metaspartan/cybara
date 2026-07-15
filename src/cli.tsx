@@ -202,6 +202,7 @@ interface TaskItem {
   status: string;
   schedule?: string;
   lastRun?: string;
+  session_id?: string;
 }
 
 interface SkillItem {
@@ -733,6 +734,7 @@ async function rawTasks(): Promise<void> {
     console.log(`  id: ${task.id}`);
     console.log(`  status: ${task.status}`);
     if (task.schedule) console.log(`  schedule: ${task.schedule}`);
+    if (task.session_id) console.log(`  chat: ${task.session_id}`);
     if (task.lastRun) console.log(`  last_run: ${task.lastRun}`);
   }
 }
@@ -2138,11 +2140,12 @@ const TUITasksCommand = () => {
         <Text color="gray">No tasks scheduled</Text>
       ) : (
         <Table
-          headers={["Name", "Status", "Schedule"]}
+          headers={["Name", "Status", "Schedule", "Chat"]}
           rows={data.map((t) => [
             t.name,
             <StatusBadge key={t.id} status={t.status} />,
             t.schedule || "-",
+            t.session_id ? t.session_id.slice(0, 8) : "New chat",
           ])}
         />
       )}

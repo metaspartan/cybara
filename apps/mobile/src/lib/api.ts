@@ -3090,6 +3090,7 @@ export class CybaraMobileApi {
     description?: string;
     action: string;
     agent_id?: string;
+    session_id?: string;
     schedule?: string;
     enabled?: boolean;
   }): Promise<{ id?: string; success?: boolean }> {

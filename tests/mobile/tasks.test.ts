@@ -13,11 +13,14 @@ describe("mobile: task creation", () => {
     expect(api).toContain('method: "POST"');
   });
 
-  test("NewTaskPanel collects name, agent, action, and a schedule", () => {
+  test("NewTaskPanel collects name, agent, chat context, action, and a schedule", () => {
     const panel = read("components/NewTaskPanel.tsx");
     expect(panel).toContain("api.createTask(");
     expect(panel).toContain("SCHEDULE_PRESETS");
     expect(panel).toContain("Custom cron");
+    expect(panel).toContain("Chat context");
+    expect(panel).toContain(".sessions()");
+    expect(panel).toContain("session_id: selectedSessionId");
     // sends the action/prompt and enables the task
     expect(panel).toContain("action:");
     expect(panel).toContain("enabled: true");

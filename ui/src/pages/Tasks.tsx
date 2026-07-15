@@ -18,6 +18,7 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  MessageSquare,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -30,6 +31,7 @@ import {
   useTasks,
   useAgentSummaries,
   useCreateTask,
+  useUpdateTask,
   useDeleteTask,
   useStartTask,
   useStopTask,
@@ -39,6 +41,7 @@ import { useUIStore } from "../stores/uiStore";
 import { PageLayout } from "@/components/layout";
 import type { Task, AgentSummary } from "../types";
 import { useTaskNotifications } from "../hooks/useNotifications";
+import { useSessions } from "../hooks/useChat";
 import { useQuery } from "@tanstack/react-query";
 import { tasksApi } from "@/lib/api";
 
@@ -74,9 +77,11 @@ export function Tasks() {
 
   const { data: tasks, isLoading } = useTasks();
   const { data: agents } = useAgentSummaries();
+  const { data: sessions = [] } = useSessions({ limit: 200 });
   const { addToast } = useUIStore();
 
   const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
   const startTask = useStartTask();
   const stopTask = useStopTask();
@@ -97,26 +102,34 @@ export function Tasks() {
   const filteredTasks = tasks?.filter(
     (task) =>
       task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.action.toLowerCase().includes(searchQuery.toLowerCase())
+      (task.action || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleCreate = async (formData: FormData) => {
+  const handleSave = async (formData: FormData) => {
     try {
       let schedule = formData.get("schedule_preset") as string;
       if (schedule === "custom") {
         schedule = formData.get("schedule_custom") as string;
       }
 
-      await createTask.mutateAsync({
+      const sessionId = String(formData.get("session_id") || "").trim();
+      const payload: Partial<Task> = {
         name: formData.get("name") as string,
         description: formData.get("description") as string,
         schedule,
-        agent_id: formData.get("agent_id") as string,
+        agent_id: String(formData.get("agent_id") || "").trim() || undefined,
+        session_id: sessionId || null,
         action: formData.get("action") as string,
-        enabled: true,
-      });
-      addToast("success", "Task created successfully");
+        enabled: editingTask?.enabled ?? true,
+      };
+      if (editingTask) {
+        await updateTask.mutateAsync({ id: editingTask.id, data: payload });
+      } else {
+        await createTask.mutateAsync(payload);
+      }
+      addToast("success", editingTask ? "Task updated successfully" : "Task created successfully");
       setIsCreateModalOpen(false);
+      setEditingTask(null);
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to create task");
     }
@@ -189,7 +202,10 @@ export function Tasks() {
           </Button>
           <Button
             leftIcon={<Plus className="w-4 h-4" />}
-            onClick={() => setIsCreateModalOpen(true)}
+            onClick={() => {
+              setEditingTask(null);
+              setIsCreateModalOpen(true);
+            }}
           >
             Create Task
           </Button>
@@ -258,6 +274,15 @@ export function Tasks() {
                               {formatSchedule(task.schedule)}
                             </span>
                           </div>
+                          {task.session_id && (
+                            <div className="flex min-w-0 items-center gap-1.5 text-gray-400">
+                              <MessageSquare className="w-4 h-4" />
+                              <span className="min-w-0 truncate">
+                                {sessions.find((session) => session.id === task.session_id)
+                                  ?.title || `Chat ${task.session_id.slice(0, 8)}`}
+                              </span>
+                            </div>
+                          )}
                           <div className="flex min-w-0 items-center gap-1.5 text-gray-400">
                             <Calendar className="w-4 h-4" />
                             <span className="min-w-0 break-words">
@@ -269,6 +294,18 @@ export function Tasks() {
                     </div>
 
                     <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        leftIcon={<Edit2 className="w-4 h-4" />}
+                        onClick={() => {
+                          setEditingTask(task);
+                          setIsCreateModalOpen(true);
+                        }}
+                        className="w-full sm:w-auto"
+                      >
+                        Edit
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -418,12 +455,18 @@ export function Tasks() {
         )}
 
         <TaskModal
+          key={editingTask?.id || "new-task"}
           isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
-          onSubmit={handleCreate}
-          title="Create Task"
+          onClose={() => {
+            setIsCreateModalOpen(false);
+            setEditingTask(null);
+          }}
+          onSubmit={handleSave}
+          title={editingTask ? "Edit Task" : "Create Task"}
           agents={agents || []}
-          isLoading={createTask.isPending}
+          sessions={sessions}
+          task={editingTask}
+          isLoading={createTask.isPending || updateTask.isPending}
         />
 
         <ConfirmDialog
@@ -447,38 +490,84 @@ interface TaskModalProps {
   onSubmit: (formData: FormData) => void;
   title: string;
   agents: AgentSummary[];
+  sessions: Array<{ id: string; title?: string | null }>;
+  task: Task | null;
   isLoading: boolean;
 }
 
-function TaskModal({ isOpen, onClose, onSubmit, title, agents, isLoading }: TaskModalProps) {
-  const [scheduleType, setScheduleType] = useState("preset");
+function TaskModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  title,
+  agents,
+  sessions,
+  task,
+  isLoading,
+}: TaskModalProps) {
+  const taskSchedule = task?.schedule || "0 * * * *";
+  const initialSchedulePreset = schedulePresets.some((preset) => preset.value === taskSchedule)
+    ? taskSchedule
+    : "custom";
+  const [scheduleType, setScheduleType] = useState(initialSchedulePreset);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onSubmit(new FormData(e.currentTarget));
   };
 
-  const agentOptions = agents.map((a) => ({ value: a.id, label: a.name }));
+  const agentOptions = [
+    { value: "", label: task?.session_id ? "Use chat's agent" : "Gateway default" },
+    ...agents.map((agent) => ({ value: agent.id, label: agent.name })),
+  ];
+  const sessionOptions = [
+    { value: "", label: "New chat for each run" },
+    ...sessions.map((session) => ({
+      value: session.id,
+      label: session.title?.trim() || `Chat ${session.id.slice(0, 8)}`,
+    })),
+  ];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="lg">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input name="name" label="Task Name" placeholder="Daily Report Generation" required />
+        <Input
+          name="name"
+          label="Task Name"
+          placeholder="Daily Report Generation"
+          defaultValue={task?.name || ""}
+          required
+        />
 
         <Textarea
           name="description"
           label="Description (optional)"
           placeholder="What this task does..."
           rows={2}
+          defaultValue={task?.description || ""}
         />
 
-        <Select name="agent_id" label="Agent" options={agentOptions} required />
+        <Select
+          name="agent_id"
+          label="Agent"
+          options={agentOptions}
+          defaultValue={task?.agent_id || ""}
+        />
+
+        <Select
+          name="session_id"
+          label="Chat context (optional)"
+          helperText="Continue in an existing chat or create a separate chat for every run."
+          options={sessionOptions}
+          defaultValue={task?.session_id || ""}
+        />
 
         <Textarea
           name="action"
           label="Action / Prompt"
           placeholder="What should the agent do?"
           rows={3}
+          defaultValue={task?.action || ""}
           required
         />
 
@@ -488,7 +577,7 @@ function TaskModal({ isOpen, onClose, onSubmit, title, agents, isLoading }: Task
           <Select
             name="schedule_preset"
             options={schedulePresets}
-            defaultValue="0 * * * *"
+            defaultValue={initialSchedulePreset}
             onChange={(value) => setScheduleType(value === "custom" ? "custom" : "preset")}
           />
 
@@ -497,6 +586,7 @@ function TaskModal({ isOpen, onClose, onSubmit, title, agents, isLoading }: Task
               name="schedule_custom"
               placeholder="*/5 * * * *"
               helperText="Cron expression format: minute hour day month weekday"
+              defaultValue={initialSchedulePreset === "custom" ? taskSchedule : ""}
               required
             />
           )}
@@ -507,7 +597,7 @@ function TaskModal({ isOpen, onClose, onSubmit, title, agents, isLoading }: Task
             Cancel
           </Button>
           <Button type="submit" isLoading={isLoading}>
-            Create Task
+            {task ? "Save Task" : "Create Task"}
           </Button>
         </div>
       </form>

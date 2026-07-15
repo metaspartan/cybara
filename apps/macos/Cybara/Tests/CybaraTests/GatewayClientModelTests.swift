@@ -473,6 +473,7 @@ final class GatewayClientModelTests: XCTestCase {
               "schedule": "0 9 * * 1",
               "status": "pending",
               "agentId": "agent-1",
+              "sessionId": "chat-1",
               "enabled": true,
               "lastRun": "2026-07-02T12:00:00.000Z",
               "nextRun": "2026-07-06T09:00:00.000Z",
@@ -485,6 +486,7 @@ final class GatewayClientModelTests: XCTestCase {
         )
 
         XCTAssertEqual(task.agent_id, "agent-1")
+        XCTAssertEqual(task.session_id, "chat-1")
         XCTAssertTrue(task.isRunning)
         XCTAssertEqual(task.statusLabel, "Active")
         XCTAssertEqual(task.action, "Summarize workspace changes")

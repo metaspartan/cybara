@@ -261,6 +261,10 @@ describe("UI page API wiring", () => {
     expect(source).toMatch(/import\s*\{\s*tasksApi\s*\}\s*from\s*["']@\/lib\/api["'];/);
     expect(source).toContain("tasksApi.getRuns(expandedTaskId)");
     expect(source).not.toContain("apiFetch(`/api/tasks/${expandedTaskId}/runs`)");
+    expect(source).toContain("useUpdateTask");
+    expect(source).toContain("Chat context (optional)");
+    expect(source).toContain("session_id:");
+    expect(source).toContain("New chat for each run");
   });
 
   test("Memory page creates files through memoryApi helper", () => {

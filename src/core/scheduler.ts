@@ -27,6 +27,12 @@ function parseTaskConfig(config: unknown, taskId?: string): Record<string, unkno
   return {};
 }
 
+function normalizeTaskSessionId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized || undefined;
+}
+
 class TaskScheduler {
   private interval: ReturnType<typeof setInterval> | null = null;
   private tasks: Map<string, { task: Task; handler: () => Promise<void> }> = new Map();
@@ -56,6 +62,12 @@ class TaskScheduler {
     }
   }
 
+  private validateTaskSession(sessionId: string | undefined): void {
+    if (sessionId && !tables.chatSessions.get(sessionId)) {
+      throw new Error("Validation error: Selected chat session was not found");
+    }
+  }
+
   list(): Task[] {
     const rawTasks = tables.tasks.all() as Task[];
     return rawTasks.map((task) => this.taskWithEnabled(task));
@@ -72,6 +84,8 @@ class TaskScheduler {
     action?: string;
     type?: "scheduled" | "triggered" | "recurring";
     agent_id?: string;
+    session_id?: string;
+    sessionId?: string;
     schedule?: string;
     config?: Record<string, unknown>;
     enabled?: boolean;
@@ -80,6 +94,9 @@ class TaskScheduler {
       throw new Error("Validation error: Task name is required");
     }
     this.validateTaskInput(data);
+
+    const sessionId = normalizeTaskSessionId(data.session_id ?? data.sessionId);
+    this.validateTaskSession(sessionId);
 
     const id = crypto.randomUUID();
     const next_run = this.calculateNextRun(data.schedule);
@@ -95,6 +112,7 @@ class TaskScheduler {
       name: data.name,
       type: data.type || "scheduled",
       agent_id: data.agent_id,
+      session_id: sessionId,
       schedule: data.schedule,
       config,
       status: data.enabled !== false ? "pending" : "paused",
@@ -120,6 +138,8 @@ class TaskScheduler {
       type?: "scheduled" | "triggered" | "recurring";
       agent_id?: string | null;
       agentId?: string | null;
+      session_id?: string | null;
+      sessionId?: string | null;
       schedule?: string | null;
       config?: Record<string, unknown>;
       enabled?: boolean;
@@ -147,6 +167,14 @@ class TaskScheduler {
         : data.agentId !== undefined
           ? data.agentId
           : current.agent_id;
+    const sessionIdInput =
+      data.session_id !== undefined
+        ? data.session_id
+        : data.sessionId !== undefined
+          ? data.sessionId
+          : current.session_id;
+    const sessionId = normalizeTaskSessionId(sessionIdInput);
+    this.validateTaskSession(sessionId);
     const schedule =
       data.schedule !== undefined
         ? data.schedule === null || data.schedule === ""
@@ -166,6 +194,7 @@ class TaskScheduler {
     const task: Task = {
       ...current,
       agent_id: agentId || undefined,
+      session_id: sessionId,
       name: data.name?.trim() || current.name,
       type: data.type || current.type || "scheduled",
       schedule,
@@ -251,9 +280,16 @@ class TaskScheduler {
       const action =
         typeof actionValue === "string" && actionValue.trim().length > 0 ? actionValue : task.name;
 
-      const agent = task.agent_id
-        ? agentManager.get(task.agent_id)
-        : agentManager.list().find((a) => a.status === "running") || agentManager.list()[0];
+      const assignedSessionId = normalizeTaskSessionId(task.session_id);
+      this.validateTaskSession(assignedSessionId);
+      const assignedSession = assignedSessionId
+        ? (tables.chatSessions.get(assignedSessionId) as { agent_id?: string } | undefined)
+        : undefined;
+      const preferredAgentId = task.agent_id || assignedSession?.agent_id;
+      const agent = preferredAgentId
+        ? agentManager.get(preferredAgentId)
+        : agentManager.list().find((candidate) => candidate.status === "running") ||
+          agentManager.list()[0];
 
       if (!agent) {
         throw new Error("No agent available for task execution");
@@ -263,12 +299,16 @@ class TaskScheduler {
       const result = await handleChat({
         message: action,
         agentId: agent.id,
-        sessionId: `task:${task.id}:${Date.now()}`, // Unique session per task run
+        sessionId: assignedSessionId || `task:${task.id}:${Date.now()}`,
+        queueMode: assignedSessionId ? "queue" : undefined,
+        source: "task",
       });
 
       console.log(`[Task] Completed: ${task.name} - Session: ${result.sessionId}`);
 
-      const resultPreview = result.message?.content?.slice(0, 200);
+      const resultPreview = result.queued
+        ? "Queued in assigned chat"
+        : result.message?.content?.slice(0, 200);
       tables.taskRuns.complete(runId, {
         status: "completed",
         session_id: result.sessionId,

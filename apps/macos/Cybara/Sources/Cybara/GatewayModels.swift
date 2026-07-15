@@ -1194,6 +1194,7 @@ struct GatewayTask: Decodable, Identifiable, Hashable {
     let schedule: String?
     let status: String?
     let agent_id: String?
+    let session_id: String?
     let action: String?
     let description: String?
     let enabled: Bool?
@@ -1202,7 +1203,7 @@ struct GatewayTask: Decodable, Identifiable, Hashable {
     let config: [String: JSONValue]?
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, type, schedule, status, agent_id, agentId, action, description
+        case id, name, type, schedule, status, agent_id, agentId, session_id, sessionId, action, description
         case enabled, last_run, lastRun, next_run, nextRun, config
     }
 
@@ -1215,6 +1216,8 @@ struct GatewayTask: Decodable, Identifiable, Hashable {
         status = try container.decodeFlexibleString(forKeys: [.status])
         agent_id = try container.decodeFlexibleString(forKeys: [.agent_id, .agentId])
         config = try container.decodeJSONDictionary(forKey: .config)
+        session_id = try container.decodeFlexibleString(forKeys: [.session_id, .sessionId])
+            ?? GatewayTask.stringValue(config?["session_id"])
         action = try container.decodeFlexibleString(forKeys: [.action]) ?? GatewayTask.stringValue(config?["action"])
         description = try container.decodeFlexibleString(forKeys: [.description]) ?? GatewayTask.stringValue(config?["description"])
         enabled = try container.decodeFlexibleBool(forKeys: [.enabled])
