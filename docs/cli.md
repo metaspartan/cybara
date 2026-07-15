@@ -75,16 +75,20 @@ window, token usage, file changes, plan progress, tasks, and subagents without l
 `/goal start <objective>` creates persistent long-running work for the session, with `/loop` as an
 alias; goal status, pause, resume, completion, blocking, editing, and clearing use the shared chat
 runtime behavior.
-`/copy` copies the latest assistant response, `/raw` toggles complete message bodies, `/review`
-loads a focused workspace review prompt, and `/resume` or `/sessions` returns to the saved-session
-picker. Model overrides selected with `/model` remain distinct from agent selection and are carried
-through normal turns, queued follow-ups, and subagent launches.
+`Ctrl+F`, `/search`, and `/find` search the current transcript and jump directly to a matching turn.
+`Ctrl+P` opens the slash-command palette. `/copy [n]` copies the latest or numbered assistant
+response, `/export [path]` writes the conversation as portable Markdown, and `/terminal-info`
+reports viewport, color, clipboard, and alternate-screen capabilities. `/raw` toggles complete
+message bodies, `/review` loads a focused workspace review prompt, and `/resume` or `/sessions`
+returns to the saved-session picker. Model overrides selected with `/model` remain distinct from
+agent selection and are carried through normal turns, queued follow-ups, and subagent launches.
 
 The dashboard TUI is optimized for normal terminals. The main menu supports grouped destinations,
 single-key shortcuts, `j`/`k` or arrow navigation, `/` search, `?` help, direct panel launch, and a
 small detail pane for the selected destination. The chat panel supports session search, keyboard
 navigation, pinning, guarded deletion, new-chat entry, editable prompt input, multiline prompts with
-`Ctrl+J`, transcript paging with `PageUp`/`PageDown`, slash command completion with `Tab`, agent
+`Ctrl+J`, transcript paging with `PageUp`/`PageDown`, transcript search with `Ctrl+F`, slash-command
+discovery with `Ctrl+P`, slash command completion with `Tab`, agent
 switching, reasoning effort controls, model router selection, `@` completion for agents, skills,
 tools, plugins, account apps, and MCP services, and interactive dangerous-tool
 approvals. Approval prompts accept approve-once, approve-for-session, approve-always, or deny without

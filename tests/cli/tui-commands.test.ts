@@ -21,6 +21,18 @@ describe("CLI TUI command palette", () => {
     expect(completeTUIChatCommand("plain text", 0)).toBeNull();
   });
 
+  test("offers transcript recovery and terminal utility commands", () => {
+    expect(matchingTUIChatCommands("/se").map((command) => command.name)).toContain("/search");
+    expect(matchingTUIChatCommands("/ex").map((command) => command.name)).toEqual([
+      "/export",
+      "/expand",
+      "/exit",
+    ]);
+    expect(matchingTUIChatCommands("/terminal").map((command) => command.name)).toEqual([
+      "/terminal-info",
+    ]);
+  });
+
   test("wraps keyboard selection in both directions", () => {
     expect(nextTUIChatCommandIndex(0, -1, 3)).toBe(2);
     expect(nextTUIChatCommandIndex(2, 1, 3)).toBe(0);

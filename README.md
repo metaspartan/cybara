@@ -411,9 +411,10 @@ cybara migrate sources
 cybara migrate --from <source> --apply --preset user-data
 ```
 
-The terminal chat supports the same session-oriented workflow as the app clients: history reload,
-queued follow-ups while a run is active, steering, pending-message edit/delete/reorder, agent
-switching, workspace switching, markdown emphasis, and grouped tool/activity output.
+The terminal chat supports the same session-oriented workflow as the app clients: searchable
+history, queued follow-ups while a run is active, steering, pending-message edit/delete/reorder,
+agent switching, workspace switching, markdown emphasis, grouped tool/activity output, numbered
+response copying, and portable conversation export.
 
 Full CLI reference: [docs/cli.md](docs/cli.md)
 

@@ -29,11 +29,24 @@ import {
 import { EnvironmentPanel } from "./cli-tui-chat-environment-view";
 import {
   chatEscapeAction,
+  clipboardCandidates,
   composerWindow,
   copyTextToClipboard,
   transcriptMessageLimit,
   useTerminalLayout,
 } from "./cli-tui-terminal";
+import {
+  defaultTUIConversationExportPath,
+  exportNotice,
+  formatTUIConversationExport,
+  nextTUITranscriptSearchIndex,
+  nthLatestAssistantResponse,
+  resolveTUIConversationExportPath,
+  searchTUITranscript,
+  TranscriptSearchPanel,
+  transcriptOffsetForMessage,
+  tuiTerminalDiagnosticLines,
+} from "./cli-tui-chat-history";
 import {
   ChatHeader,
   ChatShortcutRail,
@@ -629,9 +642,10 @@ function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
           Chat controls
         </Text>
         <Text>Enter send · ^J newline · Tab complete</Text>
-        <Text>PgUp/PgDn scroll · Esc sessions · ^C quit</Text>
+        <Text>^P commands · ^F search · PgUp/PgDn scroll</Text>
+        <Text>Esc sessions · ^C quit</Text>
         <Text>/model · /agent · /permissions · /followups · /reasoning</Text>
-        <Text>/copy · /diff · /review · /environment</Text>
+        <Text>/copy [n] · /export · /diff · /environment</Text>
         <Text>/goal or /loop for persistent work</Text>
       </Box>
     );
@@ -650,6 +664,9 @@ function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
       <Text>
         Enter send · Ctrl+J newline · ←/→ move · ↑/↓ palette or history ·
         PgUp/PgDn transcript
+      </Text>
+      <Text>
+        Ctrl+P commands · Ctrl+F transcript search · Esc closes the active panel
       </Text>
       <Text>
         Tab completes slash commands and @ capabilities · approvals use 1/2/3/4
@@ -680,8 +697,11 @@ function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
       </Text>
       <Text>/stop interrupts · /pending refreshes queue</Text>
       <Text>
-        /copy copies the latest answer · /diff shows changes · /review loads a
-        review prompt
+        /copy [n] copies an answer · /export writes Markdown · /diff shows
+        changes
+      </Text>
+      <Text>
+        /terminal-info checks viewport, color, clipboard, and screen mode
       </Text>
       <Text>
         /reload refetches · /new starts fresh · /resume returns to sessions
@@ -753,6 +773,9 @@ export function InteractiveChatTUI({
   const [expandedTranscript, setExpandedTranscript] = React.useState(false);
   const [expandedActivities, setExpandedActivities] = React.useState(false);
   const [transcriptOffset, setTranscriptOffset] = React.useState(0);
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [searchIndex, setSearchIndex] = React.useState(0);
   const [approvalRequests, setApprovalRequests] = React.useState<
     ToolApprovalRequest[]
   >([]);
@@ -761,6 +784,10 @@ export function InteractiveChatTUI({
   const sessionIdRef = React.useRef(localSessionId);
   const lastInterruptAtRef = React.useRef(0);
   const capabilitiesWorkspaceRef = React.useRef<string | null>(null);
+  const commandPaletteDraftRef = React.useRef<{
+    input: string;
+    cursor: number;
+  } | null>(null);
 
   const activeCapabilityMention = React.useMemo(
     () => activeTUICapabilityMention(input, cursor),
@@ -1075,9 +1102,19 @@ export function InteractiveChatTUI({
   );
 
   const resetInput = React.useCallback(() => {
+    commandPaletteDraftRef.current = null;
     setInput("");
     setCursor(0);
     setHistoryIndex(null);
+  }, []);
+
+  const openTranscriptSearch = React.useCallback((query = "") => {
+    setSearchQuery(query);
+    setSearchIndex(0);
+    setSearchOpen(true);
+    setShowEnvironment(false);
+    setShowHelp(false);
+    setNotice(null);
   }, []);
 
   const finishLiveRun = React.useCallback(() => {
@@ -1629,18 +1666,83 @@ export function InteractiveChatTUI({
         setNotice("Conversation reloaded.");
         return true;
       }
+      if (normalizedCommand === "search" || normalizedCommand === "find") {
+        openTranscriptSearch(argument);
+        return true;
+      }
       if (normalizedCommand === "copy") {
-        const response = [...messages]
-          .reverse()
-          .find((message) => message.role === "assistant")?.content;
+        const position = argument ? Number.parseInt(argument, 10) : 1;
+        if (
+          !Number.isInteger(position) ||
+          position < 1 ||
+          String(position) !== (argument || "1")
+        ) {
+          setNotice("Usage: /copy [response number]");
+          return true;
+        }
+        const response = nthLatestAssistantResponse(messages, position);
         if (!response) {
-          setNotice("No assistant response is available to copy.");
+          setNotice(`Assistant response ${position} is not available.`);
           return true;
         }
         setNotice(
           (await copyTextToClipboard(response))
-            ? "Latest response copied."
+            ? position === 1
+              ? "Latest response copied."
+              : `Assistant response ${position} copied.`
             : "No system clipboard helper is available.",
+        );
+        return true;
+      }
+      if (normalizedCommand === "export") {
+        const outputPath = argument
+          ? resolveTUIConversationExportPath(argument, process.cwd())
+          : defaultTUIConversationExportPath(
+              localSessionId,
+              process.cwd(),
+              Date.now(),
+            );
+        if (await Bun.file(outputPath).exists()) {
+          setNotice(`Export already exists: ${outputPath}`);
+          return true;
+        }
+        try {
+          await Bun.write(
+            outputPath,
+            formatTUIConversationExport(messages, {
+              title: sessionTitle,
+              sessionId: localSessionId,
+              workspaceDir,
+              model: useModelRouter
+                ? "Model Router"
+                : modelOverride ||
+                  selectedAgent?.model ||
+                  modelLine ||
+                  "Gateway default",
+            }),
+          );
+          setNotice(`${exportNotice(outputPath)}\n${outputPath}`);
+        } catch (cause) {
+          setNotice(
+            `Export failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          );
+        }
+        return true;
+      }
+      if (normalizedCommand === "terminal-info") {
+        const clipboardCommand = clipboardCandidates(
+          process.platform,
+          process.env,
+        ).find((candidate) => Bun.which(candidate[0] || ""))?.[0];
+        setNotice(
+          tuiTerminalDiagnosticLines({
+            columns: layout.columns,
+            rows: layout.rows,
+            isTTY: Boolean(process.stdout.isTTY),
+            platform: process.platform,
+            env: process.env,
+            clipboardCommand: clipboardCommand || null,
+          }).join("\n"),
         );
         return true;
       }
@@ -1823,14 +1925,18 @@ export function InteractiveChatTUI({
       loadPending,
       loadSubagents,
       loadTasks,
+      layout.columns,
+      layout.rows,
       localSessionId,
       messages,
       modelLine,
       modelOverride,
       onExit,
+      openTranscriptSearch,
       pendingMessages,
       selectedAgent,
       selectedAgentId,
+      sessionTitle,
       useModelRouter,
       workspaceDir,
     ],
@@ -1971,8 +2077,13 @@ export function InteractiveChatTUI({
     ],
   );
 
-  const transcriptMessages = messages.filter(
-    (message) => message.role !== "system",
+  const transcriptMessages = React.useMemo(
+    () => messages.filter((message) => message.role !== "system"),
+    [messages],
+  );
+  const searchMatches = React.useMemo(
+    () => searchTUITranscript(transcriptMessages, searchQuery),
+    [searchQuery, transcriptMessages],
   );
   const visibleMessageLimit = transcriptMessageLimit(
     layout.transcriptMessages,
@@ -2004,7 +2115,8 @@ export function InteractiveChatTUI({
     (commandPaletteVisible ||
       capabilityPaletteVisible ||
       showEnvironment ||
-      showHelp);
+      showHelp ||
+      searchOpen);
 
   const selectCapability = React.useCallback((): boolean => {
     if (!activeCapabilityMention || capabilityOptions.length === 0)
@@ -2027,10 +2139,34 @@ export function InteractiveChatTUI({
   const selectCommand = React.useCallback((): boolean => {
     const completed = completeTUIChatCommand(input, commandIndex);
     if (!completed) return false;
+    commandPaletteDraftRef.current = null;
     setInput(completed);
     setCursor(completed.length);
     return true;
   }, [commandIndex, input]);
+
+  const selectSearchMatch = React.useCallback((): boolean => {
+    const match =
+      searchMatches[Math.min(searchIndex, searchMatches.length - 1)];
+    if (!match) return false;
+    setTranscriptOffset(
+      transcriptOffsetForMessage(
+        match.messageIndex,
+        transcriptMessages.length,
+        visibleMessageLimit,
+      ),
+    );
+    setSearchOpen(false);
+    setNotice(
+      `Jumped to ${match.role === "user" ? "your message" : "an assistant response"}.`,
+    );
+    return true;
+  }, [
+    searchIndex,
+    searchMatches,
+    transcriptMessages.length,
+    visibleMessageLimit,
+  ]);
 
   useInput((value, key) => {
     if (key.ctrl && value === "c") {
@@ -2079,7 +2215,68 @@ export function InteractiveChatTUI({
       if (decision) void resolveApprovalRequest(activeApproval, decision);
       return;
     }
+    if (key.ctrl && value === "f") {
+      if (searchOpen) {
+        setSearchOpen(false);
+      } else {
+        openTranscriptSearch();
+      }
+      return;
+    }
+    if (key.ctrl && value === "p") {
+      commandPaletteDraftRef.current = input ? { input, cursor } : null;
+      setSearchOpen(false);
+      setShowEnvironment(false);
+      setShowHelp(false);
+      setInput("/");
+      setCursor(1);
+      setCommandIndex(0);
+      setNotice(null);
+      return;
+    }
+    if (searchOpen) {
+      if (key.escape) {
+        setSearchOpen(false);
+        return;
+      }
+      if (key.return) {
+        selectSearchMatch();
+        return;
+      }
+      if (key.upArrow || key.downArrow) {
+        setSearchIndex((current) =>
+          nextTUITranscriptSearchIndex(
+            current,
+            key.upArrow ? -1 : 1,
+            searchMatches.length,
+          ),
+        );
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setSearchQuery((current) => current.slice(0, -1));
+        setSearchIndex(0);
+        return;
+      }
+      if (key.ctrl && value === "u") {
+        setSearchQuery("");
+        setSearchIndex(0);
+        return;
+      }
+      if (value && !key.ctrl && !key.meta) {
+        setSearchQuery((current) => current + value);
+        setSearchIndex(0);
+      }
+      return;
+    }
     if (key.escape) {
+      if (commandPaletteDraftRef.current && commandOptions.length > 0) {
+        const draft = commandPaletteDraftRef.current;
+        commandPaletteDraftRef.current = null;
+        setInput(draft.input);
+        setCursor(draft.cursor);
+        return;
+      }
       const action = chatEscapeAction(
         showEnvironment || showHelp,
         input.length > 0,
@@ -2363,6 +2560,14 @@ export function InteractiveChatTUI({
         />
       ) : null}
       {showHelp ? <HelpPanel narrow={layout.narrow} /> : null}
+      {searchOpen ? (
+        <TranscriptSearchPanel
+          query={searchQuery}
+          matches={searchMatches}
+          selectedIndex={searchIndex}
+          compact={layout.compact}
+        />
+      ) : null}
       <CapabilityPalette
         options={capabilityOptions}
         selectedIndex={capabilityIndex}
@@ -2409,8 +2614,9 @@ export function InteractiveChatTUI({
           activeApproval: Boolean(activeApproval),
           columns: layout.columns,
           followUpsEnabled: followUpBehaviorEnabled,
-          panelOpen: showEnvironment || showHelp,
-          paletteOpen: commandPaletteVisible || capabilityPaletteVisible,
+          panelOpen: showEnvironment || showHelp || searchOpen,
+          paletteOpen:
+            commandPaletteVisible || capabilityPaletteVisible || searchOpen,
           sending,
         }}
       />

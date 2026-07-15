@@ -22,6 +22,7 @@ const cliTuiMarkdownRenderSource = readFileSync(
   "utf8"
 );
 const cliTuiCommandsSource = readFileSync(join(root, "src", "cli-tui-commands.ts"), "utf8");
+const cliTuiChatHistorySource = readFileSync(join(root, "src", "cli-tui-chat-history.tsx"), "utf8");
 const cliTuiChatEnvironmentSource = readFileSync(
   join(root, "src", "cli-tui-chat-environment.ts"),
   "utf8"
@@ -257,7 +258,11 @@ describe("CLI TUI source wiring", () => {
       "/delete",
       "/reorder",
       "/stop",
+      "/search",
+      "/find",
       "/copy",
+      "/export",
+      "/terminal-info",
       "/raw",
       "/details",
       "/review",
@@ -304,11 +309,19 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain('value === "?"');
     expect(cliTuiInteractiveChatSource).toContain('value === "t"');
     expect(cliTuiInteractiveChatSource).toContain('value === "o"');
+    expect(cliTuiInteractiveChatSource).toContain('value === "f"');
+    expect(cliTuiInteractiveChatSource).toContain('value === "p"');
     expect(cliTuiInteractiveChatSource).toContain("Follow-ups off");
     expect(cliTuiInteractiveChatSource).toContain("follow_up_behavior_enabled");
     expect(cliTuiCommandsSource).toContain('{ name: "/followups"');
     expect(cliTuiInteractiveChatSource).toContain("sessionIdRef.current = turnSessionId");
     expect(cliTuiInteractiveChatSource).toContain("CommandPalette");
+    expect(cliTuiInteractiveChatSource).toContain("TranscriptSearchPanel");
+    expect(cliTuiInteractiveChatSource).toContain("searchTUITranscript");
+    expect(cliTuiInteractiveChatSource).toContain("formatTUIConversationExport");
+    expect(cliTuiInteractiveChatSource).toContain("tuiTerminalDiagnosticLines");
+    expect(cliTuiChatHistorySource).toContain("nextTUITranscriptSearchIndex");
+    expect(cliTuiChatHistorySource).toContain("nthLatestAssistantResponse");
     expect(cliTuiInteractiveChatSource).toContain("nextTUIChatCommandIndex");
     expect(cliTuiInteractiveChatSource).toContain("selectCommand");
     expect(cliTuiInteractiveChatSource).toContain("selectedIndex={commandIndex}");
@@ -333,9 +346,7 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("Ctrl+J newline");
     expect(cliTuiInteractiveChatSource).toContain("pageUp");
     expect(cliTuiInteractiveChatSource).toContain("pageDown");
-    expect(cliTuiInteractiveChatSource).toContain(
-      "expandedTranscript\n                  ? expandedMessageLines"
-    );
+    expect(cliTuiInteractiveChatSource).toMatch(/expandedTranscript\s*\? expandedMessageLines/);
     expect(cliTuiInteractiveChatSource).toContain(
       "const [expandedTranscript, setExpandedTranscript] = React.useState(false)"
     );
