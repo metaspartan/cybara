@@ -6,13 +6,15 @@ export interface CachedLiveSessionState {
   currentStep: string | null;
   streamingContent: string | null;
   runId: string | null;
+  sequence: number;
   startedAtMs: number | null;
   updatedAt: number;
 }
 
 interface CachedLiveSessionWrite
-  extends Omit<CachedLiveSessionState, "updatedAt" | "runId" | "startedAtMs"> {
+  extends Omit<CachedLiveSessionState, "updatedAt" | "runId" | "sequence" | "startedAtMs"> {
   runId?: string | null;
+  sequence?: number;
   startedAtMs?: number | null;
   updatedAt?: number;
 }
@@ -53,6 +55,7 @@ export function writeCachedLiveSessionState(
     ...state,
     activities: state.activities.map((activity) => ({ ...activity })),
     runId: state.runId === undefined ? (previous?.runId ?? null) : state.runId,
+    sequence: state.sequence === undefined ? (previous?.sequence ?? 0) : state.sequence,
     startedAtMs:
       state.startedAtMs === undefined ? (previous?.startedAtMs ?? null) : state.startedAtMs,
     updatedAt: state.updatedAt ?? Date.now(),

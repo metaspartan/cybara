@@ -211,6 +211,8 @@ const MOBILE_BINARY_THINKING_PROVIDERS = new Set([
   "zai",
   "z-ai",
   "qwen-portal",
+  "alibaba",
+  "alibaba-coding-plan",
 ]);
 const MOBILE_ADAPTIVE_THINKING_PROVIDERS = new Set([
   "minimax",

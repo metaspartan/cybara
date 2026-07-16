@@ -359,7 +359,10 @@ class ProviderManager {
       }
     }
 
-    tables.providers.update(id, { ...(existing as Provider), ...normalizedData });
+    tables.providers.update(id, {
+      ...(existing as Provider),
+      ...normalizedData,
+    });
     this.authoritativeModelIds.delete(id);
     return true;
   }
@@ -479,7 +482,9 @@ class ProviderManager {
         signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) return [];
-      const data = (await response.json()) as { models?: Array<{ name: string }> };
+      const data = (await response.json()) as {
+        models?: Array<{ name: string }>;
+      };
       return (data.models || []).map((m: { name: string }) => ({
         id: crypto.randomUUID(),
         provider_id: "",
@@ -551,6 +556,7 @@ export function getDefaultModel(providerType: string): string {
     "gitlab-duo": "duo-chat-sonnet-4-6",
     minimax: "MiniMax-M3",
     "minimax-portal": "MiniMax-M3",
+    "minimax-portal-cn": "MiniMax-M3",
     google: "gemini-3.1-pro-preview",
     antigravity: "gemini-3.1-pro-preview",
     "google-antigravity": "gemini-3.1-pro-preview",
@@ -575,7 +581,7 @@ export function getDefaultModel(providerType: string): string {
     moonshot: "kimi-k2.6",
     "kimi-code": "kimi-for-coding",
     "kimi-coding": "kimi-for-coding",
-    "qwen-portal": "coder-model",
+    "qwen-portal": "qwen3.5-plus",
     synthetic: "hf:zai-org/GLM-5",
     "openai-codex": "gpt-5.6-sol",
     chutes: "Qwen/Qwen3-32B-TEE",
@@ -591,7 +597,7 @@ export function getDefaultModel(providerType: string): string {
     nvidia: "nvidia/nemotron-3-super-120b-a12b",
     deepseek: "deepseek-v4-flash",
     alibaba: "qwen3.6-plus",
-    "alibaba-coding-plan": "qwen3.6-plus",
+    "alibaba-coding-plan": "qwen3.7-plus",
     cerebras: "zai-glm-4.7",
     cohere: "command-a-03-2025",
     mistral: "devstral-medium-latest",

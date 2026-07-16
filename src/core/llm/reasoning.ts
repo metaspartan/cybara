@@ -23,7 +23,15 @@ export function normalizeReasoningEffort(value: unknown): ReasoningEffort | null
   return null;
 }
 
-const BINARY_THINKING_PROVIDERS = new Set(["z.ai", "z.ai-coding", "zai", "z-ai", "qwen-portal"]);
+const BINARY_THINKING_PROVIDERS = new Set([
+  "z.ai",
+  "z.ai-coding",
+  "zai",
+  "z-ai",
+  "qwen-portal",
+  "alibaba",
+  "alibaba-coding-plan",
+]);
 const ADAPTIVE_THINKING_PROVIDERS = new Set([
   "minimax",
   "minimax-cn",

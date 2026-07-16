@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   normalizeReasoningEffort,
   openAICompatReasoningParams,
+  supportedReasoningEfforts,
   anthropicThinkingBudget,
   googleThinkingBudget,
   googleThinkingConfig,
@@ -39,6 +40,10 @@ describe("openAICompatReasoningParams (per-provider shapes)", () => {
   test("zai/qwen use enable_thinking", () => {
     expect(openAICompatReasoningParams("z.ai", "medium")).toEqual({ enable_thinking: true });
     expect(openAICompatReasoningParams("qwen-portal", "high")).toEqual({ enable_thinking: true });
+    expect(openAICompatReasoningParams("alibaba", "medium", "qwen3.7-plus")).toEqual({
+      enable_thinking: true,
+    });
+    expect(supportedReasoningEfforts("alibaba-coding-plan", "qwen3.7-plus")).toEqual(["medium"]);
   });
 
   test("deepseek uses thinking + reasoning_effort", () => {

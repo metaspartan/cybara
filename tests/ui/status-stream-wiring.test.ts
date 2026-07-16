@@ -285,9 +285,17 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("statusStreamSubscribers.size === 0");
     expect(source).toContain("STATUS_STREAM_HEARTBEAT_MS");
     expect(source).toContain("STATUS_STREAM_STALE_MS");
+    expect(source).toContain("recordStatusStreamReplayEvent(payload)");
+    expect(source).toContain("consumeStatusStreamReplayEvents()");
     expect(source).toContain('socket.send("ping")');
     expect(source).toContain('if (String(event.data) === "pong") return;');
     expect(source.match(/new WebSocket/g)?.length).toBe(1);
+  });
+
+  test("chat consumes status events buffered while its route is unmounted", () => {
+    const chatSource = readSource(chatPath);
+    expect(chatSource).toContain("replayBufferedSessionEvents: true");
+    expect(chatSource).toContain("sequence: cached.sequence");
   });
 
   test("chat idle status refresh is not blocked by pending process capture", () => {

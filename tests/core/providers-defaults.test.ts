@@ -47,6 +47,7 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("grok-build")).toBe("grok-build");
     expect(getDefaultModel("deepseek")).toBe("deepseek-v4-flash");
     expect(getDefaultModel("alibaba")).toBe("qwen3.6-plus");
+    expect(getDefaultModel("alibaba-coding-plan")).toBe("qwen3.7-plus");
     expect(getDefaultModel("xiaomi")).toBe("mimo-v2.5-pro");
     expect(getDefaultModel("nvidia")).toBe("nvidia/nemotron-3-super-120b-a12b");
     expect(getDefaultModel("ollama-cloud")).toBe("glm-5.2:cloud");
@@ -314,16 +315,52 @@ describe("Provider model defaults and API-family parity", () => {
     }
   });
 
-  test("configures MiniMax Portal for PKCE user-code login", () => {
+  test("configures both MiniMax Portal regions for current PKCE device login", () => {
     const provider = providers["minimax-portal"];
     expect(provider.authType).toBe("oauth");
     expect(provider.oauthFlow).toBe("device_code");
-    expect(provider.oauthConfig.clientId).toBe("78257093-7e40-4613-99e0-527b14b39113");
+    expect(provider.oauthConfig.clientId).toBe("659cf4c1-615c-45f6-a5f6-4bf15eb476e5");
     expect(provider.oauthConfig.deviceCodeUrl).toBe(
       "https://account.minimax.io/oauth2/device/code"
     );
     expect(provider.oauthConfig.tokenUrl).toBe("https://account.minimax.io/oauth2/token");
-    expect(provider.oauthConfig.scope).toBe("group_id profile model.completion");
+    expect(provider.oauthConfig.scope).toBe("openid profile coding_plan");
+    expect(providers["minimax-portal-cn"].oauthConfig.deviceCodeUrl).toBe(
+      "https://account.minimaxi.com/oauth2/device/code"
+    );
+    expect(providers["minimax-portal-cn"].baseUrl).toBe("https://api.minimaxi.com/anthropic/v1");
+  });
+
+  test("keeps Qwen Portal fallback models aligned with its current portal catalog", () => {
+    expect(providers["qwen-portal"].models.map((model) => model.id)).toEqual([
+      "qwen3.5-plus",
+      "qwen3.6-plus",
+      "qwen3-max-2026-01-23",
+      "qwen3-coder-next",
+      "qwen3-coder-plus",
+      "MiniMax-M2.5",
+      "glm-5",
+      "glm-4.7",
+      "kimi-k2.5",
+    ]);
+  });
+
+  test("keeps Qwen 3.7 models on compatible cloud endpoints", () => {
+    const standardModels = providers.alibaba.models;
+    const codingPlanModels = providers["alibaba-coding-plan"].models;
+    const standardIds = standardModels.map((model) => model.id);
+    const codingPlanIds = codingPlanModels.map((model) => model.id);
+
+    expect(standardIds).toEqual(
+      expect.arrayContaining(["qwen3.7-max", "qwen3.7-plus", "qwen3.6-flash"])
+    );
+    expect(codingPlanIds).toContain("qwen3.7-plus");
+    expect(codingPlanIds).not.toContain("qwen3.7-max");
+    expect(standardModels.find((model) => model.id === "qwen3.7-max")?.input).toEqual(["text"]);
+    expect(codingPlanModels.find((model) => model.id === "qwen3.7-plus")?.input).toEqual([
+      "text",
+      "image",
+    ]);
   });
 
   test("does not advertise non-interactive portal credentials as OAuth", () => {

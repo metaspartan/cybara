@@ -269,4 +269,37 @@ describe("OAuth token refresh (openai-codex)", () => {
     expect(refreshed?.access_token).toBe("fresh-grok-token");
     expect(refreshed?.refresh_token).toBe("fresh-grok-refresh");
   });
+
+  test("refreshes MiniMax Portal tokens with the current client and scope", async () => {
+    const provider = providerManager.create({
+      provider: "minimax-portal",
+      name: "MiniMax Portal OAuth Test",
+      access_token: "stale-token",
+      refresh_token: "minimax-refresh",
+      expires_at: Date.now() - 1000,
+    });
+    createdProviderIds.push(provider.id);
+    let request: RequestInit | undefined;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("https://account.minimax.io/oauth2/token");
+      request = init;
+      return Response.json({
+        access_token: "fresh-minimax-token",
+        refresh_token: "fresh-minimax-refresh",
+        expires_in: 3600,
+      });
+    }) as typeof fetch;
+
+    const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
+      providerManager.getWithCredentials(provider.id)
+    );
+    const body = new URLSearchParams(String(request?.body || ""));
+
+    expect(body.get("grant_type")).toBe("refresh_token");
+    expect(body.get("refresh_token")).toBe("minimax-refresh");
+    expect(body.get("client_id")).toBe("659cf4c1-615c-45f6-a5f6-4bf15eb476e5");
+    expect(body.get("scope")).toBe("openid profile coding_plan");
+    expect(refreshed?.access_token).toBe("fresh-minimax-token");
+    expect(refreshed?.refresh_token).toBe("fresh-minimax-refresh");
+  });
 });

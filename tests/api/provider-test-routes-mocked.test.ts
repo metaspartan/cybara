@@ -385,7 +385,7 @@ describe("Provider test route contracts (mocked providers)", () => {
     expect(seenTokenBodies[1]?.get("device_code")).toBe("device-456");
   });
 
-  test("MiniMax OAuth uses PKCE user-code authorization and returns refresh credentials", async () => {
+  test("MiniMax OAuth uses the current PKCE device authorization contract", async () => {
     let verifier = "";
     let challenge = "";
     let userCode = "";
@@ -396,7 +396,9 @@ describe("Provider test route contracts (mocked providers)", () => {
       if (url.endsWith("/oauth2/device/code")) {
         challenge = body.get("code_challenge") || "";
         const state = body.get("state") || "";
-        expect(body.get("client_id")).toBe("78257093-7e40-4613-99e0-527b14b39113");
+        expect(body.get("client_id")).toBe("659cf4c1-615c-45f6-a5f6-4bf15eb476e5");
+        expect(body.get("scope")).toBe("openid profile coding_plan");
+        expect(body.get("response_type")).toBeNull();
         expect(body.get("code_challenge_method")).toBe("S256");
         return Response.json({
           user_code: "MINI-MAX",
@@ -437,7 +439,7 @@ describe("Provider test route contracts (mocked providers)", () => {
       refresh_token: "minimax-refresh",
     });
     expect(userCode).toBe("MINI-MAX");
-    expect(tokenGrant).toBe("urn:ietf:params:oauth:grant-type:user_code");
+    expect(tokenGrant).toBe("urn:ietf:params:oauth:grant-type:device_code");
     expect(createHash("sha256").update(verifier).digest("base64url")).toBe(challenge);
   });
 
@@ -460,6 +462,48 @@ describe("Provider test route contracts (mocked providers)", () => {
     expect((response.body as { error?: string }).error).toContain(
       "MiniMax returned an invalid authorization response"
     );
+  });
+
+  test("MiniMax OAuth uses regional hosts for China portal accounts", async () => {
+    const seenUrls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      seenUrls.push(url);
+      const body = init?.body as URLSearchParams;
+      if (url.endsWith("/oauth2/device/code")) {
+        return Response.json({
+          user_code: "MINI-CN",
+          verification_uri: "https://platform.minimaxi.com/device",
+          expired_in: Date.now() + 600_000,
+          interval: 2000,
+          state: body.get("state"),
+        });
+      }
+      return Response.json({
+        status: "success",
+        access_token: "minimax-cn-access",
+        refresh_token: "minimax-cn-refresh",
+        expired_in: 3600,
+        resource_url: "https://api.minimaxi.com",
+      });
+    }) as typeof fetch;
+
+    const start = await api("POST", "/api/providers/oauth/device-code", {
+      providerType: "minimax-portal-cn",
+    });
+    const deviceCode = (start.body as { device_code?: string }).device_code;
+    const poll = await api("POST", "/api/providers/oauth/poll", {
+      providerType: "minimax-portal-cn",
+      deviceCode,
+    });
+
+    expect(start.status).toBe(200);
+    expect(poll.status).toBe(200);
+    expect(seenUrls).toEqual([
+      "https://account.minimaxi.com/oauth2/device/code",
+      "https://account.minimaxi.com/oauth2/token",
+    ]);
+    expect((poll.body as { resource_url?: string }).resource_url).toBe("https://api.minimaxi.com/");
   });
 
   test("POST /api/providers/oauth/device-code rejects untrusted xAI discovery endpoints", async () => {

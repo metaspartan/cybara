@@ -46,6 +46,10 @@ describe("supportedReasoningOptions per-model matrix", () => {
       { value: "medium", label: "Thinking" },
     ]);
     expect(supportedReasoningOptions("qwen-portal", "x").length).toBe(2);
+    expect(supportedReasoningOptions("alibaba", "qwen3.7-plus")).toEqual([
+      { value: "", label: "Default" },
+      { value: "medium", label: "Thinking" },
+    ]);
   });
 
   test("MiniMax M3 follows provider-adaptive reasoning", () => {

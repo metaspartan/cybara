@@ -1,4 +1,9 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import {
+  MINIMAX_OAUTH_CLIENT_ID,
+  MINIMAX_OAUTH_GRANT_TYPE,
+  MINIMAX_OAUTH_SCOPE,
+} from "../core/providers/minimax-oauth";
 
 interface MiniMaxAuthorizationResponse {
   user_code?: unknown;
@@ -27,9 +32,6 @@ interface MiniMaxOAuthSession {
   clientId: string;
 }
 
-const MINIMAX_CLIENT_ID = "78257093-7e40-4613-99e0-527b14b39113";
-const MINIMAX_SCOPE = "group_id profile model.completion";
-const MINIMAX_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:user_code";
 const MAX_SESSIONS = 100;
 const sessions = new Map<string, MiniMaxOAuthSession>();
 
@@ -116,9 +118,8 @@ export async function startMiniMaxPortalOAuth(
       "x-request-id": randomUUID(),
     },
     body: new URLSearchParams({
-      response_type: "code",
-      client_id: MINIMAX_CLIENT_ID,
-      scope: MINIMAX_SCOPE,
+      client_id: MINIMAX_OAUTH_CLIENT_ID,
+      scope: MINIMAX_OAUTH_SCOPE,
       code_challenge: pkce.challenge,
       code_challenge_method: "S256",
       state: pkce.state,
@@ -149,7 +150,7 @@ export async function startMiniMaxPortalOAuth(
     verifier: pkce.verifier,
     expiresAt,
     tokenUrl,
-    clientId: MINIMAX_CLIENT_ID,
+    clientId: MINIMAX_OAUTH_CLIENT_ID,
   });
   return {
     device_code: deviceCode,
@@ -176,7 +177,7 @@ export async function pollMiniMaxPortalOAuth(
       "User-Agent": "Cybara",
     },
     body: new URLSearchParams({
-      grant_type: MINIMAX_GRANT_TYPE,
+      grant_type: MINIMAX_OAUTH_GRANT_TYPE,
       client_id: session.clientId,
       user_code: session.userCode,
       code_verifier: session.verifier,

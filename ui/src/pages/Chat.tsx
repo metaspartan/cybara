@@ -1070,6 +1070,8 @@ export function Chat() {
         currentStep: next.currentStep,
         streamingContent: cached?.streamingContent ?? null,
         runId: eventCursorBySessionRef.current[snapshotSessionId]?.runId ?? null,
+        sequence:
+          eventCursorBySessionRef.current[snapshotSessionId]?.sequence ?? cached?.sequence ?? 0,
         startedAtMs: cached?.startedAtMs ?? (latestTimestamp || Date.now()),
       });
       return true;
@@ -1103,6 +1105,8 @@ export function Chat() {
         currentStep: cached?.currentStep || "Generating response...",
         streamingContent: `${cached?.streamingContent || ""}${delta}`,
         runId: eventCursorBySessionRef.current[tokenSessionId]?.runId ?? null,
+        sequence:
+          eventCursorBySessionRef.current[tokenSessionId]?.sequence ?? cached?.sequence ?? 0,
         startedAtMs: cached?.startedAtMs ?? (payload.timestamp || Date.now()),
       });
       return true;
@@ -1184,6 +1188,8 @@ export function Chat() {
           currentStep,
           streamingContent: cached?.streamingContent ?? null,
           runId: eventCursorBySessionRef.current[payloadSessionId]?.runId ?? null,
+          sequence:
+            eventCursorBySessionRef.current[payloadSessionId]?.sequence ?? cached?.sequence ?? 0,
           startedAtMs: cached?.startedAtMs ?? (eventTimestamp || Date.now()),
         });
         return true;
@@ -1202,6 +1208,8 @@ export function Chat() {
           currentStep: statusDetail,
           streamingContent: cached?.streamingContent ?? null,
           runId: eventCursorBySessionRef.current[payloadSessionId]?.runId ?? null,
+          sequence:
+            eventCursorBySessionRef.current[payloadSessionId]?.sequence ?? cached?.sequence ?? 0,
           startedAtMs: cached?.startedAtMs ?? (eventTimestamp || Date.now()),
         });
         return true;
@@ -1230,6 +1238,8 @@ export function Chat() {
               : getLatestInFlightStep(activities),
           streamingContent: cached?.streamingContent ?? null,
           runId: eventCursorBySessionRef.current[payloadSessionId]?.runId ?? null,
+          sequence:
+            eventCursorBySessionRef.current[payloadSessionId]?.sequence ?? cached?.sequence ?? 0,
           startedAtMs: cached?.startedAtMs ?? (eventTimestamp || Date.now()),
         });
       }
@@ -1473,7 +1483,7 @@ export function Chat() {
       if (sessionId) {
         eventCursorBySessionRef.current[sessionId] = {
           runId: cached.runId,
-          sequence: 0,
+          sequence: cached.sequence,
           timestamp: cached.updatedAt,
         };
         if (cached.runId) latestRunIdBySessionRef.current[sessionId] = cached.runId;
@@ -1581,6 +1591,7 @@ export function Chat() {
       currentStep: liveCurrentStep,
       streamingContent,
       runId: latestRunIdBySessionRef.current[sessionId] ?? null,
+      sequence: eventCursorBySessionRef.current[sessionId]?.sequence,
       startedAtMs: liveRunStartedAtMs,
     });
   }, [
@@ -1620,6 +1631,7 @@ export function Chat() {
 
   useEffect(() => {
     const disconnect = connectStatusStream({
+      replayBufferedSessionEvents: true,
       onEvent: (payload) => {
         if (!payload || typeof payload !== "object") return;
         if (payload.type === "snapshot") {

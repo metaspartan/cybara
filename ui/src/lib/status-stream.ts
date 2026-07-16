@@ -1,4 +1,8 @@
 import { appendApiTokenParam } from "@/lib/auth";
+import {
+  consumeStatusStreamReplayEvents,
+  recordStatusStreamReplayEvent,
+} from "@/lib/status-stream-replay";
 
 export type StreamAgentStatus =
   | "idle"
@@ -97,6 +101,7 @@ interface ConnectStatusStreamHandlers {
   onEvent: (event: StatusStreamEvent) => void;
   onOpen?: () => void;
   onClose?: () => void;
+  replayBufferedSessionEvents?: boolean;
 }
 
 function toWebSocketUrl(path: string): string {
@@ -192,6 +197,10 @@ function ensureStatusStreamConnected() {
     try {
       const payload = JSON.parse(String(event.data)) as StatusStreamEvent;
       if (!payload || typeof payload !== "object" || typeof payload.type !== "string") return;
+      const chatSubscriberActive = Array.from(statusStreamSubscribers).some(
+        (subscriber) => subscriber.replayBufferedSessionEvents === true
+      );
+      if (!chatSubscriberActive) recordStatusStreamReplayEvent(payload);
       notifyStatusStreamEvent(payload);
     } catch {
       return;
@@ -217,6 +226,9 @@ function ensureStatusStreamConnected() {
 
 function sharedStatusStreamSubscribe(handlers: ConnectStatusStreamHandlers) {
   statusStreamSubscribers.add(handlers);
+  if (handlers.replayBufferedSessionEvents) {
+    for (const event of consumeStatusStreamReplayEvents()) handlers.onEvent(event);
+  }
   ensureStatusStreamConnected();
 }
 
