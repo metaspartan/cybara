@@ -284,15 +284,21 @@ describe("Security auth e2e", () => {
       await waitForServerReady(baseUrl);
 
       let chatLimited: { status: number; data: unknown; headers: Headers } | null = null;
+      const sessionId = `rate-limit-${Date.now()}`;
       for (let i = 0; i < 80; i++) {
-        const res = await request(baseUrl, "/api/chat/sessions", {
-          Authorization: `Bearer ${apiKey}`,
+        const response = await fetch(`${baseUrl}/api/chat/sessions/${sessionId}/stop`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
         });
-        if (res.status === 429) {
-          chatLimited = res;
+        const data = await response.json();
+        const wrapped = { status: response.status, data, headers: response.headers };
+        if (wrapped.status === 429) {
+          chatLimited = wrapped;
           break;
         }
-        expect(res.status).toBe(200);
+        expect(wrapped.status).toBe(200);
       }
 
       expect(chatLimited).toBeDefined();

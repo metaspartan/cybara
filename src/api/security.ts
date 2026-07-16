@@ -233,6 +233,7 @@ const config = {
 
   rateLimits: {
     global: { windowMs: 60000, maxRequests: 200 }, // 200 req/min globally
+    read: { windowMs: 60000, maxRequests: 600 },
     chat: { windowMs: 60000, maxRequests: 60 }, // 60 req/min for chat
     pairing: { windowMs: 60000, maxRequests: 10 }, // 10 req/min for pairing attempts
     auth: { windowMs: 300000, maxRequests: 5 }, // 5 failed auths per 5 min
@@ -1167,11 +1168,7 @@ export interface SecurityCheckResult {
   auth?: AuthResult;
 }
 
-function getRateLimitType(method: string, path: string): keyof typeof config.rateLimits {
-  if (path === "/api/chat" || path.startsWith("/api/chat/") || path.endsWith("/chat")) {
-    return "chat";
-  }
-
+export function getRateLimitType(method: string, path: string): keyof typeof config.rateLimits {
   if (method === "POST" && path.includes("/pairings/verify")) {
     return "pairing";
   }
@@ -1182,6 +1179,14 @@ function getRateLimitType(method: string, path: string): keyof typeof config.rat
 
   if (path.startsWith("/api/providers/oauth/")) {
     return "auth";
+  }
+
+  if (method === "GET") {
+    return "read";
+  }
+
+  if (path === "/api/chat" || path.startsWith("/api/chat/") || path.endsWith("/chat")) {
+    return "chat";
   }
 
   return "global";

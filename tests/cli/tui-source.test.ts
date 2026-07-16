@@ -4,6 +4,10 @@ import { join } from "path";
 
 const root = join(import.meta.dir, "..", "..");
 const cliSource = readFileSync(join(root, "src", "cli", "index.tsx"), "utf8");
+const cliTuiAppSource = readFileSync(
+  join(root, "src", "cli", "tui", "components", "app.tsx"),
+  "utf8"
+);
 const cliChatSource = readFileSync(join(root, "src", "cli", "commands", "chat.ts"), "utf8");
 const cliTuiMenuSource = readFileSync(
   join(root, "src", "cli", "tui", "components", "menu.tsx"),
@@ -112,15 +116,15 @@ describe("CLI TUI source wiring", () => {
     for (const panel of tuiPanels) {
       expect(cliTuiMenuSource).toContain(`label: "${panel.label}"`);
       expect(cliTuiMenuSource).toContain(`action: "${panel.command}"`);
-      expect(cliSource).toContain(`case "${panel.command}":`);
-      expect(cliSource).toContain(panel.component);
+      expect(cliTuiAppSource).toContain(`case "${panel.command}":`);
+      expect(cliTuiAppSource).toContain(panel.component);
     }
     expect(cliSource).toContain("render(<TUIApp command={args[1]} />)");
     expect(cliTuiMenuSource).toContain("Direct launch: cybara tui <panel> · Press ? for keys");
-    expect(cliSource).toContain("<MainMenu");
-    expect(cliSource).toContain("onOpenPanel");
-    expect(cliSource).toContain("<TUIBackProvider onBack={goBack}>");
-    expect(cliSource).toContain("onOpenPanel={onOpenPanel}");
+    expect(cliTuiAppSource).toContain("<MainMenu");
+    expect(cliTuiAppSource).toContain("onOpenPanel");
+    expect(cliTuiAppSource).toContain("<TUIBackProvider onBack={goBack}>");
+    expect(cliTuiAppSource).toContain("onOpenPanel={onOpenPanel}");
     expect(cliSource).not.toContain("render(<TUIApp command={action}");
   });
 
@@ -167,7 +171,7 @@ describe("CLI TUI source wiring", () => {
       "/api/journey",
     ]) {
       expect(
-        cliSource + cliTuiPanelsSource + cliTuiOperationsPanelsSource + cliEvalsSource
+        cliTuiAppSource + cliTuiPanelsSource + cliTuiOperationsPanelsSource + cliEvalsSource
       ).toContain(route);
     }
   });

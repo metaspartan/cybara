@@ -289,6 +289,14 @@ describe("API security module", () => {
     expect((third.retryAfterMs ?? 0) > 0).toBe(true);
   });
 
+  test("read-only chat polling uses a separate budget from chat mutations", () => {
+    expect(security.getRateLimitType("GET", "/api/chat/sessions")).toBe("read");
+    expect(security.getRateLimitType("GET", "/api/chat/sessions/session-1/messages")).toBe("read");
+    expect(security.getRateLimitType("POST", "/api/chat")).toBe("chat");
+    expect(security.getRateLimitType("POST", "/api/chat/sessions/session-1/steer")).toBe("chat");
+    expect(security.getRateLimitType("GET", "/api/providers/oauth/poll")).toBe("global");
+  });
+
   test("isPrivateOrBlockedIP catches private and invalid targets", () => {
     expect(security.isPrivateOrBlockedIP("127.0.0.1")).toBe(true);
     expect(security.isPrivateOrBlockedIP("192.168.1.10")).toBe(true);

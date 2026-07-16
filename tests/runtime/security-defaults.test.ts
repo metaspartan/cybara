@@ -153,7 +153,7 @@ describe("security-sensitive runtime defaults", () => {
     const homeSource = readFileSync(join(ROOT_DIR, "src", "core", "cybara-home.ts"), "utf8");
     const pathsSource = readFileSync(join(ROOT_DIR, "src", "core", "paths.ts"), "utf8");
     const mainSource = readFileSync(join(ROOT_DIR, "src", "main.ts"), "utf8");
-    const cliSource = readFileSync(join(ROOT_DIR, "src", "cli", "index.tsx"), "utf8");
+    const cliClientSource = readFileSync(join(ROOT_DIR, "src", "cli", "client.ts"), "utf8");
     const speechSource = readFileSync(join(ROOT_DIR, "src", "core", "speech.ts"), "utf8");
     const systemSpeechSource = readFileSync(
       join(ROOT_DIR, "src", "core", "system-speech.ts"),
@@ -169,7 +169,7 @@ describe("security-sensitive runtime defaults", () => {
     expect(homeSource).toContain("export function setCybaraHomeOverride");
     expect(pathsSource).toContain("const cybaraHome = resolveCybaraHome()");
     expect(mainSource).toContain("resolveCybaraHome().dir");
-    expect(cliSource).toContain("resolveCybaraHome().dir");
+    expect(cliClientSource).toContain("resolveCybaraHome().dir");
     expect(speechSource).toContain('join(resolveCybaraHome().dir, "media")');
     expect(pluginsSource).toContain("resolveCybaraHome().dir");
     expect(speechSource).toContain("chmodSync(audioPath, 0o600)");
