@@ -62,7 +62,7 @@ The installer selects the correct release for the current platform and verifies 
 ## Cybara in Action
 
 <p align="center">
-  <img src="docs/images/cybara-web-chat.jpg" alt="Cybara Web and Tauri chat showing MiniMax building and previewing a project operations dashboard" width="100%" />
+  <img src="docs/images/cybara-web-chat.jpg" alt="Cybara Web and Tauri chat showing a MiniMax project dashboard build with the environment inspector" width="100%" />
 </p>
 
 <p align="center"><strong>Web and Tauri chat</strong> with persisted workspaces, plans, grouped live activity, file changes, embedded previews, context controls, and agent selection.</p>
