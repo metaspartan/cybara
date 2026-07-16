@@ -34,7 +34,7 @@ import {
   parseEther,
   TypedDataDomain,
 } from "ethers";
-import * as ecc from "tiny-secp256k1";
+import { pathToFileURL } from "url";
 import { config } from "./config";
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -146,17 +146,27 @@ import {
 let bitcoin: typeof bitcoinImport | null = null;
 let bip32: ReturnType<typeof BIP32Factory> | null = null;
 let ECPair: ReturnType<typeof ECPairFactory> | null = null;
-try {
-  bitcoinImport.initEccLib(ecc);
-  bitcoin = bitcoinImport;
-  bip32 = BIP32Factory(ecc);
-  ECPair = ECPairFactory(ecc);
-} catch (eccError) {
-  console.warn(
-    "[Wallet] tiny-secp256k1 WASM init failed — BTC operations will be unavailable:",
-    eccError instanceof Error ? eccError.message : eccError
-  );
-}
+
+(async () => {
+  try {
+    let entry: string;
+    try {
+      entry = Bun.resolveSync("tiny-secp256k1", import.meta.dir);
+    } catch {
+      entry = Bun.resolveSync("tiny-secp256k1", process.cwd());
+    }
+    const eccModule = await import(pathToFileURL(entry).href);
+    bitcoinImport.initEccLib(eccModule);
+    bitcoin = bitcoinImport;
+    bip32 = BIP32Factory(eccModule);
+    ECPair = ECPairFactory(eccModule);
+  } catch (eccError) {
+    console.warn(
+      "[Wallet] tiny-secp256k1 WASM init failed — BTC operations will be unavailable:",
+      eccError instanceof Error ? eccError.message : eccError
+    );
+  }
+})();
 
 const UNLOCK_TTL_MS = 15 * 60 * 1000;
 const AGENT_ACCESS_CONFIG_KEY = "wallet_agent_access_enabled";

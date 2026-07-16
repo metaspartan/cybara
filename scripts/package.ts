@@ -43,14 +43,14 @@ export async function runPackage(): Promise<void> {
     mkdirSync(DIST_DIR);
   }
 
-  await $`bun build src/main.ts --outdir ${DIST_DIR} --target bun --external electron --external tiny-secp256k1`.quiet();
+  await $`bun build src/main.ts --outdir ${DIST_DIR} --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1 --external @huggingface/transformers --external kokoro-js --external playwright --external playwright-core --external onnxruntime-node --external onnxruntime-web`.quiet();
   console.log("   ✓ Main entry built");
 
-  await $`bun build src/index.ts --outdir ${DIST_DIR} --target bun --external electron --external tiny-secp256k1`.quiet();
+  await $`bun build src/index.ts --outdir ${DIST_DIR} --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1 --external @huggingface/transformers --external kokoro-js --external playwright --external playwright-core --external onnxruntime-node --external onnxruntime-web`.quiet();
   console.log("   ✓ Server built");
 
   const cliOutput = join(DIST_DIR, "cli.js");
-  await $`bun build src/cli/index.tsx --outfile ${cliOutput} --target bun --external electron --external tiny-secp256k1`.quiet();
+  await $`bun build src/cli/index.tsx --outfile ${cliOutput} --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1 --external @huggingface/transformers --external kokoro-js --external playwright --external playwright-core --external onnxruntime-node --external onnxruntime-web`.quiet();
   console.log("   ✓ CLI built");
 
   console.log("📋 Preparing static assets...");
@@ -69,7 +69,7 @@ export async function runPackage(): Promise<void> {
   const binaryPath = join(RELEASE_DIR, BINARY_NAME);
 
   try {
-    await $`bun build src/main.ts --compile ${buildEnvironment} --outfile ${binaryPath} --target bun --external electron`;
+    await $`bun build src/main.ts --compile ${buildEnvironment} --outfile ${binaryPath} --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1 --external @huggingface/transformers --external kokoro-js --external playwright --external playwright-core --external onnxruntime-node --external onnxruntime-web`;
     console.log(`   ✓ Binary compiled: ${binaryPath}`);
   } catch (error) {
     console.error("   ✗ Binary compilation failed:", error);
