@@ -225,8 +225,12 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain('.help("Chat options")');
     expect(nativeScreens).not.toContain("Circle().fill(accentTint.opacity(0.14))");
     expect(nativeScreens).toContain(".trim(from: 0, to: contextUsageProgress)");
-    expect(nativeScreens).not.toContain('Text(activeContextUsage.map { "\\(Int($0.usedPercent.rounded()))" } ?? "?")');
-    expect(nativeScreens).toContain('.foregroundStyle(.secondary)\n                    }\n                    .buttonStyle(.borderless)\n                    .help("Attach images or text files")');
+    expect(nativeScreens).not.toContain(
+      'Text(activeContextUsage.map { "\\(Int($0.usedPercent.rounded()))" } ?? "?")'
+    );
+    expect(nativeScreens).toContain(
+      '.foregroundStyle(.secondary)\n                    }\n                    .buttonStyle(.borderless)\n                    .help("Attach images or text files")'
+    );
     expect(nativeScreens).toContain('NativeEnvironmentSection(title: "Context and usage")');
     expect(nativeScreens).toContain('NativeEnvironmentUsageStat(label: "Cache read"');
     expect(nativeScreens).toContain('NativeEnvironmentUsageStat(label: "First token"');
