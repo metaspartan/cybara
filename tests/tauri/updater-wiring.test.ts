@@ -9,12 +9,22 @@ describe("desktop updater wiring", () => {
   test("desktop settings page exposes updater controls and release link support", () => {
     const settingsPath = join(ROOT_DIR, "ui", "src", "pages", "Settings.tsx");
     const settingsTsx = readFileSync(settingsPath, "utf8");
+    const updateSettingsPath = join(
+      ROOT_DIR,
+      "ui",
+      "src",
+      "pages",
+      "settings",
+      "DesktopUpdateSettings.tsx"
+    );
+    const updateSettingsTsx = readFileSync(updateSettingsPath, "utf8");
 
-    expect(settingsTsx).toContain("Desktop Updates");
-    expect(settingsTsx).toContain("checkForUpdate");
-    expect(settingsTsx).toContain("startUpdateInstall");
-    expect(settingsTsx).toContain("useDesktopUpdate");
-    expect(settingsTsx).toContain("releaseRepositoryUrl");
+    expect(settingsTsx).toContain("DesktopUpdateSettings");
+    expect(updateSettingsTsx).toContain("Updates");
+    expect(updateSettingsTsx).toContain("checkForUpdate");
+    expect(updateSettingsTsx).toContain("startUpdateInstall");
+    expect(updateSettingsTsx).toContain("useDesktopUpdate");
+    expect(updateSettingsTsx).toContain("releaseRepositoryUrl");
   });
 
   test("tauri runtime enables updater/process plugins and permissions", () => {

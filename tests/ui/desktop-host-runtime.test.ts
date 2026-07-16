@@ -18,6 +18,10 @@ describe("desktop host runtime wiring", () => {
     );
     const mainTsx = readFileSync(join(ROOT_DIR, "ui", "src", "main.tsx"), "utf8");
     const settingsTsx = readFileSync(join(ROOT_DIR, "ui", "src", "pages", "Settings.tsx"), "utf8");
+    const updateSettingsTsx = readFileSync(
+      join(ROOT_DIR, "ui", "src", "pages", "settings", "DesktopUpdateSettings.tsx"),
+      "utf8"
+    );
     const notifications = readFileSync(
       join(ROOT_DIR, "ui", "src", "hooks", "useNotifications.ts"),
       "utf8"
@@ -40,10 +44,11 @@ describe("desktop host runtime wiring", () => {
     expect(mainTsx).toContain("getDesktopHostRuntime()");
     expect(mainTsx).toMatch(/rootElement\.dataset\.runtime = desktopRuntime \|\| ["']web["']/);
 
-    expect(settingsTsx).toContain("getDesktopRuntimeLabel");
-    expect(settingsTsx).toContain("isDesktopUpdaterSupported");
-    expect(settingsTsx).toContain("Cybara macOS app uses the same local gateway");
+    expect(settingsTsx).toContain("DesktopUpdateSettings");
     expect(settingsTsx).toContain("openDesktopFileDialog");
+    expect(updateSettingsTsx).toContain("getDesktopRuntimeLabel");
+    expect(updateSettingsTsx).toContain("isDesktopUpdaterSupported");
+    expect(updateSettingsTsx).toContain("systemApi.buildInfo()");
 
     expect(notifications).toContain("sendDesktopNotification");
     expect(notifications).toContain("requestDesktopNotificationPermission");

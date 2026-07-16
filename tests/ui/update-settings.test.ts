@@ -9,6 +9,10 @@ const updateSettings = readFileSync(
 );
 const routes = readFileSync(join(root, "src", "api", "routes.ts"), "utf8");
 const buildScript = readFileSync(join(root, "scripts", "build-sidecar.ts"), "utf8");
+const nativeSettings = readFileSync(
+  join(root, "apps", "macos", "Cybara", "Sources", "Cybara", "NativeSettingsScreen.swift"),
+  "utf8"
+);
 
 describe("desktop update settings", () => {
   test("shows release provenance from the gateway build contract", () => {
@@ -23,5 +27,12 @@ describe("desktop update settings", () => {
   test("stamps release sidecars with the source commit", () => {
     expect(buildScript).toContain("process.env.CYBARA_BUILD_COMMIT = buildCommit");
     expect(buildScript).toContain("--env=CYBARA_BUILD_*");
+  });
+
+  test("keeps native macOS update settings in parity", () => {
+    expect(nativeSettings).toContain("case updates");
+    expect(nativeSettings).toContain("case .updates: updatesTab");
+    expect(nativeSettings).toContain('nativeBuildValue("Release commit", buildInfo?.commit)');
+    expect(nativeSettings).toContain('nativeBuildValue("SHA-256", buildInfo?.executable_sha256)');
   });
 });
