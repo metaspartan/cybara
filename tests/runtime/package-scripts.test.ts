@@ -8,6 +8,7 @@ const SIDECAR_SCRIPT = join(ROOT_DIR, "scripts", "build-sidecar.ts");
 const CI_INSTALL_SCRIPT = join(ROOT_DIR, "scripts", "ci-install.sh");
 const PACKAGE_SCRIPT = join(ROOT_DIR, "scripts", "package.ts");
 const REACT_DOCTOR_SCRIPT = join(ROOT_DIR, "scripts", "react-doctor.ts");
+const SMOKE_TEST_SCRIPT = join(ROOT_DIR, "scripts", "run-smoke-tests.ts");
 const KNIP_CONFIG = join(ROOT_DIR, "knip.json");
 
 describe("package.json script wiring", () => {
@@ -50,7 +51,16 @@ describe("package.json script wiring", () => {
     expect(reactDoctorSource).toContain('environment.CI === "true"');
     expect(reactDoctorSource).toContain('Bun.spawnSync(["git", "rev-parse", "HEAD^"]');
     expect(pkg.scripts?.["test:mobile"]).toBe("bun run test:isolated tests/mobile");
-    expect(pkg.scripts?.["test:smoke"]).toContain("bun run test:isolated tests/mobile");
+    expect(pkg.scripts?.["test:smoke"]).toBe("bun run scripts/run-smoke-tests.ts");
+    const smokeTestSource = readFileSync(SMOKE_TEST_SCRIPT, "utf8");
+    expect(smokeTestSource).toContain('name: "core", paths: ["tests/core"]');
+    expect(smokeTestSource).toContain('name: "mobile", paths: ["tests/mobile"]');
+    expect(smokeTestSource).toContain('name: "ui", paths: ["tests/ui"]');
+    expect(smokeTestSource).toContain('name: "cli", paths: ["tests/cli"]');
+    expect(smokeTestSource).toContain('name: "tauri", paths: ["tests/tauri"]');
+    expect(smokeTestSource).toContain("tests/e2e/security-auth-smoke.test.ts");
+    expect(smokeTestSource).toContain("tests/api/security.test.ts");
+    expect(smokeTestSource).toContain("CYBARA_SMOKE_WORKERS");
     expect(pkg.scripts?.["check:ci"]).toContain("bun run mobile:expo-check");
     expect(pkg.scripts?.["check:ci"]).toContain("bun run mobile:typecheck");
     expect(pkg.scripts?.["check:ci"]).toContain("bun run doctor");

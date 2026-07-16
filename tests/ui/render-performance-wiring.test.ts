@@ -39,11 +39,12 @@ describe("UI render performance wiring", () => {
 
   test("Metrics renders per-section skeletons for deferred panels", () => {
     const source = read("pages/Metrics.tsx");
+    const components = read("pages/metrics/MetricsComponents.tsx");
 
-    expect(source).toContain("function MetricChartSkeleton");
-    expect(source).toContain("function MetricRowsSkeleton");
-    expect(source).toContain("function MetricHeatmapSkeleton");
-    expect(source).toContain("function MetricCloudSkeleton");
+    expect(components).toContain("function MetricChartSkeleton");
+    expect(components).toContain("function MetricRowsSkeleton");
+    expect(components).toContain("function MetricHeatmapSkeleton");
+    expect(components).toContain("function MetricCloudSkeleton");
     expect(source).toContain("tokenAnalysisPending ? (");
     expect(source).toContain("providerPlansPending ? (");
     expect(source).toContain("storagePending ? (");

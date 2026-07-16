@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
+const readApi = (): string =>
+  read("lib/api.ts") + read("lib/api-types.ts") + read("lib/api-normalizers.ts");
 
 describe("mobile: chat management", () => {
   const screen =
@@ -20,7 +22,7 @@ describe("mobile: chat management", () => {
   });
 
   test("delete calls the gateway deleteSession and refreshes", () => {
-    const api = read("lib/api.ts");
+    const api = readApi();
     expect(api).toContain("deleteSession(id: string)");
     expect(screen).toContain("await api.deleteSession(id)");
   });
@@ -37,7 +39,7 @@ describe("mobile: chat management", () => {
   });
 
   test("queued follow-ups render as pending rows and only real pending ids can steer", () => {
-    const api = read("lib/api.ts");
+    const api = readApi();
     const styles = read("screens/dashboardStyles.ts");
     expect(api).toContain("interrupted?: boolean");
     expect(api).toContain("pendingChatMessages(sessionId: string)");
@@ -121,7 +123,7 @@ describe("mobile: chat management", () => {
   });
 
   test("mobile chat renders active session plans above messages and keeps chat text selectable", () => {
-    const api = read("lib/api.ts");
+    const api = readApi();
     const chat = read("screens/dashboardChat.tsx");
     const styles = read("screens/dashboardStyles.ts");
     const planCard = screen.indexOf("<MobilePlanSummaryCard plan={detail.plan} />");
@@ -167,7 +169,7 @@ describe("mobile: chat management", () => {
   });
 
   test("chat composer exposes agent switching and context usage", () => {
-    const api = read("lib/api.ts");
+    const api = readApi();
     const newChat = read("components/NewChatPanel.tsx");
     const metricsPanels = read("screens/dashboardMetricsPanels.tsx");
     const styles = read("screens/dashboardStyles.ts");

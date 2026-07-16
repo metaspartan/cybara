@@ -8,6 +8,7 @@ import {
   buildPreSteeringActivityMessage,
   canUseNativeSpeechRecognition,
   isAgentUsingBrowser,
+  isSessionStatusSnapshotCurrent,
   isRawToolCallThought,
   pruneCanonicalizedLiveActivities,
   resolveDictationRuntime,
@@ -218,13 +219,47 @@ describe("Chat live activity persistence", () => {
       localActivities
     );
     expect(resolveStatusSnapshotActivities([], localActivities, "idle")).toEqual([]);
-    expect(resolveStatusSnapshotActivities(serverActivities, localActivities, "thinking")).toEqual(
-      serverActivities
-    );
+    expect(resolveStatusSnapshotActivities(serverActivities, localActivities, "thinking")).toEqual([
+      ...localActivities,
+      ...serverActivities,
+    ]);
     expect(source).toContain("const liveActivitiesRef = useRef<LiveActivityItem[]>([])");
     expect(source).toContain("resolveStatusSnapshotActivities(");
     expect(source).toContain("const resolveSnapshotLiveState = useCallback");
     expect(source).toContain("cacheLiveStatusSnapshot(snapshot)");
+  });
+
+  test("keeps authoritative quiet long-running sessions active beyond the client heuristic", () => {
+    const now = 1_783_700_000_000;
+    const oldTimestamp = now - 20 * 60_000;
+
+    expect(isSessionStatusSnapshotCurrent(oldTimestamp, true, now)).toBe(true);
+    expect(isSessionStatusSnapshotCurrent(oldTimestamp, false, now)).toBe(false);
+    expect(isSessionStatusSnapshotCurrent(now - 5_000, false, now)).toBe(true);
+  });
+
+  test("merges partial status snapshots without dropping earlier live work", () => {
+    const earlier: LiveActivityItem = {
+      id: "earlier",
+      phase: "result",
+      text: "Explored package.json",
+      timestamp: 1000,
+      toolName: "read",
+      toolCallId: "read-1",
+    };
+    const latest: LiveActivityItem = {
+      id: "latest",
+      phase: "start",
+      text: "Running tests",
+      timestamp: 2000,
+      toolName: "exec",
+      toolCallId: "exec-1",
+    };
+
+    expect(resolveStatusSnapshotActivities([latest], [earlier], "thinking")).toEqual([
+      earlier,
+      latest,
+    ]);
   });
 
   test("clears stale running step text after a tool completion with no in-flight step", () => {

@@ -3,10 +3,12 @@ import { redactSecrets, redactSecretText } from "./redaction";
 import { stripReasoningTagTokens } from "./agent-internals";
 import { notifyMobilePushForStatus, notifyMobilePushForTask } from "./mobile-push";
 import {
+  appendBufferedAssistantDelta,
   appendSessionEvent,
   beginSessionRun,
   completeSessionRun,
   ensureSessionRunId,
+  flushBufferedAssistantDeltas,
   getActiveSessionRunId,
 } from "./session-event-ledger";
 
@@ -527,6 +529,7 @@ export function broadcastStatus(status: StatusPayload): void {
     const activeRunId = getActiveSessionRunId(sessionId);
     runId = activeRunId || beginSessionRun(sessionId, runId);
     try {
+      flushBufferedAssistantDeltas(sessionId, runId);
       if (!activeRunId) {
         appendSessionEvent({
           sessionId,
@@ -609,16 +612,16 @@ export function broadcastTokenDelta(event: {
   const runId = getActiveSessionRunId(sessionId) || ensureSessionRunId(sessionId);
   const timestamp = Date.now();
   const sanitizedDelta = redactSecretText(event.delta);
-  let sequence: number | undefined;
   try {
-    sequence = appendSessionEvent({
+    appendBufferedAssistantDelta({
       sessionId,
       runId,
-      type: "assistant_delta",
-      payload: { agentId: event.agentId, delta: sanitizedDelta, timestamp },
-    }).sequence;
+      agentId: event.agentId,
+      delta: sanitizedDelta,
+      timestamp,
+    });
   } catch {
-    sequence = undefined;
+    void 0;
   }
   emitStatusStreamEvent({
     type: "assistant_token",
@@ -627,6 +630,5 @@ export function broadcastTokenDelta(event: {
     delta: sanitizedDelta,
     timestamp,
     runId,
-    sequence,
   });
 }

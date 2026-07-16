@@ -102,6 +102,15 @@ describe("chat image rendering", () => {
     expect(messageSource).not.toContain("href={imageSource}");
   });
 
+  test("reserves stable image geometry and memoizes markdown rendering", () => {
+    expect(chatSource).toContain("width={320}");
+    expect(chatSource).toContain("height={200}");
+    expect(chatSource).toContain('className="aspect-[16/10]');
+    expect(messageSource).toContain("width={640}");
+    expect(messageSource).toContain("height={400}");
+    expect(messageSource).toContain("export const MessageContent = memo(MessageContentComponent)");
+  });
+
   test("lightbox supports navigation, zoom, download, and keyboard controls", () => {
     expect(nextLightboxIndex(0, -1, 3)).toBe(2);
     expect(nextLightboxIndex(2, 1, 3)).toBe(0);

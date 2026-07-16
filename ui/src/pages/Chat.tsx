@@ -81,6 +81,7 @@ import {
   isAgentUsingBrowser,
   isGenericStatusLabel,
   isMeaningfulThoughtDetail,
+  isSessionStatusSnapshotCurrent,
   normalizeMessageProcessActivities,
   normalizeSessionStatus,
   normalizeSnapshotActivities,
@@ -98,7 +99,6 @@ import {
   readPersistedWorkspaceDir,
   resolvePathForIde,
   resolveStatusSnapshotActivities,
-  SESSION_ACTIVITY_STALE_MS,
   shouldShowSessionPlanInComposer,
   type SessionStatusResponse,
   type SessionStatusSnapshot,
@@ -106,7 +106,7 @@ import {
   toLiveActivityItems,
 } from "./chat/chatModel";
 import { parseInitialChatRoute } from "./chat/chatRoute";
-import { isChatNearBottom } from "./chat/chatScroll";
+import { chatBottomScrollTop, isChatNearBottom } from "./chat/chatScroll";
 import { type GitBranchOption, GitBranchSelector } from "./chat/GitBranchSelector";
 import {
   clearCachedLiveSessionState,
@@ -964,7 +964,10 @@ export function Chat() {
       rafId = window.requestAnimationFrame(() => {
         rafId = null;
         if (keepScrolledToBottomRef.current) {
-          scrollToBottom("auto");
+          const targetScrollTop = chatBottomScrollTop(container);
+          if (Math.abs(container.scrollTop - targetScrollTop) > 1) {
+            container.scrollTop = targetScrollTop;
+          }
         } else {
           refreshScrollToBottomVisibility();
         }
@@ -982,7 +985,7 @@ export function Chat() {
       mutationObserver.disconnect();
       if (rafId !== null) window.cancelAnimationFrame(rafId);
     };
-  }, [artifactViewerTarget, refreshScrollToBottomVisibility, scrollToBottom]);
+  }, [artifactViewerTarget, refreshScrollToBottomVisibility]);
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -1449,11 +1452,12 @@ export function Chat() {
         if (!resolvedSessionId) return;
         const snapshot = payload.session;
         const stopSuppressed = isSessionStopSuppressed(resolvedSessionId);
-        const snapshotAgeMs =
-          snapshot && typeof snapshot.timestamp === "number"
-            ? Date.now() - snapshot.timestamp
-            : Infinity;
-        const snapshotFresh = snapshotAgeMs <= SESSION_ACTIVITY_STALE_MS;
+        const serverReportsActive =
+          payload.active === true || visibleActiveIds.includes(resolvedSessionId);
+        const snapshotFresh = isSessionStatusSnapshotCurrent(
+          snapshot?.timestamp,
+          serverReportsActive
+        );
         const nextActiveIds =
           snapshot && !snapshotFresh
             ? visibleActiveIds.filter((candidateId) => candidateId !== resolvedSessionId)

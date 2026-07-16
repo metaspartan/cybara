@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
+const readApi = (): string =>
+  read("lib/api.ts") + read("lib/api-types.ts") + read("lib/api-normalizers.ts");
 
 describe("mobile settings: Gateway runtime controls", () => {
   const screen =
@@ -11,7 +13,7 @@ describe("mobile settings: Gateway runtime controls", () => {
     read("screens/dashboardDetailPanels.tsx") +
     read("screens/dashboardSettingsPanels.tsx") +
     read("screens/dashboardGatewayPanel.tsx");
-  const api = read("lib/api.ts");
+  const api = readApi();
   const app = read("../App.tsx");
 
   test("settings exposes gateway restart, auth, key rotation, and recent logs", () => {

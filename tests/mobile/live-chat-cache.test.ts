@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   clearCachedMobileLiveAssistant,
+  isMobileSessionSnapshotCurrent,
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
   liveActivityFromStatusEvent,
@@ -14,6 +15,15 @@ import {
 } from "../../apps/mobile/src/screens/dashboardLiveChat";
 
 describe("mobile live chat cache", () => {
+  test("keeps authoritative quiet long-running sessions active", () => {
+    const now = 1_783_700_000_000;
+    const oldTimestamp = now - 30 * 60_000;
+
+    expect(isMobileSessionSnapshotCurrent(oldTimestamp, true, now)).toBe(true);
+    expect(isMobileSessionSnapshotCurrent(oldTimestamp, false, now)).toBe(false);
+    expect(isMobileSessionSnapshotCurrent(now - 5_000, false, now)).toBe(true);
+  });
+
   test("replaces active compaction with its completed result", () => {
     const started = liveActivityFromStatusEvent({
       type: "status",

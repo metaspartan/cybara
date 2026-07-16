@@ -104,6 +104,15 @@ export function mobileAgentUsingBrowser(
   );
 }
 
+export function isMobileSessionSnapshotCurrent(
+  timestamp: number | undefined,
+  serverReportsActive: boolean,
+  now = Date.now()
+): boolean {
+  if (serverReportsActive) return true;
+  return typeof timestamp === "number" && now - timestamp <= MOBILE_LIVE_ASSISTANT_STALE_MS;
+}
+
 export function subscribeCachedMobileLiveAssistant(
   sessionId: string,
   subscriber: (cached: CachedMobileLiveAssistant | null) => void

@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { tables } from "../../src/core/database";
 import {
+  appendBufferedAssistantDelta,
   appendSessionEvent,
   completeSessionRun,
   ensureSessionRunId,
+  flushBufferedAssistantDeltas,
   latestSessionEventSequence,
   listRunEvents,
   listSessionEvents,
@@ -77,6 +79,37 @@ describe("session event ledger", () => {
     expect(event.payload).toEqual({ apiKey: "[REDACTED]", content: "safe" });
     expect(() => appendSessionEvent({ sessionId: "", runId, type: "status", payload: {} })).toThrow(
       "require session and run identifiers"
+    );
+  });
+
+  test("coalesces streamed assistant chunks before writing replay events", () => {
+    const sessionId = createSession();
+    const runId = ensureSessionRunId(sessionId);
+    appendBufferedAssistantDelta({
+      sessionId,
+      runId,
+      agentId: "mini",
+      delta: "first ",
+      timestamp: 1000,
+    });
+    appendBufferedAssistantDelta({
+      sessionId,
+      runId,
+      agentId: "mini",
+      delta: "second",
+      timestamp: 1001,
+    });
+
+    const flushed = flushBufferedAssistantDeltas(sessionId, runId);
+    expect(flushed).toHaveLength(1);
+    expect(flushed[0]?.type).toBe("assistant_delta");
+    expect(flushed[0]?.payload).toEqual({
+      agentId: "mini",
+      delta: "first second",
+      timestamp: 1001,
+    });
+    expect(listRunEvents(runId).filter((event) => event.type === "assistant_delta")).toHaveLength(
+      1
     );
   });
 });

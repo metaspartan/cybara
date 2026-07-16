@@ -97,6 +97,7 @@ import { ChatMessageRow, MobilePlanSummaryCard } from "./dashboardChat";
 import { absoluteTimestampLabel, relativeTimestamp } from "./dashboardHelpers";
 import {
   clearCachedMobileLiveAssistant,
+  isMobileSessionSnapshotCurrent,
   liveActivityFromStatusEvent,
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
@@ -694,11 +695,12 @@ export function SessionDetailPanel({
       const status = await api.sessionStatus(sessionId);
       const snapshot =
         status.session || status.activeSessions.find((entry) => entry.sessionId === sessionId);
-      const snapshotAgeMs =
-        snapshot && typeof snapshot.timestamp === "number"
-          ? Date.now() - snapshot.timestamp
-          : Infinity;
-      const snapshotFresh = snapshotAgeMs <= 15 * 60 * 1000;
+      const serverReportsActive =
+        status.active === true || status.activeSessionIds.includes(sessionId);
+      const snapshotFresh = isMobileSessionSnapshotCurrent(
+        snapshot?.timestamp,
+        serverReportsActive
+      );
       if (snapshot && snapshotFresh) {
         const snapshotAccepted = acceptLiveEvent(snapshot);
         if (
@@ -714,8 +716,7 @@ export function SessionDetailPanel({
       const active =
         !!snapshot &&
         snapshotFresh &&
-        (status.active === true ||
-          status.activeSessionIds.includes(sessionId) ||
+        (serverReportsActive ||
           snapshotStatus === "thinking" ||
           snapshotStatus === "generating" ||
           snapshotStatus === "tool_executing" ||

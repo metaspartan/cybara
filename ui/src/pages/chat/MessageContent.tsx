@@ -3,6 +3,7 @@ import { Highlight, themes } from "prism-react-renderer";
 import {
   type ComponentPropsWithoutRef,
   isValidElement,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -270,7 +271,7 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
   );
 }
 
-export function MessageContent({
+function MessageContentComponent({
   content,
   onOpenImage,
 }: {
@@ -367,7 +368,10 @@ export function MessageContent({
                   src={imageSource}
                   alt={alt || "image"}
                   loading="lazy"
-                  className="max-h-80 max-w-full rounded-lg border border-white/12 object-contain"
+                  decoding="async"
+                  width={640}
+                  height={400}
+                  className="aspect-[16/10] max-h-80 w-full max-w-[640px] rounded-lg border border-white/12 object-contain"
                 />
               </button>
             );
@@ -390,3 +394,5 @@ export function MessageContent({
     </div>
   );
 }
+
+export const MessageContent = memo(MessageContentComponent);

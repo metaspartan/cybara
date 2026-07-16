@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { distanceFromChatBottom, isChatNearBottom } from "../../ui/src/pages/chat/chatScroll";
+import {
+  chatBottomScrollTop,
+  distanceFromChatBottom,
+  isChatNearBottom,
+} from "../../ui/src/pages/chat/chatScroll";
 
 describe("chat scroll position", () => {
   test("treats exact and subpixel bottom positions as pinned", () => {
@@ -23,5 +27,12 @@ describe("chat scroll position", () => {
 
     expect(isChatNearBottom(metrics)).toBe(false);
     expect(isChatNearBottom(metrics, 96)).toBe(true);
+  });
+
+  test("pins late image growth directly to the final scroll position", () => {
+    expect(chatBottomScrollTop({ scrollTop: 700, clientHeight: 300, scrollHeight: 1400 })).toBe(
+      1100
+    );
+    expect(chatBottomScrollTop({ scrollTop: 0, clientHeight: 500, scrollHeight: 300 })).toBe(0);
   });
 });

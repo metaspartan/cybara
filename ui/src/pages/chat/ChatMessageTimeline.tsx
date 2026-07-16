@@ -176,7 +176,10 @@ export function ChatMessageTimeline({
                             src={src}
                             alt="Attachment"
                             loading="lazy"
-                            className="h-auto max-h-64 w-full object-contain"
+                            decoding="async"
+                            width={220}
+                            height={165}
+                            className="aspect-[4/3] max-h-64 w-full object-contain"
                           />
                         </button>
                       );
@@ -343,7 +346,10 @@ function ToolOutputImages({
             src={src}
             alt="Tool output"
             loading="lazy"
-            className="h-auto max-h-80 w-full object-contain"
+            decoding="async"
+            width={320}
+            height={200}
+            className="aspect-[16/10] max-h-80 w-full object-contain"
           />
         </button>
       ))}

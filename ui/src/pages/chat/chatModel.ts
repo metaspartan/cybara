@@ -996,7 +996,23 @@ export function resolveStatusSnapshotActivities(
   ) {
     return mergeActivityLists([], localActivities);
   }
-  return snapshotActivities;
+  if (normalizedStatus === "idle" || normalizedStatus === "error") {
+    return snapshotActivities;
+  }
+  return mergeActivityLists(snapshotActivities, localActivities).sort((left, right) =>
+    left.timestamp === right.timestamp
+      ? left.id.localeCompare(right.id)
+      : left.timestamp - right.timestamp
+  );
+}
+
+export function isSessionStatusSnapshotCurrent(
+  timestamp: number | undefined,
+  serverReportsActive: boolean,
+  now = Date.now()
+): boolean {
+  if (serverReportsActive) return true;
+  return typeof timestamp === "number" && now - timestamp <= SESSION_ACTIVITY_STALE_MS;
 }
 
 export function summarizeCommand(command: string): string {
