@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { resolveModelMaxOutputTokens } from "../../src/core/agent-model-limits";
 import { discoverProviderModels } from "../../src/core/model-discovery";
 import { providerManager } from "../../src/core/providers";
 
@@ -161,7 +162,9 @@ describe("provider model discovery", () => {
     expect(discovered?.model_id).toBe("k3");
     expect(discovered?.model_name).toBe("Kimi K3");
     expect(discovered?.context_window).toBe(1_048_576);
+    expect(discovered?.max_tokens).toBe(32_768);
     expect(Boolean(discovered?.reasoning)).toBe(true);
     expect(discovered?.input_types).toBe('["text","image"]');
+    expect(resolveModelMaxOutputTokens("kimi-code-oauth", provider.id, "k3")).toBe(32_768);
   });
 });

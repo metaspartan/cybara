@@ -71,6 +71,21 @@ function endpointModel(value: unknown): ModelsDevModel | undefined {
   };
 }
 
+function staticModelDefaults(providerType: string, modelId: string): ModelsDevModel | undefined {
+  const model = providers[providerType as ProviderType]?.models?.find(
+    (candidate: { id: string }) => candidate.id.toLowerCase() === modelId.toLowerCase()
+  );
+  if (!model) return undefined;
+  return {
+    id: model.id,
+    name: model.name,
+    contextWindow: model.context,
+    maxTokens: model.maxTokens,
+    reasoning: model.reasoning,
+    input: [...model.input],
+  };
+}
+
 function normalizeInputTypes(value: unknown): string[] {
   if (Array.isArray(value))
     return value.filter((entry): entry is string => typeof entry === "string");
@@ -221,6 +236,7 @@ async function runProviderDiscovery(
       catalogModels.map((model) => [model.id.trim().toLowerCase(), model] as const)
     );
     const found = endpointModels.map((model) => ({
+      ...staticModelDefaults(providerType, model.id),
       ...catalogById.get(model.id.toLowerCase()),
       ...model,
     }));
