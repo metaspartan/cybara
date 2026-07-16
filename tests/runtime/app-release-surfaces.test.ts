@@ -40,8 +40,9 @@ describe("app release surface wiring", () => {
       "fetch-depth: 2"
     );
     expect(versionWorkflow).toContain("apps/mobile/app.json");
+    expect(versionWorkflow).toContain("nix/release.nix");
     expect(versionWorkflow).toContain(
-      "git add package.json ui/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json apps/mobile/app.json"
+      "git add package.json ui/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json apps/mobile/app.json nix/release.nix"
     );
   });
 
@@ -122,6 +123,19 @@ describe("app release surface wiring", () => {
     );
     expect(workflow).toContain('gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false');
     expect(workflow).not.toContain("releaseDraft: false");
+  });
+
+  test("release workflow synchronizes Nix hashes before publishing without a delayed package job", () => {
+    const releaseWorkflow = read(".github/workflows/release.yml");
+    const packageWorkflow = read(".github/workflows/publish-packages.yml");
+
+    expect(releaseWorkflow).toContain("name: Sync Nix release hashes");
+    expect(releaseWorkflow).toContain('bun run scripts/sync-nix-release.ts "$VERSION"');
+    expect(releaseWorkflow.indexOf("name: Sync Nix release hashes")).toBeLessThan(
+      releaseWorkflow.indexOf("name: Publish draft release")
+    );
+    expect(packageWorkflow).not.toContain("Regenerate nix/release.nix");
+    expect(packageWorkflow).not.toContain("git add nix/release.nix");
   });
 
   test("Tauri release matrix builds each platform sidecar with an explicit Bun target", () => {

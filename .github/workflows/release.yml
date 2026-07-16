@@ -943,6 +943,41 @@ jobs:
         env:
           CYBARA_TAURI_REQUIRED_UPDATER_PLATFORMS: darwin-aarch64,darwin-aarch64-app,darwin-x86_64,darwin-x86_64-app,linux-x86_64,linux-x86_64-deb,linux-x86_64-rpm,windows-x86_64,windows-x86_64-msi,windows-x86_64-nsis
         run: bun run scripts/verify-tauri-updater-manifest.ts release-check/latest.json
+      - name: Sync Nix release hashes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          CHECKSUM_DIR="$RUNNER_TEMP/cybara-nix-checksums"
+          rm -rf "$CHECKSUM_DIR"
+          mkdir -p "$CHECKSUM_DIR"
+          for TARGET in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+            gh release download "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "cybara-v${VERSION}-${TARGET}-cli.sha256" \
+              --dir "$CHECKSUM_DIR"
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for ATTEMPT in 1 2 3; do
+            git fetch origin main
+            git checkout -B nix-release-sync origin/main
+            bun run scripts/sync-nix-release.ts "$VERSION" "$CHECKSUM_DIR"
+            if git diff --quiet -- nix/release.nix; then
+              echo "No Nix hash changes for ${VERSION}."
+              exit 0
+            fi
+            git add nix/release.nix
+            git commit -m "nix: sync release hashes for v${VERSION} [skip ci]"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep "$ATTEMPT"
+          done
+          echo "Could not synchronize Nix release hashes after 3 attempts." >&2
+          exit 1
       - name: Publish draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -7,6 +7,7 @@ import {
   replaceCargoTomlVersion,
   replaceJsonVersion,
 } from "../src/core/versioning";
+import { replaceNixReleaseVersion } from "../src/core/nix-release";
 
 const ROOT = join(import.meta.dirname, "..");
 const PACKAGE_JSON_PATH = join(ROOT, "package.json");
@@ -14,6 +15,7 @@ const UI_PACKAGE_JSON_PATH = join(ROOT, "ui", "package.json");
 const CARGO_TOML_PATH = join(ROOT, "src-tauri", "Cargo.toml");
 const TAURI_CONFIG_PATH = join(ROOT, "src-tauri", "tauri.conf.json");
 const MOBILE_APP_JSON_PATH = join(ROOT, "apps", "mobile", "app.json");
+const NIX_RELEASE_PATH = join(ROOT, "nix", "release.nix");
 
 function mobileBuildNumber(version: string): number {
   const match = version.match(/^(\d+)\.(\d+)\.(\d+)/);
@@ -134,6 +136,11 @@ function syncVersion(version: string): string[] {
     )
   ) {
     changed.push("apps/mobile/app.json");
+  }
+  if (
+    writeIfChanged(NIX_RELEASE_PATH, replaceNixReleaseVersion(readText(NIX_RELEASE_PATH), version))
+  ) {
+    changed.push("nix/release.nix");
   }
   return changed;
 }
