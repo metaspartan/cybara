@@ -8,17 +8,17 @@ import { useUIStore } from "@/stores/uiStore";
 import { AlertTriangle, RefreshCw, Server, Shield } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-type SandboxProviderOption = "auto" | "apple_sandbox" | "podman" | "docker";
+type SandboxProviderOption = "auto" | "apple_sandbox" | "podman" | "docker" | "remote";
 
 interface SandboxStatusView {
   enabled: boolean;
   configuredProvider: SandboxProviderOption;
   network: "allow" | "deny";
-  resolvedProvider: "apple_sandbox" | "podman" | "docker" | null;
+  resolvedProvider: "apple_sandbox" | "podman" | "docker" | "remote" | null;
   available: boolean;
   reason?: string;
   providers: Array<{
-    provider: "apple_sandbox" | "podman" | "docker";
+    provider: "apple_sandbox" | "podman" | "docker" | "remote";
     supported: boolean;
     installed: boolean;
     available: boolean;
@@ -27,7 +27,7 @@ interface SandboxStatusView {
   checkedAt: string;
   lastEvent: {
     phase: "prepared" | "disabled" | "error";
-    provider: "apple_sandbox" | "podman" | "docker" | "host" | null;
+    provider: "apple_sandbox" | "podman" | "docker" | "remote" | "host" | null;
     commandPreview?: string;
     cwd?: string;
     network?: "allow" | "deny";
@@ -49,7 +49,6 @@ export function FeatureSettings() {
   const [sandboxNetwork, setSandboxNetwork] = useState<"allow" | "deny">("deny");
   const [sandboxRemoteUrl, setSandboxRemoteUrl] = useState("");
   const [sandboxRemoteApiKey, setSandboxRemoteApiKey] = useState("");
-  const [remoteSandboxEnabled, setRemoteSandboxEnabled] = useState(false);
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const [savingDangerousPolicy, setSavingDangerousPolicy] = useState(false);
   const [savingSandboxRuntime, setSavingSandboxRuntime] = useState(false);
@@ -63,6 +62,7 @@ export function FeatureSettings() {
     if (provider === "apple_sandbox") return "Apple Sandbox";
     if (provider === "podman") return "Podman";
     if (provider === "docker") return "Docker";
+    if (provider === "remote") return "Remote";
     if (provider === "host") return "Host";
     if (provider === "auto") return "Auto Detect";
     return "None";
@@ -133,7 +133,8 @@ export function FeatureSettings() {
         setSandboxProvider(
           sandboxRaw?.provider === "apple_sandbox" ||
             sandboxRaw?.provider === "podman" ||
-            sandboxRaw?.provider === "docker"
+            sandboxRaw?.provider === "docker" ||
+            sandboxRaw?.provider === "remote"
             ? sandboxRaw.provider
             : "auto"
         );
@@ -141,9 +142,6 @@ export function FeatureSettings() {
         setSandboxRemoteUrl(typeof sandboxRaw?.remoteUrl === "string" ? sandboxRaw.remoteUrl : "");
         setSandboxRemoteApiKey(
           typeof sandboxRaw?.remoteApiKey === "string" ? sandboxRaw.remoteApiKey : ""
-        );
-        setRemoteSandboxEnabled(
-          typeof sandboxRaw?.remoteUrl === "string" && sandboxRaw.remoteUrl.trim().length > 0
         );
         if (sandboxResult.success && sandboxResult.data) {
           setSandboxStatus(sandboxResult.data as SandboxStatusView);
@@ -311,37 +309,13 @@ export function FeatureSettings() {
     await updateSandboxRuntime(
       {
         enabled: sandboxEnabled,
-        provider: sandboxProvider,
+        provider: "remote",
         network: sandboxNetwork,
         remoteUrl,
         remoteApiKey: sandboxRemoteApiKey.trim(),
       },
       "Remote sandbox saved"
     );
-  };
-
-  const toggleRemoteSandbox = async (enabled: boolean): Promise<void> => {
-    if (enabled) {
-      setRemoteSandboxEnabled(true);
-      return;
-    }
-    setRemoteSandboxEnabled(false);
-    const saved = await updateSandboxRuntime(
-      {
-        enabled: sandboxEnabled,
-        provider: sandboxProvider,
-        network: sandboxNetwork,
-        remoteUrl: "",
-        remoteApiKey: "",
-      },
-      "Remote sandbox disabled"
-    );
-    if (!saved) {
-      setRemoteSandboxEnabled(true);
-      return;
-    }
-    setSandboxRemoteUrl("");
-    setSandboxRemoteApiKey("");
   };
 
   return (
@@ -468,7 +442,7 @@ export function FeatureSettings() {
             <div>
               <p className="text-sm font-medium text-[var(--text-primary)]">Command Sandbox</p>
               <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                Isolate `exec` and `git` tools with host/container sandboxing.
+                Isolate `exec` and `git` tools with a local or remote runtime.
               </p>
             </div>
             <Switch
@@ -490,10 +464,13 @@ export function FeatureSettings() {
                 <Select
                   value={sandboxProvider}
                   onChange={(value) =>
-                    updateSandboxRuntime({
+                    void updateSandboxRuntime({
                       enabled: true,
                       provider:
-                        value === "apple_sandbox" || value === "podman" || value === "docker"
+                        value === "apple_sandbox" ||
+                        value === "podman" ||
+                        value === "docker" ||
+                        value === "remote"
                           ? value
                           : "auto",
                       network: sandboxNetwork,
@@ -504,40 +481,43 @@ export function FeatureSettings() {
                     { value: "apple_sandbox", label: "Apple Sandbox" },
                     { value: "podman", label: "Podman" },
                     { value: "docker", label: "Docker" },
+                    { value: "remote", label: "Remote" },
                   ]}
                   disabled={savingSandboxRuntime}
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-xs text-[var(--text-muted)]">Network</label>
-                <Select
-                  value={sandboxNetwork}
-                  onChange={(value) =>
-                    updateSandboxRuntime({
-                      enabled: true,
-                      provider: sandboxProvider,
-                      network: value === "allow" ? "allow" : "deny",
-                    })
-                  }
-                  options={[
-                    { value: "deny", label: "Deny Network" },
-                    { value: "allow", label: "Allow Network" },
-                  ]}
-                  disabled={savingSandboxRuntime}
-                />
-              </div>
+              {sandboxProvider !== "remote" ? (
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--text-muted)]">Network</label>
+                  <Select
+                    value={sandboxNetwork}
+                    onChange={(value) =>
+                      void updateSandboxRuntime({
+                        enabled: true,
+                        provider: sandboxProvider,
+                        network: value === "allow" ? "allow" : "deny",
+                      })
+                    }
+                    options={[
+                      { value: "deny", label: "Deny Network" },
+                      { value: "allow", label: "Allow Network" },
+                    ]}
+                    disabled={savingSandboxRuntime}
+                  />
+                </div>
+              ) : null}
             </div>
           )}
-          <div className="mt-4 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3">
-            <Switch
-              label="Remote sandbox"
-              description="Run isolated commands through a trusted remote sandbox endpoint"
-              checked={remoteSandboxEnabled}
-              disabled={loading || savingSandboxRuntime}
-              onChange={(enabled) => void toggleRemoteSandbox(enabled)}
-            />
-            {remoteSandboxEnabled ? (
-              <div className="mt-4 space-y-3 border-t border-[var(--surface-border)] pt-4">
+          {sandboxEnabled && sandboxProvider === "remote" ? (
+            <div className="mt-4 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">Remote sandbox</p>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">
+                    Compatible with CubeSandbox and E2B endpoints. Commands run in an isolated
+                    filesystem without mounting the local workspace.
+                  </p>
+                </div>
                 <Input
                   label="Sandbox URL"
                   type="url"
@@ -566,8 +546,8 @@ export function FeatureSettings() {
                   </Button>
                 </div>
               </div>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
           <div className="mt-4 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3">
             <div className="flex items-start justify-between gap-3">
               <div>

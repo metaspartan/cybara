@@ -98,7 +98,7 @@ export function normalizeLlmTimeoutSettings(value: unknown): LlmTimeoutSettings 
 
 export type DangerousToolPolicyMode = "audit" | "block";
 export type ToolApprovalMode = "always_allow" | "ask";
-export type SandboxProvider = "auto" | "apple_sandbox" | "podman" | "docker";
+export type SandboxProvider = "auto" | "apple_sandbox" | "podman" | "docker" | "remote";
 export type SandboxNetworkMode = "allow" | "deny";
 export type { EmbeddingProviderPreference } from "./memory/embeddings";
 export type SpeechTtsProviderPreference = "auto" | "system" | "elevenlabs" | "openai" | "local";
@@ -384,6 +384,9 @@ function normalizeSandboxProvider(value: unknown): SandboxProvider {
   if (normalized === "apple_sandbox" || normalized === "apple") return "apple_sandbox";
   if (normalized === "podman") return "podman";
   if (normalized === "docker") return "docker";
+  if (normalized === "remote" || normalized === "cubesandbox" || normalized === "e2b") {
+    return "remote";
+  }
   return "auto";
 }
 

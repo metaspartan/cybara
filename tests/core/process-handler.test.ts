@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, rmSync, statSync } from "node:fs";
+import { config } from "../../src/core/config";
 import {
   handleExec,
   handleExecAsync,
@@ -81,6 +82,24 @@ describe("handleExec", () => {
       sessionId: String(result.pid),
     })) as { success: boolean };
     expect(killed.success).toBe(true);
+  });
+
+  test("rejects background processes for remote sandbox providers", async () => {
+    const previous = config.getSandboxRuntime();
+    try {
+      config.setSandboxRuntime({
+        enabled: true,
+        provider: "remote",
+        network: "allow",
+        remoteUrl: "https://sandbox.example.com",
+      });
+      const result = await handleExec({ command: "sleep 30", background: true });
+      expect(result.exitCode).toBe(2);
+      expect(result.sandboxProvider).toBe("remote");
+      expect(result.output).toContain("do not support background processes");
+    } finally {
+      config.setSandboxRuntime(previous);
+    }
   });
 
   test("does not wait forever when a shell background child inherits output pipes", async () => {

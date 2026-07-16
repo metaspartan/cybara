@@ -12,6 +12,7 @@ export interface RemoteSandboxOptions {
   timeoutMs?: number;
   cwd?: string;
   envs?: Record<string, string>;
+  signal?: AbortSignal;
 }
 
 export function isRemoteSandboxConfigured(): boolean {
@@ -46,8 +47,15 @@ export async function runInRemoteSandbox(
     timeoutMs,
   });
   const sandboxId = (sandbox as { sandboxId?: string }).sandboxId;
+  const abortHandler = (): void => {
+    void sandbox.kill();
+  };
+  options.signal?.addEventListener("abort", abortHandler, { once: true });
 
   try {
+    if (options.signal?.aborted) {
+      throw new Error("Command interrupted");
+    }
     const result = await sandbox.commands.run(command, {
       cwd: options.cwd,
       envs: options.envs,
@@ -70,6 +78,7 @@ export async function runInRemoteSandbox(
     }
     throw error;
   } finally {
+    options.signal?.removeEventListener("abort", abortHandler);
     try {
       await sandbox.kill();
     } catch {

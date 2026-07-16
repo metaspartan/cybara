@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { config } from "../../src/core/config";
 import {
   buildSandboxedShellPlan,
+  getSandboxPromptInfo,
   getSandboxRuntimeStatus,
   resolveSandboxRuntime,
 } from "../../src/core/sandbox";
@@ -118,6 +119,31 @@ describe("sandbox runtime planning", () => {
       if (!status.resolvedProvider) {
         expect(typeof status.reason).toBe("string");
       }
+    } finally {
+      config.setSandboxRuntime(previous);
+    }
+  });
+
+  test("resolves configured remote providers without exposing the local workspace", () => {
+    const previous = config.getSandboxRuntime();
+    try {
+      config.setSandboxRuntime({
+        enabled: true,
+        provider: "remote",
+        network: "allow",
+        remoteUrl: "https://sandbox.example.com",
+      });
+      const resolution = resolveSandboxRuntime();
+      const status = getSandboxRuntimeStatus();
+      const promptInfo = getSandboxPromptInfo(process.cwd());
+
+      expect(resolution.provider).toBe("remote");
+      expect(status.available).toBe(true);
+      expect(status.providers.find((entry) => entry.provider === "remote")?.available).toBe(true);
+      expect(promptInfo.workspaceAccess).toBe("none");
+      expect(() =>
+        buildSandboxedShellPlan({ command: "echo hello", workdir: process.cwd() })
+      ).toThrow("remote execution runtime");
     } finally {
       config.setSandboxRuntime(previous);
     }

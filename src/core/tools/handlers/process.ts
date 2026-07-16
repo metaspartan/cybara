@@ -1,7 +1,9 @@
 import { existsSync } from "fs";
 import { appendFile } from "fs/promises";
+import { config } from "../../config";
 import { homeDir } from "../../paths";
 import { buildSandboxedShellPlan } from "../../sandbox";
+import { runInRemoteSandbox } from "../../sandbox/remote-sandbox";
 import { createLogger } from "../../logger";
 import { getPathSeparator, isWindows, shellEscapeArg } from "../../platform";
 import { persistToolOutputForRecovery } from "../../tool-output-recovery";
@@ -17,6 +19,54 @@ const OUTPUT_APPEND_BATCH_CHARS = 256_000;
 interface CollectedProcessOutput {
   content: string;
   recoveryPath?: string;
+}
+
+interface RemoteCommandResult {
+  output: string;
+  exitCode: number;
+  sandboxProvider: "remote";
+}
+
+function usesRemoteSandbox(): boolean {
+  const runtime = config.getSandboxRuntime();
+  return runtime.enabled && runtime.provider === "remote";
+}
+
+async function runRemoteCommand(
+  command: string,
+  timeoutSeconds: number,
+  env: Record<string, string> | undefined,
+  context?: ToolContext
+): Promise<RemoteCommandResult> {
+  if (context?.abortSignal?.aborted) {
+    return { output: "Command interrupted.", exitCode: 130, sandboxProvider: "remote" };
+  }
+  try {
+    const result = await runInRemoteSandbox(command, {
+      timeoutMs: timeoutSeconds * 1000,
+      envs: env,
+      signal: context?.abortSignal,
+    });
+    const interrupted = context?.abortSignal?.aborted === true;
+    return {
+      output: interrupted
+        ? `${result.stdout}${result.stderr ? `\n${result.stderr}` : ""}\nCommand interrupted.`
+        : result.stdout + (result.stderr ? `\n${result.stderr}` : ""),
+      exitCode: interrupted ? 130 : result.exitCode,
+      sandboxProvider: "remote",
+    };
+  } catch (error) {
+    const interrupted = context?.abortSignal?.aborted === true;
+    return {
+      output: interrupted
+        ? "Command interrupted."
+        : error instanceof Error
+          ? error.message
+          : String(error),
+      exitCode: interrupted ? 130 : 1,
+      sandboxProvider: "remote",
+    };
+  }
 }
 
 async function collectProcessOutput(
@@ -224,6 +274,22 @@ export async function handleExec(
     };
   }
 
+  const timeoutSeconds =
+    typeof timeout === "number" && Number.isFinite(timeout)
+      ? Math.min(Math.max(timeout, 1), 300)
+      : 30;
+
+  if (usesRemoteSandbox()) {
+    if (args.background === true) {
+      return {
+        output: "Remote sandbox commands do not support background processes.",
+        exitCode: 2,
+        sandboxProvider: "remote",
+      };
+    }
+    return runRemoteCommand(command, timeoutSeconds, env, context);
+  }
+
   if (workdir && !existsSync(workdir)) {
     return {
       output: `Error: Working directory does not exist: ${workdir}`,
@@ -237,11 +303,6 @@ export async function handleExec(
     if (!isWindows() && !fullEnv.PATH?.split(getPathSeparator()).includes("/usr/sbin")) {
       fullEnv.PATH = ["/usr/sbin", fullEnv.PATH].filter(Boolean).join(getPathSeparator());
     }
-    const timeoutSeconds =
-      typeof timeout === "number" && Number.isFinite(timeout)
-        ? Math.min(Math.max(timeout, 1), 300)
-        : 30;
-
     let plan: ReturnType<typeof buildSandboxedShellPlan>;
     try {
       plan = buildSandboxedShellPlan({
@@ -358,6 +419,11 @@ export async function handleExecAsync(
         'Error: command is required. Provide a non-empty command string (for example: {"command":"ls -la"}).',
       exitCode: 2,
     };
+  }
+
+  if (usesRemoteSandbox()) {
+    const result = await runRemoteCommand(command, 300, undefined, context);
+    return { pid: 0, ...result };
   }
 
   let plan: ReturnType<typeof buildSandboxedShellPlan>;
@@ -537,6 +603,14 @@ export async function handleGit(
   }
 
   const gitCommand = `git ${segments.map((segment) => shellEscapeArg(segment)).join(" ")}`;
+  const timeout = args.timeout as number | undefined;
+  const timeoutSeconds =
+    typeof timeout === "number" && Number.isFinite(timeout)
+      ? Math.min(Math.max(timeout, 1), 300)
+      : 60;
+  if (usesRemoteSandbox()) {
+    return runRemoteCommand(gitCommand, timeoutSeconds, undefined, context);
+  }
   let plan: ReturnType<typeof buildSandboxedShellPlan>;
   try {
     plan = buildSandboxedShellPlan({
@@ -563,11 +637,6 @@ export async function handleGit(
     sandboxProvider: plan.provider || "host",
   });
 
-  const timeout = args.timeout as number | undefined;
-  const timeoutSeconds =
-    typeof timeout === "number" && Number.isFinite(timeout)
-      ? Math.min(Math.max(timeout, 1), 300)
-      : 60;
   const baseEnv =
     plan.provider === "podman" || plan.provider === "docker"
       ? { ...process.env, PATH: process.env.PATH }

@@ -24,12 +24,12 @@ describe("safety settings", () => {
     expect(browserSettings).not.toContain("<option");
   });
 
-  test("keeps remote sandbox credentials hidden until explicitly enabled", () => {
-    expect(featureSettings).toContain("remoteSandboxEnabled");
-    expect(featureSettings).toContain('label="Remote sandbox"');
-    expect(featureSettings).toContain("{remoteSandboxEnabled ? (");
-    expect(featureSettings).toContain('remoteUrl: ""');
-    expect(featureSettings).toContain('remoteApiKey: ""');
+  test("shows remote sandbox credentials only for the remote provider", () => {
+    expect(featureSettings).toContain('{ value: "remote", label: "Remote" }');
+    expect(featureSettings).toContain('sandboxProvider === "remote"');
+    expect(featureSettings).toContain("CubeSandbox and E2B endpoints");
+    expect(featureSettings).not.toContain("remoteSandboxEnabled");
+    expect(featureSettings).not.toContain('label="Remote sandbox"');
   });
 
   test("uses theme surfaces for the reorganized safety controls", () => {

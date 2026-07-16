@@ -12,7 +12,7 @@ import { commandExists, getHostShellCommand } from "./platform";
 const log = createLogger("Sandbox");
 let lastSandboxEvent: SandboxLastEvent | null = null;
 
-export type ResolvedSandboxProvider = "apple_sandbox" | "podman" | "docker";
+export type ResolvedSandboxProvider = "apple_sandbox" | "podman" | "docker" | "remote";
 
 export interface SandboxProviderResolution {
   enabled: boolean;
@@ -79,6 +79,17 @@ function setLastSandboxEvent(event: Omit<SandboxLastEvent, "timestamp">): void {
 }
 
 function evaluateProviderStatus(provider: ResolvedSandboxProvider): SandboxProviderStatus {
+  if (provider === "remote") {
+    const configured = Boolean(config.getSandboxRuntime().remoteUrl?.trim());
+    return {
+      provider,
+      supported: true,
+      installed: configured,
+      available: configured,
+      reason: configured ? undefined : "remote sandbox URL is not configured",
+    };
+  }
+
   if (provider === "apple_sandbox") {
     const supported = process.platform === "darwin" && process.arch === "arm64";
     const installed = commandExists("sandbox-exec");
@@ -164,6 +175,13 @@ function resolveProviderFromRuntime(runtime: SandboxRuntimeConfig): SandboxProvi
         return choose(null, "docker is not installed");
       }
       return choose("docker");
+    }
+
+    if (provider === "remote") {
+      if (!runtime.remoteUrl?.trim()) {
+        return choose(null, "remote sandbox URL is not configured");
+      }
+      return choose("remote");
     }
 
     return choose(null, "unknown sandbox provider");
@@ -296,6 +314,7 @@ export function getSandboxRuntimeStatus(): SandboxRuntimeStatus {
     evaluateProviderStatus("apple_sandbox"),
     evaluateProviderStatus("podman"),
     evaluateProviderStatus("docker"),
+    evaluateProviderStatus("remote"),
   ];
   return {
     enabled: resolution.enabled,
@@ -412,6 +431,10 @@ export function buildSandboxedShellPlan(params: {
     };
   }
 
+  if (resolution.provider === "remote") {
+    throw new Error("Remote sandbox commands must use the remote execution runtime");
+  }
+
   if (resolution.provider === "docker") {
     const dockerCommand = buildDockerCommand(params.command, workdir, env, resolution.runtime);
     log.info("Prepared sandbox command", {
@@ -470,7 +493,7 @@ export function getSandboxPromptInfo(workspaceDir?: string): {
   return {
     enabled: true,
     workspaceDir,
-    workspaceAccess: "rw",
+    workspaceAccess: resolution.provider === "remote" ? "none" : "rw",
     hostBrowserAllowed: false,
   };
 }

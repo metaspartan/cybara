@@ -87,7 +87,7 @@ Key-value settings are stored in the `config` table and exposed via `GET/PUT /ap
 - `tool_approval_mode`: `always_allow` or `ask`
 - `dangerous_tool_policy`: `{ enabled: boolean, mode: "audit" | "block" }`
 - `web_tool_url_policy`: `{ enabled: boolean, fetch_allowlist: string[], search_result_allowlist: string[] }`
-- `sandbox_runtime`: `{ enabled: boolean, provider: "auto" | "apple_sandbox" | "podman" | "docker", network: "allow" | "deny" }`
+- `sandbox_runtime`: `{ enabled: boolean, provider: "auto" | "apple_sandbox" | "podman" | "docker" | "remote", network: "allow" | "deny", remoteUrl?: string, remoteApiKey?: string }`
 - `workspace_indexer`: workspace indexing provider/model/runtime settings
 - `memory`: local memory behavior and retrieval settings
 - `memory_provider`: external memory provider selection and credentials for `local`, `supermemory`, `mem0`, `honcho`, `openviking`, or `hindsight`
