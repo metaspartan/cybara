@@ -42,6 +42,10 @@ export function resolveNativeMacOSArch(archName: string): NativeMacOSArch {
   throw new Error(`Unsupported macOS architecture: ${archName}`);
 }
 
+export function resolveNativeMacOSSigningIdentity(value: string | undefined): string {
+  return value?.trim() || "-";
+}
+
 export function getNativeMacOSArtifactBaseName(version: string, arch: NativeMacOSArch): string {
   return `CybaraNative-v${version}-${arch}`;
 }
@@ -313,16 +317,28 @@ async function codesignBundle(bundlePath: string, identity: string): Promise<voi
     console.log(`   signing ${nestedSignables.length} nested Mach-O file(s)`);
   }
   for (const signable of nestedSignables) {
-    await $`codesign --force --timestamp --options runtime --sign ${identity} ${signable}`;
+    await codesignPath(signable, identity);
   }
 
   // 2. The bundled sidecar executable (Bun-compiled JS engine needs the
   //    JIT/unsigned-memory entitlements).
-  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${join(contentsPath, "MacOS", "sidecar", "cybara")}`;
+  await codesignPath(join(contentsPath, "MacOS", "sidecar", "cybara"), identity, ent);
   // 3. The main app executable.
-  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${join(contentsPath, "MacOS", APP_NAME)}`;
+  await codesignPath(join(contentsPath, "MacOS", APP_NAME), identity, ent);
   // 4. The bundle last, so the seal covers everything inside.
-  await $`codesign --force --timestamp --options runtime --entitlements ${ent} --sign ${identity} ${bundlePath}`;
+  await codesignPath(bundlePath, identity, ent);
+}
+
+async function codesignPath(
+  path: string,
+  identity: string,
+  entitlementsPath?: string
+): Promise<void> {
+  const args = ["codesign", "--force", "--options", "runtime"];
+  if (identity !== "-") args.push("--timestamp");
+  if (entitlementsPath) args.push("--entitlements", entitlementsPath);
+  args.push("--sign", identity, path);
+  await runProcess(args);
 }
 
 async function createZipArchive(bundlePath: string, zipPath: string): Promise<void> {
@@ -568,16 +584,16 @@ export async function packageNativeMacOSApp(): Promise<NativeMacOSPackageResult>
   writeFileSync(join(contentsPath, "PkgInfo"), "APPL????", "utf8");
   await createAppIcon(join(resourcesPath, "AppIcon.icns"));
 
-  const signingIdentity = process.env.CYBARA_MACOS_SIGN_IDENTITY?.trim();
+  const signingIdentity = resolveNativeMacOSSigningIdentity(process.env.CYBARA_MACOS_SIGN_IDENTITY);
   const notaryProfile = process.env.CYBARA_MACOS_NOTARY_KEYCHAIN_PROFILE?.trim();
 
-  if (signingIdentity) {
-    console.log("✍️ Codesigning bundle...");
-    await codesignBundle(bundlePath, signingIdentity);
-  }
+  console.log(
+    signingIdentity === "-" ? "✍️ Ad-hoc codesigning bundle..." : "✍️ Codesigning bundle..."
+  );
+  await codesignBundle(bundlePath, signingIdentity);
 
   if (notaryProfile) {
-    if (!signingIdentity) {
+    if (signingIdentity === "-") {
       throw new Error(
         "CYBARA_MACOS_NOTARY_KEYCHAIN_PROFILE requires CYBARA_MACOS_SIGN_IDENTITY to be set."
       );

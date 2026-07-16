@@ -162,6 +162,16 @@ final class UpdateCoreTests: XCTestCase {
         let archive = ReleaseAsset(
             name: "CybaraNative-v1.0.916-arm64.zip", downloadURL: "https://x/native")
         let checksum = ReleaseAsset(
+            name: "CybaraNative-v1.0.916-arm64.sha256", downloadURL: "https://x/checksum")
+        XCTAssertEqual(
+            UpdateCore.selectChecksumAsset(for: archive, assets: [archive, checksum]),
+            checksum)
+    }
+
+    func testSelectChecksumAssetAcceptsLegacyArchiveSuffix() {
+        let archive = ReleaseAsset(
+            name: "CybaraNative-v1.0.916-arm64.zip", downloadURL: "https://x/native")
+        let checksum = ReleaseAsset(
             name: "CybaraNative-v1.0.916-arm64.zip.sha256", downloadURL: "https://x/checksum")
         XCTAssertEqual(
             UpdateCore.selectChecksumAsset(for: archive, assets: [archive, checksum]),
@@ -187,5 +197,15 @@ final class UpdateCoreTests: XCTestCase {
         XCTAssertTrue(script.contains("mv \"$BACKUP\" \"$DEST_APP\""))
         XCTAssertTrue(script.contains("open \"$DEST_APP\""))
         XCTAssertTrue(script.contains("kill -0 \"$APP_PID\""))
+        XCTAssertTrue(script.contains("UPDATED=1"))
+    }
+
+    @MainActor
+    func testUpdateProgressUsesPublishedSizeUntilServerReportsTotal() {
+        let checker = UpdateChecker(currentVersion: "1.0.0")
+        let asset = ReleaseAsset(name: "native.zip", downloadURL: "https://github.com/x", size: 200)
+        checker.recordDownloadProgress(asset: asset, receivedBytes: 50, totalBytes: 0)
+        XCTAssertEqual(checker.progressValue, 0.25)
+        XCTAssertTrue(checker.statusText.contains("25%"))
     }
 }

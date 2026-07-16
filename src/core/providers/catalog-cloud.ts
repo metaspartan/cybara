@@ -1,8 +1,21 @@
+import { getAppVersion } from "../build-info";
+
 const XAI_OAUTH_DISCOVERY_URL = "https://auth.x.ai/.well-known/openid-configuration";
 const XAI_OAUTH_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
-const XAI_OAUTH_SCOPE = "openid profile email offline_access grok-cli:access api:access";
+const XAI_OAUTH_SCOPE =
+  "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write";
+const XAI_GROK_PROXY_BASE_URL = "https://cli-chat-proxy.grok.com/v1";
 
 const XAI_GROK_MODELS = [
+  {
+    id: "grok-build",
+    name: "Grok Build",
+    context: 500000,
+    maxTokens: 64000,
+    reasoning: true,
+    input: ["text", "image"],
+    code: true,
+  },
   {
     id: "grok-build-0.1",
     name: "Grok Build 0.1",
@@ -267,9 +280,17 @@ export const cloudProviderCatalog = {
   },
   "xai-oauth": {
     name: "xAI Grok OAuth",
-    baseUrl: "https://api.x.ai/v1",
-    api: "openai-responses",
+    baseUrl: XAI_GROK_PROXY_BASE_URL,
+    api: "xai-grok-responses",
     authType: "oauth",
+    headers: {
+      "X-XAI-Token-Auth": "xai-grok-cli",
+      "x-authenticateresponse": "authenticate-response",
+      "x-grok-client-identifier": "cybara",
+      "x-grok-client-mode": "interactive",
+      "x-grok-client-version": getAppVersion(),
+      "User-Agent": `Cybara/${getAppVersion()}`,
+    },
     oauthFlow: "device_code" as const,
     oauthConfig: {
       clientId: XAI_OAUTH_CLIENT_ID,

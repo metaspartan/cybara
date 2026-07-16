@@ -5,15 +5,18 @@ import Foundation
 public struct ReleaseAsset: Codable, Equatable, Sendable {
     public let name: String
     public let downloadURL: String
+    public let size: Int64?
 
     enum CodingKeys: String, CodingKey {
         case name
         case downloadURL = "browser_download_url"
+        case size
     }
 
-    public init(name: String, downloadURL: String) {
+    public init(name: String, downloadURL: String, size: Int64? = nil) {
         self.name = name
         self.downloadURL = downloadURL
+        self.size = size
     }
 }
 
@@ -145,8 +148,10 @@ public enum UpdateCore {
         for asset: ReleaseAsset,
         assets: [ReleaseAsset]
     ) -> ReleaseAsset? {
-        let expectedName = "\(asset.name).sha256".lowercased()
-        return assets.first { $0.name.lowercased() == expectedName }
+        let archiveName = asset.name.lowercased()
+        let baseName = archiveName.hasSuffix(".zip") ? String(archiveName.dropLast(4)) : archiveName
+        let expectedNames = ["\(baseName).sha256", "\(archiveName).sha256"]
+        return assets.first { expectedNames.contains($0.name.lowercased()) }
     }
 
     public static func parseSHA256(_ text: String) -> String? {
@@ -171,6 +176,7 @@ public enum UpdateCore {
         APP_PID="$1"
         NEW_APP="$2"
         DEST_APP="$3"
+        UPDATED=0
         for _ in $(seq 1 300); do
           /bin/kill -0 "$APP_PID" 2>/dev/null || break
           /bin/sleep 0.2
@@ -181,11 +187,14 @@ public enum UpdateCore {
           if /usr/bin/ditto "$NEW_APP" "$DEST_APP"; then
             /usr/bin/xattr -dr com.apple.quarantine "$DEST_APP" 2>/dev/null || true
             /bin/rm -rf "$BACKUP"
+            UPDATED=1
           else
             /bin/rm -rf "$DEST_APP"
             /bin/mv "$BACKUP" "$DEST_APP"
           fi
         fi
-        /usr/bin/open "$DEST_APP"
+        if [ "$UPDATED" -eq 1 ]; then
+          /usr/bin/open "$DEST_APP"
+        fi
         """
 }

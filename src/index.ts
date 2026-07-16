@@ -90,8 +90,11 @@ import { setGatewayHostApplyHandler } from "./api/gateway-network";
 import { getClientIp } from "./api/client-ip";
 import { nearbyService } from "./core/nearby";
 import { startGatewayTelemetryMaintenance } from "./core/metrics";
+import { startNativeParentWatch } from "./core/native-parent-watch";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+startNativeParentWatch();
 
 const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.includes("/bun");
 

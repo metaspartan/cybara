@@ -23,6 +23,78 @@ afterEach(() => {
 });
 
 describe("Agent provider API-family routing", () => {
+  test("routes Grok OAuth through the Grok Build proxy and retries one transient 429", async () => {
+    let requestUrl = "";
+    let requestHeaders = new Headers();
+    let requestBody: Record<string, unknown> = {};
+    let calls = 0;
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls += 1;
+      requestUrl = String(input);
+      requestHeaders = new Headers(init?.headers);
+      requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      if (calls === 1) {
+        return Response.json(
+          { error: { message: "temporary rate limit" } },
+          { status: 429, headers: { "Retry-After": "0" } }
+        );
+      }
+      return new Response(
+        [
+          'data: {"type":"response.output_text.delta","delta":"grok-ok"}',
+          'data: {"type":"response.completed","response":{"usage":{"input_tokens":5,"output_tokens":2,"input_tokens_details":{"cached_tokens":1}}}}',
+          "data: [DONE]",
+          "",
+        ].join("\n\n"),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "xai-oauth",
+      name: "Grok Build OAuth Provider",
+      access_token: "grok-oauth-token",
+      base_url: "https://api.x.ai/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Grok Build OAuth Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "grok-4.5",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "grok-build-oauth-route-session" }
+    );
+
+    expect(result.content).toBe("grok-ok");
+    expect(calls).toBe(2);
+    expect(requestUrl).toBe("https://cli-chat-proxy.grok.com/v1/responses");
+    expect(requestHeaders.get("Authorization")).toBe("Bearer grok-oauth-token");
+    expect(requestHeaders.get("X-XAI-Token-Auth")).toBe("xai-grok-cli");
+    expect(requestHeaders.get("x-authenticateresponse")).toBe("authenticate-response");
+    expect(requestHeaders.get("x-grok-client-identifier")).toBe("cybara");
+    expect(requestHeaders.get("x-grok-client-mode")).toBe("interactive");
+    expect(requestHeaders.get("x-grok-model-override")).toBe("grok-4.5");
+    expect(requestHeaders.get("x-grok-conv-id")).toBe("grok-build-oauth-route-session");
+    expect(requestHeaders.get("x-grok-session-id")).toBe("grok-build-oauth-route-session");
+    expect(requestHeaders.get("x-grok-agent-id")).toBe(agent.id);
+    expect(requestHeaders.get("x-grok-req-id")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    );
+    expect(requestHeaders.get("OpenAI-Beta")).toBeNull();
+    expect(requestBody.model).toBe("grok-4.5");
+    expect(requestBody.stream).toBe(true);
+    expect(requestBody.store).toBe(false);
+    expect(Array.isArray(requestBody.input)).toBe(true);
+  });
+
   test("model router resolves provider-type routes without changing the selected agent", async () => {
     let requestUrl = "";
     let requestHeaders = new Headers();

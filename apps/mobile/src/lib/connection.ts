@@ -110,6 +110,13 @@ function authFailureMessage(status: number): string {
   return `The gateway responded with HTTP ${status}.`;
 }
 
+export function isGatewaySessionListResponse(value: unknown): boolean {
+  if (Array.isArray(value)) return true;
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return Array.isArray(record.sessions) || Array.isArray(record.items);
+}
+
 export async function verifyGatewayProfile(
   profile: GatewayProfile,
   fetchImpl: typeof fetch = fetch,
@@ -134,6 +141,19 @@ export async function verifyGatewayProfile(
     );
     if (!response.ok) {
       throw new Error(authFailureMessage(response.status));
+    }
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new Error(
+        "The gateway returned an incompatible sessions response. Update Cybara and reconnect."
+      );
+    }
+    if (!isGatewaySessionListResponse(payload)) {
+      throw new Error(
+        "The gateway returned an incompatible sessions response. Update Cybara and reconnect."
+      );
     }
   } catch (error) {
     if (

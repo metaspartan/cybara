@@ -339,6 +339,23 @@ export abstract class AgentProviderRuntime {
     return defaultRetryAfterMs;
   }
 
+  private async waitForRetryDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const finish = () => {
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      };
+      const abort = () => {
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", abort);
+        reject(signal?.reason ?? new Error("Retry aborted"));
+      };
+      const timeout = setTimeout(finish, delayMs);
+      if (signal?.aborted) abort();
+      else signal?.addEventListener("abort", abort, { once: true });
+    });
+  }
+
   private recordHttpRateLimit(
     status: number,
     headers: Headers,
@@ -724,6 +741,22 @@ export abstract class AgentProviderRuntime {
         toolContext,
         modelContextWindowTokens,
         providerInfo.id
+      );
+    }
+
+    if (apiFamily === "xai-grok-responses") {
+      return this.callOpenAICodexResponses(
+        baseUrl,
+        resolvedAuth,
+        modelId,
+        messages,
+        tools,
+        mergedHeaders,
+        providerConfig,
+        toolContext,
+        modelContextWindowTokens,
+        providerInfo.id,
+        "grok"
       );
     }
 
@@ -2013,10 +2046,12 @@ export abstract class AgentProviderRuntime {
     sessionId?: string,
     agentId?: string,
     signal?: AbortSignal,
-    rateLimitContext?: ProviderRateLimitContext
+    rateLimitContext?: ProviderRateLimitContext,
+    transport: "codex" | "grok" = "codex"
   ): Promise<OpenAICodexTurnResult & { resolvedModel: string }> {
-    const candidates = getOpenAICodexModelCandidates(requestedModel);
-    let finalError = "OpenAI Codex request failed";
+    const candidates =
+      transport === "codex" ? getOpenAICodexModelCandidates(requestedModel) : [requestedModel];
+    let finalError = `${transport === "grok" ? "Grok Build" : "OpenAI Codex"} request failed`;
 
     for (let index = 0; index < candidates.length; index++) {
       const candidate = candidates[index];
@@ -2024,7 +2059,7 @@ export abstract class AgentProviderRuntime {
       const watchdog = createStreamWatchdog({
         ...resolveLlmWatchdogDefaults(url),
         callerSignal: signal,
-        label: "Codex",
+        label: transport === "grok" ? "Grok Build" : "Codex",
       });
       let response: Response;
       const requestStartedAt = performance.now();
@@ -2045,7 +2080,50 @@ export abstract class AgentProviderRuntime {
         const errorText = await response.text();
         this.recordHttpRateLimit(response.status, response.headers, rateLimitContext);
         finalError = `API error: ${response.status} - ${errorText}`;
+        if (transport === "grok" && response.status === 429 && index === 0) {
+          const retryAfterMs = this.parseRetryAfterMs(response.headers, 2_000);
+          await this.waitForRetryDelay(retryAfterMs, signal);
+          const retryWatchdog = createStreamWatchdog({
+            ...resolveLlmWatchdogDefaults(url),
+            callerSignal: signal,
+            label: "Grok Build",
+          });
+          const retryStartedAt = performance.now();
+          let retryResponse: Response;
+          try {
+            retryResponse = await fetch(url, {
+              method: "POST",
+              headers,
+              body: JSON.stringify(body),
+              signal: retryWatchdog.signal,
+            });
+          } catch (error) {
+            retryWatchdog.dispose();
+            throw retryWatchdog.wrapError(error);
+          }
+          if (!retryResponse.ok) {
+            retryWatchdog.dispose();
+            const retryErrorText = await retryResponse.text();
+            this.recordHttpRateLimit(retryResponse.status, retryResponse.headers, rateLimitContext);
+            throw new Error(`API error: ${retryResponse.status} - ${retryErrorText}`);
+          }
+          try {
+            const parsed = await this.parseOpenAICodexTurnResponse(
+              retryResponse,
+              sessionId,
+              agentId,
+              retryWatchdog,
+              retryStartedAt
+            );
+            retryWatchdog.dispose();
+            return { ...parsed, resolvedModel: candidate };
+          } catch (error) {
+            retryWatchdog.dispose();
+            throw retryWatchdog.wrapError(error);
+          }
+        }
         if (
+          transport === "codex" &&
           index < candidates.length - 1 &&
           shouldRetryOpenAICodexModel(response.status, errorText)
         ) {
@@ -2087,13 +2165,17 @@ export abstract class AgentProviderRuntime {
     providerConfig?: string,
     toolContext?: ToolContext,
     contextWindowTokens?: number,
-    providerId?: string
+    providerId?: string,
+    transport: "codex" | "grok" = "codex"
   ): Promise<{
     content: string;
     thinking?: string;
     tool_calls?: AgentToolCallResult[];
   }> {
-    const codexUrl = this.resolveOpenAICodexResponsesUrl(baseUrl);
+    const codexUrl =
+      transport === "grok"
+        ? `${baseUrl.replace(/\/+$/, "")}/responses`
+        : this.resolveOpenAICodexResponsesUrl(baseUrl);
     const codexContextWindow =
       typeof contextWindowTokens === "number" && contextWindowTokens > 0
         ? contextWindowTokens
@@ -2112,15 +2194,17 @@ export abstract class AgentProviderRuntime {
     if (auth) {
       headers.Authorization = `Bearer ${auth}`;
     }
-    const accountId = extractOpenAICodexAccountId(auth);
-    if (accountId) {
-      headers["chatgpt-account-id"] = accountId;
-    }
-    if (!headers["OpenAI-Beta"] && !headers["openai-beta"]) {
-      headers["OpenAI-Beta"] = "responses=experimental";
-    }
-    if (!headers.originator && !headers.Originator) {
-      headers.originator = "cybara";
+    if (transport === "codex") {
+      const accountId = extractOpenAICodexAccountId(auth);
+      if (accountId) {
+        headers["chatgpt-account-id"] = accountId;
+      }
+      if (!headers["OpenAI-Beta"] && !headers["openai-beta"]) {
+        headers["OpenAI-Beta"] = "responses=experimental";
+      }
+      if (!headers.originator && !headers.Originator) {
+        headers.originator = "cybara";
+      }
     }
 
     this.broadcastAgentStatus("generating", toolContext, "Generating response...");
@@ -2205,17 +2289,30 @@ export abstract class AgentProviderRuntime {
       }
 
       const startTime = performance.now();
-      const runCodexTurn = () =>
-        this.postOpenAICodexTurn(
+      const runCodexTurn = () => {
+        const requestHeaders =
+          transport === "grok"
+            ? {
+                ...headers,
+                "x-grok-conv-id": toolContext?.sessionId || "",
+                "x-grok-req-id": crypto.randomUUID(),
+                "x-grok-model-override": activeModelId,
+                "x-grok-session-id": toolContext?.sessionId || "",
+                "x-grok-agent-id": toolContext?.agentId || "",
+              }
+            : headers;
+        return this.postOpenAICodexTurn(
           codexUrl,
-          headers,
+          requestHeaders,
           requestBody,
           activeModelId,
           toolContext?.suppressStreaming ? undefined : toolContext?.sessionId,
           toolContext?.agentId,
           toolContext?.abortSignal,
-          { providerId, providerType: providerConfig }
+          { providerId, providerType: providerConfig },
+          transport
         );
+      };
       let turn: OpenAICodexTurnResult & { resolvedModel: string };
       try {
         turn = await runCodexTurn();

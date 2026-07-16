@@ -228,4 +228,45 @@ describe("OAuth token refresh (openai-codex)", () => {
     expect(refreshed?.access_token).toBe("fresh-token");
     expect(refreshed?.refresh_token).toBe("fresh-refresh");
   });
+
+  test("refreshes Grok OAuth without widening scope and retries one transient failure", async () => {
+    const provider = providerManager.create({
+      provider: "xai-oauth",
+      name: "Grok OAuth Test",
+      access_token: "stale-token",
+      refresh_token: "grok-refresh",
+      expires_at: Date.now() - 1000,
+    });
+    createdProviderIds.push(provider.id);
+    const bodies: string[] = [];
+    let calls = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("https://auth.x.ai/oauth2/token");
+      calls += 1;
+      bodies.push(String(init?.body || ""));
+      if (calls === 1) {
+        return Response.json(
+          { error: "temporarily_unavailable" },
+          { status: 429, headers: { "Retry-After": "0" } }
+        );
+      }
+      return Response.json({
+        access_token: "fresh-grok-token",
+        refresh_token: "fresh-grok-refresh",
+        expires_in: 3600,
+      });
+    }) as typeof fetch;
+
+    const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
+      providerManager.getWithCredentials(provider.id)
+    );
+
+    expect(calls).toBe(2);
+    expect(bodies[0]).toContain("grant_type=refresh_token");
+    expect(bodies[0]).toContain("refresh_token=grok-refresh");
+    expect(bodies[0]).toContain("client_id=b1a00492-073a-47ea-816f-4c329264a828");
+    expect(bodies[0]).not.toContain("scope=");
+    expect(refreshed?.access_token).toBe("fresh-grok-token");
+    expect(refreshed?.refresh_token).toBe("fresh-grok-refresh");
+  });
 });

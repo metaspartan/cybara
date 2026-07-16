@@ -76,6 +76,47 @@ final class SidecarCoreTests: XCTestCase {
             SidecarCore.isHealthyResponse(statusCode: 200, body: "<html>It works!</html>"))
     }
 
+    func testGatewayHealthProbeReadsVersionAndProcessIdentifier() {
+        let body = #"{"status":"healthy","version":"1.0.1703","system":{"process":{"pid":55441}}}"#
+        let probe = SidecarCore.gatewayHealthProbe(statusCode: 200, body: body)
+        XCTAssertEqual(probe?.status, "healthy")
+        XCTAssertEqual(probe?.version, "1.0.1703")
+        XCTAssertEqual(probe?.processID, 55441)
+    }
+
+    func testGatewayVersionCompatibilityRequiresCurrentMajorAndMinimumBuild() {
+        XCTAssertTrue(
+            SidecarCore.isGatewayVersionCompatible(
+                gatewayVersion: "1.0.1703", minimumVersion: "1.0.1697"))
+        XCTAssertTrue(
+            SidecarCore.isGatewayVersionCompatible(
+                gatewayVersion: "1.0.1697", minimumVersion: "1.0.1697"))
+        XCTAssertFalse(
+            SidecarCore.isGatewayVersionCompatible(
+                gatewayVersion: "1.0.920", minimumVersion: "1.0.1697"))
+        XCTAssertFalse(
+            SidecarCore.isGatewayVersionCompatible(
+                gatewayVersion: "2.0.0", minimumVersion: "1.0.1697"))
+        XCTAssertFalse(
+            SidecarCore.isGatewayVersionCompatible(
+                gatewayVersion: nil, minimumVersion: "1.0.1697"))
+    }
+
+    func testNativeSidecarCommandDetection() {
+        XCTAssertTrue(
+            SidecarCore.isNativeSidecarCommand(
+                "/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara start"))
+        XCTAssertFalse(SidecarCore.isNativeSidecarCommand("/usr/local/bin/cybara start"))
+    }
+
+    func testBundleVersionReadsReleaseMetadata() {
+        XCTAssertEqual(
+            SidecarCore.bundleVersion(infoDictionary: ["CFBundleShortVersionString": " 1.0.1703 "]),
+            "1.0.1703"
+        )
+        XCTAssertNil(SidecarCore.bundleVersion(infoDictionary: [:]))
+    }
+
     // MARK: - launchEnvironment
 
     func testLaunchEnvironmentPinsExpectedKeys() {
@@ -84,6 +125,13 @@ final class SidecarCoreTests: XCTestCase {
         XCTAssertNil(env["CYBARA_HOST"])
         XCTAssertEqual(env["CYBARA_NATIVE_APP"], "1")
         XCTAssertEqual(env["CYBARA_NATIVE_PORT"], "4269")
+        XCTAssertNil(env["CYBARA_NATIVE_PARENT_PID"])
+    }
+
+    func testLaunchEnvironmentIncludesOwningNativeProcess() {
+        let env = SidecarCore.launchEnvironment(
+            base: [:], port: 4269, parentProcessID: 4321)
+        XCTAssertEqual(env["CYBARA_NATIVE_PARENT_PID"], "4321")
     }
 
     func testLaunchEnvironmentPreservesBaseAndOverridesPort() {
@@ -154,13 +202,11 @@ final class SidecarCoreTests: XCTestCase {
     func testSidecarCandidatePathsOrderAndContents() {
         let paths = SidecarCore.sidecarCandidatePaths(
             currentDirectory: "/work", executableDirectory: "/app/Contents/MacOS")
-        // Most-specific (project tree) first.
-        XCTAssertEqual(paths[0], "/work/src-tauri/bin/cybara-aarch64-apple-darwin")
-        XCTAssertEqual(paths[1], "/work/src-tauri/bin/cybara-x86_64-apple-darwin")
-        XCTAssertEqual(paths[2], "/work/release/cybara")
-        // Bundled sidecar dir next to the executable.
-        XCTAssertTrue(paths.contains("/app/Contents/MacOS/sidecar/cybara"))
-        // Executable-adjacent fallbacks last.
+        XCTAssertEqual(paths[0], "/app/Contents/MacOS/sidecar/cybara")
+        XCTAssertEqual(paths[1], "/app/Contents/MacOS/sidecar/cybara-aarch64-apple-darwin")
+        XCTAssertEqual(paths[2], "/app/Contents/MacOS/sidecar/cybara-x86_64-apple-darwin")
+        XCTAssertTrue(paths.contains("/work/src-tauri/bin/cybara-aarch64-apple-darwin"))
+        XCTAssertTrue(paths.contains("/work/release/cybara"))
         XCTAssertEqual(paths.last, "/app/Contents/MacOS/cybara")
         XCTAssertEqual(Set(paths).count, paths.count, "candidate paths must be unique")
     }

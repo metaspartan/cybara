@@ -394,19 +394,28 @@ struct DashboardScreen: View {
     }
 
     private func load() async {
+        var failures: [String] = []
         do {
-            async let h = client.health()
-            async let a = client.agents()
-            async let p = client.providers()
-            async let s = client.sessions(limit: 12)
-            health = try await h
-            agents = try await a
-            providers = try await p
-            sessions = try await s
-            error = nil
+            health = try await client.health()
         } catch {
-            self.error = error.localizedDescription
+            failures.append("Health: \(error.localizedDescription)")
         }
+        do {
+            sessions = try await client.sessions(limit: 12)
+        } catch {
+            failures.append("Chats: \(error.localizedDescription)")
+        }
+        do {
+            agents = try await client.agents()
+        } catch {
+            failures.append("Agents: \(error.localizedDescription)")
+        }
+        do {
+            providers = try await client.providers()
+        } catch {
+            failures.append("Providers: \(error.localizedDescription)")
+        }
+        error = failures.isEmpty ? nil : failures.joined(separator: "\n")
     }
 }
 

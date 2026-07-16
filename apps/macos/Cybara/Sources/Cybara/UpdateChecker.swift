@@ -2,10 +2,30 @@ import AppKit
 import Foundation
 import SwiftUI
 
-/// Checks GitHub Releases for a newer build and surfaces it to the user. The app
-/// is distributed via GitHub Releases, so this queries the REST API, compares the
-/// latest tag against the running `CFBundleShortVersionString`, and (when newer)
-/// offers to open the release page — it never silently auto-installs.
+private final class UpdateDownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let progressChanged: @Sendable (Int64, Int64) -> Void
+
+    init(progressChanged: @escaping @Sendable (Int64, Int64) -> Void) {
+        self.progressChanged = progressChanged
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        progressChanged(totalBytesWritten, totalBytesExpectedToWrite)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {}
+}
+
 @MainActor
 final class UpdateChecker: ObservableObject {
     enum State: Equatable {
@@ -13,12 +33,73 @@ final class UpdateChecker: ObservableObject {
         case checking
         case upToDate(current: String)
         case updateAvailable(ReleaseInfo)
+        case downloading(asset: ReleaseAsset, receivedBytes: Int64, totalBytes: Int64)
+        case verifying
+        case installing
+        case relaunching
         case failed(String)
     }
 
     @Published private(set) var state: State = .idle
+    var prepareForRelaunch: (() async -> Void)?
 
-    /// owner/repo to check. Overridable via env for forks/testing.
+    var isBusy: Bool {
+        switch state {
+        case .checking, .downloading, .verifying, .installing, .relaunching:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var statusText: String {
+        switch state {
+        case .idle:
+            return "Ready"
+        case .checking:
+            return "Checking for updates…"
+        case .upToDate(let current):
+            return "Cybara \(current) is up to date"
+        case .updateAvailable(let release):
+            return "\(release.name ?? release.tagName) is available"
+        case .downloading(let asset, let receivedBytes, let totalBytes):
+            let expectedBytes = totalBytes > 0 ? totalBytes : asset.size ?? 0
+            if expectedBytes > 0, receivedBytes > 0 {
+                let received = ByteCountFormatter.string(fromByteCount: receivedBytes, countStyle: .file)
+                let expected = ByteCountFormatter.string(fromByteCount: expectedBytes, countStyle: .file)
+                let percentage = min(100, Int((Double(receivedBytes) / Double(expectedBytes)) * 100))
+                return "Downloading \(received) of \(expected) (\(percentage)%)…"
+            }
+            if expectedBytes > 0 {
+                return "Downloading \(ByteCountFormatter.string(fromByteCount: expectedBytes, countStyle: .file))…"
+            }
+            return "Downloading update…"
+        case .verifying:
+            return "Verifying download…"
+        case .installing:
+            return "Preparing installation…"
+        case .relaunching:
+            return "Relaunching Cybara…"
+        case .failed(let message):
+            return message
+        }
+    }
+
+    var progressValue: Double? {
+        guard case .downloading(let asset, let receivedBytes, let totalBytes) = state else { return nil }
+        let expectedBytes = totalBytes > 0 ? totalBytes : asset.size ?? 0
+        guard expectedBytes > 0 else { return nil }
+        return min(1, max(0, Double(receivedBytes) / Double(expectedBytes)))
+    }
+
+    func recordDownloadProgress(asset: ReleaseAsset, receivedBytes: Int64, totalBytes: Int64) {
+        state = .downloading(
+            asset: asset,
+            receivedBytes: receivedBytes,
+            totalBytes: totalBytes
+        )
+    }
+
     private let repo: String
     private let currentVersion: String
 
@@ -32,8 +113,6 @@ final class UpdateChecker: ObservableObject {
         self.currentVersion = currentVersion
     }
 
-    /// Fetch the latest release and update `state`. `userInitiated` controls
-    /// whether an "already up to date" result is shown to the user.
     func check(userInitiated: Bool) async {
         state = .checking
         guard let url = URL(string: UpdateCore.latestReleaseAPIURLString(repo: repo)) else {
@@ -84,7 +163,7 @@ final class UpdateChecker: ObservableObject {
         let alert = NSAlert()
         alert.messageText = "A new version of Cybara is available"
         alert.informativeText =
-            "\(release.name ?? release.tagName) is available. You're running \(currentVersion)."
+            updateAlertText(release: release, asset: asset)
         if asset != nil, checksumAsset != nil {
             alert.addButton(withTitle: "Install & Relaunch")
         }
@@ -103,6 +182,14 @@ final class UpdateChecker: ObservableObject {
         }
     }
 
+    private func updateAlertText(release: ReleaseInfo, asset: ReleaseAsset?) -> String {
+        var text = "\(release.name ?? release.tagName) is available. You're running \(currentVersion)."
+        if let size = asset?.size, size > 0 {
+            text += " Download size: \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))."
+        }
+        return text
+    }
+
     static func safeReleaseURL(_ raw: String) -> URL? {
         guard let url = URL(string: raw), url.scheme?.lowercased() == "https" else { return nil }
         guard let host = url.host?.lowercased() else { return nil }
@@ -113,14 +200,21 @@ final class UpdateChecker: ObservableObject {
 
     private func installAndRelaunch(_ asset: ReleaseAsset, checksumAsset: ReleaseAsset) async {
         do {
+            recordDownloadProgress(asset: asset, receivedBytes: 0, totalBytes: asset.size ?? 0)
             try await UpdateChecker.stageInstaller(
                 asset: asset,
                 checksumAsset: checksumAsset,
                 destAppPath: Bundle.main.bundleURL.path,
-                scriptBody: UpdateCore.selfUpdateScript
+                scriptBody: UpdateCore.selfUpdateScript,
+                stateChanged: { [weak self] nextState in
+                    Task { @MainActor in self?.state = nextState }
+                }
             )
+            state = .relaunching
+            await prepareForRelaunch?()
             NSApp.terminate(nil)
         } catch {
+            state = .failed(error.localizedDescription)
             presentErrorAlert("Update failed: \(error.localizedDescription)")
         }
     }
@@ -153,14 +247,12 @@ enum UpdateInstallError: LocalizedError {
 }
 
 extension UpdateChecker {
-    /// Download the native app archive, stage it, and launch the detached
-    /// swap-and-relaunch installer. Network runs on the cooperative pool;
-    /// filesystem and process work runs off the main actor.
     nonisolated static func stageInstaller(
         asset: ReleaseAsset,
         checksumAsset: ReleaseAsset,
         destAppPath: String,
-        scriptBody: String
+        scriptBody: String,
+        stateChanged: @escaping @Sendable (State) -> Void = { _ in }
     ) async throws {
         guard let url = UpdateCore.trustedReleaseAssetURL(asset.downloadURL) else {
             throw UpdateInstallError.message("Invalid download URL.")
@@ -178,10 +270,21 @@ extension UpdateChecker {
         else {
             throw UpdateInstallError.message("The published checksum is invalid.")
         }
-        let (downloadedURL, response) = try await URLSession.shared.download(from: url)
+        let downloadDelegate = UpdateDownloadDelegate { receivedBytes, expectedBytes in
+            stateChanged(.downloading(
+                asset: asset,
+                receivedBytes: receivedBytes,
+                totalBytes: expectedBytes > 0 ? expectedBytes : asset.size ?? 0
+            ))
+        }
+        let (downloadedURL, response) = try await URLSession.shared.download(
+            from: url,
+            delegate: downloadDelegate
+        )
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
             throw UpdateInstallError.message("Download failed (HTTP \(http.statusCode)).")
         }
+        stateChanged(.verifying)
         let archiveData = try Data(contentsOf: downloadedURL, options: .mappedIfSafe)
         guard UpdateCore.sha256Hex(archiveData) == expectedChecksum else {
             throw UpdateInstallError.message("The downloaded update failed checksum verification.")
@@ -194,6 +297,7 @@ extension UpdateChecker {
         let zipURL = workDir.appendingPathComponent(asset.name.isEmpty ? "update.zip" : asset.name)
         try fileManager.moveItem(at: downloadedURL, to: zipURL)
 
+        stateChanged(.installing)
         try await Task.detached(priority: .userInitiated) {
             try installStagedArchive(
                 zipURL: zipURL,
@@ -218,6 +322,7 @@ extension UpdateChecker {
         guard let appURL = findAppBundle(in: extractDir) else {
             throw UpdateInstallError.message("Downloaded archive did not contain an app bundle.")
         }
+        try runTool("/usr/bin/codesign", ["--verify", "--deep", "--strict", appURL.path])
         try? runTool("/usr/bin/xattr", ["-dr", "com.apple.quarantine", appURL.path])
 
         let scriptURL = workDir.appendingPathComponent("install.sh")

@@ -42,9 +42,9 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("kimi-coding")).toBe("kimi-for-coding");
     expect(getDefaultModel("qianfan")).toBe("deepseek-v3.2");
     expect(getDefaultModel("xai")).toBe("grok-4.3");
-    expect(getDefaultModel("xai-oauth")).toBe("grok-build-0.1");
-    expect(getDefaultModel("grok-oauth")).toBe("grok-build-0.1");
-    expect(getDefaultModel("grok-build")).toBe("grok-build-0.1");
+    expect(getDefaultModel("xai-oauth")).toBe("grok-build");
+    expect(getDefaultModel("grok-oauth")).toBe("grok-build");
+    expect(getDefaultModel("grok-build")).toBe("grok-build");
     expect(getDefaultModel("deepseek")).toBe("deepseek-v4-flash");
     expect(getDefaultModel("alibaba")).toBe("qwen3.6-plus");
     expect(getDefaultModel("xiaomi")).toBe("mimo-v2.5-pro");
@@ -79,7 +79,7 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers.featherless.api).toBe("openai-completions");
     expect(providers.longcat.api).toBe("openai-completions");
     expect(providers.xai.api).toBe("openai-responses");
-    expect(providers["xai-oauth"].api).toBe("openai-responses");
+    expect(providers["xai-oauth"].api).toBe("xai-grok-responses");
     expect(providers.meta.api).toBe("openai-responses");
     expect(providers.ds4.api).toBe("openai-completions");
     expect(providers.inferrs.api).toBe("openai-completions");
@@ -254,9 +254,20 @@ describe("Provider model defaults and API-family parity", () => {
     expect(provider.oauthConfig?.tokenUrl).toBe("https://auth.x.ai/oauth2/token");
     expect(provider.oauthConfig?.scope).toContain("grok-cli:access");
     expect(provider.oauthConfig?.scope).toContain("api:access");
+    expect(provider.oauthConfig?.scope).toContain("conversations:read");
+    expect(provider.oauthConfig?.scope).toContain("conversations:write");
+    expect(provider.baseUrl).toBe("https://cli-chat-proxy.grok.com/v1");
+    expect(provider.headers).toMatchObject({
+      "X-XAI-Token-Auth": "xai-grok-cli",
+      "x-authenticateresponse": "authenticate-response",
+      "x-grok-client-identifier": "cybara",
+      "x-grok-client-mode": "interactive",
+    });
+    expect(provider.headers["x-grok-client-version"]).toMatch(/^\d+\.\d+\.\d+/);
     const modelIds = provider.models.map((model) => model.id);
     expect(modelIds).toEqual(
       expect.arrayContaining([
+        "grok-build",
         "grok-build-0.1",
         "grok-composer-2.5-fast",
         "grok-4.3",
@@ -273,6 +284,34 @@ describe("Provider model defaults and API-family parity", () => {
     expect(grok45?.context).toBe(500000);
     expect(grok45?.reasoning).toBe(true);
     expect(grok45?.input).toEqual(["text", "image"]);
+    expect(provider.models.find((model) => model.id === "grok-build")?.context).toBe(500000);
+  });
+
+  test("migrates the legacy xAI OAuth API-key host while preserving custom proxies", () => {
+    const legacy = providerManager.create({
+      provider: "xai-oauth",
+      name: "Legacy Grok OAuth",
+      access_token: "legacy-token",
+      base_url: "https://api.x.ai/v1/",
+    });
+    const custom = providerManager.create({
+      provider: "xai-oauth",
+      name: "Custom Grok OAuth",
+      access_token: "custom-token",
+      base_url: "https://grok-proxy.example/v1",
+    });
+
+    try {
+      expect(providerManager.getWithCredentials(legacy.id)?.base_url).toBe(
+        "https://cli-chat-proxy.grok.com/v1"
+      );
+      expect(providerManager.getWithCredentials(custom.id)?.base_url).toBe(
+        "https://grok-proxy.example/v1"
+      );
+    } finally {
+      providerManager.delete(legacy.id);
+      providerManager.delete(custom.id);
+    }
   });
 
   test("configures MiniMax Portal for PKCE user-code login", () => {

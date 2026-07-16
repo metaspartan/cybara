@@ -1,4 +1,5 @@
 import { providers, resolveProviderType, type ProviderType } from "../core/providers";
+import { getAppVersion } from "../core/build-info";
 import {
   isMiniMaxPortalOAuth,
   pollMiniMaxPortalOAuth,
@@ -19,6 +20,21 @@ interface DeviceOAuthConfig {
 interface DeviceOAuthEndpoints {
   deviceCodeUrl: string;
   tokenUrl: string;
+}
+
+function deviceOAuthHeaders(providerType: ProviderType): Record<string, string> {
+  const appVersion = getAppVersion();
+  return {
+    Accept: "application/json",
+    "Content-Type": "application/x-www-form-urlencoded",
+    "User-Agent": `Cybara/${appVersion}`,
+    ...(providerType === "xai-oauth"
+      ? {
+          "x-grok-client-surface": "ui",
+          "x-grok-client-version": appVersion,
+        }
+      : {}),
+  };
 }
 
 function isTrustedXaiOAuthEndpoint(endpoint: string): boolean {
@@ -124,14 +140,11 @@ export async function startProviderDeviceCodeOAuth(
 
   const res = await fetch(endpoints.deviceCodeUrl, {
     method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": "Cybara",
-    },
+    headers: deviceOAuthHeaders(resolvedProviderType),
     body: new URLSearchParams({
       client_id: oauthConfig.clientId,
       scope: oauthConfig.scope || "",
+      ...(resolvedProviderType === "xai-oauth" ? { referrer: "grok-build" } : {}),
     }),
   });
 
@@ -185,11 +198,7 @@ export async function pollProviderDeviceCodeOAuth(body: unknown): Promise<Record
 
   const res = await fetch(endpoints.tokenUrl, {
     method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": "Cybara",
-    },
+    headers: deviceOAuthHeaders(resolvedProviderType),
     body: new URLSearchParams({
       client_id: oauthConfig.clientId,
       device_code: deviceCode,

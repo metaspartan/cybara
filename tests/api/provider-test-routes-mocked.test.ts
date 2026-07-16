@@ -60,8 +60,8 @@ mock.module("../../src/core/providers", () => ({
     },
     "xai-oauth": {
       name: "xAI Grok OAuth",
-      baseUrl: "https://api.x.ai/v1",
-      api: "openai-responses",
+      baseUrl: "https://cli-chat-proxy.grok.com/v1",
+      api: "xai-grok-responses",
       authType: "oauth",
       oauthFlow: "device_code",
       oauthConfig: {
@@ -69,7 +69,8 @@ mock.module("../../src/core/providers", () => ({
         discoveryUrl: "https://auth.x.ai/.well-known/openid-configuration",
         deviceCodeDiscoveryUrl: "https://auth.x.ai/.well-known/openid-configuration",
         tokenUrl: "https://auth.x.ai/oauth2/token",
-        scope: "openid profile email offline_access grok-cli:access api:access",
+        scope:
+          "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write",
       },
       models: [
         {
@@ -305,8 +306,14 @@ describe("Provider test route contracts (mocked providers)", () => {
       }
       expect(String(input)).toBe("https://auth.x.ai/oauth2/device/code");
       const body = init?.body as URLSearchParams;
+      const headers = new Headers(init?.headers);
       expect(body.get("client_id")).toBe("b1a00492-073a-47ea-816f-4c329264a828");
       expect(body.get("scope")).toContain("grok-cli:access");
+      expect(body.get("scope")).toContain("conversations:read");
+      expect(body.get("scope")).toContain("conversations:write");
+      expect(body.get("referrer")).toBe("grok-build");
+      expect(headers.get("x-grok-client-surface")).toBe("ui");
+      expect(headers.get("x-grok-client-version")).toMatch(/^\d+\.\d+\.\d+/);
       return Response.json({
         device_code: "device-123",
         user_code: "ABCD-1234",

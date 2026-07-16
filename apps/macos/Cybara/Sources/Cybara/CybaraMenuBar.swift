@@ -25,6 +25,7 @@ final class CybaraMenuBarModel: ObservableObject {
 struct CybaraMenuBarContent: View {
     @EnvironmentObject private var sidecar: SidecarManager
     @ObservedObject var model: CybaraMenuBarModel
+    @ObservedObject var updateChecker: UpdateChecker
 
     var body: some View {
         Group {
@@ -60,6 +61,14 @@ struct CybaraMenuBarContent: View {
                 sidecar.isReady ? "Gateway Connected" : "Gateway Offline",
                 systemImage: sidecar.isReady ? "checkmark.circle" : "exclamationmark.circle"
             )
+
+            if updateChecker.isBusy {
+                Label(updateChecker.statusText, systemImage: "arrow.down.circle")
+            } else {
+                Button("Check for Updates…") {
+                    post(.cybaraCheckForUpdates)
+                }
+            }
 
             Divider()
 

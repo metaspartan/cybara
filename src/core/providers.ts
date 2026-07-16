@@ -67,10 +67,14 @@ class ProviderManager {
   private mergeWithStaticConfig(dbProvider: Provider): Provider {
     const staticConfig = providers[dbProvider.provider as ProviderType];
     if (!staticConfig) return dbProvider;
+    const normalizedBaseUrl =
+      typeof dbProvider.base_url === "string"
+        ? dbProvider.base_url.trim().toLowerCase().replace(/\/+$/, "")
+        : "";
     const baseUrl =
-      dbProvider.provider === "openai-codex" &&
-      typeof dbProvider.base_url === "string" &&
-      dbProvider.base_url.trim().toLowerCase() === "https://api.openai.com/v1"
+      (dbProvider.provider === "openai-codex" &&
+        normalizedBaseUrl === "https://api.openai.com/v1") ||
+      (dbProvider.provider === "xai-oauth" && normalizedBaseUrl === "https://api.x.ai/v1")
         ? staticConfig.baseUrl
         : dbProvider.base_url;
     return {
@@ -197,21 +201,32 @@ class ProviderManager {
       };
       if (oauth.clientId) fields.client_id = oauth.clientId;
       if (oauth.clientSecret) fields.client_secret = oauth.clientSecret;
-      if (oauth.scope) fields.scope = oauth.scope;
+      if (oauth.scope && provider.provider !== "xai-oauth") fields.scope = oauth.scope;
       const cursor = oauth.refreshMode === "cursor";
       const json = oauth.tokenRequestFormat === "json" || cursor;
-
-      const response = await fetch(oauth.tokenUrl || "", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": json ? "application/json" : "application/x-www-form-urlencoded",
-          ...(cursor ? { Authorization: `Bearer ${provider.refresh_token}` } : {}),
-          ...oauth.refreshHeaders,
-        },
-        body: json ? JSON.stringify(cursor ? {} : fields) : new URLSearchParams(fields),
-        signal: AbortSignal.timeout(30_000),
-      });
+      const request = () =>
+        fetch(oauth.tokenUrl || "", {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": json ? "application/json" : "application/x-www-form-urlencoded",
+            ...(cursor ? { Authorization: `Bearer ${provider.refresh_token}` } : {}),
+            ...oauth.refreshHeaders,
+          },
+          body: json ? JSON.stringify(cursor ? {} : fields) : new URLSearchParams(fields),
+          signal: AbortSignal.timeout(30_000),
+        });
+      let response = await request();
+      if (
+        provider.provider === "xai-oauth" &&
+        (response.status === 429 || response.status >= 500)
+      ) {
+        const retryAfter = Number(response.headers.get("retry-after"));
+        const delayMs = Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter * 1000 : 200;
+        await response.body?.cancel();
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        response = await request();
+      }
       if (!response.ok) return undefined;
       const token = parseOAuthTokenPayload(await response.json(), oauth);
       if (!token) return undefined;
@@ -570,9 +585,9 @@ export function getDefaultModel(providerType: string): string {
     "github-copilot": "gpt-5.5",
     qianfan: "deepseek-v3.2",
     xai: "grok-4.3",
-    "xai-oauth": "grok-build-0.1",
-    "grok-oauth": "grok-build-0.1",
-    "grok-build": "grok-build-0.1",
+    "xai-oauth": "grok-build",
+    "grok-oauth": "grok-build",
+    "grok-build": "grok-build",
     nvidia: "nvidia/nemotron-3-super-120b-a12b",
     deepseek: "deepseek-v4-flash",
     alibaba: "qwen3.6-plus",

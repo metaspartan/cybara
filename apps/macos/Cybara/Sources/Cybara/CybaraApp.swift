@@ -56,8 +56,10 @@ struct CybaraApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(sidecar)
+                .environmentObject(updateChecker)
                 .task {
                     appDelegate.sidecar = sidecar
+                    updateChecker.prepareForRelaunch = { await sidecar.stopForUpdate() }
                     await sidecar.startIfNeeded()
                     await updateChecker.check(userInitiated: false)
                 }
@@ -97,11 +99,12 @@ struct CybaraApp: App {
         Settings {
             SettingsView()
                 .environmentObject(sidecar)
+                .environmentObject(updateChecker)
                 .frame(width: 760, height: 680)
         }
 
         MenuBarExtra {
-            CybaraMenuBarContent(model: menuBarModel)
+            CybaraMenuBarContent(model: menuBarModel, updateChecker: updateChecker)
                 .environmentObject(sidecar)
         } label: {
             CybaraMenuBarLabel()

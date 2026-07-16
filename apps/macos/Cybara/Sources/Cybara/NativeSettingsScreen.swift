@@ -100,6 +100,7 @@ struct NativeSettingsScreen: View {
     var onAccentChanged: (String) -> Void = { _ in }
 
     @EnvironmentObject private var sidecar: SidecarManager
+    @EnvironmentObject private var updateChecker: UpdateChecker
 
     @State private var selectedTab: NativeSettingsTab
     @State private var advancedSelection: SettingsAdvancedSection = .router
@@ -390,6 +391,16 @@ struct NativeSettingsScreen: View {
                             "Application version",
                             Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown")
                         settingRow("Gateway version", buildInfo?.version ?? health?.version ?? "unknown")
+                        settingRow("Update status", updateChecker.statusText)
+                        if updateChecker.isBusy {
+                            if let progress = updateChecker.progressValue {
+                                ProgressView(value: progress)
+                                    .progressViewStyle(.linear)
+                            } else {
+                                ProgressView()
+                                    .progressViewStyle(.linear)
+                            }
+                        }
                         HStack(spacing: 10) {
                             Button {
                                 NotificationCenter.default.post(name: .cybaraCheckForUpdates, object: nil)
@@ -397,6 +408,7 @@ struct NativeSettingsScreen: View {
                                 Label("Check for Updates", systemImage: "arrow.clockwise")
                             }
                             .buttonStyle(.borderedProminent)
+                            .disabled(updateChecker.isBusy)
 
                             if let repository = buildInfo?.release_repository_url,
                                let url = URL(string: repository + "/releases") {
@@ -2782,10 +2794,12 @@ struct NativeSettingsScreen: View {
 
 struct SettingsView: View {
     @EnvironmentObject private var sidecar: SidecarManager
+    @EnvironmentObject private var updateChecker: UpdateChecker
 
     var body: some View {
         NativeSettingsScreen(client: GatewayClient(baseURL: sidecar.serverURL))
             .environmentObject(sidecar)
+            .environmentObject(updateChecker)
             .frame(width: 760, height: 680)
     }
 }

@@ -9,6 +9,7 @@ import {
   getNativeMacOSArtifactBaseName,
   isMachOFile,
   resolveNativeMacOSArch,
+  resolveNativeMacOSSigningIdentity,
   resolveNotaryPollSeconds,
   resolveNotaryTimeoutMinutes,
 } from "../../scripts/package-native-macos";
@@ -24,6 +25,14 @@ describe("native macOS packaging helpers", () => {
   test("builds stable native macOS artifact names", () => {
     expect(getNativeMacOSArtifactBaseName("1.2.3", "arm64")).toBe("CybaraNative-v1.2.3-arm64");
     expect(getNativeMacOSArtifactBaseName("1.2.3", "x86_64")).toBe("CybaraNative-v1.2.3-x86_64");
+  });
+
+  test("uses ad-hoc signing for locally packaged native apps", () => {
+    expect(resolveNativeMacOSSigningIdentity(undefined)).toBe("-");
+    expect(resolveNativeMacOSSigningIdentity("  ")).toBe("-");
+    expect(resolveNativeMacOSSigningIdentity("Developer ID Application: Cybara")).toBe(
+      "Developer ID Application: Cybara"
+    );
   });
 
   test("generates an Info.plist with the expected production metadata", () => {

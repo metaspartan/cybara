@@ -35,16 +35,16 @@ enum CybaraBrand {
         context.draw(sourceImage, in: CGRect(x: 0, y: 0, width: pixelSize, height: pixelSize))
         guard let raw = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
         for offset in stride(from: 0, to: pixelSize * pixelSize * 4, by: 4) {
-            let sourceAlpha = CGFloat(raw[offset + 3]) / 255
-            let red = CGFloat(raw[offset]) / 255
-            let green = CGFloat(raw[offset + 1]) / 255
-            let blue = CGFloat(raw[offset + 2]) / 255
-            let luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
-            let alpha = sourceAlpha * max(0.18, 1 - luminance)
+            let templateAlpha = menuBarTemplateAlpha(
+                red: raw[offset],
+                green: raw[offset + 1],
+                blue: raw[offset + 2],
+                alpha: raw[offset + 3]
+            )
             raw[offset] = 0
             raw[offset + 1] = 0
             raw[offset + 2] = 0
-            raw[offset + 3] = UInt8((alpha * 255).rounded())
+            raw[offset + 3] = templateAlpha
         }
 
         guard let processed = context.makeImage() else { return nil }
@@ -54,6 +54,22 @@ enum CybaraBrand {
         image.addRepresentation(bitmap)
         image.isTemplate = true
         return image
+    }
+
+    static func menuBarTemplateAlpha(
+        red: UInt8,
+        green: UInt8,
+        blue: UInt8,
+        alpha: UInt8
+    ) -> UInt8 {
+        let sourceAlpha = CGFloat(alpha) / 255
+        guard sourceAlpha > 0 else { return 0 }
+        let redValue = min(1, CGFloat(red) / 255 / sourceAlpha)
+        let greenValue = min(1, CGFloat(green) / 255 / sourceAlpha)
+        let blueValue = min(1, CGFloat(blue) / 255 / sourceAlpha)
+        let luminance = 0.2126 * redValue + 0.7152 * greenValue + 0.0722 * blueValue
+        let detailAlpha = min(1, max(0, (luminance - 0.18) / 0.24))
+        return UInt8((sourceAlpha * detailAlpha * 255).rounded())
     }
 
     static func logoURL(

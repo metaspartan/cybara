@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 import SwiftUI
 
@@ -8,6 +9,12 @@ final class SidecarManager: ObservableObject {
         case idle
         case attached
         case managed
+    }
+
+    private enum ExistingGatewayResolution {
+        case launch
+        case attached
+        case blocked
     }
 
     enum Status: Equatable {
@@ -139,11 +146,11 @@ final class SidecarManager: ObservableObject {
         userInitiatedStop = false
         status = .starting
 
-        if await isGatewayHealthy() {
-            gatewayMode = .attached
-            status = .ready
-            appendLog("Attached to existing Cybara gateway at \(serverURL.absoluteString)")
+        switch await resolveExistingGateway() {
+        case .attached, .blocked:
             return
+        case .launch:
+            break
         }
 
         do {
@@ -214,6 +221,19 @@ final class SidecarManager: ObservableObject {
         }
     }
 
+    func stopForUpdate() async {
+        let runningProcess = gatewayMode == .managed ? process : nil
+        stop()
+        guard let runningProcess else { return }
+        let deadline = Date().addingTimeInterval(5)
+        while runningProcess.isRunning && Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        if runningProcess.isRunning {
+            runningProcess.terminate()
+        }
+    }
+
     func restart() async {
         if gatewayMode == .managed {
             stop()
@@ -222,11 +242,11 @@ final class SidecarManager: ObservableObject {
         }
 
         status = .starting
-        if await isGatewayHealthy() {
-            gatewayMode = .attached
-            status = .ready
-            appendLog("Reconnected to existing Cybara gateway at \(serverURL.absoluteString)")
+        switch await resolveExistingGateway() {
+        case .attached, .blocked:
             return
+        case .launch:
+            break
         }
 
         gatewayMode = .idle
@@ -239,7 +259,7 @@ final class SidecarManager: ObservableObject {
         appendLog("Waiting for attached Cybara gateway to restart at \(serverURL.absoluteString)")
         let deadline = Date().addingTimeInterval(30)
         while Date() < deadline {
-            if await isGatewayHealthy() {
+            if await compatibleGatewayProbe() != nil {
                 status = .ready
                 appendLog("Attached Cybara gateway is healthy at \(serverURL.absoluteString)")
                 return
@@ -290,7 +310,7 @@ final class SidecarManager: ObservableObject {
         appendLog("Waiting for gateway health at \(healthURL.absoluteString)")
 
         while !Task.isCancelled && Date() < deadline {
-            if await isGatewayHealthy() {
+            if await compatibleGatewayProbe() != nil {
                 status = .ready
                 restartAttempts = 0
                 appendLog("Cybara gateway is healthy at \(serverURL.absoluteString)")
@@ -310,14 +330,92 @@ final class SidecarManager: ObservableObject {
         serverURL.appending(path: "api/health")
     }
 
-    private func isGatewayHealthy() async -> Bool {
+    private var minimumGatewayVersion: String? {
+        let environmentVersion = ProcessInfo.processInfo.environment["CYBARA_NATIVE_APP_VERSION"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if environmentVersion?.isEmpty == false { return environmentVersion }
+        return SidecarCore.bundleVersion(infoDictionary: Bundle.main.infoDictionary)
+    }
+
+    private func gatewayProbe() async -> GatewayHealthProbe? {
         do {
             let (data, response) = try await URLSession.shared.data(from: healthURL)
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            return SidecarCore.isHealthyResponse(
+            return SidecarCore.gatewayHealthProbe(
                 statusCode: code, body: String(data: data, encoding: .utf8) ?? "")
         } catch {
-            return false
+            return nil
+        }
+    }
+
+    private func compatibleGatewayProbe() async -> GatewayHealthProbe? {
+        guard let probe = await gatewayProbe(),
+              SidecarCore.isGatewayVersionCompatible(
+                gatewayVersion: probe.version,
+                minimumVersion: minimumGatewayVersion
+              )
+        else { return nil }
+        return probe
+    }
+
+    private func resolveExistingGateway() async -> ExistingGatewayResolution {
+        guard let probe = await gatewayProbe() else { return .launch }
+        if SidecarCore.isGatewayVersionCompatible(
+            gatewayVersion: probe.version,
+            minimumVersion: minimumGatewayVersion
+        ) {
+            gatewayMode = .attached
+            status = .ready
+            appendLog("Attached to existing Cybara gateway at \(serverURL.absoluteString)")
+            return .attached
+        }
+
+        if await terminateStaleNativeGateway(probe) {
+            appendLog("Stopped incompatible native gateway and will launch the bundled gateway.")
+            return .launch
+        }
+
+        let runningVersion = probe.version.map { "v\($0)" } ?? "an unknown version"
+        let requiredVersion = minimumGatewayVersion.map { "v\($0) or newer" } ?? "this app version"
+        status = .failed(
+            "Gateway \(runningVersion) is incompatible with Cybara Native. Stop the process on port \(port) or update it to \(requiredVersion)."
+        )
+        appendLog("Refused incompatible gateway \(runningVersion) at \(serverURL.absoluteString)")
+        return .blocked
+    }
+
+    private func terminateStaleNativeGateway(_ probe: GatewayHealthProbe) async -> Bool {
+        guard let processID = probe.processID, processID > 1,
+              let command = processCommand(processID: processID),
+              SidecarCore.isNativeSidecarCommand(command),
+              Darwin.kill(pid_t(processID), SIGTERM) == 0
+        else { return false }
+
+        let deadline = Date().addingTimeInterval(6)
+        while Date() < deadline {
+            if await gatewayProbe() == nil { return true }
+            try? await Task.sleep(for: .milliseconds(150))
+        }
+        return false
+    }
+
+    private func processCommand(processID: Int) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-p", String(processID), "-o", "command="]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let command = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return command?.isEmpty == false ? command : nil
+        } catch {
+            return nil
         }
     }
 
@@ -360,7 +458,8 @@ final class SidecarManager: ObservableObject {
         return SidecarCore.launchEnvironment(
             base: ProcessInfo.processInfo.environment,
             port: port,
-            resourceDirectory: bundledResourcesExist ? resourceDirectory : nil
+            resourceDirectory: bundledResourcesExist ? resourceDirectory : nil,
+            parentProcessID: Int(ProcessInfo.processInfo.processIdentifier)
         )
     }
 

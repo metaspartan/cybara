@@ -5,6 +5,7 @@ import {
   buildMobileConnectPayload,
   encodeMobileConnectPayload,
   isLoopbackGatewayUrl,
+  isGatewaySessionListResponse,
   normalizeConnectionPayloadInput,
   normalizeGatewayUrl,
   parseMobileConnectPayload,
@@ -60,7 +61,10 @@ describe("mobile gateway connection payloads", () => {
       "Unsupported connection payload"
     );
     expect(() =>
-      buildMobileConnectPayload({ baseUrl: "http://localhost:4269", apiKey: " " })
+      buildMobileConnectPayload({
+        baseUrl: "http://localhost:4269",
+        apiKey: " ",
+      })
     ).toThrow("API key is required");
   });
 });
@@ -96,9 +100,28 @@ describe("mobile gateway connection verification", () => {
     ]);
   });
 
+  test("accepts current bare and wrapped session list contracts", () => {
+    expect(isGatewaySessionListResponse([])).toBe(true);
+    expect(isGatewaySessionListResponse({ sessions: [] })).toBe(true);
+    expect(isGatewaySessionListResponse({ items: [] })).toBe(true);
+    expect(isGatewaySessionListResponse({ status: "healthy" })).toBe(false);
+    expect(isGatewaySessionListResponse("<html></html>")).toBe(false);
+  });
+
+  test("rejects successful responses that do not match the gateway contract", async () => {
+    const incompatibleFetch: typeof fetch = (async () =>
+      Response.json({ status: "healthy" })) as typeof fetch;
+
+    await expect(verifyGatewayProfile(profile, incompatibleFetch, 0)).rejects.toThrow(
+      "incompatible sessions response"
+    );
+  });
+
   test("reports rejected mobile tokens as a fresh-QR problem", async () => {
     const unauthorizedFetch: typeof fetch = (async () =>
-      new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 })) as typeof fetch;
+      new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+      })) as typeof fetch;
 
     await expect(verifyGatewayProfile(profile, unauthorizedFetch, 0)).rejects.toThrow(
       "Create a fresh QR code"

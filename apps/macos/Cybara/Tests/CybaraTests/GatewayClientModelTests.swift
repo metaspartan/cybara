@@ -1672,7 +1672,26 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertTrue(image.isTemplate)
         XCTAssertEqual(image.size, NSSize(width: 16, height: 16))
         XCTAssertLessThan(bitmap.colorAt(x: 0, y: 0)?.alphaComponent ?? 1, 0.05)
-        XCTAssertGreaterThan(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.alphaComponent ?? 0, 0.15)
+        XCTAssertGreaterThan(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.alphaComponent ?? 0, 0.85)
+    }
+
+    func testCybaraMenuBarTemplateMatchesTheDesktopLuminanceMask() {
+        XCTAssertEqual(
+            CybaraBrand.menuBarTemplateAlpha(red: 0, green: 0, blue: 0, alpha: 255),
+            0
+        )
+        XCTAssertEqual(
+            CybaraBrand.menuBarTemplateAlpha(red: 210, green: 150, blue: 90, alpha: 255),
+            255
+        )
+        XCTAssertEqual(
+            CybaraBrand.menuBarTemplateAlpha(red: 105, green: 75, blue: 45, alpha: 128),
+            128
+        )
+        XCTAssertEqual(
+            CybaraBrand.menuBarTemplateAlpha(red: 255, green: 255, blue: 255, alpha: 0),
+            0
+        )
     }
 
     @MainActor

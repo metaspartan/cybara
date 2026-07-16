@@ -7,6 +7,12 @@ public enum DeepLinkAction: Equatable {
     case openBrowser // cybara://browser         — open the web UI in the system browser
 }
 
+public struct GatewayHealthProbe: Equatable {
+    public let status: String
+    public let version: String?
+    public let processID: Int?
+}
+
 /// Pure, side-effect-free logic for the macOS sidecar shell. Kept separate from
 /// `SidecarManager` (which is @MainActor and owns Process/network/UI state) so it
 /// is straightforward to unit-test without spawning processes or hitting sockets.
@@ -32,20 +38,80 @@ public enum SidecarCore {
     /// Cybara gateway ("status":"healthy") — so we never attach to an unrelated
     /// process squatting on the port.
     public static func isHealthyResponse(statusCode: Int, body: String) -> Bool {
-        guard statusCode == 200 else { return false }
-        let normalized = body.replacingOccurrences(of: " ", with: "")
-        return normalized.contains("\"status\":\"healthy\"")
+        gatewayHealthProbe(statusCode: statusCode, body: body) != nil
+    }
+
+    public static func gatewayHealthProbe(statusCode: Int, body: String) -> GatewayHealthProbe? {
+        guard statusCode == 200,
+              let data = body.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let status = object["status"] as? String,
+              status == "healthy"
+        else { return nil }
+        let version = (object["version"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let system = object["system"] as? [String: Any]
+        let process = system?["process"] as? [String: Any]
+        let processID = (process?["pid"] as? NSNumber)?.intValue
+        return GatewayHealthProbe(
+            status: status,
+            version: version?.isEmpty == false ? version : nil,
+            processID: processID
+        )
+    }
+
+    public static func bundleVersion(infoDictionary: [String: Any]?) -> String? {
+        guard let value = infoDictionary?["CFBundleShortVersionString"] as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    public static func isGatewayVersionCompatible(
+        gatewayVersion: String?, minimumVersion: String?
+    ) -> Bool {
+        guard let minimumVersion else { return true }
+        guard let gateway = versionComponents(gatewayVersion),
+              let minimum = versionComponents(minimumVersion),
+              gateway[0] == minimum[0]
+        else { return false }
+        for index in 0 ..< max(gateway.count, minimum.count) {
+            let gatewayPart = index < gateway.count ? gateway[index] : 0
+            let minimumPart = index < minimum.count ? minimum[index] : 0
+            if gatewayPart != minimumPart { return gatewayPart > minimumPart }
+        }
+        return true
+    }
+
+    public static func isNativeSidecarCommand(_ command: String) -> Bool {
+        let normalized = command.replacingOccurrences(of: "\\", with: "/").lowercased()
+        return normalized.contains(".app/contents/macos/sidecar/cybara")
+    }
+
+    private static func versionComponents(_ version: String?) -> [Int]? {
+        guard let version else { return nil }
+        let core = version.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "-", maxSplits: 1)
+            .first
+        guard let core else { return nil }
+        let components = core.split(separator: ".").map(String.init)
+        guard !components.isEmpty,
+              components.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isNumber) })
+        else { return nil }
+        return components.compactMap(Int.init)
     }
 
     /// Environment for the spawned sidecar: inherits the parent env and lets the
     /// gateway config choose the secure loopback host by default.
     public static func launchEnvironment(
-        base: [String: String], port: Int, resourceDirectory: String? = nil
+        base: [String: String], port: Int, resourceDirectory: String? = nil,
+        parentProcessID: Int? = nil
     ) -> [String: String] {
         var environment = base
         environment["PORT"] = String(port)
         environment["CYBARA_NATIVE_APP"] = "1"
         environment["CYBARA_NATIVE_PORT"] = String(port)
+        if let parentProcessID, parentProcessID > 1 {
+            environment["CYBARA_NATIVE_PARENT_PID"] = String(parentProcessID)
+        }
         if let resourceDirectory, !resourceDirectory.isEmpty {
             environment["CYBARA_RESOURCE_DIR"] = resourceDirectory
         }
@@ -103,7 +169,11 @@ public enum SidecarCore {
     {
         let exec = URL(fileURLWithPath: executableDirectory)
         let bundledSidecar = exec.appendingPathComponent("sidecar")
-        var paths: [String] = []
+        var paths: [String] = [
+            bundledSidecar.appendingPathComponent("cybara").path,
+            bundledSidecar.appendingPathComponent("cybara-aarch64-apple-darwin").path,
+            bundledSidecar.appendingPathComponent("cybara-x86_64-apple-darwin").path,
+        ]
 
         // SwiftPM/Xcode local runs commonly start from apps/macos/Cybara or a
         // .build directory, while the sidecar is generated at the repo root.
@@ -120,9 +190,6 @@ public enum SidecarCore {
         }
 
         paths.append(contentsOf: [
-            bundledSidecar.appendingPathComponent("cybara").path,
-            bundledSidecar.appendingPathComponent("cybara-aarch64-apple-darwin").path,
-            bundledSidecar.appendingPathComponent("cybara-x86_64-apple-darwin").path,
             exec.appendingPathComponent("cybara-aarch64-apple-darwin").path,
             exec.appendingPathComponent("cybara-x86_64-apple-darwin").path,
             exec.appendingPathComponent("cybara").path,
