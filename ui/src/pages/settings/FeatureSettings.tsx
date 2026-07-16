@@ -239,13 +239,16 @@ export function FeatureSettings() {
     }
   };
 
-  const updateSandboxRuntime = async (next: {
-    enabled: boolean;
-    provider: SandboxProviderOption;
-    network: "allow" | "deny";
-    remoteUrl?: string;
-    remoteApiKey?: string;
-  }, successMessage?: string): Promise<boolean> => {
+  const updateSandboxRuntime = async (
+    next: {
+      enabled: boolean;
+      provider: SandboxProviderOption;
+      network: "allow" | "deny";
+      remoteUrl?: string;
+      remoteApiKey?: string;
+    },
+    successMessage?: string
+  ): Promise<boolean> => {
     const previous = {
       enabled: sandboxEnabled,
       provider: sandboxProvider,
@@ -345,18 +348,22 @@ export function FeatureSettings() {
     <Card variant="liquid">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Server className="w-5 h-5" />
-          Features
+          <Server className="h-5 w-5" />
+          Runtime Safety
         </CardTitle>
-        <CardDescription>Enable or disable platform features</CardDescription>
+        <CardDescription>Control exposed services, tool guardrails, and isolation</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-center justify-between py-3 border-b border-white/10">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-subtle)]">
+          Platform access
+        </p>
+        <div className="flex items-center justify-between border-b border-[var(--surface-border)] py-3">
           <div>
-            <p className="text-sm text-white font-medium">Web Terminal</p>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-sm font-medium text-[var(--text-primary)]">Web Terminal</p>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">
               Enable browser-based terminal access for this gateway. Applies immediately and is also
-              available via the <code className="text-indigo-400">--enable-terminal</code> flag.
+              available via the{" "}
+              <code className="text-[rgb(var(--accent-primary))]">--enable-terminal</code> flag.
             </p>
           </div>
           <Switch
@@ -366,13 +373,13 @@ export function FeatureSettings() {
           />
         </div>
 
-        <div className="flex items-center justify-between py-3 border-b border-white/10">
+        <div className="flex items-center justify-between border-b border-[var(--surface-border)] py-3">
           <div>
-            <p className="text-sm text-white font-medium">ACP Server</p>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p className="text-sm font-medium text-[var(--text-primary)]">ACP Server</p>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">
               Let external editors drive this agent over the Agent Client Protocol (
-              <code className="text-indigo-400">cybara acp</code> on stdio). When off, the ACP
-              server refuses to start.
+              <code className="text-[rgb(var(--accent-primary))]">cybara acp</code> on stdio). When
+              off, the ACP server refuses to start.
             </p>
           </div>
           <Switch
@@ -382,11 +389,16 @@ export function FeatureSettings() {
           />
         </div>
 
-        <div className="py-3 border-b border-white/10">
+        <div className="border-b border-[var(--surface-border)] py-3">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-subtle)]">
+            Tool guardrails
+          </p>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-white font-medium">Dangerous Tool Policy</p>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-sm font-medium text-[var(--text-primary)]">
+                Dangerous Tool Policy
+              </p>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">
                 Guardrails for high-impact tools like shell execution, wallet signing, and external
                 actions.
               </p>
@@ -404,7 +416,7 @@ export function FeatureSettings() {
           </div>
           {dangerousToolPolicyEnabled && (
             <div className="mt-3 max-w-xs">
-              <label className="block text-xs text-gray-400 mb-1">Mode</label>
+              <label className="mb-1 block text-xs text-[var(--text-muted)]">Mode</label>
               <Select
                 value={dangerousToolPolicyMode}
                 onChange={(value) =>
@@ -422,9 +434,9 @@ export function FeatureSettings() {
           )}
         </div>
 
-        <div className="py-3 border-b border-white/10">
-          <p className="text-sm text-white font-medium">Tool Approvals</p>
-          <p className="text-xs text-gray-400 mt-0.5">
+        <div className="border-b border-[var(--surface-border)] py-3">
+          <p className="text-sm font-medium text-[var(--text-primary)]">Tool Approvals</p>
+          <p className="mt-0.5 text-xs text-[var(--text-muted)]">
             Choose how dangerous tools are handled across chat, Telegram, Discord, Slack, Signal,
             iMessage, and WhatsApp.
           </p>
@@ -441,17 +453,21 @@ export function FeatureSettings() {
               disabled={loading || savingToolApprovalMode}
             />
           </div>
-          <p className="text-[11px] text-gray-500 mt-2">
-            Channel shortcut: <code className="text-indigo-400">/permissions ask</code> or{" "}
-            <code className="text-indigo-400">/permissions allow</code>
+          <p className="mt-2 text-[11px] text-[var(--text-subtle)]">
+            Channel shortcut:{" "}
+            <code className="text-[rgb(var(--accent-primary))]">/permissions ask</code> or{" "}
+            <code className="text-[rgb(var(--accent-primary))]">/permissions allow</code>
           </p>
         </div>
 
         <div className="py-3">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-subtle)]">
+            Command isolation
+          </p>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-white font-medium">Command Sandbox</p>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <p className="text-sm font-medium text-[var(--text-primary)]">Command Sandbox</p>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">
                 Isolate `exec` and `git` tools with host/container sandboxing.
               </p>
             </div>
@@ -470,7 +486,7 @@ export function FeatureSettings() {
           {sandboxEnabled && (
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 max-w-xl">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Provider</label>
+                <label className="mb-1 block text-xs text-[var(--text-muted)]">Provider</label>
                 <Select
                   value={sandboxProvider}
                   onChange={(value) =>
@@ -493,7 +509,7 @@ export function FeatureSettings() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Network</label>
+                <label className="mb-1 block text-xs text-[var(--text-muted)]">Network</label>
                 <Select
                   value={sandboxNetwork}
                   onChange={(value) =>
@@ -512,57 +528,65 @@ export function FeatureSettings() {
               </div>
             </div>
           )}
-          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-            <p className="text-xs font-semibold text-white">Remote sandbox (CubeSandbox / E2B)</p>
-            <p className="text-[11px] text-gray-400 mt-1">
-              Point the <code className="text-indigo-400">sandbox_run</code> tool at an
-              E2B-compatible microVM endpoint (e.g. self-hosted CubeSandbox) to run untrusted
-              commands off-host. Leave blank to disable. The URL is the CubeAPI / E2B domain.
-            </p>
-            <div className="mt-3 space-y-2">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Sandbox URL</label>
-                <input
-                  type="text"
+          <div className="mt-4 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3">
+            <Switch
+              label="Remote sandbox"
+              description="Run isolated commands through a trusted remote sandbox endpoint"
+              checked={remoteSandboxEnabled}
+              disabled={loading || savingSandboxRuntime}
+              onChange={(enabled) => void toggleRemoteSandbox(enabled)}
+            />
+            {remoteSandboxEnabled ? (
+              <div className="mt-4 space-y-3 border-t border-[var(--surface-border)] pt-4">
+                <Input
+                  label="Sandbox URL"
+                  type="url"
                   value={sandboxRemoteUrl}
-                  onChange={(e) => setSandboxRemoteUrl(e.target.value)}
-                  onBlur={() => void saveRemoteSandbox()}
-                  placeholder="https://cube.example.com:12088"
+                  onChange={(event) => setSandboxRemoteUrl(event.target.value)}
+                  placeholder="https://sandbox.example.com"
                   disabled={savingSandboxRuntime}
-                  className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-[var(--form-control-placeholder)] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">API key (optional)</label>
-                <input
+                <Input
+                  label="API key"
                   type="password"
                   value={sandboxRemoteApiKey}
-                  onChange={(e) => setSandboxRemoteApiKey(e.target.value)}
-                  onBlur={() => void saveRemoteSandbox()}
-                  placeholder="Leave blank if the endpoint needs no key"
+                  onChange={(event) => setSandboxRemoteApiKey(event.target.value)}
+                  placeholder="Optional bearer token"
                   disabled={savingSandboxRuntime}
-                  className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-[var(--form-control-placeholder)] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  helperText="Stored with the gateway configuration and sent only to this endpoint."
                 />
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    isLoading={savingSandboxRuntime}
+                    onClick={() => void saveRemoteSandbox()}
+                  >
+                    Save remote sandbox
+                  </Button>
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
-          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+          <div className="mt-4 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold text-white flex items-center gap-2">
+                <p className="flex items-center gap-2 text-xs font-semibold text-[var(--text-primary)]">
                   <Shield className="w-3.5 h-3.5 text-emerald-300" />
                   Sandbox Diagnostics
                 </p>
-                <p className="text-[11px] text-gray-400 mt-1">
+                <p className="mt-1 text-[11px] text-[var(--text-muted)]">
                   Real-time provider checks. Docker/Podman must be installed locally to be used.
                 </p>
               </div>
               {refreshingSandboxStatus && (
-                <RefreshCw className="w-3 h-3 animate-spin text-gray-500" />
+                <RefreshCw className="h-3 w-3 animate-spin text-[var(--text-subtle)]" />
               )}
             </div>
             {loadingSandboxStatus ? (
-              <p className="text-[11px] text-gray-500 mt-3">Checking sandbox runtime...</p>
+              <p className="mt-3 text-[11px] text-[var(--text-subtle)]">
+                Checking sandbox runtime...
+              </p>
             ) : sandboxStatus ? (
               <div className="mt-3 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
@@ -581,21 +605,21 @@ export function FeatureSettings() {
                         ? "Ready"
                         : "Unavailable"}
                   </Badge>
-                  <span className="text-[11px] text-gray-400">
+                  <span className="text-[11px] text-[var(--text-muted)]">
                     Configured:{" "}
-                    <span className="text-white">
+                    <span className="text-[var(--text-primary)]">
                       {providerLabel(sandboxStatus.configuredProvider)}
                     </span>
                   </span>
-                  <span className="text-[11px] text-gray-400">
+                  <span className="text-[11px] text-[var(--text-muted)]">
                     Resolved:{" "}
-                    <span className="text-white">
+                    <span className="text-[var(--text-primary)]">
                       {providerLabel(sandboxStatus.resolvedProvider)}
                     </span>
                   </span>
-                  <span className="text-[11px] text-gray-400">
+                  <span className="text-[11px] text-[var(--text-muted)]">
                     Network:{" "}
-                    <span className="text-white">
+                    <span className="text-[var(--text-primary)]">
                       {sandboxStatus.network === "allow" ? "Allow" : "Deny"}
                     </span>
                   </span>
@@ -610,10 +634,12 @@ export function FeatureSettings() {
                   {sandboxStatus.providers.map((entry) => (
                     <div
                       key={entry.provider}
-                      className="rounded border border-white/10 px-2 py-1.5"
+                      className="rounded border border-[var(--surface-border)] px-2 py-1.5"
                     >
-                      <p className="text-[11px] text-white">{providerLabel(entry.provider)}</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">
+                      <p className="text-[11px] text-[var(--text-primary)]">
+                        {providerLabel(entry.provider)}
+                      </p>
+                      <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">
                         {entry.available
                           ? "Available"
                           : entry.reason || (!entry.installed ? "Not installed" : "Unavailable")}
@@ -623,16 +649,16 @@ export function FeatureSettings() {
                 </div>
                 {sandboxStatus.lastEvent && (
                   <div className="pt-1">
-                    <p className="text-[10px] uppercase tracking-wide text-gray-500">
+                    <p className="text-[10px] uppercase tracking-wide text-[var(--text-subtle)]">
                       Last sandbox event
                     </p>
-                    <p className="text-[11px] text-gray-300 mt-0.5">
+                    <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">
                       {providerLabel(sandboxStatus.lastEvent.provider)} ·{" "}
                       {sandboxStatus.lastEvent.phase} ·{" "}
                       {new Date(sandboxStatus.lastEvent.timestamp).toLocaleTimeString()}
                     </p>
                     {sandboxStatus.lastEvent.commandPreview && (
-                      <p className="text-[10px] text-gray-500 mt-0.5 font-mono truncate">
+                      <p className="mt-0.5 truncate font-mono text-[10px] text-[var(--text-subtle)]">
                         {sandboxStatus.lastEvent.commandPreview}
                       </p>
                     )}
@@ -640,7 +666,9 @@ export function FeatureSettings() {
                 )}
               </div>
             ) : (
-              <p className="text-[11px] text-gray-500 mt-3">Sandbox diagnostics unavailable.</p>
+              <p className="mt-3 text-[11px] text-[var(--text-subtle)]">
+                Sandbox diagnostics unavailable.
+              </p>
             )}
           </div>
         </div>

@@ -138,9 +138,7 @@ export function ToolCapabilitySettings() {
               className="grid gap-3 py-3.5 sm:grid-cols-[minmax(0,1fr)_170px] sm:items-center"
             >
               <div className="min-w-0">
-                <p className="text-sm font-medium text-[var(--text-primary)]">
-                  {capability.label}
-                </p>
+                <p className="text-sm font-medium text-[var(--text-primary)]">{capability.label}</p>
                 <p className="mt-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
                   {capability.detail}
                 </p>
@@ -150,9 +148,7 @@ export function ToolCapabilitySettings() {
                 value={policy[capability.id]}
                 options={POLICY_OPTIONS}
                 disabled={loading || saving !== null || loadError !== null}
-                onChange={(value) =>
-                  void update(capability.id, value as ToolCapabilityPolicyMode)
-                }
+                onChange={(value) => void update(capability.id, value as ToolCapabilityPolicyMode)}
               />
             </div>
           ))}
