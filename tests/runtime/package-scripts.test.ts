@@ -65,7 +65,16 @@ describe("package.json script wiring", () => {
     const knipConfig = JSON.parse(readFileSync(KNIP_CONFIG, "utf8")) as {
       workspaces?: Record<string, { ignoreDependencies?: string[] }>;
     };
-    expect(knipConfig.workspaces?.["."]?.ignoreDependencies).toContain("react-doctor");
+    const ignoredDependencies = knipConfig.workspaces?.["."]?.ignoreDependencies ?? [];
+    expect(ignoredDependencies).toContain("react-doctor");
+    expect(ignoredDependencies).toEqual(
+      expect.arrayContaining([
+        "@vtsls/language-server",
+        "bash-language-server",
+        "vscode-langservers-extracted",
+        "yaml-language-server",
+      ])
+    );
     expect(pkg.devDependencies?.["prettier"]).toBeUndefined();
     expect(pkg.devDependencies?.["eslint-plugin-prettier"]).toBeUndefined();
     expect(pkg.devDependencies?.["eslint-config-prettier"]).toBeUndefined();

@@ -14,8 +14,12 @@
       "ignoreDependencies": [
         "@huggingface/transformers",
         "@typescript/native",
+        "@vtsls/language-server",
+        "bash-language-server",
         "react-doctor",
-        "typescript-language-server"
+        "typescript-language-server",
+        "vscode-langservers-extracted",
+        "yaml-language-server"
       ],
       "ignoreBinaries": [
         "preview",
