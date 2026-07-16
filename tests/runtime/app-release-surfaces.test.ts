@@ -198,9 +198,7 @@ describe("app release surface wiring", () => {
 
     expect(workflow).toContain("smoke-cli-darwin-x64:");
     expect(workflow).toContain("name: cybara-darwin-x64");
-    expect(workflow).toContain("./cybara-darwin-x64 start -d");
-    expect(workflow).toContain("./cybara-darwin-x64 status");
-    expect(workflow).toContain("./cybara-darwin-x64 stop");
+    expect(workflow).toContain("bash scripts/smoke-standalone-cli.sh ./cybara-darwin-x64");
     expect(workflow).toContain("needs: [build-cli, smoke-cli-darwin-x64, build-mobile]");
   });
 
@@ -214,9 +212,7 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain("name: ci-cybara-darwin-x64");
     expect(workflow).toContain("darwin-x64-cli-smoke:");
     expect(workflow).toContain("arch -x86_64 /usr/bin/true");
-    expect(workflow).toContain("./cybara-darwin-x64 start -d");
-    expect(workflow).toContain("./cybara-darwin-x64 status");
-    expect(workflow).toContain("./cybara-darwin-x64 stop");
+    expect(workflow).toContain("bash scripts/smoke-standalone-cli.sh ./cybara-darwin-x64");
   });
 
   test("release workflow runs native macOS unit tests when XCTest is available", () => {

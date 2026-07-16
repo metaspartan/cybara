@@ -100,19 +100,16 @@ jobs:
     needs: build-cli
     runs-on: macos-26
     steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Download Darwin x64 CLI artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: cybara-darwin-x64
       - name: Run Darwin x64 CLI lifecycle
-        run: |
-          chmod +x cybara-darwin-x64
-          export HOME="$RUNNER_TEMP/cybara-darwin-x64-home"
-          mkdir -p "$HOME"
-          ./cybara-darwin-x64 version
-          ./cybara-darwin-x64 start -d
-          ./cybara-darwin-x64 status
-          ./cybara-darwin-x64 stop
+        env:
+          CYBARA_SMOKE_HOME: ${{ runner.temp }}/cybara-darwin-x64-home
+        run: bash scripts/smoke-standalone-cli.sh ./cybara-darwin-x64
 
   # ── Tauri desktop apps (platform-native builds) ────────────────────────────
   build-tauri:
