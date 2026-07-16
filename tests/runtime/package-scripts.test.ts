@@ -105,7 +105,17 @@ describe("package.json script wiring", () => {
     expect((pkg as Record<string, unknown>)["build:cli"]).toBeUndefined();
     expect((pkg as Record<string, unknown>)["build:main"]).toBeUndefined();
     expect(readFileSync(SIDECAR_SCRIPT, "utf8")).toContain("--external @aws-sdk/client-s3");
-    expect(readFileSync(PACKAGE_SCRIPT, "utf8")).toContain("--external tiny-secp256k1");
+    const packageScript = readFileSync(PACKAGE_SCRIPT, "utf8");
+    expect(packageScript).toContain("--external tiny-secp256k1");
+    expect(packageScript).toContain("--external @aws-sdk/client-s3");
+    expect(packageScript).toContain("--external @huggingface/transformers");
+    expect(packageScript).toContain("--external onnxruntime-node");
+    expect(packageScript).toContain("--external onnxruntime-web");
+    const standaloneBuild = packageScript
+      .split("\n")
+      .find((line) => line.includes("bun build src/main.ts --compile"));
+    expect(standaloneBuild).toContain("--external @huggingface/transformers");
+    expect(standaloneBuild).not.toContain("--external tiny-secp256k1");
     expect(readFileSync(PACKAGE_SCRIPT, "utf8")).toContain(
       'const cliOutput = join(DIST_DIR, "cli.js")'
     );
