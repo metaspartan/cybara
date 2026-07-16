@@ -584,7 +584,7 @@ async function finishInterruptedChatTurn(
       id: session.id,
       agentId: session.agentId,
       title: session.title,
-      messageCount: session.messages.length,
+      messageCount: countVisibleSessionMessages(session.messages),
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       workspaceDir: session.workspaceDir ?? null,
@@ -1182,6 +1182,10 @@ function upsertPersistedSessionIndex(
   persistedSessionIndex.set(entry.id, normalizePersistedIndexEntry(entry));
 }
 
+function countVisibleSessionMessages(messages: ChatMessage[]): number {
+  return messages.reduce((count, message) => count + (message.role === "system" ? 0 : 1), 0);
+}
+
 async function persistChatSessionSnapshot(
   session: InMemoryChatSession,
   lastMessage?: ChatMessage
@@ -1198,7 +1202,7 @@ async function persistChatSessionSnapshot(
     id: session.id,
     agentId: session.agentId,
     title: session.title,
-    messageCount: session.messages.length,
+    messageCount: countVisibleSessionMessages(session.messages),
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     workspaceDir: session.workspaceDir ?? null,
@@ -1227,7 +1231,7 @@ function buildMemorySessionListEntries(): SessionListEntry[] {
             s.agentId,
           ])
         : stripSessionTitleAgentPrefix(s.title, [modelMetadata?.agent_name, s.agentId]),
-      messageCount: s.messages.length,
+      messageCount: countVisibleSessionMessages(s.messages),
       createdAt: s.createdAt,
       updatedAt: s.updatedAt || s.createdAt,
       workspaceDir: s.workspaceDir ?? null,
@@ -1718,7 +1722,7 @@ export async function steerPendingChatMessage(
     id: session.id,
     agentId: session.agentId,
     title: session.title,
-    messageCount: session.messages.length,
+    messageCount: countVisibleSessionMessages(session.messages),
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     workspaceDir: session.workspaceDir ?? null,
@@ -2760,7 +2764,7 @@ export async function getSession(sessionId: string) {
       id: sessionId,
       agentId: persisted.agentId,
       title: resolvedTitle,
-      messageCount: persisted.messages.length,
+      messageCount: countVisibleSessionMessages(persisted.messages),
       createdAt,
       updatedAt,
       workspaceDir,
@@ -2812,7 +2816,7 @@ export async function updateSessionAgent(
     id: session.id,
     agentId: session.agentId,
     title: session.title,
-    messageCount: session.messages.length,
+    messageCount: countVisibleSessionMessages(session.messages),
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     workspaceDir: session.workspaceDir ?? null,
@@ -3263,7 +3267,7 @@ export async function updateSessionWorkspace(
     id: sessionId,
     agentId,
     title: sessionTitle,
-    messageCount: messages.length,
+    messageCount: countVisibleSessionMessages(messages),
     createdAt,
     updatedAt,
     workspaceDir: normalizedWorkspaceDir,
@@ -3326,7 +3330,7 @@ export async function updateSessionTitle(
     id: sessionId,
     agentId,
     title: normalizedTitle,
-    messageCount: messages.length,
+    messageCount: countVisibleSessionMessages(messages),
     createdAt,
     updatedAt,
     workspaceDir,
@@ -3357,7 +3361,7 @@ function injectSessionMessage(session: InMemoryChatSession, message: ChatMessage
       id: session.id,
       agentId: session.agentId,
       title: session.title,
-      messageCount: session.messages.length,
+      messageCount: countVisibleSessionMessages(session.messages),
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       workspaceDir: session.workspaceDir ?? null,

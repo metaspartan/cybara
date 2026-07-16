@@ -946,6 +946,7 @@ const stmts = {
       `DELETE FROM metrics WHERE rowid IN (
          SELECT rowid FROM metrics INDEXED BY idx_metrics_type_created
          WHERE type IN ('api_status', 'api_endpoint')
+            OR (type = 'api_call' AND key IN ('success', 'error'))
          LIMIT ?
        )`
     ),

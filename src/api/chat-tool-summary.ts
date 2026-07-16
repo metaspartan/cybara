@@ -226,7 +226,7 @@ export function requiredDirectToolForMessage(message: string): string | undefine
   }
 
   const requestsExecution = /\b(run|execute|use|call|invoke)\b/.test(lower);
-  const namesExec = /\bexec(?:\s+tool)?\b/.test(lower);
+  const namesExec = /\b(?:exec|command)(?:\s+tool)?\b/.test(lower);
   const namesShellCommand =
     /\b(?:shell|terminal|powershell|pwsh|bash|zsh)\s+command\b/.test(lower) ||
     /\b(?:run|execute)\s+(?:the\s+)?command\b/.test(lower);

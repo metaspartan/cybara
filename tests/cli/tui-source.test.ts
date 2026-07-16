@@ -119,7 +119,7 @@ describe("CLI TUI source wiring", () => {
       expect(cliTuiAppSource).toContain(`case "${panel.command}":`);
       expect(cliTuiAppSource).toContain(panel.component);
     }
-    expect(cliSource).toContain("render(<TUIApp command={args[1]} />)");
+    expect(cliSource).toContain("await renderTUI(args[1])");
     expect(cliTuiMenuSource).toContain("Direct launch: cybara tui <panel> · Press ? for keys");
     expect(cliTuiAppSource).toContain("<MainMenu");
     expect(cliTuiAppSource).toContain("onOpenPanel");

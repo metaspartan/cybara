@@ -46,6 +46,20 @@ describe("gateway telemetry storage", () => {
         value: 1,
         metadata: JSON.stringify({ endpoint: "/api/info" })
       });
+      tables.metrics.add({
+        id: crypto.randomUUID(),
+        type: "api_call",
+        key: "success",
+        value: 1,
+        metadata: JSON.stringify({ endpoint: "/api/info" })
+      });
+      tables.metrics.add({
+        id: crypto.randomUUID(),
+        type: "api_call",
+        key: "error",
+        value: 1,
+        metadata: JSON.stringify({ endpoint: "/api/info" })
+      });
       const compacted = tables.metrics.compactGatewayTelemetry(100);
       console.log(JSON.stringify({
         success: tables.metrics.getTotal("api_call", "success"),
@@ -77,11 +91,11 @@ describe("gateway telemetry storage", () => {
       ]);
       expect(exitCode).toBe(0);
       const result = JSON.parse(stdout.trim()) as GatewayTelemetryResult;
-      expect(result.success).toBe(1);
-      expect(result.error).toBe(1);
+      expect(result.success).toBe(2);
+      expect(result.error).toBe(2);
       expect(result.duration).toBe(20);
       expect(result.raw).toBe(0);
-      expect(result.compacted).toBe(1);
+      expect(result.compacted).toBe(3);
       expect(result.rawAfterCompaction).toBe(1);
       expect(result.providerCallTotal).toBe(7);
       expect(result.daily).toEqual(

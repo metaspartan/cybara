@@ -115,8 +115,10 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    nearby confirm <pairing-id>           Confirm the matching code");
   console.log("    nearby send <peer-id> <session-id>    Send a chat for approval");
   console.log("    nearby auto-import <peer-id> on|off   Change chat approval for a device");
+  console.log("  telemetry   External telemetry commands");
   console.log("    telemetry [status|enable|disable|test] Manage external telemetry");
-  console.log("    permissions [capability] [mode]       Manage agent capability access");
+  console.log("  permissions Manage agent capability access");
+  console.log("    permissions [capability] [mode]       Show or change capability access");
   console.log("  wallet      Wallet management commands");
   console.log("    wallet status                     Show wallet status and RPC settings");
   console.log("    wallet create --password <p>      Create 24-word wallet");

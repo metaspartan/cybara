@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { render } from "ink";
 import { spawn } from "child_process";
 import { mkdirSync, openSync } from "fs";
 import { join } from "path";
@@ -11,7 +10,6 @@ import { runNearbyCommand } from "./commands/nearby";
 import { rawHelp } from "./commands/help";
 import { printCompletion } from "./commands/completion";
 import { rawComputerUse } from "./commands/computer-use";
-import { runConnectorCommand } from "./commands/connectors";
 import { createCliPluginCommands } from "./commands/plugin-commands";
 import { createCliProviderCommands } from "./commands/provider-commands";
 import {
@@ -77,7 +75,6 @@ import {
   sessionMessageCount,
   sessionUpdatedAt,
 } from "./contracts";
-import { TUIApp } from "./tui/components/app";
 import {
   rawLsp,
   rawLspInstall,
@@ -97,6 +94,19 @@ import {
 } from "./commands/loops";
 
 configureWalletCli({ apiBase: API_BASE, withAuthHeaders: withCliAuthHeaders });
+
+async function runConnectorCliCommand(commandArgs: string[]): Promise<void> {
+  const { runConnectorCommand } = await import("./commands/connectors");
+  await runConnectorCommand(commandArgs, fetchAPI);
+}
+
+async function renderTUI(commandOverride?: string): Promise<void> {
+  const [{ render }, { TUIApp }] = await Promise.all([
+    import("ink"),
+    import("./tui/components/app"),
+  ]);
+  render(<TUIApp command={commandOverride} />);
+}
 
 interface TokenAnalysisResponse {
   summary: {
@@ -1237,13 +1247,13 @@ async function main() {
           await pluginCommands.install(args[2]);
           break;
         case "apps":
-          await runConnectorCommand(["list"], fetchAPI);
+          await runConnectorCliCommand(["list"]);
           break;
         case "configure":
         case "connect":
         case "disconnect":
         case "setup":
-          await runConnectorCommand(args.slice(1), fetchAPI);
+          await runConnectorCliCommand(args.slice(1));
           break;
         case "delete":
         case "remove":
@@ -1702,7 +1712,7 @@ async function main() {
 
     case "connectors":
     case "connector":
-      await runConnectorCommand(args.slice(1), fetchAPI);
+      await runConnectorCliCommand(args.slice(1));
       break;
 
     case "mcp": {
@@ -1800,14 +1810,14 @@ async function main() {
     case "install":
     case "configure":
     case "onboard":
-      render(<TUIApp command={command} />);
+      await renderTUI(command);
       break;
     case "tui":
-      render(<TUIApp command={args[1]} />);
+      await renderTUI(args[1]);
       break;
 
     default:
-      render(<TUIApp />);
+      await renderTUI();
       break;
   }
 }

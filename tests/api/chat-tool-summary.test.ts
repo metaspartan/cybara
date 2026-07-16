@@ -81,6 +81,11 @@ describe("chat tool summary utilities", () => {
       )
     ).toBe("exec");
     expect(requiredDirectToolForMessage("Execute the terminal command bun test")).toBe("exec");
+    expect(
+      requiredDirectToolForMessage(
+        "Use the command tool to run exactly: sleep 30; printf STEER_BASE_UNEXPECTED"
+      )
+    ).toBe("exec");
     expect(requiredDirectToolForMessage("What is the exec tool?")).toBeUndefined();
     expect(requiredDirectToolForMessage("Explain how a shell command works")).toBeUndefined();
   });

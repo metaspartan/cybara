@@ -4,6 +4,7 @@ import {
   listSessionPage,
   listSessions,
   deleteSession,
+  getSession,
   setSessionPinned,
   type ChatMessage,
 } from "../../src/api/chat";
@@ -50,6 +51,7 @@ async function createPersistedSession(params: {
     params.title ?? `Title ${params.label}`
   );
   for (const message of messages) {
+    if (message.role === "system") continue;
     await logSessionMessage(sessionId, message.role, message.content, {
       agentId: "test-agent",
     });
@@ -105,7 +107,7 @@ describe("session listing pagination", () => {
     expect(secondPageFirstId).toBe(oldest);
 
     const newestSession = firstPage.find((session) => session.id === newest);
-    expect(newestSession?.messageCount).toBe(3);
+    expect(newestSession?.messageCount).toBe(2);
     expect(newestSession?.lastMessage?.content).toContain("new reply");
   });
 
@@ -117,12 +119,15 @@ describe("session listing pagination", () => {
       assistantReply: "resident page reply",
     });
 
-    await listSessions();
+    await getSession(id);
     const page = await listSessionPage({ limit: 1, offset: 0 });
+    const residentSession = (await listSessions({ limit: 1000 })).find(
+      (session) => session.id === id
+    );
 
     expect(page.sessions).toHaveLength(1);
     expect(page.total).toBeGreaterThanOrEqual(1);
-    expect((await listSessions({ limit: 1000 })).some((session) => session.id === id)).toBe(true);
+    expect(residentSession?.messageCount).toBe(2);
   });
 
   test("pinned sessions sort above more-recent unpinned ones", async () => {
