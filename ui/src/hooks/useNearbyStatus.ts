@@ -3,6 +3,13 @@ import { nearbyApi, type NearbyStatus } from "@/lib/api";
 
 export const nearbyStatusQueryKey = ["nearby-status"] as const;
 
+export function canShareNearbySession(
+  sessionId: string | null | undefined,
+  status: NearbyStatus | null | undefined
+): boolean {
+  return Boolean(sessionId?.trim() && status?.settings.enabled === true);
+}
+
 async function loadNearbyStatus(): Promise<NearbyStatus> {
   const response = await nearbyApi.status();
   if (!response.success || !response.data) {

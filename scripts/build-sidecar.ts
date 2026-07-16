@@ -1,8 +1,16 @@
 #!/usr/bin/env bun
 import { $ } from "bun";
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { arch, platform } from "os";
-import { dirname, join } from "path";
+import { dirname, join, relative } from "path";
 import { readGitCommit } from "../src/core/build-info";
 import { type BunRuntimeTarget, installBunRuntimeAt } from "../src/core/bun-runtime";
 import {
@@ -14,6 +22,91 @@ import {
 const TAURI_BIN_DIR = join(import.meta.dirname, "..", "src-tauri", "bin");
 const RELEASE_DIR = join(import.meta.dirname, "..", "release");
 const NODE_MODULES_ROOT = join(import.meta.dirname, "..", "node_modules");
+const PREINSTALLED_LSP_PACKAGES = [
+  "@vtsls/language-server",
+  "vscode-langservers-extracted",
+  "yaml-language-server",
+  "bash-language-server",
+];
+
+interface RuntimePackageManifest {
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+}
+
+function resolveRuntimeDependencyRoot(
+  sourcePackageRoot: string,
+  packageName: string,
+  nodeModulesRoot: string
+): string | null {
+  let current = sourcePackageRoot;
+  const repositoryRoot = dirname(nodeModulesRoot);
+  while (current.startsWith(repositoryRoot)) {
+    const candidate = join(current, "node_modules", packageName);
+    if (existsSync(join(candidate, "package.json"))) return candidate;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  const rootCandidate = join(nodeModulesRoot, packageName);
+  return existsSync(join(rootCandidate, "package.json")) ? rootCandidate : null;
+}
+
+function copyRuntimePackageTree(
+  sourcePackageRoot: string,
+  targetNodeModulesDir: string,
+  visited: Set<string>,
+  nodeModulesRoot: string
+): void {
+  if (visited.has(sourcePackageRoot)) return;
+  visited.add(sourcePackageRoot);
+  const packageRelativePath = relative(nodeModulesRoot, sourcePackageRoot);
+  if (!packageRelativePath || packageRelativePath.startsWith("..")) return;
+  const targetPackageRoot = join(targetNodeModulesDir, packageRelativePath);
+  if (existsSync(targetPackageRoot)) rmSync(targetPackageRoot, { recursive: true, force: true });
+  mkdirSync(dirname(targetPackageRoot), { recursive: true });
+  cpSync(sourcePackageRoot, targetPackageRoot, {
+    recursive: true,
+    filter: (source) => {
+      const nestedPath = relative(sourcePackageRoot, source);
+      return !nestedPath.split(/[\\/]/).includes("node_modules");
+    },
+  });
+  const manifest = JSON.parse(
+    readFileSync(join(sourcePackageRoot, "package.json"), "utf8")
+  ) as RuntimePackageManifest;
+  const dependencyNames = Object.keys({
+    ...manifest.dependencies,
+    ...manifest.optionalDependencies,
+    ...manifest.peerDependencies,
+  });
+  for (const dependencyName of dependencyNames) {
+    const dependencyRoot = resolveRuntimeDependencyRoot(
+      sourcePackageRoot,
+      dependencyName,
+      nodeModulesRoot
+    );
+    if (dependencyRoot) {
+      copyRuntimePackageTree(dependencyRoot, targetNodeModulesDir, visited, nodeModulesRoot);
+    }
+  }
+}
+
+export function copyPreinstalledLSPRuntime(
+  targetNodeModulesDir: string,
+  nodeModulesRoot = NODE_MODULES_ROOT,
+  packageNames: readonly string[] = PREINSTALLED_LSP_PACKAGES
+): void {
+  const visited = new Set<string>();
+  for (const packageName of packageNames) {
+    const packageRoot = join(nodeModulesRoot, packageName);
+    if (!existsSync(join(packageRoot, "package.json"))) {
+      throw new Error(`Required preinstalled LSP package is missing: ${packageName}`);
+    }
+    copyRuntimePackageTree(packageRoot, targetNodeModulesDir, visited, nodeModulesRoot);
+  }
+}
 
 export interface Target {
   bunTarget: BunRuntimeTarget;
@@ -631,6 +724,7 @@ export default instance.exports;
     }
     mkdirSync(targetNodeModulesDir, { recursive: true });
     const nativeDir = copyTransformersRuntime(targetNodeModulesDir, runtimeTarget);
+    copyPreinstalledLSPRuntime(targetNodeModulesDir);
     patchCopiedOnnxBinding(targetNodeModulesDir);
     copyOnnxRuntimeSidecarFolder(nativeDir, dir, runtimeTarget);
     copiedOnnxNativeDir ||= nativeDir;

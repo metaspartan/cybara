@@ -13,6 +13,7 @@ import {
 } from "./cli-tui-approvals";
 import {
   environmentSnapshotFromDetail,
+  lspServersFromResponse,
   formatContextUsageLine,
   formatFileChangeLine,
   formatPlanLine,
@@ -23,6 +24,7 @@ import {
   subagentsFromResponse,
   tasksFromResponse,
   type TuiEnvironmentSnapshot,
+  type TuiLspSummary,
   type TuiSubagentSummary,
   type TuiTaskSummary,
 } from "./cli-tui-chat-environment";
@@ -815,6 +817,7 @@ export function InteractiveChatTUI({
     React.useState<TuiEnvironmentSnapshot | null>(null);
   const [tasks, setTasks] = React.useState<TuiTaskSummary[]>([]);
   const [subagents, setSubagents] = React.useState<TuiSubagentSummary[]>([]);
+  const [lspServers, setLspServers] = React.useState<TuiLspSummary[]>([]);
   const [environmentPanelMode, setEnvironmentPanelMode] = React.useState<
     "auto" | "shown" | "hidden"
   >("auto");
@@ -1061,6 +1064,13 @@ export function InteractiveChatTUI({
     return next;
   }, [fetchAPI, localSessionId]);
 
+  const loadLspServers = React.useCallback(async () => {
+    const response = await fetchAPI<unknown>("/api/lsp/status");
+    const next = lspServersFromResponse(response);
+    setLspServers(next);
+    return next;
+  }, [fetchAPI]);
+
   const loadMessagesForSession = React.useCallback(
     async (targetSessionId: string): Promise<ChatMessage[]> => {
       const detail = await loadEnvironmentForSession(targetSessionId);
@@ -1118,8 +1128,10 @@ export function InteractiveChatTUI({
 
   React.useEffect(() => {
     if (!environmentPanelVisible) return;
-    void Promise.all([loadTasks(), loadSubagents()]).catch(() => undefined);
-  }, [environmentPanelVisible, loadSubagents, loadTasks]);
+    void Promise.all([loadTasks(), loadSubagents(), loadLspServers()]).catch(() => undefined);
+    const timer = setInterval(() => void loadLspServers(), 5000);
+    return () => clearInterval(timer);
+  }, [environmentPanelVisible, loadLspServers, loadSubagents, loadTasks]);
 
   const loadApprovals = React.useCallback(async () => {
     const response = await fetchAPI<unknown>("/api/tools/approvals");
@@ -2606,6 +2618,7 @@ export function InteractiveChatTUI({
             snapshot={environmentSnapshot}
             tasks={tasks}
             subagents={subagents}
+            lspServers={lspServers}
             colorScheme={tuiColorScheme}
             variant="sidebar"
             width={inspectorLayout.width}
@@ -2637,6 +2650,7 @@ export function InteractiveChatTUI({
           snapshot={environmentSnapshot}
           tasks={tasks}
           subagents={subagents}
+          lspServers={lspServers}
           colorScheme={tuiColorScheme}
           compact={layout.narrow}
         />

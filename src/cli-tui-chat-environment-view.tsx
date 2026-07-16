@@ -7,6 +7,7 @@ import {
   formatTokenUsageLine,
   shortPath,
   type TuiEnvironmentSnapshot,
+  type TuiLspSummary,
   type TuiPlanItem,
   type TuiSubagentSummary,
   type TuiTaskSummary,
@@ -25,6 +26,7 @@ export interface EnvironmentPanelProps {
   snapshot: TuiEnvironmentSnapshot | null;
   subagents: TuiSubagentSummary[];
   tasks: TuiTaskSummary[];
+  lspServers?: TuiLspSummary[];
   colorScheme?: TuiColorScheme;
   variant?: EnvironmentPanelVariant;
   width?: number;
@@ -125,10 +127,12 @@ function FileDetails({
 function WorkDetails({
   tasks,
   subagents,
+  lspServers,
   palette,
 }: {
   tasks: TuiTaskSummary[];
   subagents: TuiSubagentSummary[];
+  lspServers: TuiLspSummary[];
   palette: TuiSurfacePalette;
 }): React.ReactElement {
   return (
@@ -162,6 +166,18 @@ function WorkDetails({
           ))
         )}
       </Box>
+      {lspServers.length > 0 ? (
+        <Box flexDirection="column">
+          <SectionTitle palette={palette}>LSP</SectionTitle>
+          {lspServers.slice(0, 4).map((server) => (
+            <Text key={server.id} wrap="truncate-end">
+              <Text color={palette.success}>●</Text>{" "}
+              <Text color={palette.text}>{server.name}</Text>{" "}
+              <Text color={palette.subtle}>{server.command}</Text>
+            </Text>
+          ))}
+        </Box>
+      ) : null}
     </>
   );
 }
@@ -170,6 +186,7 @@ export function EnvironmentPanel({
   snapshot,
   subagents,
   tasks,
+  lspServers = [],
   compact = false,
   colorScheme = resolveTuiColorScheme(process.env),
   variant = "stacked",
@@ -221,13 +238,24 @@ export function EnvironmentPanel({
             <Text color={palette.text}>{tasks.length}</Text>
             <Text color={palette.muted}> · Subagents </Text>
             <Text color={palette.text}>{subagents.length}</Text>
+            {lspServers.length > 0 ? (
+              <>
+                <Text color={palette.muted}> · LSP </Text>
+                <Text color={palette.success}>{lspServers.length}</Text>
+              </>
+            ) : null}
           </Text>
         </>
       ) : (
         <>
           <PlanDetails snapshot={snapshot} maxRows={sidebar ? 5 : 3} palette={palette} />
           <FileDetails snapshot={snapshot} maxRows={sidebar ? 4 : 3} palette={palette} />
-          <WorkDetails tasks={tasks} subagents={subagents} palette={palette} />
+          <WorkDetails
+            tasks={tasks}
+            subagents={subagents}
+            lspServers={lspServers}
+            palette={palette}
+          />
         </>
       )}
     </Box>

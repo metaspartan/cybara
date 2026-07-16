@@ -6,6 +6,7 @@ import {
   formatFileChangeLine,
   formatPlanLine,
   formatTokenUsageLine,
+  lspServersFromResponse,
   subagentsFromResponse,
   tasksFromResponse,
 } from "../../src/cli-tui-chat-environment";
@@ -148,5 +149,22 @@ describe("CLI TUI environment helpers", () => {
       { id: "sub-1", label: "Tester", status: "running" },
       { id: "sub-2", label: "Audit CLI", status: "done" },
     ]);
+  });
+
+  test("normalizes only initialized LSP servers", () => {
+    expect(
+      lspServersFromResponse({
+        active: [
+          { id: "vtsls", name: "TypeScript", command: "vtsls", initialized: true },
+          { id: "yaml", name: "YAML", command: "yaml-language-server", initialized: false },
+          { id: "shellscript", command: "bash-language-server" },
+          null,
+        ],
+      })
+    ).toEqual([
+      { id: "vtsls", name: "TypeScript", command: "vtsls" },
+      { id: "shellscript", name: "shellscript", command: "bash-language-server" },
+    ]);
+    expect(lspServersFromResponse(null)).toEqual([]);
   });
 });

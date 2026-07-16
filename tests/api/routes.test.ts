@@ -2109,6 +2109,7 @@ describe("LSP API", () => {
     expect(typeof statusRes.data.status).toBe("string");
     expect(typeof statusRes.data.workspace).toBe("string");
     expect(Array.isArray(statusRes.data.supported)).toBe(true);
+    expect(Array.isArray(statusRes.data.active)).toBe(true);
     expect(typeof statusRes.data.diagnosticsCount).toBe("number");
 
     const languagesRes = await api("GET", "/api/lsp/languages");

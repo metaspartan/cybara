@@ -11,6 +11,7 @@ import {
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { cybaraDir } from "../paths";
+import { findBunRuntime } from "../bun-runtime";
 import * as bundledTS from "./bundled-ts";
 import * as installer from "./installer";
 
@@ -171,7 +172,11 @@ export class LSPManager {
   private openDocuments = new Map<string, OpenDocumentState>();
 
   private getCommandsForConfigKey(configKey: string, serverConfig: LSPServerConfig): string[] {
-    return resolveLspCommandCandidates(configKey, serverConfig, installer.isInstalled("vtsls"));
+    return resolveLspCommandCandidates(
+      configKey,
+      serverConfig,
+      installer.isInstalled("vtsls") || installer.isPreinstalled("vtsls")
+    );
   }
 
   constructor(workspacePath: string) {
@@ -233,10 +238,19 @@ export class LSPManager {
 
     let lastError: unknown = null;
     for (const configuredCommand of commands) {
-      const command = installer.resolveManagedLSPCommand(configuredCommand);
+      const managedCommand = installer.resolveManagedLSPCommand(configuredCommand);
+      const preinstalledCommand = installer.resolvePreinstalledLSPCommand(configuredCommand);
+      const runtime = preinstalledCommand ? findBunRuntime() : null;
+      const command = preinstalledCommand && runtime ? runtime : managedCommand;
+      const args =
+        preinstalledCommand && runtime
+          ? [preinstalledCommand, ...(serverConfig.args || [])]
+          : serverConfig.args || [];
       try {
-        console.log(`[LSP Manager] Starting ${configKey} language server (${command})...`);
-        const client = new LSPClient(command, serverConfig.args || [], this.workspaceUri);
+        console.log(
+          `[LSP Manager] Starting ${configKey} language server (${configuredCommand})...`
+        );
+        const client = new LSPClient(command, args, this.workspaceUri);
 
         await client.start();
         await client.initialize();
@@ -248,7 +262,7 @@ export class LSPManager {
         });
 
         this.clients.set(configKey, client);
-        console.log(`[LSP Manager] ${configKey} server ready (${command})`);
+        console.log(`[LSP Manager] ${configKey} server ready (${configuredCommand})`);
         return client;
       } catch (err) {
         lastError = err;
@@ -672,6 +686,10 @@ export class LSPManager {
       return true;
     }
 
+    if (installer.isPreinstalled(language) && findBunRuntime()) {
+      return true;
+    }
+
     const config = this.config.lsp[language];
     if (!config || config.disabled) return false;
 
@@ -679,6 +697,7 @@ export class LSPManager {
       const checkCmd = process.platform === "win32" ? "where" : "which";
       const commands = this.getCommandsForConfigKey(language, config);
       for (const command of commands) {
+        if (installer.resolvePreinstalledLSPCommand(command) && findBunRuntime()) return true;
         const resolvedCommand = installer.resolveManagedLSPCommand(command);
         if (resolvedCommand !== command) return true;
         const result = Bun.spawnSync([checkCmd, resolvedCommand], {
@@ -743,6 +762,27 @@ export class LSPManager {
       languageId,
       servers,
     };
+  }
+
+  getRunningServers(): ActiveLspServerInfo[] {
+    return Array.from(this.clients.entries())
+      .filter(([, client]) => client.isInitialized)
+      .map(([key, client]) => {
+        const config = this.config.lsp[key];
+        return {
+          id: key,
+          name: key,
+          command: config ? this.getServerCommand(key) : key,
+          args: config?.args || [],
+          available: true,
+          bundled: this.isBundled(key) || installer.isPreinstalled(key),
+          primary: !Object.values(LANGUAGE_TO_SUPPLEMENTAL_CONFIGS).some((languages) =>
+            languages.includes(key)
+          ),
+          running: true,
+          initialized: client.isInitialized,
+        };
+      });
   }
 
   async shutdown(): Promise<void> {

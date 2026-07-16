@@ -51,6 +51,7 @@ describe("CLI TUI chat environment panel", () => {
         snapshot,
         tasks: [{ id: "task-1", title: "Refresh telemetry", status: "active" }],
         subagents: [{ id: "agent-1", label: "Chart reviewer", status: "running" }],
+        lspServers: [{ id: "vtsls", name: "TypeScript", command: "vtsls" }],
         colorScheme: "dark",
         variant: "sidebar",
         width: 40,
@@ -67,6 +68,9 @@ describe("CLI TUI chat environment panel", () => {
     expect(output).toContain("Dashboard.tsx");
     expect(output).toContain("Refresh telemetry");
     expect(output).toContain("Chart reviewer");
+    expect(output).toContain("LSP");
+    expect(output).toContain("TypeScript");
+    expect(output).toContain("vtsls");
   });
 
   test("renders the wide inspector in a contrasting light terminal surface", () => {

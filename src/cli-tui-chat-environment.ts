@@ -56,6 +56,12 @@ export interface TuiSubagentSummary {
   status: string;
 }
 
+export interface TuiLspSummary {
+  id: string;
+  name: string;
+  command: string;
+}
+
 export interface TuiEnvironmentSnapshot {
   contextUsage: TuiContextUsage | null;
   tokenUsage: TuiTokenUsage | null;
@@ -353,6 +359,18 @@ export function subagentsFromResponse(value: unknown): TuiSubagentSummary[] {
     return [
       { id: id || label, label: label || id, status: asString(subagent.status) || "unknown" },
     ];
+  });
+}
+
+export function lspServersFromResponse(value: unknown): TuiLspSummary[] {
+  if (!isRecord(value)) return [];
+  return arrayFrom(value.active).flatMap((server) => {
+    if (!isRecord(server) || server.initialized === false) return [];
+    const id = asString(server.id);
+    const name = asString(server.name) || id;
+    const command = asString(server.command) || name;
+    if (!id && !name) return [];
+    return [{ id: id || name, name: name || id, command }];
   });
 }
 

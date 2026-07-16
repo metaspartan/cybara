@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { canShareNearbySession } from "../../ui/src/hooks/useNearbyStatus";
 
 const root = join(import.meta.dir, "../..");
 
@@ -40,10 +41,40 @@ describe("nearby UI", () => {
     expect(source).toContain("Chat sent for approval on the other device");
     expect(source).toContain("Received chats");
     expect(source).toContain("nearbyApi.acceptTransfer");
-    expect(source).toContain(
-      "nearbyEnabled={Boolean(sessionId && nearbyStatus?.settings.enabled)}"
-    );
+    expect(source).toContain("nearbyEnabled={nearbySharingEnabled}");
+    expect(source).toContain("showNearbyShare && nearbySharingEnabled");
     expect(source).toContain("useNearbyStatus(Boolean(sessionId))");
+  });
+
+  test("share availability requires an active session and enabled Nearby settings", () => {
+    const status = {
+      settings: {
+        enabled: true,
+        displayName: "Cybara",
+        discoveryPort: 4271,
+        autoAdvertise: true,
+        autoAcceptPaired: false,
+      },
+      deviceId: "device-a",
+      fingerprint: "fingerprint-a",
+      localAddresses: [],
+      discoveryRunning: true,
+      discoveryMode: "mdns" as const,
+      fallbackDiscoveryActive: false,
+      discoveredPeers: [],
+      pairedPeers: [],
+      pairings: [],
+      incomingTransfers: [],
+    };
+    expect(canShareNearbySession("session-a", status)).toBe(true);
+    expect(canShareNearbySession("", status)).toBe(false);
+    expect(
+      canShareNearbySession("session-a", {
+        ...status,
+        settings: { ...status.settings, enabled: false },
+      })
+    ).toBe(false);
+    expect(canShareNearbySession("session-a", undefined)).toBe(false);
   });
 
   test("gateway settings separate runtime, connection, storage, telemetry, and nearby controls", () => {

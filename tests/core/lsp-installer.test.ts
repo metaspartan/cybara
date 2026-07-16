@@ -5,6 +5,8 @@ import { join } from "node:path";
 import {
   LSP_REGISTRY,
   managedLSPPaths,
+  getPreinstalledLSPPath,
+  resolvePreinstalledLSPCommand,
   resolveManagedLSPCommand,
   resolvePackageBinary,
 } from "../../src/core/lsp/installer";
@@ -27,6 +29,30 @@ describe("portable LSP installation", () => {
         join(packageRoot, "bin", "vtsls.js")
       );
       expect(resolvePackageBinary(root, "@vtsls/language-server", "missing")).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("resolves preinstalled language servers from packaged resources", () => {
+    const root = mkdtempSync(join(tmpdir(), "cybara-preinstalled-lsp-"));
+    const packageRoot = join(root, "node_modules", "@vtsls", "language-server");
+    try {
+      mkdirSync(join(packageRoot, "bin"), { recursive: true });
+      writeFileSync(
+        join(packageRoot, "package.json"),
+        JSON.stringify({ bin: { vtsls: "bin/vtsls.js" } })
+      );
+      writeFileSync(join(packageRoot, "bin", "vtsls.js"), "process.exit(0)");
+      const env = { CYBARA_RESOURCE_DIR: root };
+
+      expect(resolvePreinstalledLSPCommand("vtsls", env, "/missing", "/missing/cybara")).toBe(
+        join(packageRoot, "bin", "vtsls.js")
+      );
+      expect(getPreinstalledLSPPath("vtsls", env, "/missing", "/missing/cybara")).toBe(
+        join(packageRoot, "bin", "vtsls.js")
+      );
+      expect(resolvePreinstalledLSPCommand("unknown-lsp", env)).toBeNull();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

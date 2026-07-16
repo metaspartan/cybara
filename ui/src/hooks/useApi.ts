@@ -898,6 +898,12 @@ export interface LSPStatus {
   workspace: string;
   supported: string[];
   available: Record<string, LSPLanguageStatus>;
+  active?: Array<{
+    id: string;
+    name: string;
+    command: string;
+    initialized: boolean;
+  }>;
   diagnosticsCount: number;
 }
 
@@ -905,6 +911,7 @@ export function useLSPStatus() {
   return useQuery({
     queryKey: ["lsp", "status"],
     queryFn: () => fetchApi<LSPStatus>("/lsp/status"),
+    refetchInterval: 5000,
   });
 }
 
@@ -912,8 +919,9 @@ export interface LSPInstallStatus {
   language: string;
   displayName: string;
   description: string;
-  type: "bundled" | "binary" | "pip" | "go";
+  type: "bundled" | "binary" | "pip" | "go" | "gem" | "bun";
   installed: boolean;
+  preinstalled: boolean;
   available: boolean;
   path: string | null;
   requiresRuntime?: string;

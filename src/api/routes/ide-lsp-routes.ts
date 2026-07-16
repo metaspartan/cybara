@@ -64,6 +64,7 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
         workspace: process.cwd(),
         supported,
         available: availability,
+        active: manager.getRunningServers(),
         diagnosticsCount: manager.getAllDiagnostics().size,
       };
     } catch (err) {

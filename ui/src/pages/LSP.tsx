@@ -17,6 +17,7 @@ import {
   type LSPInstallStatus,
   useInstallLSP,
   useLSPInstallStatus,
+  useLSPStatus,
   useUninstallLSP,
 } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
@@ -53,6 +54,7 @@ interface LSPCardProps {
 function LSPCard({ lsp, onInstall, onUninstall, isInstalling, isUninstalling }: LSPCardProps) {
   const meta = LANGUAGE_META[lsp.language] || { color: "bg-gray-500/20 text-gray-400" };
   const isBundled = lsp.type === "bundled";
+  const isIncluded = isBundled || lsp.preinstalled;
   const isLoading = isInstalling || isUninstalling;
 
   return (
@@ -81,10 +83,10 @@ function LSPCard({ lsp, onInstall, onUninstall, isInstalling, isUninstalling }: 
                 <LoaderCircle className="w-3 h-3 animate-spin" />
                 Removing
               </Badge>
-            ) : isBundled ? (
+            ) : isIncluded ? (
               <Badge variant="success" className="flex gap-1 items-center">
                 <Package className="w-3 h-3" />
-                Bundled
+                Included
               </Badge>
             ) : lsp.installed ? (
               <Badge variant="success" className="flex gap-1 items-center">
@@ -124,8 +126,8 @@ function LSPCard({ lsp, onInstall, onUninstall, isInstalling, isUninstalling }: 
                   />
                 </div>
               </div>
-            ) : isBundled ? (
-              <span>Included in binary (no download needed)</span>
+            ) : isIncluded ? (
+              <span>Included with Cybara (no download needed)</span>
             ) : lsp.path ? (
               <span className="block truncate font-mono" title={lsp.path}>
                 {lsp.path}
@@ -140,7 +142,7 @@ function LSPCard({ lsp, onInstall, onUninstall, isInstalling, isUninstalling }: 
             )}
           </div>
 
-          {!isBundled && (
+          {!isIncluded && (
             <div className="flex gap-2">
               {lsp.installed ? (
                 <Button
@@ -187,6 +189,7 @@ function LSPCard({ lsp, onInstall, onUninstall, isInstalling, isUninstalling }: 
 
 export function LSP() {
   const { data, isLoading } = useLSPInstallStatus();
+  const { data: runtimeStatus } = useLSPStatus();
   const installLSP = useInstallLSP();
   const uninstallLSP = useUninstallLSP();
   const { addToast } = useUIStore();
@@ -227,8 +230,9 @@ export function LSP() {
 
   const lspList = data?.status || [];
 
-  const bundled = lspList.filter((l) => l.type === "bundled");
-  const downloadable = lspList.filter((l) => l.type !== "bundled");
+  const bundled = lspList.filter((l) => l.type === "bundled" || l.preinstalled);
+  const downloadable = lspList.filter((l) => l.type !== "bundled" && !l.preinstalled);
+  const activeServers = runtimeStatus?.active || [];
 
   return (
     <PageLayout
@@ -236,23 +240,38 @@ export function LSP() {
       subtitle="Manage language server installations for code intelligence"
     >
       <div className="space-y-6">
-        <Card className="border-blue-500/20 bg-blue-500/5">
+        <Card className="border-[var(--surface-border)] bg-[var(--surface-subtle)]">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0">
+              <div className="w-10 h-10 rounded-lg bg-[rgb(var(--accent-primary)/0.14)] flex items-center justify-center text-[rgb(var(--accent-primary))] flex-shrink-0">
                 <Code className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-white font-medium">Code Intelligence for Agents</h3>
-                <p className="text-sm text-gray-400 mt-1">
+                <h3 className="text-[var(--text-primary)] font-medium">Code Intelligence</h3>
+                <p className="text-sm text-[var(--text-muted)] mt-1">
                   Language servers provide diagnostics, go-to-definition, find references, and hover
-                  information. TypeScript/JavaScript are bundled in the binary. Other languages can
-                  be installed on-demand.
+                  information. Common web, YAML, shell, TypeScript, and JavaScript servers are
+                  included. Other languages can be installed on demand.
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
+
+        {activeServers.length > 0 ? (
+          <Card>
+            <CardContent className="flex flex-wrap items-center gap-2 p-4">
+              <span className="mr-1 text-sm font-medium text-[var(--text-primary)]">
+                Active now
+              </span>
+              {activeServers.map((server) => (
+                <Badge key={server.id} variant="success">
+                  {server.name}
+                </Badge>
+              ))}
+            </CardContent>
+          </Card>
+        ) : null}
 
         {isLoading ? (
           <div className="text-center py-12">
@@ -265,7 +284,7 @@ export function LSP() {
               <div>
                 <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                   <Package className="w-5 h-5 text-emerald-400" />
-                  Bundled (No Install Required)
+                  Included (No Install Required)
                 </h2>
                 <div className="grid gap-4 md:grid-cols-2">
                   {bundled.map((lsp) => (

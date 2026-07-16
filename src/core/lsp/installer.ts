@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import { gunzipSync } from "zlib";
 import { extractZipArchive } from "../archive";
 import { ensureBunRuntime, findBunRuntime } from "../bun-runtime";
@@ -138,6 +138,84 @@ export interface LSPInfo {
   installCommand?: string;
   requiresRuntime?: string;
   fileExtensions: string[];
+}
+
+interface PreinstalledLSPPackage {
+  packageName: string;
+  binaryName: string;
+}
+
+const PREINSTALLED_LSP_PACKAGES: Record<string, PreinstalledLSPPackage> = {
+  vtsls: { packageName: "@vtsls/language-server", binaryName: "vtsls" },
+  eslint: {
+    packageName: "vscode-langservers-extracted",
+    binaryName: "vscode-eslint-language-server",
+  },
+  html: {
+    packageName: "vscode-langservers-extracted",
+    binaryName: "vscode-html-language-server",
+  },
+  css: {
+    packageName: "vscode-langservers-extracted",
+    binaryName: "vscode-css-language-server",
+  },
+  json: {
+    packageName: "vscode-langservers-extracted",
+    binaryName: "vscode-json-language-server",
+  },
+  yaml: { packageName: "yaml-language-server", binaryName: "yaml-language-server" },
+  shellscript: { packageName: "bash-language-server", binaryName: "bash-language-server" },
+};
+
+function preinstalledPackageRoots(
+  env: NodeJS.ProcessEnv = process.env,
+  cwd = process.cwd(),
+  executablePath = process.execPath
+): string[] {
+  const resourceDir = env.CYBARA_RESOURCE_DIR?.trim();
+  return Array.from(
+    new Set(
+      [resourceDir, cwd, dirname(executablePath)]
+        .filter((value): value is string => !!value)
+        .map((value) => value.replace(/[\\/]$/, ""))
+    )
+  );
+}
+
+function preinstalledPackageForCommand(command: string): PreinstalledLSPPackage | null {
+  return (
+    Object.values(PREINSTALLED_LSP_PACKAGES).find((entry) => entry.binaryName === command) || null
+  );
+}
+
+export function resolvePreinstalledLSPCommand(
+  command: string,
+  env: NodeJS.ProcessEnv = process.env,
+  cwd = process.cwd(),
+  executablePath = process.execPath
+): string | null {
+  const entry = preinstalledPackageForCommand(command);
+  if (!entry) return null;
+  for (const root of preinstalledPackageRoots(env, cwd, executablePath)) {
+    const binaryPath = resolvePackageBinary(root, entry.packageName, entry.binaryName);
+    if (binaryPath) return binaryPath;
+  }
+  return null;
+}
+
+export function getPreinstalledLSPPath(
+  language: string,
+  env: NodeJS.ProcessEnv = process.env,
+  cwd = process.cwd(),
+  executablePath = process.execPath
+): string | null {
+  const entry = PREINSTALLED_LSP_PACKAGES[language];
+  if (!entry) return null;
+  return resolvePreinstalledLSPCommand(entry.binaryName, env, cwd, executablePath);
+}
+
+export function isPreinstalled(language: string): boolean {
+  return getPreinstalledLSPPath(language) !== null;
 }
 
 export const LSP_REGISTRY: Record<string, LSPInfo> = {
@@ -517,6 +595,7 @@ export async function isAvailable(language: string): Promise<boolean> {
   if (info.type === "bundled") return true;
 
   if (isInstalled(language)) return true;
+  if (isPreinstalled(language) && findBunRuntime()) return true;
 
   return Bun.which(info.binaryName) !== null;
 }
@@ -527,6 +606,7 @@ export interface LSPInstallStatus {
   description: string;
   type: "bundled" | "binary" | "pip" | "go" | "gem" | "bun";
   installed: boolean;
+  preinstalled: boolean;
   available: boolean;
   path: string | null;
   requiresRuntime?: string;
@@ -537,8 +617,9 @@ export async function getInstallStatus(): Promise<LSPInstallStatus[]> {
 
   for (const [lang, info] of Object.entries(LSP_REGISTRY)) {
     const installed = isInstalled(lang);
+    const preinstalled = isPreinstalled(lang);
     const available = await isAvailable(lang);
-    const path = getLSPPath(lang);
+    const path = getLSPPath(lang) || getPreinstalledLSPPath(lang);
 
     results.push({
       language: lang,
@@ -546,6 +627,7 @@ export async function getInstallStatus(): Promise<LSPInstallStatus[]> {
       description: info.description,
       type: info.type,
       installed,
+      preinstalled,
       available,
       path,
       requiresRuntime: info.type === "bun" ? undefined : info.requiresRuntime,

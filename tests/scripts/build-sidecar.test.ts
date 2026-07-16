@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import {
   copyFilePortable,
+  copyPreinstalledLSPRuntime,
   copyTransformersRuntime,
   findBundledWindowsPlaywrightRuntime,
   findOnnxRuntimeNativeDir,
@@ -150,6 +151,37 @@ describe("build-sidecar host target mapping", () => {
       expect(existsSync(join(dir, "@img", "colour", "package.json"))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("packages preinstalled language servers with their runtime dependencies", () => {
+    const root = mkdtempSync(join(tmpdir(), "cybara-lsp-source-test-"));
+    const target = mkdtempSync(join(tmpdir(), "cybara-lsp-target-test-"));
+    const serverRoot = join(root, "@vtsls", "language-server");
+    const dependencyRoot = join(root, "vscode-uri");
+    try {
+      mkdirSync(join(serverRoot, "bin"), { recursive: true });
+      mkdirSync(dependencyRoot, { recursive: true });
+      writeFileSync(
+        join(serverRoot, "package.json"),
+        JSON.stringify({
+          bin: { vtsls: "bin/vtsls.js" },
+          dependencies: { "vscode-uri": "3.1.0" },
+        })
+      );
+      writeFileSync(join(serverRoot, "bin", "vtsls.js"), "process.exit(0)");
+      writeFileSync(join(dependencyRoot, "package.json"), JSON.stringify({ version: "3.1.0" }));
+
+      copyPreinstalledLSPRuntime(target, root, ["@vtsls/language-server"]);
+
+      expect(existsSync(join(target, "@vtsls", "language-server", "bin", "vtsls.js"))).toBe(true);
+      expect(existsSync(join(target, "vscode-uri", "package.json"))).toBe(true);
+      expect(() => copyPreinstalledLSPRuntime(target, root, ["missing-lsp"])).toThrow(
+        "Required preinstalled LSP package is missing: missing-lsp"
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(target, { recursive: true, force: true });
     }
   });
 

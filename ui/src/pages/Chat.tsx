@@ -12,7 +12,7 @@ import {
   useUpdateSessionAgent,
   type LoadedChatSession,
 } from "@/hooks/useChat";
-import { useNearbyStatus } from "@/hooks/useNearbyStatus";
+import { canShareNearbySession, useNearbyStatus } from "@/hooks/useNearbyStatus";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import {
   APP_HOTKEY_EVENT,
@@ -237,6 +237,7 @@ export function Chat() {
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
   const [isStoppingSession, setIsStoppingSession] = useState(false);
   const { data: nearbyStatus } = useNearbyStatus(Boolean(sessionId));
+  const nearbySharingEnabled = canShareNearbySession(sessionId, nearbyStatus);
   const speechAudioRef = useRef<HTMLAudioElement | null>(null);
   const copiedMessageTimerRef = useRef<number | null>(null);
   const handleCopyMessage = useCallback(async (index: number, content: string) => {
@@ -2950,7 +2951,7 @@ export function Chat() {
         description="Choose the local folder this chat should use for file tools, git context, and workspace-aware prompts."
       />
       <NearbyShareModal
-        isOpen={showNearbyShare}
+        isOpen={showNearbyShare && nearbySharingEnabled}
         onClose={() => setShowNearbyShare(false)}
         sessionId={sessionId}
       />
@@ -2989,7 +2990,7 @@ export function Chat() {
             workspaceDir: effectiveWorkspaceDir,
           }}
           fileReviewActive={showWorkspacePanel && activeWorkspaceKind === "review"}
-          nearbyEnabled={Boolean(sessionId && nearbyStatus?.settings.enabled)}
+          nearbyEnabled={nearbySharingEnabled}
           sessionTitle={{
             sessionId,
             messages: typedMessages,
