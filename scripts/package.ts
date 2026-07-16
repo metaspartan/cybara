@@ -49,8 +49,7 @@ export async function runPackage(): Promise<void> {
   await $`bun build src/index.ts --outdir ${DIST_DIR} --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1 --external @huggingface/transformers --external kokoro-js --external playwright --external playwright-core --external onnxruntime-node --external onnxruntime-web`.quiet();
   console.log("   ✓ Server built");
 
-  const cliOutput = join(DIST_DIR, "cli.js");
-  await $`bun build src/cli/index.tsx --outfile ${cliOutput} --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1 --external @huggingface/transformers --external kokoro-js --external playwright --external playwright-core --external onnxruntime-node --external onnxruntime-web`.quiet();
+  await $`bun build src/cli/index.tsx --outdir ${DIST_DIR} --entry-naming cli.js --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1 --external @huggingface/transformers --external kokoro-js --external playwright --external playwright-core --external onnxruntime-node --external onnxruntime-web`.quiet();
   console.log("   ✓ CLI built");
 
   console.log("📋 Preparing static assets...");

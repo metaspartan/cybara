@@ -12,7 +12,7 @@
     "version:print": "bun run scripts/version.ts print",
     "version:sync": "bun run scripts/version.ts sync",
     "build": "bun build src/index.ts --outdir dist --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1 --external kokoro-js --external @huggingface/transformers",
-    "build:cli": "bun build src/cli/index.tsx --outfile dist/cli.js --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1",
+    "build:cli": "bun build src/cli/index.tsx --outdir dist --entry-naming cli.js --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1",
     "build:main": "bun build src/main.ts --outdir dist --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1",
     "start": "bun run dist/index.js",
     "cli": "bun run src/cli/index.tsx",

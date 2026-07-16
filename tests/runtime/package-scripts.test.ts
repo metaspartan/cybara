@@ -93,7 +93,8 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["build:all"]).toContain("bun run ui:build");
     expect(pkg.scripts?.["build:all"]).toContain("bun run build:cli");
     expect(pkg.scripts?.["build:all"]).toContain("bun run build:main");
-    expect(pkg.scripts?.["build:cli"]).toContain("--outfile dist/cli.js");
+    expect(pkg.scripts?.["build:cli"]).toContain("--outdir dist");
+    expect(pkg.scripts?.["build:cli"]).toContain("--entry-naming cli.js");
     expect(pkg.scripts?.["audit:ci"]).toContain("bun run audit:site");
     expect(pkg.scripts?.["build"]).not.toContain("--external @noble/hashes");
     expect(pkg.scripts?.["build:cli"]).not.toContain("--external @scure/bip39");
@@ -116,9 +117,7 @@ describe("package.json script wiring", () => {
       .find((line) => line.includes("bun build src/main.ts --compile"));
     expect(standaloneBuild).toContain("--external @huggingface/transformers");
     expect(standaloneBuild).not.toContain("--external tiny-secp256k1");
-    expect(readFileSync(PACKAGE_SCRIPT, "utf8")).toContain(
-      'const cliOutput = join(DIST_DIR, "cli.js")'
-    );
+    expect(packageScript).toContain("--outdir ${DIST_DIR} --entry-naming cli.js");
 
     expect(pkg.scripts?.["tauri:dev"]).toContain("bun run tauri:sidecar");
     expect(pkg.scripts?.["tauri:dev"]).toContain("bunx tauri dev");
