@@ -26,7 +26,8 @@ describe("desktop update settings", () => {
 
   test("stamps release sidecars with the source commit", () => {
     expect(buildScript).toContain("process.env.CYBARA_BUILD_COMMIT = buildCommit");
-    expect(buildScript).toContain("--env=CYBARA_BUILD_*");
+    expect(buildScript).toContain('const buildEnvironment = "--env=CYBARA_BUILD_*"');
+    expect(buildScript).toContain("${buildEnvironment}");
   });
 
   test("keeps native macOS update settings in parity", () => {

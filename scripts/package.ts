@@ -25,6 +25,7 @@ export async function runPackage(): Promise<void> {
     process.env.GITHUB_SHA?.trim() ||
     (await readGitCommit(process.cwd()));
   if (buildCommit) process.env.CYBARA_BUILD_COMMIT = buildCommit;
+  const buildEnvironment = "--env=CYBARA_BUILD_*";
   console.log("\n🚀 Cybara Packaging Script\n");
 
   console.log("📁 Cleaning release directory...");
@@ -67,7 +68,7 @@ export async function runPackage(): Promise<void> {
   const binaryPath = join(RELEASE_DIR, BINARY_NAME);
 
   try {
-    await $`bun build src/main.ts --compile --env=CYBARA_BUILD_* --outfile ${binaryPath} --target bun --external electron`;
+    await $`bun build src/main.ts --compile ${buildEnvironment} --outfile ${binaryPath} --target bun --external electron`;
     console.log(`   ✓ Binary compiled: ${binaryPath}`);
   } catch (error) {
     console.error("   ✗ Binary compilation failed:", error);

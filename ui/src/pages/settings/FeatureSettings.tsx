@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Select } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
 import { extractApiError, settingsApi } from "@/lib/api";
 import { useUIStore } from "@/stores/uiStore";
@@ -48,6 +49,7 @@ export function FeatureSettings() {
   const [sandboxNetwork, setSandboxNetwork] = useState<"allow" | "deny">("deny");
   const [sandboxRemoteUrl, setSandboxRemoteUrl] = useState("");
   const [sandboxRemoteApiKey, setSandboxRemoteApiKey] = useState("");
+  const [remoteSandboxEnabled, setRemoteSandboxEnabled] = useState(false);
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const [savingDangerousPolicy, setSavingDangerousPolicy] = useState(false);
   const [savingSandboxRuntime, setSavingSandboxRuntime] = useState(false);
@@ -139,6 +141,9 @@ export function FeatureSettings() {
         setSandboxRemoteUrl(typeof sandboxRaw?.remoteUrl === "string" ? sandboxRaw.remoteUrl : "");
         setSandboxRemoteApiKey(
           typeof sandboxRaw?.remoteApiKey === "string" ? sandboxRaw.remoteApiKey : ""
+        );
+        setRemoteSandboxEnabled(
+          typeof sandboxRaw?.remoteUrl === "string" && sandboxRaw.remoteUrl.trim().length > 0
         );
         if (sandboxResult.success && sandboxResult.data) {
           setSandboxStatus(sandboxResult.data as SandboxStatusView);
@@ -240,7 +245,7 @@ export function FeatureSettings() {
     network: "allow" | "deny";
     remoteUrl?: string;
     remoteApiKey?: string;
-  }) => {
+  }, successMessage?: string): Promise<boolean> => {
     const previous = {
       enabled: sandboxEnabled,
       provider: sandboxProvider,
@@ -275,8 +280,12 @@ export function FeatureSettings() {
           `Sandbox unavailable: ${refreshedStatus.reason || "No compatible provider on this machine"}`
         );
       } else {
-        addToast("success", next.enabled ? "Sandbox runtime enabled" : "Sandbox runtime disabled");
+        addToast(
+          "success",
+          successMessage ?? (next.enabled ? "Sandbox runtime enabled" : "Sandbox runtime disabled")
+        );
       }
+      return true;
     } catch {
       setSandboxEnabled(previous.enabled);
       setSandboxProvider(previous.provider);
@@ -284,19 +293,52 @@ export function FeatureSettings() {
       setSandboxRemoteUrl(previous.remoteUrl);
       setSandboxRemoteApiKey(previous.remoteApiKey);
       addToast("error", "Failed to update sandbox runtime");
+      return false;
     } finally {
       setSavingSandboxRuntime(false);
     }
   };
 
   const saveRemoteSandbox = async (): Promise<void> => {
-    await updateSandboxRuntime({
-      enabled: sandboxEnabled,
-      provider: sandboxProvider,
-      network: sandboxNetwork,
-      remoteUrl: sandboxRemoteUrl.trim(),
-      remoteApiKey: sandboxRemoteApiKey.trim(),
-    });
+    const remoteUrl = sandboxRemoteUrl.trim();
+    if (!remoteUrl) {
+      addToast("error", "Enter a remote sandbox URL");
+      return;
+    }
+    await updateSandboxRuntime(
+      {
+        enabled: sandboxEnabled,
+        provider: sandboxProvider,
+        network: sandboxNetwork,
+        remoteUrl,
+        remoteApiKey: sandboxRemoteApiKey.trim(),
+      },
+      "Remote sandbox saved"
+    );
+  };
+
+  const toggleRemoteSandbox = async (enabled: boolean): Promise<void> => {
+    if (enabled) {
+      setRemoteSandboxEnabled(true);
+      return;
+    }
+    setRemoteSandboxEnabled(false);
+    const saved = await updateSandboxRuntime(
+      {
+        enabled: sandboxEnabled,
+        provider: sandboxProvider,
+        network: sandboxNetwork,
+        remoteUrl: "",
+        remoteApiKey: "",
+      },
+      "Remote sandbox disabled"
+    );
+    if (!saved) {
+      setRemoteSandboxEnabled(true);
+      return;
+    }
+    setSandboxRemoteUrl("");
+    setSandboxRemoteApiKey("");
   };
 
   return (

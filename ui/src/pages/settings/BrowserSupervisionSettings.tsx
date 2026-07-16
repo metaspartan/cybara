@@ -21,6 +21,12 @@ const DEFAULT_SETTINGS: Settings = {
   remoteToken: "",
 };
 
+const DOWNLOAD_POLICY_OPTIONS: Array<{ value: BrowserDownloadPolicy; label: string }> = [
+  { value: "ask", label: "Ask before downloading" },
+  { value: "allow", label: "Always allow" },
+  { value: "deny", label: "Block downloads" },
+];
+
 export function BrowserSupervisionSettings() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [status, setStatus] = useState<BrowserSupervisionStatus | null>(null);
@@ -86,15 +92,12 @@ export function BrowserSupervisionSettings() {
         <Select
           label="Download policy"
           value={settings.downloadPolicy}
+          options={DOWNLOAD_POLICY_OPTIONS}
           disabled={loading || saving}
           onChange={(value) =>
             setSettings({ ...settings, downloadPolicy: value as BrowserDownloadPolicy })
           }
-        >
-          <option value="ask">Ask</option>
-          <option value="allow">Allow</option>
-          <option value="deny">Deny</option>
-        </Select>
+        />
         <Switch
           label="Remote browser routing"
           description="Connect to a trusted CDP browser instead of launching one on this device"

@@ -87,7 +87,7 @@ jobs:
         env:
           CYBARA_BUILD_COMMIT: ${{ github.sha }}
         run: |
-          bun build src/main.ts --compile --env=CYBARA_BUILD_* --target=bun-${{ matrix.target }} --outfile=${{ matrix.artifact }} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers
+          bun build src/main.ts --compile '--env=CYBARA_BUILD_*' --target=bun-${{ matrix.target }} --outfile=${{ matrix.artifact }} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers
       - name: Upload CLI artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
