@@ -122,4 +122,46 @@ describe("provider model discovery", () => {
     ]);
     expect(providerManager.getModels(provider.id)[0]?.context_window).toBe(372000);
   });
+
+  test("persists Kimi coding-plan model capabilities from the authenticated endpoint", async () => {
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Code Discovery Test",
+      access_token: "kimi-oauth-token",
+    });
+    createdProviderIds.push(provider.id);
+    let headers = new Headers();
+
+    const result = await discoverProviderModels(provider.id, {
+      request: async (_input, init) => {
+        headers = new Headers(init?.headers);
+        return Response.json({
+          data: [
+            {
+              id: "k3",
+              display_name: "Kimi K3",
+              context_length: 1_048_576,
+              supports_reasoning: true,
+              supports_image_in: true,
+              supports_video_in: false,
+              supports_tool_use: true,
+              think_efforts: { support: true, valid_efforts: ["max"], default_effort: "max" },
+            },
+          ],
+        });
+      },
+      discoverCatalog: async () => [],
+    });
+
+    expect(result.source).toBe("endpoint");
+    expect(headers.get("Authorization")).toBe("Bearer kimi-oauth-token");
+    expect(headers.get("User-Agent")).toMatch(/^Cybara\//);
+    expect(headers.get("X-Msh-Platform")).toBe("kimi_code_cli");
+    const discovered = providerManager.getModels(provider.id)[0];
+    expect(discovered?.model_id).toBe("k3");
+    expect(discovered?.model_name).toBe("Kimi K3");
+    expect(discovered?.context_window).toBe(1_048_576);
+    expect(Boolean(discovered?.reasoning)).toBe(true);
+    expect(discovered?.input_types).toBe('["text","image"]');
+  });
 });

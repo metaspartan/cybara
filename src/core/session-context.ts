@@ -533,12 +533,25 @@ export function getContextWindow(model?: string): number {
 
   try {
     const dbModel = tables.providerModels.getByModelId(model);
-    if (dbModel?.context_window && dbModel.context_window > 0) {
+    const dbModelIsGenericFallback =
+      dbModel?.model_name?.trim().toLowerCase() === dbModel?.model_id?.trim().toLowerCase() &&
+      dbModel?.context_window === 128000 &&
+      dbModel?.max_tokens === 8192;
+    if (dbModel?.context_window && dbModel.context_window > 0 && !dbModelIsGenericFallback) {
       return dbModel.context_window;
     }
     if (model !== modelLower) {
       const dbModelLower = tables.providerModels.getByModelId(modelLower);
-      if (dbModelLower?.context_window && dbModelLower.context_window > 0) {
+      const dbModelLowerIsGenericFallback =
+        dbModelLower?.model_name?.trim().toLowerCase() ===
+          dbModelLower?.model_id?.trim().toLowerCase() &&
+        dbModelLower?.context_window === 128000 &&
+        dbModelLower?.max_tokens === 8192;
+      if (
+        dbModelLower?.context_window &&
+        dbModelLower.context_window > 0 &&
+        !dbModelLowerIsGenericFallback
+      ) {
         return dbModelLower.context_window;
       }
     }
@@ -564,6 +577,8 @@ export function getContextWindow(model?: string): number {
     { pattern: "gpt-4", tokens: 128_000 },
     { pattern: "o1", tokens: 200_000 },
     { pattern: "o3", tokens: 200_000 },
+    { pattern: "kimi-code-oauth/k3", tokens: 1_048_576 },
+    { pattern: "kimi-code/k3", tokens: 1_048_576 },
     { pattern: "kimi-for-coding", tokens: 262_144 },
     { pattern: "kimi-code", tokens: 262_144 },
     { pattern: "kimi", tokens: 256_000 },

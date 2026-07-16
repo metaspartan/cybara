@@ -39,7 +39,8 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("longcat")).toBe("LongCat-2.0");
     expect(getDefaultModel("github_copilot")).toBe("gpt-5.5");
     expect(getDefaultModel("github-copilot")).toBe("gpt-5.5");
-    expect(getDefaultModel("kimi-coding")).toBe("kimi-for-coding");
+    expect(getDefaultModel("kimi-coding")).toBe("k3");
+    expect(getDefaultModel("kimi-code-oauth")).toBe("k3");
     expect(getDefaultModel("qianfan")).toBe("deepseek-v3.2");
     expect(getDefaultModel("xai")).toBe("grok-4.3");
     expect(getDefaultModel("xai-oauth")).toBe("grok-build");
@@ -65,6 +66,7 @@ describe("Provider model defaults and API-family parity", () => {
     expect(resolveProviderType("opencode")).toBe("opencode_zen");
     expect(resolveProviderType("zai")).toBe("z.ai");
     expect(resolveProviderType("kimi-coding")).toBe("kimi-code");
+    expect(resolveProviderType("kimi-oauth")).toBe("kimi-code-oauth");
     expect(resolveProviderType("grok-oauth")).toBe("xai-oauth");
     expect(resolveProviderType("grok-build")).toBe("xai-oauth");
     expect(resolveProviderType("bailian-token-plan")).toBe("qwen-token-plan");
@@ -149,6 +151,16 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers.devin.oauthFlow).toBeUndefined();
     expect(providers.devin.models.length).toBe(59);
     expect(providers["gitlab-duo"].models.length).toBe(10);
+    expect(providers["kimi-code-oauth"].oauthFlow).toBe("device_code");
+    expect(providers["kimi-code-oauth"].oauthConfig.clientId).toBe(
+      "17e5f671-d194-4dfb-9706-5516cb48c098"
+    );
+    expect(providers["kimi-code-oauth"].models.map((model) => model.id)).toEqual([
+      "k3",
+      "kimi-for-coding",
+      "kimi-for-coding-highspeed",
+    ]);
+    expect(providers["kimi-code-oauth"].models[0]?.context).toBe(1_048_576);
     expect(providers.meta.models.some((model) => model.id === "muse-spark-1.1")).toBe(true);
     expect(providers.ds4.models.some((model) => model.id === "deepseek-v4-flash")).toBe(true);
     expect(providers.inferrs.models.some((model) => model.id === "google/gemma-4-E2B-it")).toBe(
@@ -449,6 +461,36 @@ describe("Provider model defaults and API-family parity", () => {
     const modelIds = providerManager.getModels(providerId).map((model) => model.model_id);
     expect(modelIds).toContain("gemini-3.1-pro-preview");
     expect(modelIds).toContain("gemini-3-pro-preview");
+
+    db.query("DELETE FROM provider_models WHERE provider_id = ?").run(providerId);
+    tables.providers.delete(providerId);
+  });
+
+  test("replaces generic cached K3 metadata with the current catalog limits", () => {
+    const providerId = `kimi-cache-${crypto.randomUUID()}`;
+    tables.providers.create({
+      id: providerId,
+      provider: "kimi-code-oauth",
+      name: "Kimi Cache Test",
+      base_url: providers["kimi-code-oauth"].baseUrl,
+      is_default: false,
+    });
+    tables.providerModels.upsert({
+      id: `${providerId}-fallback`,
+      provider_id: providerId,
+      model_id: "k3",
+      model_name: "k3",
+      context_window: 128000,
+      max_tokens: 8192,
+      reasoning: false,
+      input_types: ["text"],
+    });
+
+    const model = providerManager.getModels(providerId).find((entry) => entry.model_id === "k3");
+    expect(model?.model_name).toBe("Kimi K3");
+    expect(model?.context_window).toBe(1_048_576);
+    expect(model?.max_tokens).toBe(32_768);
+    expect(Boolean(model?.reasoning)).toBe(true);
 
     db.query("DELETE FROM provider_models WHERE provider_id = ?").run(providerId);
     tables.providers.delete(providerId);

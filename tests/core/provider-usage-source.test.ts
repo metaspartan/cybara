@@ -327,6 +327,24 @@ describe("parseKimiUsageResponse", () => {
     expect(result?.fiveHour?.usedPercent).toBe(20);
     expect(parseKimiUsageResponse({ data: [{ name: "unknown" }] }, 1)).toBeNull();
   });
+
+  test("maps current minute-based Kimi coding-plan limit windows", () => {
+    const result = parseKimiUsageResponse(
+      {
+        usage: { used: 120, limit: 1000 },
+        limits: [
+          {
+            detail: { used: 22, limit: 100 },
+            window: { duration: 300, timeUnit: "MINUTE" },
+          },
+        ],
+      },
+      902
+    );
+
+    expect(result?.weekly?.usedPercent).toBe(12);
+    expect(result?.fiveHour?.usedPercent).toBe(22);
+  });
 });
 
 describe("parseGrokUsageResponse", () => {

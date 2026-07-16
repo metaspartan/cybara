@@ -30,6 +30,9 @@ describe("openAICompatReasoningParams (per-provider shapes)", () => {
   test("default OpenAI-style reasoning_effort", () => {
     expect(openAICompatReasoningParams("openai", "high")).toEqual({ reasoning_effort: "high" });
     expect(openAICompatReasoningParams("xai", "low")).toEqual({ reasoning_effort: "low" });
+    expect(openAICompatReasoningParams("kimi-code-oauth", "max", "k3")).toEqual({
+      reasoning_effort: "max",
+    });
   });
 
   test("MiniMax M3 omits explicit reasoning effort", () => {

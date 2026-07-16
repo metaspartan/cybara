@@ -112,6 +112,12 @@ describe("reasoning level support matrix", () => {
     expect(supportedReasoningEfforts("minimax-portal", "minimax-m3")).toEqual([]);
   });
 
+  test("Kimi K3 uses the current max-only reasoning contract", () => {
+    expect(supportedReasoningEfforts("kimi-code", "k3")).toEqual(["max"]);
+    expect(supportedReasoningEfforts("kimi-code-oauth", "k3")).toEqual(["max"]);
+    expect(coerceReasoningEffort("high", "kimi-code-oauth", "k3")).toBe("max");
+  });
+
   test("unknown openai model gets low/medium/high", () => {
     expect(supportedReasoningEfforts("openai", "o3-pro")).toEqual(["low", "medium", "high"]);
   });

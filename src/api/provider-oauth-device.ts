@@ -6,6 +6,7 @@ import {
   startMiniMaxPortalOAuth,
 } from "./provider-oauth-minimax";
 import { pollCursorOAuth, startCursorOAuth } from "./provider-oauth-cursor";
+import { kimiCodeIdentityHeaders } from "../core/providers/kimi-code";
 
 interface DeviceOAuthConfig {
   clientId?: string;
@@ -34,6 +35,7 @@ function deviceOAuthHeaders(providerType: ProviderType): Record<string, string> 
           "x-grok-client-version": appVersion,
         }
       : {}),
+    ...(providerType === "kimi-code-oauth" ? kimiCodeIdentityHeaders() : {}),
   };
 }
 
@@ -52,6 +54,17 @@ function isTrustedXaiOAuthEndpoint(endpoint: string): boolean {
 function validateOAuthEndpoint(providerType: string, endpoint: string, label: string): string {
   if (providerType === "xai-oauth" && !isTrustedXaiOAuthEndpoint(endpoint)) {
     throw new Error(`Validation error: xAI OAuth discovery returned an untrusted ${label}`);
+  }
+  if (providerType === "kimi-code-oauth") {
+    try {
+      const parsed = new URL(endpoint);
+      const trustedOrigins = label.includes("verification URI")
+        ? new Set(["https://auth.kimi.com", "https://www.kimi.com"])
+        : new Set(["https://auth.kimi.com"]);
+      if (!trustedOrigins.has(parsed.origin)) throw new Error();
+    } catch {
+      throw new Error(`Validation error: Kimi OAuth returned an untrusted ${label}`);
+    }
   }
   return endpoint;
 }
@@ -143,7 +156,7 @@ export async function startProviderDeviceCodeOAuth(
     headers: deviceOAuthHeaders(resolvedProviderType),
     body: new URLSearchParams({
       client_id: oauthConfig.clientId,
-      scope: oauthConfig.scope || "",
+      ...(oauthConfig.scope ? { scope: oauthConfig.scope } : {}),
       ...(resolvedProviderType === "xai-oauth" ? { referrer: "grok-build" } : {}),
     }),
   });
@@ -160,11 +173,6 @@ export async function startProviderDeviceCodeOAuth(
     expires_in: number;
     interval: number;
   };
-  const verificationUri = validateOAuthEndpoint(
-    resolvedProviderType,
-    json.verification_uri,
-    "device verification URI"
-  );
   const verificationUriComplete =
     typeof json.verification_uri_complete === "string" && json.verification_uri_complete.trim()
       ? validateOAuthEndpoint(
@@ -173,6 +181,13 @@ export async function startProviderDeviceCodeOAuth(
           "complete device verification URI"
         )
       : undefined;
+  const verificationUri = validateOAuthEndpoint(
+    resolvedProviderType,
+    typeof json.verification_uri === "string" && json.verification_uri.trim()
+      ? json.verification_uri
+      : verificationUriComplete || "",
+    "device verification URI"
+  );
 
   return {
     device_code: json.device_code,
@@ -215,11 +230,16 @@ export async function pollProviderDeviceCodeOAuth(body: unknown): Promise<Record
 
   if (res.ok && typeof json.access_token === "string") {
     const refreshToken = typeof json.refresh_token === "string" ? json.refresh_token : undefined;
-    if (resolvedProviderType === "xai-oauth" && !refreshToken) {
+    if (
+      (resolvedProviderType === "xai-oauth" || resolvedProviderType === "kimi-code-oauth") &&
+      !refreshToken
+    ) {
       return {
         status: "error",
         error:
-          "xAI OAuth did not return a refresh token. Re-run login; if it keeps happening, xAI rejected offline_access for this OAuth client.",
+          resolvedProviderType === "xai-oauth"
+            ? "xAI OAuth did not return a refresh token. Re-run login; if it keeps happening, xAI rejected offline_access for this OAuth client."
+            : "Kimi OAuth did not return a refresh token. Re-run login and authorize the coding-plan account again.",
       };
     }
     const expiresIn =

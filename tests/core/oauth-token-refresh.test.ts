@@ -302,4 +302,41 @@ describe("OAuth token refresh (openai-codex)", () => {
     expect(refreshed?.access_token).toBe("fresh-minimax-token");
     expect(refreshed?.refresh_token).toBe("fresh-minimax-refresh");
   });
+
+  test("refreshes Kimi coding-plan tokens with stable device identity", async () => {
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Code OAuth Test",
+      access_token: "stale-kimi-token",
+      refresh_token: "kimi-refresh",
+      expires_at: Date.now() - 1000,
+    });
+    createdProviderIds.push(provider.id);
+    let request: RequestInit | undefined;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("https://auth.kimi.com/api/oauth/token");
+      request = init;
+      return Response.json({
+        access_token: "fresh-kimi-token",
+        refresh_token: "fresh-kimi-refresh",
+        expires_in: 3600,
+      });
+    }) as typeof fetch;
+
+    const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
+      providerManager.getWithCredentials(provider.id)
+    );
+    const body = new URLSearchParams(String(request?.body || ""));
+    const headers = new Headers(request?.headers);
+
+    expect(body.get("grant_type")).toBe("refresh_token");
+    expect(body.get("refresh_token")).toBe("kimi-refresh");
+    expect(body.get("client_id")).toBe("17e5f671-d194-4dfb-9706-5516cb48c098");
+    expect(body.has("scope")).toBe(false);
+    expect(headers.get("User-Agent")).toMatch(/^Cybara\//);
+    expect(headers.get("X-Msh-Platform")).toBe("kimi_code_cli");
+    expect(headers.get("X-Msh-Device-Id")).toMatch(/^[0-9a-f-]{36}$/);
+    expect(refreshed?.access_token).toBe("fresh-kimi-token");
+    expect(refreshed?.refresh_token).toBe("fresh-kimi-refresh");
+  });
 });
