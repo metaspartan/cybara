@@ -18,13 +18,13 @@ const exportFormats = new Set<ResearchExportFormat>([
 ]);
 
 export function readLabSettings(value: unknown): LabSettings {
-  const record = value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
   const format = record.defaultExportFormat;
   return {
-    enabled:
-      typeof record.enabled === "boolean" ? record.enabled : defaultLabSettings.enabled,
+    enabled: typeof record.enabled === "boolean" ? record.enabled : defaultLabSettings.enabled,
     goldenTurnsEnabled:
       typeof record.goldenTurnsEnabled === "boolean"
         ? record.goldenTurnsEnabled

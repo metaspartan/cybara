@@ -11,15 +11,7 @@ import {
   XCircle,
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import type {
   CybaraMobileApi,
   MobileEvalGolden,
@@ -45,21 +37,18 @@ const defaultLabSettings: MobileLabSettings = {
 };
 
 function readLabSettings(value: unknown): MobileLabSettings {
-  const record = value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
   return {
     enabled: typeof record.enabled === "boolean" ? record.enabled : true,
     goldenTurnsEnabled:
       typeof record.goldenTurnsEnabled === "boolean" ? record.goldenTurnsEnabled : true,
     trajectoryCaptureEnabled:
-      typeof record.trajectoryCaptureEnabled === "boolean"
-        ? record.trajectoryCaptureEnabled
-        : true,
+      typeof record.trajectoryCaptureEnabled === "boolean" ? record.trajectoryCaptureEnabled : true,
     sanitizeExportsByDefault:
-      typeof record.sanitizeExportsByDefault === "boolean"
-        ? record.sanitizeExportsByDefault
-        : true,
+      typeof record.sanitizeExportsByDefault === "boolean" ? record.sanitizeExportsByDefault : true,
   };
 }
 
@@ -223,7 +212,12 @@ export function MobileEvalsPanel({
 
   return (
     <View style={styles.section}>
-      <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View
+        style={[
+          styles.settingsCard,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
+      >
         <Text style={[styles.title, { color: colors.text }]}>Lab settings</Text>
         {[
           {
@@ -255,9 +249,7 @@ export function MobileEvalsPanel({
             <Switch
               value={labSettings[item.key]}
               onValueChange={(value) => void updateLabSettings({ [item.key]: value })}
-              disabled={
-                settingsSaving || (item.key !== "enabled" && !labSettings.enabled)
-              }
+              disabled={settingsSaving || (item.key !== "enabled" && !labSettings.enabled)}
               trackColor={{ false: colors.inset, true: accentColor }}
             />
           </View>
@@ -270,129 +262,132 @@ export function MobileEvalsPanel({
         />
       ) : (
         <>
-      <View style={styles.statsGrid}>
-        <View
-          style={[styles.stat, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        >
-          <Database color={accentColor} size={16} />
-          <Text style={[styles.statValue, { color: colors.text }]}>
-            {researchStats?.total ?? 0}
-          </Text>
-          <Text style={[styles.statLabel, { color: colors.textMuted }]}>Traces</Text>
-        </View>
-        <View
-          style={[styles.stat, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        >
-          <FlaskConical color={accentColor} size={16} />
-          <Text style={[styles.statValue, { color: colors.text }]}>
-            {researchStats?.reasoningTraces ?? 0}
-          </Text>
-          <Text style={[styles.statLabel, { color: colors.textMuted }]}>Reasoning</Text>
-        </View>
-      </View>
-      <View style={styles.header}>
-        <View style={styles.headerCopy}>
-          <Text style={[styles.title, { color: colors.text }]}>Golden tests</Text>
-          <Text style={[styles.detail, { color: colors.textDim }]}>
-            Replay known-good chat turns after changing models, prompts, or tools.
-          </Text>
-        </View>
-        <View style={styles.actions}>
-          <Pressable
-            accessibilityLabel="Copy conversational training JSONL"
-            onPress={copyTrainingJsonl}
-            style={[styles.iconButton, { backgroundColor: colors.inset }]}
-          >
-            <Database color={colors.textMuted} size={17} />
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Copy replayable eval suite"
-            onPress={copySuite}
-            style={[styles.iconButton, { backgroundColor: colors.inset }]}
-          >
-            <FileJson color={colors.textMuted} size={17} />
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Copy redacted eval JSONL"
-            onPress={copyJsonl}
-            style={[styles.iconButton, { backgroundColor: colors.inset }]}
-          >
-            <ClipboardCopy color={colors.textMuted} size={17} />
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Import eval suite from clipboard"
-            onPress={importClipboard}
-            style={[styles.iconButton, { backgroundColor: colors.inset }]}
-          >
-            <Upload color={colors.textMuted} size={17} />
-          </Pressable>
-        </View>
-      </View>
-      {goldens.length === 0 ? (
-        <EmptyState
-          label="No golden tests"
-          detail="Save a completed assistant turn from chat to create one."
-        />
-      ) : (
-        goldens.map((golden) => {
-          const run = latestRuns.get(golden.id);
-          const passing = run?.status === "passed";
-          return (
+          <View style={styles.statsGrid}>
             <View
-              key={golden.id}
-              style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}
+              style={[styles.stat, { backgroundColor: colors.surface, borderColor: colors.border }]}
             >
-              <View style={styles.row}>
-                <FlaskConical color={accentColor} size={17} />
-                <View style={styles.copy}>
-                  <Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>
-                    {golden.name}
-                  </Text>
-                  <Text numberOfLines={2} style={[styles.prompt, { color: colors.textDim }]}>
-                    {golden.baseline.request.userMessage.content}
-                  </Text>
-                </View>
-                {run ? (
-                  passing ? (
-                    <CheckCircle2 color={colors.green} size={17} />
-                  ) : (
-                    <XCircle color={colors.amber} size={17} />
-                  )
-                ) : null}
-              </View>
-              <View style={styles.footer}>
-                <Text style={[styles.meta, { color: colors.textMuted }]}>
-                  {golden.baseline.model || "Current model"} ·{" "}
-                  {golden.baseline.structure.tools.length} tools
-                  {run?.score !== null && run?.score !== undefined ? ` · ${run.score}%` : ""}
-                </Text>
-                <View style={styles.actions}>
-                  <Pressable
-                    accessibilityLabel={`Replay ${golden.name}`}
-                    disabled={busyId !== null}
-                    onPress={() => void replay(golden)}
-                    style={[styles.iconButton, { backgroundColor: colors.inset }]}
-                  >
-                    {busyId === golden.id ? (
-                      <ActivityIndicator color={accentColor} size="small" />
-                    ) : (
-                      <Play color={colors.textMuted} size={16} />
-                    )}
-                  </Pressable>
-                  <Pressable
-                    accessibilityLabel={`Delete ${golden.name}`}
-                    disabled={busyId !== null}
-                    onPress={() => remove(golden)}
-                    style={[styles.iconButton, { backgroundColor: colors.inset }]}
-                  >
-                    <Trash2 color={colors.textMuted} size={16} />
-                  </Pressable>
-                </View>
-              </View>
+              <Database color={accentColor} size={16} />
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {researchStats?.total ?? 0}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.textMuted }]}>Traces</Text>
             </View>
-          );
-        })
-      )}
+            <View
+              style={[styles.stat, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <FlaskConical color={accentColor} size={16} />
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {researchStats?.reasoningTraces ?? 0}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.textMuted }]}>Reasoning</Text>
+            </View>
+          </View>
+          <View style={styles.header}>
+            <View style={styles.headerCopy}>
+              <Text style={[styles.title, { color: colors.text }]}>Golden tests</Text>
+              <Text style={[styles.detail, { color: colors.textDim }]}>
+                Replay known-good chat turns after changing models, prompts, or tools.
+              </Text>
+            </View>
+            <View style={styles.actions}>
+              <Pressable
+                accessibilityLabel="Copy conversational training JSONL"
+                onPress={copyTrainingJsonl}
+                style={[styles.iconButton, { backgroundColor: colors.inset }]}
+              >
+                <Database color={colors.textMuted} size={17} />
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Copy replayable eval suite"
+                onPress={copySuite}
+                style={[styles.iconButton, { backgroundColor: colors.inset }]}
+              >
+                <FileJson color={colors.textMuted} size={17} />
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Copy redacted eval JSONL"
+                onPress={copyJsonl}
+                style={[styles.iconButton, { backgroundColor: colors.inset }]}
+              >
+                <ClipboardCopy color={colors.textMuted} size={17} />
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Import eval suite from clipboard"
+                onPress={importClipboard}
+                style={[styles.iconButton, { backgroundColor: colors.inset }]}
+              >
+                <Upload color={colors.textMuted} size={17} />
+              </Pressable>
+            </View>
+          </View>
+          {goldens.length === 0 ? (
+            <EmptyState
+              label="No golden tests"
+              detail="Save a completed assistant turn from chat to create one."
+            />
+          ) : (
+            goldens.map((golden) => {
+              const run = latestRuns.get(golden.id);
+              const passing = run?.status === "passed";
+              return (
+                <View
+                  key={golden.id}
+                  style={[
+                    styles.card,
+                    { borderColor: colors.border, backgroundColor: colors.surface },
+                  ]}
+                >
+                  <View style={styles.row}>
+                    <FlaskConical color={accentColor} size={17} />
+                    <View style={styles.copy}>
+                      <Text numberOfLines={1} style={[styles.name, { color: colors.text }]}>
+                        {golden.name}
+                      </Text>
+                      <Text numberOfLines={2} style={[styles.prompt, { color: colors.textDim }]}>
+                        {golden.baseline.request.userMessage.content}
+                      </Text>
+                    </View>
+                    {run ? (
+                      passing ? (
+                        <CheckCircle2 color={colors.green} size={17} />
+                      ) : (
+                        <XCircle color={colors.amber} size={17} />
+                      )
+                    ) : null}
+                  </View>
+                  <View style={styles.footer}>
+                    <Text style={[styles.meta, { color: colors.textMuted }]}>
+                      {golden.baseline.model || "Current model"} ·{" "}
+                      {golden.baseline.structure.tools.length} tools
+                      {run?.score !== null && run?.score !== undefined ? ` · ${run.score}%` : ""}
+                    </Text>
+                    <View style={styles.actions}>
+                      <Pressable
+                        accessibilityLabel={`Replay ${golden.name}`}
+                        disabled={busyId !== null}
+                        onPress={() => void replay(golden)}
+                        style={[styles.iconButton, { backgroundColor: colors.inset }]}
+                      >
+                        {busyId === golden.id ? (
+                          <ActivityIndicator color={accentColor} size="small" />
+                        ) : (
+                          <Play color={colors.textMuted} size={16} />
+                        )}
+                      </Pressable>
+                      <Pressable
+                        accessibilityLabel={`Delete ${golden.name}`}
+                        disabled={busyId !== null}
+                        onPress={() => remove(golden)}
+                        style={[styles.iconButton, { backgroundColor: colors.inset }]}
+                      >
+                        <Trash2 color={colors.textMuted} size={16} />
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              );
+            })
+          )}
         </>
       )}
     </View>

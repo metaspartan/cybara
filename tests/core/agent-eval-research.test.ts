@@ -156,12 +156,40 @@ describe("research trajectory datasets", () => {
     });
   });
 
+  test("marks only consistently observed tool arguments as required", () => {
+    const value = trajectory();
+    const firstCall = value.response.tool_calls?.[0];
+    if (!firstCall) throw new Error("Missing fixture tool call");
+    value.response.tool_calls = [
+      firstCall,
+      {
+        ...firstCall,
+        id: "tool-2",
+        args: { path: "/private/workspace/other.txt", line: 4 },
+      },
+    ];
+    const exported = exportResearchTraces([value], {
+      format: "trl_sft",
+      sanitize: false,
+    });
+    const record = JSON.parse(exported.content) as {
+      tools: Array<{
+        function: { parameters: { required: string[]; properties: Record<string, unknown> } };
+      }>;
+    };
+
+    expect(record.tools[0]?.function.parameters.required).toEqual(["path"]);
+    expect(record.tools[0]?.function.parameters.properties).toHaveProperty("line");
+  });
+
   test("exports one chat in Hugging Face session trace format", () => {
     const exported = exportResearchTraces([trajectory()], {
       format: "hf_session_trace",
       sanitize: false,
     });
-    const lines = exported.content.split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+    const lines = exported.content
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
 
     expect(lines[0]).toMatchObject({ type: "session", harness: "cybara", id: "session-research" });
     expect(lines[1]).toMatchObject({ type: "message", message: { role: "user" } });
@@ -246,5 +274,6 @@ describe("research trajectory datasets", () => {
     expect(card.content).toContain("research-model");
     expect(card.content).toContain("redaction was enabled");
     expect(card.content).toContain("teacher logits are not inferred");
+    expect(card.content).toContain("does not fabricate preference pairs");
   });
 });

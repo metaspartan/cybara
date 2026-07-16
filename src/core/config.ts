@@ -627,8 +627,7 @@ function normalizeLabExportFormat(value: unknown): LabExportFormat {
 export function normalizeLabSettings(value: unknown): LabSettings {
   const parsed = asObject(value);
   return {
-    enabled:
-      typeof parsed?.enabled === "boolean" ? parsed.enabled : DEFAULT_LAB_SETTINGS.enabled,
+    enabled: typeof parsed?.enabled === "boolean" ? parsed.enabled : DEFAULT_LAB_SETTINGS.enabled,
     goldenTurnsEnabled:
       typeof parsed?.goldenTurnsEnabled === "boolean"
         ? parsed.goldenTurnsEnabled
@@ -1089,7 +1088,9 @@ class ConfigManager {
 
   setLabSettings(settings: unknown): LabSettings {
     const update = asObject(settings);
-    const normalized = normalizeLabSettings(update ? { ...this.getLabSettings(), ...update } : settings);
+    const normalized = normalizeLabSettings(
+      update ? { ...this.getLabSettings(), ...update } : settings
+    );
     this.set("lab", normalized);
     return normalized;
   }

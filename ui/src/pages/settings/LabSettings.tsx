@@ -70,7 +70,8 @@ export function LabSettingsSection() {
             Lab availability
           </CardTitle>
           <CardDescription>
-            Control local experiment, benchmark, trace, and dataset features without deleting saved data.
+            Control local experiment, benchmark, trace, and dataset features without deleting saved
+            data.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -115,7 +116,8 @@ export function LabSettingsSection() {
             Training exports
           </CardTitle>
           <CardDescription>
-            Choose safe defaults for curated datasets, sequence distillation, and agent trace research.
+            Choose safe defaults for curated datasets, sequence distillation, and agent trace
+            research.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -143,16 +145,22 @@ export function LabSettingsSection() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-3">
               <BrainCircuit className="h-4 w-4 text-[rgb(var(--accent-primary))]" />
-              <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">Honest distillation</p>
+              <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">
+                Honest distillation
+              </p>
               <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
-                Exports teacher responses, model provenance, observable reasoning, and tool behavior without inventing hidden logits.
+                Exports teacher responses, model provenance, observable reasoning, and tool behavior
+                without inventing hidden logits.
               </p>
             </div>
             <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-3">
               <ShieldCheck className="h-4 w-4 text-[rgb(var(--accent-primary))]" />
-              <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">Publish deliberately</p>
+              <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">
+                Publish deliberately
+              </p>
               <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
-                Generated dataset cards document sources, splits, redaction state, intended uses, and limitations.
+                Generated dataset cards document sources, splits, redaction state, intended uses,
+                and limitations.
               </p>
             </div>
           </div>

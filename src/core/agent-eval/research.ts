@@ -384,7 +384,8 @@ function hfSessionTraceLines(trajectories: AgentTrajectory[]): string[] {
       message: {
         role: "assistant",
         content: trajectory.response.content,
-        reasoningContent: calls.length === 0 ? trajectory.response.thinking?.trim() || undefined : undefined,
+        reasoningContent:
+          calls.length === 0 ? trajectory.response.thinking?.trim() || undefined : undefined,
         model: trajectory.model ?? undefined,
         timestamp: trajectory.createdAt,
       },
@@ -462,6 +463,7 @@ export function createResearchDatasetCard(
     `Sensitive-content redaction was ${options.sanitize ? "enabled" : "disabled"} for this export.`,
     "Review every record before publishing because prompts and tool outputs can contain private or licensed material.",
     "Reasoning fields contain only reasoning text exposed by the provider. Hidden reasoning and teacher logits are not inferred or reconstructed.",
+    "Preference optimization requires independently captured chosen and rejected responses; this export does not fabricate preference pairs.",
     "Observed tool schemas describe arguments present in captured calls and are not authoritative tool definitions.",
     "Stable train, validation, and test splits are derived from trace identifiers.",
     "",

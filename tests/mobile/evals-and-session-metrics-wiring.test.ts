@@ -52,7 +52,7 @@ describe("mobile eval and session runtime parity", () => {
     expect(evals).toContain("Golden turn actions");
     expect(evals).toContain("Capture completed turns");
     expect(evals).toContain("Redact exports by default");
-    expect(evals).toContain('format: "distillation_sft"');
+    expect(evals).toContain('exportResearch("distillation_sft")');
     expect(settings).toContain("<MobileEvalsPanel");
   });
 });

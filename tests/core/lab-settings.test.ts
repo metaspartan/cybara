@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import {
-  config,
-  DEFAULT_LAB_SETTINGS,
-  normalizeLabSettings,
-} from "../../src/core/config";
+import { config, DEFAULT_LAB_SETTINGS, normalizeLabSettings } from "../../src/core/config";
 import { isToolEnabledForAgent } from "../../src/core/tools/index";
 
 afterEach(() => {
