@@ -4,7 +4,10 @@ import { fileURLToPath } from "node:url";
 
 const uiSrc = fileURLToPath(new URL("../../ui/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${uiSrc}/${rel}`, "utf8");
-const cli = readFileSync(fileURLToPath(new URL("../../src/cli/index.tsx", import.meta.url)), "utf8");
+const cli = readFileSync(
+  fileURLToPath(new URL("../../src/cli/index.tsx", import.meta.url)),
+  "utf8"
+);
 
 describe("onboarding boot: no shell flash + full-screen spinner", () => {
   const app = read("App.tsx");
