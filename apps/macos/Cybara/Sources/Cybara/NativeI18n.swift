@@ -66,6 +66,7 @@ enum NativeI18n {
             "nav.logs": "Logs",
             "nav.settings": "Settings",
             "settings.general": "General",
+            "settings.accessibility": "Accessibility",
             "settings.gateway": "Gateway",
             "settings.ai": "AI",
             "settings.voice": "Voice",

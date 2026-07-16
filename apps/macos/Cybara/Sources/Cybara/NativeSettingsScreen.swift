@@ -3,7 +3,7 @@ import SwiftUI
 
 private enum NativeSettingsLayout {
     static let outerPadding = EdgeInsets(top: 20, leading: 22, bottom: 20, trailing: 22)
-    static let contentInset = EdgeInsets(top: 10, leading: 2, bottom: 16, trailing: 2)
+    static let contentInset = EdgeInsets(top: 16, leading: 16, bottom: 18, trailing: 16)
     static let cardSpacing: CGFloat = 12
     static let maxContentWidth: CGFloat = 900
 }
@@ -267,6 +267,8 @@ struct NativeSettingsScreen: View {
                             } label: {
                                 Label(NativeI18n.t(tab.titleKey), systemImage: tab.systemImage)
                                     .font(.system(size: 12, weight: .medium, design: .rounded))
+                                    .foregroundStyle(selectedTab == tab ? Color.primary : Color.secondary)
+                                    .lineLimit(1)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 7)
@@ -279,6 +281,7 @@ struct NativeSettingsScreen: View {
                                         .fill(Color.accentColor.opacity(0.14))
                                 }
                             }
+                            .help(NativeI18n.t(tab.titleKey))
                         }
                     }
                     .padding(8)
@@ -291,6 +294,7 @@ struct NativeSettingsScreen: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             if let error {
                 Text(error)
@@ -2895,6 +2899,6 @@ struct SettingsView: View {
         NativeSettingsScreen(client: GatewayClient(baseURL: sidecar.serverURL))
             .environmentObject(sidecar)
             .environmentObject(updateChecker)
-            .frame(width: 760, height: 680)
+            .frame(width: 860, height: 720)
     }
 }
