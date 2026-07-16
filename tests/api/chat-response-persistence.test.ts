@@ -3,11 +3,13 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 const chatSourcePath = join(process.cwd(), "src", "api", "chat.ts");
+const processActivitiesSourcePath = join(process.cwd(), "src", "api", "chat-process-activities.ts");
 
 describe("chat response persistence guards", () => {
   test("builds fallback process activities when status snapshot is empty", () => {
     const source = readFileSync(chatSourcePath, "utf8");
-    expect(source).toContain("function buildFallbackProcessActivities(");
+    const processActivitiesSource = readFileSync(processActivitiesSourcePath, "utf8");
+    expect(processActivitiesSource).toContain("export function buildFallbackProcessActivities(");
     expect(source).toContain(
       "const statusSnapshotActivities = getSessionProcessActivities(session.id"
     );
