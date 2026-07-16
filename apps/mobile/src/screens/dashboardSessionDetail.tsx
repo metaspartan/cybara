@@ -2213,7 +2213,7 @@ export function SessionDetailPanel({
         {loadError ? <EmptyState label="Session unavailable" detail={loadError} /> : null}
         {detail ? (
           <>
-            {detail.plan ? <MobilePlanSummaryCard plan={detail.plan} /> : null}
+            {sessionActive && detail.plan ? <MobilePlanSummaryCard plan={detail.plan} /> : null}
             {visibleMessages.map((message, index) => (
               <ChatMessageRow
                 key={`${message.id}-${index}`}

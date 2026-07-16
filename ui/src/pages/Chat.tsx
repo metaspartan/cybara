@@ -81,7 +81,6 @@ import {
   isAgentUsingBrowser,
   isGenericStatusLabel,
   isMeaningfulThoughtDetail,
-  isSessionPlanComplete,
   normalizeMessageProcessActivities,
   normalizeSessionStatus,
   normalizeSnapshotActivities,
@@ -100,6 +99,7 @@ import {
   resolvePathForIde,
   resolveStatusSnapshotActivities,
   SESSION_ACTIVITY_STALE_MS,
+  shouldShowSessionPlanInComposer,
   type SessionStatusResponse,
   type SessionStatusSnapshot,
   type ToolCall,
@@ -497,10 +497,15 @@ export function Chat() {
       currentSessionPlan.items.map((item) => `${item.status}:${item.content}`).join("|"),
     ].join(":");
   }, [currentSessionPlan, sessionId]);
+  const currentSessionIsActive = !!sessionId && activeSessionIds.includes(sessionId);
+  const currentSessionIsLoading = isLoading && loadingSessionId === sessionId;
+  const currentSessionIsWorking = currentSessionIsActive || currentSessionIsLoading;
   const showComposerPlan =
-    !!currentSessionPlan &&
-    !isSessionPlanComplete(currentSessionPlan) &&
-    currentSessionPlanKey !== hiddenComposerPlanKey;
+    shouldShowSessionPlanInComposer(
+      currentSessionPlan,
+      currentSessionIsWorking,
+      liveRunStartedAtMs
+    ) && currentSessionPlanKey !== hiddenComposerPlanKey;
   const [dismissedEnvironmentPlanKey, setDismissedEnvironmentPlanKey] = useState<string | null>(
     null
   );
@@ -2821,8 +2826,6 @@ export function Chat() {
     ? Math.max(0, typedMessages.length - revertTarget.index)
     : 0;
   const revertFollowingCount = Math.max(0, revertRemovedCount - 1);
-  const currentSessionIsActive = !!sessionId && activeSessionIds.includes(sessionId);
-  const currentSessionIsLoading = isLoading && loadingSessionId === sessionId;
   const pendingCapture = pendingProcessCaptureRef.current;
   const pendingCaptureForCurrentSession =
     !!pendingCapture &&

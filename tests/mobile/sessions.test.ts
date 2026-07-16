@@ -120,7 +120,7 @@ describe("mobile: chat management", () => {
     expect(screen.indexOf("if (!queuedSend)", optimisticUserAppend - 700)).toBeGreaterThan(0);
   });
 
-  test("mobile chat renders session plans above messages and keeps chat text selectable", () => {
+  test("mobile chat renders active session plans above messages and keeps chat text selectable", () => {
     const api = read("lib/api.ts");
     const chat = read("screens/dashboardChat.tsx");
     const styles = read("screens/dashboardStyles.ts");
@@ -136,6 +136,7 @@ describe("mobile: chat management", () => {
     expect(chat).toContain("mobilePlanProgressLabel(plan)");
     expect(chat).toContain("mobileCurrentPlanItem(plan)");
     expect(chat).toContain("Latest plan update");
+    expect(screen).toContain("sessionActive && detail.plan");
     expect(planCard).toBeGreaterThan(0);
     expect(messageLoop).toBeGreaterThan(planCard);
     expect(chat).toContain("selectable?: boolean;");

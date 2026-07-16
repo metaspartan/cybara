@@ -1405,6 +1405,18 @@ export function isSessionPlanComplete(plan: SessionPlanSnapshot): boolean {
   );
 }
 
+export function shouldShowSessionPlanInComposer(
+  plan: SessionPlanSnapshot | null,
+  sessionWorking: boolean,
+  runStartedAtMs: number | null
+): boolean {
+  if (!plan || !sessionWorking || isSessionPlanComplete(plan)) return false;
+  if (!runStartedAtMs || !Number.isFinite(runStartedAtMs) || !plan.updatedAt) return true;
+  const planUpdatedAtMs = Date.parse(plan.updatedAt);
+  if (!Number.isFinite(planUpdatedAtMs)) return true;
+  return planUpdatedAtMs + 5_000 >= runStartedAtMs;
+}
+
 export function parsePlanFromToolCall(
   tool: ToolCall,
   sessionId?: string | null,

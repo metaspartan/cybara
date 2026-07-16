@@ -6,6 +6,7 @@ import {
   collectPlanTimelineFromMessages,
   extractLatestPlanFromMessages,
   isSessionPlanComplete,
+  shouldShowSessionPlanInComposer,
 } from "../../ui/src/pages/chat/chatModel";
 
 const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
@@ -88,7 +89,8 @@ describe("chat plan and artifact UI wiring", () => {
     expect(chatPage).toContain("sessionId={sessionId}");
     expect(chatPage).toContain("hiddenComposerPlanKey");
     expect(chatPage).toContain("showComposerPlan");
-    expect(chatPage).toContain("!isSessionPlanComplete(currentSessionPlan)");
+    expect(chatPage).toContain("shouldShowSessionPlanInComposer(");
+    expect(chatPage).toContain("currentSessionIsWorking");
     expect(chatPage).not.toContain("seenEnvironmentOverviewKey");
     expect(chatPage).not.toContain("environmentOverviewSignalKey");
     expect(chatPage).not.toContain("showEnvironmentOverviewDot");
@@ -140,6 +142,38 @@ describe("chat plan and artifact UI wiring", () => {
         items: [{ content: "Finish work", status: "in_progress", priority: "medium" }],
         summary: { total: 1, pending: 0, inProgress: 1, completed: 0 },
       })
+    ).toBe(false);
+  });
+
+  test("shows an incomplete composer plan only for the run that produced it", () => {
+    const activePlan = {
+      sessionId: "active-plan",
+      source: "todo_tool" as const,
+      updatedAt: "2026-07-15T18:00:10.000Z",
+      items: [
+        { content: "Finish work", status: "in_progress" as const, priority: "medium" as const },
+      ],
+      summary: { total: 1, pending: 0, inProgress: 1, completed: 0 },
+    };
+    expect(
+      shouldShowSessionPlanInComposer(activePlan, true, Date.parse("2026-07-15T18:00:08.000Z"))
+    ).toBe(true);
+    expect(
+      shouldShowSessionPlanInComposer(activePlan, false, Date.parse("2026-07-15T18:00:08.000Z"))
+    ).toBe(false);
+    expect(
+      shouldShowSessionPlanInComposer(activePlan, true, Date.parse("2026-07-15T18:01:00.000Z"))
+    ).toBe(false);
+    expect(
+      shouldShowSessionPlanInComposer(
+        {
+          ...activePlan,
+          items: [{ ...activePlan.items[0], status: "completed" as const }],
+          summary: { total: 1, pending: 0, inProgress: 0, completed: 1 },
+        },
+        true,
+        Date.parse("2026-07-15T18:00:08.000Z")
+      )
     ).toBe(false);
   });
 
