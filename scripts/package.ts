@@ -68,7 +68,7 @@ export async function runPackage(): Promise<void> {
   const binaryPath = join(RELEASE_DIR, BINARY_NAME);
 
   try {
-    await $`bun build src/main.ts --compile ${buildEnvironment} --outfile ${binaryPath} --target bun --external electron --external @aws-sdk/client-s3 --external @huggingface/transformers --external kokoro-js --external playwright --external playwright-core --external onnxruntime-node --external onnxruntime-web`;
+    await $`bun build src/main.ts --compile ${buildEnvironment} --outfile ${binaryPath} --target bun --external electron --external @aws-sdk/client-s3`;
     console.log(`   ✓ Binary compiled: ${binaryPath}`);
   } catch (error) {
     console.error("   ✗ Binary compilation failed:", error);

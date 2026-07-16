@@ -115,7 +115,9 @@ describe("package.json script wiring", () => {
     const standaloneBuild = packageScript
       .split("\n")
       .find((line) => line.includes("bun build src/main.ts --compile"));
-    expect(standaloneBuild).toContain("--external @huggingface/transformers");
+    expect(standaloneBuild).not.toContain("--external @huggingface/transformers");
+    expect(standaloneBuild).not.toContain("--external onnxruntime-node");
+    expect(standaloneBuild).not.toContain("--external onnxruntime-web");
     expect(standaloneBuild).not.toContain("--external tiny-secp256k1");
     expect(packageScript).toContain("--outdir ${DIST_DIR} --entry-naming cli.js");
 
