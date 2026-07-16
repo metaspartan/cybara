@@ -27,6 +27,12 @@ describe("agent eval UI wiring", () => {
     expect(research).toContain("Hugging Face / TRL SFT");
     expect(research).toContain("Long-context QA");
     expect(research).toContain("Hidden reasoning is never");
+    expect(research).toContain("experiments are reproducible");
+    expect(research).toContain("accent-button");
+    expect(research).toContain("themed-form-control");
+    expect(research).toContain("xl:self-start xl:pt-[27px]");
+    expect(research).toContain('aria-live="polite"');
+    expect(research).not.toContain("bg-indigo-500");
     expect(benchmarks).toContain("Cybara Intelligence Rating");
     expect(benchmarks).toContain("No judge model");
     expect(benchmarks).toContain("Run benchmark");

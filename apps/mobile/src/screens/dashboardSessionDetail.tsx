@@ -1985,6 +1985,10 @@ export function SessionDetailPanel({
     setChatSettingsVisible(false);
     setTimeout(action, 180);
   };
+  const saveGoldenRunFromChatSettings = () => {
+    setChatSettingsVisible(false);
+    setTimeout(() => void saveGoldenRun(), 180);
+  };
   const shareNearbyChat = async () => {
     setNearbySharing(true);
     try {
@@ -2108,7 +2112,7 @@ export function SessionDetailPanel({
             disabled:
               reliabilityAction !== null ||
               !detail?.messages.some((message) => message.role === "assistant"),
-            onPress: () => runFromChatSettings(() => void saveGoldenRun()),
+            onPress: saveGoldenRunFromChatSettings,
           } satisfies ChatSettingsAction,
         ]
       : []),

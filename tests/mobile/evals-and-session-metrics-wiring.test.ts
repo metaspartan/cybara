@@ -35,6 +35,8 @@ describe("mobile eval and session runtime parity", () => {
     expect(api).toContain("pageSize=${encodeURIComponent(String(pageSize))}");
     expect(detail).toContain('label: "Fork chat"');
     expect(detail).toContain('label: "Save golden run"');
+    expect(detail).toContain("onPress: saveGoldenRunFromChatSettings");
+    expect(detail).not.toContain("runFromChatSettings(() => void saveGoldenRun())");
     expect(metrics).toContain('title="Chat runtime"');
     expect(metrics).toContain('label="Average TTFT"');
     expect(metrics).toContain('label="Input"');
