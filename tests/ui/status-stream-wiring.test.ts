@@ -49,13 +49,14 @@ function readSource(path: string): string {
 
 describe("status stream websocket wiring", () => {
   test("chat page uses shared status websocket stream helper", () => {
+    const contextUsageRingSource = readSource(contextUsageRingPath);
     const source = [
       readSource(chatPath),
       readSource(chatComposerPath),
       readSource(chatAgentControlsPath),
       readSource(chatFollowUpControlsPath),
       readSource(composerActionPath),
-      readSource(contextUsageRingPath),
+      contextUsageRingSource,
       readSource(chatReasoningControlPath),
       readSource(environmentOverviewPath),
     ].join("\n");
@@ -95,6 +96,9 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("context-usage-ring-fill");
     expect(source).toContain("context-usage-tooltip");
     expect(source).toContain("context-usage-tooltip-title");
+    expect(contextUsageRingSource).toContain("aria-expanded={open}");
+    expect(contextUsageRingSource).toContain("onClick={() => setOpen(true)}");
+    expect(contextUsageRingSource).not.toContain("onClick={() => setOpen((value) => !value)}");
     expect(source).not.toContain("bg-[#2b2b2f]");
     expect(source).not.toContain("bg-[#171820]");
     expect(source).not.toContain("rgba(255,255,255,0.18)");

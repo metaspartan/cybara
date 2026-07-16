@@ -151,11 +151,13 @@ export function ContextUsageRing({
     open ? "block" : "hidden",
   ].join(" ");
   return (
-    <div
+    <button
+      type="button"
       aria-label={label}
-      className="relative h-5 w-5 shrink-0 rounded-full outline-none"
+      aria-expanded={open}
+      className="relative h-5 w-5 shrink-0 appearance-none rounded-full border-0 bg-transparent p-0 outline-none"
       onBlur={() => setOpen(false)}
-      onClick={() => setOpen((value) => !value)}
+      onClick={() => setOpen(true)}
       onFocus={() => setOpen(true)}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
@@ -192,6 +194,6 @@ export function ContextUsageRing({
           </div>
         )}
       </div>
-    </div>
+    </button>
   );
 }

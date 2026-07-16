@@ -2329,7 +2329,9 @@ struct ChatScreen: View {
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Attachments")
                     .help("Attach images or text files")
                     .disabled(pendingAttachments.count >= 8 && pendingFiles.count >= 8)
                     Button {
