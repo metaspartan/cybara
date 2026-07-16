@@ -12,7 +12,7 @@ import {
   transcriptOffsetForMessage,
   tuiTerminalDiagnosticLines,
   type TUITranscriptMessage,
-} from "../../src/cli-tui-chat-history";
+} from "../../src/cli/tui/components/chat-history";
 
 const messages: TUITranscriptMessage[] = [
   { role: "system", content: "Internal instructions" },

@@ -1,4 +1,4 @@
-import { parseSubagentSpawnArgs } from "./cli-subagent-args";
+import { parseSubagentSpawnArgs } from "./subagent-args";
 
 interface SubagentInfo {
   id: string;

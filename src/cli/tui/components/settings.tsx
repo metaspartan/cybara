@@ -6,10 +6,10 @@ import {
   chatLineSpacingOptions,
   normalizeChatAppearanceSettings,
   type ChatAppearanceSettings,
-} from "../shared/chat-appearance";
-import { TUIErrorState, TUILoadingState, TUILogo } from "./cli-tui-primitives";
-import { useTUIBack } from "./cli-tui-navigation";
-import { useTerminalLayout } from "./cli-tui-terminal";
+} from "../../../../shared/chat-appearance";
+import { TUIErrorState, TUILoadingState, TUILogo } from "./primitives";
+import { useTUIBack } from "./navigation";
+import { useTerminalLayout } from "../terminal";
 
 type FetchAPI = <T>(endpoint: string, options?: RequestInit) => Promise<T | null>;
 

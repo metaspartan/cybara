@@ -1,4 +1,4 @@
-import { getFlagValue } from "./cli-args";
+import { getFlagValue } from "./args";
 
 export type CliWalletAuthHeaders = (
   headers?: RequestInit["headers"],

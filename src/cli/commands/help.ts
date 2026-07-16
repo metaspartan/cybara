@@ -1,4 +1,4 @@
-import { printMobileHelp } from "./cli-mobile";
+import { printMobileHelp } from "./mobile";
 
 export function rawHelp(version: string, apiBase: string): void {
   console.log("CYBARA CLI");

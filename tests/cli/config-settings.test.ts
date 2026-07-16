@@ -3,7 +3,7 @@ import {
   accessibilityConfigLines,
   buildCliConfigPatch,
   parseCliConfigValue,
-} from "../../src/cli-config";
+} from "../../src/cli/commands/config";
 
 describe("CLI settings configuration", () => {
   test("parses primitive and structured values", () => {

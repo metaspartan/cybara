@@ -7,8 +7,8 @@ import {
   panelListLimit,
   type TUIDataFetch,
   usePanelData,
-} from "./cli-tui-panels";
-import { useTerminalLayout } from "./cli-tui-terminal";
+} from "./panels";
+import { useTerminalLayout } from "../terminal";
 
 interface BrowserStatus {
   running?: boolean;

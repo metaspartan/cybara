@@ -1,17 +1,6 @@
-import React from "react";
-import { Box, Text } from "ink";
-import { getFlagValue, hasFlag } from "./cli-args";
-import {
-  compactPanelValue,
-  PanelRemainder,
-  PanelShell,
-  panelListLimit,
-  type TUIDataFetch,
-  usePanelData,
-} from "./cli-tui-panels";
-import { useTerminalLayout } from "./cli-tui-terminal";
+import { getFlagValue, hasFlag } from "./args";
 
-interface CliEvalGolden {
+export interface CliEvalGolden {
   id: string;
   name: string;
   baseline: {
@@ -20,14 +9,14 @@ interface CliEvalGolden {
   };
 }
 
-interface CliEvalRun {
+export interface CliEvalRun {
   goldenId: string;
   status: "running" | "passed" | "failed" | "error";
   score: number | null;
   replaySessionId: string | null;
 }
 
-interface CliEvalsResponse {
+export interface CliEvalsResponse {
   goldens: CliEvalGolden[];
   runs: CliEvalRun[];
 }
@@ -41,13 +30,13 @@ interface CliEvalExportResponse {
 
 type CliEvalFetch = <T>(endpoint: string, options?: RequestInit) => Promise<T | null>;
 
-function latestRunsByGolden(runs: CliEvalRun[]): Map<string, CliEvalRun> {
+export function latestRunsByGolden(runs: CliEvalRun[]): Map<string, CliEvalRun> {
   const values = new Map<string, CliEvalRun>();
   for (const run of runs) if (!values.has(run.goldenId)) values.set(run.goldenId, run);
   return values;
 }
 
-function statusLabel(run: CliEvalRun | undefined): string {
+export function statusLabel(run: CliEvalRun | undefined): string {
   if (!run) return "not run";
   if (run.score === null) return run.status;
   return `${run.status} ${Math.round(run.score)}%`;
@@ -208,47 +197,4 @@ export async function runEvalCommand(args: string[], fetchAPI: CliEvalFetch): Pr
   }
   printEvalHelp();
   process.exitCode = 1;
-}
-
-export function TUIEvalsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }): React.ReactElement {
-  const layout = useTerminalLayout();
-  const loader = React.useCallback(() => fetchAPI<CliEvalsResponse>("/api/evals"), [fetchAPI]);
-  const state = usePanelData(loader, "Failed to load agent evals");
-  const goldens = state.data?.goldens || [];
-  const latest = latestRunsByGolden(state.data?.runs || []);
-  const visible = goldens.slice(0, panelListLimit(goldens.length, layout, layout.narrow ? 3 : 1));
-  return (
-    <PanelShell
-      title="Agent Evals"
-      detail="Replayable golden trajectories and structural regression status"
-      loading={state.loading}
-      error={state.error}
-    >
-      {goldens.length === 0 ? (
-        <Text color="gray">No golden tests saved. Save a completed chat turn to begin.</Text>
-      ) : (
-        <Box flexDirection="column">
-          {visible.map((golden) => (
-            <Box key={golden.id} flexDirection={layout.narrow ? "column" : "row"}>
-              <Box width={layout.narrow ? undefined : 42}>
-                <Text bold>{compactPanelValue(golden.name, layout.narrow ? 44 : 40)}</Text>
-              </Box>
-              <Box width={layout.narrow ? undefined : 22}>
-                <Text color="#9ca6b4">
-                  {compactPanelValue(golden.baseline.model || "Current model", 20)}
-                </Text>
-              </Box>
-              <Text color={latest.get(golden.id)?.status === "passed" ? "green" : "yellow"}>
-                {statusLabel(latest.get(golden.id))}
-              </Text>
-            </Box>
-          ))}
-          <PanelRemainder total={goldens.length} shown={visible.length} />
-          <Box marginTop={1}>
-            <Text color="#9ca6b4">Use cybara evals replay|run|export for actions.</Text>
-          </Box>
-        </Box>
-      )}
-    </PanelShell>
-  );
 }

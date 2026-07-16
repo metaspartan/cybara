@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatTUIAgentLabel } from "../../src/cli-tui-agent-label";
+import { formatTUIAgentLabel } from "../../src/cli/tui/agent-label";
 
 describe("CLI TUI agent labels", () => {
   test("shows the agent and model without internal lifecycle state", () => {

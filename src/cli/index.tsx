@@ -6,31 +6,32 @@ import { spawn } from "child_process";
 import { mkdirSync, openSync, readFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { getAppVersion } from "./core/build-info";
-import { checkForUpdateInBackground, isUpdateCheckDisabled } from "./core/update-check";
-import { runMcpStdioServer } from "./core/mcp-host-server";
-import { resolveCybaraHome } from "./core/cybara-home";
-import { runMobileCommand } from "./cli-mobile";
-import { runNearbyCommand } from "./cli-nearby";
-import { rawHelp } from "./cli-help";
-import { printCompletion } from "./cli-completion";
-import { rawComputerUse } from "./cli-computer-use";
-import { runConnectorCommand, TUIPluginsCommand } from "./cli-connectors";
-import { createCliPluginCommands } from "./cli-plugin-commands";
+import { getAppVersion } from "../core/build-info";
+import { checkForUpdateInBackground, isUpdateCheckDisabled } from "../core/update-check";
+import { runMcpStdioServer } from "../core/mcp-host-server";
+import { resolveCybaraHome } from "../core/cybara-home";
+import { runMobileCommand } from "./commands/mobile";
+import { runNearbyCommand } from "./commands/nearby";
+import { rawHelp } from "./commands/help";
+import { printCompletion } from "./commands/completion";
+import { rawComputerUse } from "./commands/computer-use";
+import { runConnectorCommand } from "./commands/connectors";
+import { TUIPluginsCommand } from "./tui/components/connectors";
+import { createCliPluginCommands } from "./commands/plugin-commands";
 import {
   type AvailableProviderInfo,
   createCliProviderCommands,
   type ProviderInfo,
-} from "./cli-provider-commands";
+} from "./commands/provider-commands";
 import {
   accessibilityConfigLines,
   buildCliConfigPatch,
   parseCliConfigValue,
-} from "./cli-config";
-import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";
-import { runSubagentCommand } from "./cli-subagents";
-import { TUIChatCommand } from "./cli-tui-chat";
-import { MainMenu, type MainMenuAction } from "./cli-tui-menu";
+} from "./commands/config";
+import { configureChatCli, rawAgent, rawChatCommand } from "./commands/chat";
+import { runSubagentCommand } from "./commands/subagents";
+import { TUIChatCommand } from "./tui/components/chat";
+import { MainMenu, type MainMenuAction } from "./tui/components/menu";
 import {
   TUIArtifactsCommand,
   TUIChannelsCommand,
@@ -41,18 +42,20 @@ import {
   TUISubagentsCommand,
   TUIToolsCommand,
   TUIUsageCommand,
-} from "./cli-tui-panels";
-import { printArtifacts, printJourney } from "./cli-resource-commands";
-import { getFlagValue, hasFlag } from "./cli-args";
-import { rawUpdate } from "./cli-update";
-import { connectCliProviderOAuth } from "./cli-provider-oauth";
-import { runEvalCommand, TUIEvalsCommand } from "./cli-evals";
-import { runSystemBackupCommand, TUIBackupsCommand } from "./cli-system-backup";
-import { runTelemetryCommand } from "./cli-telemetry";
-import { runPermissionsCommand } from "./cli-permissions";
-import { TUIBackProvider, useTUIBack } from "./cli-tui-navigation";
-import { useTerminalScreen } from "./cli-tui-terminal";
-import { TUIBrowserCommand, TUIWalletCommand } from "./cli-tui-operations-panels";
+} from "./tui/components/panels";
+import { printArtifacts, printJourney } from "./commands/resource-commands";
+import { getFlagValue, hasFlag } from "./commands/args";
+import { rawUpdate } from "./commands/update";
+import { connectCliProviderOAuth } from "./commands/provider-oauth";
+import { runEvalCommand } from "./commands/evals";
+import { runSystemBackupCommand } from "./commands/system-backup";
+import { TUIEvalsCommand } from "./tui/components/evals";
+import { TUIBackupsCommand } from "./tui/components/system-backup";
+import { runTelemetryCommand } from "./commands/telemetry";
+import { runPermissionsCommand } from "./commands/permissions";
+import { TUIBackProvider, useTUIBack } from "./tui/components/navigation";
+import { useTerminalScreen } from "./tui/terminal";
+import { TUIBrowserCommand, TUIWalletCommand } from "./tui/components/operations-panels";
 import {
   formatStatusBytes,
   formatStatusPct,
@@ -60,17 +63,17 @@ import {
   formatStatusUptime,
   type MetricsResponse,
   type StatusResponse,
-} from "./cli-status-contract";
+} from "./commands/status-contract";
 import {
   TUIErrorState as ErrorState,
   TUILoadingState as LoadingState,
   TUILogo as Logo,
   TUIStatusBadge as StatusBadge,
   TUITable as Table,
-} from "./cli-tui-primitives";
-import { TUIMetricsCommand, TUIStatusCommand } from "./cli-tui-system-panels";
-import { TUISettingsCommand } from "./cli-tui-settings";
-import { commandExists } from "./core/platform";
+} from "./tui/components/primitives";
+import { TUIMetricsCommand, TUIStatusCommand } from "./tui/components/system-panels";
+import { TUISettingsCommand } from "./tui/components/settings";
+import { commandExists } from "../core/platform";
 import {
   configureWalletCli,
   rawWalletAccounts,
@@ -100,7 +103,7 @@ import {
   rawWalletTransactions,
   rawWalletUnlock,
   rawWalletX402,
-} from "./cli-wallet";
+} from "./commands/wallet";
 
 const API_BASE = process.env.CYBARA_API || "http://localhost:4269";
 const TUI_INPUT_OPTIONS = {
@@ -262,7 +265,7 @@ configureChatCli({
 });
 
 async function rawMigrate(args: string[]): Promise<void> {
-  const { detectMigrationSources, runSourceMigration } = await import("./core/source-migration");
+  const { detectMigrationSources, runSourceMigration } = await import("../core/source-migration");
   const json = hasFlag(args, "--json", "-j");
   const subcommand = args.find((arg) => !arg.startsWith("--"));
   if (subcommand === "sources" || subcommand === "detect") {
@@ -874,7 +877,7 @@ async function rawMcpAdd(name: string, url: string): Promise<void> {
   }
   console.log("  status: authorization required");
   console.log(`  authorize: ${authorization.authUrl}`);
-  const { openUrlInBrowser } = await import("./core/runtime/open-url");
+  const { openUrlInBrowser } = await import("../core/runtime/open-url");
   try {
     await openUrlInBrowser(authorization.authUrl);
   } catch {}
@@ -3162,7 +3165,7 @@ function TUIContent({
           header={<Logo />}
           onOpenPanel={onOpenPanel}
           onOpenWebUI={() => {
-            void import("./core/runtime/open-url").then(({ openUrlInBrowser }) =>
+            void import("../core/runtime/open-url").then(({ openUrlInBrowser }) =>
               openUrlInBrowser(API_BASE),
             );
           }}
@@ -3543,7 +3546,7 @@ async function main() {
       await rawRouter(args.slice(1));
       break;
     case "acp":
-      await (await import("./cli-acp")).runAcpCommand(args.slice(1));
+      await (await import("./commands/acp")).runAcpCommand(args.slice(1));
       break;
     case "sessions":
       await rawSessions();

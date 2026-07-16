@@ -2,14 +2,14 @@ import { createHash } from "crypto";
 import { chmodSync, copyFileSync, mkdirSync, readFileSync, renameSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
-import { getAppVersion, getReleaseRepository } from "./core/build-info";
+import { getAppVersion, getReleaseRepository } from "../../core/build-info";
 import {
   buildGitHubReleaseApiUrl,
   buildReleaseChecksumUrl,
   compareVersions,
   resolveReleaseBinaryFilename,
   resolveSelfUpdateDestination,
-} from "./core/versioning";
+} from "../../core/versioning";
 
 interface GitHubReleaseAsset {
   name?: string;

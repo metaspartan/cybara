@@ -4,7 +4,7 @@ import {
   formatStatusPct,
   formatStatusStorageBytes,
   formatStatusUptime,
-} from "../../src/cli-status-contract";
+} from "../../src/cli/commands/status-contract";
 
 describe("CLI status formatting", () => {
   test("formats uptime across minute and hour boundaries", () => {

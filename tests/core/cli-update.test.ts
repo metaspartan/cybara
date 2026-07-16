@@ -8,7 +8,7 @@ import {
   formatDownloadProgress,
   resolveUpdateVersionStatus,
   type DownloadProgress,
-} from "../../src/cli-update";
+} from "../../src/cli/commands/update";
 
 const temporaryDirectories: string[] = [];
 

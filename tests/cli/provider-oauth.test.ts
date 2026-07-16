@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { connectCliProviderOAuth } from "../../src/cli-provider-oauth";
+import { connectCliProviderOAuth } from "../../src/cli/commands/provider-oauth";
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {

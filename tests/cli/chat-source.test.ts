@@ -11,11 +11,11 @@ function source(path: string): string {
 
 describe("CLI chat source wiring", () => {
   test("interactive chat owns queueing, steering, and session controls outside the main CLI file", () => {
-    const cliSource = source("src/cli.tsx");
-    const chatSource = source("src/cli-chat.ts");
+    const cliSource = source("src/cli/index.tsx");
+    const chatSource = source("src/cli/commands/chat.ts");
 
     expect(cliSource).toContain(
-      'import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";'
+      'import { configureChatCli, rawAgent, rawChatCommand } from "./commands/chat";'
     );
     expect(cliSource).toContain("configureChatCli({");
     expect(cliSource).not.toContain('import { createInterface } from "readline";');

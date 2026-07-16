@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { approvalDecisionForInput, approvalsFromResponse } from "../../src/cli-tui-approvals";
+import {
+  approvalDecisionForInput,
+  approvalsFromResponse,
+} from "../../src/cli/tui/components/approvals";
 
 describe("CLI TUI tool approvals", () => {
   test("normalizes pending approval requests", () => {

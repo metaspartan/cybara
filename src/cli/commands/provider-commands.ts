@@ -1,4 +1,4 @@
-import { connectCliProviderOAuth } from "./cli-provider-oauth";
+import { connectCliProviderOAuth } from "./provider-oauth";
 
 export type CliProviderFetch = <T>(endpoint: string, options?: RequestInit) => Promise<T | null>;
 export type CliProviderAuthHeaders = (

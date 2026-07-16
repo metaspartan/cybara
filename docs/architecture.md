@@ -53,8 +53,14 @@ Transport model:
 - `src/index.ts`
   - Starts Bun server.
   - Wires REST route handling, status SSE endpoint, terminal WebSocket upgrades, static UI serving.
-- `src/cli.tsx`
-  - Interactive terminal UI/commands.
+- `src/cli/index.tsx`
+  - CLI and interactive terminal entrypoint.
+- `src/cli/commands/`
+  - Non-visual command handlers and argument processing.
+- `src/cli/tui/`
+  - Terminal state, formatting, and stream models.
+- `src/cli/tui/components/`
+  - Ink views and interactive terminal surfaces.
 
 ## API Layer
 

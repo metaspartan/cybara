@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { runSystemBackupCommand } from "../../src/cli-system-backup";
+import { runSystemBackupCommand } from "../../src/cli/commands/system-backup";
 
 interface RequestCall {
   endpoint: string;

@@ -1,12 +1,12 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { parseTerminalListItem, splitTerminalInline } from "./cli-tui-markdown";
-import { transcriptWindow } from "./cli-tui-terminal";
+import { parseTerminalListItem, splitTerminalInline } from "../markdown";
+import { transcriptWindow } from "../terminal";
 import {
   resolveTuiColorScheme,
   tuiChatPalette,
   type TuiColorScheme,
-} from "./cli-tui-theme";
+} from "../theme";
 
 export function TerminalInlineSegments({
   baseColor,

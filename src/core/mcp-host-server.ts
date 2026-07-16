@@ -1,18 +1,3 @@
-/**
- * MCP host-as-server: expose cybara's own tools as an MCP server over stdio.
- *
- * Cybara already *consumes* MCP servers (src/core/mcp.ts). This is the inverse:
- * it lets other MCP clients (Claude Desktop, other agents, IDEs) connect to
- * cybara and call its built-in tools (read/write/exec/grep/...). Speaks the
- * standard MCP JSON-RPC protocol over stdio so any compliant client works.
- *
- * Enabled via `cybara mcp serve` (see cli.tsx). Reads newline-delimited
- * JSON-RPC from stdin and writes responses to stdout. Methods implemented:
- *   - initialize / initialized (handshake + capabilities)
- *   - tools/list          (enumerate cybara tools)
- *   - tools/call          (dispatch to the cybara tool handler)
- *   - ping
- */
 import { createRequire } from "module";
 import { createInterface, type Interface } from "readline";
 import type { ToolContext, Tool as CybaraTool } from "./tools/index";

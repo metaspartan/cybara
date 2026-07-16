@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { rawComputerUse } from "../../src/cli-computer-use";
+import { rawComputerUse } from "../../src/cli/commands/computer-use";
 
 async function captureConsoleLogs(run: () => Promise<void>): Promise<string[]> {
   const originalLog = console.log;

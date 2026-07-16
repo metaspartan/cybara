@@ -153,7 +153,7 @@ describe("security-sensitive runtime defaults", () => {
     const homeSource = readFileSync(join(ROOT_DIR, "src", "core", "cybara-home.ts"), "utf8");
     const pathsSource = readFileSync(join(ROOT_DIR, "src", "core", "paths.ts"), "utf8");
     const mainSource = readFileSync(join(ROOT_DIR, "src", "main.ts"), "utf8");
-    const cliSource = readFileSync(join(ROOT_DIR, "src", "cli.tsx"), "utf8");
+    const cliSource = readFileSync(join(ROOT_DIR, "src", "cli", "index.tsx"), "utf8");
     const speechSource = readFileSync(join(ROOT_DIR, "src", "core", "speech.ts"), "utf8");
     const systemSpeechSource = readFileSync(
       join(ROOT_DIR, "src", "core", "system-speech.ts"),

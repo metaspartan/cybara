@@ -60,7 +60,7 @@ async function runCli(
   args: string[],
   envOverride?: Record<string, string>
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn([process.execPath, "run", "src/cli.tsx", ...args], {
+  const proc = Bun.spawn([process.execPath, "run", "src/cli/index.tsx", ...args], {
     cwd: ROOT_DIR,
     env: {
       ...process.env,

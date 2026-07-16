@@ -1,5 +1,8 @@
 import { afterAll, afterEach, describe, expect, spyOn, test } from "bun:test";
-import { type CliPluginFetch, createCliPluginCommands } from "../../src/cli-plugin-commands";
+import {
+  type CliPluginFetch,
+  createCliPluginCommands,
+} from "../../src/cli/commands/plugin-commands";
 
 const logSpy = spyOn(console, "log").mockImplementation(() => undefined);
 

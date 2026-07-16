@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import React from "react";
 import { renderToString } from "ink";
-import { EnvironmentPanel } from "../../src/cli-tui-chat-environment-view";
-import type { TuiEnvironmentSnapshot } from "../../src/cli-tui-chat-environment";
+import { EnvironmentPanel } from "../../src/cli/tui/components/chat-environment-view";
+import type { TuiEnvironmentSnapshot } from "../../src/cli/tui/chat-environment";
 
 const snapshot: TuiEnvironmentSnapshot = {
   workspaceDir: "/workspaces/solar-dashboard",

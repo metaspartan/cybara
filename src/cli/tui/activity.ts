@@ -4,7 +4,7 @@ import {
   type SharedActivityGroupKind,
   type SharedActivityItem,
   type SharedActivityPhase,
-} from "../shared/chat-activity-groups";
+} from "../../../shared/chat-activity-groups";
 
 export interface TUIActivityItem {
   id?: string;

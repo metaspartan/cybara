@@ -3,7 +3,7 @@ import {
   consumeTUIStatusStream,
   parseTUIStatusEvent,
   type TUIStatusStreamEvent,
-} from "../../src/cli-tui-status-stream";
+} from "../../src/cli/tui/status-stream";
 
 const servers: Bun.Server<unknown>[] = [];
 

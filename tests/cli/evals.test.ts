@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runEvalCommand } from "../../src/cli-evals";
+import { runEvalCommand } from "../../src/cli/commands/evals";
 
 const originalLog = console.log;
 const originalError = console.error;

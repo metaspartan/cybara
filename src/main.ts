@@ -279,12 +279,12 @@ async function main() {
     }
   } else if (command === "acp") {
     redirectProtocolLogs();
-    const { runAcpCommand } = await import("./cli-acp");
+    const { runAcpCommand } = await import("./cli/commands/acp");
     await runAcpCommand(args.slice(1));
     await new Promise<void>((resolve) => process.stdout.end(resolve));
     process.exit(0);
   } else if (isCliCommand) {
-    await import("./cli");
+    await import("./cli/index");
   } else {
     await showHelp();
   }

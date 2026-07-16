@@ -49,7 +49,8 @@ export async function runPackage(): Promise<void> {
   await $`bun build src/index.ts --outdir ${DIST_DIR} --target bun --external electron --external tiny-secp256k1`.quiet();
   console.log("   ✓ Server built");
 
-  await $`bun build src/cli.tsx --outdir ${DIST_DIR} --target bun --external electron --external tiny-secp256k1`.quiet();
+  const cliOutput = join(DIST_DIR, "cli.js");
+  await $`bun build src/cli/index.tsx --outfile ${cliOutput} --target bun --external electron --external tiny-secp256k1`.quiet();
   console.log("   ✓ CLI built");
 
   console.log("📋 Preparing static assets...");

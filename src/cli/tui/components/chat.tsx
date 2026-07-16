@@ -1,9 +1,9 @@
 import React from "react";
 import { Box, Text, useInput } from "ink";
 import Spinner from "ink-spinner";
-import { InteractiveChatTUI } from "./cli-tui-interactive-chat";
-import { useTerminalLayout } from "./cli-tui-terminal";
-import { useTUIBack } from "./cli-tui-navigation";
+import { InteractiveChatTUI } from "./interactive-chat";
+import { useTerminalLayout } from "../terminal";
+import { useTUIBack } from "./navigation";
 
 const TUI_INPUT_OPTIONS = {
   isActive:

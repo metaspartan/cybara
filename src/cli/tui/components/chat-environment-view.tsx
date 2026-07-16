@@ -11,13 +11,13 @@ import {
   type TuiPlanItem,
   type TuiSubagentSummary,
   type TuiTaskSummary,
-} from "./cli-tui-chat-environment";
+} from "../chat-environment";
 import {
   resolveTuiColorScheme,
   tuiChatPalette,
   type TuiColorScheme,
   type TuiSurfacePalette,
-} from "./cli-tui-theme";
+} from "../theme";
 
 export type EnvironmentPanelVariant = "stacked" | "sidebar";
 

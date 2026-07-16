@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveTuiColorScheme, tuiChatPalette } from "../../src/cli-tui-theme";
+import { resolveTuiColorScheme, tuiChatPalette } from "../../src/cli/tui/theme";
 
 describe("CLI TUI terminal theme", () => {
   test("honors an explicit light or dark terminal preference", () => {

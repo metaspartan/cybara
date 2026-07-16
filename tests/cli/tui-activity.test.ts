@@ -5,7 +5,7 @@ import {
   presentTUIActivities,
   summarizeTUIActivities,
   tuiActivityTone,
-} from "../../src/cli-tui-activity";
+} from "../../src/cli/tui/activity";
 
 describe("CLI TUI activity summaries", () => {
   test("groups mixed tool work into a concise action heading", () => {

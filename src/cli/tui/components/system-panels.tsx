@@ -7,14 +7,14 @@ import {
   formatStatusUptime,
   type MetricsResponse,
   type StatusResponse,
-} from "./cli-status-contract";
+} from "../../commands/status-contract";
 import {
   TUIErrorState,
   TUILoadingState,
   TUILogo,
   TUIStatusBadge,
-} from "./cli-tui-primitives";
-import { useTUIBack } from "./cli-tui-navigation";
+} from "./primitives";
+import { useTUIBack } from "./navigation";
 
 type FetchAPI = <T>(endpoint: string, options?: RequestInit) => Promise<T | null>;
 

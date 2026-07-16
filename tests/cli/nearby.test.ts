@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { runNearbyCommand } from "../../src/cli-nearby";
+import { runNearbyCommand } from "../../src/cli/commands/nearby";
 
 interface RequestCall {
   endpoint: string;

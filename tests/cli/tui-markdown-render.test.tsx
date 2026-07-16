@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import React from "react";
 import { renderToString } from "ink";
-import { TerminalMessageBody } from "../../src/cli-tui-markdown-render";
+import { TerminalMessageBody } from "../../src/cli/tui/components/markdown-render";
 
 describe("CLI TUI markdown rendering", () => {
   test("keeps adjacent table and list rows on separate wrapped lines", () => {

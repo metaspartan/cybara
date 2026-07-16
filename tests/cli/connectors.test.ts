@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { runConnectorCommand } from "../../src/cli-connectors";
+import { runConnectorCommand } from "../../src/cli/commands/connectors";
 
 const originalLog = console.log;
 const originalSecret = process.env.CYBARA_CONNECTOR_CLIENT_SECRET;

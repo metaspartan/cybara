@@ -43,21 +43,22 @@ Useful scripts:
 
 - `bun run dev` — build once, then run the server in watch mode
 - `bun run ui:dev` — Vite dev server for the web UI
-- `bun run cli` — run the CLI from source (`bun run src/cli.tsx`)
-- `bun run sexy:write` — typecheck + lint + auto-format with prettier
+- `bun run cli` — run the CLI from source (`bun run src/cli/index.tsx`)
+- `bun run sexy:write` — typecheck + lint + auto-format with Biome
 
 ## Code style
 
 - TypeScript everywhere; pass `bun run typecheck` with no errors.
-- Respect prettier formatting (`bun run format`) — CI checks this.
+- Respect Biome formatting (`bun run format`) — CI checks this.
 - Match the surrounding code's naming, comment density, and idioms.
-- The CLI has a hard size guard (`check:loc`); keep `src/cli.tsx` under its
-  limit by extracting logic into `src/core/*` modules rather than inlining.
+- TypeScript files have a hard size guard (`check:loc`). Keep CLI command logic
+  in `src/cli/commands`, terminal state and formatting in `src/cli/tui`, and Ink
+  views in `src/cli/tui/components`.
 
 ## Adding or updating models / providers
 
 The single source of truth is [`src/core/providers.ts`](src/core/providers.ts).
-The TUI (`src/cli.tsx`), web UI (`ui/src/pages/Providers.tsx`, which fetches
+The TUI (`src/cli/index.tsx`), web UI (`ui/src/pages/Providers.tsx`, which fetches
 dynamically), and CLI defaults all consume it — so editing that one file
 propagates everywhere. When you add a provider, also:
 

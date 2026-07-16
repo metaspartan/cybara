@@ -3,7 +3,7 @@ import {
   completeTUIChatCommand,
   matchingTUIChatCommands,
   nextTUIChatCommandIndex,
-} from "../../src/cli-tui-commands";
+} from "../../src/cli/tui/commands";
 
 describe("CLI TUI command palette", () => {
   test("filters commands only while entering a command name", () => {

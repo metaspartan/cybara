@@ -6,7 +6,7 @@ import {
   insertChatCapabilityMention,
   type ActiveCapabilityMention,
   type SharedChatCapabilityOption,
-} from "../shared/chat-capability-picker";
+} from "../../../../shared/chat-capability-picker";
 
 export type TUICapabilityOption = SharedChatCapabilityOption;
 

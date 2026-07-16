@@ -59,7 +59,7 @@ async function waitForServerReady(url: string, timeoutMs = 30000): Promise<void>
 async function runCli(
   args: string[]
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn([process.execPath, "run", "src/cli.tsx", ...args], {
+  const proc = Bun.spawn([process.execPath, "run", "src/cli/index.tsx", ...args], {
     cwd: ROOT_DIR,
     env: {
       ...process.env,

@@ -10,6 +10,20 @@ function read(rel: string): string {
 }
 
 describe("app release surface wiring", () => {
+  test("CI gates every pull request, merge queue, and release branch", () => {
+    const ciWorkflow = read(".github/workflows/ci.yml");
+
+    expect(ciWorkflow).toContain("pull_request: {}");
+    expect(ciWorkflow).toContain("merge_group: {}");
+    expect(ciWorkflow).toMatch(/branches:\s+\- main\s+\- master\s+\- dev/);
+    expect(ciWorkflow).toContain("bun run check:ci");
+    expect(ciWorkflow).toContain("bun run audit:ci");
+    expect(ciWorkflow).toContain("bun run build:all");
+    expect(ciWorkflow).toContain("cd site && bun run build");
+    expect(ciWorkflow).toContain("bunx expo export --platform ios");
+    expect(ciWorkflow).toContain("bunx expo export --platform android");
+  });
+
   test("CI quality gates sync mobile release metadata before checks", () => {
     const ciWorkflow = read(".github/workflows/ci.yml");
     const releaseWorkflow = read(".github/workflows/release.yml");

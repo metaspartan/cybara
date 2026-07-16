@@ -9,7 +9,7 @@ import {
   lspServersFromResponse,
   subagentsFromResponse,
   tasksFromResponse,
-} from "../../src/cli-tui-chat-environment";
+} from "../../src/cli/tui/chat-environment";
 
 describe("CLI TUI environment helpers", () => {
   test("normalizes session detail into context, token, plan, and diff summaries", () => {
@@ -37,12 +37,12 @@ describe("CLI TUI environment helpers", () => {
       },
       messagesList: [
         {
-          process_activities: [{ text: "Edited src/cli.tsx +12 -3" }],
+          process_activities: [{ text: "Edited src/cli/index.tsx +12 -3" }],
           tool_calls: [
             {
               name: "edit",
               args: {
-                path: "src/cli-tui.tsx",
+                path: "src/cli/tui/components/chat.tsx",
                 oldText: "old\ntext",
                 newText: "new\ntext\nhere",
               },
@@ -59,8 +59,8 @@ describe("CLI TUI environment helpers", () => {
     expect(snapshot.tokenUsage?.tokensPerSecond).toBe(18.25);
     expect(snapshot.plan?.summary).toEqual({ completed: 1, total: 3 });
     expect(snapshot.fileChanges?.files.map((file) => file.path)).toEqual([
-      "src/cli-tui.tsx",
-      "src/cli.tsx",
+      "src/cli/index.tsx",
+      "src/cli/tui/components/chat.tsx",
     ]);
     expect(formatContextUsageLine(snapshot.contextUsage)).toContain("compacted 2x");
     expect(formatTokenUsageLine(snapshot.tokenUsage)).toContain("18.25 tok/s");

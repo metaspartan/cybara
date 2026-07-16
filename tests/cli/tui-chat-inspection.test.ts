@@ -6,7 +6,7 @@ import {
   mcpStatusLines,
   memoryStatusLine,
   skillStatusLines,
-} from "../../src/cli-tui-chat-inspection";
+} from "../../src/cli/tui/chat-inspection";
 
 describe("TUI chat inspection formatters", () => {
   test("formats skill eligibility and ignores malformed entries", () => {

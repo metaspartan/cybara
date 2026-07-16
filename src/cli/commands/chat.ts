@@ -1,7 +1,7 @@
 import { createInterface } from "readline";
-import { getFlagValue } from "./cli-args";
-import { resolveAgentIdentifier } from "./cli-agent-resolution";
-import { limitTUIActivityDetails, presentTUIActivities } from "./cli-tui-activity";
+import { getFlagValue } from "./args";
+import { resolveAgentIdentifier } from "./agent-resolution";
+import { limitTUIActivityDetails, presentTUIActivities } from "../tui/activity";
 import {
   environmentSnapshotFromDetail,
   formatContextUsageLine,
@@ -13,7 +13,7 @@ import {
   shortPath,
   subagentsFromResponse,
   tasksFromResponse,
-} from "./cli-tui-chat-environment";
+} from "../tui/chat-environment";
 
 type FetchAPI = <T>(endpoint: string, options?: RequestInit) => Promise<T | null>;
 type WithAuthHeaders = (

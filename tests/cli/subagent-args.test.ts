@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseSubagentSpawnArgs } from "../../src/cli-subagent-args";
+import { parseSubagentSpawnArgs } from "../../src/cli/commands/subagent-args";
 
 describe("CLI subagent spawn argument parsing", () => {
   test("parses routing, workspace, timeout, cleanup, and task flags", () => {

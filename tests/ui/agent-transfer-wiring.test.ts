@@ -5,8 +5,8 @@ const files = {
   "ui/src/pages/ide/IDEChatPanel.tsx": "AgentTransferTimeline",
   "apps/mobile/src/screens/dashboardChat.tsx": "MobileAgentTransferTimeline",
   "apps/macos/Cybara/Sources/Cybara/NativeScreens.swift": "Transferred from",
-  "src/cli-chat.ts": "Transferred from",
-  "src/cli-tui-interactive-chat.tsx": "Transferred from",
+  "src/cli/commands/chat.ts": "Transferred from",
+  "src/cli/tui/components/interactive-chat.tsx": "Transferred from",
 };
 
 describe("agent transfer client wiring", () => {

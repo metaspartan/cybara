@@ -1,11 +1,11 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { TuiContextUsage } from "./cli-tui-chat-environment";
+import type { TuiContextUsage } from "../chat-environment";
 import {
   resolveTuiColorScheme,
   tuiChatPalette,
   type TuiColorScheme,
-} from "./cli-tui-theme";
+} from "../theme";
 
 export interface ChatHeaderState {
   approvalCount: number;

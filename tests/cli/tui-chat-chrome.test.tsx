@@ -9,7 +9,7 @@ import {
   chatShortcutHints,
   terminalWorkspaceName,
   type ChatHeaderState,
-} from "../../src/cli-tui-chat-chrome";
+} from "../../src/cli/tui/components/chat-chrome";
 
 const baseHeader: ChatHeaderState = {
   approvalCount: 0,

@@ -4,7 +4,7 @@ import {
   capabilitiesFromResponse,
   insertTUICapability,
   matchingTUICapabilities,
-} from "../../src/cli-tui-capabilities";
+} from "../../src/cli/tui/components/capabilities";
 
 describe("CLI TUI capability picker", () => {
   const capabilities = capabilitiesFromResponse({

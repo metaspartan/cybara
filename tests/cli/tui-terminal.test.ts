@@ -8,7 +8,7 @@ import {
   terminalScreenSequence,
   transcriptMessageLimit,
   transcriptWindow,
-} from "../../src/cli-tui-terminal";
+} from "../../src/cli/tui/terminal";
 
 describe("CLI TUI terminal behavior", () => {
   test("adapts controls and content density to terminal dimensions", () => {

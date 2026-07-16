@@ -1,4 +1,4 @@
-import { normalizeChatAppearanceSettings } from "../shared/chat-appearance";
+import { normalizeChatAppearanceSettings } from "../../../shared/chat-appearance";
 
 const blockedSegments = new Set(["__proto__", "constructor", "prototype"]);
 

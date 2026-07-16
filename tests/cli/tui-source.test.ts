@@ -3,38 +3,65 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 const root = join(import.meta.dir, "..", "..");
-const cliSource = readFileSync(join(root, "src", "cli.tsx"), "utf8");
-const cliChatSource = readFileSync(join(root, "src", "cli-chat.ts"), "utf8");
-const cliTuiMenuSource = readFileSync(join(root, "src", "cli-tui-menu.tsx"), "utf8");
-const cliTuiPanelsSource = readFileSync(join(root, "src", "cli-tui-panels.tsx"), "utf8");
-const cliEvalsSource = readFileSync(join(root, "src", "cli-evals.tsx"), "utf8");
-const cliTuiOperationsPanelsSource = readFileSync(
-  join(root, "src", "cli-tui-operations-panels.tsx"),
+const cliSource = readFileSync(join(root, "src", "cli", "index.tsx"), "utf8");
+const cliChatSource = readFileSync(join(root, "src", "cli", "commands", "chat.ts"), "utf8");
+const cliTuiMenuSource = readFileSync(
+  join(root, "src", "cli", "tui", "components", "menu.tsx"),
   "utf8"
 );
-const cliTuiChatSource = readFileSync(join(root, "src", "cli-tui-chat.tsx"), "utf8");
-const cliTuiChatChromeSource = readFileSync(join(root, "src", "cli-tui-chat-chrome.tsx"), "utf8");
+const cliTuiPanelsSource = readFileSync(
+  join(root, "src", "cli", "tui", "components", "panels.tsx"),
+  "utf8"
+);
+const cliEvalsSource = readFileSync(
+  join(root, "src", "cli", "tui", "components", "evals.tsx"),
+  "utf8"
+);
+const cliTuiOperationsPanelsSource = readFileSync(
+  join(root, "src", "cli", "tui", "components", "operations-panels.tsx"),
+  "utf8"
+);
+const cliTuiChatSource = readFileSync(
+  join(root, "src", "cli", "tui", "components", "chat.tsx"),
+  "utf8"
+);
+const cliTuiChatChromeSource = readFileSync(
+  join(root, "src", "cli", "tui", "components", "chat-chrome.tsx"),
+  "utf8"
+);
 const cliTuiInteractiveChatSource = readFileSync(
-  join(root, "src", "cli-tui-interactive-chat.tsx"),
+  join(root, "src", "cli", "tui", "components", "interactive-chat.tsx"),
   "utf8"
 );
 const cliTuiMarkdownRenderSource = readFileSync(
-  join(root, "src", "cli-tui-markdown-render.tsx"),
+  join(root, "src", "cli", "tui", "components", "markdown-render.tsx"),
   "utf8"
 );
-const cliTuiCommandsSource = readFileSync(join(root, "src", "cli-tui-commands.ts"), "utf8");
-const cliTuiChatHistorySource = readFileSync(join(root, "src", "cli-tui-chat-history.tsx"), "utf8");
+const cliTuiCommandsSource = readFileSync(join(root, "src", "cli", "tui", "commands.ts"), "utf8");
+const cliTuiChatHistorySource = readFileSync(
+  join(root, "src", "cli", "tui", "components", "chat-history.tsx"),
+  "utf8"
+);
 const cliTuiChatEnvironmentSource = readFileSync(
-  join(root, "src", "cli-tui-chat-environment.ts"),
+  join(root, "src", "cli", "tui", "chat-environment.ts"),
   "utf8"
 );
 const cliTuiChatEnvironmentViewSource = readFileSync(
-  join(root, "src", "cli-tui-chat-environment-view.tsx"),
+  join(root, "src", "cli", "tui", "components", "chat-environment-view.tsx"),
   "utf8"
 );
-const cliTuiSettingsSource = readFileSync(join(root, "src", "cli-tui-settings.tsx"), "utf8");
-const cliTuiApprovalsSource = readFileSync(join(root, "src", "cli-tui-approvals.tsx"), "utf8");
-const cliPluginsSource = readFileSync(join(root, "src", "cli-connectors.tsx"), "utf8");
+const cliTuiSettingsSource = readFileSync(
+  join(root, "src", "cli", "tui", "components", "settings.tsx"),
+  "utf8"
+);
+const cliTuiApprovalsSource = readFileSync(
+  join(root, "src", "cli", "tui", "components", "approvals.tsx"),
+  "utf8"
+);
+const cliPluginsSource = readFileSync(
+  join(root, "src", "cli", "tui", "components", "connectors.tsx"),
+  "utf8"
+);
 const cliDocs = readFileSync(join(root, "docs", "cli.md"), "utf8");
 
 const tuiPanels = [

@@ -138,7 +138,7 @@ async function runCli(
   args: string[],
   envOverride?: Record<string, string>
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn([process.execPath, "run", "src/cli.tsx", ...args], {
+  const proc = Bun.spawn([process.execPath, "run", "src/cli/index.tsx", ...args], {
     cwd: ROOT_DIR,
     env: {
       ...process.env,
@@ -243,7 +243,7 @@ describe("CLI auth header forwarding", () => {
   });
 
   test("chat request path uses auth header helper for /api/chat", () => {
-    const cliPath = join(ROOT_DIR, "src", "cli-chat.ts");
+    const cliPath = join(ROOT_DIR, "src", "cli", "commands", "chat.ts");
     const cliSource = readFileSync(cliPath, "utf8");
 
     expect(cliSource).toContain("const resp = await fetch(`${current.apiBase}/api/chat`, {");

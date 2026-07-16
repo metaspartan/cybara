@@ -1,8 +1,8 @@
 import React from "react";
 import { Box, Text, useInput } from "ink";
 import Spinner from "ink-spinner";
-import { useTerminalLayout } from "./cli-tui-terminal";
-import { useTUIBack } from "./cli-tui-navigation";
+import { useTerminalLayout } from "../terminal";
+import { useTUIBack } from "./navigation";
 
 const TUI_INPUT_OPTIONS = {
   isActive:

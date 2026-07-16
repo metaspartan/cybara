@@ -46,7 +46,7 @@ function send(message: Record<string, unknown>): void {
 
 beforeAll(() => {
   tempHome = mkdtempSync(join(tmpdir(), "cybara-mcp-stdio-"));
-  proc = Bun.spawn(["bun", join(REPO_ROOT, "src", "cli.tsx"), "mcp", "serve"], {
+  proc = Bun.spawn(["bun", join(REPO_ROOT, "src", "cli", "index.tsx"), "mcp", "serve"], {
     cwd: REPO_ROOT,
     env: {
       ...process.env,

@@ -1,16 +1,16 @@
 import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
-import { resolveAgentIdentifier } from "./cli-agent-resolution";
-import { formatTUIAgentLabel } from "./cli-tui-agent-label";
-import type { TUIFetchAPI } from "./cli-tui-chat";
+import { resolveAgentIdentifier } from "../../commands/agent-resolution";
+import { formatTUIAgentLabel } from "../agent-label";
+import type { TUIFetchAPI } from "./chat";
 import {
   approvalDecisionForInput,
   approvalsFromResponse,
   ToolApprovalPrompt,
   type ToolApprovalDecision,
   type ToolApprovalRequest,
-} from "./cli-tui-approvals";
+} from "./approvals";
 import {
   environmentSnapshotFromDetail,
   lspServersFromResponse,
@@ -27,8 +27,8 @@ import {
   type TuiLspSummary,
   type TuiSubagentSummary,
   type TuiTaskSummary,
-} from "./cli-tui-chat-environment";
-import { EnvironmentPanel } from "./cli-tui-chat-environment-view";
+} from "../chat-environment";
+import { EnvironmentPanel } from "./chat-environment-view";
 import {
   chatEscapeAction,
   clipboardCandidates,
@@ -37,7 +37,7 @@ import {
   resolveTerminalChatInspector,
   transcriptMessageLimit,
   useTerminalLayout,
-} from "./cli-tui-terminal";
+} from "../terminal";
 import {
   defaultTUIConversationExportPath,
   exportNotice,
@@ -49,11 +49,11 @@ import {
   TranscriptSearchPanel,
   transcriptOffsetForMessage,
   tuiTerminalDiagnosticLines,
-} from "./cli-tui-chat-history";
+} from "./chat-history";
 import {
   ChatHeader,
   ChatShortcutRail,
-} from "./cli-tui-chat-chrome";
+} from "./chat-chrome";
 import {
   compactInspectionLines,
   lspStatusLines,
@@ -61,11 +61,11 @@ import {
   mcpStatusLines,
   memoryStatusLine,
   skillStatusLines,
-} from "./cli-tui-chat-inspection";
+} from "../chat-inspection";
 import {
   TerminalInlineText,
   TerminalMessageBody,
-} from "./cli-tui-markdown-render";
+} from "./markdown-render";
 import {
   formatTUIWorkedDuration,
   limitTUIActivityDetails,
@@ -73,13 +73,13 @@ import {
   tuiActivityTone,
   type TUIActivityItem,
   type TUIToolCallItem,
-} from "./cli-tui-activity";
+} from "../activity";
 import {
   consumeTUIStatusStream,
   type TUIStatusStreamEvent,
   type TUIStreamActivity,
   type TUIStreamStatus,
-} from "./cli-tui-status-stream";
+} from "../status-stream";
 import {
   activeTUICapabilityMention,
   capabilitiesFromResponse,
@@ -87,18 +87,18 @@ import {
   insertTUICapability,
   matchingTUICapabilities,
   type TUICapabilityOption,
-} from "./cli-tui-capabilities";
+} from "./capabilities";
 import {
   completeTUIChatCommand,
   matchingTUIChatCommands,
   nextTUIChatCommandIndex,
-} from "./cli-tui-commands";
+} from "../commands";
 import {
   resolveTuiColorScheme,
   tuiChatPalette,
   type TuiColorScheme,
   type TuiSurfacePalette,
-} from "./cli-tui-theme";
+} from "../theme";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";

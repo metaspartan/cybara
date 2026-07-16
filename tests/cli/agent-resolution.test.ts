@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveAgentIdentifier } from "../../src/cli-agent-resolution";
+import { resolveAgentIdentifier } from "../../src/cli/commands/agent-resolution";
 
 const agents = [
   { id: "gemini-id", name: "Gemini", model: "gemini-3.5-flash" },

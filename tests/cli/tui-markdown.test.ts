@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseTerminalListItem, splitTerminalInline } from "../../src/cli-tui-markdown";
+import { parseTerminalListItem, splitTerminalInline } from "../../src/cli/tui/markdown";
 
 describe("CLI TUI markdown", () => {
   test("formats common inline Markdown without dropping surrounding text", () => {

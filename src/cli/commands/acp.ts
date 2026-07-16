@@ -1,5 +1,5 @@
-import { inspectAcpServer, runAcpServer } from "./core/acp/server";
-import { config } from "./core/config";
+import { inspectAcpServer, runAcpServer } from "../../core/acp/server";
+import { config } from "../../core/config";
 
 function isAcpEnabled(): boolean {
   return config.get<boolean>("acp_enabled") !== false;

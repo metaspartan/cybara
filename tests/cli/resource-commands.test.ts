@@ -3,7 +3,7 @@ import {
   printArtifacts,
   printJourney,
   type CliResourceFetch,
-} from "../../src/cli-resource-commands";
+} from "../../src/cli/commands/resource-commands";
 
 const originalLog = console.log;
 
