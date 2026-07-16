@@ -25,6 +25,7 @@ enum NativeSettingsTab: String, CaseIterable, Identifiable {
     case speech
     case memory
     case wallet
+    case updates
     case migration
     case features
     case advanced
@@ -50,6 +51,7 @@ enum NativeSettingsTab: String, CaseIterable, Identifiable {
         case .speech: return "settings.voice"
         case .memory: return "nav.memory"
         case .wallet: return "nav.wallet"
+        case .updates: return "settings.updates"
         case .migration: return "settings.migration"
         case .features: return "settings.safety"
         case .advanced: return "nav.system"
@@ -75,6 +77,7 @@ enum NativeSettingsTab: String, CaseIterable, Identifiable {
         case .speech: return "waveform"
         case .memory: return "memorychip"
         case .wallet: return "creditcard"
+        case .updates: return "arrow.down.circle"
         case .migration: return "folder.badge.gearshape"
         case .features: return "checkmark.shield"
         case .advanced: return "gearshape.2"
@@ -102,6 +105,7 @@ struct NativeSettingsScreen: View {
     @State private var advancedSelection: SettingsAdvancedSection = .router
     @AppStorage("cybara.petEnabled") private var petEnabled = false
     @State private var health: GatewayHealth?
+    @State private var buildInfo: GatewayBuildInfo?
     @State private var config: [String: Any] = [:]
     @State private var providers: [GatewayProvider] = []
     @State private var agents: [GatewayAgent] = []
@@ -321,6 +325,7 @@ struct NativeSettingsScreen: View {
                     .tabItem { Label("Stored Memory", systemImage: "tray.full") }
             }
         case .wallet: WalletScreen(client: client)
+        case .updates: updatesTab
         case .migration: migrationTab
         case .features: featuresTab
         case .advanced: advancedTab
@@ -365,14 +370,6 @@ struct NativeSettingsScreen: View {
                             .font(.system(size: 15, weight: .bold, design: .rounded))
                         settingRow("Gateway status", sidecar.status.title)
                         settingRow("Gateway URL", sidecar.serverURL.absoluteString)
-                        HStack(spacing: 10) {
-                            Button {
-                                NotificationCenter.default.post(name: .cybaraCheckForUpdates, object: nil)
-                            } label: {
-                                Label("Check for Updates", systemImage: "arrow.down.circle")
-                            }
-                            .buttonStyle(.borderedProminent)
-                        }
                     }
                 }
 
@@ -380,6 +377,68 @@ struct NativeSettingsScreen: View {
             }
             .nativeSettingsContentLayout()
         }
+    }
+
+    private var updatesTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Label("Updates", systemImage: "arrow.down.circle")
+                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                        settingRow(
+                            "Application version",
+                            Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown")
+                        settingRow("Gateway version", buildInfo?.version ?? health?.version ?? "unknown")
+                        HStack(spacing: 10) {
+                            Button {
+                                NotificationCenter.default.post(name: .cybaraCheckForUpdates, object: nil)
+                            } label: {
+                                Label("Check for Updates", systemImage: "arrow.clockwise")
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            if let repository = buildInfo?.release_repository_url,
+                               let url = URL(string: repository + "/releases") {
+                                Button {
+                                    NSWorkspace.shared.open(url)
+                                } label: {
+                                    Label("View Releases", systemImage: "arrow.up.right.square")
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Build Provenance", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                        nativeBuildValue("Release commit", buildInfo?.commit)
+                        Divider()
+                        nativeBuildValue("SHA-256", buildInfo?.executable_sha256)
+                        Divider()
+                        nativeBuildValue("Executable", buildInfo?.executable_name)
+                    }
+                }
+            }
+            .nativeSettingsContentLayout()
+        }
+    }
+
+    private func nativeBuildValue(_ title: String, _ value: String?) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+            Text(value ?? "Unavailable")
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(value == nil ? Color.secondary : Color.primary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var gatewayTab: some View {
@@ -2289,6 +2348,7 @@ struct NativeSettingsScreen: View {
     private func load() async {
         guard sidecar.isReady else {
             health = nil
+            buildInfo = nil
             config = [:]
             providers = []
             gatewayLogs = []
@@ -2299,9 +2359,11 @@ struct NativeSettingsScreen: View {
 
         do {
             async let h = client.health()
+            async let build = client.buildInfo()
             async let cfg = client.appConfig()
             async let p = client.providers()
             health = try await h
+            buildInfo = try await build
             config = try await cfg
             providers = try await p
             readConfig(config)

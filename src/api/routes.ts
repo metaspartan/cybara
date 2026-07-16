@@ -91,7 +91,7 @@ import {
   withAgentReasoningSetting,
 } from "../core/agent-reasoning";
 import { deleteArtifact, listAllArtifacts, listArtifacts, readArtifact } from "../core/artifacts";
-import { getAppVersion, getReleaseRepositoryUrl } from "../core/build-info";
+import { getAppVersion, getBuildProvenance, getReleaseRepositoryUrl } from "../core/build-info";
 import {
   channelManager,
   channels,
@@ -521,6 +521,12 @@ const routes: Record<string, RouteHandler> = {
       channels: channelManager.getStats(),
       tasks: taskScheduler.getStats(),
     },
+  }),
+
+  "GET /api/build-info": async () => ({
+    version: getAppVersion(),
+    release_repository_url: getReleaseRepositoryUrl(),
+    ...(await getBuildProvenance()),
   }),
 
   "GET /api/update-check": async () => {

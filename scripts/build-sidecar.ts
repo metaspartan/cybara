@@ -3,6 +3,7 @@ import { $ } from "bun";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { arch, platform } from "os";
 import { dirname, join } from "path";
+import { readGitCommit } from "../src/core/build-info";
 import { type BunRuntimeTarget, installBunRuntimeAt } from "../src/core/bun-runtime";
 import {
   CUA_DRIVER_VERSION,
@@ -490,6 +491,11 @@ export async function buildSidecar(): Promise<void> {
   const tauriDebugDir = join(import.meta.dirname, "..", "src-tauri", "target", "debug");
   const tauriDebugSidecarPath = join(tauriDebugDir, `cybara${ext}`);
   const uiDistPath = join(import.meta.dirname, "..", "ui", "dist");
+  const buildCommit =
+    process.env.CYBARA_BUILD_COMMIT?.trim() ||
+    process.env.GITHUB_SHA?.trim() ||
+    (await readGitCommit(join(import.meta.dirname, "..")));
+  if (buildCommit) process.env.CYBARA_BUILD_COMMIT = buildCommit;
 
   console.log(`\n⚡ Building Cybara sidecar for ${target.tauriSuffix}\n`);
 
@@ -568,7 +574,7 @@ export default instance.exports;
   }
 
   try {
-    await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers --external kokoro-js --external playwright --external playwright-core`;
+    await $`bun build src/index.ts --compile --env=CYBARA_BUILD_* --target=${target.bunTarget} --outfile ${releasePath} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers --external kokoro-js --external playwright --external playwright-core`;
   } finally {
     // Restore original wasm_loader.js
     if (originalWasmLoader) {

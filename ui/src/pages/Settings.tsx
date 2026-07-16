@@ -19,6 +19,7 @@ import { WebToolPolicySettings } from "./settings/WebToolPolicySettings";
 import { WebResearchSettings } from "./settings/WebResearchSettings";
 import { SystemPromptSection } from "./settings/SystemPromptSection";
 import { SidebarNavigationSettings } from "./settings/SidebarNavigationSettings";
+import { DesktopUpdateSettings } from "./settings/DesktopUpdateSettings";
 import { asSettingsRecord, readIntegerSetting } from "./settings/settingsValueReaders";
 import { Agents as AgentsSettings } from "./Agents";
 import { Channels as ChannelsSettings } from "./Channels";
@@ -68,12 +69,8 @@ import { clearGatewayAccessPassword, setApiAuthToken, setGatewayAccessPassword }
 import { Modal } from "@/components/ui/Modal";
 import { Switch } from "@/components/ui/Switch";
 import { openExternal } from "@/utils/openExternal";
-import { checkForUpdate, getUpdateState, startUpdateInstall } from "@/lib/updateStore";
-import { useDesktopUpdate } from "@/hooks/useDesktopUpdate";
 import {
   getDesktopHostRuntime,
-  getDesktopRuntimeLabel,
-  isDesktopUpdaterSupported,
   openDesktopDirectoryDialog,
   openDesktopFileDialog,
 } from "@/lib/desktopHost";
@@ -94,7 +91,7 @@ import {
 import { resolveSettingsSectionId } from "@/lib/settingsNavigation";
 import { persistPetEnabled, readPetEnabled } from "@/lib/petPreferences";
 import { languageOptions, useI18n } from "@/lib/i18n";
-import { cn, formatByteCount } from "@/lib/settingsFormat";
+import { cn } from "@/lib/settingsFormat";
 import {
   Activity,
   AlertTriangle,
@@ -108,10 +105,7 @@ import {
   Palette,
   RefreshCw,
   Shield,
-  Download,
-  ExternalLink,
   FolderSync,
-  MonitorUp,
   Monitor,
   Network,
   Radio,
@@ -378,185 +372,6 @@ function ThemeSettings() {
         <p className="text-xs text-gray-500 mt-3">
           {t("settings.accent")}: {themeAccents[accent].name}
         </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function DesktopUpdateSettings({
-  currentVersion,
-  releaseRepositoryUrl,
-}: {
-  currentVersion: string;
-  releaseRepositoryUrl?: string;
-}) {
-  const { addToast } = useUIStore();
-  const desktopRuntime = getDesktopHostRuntime();
-  const isDesktopRuntime = desktopRuntime !== null;
-  const supportsUpdater = isDesktopUpdaterSupported();
-  const runtimeLabel = getDesktopRuntimeLabel(desktopRuntime);
-  const {
-    phase,
-    available: availableUpdate,
-    downloadedBytes,
-    totalBytes,
-    lastCheckedAt,
-    error: updateError,
-  } = useDesktopUpdate();
-
-  const status: "idle" | "checking" | "current" | "available" | "installing" | "error" =
-    !supportsUpdater
-      ? "current"
-      : phase === "downloading" || phase === "installing" || phase === "done"
-        ? "installing"
-        : phase;
-
-  const statusMessage = !supportsUpdater
-    ? "This native Cybara macOS app uses the same local gateway on http://127.0.0.1:4269, but in-app signed updater installs are not wired for this host yet. Use GitHub Releases or rebuild from source."
-    : phase === "done"
-      ? `Installed ${availableUpdate?.version ?? "update"}. Restarting Cybara...`
-      : phase === "downloading" || phase === "installing"
-        ? `Downloading and installing ${availableUpdate?.version ?? "update"}...`
-        : phase === "available"
-          ? (updateError ?? `Version ${availableUpdate?.version} is available to install.`)
-          : phase === "error"
-            ? (updateError ?? "Desktop update check failed.")
-            : phase === "current"
-              ? "This desktop build is already on the latest published release."
-              : phase === "checking"
-                ? "Checking GitHub Releases for a newer desktop build..."
-                : "Check for signed Cybara desktop updates published to GitHub Releases.";
-
-  const handleCheck = useCallback(async () => {
-    if (!isDesktopRuntime || !supportsUpdater) return;
-    await checkForUpdate();
-    const latest = getUpdateState();
-    if (latest.phase === "available" && latest.available) {
-      addToast("success", `Desktop update ${latest.available.version} is ready to install`);
-    } else if (latest.phase === "current") {
-      addToast("success", "Cybara desktop is already up to date");
-    } else if (latest.error) {
-      addToast("error", latest.error);
-    }
-  }, [addToast, isDesktopRuntime, supportsUpdater]);
-
-  const handleInstall = useCallback(async () => {
-    await startUpdateInstall();
-    const latest = getUpdateState();
-    if (latest.error && latest.phase === "available") {
-      addToast("error", latest.error);
-    }
-  }, [addToast]);
-
-  if (!isDesktopRuntime) {
-    return null;
-  }
-
-  const releasesUrl = releaseRepositoryUrl ? `${releaseRepositoryUrl}/releases` : null;
-  const updateBodyPreview = availableUpdate?.body?.trim()
-    ? availableUpdate.body.trim().slice(0, 280)
-    : null;
-  const progressLabel =
-    status === "installing"
-      ? totalBytes && totalBytes > 0
-        ? `${formatByteCount(downloadedBytes)} / ${formatByteCount(totalBytes)}`
-        : `${formatByteCount(downloadedBytes)} downloaded`
-      : null;
-  const statusVariant =
-    status === "available"
-      ? "warning"
-      : status === "current"
-        ? "success"
-        : status === "error"
-          ? "error"
-          : "default";
-  const statusLabel =
-    status === "available"
-      ? "Update Available"
-      : status === "current"
-        ? "Up To Date"
-        : status === "installing"
-          ? "Installing"
-          : status === "error"
-            ? "Unavailable"
-            : status === "checking"
-              ? "Checking"
-              : "Idle";
-
-  return (
-    <Card variant="liquid">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <MonitorUp className="w-5 h-5 text-emerald-400" />
-          Desktop Updates
-        </CardTitle>
-        <CardDescription>
-          {supportsUpdater
-            ? `Signed updates for the ${runtimeLabel}`
-            : `${runtimeLabel} runtime attached to the local Cybara gateway`}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={statusVariant}>{statusLabel}</Badge>
-          <Badge variant="info">{runtimeLabel}</Badge>
-          <span className="text-xs text-gray-400">
-            Current version: <span className="text-white">{currentVersion || "unknown"}</span>
-          </span>
-          {availableUpdate && (
-            <span className="text-xs text-emerald-300">Latest: {availableUpdate.version}</span>
-          )}
-        </div>
-
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-          <p className="text-sm text-white">{statusMessage}</p>
-          {progressLabel && <p className="mt-1 text-xs text-emerald-300">{progressLabel}</p>}
-          {lastCheckedAt && (
-            <p className="mt-1 text-[11px] text-gray-500">
-              Last checked {new Date(lastCheckedAt).toLocaleString()}
-            </p>
-          )}
-          {updateBodyPreview && (
-            <p className="mt-2 text-xs text-gray-300 whitespace-pre-wrap break-words">
-              {updateBodyPreview}
-              {availableUpdate?.body &&
-              availableUpdate.body.trim().length > updateBodyPreview.length
-                ? "..."
-                : ""}
-            </p>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() => void handleCheck()}
-            disabled={status === "checking" || status === "installing" || !supportsUpdater}
-          >
-            <RefreshCw className={`w-4 h-4 ${status === "checking" ? "animate-spin" : ""}`} />
-            {supportsUpdater ? "Check Now" : "Built From Source"}
-          </Button>
-          {availableUpdate && supportsUpdater && (
-            <Button
-              variant="primary"
-              onClick={() => void handleInstall()}
-              disabled={status === "installing"}
-            >
-              <Download className="w-4 h-4" />
-              Install And Restart
-            </Button>
-          )}
-          {releasesUrl && (
-            <Button
-              variant="ghost"
-              onClick={() => void openExternal(releasesUrl)}
-              disabled={status === "installing"}
-            >
-              <ExternalLink className="w-4 h-4" />
-              View Releases
-            </Button>
-          )}
-        </div>
       </CardContent>
     </Card>
   );
@@ -2818,13 +2633,16 @@ export function Settings() {
           </SettingsSurface>
         )}
 
+        {activeSection === "updates" && (
+          <DesktopUpdateSettings
+            currentVersion={String(infoData.version || "unknown")}
+            releaseRepositoryUrl={infoData.releaseRepositoryUrl}
+          />
+        )}
+
         {activeSection === "system" && (
           <>
             <SystemBackupSettingsSection />
-            <DesktopUpdateSettings
-              currentVersion={String(infoData.version || "unknown")}
-              releaseRepositoryUrl={infoData.releaseRepositoryUrl}
-            />
             <SystemMonitorPanel />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

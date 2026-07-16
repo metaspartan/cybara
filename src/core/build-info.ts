@@ -1,5 +1,15 @@
 import packageJson from "../../package.json";
+import { basename, isAbsolute, join, resolve } from "path";
 import { DEFAULT_RELEASE_REPOSITORY } from "./versioning";
+
+export interface BuildProvenance {
+  commit: string | null;
+  executable_sha256: string | null;
+  executable_name: string;
+}
+
+const commitPattern = /^[0-9a-f]{7,64}$/i;
+let buildProvenancePromise: Promise<BuildProvenance> | null = null;
 
 function normalizeRepositoryUrl(value: unknown): string {
   if (typeof value === "string" && value.trim()) {
@@ -38,4 +48,80 @@ export function getReleaseRepository(): string {
 
 export function getReleaseRepositoryUrl(): string {
   return `https://github.com/${getReleaseRepository()}`;
+}
+
+async function readTextFile(filePath: string): Promise<string | null> {
+  const file = Bun.file(filePath);
+  if (!(await file.exists())) return null;
+  try {
+    return await file.text();
+  } catch {
+    return null;
+  }
+}
+
+async function resolveGitDirectory(rootPath: string): Promise<string | null> {
+  const dotGitPath = join(rootPath, ".git");
+  const head = await readTextFile(join(dotGitPath, "HEAD"));
+  if (head !== null) return dotGitPath;
+  const pointer = await readTextFile(dotGitPath);
+  const match = pointer?.trim().match(/^gitdir:\s*(.+)$/i);
+  if (!match?.[1]) return null;
+  return isAbsolute(match[1]) ? match[1] : resolve(rootPath, match[1]);
+}
+
+export async function readGitCommit(rootPath: string): Promise<string | null> {
+  const gitDirectory = await resolveGitDirectory(rootPath);
+  if (!gitDirectory) return null;
+  const head = (await readTextFile(join(gitDirectory, "HEAD")))?.trim();
+  if (!head) return null;
+  if (commitPattern.test(head)) return head.toLowerCase();
+  const reference = head.match(/^ref:\s*(.+)$/i)?.[1]?.trim();
+  if (!reference) return null;
+  const looseCommit = (await readTextFile(join(gitDirectory, reference)))?.trim();
+  if (looseCommit && commitPattern.test(looseCommit)) return looseCommit.toLowerCase();
+  const packedReferences = await readTextFile(join(gitDirectory, "packed-refs"));
+  if (!packedReferences) return null;
+  for (const line of packedReferences.split("\n")) {
+    const [commit, name] = line.trim().split(/\s+/, 2);
+    if (name === reference && commitPattern.test(commit ?? "")) return commit.toLowerCase();
+  }
+  return null;
+}
+
+export async function hashFileSha256(filePath: string): Promise<string | null> {
+  const file = Bun.file(filePath);
+  if (!(await file.exists())) return null;
+  try {
+    const hasher = new Bun.CryptoHasher("sha256");
+    for await (const chunk of file.stream()) hasher.update(chunk);
+    return hasher.digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+async function resolveBuildCommit(): Promise<string | null> {
+  const stamped = process.env.CYBARA_BUILD_COMMIT?.trim();
+  if (stamped && commitPattern.test(stamped)) return stamped.toLowerCase();
+  const roots = [process.cwd(), resolve(import.meta.dir, "..", "..")];
+  for (const root of roots) {
+    const commit = await readGitCommit(root);
+    if (commit) return commit;
+  }
+  return null;
+}
+
+export function getBuildProvenance(): Promise<BuildProvenance> {
+  if (!buildProvenancePromise) {
+    buildProvenancePromise = Promise.all([
+      resolveBuildCommit(),
+      hashFileSha256(process.execPath),
+    ]).then(([commit, executableSha256]) => ({
+      commit,
+      executable_sha256: executableSha256,
+      executable_name: basename(process.execPath),
+    }));
+  }
+  return buildProvenancePromise;
 }

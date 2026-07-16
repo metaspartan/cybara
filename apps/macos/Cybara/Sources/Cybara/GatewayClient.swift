@@ -166,6 +166,10 @@ struct GatewayClient: Sendable {
         try await get("api/health", as: GatewayHealth.self)
     }
 
+    func buildInfo() async throws -> GatewayBuildInfo {
+        try await get("api/build-info", as: GatewayBuildInfo.self)
+    }
+
     func agents() async throws -> [GatewayAgent] {
         try await getList("api/agents/summary", keys: ["agents", "items"])
     }

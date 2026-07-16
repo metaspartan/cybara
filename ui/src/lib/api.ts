@@ -680,12 +680,21 @@ export interface SystemBackupsResponse {
   restore: SystemRestoreStatus;
 }
 
+export interface SystemBuildInfo {
+  version: string;
+  release_repository_url: string;
+  commit: string | null;
+  executable_sha256: string | null;
+  executable_name: string;
+}
+
 export const systemApi = {
   restart: () =>
     fetchApi<{ success: boolean; supervised: boolean; message: string }>("/system/restart", {
       method: "POST",
     }),
   health: () => fetchApi<{ status?: string; uptime?: number }>("/health"),
+  buildInfo: () => fetchApi<SystemBuildInfo>("/build-info"),
   backups: () => fetchApi<SystemBackupsResponse>("/system/backups"),
   createBackup: (label: string) =>
     fetchApi<{ success: boolean; backup: SystemBackupSummary }>("/system/backups", {

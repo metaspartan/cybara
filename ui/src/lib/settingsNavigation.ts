@@ -20,6 +20,7 @@ export type SettingsSectionId =
   | "wallet"
   | "logs"
   | "migration"
+  | "updates"
   | "system";
 
 export interface SettingsSectionDefinition {
@@ -107,6 +108,11 @@ export const settingsSectionGroups: SettingsSectionGroup[] = [
     labelKey: "nav.system",
     sections: [
       {
+        id: "updates",
+        labelKey: "settings.updates",
+        description: "Version, releases, and build provenance",
+      },
+      {
         id: "migration",
         labelKey: "settings.migration",
         description: "Import legacy agent data",
@@ -114,7 +120,7 @@ export const settingsSectionGroups: SettingsSectionGroup[] = [
       {
         id: "system",
         labelKey: "nav.system",
-        description: "Updates, metrics, diagnostics, and health",
+        description: "Metrics, diagnostics, and health",
       },
       {
         id: "logs",

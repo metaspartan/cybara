@@ -20,6 +20,14 @@ struct GatewayHealth: Decodable {
     let uptime: Double?
 }
 
+struct GatewayBuildInfo: Decodable {
+    let version: String
+    let release_repository_url: String
+    let commit: String?
+    let executable_sha256: String?
+    let executable_name: String
+}
+
 struct GatewayAgent: Decodable, Identifiable, Hashable {
     let id: String
     let name: String

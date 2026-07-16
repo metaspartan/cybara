@@ -71,6 +71,7 @@ enum NativeI18n {
             "settings.voice": "Voice",
             "settings.safety": "Safety",
             "settings.migration": "Migration",
+            "settings.updates": "Updates",
             "settings.subtitle": "Native app preferences synced through the gateway",
             "status.waitingGateway": "Waiting for the local Cybara gateway to come online.",
         ],

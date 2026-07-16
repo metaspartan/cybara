@@ -45,6 +45,7 @@ describe("web settings navigation", () => {
       "settings.voice",
       "nav.wallet",
       "settings.safety",
+      "settings.updates",
       "settings.migration",
       "nav.system",
       "nav.logs",
@@ -67,6 +68,7 @@ describe("web settings navigation", () => {
       "voice",
       "wallet",
       "safety",
+      "updates",
       "migration",
       "system",
       "logs",
@@ -144,5 +146,10 @@ describe("web settings navigation", () => {
     expect(settingsSource).toContain("<ComputerUseSettings");
     expect(settingsSource).toContain('activeSection === "logs"');
     expect(settingsSource).toContain("<LogsSettings />");
+    expect(settingsSource).toContain('activeSection === "updates"');
+    expect(settingsSource).toContain("<DesktopUpdateSettings");
+    expect(settingsSource.indexOf("<DesktopUpdateSettings")).toBeLessThan(
+      settingsSource.indexOf('activeSection === "system"')
+    );
   });
 });

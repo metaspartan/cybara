@@ -78,6 +78,7 @@ export type TranslationKey =
   | "settings.voice"
   | "settings.safety"
   | "settings.migration"
+  | "settings.updates"
   | "settings.theme"
   | "settings.themeHelp"
   | "settings.themeSystem"
@@ -247,6 +248,7 @@ const englishTranslations: TranslationCatalog = {
     "settings.voice": "Voice",
     "settings.safety": "Safety",
     "settings.migration": "Migration",
+    "settings.updates": "Updates",
     "settings.theme": "Theme",
     "settings.themeHelp": "Follow the device or pin a specific appearance.",
     "settings.themeSystem": "System",
