@@ -347,6 +347,41 @@ jobs:
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
       - name: Build Tauri App (signed and notarized macOS)
         if: matrix.platform == 'macos' && env.HAS_MACOS_SIGNING == 'true' && env.HAS_MACOS_NOTARY == 'true'
+        id: build_tauri_notarized_macos
+        continue-on-error: true
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.MACOS_NOTARY_API_ISSUER_ID }}
+          APPLE_API_KEY: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+          APPLE_API_KEY_PATH: ${{ format('{0}/notary_key.p8', runner.temp) }}
+          TAURI_BUNDLER_DMG_IGNORE_CI: "false"
+          NO_STRIP: "true"
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Cybara ${{ github.ref_name }}"
+          releaseBody: "Download the appropriate installer for your platform below."
+          releaseDraft: true
+          includeUpdaterJson: false
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+      - name: Reset macOS disk image state
+        if: matrix.platform == 'macos' && steps.build_tauri_notarized_macos.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          while read -r device; do
+            hdiutil detach "$device" -force || true
+          done < <(hdiutil info | awk '/\/Volumes\/Cybara/{print $1}')
+          pkill -9 diskimages-helper || true
+          rm -rf "src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg"
+          sleep 5
+      - name: Retry Tauri App (signed and notarized macOS)
+        if: matrix.platform == 'macos' && steps.build_tauri_notarized_macos.outcome == 'failure'
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

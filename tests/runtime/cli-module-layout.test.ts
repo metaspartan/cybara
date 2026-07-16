@@ -38,4 +38,11 @@ describe("CLI module layout", () => {
       })
     ).toBe(true);
   });
+
+  test("keeps dead-code analysis aligned with the CLI module graph", () => {
+    const knip = readFileSync(join(root, "knip.json"), "utf8");
+
+    expect(knip).not.toContain('"src/cli-*.{ts,tsx}"');
+    expect(knip).toContain('"tests/**/*.test.{ts,tsx}"');
+  });
 });

@@ -6,11 +6,10 @@
       "entry": [
         "src/index.ts",
         "src/main.ts",
-        "src/cli-*.{ts,tsx}",
         "scripts/*.ts",
-        "tests/**/*.test.ts"
+        "tests/**/*.test.{ts,tsx}"
       ],
-      "project": ["src/**/*.{ts,tsx}", "scripts/*.ts", "tests/**/*.ts"],
+      "project": ["src/**/*.{ts,tsx}", "scripts/*.ts", "tests/**/*.{ts,tsx}"],
       "ignoreDependencies": [
         "@huggingface/transformers",
         "@typescript/native",

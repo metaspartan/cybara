@@ -114,5 +114,10 @@ describe("desktop updater wiring", () => {
     expect(workflow).toContain("Build Tauri App (unsigned/no Apple signing)");
     expect(workflow).toContain("matrix.platform != 'macos' || env.HAS_MACOS_SIGNING != 'true'");
     expect(workflow).toContain("Build Tauri App (signed and notarized macOS)");
+    expect(workflow).toContain("id: build_tauri_notarized_macos");
+    expect(workflow).toContain("steps.build_tauri_notarized_macos.outcome == 'failure'");
+    expect(workflow).toContain("name: Reset macOS disk image state");
+    expect(workflow).toContain("pkill -9 diskimages-helper || true");
+    expect(workflow).toContain("name: Retry Tauri App (signed and notarized macOS)");
   });
 });

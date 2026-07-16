@@ -137,6 +137,12 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain("bunx playwright install --only-shell chromium");
     expect(workflow).toContain("Sign Tauri sidecar runtime resources (macOS)");
     expect(workflow).toContain("run: bun run scripts/codesign-tauri-sidecar-runtime.ts");
+    expect(workflow).toContain("id: build_tauri_notarized_macos");
+    expect(workflow).toContain("steps.build_tauri_notarized_macos.outcome == 'failure'");
+    expect(workflow).toContain(
+      'rm -rf "src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg"'
+    );
+    expect(workflow).toContain("name: Retry Tauri App (signed and notarized macOS)");
     expect(workflow).toContain("bun_target: bun-darwin-arm64");
     expect(workflow).toContain('sidecar: "src-tauri/bin/cybara-aarch64-apple-darwin"');
     expect(workflow).toContain("bun_target: bun-darwin-x64");

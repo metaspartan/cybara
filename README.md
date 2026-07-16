@@ -464,7 +464,11 @@ implemented contract.
 src/
   api/                  # REST routes, chat, terminal, IDE/git API, security
   core/                 # agents, tools, wallet, channels, providers, memory, LSP, scheduler
-  cli.tsx               # CLI/TUI entry
+  cli/
+    index.tsx           # CLI/TUI entry
+    commands/           # nonvisual command handlers
+    tui/                # terminal state and formatting
+      components/       # Ink views
   index.ts              # server entry
 ui/
   src/pages/            # UI pages

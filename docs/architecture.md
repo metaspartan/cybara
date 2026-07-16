@@ -193,7 +193,11 @@ Core DB tables include:
 src/
   main.ts                 # binary entry + daemon lifecycle
   index.ts                # Bun server (REST/SSE/WS/static)
-  cli.tsx                 # CLI/TUI entry
+  cli/
+    index.tsx             # CLI/TUI entry
+    commands/             # nonvisual command handlers
+    tui/                  # terminal state and formatting
+      components/         # Ink views
   api/
     routes.ts             # API route handlers
     chat.ts               # chat/session orchestration
