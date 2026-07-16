@@ -81,6 +81,14 @@ describe("Chat markdown rendering behavior", () => {
     expect(styles).toContain("color: inherit");
   });
 
+  test("renders blockquotes with the active theme accent", () => {
+    const source = readFileSync(messageContentPath, "utf8");
+
+    expect(source).toContain('style={{ borderColor: "rgb(var(--accent-primary))" }}');
+    expect(source).toContain("text-[var(--text-muted)]");
+    expect(source).not.toContain("border-indigo-500");
+  });
+
   test("renders activity thoughts with inline markdown and neutral status icons", () => {
     const source = readFileSync(activityTimelinePath, "utf8");
 

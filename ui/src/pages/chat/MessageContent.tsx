@@ -373,7 +373,10 @@ export function MessageContent({
             );
           },
           blockquote: ({ children }) => (
-            <blockquote className="border-l-2 border-indigo-500 pl-3 my-2 text-gray-400">
+            <blockquote
+              className="my-2 border-l-2 pl-3 text-[var(--text-muted)]"
+              style={{ borderColor: "rgb(var(--accent-primary))" }}
+            >
               {children}
             </blockquote>
           ),
