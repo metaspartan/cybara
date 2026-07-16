@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { reactDoctorArgs, resolveReactDoctorBase } from "../../scripts/react-doctor";
 
 describe("React Doctor runner", () => {
-  test("lets local runs auto-detect changed lines", () => {
-    const args = reactDoctorArgs({});
+  test("uses the current commit as the local comparison base", () => {
+    const base = resolveReactDoctorBase({});
+    const args = reactDoctorArgs({}, base);
 
+    expect(base).toMatch(/^[0-9a-f]{40}$/);
     expect(args).toContain("lines");
-    expect(args).not.toContain("--base");
+    expect(args.slice(-2)).toEqual(["--base", base]);
   });
 
   test("uses the previous commit as the CI comparison base", () => {

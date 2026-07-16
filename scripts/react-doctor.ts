@@ -23,35 +23,31 @@ export function reactDoctorArgs(
   comparisonBase?: string
 ): string[] {
   const args = [...REACT_DOCTOR_ARGS];
-  if (environment.CI === "true") {
-    const base = comparisonBase?.trim() || environment.REACT_DOCTOR_BASE?.trim();
-    if (!base) {
-      throw new Error("React Doctor requires a comparison base in CI");
-    }
-    args.push("--base", base);
+  const base = comparisonBase?.trim() || environment.REACT_DOCTOR_BASE?.trim();
+  if (!base) {
+    throw new Error("React Doctor requires a comparison base");
   }
+  args.push("--base", base);
   return args;
 }
 
 export function resolveReactDoctorBase(
   environment: Readonly<Record<string, string | undefined>>,
   workingDirectory: string = import.meta.dir + "/.."
-): string | undefined {
-  if (environment.CI !== "true") {
-    return undefined;
-  }
+): string {
   const configuredBase = environment.REACT_DOCTOR_BASE?.trim();
   if (configuredBase) {
     return configuredBase;
   }
-  const result = Bun.spawnSync(["git", "rev-parse", "HEAD^"], {
+  const revision = environment.CI === "true" ? "HEAD^" : "HEAD";
+  const result = Bun.spawnSync(["git", "rev-parse", revision], {
     cwd: workingDirectory,
     stdout: "pipe",
     stderr: "pipe",
   });
   const base = result.stdout.toString().trim();
   if (result.exitCode !== 0 || !base) {
-    throw new Error("Unable to resolve the previous commit for React Doctor");
+    throw new Error("Unable to resolve the comparison base for React Doctor");
   }
   return base;
 }
