@@ -14,6 +14,7 @@ import {
 import { join } from "path";
 import { readGitCommit } from "../src/core/build-info";
 import { getCuaDriverTarget, installCuaDriverAt } from "../src/core/cua-driver-runtime";
+import { buildStandaloneCli } from "./build-standalone-cli";
 
 const DIST_DIR = "dist";
 const RELEASE_DIR = "release";
@@ -25,7 +26,6 @@ export async function runPackage(): Promise<void> {
     process.env.GITHUB_SHA?.trim() ||
     (await readGitCommit(process.cwd()));
   if (buildCommit) process.env.CYBARA_BUILD_COMMIT = buildCommit;
-  const buildEnvironment = "--env=CYBARA_BUILD_*";
   console.log("\n🚀 Cybara Packaging Script\n");
 
   console.log("📁 Cleaning release directory...");
@@ -68,7 +68,7 @@ export async function runPackage(): Promise<void> {
   const binaryPath = join(RELEASE_DIR, BINARY_NAME);
 
   try {
-    await $`bun build src/main.ts --compile ${buildEnvironment} --outfile ${binaryPath} --target bun --external electron --external @aws-sdk/client-s3 --external @huggingface/transformers --external kokoro-js --external onnxruntime-node --external onnxruntime-web`;
+    await buildStandaloneCli({ target: "bun", outfile: binaryPath });
     console.log(`   ✓ Binary compiled: ${binaryPath}`);
   } catch (error) {
     console.error("   ✗ Binary compilation failed:", error);

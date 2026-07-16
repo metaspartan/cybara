@@ -85,3 +85,62 @@ jobs:
 
       - name: Run SwiftPM tests
         run: swift test --package-path apps/macos/Cybara
+
+  darwin-x64-cli-build:
+    name: Build CLI darwin-x64
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install root dependencies
+        run: bash scripts/ci-install.sh --ignore-scripts && bun run scripts/postinstall.ts
+
+      - name: Build Darwin x64 CLI
+        env:
+          CYBARA_BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          bun run scripts/build-standalone-cli.ts bun-darwin-x64 cybara-darwin-x64
+
+      - name: Upload Darwin x64 CLI
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-cybara-darwin-x64
+          path: cybara-darwin-x64
+          retention-days: 7
+
+  darwin-x64-cli-smoke:
+    name: Smoke CLI darwin-x64
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    needs: darwin-x64-cli-build
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - name: Download Darwin x64 CLI
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-cybara-darwin-x64
+
+      - name: Ensure Rosetta is available
+        run: |
+          if ! arch -x86_64 /usr/bin/true; then
+            sudo softwareupdate --install-rosetta --agree-to-license
+          fi
+
+      - name: Run Darwin x64 CLI lifecycle
+        run: |
+          chmod +x cybara-darwin-x64
+          export HOME="$RUNNER_TEMP/cybara-darwin-x64-home"
+          mkdir -p "$HOME"
+          ./cybara-darwin-x64 version
+          ./cybara-darwin-x64 start -d
+          ./cybara-darwin-x64 status
+          ./cybara-darwin-x64 stop

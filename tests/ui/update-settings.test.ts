@@ -10,6 +10,10 @@ const updateSettings = readFileSync(
 const routes = readFileSync(join(root, "src", "api", "routes.ts"), "utf8");
 const buildScript = readFileSync(join(root, "scripts", "build-sidecar.ts"), "utf8");
 const packageScript = readFileSync(join(root, "scripts", "package.ts"), "utf8");
+const standaloneBuildScript = readFileSync(
+  join(root, "scripts", "build-standalone-cli.ts"),
+  "utf8"
+);
 const releaseWorkflow = readFileSync(join(root, ".github", "workflows", "release.yml"), "utf8");
 const nativeSettings = readFileSync(
   join(root, "apps", "macos", "Cybara", "Sources", "Cybara", "NativeSettingsScreen.swift"),
@@ -30,11 +34,12 @@ describe("desktop update settings", () => {
     expect(buildScript).toContain("process.env.CYBARA_BUILD_COMMIT = buildCommit");
     expect(buildScript).toContain('const buildEnvironment = "--env=CYBARA_BUILD_*"');
     expect(buildScript).toContain("${buildEnvironment}");
-    expect(packageScript).toContain('const buildEnvironment = "--env=CYBARA_BUILD_*"');
-    expect(packageScript).toContain("${buildEnvironment}");
-    expect(releaseWorkflow).toContain("'--env=CYBARA_BUILD_*'");
+    expect(packageScript).toContain("process.env.CYBARA_BUILD_COMMIT = buildCommit");
+    expect(packageScript).toContain("buildStandaloneCli");
+    expect(standaloneBuildScript).toContain('"--env=CYBARA_BUILD_*"');
+    expect(releaseWorkflow).toContain("scripts/build-standalone-cli.ts");
     expect(buildScript).not.toContain("--compile --env=CYBARA_BUILD_*");
-    expect(packageScript).not.toContain("--compile --env=CYBARA_BUILD_*");
+    expect(standaloneBuildScript).not.toContain("--compile --env=CYBARA_BUILD_*");
   });
 
   test("keeps native macOS update settings in parity", () => {

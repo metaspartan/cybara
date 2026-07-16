@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { standaloneCliBuildArgs } from "../../scripts/build-standalone-cli";
 
 function currentBunTarget(): string {
   const platform = process.platform === "win32" ? "windows" : process.platform;
@@ -16,29 +17,9 @@ describe("compiled CLI startup", () => {
     mkdirSync(home, { recursive: true });
 
     try {
-      const build = Bun.spawnSync(
-        [
-          process.execPath,
-          "build",
-          join(process.cwd(), "src", "main.ts"),
-          "--compile",
-          `--target=${currentBunTarget()}`,
-          `--outfile=${binary}`,
-          "--external",
-          "electron",
-          "--external",
-          "@aws-sdk/client-s3",
-          "--external",
-          "@huggingface/transformers",
-          "--external",
-          "kokoro-js",
-          "--external",
-          "onnxruntime-node",
-          "--external",
-          "onnxruntime-web",
-        ],
-        { cwd: process.cwd() }
-      );
+      const build = Bun.spawnSync(standaloneCliBuildArgs(currentBunTarget(), binary), {
+        cwd: process.cwd(),
+      });
       expect(build.exitCode).toBe(0);
 
       const environment = { ...process.env, HOME: home, USERPROFILE: home };

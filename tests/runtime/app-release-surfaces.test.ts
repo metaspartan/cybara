@@ -185,18 +185,12 @@ describe("app release surface wiring", () => {
     );
   });
 
-  test("CLI release binaries keep architecture-specific ML runtimes optional", () => {
+  test("CLI release binaries use the shared standalone build", () => {
     const workflow = read(".github/workflows/release.yml");
-    const compileCommand = workflow
-      .split("\n")
-      .find((line) => line.includes("bun build src/main.ts --compile"));
 
-    expect(compileCommand).toContain("--external electron");
-    expect(compileCommand).toContain("--external @aws-sdk/client-s3");
-    expect(compileCommand).toContain("--external @huggingface/transformers");
-    expect(compileCommand).toContain("--external kokoro-js");
-    expect(compileCommand).toContain("--external onnxruntime-node");
-    expect(compileCommand).toContain("--external onnxruntime-web");
+    expect(workflow).toContain(
+      "bun run scripts/build-standalone-cli.ts bun-${{ matrix.target }} ${{ matrix.artifact }}"
+    );
   });
 
   test("Darwin x64 release artifact is smoke-tested on a macOS runner", () => {
@@ -208,6 +202,21 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain("./cybara-darwin-x64 status");
     expect(workflow).toContain("./cybara-darwin-x64 stop");
     expect(workflow).toContain("needs: [build-cli, smoke-cli-darwin-x64, build-mobile]");
+  });
+
+  test("dev CI cross-compiles and smoke-tests the Darwin x64 CLI artifact", () => {
+    const workflow = read(".github/workflows/ci.yml");
+
+    expect(workflow).toContain("darwin-x64-cli-build:");
+    expect(workflow).toContain(
+      "bun run scripts/build-standalone-cli.ts bun-darwin-x64 cybara-darwin-x64"
+    );
+    expect(workflow).toContain("name: ci-cybara-darwin-x64");
+    expect(workflow).toContain("darwin-x64-cli-smoke:");
+    expect(workflow).toContain("arch -x86_64 /usr/bin/true");
+    expect(workflow).toContain("./cybara-darwin-x64 start -d");
+    expect(workflow).toContain("./cybara-darwin-x64 status");
+    expect(workflow).toContain("./cybara-darwin-x64 stop");
   });
 
   test("release workflow runs native macOS unit tests when XCTest is available", () => {
