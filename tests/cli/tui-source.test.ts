@@ -13,6 +13,7 @@ const cliTuiOperationsPanelsSource = readFileSync(
   "utf8"
 );
 const cliTuiChatSource = readFileSync(join(root, "src", "cli-tui-chat.tsx"), "utf8");
+const cliTuiChatChromeSource = readFileSync(join(root, "src", "cli-tui-chat-chrome.tsx"), "utf8");
 const cliTuiInteractiveChatSource = readFileSync(
   join(root, "src", "cli-tui-interactive-chat.tsx"),
   "utf8"
@@ -327,10 +328,13 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("selectedIndex={commandIndex}");
     expect(cliTuiInteractiveChatSource).toContain("ChatHeader");
     expect(cliTuiInteractiveChatSource).toContain("ChatShortcutRail");
-    expect(cliTuiInteractiveChatSource).not.toContain("<Box marginTop={1} flexShrink={0}>");
     expect(cliTuiInteractiveChatSource).toContain(
-      "borderColor={sending ? tuiPalette.accent : tuiPalette.border}"
+      "borderColor={sending ? tuiPalette.accent : tuiPalette.chrome}"
     );
+    expect(cliTuiInteractiveChatSource).toContain("backgroundColor={tuiPalette.background}");
+    expect(cliTuiChatEnvironmentViewSource).toContain("borderColor={palette.chrome}");
+    expect(cliTuiChatChromeSource).toContain("color={palette.shortcut}");
+    expect(cliTuiInteractiveChatSource).not.toContain("<Box marginTop={1} flexShrink={0}>");
     expect(cliTuiInteractiveChatSource).toContain("EnvironmentPanel");
     expect(cliTuiInteractiveChatSource).toContain("resolveTerminalChatInspector");
     expect(cliTuiInteractiveChatSource).toContain('variant="sidebar"');
@@ -356,7 +360,8 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain(
       "const [expandedTranscript, setExpandedTranscript] = React.useState(false)"
     );
-    expect(cliTuiInteractiveChatSource).toContain("<TerminalInlineText line={row.label} />");
+    expect(cliTuiInteractiveChatSource).toContain("<TerminalInlineText");
+    expect(cliTuiInteractiveChatSource).toContain("baseColor={palette.detail}");
     expect(cliTuiInteractiveChatSource).not.toContain("compact(row.label");
     expect(cliTuiInteractiveChatSource).not.toContain(
       "<MessageBody content={content} maxLines={8} />"
@@ -375,7 +380,7 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("(key as { tab?: boolean }).tab");
     expect(cliTuiInteractiveChatSource).toContain("process_activities");
     expect(cliTuiInteractiveChatSource).toContain("tool_calls");
-    expect(cliTuiInteractiveChatSource).toContain("palette.activity");
+    expect(cliTuiInteractiveChatSource).toContain("palette[tuiActivityTone(row)]");
     expect(cliTuiInteractiveChatSource).toContain("palette.detail");
     expect(cliTuiInteractiveChatSource).toContain("key={`${row.id}-${rowIndex}`}");
     expect(cliTuiInteractiveChatSource).toContain(

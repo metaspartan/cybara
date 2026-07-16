@@ -131,6 +131,10 @@ describe("chat appearance settings", () => {
     expect(subagents).not.toContain("p-2 text-[11px] text-gray-300");
     expect(message).toContain('className="chat-code-text w-full border-collapse"');
     expect(activity).toContain('className="chat-activity-text flex w-full');
+    expect(activity).toContain(
+      'className="flex h-[1.5em] shrink-0 items-center" data-testid="activity-row-icon"'
+    );
+    expect(activity).not.toContain("opacity-70 mt-0.5 flex-shrink-0");
     expect(activity).not.toContain("text-[10px] leading-none text-sky-200");
     expect(styles).toContain("font-size: var(--chat-font-size, 14px)");
     expect(styles).toContain("font-size: var(--chat-code-font-size, 12px)");

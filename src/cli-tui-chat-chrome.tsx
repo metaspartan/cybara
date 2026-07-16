@@ -118,11 +118,11 @@ export function ChatHeader({
   return (
     <Box flexDirection="column" paddingX={1} flexShrink={0}>
       <Box justifyContent="space-between">
-        <Text bold color={palette.text}>
+        <Text bold color={palette.heading}>
           <Text color={palette.accent}>◆ </Text>
           {compact(state.title, titleLimit)}
         </Text>
-        <Text color={state.sending ? "yellow" : "green"}>
+        <Text color={state.sending ? palette.warning : palette.success}>
           {state.sending ? "◌" : "●"} {status}
         </Text>
       </Box>
@@ -143,7 +143,7 @@ export function ChatShortcutRail({
   const palette = tuiChatPalette(colorScheme);
   return (
     <Box paddingX={1} flexShrink={0}>
-      <Text color={palette.subtle} wrap="wrap">
+      <Text color={palette.shortcut} wrap="wrap">
         {chatShortcutHints(state).join(" · ")}
       </Text>
     </Box>

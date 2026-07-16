@@ -228,26 +228,61 @@ function parseToolChange(tool: unknown): TuiFileChange[] {
   return [];
 }
 
-export function fileChangesFromMessages(messages: unknown): TuiFileChangeSummary | null {
+function normalizedChangePath(path: string, workspaceDir?: string | null): string {
+  const normalized = path
+    .replace(/\\/g, "/")
+    .replace(/\/{2,}/g, "/")
+    .replace(/^\.\//, "");
+  const workspace = workspaceDir
+    ?.replace(/\\/g, "/")
+    .replace(/\/{2,}/g, "/")
+    .replace(/\/$/, "");
+  if (!workspace) return normalized;
+  const comparablePath = normalized.toLowerCase();
+  const comparableWorkspace = workspace.toLowerCase();
+  if (comparablePath.startsWith(`${comparableWorkspace}/`)) {
+    return normalized.slice(workspace.length + 1);
+  }
+  return normalized;
+}
+
+function changeBasename(path: string): string {
+  return path.split("/").filter(Boolean).at(-1) || path;
+}
+
+function mergeFileChange(byPath: Map<string, TuiFileChange>, change: TuiFileChange): void {
+  const existing = byPath.get(change.path) || { ...change, added: 0, removed: 0 };
+  existing.added += change.added;
+  existing.removed += change.removed;
+  existing.type = existing.removed > 0 ? "updated" : change.type;
+  byPath.set(change.path, existing);
+}
+
+export function fileChangesFromMessages(
+  messages: unknown,
+  workspaceDir?: string | null
+): TuiFileChangeSummary | null {
   const byPath = new Map<string, TuiFileChange>();
+  const activities: TuiFileChange[] = [];
   for (const message of arrayFrom(messages)) {
     if (!isRecord(message)) continue;
     for (const activity of arrayFrom(message.process_activities)) {
       const change = parseActivityChange(activity);
       if (!change) continue;
-      const existing = byPath.get(change.path) || { ...change, added: 0, removed: 0 };
-      existing.added += change.added;
-      existing.removed += change.removed;
-      existing.type = existing.removed > 0 ? "updated" : change.type;
-      byPath.set(change.path, existing);
+      activities.push({ ...change, path: normalizedChangePath(change.path, workspaceDir) });
     }
     for (const change of arrayFrom(message.tool_calls).flatMap(parseToolChange)) {
-      const existing = byPath.get(change.path) || { ...change, added: 0, removed: 0 };
-      existing.added += change.added;
-      existing.removed += change.removed;
-      existing.type = existing.removed > 0 ? "updated" : change.type;
-      byPath.set(change.path, existing);
+      mergeFileChange(byPath, {
+        ...change,
+        path: normalizedChangePath(change.path, workspaceDir),
+      });
     }
+  }
+  const structuredBasenames = new Set(Array.from(byPath.keys(), changeBasename));
+  for (const activity of activities) {
+    if (byPath.has(activity.path) || structuredBasenames.has(changeBasename(activity.path)))
+      continue;
+    mergeFileChange(byPath, activity);
   }
   const files = Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
   if (files.length === 0) return null;
@@ -267,14 +302,15 @@ export function messagesFromDetail(detail: unknown): unknown[] {
 
 export function environmentSnapshotFromDetail(detail: unknown): TuiEnvironmentSnapshot {
   const messages = messagesFromDetail(detail);
+  const workspaceDir = isRecord(detail)
+    ? asString(detail.workspace_dir) || asString(detail.workspaceDir) || null
+    : null;
   return {
     contextUsage: contextUsageFromDetail(detail),
     tokenUsage: tokenUsageFromDetail(detail),
     plan: planFromDetail(detail),
-    fileChanges: fileChangesFromMessages(messages),
-    workspaceDir: isRecord(detail)
-      ? asString(detail.workspace_dir) || asString(detail.workspaceDir) || null
-      : null,
+    fileChanges: fileChangesFromMessages(messages, workspaceDir),
+    workspaceDir,
     gitBranch: isRecord(detail)
       ? asString(detail.gitBranch) || asString(detail.branch) || null
       : null,

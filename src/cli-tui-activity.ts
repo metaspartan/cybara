@@ -32,14 +32,19 @@ export interface TUIActivitySummary {
   details: string[];
 }
 
+export type TUIActivityKind = SharedActivityGroupKind | "browser";
+
 export interface TUIActivityRow {
   id: string;
   icon: string;
   label: string;
   details: string[];
+  kind: TUIActivityKind;
   phase: SharedActivityPhase;
   thought: boolean;
 }
+
+export type TUIActivityTone = "accent" | "activity" | "danger" | "success" | "warning";
 
 export function limitTUIActivityDetails(details: string[], max: number): string[] {
   if (max <= 0) return [];
@@ -172,22 +177,37 @@ function normalizedActivities(
 
 function singleRow(activity: SharedActivityItem): TUIActivityRow {
   const thought = activity.toolName === "__thought";
-  const kind = sharedActivityKind(activity) ?? "command";
+  const sharedKind = sharedActivityKind(activity) ?? "command";
+  const browserActivity = /\b(?:browser|brows|navigat|preview)\w*\b/i.test(
+    `${activity.toolName || ""} ${activity.text}`
+  );
+  const kind: TUIActivityKind = browserActivity ? "browser" : sharedKind;
   const icon = thought
     ? ""
-    : activity.phase === "start"
-      ? "◌"
-      : activity.phase === "result"
-        ? GROUP_ICONS[kind]
-        : "!";
+    : kind === "browser"
+      ? "◎"
+      : activity.phase === "start"
+        ? "◌"
+        : activity.phase === "result"
+          ? GROUP_ICONS[kind]
+          : "!";
   return {
     id: activity.id,
     icon,
     label: activity.text,
     details: [],
+    kind,
     phase: activity.phase,
     thought,
   };
+}
+
+export function tuiActivityTone(row: TUIActivityRow): TUIActivityTone {
+  if (row.phase === "error" || row.phase === "blocked") return "danger";
+  if (row.phase === "start") return "warning";
+  if (row.kind === "edit" || row.kind === "command") return "success";
+  if (row.kind === "fetch" || row.kind === "browser") return "accent";
+  return "activity";
 }
 
 export function presentTUIActivities(
@@ -201,6 +221,7 @@ export function presentTUIActivities(
       icon: GROUP_ICONS[entry.kind],
       label: entry.label,
       details: entry.items.map((activity) => activity.text),
+      kind: entry.kind,
       phase: "result",
       thought: false,
     };

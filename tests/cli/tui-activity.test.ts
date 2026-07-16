@@ -4,6 +4,7 @@ import {
   limitTUIActivityDetails,
   presentTUIActivities,
   summarizeTUIActivities,
+  tuiActivityTone,
 } from "../../src/cli-tui-activity";
 
 describe("CLI TUI activity summaries", () => {
@@ -98,6 +99,19 @@ describe("CLI TUI activity summaries", () => {
       ["Read failed for missing.ts", "error"],
       ["Running tests", "start"],
     ]);
+    expect(rows.map(tuiActivityTone)).toEqual(["activity", "danger", "warning"]);
+  });
+
+  test("uses semantic tones for completed tool groups", () => {
+    const toneFor = (text: string, toolName: string): string => {
+      const row = presentTUIActivities([{ id: toolName, phase: "result", text, toolName }], [])[0];
+      expect(row).toBeDefined();
+      return row ? tuiActivityTone(row) : "";
+    };
+
+    expect(toneFor("Edited app.ts", "edit")).toBe("success");
+    expect(toneFor("Ran tests", "exec")).toBe("success");
+    expect(toneFor("Opened preview", "browser")).toBe("accent");
   });
 
   test("recovers complete commands from persisted tool arguments", () => {

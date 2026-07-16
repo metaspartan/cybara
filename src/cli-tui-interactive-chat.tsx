@@ -68,6 +68,7 @@ import {
   formatTUIWorkedDuration,
   limitTUIActivityDetails,
   presentTUIActivities,
+  tuiActivityTone,
   type TUIActivityItem,
   type TUIToolCallItem,
 } from "./cli-tui-activity";
@@ -388,6 +389,7 @@ function relativeTime(value?: number): string {
 }
 
 function ActivitySummary({
+  colorScheme,
   expanded = false,
   live = false,
   message,
@@ -395,6 +397,7 @@ function ActivitySummary({
   maxColumns,
   palette,
 }: {
+  colorScheme: TuiColorScheme;
   expanded?: boolean;
   live?: boolean;
   message: ChatMessage;
@@ -434,14 +437,14 @@ function ActivitySummary({
         ? rows.map((row, rowIndex) => (
             <Box key={`${row.id}-${rowIndex}`} flexDirection="column">
               {row.thought ? (
-                <TerminalInlineText line={row.label} />
+                <TerminalInlineText
+                  line={row.label}
+                  baseColor={palette.detail}
+                  colorScheme={colorScheme}
+                />
               ) : (
                 <Text
-                  color={
-                    row.phase === "error" || row.phase === "blocked"
-                      ? "red"
-                      : palette.activity
-                  }
+                  color={palette[tuiActivityTone(row)]}
                   wrap="wrap"
                 >
                   {row.icon ? `${row.icon} ` : ""}
@@ -496,6 +499,12 @@ function MessageView({
     message.role === "user"
       ? palette.user
       : message.role === "assistant"
+        ? palette.heading
+        : palette.muted;
+  const bodyColor =
+    message.role === "user"
+      ? palette.detail
+      : message.role === "assistant"
         ? palette.text
         : palette.muted;
   return (
@@ -506,6 +515,7 @@ function MessageView({
         </Text>
       </Box>
       <ActivitySummary
+        colorScheme={colorScheme}
         expanded={expandedActivities}
         message={message}
         maxColumns={maxColumns}
@@ -523,6 +533,7 @@ function MessageView({
       ))}
       <Box paddingLeft={2} width="100%">
         <TerminalMessageBody
+          baseColor={bodyColor}
           content={message.content}
           colorScheme={colorScheme}
           hiddenText={
@@ -555,13 +566,14 @@ function LiveRunView({
 }): React.ReactElement {
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text bold color={palette.text}>
+      <Text bold color={palette.heading}>
         ◆ Cybara{" "}
         <Text color={palette.muted}>
           <Spinner type="dots" />
         </Text>
       </Text>
       <ActivitySummary
+        colorScheme={colorScheme}
         expanded
         live
         message={{
@@ -574,7 +586,11 @@ function LiveRunView({
       />
       {content ? (
         <Box paddingLeft={2} width="100%">
-          <TerminalMessageBody content={content} colorScheme={colorScheme} />
+          <TerminalMessageBody
+            content={content}
+            baseColor={palette.text}
+            colorScheme={colorScheme}
+          />
         </Box>
       ) : detail ? (
         <Text color={palette.muted} wrap="wrap">
@@ -588,27 +604,29 @@ function LiveRunView({
 
 function PendingQueue({
   messages,
+  palette,
 }: {
   messages: PendingMessage[];
+  palette: TuiSurfacePalette;
 }): React.ReactElement | null {
   if (messages.length === 0) return null;
   return (
     <Box flexDirection="column" paddingX={1} marginTop={1}>
-      <Text color="yellow" dimColor>
+      <Text bold color={palette.warning}>
         Queue · {messages.length}
       </Text>
       {messages.slice(0, 4).map((message, index) => (
         <Text
           key={message.id}
-          color={message.mode === "steering" ? "yellow" : "white"}
+          color={message.mode === "steering" ? palette.warning : palette.text}
           wrap="wrap"
         >
           {"  "}#{message.sequence || index + 1} {message.content}
-          <Text color="gray"> · {relativeTime(message.createdAt)}</Text>
+          <Text color={palette.subtle}> · {relativeTime(message.createdAt)}</Text>
         </Text>
       ))}
       {messages.length > 4 ? (
-        <Text color="gray">  +{messages.length - 4} more · /pending</Text>
+        <Text color={palette.subtle}>  +{messages.length - 4} more · /pending</Text>
       ) : null}
     </Box>
   );
@@ -619,11 +637,13 @@ function CommandPalette({
   compactMode,
   maxRows,
   selectedIndex,
+  palette,
 }: {
   input: string;
   compactMode: boolean;
   maxRows: number;
   selectedIndex: number;
+  palette: TuiSurfacePalette;
 }): React.ReactElement | null {
   const matches = matchingTUIChatCommands(input, maxRows);
   if (matches.length === 0) return null;
@@ -631,34 +651,40 @@ function CommandPalette({
     <Box
       flexDirection="column"
       borderStyle="single"
-      borderColor="gray"
+      borderColor={palette.border}
       paddingX={1}
       marginTop={1}
     >
       {matches.map((command, index) => (
         <Text key={command.name} inverse={index === selectedIndex}>
-          <Text color={index === selectedIndex ? "white" : "cyan"}>
+          <Text color={index === selectedIndex ? palette.heading : palette.accent}>
             {index === selectedIndex ? "› " : "  "}
             {command.name}
           </Text>
-          {compactMode ? null : <Text color="gray"> — {command.detail}</Text>}
+          {compactMode ? null : <Text color={palette.muted}> — {command.detail}</Text>}
         </Text>
       ))}
     </Box>
   );
 }
 
-function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
+function HelpPanel({
+  narrow,
+  palette,
+}: {
+  narrow: boolean;
+  palette: TuiSurfacePalette;
+}): React.ReactElement {
   if (narrow) {
     return (
       <Box
         flexDirection="column"
         borderStyle="round"
-        borderColor="cyan"
+        borderColor={palette.border}
         paddingX={1}
         marginTop={1}
       >
-        <Text bold color="cyan">
+        <Text bold color={palette.heading}>
           Chat controls
         </Text>
         <Text>Enter send · ^J newline · Tab complete</Text>
@@ -674,11 +700,11 @@ function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor="cyan"
+      borderColor={palette.border}
       paddingX={1}
       marginTop={1}
     >
-      <Text bold color="cyan">
+      <Text bold color={palette.heading}>
         Chat controls
       </Text>
       <Text>
@@ -2522,7 +2548,7 @@ export function InteractiveChatTUI({
         <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
           {narrowOverlayVisible ? null : loading ? (
             <Box paddingX={1} paddingY={1} flexGrow={1} flexShrink={1} overflow="hidden">
-              <Text color="yellow">
+              <Text color={tuiPalette.warning}>
                 <Spinner type="dots" /> Loading conversation
               </Text>
             </Box>
@@ -2605,7 +2631,7 @@ export function InteractiveChatTUI({
           queuedCount={approvalRequests.length}
         />
       ) : null}
-      <PendingQueue messages={pendingMessages} />
+      <PendingQueue messages={pendingMessages} palette={tuiPalette} />
       {environmentStackedVisible ? (
         <EnvironmentPanel
           snapshot={environmentSnapshot}
@@ -2615,7 +2641,7 @@ export function InteractiveChatTUI({
           compact={layout.narrow}
         />
       ) : null}
-      {showHelp ? <HelpPanel narrow={layout.narrow} /> : null}
+      {showHelp ? <HelpPanel narrow={layout.narrow} palette={tuiPalette} /> : null}
       {searchOpen ? (
         <TranscriptSearchPanel
           query={searchQuery}
@@ -2634,10 +2660,11 @@ export function InteractiveChatTUI({
         compactMode={layout.compact}
         maxRows={layout.commandRows}
         selectedIndex={commandIndex}
+        palette={tuiPalette}
       />
       {error ? (
         <Box paddingX={1}>
-          <Text color="red">Error: {error}</Text>
+          <Text color={tuiPalette.danger}>Error: {error}</Text>
         </Box>
       ) : null}
       {notice ? (
@@ -2648,7 +2675,8 @@ export function InteractiveChatTUI({
 
       <Box
         borderStyle="round"
-        borderColor={sending ? tuiPalette.accent : tuiPalette.border}
+        borderColor={sending ? tuiPalette.accent : tuiPalette.chrome}
+        backgroundColor={tuiPalette.background}
         paddingX={1}
         flexDirection="column"
         flexShrink={0}

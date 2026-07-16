@@ -33,12 +33,17 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain(
       "const previewText = sessionPreviewText(session.last_message?.content)"
     );
-    expect(source).toContain("deferred-list-row relative px-2.5 py-1.5");
+    expect(source).toContain("deferred-list-row group relative flex h-8 items-center");
     expect(source).toContain(
-      'className="min-w-0 w-full cursor-pointer text-left outline-none focus-visible:bg-[var(--surface-hover)]"'
+      'className="flex h-full min-w-0 w-full cursor-pointer items-center text-left outline-none focus-visible:bg-[var(--surface-hover)]"'
     );
-    expect(source).toContain('className="text-[12px] text-white font-medium flex w-full min-w-0');
-    expect(source).toContain('className="min-w-0 flex-1 truncate">{displayTitle}</span>');
+    expect(source).toContain(
+      'className="flex h-full w-full min-w-0 items-center gap-1.5 text-[12px] font-medium leading-none text-white"'
+    );
+    expect(source).toContain('className="min-w-0 flex-1 truncate leading-none"');
+    expect(source).toContain(
+      'className="ml-1 flex h-full w-8 shrink-0 items-center justify-end text-[12px] font-medium leading-none text-gray-500"'
+    );
     expect(source).toContain("absolute right-2 top-1/2");
     expect(source).toContain("pointer-events-none");
     expect(source).toContain("group-hover:pointer-events-auto");

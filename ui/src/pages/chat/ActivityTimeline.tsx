@@ -53,17 +53,17 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
   }
   return (
     <div className="chat-activity-text flex items-start gap-2 px-0.5 text-gray-400">
-      {activity.toolName === "sessions_transfer" || activity.toolName === "__steering" ? (
-        <ArrowRightLeft className="w-3 h-3 text-current opacity-70 mt-0.5 flex-shrink-0" />
-      ) : activity.phase === "start" ? (
-        <Loader2 className="w-3 h-3 animate-spin text-current opacity-70 mt-0.5 flex-shrink-0" />
-      ) : activity.phase === "result" ? (
-        <CheckCircle2 className="w-3 h-3 text-current opacity-70 mt-0.5 flex-shrink-0" />
-      ) : activity.phase === "blocked" ? (
-        <AlertTriangle className="w-3 h-3 text-current opacity-70 mt-0.5 flex-shrink-0" />
-      ) : (
-        <AlertTriangle className="w-3 h-3 text-current opacity-70 mt-0.5 flex-shrink-0" />
-      )}
+      <span className="flex h-[1.5em] shrink-0 items-center" data-testid="activity-row-icon">
+        {activity.toolName === "sessions_transfer" || activity.toolName === "__steering" ? (
+          <ArrowRightLeft className="h-3 w-3 text-current opacity-70" />
+        ) : activity.phase === "start" ? (
+          <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" />
+        ) : activity.phase === "result" ? (
+          <CheckCircle2 className="h-3 w-3 text-current opacity-70" />
+        ) : (
+          <AlertTriangle className="h-3 w-3 text-current opacity-70" />
+        )}
+      </span>
       <div className="min-w-0 flex-1 flex items-center gap-2">
         <ActivityText text={activity.text} />
         {activity.toolName !== "__thought" && activity.sandboxProvider && (
@@ -233,7 +233,9 @@ export function LiveActivityTimeline({
       {visibleActivities.length > 0 && <GroupedActivityRows activities={visibleActivities} />}
       {displayCurrentStep ? (
         <div className="chat-activity-text flex items-start gap-2 px-0.5 text-gray-300">
-          <Loader2 className="w-3 h-3 animate-spin text-current opacity-70 mt-0.5 flex-shrink-0" />
+          <span className="flex h-[1.5em] shrink-0 items-center">
+            <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" />
+          </span>
           <ActivityText text={displayCurrentStep} />
         </div>
       ) : visibleActivities.length === 0 ? (

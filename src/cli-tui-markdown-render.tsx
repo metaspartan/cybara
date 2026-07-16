@@ -9,10 +9,15 @@ import {
 } from "./cli-tui-theme";
 
 export function TerminalInlineSegments({
+  baseColor,
+  colorScheme = resolveTuiColorScheme(process.env),
   line,
 }: {
+  baseColor?: string;
+  colorScheme?: TuiColorScheme;
   line: string;
 }): React.ReactElement {
+  const palette = tuiChatPalette(colorScheme);
   return (
     <>
       {splitTerminalInline(line).map((part, index) => (
@@ -22,7 +27,7 @@ export function TerminalInlineSegments({
           dimColor={part.dim}
           italic={part.italic}
           strikethrough={part.strikethrough}
-          color={part.code ? "magenta" : undefined}
+          color={part.code ? palette.code : (baseColor ?? palette.text)}
         >
           {part.text}
         </Text>
@@ -32,24 +37,30 @@ export function TerminalInlineSegments({
 }
 
 export function TerminalInlineText({
+  baseColor,
+  colorScheme = resolveTuiColorScheme(process.env),
   line,
 }: {
+  baseColor?: string;
+  colorScheme?: TuiColorScheme;
   line: string;
 }): React.ReactElement {
   return (
     <Text wrap="wrap">
-      <TerminalInlineSegments line={line} />
+      <TerminalInlineSegments line={line} baseColor={baseColor} colorScheme={colorScheme} />
     </Text>
   );
 }
 
 export function TerminalMessageBody({
+  baseColor,
   content,
   hiddenText,
   maxColumns,
   maxLines,
   colorScheme = resolveTuiColorScheme(process.env),
 }: {
+  baseColor?: string;
   content: string;
   colorScheme?: TuiColorScheme;
   hiddenText?: string;
@@ -75,7 +86,7 @@ export function TerminalMessageBody({
         }
         if (line.fence) {
           return (
-            <Text key={index} color="magenta" wrap="wrap">
+            <Text key={index} color={palette.subtle} wrap="wrap">
               {line.fence === "open"
                 ? `code${line.language ? ` · ${line.language}` : ""}`
                 : "end code"}
@@ -84,7 +95,7 @@ export function TerminalMessageBody({
         }
         if (line.code) {
           return (
-            <Text key={index} color="green" wrap="wrap">
+            <Text key={index} color={palette.code} wrap="wrap">
               {line.text || " "}
             </Text>
           );
@@ -94,10 +105,14 @@ export function TerminalMessageBody({
           return (
             <Text key={index} wrap="wrap">
               {listItem.indent}
-              <Text color={listItem.checked ? "green" : palette.muted}>
+              <Text color={listItem.checked ? palette.success : palette.muted}>
                 {listItem.checked ? "☑ " : "☐ "}
               </Text>
-              <TerminalInlineSegments line={listItem.content} />
+              <TerminalInlineSegments
+                line={listItem.content}
+                baseColor={baseColor}
+                colorScheme={colorScheme}
+              />
             </Text>
           );
         }
@@ -106,7 +121,11 @@ export function TerminalMessageBody({
             <Text key={index} wrap="wrap">
               {listItem.indent}
               <Text color={palette.accent}>• </Text>
-              <TerminalInlineSegments line={listItem.content} />
+              <TerminalInlineSegments
+                line={listItem.content}
+                baseColor={baseColor}
+                colorScheme={colorScheme}
+              />
             </Text>
           );
         }
@@ -115,13 +134,17 @@ export function TerminalMessageBody({
             <Text key={index} wrap="wrap">
               {listItem.indent}
               <Text color={palette.accent}>{listItem.number}. </Text>
-              <TerminalInlineSegments line={listItem.content} />
+              <TerminalInlineSegments
+                line={listItem.content}
+                baseColor={baseColor}
+                colorScheme={colorScheme}
+              />
             </Text>
           );
         }
         if (/^#{1,6}\s/.test(line.text)) {
           return (
-            <Text key={index} bold color={palette.text} wrap="wrap">
+            <Text key={index} bold color={palette.heading} wrap="wrap">
               {line.text.replace(/^#{1,6}\s/, "")}
             </Text>
           );
@@ -133,7 +156,14 @@ export function TerminalMessageBody({
             </Text>
           );
         }
-        return <TerminalInlineText key={index} line={line.text} />;
+        return (
+          <TerminalInlineText
+            key={index}
+            line={line.text}
+            baseColor={baseColor}
+            colorScheme={colorScheme}
+          />
+        );
       })}
     </Box>
   );

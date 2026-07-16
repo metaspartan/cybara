@@ -753,7 +753,7 @@ export function SessionsPanel({
                     return (
                       <div
                         key={session.id}
-                        className={`deferred-list-row relative px-2.5 py-1.5 rounded-lg transition-all group ${
+                        className={`deferred-list-row group relative flex h-8 items-center rounded-lg px-2.5 py-0 transition-all ${
                           isSessionSelected
                             ? "bg-[rgba(var(--accent-primary),0.12)] border border-transparent"
                             : "bg-white/[0.03] border border-white/5 hover:border-white/15"
@@ -820,17 +820,19 @@ export function SessionsPanel({
                           <>
                             <button
                               type="button"
-                              className="min-w-0 w-full cursor-pointer text-left outline-none focus-visible:bg-[var(--surface-hover)]"
+                              className="flex h-full min-w-0 w-full cursor-pointer items-center text-left outline-none focus-visible:bg-[var(--surface-hover)]"
                               aria-label={tooltip}
                               aria-busy={isRowLoading}
                               onClick={() => void handleLoadSession(session.id)}
                             >
-                              <div className="text-[12px] text-white font-medium flex w-full min-w-0 items-center gap-1.5">
+                              <div className="flex h-full w-full min-w-0 items-center gap-1.5 text-[12px] font-medium leading-none text-white">
                                 {session.pinned && (
                                   <Pin className="w-3 h-3 text-amber-400 flex-shrink-0 fill-amber-400/30" />
                                 )}
-                                <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
-                                <span className="ml-1 flex h-4 w-8 shrink-0 items-center justify-end text-[11px] font-medium text-gray-500">
+                                <span className="min-w-0 flex-1 truncate leading-none">
+                                  {displayTitle}
+                                </span>
+                                <span className="ml-1 flex h-full w-8 shrink-0 items-center justify-end text-[12px] font-medium leading-none text-gray-500">
                                   {isSessionActive ? (
                                     <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
                                   ) : (

@@ -89,6 +89,41 @@ describe("CLI TUI environment helpers", () => {
     expect(changes?.files[1]?.type).toBe("created");
   });
 
+  test("deduplicates activity summaries against workspace-relative tool changes", () => {
+    const changes = fileChangesFromMessages(
+      [
+        {
+          process_activities: [
+            { text: "Edited app.js +182 -0" },
+            { text: "Edited styles.css +48 -3" },
+          ],
+          tool_calls: [
+            {
+              result: {
+                changes: [
+                  { path: "C:\\Projects\\dashboard\\app.js", addedLines: 182, removedLines: 0 },
+                  {
+                    path: "C:\\Projects\\dashboard\\styles.css",
+                    addedLines: 48,
+                    removedLines: 3,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+      "c:\\projects\\dashboard"
+    );
+
+    expect(changes?.files).toEqual([
+      { path: "app.js", added: 182, removed: 0, type: "created" },
+      { path: "styles.css", added: 48, removed: 3, type: "updated" },
+    ]);
+    expect(changes?.totalAdded).toBe(230);
+    expect(changes?.totalRemoved).toBe(3);
+  });
+
   test("normalizes task and subagent API responses", () => {
     expect(
       tasksFromResponse({
