@@ -24,6 +24,7 @@ enum NativeSettingsTab: String, CaseIterable, Identifiable {
     case model
     case speech
     case memory
+    case lab
     case wallet
     case updates
     case migration
@@ -50,6 +51,7 @@ enum NativeSettingsTab: String, CaseIterable, Identifiable {
         case .model: return "settings.ai"
         case .speech: return "settings.voice"
         case .memory: return "nav.memory"
+        case .lab: return "settings.lab"
         case .wallet: return "nav.wallet"
         case .updates: return "settings.updates"
         case .migration: return "settings.migration"
@@ -76,6 +78,7 @@ enum NativeSettingsTab: String, CaseIterable, Identifiable {
         case .model: return "brain"
         case .speech: return "waveform"
         case .memory: return "memorychip"
+        case .lab: return "flask"
         case .wallet: return "creditcard"
         case .updates: return "arrow.down.circle"
         case .migration: return "folder.badge.gearshape"
@@ -164,6 +167,11 @@ struct NativeSettingsScreen: View {
     @State private var memoryAutoCapture = true
     @State private var memoryProviderFields: [String: String] = [:]
     @State private var memoryTestResult: String?
+    @State private var labEnabled = true
+    @State private var labGoldenTurnsEnabled = true
+    @State private var labTrajectoryCaptureEnabled = true
+    @State private var labSanitizeExportsByDefault = true
+    @State private var labDefaultExportFormat = "distillation_sft"
     @State private var memoryTestOK = false
     @State private var memoryTesting = false
     @State private var indexEnabled = false
@@ -325,6 +333,7 @@ struct NativeSettingsScreen: View {
                 MemoryScreen(client: client)
                     .tabItem { Label("Stored Memory", systemImage: "tray.full") }
             }
+        case .lab: labTab
         case .wallet: WalletScreen(client: client)
         case .updates: updatesTab
         case .migration: migrationTab
@@ -1128,6 +1137,63 @@ struct NativeSettingsScreen: View {
                     }
                 }
 
+            }
+            .nativeSettingsContentLayout()
+        }
+    }
+
+    private var labTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Lab Availability", systemImage: "flask")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                        toggleRow(
+                            "Enable Lab",
+                            detail: "Expose evals, traces, benchmarks, and training exports without deleting stored data.",
+                            isOn: $labEnabled
+                        ) { saveLabSettings() }
+                        Divider()
+                        toggleRow(
+                            "Golden turn actions",
+                            detail: "Allow completed assistant turns to be saved as replayable golden tests.",
+                            isOn: $labGoldenTurnsEnabled
+                        ) { saveLabSettings() }
+                        .disabled(!labEnabled)
+                        Divider()
+                        toggleRow(
+                            "Capture completed turns",
+                            detail: "Store prompts, responses, observable reasoning, and tool I/O locally.",
+                            isOn: $labTrajectoryCaptureEnabled
+                        ) { saveLabSettings() }
+                        .disabled(!labEnabled)
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Training Exports", systemImage: "cylinder.split.1x2")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                        toggleRow(
+                            "Redact exports by default",
+                            detail: "Remove sensitive prompt, path, reasoning, and tool data unless explicitly changed.",
+                            isOn: $labSanitizeExportsByDefault
+                        ) { saveLabSettings() }
+                        .disabled(!labEnabled)
+                        Picker("Default dataset format", selection: $labDefaultExportFormat) {
+                            Text("Sequence distillation SFT").tag("distillation_sft")
+                            Text("Hugging Face TRL SFT").tag("trl_sft")
+                            Text("Hugging Face session trace").tag("hf_session_trace")
+                            Text("Full agent trajectory").tag("cybara_trace")
+                            Text("Long-context QA").tag("long_context")
+                            Text("Prompt and completion").tag("prompt_completion")
+                        }
+                        .pickerStyle(.menu)
+                        .disabled(!labEnabled)
+                        .onChange(of: labDefaultExportFormat) { _, _ in saveLabSettings() }
+                    }
+                }
             }
             .nativeSettingsContentLayout()
         }
@@ -2092,6 +2158,21 @@ struct NativeSettingsScreen: View {
         saveConfigPatch(["chat_appearance": chatAppearance.payload], key: "chat_appearance")
     }
 
+    private func saveLabSettings() {
+        saveConfigPatch(
+            [
+                "lab": [
+                    "enabled": labEnabled,
+                    "goldenTurnsEnabled": labGoldenTurnsEnabled,
+                    "trajectoryCaptureEnabled": labTrajectoryCaptureEnabled,
+                    "sanitizeExportsByDefault": labSanitizeExportsByDefault,
+                    "defaultExportFormat": labDefaultExportFormat,
+                ],
+            ],
+            key: "lab"
+        )
+    }
+
     private func saveSandboxRuntime() {
         saveConfigPatch(
             [
@@ -2710,6 +2791,20 @@ struct NativeSettingsScreen: View {
         memoryBackgroundReview = memory["backgroundReviewEnabled"] as? Bool ?? true
         memoryFlushEnabled = memory["memoryFlushEnabled"] as? Bool ?? true
         memoryFlushThreshold = String(memory["memoryFlushSoftThresholdTokens"] as? Int ?? 4000)
+        let lab = config["lab"] as? [String: Any] ?? [:]
+        labEnabled = lab["enabled"] as? Bool ?? true
+        labGoldenTurnsEnabled = lab["goldenTurnsEnabled"] as? Bool ?? true
+        labTrajectoryCaptureEnabled = lab["trajectoryCaptureEnabled"] as? Bool ?? true
+        labSanitizeExportsByDefault = lab["sanitizeExportsByDefault"] as? Bool ?? true
+        let labFormat = lab["defaultExportFormat"] as? String ?? "distillation_sft"
+        labDefaultExportFormat = [
+            "distillation_sft",
+            "trl_sft",
+            "hf_session_trace",
+            "cybara_trace",
+            "long_context",
+            "prompt_completion",
+        ].contains(labFormat) ? labFormat : "distillation_sft"
         let timeouts = config["llm_timeouts"] as? [String: Any] ?? [:]
         llmFirstTokenSeconds = String(timeouts["firstTokenSeconds"] as? Int ?? 300)
         llmStallSeconds = String(timeouts["stallSeconds"] as? Int ?? 300)

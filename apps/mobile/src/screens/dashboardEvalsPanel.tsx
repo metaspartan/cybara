@@ -11,7 +11,15 @@ import {
   XCircle,
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from "react-native";
 import type {
   CybaraMobileApi,
   MobileEvalGolden,
@@ -21,6 +29,39 @@ import type {
 import { haptics } from "../lib/haptics";
 import { useTheme } from "../theme/ThemeContext";
 import { EmptyState, LoadingState } from "./dashboardPrimitives";
+
+interface MobileLabSettings {
+  enabled: boolean;
+  goldenTurnsEnabled: boolean;
+  trajectoryCaptureEnabled: boolean;
+  sanitizeExportsByDefault: boolean;
+}
+
+const defaultLabSettings: MobileLabSettings = {
+  enabled: true,
+  goldenTurnsEnabled: true,
+  trajectoryCaptureEnabled: true,
+  sanitizeExportsByDefault: true,
+};
+
+function readLabSettings(value: unknown): MobileLabSettings {
+  const record = value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+  return {
+    enabled: typeof record.enabled === "boolean" ? record.enabled : true,
+    goldenTurnsEnabled:
+      typeof record.goldenTurnsEnabled === "boolean" ? record.goldenTurnsEnabled : true,
+    trajectoryCaptureEnabled:
+      typeof record.trajectoryCaptureEnabled === "boolean"
+        ? record.trajectoryCaptureEnabled
+        : true,
+    sanitizeExportsByDefault:
+      typeof record.sanitizeExportsByDefault === "boolean"
+        ? record.sanitizeExportsByDefault
+        : true,
+  };
+}
 
 export function MobileEvalsPanel({
   accentColor,
@@ -35,6 +76,8 @@ export function MobileEvalsPanel({
   const [researchStats, setResearchStats] = useState<MobileResearchStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [labSettings, setLabSettings] = useState<MobileLabSettings>(defaultLabSettings);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const latestRuns = useMemo(() => {
     const values = new Map<string, MobileEvalRun>();
     for (const run of runs) if (!values.has(run.goldenId)) values.set(run.goldenId, run);
@@ -43,6 +86,15 @@ export function MobileEvalsPanel({
 
   const load = useCallback(async () => {
     try {
+      const config = await api.config();
+      const nextLabSettings = readLabSettings(config.lab);
+      setLabSettings(nextLabSettings);
+      if (!nextLabSettings.enabled) {
+        setGoldens([]);
+        setRuns([]);
+        setResearchStats(null);
+        return;
+      }
       const [response, research] = await Promise.all([api.evals(), api.researchTraces()]);
       setGoldens(response.goldens ?? []);
       setRuns(response.runs ?? []);
@@ -53,6 +105,24 @@ export function MobileEvalsPanel({
       setLoading(false);
     }
   }, [api]);
+
+  const updateLabSettings = async (patch: Partial<MobileLabSettings>) => {
+    if (settingsSaving) return;
+    const previous = labSettings;
+    const next = { ...labSettings, ...patch };
+    setLabSettings(next);
+    setSettingsSaving(true);
+    try {
+      await api.updateConfig({ lab: next });
+      haptics.success();
+      await load();
+    } catch (error) {
+      setLabSettings(previous);
+      Alert.alert("Lab settings failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -107,7 +177,7 @@ export function MobileEvalsPanel({
 
   const copyTrainingJsonl = async () => {
     try {
-      const exported = await api.exportResearch("trl_sft");
+      const exported = await api.exportResearch("distillation_sft");
       await Clipboard.setStringAsync(exported.content);
       Alert.alert(
         "Training data copied",
@@ -153,6 +223,53 @@ export function MobileEvalsPanel({
 
   return (
     <View style={styles.section}>
+      <View style={[styles.settingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.title, { color: colors.text }]}>Lab settings</Text>
+        {[
+          {
+            key: "enabled" as const,
+            label: "Enable Lab",
+            detail: "Evals, traces, benchmarks, and training exports",
+          },
+          {
+            key: "goldenTurnsEnabled" as const,
+            label: "Golden turn actions",
+            detail: "Save completed chat turns as replayable tests",
+          },
+          {
+            key: "trajectoryCaptureEnabled" as const,
+            label: "Capture completed turns",
+            detail: "Store local trace data for research and training",
+          },
+          {
+            key: "sanitizeExportsByDefault" as const,
+            label: "Redact exports by default",
+            detail: "Remove sensitive prompt, path, reasoning, and tool data",
+          },
+        ].map((item) => (
+          <View key={item.key} style={styles.settingRow}>
+            <View style={styles.settingCopy}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>{item.label}</Text>
+              <Text style={[styles.settingDetail, { color: colors.textDim }]}>{item.detail}</Text>
+            </View>
+            <Switch
+              value={labSettings[item.key]}
+              onValueChange={(value) => void updateLabSettings({ [item.key]: value })}
+              disabled={
+                settingsSaving || (item.key !== "enabled" && !labSettings.enabled)
+              }
+              trackColor={{ false: colors.inset, true: accentColor }}
+            />
+          </View>
+        ))}
+      </View>
+      {!labSettings.enabled ? (
+        <EmptyState
+          label="Lab is disabled"
+          detail="Existing traces and golden tests remain stored until Lab is enabled again."
+        />
+      ) : (
+        <>
       <View style={styles.statsGrid}>
         <View
           style={[styles.stat, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -276,12 +393,30 @@ export function MobileEvalsPanel({
           );
         })
       )}
+        </>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   section: { gap: 12 },
+  settingsCard: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 12,
+    gap: 4,
+  },
+  settingRow: {
+    minHeight: 54,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  settingCopy: { flex: 1 },
+  settingLabel: { fontSize: 13, fontWeight: "600" },
+  settingDetail: { fontSize: 11, lineHeight: 16, marginTop: 2 },
   statsGrid: { flexDirection: "row", gap: 8 },
   stat: {
     flex: 1,

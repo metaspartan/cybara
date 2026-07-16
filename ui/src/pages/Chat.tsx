@@ -304,6 +304,7 @@ export function Chat() {
   );
   const [toolApprovalMode, setToolApprovalMode] = useState<ToolApprovalMode>("always_allow");
   const [followUpBehaviorEnabled, setFollowUpBehaviorEnabled] = useState(true);
+  const [goldenTurnsEnabled, setGoldenTurnsEnabled] = useState(true);
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
     null
@@ -724,6 +725,14 @@ export function Chat() {
         if (!mounted || !result.success) return;
         setToolApprovalMode(normalizeToolApprovalMode(result.data?.tool_approval_mode));
         setFollowUpBehaviorEnabled(result.data?.follow_up_behavior_enabled !== false);
+        const lab = result.data?.lab;
+        const labRecord =
+          lab && typeof lab === "object" && !Array.isArray(lab)
+            ? (lab as Record<string, unknown>)
+            : {};
+        setGoldenTurnsEnabled(
+          labRecord.enabled !== false && labRecord.goldenTurnsEnabled !== false
+        );
       } catch {}
     };
     void loadChatSettings();
@@ -2819,6 +2828,7 @@ export function Chat() {
                     copiedMessageIndex={copiedMessageIndex}
                     entries={visibleMessageEntries}
                     forkingMessageIndex={forkingMessageIndex}
+                    goldenTurnsEnabled={goldenTurnsEnabled}
                     liveActivities={timelineActivities}
                     liveCurrentStep={liveCurrentStep}
                     liveStatus={timelineStatus}

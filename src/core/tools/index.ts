@@ -2790,6 +2790,13 @@ for (const [toolName, action] of Object.entries(COMPUTER_USE_COMPAT_TOOL_ALIASES
 }
 
 export function isToolEnabledForAgent(toolName: string): boolean {
+  if (toolName === "eval_save") {
+    const lab = config.getLabSettings();
+    return lab.enabled && lab.goldenTurnsEnabled;
+  }
+  if (toolName === "eval_replay") {
+    return config.getLabSettings().enabled;
+  }
   if (toolName === "wallet") {
     return config.get<boolean>("wallet_agent_access_enabled") === true;
   }

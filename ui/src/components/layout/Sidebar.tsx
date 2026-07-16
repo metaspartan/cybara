@@ -33,6 +33,8 @@ import { useInfo } from "@/hooks/useApi";
 import { useSidebarNavigationLayout } from "@/hooks/useSidebarNavigationLayout";
 import { useI18n } from "@/lib/i18n";
 import { resolveSettingsSectionId, type SettingsSectionId } from "@/lib/settingsNavigation";
+import { settingsApi } from "@/lib/api";
+import { readLabSettings } from "@/lib/labSettings";
 import type { SidebarDestinationId, SidebarPrimaryItemId } from "@/lib/sidebarNavigation";
 import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
@@ -257,7 +259,23 @@ export function Sidebar() {
   const { collapsed, setCollapsed, width, setWidth, mobileOpen, setMobileOpen } = useSidebar();
   const [moreOpen, setMoreOpen] = useState(false);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+  const [labEnabled, setLabEnabled] = useState(true);
   const { layout: navigationLayout } = useSidebarNavigationLayout();
+
+  useEffect(() => {
+    let mounted = true;
+    void settingsApi
+      .getConfig()
+      .then((response) => {
+        if (mounted && response.success) {
+          setLabEnabled(readLabSettings(response.data?.lab).enabled);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      mounted = false;
+    };
+  }, [location.pathname]);
   const [chatHistoryHeight, setChatHistoryHeight] = useState(() =>
     parseMainSidebarChatHeight(localStorage.getItem(MAIN_SIDEBAR_CHAT_HEIGHT_STORAGE_KEY))
   );
@@ -417,7 +435,9 @@ export function Sidebar() {
       </button>
       {!collapsed && moreOpen ? (
         <div className="animate-in space-y-0.5 py-1 pl-2 duration-150 fade-in slide-in-from-top-1">
-          {navigationLayout.more.map((item) => renderNavItem(sidebarDestinations[item]))}
+          {navigationLayout.more
+            .filter((item) => item !== "lab" || labEnabled)
+            .map((item) => renderNavItem(sidebarDestinations[item]))}
         </div>
       ) : null}
     </div>
@@ -425,6 +445,7 @@ export function Sidebar() {
 
   const renderOrderedNavigationItem = (item: SidebarPrimaryItemId) => {
     if (item === "more") return renderMoreNavigation();
+    if (item === "lab" && !labEnabled) return null;
     return renderNavItem(sidebarDestinations[item]);
   };
 

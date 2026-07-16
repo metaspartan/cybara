@@ -47,6 +47,12 @@ describe("mobile eval and session runtime parity", () => {
     expect(evals).toContain("Copy redacted eval JSONL");
     expect(evals).toContain("Copy replayable eval suite");
     expect(evals).toContain("Import eval suite from clipboard");
+    expect(evals).toContain("api.config()");
+    expect(evals).toContain("Enable Lab");
+    expect(evals).toContain("Golden turn actions");
+    expect(evals).toContain("Capture completed turns");
+    expect(evals).toContain("Redact exports by default");
+    expect(evals).toContain('format: "distillation_sft"');
     expect(settings).toContain("<MobileEvalsPanel");
   });
 });

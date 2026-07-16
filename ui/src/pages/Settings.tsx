@@ -14,6 +14,7 @@ import { ToolCapabilitySettings } from "./settings/ToolCapabilitySettings";
 import { ExternalTelemetrySettings } from "./settings/ExternalTelemetrySettings";
 import { BrowserSupervisionSettings } from "./settings/BrowserSupervisionSettings";
 import { MemoryBehaviorSettings } from "./settings/MemoryBehaviorSettings";
+import { LabSettingsSection } from "./settings/LabSettings";
 import { SpeechSettingsSection } from "./settings/SpeechSettingsSection";
 import { WebToolPolicySettings } from "./settings/WebToolPolicySettings";
 import { WebResearchSettings } from "./settings/WebResearchSettings";
@@ -2608,6 +2609,8 @@ export function Settings() {
             </SettingsSurface>
           </>
         )}
+
+        {activeSection === "lab" && <LabSettingsSection />}
 
         {activeSection === "voice" && <SpeechSettingsSection />}
 

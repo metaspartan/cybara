@@ -38,6 +38,7 @@ import {
   clearIntelligenceBenchmarkCancelRequest,
   compareTrajectoryStructures,
   countTrajectories,
+  createResearchDatasetCard,
   createEvalRun,
   createEvalSuiteBundle,
   createIntelligenceBenchmarkRun,
@@ -310,6 +311,19 @@ import {
 import { serializeSubagentDetail, serializeSubagentSummary } from "./subagents";
 
 const log = createLogger("API");
+
+function requireLabEnabled(): void {
+  if (!config.getLabSettings().enabled) {
+    throw new Error("Validation error: Lab is disabled in Settings");
+  }
+}
+
+function requireGoldenTurnsEnabled(): void {
+  requireLabEnabled();
+  if (!config.getLabSettings().goldenTurnsEnabled) {
+    throw new Error("Validation error: Golden turns are disabled in Lab settings");
+  }
+}
 
 async function runGoldenReplay(
   goldenId: string,
@@ -585,6 +599,7 @@ const routes: Record<string, RouteHandler> = {
     };
   },
   "GET /api/evals/research/export": (_body, params) => {
+    const lab = config.getLabSettings();
     const ids = (params?.ids ?? "")
       .split(",")
       .map((id) => id.trim())
@@ -595,8 +610,30 @@ const routes: Record<string, RouteHandler> = {
         ? ids.map(getTrajectory).filter((trajectory) => trajectory !== null)
         : listTrajectories(1000);
     return exportResearchTraces(trajectories, {
-      format: parseResearchExportFormat(params?.format),
-      sanitize: params?.sanitize === "true" || params?.sanitize === "1",
+      format: parseResearchExportFormat(params?.format ?? lab.defaultExportFormat),
+      sanitize:
+        params?.sanitize === undefined
+          ? lab.sanitizeExportsByDefault
+          : params.sanitize === "true" || params.sanitize === "1",
+    });
+  },
+  "GET /api/evals/research/card": (_body, params) => {
+    const lab = config.getLabSettings();
+    const ids = (params?.ids ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .slice(0, 1000);
+    const trajectories =
+      ids.length > 0
+        ? ids.map(getTrajectory).filter((trajectory) => trajectory !== null)
+        : listTrajectories(1000);
+    return createResearchDatasetCard(trajectories, {
+      format: parseResearchExportFormat(params?.format ?? lab.defaultExportFormat),
+      sanitize:
+        params?.sanitize === undefined
+          ? lab.sanitizeExportsByDefault
+          : params.sanitize === "true" || params.sanitize === "1",
     });
   },
   "GET /api/evals/benchmarks": (_body, params) => ({
@@ -707,6 +744,7 @@ const routes: Record<string, RouteHandler> = {
     }
   },
   "POST /api/evals/goldens": async (body) => {
+    requireGoldenTurnsEnabled();
     const data = (body || {}) as {
       sessionId?: string;
       messageIndex?: number;
@@ -763,6 +801,7 @@ const routes: Record<string, RouteHandler> = {
     acp_enabled: config.get<boolean>("acp_enabled") !== false,
     speech: config.getSpeechSettings(),
     computer_use: config.getComputerUseSettings(),
+    lab: config.getLabSettings(),
     default_workspace_dir: config.getDefaultWorkspaceDir(),
     ...getCybaraDataDirConfigInfo(),
     reasoning_effort: config.getDefaultReasoningEffort(),
@@ -1063,6 +1102,10 @@ const routes: Record<string, RouteHandler> = {
         config.setComputerUseSettings(value);
         const { stopComputerUseDriver } = await import("../core/computer-use");
         stopComputerUseDriver();
+        continue;
+      }
+      if (key === "lab") {
+        config.setLabSettings(value);
         continue;
       }
       if (key === "default_workspace_dir") {
@@ -2895,11 +2938,15 @@ const routes: Record<string, RouteHandler> = {
       plan: extractLatestSessionPlan(sessionId, messages),
     };
   },
-  "GET /api/sessions/:sessionId/trajectories": (_body, params) => ({
-    sessionId: params!.sessionId,
-    trajectories: listSessionTrajectories(params!.sessionId),
-  }),
+  "GET /api/sessions/:sessionId/trajectories": (_body, params) => {
+    requireLabEnabled();
+    return {
+      sessionId: params!.sessionId,
+      trajectories: listSessionTrajectories(params!.sessionId),
+    };
+  },
   "POST /api/sessions/:sessionId/golden": async (body, params) => {
+    requireGoldenTurnsEnabled();
     const data = (body || {}) as {
       messageIndex?: number;
       name?: string;
@@ -3478,6 +3525,11 @@ export async function handleRequest(req: {
   }
 
   try {
+    if (path.startsWith("/api/evals") && !config.getLabSettings().enabled) {
+      if (!(method === "POST" && path === "/api/evals/benchmarks/cancel")) {
+        throw new Error("Validation error: Lab is disabled in Settings");
+      }
+    }
     const result = await routes[routeKey](req.body, params, {
       clientIp,
       headers: req.headers,

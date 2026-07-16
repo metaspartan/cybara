@@ -564,6 +564,7 @@ struct ChatScreen: View {
     @State private var approvalSaving = false
     @State private var toolApprovalMode = "always_allow"
     @State private var followUpBehaviorEnabled = true
+    @State private var goldenTurnsEnabled = true
     @State private var chatAppearance = NativeChatAppearanceSettings()
     @State private var pendingApprovals: [GatewayPendingApproval] = []
     @State private var expandedApprovalID: String?
@@ -2055,7 +2056,7 @@ struct ChatScreen: View {
                     onFork: {
                         performFork(message)
                     },
-                    onSaveGolden: isUser
+                    onSaveGolden: isUser || !goldenTurnsEnabled
                         ? nil
                         : {
                             performSaveGolden(message)
@@ -3161,10 +3162,14 @@ struct ChatScreen: View {
             let config = try await client.appConfig()
             toolApprovalMode = config["tool_approval_mode"] as? String == "ask" ? "ask" : "always_allow"
             followUpBehaviorEnabled = config["follow_up_behavior_enabled"] as? Bool ?? true
+            let lab = config["lab"] as? [String: Any] ?? [:]
+            goldenTurnsEnabled = (lab["enabled"] as? Bool ?? true) &&
+                (lab["goldenTurnsEnabled"] as? Bool ?? true)
             chatAppearance = NativeChatAppearanceSettings(config: config)
         } catch {
             toolApprovalMode = "always_allow"
             followUpBehaviorEnabled = true
+            goldenTurnsEnabled = true
             chatAppearance = NativeChatAppearanceSettings()
         }
         do {

@@ -8,6 +8,7 @@ import {
   Check,
   Database,
   Download,
+  FileText,
   Loader2,
   Search,
   Sparkles,
@@ -27,9 +28,19 @@ const exportFormats: Array<{
     description: "Prompts, responses, observable reasoning, and complete tool I/O",
   },
   {
+    value: "distillation_sft",
+    label: "Sequence distillation SFT",
+    description: "Teacher responses, provenance, observable reasoning, tool turns, and schemas",
+  },
+  {
     value: "trl_sft",
     label: "Hugging Face / TRL SFT",
     description: "Messages and reconstructed tool turns for supervised fine-tuning",
+  },
+  {
+    value: "hf_session_trace",
+    label: "Hugging Face session trace",
+    description: "Viewer-compatible message and tool events from one selected chat",
   },
   {
     value: "long_context",
@@ -171,12 +182,18 @@ function matchesTraceFilter(trace: ResearchTraceSummary, filter: TraceFilter): b
   return true;
 }
 
-export function TraceDatasetPanel() {
+export function TraceDatasetPanel({
+  defaultFormat,
+  defaultSanitize,
+}: {
+  defaultFormat: ResearchExportFormat;
+  defaultSanitize: boolean;
+}) {
   const [queryText, setQueryText] = useState("");
   const [filter, setFilter] = useState<TraceFilter>("all");
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  const [format, setFormat] = useState<ResearchExportFormat>("cybara_trace");
-  const [sanitize, setSanitize] = useState(true);
+  const [format, setFormat] = useState<ResearchExportFormat>(defaultFormat);
+  const [sanitize, setSanitize] = useState(defaultSanitize);
   const [message, setMessage] = useState<string | null>(null);
   const query = useQuery({
     queryKey: ["research-traces"],
@@ -210,6 +227,20 @@ export function TraceDatasetPanel() {
     onSuccess: (count) => setMessage(`Exported ${count} trace${count === 1 ? "" : "s"}`),
     onError: (error) => setMessage(error instanceof Error ? error.message : "Export failed"),
   });
+  const cardExporter = useMutation({
+    mutationFn: async () => {
+      const response = await researchApi.datasetCard(format, sanitize, [...selected]);
+      if (!response.success || !response.data) {
+        throw new Error(response.error || "Dataset card export failed");
+      }
+      download(response.data.content, response.data.filename, response.data.mimeType);
+      return response.data.count;
+    },
+    onSuccess: (count) =>
+      setMessage(`Created dataset card for ${count} trace${count === 1 ? "" : "s"}`),
+    onError: (error) =>
+      setMessage(error instanceof Error ? error.message : "Dataset card export failed"),
+  });
   const stats = query.data?.stats;
   const allFilteredSelected =
     filtered.length > 0 && filtered.every((trace) => selected.has(trace.id));
@@ -242,7 +273,7 @@ export function TraceDatasetPanel() {
       </div>
 
       <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_240px_auto] xl:items-end">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_240px_auto_auto] xl:items-end">
           <div>
             <label htmlFor="research-format" className="text-[11px] font-medium text-gray-300">
               Dataset format
@@ -283,6 +314,19 @@ export function TraceDatasetPanel() {
               <Download className="h-4 w-4" />
             )}
             Export {selected.size > 0 ? selected.size : "all"}
+          </button>
+          <button
+            type="button"
+            onClick={() => cardExporter.mutate()}
+            disabled={(query.data?.total ?? 0) === 0 || cardExporter.isPending}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[var(--surface-border)] px-3 text-[12px] font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:opacity-40"
+          >
+            {cardExporter.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileText className="h-4 w-4" />
+            )}
+            Dataset card
           </button>
         </div>
         <div className="mt-3 flex items-start gap-2 border-t border-white/10 pt-3 text-[11px] leading-5 text-gray-500">

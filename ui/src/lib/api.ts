@@ -2172,8 +2172,18 @@ export interface AgentEvalRun {
 export type ResearchExportFormat =
   | "cybara_trace"
   | "trl_sft"
+  | "distillation_sft"
+  | "hf_session_trace"
   | "prompt_completion"
   | "long_context";
+
+export interface LabSettings {
+  enabled: boolean;
+  goldenTurnsEnabled: boolean;
+  trajectoryCaptureEnabled: boolean;
+  sanitizeExportsByDefault: boolean;
+  defaultExportFormat: ResearchExportFormat;
+}
 
 export interface ResearchTraceSummary {
   id: string;
@@ -2300,6 +2310,19 @@ export const researchApi = {
       content: string;
       count: number;
     }>(`/evals/research/export?${params.toString()}`);
+  },
+  datasetCard: (format: ResearchExportFormat, sanitize: boolean, ids: string[]) => {
+    const params = new URLSearchParams({
+      format,
+      sanitize: sanitize ? "1" : "0",
+    });
+    if (ids.length > 0) params.set("ids", ids.join(","));
+    return fetchApi<{
+      filename: "README.md";
+      mimeType: "text/markdown";
+      content: string;
+      count: number;
+    }>(`/evals/research/card?${params.toString()}`);
   },
 };
 
