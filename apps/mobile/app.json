@@ -2,7 +2,7 @@
   "expo": {
     "name": "Cybara",
     "slug": "cybara-mobile",
-    "version": "1.0.1666",
+    "version": "1.0.1671",
     "orientation": "portrait",
     "scheme": "cybara",
     "icon": "./assets/cybara.png",
@@ -23,7 +23,7 @@
           "NSAllowsLocalNetworking": true
         }
       },
-      "buildNumber": "1001666"
+      "buildNumber": "1001671"
     },
     "android": {
       "package": "com.ck.cybara",
@@ -32,7 +32,7 @@
         "foregroundImage": "./assets/cybara.png",
         "backgroundColor": "#071016"
       },
-      "versionCode": 1001666
+      "versionCode": 1001671
     },
     "plugins": [
       [
