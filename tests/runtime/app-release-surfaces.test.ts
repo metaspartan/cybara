@@ -185,7 +185,7 @@ describe("app release surface wiring", () => {
     );
   });
 
-  test("CLI release binaries bundle the Transformers runtime", () => {
+  test("CLI release binaries keep architecture-specific ML runtimes optional", () => {
     const workflow = read(".github/workflows/release.yml");
     const compileCommand = workflow
       .split("\n")
@@ -193,21 +193,21 @@ describe("app release surface wiring", () => {
 
     expect(compileCommand).toContain("--external electron");
     expect(compileCommand).toContain("--external @aws-sdk/client-s3");
-    expect(compileCommand).not.toContain("--external @huggingface/transformers");
-    expect(compileCommand).not.toContain("--external onnxruntime-node");
-    expect(compileCommand).not.toContain("--external onnxruntime-web");
+    expect(compileCommand).toContain("--external @huggingface/transformers");
+    expect(compileCommand).toContain("--external kokoro-js");
+    expect(compileCommand).toContain("--external onnxruntime-node");
+    expect(compileCommand).toContain("--external onnxruntime-web");
   });
 
-  test("Darwin x64 CLI builds and starts on a macOS runner", () => {
+  test("Darwin x64 release artifact is smoke-tested on a macOS runner", () => {
     const workflow = read(".github/workflows/release.yml");
 
-    expect(workflow).toContain("runs-on: ${{ matrix.runner }}");
-    expect(workflow).toMatch(/target: darwin-x64\s+artifact: cybara-darwin-x64\s+runner: macos-26/);
-    expect(workflow).toContain("name: Smoke-test Darwin x64 CLI");
-    expect(workflow).toContain("if: matrix.target == 'darwin-x64'");
-    expect(workflow).toContain("./${{ matrix.artifact }} start -d");
-    expect(workflow).toContain("./${{ matrix.artifact }} status");
-    expect(workflow).toContain("./${{ matrix.artifact }} stop");
+    expect(workflow).toContain("smoke-cli-darwin-x64:");
+    expect(workflow).toContain("name: cybara-darwin-x64");
+    expect(workflow).toContain("./cybara-darwin-x64 start -d");
+    expect(workflow).toContain("./cybara-darwin-x64 status");
+    expect(workflow).toContain("./cybara-darwin-x64 stop");
+    expect(workflow).toContain("needs: [build-cli, smoke-cli-darwin-x64, build-mobile]");
   });
 
   test("release workflow runs native macOS unit tests when XCTest is available", () => {

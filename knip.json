@@ -15,6 +15,7 @@
         "@typescript/native",
         "@vtsls/language-server",
         "bash-language-server",
+        "kokoro-js",
         "react-doctor",
         "typescript-language-server",
         "vscode-langservers-extracted",

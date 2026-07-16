@@ -28,6 +28,14 @@ describe("compiled CLI startup", () => {
           "electron",
           "--external",
           "@aws-sdk/client-s3",
+          "--external",
+          "@huggingface/transformers",
+          "--external",
+          "kokoro-js",
+          "--external",
+          "onnxruntime-node",
+          "--external",
+          "onnxruntime-web",
         ],
         { cwd: process.cwd() }
       );
