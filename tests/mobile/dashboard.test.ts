@@ -872,6 +872,10 @@ describe("mobile provider-aware reasoning gating", () => {
     ]);
     expect(mobileSupportedReasoningEfforts("qwen-portal", "qwen3").length).toBe(2);
     expect(mobileSupportedReasoningEfforts("alibaba-coding-plan", "qwen3.7-plus").length).toBe(2);
+    expect(mobileSupportedReasoningEfforts("qwen-token-plan-cn", "qwen3.7-plus")).toEqual([
+      { label: "Default", value: "" },
+      { label: "Thinking", value: "medium" },
+    ]);
     expect(mobileSupportedReasoningEfforts("zai", "x").length).toBe(2);
   });
 

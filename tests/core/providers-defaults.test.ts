@@ -48,6 +48,8 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("deepseek")).toBe("deepseek-v4-flash");
     expect(getDefaultModel("alibaba")).toBe("qwen3.6-plus");
     expect(getDefaultModel("alibaba-coding-plan")).toBe("qwen3.7-plus");
+    expect(getDefaultModel("qwen-token-plan")).toBe("qwen3.7-plus");
+    expect(getDefaultModel("qwen-token-plan-cn")).toBe("qwen3.7-plus");
     expect(getDefaultModel("xiaomi")).toBe("mimo-v2.5-pro");
     expect(getDefaultModel("nvidia")).toBe("nvidia/nemotron-3-super-120b-a12b");
     expect(getDefaultModel("ollama-cloud")).toBe("glm-5.2:cloud");
@@ -65,6 +67,8 @@ describe("Provider model defaults and API-family parity", () => {
     expect(resolveProviderType("kimi-coding")).toBe("kimi-code");
     expect(resolveProviderType("grok-oauth")).toBe("xai-oauth");
     expect(resolveProviderType("grok-build")).toBe("xai-oauth");
+    expect(resolveProviderType("bailian-token-plan")).toBe("qwen-token-plan");
+    expect(resolveProviderType("dashscope-token-plan")).toBe("qwen-token-plan");
     expect(getProviderBaseUrl("opencode")).toBe("https://opencode.ai/zen/v1");
   });
 
@@ -361,6 +365,20 @@ describe("Provider model defaults and API-family parity", () => {
       "text",
       "image",
     ]);
+  });
+
+  test("keeps Qwen Token Plan regions and supported models distinct", () => {
+    const expectedIds = ["qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.6-flash"];
+
+    expect(providers["qwen-token-plan"].baseUrl).toBe(
+      "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+    );
+    expect(providers["qwen-token-plan-cn"].baseUrl).toBe(
+      "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+    );
+    expect(providers["qwen-token-plan"].models.map((model) => model.id)).toEqual(expectedIds);
+    expect(providers["qwen-token-plan-cn"].models.map((model) => model.id)).toEqual(expectedIds);
+    expect(providers["qwen-token-plan"].authType).toBe("api_key");
   });
 
   test("does not advertise non-interactive portal credentials as OAuth", () => {

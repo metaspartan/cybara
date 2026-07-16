@@ -13,6 +13,8 @@ const BINARY_THINKING_PROVIDERS = new Set([
   "qwen-portal",
   "alibaba",
   "alibaba-coding-plan",
+  "qwen-token-plan",
+  "qwen-token-plan-cn",
 ]);
 const ADAPTIVE_THINKING_PROVIDERS = new Set([
   "minimax",

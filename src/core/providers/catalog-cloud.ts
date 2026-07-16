@@ -6,6 +6,41 @@ const XAI_OAUTH_SCOPE =
   "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write";
 const XAI_GROK_PROXY_BASE_URL = "https://cli-chat-proxy.grok.com/v1";
 
+const QWEN_TOKEN_PLAN_MODELS = [
+  {
+    id: "qwen3.7-max",
+    name: "Qwen3.7 Max",
+    context: 1000000,
+    maxTokens: 65536,
+    reasoning: true,
+    input: ["text"],
+  },
+  {
+    id: "qwen3.7-plus",
+    name: "Qwen3.7 Plus",
+    context: 1000000,
+    maxTokens: 65536,
+    reasoning: true,
+    input: ["text", "image"],
+  },
+  {
+    id: "qwen3.6-plus",
+    name: "Qwen3.6 Plus",
+    context: 1000000,
+    maxTokens: 65536,
+    reasoning: true,
+    input: ["text", "image"],
+  },
+  {
+    id: "qwen3.6-flash",
+    name: "Qwen3.6 Flash",
+    context: 1000000,
+    maxTokens: 65536,
+    reasoning: true,
+    input: ["text", "image"],
+  },
+] as const;
+
 const XAI_GROK_MODELS = [
   {
     id: "grok-build",
@@ -717,6 +752,20 @@ export const cloudProviderCatalog = {
         code: true,
       },
     ],
+  },
+  "qwen-token-plan": {
+    name: "Qwen Token Plan",
+    baseUrl: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+    api: "openai-completions",
+    authType: "api_key",
+    models: QWEN_TOKEN_PLAN_MODELS,
+  },
+  "qwen-token-plan-cn": {
+    name: "Qwen Token Plan (China)",
+    baseUrl: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    api: "openai-completions",
+    authType: "api_key",
+    models: QWEN_TOKEN_PLAN_MODELS,
   },
   cerebras: {
     name: "Cerebras",

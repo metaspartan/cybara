@@ -31,6 +31,8 @@ const BINARY_THINKING_PROVIDERS = new Set([
   "qwen-portal",
   "alibaba",
   "alibaba-coding-plan",
+  "qwen-token-plan",
+  "qwen-token-plan-cn",
 ]);
 const ADAPTIVE_THINKING_PROVIDERS = new Set([
   "minimax",
@@ -188,6 +190,8 @@ const PROVIDER_THINKING_FORMAT: Record<string, ThinkingFormat> = {
   "qwen-portal": "qwen",
   alibaba: "qwen",
   "alibaba-coding-plan": "qwen",
+  "qwen-token-plan": "qwen",
+  "qwen-token-plan-cn": "qwen",
   deepseek: "deepseek",
   openrouter: "openrouter",
   together: "together",

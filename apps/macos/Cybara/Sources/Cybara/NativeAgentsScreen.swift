@@ -21,6 +21,7 @@ let nativeReasoningEfforts: [(value: String, label: String)] = [
 
 private let nativeBinaryThinkingProviders: Set<String> = [
     "z.ai", "z.ai-coding", "zai", "z-ai", "qwen-portal", "alibaba", "alibaba-coding-plan",
+    "qwen-token-plan", "qwen-token-plan-cn",
 ]
 private let nativeAdaptiveThinkingProviders: Set<String> = [
     "minimax", "minimax-cn", "minimax-portal", "minimax-portal-cn",

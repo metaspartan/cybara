@@ -50,6 +50,10 @@ describe("supportedReasoningOptions per-model matrix", () => {
       { value: "", label: "Default" },
       { value: "medium", label: "Thinking" },
     ]);
+    expect(supportedReasoningOptions("qwen-token-plan", "qwen3.7-plus")).toEqual([
+      { value: "", label: "Default" },
+      { value: "medium", label: "Thinking" },
+    ]);
   });
 
   test("MiniMax M3 follows provider-adaptive reasoning", () => {

@@ -44,6 +44,10 @@ describe("openAICompatReasoningParams (per-provider shapes)", () => {
       enable_thinking: true,
     });
     expect(supportedReasoningEfforts("alibaba-coding-plan", "qwen3.7-plus")).toEqual(["medium"]);
+    expect(supportedReasoningEfforts("qwen-token-plan", "qwen3.7-plus")).toEqual(["medium"]);
+    expect(openAICompatReasoningParams("qwen-token-plan-cn", "medium", "qwen3.7-plus")).toEqual({
+      enable_thinking: true,
+    });
   });
 
   test("deepseek uses thinking + reasoning_effort", () => {
