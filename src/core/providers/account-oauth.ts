@@ -1,4 +1,11 @@
 import { foundationProviderCatalog } from "./catalog-foundation";
+import {
+  KIMI_CODE_BASE_URL,
+  KIMI_CODE_DEVICE_CODE_URL,
+  KIMI_CODE_OAUTH_CLIENT_ID,
+  KIMI_CODE_TOKEN_URL,
+  kimiCodeModels,
+} from "./kimi-code";
 
 type SubscriptionInput = "text" | "image";
 type SubscriptionModelTuple = readonly [
@@ -214,5 +221,20 @@ export const accountOAuthProviders = {
       refreshMode: "standard" as const,
     },
     models: gitlabDuoModels,
+  },
+  "kimi-code-oauth": {
+    name: "Kimi Code Subscription",
+    baseUrl: KIMI_CODE_BASE_URL,
+    api: "openai-completions",
+    authType: "oauth",
+    oauthFlow: "device_code" as const,
+    oauthConfig: {
+      clientId: KIMI_CODE_OAUTH_CLIENT_ID,
+      deviceCodeUrl: KIMI_CODE_DEVICE_CODE_URL,
+      tokenUrl: KIMI_CODE_TOKEN_URL,
+      refreshMode: "standard" as const,
+      identityHeaders: "kimi-code" as const,
+    },
+    models: kimiCodeModels,
   },
 } as const;

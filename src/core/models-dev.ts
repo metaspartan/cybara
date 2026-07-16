@@ -46,6 +46,7 @@ export const PROVIDER_TO_MODELS_DEV: Record<string, string> = {
   cohere: "cohere",
   moonshot: "moonshotai",
   "kimi-code": "moonshotai",
+  "kimi-code-oauth": "moonshotai",
   minimax: "minimax",
   "z.ai": "zai",
   "z.ai-coding": "zai",

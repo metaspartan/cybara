@@ -186,7 +186,9 @@ describe("Agent provider Google and compatible routing", () => {
 
     expect(result.content).toBe("kimi-ok");
     expect(requestHeaders.get("Authorization")).toBe("Bearer kimi-test-key");
-    expect(requestHeaders.get("User-Agent")).toBe("KimiCLI/0.77");
+    expect(requestHeaders.get("User-Agent")).toMatch(/^Cybara\//);
+    expect(requestHeaders.get("X-Msh-Platform")).toBe("kimi_code_cli");
+    expect(requestHeaders.get("X-Msh-Device-Id")).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   test("routes openai-codex-responses providers to codex responses endpoint", async () => {

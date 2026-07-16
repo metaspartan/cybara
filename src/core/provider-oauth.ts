@@ -23,6 +23,7 @@ export interface ProviderOAuthConfig {
   discoveryUrl?: string;
   deviceCodeDiscoveryUrl?: string;
   specialFlow?: "cursor";
+  identityHeaders?: "kimi-code";
 }
 
 export interface OAuthTokenPayload {

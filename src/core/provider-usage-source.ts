@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 import { createHash } from "node:crypto";
 import { createInterface } from "readline";
 import { createLogger } from "./logger";
+import { kimiCodeIdentityHeaders } from "./providers/kimi-code";
 
 const log = createLogger("ProviderUsage");
 
@@ -693,12 +694,20 @@ function kimiWindowKind(
   const unit = String(
     window?.timeUnit ?? window?.time_unit ?? entry.timeUnit ?? entry.time_unit ?? ""
   ).toLowerCase();
+  const durationMinutes =
+    unit.includes("minute") && duration !== undefined
+      ? duration
+      : unit.includes("hour") && duration !== undefined
+        ? duration * 60
+        : unit.includes("day") && duration !== undefined
+          ? duration * 1440
+          : undefined;
   if (label === "all" || label.includes("weekly") || label.includes("week")) return "weekly";
   if (label.includes("monthly") || label.includes("month")) return "monthly";
   if (label.includes("5h") || label.includes("5-hour") || label.includes("5 hour"))
     return "fiveHour";
-  if (duration === 5 && unit.includes("hour")) return "fiveHour";
-  if (duration === 7 && unit.includes("day")) return "weekly";
+  if (durationMinutes === 300) return "fiveHour";
+  if (durationMinutes === 10080) return "weekly";
   if (duration === 1 && unit.includes("month")) return "monthly";
   return undefined;
 }
@@ -737,7 +746,10 @@ export function parseKimiUsageResponse(body: unknown, now: number): LiveProvider
     if (!record) continue;
     const detail = asRecord(record.detail) ?? record;
     const window = asRecord(record.window) ?? {};
-    assignWindow(kimiWindowKind(detail, window), { ...window, ...detail });
+    assignWindow(kimiWindowKind(record, window) ?? kimiWindowKind(detail, window), {
+      ...window,
+      ...detail,
+    });
   }
 
   if (!windows.fiveHour && !windows.weekly && !windows.monthly) return null;
@@ -1245,7 +1257,7 @@ async function fetchKimiUsage(token: string, baseUrl?: string): Promise<LiveProv
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
-        "User-Agent": "KimiCLI/1.6",
+        ...kimiCodeIdentityHeaders(),
       },
       signal: AbortSignal.timeout(10_000),
     });
@@ -1300,7 +1312,10 @@ export async function fetchLiveProviderUsage(
         value = await fetchMiniMaxUsage(credential, provider.baseUrl);
       } else if (provider.providerType === "z.ai" || provider.providerType === "z.ai-coding") {
         value = await fetchZaiUsage(credential, provider.baseUrl);
-      } else if (provider.providerType === "kimi-code") {
+      } else if (
+        provider.providerType === "kimi-code" ||
+        provider.providerType === "kimi-code-oauth"
+      ) {
         value = await fetchKimiUsage(credential, provider.baseUrl);
       } else if (provider.providerType === "xai-oauth") {
         value = looksLikeOAuthToken(provider.accessToken)

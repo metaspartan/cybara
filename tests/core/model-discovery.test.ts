@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { resolveModelMaxOutputTokens } from "../../src/core/agent-model-limits";
 import { discoverProviderModels } from "../../src/core/model-discovery";
 import { providerManager } from "../../src/core/providers";
 
@@ -121,5 +122,49 @@ describe("provider model discovery", () => {
       "gpt-5.6-sol",
     ]);
     expect(providerManager.getModels(provider.id)[0]?.context_window).toBe(372000);
+  });
+
+  test("persists Kimi coding-plan model capabilities from the authenticated endpoint", async () => {
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Code Discovery Test",
+      access_token: "kimi-oauth-token",
+    });
+    createdProviderIds.push(provider.id);
+    let headers = new Headers();
+
+    const result = await discoverProviderModels(provider.id, {
+      request: async (_input, init) => {
+        headers = new Headers(init?.headers);
+        return Response.json({
+          data: [
+            {
+              id: "k3",
+              display_name: "Kimi K3",
+              context_length: 1_048_576,
+              supports_reasoning: true,
+              supports_image_in: true,
+              supports_video_in: false,
+              supports_tool_use: true,
+              think_efforts: { support: true, valid_efforts: ["max"], default_effort: "max" },
+            },
+          ],
+        });
+      },
+      discoverCatalog: async () => [],
+    });
+
+    expect(result.source).toBe("endpoint");
+    expect(headers.get("Authorization")).toBe("Bearer kimi-oauth-token");
+    expect(headers.get("User-Agent")).toMatch(/^Cybara\//);
+    expect(headers.get("X-Msh-Platform")).toBe("kimi_code_cli");
+    const discovered = providerManager.getModels(provider.id)[0];
+    expect(discovered?.model_id).toBe("k3");
+    expect(discovered?.model_name).toBe("Kimi K3");
+    expect(discovered?.context_window).toBe(1_048_576);
+    expect(discovered?.max_tokens).toBe(32_768);
+    expect(Boolean(discovered?.reasoning)).toBe(true);
+    expect(discovered?.input_types).toBe('["text","image"]');
+    expect(resolveModelMaxOutputTokens("kimi-code-oauth", provider.id, "k3")).toBe(32_768);
   });
 });

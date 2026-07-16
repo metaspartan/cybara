@@ -160,6 +160,7 @@ const CODING_PLAN_PROVIDER_TYPES = new Set<string>([
   "z.ai-coding",
   "alibaba-coding-plan",
   "kimi-code",
+  "kimi-code-oauth",
   "opencode_zen",
   "opencode-go",
   "kilocode",
@@ -177,6 +178,7 @@ const AUTOMATIC_PLAN_PROVIDER_TYPES = new Set<string>([
   "z.ai",
   "z.ai-coding",
   "kimi-code",
+  "kimi-code-oauth",
   "xai-oauth",
 ]);
 
@@ -265,6 +267,11 @@ const EXTERNAL_PLAN_SOURCE_CATALOG: Record<string, ExternalPlanSourceInfo> = {
     mode: "provider_api",
     label: "Kimi usage source",
     hint: "Use Kimi coding tokens or usage APIs; cookies should remain opt-in.",
+  },
+  "kimi-code-oauth": {
+    mode: "oauth_api",
+    label: "Kimi coding plan usage",
+    hint: "Uses the connected Kimi coding-plan account and refreshable OAuth credentials.",
   },
   opencode_zen: {
     mode: "browser_cookie",

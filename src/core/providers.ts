@@ -5,6 +5,7 @@ import { foundationProviderCatalog } from "./providers/catalog-foundation";
 import { integrationProviderCatalog } from "./providers/catalog-integrations";
 import { accountOAuthProviders } from "./providers/account-oauth";
 import { parseOAuthTokenPayload, type ProviderOAuthConfig } from "./provider-oauth";
+import { isKimiCodeProvider, kimiCodeIdentityHeaders } from "./providers/kimi-code";
 
 export const providers = {
   ...foundationProviderCatalog,
@@ -28,6 +29,8 @@ const PROVIDER_TYPE_ALIASES: Record<string, ProviderType> = {
   "z-ai": "z.ai",
   "zai-coding": "z.ai-coding",
   "kimi-coding": "kimi-code",
+  "kimi-oauth": "kimi-code-oauth",
+  "kimi-code-subscription": "kimi-code-oauth",
   "moonshot-ai": "moonshot",
   moonshotai: "moonshot",
   "minimax-cn": "minimax",
@@ -79,10 +82,13 @@ class ProviderManager {
       (dbProvider.provider === "xai-oauth" && normalizedBaseUrl === "https://api.x.ai/v1")
         ? staticConfig.baseUrl
         : dbProvider.base_url;
+    const staticHeaders = (staticConfig as { headers?: Record<string, string> }).headers;
     return {
       ...dbProvider,
       base_url: baseUrl,
-      headers: (staticConfig as { headers?: Record<string, string> }).headers,
+      headers: isKimiCodeProvider(dbProvider.provider)
+        ? { ...staticHeaders, ...kimiCodeIdentityHeaders() }
+        : staticHeaders,
     };
   }
 
@@ -214,13 +220,14 @@ class ProviderManager {
             "Content-Type": json ? "application/json" : "application/x-www-form-urlencoded",
             ...(cursor ? { Authorization: `Bearer ${provider.refresh_token}` } : {}),
             ...oauth.refreshHeaders,
+            ...(oauth.identityHeaders === "kimi-code" ? kimiCodeIdentityHeaders() : {}),
           },
           body: json ? JSON.stringify(cursor ? {} : fields) : new URLSearchParams(fields),
           signal: AbortSignal.timeout(30_000),
         });
       let response = await request();
       if (
-        provider.provider === "xai-oauth" &&
+        (provider.provider === "xai-oauth" || provider.provider === "kimi-code-oauth") &&
         (response.status === 429 || response.status >= 500)
       ) {
         const retryAfter = Number(response.headers.get("retry-after"));
@@ -408,12 +415,20 @@ class ProviderManager {
       const key = model.id.toLowerCase();
       const existing = cachedByModelId.get(key);
       if (existing) {
+        const genericFallback =
+          (existing.model_name || "").trim().toLowerCase() ===
+            existing.model_id.trim().toLowerCase() &&
+          existing.context_window === 128000 &&
+          existing.max_tokens === 8192;
         merged.push({
           ...existing,
-          model_name: existing.model_name || model.name,
-          context_window: existing.context_window ?? model.context,
-          max_tokens: existing.max_tokens ?? model.maxTokens,
-          reasoning: existing.reasoning ?? model.reasoning,
+          model_name: genericFallback ? model.name : existing.model_name || model.name,
+          context_window: genericFallback
+            ? model.context
+            : (existing.context_window ?? model.context),
+          max_tokens: genericFallback ? model.maxTokens : (existing.max_tokens ?? model.maxTokens),
+          reasoning: genericFallback ? model.reasoning : (existing.reasoning ?? model.reasoning),
+          input_types: genericFallback ? [...model.input] : existing.input_types,
         });
         seen.add(key);
         continue;
@@ -581,8 +596,11 @@ export function getDefaultModel(providerType: string): string {
     opencode_zen: "claude-opus-4-8",
     opencode: "claude-opus-4-8",
     moonshot: "kimi-k2.6",
-    "kimi-code": "kimi-for-coding",
-    "kimi-coding": "kimi-for-coding",
+    "kimi-code": "k3",
+    "kimi-coding": "k3",
+    "kimi-code-oauth": "k3",
+    "kimi-oauth": "k3",
+    "kimi-code-subscription": "k3",
     "qwen-portal": "qwen3.5-plus",
     synthetic: "hf:zai-org/GLM-5",
     "openai-codex": "gpt-5.6-sol",

@@ -132,6 +132,10 @@ interface TransformersRuntimeModule {
   env: { cacheDir: string };
 }
 
+async function importOptionalModule(specifier: string): Promise<unknown> {
+  return await import(specifier);
+}
+
 interface LocalAsrResult {
   text?: string;
 }
@@ -487,7 +491,7 @@ async function importKokoro(): Promise<KokoroModule> {
   if (entries) {
     return (await import(pathToFileURL(entries.kokoro).href)) as unknown as KokoroModule;
   }
-  return (await import("kokoro-js")) as unknown as KokoroModule;
+  return (await importOptionalModule("kokoro-js")) as KokoroModule;
 }
 
 async function importLocalTransformers(): Promise<LocalTransformersModule> {

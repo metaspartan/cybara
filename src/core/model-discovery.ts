@@ -31,6 +31,61 @@ export interface ModelDiscoveryOptions {
 const discoveryCache = new Map<string, { fetchedAt: number; result: DiscoveryResult }>();
 const discoveryInFlight = new Map<string, Promise<DiscoveryResult>>();
 
+function positiveInteger(value: unknown): number | undefined {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(number) && number > 0 ? number : undefined;
+}
+
+function endpointModel(value: unknown): ModelsDevModel | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const model = value as Record<string, unknown>;
+  if (typeof model.id !== "string" || !model.id.trim()) return undefined;
+  const id = model.id.trim();
+  const displayName =
+    typeof model.display_name === "string" && model.display_name.trim()
+      ? model.display_name.trim()
+      : undefined;
+  const contextWindow = positiveInteger(model.context_length);
+  const maxTokens = positiveInteger(model.max_output_tokens);
+  const hasInputCapabilities =
+    Object.hasOwn(model, "supports_image_in") || Object.hasOwn(model, "supports_video_in");
+  const input = hasInputCapabilities
+    ? [
+        "text",
+        ...(model.supports_image_in === true ? ["image"] : []),
+        ...(model.supports_video_in === true ? ["video"] : []),
+      ]
+    : undefined;
+  return {
+    id,
+    ...(displayName ? { name: displayName } : {}),
+    ...(contextWindow ? { contextWindow } : {}),
+    ...(maxTokens ? { maxTokens } : {}),
+    ...(Object.hasOwn(model, "supports_reasoning")
+      ? { reasoning: model.supports_reasoning === true }
+      : {}),
+    ...(Object.hasOwn(model, "supports_tool_use")
+      ? { toolCall: model.supports_tool_use !== false }
+      : {}),
+    ...(input ? { input } : {}),
+  };
+}
+
+function staticModelDefaults(providerType: string, modelId: string): ModelsDevModel | undefined {
+  const model = providers[providerType as ProviderType]?.models?.find(
+    (candidate: { id: string }) => candidate.id.toLowerCase() === modelId.toLowerCase()
+  );
+  if (!model) return undefined;
+  return {
+    id: model.id,
+    name: model.name,
+    contextWindow: model.context,
+    maxTokens: model.maxTokens,
+    reasoning: model.reasoning,
+    input: [...model.input],
+  };
+}
+
 function normalizeInputTypes(value: unknown): string[] {
   if (Array.isArray(value))
     return value.filter((entry): entry is string => typeof entry === "string");
@@ -161,19 +216,15 @@ async function runProviderDiscovery(
   try {
     const response = await request(`${baseUrl}/models`, {
       headers: {
+        ...(provider.headers || {}),
         ...(auth ? { Authorization: `Bearer ${auth}` } : {}),
-        "User-Agent": "cybara-model-discovery",
       },
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });
     if (!response.ok) return discoverViaModelsDev(providerId, providerType, discoverCatalog);
-    const data = (await response.json()) as { data?: Array<{ id?: unknown }> };
+    const data = (await response.json()) as { data?: unknown[] };
     const endpointModels = (data.data || [])
-      .flatMap((model) =>
-        typeof model?.id === "string" && model.id.trim()
-          ? [{ id: model.id.trim(), name: model.id.trim() }]
-          : []
-      )
+      .flatMap((model) => endpointModel(model) ?? [])
       .slice(0, MAX_MODELS_PER_PROVIDER);
     if (endpointModels.length === 0) {
       return discoverViaModelsDev(providerId, providerType, discoverCatalog);
@@ -184,7 +235,11 @@ async function runProviderDiscovery(
     const catalogById = new Map(
       catalogModels.map((model) => [model.id.trim().toLowerCase(), model] as const)
     );
-    const found = endpointModels.map((model) => catalogById.get(model.id.toLowerCase()) ?? model);
+    const found = endpointModels.map((model) => ({
+      ...staticModelDefaults(providerType, model.id),
+      ...catalogById.get(model.id.toLowerCase()),
+      ...model,
+    }));
     const persisted = persistModels(providerId, found);
     providerManager.setAuthoritativeModels(
       providerId,

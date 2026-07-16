@@ -80,6 +80,7 @@ const PROVIDER_ICONS: Record<string, IconType> = {
   moonshot: Moonshot,
   kimi: Kimi,
   "kimi-code": Kimi,
+  "kimi-code-oauth": Kimi,
   qwen: Qwen,
   "qwen-portal": Qwen,
   alibaba: Alibaba,

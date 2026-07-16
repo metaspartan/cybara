@@ -1,4 +1,5 @@
 import { MINIMAX_OAUTH_CLIENT_ID, MINIMAX_OAUTH_SCOPE } from "./minimax-oauth";
+import { KIMI_CODE_BASE_URL, kimiCodeModels } from "./kimi-code";
 
 const miniMaxPortalModels = [
   {
@@ -811,20 +812,10 @@ export const foundationProviderCatalog = {
   },
   "kimi-code": {
     name: "Kimi Code",
-    baseUrl: "https://api.kimi.com/coding/v1",
+    baseUrl: KIMI_CODE_BASE_URL,
     api: "openai-completions",
     authType: "api_key",
-    headers: { "User-Agent": "KimiCLI/0.77" },
-    models: [
-      {
-        id: "kimi-for-coding",
-        name: "Kimi For Coding",
-        context: 262144,
-        maxTokens: 32768,
-        reasoning: true,
-        input: ["text"],
-      },
-    ],
+    models: kimiCodeModels,
   },
   "qwen-portal": {
     name: "Qwen Portal",

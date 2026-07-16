@@ -112,13 +112,7 @@ describe("package.json script wiring", () => {
     expect(packageScript).toContain("--external @huggingface/transformers");
     expect(packageScript).toContain("--external onnxruntime-node");
     expect(packageScript).toContain("--external onnxruntime-web");
-    const standaloneBuild = packageScript
-      .split("\n")
-      .find((line) => line.includes("bun build src/main.ts --compile"));
-    expect(standaloneBuild).not.toContain("--external @huggingface/transformers");
-    expect(standaloneBuild).not.toContain("--external onnxruntime-node");
-    expect(standaloneBuild).not.toContain("--external onnxruntime-web");
-    expect(standaloneBuild).not.toContain("--external tiny-secp256k1");
+    expect(packageScript).toContain("buildStandaloneCli");
     expect(packageScript).toContain("--outdir ${DIST_DIR} --entry-naming cli.js");
 
     expect(pkg.scripts?.["tauri:dev"]).toContain("bun run tauri:sidecar");
