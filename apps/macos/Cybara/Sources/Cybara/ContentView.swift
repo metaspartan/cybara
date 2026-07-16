@@ -155,6 +155,7 @@ struct ContentView: View {
     @State private var accent: Color = .accentColor
     @State private var selectedChatSessionID: String?
     @State private var settingsTab = NativeSettingsTab.general
+    @State private var chatSearchPresented = false
 
     private var client: GatewayClient {
         GatewayClient(baseURL: sidecar.serverURL)
@@ -237,14 +238,28 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 CybaraLogo(size: 34)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Cybara")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                    Text(sidecar.isReady ? NativeI18n.t("status.gatewayOnline") : NativeI18n.t("status.starting"))
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(sidecar.isReady ? Color.green : Color.secondary)
-                }
+                Text("Cybara")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
                 Spacer()
+                Button {
+                    chatSearchPresented = true
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Search chats")
+                .keyboardShortcut("k", modifiers: .command)
+                .popover(isPresented: $chatSearchPresented, arrowEdge: .top) {
+                    NativeChatSearchPopover(client: client) { sessionID in
+                        selectedChatSessionID = sessionID
+                        destination = .chat
+                        chatSearchPresented = false
+                    }
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
@@ -436,32 +451,17 @@ private struct NativePrimarySessionList: View {
     let openChat: () -> Void
 
     @State private var sessions: [GatewaySession] = []
-    @State private var searchText = ""
     @State private var collapsedGroupIDs: Set<String> = []
-
-    private var filteredSessions: [GatewaySession] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return sessions }
-        return sessions.filter {
-            $0.displayTitle.lowercased().contains(query)
-                || ($0.workspace_dir ?? "").lowercased().contains(query)
-        }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
-            TextField("Search chats", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-
             List {
-                if filteredSessions.isEmpty {
-                    Text(searchText.isEmpty ? "No chats yet" : "No matching chats")
+                if sessions.isEmpty {
+                    Text("No chats yet")
                         .font(.system(size: 12, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
-                ForEach(nativeSessionGroups(filteredSessions)) { group in
+                ForEach(nativeSessionGroups(sessions)) { group in
                     Section {
                         if group.kind == .pinned || !collapsedGroupIDs.contains(group.id) {
                             ForEach(group.sessions) { session in
@@ -526,6 +526,114 @@ private struct NativePrimarySessionList: View {
                 }
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
             }
+        }
+    }
+}
+
+private struct NativeChatSearchPopover: View {
+    let client: GatewayClient
+    let selectSession: (String) -> Void
+
+    @State private var sessions: [GatewaySession] = []
+    @State private var query = ""
+    @State private var loading = true
+    @FocusState private var searchFocused: Bool
+
+    private var results: [GatewaySession] {
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return sessions }
+        return sessions.filter { session in
+            session.displayTitle.lowercased().contains(normalized)
+                || (session.workspace_dir ?? "").lowercased().contains(normalized)
+                || (session.last_message?.preview ?? "").lowercased().contains(normalized)
+                || session.id.lowercased().contains(normalized)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                TextField("Search chats", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13, design: .rounded))
+                    .focused($searchFocused)
+                    .onSubmit {
+                        if let first = results.first {
+                            selectSession(first.id)
+                        }
+                    }
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Clear search")
+                }
+            }
+            .padding(.horizontal, 11)
+            .frame(height: 38)
+            .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            ScrollView {
+                LazyVStack(spacing: 3) {
+                    if loading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(maxWidth: .infinity, minHeight: 96)
+                    } else if results.isEmpty {
+                        Text(query.isEmpty ? "No chats yet" : "No matching chats")
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 96)
+                    } else {
+                        ForEach(results) { session in
+                            Button {
+                                selectSession(session.id)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "bubble.left")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(.tertiary)
+                                        .frame(width: 18)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(session.displayTitle)
+                                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                            .lineLimit(1)
+                                        Text(session.workspaceLabel ?? "No workspace")
+                                            .font(.system(size: 10, design: .rounded))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                    }
+                                    Spacer(minLength: 8)
+                                    Text(compactRelativeTimestamp(session.updated_at ?? session.created_at))
+                                        .font(.system(size: 10, design: .rounded))
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 7)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 330)
+        }
+        .padding(10)
+        .frame(width: 390)
+        .task {
+            loading = true
+            sessions = (try? await client.sessions(limit: 150)) ?? []
+            loading = false
+            searchFocused = true
         }
     }
 }

@@ -319,6 +319,18 @@ export function MetricsPanel({
       >
         <View style={styles.metricMicroGrid}>
           <MetricMicro
+            label="Input"
+            value={formatMetricNumber(sessionMetrics?.totals.inputTokens)}
+          />
+          <MetricMicro
+            label="Output"
+            value={formatMetricNumber(sessionMetrics?.totals.outputTokens)}
+          />
+          <MetricMicro
+            label="Model calls"
+            value={formatMetricNumber(sessionMetrics?.totals.callCount)}
+          />
+          <MetricMicro
             label="Output speed"
             value={
               sessionMetrics?.totals.tokensPerSecond === null ||
@@ -334,6 +346,18 @@ export function MetricsPanel({
           <MetricMicro
             label="Compactions"
             value={formatMetricNumber(sessionMetrics?.totals.compactionCount)}
+          />
+          <MetricMicro
+            label="Cache read"
+            value={formatMetricNumber(sessionMetrics?.totals.cachedInputTokens)}
+          />
+          <MetricMicro
+            label="Cache write"
+            value={formatMetricNumber(sessionMetrics?.totals.cacheWriteTokens)}
+          />
+          <MetricMicro
+            label="Compacted"
+            value={formatMetricNumber(sessionMetrics?.totals.compactedTokens)}
           />
         </View>
         <MetricShareRows

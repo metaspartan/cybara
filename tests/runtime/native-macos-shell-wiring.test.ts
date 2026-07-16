@@ -170,6 +170,11 @@ describe("native macOS shell wiring", () => {
       expect(contentView).toContain(nativeScreen);
     }
 
+    expect(nativePlatformScreens).toContain("let active: [NativeActiveLSPServer]?");
+    expect(nativePlatformScreens).toContain("let preinstalled: Bool?");
+    expect(nativePlatformScreens).toContain("(status?.active ?? []).filter(\\.initialized)");
+    expect(nativePlatformScreens).toContain('label: included ? "Included"');
+
     for (const gatewayRoute of [
       '"api/mcp"',
       '"api/lsp/status"',
@@ -204,10 +209,28 @@ describe("native macOS shell wiring", () => {
     expect(contentView).toContain("ForEach([NativeDestination.dashboard, .usage])");
     expect(contentView).toContain("ForEach([NativeDestination.ide, .voice, .evals");
     expect(contentView).not.toContain(".buttonStyle(.borderedProminent)");
+    expect(contentView).not.toContain('NativeI18n.t("status.gatewayOnline")');
+    expect(contentView).not.toContain('TextField("Search chats", text: $searchText)');
+    expect(contentView).toContain("NativeChatSearchPopover(client: client)");
+    expect(contentView).toContain('.keyboardShortcut("k", modifiers: .command)');
     expect(contentView).toContain('Label("More", systemImage: "ellipsis")');
     expect(contentView).toContain("NativePrimarySessionList(");
     expect(contentView).toContain("destination = .settings");
     expect(contentView).toContain(".navigationSplitViewStyle(.balanced)");
+    expect(nativeScreens).toContain("if selectedSessionID == nil && messages.isEmpty");
+    expect(nativeScreens).toContain('Text("Start a conversation")');
+    expect(nativeScreens).toContain("newChatWorkspaceBar");
+    expect(nativeScreens).toContain("composerContent");
+    expect(nativeScreens).toContain('Text(activeSession?.displayTitle ?? "Untitled chat")');
+    expect(nativeScreens).toContain('.help("Chat options")');
+    expect(nativeScreens).not.toContain("Circle().fill(accentTint.opacity(0.14))");
+    expect(nativeScreens).toContain(".trim(from: 0, to: contextUsageProgress)");
+    expect(nativeScreens).not.toContain('Text(activeContextUsage.map { "\\(Int($0.usedPercent.rounded()))" } ?? "?")');
+    expect(nativeScreens).toContain('.foregroundStyle(.secondary)\n                    }\n                    .buttonStyle(.borderless)\n                    .help("Attach images or text files")');
+    expect(nativeScreens).toContain('NativeEnvironmentSection(title: "Context and usage")');
+    expect(nativeScreens).toContain('NativeEnvironmentUsageStat(label: "Cache read"');
+    expect(nativeScreens).toContain('NativeEnvironmentUsageStat(label: "First token"');
+    expect(nativeScreens).not.toContain('NativeEnvironmentSection(title: "Provider plan")');
     expect(nativeScreens).toContain("GridItem(.adaptive(minimum: 168)");
     expect(nativeScreens).toContain(".font(.title2.weight(.semibold))");
   });
@@ -593,7 +616,8 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("private var composerControls: some View");
     expect(nativeScreens).toContain("private var activeTokenUsage: GatewaySessionTokenUsage?");
     expect(nativeScreens).toContain("Session tokens:");
-    expect(nativeScreens).toContain("No usage recorded");
+    expect(nativeScreens).toContain('NativeEnvironmentUsageStat(label: "Input"');
+    expect(nativeScreens).toContain(".trim(from: 0, to: contextUsageProgress)");
     expect(nativeScreens).toContain("private var composerSecurityControls: some View");
     expect(nativeScreens).toContain('Label("Always Allow", systemImage: "exclamationmark.shield")');
     expect(nativeScreens).toContain('Label("Ask Me", systemImage: "questionmark.circle")');

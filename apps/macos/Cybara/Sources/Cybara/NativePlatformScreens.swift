@@ -165,8 +165,16 @@ struct NativeLSPStatus: Decodable, Hashable {
     let status: String?
     let workspace: String?
     let supported: [String]?
+    let active: [NativeActiveLSPServer]?
     let diagnosticsCount: Int?
     let error: String?
+}
+
+struct NativeActiveLSPServer: Decodable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let command: String
+    let initialized: Bool
 }
 
 struct NativeLSPInstallStatus: Decodable, Identifiable, Hashable {
@@ -174,6 +182,7 @@ struct NativeLSPInstallStatus: Decodable, Identifiable, Hashable {
     let installed: Bool?
     let available: Bool?
     let bundled: Bool?
+    let preinstalled: Bool?
     let path: String?
     let version: String?
     let error: String?
@@ -1383,13 +1392,33 @@ struct LSPScreen: View {
                                 ("Status", status?.status ?? "unknown"),
                                 ("Diagnostics", "\(status?.diagnosticsCount ?? 0)"),
                                 ("Languages", "\(languages.count)"),
+                                ("Active", "\(activeServers.count)"),
                             ])
+                            if !activeServers.isEmpty {
+                                Divider()
+                                ForEach(activeServers) { server in
+                                    HStack(spacing: 8) {
+                                        Circle()
+                                            .fill(.green)
+                                            .frame(width: 6, height: 6)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(server.name)
+                                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                            Text(server.command)
+                                                .font(.system(size: 10, design: .monospaced))
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
                     LazyVStack(spacing: 10) {
                         ForEach(languages) { language in
                             let installed = installStatus.first { $0.language == language.name }
+                            let included = language.bundled || installed?.preinstalled == true
                             GlassCard {
                                 HStack(alignment: .center) {
                                     VStack(alignment: .leading, spacing: 3) {
@@ -1401,10 +1430,12 @@ struct LSPScreen: View {
                                     }
                                     Spacer()
                                     StatusBadge(
-                                        label: language.available ? "Available" : "Missing",
-                                        color: language.available ? .green : .orange
+                                        label: included ? "Included" : language.available ? "Available" : "Missing",
+                                        color: included || language.available ? .green : .orange
                                     )
-                                    if busyLanguage == language.name {
+                                    if included {
+                                        EmptyView()
+                                    } else if busyLanguage == language.name {
                                         HStack(spacing: 5) {
                                             ProgressView().controlSize(.small)
                                             Text(installed?.installed == true ? "Removing..." : "Installing...")
@@ -1429,9 +1460,13 @@ struct LSPScreen: View {
         .task { await load() }
     }
 
+    private var activeServers: [NativeActiveLSPServer] {
+        (status?.active ?? []).filter(\.initialized)
+    }
+
     private func lspDetail(_ language: NativeLSPLanguage, _ installed: NativeLSPInstallStatus?) -> String {
         [
-            language.bundled ? "bundled" : "external",
+            language.bundled || installed?.preinstalled == true ? "included" : "external",
             installed?.version,
             installed?.path,
             installed?.error,
@@ -1456,9 +1491,11 @@ struct LSPScreen: View {
     }
 
     private func toggle(_ language: NativeLSPLanguage) async {
+        let installed = installStatus.first { $0.language == language.name }
+        if language.bundled || installed?.preinstalled == true { return }
         busyLanguage = language.name
         do {
-            let result = installStatus.first { $0.language == language.name }?.installed == true
+            let result = installed?.installed == true
                 ? try await client.uninstallLSP(language.name)
                 : try await client.installLSP(language.name)
             if result.success == false {

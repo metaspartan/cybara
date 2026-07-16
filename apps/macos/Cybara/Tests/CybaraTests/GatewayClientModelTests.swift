@@ -32,6 +32,21 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertTrue(response.settings.trajectoryVideoEnabled)
     }
 
+    func testNativeLSPModelsDecodeIncludedAndActiveServers() throws {
+        let statusData = Data(
+            #"{"status":"ok","workspace":"/tmp/project","supported":["typescript"],"active":[{"id":"typescript","name":"TypeScript","command":"vtsls","initialized":true}],"diagnosticsCount":2}"#.utf8
+        )
+        let status = try JSONDecoder().decode(NativeLSPStatus.self, from: statusData)
+        XCTAssertEqual(status.active?.first?.name, "TypeScript")
+        XCTAssertTrue(status.active?.first?.initialized == true)
+
+        let installData = Data(
+            #"{"status":[{"language":"typescript","installed":true,"available":true,"bundled":false,"preinstalled":true,"path":"/app/node_modules/@vtsls/language-server/bin/vtsls.js"}]}"#.utf8
+        )
+        let installStatus = try JSONDecoder().decode(NativeLSPInstallStatusResponse.self, from: installData)
+        XCTAssertTrue(installStatus.status.first?.preinstalled == true)
+    }
+
     func testNativeSpeechStatusDecodesVoiceReadiness() throws {
         let data = Data(
             #"{"success":true,"tts":{"ready":true,"provider":"Kokoro 82M","type":"local","systemFallback":false,"error":null},"stt":{"ready":true,"provider":"Native dictation","type":"native","native":true,"error":null},"settings":{"ttsProvider":"local","ttsVoice":"af_heart","sttProvider":"native","realtimeProvider":"managed"}}"#.utf8

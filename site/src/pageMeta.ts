@@ -8,7 +8,7 @@ export const PAGE_HEADS = {
   landing: {
     title: "Cybara — Self-Hosted Open-Source AI Agent Platform",
     description:
-      "Your agents. Your tools. Your runtime. Cybara is a self-hosted, open-source AI agent platform: agents that code, automate browsers and desktops, message across Telegram, Discord, Slack, and more, and execute on-chain operations — with full operator control.",
+      "Your agents. Your tools. Your runtime. Cybara is a self-hosted, open-source AI agent platform extended by skills, plugins, MCP, ACP, and LSP — agents that code, automate browsers and desktops, message across Telegram, Discord, Slack, and more, and execute on-chain operations, with full operator control.",
     canonical: "https://cybara.ai/",
   },
   features: {
@@ -38,7 +38,7 @@ export const PAGE_HEADS = {
   faq: {
     title: "FAQ — Cybara Self-Hosted AI Agent Platform",
     description:
-      "Answers about Cybara: what it is, the platforms it runs on, supported model providers and messaging channels, how it handles your API keys and data, ACP editor integration, MCP, skills, pricing, and operator controls.",
+      "Answers about Cybara: what it is, the platforms it runs on, supported model providers and messaging channels, skills, plugins, MCP, ACP, LSP, hooks, multi-agent orchestration, how it handles your API keys and data, pricing, and operator controls.",
     canonical: "https://cybara.ai/faq",
   },
 } as const satisfies Record<string, PageHead>;

@@ -44,14 +44,19 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
     try {
       const manager = getOrInitLspManager(process.cwd());
       const supported = manager.getSupportedLanguages();
-      const availability: Record<string, { available: boolean; bundled: boolean }> = {};
-
-      for (const lang of supported) {
-        availability[lang] = {
-          available: await manager.isAvailable(lang),
-          bundled: manager.isBundled(lang),
-        };
-      }
+      const availabilityEntries = await Promise.all(
+        supported.map(
+          async (lang) =>
+            [
+              lang,
+              {
+                available: await manager.isAvailable(lang),
+                bundled: manager.isBundled(lang),
+              },
+            ] as const
+        )
+      );
+      const availability = Object.fromEntries(availabilityEntries);
 
       trackLspOperation("status", {
         workspace: manager.getWorkspacePath(),
@@ -80,15 +85,13 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
     try {
       const manager = getOrInitLspManager(process.cwd());
       const supported = manager.getSupportedLanguages();
-      const result: Array<{ name: string; available: boolean; bundled: boolean }> = [];
-
-      for (const lang of supported) {
-        result.push({
+      const result = await Promise.all(
+        supported.map(async (lang) => ({
           name: lang,
           available: await manager.isAvailable(lang),
           bundled: manager.isBundled(lang),
-        });
-      }
+        }))
+      );
 
       trackLspOperation("languages", {
         workspace: manager.getWorkspacePath(),

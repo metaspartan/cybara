@@ -636,7 +636,7 @@ export const FAQS: readonly Faq[] = [
   {
     question: "What is Cybara?",
     answer:
-      "Cybara is a self-hosted AI agent platform. It pairs a Bun-based agent runtime with a web UI, desktop and mobile apps, a CLI, a broad tool layer, messaging-channel adapters, MCP support, and encrypted wallet controls, so agents can code, automate browsers, run messaging workflows, and execute on-chain operations under operator control.",
+      "Cybara is a self-hosted AI agent platform. It pairs a Bun-based agent runtime with a web UI, desktop and mobile apps, a CLI, a broad tool layer, and messaging-channel adapters — extended by skills, plugins, MCP, ACP, and LSP — plus encrypted wallet controls, so agents can code, automate browsers, run messaging workflows, and execute on-chain operations under operator control.",
   },
   {
     question: "Is Cybara free and open source?",
@@ -691,7 +691,32 @@ export const FAQS: readonly Faq[] = [
   {
     question: "Does Cybara support MCP servers?",
     answer:
-      "In both directions. Install Model Context Protocol servers as agent tools from the official MCP registry, Smithery, or npm — or expose Cybara's own tools to Claude Desktop and other MCP clients.",
+      "In both directions. Install Model Context Protocol servers as agent tools from the official MCP registry, Smithery, or npm — or expose Cybara's own tools to Claude Desktop and other MCP clients. MCP tools run through the same approval and sandbox policy as built-in tools.",
+  },
+  {
+    question: "How do plugins work?",
+    answer:
+      "Plugins are the unified hub under Settings → Plugins. A plugin bundles skills, MCP services, and connected account apps in one manifest you can enable or disable live without restarting the gateway. Marketplace plugins ship curated skill bundles, and account connectors add OAuth-connected Google Workspace, Microsoft 365, Dropbox, and Notion — read-only by default, with any write still subject to your tool-approval policy.",
+  },
+  {
+    question: "What are slash commands?",
+    answer:
+      "Slash commands are prompt shortcuts that expand into structured templates. Built-ins like /learn, /plan, /review, /test, and /summarize kick off common workflows — /learn even sources material and writes a new SKILL.md via skill_save. Plugins can contribute their own commands, and you type them inline in any chat.",
+  },
+  {
+    question: "Can I hook into agent behavior with my own code?",
+    answer:
+      "Yes. In-process hooks let code react to events like llm_request, tool_before, and message:received, and transform hooks can rewrite tool results, LLM output, or terminal output before they reach the model. You can also register executable shell scripts that receive the event as JSON on stdin and return a decision (for example, to block a call) on stdout — with event filtering and timeouts. A tool_before hook can deny a call outright, so custom guardrails fail closed.",
+  },
+  {
+    question: "Does Cybara understand my codebase with LSP?",
+    answer:
+      "Yes. A built-in Language Server Protocol client gives agents diagnostics, go-to-definition, references, hover, and symbol lookup directly in your workspace. TypeScript and JavaScript are bundled by default, other languages are managed and installed on demand, and the IDE surfaces diagnostics, git blame, and project-wide search alongside locally indexed embeddings.",
+  },
+  {
+    question: "How does multi-agent orchestration work?",
+    answer:
+      "Cybara can fan a single turn out to several proposer agents and synthesize one answer with Mixture of Agents, or route work across providers with weighted, round-robin, lowest-cost, and priority strategies. Beyond routing, agents can spawn scoped subagents and coordinate longer runs on a durable multi-agent board — each step still flowing through your approval and sandbox policy.",
   },
   {
     question: "Can agents use a real web browser?",

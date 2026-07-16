@@ -601,7 +601,7 @@ struct ChatScreen: View {
                 sessionList
                     .frame(minWidth: 220, idealWidth: 260, maxWidth: 340)
             }
-            transcript
+            chatContent
                 .frame(minWidth: 380, maxWidth: .infinity)
             if showWorkspacePanel {
                 chatWorkspacePanel
@@ -1072,6 +1072,115 @@ struct ChatScreen: View {
     }
 
     @ViewBuilder
+    private var chatContent: some View {
+        if selectedSessionID == nil && messages.isEmpty {
+            newChatSurface
+        } else {
+            transcript
+        }
+    }
+
+    private var newChatSurface: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 28)
+            VStack(spacing: 0) {
+                VStack(spacing: 7) {
+                    CybaraLogo(size: 64)
+                        .saturation(0)
+                        .brightness(0.22)
+                        .opacity(0.58)
+                        .padding(.bottom, 7)
+                    Text("Start a conversation")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    Text("Ask questions, get help with code, or chat with your agents")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                .multilineTextAlignment(.center)
+                .padding(.bottom, 18)
+
+                VStack(spacing: -1) {
+                    newChatWorkspaceBar
+                        .padding(.horizontal, 14)
+                        .zIndex(0)
+                    composerContent
+                        .zIndex(1)
+                }
+            }
+            .frame(maxWidth: 672)
+            Spacer(minLength: 28)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 18)
+    }
+
+    private var newChatWorkspaceBar: some View {
+        HStack(spacing: 8) {
+            Button {
+                Task { await chooseWorkspace(for: nil) }
+            } label: {
+                HStack(spacing: 6) {
+                    if workspaceSaving {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: "folder")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(gatewayWorkspaceFolderName(activeWorkspaceDir) ?? "Select workspace")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(workspaceSaving)
+            .help(workspaceHelpText)
+
+            if activeWorkspaceDir != nil {
+                Button {
+                    showGitBranchPicker = true
+                    Task { await loadActiveGitBranch() }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.triangle.branch")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Text(activeGitBranchLabel ?? "No branch")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 5)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showGitBranchPicker, arrowEdge: .top) {
+                    gitBranchPicker
+                }
+                .help("Change branch")
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 5)
+        .padding(.bottom, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.045))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
     private var approvalBanner: some View {
         if !pendingApprovals.isEmpty {
             VStack(spacing: 0) {
@@ -1158,20 +1267,34 @@ struct ChatScreen: View {
     }
 
     private var transcriptHeader: some View {
-        HStack(spacing: 12) {
-            Image(systemName: selectedSessionID == nil ? "bubble.left.and.text.bubble.right" : "bubble.left")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(accentTint)
-                .frame(width: 34, height: 34)
-                .background(Circle().fill(accentTint.opacity(0.14)))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(activeSession?.displayTitle ?? "New chat")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .lineLimit(1)
-                Text(sessionDetailLine)
-                    .font(.system(size: 12, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+        HStack(spacing: 8) {
+            Text(activeSession?.displayTitle ?? "Untitled chat")
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+                .help(sessionDetailLine)
+            if let activeSession {
+                Menu {
+                    Button("Rename…") {
+                        renameDraft = activeSession.title ?? ""
+                        renameTarget = activeSession
+                    }
+                    Button(activeSession.pinned == true ? "Unpin" : "Pin") {
+                        Task { await togglePin(activeSession) }
+                    }
+                    Button("Set Workspace…") {
+                        Task { await chooseWorkspace(for: activeSession) }
+                    }
+                    Divider()
+                    Button("Delete…", role: .destructive) {
+                        deleteTarget = activeSession
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .menuStyle(.borderlessButton)
+                .help("Chat options")
             }
             Spacer()
             workspaceOpenMenu
@@ -2147,6 +2270,12 @@ struct ChatScreen: View {
     }
 
     private var composer: some View {
+        composerContent
+            .padding(14)
+            .cybaraGlass(cornerRadius: 0)
+    }
+
+    private var composerContent: some View {
         VStack(spacing: 8) {
             if let error {
                 Text(error)
@@ -2198,6 +2327,7 @@ struct ChatScreen: View {
                     } label: {
                         Image(systemName: "paperclip")
                             .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.borderless)
                     .help("Attach images or text files")
@@ -2242,8 +2372,6 @@ struct ChatScreen: View {
                 handlePaste()
             }
         }
-        .padding(14)
-        .cybaraGlass(cornerRadius: 0)
     }
 
     private var composerControls: some View {
@@ -2253,11 +2381,11 @@ struct ChatScreen: View {
             } label: {
                 ZStack {
                     Circle()
-                        .stroke(contextColor.opacity(0.85), lineWidth: 2)
-                        .background(Circle().fill(contextColor.opacity(0.12)))
-                    Text(activeContextUsage.map { "\(Int($0.usedPercent.rounded()))" } ?? "?")
-                        .font(.system(size: 7.5, weight: .bold, design: .rounded))
-                        .foregroundStyle(contextColor)
+                        .stroke(Color.primary.opacity(0.14), lineWidth: 2)
+                    Circle()
+                        .trim(from: 0, to: contextUsageProgress)
+                        .stroke(contextColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
                 }
                 .frame(width: 20, height: 20)
             }
@@ -2542,165 +2670,170 @@ struct ChatScreen: View {
     }
 
     private var environmentPopover: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Environment")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    Text("Current chat only")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Environment")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        Text("Session overview")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if subagentsLoading {
+                        ProgressView().controlSize(.small)
+                    }
                 }
-                Spacer()
-                if subagentsLoading {
-                    ProgressView().controlSize(.small)
-                }
-            }
 
-            NativeEnvironmentSection(title: "Session") {
-                NativeEnvironmentRow(icon: "doc.text.magnifyingglass", label: "Changes") {
-                    if activeFileChanges.files.isEmpty {
-                        Text("No file diffs").foregroundStyle(.secondary)
-                    } else {
-                        HStack(spacing: 5) {
-                            Text("\(activeFileChanges.files.count) files")
-                            Text("+\(activeFileChanges.totalAdded)").foregroundStyle(.green)
-                            Text("-\(activeFileChanges.totalRemoved)").foregroundStyle(.red)
+                NativeEnvironmentSection(title: "Session") {
+                    NativeEnvironmentRow(icon: "doc.text.magnifyingglass", label: "Changes") {
+                        if activeFileChanges.files.isEmpty {
+                            Text("No file diffs").foregroundStyle(.secondary)
+                        } else {
+                            HStack(spacing: 5) {
+                                Text("\(activeFileChanges.files.count) files")
+                                Text("+\(activeFileChanges.totalAdded)").foregroundStyle(.green)
+                                Text("-\(activeFileChanges.totalRemoved)").foregroundStyle(.red)
+                            }
+                        }
+                    }
+                    NativeEnvironmentRow(icon: "folder", label: "Local") {
+                        Text(activeWorkspaceLabel ?? "No workspace")
+                            .font(.system(size: 11, design: .monospaced))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    NativeEnvironmentRow(icon: "arrow.triangle.branch", label: "Branch") {
+                        Button {
+                            showGitBranchPicker = true
+                            Task { await loadActiveGitBranch() }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Text(activeGitBranchLabel ?? "No branch")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(activeGitBranchLabel == nil ? .secondary : .primary)
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 8, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(activeWorkspaceDir == nil)
+                        .popover(isPresented: $showGitBranchPicker, arrowEdge: .trailing) {
+                            gitBranchPicker
                         }
                     }
                 }
-                NativeEnvironmentRow(icon: "folder", label: "Local") {
-                    Text(activeWorkspaceLabel ?? "No workspace")
-                        .font(.system(size: 11, design: .monospaced))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                NativeEnvironmentRow(icon: "arrow.triangle.branch", label: "Branch") {
-                    Button {
-                        showGitBranchPicker = true
-                        Task { await loadActiveGitBranch() }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Text(activeGitBranchLabel ?? "No branch")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(activeGitBranchLabel == nil ? .secondary : .primary)
-                                .lineLimit(1)
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 8, weight: .semibold))
+
+                NativeEnvironmentSection(title: "Context and usage") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Active context")
                                 .foregroundStyle(.secondary)
+                            Spacer()
+                            if let usage = activeContextUsage {
+                                Text("\(formatNativeTokenCount(usage.usedTokens)) / \(formatNativeTokenCount(usage.limitTokens))")
+                                    .font(.system(size: 11, design: .monospaced))
+                            } else {
+                                Text("Not available")
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(activeWorkspaceDir == nil)
-                    .popover(isPresented: $showGitBranchPicker, arrowEdge: .trailing) {
-                        gitBranchPicker
+                        ProgressView(value: activeContextUsage?.usedPercent ?? 0, total: 100)
+                            .tint(contextColor)
+                        HStack {
+                            Text(activeContextUsage.map { "\(formatNativePercent($0.usedPercent)) used" } ?? "Waiting for context data")
+                            Spacer()
+                            if let usage = activeContextUsage {
+                                Text("\(formatNativeTokenCount(usage.remainingTokens)) remaining")
+                            }
+                        }
+                        .font(.system(size: 10, design: .rounded))
+                        .foregroundStyle(.tertiary)
+                        LazyVGrid(columns: environmentUsageColumns, alignment: .leading, spacing: 10) {
+                            NativeEnvironmentUsageStat(label: "Input", value: environmentInputTokens)
+                            NativeEnvironmentUsageStat(label: "Output", value: environmentOutputTokens)
+                            NativeEnvironmentUsageStat(label: "Model calls", value: environmentModelCalls)
+                            NativeEnvironmentUsageStat(label: "Output speed", value: environmentOutputSpeed)
+                            NativeEnvironmentUsageStat(label: "First token", value: environmentFirstToken)
+                            NativeEnvironmentUsageStat(label: "Cache read", value: environmentCacheRead)
+                            NativeEnvironmentUsageStat(label: "Cache write", value: environmentCacheWrite)
+                            NativeEnvironmentUsageStat(label: "Compaction", value: environmentCompaction)
+                        }
+                        .padding(.top, 2)
                     }
                 }
-                NativeEnvironmentRow(icon: "gauge.with.dots.needle.bottom.50percent", label: "Tokens") {
-                    if let tokenUsage = activeTokenUsage, tokenUsage.totalTokens > 0 {
-                        Text("\(formatNativeTokenCount(tokenUsage.inputTokens)) in / \(formatNativeTokenCount(tokenUsage.outputTokens)) out")
-                            .font(.system(size: 11, design: .rounded))
+
+                NativeEnvironmentSection(title: "Plans") {
+                    if let plan = currentSessionPlan {
+                        NativeSessionPlanCard(plan: plan)
                     } else {
-                        Text("No usage recorded").foregroundStyle(.secondary)
+                        NativeEmptyPopoverState(
+                            icon: "checklist",
+                            title: "No plan recorded",
+                            detail: "Plans appear when the agent uses the todo tool."
+                        )
                     }
                 }
-                if let tokenUsage = activeTokenUsage, tokenUsage.totalTokens > 0 {
-                    NativeEnvironmentRow(icon: "speedometer", label: "Speed") {
-                        Text(tokenUsage.tokensPerSecond.map { "\(formatNativeDecimal($0)) tok/s · \(tokenUsage.callCount) calls" } ?? "\(tokenUsage.callCount) calls")
-                            .font(.system(size: 11, design: .rounded))
-                    }
-                }
-                if let usage = activeContextUsage, usage.compacted == true {
-                    NativeEnvironmentRow(icon: "rectangle.compress.vertical", label: "Compact") {
-                        let count = usage.compactionCount ?? 0
-                        let summarized = usage.compactedTokens ?? 0
-                        Text(summarized > 0 ? "\(count)x · \(formatNativeTokenCount(summarized)) summarized" : "\(count)x")
-                            .font(.system(size: 11, design: .rounded))
-                    }
-                }
-            }
 
-            NativeEnvironmentSection(title: "Plan") {
-                if let plan = currentSessionPlan {
-                    NativeSessionPlanCard(plan: plan)
-                } else {
-                    NativeEmptyPopoverState(
-                        icon: "checklist",
-                        title: "No plan recorded",
-                        detail: "Plans appear when the agent uses the todo tool."
-                    )
-                }
-            }
-
-            NativeEnvironmentSection(title: "Provider plan") {
-                let rows = providerPlanUsageRows
-                if rows.isEmpty {
-                    Text("No automatic plan data for this provider.")
-                        .font(.system(size: 12, design: .rounded))
-                        .foregroundStyle(.secondary)
-                } else {
-                    VStack(spacing: 8) {
-                        ForEach(rows) { row in
-                            NativeContextProviderPlanUsageBar(row: row)
-                        }
-                    }
-                }
-            }
-
-            NativeEnvironmentSection(title: "Subagents") {
-                if environmentSubagents.isEmpty {
-                    Text("No active subagents")
-                        .font(.system(size: 12, design: .rounded))
-                        .foregroundStyle(.secondary)
-                } else {
-                    VStack(spacing: 6) {
-                        ForEach(environmentSubagents.prefix(6)) { subagent in
-                            NativeSubagentCompactRow(subagent: subagent)
-                        }
-                    }
-                }
-            }
-
-            if showWorkspacePanel || agentUsingBrowser {
-                NativeEnvironmentSection(title: "Preview") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        if agentUsingBrowser {
-                            Button {
-                                activeWorkspaceTab = .browser
-                                showWorkspacePanel = true
-                                showEnvironmentPopover = false
-                            } label: {
-                                Label("Agent is browsing", systemImage: "globe")
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                NativeEnvironmentSection(title: "Subagents") {
+                    if environmentSubagents.isEmpty {
+                        Text("No active subagents")
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        VStack(spacing: 6) {
+                            ForEach(environmentSubagents.prefix(6)) { subagent in
+                                NativeSubagentCompactRow(subagent: subagent)
                             }
-                            .buttonStyle(.plain)
-                        }
-                        if showWorkspacePanel && (!agentUsingBrowser || activeWorkspaceTab != .browser) {
-                            Button {
-                                showEnvironmentPopover = false
-                            } label: {
-                                Label(activeWorkspaceTab.label, systemImage: activeWorkspaceTab.systemImage)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
-            }
 
-            NativeEnvironmentSection(title: "Sources") {
-                if environmentToolNames.isEmpty {
-                    Text("No tool sources yet")
-                        .font(.system(size: 12, design: .rounded))
-                        .foregroundStyle(.secondary)
-                } else {
-                    NativeToolNameCloud(names: environmentToolNames)
+                if showWorkspacePanel || agentUsingBrowser {
+                    NativeEnvironmentSection(title: "Preview") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if agentUsingBrowser {
+                                Button {
+                                    activeWorkspaceTab = .browser
+                                    showWorkspacePanel = true
+                                    showEnvironmentPopover = false
+                                } label: {
+                                    Label("Agent is browsing", systemImage: "globe")
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            if showWorkspacePanel && (!agentUsingBrowser || activeWorkspaceTab != .browser) {
+                                Button {
+                                    showEnvironmentPopover = false
+                                } label: {
+                                    Label(activeWorkspaceTab.label, systemImage: activeWorkspaceTab.systemImage)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+
+                NativeEnvironmentSection(title: "Sources") {
+                    if environmentToolNames.isEmpty {
+                        Text("No tool sources yet")
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        NativeToolNameCloud(names: environmentToolNames)
+                    }
                 }
             }
+            .font(.system(size: 12, design: .rounded))
+            .padding(14)
         }
-        .font(.system(size: 12, design: .rounded))
-        .padding(14)
         .frame(width: 370, alignment: .leading)
+        .frame(maxHeight: 620)
     }
 
     private var subagentsPopover: some View {
@@ -2839,6 +2972,59 @@ struct ChatScreen: View {
         if percent >= 90 { return .red }
         if percent >= 70 { return .orange }
         return .green
+    }
+
+    private var contextUsageProgress: Double {
+        min(1, max(0, (activeContextUsage?.usedPercent ?? 0) / 100))
+    }
+
+    private var environmentUsageColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .leading), count: 3)
+    }
+
+    private var environmentInputTokens: String {
+        guard let usage = activeTokenUsage, usage.totalTokens > 0 else { return "—" }
+        return formatNativeTokenCount(usage.inputTokens)
+    }
+
+    private var environmentOutputTokens: String {
+        guard let usage = activeTokenUsage, usage.totalTokens > 0 else { return "—" }
+        return formatNativeTokenCount(usage.outputTokens)
+    }
+
+    private var environmentModelCalls: String {
+        guard let usage = activeTokenUsage, usage.totalTokens > 0 else { return "—" }
+        return formatNativeTokenCount(usage.callCount)
+    }
+
+    private var environmentOutputSpeed: String {
+        guard let speed = activeTokenUsage?.tokensPerSecond else { return "—" }
+        return "\(formatNativeDecimal(speed)) tok/s"
+    }
+
+    private var environmentFirstToken: String {
+        guard let milliseconds = activeTokenUsage?.firstTokenMs, milliseconds >= 0 else { return "—" }
+        if milliseconds < 1_000 { return "\(Int(milliseconds.rounded()))ms" }
+        return String(format: milliseconds < 10_000 ? "%.2fs" : "%.1fs", milliseconds / 1_000)
+    }
+
+    private var environmentCacheRead: String {
+        guard let usage = activeTokenUsage, usage.totalTokens > 0 else { return "—" }
+        let tokens = formatNativeTokenCount(usage.cachedInputTokens)
+        guard let hitRate = usage.cacheHitRate else { return tokens }
+        return "\(tokens) · \(formatNativePercent(hitRate))"
+    }
+
+    private var environmentCacheWrite: String {
+        guard let usage = activeTokenUsage, usage.totalTokens > 0 else { return "—" }
+        return formatNativeTokenCount(usage.cacheWriteTokens)
+    }
+
+    private var environmentCompaction: String {
+        guard activeContextUsage?.compacted == true else { return "Never" }
+        let count = activeContextUsage?.compactionCount ?? 0
+        let tokens = activeContextUsage?.compactedTokens ?? 0
+        return tokens > 0 ? "\(count)x · \(formatNativeTokenCount(tokens))" : "\(count)x"
     }
 
     private var toolApprovalLabel: String {
@@ -3853,6 +4039,25 @@ private struct NativeEnvironmentRow<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .font(.system(size: 12, design: .rounded))
+    }
+}
+
+private struct NativeEnvironmentUsageStat: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+            Text(value)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

@@ -37,6 +37,11 @@ describe("mobile eval and session runtime parity", () => {
     expect(detail).toContain('label: "Save golden run"');
     expect(metrics).toContain('title="Chat runtime"');
     expect(metrics).toContain('label="Average TTFT"');
+    expect(metrics).toContain('label="Input"');
+    expect(metrics).toContain('label="Output"');
+    expect(metrics).toContain('label="Cache read"');
+    expect(metrics).toContain('label="Cache write"');
+    expect(metrics).toContain('label="Compacted"');
     expect(metrics).toContain("loadSessionRuntimePage");
     expect(metrics).toContain("sessionPagination.totalPages");
     expect(evals).toContain("Copy redacted eval JSONL");
