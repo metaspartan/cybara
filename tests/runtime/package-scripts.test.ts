@@ -49,7 +49,8 @@ describe("package.json script wiring", () => {
     expect(reactDoctorSource).toContain('"--no-score"');
     expect(reactDoctorSource).toContain('"error"');
     expect(reactDoctorSource).toContain('environment.CI === "true"');
-    expect(reactDoctorSource).toContain('Bun.spawnSync(["git", "rev-parse", "HEAD^"]');
+    expect(reactDoctorSource).toContain('environment.CI === "true" ? "HEAD^" : "HEAD"');
+    expect(reactDoctorSource).toContain('Bun.spawnSync(["git", "rev-parse", revision]');
     expect(pkg.scripts?.["test:mobile"]).toBe("bun run test:isolated tests/mobile");
     expect(pkg.scripts?.["test:smoke"]).toBe("bun run scripts/run-smoke-tests.ts");
     const smokeTestSource = readFileSync(SMOKE_TEST_SCRIPT, "utf8");
