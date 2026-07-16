@@ -49,23 +49,29 @@ jobs:
   build-cli:
     name: CLI ${{ matrix.target }}
     needs: quality
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: linux-x64
             artifact: cybara-linux-x64
+            runner: ubuntu-latest
           - target: linux-arm64
             artifact: cybara-linux-arm64
+            runner: ubuntu-latest
           - target: darwin-x64
             artifact: cybara-darwin-x64
+            runner: macos-26
           - target: darwin-arm64
             artifact: cybara-darwin-arm64
+            runner: ubuntu-latest
           - target: windows-x64
             artifact: cybara-windows-x64.exe
+            runner: ubuntu-latest
           - target: windows-arm64
             artifact: cybara-windows-arm64.exe
+            runner: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -88,6 +94,15 @@ jobs:
           CYBARA_BUILD_COMMIT: ${{ github.sha }}
         run: |
           bun build src/main.ts --compile '--env=CYBARA_BUILD_*' --target=bun-${{ matrix.target }} --outfile=${{ matrix.artifact }} --external electron --external @aws-sdk/client-s3
+      - name: Smoke-test Darwin x64 CLI
+        if: matrix.target == 'darwin-x64'
+        run: |
+          export HOME="$RUNNER_TEMP/cybara-darwin-x64-home"
+          mkdir -p "$HOME"
+          ./${{ matrix.artifact }} version
+          ./${{ matrix.artifact }} start -d
+          ./${{ matrix.artifact }} status
+          ./${{ matrix.artifact }} stop
       - name: Upload CLI artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

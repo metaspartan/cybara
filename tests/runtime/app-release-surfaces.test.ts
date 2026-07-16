@@ -198,6 +198,18 @@ describe("app release surface wiring", () => {
     expect(compileCommand).not.toContain("--external onnxruntime-web");
   });
 
+  test("Darwin x64 CLI builds and starts on a macOS runner", () => {
+    const workflow = read(".github/workflows/release.yml");
+
+    expect(workflow).toContain("runs-on: ${{ matrix.runner }}");
+    expect(workflow).toMatch(/target: darwin-x64\s+artifact: cybara-darwin-x64\s+runner: macos-26/);
+    expect(workflow).toContain("name: Smoke-test Darwin x64 CLI");
+    expect(workflow).toContain("if: matrix.target == 'darwin-x64'");
+    expect(workflow).toContain("./${{ matrix.artifact }} start -d");
+    expect(workflow).toContain("./${{ matrix.artifact }} status");
+    expect(workflow).toContain("./${{ matrix.artifact }} stop");
+  });
+
   test("release workflow runs native macOS unit tests when XCTest is available", () => {
     const workflow = read(".github/workflows/release.yml");
 
