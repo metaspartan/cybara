@@ -3,6 +3,14 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 const ideChatPanelSourcePath = join(process.cwd(), "ui", "src", "pages", "ide", "IDEChatPanel.tsx");
+const ideChatStatusSourcePath = join(
+  process.cwd(),
+  "ui",
+  "src",
+  "pages",
+  "ide",
+  "IDEChatStatus.tsx"
+);
 const ideActivityHelpersSourcePath = join(
   process.cwd(),
   "ui",
@@ -21,7 +29,9 @@ const chatAgentControlsSourcePath = join(
 );
 
 function readIdeChatPanelSource(): string {
-  return readFileSync(ideChatPanelSourcePath, "utf8");
+  return [ideChatPanelSourcePath, ideChatStatusSourcePath]
+    .map((path) => readFileSync(path, "utf8"))
+    .join("\n");
 }
 
 function readIdeActivityHelpersSource(): string {

@@ -399,3 +399,20 @@ export interface IdePreferences {
   autoCreateTerminalOnOpen: boolean;
   terminalPanelHeight: number;
 }
+
+export interface IDEChatPanelProps {
+  workspaceDir: string;
+  contextPath: string | null;
+  terminalContext?: {
+    isOpen: boolean;
+    sessionCount: number;
+    activeSessionId: string | null;
+  };
+  onWorkspaceMutated: () => void;
+  onClose: () => void;
+  selectedAgentId: string;
+  onSelectedAgentIdChange: (agentId: string) => void;
+  agents: IdeChatAgentOption[];
+  onPendingFileDiffsChange?: (diffs: IdePendingFileDiff[]) => void;
+  onPendingFileDiffControllerChange?: (controller: IdePendingFileDiffController | null) => void;
+}

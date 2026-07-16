@@ -75,12 +75,32 @@ export interface AgentTrajectory {
   createdAt: string;
 }
 
+export type GoldenResponseAssertion =
+  | { type: "exact_text"; expected: string }
+  | { type: "normalized_text"; expected: string }
+  | { type: "regex"; pattern: string; flags?: string }
+  | { type: "json_schema"; schema: Record<string, unknown> }
+  | { type: "citations"; minimum: number; domains?: string[] };
+
+export interface GoldenToolAssertion {
+  index: number;
+  name?: string;
+  args?: Record<string, unknown>;
+  result?: unknown;
+}
+
+export interface GoldenAssertions {
+  response?: GoldenResponseAssertion;
+  tools: GoldenToolAssertion[];
+}
+
 export interface AgentGolden {
   id: string;
   trajectoryId: string;
   name: string;
   description: string | null;
   tags: string[];
+  assertions: GoldenAssertions;
   baseline: AgentTrajectory;
   createdAt: string;
   updatedAt: string;

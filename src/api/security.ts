@@ -6,6 +6,7 @@ import { createLogger } from "../core/logger";
 import {
   authenticateMobileDeviceToken,
   isLoopbackMobileGatewayUrl,
+  type MobileScope,
   type MobileDeviceView,
   normalizeMobileGatewayUrl,
 } from "../core/mobile-devices";
@@ -832,7 +833,7 @@ export function rotateGatewayApiKey(): { apiKey: string } {
   return { apiKey: newKey };
 }
 
-export function routeRequiredScope(method: string, path: string): string | null {
+export function routeRequiredScope(method: string, path: string): MobileScope | "root" | null {
   // Gateway auth management can mint/reveal the root key, so scoped
   // principals (paired devices) must never reach it. "root" is intentionally
   // not a grantable device scope.
@@ -846,6 +847,12 @@ export function routeRequiredScope(method: string, path: string): string | null 
     return "nearby";
   }
   if (path.startsWith("/api/checkpoints")) {
+    return "root";
+  }
+  if (path === "/api/mobile/device" || path.startsWith("/api/mobile/push")) {
+    return null;
+  }
+  if (path.startsWith("/api/mobile")) {
     return "root";
   }
   if (path === "/api/wallet/seed") {
@@ -863,6 +870,7 @@ export function routeRequiredScope(method: string, path: string): string | null 
       path === "/api/evals/research/export" ||
       path === "/api/evals/benchmarks/export" ||
       path === "/api/evals/import" ||
+      method === "PUT" ||
       method === "DELETE"
     ) {
       return "manage";
@@ -922,6 +930,54 @@ export function routeRequiredScope(method: string, path: string): string | null 
   if (path.startsWith("/api/status") || path === "/api/ws/status") {
     return "read";
   }
+  if (
+    path === "/api/info" ||
+    path === "/api/build-info" ||
+    path === "/api/update-check" ||
+    path === "/api/journey" ||
+    path === "/api/identity"
+  ) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/metrics")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/logs")) {
+    return "read";
+  }
+  if (path.startsWith("/api/git")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/loops")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/system-prompt")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/settings")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/telemetry")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/system")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/sandbox")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/session-runs")) {
+    return "read";
+  }
   if (path.startsWith("/api/mcp")) {
     if (method === "GET") return "read";
     return "mcp";
@@ -940,7 +996,7 @@ export function routeRequiredScope(method: string, path: string): string | null 
     return "manage";
   }
   if (path.startsWith("/api/speech")) {
-    if (method === "GET") return null;
+    if (method === "GET") return "read";
     if (path === "/api/speech/dictate" || path === "/api/speech/synthesize") return "chat";
     if (path === "/api/speech/realtime/session") return "chat";
     return "manage";
@@ -975,7 +1031,7 @@ export function routeRequiredScope(method: string, path: string): string | null 
     if (method === "GET") return "read";
     return "manage";
   }
-  return null;
+  return "root";
 }
 
 function getBearerToken(headers: Record<string, string>): string | null {

@@ -365,7 +365,7 @@ describe("Slack adapter mocked flows", () => {
             {
               name: "diagram.png",
               mimetype: "image/png",
-              url_private_download: "https://slack-files.example.com/diagram.png",
+              url_private_download: "https://1.1.1.1/slack/diagram.png",
             },
           ],
         },

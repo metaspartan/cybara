@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
+  applyGoldenAssertions,
   buildTrajectoryForMessage,
   buildTrajectoryStructure,
   compareTrajectoryStructures,
@@ -83,6 +84,112 @@ describe("agent eval trajectories", () => {
     expect(compareTrajectoryStructures(baseline, changed).equivalent).toBe(false);
   });
 
+  test("combines structural checks with deterministic response and tool assertions", () => {
+    const expectedMessage = sampleMessages()[1];
+    const structure = buildTrajectoryStructure(expectedMessage);
+    const matching = applyGoldenAssertions(
+      compareTrajectoryStructures(structure, buildTrajectoryStructure(expectedMessage)),
+      {
+        response: { type: "regex", pattern: "version\\s+is\\s+1\\.2\\.3", flags: "i" },
+        tools: [
+          {
+            index: 0,
+            name: "read",
+            args: { path: "package.json" },
+            result: { content: '{"version":"1.2.3"}', lines: 1 },
+          },
+        ],
+      },
+      expectedMessage
+    );
+    const incorrect = applyGoldenAssertions(
+      compareTrajectoryStructures(
+        structure,
+        buildTrajectoryStructure({ ...expectedMessage, content: "The version is 9.9.9." })
+      ),
+      {
+        response: { type: "normalized_text", expected: expectedMessage.content },
+        tools: [{ index: 0, args: { path: "different.json" } }],
+      },
+      { ...expectedMessage, content: "The version is 9.9.9." }
+    );
+
+    expect(matching.equivalent).toBe(true);
+    expect(incorrect.equivalent).toBe(false);
+    expect(incorrect.differences.map((difference) => difference.path)).toContain(
+      "assertions.response"
+    );
+    expect(incorrect.differences.map((difference) => difference.path)).toContain(
+      "assertions.tools.0.args"
+    );
+  });
+
+  test("supports JSON schema and citation assertions", () => {
+    const base = compareTrajectoryStructures(
+      buildTrajectoryStructure({ role: "assistant", content: '{"answer":42}' }),
+      buildTrajectoryStructure({ role: "assistant", content: '{"answer":42}' })
+    );
+    const schema = applyGoldenAssertions(
+      base,
+      {
+        response: {
+          type: "json_schema",
+          schema: {
+            type: "object",
+            required: ["answer"],
+            properties: { answer: { type: "integer", const: 42 } },
+          },
+        },
+        tools: [],
+      },
+      { role: "assistant", content: '{"answer":42}' }
+    );
+    const citations = applyGoldenAssertions(
+      compareTrajectoryStructures(
+        buildTrajectoryStructure({ role: "assistant", content: "Sources" }),
+        buildTrajectoryStructure({ role: "assistant", content: "Sources" })
+      ),
+      {
+        response: { type: "citations", minimum: 2, domains: ["example.com"] },
+        tools: [],
+      },
+      {
+        role: "assistant",
+        content: "[One](https://example.com/a) and https://docs.example.com/b",
+      }
+    );
+
+    expect(schema.equivalent).toBe(true);
+    expect(citations.equivalent).toBe(true);
+  });
+
+  test("reports invalid nested schema patterns without crashing replay", () => {
+    const actual: ChatMessage = {
+      role: "assistant",
+      content: JSON.stringify({ code: "abc" }),
+    };
+    const comparison = applyGoldenAssertions(
+      compareTrajectoryStructures(
+        buildTrajectoryStructure(actual),
+        buildTrajectoryStructure(actual)
+      ),
+      {
+        response: {
+          type: "json_schema",
+          schema: {
+            type: "object",
+            properties: { code: { type: "string", pattern: "[" } },
+          },
+        },
+        tools: [],
+      },
+      actual
+    );
+
+    expect(comparison.equivalent).toBe(false);
+    expect(comparison.differences[0]?.actual).toContain("invalid schema pattern");
+  });
+
   test("records completed turns and saves immutable golden baselines", () => {
     const sessionId = `eval-session-${crypto.randomUUID()}`;
     const trajectory = recordCompletedTrajectory({
@@ -104,6 +211,11 @@ describe("agent eval trajectories", () => {
     expect(getGolden(golden.id)?.baseline.structure.tools.map((tool) => tool.name)).toEqual([
       "read",
     ]);
+    expect(getGolden(golden.id)?.assertions.response).toEqual({
+      type: "normalized_text",
+      expected: "The version is 1.2.3.",
+    });
+    expect(getGolden(golden.id)?.assertions.tools[0]?.args).toEqual({ path: "package.json" });
     expect(listGoldens().some((entry) => entry.id === golden.id)).toBe(true);
     expect(listEvalRuns().some((run) => run.goldenId === golden.id)).toBe(false);
     createEvalRun(golden.id);

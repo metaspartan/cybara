@@ -435,7 +435,7 @@ describe("Discord adapter mocked message flows", () => {
           attachments: {
             size: 1,
             first: () => ({
-              url: "https://cdn.example.com/image.png",
+              url: "https://1.1.1.1/discord/image.png",
               contentType: "image/png",
               name: "image.png",
             }),

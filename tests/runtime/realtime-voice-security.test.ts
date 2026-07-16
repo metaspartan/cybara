@@ -8,6 +8,6 @@ describe("realtime voice route authorization", () => {
     expect(routeRequiredScope("PUT", "/api/speech/settings")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/speech/dictate")).toBe("chat");
     expect(routeRequiredScope("POST", "/api/speech/synthesize")).toBe("chat");
-    expect(routeRequiredScope("GET", "/api/speech/status")).toBeNull();
+    expect(routeRequiredScope("GET", "/api/speech/status")).toBe("read");
   });
 });

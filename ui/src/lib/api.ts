@@ -2129,6 +2129,10 @@ export interface AgentGolden {
   name: string;
   description: string | null;
   tags: string[];
+  assertions: {
+    response?: { type: string };
+    tools: Array<{ index: number; name?: string }>;
+  };
   baseline: {
     id: string;
     sessionId: string;
@@ -2222,7 +2226,7 @@ export type IntelligenceTaskDifficulty =
   | "intermediate"
   | "advanced"
   | "expert"
-  | "frontier";
+  | "stress";
 
 export interface IntelligenceBenchmarkResult {
   taskId: string;
@@ -2276,6 +2280,11 @@ export const evalsApi = {
     fetchApi<{ success: boolean; run: AgentEvalRun; error?: string }>(
       `/evals/goldens/${goldenId}/replay`,
       { method: "POST", body: JSON.stringify(payload ?? {}) }
+    ),
+  updateAssertions: (goldenId: string, assertions: AgentGolden["assertions"]) =>
+    fetchApi<{ success: boolean; golden?: AgentGolden; error?: string }>(
+      `/evals/goldens/${goldenId}/assertions`,
+      { method: "PUT", body: JSON.stringify({ assertions }) }
     ),
   runSuite: (goldenIds?: string[]) =>
     fetchApi<{ success: boolean; runs: AgentEvalRun[]; error?: string }>("/evals/run", {

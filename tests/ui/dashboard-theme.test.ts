@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { getDashboardCheckStatus } from "../../ui/src/pages/dashboard/dashboardStatus";
+import {
+  dashboardHealthColor,
+  getDashboardCheckStatus,
+} from "../../ui/src/pages/dashboard/dashboardStatus";
 
 const read = (relativePath: string): string =>
   readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8");
@@ -12,9 +15,15 @@ describe("dashboard health state", () => {
     expect(getDashboardCheckStatus({ status: "degraded" })).toEqual({
       status: "warning",
     });
+    expect(getDashboardCheckStatus({ status: "critical" })).toEqual({
+      status: "critical",
+    });
     expect(getDashboardCheckStatus({ status: "offline" })).toEqual({
       status: "error",
     });
+    expect(dashboardHealthColor("healthy")).toBe("var(--context-ring-ok)");
+    expect(dashboardHealthColor("warning")).toBe("var(--context-ring-warn)");
+    expect(dashboardHealthColor("critical")).toBe("var(--context-ring-danger)");
   });
 
   test("formats numeric check details and rejects malformed health payloads", () => {
@@ -54,5 +63,14 @@ describe("dashboard theme contract", () => {
     expect(dashboard).toContain("divide-y divide-[var(--surface-border)]");
     expect(dashboard).toContain("xl:grid-cols-[minmax(0,1.08fr)_minmax(21rem,0.92fr)]");
     expect(dashboard).toContain('aria-label="Platform summary"');
+  });
+
+  test("system settings share semantic health and theme tokens", () => {
+    const settings = read("../../ui/src/pages/Settings.tsx");
+    expect(settings).toContain("getDashboardCheckStatus(value)");
+    expect(settings).toContain("dashboardHealthColor(check.status)");
+    expect(settings).toContain("border-[var(--surface-border)]");
+    expect(settings).toContain("text-[var(--text-primary)]");
+    expect(settings).toContain("text-[var(--text-muted)]");
   });
 });

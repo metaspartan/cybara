@@ -116,10 +116,12 @@ describe("security-sensitive runtime defaults", () => {
       join(ROOT_DIR, "ui", "src", "pages", "settings", "MemoryBehaviorSettings.tsx"),
       "utf8"
     );
-    const mobileSettingsSource = readFileSync(
-      join(ROOT_DIR, "apps", "mobile", "src", "screens", "dashboardSettingsPanels.tsx"),
-      "utf8"
-    );
+    const mobileSettingsSource = [
+      "dashboardSettingsPanels.tsx",
+      "dashboardAdvancedSettingsPanels.tsx",
+    ]
+      .map((file) => readFileSync(join(ROOT_DIR, "apps", "mobile", "src", "screens", file), "utf8"))
+      .join("\n");
     const nativeSettingsSource = readFileSync(
       join(ROOT_DIR, "apps", "macos", "Cybara", "Sources", "Cybara", "NativeSettingsScreen.swift"),
       "utf8"

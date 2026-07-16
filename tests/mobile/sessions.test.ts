@@ -6,6 +6,8 @@ const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
 const readApi = (): string =>
   read("lib/api.ts") + read("lib/api-types.ts") + read("lib/api-normalizers.ts");
+const readStyles = (): string =>
+  read("screens/dashboardStyles.ts") + read("screens/dashboardChatStyles.ts");
 
 describe("mobile: chat management", () => {
   const screen =
@@ -40,7 +42,7 @@ describe("mobile: chat management", () => {
 
   test("queued follow-ups render as pending rows and only real pending ids can steer", () => {
     const api = readApi();
-    const styles = read("screens/dashboardStyles.ts");
+    const styles = readStyles();
     expect(api).toContain("interrupted?: boolean");
     expect(api).toContain("pendingChatMessages(sessionId: string)");
     expect(api).toContain("reorderPendingMessages(");
@@ -125,7 +127,7 @@ describe("mobile: chat management", () => {
   test("mobile chat renders active session plans above messages and keeps chat text selectable", () => {
     const api = readApi();
     const chat = read("screens/dashboardChat.tsx");
-    const styles = read("screens/dashboardStyles.ts");
+    const styles = readStyles();
     const planCard = screen.indexOf("<MobilePlanSummaryCard plan={detail.plan} />");
     const messageLoop = screen.indexOf("{visibleMessages.map((message, index) => (");
 
@@ -172,7 +174,7 @@ describe("mobile: chat management", () => {
     const api = readApi();
     const newChat = read("components/NewChatPanel.tsx");
     const metricsPanels = read("screens/dashboardMetricsPanels.tsx");
-    const styles = read("screens/dashboardStyles.ts");
+    const styles = readStyles();
     expect(api).toContain("interface SessionContextUsage");
     expect(api).toContain("interface SessionTokenUsage");
     expect(api).toContain("tokenUsage?: SessionTokenUsage");

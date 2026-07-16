@@ -5,5 +5,6 @@ export * from "./research";
 export * from "./session-fork";
 export * from "./store";
 export * from "./structure";
+export * from "./assertions";
 export * from "./trajectory";
 export * from "./types";

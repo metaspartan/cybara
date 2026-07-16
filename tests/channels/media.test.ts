@@ -46,7 +46,7 @@ const fetchCallsAfterBlocked = fetched.length;
 
 const saved = await saveInboundMediaFromUrl({
   channel: "test",
-  url: "https://media.example.test/image",
+  url: "https://1.1.1.1/image",
   fileName: "../avatar",
   headers: { Authorization: "Bearer channel-token" },
 });
@@ -55,7 +55,7 @@ let oversizedError = "";
 try {
   await saveInboundMediaFromUrl({
     channel: "test",
-    url: "https://media.example.test/oversized",
+    url: "https://1.1.1.1/oversized",
     fileName: "oversized.png",
     contentType: "image/png",
   });
@@ -112,8 +112,8 @@ describe("channel inbound media downloads", () => {
     expect(report.fetchCallsAfterBlocked).toBe(0);
 
     expect(report.fetched).toEqual([
-      { url: "https://media.example.test/image", auth: "Bearer channel-token" },
-      { url: "https://media.example.test/oversized", auth: null },
+      { url: "https://1.1.1.1/image", auth: "Bearer channel-token" },
+      { url: "https://1.1.1.1/oversized", auth: null },
     ]);
     expect(report.oversizedError).toContain("exceeds 10485760 bytes");
     expect(report.saved.bytes).toBe(4);

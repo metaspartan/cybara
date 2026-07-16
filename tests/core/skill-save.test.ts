@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 describe("self-improving skills (skill_save)", () => {
-  const tools = readFileSync("src/core/tools/index.ts", "utf8");
+  const tools =
+    readFileSync("src/core/tools/index.ts", "utf8") +
+    readFileSync("src/core/tools/schemas-extended.ts", "utf8");
   const handlers = readFileSync("src/core/tools/handlers/index.ts", "utf8");
   const skillHandler = readFileSync("src/core/tools/handlers/skill.ts", "utf8");
   const prompt = readFileSync("src/core/system-prompt.ts", "utf8");

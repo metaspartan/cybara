@@ -110,10 +110,26 @@ describe("gateway boot smoke e2e", () => {
     if (homeDir) rmSync(homeDir, { recursive: true, force: true });
   });
 
-  test("health endpoint reports healthy", async () => {
+  test("health endpoint reports truthful system and database status", async () => {
     const health = await api("GET", "/api/health", { token: null });
     expect(health.status).toBe(200);
-    expect(health.data.status).toBe("healthy");
+    expect(["healthy", "warning", "critical"]).toContain(health.data.status);
+    const system = health.data.system as { status: string };
+    const checks = health.data.checks as {
+      database: { status: string };
+      system: { status: string };
+    };
+    expect(health.data.status).toBe(system.status);
+    expect(checks.database.status).toBe("healthy");
+    expect(checks.system.status).toBe(system.status);
+
+    const ready = await api("GET", "/api/health/ready", { token: null });
+    expect(ready.status).toBe(200);
+    expect(ready.data.ready).toBe(true);
+
+    const live = await api("GET", "/api/health/live", { token: null });
+    expect(live.status).toBe(200);
+    expect(live.data.live).toBe(true);
   });
 
   test("pairing code lifecycle: mint, redeem for scoped token, scope-gated 403, one-time", async () => {

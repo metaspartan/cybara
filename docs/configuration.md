@@ -428,9 +428,8 @@ sqlite3 "${CYBARA_HOME:-$HOME/.cybara}"/data/platform.db "DELETE FROM sessions; 
 
 ## Tool Approval System
 
-Dangerous tools (exec, git, wallet, browser, computer_use, execute_code) can require operator
-approval before execution. When `tool_approval_mode` is set to `"ask"` (vs the default
-`"always_allow"`), the agent suspends the tool call and emits an approval request. The UI or API
+Dangerous tools (exec, git, wallet, browser, computer_use, execute_code) require operator
+approval by default. When `tool_approval_mode` is set to `"ask"`, the agent suspends the tool call and emits an approval request. The UI or API
 can then resolve it with `approve_once`, `approve_session`, `approve_always`, or `deny`.
 
 ```bash

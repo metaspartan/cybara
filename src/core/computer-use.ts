@@ -1,16 +1,17 @@
 import { spawn, type ChildProcess } from "child_process";
-import { mkdirSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
+import { mkdirSync, existsSync, readFileSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { PNG } from "pngjs";
 import { config } from "./config";
+import { CUA_DRIVER_VERSION, ensureManagedCuaDriver, isExecutableFile } from "./cua-driver-runtime";
 import {
-  CUA_DRIVER_VERSION,
-  ensureManagedCuaDriver,
-  isExecutableFile,
-  managedCuaDriverDir,
-  packagedCuaDriverCandidates,
-} from "./cua-driver-runtime";
+  CUA_DRIVER_CMD_ENV,
+  getCuaDriverResolution,
+  resolveCuaDriverCommand,
+  type CuaDriverCommandSource,
+  type CuaDriverResolution,
+} from "./computer-use-driver-resolution";
 import {
   appendComputerUseTrajectoryTurn,
   createComputerUseTrajectory,
@@ -21,25 +22,37 @@ import {
   type ComputerUseTrajectoryDetail,
   touchComputerUseTrajectory,
 } from "./computer-use-trajectories";
+import {
+  VALID_ACTIONS,
+  assertActionAllowed,
+  normalizeComputerUseCompatToolArgs,
+  type ComputerUseAction,
+  type ComputerUseArgs,
+} from "./computer-use-actions";
 
-const DEFAULT_CUA_DRIVER_CMD = "cua-driver";
-const CUA_DRIVER_CMD_ENV = "CYBARA_CUA_DRIVER_CMD";
+export {
+  COMPUTER_USE_ACTION_TOOL_ALIASES,
+  COMPUTER_USE_COMPAT_TOOL_ALIASES,
+  VALID_ACTIONS,
+  assertActionAllowed,
+  isBlockedKeyCombo,
+  isBlockedTypeText,
+  normalizeComputerUseActionArgs,
+  normalizeComputerUseCompatToolArgs,
+  setComputerUseApprovalCallback,
+  setComputerUseAutoApprove,
+  summarizeAction,
+  type ComputerUseAction,
+  type ComputerUseArgs,
+} from "./computer-use-actions";
+
 const REQUEST_TIMEOUT_MS = 30_000;
 
-export type CuaDriverCommandSource =
-  | "env"
-  | "config"
-  | "bundled"
-  | "managed-runtime"
-  | "path"
-  | "known-install-dir"
-  | "default";
-
-export interface CuaDriverResolution {
-  command: string;
-  source: CuaDriverCommandSource;
-  searchedPaths: string[];
-}
+export {
+  resolveCuaDriverCommand,
+  type CuaDriverCommandSource,
+  type CuaDriverResolution,
+} from "./computer-use-driver-resolution";
 
 let driverProcess: ChildProcess | null = null;
 /** Tool names advertised by the running driver (tools/list); empty = unknown. */
@@ -73,274 +86,10 @@ let activeComputerUseTrajectory: ActiveComputerUseTrajectory | null = null;
 let trajectoryLifecycle: Promise<void> = Promise.resolve();
 const COMPUTER_USE_TRAJECTORY_IDLE_MS = 60_000;
 
-// --- Safety: un-overridable hard blocks ---
-
-/** Key combos that would log out / lock / shut down — never forwarded to the driver. */
-const BLOCKED_KEY_COMBOS: readonly RegExp[] = [
-  /^cmd\+shift\+q$/i, // macOS logout
-  /^ctrl\+shift\+q$/i, // Linux logout
-  /^cmd\+ctrl\+q$/i, // macOS lock screen
-  /^win\+l$/i, // Windows lock
-  /^super\+l$/i, // Linux lock
-  /^cmd\+option\+(esc|power|eject)$/i, // force-quit / power
-  /^alt\+f4$/i, // close (often app-kill)
-];
-
-/** Typed text patterns that are too dangerous to inject (shell pipe-to-bash, rm -rf, fork bombs). */
-const BLOCKED_TYPE_PATTERNS: readonly RegExp[] = [
-  /(\||;|&&|\|\|)\s*(bash|sh|zsh)\b/i, // curl ... | bash
-  /\brm\s+(-[a-z]*r[a-z]*\s+)?\/(\s|$)/i, // rm -rf /
-  /\bsudo\s+rm\s+-[a-z]*r/i, // sudo rm -r
-  /:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;?\s*:/i, // fork bomb
-  /\bmkfs\b/i, // filesystem format
-  /\bdd\s+if=\/dev\//i, // raw disk overwrite
-];
-
-export function isBlockedKeyCombo(keys: string): boolean {
-  const normalized = keys.trim().toLowerCase();
-  return BLOCKED_KEY_COMBOS.some((re) => re.test(normalized));
-}
-
-export function isBlockedTypeText(text: string): boolean {
-  return BLOCKED_TYPE_PATTERNS.some((re) => re.test(text));
-}
-
 function isAvailable(): boolean {
   // We can't synchronously check PATH portably; the doctor() call verifies.
   // Treat as available and let start() surface a clear error if missing.
   return true;
-}
-
-function readEnvValue(
-  env: NodeJS.ProcessEnv,
-  key: string,
-  platform: NodeJS.Platform = process.platform
-): string | undefined {
-  const direct = env[key];
-  if (direct !== undefined || platform !== "win32") return direct;
-  const wanted = key.toLowerCase();
-  const match = Object.keys(env).find((candidate) => candidate.toLowerCase() === wanted);
-  return match ? env[match] : undefined;
-}
-
-function stripWrappingQuotes(value: string): string {
-  const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
-}
-
-function splitPathEntries(
-  env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform = process.platform
-): string[] {
-  const raw = readEnvValue(env, "PATH", platform) || "";
-  const delimiter = platform === "win32" ? ";" : ":";
-  return raw
-    .split(delimiter)
-    .map((entry) => stripWrappingQuotes(entry))
-    .filter(Boolean);
-}
-
-function uniqueStrings(values: string[], platform: NodeJS.Platform = process.platform): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const value of values) {
-    const key = platform === "win32" ? value.toLowerCase() : value;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(value);
-  }
-  return out;
-}
-
-function driverExecutableNames(platform: NodeJS.Platform = process.platform): string[] {
-  return platform === "win32"
-    ? ["cua-driver.exe", "cua-driver.cmd", "cua-driver.bat", DEFAULT_CUA_DRIVER_CMD]
-    : [DEFAULT_CUA_DRIVER_CMD];
-}
-
-function candidateExists(filePath: string): boolean {
-  try {
-    if (!existsSync(filePath)) return false;
-    return statSync(filePath).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function defaultHomeForPlatform(
-  env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform = process.platform
-): string | undefined {
-  if (platform === "win32") {
-    return (
-      readEnvValue(env, "USERPROFILE", platform) ||
-      (readEnvValue(env, "HOMEDRIVE", platform) && readEnvValue(env, "HOMEPATH", platform)
-        ? `${readEnvValue(env, "HOMEDRIVE", platform)}${readEnvValue(env, "HOMEPATH", platform)}`
-        : undefined) ||
-      readEnvValue(env, "HOME", platform)
-    );
-  }
-  return readEnvValue(env, "HOME", platform) || readEnvValue(env, "USERPROFILE", platform);
-}
-
-function knownDriverInstallDirs(
-  env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform = process.platform
-): string[] {
-  const configured = [
-    readEnvValue(env, "CUA_DRIVER_RS_INSTALL_DIR", platform),
-    readEnvValue(env, "CUA_DRIVER_BIN_DIR", platform),
-  ].filter((value): value is string => !!value);
-
-  const home = defaultHomeForPlatform(env, platform);
-  if (platform === "win32") {
-    const localAppData = readEnvValue(env, "LOCALAPPDATA", platform);
-    const cuaHome =
-      readEnvValue(env, "CUA_DRIVER_RS_HOME", platform) || (home ? join(home, ".cua-driver") : "");
-    const legacyCuaHome = home ? join(home, ".cua-driver-rs") : "";
-    const dirs = [...configured];
-    if (localAppData) {
-      dirs.push(
-        join(localAppData, "Programs", "Cua", "cua-driver", "bin"),
-        join(localAppData, "Programs", "trycua", "cua-driver-rs", "bin")
-      );
-    }
-    for (const packageHome of [cuaHome, legacyCuaHome].filter(Boolean)) {
-      const packagesDir = join(packageHome, "packages");
-      const currentDir = join(packagesDir, "current");
-      dirs.push(currentDir, join(currentDir, "bin"));
-      const releasesDir = join(packagesDir, "releases");
-      try {
-        const releaseDirs = readdirSync(releasesDir, { withFileTypes: true })
-          .filter((entry) => entry.isDirectory())
-          .map((entry) => join(releasesDir, entry.name));
-        for (const releaseDir of releaseDirs) {
-          dirs.push(releaseDir, join(releaseDir, "bin"));
-        }
-      } catch {
-        /* missing or inaccessible release cache */
-      }
-    }
-    if (home) {
-      dirs.push(
-        join(home, ".local", "bin"),
-        join(home, ".cargo", "bin"),
-        join(home, ".bun", "bin")
-      );
-    }
-    return uniqueStrings(dirs, platform);
-  }
-
-  const dirs = [...configured];
-  if (home) {
-    dirs.push(join(home, ".local", "bin"), join(home, ".cargo", "bin"), join(home, ".bun", "bin"));
-  }
-  dirs.push("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin");
-  return uniqueStrings(dirs, platform);
-}
-
-function findDriverInDirs(
-  dirs: string[],
-  platform: NodeJS.Platform,
-  searchedPaths: string[]
-): string | null {
-  const names = driverExecutableNames(platform);
-  for (const dir of dirs) {
-    for (const name of names) {
-      const candidate = join(dir, name);
-      searchedPaths.push(candidate);
-      if (candidateExists(candidate)) return candidate;
-    }
-  }
-  return null;
-}
-
-function shouldUsePersistedComputerUseConfig(
-  env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform,
-  configuredCommand: string | undefined
-): boolean {
-  return configuredCommand === undefined && env === process.env && platform === process.platform;
-}
-
-export function resolveCuaDriverCommand(
-  env: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-  configuredCommand?: string
-): CuaDriverResolution | null {
-  const override = readEnvValue(env, CUA_DRIVER_CMD_ENV, platform);
-  if (override?.trim()) {
-    return {
-      command: stripWrappingQuotes(override),
-      source: "env",
-      searchedPaths: [],
-    };
-  }
-
-  const configOverride = shouldUsePersistedComputerUseConfig(env, platform, configuredCommand)
-    ? config.getComputerUseSettings().driverCommand
-    : configuredCommand;
-  if (configOverride?.trim()) {
-    return {
-      command: stripWrappingQuotes(configOverride),
-      source: "config",
-      searchedPaths: [],
-    };
-  }
-
-  const searchedPaths: string[] = [];
-  for (const candidate of packagedCuaDriverCandidates(platform, env)) {
-    searchedPaths.push(candidate);
-    if (candidateExists(candidate)) {
-      return { command: candidate, source: "bundled", searchedPaths };
-    }
-  }
-
-  const pathMatch = findDriverInDirs(splitPathEntries(env, platform), platform, searchedPaths);
-  if (pathMatch) {
-    return { command: pathMatch, source: "path", searchedPaths };
-  }
-
-  const installDirMatch = findDriverInDirs(
-    knownDriverInstallDirs(env, platform),
-    platform,
-    searchedPaths
-  );
-  if (installDirMatch) {
-    return {
-      command: installDirMatch,
-      source: "known-install-dir",
-      searchedPaths,
-    };
-  }
-
-  const home = defaultHomeForPlatform(env, platform);
-  if (home) {
-    const executableName = platform === "win32" ? "cua-driver.exe" : "cua-driver";
-    const managed = join(managedCuaDriverDir(home), executableName);
-    searchedPaths.push(managed);
-    if (candidateExists(managed)) {
-      return { command: managed, source: "managed-runtime", searchedPaths };
-    }
-  }
-
-  return null;
-}
-
-function getCuaDriverResolution(): CuaDriverResolution {
-  return (
-    resolveCuaDriverCommand() || {
-      command: DEFAULT_CUA_DRIVER_CMD,
-      source: "default",
-      searchedPaths: [],
-    }
-  );
 }
 
 async function getAvailableCuaDriverResolution(): Promise<CuaDriverResolution> {
@@ -500,208 +249,6 @@ function sendRaw(method: string, params: Record<string, unknown>): Promise<unkno
     pending.set(id, { resolve, reject, timer });
     driverProcess.stdin.write(`${JSON.stringify(request)}\n`);
   });
-}
-
-export type ComputerUseAction =
-  | "capture"
-  | "move"
-  | "click"
-  | "double_click"
-  | "right_click"
-  | "middle_click"
-  | "scroll"
-  | "drag"
-  | "type"
-  | "key"
-  | "set_value"
-  | "wait"
-  | "list_apps"
-  | "focus_app";
-
-/** Actions that only read/inspect (no side effects) — safe to run without consent. */
-const SAFE_ACTIONS: ReadonlySet<ComputerUseAction> = new Set([
-  "capture",
-  "move",
-  "wait",
-  "list_apps",
-]);
-export const VALID_ACTIONS: ReadonlySet<ComputerUseAction> = new Set<ComputerUseAction>([
-  "capture",
-  "move",
-  "click",
-  "double_click",
-  "right_click",
-  "middle_click",
-  "scroll",
-  "drag",
-  "type",
-  "key",
-  "set_value",
-  "wait",
-  "list_apps",
-  "focus_app",
-]);
-
-export const COMPUTER_USE_ACTION_TOOL_ALIASES: readonly ComputerUseAction[] = [
-  "capture",
-  "move",
-  "click",
-  "double_click",
-  "right_click",
-  "middle_click",
-  "scroll",
-  "drag",
-  "type",
-  "key",
-  "set_value",
-  "wait",
-  "list_apps",
-  "focus_app",
-];
-
-export const COMPUTER_USE_COMPAT_TOOL_ALIASES: Readonly<Record<string, ComputerUseAction>> = {
-  screenshot: "capture",
-  screen_capture: "capture",
-  desktop_screenshot: "capture",
-  capture_screen: "capture",
-  take_screenshot: "capture",
-};
-
-export interface ComputerUseArgs {
-  action: ComputerUseAction;
-  mode?: "som" | "vision" | "ax";
-  app?: string;
-  element?: number;
-  coordinate?: [number, number];
-  fromElement?: number;
-  toElement?: number;
-  fromCoordinate?: [number, number];
-  toCoordinate?: [number, number];
-  direction?: "up" | "down" | "left" | "right";
-  amount?: number;
-  text?: string;
-  keys?: string;
-  value?: string;
-  seconds?: number;
-  raiseWindow?: boolean;
-  captureAfter?: boolean;
-}
-
-export function normalizeComputerUseActionArgs(
-  action: ComputerUseAction,
-  args: Record<string, unknown>
-): Record<string, unknown> {
-  const normalized: Record<string, unknown> = { ...args, action };
-
-  if (
-    normalized.coordinate === undefined &&
-    typeof args.x === "number" &&
-    typeof args.y === "number"
-  ) {
-    normalized.coordinate = [args.x, args.y];
-  }
-
-  if (normalized.app === undefined && action === "focus_app") {
-    const app =
-      typeof args.name === "string"
-        ? args.name
-        : typeof args.application === "string"
-          ? args.application
-          : typeof args.bundleId === "string"
-            ? args.bundleId
-            : typeof args.bundle_id === "string"
-              ? args.bundle_id
-              : undefined;
-    if (app) normalized.app = app;
-  }
-
-  if (normalized.element === undefined && typeof args.index === "number") {
-    normalized.element = args.index;
-  }
-
-  if (normalized.text === undefined && action === "type" && typeof args.value === "string") {
-    normalized.text = args.value;
-  }
-
-  return normalized;
-}
-
-export function normalizeComputerUseCompatToolArgs(
-  action: ComputerUseAction,
-  args: Record<string, unknown>
-): Record<string, unknown> {
-  const normalized = normalizeComputerUseActionArgs(action, args);
-  if (action === "capture" && normalized.app === undefined) {
-    normalized.app = "desktop";
-  }
-  return normalized;
-}
-
-/** Per-session auto-approval for destructive actions (set by the host UI). */
-let sessionAutoApprove = false;
-export function setComputerUseAutoApprove(enabled: boolean): void {
-  sessionAutoApprove = enabled;
-}
-
-/** Optional consent callback; if unset, destructive actions require sessionAutoApprove. */
-let approvalCallback:
-  | ((action: ComputerUseAction, args: ComputerUseArgs, summary: string) => boolean)
-  | null = null;
-export function setComputerUseApprovalCallback(
-  cb: (action: ComputerUseAction, args: ComputerUseArgs, summary: string) => boolean
-): void {
-  approvalCallback = cb;
-}
-
-export function summarizeAction(action: ComputerUseAction, args: ComputerUseArgs): string {
-  switch (action) {
-    case "move":
-      return `move to ${args.coordinate?.join(",") ?? "unknown coordinate"}`;
-    case "click":
-    case "double_click":
-    case "right_click":
-    case "middle_click":
-      return `${action} ${args.element ? `element #${args.element}` : args.coordinate ? `at ${args.coordinate.join(",")}` : ""}`.trim();
-    case "type":
-      return `type "${(args.text || "").slice(0, 40)}"`;
-    case "key":
-      return `key "${args.keys}"`;
-    case "drag":
-      return `drag ${args.fromElement ?? args.fromCoordinate} -> ${args.toElement ?? args.toCoordinate}`;
-    case "scroll":
-      return `scroll ${args.direction || "down"}`;
-    case "set_value":
-      return `set_value "${(args.value || "").slice(0, 40)}"`;
-    case "focus_app":
-      return `focus_app ${args.app}${args.raiseWindow ? " (raise)" : ""}`;
-    default:
-      return action;
-  }
-}
-
-/** Enforce un-overridable hard blocks + per-action consent. Throws if denied. */
-export function assertActionAllowed(action: ComputerUseAction, args: ComputerUseArgs): void {
-  // 1. Hard blocks (never overridable).
-  if (action === "key" && args.keys && isBlockedKeyCombo(args.keys)) {
-    throw new Error(`Refused: the key combo "${args.keys}" is blocked (logout/lock/power).`);
-  }
-  if (action === "type" && args.text && isBlockedTypeText(args.text)) {
-    throw new Error(
-      "Refused: the typed text matched a blocked pattern (shell pipe-to-bash / rm -rf / fork bomb)."
-    );
-  }
-  // 2. Consent for destructive actions.
-  if (SAFE_ACTIONS.has(action)) return;
-  if (sessionAutoApprove) return;
-  if (approvalCallback) {
-    const approved = approvalCallback(action, args, summarizeAction(action, args));
-    if (!approved) {
-      throw new Error(`Action denied by approval callback: ${summarizeAction(action, args)}`);
-    }
-    return;
-  }
-  // No approval mechanism configured and not auto-approved: allow but warn.
-  // (The host gates computer_use via the dangerous-tool system; see tools/index.ts.)
 }
 
 /**

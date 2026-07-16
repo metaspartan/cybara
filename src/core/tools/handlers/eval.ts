@@ -36,6 +36,7 @@ export async function handleEvalSave(
     tags: Array.isArray(args.tags)
       ? args.tags.filter((tag): tag is string => typeof tag === "string")
       : [],
+    assertions: args.assertions,
   });
   return { success: true, golden };
 }

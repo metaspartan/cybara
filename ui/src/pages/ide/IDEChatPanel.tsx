@@ -6,7 +6,6 @@ import {
   AlertCircle,
   Info,
   RotateCcw,
-  X,
   ChevronRight,
   ChevronDown,
   ChevronUp,
@@ -23,16 +22,12 @@ import {
   Copy,
   Code,
   Zap,
-  Sparkles,
-  MessageSquare,
-  Square,
   ListTree,
   GitBranch,
   ExternalLink,
   CheckCircle2,
 } from "lucide-react";
 import type { CSSProperties } from "react";
-import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
 import { chatApi, providerPlansApi } from "@/lib/api";
@@ -147,6 +142,9 @@ import {
   type IdeChatComposerResult,
   type IdeChatComposerSubmission,
 } from "./IDEChatComposer";
+import { IDEChatPendingChangesBar } from "./IDEChatPendingChangesBar";
+import { IDEChatStatus } from "./IDEChatStatus";
+import { IDEChatHeader } from "./IDEChatHeader";
 import type {
   AgentSummary,
   AgentTransferInfo,
@@ -191,12 +189,9 @@ import type {
   IdeSettingsSectionId,
   IdeTopMenuId,
   IdePreferences,
+  IDEChatPanelProps,
 } from "./ideTypes";
-import {
-  IdeActivityText,
-  IdeProcessActivityList,
-  IdeLiveActivityTimeline,
-} from "./IdeActivityTimeline";
+import { IdeActivityText, IdeProcessActivityList } from "./IdeActivityTimeline";
 
 export function IDEChatPanel({
   workspaceDir,
@@ -209,22 +204,7 @@ export function IDEChatPanel({
   agents,
   onPendingFileDiffsChange,
   onPendingFileDiffControllerChange,
-}: {
-  workspaceDir: string;
-  contextPath: string | null;
-  terminalContext?: {
-    isOpen: boolean;
-    sessionCount: number;
-    activeSessionId: string | null;
-  };
-  onWorkspaceMutated: () => void;
-  onClose: () => void;
-  selectedAgentId: string;
-  onSelectedAgentIdChange: (agentId: string) => void;
-  agents: IdeChatAgentOption[];
-  onPendingFileDiffsChange?: (diffs: IdePendingFileDiff[]) => void;
-  onPendingFileDiffControllerChange?: (controller: IdePendingFileDiffController | null) => void;
-}) {
+}: IDEChatPanelProps) {
   const updateAgentReasoning = useUpdateAgentReasoning();
   const [sessionId, setSessionId] = useState<string | null>(() =>
     readPersistedIdeChatSessionId(workspaceDir)
@@ -1510,76 +1490,18 @@ export function IDEChatPanel({
 
   return (
     <div className="h-full flex flex-col bg-[var(--surface-panel)] text-[var(--text-primary)]">
-      <div className="px-3 py-2 max-md:pr-16 border-b border-[var(--surface-border)] flex items-start justify-between gap-3">
-        <div className="min-w-0 flex items-start gap-2 text-xs text-[var(--text-secondary)]">
-          <div className="mt-0.5 rounded-md border border-[var(--surface-border)] bg-[var(--surface-raised)] p-1.5">
-            <MessageSquare className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="truncate font-medium text-[var(--text-primary)]">
-                {conversationTitle}
-              </span>
-              {showWorkingTimeline && (
-                <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-200">
-                  Working
-                </span>
-              )}
-            </div>
-            <div className="mt-0.5 flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
-              <span>{conversationAgentLabel}</span>
-              {sessionId && (
-                <span className="font-mono text-gray-600">{sessionId.slice(0, 8)}</span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {showWorkingTimeline && (
-            <button
-              type="button"
-              onClick={() => void handleStopActive()}
-              disabled={isStoppingSession}
-              className="inline-flex h-7 items-center gap-1 rounded border border-red-500/30 bg-red-500/10 px-2 text-[11px] text-red-200 hover:bg-red-500/20 disabled:opacity-50"
-              title="Stop active run"
-            >
-              {isStoppingSession ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Square className="w-3.5 h-3.5" />
-              )}
-              Stop
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setCollapseProgressUpdates((previous) => !previous)}
-            className="h-7 px-2 rounded text-[11px] text-gray-400 hover:text-gray-200 hover:bg-white/5"
-            title={
-              collapseProgressUpdates ? "Expand progress updates" : "Collapse progress updates"
-            }
-          >
-            {collapseProgressUpdates ? "Expand all" : "Collapse all"}
-          </button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleNewChat}
-            className="h-7 px-2 text-[11px]"
-            title="Start new IDE chat session"
-          >
-            New
-          </Button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-white/5"
-            title="Close IDE chat"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
+      <IDEChatHeader
+        agentLabel={conversationAgentLabel}
+        collapseProgressUpdates={collapseProgressUpdates}
+        isStopping={isStoppingSession}
+        sessionId={sessionId}
+        showWorking={showWorkingTimeline}
+        title={conversationTitle}
+        onClose={onClose}
+        onNewChat={handleNewChat}
+        onStop={() => void handleStopActive()}
+        onToggleProgressUpdates={() => setCollapseProgressUpdates((previous) => !previous)}
+      />
 
       {contextPath && (
         <div
@@ -1997,25 +1919,13 @@ export function IDEChatPanel({
             })()
           )
         )}
-        {showWorkingTimeline && (
-          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-            <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-emerald-200/80">
-              <Sparkles className="w-3 h-3" />
-              Working
-            </div>
-            <IdeLiveActivityTimeline
-              status={liveStatus}
-              activities={liveActivities}
-              currentStep={liveCurrentStep}
-            />
-          </div>
-        )}
-        {isReverting && (
-          <div className="text-xs text-gray-500 flex items-center gap-2">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            Reverting session...
-          </div>
-        )}
+        <IDEChatStatus
+          showWorking={showWorkingTimeline}
+          status={liveStatus}
+          activities={liveActivities}
+          currentStep={liveCurrentStep}
+          reverting={isReverting}
+        />
       </div>
 
       {error && (
@@ -2025,40 +1935,14 @@ export function IDEChatPanel({
       )}
 
       {pendingMessageChangeKeys.length > 0 && (
-        <div className="px-3 py-2 border-t border-indigo-500/20 bg-[#121423] flex items-center justify-between gap-2">
-          <div className="text-[11px] text-gray-200 min-w-0 truncate">
-            {pendingChangeAggregate.fileCount} file
-            {pendingChangeAggregate.fileCount === 1 ? "" : "s"} with changes{" "}
-            <span className="text-emerald-300">+{pendingChangeAggregate.totalAdded}</span>{" "}
-            <span className="text-red-300">-{pendingChangeAggregate.totalRemoved}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => void handleRejectAllMessageChanges()}
-              disabled={isApplyingDiffAction || isSending || isReverting}
-              className="inline-flex items-center rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-200 hover:bg-red-500/20 disabled:opacity-50"
-              title="Reject all pending file changes"
-            >
-              {isApplyingDiffAction ? (
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              ) : (
-                <RotateCcw className="w-3 h-3 mr-1" />
-              )}
-              Reject all
-            </button>
-            <button
-              type="button"
-              onClick={handleAcceptAllMessageChanges}
-              disabled={isApplyingDiffAction || isSending || isReverting}
-              className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50"
-              title="Accept all pending file changes"
-            >
-              <Check className="w-3 h-3 mr-1" />
-              Accept all
-            </button>
-          </div>
-        </div>
+        <IDEChatPendingChangesBar
+          fileCount={pendingChangeAggregate.fileCount}
+          totalAdded={pendingChangeAggregate.totalAdded}
+          totalRemoved={pendingChangeAggregate.totalRemoved}
+          busy={isApplyingDiffAction || isSending || isReverting}
+          onAccept={handleAcceptAllMessageChanges}
+          onReject={() => void handleRejectAllMessageChanges()}
+        />
       )}
 
       <IDEChatComposer

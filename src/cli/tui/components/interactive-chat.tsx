@@ -2,8 +2,6 @@ import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
 import { resolveAgentIdentifier } from "../../commands/agent-resolution";
-import { formatTUIAgentLabel } from "../agent-label";
-import type { TUIFetchAPI } from "./chat";
 import {
   approvalDecisionForInput,
   approvalsFromResponse,
@@ -34,9 +32,7 @@ import {
   clipboardCandidates,
   composerWindow,
   copyTextToClipboard,
-  resolveTerminalChatInspector,
   transcriptMessageLimit,
-  useTerminalLayout,
 } from "../terminal";
 import {
   defaultTUIConversationExportPath,
@@ -63,18 +59,6 @@ import {
   skillStatusLines,
 } from "../chat-inspection";
 import {
-  TerminalInlineText,
-  TerminalMessageBody,
-} from "./markdown-render";
-import {
-  formatTUIWorkedDuration,
-  limitTUIActivityDetails,
-  presentTUIActivities,
-  tuiActivityTone,
-  type TUIActivityItem,
-  type TUIToolCallItem,
-} from "../activity";
-import {
   consumeTUIStatusStream,
   type TUIStatusStreamEvent,
   type TUIStreamActivity,
@@ -94,670 +78,39 @@ import {
   nextTUIChatCommandIndex,
 } from "../commands";
 import {
-  resolveTuiColorScheme,
-  tuiChatPalette,
-  type TuiColorScheme,
-  type TuiSurfacePalette,
-} from "../theme";
-
-interface ChatMessage {
-  role: "user" | "assistant" | "system";
-  content: string;
-  process_activities?: ActivityItem[];
-  tool_calls?: ToolCallItem[];
-  agent_transfers?: AgentTransferItem[];
-}
-
-interface AgentTransferItem {
-  fromAgentId: string;
-  fromAgentName: string;
-  toAgentId: string;
-  toAgentName: string;
-  reason: string;
-  requestedAt?: string;
-}
-
-type ActivityItem = TUIActivityItem;
-type ToolCallItem = TUIToolCallItem;
-
-interface PendingMessage {
-  id: string;
-  content: string;
-  sequence?: number;
-  mode?: string;
-  createdAt?: number;
-}
-
-interface AgentSummary {
-  id?: string;
-  name?: string;
-  model?: string;
-  provider_id?: string;
-  providerId?: string;
-  status?: string;
-  reasoning_effort?: string | null;
-  tool_profile?: string;
-  config?: unknown;
-}
-
-interface RouterStatus {
-  enabled?: boolean;
-  strategy?: string;
-}
-
-interface ControlPlaneState {
-  agents: AgentSummary[];
-  approvalMode: string;
-  followUpBehaviorEnabled: boolean;
-  routerStatus: RouterStatus | null;
-}
-
-interface InteractiveChatProps {
-  apiBase: string;
-  apiKey?: string | null;
-  fetchAPI: TUIFetchAPI;
-  initialAgentId?: string;
-  initialWorkspaceDir?: string;
-  sessionId?: string;
-  title?: string;
-  modelLine?: string;
-  onExit: () => void;
-}
-
-const ROLE_META: Record<
-  ChatMessage["role"],
-  { label: string; marker: string }
-> = {
-  user: { label: "You", marker: ">" },
-  assistant: { label: "Cybara", marker: "◆" },
-  system: { label: "System", marker: "-" },
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-function contentText(content: unknown): string {
-  if (typeof content === "string") return content.trim();
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((block) => {
-      if (!isRecord(block)) return "";
-      return block.type === "text" && typeof block.text === "string"
-        ? block.text
-        : "";
-    })
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-}
-
-function activitiesFrom(value: unknown): ActivityItem[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) =>
-    isRecord(item) ? [item as ActivityItem] : [],
-  );
-}
-
-function agentTransfersFrom(value: unknown): AgentTransferItem[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
-    if (!isRecord(item)) return [];
-    const fromAgentId =
-      typeof item.fromAgentId === "string" ? item.fromAgentId : "";
-    const fromAgentName =
-      typeof item.fromAgentName === "string" ? item.fromAgentName : "";
-    const toAgentId = typeof item.toAgentId === "string" ? item.toAgentId : "";
-    const toAgentName =
-      typeof item.toAgentName === "string" ? item.toAgentName : "";
-    const reason = typeof item.reason === "string" ? item.reason : "";
-    if (!fromAgentId || !fromAgentName || !toAgentId || !toAgentName || !reason)
-      return [];
-    return [
-      {
-        fromAgentId,
-        fromAgentName,
-        toAgentId,
-        toAgentName,
-        reason,
-        requestedAt:
-          typeof item.requestedAt === "string" ? item.requestedAt : undefined,
-      },
-    ];
-  });
-}
-
-function toolCallsFrom(value: unknown): ToolCallItem[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) =>
-    isRecord(item) ? [item as ToolCallItem] : [],
-  );
-}
-
-function pendingFrom(value: unknown): PendingMessage[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
-    if (
-      !isRecord(item) ||
-      typeof item.id !== "string" ||
-      typeof item.content !== "string"
-    ) {
-      return [];
-    }
-    return [item as unknown as PendingMessage];
-  });
-}
-
-function agentsFrom(value: unknown): AgentSummary[] {
-  const raw = Array.isArray(value)
-    ? value
-    : isRecord(value) && Array.isArray(value.agents)
-      ? value.agents
-      : [];
-  return raw.flatMap((item) => (isRecord(item) ? [item as AgentSummary] : []));
-}
-
-function agentLine(agent: AgentSummary): string {
-  return formatTUIAgentLabel(agent);
-}
-
-function agentReasoningEffort(agent: AgentSummary | undefined): string {
-  if (!agent) return "default";
-  if (
-    typeof agent.reasoning_effort === "string" &&
-    agent.reasoning_effort.trim()
-  ) {
-    return agent.reasoning_effort.trim();
-  }
-  const config = agentConfig(agent);
-  const params = isRecord(config.model_params)
-    ? config.model_params
-    : isRecord(config.modelParams)
-      ? config.modelParams
-      : null;
-  const value = params?.reasoning_effort ?? params?.reasoningEffort;
-  return typeof value === "string" && value.trim() ? value.trim() : "default";
-}
-
-function agentConfig(agent: AgentSummary | undefined): Record<string, unknown> {
-  if (!agent) return {};
-  if (isRecord(agent.config)) return agent.config;
-  if (typeof agent.config !== "string") return {};
-  try {
-    const parsed: unknown = JSON.parse(agent.config);
-    return isRecord(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function agentToolProfile(agent: AgentSummary | undefined): string {
-  if (typeof agent?.tool_profile === "string" && agent.tool_profile.trim()) {
-    return agent.tool_profile.trim();
-  }
-  const value = agentConfig(agent).tool_profile;
-  return typeof value === "string" && value.trim() ? value.trim() : "full";
-}
-
-function compact(value: string, max = 52): string {
-  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
-}
-
-function messagesFromResponse(value: unknown): ChatMessage[] {
-  const raw = Array.isArray(value)
-    ? value
-    : isRecord(value) && Array.isArray(value.messages)
-      ? value.messages
-      : isRecord(value) && Array.isArray(value.messagesList)
-        ? value.messagesList
-        : [];
-  const out: ChatMessage[] = [];
-  for (const item of raw) {
-    if (!isRecord(item)) continue;
-    const role = item.role;
-    const content = contentText(item.content);
-    if (
-      (role === "user" || role === "assistant" || role === "system") &&
-      content
-    ) {
-      out.push({
-        role,
-        content,
-        process_activities: activitiesFrom(item.process_activities),
-        tool_calls: toolCallsFrom(item.tool_calls),
-        agent_transfers: agentTransfersFrom(item.agent_transfers),
-      });
-    }
-  }
-  return out;
-}
-
-function isTransientRuntimeCommand(input: string): boolean {
-  return /^\/(?:goal|loop)(?:\s|$)/i.test(input.trim());
-}
-
-function resolvePendingId(
-  raw: string | undefined,
-  pending: PendingMessage[],
-): string | null {
-  if (!raw) return null;
-  if (raw.startsWith("#")) {
-    const sequence = Number(raw.slice(1));
-    return pending.find((message) => message.sequence === sequence)?.id || null;
-  }
-  const numeric = Number(raw);
-  if (Number.isInteger(numeric) && numeric > 0) {
-    return pending.find((message) => message.sequence === numeric)?.id || null;
-  }
-  return raw;
-}
-
-function resolvePendingIds(raw: string[], pending: PendingMessage[]): string[] {
-  return raw.flatMap((value) => {
-    const id = resolvePendingId(value, pending);
-    return id ? [id] : [];
-  });
-}
-
-function insertAt(
-  value: string,
-  cursor: number,
-  insert: string,
-): [string, number] {
-  return [
-    value.slice(0, cursor) + insert + value.slice(cursor),
-    cursor + insert.length,
-  ];
-}
-
-function deleteBefore(value: string, cursor: number): [string, number] {
-  if (cursor <= 0) return [value, cursor];
-  return [value.slice(0, cursor - 1) + value.slice(cursor), cursor - 1];
-}
-
-function deleteAt(value: string, cursor: number): string {
-  if (cursor >= value.length) return value;
-  return value.slice(0, cursor) + value.slice(cursor + 1);
-}
-
-function relativeTime(value?: number): string {
-  if (!value) return "now";
-  const seconds = Math.max(0, Math.floor((Date.now() - value) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
-}
-
-function ActivitySummary({
-  colorScheme,
-  expanded = false,
-  live = false,
-  message,
-  maxDetails,
-  maxColumns,
-  palette,
-}: {
-  colorScheme: TuiColorScheme;
-  expanded?: boolean;
-  live?: boolean;
-  message: ChatMessage;
-  maxDetails?: number;
-  maxColumns: number;
-  palette: TuiSurfacePalette;
-}): React.ReactElement | null {
-  const steeringActivities = (message.process_activities || []).filter(
-    (activity) => activity.toolName === "__steering",
-  );
-  const workActivities = (message.process_activities || []).filter(
-    (activity) => activity.toolName !== "__steering",
-  );
-  const rows = presentTUIActivities(
-    workActivities,
-    message.tool_calls || [],
-  );
-  if (rows.length === 0 && steeringActivities.length === 0) return null;
-  const workedDuration = formatTUIWorkedDuration(
-    workActivities,
-    message.tool_calls || [],
-  );
-  return (
-    <Box
-      paddingLeft={2}
-      marginBottom={1}
-      flexDirection="column"
-      width={Math.max(12, maxColumns)}
-    >
-      {rows.length > 0 ? (
-        <Text color={palette.muted}>
-          {live ? "◌" : expanded ? "▾" : "▸"} {live ? "Working" : "Worked"} for{" "}
-          {workedDuration}
-        </Text>
-      ) : null}
-      {rows.length > 0 && (live || expanded)
-        ? rows.map((row, rowIndex) => (
-            <Box key={`${row.id}-${rowIndex}`} flexDirection="column">
-              {row.thought ? (
-                <TerminalInlineText
-                  line={row.label}
-                  baseColor={palette.detail}
-                  colorScheme={colorScheme}
-                />
-              ) : (
-                <Text
-                  color={palette[tuiActivityTone(row)]}
-                  wrap="wrap"
-                >
-                  {row.icon ? `${row.icon} ` : ""}
-                  {row.label}
-                </Text>
-              )}
-              {limitTUIActivityDetails(
-                row.details,
-                maxDetails ?? row.details.length,
-              ).map((label, index, details) => (
-                <Text
-                  key={`${row.id}-${rowIndex}-${index}`}
-                  color={palette.detail}
-                  wrap="wrap"
-                >
-                  {index === details.length - 1 ? "└" : "├"} {label}
-                </Text>
-              ))}
-            </Box>
-          ))
-        : null}
-      {steeringActivities.map((activity, index) => (
-        <Text key={activity.id || `steered-${index}`} color={palette.muted} wrap="wrap">
-          ↔ {activity.text || "Conversation steered."}
-        </Text>
-      ))}
-    </Box>
-  );
-}
-
-function MessageView({
-  expandedActivities,
-  expandedMessage,
-  message,
-  maxLines,
-  maxActivityDetails,
-  maxColumns,
-  colorScheme,
-  palette,
-}: {
-  expandedActivities: boolean;
-  expandedMessage: boolean;
-  message: ChatMessage;
-  maxLines?: number;
-  maxActivityDetails?: number;
-  maxColumns: number;
-  colorScheme: TuiColorScheme;
-  palette: TuiSurfacePalette;
-}): React.ReactElement {
-  const meta = ROLE_META[message.role];
-  const roleColor =
-    message.role === "user"
-      ? palette.user
-      : message.role === "assistant"
-        ? palette.heading
-        : palette.muted;
-  const bodyColor =
-    message.role === "user"
-      ? palette.detail
-      : message.role === "assistant"
-        ? palette.text
-        : palette.muted;
-  return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Box>
-        <Text bold color={roleColor}>
-          {meta.marker} {meta.label}
-        </Text>
-      </Box>
-      <ActivitySummary
-        colorScheme={colorScheme}
-        expanded={expandedActivities}
-        message={message}
-        maxColumns={maxColumns}
-        maxDetails={maxActivityDetails}
-        palette={palette}
-      />
-      {message.agent_transfers?.map((transfer) => (
-        <Text
-          key={`${transfer.fromAgentId}-${transfer.toAgentId}-${transfer.requestedAt || "transfer"}`}
-          color={palette.detail}
-        >
-          {"  ⇄ "}Transferred from {transfer.fromAgentName} to{" "}
-          {transfer.toAgentName}
-        </Text>
-      ))}
-      <Box paddingLeft={2} width="100%">
-        <TerminalMessageBody
-          baseColor={bodyColor}
-          content={message.content}
-          colorScheme={colorScheme}
-          hiddenText={
-            expandedMessage
-              ? "… more content hidden · /copy copies the full response"
-              : "… more content hidden · /expand shows more"
-          }
-          maxColumns={maxColumns}
-          maxLines={maxLines}
-        />
-      </Box>
-    </Box>
-  );
-}
-
-function LiveRunView({
-  activities,
-  content,
-  detail,
-  maxColumns,
-  colorScheme,
-  palette,
-}: {
-  activities: TUIStreamActivity[];
-  content: string;
-  detail: string;
-  maxColumns: number;
-  colorScheme: TuiColorScheme;
-  palette: TuiSurfacePalette;
-}): React.ReactElement {
-  return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Text bold color={palette.heading}>
-        ◆ Cybara{" "}
-        <Text color={palette.muted}>
-          <Spinner type="dots" />
-        </Text>
-      </Text>
-      <ActivitySummary
-        colorScheme={colorScheme}
-        expanded
-        live
-        message={{
-          role: "assistant",
-          content: "",
-          process_activities: activities,
-        }}
-        maxColumns={maxColumns}
-        palette={palette}
-      />
-      {content ? (
-        <Box paddingLeft={2} width="100%">
-          <TerminalMessageBody
-            content={content}
-            baseColor={palette.text}
-            colorScheme={colorScheme}
-          />
-        </Box>
-      ) : detail ? (
-        <Text color={palette.muted} wrap="wrap">
-          {" "}
-          {detail}
-        </Text>
-      ) : null}
-    </Box>
-  );
-}
-
-function PendingQueue({
-  messages,
-  palette,
-}: {
-  messages: PendingMessage[];
-  palette: TuiSurfacePalette;
-}): React.ReactElement | null {
-  if (messages.length === 0) return null;
-  return (
-    <Box flexDirection="column" paddingX={1} marginTop={1}>
-      <Text bold color={palette.warning}>
-        Queue · {messages.length}
-      </Text>
-      {messages.slice(0, 4).map((message, index) => (
-        <Text
-          key={message.id}
-          color={message.mode === "steering" ? palette.warning : palette.text}
-          wrap="wrap"
-        >
-          {"  "}#{message.sequence || index + 1} {message.content}
-          <Text color={palette.subtle}> · {relativeTime(message.createdAt)}</Text>
-        </Text>
-      ))}
-      {messages.length > 4 ? (
-        <Text color={palette.subtle}>  +{messages.length - 4} more · /pending</Text>
-      ) : null}
-    </Box>
-  );
-}
-
-function CommandPalette({
-  input,
-  compactMode,
-  maxRows,
-  selectedIndex,
-  palette,
-}: {
-  input: string;
-  compactMode: boolean;
-  maxRows: number;
-  selectedIndex: number;
-  palette: TuiSurfacePalette;
-}): React.ReactElement | null {
-  const matches = matchingTUIChatCommands(input, maxRows);
-  if (matches.length === 0) return null;
-  return (
-    <Box
-      flexDirection="column"
-      borderStyle="single"
-      borderColor={palette.border}
-      paddingX={1}
-      marginTop={1}
-    >
-      {matches.map((command, index) => (
-        <Text key={command.name} inverse={index === selectedIndex}>
-          <Text color={index === selectedIndex ? palette.heading : palette.accent}>
-            {index === selectedIndex ? "› " : "  "}
-            {command.name}
-          </Text>
-          {compactMode ? null : <Text color={palette.muted}> — {command.detail}</Text>}
-        </Text>
-      ))}
-    </Box>
-  );
-}
-
-function HelpPanel({
-  narrow,
-  palette,
-}: {
-  narrow: boolean;
-  palette: TuiSurfacePalette;
-}): React.ReactElement {
-  if (narrow) {
-    return (
-      <Box
-        flexDirection="column"
-        borderStyle="round"
-        borderColor={palette.border}
-        paddingX={1}
-        marginTop={1}
-      >
-        <Text bold color={palette.heading}>
-          Chat controls
-        </Text>
-        <Text>Enter send · ^J newline · Tab complete</Text>
-        <Text>^P commands · ^F search · PgUp/PgDn scroll</Text>
-        <Text>Esc sessions · ^C quit</Text>
-        <Text>/model · /agent · /permissions · /followups · /reasoning</Text>
-        <Text>/copy [n] · /export · /diff · /environment</Text>
-        <Text>/goal or /loop for persistent work</Text>
-      </Box>
-    );
-  }
-  return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor={palette.border}
-      paddingX={1}
-      marginTop={1}
-    >
-      <Text bold color={palette.heading}>
-        Chat controls
-      </Text>
-      <Text>
-        Enter send · Ctrl+J newline · ←/→ move · ↑/↓ palette or history ·
-        PgUp/PgDn transcript
-      </Text>
-      <Text>
-        Ctrl+P commands · Ctrl+F transcript search · Esc closes the active panel
-      </Text>
-      <Text>
-        Tab completes slash commands and @ capabilities · approvals use 1/2/3/4
-        or y/s/a/n
-      </Text>
-      <Text>
-        /agents lists · /agent name switches · /router on|off · /permissions
-        ask|always_allow
-      </Text>
-      <Text>/followups on|off controls queue and steer behavior</Text>
-      <Text>
-        /reasoning changes effort · /title renames · /workspace changes the
-        working root
-      </Text>
-      <Text>
-        /environment toggles context, plan, diffs, tasks, and subagents
-      </Text>
-      <Text>
-        /goal start &lt;objective&gt; creates persistent work · /loop is an
-        alias
-      </Text>
-      <Text>
-        /context, /usage, /plan, /diffs, /tasks, /subagents inspect session
-        state
-      </Text>
-      <Text>
-        /queue queues · /steer injects · /edit, /delete, /reorder manage queue
-      </Text>
-      <Text>/stop interrupts · /pending refreshes queue</Text>
-      <Text>
-        /copy [n] copies an answer · /export writes Markdown · /diff shows
-        changes
-      </Text>
-      <Text>
-        /terminal-info checks viewport, color, clipboard, and screen mode
-      </Text>
-      <Text>
-        /reload refetches · /new starts fresh · /resume returns to sessions
-      </Text>
-      <Text>/raw or /expand toggles compact and detailed message bodies</Text>
-    </Box>
-  );
-}
+  CommandPalette,
+  ActiveRunHint,
+  ChatComposerBox,
+  ChatFeedback,
+  HelpPanel,
+  LiveRunView,
+  MessageView,
+  PendingQueue,
+  type ChatMessage,
+  type PendingMessage,
+} from "./interactive-chat-view";
+import {
+  agentLine,
+  agentConfig,
+  agentReasoningEffort,
+  agentToolProfile,
+  compact,
+  deleteAt,
+  deleteBefore,
+  fetchControlPlaneState,
+  insertAt,
+  isRecord,
+  isTransientRuntimeCommand,
+  messagesFromResponse,
+  pendingFrom,
+  resolvePendingId,
+  resolvePendingIds,
+  type AgentSummary,
+  type ControlPlaneState,
+  type InteractiveChatProps,
+  type RouterStatus,
+} from "../interactive-chat-data";
+import { useInteractiveChatLayout } from "./interactive-chat-layout";
 
 export function InteractiveChatTUI({
   apiBase,
@@ -778,24 +131,17 @@ export function InteractiveChatTUI({
   );
   const [modelOverride, setModelOverride] = React.useState("");
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
-  const [pendingMessages, setPendingMessages] = React.useState<
-    PendingMessage[]
-  >([]);
+  const [pendingMessages, setPendingMessages] = React.useState<PendingMessage[]>([]);
   const [input, setInput] = React.useState("");
   const [cursor, setCursor] = React.useState(0);
   const [history, setHistory] = React.useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = React.useState<number | null>(null);
   const [sending, setSending] = React.useState(false);
-  const [streamStatus, setStreamStatus] =
-    React.useState<TUIStreamStatus>("idle");
+  const [streamStatus, setStreamStatus] = React.useState<TUIStreamStatus>("idle");
   const [streamDetail, setStreamDetail] = React.useState("");
   const [streamingText, setStreamingText] = React.useState("");
-  const [liveActivities, setLiveActivities] = React.useState<
-    TUIStreamActivity[]
-  >([]);
-  const [capabilities, setCapabilities] = React.useState<TUICapabilityOption[]>(
-    [],
-  );
+  const [liveActivities, setLiveActivities] = React.useState<TUIStreamActivity[]>([]);
+  const [capabilities, setCapabilities] = React.useState<TUICapabilityOption[]>([]);
   const [capabilityIndex, setCapabilityIndex] = React.useState(0);
   const [commandIndex, setCommandIndex] = React.useState(0);
   const [loading, setLoading] = React.useState(Boolean(sessionId));
@@ -807,7 +153,7 @@ export function InteractiveChatTUI({
     initialAgentId || "",
   );
   const [useModelRouter, setUseModelRouter] = React.useState(false);
-  const [approvalMode, setApprovalMode] = React.useState("always_allow");
+  const [approvalMode, setApprovalMode] = React.useState("ask");
   const [followUpBehaviorEnabled, setFollowUpBehaviorEnabled] =
     React.useState(true);
   const [routerStatus, setRouterStatus] = React.useState<RouterStatus | null>(
@@ -818,9 +164,6 @@ export function InteractiveChatTUI({
   const [tasks, setTasks] = React.useState<TuiTaskSummary[]>([]);
   const [subagents, setSubagents] = React.useState<TuiSubagentSummary[]>([]);
   const [lspServers, setLspServers] = React.useState<TuiLspSummary[]>([]);
-  const [environmentPanelMode, setEnvironmentPanelMode] = React.useState<
-    "auto" | "shown" | "hidden"
-  >("auto");
   const [expandedTranscript, setExpandedTranscript] = React.useState(false);
   const [expandedActivities, setExpandedActivities] = React.useState(false);
   const [transcriptOffset, setTranscriptOffset] = React.useState(0);
@@ -831,18 +174,18 @@ export function InteractiveChatTUI({
     ToolApprovalRequest[]
   >([]);
   const [resolvingApproval, setResolvingApproval] = React.useState(false);
-  const layout = useTerminalLayout();
-  const tuiColorScheme = resolveTuiColorScheme(process.env);
-  const tuiPalette = tuiChatPalette(tuiColorScheme);
-  const inspectorLayout = resolveTerminalChatInspector(layout.columns);
-  const environmentPanelVisible =
-    environmentPanelMode === "shown" ||
-    (environmentPanelMode === "auto" && inspectorLayout.sidebar);
-  const environmentSidebarVisible = environmentPanelVisible && inspectorLayout.sidebar;
-  const environmentStackedVisible = environmentPanelVisible && !inspectorLayout.sidebar;
-  const transcriptColumns = environmentSidebarVisible
-    ? inspectorLayout.contentColumns
-    : layout.columns;
+  const {
+    colorScheme: tuiColorScheme,
+    dismissTransientEnvironmentPanel,
+    environmentPanelVisible,
+    environmentSidebarVisible,
+    environmentStackedVisible,
+    inspector: inspectorLayout,
+    layout,
+    palette: tuiPalette,
+    toggleEnvironmentPanel,
+    transcriptColumns,
+  } = useInteractiveChatLayout();
   const sessionIdRef = React.useRef(localSessionId);
   const lastInterruptAtRef = React.useRef(0);
   const capabilitiesWorkspaceRef = React.useRef<string | null>(null);
@@ -850,17 +193,6 @@ export function InteractiveChatTUI({
     input: string;
     cursor: number;
   } | null>(null);
-
-  const toggleEnvironmentPanel = React.useCallback(() => {
-    setEnvironmentPanelMode((current) => {
-      const visible = current === "shown" || (current === "auto" && inspectorLayout.sidebar);
-      return visible ? "hidden" : "shown";
-    });
-  }, [inspectorLayout.sidebar]);
-
-  const dismissTransientEnvironmentPanel = React.useCallback(() => {
-    setEnvironmentPanelMode((current) => (current === "shown" ? "hidden" : current));
-  }, []);
 
   const activeCapabilityMention = React.useMemo(
     () => activeTUICapabilityMention(input, cursor),
@@ -979,40 +311,12 @@ export function InteractiveChatTUI({
 
   const loadControlPlane =
     React.useCallback(async (): Promise<ControlPlaneState> => {
-      const [agentResponse, configResponse, routerResponse] = await Promise.all(
-        [
-          fetchAPI<unknown>("/api/agents/summary"),
-          fetchAPI<unknown>("/api/config"),
-          fetchAPI<unknown>("/api/router/status"),
-        ],
-      );
-      const nextAgents = agentsFrom(agentResponse);
-      const nextApprovalMode =
-        isRecord(configResponse) &&
-        typeof configResponse.tool_approval_mode === "string"
-          ? configResponse.tool_approval_mode
-          : approvalMode;
-      const nextFollowUpBehaviorEnabled =
-        !isRecord(configResponse) ||
-        configResponse.follow_up_behavior_enabled !== false;
-      const nextRouterStatus = isRecord(routerResponse)
-        ? (routerResponse as RouterStatus)
-        : null;
-      setAgents(nextAgents);
-      if (
-        isRecord(configResponse) &&
-        typeof configResponse.tool_approval_mode === "string"
-      ) {
-        setApprovalMode(configResponse.tool_approval_mode);
-      }
-      setFollowUpBehaviorEnabled(nextFollowUpBehaviorEnabled);
-      setRouterStatus(nextRouterStatus);
-      return {
-        agents: nextAgents,
-        approvalMode: nextApprovalMode,
-        followUpBehaviorEnabled: nextFollowUpBehaviorEnabled,
-        routerStatus: nextRouterStatus,
-      };
+      const next = await fetchControlPlaneState(fetchAPI, approvalMode);
+      setAgents(next.agents);
+      setApprovalMode(next.approvalMode);
+      setFollowUpBehaviorEnabled(next.followUpBehaviorEnabled);
+      setRouterStatus(next.routerStatus);
+      return next;
     }, [approvalMode, fetchAPI]);
 
   const loadPendingForSession = React.useCallback(
@@ -2627,15 +1931,7 @@ export function InteractiveChatTUI({
       </Box>
 
       {sending ? (
-        <Box paddingX={1}>
-          <Text color={tuiPalette.accent}>
-            <Spinner type="dots" />{" "}
-            {followUpBehaviorEnabled
-              ? "Enter queues · /steer injects"
-              : "Follow-ups off"}{" "}
-            · Ctrl+C stops
-          </Text>
-        </Box>
+        <ActiveRunHint followUpsEnabled={followUpBehaviorEnabled} palette={tuiPalette} />
       ) : null}
       {activeApproval ? (
         <ToolApprovalPrompt
@@ -2676,37 +1972,16 @@ export function InteractiveChatTUI({
         selectedIndex={commandIndex}
         palette={tuiPalette}
       />
-      {error ? (
-        <Box paddingX={1}>
-          <Text color={tuiPalette.danger}>Error: {error}</Text>
-        </Box>
-      ) : null}
-      {notice ? (
-        <Box paddingX={1}>
-          <Text color={tuiPalette.muted}>{notice}</Text>
-        </Box>
-      ) : null}
-
-      <Box
-        borderStyle="round"
-        borderColor={sending ? tuiPalette.accent : tuiPalette.chrome}
-        backgroundColor={tuiPalette.background}
-        paddingX={1}
-        flexDirection="column"
-        flexShrink={0}
-      >
-        {sending ? (
-          <Text color={followUpBehaviorEnabled ? tuiPalette.accent : tuiPalette.muted}>
-            {composerTitle}
-          </Text>
-        ) : null}
-        {composerLines.map((line, index) => (
-          <Text key={index} color={input ? composerTextColor : tuiPalette.subtle}>
-            {index === 0 ? "› " : "  "}
-            {line}
-          </Text>
-        ))}
-      </Box>
+      <ChatFeedback error={error} notice={notice} palette={tuiPalette} />
+      <ChatComposerBox
+        followUpsEnabled={followUpBehaviorEnabled}
+        input={input}
+        lines={composerLines}
+        palette={tuiPalette}
+        sending={sending}
+        textColor={composerTextColor}
+        title={composerTitle}
+      />
       <ChatShortcutRail
         colorScheme={tuiColorScheme}
         state={{

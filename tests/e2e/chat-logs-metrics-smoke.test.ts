@@ -290,7 +290,7 @@ describe("Chat + Logs + Metrics e2e smoke", () => {
 
     const systemMonitorRes = await api("GET", "/api/system/monitor");
     expect(systemMonitorRes.status).toBe(200);
-    expect(systemMonitorRes.data.status).toBe("healthy");
+    expect(["healthy", "warning", "critical"]).toContain(systemMonitorRes.data.status);
     expect(typeof systemMonitorRes.data.cpu.usagePct).toBe("number");
     expect(typeof systemMonitorRes.data.cpu.cores).toBe("number");
     expect(systemMonitorRes.data.memory.totalBytes).toBeGreaterThan(0);

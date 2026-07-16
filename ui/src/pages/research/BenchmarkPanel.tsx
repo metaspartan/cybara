@@ -136,7 +136,7 @@ export function BenchmarkPanel() {
   const suite = benchmarkQuery.data?.suite;
   const latest = benchmarkQuery.data?.runs[0];
   const activeRun = benchmarkQuery.data?.runs.find((item) => item.status === "running");
-  const taskCount = suite?.taskCount ?? 32;
+  const taskCount = suite?.taskCount ?? 0;
   const latestRated = latest && isRatedRun(latest, suite?.id);
   const latestTier = latestRated ? tierFor(latest.score) : null;
   const averageLatency = useMemo(() => {
@@ -164,7 +164,7 @@ export function BenchmarkPanel() {
             <div className="flex items-center gap-2">
               <BrainCircuit className="h-4 w-4 text-indigo-300" />
               <h2 className="text-sm font-semibold text-white">
-                {suite?.name ?? "Cybara Intelligence Rating"}
+                {suite?.name ?? "Cybara Capability Smoke Score"}
               </h2>
               <span className="rounded border border-white/10 bg-black/20 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-gray-500">
                 {suite?.id ?? "v1"}
@@ -172,7 +172,7 @@ export function BenchmarkPanel() {
             </div>
             <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-gray-400">
               {suite?.description ??
-                "A reproducible, judge-free capability rating computed from objectively graded tasks."}
+                "A reproducible, judge-free capability smoke score computed from objectively graded tasks."}
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-gray-500">
               <span className="inline-flex items-center gap-1 rounded border border-white/10 px-1.5 py-0.5">
@@ -182,11 +182,11 @@ export function BenchmarkPanel() {
                 <Coins className="h-3 w-3" /> ≈2k tokens per full run
               </span>
               <span className="rounded border border-white/10 px-1.5 py-0.5">
-                {taskCount} tasks · rated {formatRating(suite?.minRating ?? 850)}–
-                {formatRating(suite?.maxRating ?? 3500)}
+                {taskCount} tasks · {formatRating(suite?.minRating ?? 0)}–
+                {formatRating(suite?.maxRating ?? 0)} internal points
               </span>
               <span className="rounded border border-white/10 px-1.5 py-0.5">
-                ~1500 mid · ~3000 frontier
+                Versioned suite score · not externally calibrated
               </span>
             </div>
             <div className="mt-4 flex min-w-0 flex-col gap-2 sm:flex-row">
@@ -258,7 +258,7 @@ export function BenchmarkPanel() {
           </div>
           <div className="flex flex-col items-center justify-center gap-2 border-t border-white/10 bg-black/20 p-5 lg:border-l lg:border-t-0">
             <p className="text-[10px] uppercase tracking-[0.14em] text-gray-500">
-              {latest?.status === "running" ? "Live rating" : "Latest rating"}
+              {latest?.status === "running" ? "Live suite score" : "Latest suite score"}
             </p>
             <p
               className={cn(
@@ -393,7 +393,7 @@ export function BenchmarkPanel() {
           </div>
         ) : (benchmarkQuery.data?.runs.length ?? 0) === 0 ? (
           <div className="p-10 text-center text-[12px] text-gray-500">
-            Run the suite against an agent to establish a reproducible rating baseline.
+            Run the suite against an agent to establish a reproducible capability baseline.
           </div>
         ) : (
           benchmarkQuery.data?.runs.map((item) => {

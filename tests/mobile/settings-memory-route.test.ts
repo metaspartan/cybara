@@ -10,6 +10,7 @@ describe("mobile settings: Memory lives on its own screen", () => {
     read("screens/DashboardScreen.tsx") +
     read("screens/dashboardDetailPanels.tsx") +
     read("screens/dashboardSettingsPanels.tsx") +
+    read("screens/dashboardAdvancedSettingsPanels.tsx") +
     read("screens/dashboardSurfaceData.ts");
   const helpers = read("screens/dashboardHelpers.ts");
   const api = read("lib/api.ts");

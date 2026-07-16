@@ -90,9 +90,9 @@ export function LeaderboardPanel() {
           <h2 className="text-sm font-semibold text-white">Model leaderboard</h2>
         </div>
         <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-gray-400">
-          Best Cybara Intelligence Rating per model across saved runs. The suite is deterministic
-          and open, so ratings are directly comparable across models, providers, and time — rerun it
-          after upgrades to see whether a model actually got smarter.
+          Best capability smoke score per model across saved runs. Scores are comparable only for
+          the same versioned suite and configuration; rerun after changes to measure task-level
+          regressions or improvements.
         </p>
       </div>
 
@@ -111,8 +111,8 @@ export function LeaderboardPanel() {
             <Trophy className="mx-auto h-8 w-8 text-gray-600" />
             <p className="mt-3 text-sm font-medium text-white">No rated runs yet</p>
             <p className="mt-1 text-[12px] leading-5 text-gray-500">
-              Complete a benchmark run in the Benchmark tab. Each model's best rating appears here
-              for side-by-side comparison.
+              Complete a benchmark run in the Benchmark tab. Each model's best suite score appears
+              here for side-by-side comparison.
             </p>
           </div>
         </div>

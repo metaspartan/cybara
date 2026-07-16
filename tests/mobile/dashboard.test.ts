@@ -69,6 +69,10 @@ const dashboardScreenSource =
     "utf8"
   ) +
   readFileSync(
+    new URL("../../apps/mobile/src/screens/dashboardAdvancedSettingsPanels.tsx", import.meta.url),
+    "utf8"
+  ) +
+  readFileSync(
     new URL("../../apps/mobile/src/screens/dashboardProviderPlanUsage.tsx", import.meta.url),
     "utf8"
   ) +
@@ -108,10 +112,16 @@ const dashboardChatSource = readFileSync(
   new URL("../../apps/mobile/src/screens/dashboardChat.tsx", import.meta.url),
   "utf8"
 );
-const dashboardStylesSource = readFileSync(
-  new URL("../../apps/mobile/src/screens/dashboardStyles.ts", import.meta.url),
-  "utf8"
-);
+const dashboardStylesSource = [
+  readFileSync(
+    new URL("../../apps/mobile/src/screens/dashboardStyles.ts", import.meta.url),
+    "utf8"
+  ),
+  readFileSync(
+    new URL("../../apps/mobile/src/screens/dashboardChatStyles.ts", import.meta.url),
+    "utf8"
+  ),
+].join("\n");
 
 const profile: GatewayProfile = {
   id: "local",

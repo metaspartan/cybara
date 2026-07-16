@@ -111,8 +111,8 @@ function trailingZeros(n: number): number {
   return count;
 }
 
-describe("cybara intelligence rating suite", () => {
-  test("covers a wide calibrated difficulty range across distinct categories", () => {
+describe("cybara capability smoke suite", () => {
+  test("covers a wide internal difficulty range across distinct categories", () => {
     expect(intelligenceRatingTasks.length).toBeGreaterThanOrEqual(32);
     expect(new Set(intelligenceRatingTasks.map((task) => task.id)).size).toBe(
       intelligenceRatingTasks.length
@@ -173,7 +173,7 @@ describe("cybara intelligence rating suite", () => {
     expect(gradeIntelligenceBenchmarkTask(instruction, "CYBARA extra", [])).toBe(false);
   });
 
-  test("full simulated runs place noisy-but-correct models in expected rating bands", () => {
+  test("full simulated runs place noisy-but-correct models in expected score bands", () => {
     const simulate = (ceiling: number, formatter: (expected: string) => string) => {
       const results = intelligenceRatingTasks.map((task) => {
         const passed =
@@ -209,7 +209,7 @@ describe("cybara intelligence rating suite", () => {
     );
   });
 
-  test("rating follows the logistic model and is deterministic", () => {
+  test("suite score follows the logistic model and is deterministic", () => {
     expect(expectedPassProbability(1500, 1500)).toBeCloseTo(0.5, 10);
     expect(expectedPassProbability(1500, 1900)).toBeCloseTo(1 / (1 + 10 ** -1), 10);
     const results = intelligenceRatingTasks.map((task) => ({
@@ -223,16 +223,16 @@ describe("cybara intelligence rating suite", () => {
     expect(first).toBeLessThan(1800);
   });
 
-  test("a mid model rates near 1500 and a frontier model near 3000+", () => {
+  test("suite scores cover partial and perfect runs", () => {
     const mid = computeIntelligenceRating(
       intelligenceRatingTasks.map((task) => ({ rating: task.rating, passed: task.rating <= 1600 }))
     );
     expect(mid).toBeGreaterThanOrEqual(1400);
     expect(mid).toBeLessThanOrEqual(1900);
-    const frontier = computeIntelligenceRating(
+    const perfect = computeIntelligenceRating(
       intelligenceRatingTasks.map((task) => ({ rating: task.rating, passed: true }))
     );
-    expect(frontier).toBe(
+    expect(perfect).toBe(
       Math.max(...intelligenceRatingTasks.map((task) => task.rating)) +
         INTELLIGENCE_RATING_EDGE_MARGIN
     );
@@ -243,7 +243,7 @@ describe("cybara intelligence rating suite", () => {
     expect(computeIntelligenceRating([])).toBe(0);
   });
 
-  test("rating increases monotonically with more passes", () => {
+  test("suite score increases monotonically with more passes", () => {
     const sorted = [...intelligenceRatingTasks].sort((left, right) => left.rating - right.rating);
     let previous = 0;
     for (let passCount = 1; passCount <= sorted.length; passCount += 1) {
@@ -255,7 +255,7 @@ describe("cybara intelligence rating suite", () => {
     }
   });
 
-  test("frontier task answers match independent recomputation", () => {
+  test("highest-band task answers match independent recomputation", () => {
     expect(expectedAnswer("josephus-survivor")).toBe(String(josephus(41, 3)));
     expect(expectedAnswer("lis-length")).toBe(
       String(lisLength([8, 3, 11, 6, 14, 2, 17, 9, 20, 5, 23, 12, 26, 1, 29]))
@@ -283,7 +283,7 @@ describe("cybara intelligence rating suite", () => {
     expect(expectedAnswer("catalan-number")).toBe("16796");
   });
 
-  test("frontier models are separated instead of all capping at the ceiling", () => {
+  test("high-scoring runs are separated instead of all capping at the ceiling", () => {
     const passesUpTo = (ceiling: number) =>
       computeIntelligenceRating(
         intelligenceRatingTasks.map((task) => ({
@@ -291,15 +291,15 @@ describe("cybara intelligence rating suite", () => {
           passed: task.rating <= ceiling,
         }))
       );
-    const strongFrontier = passesUpTo(3400);
-    const midFrontier = passesUpTo(3100);
-    const weakFrontier = passesUpTo(2800);
-    expect(strongFrontier).toBeGreaterThan(midFrontier);
-    expect(midFrontier).toBeGreaterThan(weakFrontier);
-    expect(weakFrontier).toBeGreaterThan(2500);
+    const strong = passesUpTo(3400);
+    const middle = passesUpTo(3100);
+    const lower = passesUpTo(2800);
+    expect(strong).toBeGreaterThan(middle);
+    expect(middle).toBeGreaterThan(lower);
+    expect(lower).toBeGreaterThan(2500);
     const maxRating = Math.max(...intelligenceRatingTasks.map((task) => task.rating));
     expect(maxRating).toBeGreaterThanOrEqual(3650);
-    expect(strongFrontier).toBeLessThan(maxRating + INTELLIGENCE_RATING_EDGE_MARGIN);
+    expect(strong).toBeLessThan(maxRating + INTELLIGENCE_RATING_EDGE_MARGIN);
   });
 
   test("cancel requests stop a run with partial results and allow deletion", () => {
@@ -337,13 +337,13 @@ describe("cybara intelligence rating suite", () => {
     expect(deleteIntelligenceBenchmarkRun(run.id)).toBe(false);
   });
 
-  test("maps ratings to stable tier labels", () => {
-    expect(intelligenceRatingTier(900)).toBe("Emerging");
-    expect(intelligenceRatingTier(1500)).toBe("Capable");
-    expect(intelligenceRatingTier(2000)).toBe("Advanced");
-    expect(intelligenceRatingTier(2400)).toBe("Expert");
-    expect(intelligenceRatingTier(2900)).toBe("Frontier");
-    expect(intelligenceRatingTier(3200)).toBe("Superhuman");
+  test("maps suite scores to stable band labels", () => {
+    expect(intelligenceRatingTier(900)).toBe("Band 1");
+    expect(intelligenceRatingTier(1500)).toBe("Band 3");
+    expect(intelligenceRatingTier(2000)).toBe("Band 4");
+    expect(intelligenceRatingTier(2400)).toBe("Band 5");
+    expect(intelligenceRatingTier(2900)).toBe("Band 6");
+    expect(intelligenceRatingTier(3200)).toBe("Band 7");
   });
 
   test("publishes a reproducibility manifest with task checksums", () => {
@@ -363,7 +363,7 @@ describe("cybara intelligence rating suite", () => {
     }
   });
 
-  test("persists rating-scored progress for navigation-safe runs", () => {
+  test("persists suite-scored progress for navigation-safe runs", () => {
     const run = createIntelligenceBenchmarkRun({
       agentId: "benchmark-agent",
       provider: "test-provider",
@@ -399,7 +399,7 @@ describe("cybara intelligence rating suite", () => {
       rating: 3100,
       response: "0",
       expected: "864",
-      difficulty: "frontier" as const,
+      difficulty: "stress" as const,
       weight: 5,
     };
     const partial = updateIntelligenceBenchmarkRun(run.id, [passResult], false);

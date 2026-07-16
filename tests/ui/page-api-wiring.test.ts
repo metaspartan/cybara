@@ -19,6 +19,15 @@ function readUiSource(fileName: string): string {
   return readFileSync(join(uiDir, fileName), "utf8");
 }
 
+function readSettingsSource(): string {
+  return (
+    readPage("Settings.tsx") +
+    readUiSource("pages/settings/RuntimeSettings.tsx") +
+    readUiSource("pages/settings/ThemeSettings.tsx") +
+    readUiSource("pages/settings/WalletSettings.tsx")
+  );
+}
+
 describe("UI page API wiring", () => {
   test("Channels page routes pairing and test actions through channelsApi helpers", () => {
     const source = readPage("Channels.tsx");
@@ -64,7 +73,7 @@ describe("UI page API wiring", () => {
 
   test("Settings feature toggle uses settingsApi and restores state on update failure", () => {
     const source =
-      readPage("Settings.tsx") +
+      readSettingsSource() +
       readUiSource("pages/settings/AiFeatureSettings.tsx") +
       readUiSource("pages/settings/FeatureSettings.tsx") +
       readUiSource("pages/settings/SpeechSettingsSection.tsx") +
@@ -124,7 +133,7 @@ describe("UI page API wiring", () => {
   });
 
   test("Web and Tauri theme accents sync through gateway config", () => {
-    const settingsSource = readPage("Settings.tsx");
+    const settingsSource = readSettingsSource();
     const appSource = readUiSource("App.tsx");
     const storeSource = readUiSource("stores/uiStore.ts");
 
@@ -357,7 +366,7 @@ describe("UI page API wiring", () => {
   });
 
   test("Wallet management (RPC, policy, delete) lives in Settings", () => {
-    const source = readPage("Settings.tsx");
+    const source = readSettingsSource();
 
     expect(source).toContain("walletApi.rpc()");
     expect(source).toContain("walletApi.rpcStatus()");

@@ -17,6 +17,7 @@ import { SystemMonitorPanel } from "@/components/settings/SystemMonitorPanel";
 import { Badge } from "@/components/ui/Badge";
 import { useHealth, useInfo } from "@/hooks/useApi";
 import {
+  dashboardHealthColor,
   getDashboardCheckStatus,
   type DashboardHealthStatus,
 } from "@/pages/dashboard/dashboardStatus";
@@ -63,14 +64,8 @@ const healthIcons: Record<string, LucideIcon> = {
   memory: Cpu,
 };
 
-function statusColor(status: DashboardHealthStatus): string {
-  if (status === "healthy") return "var(--context-ring-ok)";
-  if (status === "warning") return "var(--context-ring-warn)";
-  return "var(--context-ring-danger)";
-}
-
 function statusStyle(status: DashboardHealthStatus): CSSProperties {
-  const color = statusColor(status);
+  const color = dashboardHealthColor(status);
   return {
     color,
     background: `color-mix(in srgb, ${color} 12%, transparent)`,
@@ -165,12 +160,7 @@ function HealthBadge({ status }: { status: DashboardHealthStatus }) {
 }
 
 function ServiceHealthPanel({ health }: { health: ReturnType<typeof useHealth>["data"] }) {
-  const overallStatus: DashboardHealthStatus =
-    health?.status === "healthy"
-      ? "healthy"
-      : health?.status === "warning" || health?.status === "degraded"
-        ? "warning"
-        : "error";
+  const overallStatus = getDashboardCheckStatus(health?.status).status;
   const checks = health?.checks
     ? Object.entries(health.checks).filter(([key]) => key !== "memory" && key !== "system")
     : [];
@@ -181,7 +171,7 @@ function ServiceHealthPanel({ health }: { health: ReturnType<typeof useHealth>["
         <div className="flex min-w-0 items-center gap-3">
           <span
             className="h-2 w-2 shrink-0 rounded-full"
-            style={{ background: statusColor(overallStatus) }}
+            style={{ background: dashboardHealthColor(overallStatus) }}
           />
           <div className="min-w-0">
             <p className="text-sm font-medium text-[var(--text-primary)]">Overall Status</p>

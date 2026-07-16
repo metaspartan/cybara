@@ -48,8 +48,8 @@ function EvalsExplainer() {
     },
     {
       icon: ShieldCheck,
-      title: "Measure behavioral drift",
-      body: "Compare tool sequences, outputs, and completion structure across models, prompts, and tool versions without expecting identical wording.",
+      title: "Verify behavior and results",
+      body: "Check tool order and data shape together with deterministic answer and tool-input assertions.",
     },
   ];
   return (
@@ -58,8 +58,8 @@ function EvalsExplainer() {
         <div>
           <p className="text-sm font-semibold text-white">Reproducible agent experiments</p>
           <p className="mt-1 max-w-3xl text-[13px] leading-6 text-gray-300">
-            Save representative runs, replay them under a controlled configuration, and inspect
-            structural changes without treating nondeterministic language as a failure.
+            Save representative runs, replay them under a controlled configuration, and catch
+            structural or answer regressions with deterministic checks.
           </p>
         </div>
         <button
@@ -178,6 +178,10 @@ function GoldenRow({
         <span>·</span>
         <span>{golden.baseline.structure.tools.length} expected tools</span>
         <span>·</span>
+        <span>
+          {(golden.assertions.response ? 1 : 0) + golden.assertions.tools.length} correctness checks
+        </span>
+        <span>·</span>
         <Link
           to={`/chat?session=${encodeURIComponent(golden.baseline.sessionId)}`}
           className="text-indigo-300 hover:text-indigo-200"
@@ -211,7 +215,7 @@ function GoldenRow({
             <span className="flex items-center gap-2 font-medium text-gray-200">
               {statusIcon(latestRun.status)}
               {latestRun.status === "passed"
-                ? "Structurally equivalent"
+                ? "All checks passed"
                 : latestRun.status === "failed"
                   ? "Behavior diverged"
                   : latestRun.status === "error"

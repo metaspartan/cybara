@@ -63,7 +63,9 @@ describe("completed chat work disclosure parity", () => {
   });
 
   test("TUI collapses completed work and leaves active runs visible", () => {
-    const tui = source("src/cli/tui/components/interactive-chat.tsx");
+    const tui =
+      source("src/cli/tui/components/interactive-chat.tsx") +
+      source("src/cli/tui/components/interactive-chat-view.tsx");
 
     expect(tui).toContain(
       "const [expandedActivities, setExpandedActivities] = React.useState(false)"

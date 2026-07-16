@@ -405,10 +405,11 @@ afterAll(async () => {
 });
 
 describe("API Health & Status", () => {
-  test("GET /api/health should return healthy status", async () => {
+  test("GET /api/health should return measured gateway status", async () => {
     const { status, data } = await api("GET", "/api/health");
     expect(status).toBe(200);
-    expect(data.status).toBe("healthy");
+    expect(["healthy", "warning", "critical"]).toContain(data.status);
+    expect(data.checks.database.status).toBe("healthy");
     expect(data.timestamp).toBeDefined();
     expect(data.uptime).toBeDefined();
     expect(data.version).toBe(PACKAGE_VERSION);
@@ -426,6 +427,7 @@ describe("API Health & Status", () => {
     const ready = await api("GET", "/api/health/ready");
     expect(ready.status).toBe(200);
     expect(ready.data.ready).toBe(true);
+    expect(ready.data.checks.database.status).toBe("healthy");
 
     const live = await api("GET", "/api/health/live");
     expect(live.status).toBe(200);
@@ -1318,10 +1320,11 @@ describe("Providers API", () => {
     expect(openaiCodex?.hasOAuthConfig).toBe(true);
   });
 
-  test("GET /api/providers/health should return provider health", async () => {
+  test("GET /api/providers/health should return provider configuration", async () => {
     const { status, data } = await api("GET", "/api/providers/health");
     expect(status).toBe(200);
-    expect(data.status).toBe("healthy");
+    expect(data.kind).toBe("configuration");
+    expect(["empty", "configured", "incomplete"]).toContain(data.status);
     expect(data.summary).toBeDefined();
     expect(Array.isArray(data.providers)).toBe(true);
   });

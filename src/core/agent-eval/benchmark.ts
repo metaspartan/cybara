@@ -13,7 +13,7 @@ export type IntelligenceTaskDifficulty =
   | "intermediate"
   | "advanced"
   | "expert"
-  | "frontier";
+  | "stress";
 
 export interface IntelligenceBenchmarkTask {
   id: string;
@@ -74,8 +74,9 @@ interface BenchmarkRunRow {
   completed_at: string | null;
 }
 
-export const INTELLIGENCE_RATING_SUITE_ID = "cybara-intelligence-rating-v2";
+export const INTELLIGENCE_RATING_SUITE_ID = "cybara-capability-smoke-v1";
 export const LEGACY_INTELLIGENCE_SUITE_IDS = [
+  "cybara-intelligence-rating-v2",
   "cybara-quick-intelligence-v2",
   "cybara-intelligence-rating-v1",
 ];
@@ -87,7 +88,7 @@ function difficultyForRating(rating: number): IntelligenceTaskDifficulty {
   if (rating < 1800) return "intermediate";
   if (rating < 2300) return "advanced";
   if (rating < 2800) return "expert";
-  return "frontier";
+  return "stress";
 }
 
 function weightForRating(rating: number): number {
@@ -537,39 +538,39 @@ export function computeIntelligenceRating(
 }
 
 export function intelligenceRatingTier(rating: number): string {
-  if (rating < 1000) return "Emerging";
-  if (rating < 1400) return "Developing";
-  if (rating < 1800) return "Capable";
-  if (rating < 2200) return "Advanced";
-  if (rating < 2600) return "Expert";
-  if (rating < 3000) return "Frontier";
-  return "Superhuman";
+  if (rating < 1000) return "Band 1";
+  if (rating < 1400) return "Band 2";
+  if (rating < 1800) return "Band 3";
+  if (rating < 2200) return "Band 4";
+  if (rating < 2600) return "Band 5";
+  if (rating < 3000) return "Band 6";
+  return "Band 7";
 }
 
 export function intelligenceRatingManifest(): Record<string, unknown> {
   const bounds = intelligenceRatingBounds();
   return {
-    format: "cybara-intelligence-rating-manifest",
+    format: "cybara-capability-smoke-manifest",
     version: 1,
     suiteId: INTELLIGENCE_RATING_SUITE_ID,
-    name: "Cybara Intelligence Rating",
+    name: "Cybara Capability Smoke Score",
     taskCount: intelligenceRatingTasks.length,
     scoring: {
       method: "rasch-elo-mle",
       description:
-        "Each task carries a fixed difficulty rating. The model rating is the maximum-likelihood ability under a one-parameter logistic model P(pass) = 1 / (1 + 10^((task - ability) / 400)), solved deterministically by bisection. A perfect run is capped at the hardest task rating plus 400; a zero run at the easiest minus 400.",
+        "Each task carries an internal ordinal difficulty value. The suite score is the maximum-likelihood position under a one-parameter logistic model P(pass) = 1 / (1 + 10^((task - ability) / 400)), solved deterministically by bisection. It is only comparable across runs of this versioned suite and is not an externally calibrated intelligence measure.",
       scale: INTELLIGENCE_RATING_SCALE,
       edgeMargin: INTELLIGENCE_RATING_EDGE_MARGIN,
       minTaskRating: bounds.min,
       maxTaskRating: bounds.max,
       tiers: [
-        { below: 1000, label: "Emerging" },
-        { below: 1400, label: "Developing" },
-        { below: 1800, label: "Capable" },
-        { below: 2200, label: "Advanced" },
-        { below: 2600, label: "Expert" },
-        { below: 3000, label: "Frontier" },
-        { below: null, label: "Superhuman" },
+        { below: 1000, label: "Band 1" },
+        { below: 1400, label: "Band 2" },
+        { below: 1800, label: "Band 3" },
+        { below: 2200, label: "Band 4" },
+        { below: 2600, label: "Band 5" },
+        { below: 3000, label: "Band 6" },
+        { below: null, label: "Band 7" },
       ],
     },
     grading: {
@@ -582,7 +583,7 @@ export function intelligenceRatingManifest(): Record<string, unknown> {
       },
     },
     reproducibility:
-      "Run each prompt as an isolated single-turn conversation with tools enabled only for tool_use tasks. Grade with the normalization above and compute the rating with the published formula. Prompts are open by design; treat memorized answers as a known public-benchmark tradeoff.",
+      "Run each prompt as an isolated single-turn conversation with tools enabled only for tool_use tasks. Grade with the normalization above and compute the internal suite score with the published formula. Prompts are open by design; treat memorized answers as a known public-benchmark tradeoff.",
     tasks: intelligenceRatingTasks.map((item) => ({
       ...item,
       sha256: createHash("sha256")

@@ -34,9 +34,6 @@ public enum SidecarCore {
         "\(serverURLString(port: port))/api/health"
     }
 
-    /// A gateway is healthy only if it returns 200 AND the body identifies as a
-    /// Cybara gateway ("status":"healthy") — so we never attach to an unrelated
-    /// process squatting on the port.
     public static func isHealthyResponse(statusCode: Int, body: String) -> Bool {
         gatewayHealthProbe(statusCode: statusCode, body: body) != nil
     }
@@ -46,7 +43,7 @@ public enum SidecarCore {
               let data = body.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let status = object["status"] as? String,
-              status == "healthy"
+              ["healthy", "warning", "critical"].contains(status)
         else { return nil }
         let version = (object["version"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let system = object["system"] as? [String: Any]

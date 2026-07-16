@@ -33,6 +33,7 @@ import {
 import { agentManager, getBuiltinTools } from "../core/agent";
 import {
   type AgentEvalRun,
+  applyGoldenAssertions,
   buildTrajectoryStructure,
   cancelIntelligenceBenchmarkRun,
   clearIntelligenceBenchmarkCancelRequest,
@@ -77,6 +78,7 @@ import {
   summarizeGolden,
   summarizeResearchTraces,
   updateIntelligenceBenchmarkRun,
+  updateGoldenAssertions,
 } from "../core/agent-eval";
 import { agentImageSupportById, agentSupportsImages } from "../core/agent-image-capabilities";
 import { parseAgentConfig } from "../core/agent-internals";
@@ -214,7 +216,6 @@ import {
   scheduleSystemRestore,
   systemBackupDirectory,
 } from "../core/system-backup";
-import { getSystemMonitorSnapshot } from "../core/system-monitor";
 import { buildSystemPrompt } from "../core/system-prompt";
 import { detectSystemSpeechCapability } from "../core/system-speech";
 import { getAlwaysAllowlist, getPendingApprovals, resolveApproval } from "../core/tool-approval";
@@ -268,6 +269,7 @@ import { mcpRoutes } from "./routes/mcp";
 import { metricsRoutes } from "./routes/metrics";
 import { sessionEventRoutes } from "./routes/session-events";
 import { externalTelemetryRoutes } from "./routes/external-telemetry";
+import { getProcessMemoryUsage, healthRoutes } from "./routes/health";
 import { toolCapabilityPolicyRoutes } from "./routes/tool-capability-policy";
 import { browserSupervisionRoutes } from "./routes/browser-supervision";
 import { nearbyRoutes } from "./routes/nearby";
@@ -352,7 +354,11 @@ async function runGoldenReplay(
       tools: true,
     });
     const actual = buildTrajectoryStructure(response.message);
-    const comparison = compareTrajectoryStructures(baseline.structure, actual);
+    const comparison = applyGoldenAssertions(
+      compareTrajectoryStructures(baseline.structure, actual),
+      golden.assertions,
+      response.message
+    );
     return finishEvalRun(run.id, {
       replaySessionId: fork.sessionId,
       comparison,
@@ -483,34 +489,7 @@ const routes: Record<string, RouteHandler> = {
   ...accountConnectorRoutes,
   ...integrationCredentialRoutes,
   ...webResearchRoutes,
-  "GET /api/health": () => {
-    const now = new Date();
-    const system = getSystemMonitorSnapshot();
-    return {
-      status: "healthy",
-      timestamp: now.toISOString(),
-      uptime: process.uptime(),
-      version: getAppVersion(),
-      system,
-      checks: {
-        database: checkDatabaseHealth(),
-        agents: agentManager.getStats(),
-        providers: providerManager.getStats(),
-        memory: getMemoryUsage(),
-        system: getSystemMonitorHealth(system),
-      },
-    };
-  },
-
-  "GET /api/health/ready": () => ({
-    ready: true,
-    timestamp: new Date().toISOString(),
-  }),
-
-  "GET /api/health/live": () => ({
-    live: true,
-    timestamp: new Date().toISOString(),
-  }),
+  ...healthRoutes,
   "GET /api/metrics": () => ({
     requestCount: requestLogs.length,
     recentRequests: requestLogs.slice(0, 100),
@@ -518,7 +497,7 @@ const routes: Record<string, RouteHandler> = {
       chat: getChatRateLimitStatus(),
     },
     circuitBreakers: getCircuitBreakersStatus(),
-    memory: getMemoryUsage(),
+    memory: getProcessMemoryUsage(),
     uptime: process.uptime(),
   }),
   "GET /api/info": () => ({
@@ -639,9 +618,8 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/evals/benchmarks": (_body, params) => ({
     suite: {
       id: INTELLIGENCE_RATING_SUITE_ID,
-      name: "Cybara Intelligence Rating",
-      description:
-        "A reproducible, judge-free capability rating. 32 objectively graded tasks calibrated from 850 to 3100 produce an Elo-style rating where roughly 1500 is a capable mid-tier model and 3000 is frontier-class.",
+      name: "Cybara Capability Smoke Score",
+      description: `A reproducible, judge-free smoke suite with ${intelligenceRatingTasks.length} objectively graded tasks. The score is an internal ordinal for comparing runs of this suite version, not an externally calibrated intelligence measure.`,
       taskCount: intelligenceRatingTasks.length,
       minRating: Math.min(...intelligenceRatingTasks.map((task) => task.rating)),
       maxRating:
@@ -751,6 +729,7 @@ const routes: Record<string, RouteHandler> = {
       name?: string;
       description?: string;
       tags?: string[];
+      assertions?: unknown;
     };
     if (!data.sessionId?.trim()) return { success: false, error: "sessionId is required" };
     const trajectory = await ensureSessionTrajectory(data.sessionId.trim(), data.messageIndex);
@@ -760,12 +739,18 @@ const routes: Record<string, RouteHandler> = {
         data.name?.trim() || trajectory.request.userMessage.content.slice(0, 80) || "Golden run",
       description: data.description,
       tags: Array.isArray(data.tags) ? data.tags : [],
+      assertions: data.assertions,
     });
     return { success: true, golden };
   },
   "DELETE /api/evals/goldens/:id": (_body, params) => ({
     success: deleteGolden(params!.id),
   }),
+  "PUT /api/evals/goldens/:id/assertions": (body, params) => {
+    const data = (body || {}) as { assertions?: unknown };
+    const golden = updateGoldenAssertions(params!.id, data.assertions);
+    return golden ? { success: true, golden } : { success: false, error: "Golden test not found" };
+  },
   "POST /api/evals/goldens/:id/replay": async (body, params) => {
     const data = (body || {}) as { agentId?: string; modelOverride?: string };
     return {
@@ -1413,42 +1398,6 @@ const routes: Record<string, RouteHandler> = {
       })),
     })),
   ],
-  "GET /api/providers/health": () => {
-    const providerRows = tables.providers.all() as Array<{
-      id: string;
-      provider: string;
-      name: string;
-      api_key?: string | null;
-      access_token?: string | null;
-      refresh_token?: string | null;
-      is_default?: number | boolean;
-    }>;
-
-    const providerStates = providerRows.map((p) => {
-      const providerInfo = providers[p.provider as ProviderType];
-      const requiresCredentials = providerInfo?.authType !== "none";
-      const hasCredentials = !!(p.api_key || p.access_token || p.refresh_token);
-      const configured = requiresCredentials ? hasCredentials : true;
-      return {
-        id: p.id,
-        provider: p.provider,
-        name: p.name,
-        configured,
-        requiresCredentials,
-        default: !!p.is_default,
-      };
-    });
-
-    return {
-      status: "healthy",
-      summary: {
-        total: providerStates.length,
-        configured: providerStates.filter((p) => p.configured).length,
-        unconfigured: providerStates.filter((p) => !p.configured).length,
-      },
-      providers: providerStates,
-    };
-  },
   "GET /api/provider-plans/config": () => getProviderPlanMonitoringConfig(),
   "PUT /api/provider-plans/config": (body) => {
     const result = setProviderPlanMonitoringConfig(body);
@@ -2952,6 +2901,7 @@ const routes: Record<string, RouteHandler> = {
       name?: string;
       description?: string;
       tags?: string[];
+      assertions?: unknown;
     };
     const trajectory = await ensureSessionTrajectory(params!.sessionId, data.messageIndex);
     return {
@@ -2962,6 +2912,7 @@ const routes: Record<string, RouteHandler> = {
           data.name?.trim() || trajectory.request.userMessage.content.slice(0, 80) || "Golden run",
         description: data.description,
         tags: Array.isArray(data.tags) ? data.tags : [],
+        assertions: data.assertions,
       }),
     };
   },
@@ -3346,45 +3297,6 @@ const routes: Record<string, RouteHandler> = {
 cacheMetricsRoutes(routes);
 prewarmMetricsRoutes(routes);
 const routeMatcher = createRouteMatcher(Object.keys(routes));
-
-function checkDatabaseHealth(): { status: string; error?: string } {
-  try {
-    agentManager.list();
-    return { status: "healthy" };
-  } catch (error) {
-    return { status: "unhealthy", error: (error as Error).message };
-  }
-}
-
-function getMemoryUsage(): {
-  heapUsed: number;
-  heapTotal: number;
-  external: number;
-  rss: number;
-} {
-  const usage = process.memoryUsage();
-  return {
-    heapUsed: Math.round(usage.heapUsed / 1024 / 1024),
-    heapTotal: Math.round(usage.heapTotal / 1024 / 1024),
-    external: Math.round(usage.external / 1024 / 1024),
-    rss: Math.round(usage.rss / 1024 / 1024),
-  };
-}
-
-function getSystemMonitorHealth(snapshot = getSystemMonitorSnapshot()): {
-  status: string;
-  cpuUsagePct: number;
-  memoryUsedPct: number;
-  diskUsedPct?: number;
-} {
-  const diskUsedPct = snapshot.disk?.usedPct;
-  return {
-    status: "healthy",
-    cpuUsagePct: snapshot.cpu.usagePct,
-    memoryUsedPct: snapshot.memory.usedPct,
-    ...(typeof diskUsedPct === "number" ? { diskUsedPct } : {}),
-  };
-}
 
 function getCircuitBreakersStatus(): Record<string, { state: string; failureCount?: number }> {
   const breakers: Record<string, { state: string; failureCount?: number }> = {};

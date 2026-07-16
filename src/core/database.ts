@@ -247,6 +247,7 @@ try {
     name TEXT NOT NULL,
     description TEXT,
     tags_json TEXT NOT NULL DEFAULT '[]',
+    assertions_json TEXT,
     baseline_json TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -468,6 +469,10 @@ try {
       db.exec(sql);
     } catch {}
   }
+
+  try {
+    db.exec("ALTER TABLE agent_goldens ADD COLUMN assertions_json TEXT");
+  } catch {}
 
   try {
     db.exec(
