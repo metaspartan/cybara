@@ -575,6 +575,16 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain('"queued follow-up"');
   });
 
+  test("native chat only shows live work for a sending or server-active session", () => {
+    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+
+    expect(nativeScreens).toContain(
+      "sending || selectedSessionID.map { activeSessionIDs.contains($0) } == true"
+    );
+    expect(nativeScreens).not.toContain("!liveActivities.isEmpty ||");
+    expect(nativeScreens).not.toContain("streamingContent != nil ||");
+  });
+
   test("native chat includes live and persisted edit activities in file changes", () => {
     const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
 

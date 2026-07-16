@@ -27,6 +27,19 @@ function normalizeSessionId(sessionId?: string | null): string | null {
   return trimmed || null;
 }
 
+export function isLiveSessionRunning(
+  sessionId: string | null | undefined,
+  activeSessionIds: readonly string[],
+  requestLoading: boolean,
+  loadingSessionId?: string | null
+): boolean {
+  const sessionKey = normalizeSessionId(sessionId);
+  const loadingKey = normalizeSessionId(loadingSessionId);
+  if (requestLoading && (!loadingKey || loadingKey === sessionKey)) return true;
+  if (!sessionKey) return false;
+  return activeSessionIds.some((candidate) => normalizeSessionId(candidate) === sessionKey);
+}
+
 export function readCachedLiveSessionState(
   sessionId?: string | null
 ): CachedLiveSessionState | null {

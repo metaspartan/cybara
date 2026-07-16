@@ -1880,10 +1880,7 @@ struct ChatScreen: View {
     }
 
     private var showWorkingTimeline: Bool {
-        sending ||
-            !liveActivities.isEmpty ||
-            streamingContent != nil ||
-            ["thinking", "generating", "compacting", "tool_executing"].contains(liveStatus.lowercased())
+        sending || selectedSessionID.map { activeSessionIDs.contains($0) } == true
     }
 
     private var sortedPendingMessages: [GatewayPendingChatMessage] {

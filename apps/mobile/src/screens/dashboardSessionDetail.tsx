@@ -1120,7 +1120,7 @@ export function SessionDetailPanel({
   const sendMessage = async () => {
     const message = draft.trim();
     const attachments = pendingImages;
-    const chatBusy = sending || !!liveAssistant || pendingMessages.length > 0;
+    const chatBusy = sending || sessionActive || pendingMessages.length > 0;
     const queuedSend = followUpBehaviorEnabled && chatBusy;
     if (!message && attachments.length === 0) return;
     if (chatBusy && !followUpBehaviorEnabled) return;
@@ -1597,7 +1597,7 @@ export function SessionDetailPanel({
   const toolApprovalMode = pendingToolApprovalMode || readMobileToolApprovalMode(config);
   const toolApprovalLabel = toolApprovalMode === "ask" ? "Ask Me" : "Always Allow";
   const followUpBehaviorEnabled = readMobileFollowUpBehaviorEnabled(config);
-  const chatBusy = sending || !!liveAssistant || pendingMessages.length > 0;
+  const chatBusy = sending || sessionActive || pendingMessages.length > 0;
 
   const refreshMobileGitBranches = useCallback(async () => {
     const workspace = chatWorkspaceDir?.trim();
@@ -2222,7 +2222,7 @@ export function SessionDetailPanel({
                 appearance={chatAppearance}
                 message={message}
                 mediaUrl={(filePath) => api.mediaUrl(filePath)}
-                nowMs={message.id === liveAssistant?.id ? liveNowMs : undefined}
+                nowMs={message.id === liveAssistant?.id && sessionActive ? liveNowMs : undefined}
                 onAddToChat={appendTextToComposer}
                 onRevert={message.role === "user" ? confirmRevertToMessage : undefined}
               />

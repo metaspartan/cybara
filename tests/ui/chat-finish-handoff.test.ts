@@ -49,7 +49,8 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
       source.indexOf("private var showWorkingTimeline: Bool"),
       source.indexOf("private var sortedPendingMessages")
     );
-    expect(workingTimelineBlock).toContain('"compacting"');
+    expect(workingTimelineBlock).toContain("activeSessionIDs.contains($0)");
+    expect(workingTimelineBlock).not.toContain('"compacting"');
     expect(workingTimelineBlock).not.toContain('"tool_completed"');
   });
 

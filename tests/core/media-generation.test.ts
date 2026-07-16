@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -127,6 +127,9 @@ describe("media-generation registry", () => {
     });
 
     const originalFetch = globalThis.fetch;
+    const dnsLookup = spyOn(Bun.dns, "lookup").mockResolvedValue([
+      { address: "1.1.1.1", family: 4, ttl: 60 },
+    ]);
     const fetched: string[] = [];
     globalThis.fetch = (async (url) => {
       fetched.push(String(url));
@@ -145,6 +148,7 @@ describe("media-generation registry", () => {
       ).rejects.toThrow("media asset URL blocked");
       expect(fetched).toEqual(["https://assets.example.test/generated.png"]);
     } finally {
+      dnsLookup.mockRestore();
       globalThis.fetch = originalFetch;
     }
   });

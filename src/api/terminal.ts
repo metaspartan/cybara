@@ -30,7 +30,7 @@ export interface TerminalResize {
 
 const sessions = new Map<string, TerminalSession>();
 
-setInterval(
+const terminalCleanupTimer = setInterval(
   () => {
     const staleThreshold = Date.now() - 10 * 60 * 1000;
     for (const [id, session] of sessions) {
@@ -41,6 +41,7 @@ setInterval(
   },
   5 * 60 * 1000
 );
+terminalCleanupTimer.unref();
 
 function killSession(id: string) {
   const session = sessions.get(id);

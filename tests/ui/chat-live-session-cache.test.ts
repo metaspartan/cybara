@@ -1,11 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import {
   clearCachedLiveSessionState,
+  isLiveSessionRunning,
   readCachedLiveSessionState,
   writeCachedLiveSessionState,
 } from "../../ui/src/pages/chat/liveSessionState";
 
 describe("web chat live session cache", () => {
+  test("only treats authoritative session or request state as running", () => {
+    expect(isLiveSessionRunning("s1", ["s1"], false, null)).toBe(true);
+    expect(isLiveSessionRunning("s1", [], true, "s1")).toBe(true);
+    expect(isLiveSessionRunning("s1", [], true, null)).toBe(true);
+    expect(isLiveSessionRunning(null, [], true, null)).toBe(true);
+    expect(isLiveSessionRunning("s1", ["s2"], true, "s2")).toBe(false);
+    expect(isLiveSessionRunning("s1", [], false, "s1")).toBe(false);
+  });
+
   test("restores active run state after chat route remounts", () => {
     const sessionId = `web-live-${Date.now()}`;
     writeCachedLiveSessionState(sessionId, {

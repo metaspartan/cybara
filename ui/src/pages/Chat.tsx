@@ -108,6 +108,7 @@ import { parseInitialChatRoute } from "./chat/chatRoute";
 import { type GitBranchOption, GitBranchSelector } from "./chat/GitBranchSelector";
 import {
   clearCachedLiveSessionState,
+  isLiveSessionRunning,
   readCachedLiveSessionState,
   writeCachedLiveSessionState,
 } from "./chat/liveSessionState";
@@ -425,8 +426,12 @@ export function Chat() {
     ].join(":");
   }, [currentSessionPlan, sessionId]);
   const currentSessionIsActive = !!sessionId && activeSessionIds.includes(sessionId);
-  const currentSessionIsLoading = isLoading && loadingSessionId === sessionId;
-  const currentSessionIsWorking = currentSessionIsActive || currentSessionIsLoading;
+  const currentSessionIsWorking = isLiveSessionRunning(
+    sessionId,
+    activeSessionIds,
+    isLoading,
+    loadingSessionId
+  );
   const showComposerPlan =
     shouldShowSessionPlanInComposer(
       currentSessionPlan,
@@ -1146,7 +1151,10 @@ export function Chat() {
         clearCachedLiveSessionState(payloadSessionId);
         return true;
       }
-      if (status === "idle" && !isSteeringHandoff) return true;
+      if (status === "idle" && !isSteeringHandoff) {
+        clearCachedLiveSessionState(payloadSessionId);
+        return true;
+      }
 
       const cached = readCachedLiveSessionState(payloadSessionId);
       const eventTimestamp =
@@ -1575,13 +1583,7 @@ export function Chat() {
 
   useEffect(() => {
     if (!sessionId) return;
-    const hasLiveState =
-      liveStatus !== "idle" ||
-      liveActivities.length > 0 ||
-      !!liveCurrentStep ||
-      !!streamingContent ||
-      activeSessionIds.includes(sessionId);
-    if (!hasLiveState) {
+    if (!currentSessionIsWorking) {
       clearCachedLiveSessionState(sessionId);
       return;
     }
@@ -1596,6 +1598,7 @@ export function Chat() {
     });
   }, [
     activeSessionIds,
+    currentSessionIsWorking,
     liveActivities,
     liveCurrentStep,
     liveRunStartedAtMs,
@@ -1915,24 +1918,13 @@ export function Chat() {
   }, []);
 
   const canQueueCurrentMessage = useCallback(() => {
-    const sessionCurrentlyActive = !!sessionId && activeSessionIds.includes(sessionId);
-    const locallyLoadingCurrentSession =
-      loadingRef.current && (!sessionId || !loadingSessionId || loadingSessionId === sessionId);
-    const pendingCapture = pendingProcessCaptureRef.current;
-    const pendingCaptureForCurrentSession =
-      !!pendingCapture &&
-      (sessionId
-        ? !pendingCapture.sessionId || pendingCapture.sessionId === sessionId
-        : !pendingCapture.sessionId);
-    return (
-      sessionCurrentlyActive ||
-      locallyLoadingCurrentSession ||
-      (isLoading && (!sessionId || loadingSessionId === sessionId)) ||
-      pendingCaptureForCurrentSession ||
-      liveStatus !== "idle" ||
-      liveActivities.length > 0
+    return isLiveSessionRunning(
+      sessionId,
+      activeSessionIds,
+      loadingRef.current || isLoading,
+      loadingSessionId
     );
-  }, [activeSessionIds, isLoading, liveActivities.length, liveStatus, loadingSessionId, sessionId]);
+  }, [activeSessionIds, isLoading, loadingSessionId, sessionId]);
 
   const handleSend = async () => {
     suppressAutoRestoreRef.current = false;
@@ -2598,11 +2590,7 @@ export function Chat() {
     (sessionId
       ? !pendingCapture.sessionId || pendingCapture.sessionId === sessionId
       : !pendingCapture.sessionId);
-  const showWorkingTimeline =
-    currentSessionIsLoading ||
-    currentSessionIsActive ||
-    pendingCaptureForCurrentSession ||
-    liveActivities.length > 0;
+  const showWorkingTimeline = currentSessionIsWorking;
   const composerHasDraft =
     input.trim().length > 0 || pendingImages.length > 0 || pendingFiles.length > 0;
   const sendQueuesFollowUp =

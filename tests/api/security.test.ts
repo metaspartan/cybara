@@ -320,14 +320,8 @@ describe("API security module", () => {
     const credentialUrl = await security.validateUrl("https://user:pass@example.com");
     expect(credentialUrl.valid).toBe(false);
 
-    // Public URL validation may fail on runners without internet access.
-    // Only assert if the call succeeds; skip if DNS/network fails.
-    try {
-      const publicUrl = await security.validateUrl("https://example.com/docs");
-      expect(publicUrl.valid).toBe(true);
-    } catch {
-      // Network unreachable on this runner — skip the assertion.
-    }
+    const publicUrl = await security.validateUrl("https://1.1.1.1/docs");
+    expect(publicUrl.valid).toBe(true);
   });
 
   test("validateUrl blocks cloud-metadata and decimal-encoded loopback (SSRF)", async () => {
@@ -338,6 +332,49 @@ describe("API security module", () => {
     // Decimal-encoded loopback (2130706433 === 127.0.0.1).
     const decimalLoopback = await security.validateUrl("http://2130706433/");
     expect(decimalLoopback.valid).toBe(false);
+  });
+
+  test("validateUrl rejects unresolved hosts without leaving DNS work active", async () => {
+    const child = Bun.spawn(
+      [
+        Bun.which("bun") ?? "bun",
+        "-e",
+        'import { validateUrl } from "./src/api/security.ts"; console.log(JSON.stringify(await validateUrl("https://definitely-does-not-exist.cybara.invalid")));',
+      ],
+      {
+        cwd: process.cwd(),
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: 4000,
+        killSignal: "SIGKILL",
+      }
+    );
+    const output = await new Response(child.stdout).text();
+    const exitCode = await child.exited;
+
+    expect(exitCode).toBe(0);
+    const result = JSON.parse(output.trim()) as { valid: boolean; error?: string };
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("Unable to resolve hostname");
+  });
+
+  test("maintenance timers do not retain one-shot processes", async () => {
+    const child = Bun.spawn(
+      [
+        Bun.which("bun") ?? "bun",
+        "-e",
+        'import "./src/api/security.ts"; import "./src/api/terminal.ts";',
+      ],
+      {
+        cwd: process.cwd(),
+        stdout: "ignore",
+        stderr: "pipe",
+      }
+    );
+    const exitCode = await Promise.race([child.exited, Bun.sleep(2000).then(() => null)]);
+    if (exitCode === null) child.kill();
+
+    expect(exitCode).toBe(0);
   });
 
   test("validateMessageSize and sanitizeString enforce basic input safety", () => {

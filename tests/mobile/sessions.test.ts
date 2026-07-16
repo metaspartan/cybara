@@ -262,4 +262,17 @@ describe("mobile: chat management", () => {
     expect(reloadIndex).toBeGreaterThan(0);
     expect(clearIndex).toBeGreaterThan(reloadIndex);
   });
+
+  test("uses authoritative active state for queueing and live timing", () => {
+    const detail = read("screens/dashboardSessionDetail.tsx");
+    expect(detail).toContain(
+      "const chatBusy = sending || sessionActive || pendingMessages.length > 0;"
+    );
+    expect(detail).toContain(
+      "nowMs={message.id === liveAssistant?.id && sessionActive ? liveNowMs : undefined}"
+    );
+    expect(detail).not.toContain(
+      "const chatBusy = sending || !!liveAssistant || pendingMessages.length > 0;"
+    );
+  });
 });

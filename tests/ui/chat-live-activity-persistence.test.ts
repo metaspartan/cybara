@@ -7,6 +7,7 @@ import {
   applyLiveActivityEvent,
   buildPreSteeringActivityMessage,
   canUseNativeSpeechRecognition,
+  formatToolIntent,
   isAgentUsingBrowser,
   isSessionStatusSnapshotCurrent,
   isRawToolCallThought,
@@ -55,6 +56,16 @@ function readChatMetadataSource(): string {
 }
 
 describe("Chat live activity persistence", () => {
+  test("does not expose failed fetch URLs in activity rows", () => {
+    expect(
+      formatToolIntent(
+        "web_fetch",
+        { url: "https://example.com/private/path?token=secret" },
+        "error"
+      )
+    ).toBe("Source unavailable");
+  });
+
   test("shows browser activity only while a browser tool is in flight for the active session", () => {
     const browserStart: LiveActivityItem = {
       id: "browser-start",
@@ -289,13 +300,10 @@ describe("Chat live activity persistence", () => {
 
   test("keeps the working timeline visible while the session remains active", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
-    expect(source).toContain(
-      "const currentSessionIsLoading = isLoading && loadingSessionId === sessionId;"
-    );
-    expect(source).toContain("const showWorkingTimeline =");
-    expect(source).toContain("currentSessionIsLoading ||");
-    expect(source).toContain("currentSessionIsActive ||");
-    expect(source).toContain("pendingCaptureForCurrentSession ||");
+    expect(source).toContain("const currentSessionIsWorking = isLiveSessionRunning(");
+    expect(source).toContain("const showWorkingTimeline = currentSessionIsWorking;");
+    expect(source).not.toContain("pendingCaptureForCurrentSession ||");
+    expect(source).not.toContain("liveActivities.length > 0;\n  const composerHasDraft");
     expect(source).toContain(
       'const timelineStatus =\n    currentSessionIsActive && liveStatus === "idle" ? ("thinking" as const) : liveStatus;'
     );

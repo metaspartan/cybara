@@ -1,6 +1,4 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
-import type { LookupAddress } from "dns";
-import { lookup } from "dns/promises";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { isIP } from "net";
 import { join } from "path";
@@ -260,7 +258,7 @@ interface RateLimitEntry {
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
-setInterval(
+const rateLimitCleanupTimer = setInterval(
   () => {
     const now = Date.now();
     let cleaned = 0;
@@ -276,6 +274,7 @@ setInterval(
   },
   5 * 60 * 1000
 );
+rateLimitCleanupTimer.unref();
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -1097,36 +1096,37 @@ export async function validateUrl(url: string): Promise<{ valid: boolean; error?
     const ipVersion = isIP(hostname);
     if (ipVersion === 0) {
       try {
-        // Bound the DNS lookup so a slow/absent resolver can't hang the request
-        // (or a test) indefinitely. On timeout we fall through to the permissive
-        // catch, same as any other resolution failure.
-        const addresses: LookupAddress[] = await Promise.race([
-          lookup(hostname, { all: true, verbatim: true }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("DNS lookup timed out")), 3000)
-          ),
-        ]);
+        const addresses = await resolveHostnameAddresses(hostname);
         for (const address of addresses) {
-          if (isPrivateOrBlockedIP(address.address)) {
+          if (isPrivateOrBlockedIP(address)) {
             return {
               valid: false,
-              error: `Blocked resolved address: ${address.address}`,
+              error: `Blocked resolved address: ${address}`,
             };
           }
         }
-      } catch {
-        // Keep behavior permissive when DNS lookup fails to avoid false negatives
-        // offline. NOTE: closing the residual DNS-rebinding/TOCTOU gap requires
-        // pinning the resolved IP and dialing it directly (an SSRF-safe agent),
-        // not a fail-closed flip here — a flip would block offline use and any
-        // operator-allowlisted host that does not resolve in the current env.
+      } catch (error) {
+        return {
+          valid: false,
+          error: `Unable to resolve hostname: ${errorMessage(error)}`,
+        };
       }
     }
 
     return { valid: true };
   } catch (error) {
-    return { valid: false, error: `Invalid URL: ${(error as Error).message}` };
+    return { valid: false, error: `Invalid URL: ${errorMessage(error)}` };
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function resolveHostnameAddresses(hostname: string): Promise<string[]> {
+  const addresses = await Bun.dns.lookup(hostname, { family: 0, backend: "system" });
+  if (addresses.length === 0) throw new Error("hostname has no public addresses");
+  return addresses.map((address) => address.address);
 }
 
 export function validateMessageSize(message: string): {

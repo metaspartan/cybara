@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { config } from "../../src/core/config";
 import {
   handleWebFetch,
@@ -9,7 +9,12 @@ import { handleWebSearch } from "../../src/core/tools/handlers/web-search";
 const originalFetch = globalThis.fetch;
 const originalBraveApiKey = process.env.BRAVE_API_KEY;
 
+beforeEach(() => {
+  spyOn(Bun.dns, "lookup").mockResolvedValue([{ address: "1.1.1.1", family: 4, ttl: 60 }]);
+});
+
 afterEach(() => {
+  mock.restore();
   globalThis.fetch = originalFetch;
   if (originalBraveApiKey === undefined) {
     delete process.env.BRAVE_API_KEY;

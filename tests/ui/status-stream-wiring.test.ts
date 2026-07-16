@@ -174,7 +174,8 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain('aria-label="Delete queued message"');
     expect(source).toContain('"Compacting earlier context..."');
     expect(source).toContain("canQueueCurrentMessage");
-    expect(source).toContain("const locallyLoadingCurrentSession =");
+    expect(source).toContain("const currentSessionIsWorking = isLiveSessionRunning(");
+    expect(source).toContain("const showWorkingTimeline = currentSessionIsWorking;");
     expect(source).toContain("const requestSessionId = requestedQueueMode");
     expect(source).toContain("sessionId || activeSessionRef.current || crypto.randomUUID()");
     expect(source).toContain("persistSessionId(requestSessionId)");

@@ -1110,11 +1110,11 @@ export function formatToolIntent(
     if (url) {
       if (phase === "start") return `Fetching ${url}`;
       if (phase === "result") return `Fetched ${url}`;
-      return `Fetch failed for ${url}`;
+      return "Source unavailable";
     }
     if (phase === "start") return "Fetching webpage...";
     if (phase === "result") return "Fetch complete";
-    return "Fetch failed";
+    return "Source unavailable";
   }
 
   if (key === "exec" || key === "process" || key === "git") {

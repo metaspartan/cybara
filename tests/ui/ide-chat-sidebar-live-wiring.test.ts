@@ -48,7 +48,10 @@ describe("IDE chat sidebar live wiring", () => {
 
   test("renders a live working timeline and stop control in IDE chat", () => {
     const source = readIdeChatPanelSource();
-    expect(source).toContain("const showWorkingTimeline =");
+    expect(source).toContain('const showWorkingTimeline = isSending || liveStatus !== "idle";');
+    expect(source).toContain('const sessionCurrentlyActive = liveStatus !== "idle";');
+    expect(source).toContain('if (payload.status === "error") {');
+    expect(source).toContain('setLiveStatus("idle");');
     expect(source).toContain("<IdeLiveActivityTimeline");
     expect(source).toContain("status={liveStatus}");
     expect(source).toContain("currentStep={liveCurrentStep}");

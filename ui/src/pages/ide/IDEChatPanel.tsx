@@ -471,8 +471,7 @@ export function IDEChatPanel({
     const matchedAgent = agents.find((agent) => agent.id === resolvedAgentId);
     return matchedAgent?.name || resolvedAgentId;
   }, [activeAgentId, agents, selectedAgentId]);
-  const showWorkingTimeline =
-    isSending || liveStatus !== "idle" || liveActivities.length > 0 || !!liveCurrentStep;
+  const showWorkingTimeline = isSending || liveStatus !== "idle";
 
   useEffect(() => {
     onPendingFileDiffsChange?.(pendingFileDiffs);
@@ -987,6 +986,12 @@ export function IDEChatPanel({
             payload.toolCallId,
             payload.sandboxProvider
           );
+          if (payload.status === "error") {
+            setLiveStatus("idle");
+            setLiveCurrentStep(null);
+            void refreshSession();
+            return;
+          }
           setLiveStatus("thinking");
           if (phase === "start") {
             setLiveCurrentStep(isGenericIdeStatusLabel(text) ? "Thinking..." : text);
@@ -1012,8 +1017,7 @@ export function IDEChatPanel({
   const handleSend = useCallback(
     async (submission: IdeChatComposerSubmission): Promise<IdeChatComposerResult> => {
       const trimmed = submission.message.trim();
-      const sessionCurrentlyActive =
-        liveStatus !== "idle" || liveActivities.length > 0 || !!liveCurrentStep;
+      const sessionCurrentlyActive = liveStatus !== "idle";
       const queueing = submission.queueMode === "queue";
       if (
         (!trimmed && submission.images.length === 0) ||
@@ -1156,8 +1160,6 @@ export function IDEChatPanel({
       contextPath,
       isReverting,
       isSending,
-      liveActivities.length,
-      liveCurrentStep,
       liveStatus,
       mapApiMessageToIde,
       onSelectedAgentIdChange,
