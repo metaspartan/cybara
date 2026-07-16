@@ -1,8 +1,18 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, statSync } from "fs";
-import { homedir } from "os";
-import { dirname, join } from "path";
+import { basename, dirname, join } from "path";
 import { pathToFileURL } from "url";
+import { resolveCybaraHome } from "../cybara-home";
 import { getIntegrationCredential } from "../integration-credentials";
+import {
+  ensureManagedTransformersRuntime,
+  managedTransformersRuntimeDir,
+} from "./transformers-package-runtime";
+import {
+  embedWithManagedTransformers,
+  hasManagedTransformersRuntime,
+  unloadManagedTransformers,
+  verifyManagedTransformersWorker,
+} from "./transformers-embedding-worker-client";
 
 export type EmbeddingProviderPreference =
   | "auto"
@@ -147,12 +157,7 @@ const TRANSFORMERS_RECOMMENDED_MODELS = [
   "Xenova/paraphrase-MiniLM-L3-v2",
 ];
 
-const TRANSFORMERS_CACHE_DIR = join(
-  process.env.HOME || process.env.USERPROFILE || homedir(),
-  ".cybara",
-  "memory",
-  "transformers"
-);
+const TRANSFORMERS_CACHE_DIR = join(resolveCybaraHome().dir, "memory", "transformers");
 const TRANSFORMERS_DEFAULT_DTYPE = "q8";
 const TRANSFORMERS_CACHE_SCAN_LIMIT = 4000;
 const TRANSFORMERS_CACHE_SCAN_TTL_MS = 15000;
@@ -171,6 +176,7 @@ const transformersRuntimeState = new Map<
 >();
 const transformersCacheSizeMemo = new Map<string, { computedAt: number; bytes: number | null }>();
 let transformersAvailabilityError: string | null = null;
+let managedTransformersWorkerRequired = false;
 
 function normalizeProvider(provider: unknown): EmbeddingProviderPreference {
   if (typeof provider !== "string") return "auto";
@@ -357,6 +363,12 @@ async function disposeTransformersPipeline(pipeline: unknown): Promise<void> {
 }
 
 async function disposeTransformersExtractor(model: string): Promise<void> {
+  if (managedTransformersWorkerRequired) {
+    clearProviderCache("transformers_js", model);
+    await unloadManagedTransformers(model, TRANSFORMERS_CACHE_DIR);
+    transformersRuntimeState.delete(model);
+    return;
+  }
   const pending = transformersExtractorCache.get(model);
   transformersExtractorCache.delete(model);
   clearProviderCache("transformers_js", model);
@@ -482,12 +494,36 @@ async function isOllamaAvailable(requestedModel?: string): Promise<boolean> {
   return models.some((model) => model.toLowerCase().includes("embed"));
 }
 
-async function isTransformersJsAvailable(): Promise<boolean> {
+async function isTransformersJsAvailable(installIfMissing = false): Promise<boolean> {
+  const executableName = basename(process.execPath).toLowerCase();
+  const compiledExecutable = executableName !== "bun" && executableName !== "bun.exe";
+  if (compiledExecutable && hasManagedTransformersRuntime()) {
+    managedTransformersWorkerRequired = true;
+    transformersAvailabilityError = null;
+    return true;
+  }
+  if (compiledExecutable && !installIfMissing) return false;
+
   try {
-    await Promise.race([
-      importTransformersModule(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
-    ]);
+    await importTransformersModule();
+    transformersAvailabilityError = null;
+    return true;
+  } catch (error) {
+    transformersAvailabilityError = error instanceof Error ? error.message : String(error);
+  }
+
+  if (hasManagedTransformersRuntime()) {
+    managedTransformersWorkerRequired = true;
+    transformersAvailabilityError = null;
+    return true;
+  }
+
+  if (!installIfMissing) return false;
+
+  try {
+    await ensureManagedTransformersRuntime();
+    await verifyManagedTransformersWorker(TRANSFORMERS_CACHE_DIR);
+    managedTransformersWorkerRequired = true;
     transformersAvailabilityError = null;
     return true;
   } catch (error) {
@@ -697,9 +733,12 @@ function dedupePaths(paths: string[]): string[] {
 }
 
 function collectSearchRoots(maxDepth = 8): string[] {
-  const seeds = [process.env.CYBARA_RESOURCE_DIR, process.cwd(), dirname(process.execPath)].filter(
-    (value): value is string => typeof value === "string" && value.length > 0
-  );
+  const seeds = [
+    process.env.CYBARA_RESOURCE_DIR,
+    managedTransformersRuntimeDir(),
+    process.cwd(),
+    dirname(process.execPath),
+  ].filter((value): value is string => typeof value === "string" && value.length > 0);
   const roots: string[] = [];
 
   for (const seed of seeds) {
@@ -1234,6 +1273,31 @@ function asNumericMatrix(value: unknown): number[][] {
   return single.length ? [single] : [];
 }
 
+async function embedTransformersTexts(model: string, texts: string[]): Promise<number[][]> {
+  if (managedTransformersWorkerRequired) {
+    return await embedWithManagedTransformers({
+      model,
+      texts,
+      dtype: getTransformersDtype(),
+      device: getTransformersDevice(),
+      cacheDir: TRANSFORMERS_CACHE_DIR,
+      onProgress: (progress, status) =>
+        updateRuntimeEntry(model, {
+          state: "loading",
+          loadProgress: progress,
+          loadStatus: status,
+          lastUsedAt: Date.now(),
+        }),
+    });
+  }
+  const extractor = (await getTransformersExtractor(model)) as (
+    input: string[],
+    options?: Record<string, unknown>
+  ) => Promise<unknown>;
+  const output = await extractor(texts, { pooling: "mean", normalize: true });
+  return asNumericMatrix(output);
+}
+
 function createTransformersProvider(modelInput?: string): EmbeddingProvider {
   const model = modelInput && modelInput.trim() ? modelInput.trim() : TRANSFORMERS_DEFAULT_MODEL;
   return {
@@ -1248,29 +1312,14 @@ function createTransformersProvider(modelInput?: string): EmbeddingProvider {
         return cached;
       }
 
-      const extractor = (await getTransformersExtractor(model)) as (
-        input: string,
-        options?: Record<string, unknown>
-      ) => Promise<unknown>;
-      const output = await extractor(sanitizeText(text, 4000), {
-        pooling: "mean",
-        normalize: true,
-      });
-      const embedding = asNumericArray(output);
-      if (!embedding.length) {
-        throw new Error("Transformers.js returned empty embedding");
-      }
+      const embedding = (await embedTransformersTexts(model, [sanitizeText(text, 4000)]))[0] || [];
+      if (!embedding.length) throw new Error("Transformers.js returned empty embedding");
       setCache(cacheKey, embedding);
       touchTransformersModel(model);
       return embedding;
     },
     embedBatch: async (texts: string[]) => {
       if (texts.length === 0) return [];
-      const extractor = (await getTransformersExtractor(model)) as (
-        input: string[],
-        options?: Record<string, unknown>
-      ) => Promise<unknown>;
-
       const uncachedTexts: string[] = [];
       const uncachedMapIndices: number[] = [];
       const cachedResults: (number[] | null)[] = texts.map((text, index) => {
@@ -1284,17 +1333,11 @@ function createTransformersProvider(modelInput?: string): EmbeddingProvider {
       });
 
       if (uncachedTexts.length > 0) {
-        const output = await extractor(uncachedTexts, {
-          pooling: "mean",
-          normalize: true,
-        });
-        const matrix = asNumericMatrix(output);
+        const matrix = await embedTransformersTexts(model, uncachedTexts);
         uncachedMapIndices.forEach((originalIndex, newIndex) => {
           const embedding = matrix[newIndex] || [];
           const cacheKey = getCacheKey("transformers_js", model, texts[originalIndex]);
-          if (embedding.length) {
-            setCache(cacheKey, embedding);
-          }
+          if (embedding.length) setCache(cacheKey, embedding);
           cachedResults[originalIndex] = embedding;
         });
       }
@@ -1397,7 +1440,7 @@ async function tryCreateProvider(
   }
 
   if (provider === "transformers_js") {
-    if (!(await isTransformersJsAvailable())) {
+    if (!(await isTransformersJsAvailable(true))) {
       return {
         provider: createNullProvider(),
         source: "none",
@@ -1475,12 +1518,18 @@ export async function createEmbeddingProvider(
     }
   }
 
-  const candidates: Array<{ provider: EmbeddingProviderPreference; model: string }> = [
+  const candidates: Array<{
+    provider: EmbeddingProviderPreference;
+    model: string;
+  }> = [
     { provider: "openai", model: normalized.model || OPENAI_DEFAULT_MODEL },
     { provider: "voyage", model: normalized.model || VOYAGE_DEFAULT_MODEL },
     { provider: "gemini", model: normalized.model || GEMINI_DEFAULT_MODEL },
     { provider: "ollama", model: normalized.model || OLLAMA_DEFAULT_MODEL },
-    { provider: "transformers_js", model: normalized.model || TRANSFORMERS_DEFAULT_MODEL },
+    {
+      provider: "transformers_js",
+      model: normalized.model || TRANSFORMERS_DEFAULT_MODEL,
+    },
     { provider: "local", model: "" },
   ];
 
@@ -1687,7 +1736,7 @@ export async function loadEmbeddingRuntime(
 
   if (provider === "transformers_js") {
     const selectedModel = model || TRANSFORMERS_DEFAULT_MODEL;
-    if (!(await isTransformersJsAvailable())) {
+    if (!(await isTransformersJsAvailable(true))) {
       updateRuntimeEntry(selectedModel, {
         state: "error",
         lastUsedAt: Date.now(),
