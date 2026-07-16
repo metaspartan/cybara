@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  classifySystemResourceStatus,
   getSystemMonitorSnapshot,
   parseDarwinSwapUsage,
   parseDarwinVmStatMemory,
@@ -12,8 +13,15 @@ describe("system monitor", () => {
     const startedAt = performance.now();
     const snapshot = getSystemMonitorSnapshot();
 
-    expect(snapshot.status).toBe("healthy");
+    expect(["healthy", "warning", "critical"]).toContain(snapshot.status);
     expect(performance.now() - startedAt).toBeLessThan(500);
+  });
+
+  test("classifies measured resource pressure", () => {
+    expect(classifySystemResourceStatus(20, 40, 50)).toBe("healthy");
+    expect(classifySystemResourceStatus(90, 40, 50)).toBe("warning");
+    expect(classifySystemResourceStatus(20, 98, 50)).toBe("critical");
+    expect(classifySystemResourceStatus(20, 40)).toBe("healthy");
   });
 
   test("reports macOS memory used without counting reclaimable inactive cache", () => {

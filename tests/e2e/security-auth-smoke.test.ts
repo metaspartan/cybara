@@ -197,7 +197,8 @@ describe("Security auth e2e", () => {
 
       const health = await request(baseUrl, "/api/health");
       expect(health.status).toBe(200);
-      expect(health.data.status).toBe("healthy");
+      expect(["healthy", "warning", "critical"]).toContain(health.data.status);
+      expect(health.data.checks?.database?.status).toBe("healthy");
 
       const missingAuth = await request(baseUrl, "/api/info");
       expect(missingAuth.status).toBe(401);

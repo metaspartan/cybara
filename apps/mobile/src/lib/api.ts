@@ -881,7 +881,13 @@ export class CybaraMobileApi {
   }
 
   exportResearch(
-    format: "cybara_trace" | "trl_sft" | "prompt_completion" | "long_context"
+    format:
+      | "cybara_trace"
+      | "trl_sft"
+      | "distillation_sft"
+      | "hf_session_trace"
+      | "prompt_completion"
+      | "long_context"
   ): Promise<{
     filename: string;
     mimeType: string;

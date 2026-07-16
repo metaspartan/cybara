@@ -8,6 +8,7 @@ const readDashboardModules = () =>
   read("screens/DashboardScreen.tsx") +
   read("screens/dashboardDetailPanels.tsx") +
   read("screens/dashboardSettingsPanels.tsx") +
+  read("screens/dashboardAdvancedSettingsPanels.tsx") +
   read("screens/dashboardModelRouterPanel.tsx") +
   read("screens/dashboardSurfaceData.ts");
 

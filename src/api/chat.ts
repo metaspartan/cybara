@@ -2575,7 +2575,8 @@ async function handleChatTurn(
   // Only mark the session persisted when the write actually succeeded, so a
   // failed write is retried on the next turn instead of being silently lost.
   session.persisted = await persistChatSessionSnapshot(session, assistantMessage);
-  if (session.persisted) {
+  const labSettings = config.getLabSettings();
+  if (session.persisted && labSettings.enabled && labSettings.trajectoryCaptureEnabled) {
     recordCompletedTrajectory({
       sessionId: session.id,
       agentId: session.agentId,

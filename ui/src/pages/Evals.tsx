@@ -1,6 +1,7 @@
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Switch } from "@/components/ui/Switch";
-import { type AgentEvalRun, type AgentGolden, evalsApi } from "@/lib/api";
+import { type AgentEvalRun, type AgentGolden, evalsApi, settingsApi } from "@/lib/api";
+import { readLabSettings } from "@/lib/labSettings";
 import { cn } from "@/lib/utils";
 import { TraceDatasetPanel } from "@/pages/research/TraceDatasetPanel";
 import { BenchmarkPanel } from "@/pages/research/BenchmarkPanel";
@@ -28,7 +29,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { type ChangeEvent, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 function EvalsExplainer() {
@@ -47,8 +48,8 @@ function EvalsExplainer() {
     },
     {
       icon: ShieldCheck,
-      title: "Measure behavioral drift",
-      body: "Compare tool sequences, outputs, and completion structure across models, prompts, and tool versions without expecting identical wording.",
+      title: "Verify behavior and results",
+      body: "Check tool order and data shape together with deterministic answer and tool-input assertions.",
     },
   ];
   return (
@@ -57,8 +58,8 @@ function EvalsExplainer() {
         <div>
           <p className="text-sm font-semibold text-white">Reproducible agent experiments</p>
           <p className="mt-1 max-w-3xl text-[13px] leading-6 text-gray-300">
-            Save representative runs, replay them under a controlled configuration, and inspect
-            structural changes without treating nondeterministic language as a failure.
+            Save representative runs, replay them under a controlled configuration, and catch
+            structural or answer regressions with deterministic checks.
           </p>
         </div>
         <button
@@ -177,6 +178,10 @@ function GoldenRow({
         <span>·</span>
         <span>{golden.baseline.structure.tools.length} expected tools</span>
         <span>·</span>
+        <span>
+          {(golden.assertions.response ? 1 : 0) + golden.assertions.tools.length} correctness checks
+        </span>
+        <span>·</span>
         <Link
           to={`/chat?session=${encodeURIComponent(golden.baseline.sessionId)}`}
           className="text-indigo-300 hover:text-indigo-200"
@@ -210,7 +215,7 @@ function GoldenRow({
             <span className="flex items-center gap-2 font-medium text-gray-200">
               {statusIcon(latestRun.status)}
               {latestRun.status === "passed"
-                ? "Structurally equivalent"
+                ? "All checks passed"
                 : latestRun.status === "failed"
                   ? "Behavior diverged"
                   : latestRun.status === "error"
@@ -259,6 +264,15 @@ export function Evals() {
   const [sanitizeExport, setSanitizeExport] = useState(true);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const configQuery = useQuery({
+    queryKey: ["config", "lab"],
+    queryFn: async () => {
+      const response = await settingsApi.getConfig();
+      if (!response.success) throw new Error(response.error || "Failed to load Lab settings");
+      return readLabSettings(response.data?.lab);
+    },
+  });
+  const labSettings = configQuery.data ?? readLabSettings(undefined);
   const query = useQuery({
     queryKey: ["agent-evals"],
     queryFn: async () => {
@@ -267,7 +281,11 @@ export function Evals() {
         throw new Error(response.error || "Failed to load evals");
       return response.data;
     },
+    enabled: configQuery.isSuccess && labSettings.enabled,
   });
+  useEffect(() => {
+    if (configQuery.data) setSanitizeExport(configQuery.data.sanitizeExportsByDefault);
+  }, [configQuery.data]);
   const latestRuns = useMemo(() => {
     const map = new Map<string, AgentEvalRun>();
     for (const run of query.data?.runs ?? []) {
@@ -382,6 +400,68 @@ export function Evals() {
     };
   }, [goldens, latestRuns]);
 
+  if (configQuery.isLoading) {
+    return (
+      <PageLayout title="Lab" subtitle="Curate agent data, inspect traces, and measure behavior">
+        <div className="flex min-h-[360px] items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-[rgb(var(--accent-primary))]" />
+        </div>
+      </PageLayout>
+    );
+  }
+
+  if (configQuery.isError) {
+    return (
+      <PageLayout title="Lab" subtitle="Curate agent data, inspect traces, and measure behavior">
+        <div className="flex min-h-[420px] items-center justify-center text-center">
+          <div className="max-w-md">
+            <AlertCircle className="mx-auto h-10 w-10 text-red-300" />
+            <h2 className="mt-4 text-base font-semibold text-[var(--text-primary)]">
+              Lab settings unavailable
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">
+              {configQuery.error instanceof Error
+                ? configQuery.error.message
+                : "The gateway did not return the Lab configuration."}
+            </p>
+            <button
+              type="button"
+              onClick={() => void configQuery.refetch()}
+              className="mt-4 inline-flex h-9 items-center rounded-md bg-[rgb(var(--accent-primary))] px-3 text-sm font-medium text-white"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      </PageLayout>
+    );
+  }
+
+  if (!labSettings.enabled) {
+    return (
+      <PageLayout title="Lab" subtitle="Curate agent data, inspect traces, and measure behavior">
+        <div className="flex min-h-[420px] items-center justify-center text-center">
+          <div className="max-w-md">
+            <FlaskConical className="mx-auto h-10 w-10 text-[var(--text-muted)]" />
+            <h2 className="mt-4 text-base font-semibold text-[var(--text-primary)]">
+              Lab is disabled
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-muted)]">
+              Existing traces and golden tests remain stored. Enable Lab to capture turns, run
+              benchmarks, replay evals, or export training datasets.
+            </p>
+            <Link
+              to="/settings?section=lab"
+              className="mt-4 inline-flex h-9 items-center rounded-md bg-[rgb(var(--accent-primary))] px-3 text-sm font-medium text-white"
+            >
+              Open Lab settings
+            </Link>
+          </div>
+        </div>
+      </PageLayout>
+    );
+  }
+
   return (
     <PageLayout
       title="Lab"
@@ -429,7 +509,10 @@ export function Evals() {
         ))}
       </div>
       {labView === "data" ? (
-        <TraceDatasetPanel />
+        <TraceDatasetPanel
+          defaultFormat={labSettings.defaultExportFormat}
+          defaultSanitize={labSettings.sanitizeExportsByDefault}
+        />
       ) : labView === "computer-use" ? (
         <ComputerUseDatasetPanel />
       ) : labView === "benchmarks" ? (
@@ -439,6 +522,12 @@ export function Evals() {
       ) : (
         <>
           <EvalsExplainer />
+          {!labSettings.goldenTurnsEnabled && (
+            <div className="mb-4 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5 text-xs text-[var(--text-muted)]">
+              Golden turn actions are disabled. Existing tests remain available for replay and
+              export.
+            </div>
+          )}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2.5">
             <div className="min-w-0">
               <p className="text-[13px] font-medium text-gray-100">Portable eval data</p>

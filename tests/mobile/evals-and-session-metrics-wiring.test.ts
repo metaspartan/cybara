@@ -35,6 +35,8 @@ describe("mobile eval and session runtime parity", () => {
     expect(api).toContain("pageSize=${encodeURIComponent(String(pageSize))}");
     expect(detail).toContain('label: "Fork chat"');
     expect(detail).toContain('label: "Save golden run"');
+    expect(detail).toContain("onPress: saveGoldenRunFromChatSettings");
+    expect(detail).not.toContain("runFromChatSettings(() => void saveGoldenRun())");
     expect(metrics).toContain('title="Chat runtime"');
     expect(metrics).toContain('label="Average TTFT"');
     expect(metrics).toContain('label="Input"');
@@ -47,6 +49,12 @@ describe("mobile eval and session runtime parity", () => {
     expect(evals).toContain("Copy redacted eval JSONL");
     expect(evals).toContain("Copy replayable eval suite");
     expect(evals).toContain("Import eval suite from clipboard");
+    expect(evals).toContain("api.config()");
+    expect(evals).toContain("Enable Lab");
+    expect(evals).toContain("Golden turn actions");
+    expect(evals).toContain("Capture completed turns");
+    expect(evals).toContain("Redact exports by default");
+    expect(evals).toContain('exportResearch("distillation_sft")');
     expect(settings).toContain("<MobileEvalsPanel");
   });
 });

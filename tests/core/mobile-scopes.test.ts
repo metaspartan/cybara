@@ -184,7 +184,8 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("POST", "/api/evals/import")).toBe("manage");
     expect(routeRequiredScope("DELETE", "/api/evals/goldens/example")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/evals/run")).toBe("chat");
-    expect(routeRequiredScope("GET", "/api/metrics/sessions")).toBeNull();
+    expect(routeRequiredScope("PUT", "/api/evals/goldens/example/assertions")).toBe("manage");
+    expect(routeRequiredScope("GET", "/api/metrics/sessions")).toBe("read");
     expect(routeRequiredScope("DELETE", "/api/sessions/session-1/artifacts/file.md")).toBe("chat");
     expect(routeRequiredScope("GET", "/api/artifacts")).toBe("read");
     expect(routeRequiredScope("POST", "/api/artifacts")).toBe("chat");
@@ -294,6 +295,52 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("GET", "/api/memory")).toBe("read");
     expect(routeRequiredScope("GET", "/api/ws/status")).toBe("read");
     expect(routeRequiredScope("POST", "/api/browser/tabs/tab-1/navigate")).toBe("terminal");
+  });
+
+  test("unclassified and sensitive routes fail closed for scoped principals", () => {
+    expect(routeRequiredScope("PUT", "/api/system-prompt")).toBe("manage");
+    expect(routeRequiredScope("PUT", "/api/settings/tool-capabilities")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/git/branch")).toBe("manage");
+    expect(routeRequiredScope("PUT", "/api/telemetry/settings")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/loops/run-1/cancel")).toBe("manage");
+    expect(routeRequiredScope("GET", "/api/system-prompt")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/metrics/sessions")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/logs/system")).toBe("read");
+    expect(routeRequiredScope("POST", "/api/future-unclassified-route")).toBe("root");
+  });
+
+  test("read-only device tokens cannot mutate routes that were previously unclassified", () => {
+    const previousApiKey = process.env.CYBARA_API_KEY;
+    process.env.CYBARA_API_KEY = "cybara_scope_test_key";
+    const { token } = createMobileDevice({
+      baseUrl: "http://127.0.0.1:4269",
+      scopes: ["read"],
+    });
+    try {
+      const headers = { authorization: `Bearer ${token}` };
+      const paths = [
+        ["PUT", "/api/system-prompt"],
+        ["PUT", "/api/settings/tool-capabilities"],
+        ["POST", "/api/git/branch"],
+        ["PUT", "/api/telemetry/settings"],
+        ["POST", "/api/loops/run-1/cancel"],
+        ["POST", "/api/future-unclassified-route"],
+      ] as const;
+
+      for (const [method, path] of paths) {
+        const result = securityCheck(method, path, headers, "10.1.2.3");
+        expect(result.passed).toBe(false);
+        expect(result.statusCode).toBe(403);
+      }
+
+      expect(securityCheck("GET", "/api/metrics/sessions", headers, "10.1.2.3").passed).toBe(true);
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.CYBARA_API_KEY;
+      } else {
+        process.env.CYBARA_API_KEY = previousApiKey;
+      }
+    }
   });
 });
 

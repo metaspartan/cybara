@@ -189,6 +189,22 @@ export interface ComputerUseSettings {
   trajectoryVideoEnabled: boolean;
 }
 
+export type LabExportFormat =
+  | "distillation_sft"
+  | "trl_sft"
+  | "hf_session_trace"
+  | "cybara_trace"
+  | "long_context"
+  | "prompt_completion";
+
+export interface LabSettings {
+  enabled: boolean;
+  goldenTurnsEnabled: boolean;
+  trajectoryCaptureEnabled: boolean;
+  sanitizeExportsByDefault: boolean;
+  defaultExportFormat: LabExportFormat;
+}
+
 export interface TokenOptimizationSettings {
   toonStructuredDataEnabled: boolean;
 }
@@ -312,6 +328,14 @@ export const DEFAULT_COMPUTER_USE_SETTINGS: ComputerUseSettings = {
   driverCommand: "",
   trajectoryCaptureEnabled: false,
   trajectoryVideoEnabled: false,
+};
+
+export const DEFAULT_LAB_SETTINGS: LabSettings = {
+  enabled: true,
+  goldenTurnsEnabled: true,
+  trajectoryCaptureEnabled: true,
+  sanitizeExportsByDefault: true,
+  defaultExportFormat: "distillation_sft",
 };
 
 function parseJsonValue(raw: string): unknown {
@@ -586,6 +610,40 @@ function normalizeComputerUseSettings(value: unknown): ComputerUseSettings {
   };
 }
 
+function normalizeLabExportFormat(value: unknown): LabExportFormat {
+  if (
+    value === "distillation_sft" ||
+    value === "trl_sft" ||
+    value === "hf_session_trace" ||
+    value === "cybara_trace" ||
+    value === "long_context" ||
+    value === "prompt_completion"
+  ) {
+    return value;
+  }
+  return DEFAULT_LAB_SETTINGS.defaultExportFormat;
+}
+
+export function normalizeLabSettings(value: unknown): LabSettings {
+  const parsed = asObject(value);
+  return {
+    enabled: typeof parsed?.enabled === "boolean" ? parsed.enabled : DEFAULT_LAB_SETTINGS.enabled,
+    goldenTurnsEnabled:
+      typeof parsed?.goldenTurnsEnabled === "boolean"
+        ? parsed.goldenTurnsEnabled
+        : DEFAULT_LAB_SETTINGS.goldenTurnsEnabled,
+    trajectoryCaptureEnabled:
+      typeof parsed?.trajectoryCaptureEnabled === "boolean"
+        ? parsed.trajectoryCaptureEnabled
+        : DEFAULT_LAB_SETTINGS.trajectoryCaptureEnabled,
+    sanitizeExportsByDefault:
+      typeof parsed?.sanitizeExportsByDefault === "boolean"
+        ? parsed.sanitizeExportsByDefault
+        : DEFAULT_LAB_SETTINGS.sanitizeExportsByDefault,
+    defaultExportFormat: normalizeLabExportFormat(parsed?.defaultExportFormat),
+  };
+}
+
 function normalizeSpeechOutputFormat(value: unknown): SpeechTtsSettings["outputFormat"] {
   if (typeof value !== "string") return DEFAULT_SPEECH_SETTINGS.tts.outputFormat;
   const normalized = value.trim().toLowerCase();
@@ -829,6 +887,7 @@ class ConfigManager {
       token_optimization: { ...DEFAULT_TOKEN_OPTIMIZATION_SETTINGS },
       speech: { ...DEFAULT_SPEECH_SETTINGS },
       computer_use: { ...DEFAULT_COMPUTER_USE_SETTINGS },
+      lab: { ...DEFAULT_LAB_SETTINGS },
       chat_appearance: { ...DEFAULT_CHAT_APPEARANCE_SETTINGS },
       default_workspace_dir: homeDir,
     };
@@ -1020,6 +1079,19 @@ class ConfigManager {
       update ? { ...this.getComputerUseSettings(), ...update } : settings
     );
     this.set("computer_use", normalized);
+    return normalized;
+  }
+
+  getLabSettings(): LabSettings {
+    return normalizeLabSettings(this.get<unknown>("lab"));
+  }
+
+  setLabSettings(settings: unknown): LabSettings {
+    const update = asObject(settings);
+    const normalized = normalizeLabSettings(
+      update ? { ...this.getLabSettings(), ...update } : settings
+    );
+    this.set("lab", normalized);
     return normalized;
   }
 

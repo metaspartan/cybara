@@ -1,4 +1,11 @@
-import type { AgentEvalRun, AgentGolden, AgentTrajectory, EvalMessage } from "./types";
+import type {
+  AgentEvalRun,
+  AgentGolden,
+  AgentTrajectory,
+  EvalMessage,
+  GoldenAssertions,
+} from "./types";
+import { parseGoldenAssertions } from "./assertions";
 
 export const EVAL_SUITE_FORMAT = "cybara-agent-eval-suite";
 export const EVAL_SUITE_VERSION = 1;
@@ -16,6 +23,7 @@ export interface ParsedEvalSuiteGolden {
   name: string;
   description: string | null;
   tags: string[];
+  assertions: GoldenAssertions;
   baseline: AgentTrajectory;
 }
 
@@ -25,6 +33,7 @@ export interface AgentGoldenSummary {
   name: string;
   description: string | null;
   tags: string[];
+  assertions: GoldenAssertions;
   baseline: {
     id: string;
     sessionId: string;
@@ -91,6 +100,27 @@ export function sanitizeTrajectory(trajectory: AgentTrajectory): AgentTrajectory
   };
 }
 
+function sanitizeGoldenAssertions(assertions: GoldenAssertions): GoldenAssertions {
+  const response = assertions.response;
+  const sanitizedResponse =
+    response?.type === "exact_text" || response?.type === "normalized_text"
+      ? { ...response, expected: "[redacted]" }
+      : response?.type === "regex"
+        ? { type: "regex" as const, pattern: ".*" }
+        : response?.type === "json_schema"
+          ? { type: "json_schema" as const, schema: {} }
+          : response?.type === "citations"
+            ? { type: "citations" as const, minimum: response.minimum }
+            : undefined;
+  return {
+    ...(sanitizedResponse ? { response: sanitizedResponse } : {}),
+    tools: assertions.tools.map((tool) => ({
+      index: tool.index,
+      ...(tool.name ? { name: tool.name } : {}),
+    })),
+  };
+}
+
 export function createEvalSuiteBundle(
   goldens: AgentGolden[],
   options?: { sanitize?: boolean }
@@ -103,6 +133,7 @@ export function createEvalSuiteBundle(
     sanitized,
     goldens: goldens.map((golden) => ({
       ...golden,
+      assertions: sanitized ? sanitizeGoldenAssertions(golden.assertions) : golden.assertions,
       baseline: sanitized ? sanitizeTrajectory(golden.baseline) : golden.baseline,
     })),
   };
@@ -115,6 +146,7 @@ export function summarizeGolden(golden: AgentGolden): AgentGoldenSummary {
     name: golden.name,
     description: golden.description,
     tags: golden.tags,
+    assertions: golden.assertions,
     baseline: {
       id: golden.baseline.id,
       sessionId: golden.baseline.sessionId,
@@ -235,11 +267,13 @@ export function parseEvalSuiteBundle(value: unknown): ParsedEvalSuiteGolden[] {
           .filter(Boolean)
           .slice(0, 20)
       : [];
+    const baseline = parseTrajectory(entry.baseline, index);
     return {
       name: boundedText(entry.name, `goldens[${index}].name`, 200, true),
       description: boundedText(entry.description, `goldens[${index}].description`, 2000) || null,
       tags,
-      baseline: parseTrajectory(entry.baseline, index),
+      assertions: parseGoldenAssertions(entry.assertions, baseline),
+      baseline,
     };
   });
 }

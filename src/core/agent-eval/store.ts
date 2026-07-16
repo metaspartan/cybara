@@ -1,6 +1,7 @@
 import db from "../database";
 import type { AgentEvalRun, AgentGolden, AgentTrajectory, StructuralComparison } from "./types";
 import type { ParsedEvalSuiteGolden } from "./portable";
+import { parseGoldenAssertions } from "./assertions";
 
 interface TrajectoryRow {
   id: string;
@@ -21,6 +22,7 @@ interface GoldenRow {
   name: string;
   description: string | null;
   tags_json: string;
+  assertions_json: string | null;
   baseline_json: string;
   created_at: string;
   updated_at: string;
@@ -58,13 +60,18 @@ function trajectoryFromRow(row: TrajectoryRow): AgentTrajectory {
 }
 
 function goldenFromRow(row: GoldenRow): AgentGolden {
+  const baseline = parseJson<AgentTrajectory>(row.baseline_json);
   return {
     id: row.id,
     trajectoryId: row.trajectory_id,
     name: row.name,
     description: row.description,
     tags: parseJson<string[]>(row.tags_json),
-    baseline: parseJson<AgentTrajectory>(row.baseline_json),
+    assertions: parseGoldenAssertions(
+      row.assertions_json ? parseJson<unknown>(row.assertions_json) : undefined,
+      baseline
+    ),
+    baseline,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -163,6 +170,7 @@ export function saveGolden(input: {
   name: string;
   description?: string | null;
   tags?: string[];
+  assertions?: unknown;
 }): AgentGolden {
   const id = crypto.randomUUID();
   const tags = (input.tags ?? [])
@@ -171,14 +179,15 @@ export function saveGolden(input: {
     .slice(0, 20);
   db.prepare(
     `INSERT INTO agent_goldens
-      (id, trajectory_id, name, description, tags_json, baseline_json)
-     VALUES (?, ?, ?, ?, ?, ?)`
+      (id, trajectory_id, name, description, tags_json, assertions_json, baseline_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     input.trajectory.id,
     input.name.trim(),
     input.description?.trim() || null,
     JSON.stringify(tags),
+    JSON.stringify(parseGoldenAssertions(input.assertions, input.trajectory)),
     JSON.stringify(input.trajectory)
   );
   return getGolden(id) as AgentGolden;
@@ -212,6 +221,7 @@ export function importGoldens(entries: ParsedEvalSuiteGolden[]): AgentGolden[] {
           name: entry.name,
           description: entry.description,
           tags: entry.tags,
+          assertions: entry.assertions,
         })
       );
     }
@@ -226,6 +236,16 @@ export function deleteGolden(id: string): boolean {
     deleted = (db.prepare("DELETE FROM agent_goldens WHERE id = ?").run(id).changes ?? 0) > 0;
   })();
   return deleted;
+}
+
+export function updateGoldenAssertions(id: string, assertions: unknown): AgentGolden | null {
+  const golden = getGolden(id);
+  if (!golden) return null;
+  const parsed = parseGoldenAssertions(assertions, golden.baseline);
+  db.prepare(
+    "UPDATE agent_goldens SET assertions_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+  ).run(JSON.stringify(parsed), id);
+  return getGolden(id);
 }
 
 export function createEvalRun(goldenId: string): AgentEvalRun {

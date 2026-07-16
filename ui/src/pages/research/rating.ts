@@ -1,4 +1,4 @@
-export const RATING_CEILING = 3500;
+export const RATING_CEILING = 4050;
 
 export interface RatingTier {
   label: string;
@@ -9,43 +9,43 @@ export interface RatingTier {
 
 export const ratingTiers: RatingTier[] = [
   {
-    label: "Emerging",
+    label: "Band 1",
     below: 1000,
     tone: "text-gray-400",
     chip: "border-gray-400/30 bg-gray-400/10 text-gray-300",
   },
   {
-    label: "Developing",
+    label: "Band 2",
     below: 1400,
     tone: "text-orange-300",
     chip: "border-orange-400/30 bg-orange-400/10 text-orange-200",
   },
   {
-    label: "Capable",
+    label: "Band 3",
     below: 1800,
     tone: "text-amber-300",
     chip: "border-amber-400/30 bg-amber-400/10 text-amber-200",
   },
   {
-    label: "Advanced",
+    label: "Band 4",
     below: 2200,
     tone: "text-blue-300",
     chip: "border-blue-400/30 bg-blue-400/10 text-blue-200",
   },
   {
-    label: "Expert",
+    label: "Band 5",
     below: 2600,
     tone: "text-indigo-300",
     chip: "border-indigo-400/30 bg-indigo-400/10 text-indigo-200",
   },
   {
-    label: "Frontier",
+    label: "Band 6",
     below: 3000,
     tone: "text-emerald-300",
     chip: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
   },
   {
-    label: "Superhuman",
+    label: "Band 7",
     below: Number.POSITIVE_INFINITY,
     tone: "text-fuchsia-300",
     chip: "border-fuchsia-400/30 bg-fuchsia-400/10 text-fuchsia-200",

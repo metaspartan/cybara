@@ -5,6 +5,10 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  browserLaunchArgs,
+  findSystemBrowserExecutable,
+} from "../../src/core/browser/browser-executable";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const RUN_BROWSER_E2E = process.env.RUN_BROWSER_E2E === "1" || process.env.CI_BROWSER_E2E === "1";
@@ -150,7 +154,12 @@ describeOrSkip("IDE web UI browser smoke", () => {
     });
     expect(setupResponse.status).toBe(200);
 
-    browser = await chromium.launch({ headless: true });
+    const executablePath = findSystemBrowserExecutable();
+    browser = await chromium.launch({
+      headless: true,
+      args: browserLaunchArgs(),
+      ...(executablePath ? { executablePath } : {}),
+    });
     page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     await page.addInitScript((token) => {
       window.localStorage.setItem("cybara_api_key", token);

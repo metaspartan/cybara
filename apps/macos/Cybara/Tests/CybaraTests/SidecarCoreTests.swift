@@ -51,6 +51,8 @@ final class SidecarCoreTests: XCTestCase {
 
     func testHealthyResponseAccepts200WithStatus() {
         XCTAssertTrue(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"status":"healthy"}"#))
+        XCTAssertTrue(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"status":"warning"}"#))
+        XCTAssertTrue(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"status":"critical"}"#))
     }
 
     func testHealthyResponseToleratesWhitespace() {
@@ -69,6 +71,7 @@ final class SidecarCoreTests: XCTestCase {
 
     func testHealthyResponseRejectsWrongOrMissingStatus() {
         XCTAssertFalse(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"status":"degraded"}"#))
+        XCTAssertFalse(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"status":"unhealthy"}"#))
         XCTAssertFalse(SidecarCore.isHealthyResponse(statusCode: 200, body: "OK"))
         XCTAssertFalse(SidecarCore.isHealthyResponse(statusCode: 200, body: ""))
         // A different process squatting on the port must not be mistaken for Cybara.

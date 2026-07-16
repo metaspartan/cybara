@@ -41,6 +41,7 @@ interface ChatMessageTimelineProps {
   copiedMessageIndex: number | null;
   entries: VisibleMessageEntry[];
   forkingMessageIndex: number | null;
+  goldenTurnsEnabled: boolean;
   liveActivities: LiveActivityItem[];
   liveCurrentStep: string | null;
   liveStatus: "thinking" | "generating" | "compacting" | "idle";
@@ -64,6 +65,7 @@ export function ChatMessageTimeline({
   copiedMessageIndex,
   entries,
   forkingMessageIndex,
+  goldenTurnsEnabled,
   liveActivities,
   liveCurrentStep,
   liveStatus,
@@ -266,7 +268,7 @@ export function ChatMessageTimeline({
                     )}
                   </button>
                 )}
-                {message.role === "assistant" && sessionId && (
+                {message.role === "assistant" && sessionId && goldenTurnsEnabled && (
                   <button
                     type="button"
                     onClick={() => onSaveGolden(originalIndex)}

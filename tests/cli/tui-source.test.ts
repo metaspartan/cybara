@@ -33,10 +33,14 @@ const cliTuiChatChromeSource = readFileSync(
   join(root, "src", "cli", "tui", "components", "chat-chrome.tsx"),
   "utf8"
 );
-const cliTuiInteractiveChatSource = readFileSync(
+const cliTuiInteractiveChatSource = [
   join(root, "src", "cli", "tui", "components", "interactive-chat.tsx"),
-  "utf8"
-);
+  join(root, "src", "cli", "tui", "interactive-chat-data.ts"),
+  join(root, "src", "cli", "tui", "components", "interactive-chat-layout.tsx"),
+  join(root, "src", "cli", "tui", "components", "interactive-chat-view.tsx"),
+]
+  .map((file) => readFileSync(file, "utf8"))
+  .join("\n");
 const cliTuiMarkdownRenderSource = readFileSync(
   join(root, "src", "cli", "tui", "components", "markdown-render.tsx"),
   "utf8"
@@ -360,9 +364,9 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("ChatHeader");
     expect(cliTuiInteractiveChatSource).toContain("ChatShortcutRail");
     expect(cliTuiInteractiveChatSource).toContain(
-      "borderColor={sending ? tuiPalette.accent : tuiPalette.chrome}"
+      "borderColor={sending ? palette.accent : palette.chrome}"
     );
-    expect(cliTuiInteractiveChatSource).toContain("backgroundColor={tuiPalette.background}");
+    expect(cliTuiInteractiveChatSource).toContain("backgroundColor={palette.background}");
     expect(cliTuiChatEnvironmentViewSource).toContain("borderColor={palette.chrome}");
     expect(cliTuiChatChromeSource).toContain("color={palette.shortcut}");
     expect(cliTuiInteractiveChatSource).not.toContain("<Box marginTop={1} flexShrink={0}>");

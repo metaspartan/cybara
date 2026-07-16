@@ -306,8 +306,17 @@ describe("native macOS shell wiring", () => {
 
   test("native settings centers its content column and keeps cards left-aligned", () => {
     const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+    const i18n = readFileSync(join(MACOS_APP_DIR, "NativeI18n.swift"), "utf8");
 
     expect(settings).toContain("static let maxContentWidth: CGFloat = 900");
+    expect(settings).toContain(
+      "static let contentInset = EdgeInsets(top: 16, leading: 16, bottom: 18, trailing: 16)"
+    );
+    expect(settings).toContain(".frame(width: 860, height: 720)");
+    expect(settings).toContain(
+      ".clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))"
+    );
+    expect(i18n).toContain('"settings.accessibility": "Accessibility"');
     expect(settings).toContain(
       ".frame(maxWidth: NativeSettingsLayout.maxContentWidth, maxHeight: .infinity, alignment: .topLeading)"
     );

@@ -477,6 +477,12 @@ export function SessionDetailPanel({
   setHeaderAction?: Dispatch<SetStateAction<ChatHeaderAction | null>>;
 }) {
   const insets = useSafeAreaInsets();
+  const labConfig =
+    config?.lab && typeof config.lab === "object" && !Array.isArray(config.lab)
+      ? (config.lab as Record<string, unknown>)
+      : {};
+  const goldenTurnActionsEnabled =
+    labConfig.enabled !== false && labConfig.goldenTurnsEnabled !== false;
   const navFootprint = insets.bottom + MOBILE_NAV_CHROME.floatingMargin + MOBILE_NAV_CHROME.height;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
@@ -1979,6 +1985,10 @@ export function SessionDetailPanel({
     setChatSettingsVisible(false);
     setTimeout(action, 180);
   };
+  const saveGoldenRunFromChatSettings = () => {
+    setChatSettingsVisible(false);
+    setTimeout(() => void saveGoldenRun(), 180);
+  };
   const shareNearbyChat = async () => {
     setNearbySharing(true);
     try {
@@ -2094,14 +2104,18 @@ export function SessionDetailPanel({
           } satisfies ChatSettingsAction,
         ]
       : []),
-    {
-      icon: FlaskConical,
-      label: "Save golden run",
-      disabled:
-        reliabilityAction !== null ||
-        !detail?.messages.some((message) => message.role === "assistant"),
-      onPress: () => runFromChatSettings(() => void saveGoldenRun()),
-    },
+    ...(goldenTurnActionsEnabled
+      ? [
+          {
+            icon: FlaskConical,
+            label: "Save golden run",
+            disabled:
+              reliabilityAction !== null ||
+              !detail?.messages.some((message) => message.role === "assistant"),
+            onPress: saveGoldenRunFromChatSettings,
+          } satisfies ChatSettingsAction,
+        ]
+      : []),
     {
       icon: Trash2,
       label: "Delete chat",

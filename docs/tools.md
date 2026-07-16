@@ -498,9 +498,8 @@ Invoke a discovered tool by name with an arguments object. Supports built-in and
 ```
 
 ### execute_code
-Run JavaScript/TypeScript that calls other cybara tools programmatically via the `cybara` namespace.
-Use this to collapse many tool round-trips into one call for data processing, loops, and aggregation.
-The last expression's value is returned. Runs with a timeout (default 15s, max 60s).
+Run trusted JavaScript/TypeScript in a killable host child process that calls enabled tools through the `cybara` namespace.
+Use this to collapse many tool round-trips into one call for data processing, loops, and aggregation. It is dangerous host execution with filesystem and network access, not a security sandbox. Use `sandbox_run` for untrusted code. Return a value explicitly when one is needed. The timeout defaults to 15 seconds and is capped at 60 seconds.
 ```json
 {
   "name": "execute_code",

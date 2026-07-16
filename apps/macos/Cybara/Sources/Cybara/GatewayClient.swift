@@ -1037,10 +1037,10 @@ struct GatewayClient: Sendable {
         ])
     }
 
-    func exportResearch(format: String) async throws -> GatewayEvalExportResponse {
+    func exportResearch(format: String, sanitize: Bool = true) async throws -> GatewayEvalExportResponse {
         try await get("api/evals/research/export", as: GatewayEvalExportResponse.self, queryItems: [
             URLQueryItem(name: "format", value: format),
-            URLQueryItem(name: "sanitize", value: "1"),
+            URLQueryItem(name: "sanitize", value: sanitize ? "1" : "0"),
         ])
     }
 

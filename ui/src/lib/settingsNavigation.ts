@@ -15,6 +15,7 @@ export type SettingsSectionId =
   | "skills"
   | "tools"
   | "memory"
+  | "lab"
   | "voice"
   | "safety"
   | "wallet"
@@ -81,6 +82,11 @@ export const settingsSectionGroups: SettingsSectionGroup[] = [
         id: "memory",
         labelKey: "nav.memory",
         description: "Memory provider, learning, and indexing",
+      },
+      {
+        id: "lab",
+        labelKey: "settings.lab",
+        description: "Evals, traces, benchmarks, and training data",
       },
       {
         id: "voice",

@@ -7,7 +7,7 @@ const read = (rel: string) =>
 
 describe("meta LLM calls suppress live streaming", () => {
   test("ToolContext exposes suppressStreaming", () => {
-    expect(read("src/core/tools/index.ts")).toContain("suppressStreaming?: boolean;");
+    expect(read("src/core/tools/types.ts")).toContain("suppressStreaming?: boolean;");
   });
 
   test("status + Codex token broadcasts are gated by suppressStreaming", () => {

@@ -1,4 +1,5 @@
 import { ensureSessionTrajectory, replayGolden, saveGolden } from "../../agent-eval";
+import { config } from "../../config";
 import type { ToolContext } from "../index";
 
 function requiredString(value: unknown, name: string): string {
@@ -10,6 +11,11 @@ export async function handleEvalSave(
   args: Record<string, unknown>,
   context?: ToolContext
 ): Promise<unknown> {
+  const lab = config.getLabSettings();
+  if (!lab.enabled) throw new Error("Validation error: Lab is disabled in Settings");
+  if (!lab.goldenTurnsEnabled) {
+    throw new Error("Validation error: Golden turns are disabled in Lab settings");
+  }
   const sessionId =
     typeof args.sessionId === "string" && args.sessionId.trim()
       ? args.sessionId.trim()
@@ -30,11 +36,15 @@ export async function handleEvalSave(
     tags: Array.isArray(args.tags)
       ? args.tags.filter((tag): tag is string => typeof tag === "string")
       : [],
+    assertions: args.assertions,
   });
   return { success: true, golden };
 }
 
 export async function handleEvalReplay(args: Record<string, unknown>): Promise<unknown> {
+  if (!config.getLabSettings().enabled) {
+    throw new Error("Validation error: Lab is disabled in Settings");
+  }
   const goldenId = requiredString(args.goldenId, "goldenId");
   const run = await replayGolden(goldenId, {
     agentId: typeof args.agentId === "string" ? args.agentId : undefined,

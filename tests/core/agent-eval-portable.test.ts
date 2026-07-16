@@ -16,6 +16,10 @@ function golden(): AgentGolden {
     name: "Read package version",
     description: "Confirms the agent reads the requested file",
     tags: ["repository"],
+    assertions: {
+      response: { type: "normalized_text", expected: "Version 1.0.0" },
+      tools: [{ index: 0, name: "read", args: { path: "package.json" } }],
+    },
     baseline: {
       id: "trajectory-1",
       sessionId: "session-1",

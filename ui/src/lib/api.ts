@@ -2129,6 +2129,10 @@ export interface AgentGolden {
   name: string;
   description: string | null;
   tags: string[];
+  assertions: {
+    response?: { type: string };
+    tools: Array<{ index: number; name?: string }>;
+  };
   baseline: {
     id: string;
     sessionId: string;
@@ -2172,8 +2176,18 @@ export interface AgentEvalRun {
 export type ResearchExportFormat =
   | "cybara_trace"
   | "trl_sft"
+  | "distillation_sft"
+  | "hf_session_trace"
   | "prompt_completion"
   | "long_context";
+
+export interface LabSettings {
+  enabled: boolean;
+  goldenTurnsEnabled: boolean;
+  trajectoryCaptureEnabled: boolean;
+  sanitizeExportsByDefault: boolean;
+  defaultExportFormat: ResearchExportFormat;
+}
 
 export interface ResearchTraceSummary {
   id: string;
@@ -2212,7 +2226,7 @@ export type IntelligenceTaskDifficulty =
   | "intermediate"
   | "advanced"
   | "expert"
-  | "frontier";
+  | "stress";
 
 export interface IntelligenceBenchmarkResult {
   taskId: string;
@@ -2267,6 +2281,11 @@ export const evalsApi = {
       `/evals/goldens/${goldenId}/replay`,
       { method: "POST", body: JSON.stringify(payload ?? {}) }
     ),
+  updateAssertions: (goldenId: string, assertions: AgentGolden["assertions"]) =>
+    fetchApi<{ success: boolean; golden?: AgentGolden; error?: string }>(
+      `/evals/goldens/${goldenId}/assertions`,
+      { method: "PUT", body: JSON.stringify({ assertions }) }
+    ),
   runSuite: (goldenIds?: string[]) =>
     fetchApi<{ success: boolean; runs: AgentEvalRun[]; error?: string }>("/evals/run", {
       method: "POST",
@@ -2300,6 +2319,19 @@ export const researchApi = {
       content: string;
       count: number;
     }>(`/evals/research/export?${params.toString()}`);
+  },
+  datasetCard: (format: ResearchExportFormat, sanitize: boolean, ids: string[]) => {
+    const params = new URLSearchParams({
+      format,
+      sanitize: sanitize ? "1" : "0",
+    });
+    if (ids.length > 0) params.set("ids", ids.join(","));
+    return fetchApi<{
+      filename: "README.md";
+      mimeType: "text/markdown";
+      content: string;
+      count: number;
+    }>(`/evals/research/card?${params.toString()}`);
   },
 };
 

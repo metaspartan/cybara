@@ -121,8 +121,14 @@ describeOrSkip("Server + CLI + UI smoke", () => {
   test("serves API and UI routes", async () => {
     const healthRes = await fetch(`${baseUrl}/api/health`);
     expect(healthRes.status).toBe(200);
-    const health = (await healthRes.json()) as { status: string; checks: Record<string, unknown> };
-    expect(health.status).toBe("healthy");
+    const health = (await healthRes.json()) as {
+      status: string;
+      system: { status: string };
+      checks: { database: { status: string } };
+    };
+    expect(["healthy", "warning", "critical"]).toContain(health.status);
+    expect(health.status).toBe(health.system.status);
+    expect(health.checks.database.status).toBe("healthy");
     expect(typeof health.checks).toBe("object");
 
     const walletRes = await fetch(`${baseUrl}/api/wallet/status`, {

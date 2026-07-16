@@ -9,7 +9,7 @@ export interface SystemByteUsage {
 }
 
 export interface SystemMonitorSnapshot {
-  status: "healthy";
+  status: SystemResourceStatus;
   timestamp: string;
   sampleIntervalMs: number;
   platform: {
@@ -45,6 +45,8 @@ export interface SystemMonitorSnapshot {
       })
     | null;
 }
+
+export type SystemResourceStatus = "healthy" | "warning" | "critical";
 
 interface CpuTotals {
   idle: number;
@@ -88,6 +90,19 @@ async function runSystemCommand(
 function roundPct(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(100, Number(value.toFixed(1))));
+}
+
+export function classifySystemResourceStatus(
+  cpuUsagePct: number,
+  memoryUsedPct: number,
+  diskUsedPct?: number
+): SystemResourceStatus {
+  const values = [cpuUsagePct, memoryUsedPct, diskUsedPct].filter(
+    (value): value is number => typeof value === "number" && Number.isFinite(value)
+  );
+  if (values.some((value) => value >= 98)) return "critical";
+  if (values.some((value) => value >= 90)) return "warning";
+  return "healthy";
 }
 
 function readCpuTotals(): CpuTotals {
@@ -307,8 +322,10 @@ export function getSystemMonitorSnapshot(): SystemMonitorSnapshot {
   const loads = loadavg();
   const oneMinuteLoad = loads[0] || 0;
 
+  const disk = readDiskUsage(process.cwd());
+  const systemCpuUsagePct = cpuUsagePct(cpuTotals, lastSample?.cpuTotals ?? null);
   const snapshot: SystemMonitorSnapshot = {
-    status: "healthy",
+    status: classifySystemResourceStatus(systemCpuUsagePct, memory.usedPct, disk?.usedPct),
     timestamp: new Date(nowMs).toISOString(),
     sampleIntervalMs: intervalMs,
     platform: {
@@ -317,7 +334,7 @@ export function getSystemMonitorSnapshot(): SystemMonitorSnapshot {
       release: release(),
     },
     cpu: {
-      usagePct: cpuUsagePct(cpuTotals, lastSample?.cpuTotals ?? null),
+      usagePct: systemCpuUsagePct,
       loadPct: platform() === "win32" ? null : roundPct((oneMinuteLoad / coreCount) * 100),
       loadAverage: loads.map((load) => Number(load.toFixed(2))),
       cores: coreCount,
@@ -341,7 +358,7 @@ export function getSystemMonitorSnapshot(): SystemMonitorSnapshot {
         arrayBuffersBytes: processMemory.arrayBuffers,
       },
     },
-    disk: readDiskUsage(process.cwd()),
+    disk,
   };
 
   lastSample = {

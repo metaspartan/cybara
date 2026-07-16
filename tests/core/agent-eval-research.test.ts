@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  createResearchDatasetCard,
   exportResearchTraces,
   researchDatasetSplit,
   summarizeResearchTrace,
@@ -101,6 +102,7 @@ describe("research trajectory datasets", () => {
     });
     const record = JSON.parse(exported.content) as {
       messages: Array<Record<string, unknown>>;
+      tools: Array<Record<string, unknown>>;
       metadata: Record<string, unknown>;
     };
 
@@ -118,6 +120,89 @@ describe("research trajectory datasets", () => {
       kind: "provider_exposed",
       content: "I inspected the relevant files.",
     });
+    expect(record.tools).toEqual([
+      {
+        type: "function",
+        function: {
+          name: "read_file",
+          parameters: {
+            type: "object",
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
+        },
+      },
+    ]);
+  });
+
+  test("exports sequence distillation records with explicit teacher provenance", () => {
+    const exported = exportResearchTraces([trajectory()], {
+      format: "distillation_sft",
+      sanitize: false,
+    });
+    const record = JSON.parse(exported.content) as {
+      messages: Array<Record<string, unknown>>;
+      teacher: Record<string, unknown>;
+    };
+
+    expect(record.messages.at(-1)).toEqual({
+      role: "assistant",
+      content: "The project is healthy.",
+    });
+    expect(record.teacher).toEqual({
+      provider: "openai",
+      model: "research-model",
+      observable_reasoning: "I inspected the relevant files.",
+    });
+  });
+
+  test("marks only consistently observed tool arguments as required", () => {
+    const value = trajectory();
+    const firstCall = value.response.tool_calls?.[0];
+    if (!firstCall) throw new Error("Missing fixture tool call");
+    value.response.tool_calls = [
+      firstCall,
+      {
+        ...firstCall,
+        id: "tool-2",
+        args: { path: "/private/workspace/other.txt", line: 4 },
+      },
+    ];
+    const exported = exportResearchTraces([value], {
+      format: "trl_sft",
+      sanitize: false,
+    });
+    const record = JSON.parse(exported.content) as {
+      tools: Array<{
+        function: { parameters: { required: string[]; properties: Record<string, unknown> } };
+      }>;
+    };
+
+    expect(record.tools[0]?.function.parameters.required).toEqual(["path"]);
+    expect(record.tools[0]?.function.parameters.properties).toHaveProperty("line");
+  });
+
+  test("exports one chat in Hugging Face session trace format", () => {
+    const exported = exportResearchTraces([trajectory()], {
+      format: "hf_session_trace",
+      sanitize: false,
+    });
+    const lines = exported.content
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(lines[0]).toMatchObject({ type: "session", harness: "cybara", id: "session-research" });
+    expect(lines[1]).toMatchObject({ type: "message", message: { role: "user" } });
+    expect(lines.some((line) => JSON.stringify(line).includes('"role":"tool"'))).toBe(true);
+  });
+
+  test("rejects multi-chat Hugging Face session trace exports", () => {
+    expect(() =>
+      exportResearchTraces(
+        [trajectory(), trajectory({ id: "other", sessionId: "another-session" })],
+        { format: "hf_session_trace", sanitize: false }
+      )
+    ).toThrow("requires traces from one chat");
   });
 
   test("exports tool observations for long-context training", () => {
@@ -176,5 +261,19 @@ describe("research trajectory datasets", () => {
     expect(result.stats.reasoningTraces).toBe(1);
     expect(result.stats.cleanTraces).toBe(1);
     expect(result.stats.train + result.stats.validation + result.stats.test).toBe(2);
+  });
+
+  test("generates a dataset card with provenance and privacy limitations", () => {
+    const card = createResearchDatasetCard([trajectory()], {
+      format: "distillation_sft",
+      sanitize: true,
+    });
+
+    expect(card.filename).toBe("README.md");
+    expect(card.content).toContain("sequence-level distillation");
+    expect(card.content).toContain("research-model");
+    expect(card.content).toContain("redaction was enabled");
+    expect(card.content).toContain("teacher logits are not inferred");
+    expect(card.content).toContain("does not fabricate preference pairs");
   });
 });

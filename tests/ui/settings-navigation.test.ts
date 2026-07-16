@@ -9,6 +9,10 @@ import {
 
 const ROOT_DIR = join(import.meta.dir, "..", "..");
 const settingsSource = readFileSync(join(ROOT_DIR, "ui", "src", "pages", "Settings.tsx"), "utf8");
+const themeSettingsSource = readFileSync(
+  join(ROOT_DIR, "ui", "src", "pages", "settings", "ThemeSettings.tsx"),
+  "utf8"
+);
 const navigationSource = readFileSync(
   join(ROOT_DIR, "ui", "src", "components", "settings", "SettingsNavigation.tsx"),
   "utf8"
@@ -42,6 +46,7 @@ describe("web settings navigation", () => {
       "nav.skills",
       "nav.tools",
       "nav.memory",
+      "settings.lab",
       "settings.voice",
       "nav.wallet",
       "settings.safety",
@@ -65,6 +70,7 @@ describe("web settings navigation", () => {
       "skills",
       "tools",
       "memory",
+      "lab",
       "voice",
       "wallet",
       "safety",
@@ -103,8 +109,8 @@ describe("web settings navigation", () => {
     expect(settingsSource).not.toContain("<SettingsNavigation");
     expect(navigationSource).toContain('aria-label="Settings sections"');
     expect(settingsSource).toContain('title={t("settings.title")}');
-    expect(settingsSource).toContain("<Select");
-    expect(settingsSource).toContain("languageOptions(locale).map");
+    expect(themeSettingsSource).toContain("<Select");
+    expect(themeSettingsSource).toContain("languageOptions(locale).map");
     expect(settingsSource).not.toContain(
       '<PageLayout title="Settings" subtitle="Platform configuration and system information">'
     );

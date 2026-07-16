@@ -5,6 +5,8 @@ import type { AgentTrajectory, EvalMessage, EvalToolCall } from "./types";
 export type ResearchExportFormat =
   | "cybara_trace"
   | "trl_sft"
+  | "distillation_sft"
+  | "hf_session_trace"
   | "prompt_completion"
   | "long_context";
 
@@ -50,6 +52,13 @@ export interface ResearchExport {
   count: number;
 }
 
+export interface ResearchDatasetCard {
+  filename: "README.md";
+  mimeType: "text/markdown";
+  content: string;
+  count: number;
+}
+
 interface TrainingMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
@@ -59,6 +68,18 @@ interface TrainingMessage {
     type: "function";
     function: { name: string; arguments: string };
   }>;
+}
+
+interface TrainingToolSchema {
+  type: "function";
+  function: {
+    name: string;
+    parameters: {
+      type: "object";
+      properties: Record<string, { type: string }>;
+      required: string[];
+    };
+  };
 }
 
 function preview(value: string, limit = 180): string {
@@ -185,6 +206,50 @@ function trainingMessages(trajectory: AgentTrajectory): TrainingMessage[] {
   return messages;
 }
 
+function jsonSchemaType(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "number" && Number.isInteger(value)) return "integer";
+  if (typeof value === "object") return "object";
+  return typeof value;
+}
+
+function observedToolSchemas(trajectory: AgentTrajectory): TrainingToolSchema[] {
+  const schemas = new Map<
+    string,
+    { calls: number; properties: Map<string, { type: string; occurrences: number }> }
+  >();
+  for (const call of toolCalls(trajectory)) {
+    const args = call.arguments ?? call.args;
+    const record = args && typeof args === "object" && !Array.isArray(args) ? args : {};
+    const schema = schemas.get(call.name) ?? { calls: 0, properties: new Map() };
+    schema.calls += 1;
+    for (const [key, value] of Object.entries(record)) {
+      const property = schema.properties.get(key);
+      schema.properties.set(key, {
+        type: property?.type ?? jsonSchemaType(value),
+        occurrences: (property?.occurrences ?? 0) + 1,
+      });
+    }
+    schemas.set(call.name, schema);
+  }
+  return [...schemas.entries()].map(([name, schema]) => ({
+    type: "function",
+    function: {
+      name,
+      parameters: {
+        type: "object",
+        properties: Object.fromEntries(
+          [...schema.properties.entries()].map(([key, property]) => [key, { type: property.type }])
+        ),
+        required: [...schema.properties.entries()]
+          .filter(([, property]) => property.occurrences === schema.calls)
+          .map(([key]) => key),
+      },
+    },
+  }));
+}
+
 function metadata(trajectory: AgentTrajectory): Record<string, unknown> {
   const result = quality(trajectory);
   const reasoning = trajectory.response.thinking?.trim();
@@ -220,6 +285,19 @@ function researchRecord(
   if (format === "trl_sft") {
     return {
       messages: trainingMessages(trajectory),
+      tools: observedToolSchemas(trajectory),
+      metadata: metadata(trajectory),
+    };
+  }
+  if (format === "distillation_sft") {
+    return {
+      messages: trainingMessages(trajectory),
+      tools: observedToolSchemas(trajectory),
+      teacher: {
+        provider: trajectory.provider,
+        model: trajectory.model,
+        observable_reasoning: trajectory.response.thinking?.trim() || null,
+      },
       metadata: metadata(trajectory),
     };
   }
@@ -243,20 +321,158 @@ function researchRecord(
   };
 }
 
+function hfSessionTraceLines(trajectories: AgentTrajectory[]): string[] {
+  const sessionIds = [...new Set(trajectories.map((trajectory) => trajectory.sessionId))];
+  if (sessionIds.length > 1) {
+    throw new Error(
+      "Validation error: Hugging Face session trace export requires traces from one chat"
+    );
+  }
+  const sessionId = sessionIds[0] ?? "empty";
+  const ordered = [...trajectories].sort((left, right) => left.turnIndex - right.turnIndex);
+  const lines: Record<string, unknown>[] = [
+    {
+      type: "session",
+      harness: "cybara",
+      id: sessionId,
+      name: ordered[0]?.request.userMessage.content.slice(0, 80) || "Cybara agent session",
+    },
+  ];
+  for (const trajectory of ordered) {
+    lines.push({
+      type: "message",
+      message: {
+        role: "user",
+        content: trajectory.request.userMessage.content,
+        timestamp: trajectory.createdAt,
+      },
+    });
+    const calls = toolCalls(trajectory);
+    if (calls.length > 0) {
+      lines.push({
+        type: "message",
+        message: {
+          role: "assistant",
+          content: "",
+          reasoningContent: trajectory.response.thinking?.trim() || undefined,
+          model: trajectory.model ?? undefined,
+          toolCalls: calls.map((call) => ({
+            id: call.id,
+            type: "function",
+            function: {
+              name: call.name,
+              arguments: JSON.stringify(call.arguments ?? call.args),
+            },
+          })),
+          timestamp: trajectory.createdAt,
+        },
+      });
+      for (const call of calls) {
+        lines.push({
+          type: "message",
+          message: {
+            role: "tool",
+            content: JSON.stringify(call.error ? { error: call.error } : (call.result ?? null)),
+            toolCallId: call.id,
+            timestamp: trajectory.createdAt,
+          },
+        });
+      }
+    }
+    lines.push({
+      type: "message",
+      message: {
+        role: "assistant",
+        content: trajectory.response.content,
+        reasoningContent:
+          calls.length === 0 ? trajectory.response.thinking?.trim() || undefined : undefined,
+        model: trajectory.model ?? undefined,
+        timestamp: trajectory.createdAt,
+      },
+    });
+  }
+  return lines.map((line) => JSON.stringify(line));
+}
+
 export function exportResearchTraces(
   trajectories: AgentTrajectory[],
   options: { format: ResearchExportFormat; sanitize?: boolean }
 ): ResearchExport {
   const date = new Date().toISOString().slice(0, 10);
   const selected = options.sanitize ? trajectories.map(sanitizeTrajectory) : trajectories;
+  const content =
+    options.format === "hf_session_trace"
+      ? hfSessionTraceLines(selected).join("\n")
+      : selected
+          .map((trajectory) => JSON.stringify(researchRecord(trajectory, options.format)))
+          .join("\n");
   return {
     format: options.format,
     filename: `cybara-${options.format.replaceAll("_", "-")}-${date}.jsonl`,
     mimeType: "application/x-ndjson",
-    content: selected
-      .map((trajectory) => JSON.stringify(researchRecord(trajectory, options.format)))
-      .join("\n"),
+    content,
     count: selected.length,
+  };
+}
+
+export function createResearchDatasetCard(
+  trajectories: AgentTrajectory[],
+  options: { format: ResearchExportFormat; sanitize?: boolean }
+): ResearchDatasetCard {
+  const summaries = summarizeResearchTraces(trajectories);
+  const models = [
+    ...new Set(
+      trajectories
+        .map((trajectory) => trajectory.model)
+        .filter((model): model is string => typeof model === "string" && model.length > 0)
+    ),
+  ];
+  const content = [
+    "---",
+    "task_categories:",
+    "- text-generation",
+    "- conversational",
+    "tags:",
+    "- agent-traces",
+    "- tool-use",
+    "- synthetic-data",
+    "---",
+    "",
+    "# Cybara Agent Trace Dataset",
+    "",
+    "## Dataset summary",
+    "",
+    `This export contains ${trajectories.length} completed agent trace${trajectories.length === 1 ? "" : "s"} in the \`${options.format}\` format.`,
+    `Stable splits: ${summaries.stats.train} train, ${summaries.stats.validation} validation, and ${summaries.stats.test} test.`,
+    `Quality checks marked ${summaries.stats.cleanTraces} traces clean and observed ${summaries.stats.failedToolCalls} failed tool calls.`,
+    "",
+    "## Sources and provenance",
+    "",
+    `Teacher models: ${models.length > 0 ? models.join(", ") : "not recorded"}.`,
+    "Records were captured from completed Cybara agent turns and retain provider and model provenance when available.",
+    "",
+    "## Intended uses",
+    "",
+    "- Supervised fine-tuning and sequence-level distillation",
+    "- Tool-use behavior analysis",
+    "- Agent regression evaluation",
+    "- Long-context response research",
+    "",
+    "## Privacy and limitations",
+    "",
+    `Sensitive-content redaction was ${options.sanitize ? "enabled" : "disabled"} for this export.`,
+    "Review every record before publishing because prompts and tool outputs can contain private or licensed material.",
+    "Reasoning fields contain only reasoning text exposed by the provider. Hidden reasoning and teacher logits are not inferred or reconstructed.",
+    "Preference optimization requires independently captured chosen and rejected responses; this export does not fabricate preference pairs.",
+    "Observed tool schemas describe arguments present in captured calls and are not authoritative tool definitions.",
+    "Stable train, validation, and test splits are derived from trace identifiers.",
+    "",
+  ].join("\n");
+  return {
+    filename: "README.md",
+    mimeType: "text/markdown",
+    content,
+    count: trajectories.length,
   };
 }
 
@@ -264,6 +480,8 @@ export function parseResearchExportFormat(value: string | undefined): ResearchEx
   if (
     value === "cybara_trace" ||
     value === "trl_sft" ||
+    value === "distillation_sft" ||
+    value === "hf_session_trace" ||
     value === "prompt_completion" ||
     value === "long_context"
   ) {

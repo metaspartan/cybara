@@ -230,8 +230,16 @@ fn is_server_running_at(addr: &str) -> bool {
         return false;
     };
 
-    (headers.starts_with("HTTP/1.1 200") || headers.starts_with("HTTP/1.0 200"))
-        && (body.contains("\"status\":\"healthy\"") || body.contains("\"status\": \"healthy\""))
+    if !headers.starts_with("HTTP/1.1 200") && !headers.starts_with("HTTP/1.0 200") {
+        return false;
+    }
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return false;
+    };
+    matches!(
+        value.get("status").and_then(serde_json::Value::as_str),
+        Some("healthy" | "warning" | "critical")
+    )
 }
 
 fn is_server_running() -> bool {
@@ -634,5 +642,29 @@ mod tests {
 
         assert!(is_server_running_at(&addr.to_string()));
         handle.join().expect("join test server");
+    }
+
+    #[test]
+    fn server_check_accepts_resource_pressure_statuses() {
+        for status in ["warning", "critical"] {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+            let addr = listener.local_addr().expect("read local addr");
+            let status = status.to_string();
+            let handle = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().expect("accept test connection");
+                let mut buffer = [0; 512];
+                let _ = stream.read(&mut buffer);
+                let body = format!("{{\"status\":\"{}\"}}", status);
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(response.as_bytes());
+            });
+
+            assert!(is_server_running_at(&addr.to_string()));
+            handle.join().expect("join test server");
+        }
     }
 }

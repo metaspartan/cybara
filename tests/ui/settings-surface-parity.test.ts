@@ -14,6 +14,10 @@ const webAccessibility = readFileSync(
   join(root, "ui/src/pages/settings/ChatAccessibilitySettings.tsx"),
   "utf8"
 );
+const webWalletSettings = readFileSync(
+  join(root, "ui/src/pages/settings/WalletSettings.tsx"),
+  "utf8"
+);
 const mobileSettings = readFileSync(
   join(root, "apps/mobile/src/screens/dashboardDetailPanels.tsx"),
   "utf8"
@@ -125,9 +129,9 @@ describe("settings surface parity", () => {
   });
 
   test("wallet seed reveal requires fresh verification on web and native macOS", () => {
-    expect(webSettings).toContain("Reveal Seed Phrase");
-    expect(webSettings).toContain('seedConfirmText.trim() !== "REVEAL"');
-    expect(webSettings).toContain('walletApi.revealSeed(seedPassword, "REVEAL")');
+    expect(webWalletSettings).toContain("Reveal Seed Phrase");
+    expect(webWalletSettings).toContain('seedConfirmText.trim() !== "REVEAL"');
+    expect(webWalletSettings).toContain('walletApi.revealSeed(seedPassword, "REVEAL")');
     expect(webApi).toContain('"/wallet/seed"');
     expect(nativeConfigScreens).toContain('Text("Recovery Phrase")');
     expect(nativeConfigScreens).toContain('seedConfirmation == "REVEAL"');

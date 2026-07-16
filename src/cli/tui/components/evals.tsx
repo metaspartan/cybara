@@ -24,8 +24,8 @@ export function TUIEvalsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }): React
   const visible = goldens.slice(0, panelListLimit(goldens.length, layout, layout.narrow ? 3 : 1));
   return (
     <PanelShell
-      title="Agent Evals"
-      detail="Replayable golden trajectories and structural regression status"
+      title="Lab"
+      detail="Golden trajectories, structural regression, and training data"
       loading={state.loading}
       error={state.error}
     >

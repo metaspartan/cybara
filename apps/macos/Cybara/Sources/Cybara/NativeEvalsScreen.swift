@@ -12,6 +12,9 @@ struct NativeEvalsScreen: View {
     @State private var loading = true
     @State private var busyID: String?
     @State private var message: String?
+    @State private var labEnabled = true
+    @State private var goldenTurnsEnabled = true
+    @State private var sanitizeExports = true
 
     private var latestRuns: [String: GatewayEvalRun] {
         var output: [String: GatewayEvalRun] = [:]
@@ -38,7 +41,9 @@ struct NativeEvalsScreen: View {
                 .tint(accentTint)
                 .disabled(goldens.isEmpty || busyID != nil)
                 Menu {
+                    Button("Sequence Distillation SFT") { Task { await exportResearch(format: "distillation_sft") } }
                     Button("Conversational SFT JSONL") { Task { await exportResearch(format: "trl_sft") } }
+                    Button("Hugging Face Session Trace") { Task { await exportResearch(format: "hf_session_trace") } }
                     Button("Long-Context JSONL") { Task { await exportResearch(format: "long_context") } }
                     Button("Suite Backup") { Task { await export(format: "bundle", sanitize: false) } }
                     Button("Redacted Trajectory JSONL") { Task { await export(format: "jsonl", sanitize: true) } }
@@ -46,7 +51,7 @@ struct NativeEvalsScreen: View {
                 } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
-                .disabled(goldens.isEmpty || busyID != nil)
+                .disabled(!labEnabled || goldens.isEmpty || busyID != nil)
                 Button { Task { await importSuite() } } label: {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
@@ -67,9 +72,27 @@ struct NativeEvalsScreen: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !labEnabled {
+                ContentUnavailableView(
+                    "Lab is disabled",
+                    systemImage: "flask",
+                    description: Text("Existing traces and golden tests remain stored. Enable Lab in Settings to continue.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        if !goldenTurnsEnabled {
+                            Label(
+                                "Golden turn actions are disabled. Existing tests remain available.",
+                                systemImage: "info.circle"
+                            )
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 9)
+                            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+                        }
                         NativeComputerUseTrajectorySection(client: client, message: $message)
                         if goldens.isEmpty {
                             ContentUnavailableView(
@@ -175,6 +198,15 @@ struct NativeEvalsScreen: View {
     @MainActor
     private func load() async {
         do {
+            let config = try await client.appConfig()
+            let lab = config["lab"] as? [String: Any] ?? [:]
+            labEnabled = lab["enabled"] as? Bool ?? true
+            goldenTurnsEnabled = lab["goldenTurnsEnabled"] as? Bool ?? true
+            sanitizeExports = lab["sanitizeExportsByDefault"] as? Bool ?? true
+            if !labEnabled {
+                loading = false
+                return
+            }
             async let evals = client.evals()
             async let research = client.researchTraces()
             let (response, researchResponse) = try await (evals, research)
@@ -249,7 +281,7 @@ struct NativeEvalsScreen: View {
         busyID = "research-export"
         defer { busyID = nil }
         do {
-            let response = try await client.exportResearch(format: format)
+            let response = try await client.exportResearch(format: format, sanitize: sanitizeExports)
             let panel = NSSavePanel()
             panel.nameFieldStringValue = response.filename
             if panel.runModal() == .OK, let url = panel.url {

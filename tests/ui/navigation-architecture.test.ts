@@ -16,7 +16,9 @@ describe("application navigation architecture", () => {
     expect(sidebar).toContain('usage: { path: "/usage", icon: Gauge');
     expect(sidebar).toContain("navigate(buildFreshChatPath())");
     expect(sidebar).toContain('placement="main"');
-    expect(sidebar).toContain("navigationLayout.more.map");
+    expect(sidebar).toContain("navigationLayout.more");
+    expect(sidebar).toContain('.filter((item) => item !== "lab" || labEnabled)');
+    expect(sidebar).toContain(".map((item) => renderNavItem(sidebarDestinations[item]))");
     expect(sidebar).toContain("navigationLayout.primary.map(renderOrderedNavigationItem)");
     for (const path of [
       "/agents",
