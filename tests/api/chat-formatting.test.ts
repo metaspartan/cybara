@@ -109,4 +109,15 @@ describe("chat response formatting", () => {
       "Inspecting the repository structure.",
     ]);
   });
+
+  test("repairs malformed completed responses when sessions are loaded", () => {
+    const [message] = sanitizeSessionMessages([
+      {
+        role: "assistant",
+        content: "Summary\n```text\nunfinished output",
+      },
+    ]);
+
+    expect(message.content).toBe("Summary\n```text\nunfinished output\n```");
+  });
 });

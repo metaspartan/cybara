@@ -66,7 +66,7 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
 // without trapping users who scrolled up to read.
 describe("chat live auto-scroll", () => {
   test("web: sticks to bottom on live content only when already near the bottom", () => {
-    const source = read("ui/src/pages/Chat.tsx");
+    const source = `${read("ui/src/pages/Chat.tsx")}\n${read("ui/src/pages/chat/useChatScroll.ts")}`;
     expect(source).toContain("!isChatNearBottom(container, 96)");
     expect(source).toContain("keepScrolledToBottomRef.current");
     expect(source).toContain("programmaticScrollUntilRef.current = Number.POSITIVE_INFINITY");

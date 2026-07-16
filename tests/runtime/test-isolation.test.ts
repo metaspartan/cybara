@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { join } from "path";
 
+const root = join(import.meta.dir, "..", "..");
+
 test("repository test runner isolates persistent Cybara state before imports", async () => {
   const child = Bun.spawn(
     [
@@ -10,7 +12,7 @@ test("repository test runner isolates persistent Cybara state before imports", a
       "tests/fixtures/isolated-home-probe.test.ts",
     ],
     {
-      cwd: join(import.meta.dir, "..", ".."),
+      cwd: root,
       stdout: "pipe",
       stderr: "pipe",
     }
@@ -21,4 +23,10 @@ test("repository test runner isolates persistent Cybara state before imports", a
     new Response(child.stderr).text(),
   ]);
   expect(exitCode, `${stdout}\n${stderr}`).toBe(0);
+});
+
+test("repository test runner uses a bounded timeout under parallel smoke load", async () => {
+  const source = await Bun.file(join(root, "scripts", "run-tests-isolated.ts")).text();
+  expect(source).toContain('process.env.CYBARA_TEST_TIMEOUT_MS ?? "15000"');
+  expect(source).toContain('"--timeout", String(boundedTimeoutMs)');
 });

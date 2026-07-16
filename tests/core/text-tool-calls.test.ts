@@ -20,6 +20,29 @@ describe("text-form tool call parsing", () => {
     );
   });
 
+  test("repairs unterminated fenced blocks in completed assistant text", () => {
+    expect(sanitizeAssistantContent("Result:\n```ts\nconst value = 42;")).toBe(
+      "Result:\n```ts\nconst value = 42;\n```"
+    );
+    expect(sanitizeAssistantContent("~~~text\nvalue\n~~~~")).toBe("~~~text\nvalue\n~~~~");
+  });
+
+  test("removes incomplete provider tool envelopes from completed assistant text", () => {
+    expect(
+      sanitizeAssistantContent(
+        'I will inspect it.\n<tool_calls>\n<invoke name="read">\n<parameter name="path">README.md'
+      )
+    ).toBe("I will inspect it.");
+  });
+
+  test("preserves final prose after a completed provider tool envelope", () => {
+    expect(
+      sanitizeAssistantContent(
+        'Checking now.\n<tool_calls><invoke name="read"><parameter name="path">README.md</parameter></invoke></tool_calls>\nThe project is ready.'
+      )
+    ).toBe("Checking now.\n\nThe project is ready.");
+  });
+
   test("extracts invoke blocks from function_calls markup", () => {
     const calls = extractTextToolCalls(
       [

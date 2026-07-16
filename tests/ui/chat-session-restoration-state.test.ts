@@ -15,9 +15,9 @@ describe("chat session restoration state", () => {
   });
 
   test("does not force persisted updates to the bottom while reading older messages", () => {
-    const source = readFileSync(join(process.cwd(), "ui/src/pages/Chat.tsx"), "utf8");
+    const source = readFileSync(join(process.cwd(), "ui/src/pages/chat/useChatScroll.ts"), "utf8");
     const effectStart = source.indexOf("if (!keepScrolledToBottomRef.current");
-    const effectEnd = source.indexOf("}, [messages, scrollToBottom]);", effectStart);
+    const effectEnd = source.indexOf("useEffect(() =>", effectStart + 1);
     const effect = source.slice(effectStart, effectEnd);
 
     expect(effect).toContain("isChatNearBottom(container, 96)");

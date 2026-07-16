@@ -44,6 +44,9 @@ const chatMessageTimelinePath = fileURLToPath(
 const chatPageHeaderPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatPageHeader.tsx", import.meta.url)
 );
+const chatMessageActionsPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/useChatMessageActions.ts", import.meta.url)
+);
 const desktopHostPath = fileURLToPath(new URL("../../ui/src/lib/desktopHost.ts", import.meta.url));
 
 function readChatSource(): string {
@@ -59,7 +62,8 @@ function readChatSource(): string {
     readFileSync(sessionFileChangesPath, "utf8") +
     readFileSync(sessionDiffPanelPath, "utf8") +
     readFileSync(chatMessageTimelinePath, "utf8") +
-    readFileSync(chatPageHeaderPath, "utf8")
+    readFileSync(chatPageHeaderPath, "utf8") +
+    readFileSync(chatMessageActionsPath, "utf8")
   );
 }
 

@@ -76,20 +76,37 @@ function getAllTypeScriptFiles(): string[] {
   );
 }
 
-describe("TypeScript import/type style guard", () => {
-  test("does not use await import() in TypeScript sources", () => {
-    const offenders: string[] = [];
+interface ParsedTypeScriptFile {
+  file: string;
+  sourceFile: ts.SourceFile;
+}
 
-    for (const file of getAllTypeScriptFiles()) {
-      if (allowsDynamicImport(file)) continue;
-      const content = readFileSync(file, "utf-8");
-      const sourceFile = ts.createSourceFile(
+let parsedTypeScriptFiles: ParsedTypeScriptFile[] | undefined;
+
+function getParsedTypeScriptFiles(): ParsedTypeScriptFile[] {
+  if (parsedTypeScriptFiles) return parsedTypeScriptFiles;
+  parsedTypeScriptFiles = getAllTypeScriptFiles().map((file) => {
+    const content = readFileSync(file, "utf-8");
+    return {
+      file,
+      sourceFile: ts.createSourceFile(
         file,
         content,
         ts.ScriptTarget.Latest,
         true,
         file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
-      );
+      ),
+    };
+  });
+  return parsedTypeScriptFiles;
+}
+
+describe("TypeScript import/type style guard", () => {
+  test("does not use await import() in TypeScript sources", () => {
+    const offenders: string[] = [];
+
+    for (const { file, sourceFile } of getParsedTypeScriptFiles()) {
+      if (allowsDynamicImport(file)) continue;
 
       const visit = (node: ts.Node): void => {
         if (
@@ -107,21 +124,12 @@ describe("TypeScript import/type style guard", () => {
     }
 
     expect(offenders).toEqual([]);
-  });
+  }, 15_000);
 
   test("does not use dynamic import() expressions in TypeScript sources", () => {
     const offenders: string[] = [];
 
-    for (const file of getAllTypeScriptFiles()) {
-      const content = readFileSync(file, "utf-8");
-      const sourceFile = ts.createSourceFile(
-        file,
-        content,
-        ts.ScriptTarget.Latest,
-        true,
-        file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
-      );
-
+    for (const { file, sourceFile } of getParsedTypeScriptFiles()) {
       const visit = (node: ts.Node): void => {
         if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
           if (allowsDynamicImport(file)) return;
@@ -141,16 +149,7 @@ describe("TypeScript import/type style guard", () => {
   test("keeps import declarations at the top of each TypeScript file", () => {
     const offenders: string[] = [];
 
-    for (const file of getAllTypeScriptFiles()) {
-      const content = readFileSync(file, "utf-8");
-      const sourceFile = ts.createSourceFile(
-        file,
-        content,
-        ts.ScriptTarget.Latest,
-        true,
-        file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
-      );
-
+    for (const { file, sourceFile } of getParsedTypeScriptFiles()) {
       let seenNonImportStatement = false;
       for (const statement of sourceFile.statements) {
         const isImport =
@@ -172,16 +171,7 @@ describe("TypeScript import/type style guard", () => {
   test("avoids explicit any type annotations in TypeScript files", () => {
     const offenders: string[] = [];
 
-    for (const file of getAllTypeScriptFiles()) {
-      const content = readFileSync(file, "utf-8");
-      const sourceFile = ts.createSourceFile(
-        file,
-        content,
-        ts.ScriptTarget.Latest,
-        true,
-        file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
-      );
-
+    for (const { file, sourceFile } of getParsedTypeScriptFiles()) {
       const visit = (node: ts.Node): void => {
         if (node.kind === ts.SyntaxKind.AnyKeyword) {
           const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));

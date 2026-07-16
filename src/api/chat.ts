@@ -107,6 +107,10 @@ import {
   applyActiveAgentToSession,
   refreshSessionAgentSystemPromptIfNeeded,
 } from "./chat-agent-prompt";
+import {
+  pendingChatDrainRetryDelay,
+  selectResidentChatSessionEvictions,
+} from "./chat-runtime-stability";
 export { stripThinkingTags } from "./chat-formatting";
 const log = createLogger("Chat");
 
@@ -368,7 +372,70 @@ const deferredSessionMessages = new Map<string, ChatMessage[]>();
 const activeChatTurnAbortControllers = new Map<string, AbortController>();
 const interruptedChatTurnSteeringIds = new WeakMap<AbortController, string>();
 const stoppedChatTurnControllers = new WeakSet<AbortController>();
+const residentChatSessionSizes = new Map<string, number>();
+const residentChatSessionAccess = new Map<string, number>();
+const MAX_RESIDENT_CHAT_SESSIONS = 24;
+const MAX_RESIDENT_CHAT_SESSION_CHARS = 12_000_000;
 let pendingChatSequence = 0;
+
+function estimateResidentChatSessionChars(session: InMemoryChatSession): number {
+  try {
+    return JSON.stringify(session.messages).length;
+  } catch {
+    return session.messages.reduce(
+      (total, message) => total + message.content.length + (message.thinking?.length || 0),
+      0
+    );
+  }
+}
+
+function residentChatSessionIsProtected(sessionId: string): boolean {
+  return (
+    chatTurnMutex.isLocked(sessionId) ||
+    hasPendingChatMessages(sessionId) ||
+    activeChatTurnAbortControllers.has(sessionId) ||
+    deferredSessionMessages.has(sessionId)
+  );
+}
+
+function pruneResidentChatSessions(preferredSessionId?: string): void {
+  const records = Array.from(chatSessions.values()).map((session) => ({
+    id: session.id,
+    persisted: session.persisted,
+    estimatedChars:
+      residentChatSessionSizes.get(session.id) ?? estimateResidentChatSessionChars(session),
+    lastAccessedAt: residentChatSessionAccess.get(session.id) ?? 0,
+    protected: session.id === preferredSessionId || residentChatSessionIsProtected(session.id),
+  }));
+  const evictions = selectResidentChatSessionEvictions(records, {
+    maxSessions: MAX_RESIDENT_CHAT_SESSIONS,
+    maxEstimatedChars: MAX_RESIDENT_CHAT_SESSION_CHARS,
+  });
+  for (const sessionId of evictions) {
+    chatSessions.delete(sessionId);
+    residentChatSessionSizes.delete(sessionId);
+    residentChatSessionAccess.delete(sessionId);
+  }
+}
+
+function cacheChatSession(session: InMemoryChatSession): void {
+  chatSessions.set(session.id, session);
+  residentChatSessionSizes.set(session.id, estimateResidentChatSessionChars(session));
+  residentChatSessionAccess.set(session.id, Date.now());
+  pruneResidentChatSessions(session.id);
+}
+
+function getResidentChatSession(sessionId: string): InMemoryChatSession | undefined {
+  const session = chatSessions.get(sessionId);
+  if (session) residentChatSessionAccess.set(sessionId, Date.now());
+  return session;
+}
+
+function deleteResidentChatSession(sessionId: string): boolean {
+  residentChatSessionSizes.delete(sessionId);
+  residentChatSessionAccess.delete(sessionId);
+  return chatSessions.delete(sessionId);
+}
 
 function createPendingChatCompletion(id: string): void {
   let resolveCompletion: ((response: ChatResponse) => void) | null = null;
@@ -442,7 +509,7 @@ export async function stopActiveChatTurn(sessionId: string): Promise<{
   }
   stoppedChatTurnControllers.add(controller);
   controller.abort(new DOMException("Chat turn stopped by user", "AbortError"));
-  const session = chatSessions.get(key);
+  const session = getResidentChatSession(key);
   if (session) {
     await persistStoppedAssistantTurn(session);
   }
@@ -630,9 +697,10 @@ function enqueuePendingChatMessage(
     pendingMessage: pendingChatSnapshot(item),
     pendingMessages,
     workspaceDir: request.workspaceDir ?? null,
-    plan: chatSessions.has(sessionId)
-      ? extractLatestSessionPlan(sessionId, chatSessions.get(sessionId)?.messages || [])
-      : null,
+    plan: (() => {
+      const session = getResidentChatSession(sessionId);
+      return session ? extractLatestSessionPlan(sessionId, session.messages) : null;
+    })(),
     message: {
       role: "assistant",
       content:
@@ -994,8 +1062,9 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
     typeof runStatusSnapshot?.detail === "string" &&
     runStatusSnapshot.detail.trim().toLowerCase() === "steering to follow-up...";
   const runStatusActive = isSessionStatusActive(runStatusSnapshot?.status) && !isSteeringHandoff;
-  if (chatTurnMutex.isLocked(sessionId) || runStatusActive) {
-    schedulePendingChatDrain(sessionId, runStatusActive ? 500 : 0);
+  const retryDelay = pendingChatDrainRetryDelay(chatTurnMutex.isLocked(sessionId), runStatusActive);
+  if (retryDelay !== null) {
+    schedulePendingChatDrain(sessionId, retryDelay);
     return;
   }
 
@@ -1147,6 +1216,7 @@ async function persistChatSessionSnapshot(
     ),
     modelMetadata,
   });
+  cacheChatSession(session);
   return session.persisted;
 }
 
@@ -1252,7 +1322,7 @@ async function restorePersistedChatSessionForChat(
       persisted: true,
       compactionCount: persisted.compactionCount,
     };
-    chatSessions.set(sessionId, restored);
+    cacheChatSession(restored);
     log.info("Restored persisted session for chat turn", {
       sessionId,
       messages: (persisted.contextMessages ?? persisted.messages).length,
@@ -1825,12 +1895,12 @@ export function deletePendingChatMessage(
 
 async function waitForPendingChatSession(sessionId: string): Promise<InMemoryChatSession | null> {
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const session = chatSessions.get(sessionId);
+    const session = getResidentChatSession(sessionId);
     if (session) return session;
     if (!chatTurnMutex.isLocked(sessionId)) return null;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  return chatSessions.get(sessionId) ?? null;
+  return getResidentChatSession(sessionId) ?? null;
 }
 
 export async function steerPendingChatMessage(
@@ -1952,7 +2022,7 @@ async function handleChatTurn(
   const requestedWorkspaceDir =
     workspaceDir !== undefined ? normalizeSessionWorkspaceDir(workspaceDir) : undefined;
 
-  let session = chatSessions.get(effectiveSessionId);
+  let session = getResidentChatSession(effectiveSessionId);
   if (!session) {
     // A miss for a previously-persisted id (gateway restart, memory eviction)
     // must restore history from the database — creating a fresh session here
@@ -2012,7 +2082,7 @@ async function handleChatTurn(
       workspaceDir: requestedWorkspaceDir ?? null,
       persisted: false,
     };
-    chatSessions.set(newSessionId, session);
+    cacheChatSession(session);
 
     trackSessionEvent(newSessionId, "created", {
       agentId: agent.id,
@@ -2838,7 +2908,7 @@ async function handleChatTurn(
 }
 
 export async function getSession(sessionId: string) {
-  const session = chatSessions.get(sessionId);
+  const session = getResidentChatSession(sessionId);
   if (session) {
     const modelMetadata = resolveSessionModelMetadata(session.agentId);
     if (shouldRegenerateSessionTitle(session.title)) {
@@ -2951,7 +3021,7 @@ export async function getSession(sessionId: string) {
       persisted: true,
       compactionCount: persisted.compactionCount,
     };
-    chatSessions.set(sessionId, restoredSession);
+    cacheChatSession(restoredSession);
     upsertPersistedSessionIndex({
       id: sessionId,
       agentId: persisted.agentId,
@@ -2985,7 +3055,7 @@ export async function updateSessionAgent(
   }
 
   await getSession(sessionId);
-  const session = chatSessions.get(sessionId);
+  const session = getResidentChatSession(sessionId);
   if (!session) {
     throw new Error("Session not found");
   }
@@ -3176,7 +3246,7 @@ export async function listSessionPage(options?: { limit?: number; offset?: numbe
 }
 
 export async function deleteSession(sessionId: string): Promise<boolean> {
-  const memoryDeleted = chatSessions.delete(sessionId);
+  const memoryDeleted = deleteResidentChatSession(sessionId);
 
   const persistedDeleted = await deletePersistedSession(sessionId);
   if (memoryDeleted || persistedDeleted) {
@@ -3339,7 +3409,7 @@ export async function revertSessionToMessage(
   const keptCount = keptMessages.filter((message) => message.role !== "system").length;
   const removedCount = visibleMessageCount - keptCount;
 
-  const inMemorySession = chatSessions.get(sessionId);
+  const inMemorySession = getResidentChatSession(sessionId);
   const agentId = inMemorySession?.agentId || session.agentId || "default";
   const sessionTitle =
     inMemorySession?.title !== undefined
@@ -3362,7 +3432,7 @@ export async function revertSessionToMessage(
     inMemorySession.persisted = true;
     inMemorySession.updatedAt = new Date().toISOString();
   } else {
-    chatSessions.set(sessionId, {
+    cacheChatSession({
       id: sessionId,
       agentId,
       title: sessionTitle,
@@ -3425,7 +3495,7 @@ export async function updateSessionWorkspace(
     throw new Error("Cannot update workspace for subagent sessions");
   }
 
-  const inMemorySession = chatSessions.get(sessionId);
+  const inMemorySession = getResidentChatSession(sessionId);
   const agentId = inMemorySession?.agentId || session.agentId || "default";
   const sessionTitle =
     inMemorySession?.title !== undefined
@@ -3442,7 +3512,7 @@ export async function updateSessionWorkspace(
     inMemorySession.persisted = true;
     inMemorySession.updatedAt = updatedAt;
   } else {
-    chatSessions.set(sessionId, {
+    cacheChatSession({
       id: sessionId,
       agentId,
       title: sessionTitle,
@@ -3488,7 +3558,7 @@ export async function updateSessionTitle(
     throw new Error("Cannot update title for subagent sessions");
   }
 
-  const inMemorySession = chatSessions.get(sessionId);
+  const inMemorySession = getResidentChatSession(sessionId);
   const agentId = inMemorySession?.agentId || session.agentId || "default";
   const createdAt = inMemorySession?.createdAt || session.createdAt || new Date().toISOString();
   const workspaceDir =
@@ -3505,7 +3575,7 @@ export async function updateSessionTitle(
     inMemorySession.updatedAt = updatedAt;
     inMemorySession.persisted = true;
   } else {
-    chatSessions.set(sessionId, {
+    cacheChatSession({
       id: sessionId,
       agentId,
       title: normalizedTitle,
@@ -3567,7 +3637,7 @@ function flushDeferredSessionMessages(sessionKey: string): void {
   const messages = deferredSessionMessages.get(sessionKey);
   if (!messages?.length) return;
   deferredSessionMessages.delete(sessionKey);
-  const session = chatSessions.get(sessionKey);
+  const session = getResidentChatSession(sessionKey);
   if (!session) return;
   const deliveredAt = Date.now();
   messages.forEach((message, index) => {
@@ -3579,7 +3649,7 @@ function flushDeferredSessionMessages(sessionKey: string): void {
 }
 
 export function sendToSession(sessionKey: string, message: ChatMessage): boolean {
-  const session = chatSessions.get(sessionKey);
+  const session = getResidentChatSession(sessionKey);
   if (session) {
     if (chatTurnMutex.isLocked(sessionKey)) {
       const queued = deferredSessionMessages.get(sessionKey) || [];

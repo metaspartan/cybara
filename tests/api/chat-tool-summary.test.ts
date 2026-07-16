@@ -47,6 +47,12 @@ describe("chat tool summary utilities", () => {
       )
     ).toBe(true);
     expect(shouldEnforceToolUseForMessage("Build a todo app in this workspace")).toBe(true);
+    expect(
+      shouldEnforceToolUseForMessage(
+        "Also update the README with the final behavior and verification command, then rerun everything."
+      )
+    ).toBe(true);
+    expect(shouldEnforceToolUseForMessage("Update the changelog and rerun everything")).toBe(true);
   });
 
   test("does not force tools for greetings or capability questions", () => {

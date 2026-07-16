@@ -156,6 +156,7 @@ const WORK_CONTEXT_TERMS = new Set([
   "chat",
   "code",
   "config",
+  "documentation",
   "detector",
   "discord",
   "docs",
@@ -164,12 +165,14 @@ const WORK_CONTEXT_TERMS = new Set([
   "lint",
   "model",
   "provider",
+  "readme",
   "repo",
   "session",
   "skill",
   "test",
   "ui",
   "wallet",
+  "changelog",
 ]);
 
 const NON_ACTIONABLE_PATTERNS = [

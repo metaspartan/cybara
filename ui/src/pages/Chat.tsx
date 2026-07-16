@@ -19,7 +19,7 @@ import {
   type AppHotkeyActionId,
   consumePendingChatHotkey,
 } from "@/lib/appHotkeys";
-import { apiFetch, appendApiTokenParam } from "@/lib/auth";
+import { apiFetch } from "@/lib/auth";
 import {
   buildActivitiesFromToolCalls,
   finalizeCompletedActivities,
@@ -58,13 +58,12 @@ import { MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
 import { ChatComposer, type ChatComposerProps } from "./chat/ChatComposer";
 import { ChatEmptyState } from "./chat/ChatEmptyState";
 import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFollowUpControls";
-import { ChatImageLightbox, type ChatLightboxImage } from "./chat/ChatImageLightbox";
+import { ChatImageLightbox } from "./chat/ChatImageLightbox";
 import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
 import { ChatPageHeader } from "./chat/ChatPageHeader";
 import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
 import {
-  type ArtifactSummaryView,
   applyLiveActivityEvent,
   buildPreSteeringActivityMessage,
   type ChatMessage,
@@ -106,7 +105,6 @@ import {
   toLiveActivityItems,
 } from "./chat/chatModel";
 import { parseInitialChatRoute } from "./chat/chatRoute";
-import { chatBottomScrollTop, isChatNearBottom } from "./chat/chatScroll";
 import { type GitBranchOption, GitBranchSelector } from "./chat/GitBranchSelector";
 import {
   clearCachedLiveSessionState,
@@ -123,8 +121,11 @@ import {
 } from "./chat/pendingQueueCache";
 import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
 import { useChatAttachments } from "./chat/useChatAttachments";
+import { useArtifactViewer } from "./chat/useArtifactViewer";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { useChatDictation } from "./chat/useChatDictation";
+import { useChatMessageActions } from "./chat/useChatMessageActions";
+import { useChatScroll } from "./chat/useChatScroll";
 import { useChatWorkspaceTabs } from "./chat/useChatWorkspaceTabs";
 import { useEnvironmentGitBranches } from "./chat/useEnvironmentGitBranches";
 import { useSessionFileChanges } from "./chat/useSessionFileChanges";
@@ -222,90 +223,26 @@ export function Chat() {
     removePendingImage,
     setImageDragActive,
   } = useChatAttachments();
-  const [imageLightbox, setImageLightbox] = useState<{
-    images: ChatLightboxImage[];
-    index: number;
-  } | null>(null);
+  const {
+    copiedMessageIndex,
+    handleCopyMessage,
+    handleReadAloud,
+    imageLightbox,
+    messagesContainerRef,
+    openChatImage,
+    setImageLightbox,
+    speakingMessageIndex,
+  } = useChatMessageActions();
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
-  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const [forkingMessageIndex, setForkingMessageIndex] = useState<number | null>(null);
   const [showNearbyShare, setShowNearbyShare] = useState(false);
   const [savingGoldenMessageIndex, setSavingGoldenMessageIndex] = useState<number | null>(null);
-  const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
   const [isStoppingSession, setIsStoppingSession] = useState(false);
   const { data: nearbyStatus } = useNearbyStatus(Boolean(sessionId));
   const nearbySharingEnabled = canShareNearbySession(sessionId, nearbyStatus);
-  const speechAudioRef = useRef<HTMLAudioElement | null>(null);
-  const copiedMessageTimerRef = useRef<number | null>(null);
-  const handleCopyMessage = useCallback(async (index: number, content: string) => {
-    let copied = false;
-    try {
-      await navigator.clipboard.writeText(content);
-      copied = true;
-    } catch {
-      try {
-        const textarea = document.createElement("textarea");
-        textarea.value = content;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        copied = document.execCommand("copy");
-        document.body.removeChild(textarea);
-      } catch (error) {
-        console.error("Failed to copy message:", error);
-      }
-    }
-    if (!copied) return;
-    setCopiedMessageIndex(index);
-    if (copiedMessageTimerRef.current !== null) {
-      window.clearTimeout(copiedMessageTimerRef.current);
-    }
-    copiedMessageTimerRef.current = window.setTimeout(() => {
-      setCopiedMessageIndex(null);
-      copiedMessageTimerRef.current = null;
-    }, 1500);
-  }, []);
-  const handleReadAloud = useCallback(
-    async (index: number, content: string) => {
-      const activeAudio = speechAudioRef.current;
-      if (activeAudio) {
-        activeAudio.pause();
-        speechAudioRef.current = null;
-        setSpeakingMessageIndex(null);
-        if (speakingMessageIndex === index) return;
-      }
-      try {
-        setSpeakingMessageIndex(index);
-        const result = await chatApi.synthesizeSpeech({ text: content });
-        if (!result.success || !result.data?.audioPath) {
-          throw new Error(result.error || "Speech synthesis failed");
-        }
-        const mediaUrl = appendApiTokenParam(
-          `/api/media?path=${encodeURIComponent(result.data.audioPath)}`
-        );
-        const audio = new Audio(mediaUrl);
-        speechAudioRef.current = audio;
-        const clear = () => {
-          if (speechAudioRef.current === audio) speechAudioRef.current = null;
-          setSpeakingMessageIndex(null);
-        };
-        audio.addEventListener("ended", clear, { once: true });
-        audio.addEventListener("error", clear, { once: true });
-        await audio.play();
-      } catch (error) {
-        speechAudioRef.current = null;
-        setSpeakingMessageIndex(null);
-        useUIStore
-          .getState()
-          .addToast("error", error instanceof Error ? error.message : "Speech synthesis failed");
-      }
-    },
-    [speakingMessageIndex]
-  );
   const [reverting, setReverting] = useState(false);
   const [showEnvironmentOverview, setShowEnvironmentOverview] = useState(false);
   const closeEnvironmentOverview = useCallback(() => setShowEnvironmentOverview(false), []);
@@ -326,20 +263,32 @@ export function Chat() {
   const [diffPanelWidth, setDiffPanelWidth] = useState<number>(() => readPersistedDiffPanelWidth());
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
   const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
-  const [artifactViewerTarget, setArtifactViewerTarget] = useState<ArtifactSummaryView | null>(
-    null
-  );
-  const [artifactViewerLoading, setArtifactViewerLoading] = useState(false);
-  const [artifactViewerError, setArtifactViewerError] = useState<string | null>(null);
-  const [artifactViewerContent, setArtifactViewerContent] = useState("");
-  const [artifactViewerRawView, setArtifactViewerRawView] = useState(false);
-  const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
+  const {
+    closeArtifactViewer,
+    content: artifactViewerContent,
+    error: artifactViewerError,
+    loading: artifactViewerLoading,
+    openArtifactViewer,
+    rawView: artifactViewerRawView,
+    setRawView: setArtifactViewerRawView,
+    target: artifactViewerTarget,
+  } = useArtifactViewer();
   const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "compacting" | "idle">(
     "idle"
   );
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [liveCurrentStep, setLiveCurrentStep] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
+  const { refreshScrollToBottomVisibility, scrollToBottom, showScrollToBottomButton } =
+    useChatScroll({
+      artifactViewerOpen: artifactViewerTarget !== null,
+      isLoading,
+      liveActivities,
+      liveCurrentStep,
+      messages: typedMessages,
+      messagesContainerRef,
+      streamingContent,
+    });
   const [liveRunStartedAtMs, setLiveRunStartedAtMs] = useState<number | null>(null);
   const [pendingMessages, setPendingMessages] = useState<PendingChatMessage[]>([]);
   const [sessionContextUsage, setSessionContextUsage] = useState<SessionContextUsage | null>(null);
@@ -364,29 +313,6 @@ export function Chat() {
   );
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
-  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-  const openChatImage = useCallback((src: string, alt: string) => {
-    const nodes = Array.from(
-      messagesContainerRef.current?.querySelectorAll<HTMLElement>("[data-chat-lightbox-src]") ?? []
-    );
-    const images = nodes
-      .map((node) => ({
-        src: node.dataset.chatLightboxSrc?.trim() || "",
-        alt: node.dataset.chatLightboxAlt?.trim() || "Image",
-      }))
-      .filter((image) => image.src.length > 0);
-    const index = Math.max(
-      0,
-      images.findIndex((image) => image.src === src && image.alt === alt)
-    );
-    setImageLightbox({
-      images: images.length > 0 ? images : [{ src, alt }],
-      index,
-    });
-  }, []);
-  const keepScrolledToBottomRef = useRef(true);
-  const programmaticScrollUntilRef = useRef(0);
-  const programmaticScrollTimeoutRef = useRef<number | null>(null);
   const diffPanelResizeStateRef = useRef<{
     startX: number;
     startWidth: number;
@@ -805,8 +731,6 @@ export function Chat() {
     return () => {
       diffPanelResizeCleanupRef.current?.();
       diffPanelResizeCleanupRef.current = null;
-      speechAudioRef.current?.pause();
-      speechAudioRef.current = null;
     };
   }, []);
 
@@ -876,123 +800,6 @@ export function Chat() {
 
     setSelectedDiffPath(sessionFileChanges.files[0]?.path || null);
   }, [selectedDiffPath, sessionFileChanges]);
-
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    keepScrolledToBottomRef.current = true;
-    if (behavior === "smooth") {
-      programmaticScrollUntilRef.current = Number.POSITIVE_INFINITY;
-      if (programmaticScrollTimeoutRef.current !== null) {
-        window.clearTimeout(programmaticScrollTimeoutRef.current);
-      }
-      programmaticScrollTimeoutRef.current = window.setTimeout(() => {
-        programmaticScrollTimeoutRef.current = null;
-        programmaticScrollUntilRef.current = 0;
-        const latestContainer = messagesContainerRef.current;
-        if (!latestContainer || isChatNearBottom(latestContainer)) return;
-        keepScrolledToBottomRef.current = false;
-        setShowScrollToBottomButton(true);
-      }, 2500);
-    } else if (programmaticScrollUntilRef.current !== Number.POSITIVE_INFINITY) {
-      programmaticScrollUntilRef.current = performance.now() + 100;
-    }
-    container.scrollTo({ top: container.scrollHeight, behavior });
-    setShowScrollToBottomButton(false);
-  }, []);
-
-  const refreshScrollToBottomVisibility = useCallback(() => {
-    const container = messagesContainerRef.current;
-    if (!container || artifactViewerTarget) {
-      setShowScrollToBottomButton(false);
-      return;
-    }
-    const nearBottom = isChatNearBottom(container);
-    const programmaticScrollActive = performance.now() < programmaticScrollUntilRef.current;
-    if (nearBottom) {
-      keepScrolledToBottomRef.current = true;
-      programmaticScrollUntilRef.current = 0;
-      if (programmaticScrollTimeoutRef.current !== null) {
-        window.clearTimeout(programmaticScrollTimeoutRef.current);
-        programmaticScrollTimeoutRef.current = null;
-      }
-    } else if (!programmaticScrollActive) {
-      keepScrolledToBottomRef.current = false;
-    }
-    setShowScrollToBottomButton(!nearBottom && !programmaticScrollActive);
-  }, [artifactViewerTarget]);
-
-  useEffect(
-    () => () => {
-      if (programmaticScrollTimeoutRef.current !== null) {
-        window.clearTimeout(programmaticScrollTimeoutRef.current);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    if (!keepScrolledToBottomRef.current && !isChatNearBottom(container, 96)) {
-      setShowScrollToBottomButton(true);
-      return;
-    }
-    const rafId = window.requestAnimationFrame(() => scrollToBottom("auto"));
-    return () => window.cancelAnimationFrame(rafId);
-  }, [messages, scrollToBottom]);
-
-  useEffect(() => {
-    if (artifactViewerTarget) return;
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    if (!keepScrolledToBottomRef.current && !isChatNearBottom(container, 96)) return;
-    const rafId = window.requestAnimationFrame(() => {
-      scrollToBottom("auto");
-    });
-    return () => window.cancelAnimationFrame(rafId);
-  }, [liveActivities, streamingContent, liveCurrentStep, artifactViewerTarget, scrollToBottom]);
-
-  useEffect(() => {
-    if (artifactViewerTarget || typeof ResizeObserver === "undefined") return;
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    let rafId: number | null = null;
-    const observer = new ResizeObserver(() => {
-      if (rafId !== null) window.cancelAnimationFrame(rafId);
-      rafId = window.requestAnimationFrame(() => {
-        rafId = null;
-        if (keepScrolledToBottomRef.current) {
-          const targetScrollTop = chatBottomScrollTop(container);
-          if (Math.abs(container.scrollTop - targetScrollTop) > 1) {
-            container.scrollTop = targetScrollTop;
-          }
-        } else {
-          refreshScrollToBottomVisibility();
-        }
-      });
-    });
-    observer.observe(container);
-    const observeChildren = () => {
-      for (const child of container.children) observer.observe(child);
-    };
-    observeChildren();
-    const mutationObserver = new MutationObserver(observeChildren);
-    mutationObserver.observe(container, { childList: true });
-    return () => {
-      observer.disconnect();
-      mutationObserver.disconnect();
-      if (rafId !== null) window.cancelAnimationFrame(rafId);
-    };
-  }, [artifactViewerTarget, refreshScrollToBottomVisibility]);
-
-  useEffect(() => {
-    const rafId = window.requestAnimationFrame(() => {
-      refreshScrollToBottomVisibility();
-    });
-    return () => window.cancelAnimationFrame(rafId);
-  }, [refreshScrollToBottomVisibility, typedMessages.length, isLoading, artifactViewerTarget]);
 
   useEffect(() => {
     activeSessionRef.current = sessionId;
@@ -2598,64 +2405,6 @@ export function Chat() {
     },
     [diffPanelWidth]
   );
-
-  const openArtifactViewer = useCallback(async (artifact: ArtifactSummaryView) => {
-    setArtifactViewerTarget(artifact);
-    setArtifactViewerLoading(true);
-    setArtifactViewerError(null);
-    setArtifactViewerContent("");
-    setArtifactViewerRawView(false);
-
-    try {
-      const url = appendApiTokenParam(
-        `/api/sessions/${encodeURIComponent(artifact.sessionId)}/artifacts/${encodeURIComponent(artifact.fileName)}`
-      );
-      const response = await fetch(url);
-      const payload = (await response.json()) as {
-        content?: string;
-        artifact?: { path?: string };
-        error?: string;
-      };
-
-      if (!response.ok) {
-        const errorMessage =
-          typeof payload?.error === "string"
-            ? payload.error
-            : `Failed to load artifact (${response.status})`;
-        throw new Error(errorMessage);
-      }
-      if (typeof payload.content !== "string") {
-        throw new Error("Artifact response did not include content");
-      }
-
-      setArtifactViewerTarget((previous) => {
-        if (!previous) return artifact;
-        const nextPath =
-          payload?.artifact && typeof payload.artifact.path === "string"
-            ? payload.artifact.path
-            : previous.path;
-        return {
-          ...previous,
-          path: nextPath,
-        };
-      });
-      setArtifactViewerContent(payload.content);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load artifact";
-      setArtifactViewerError(message);
-      setArtifactViewerContent("");
-    } finally {
-      setArtifactViewerLoading(false);
-    }
-  }, []);
-
-  const closeArtifactViewer = useCallback(() => {
-    setArtifactViewerTarget(null);
-    setArtifactViewerLoading(false);
-    setArtifactViewerError(null);
-    setArtifactViewerContent("");
-    setArtifactViewerRawView(false);
-  }, []);
 
   const handleViewSubagentSession = useCallback(
     async (sessionKey: string): Promise<void> => {

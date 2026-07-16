@@ -82,6 +82,8 @@ const TOOL_CALL_TAG_PATTERN =
   /<\/?(?:function_calls?|tool_calls?|tool_result|function_response|function|invoke|parameter|param)\b[^>]*>/gi;
 const DANGLING_TOOL_CALL_LINE_PATTERN =
   /<(?:function_call|tool_call)\b[^>]*>\s*(?:[{[]|<invoke\b|["']?(?:name|tool_name|function)["']?\s*[:=])[^\r\n]*(?=\r?\n|$)/gi;
+const DANGLING_TOOL_CALL_TAIL_PATTERN =
+  /(?:^|\n)[ \t]*<(?:function_calls?|tool_calls?|invoke)\b[^>]*>[\s\S]*$/i;
 const DIRECT_NAMED_XML_TOOL_PATTERN =
   /^\s*<([A-Za-z_][A-Za-z0-9_.:-]{0,119})\b[^>]*>([\s\S]*?)<\/\1>\s*$/i;
 const REPLY_DIRECTIVE_LINE_PATTERN =
@@ -584,6 +586,23 @@ function stripLeadingBareCommandJsonMarkup(content: string): string {
     : content;
 }
 
+function closeUnterminatedMarkdownFence(content: string): string {
+  let openFence: string | undefined;
+  for (const line of content.split("\n")) {
+    const match = /^\s{0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    const marker = match?.[1];
+    if (!marker) continue;
+    if (!openFence) {
+      openFence = marker;
+      continue;
+    }
+    if (marker[0] === openFence[0] && marker.length >= openFence.length) {
+      openFence = undefined;
+    }
+  }
+  return openFence ? `${content.trimEnd()}\n${openFence}` : content;
+}
+
 export function stripTextToolCallMarkup(content: string): string {
   const normalized = normalizeProviderTextMarkers(content);
   if (DIRECT_NAMED_XML_TOOL_PATTERN.test(normalized)) return "";
@@ -600,6 +619,7 @@ export function stripTextToolCallMarkup(content: string): string {
     .replace(LABELED_TOOL_JSON_PATTERN, "")
     .replace(HARMONY_TOOL_CALL_PATTERN, "")
     .replace(DANGLING_TOOL_CALL_LINE_PATTERN, "")
+    .replace(DANGLING_TOOL_CALL_TAIL_PATTERN, "")
     .replace(TOOL_CALL_TAG_PATTERN, "");
 
   return stripTrailingJsonToolCallMarkup(stripped)
@@ -797,10 +817,12 @@ export function toAnthropicReplayContentWithNormalizedToolUses(
 }
 
 export function sanitizeAssistantContent(content: string): string {
-  return stripTextToolCallMarkup(content)
-    .replace(REPLY_DIRECTIVE_LINE_PATTERN, "")
-    .replace(REPLY_DIRECTIVE_INLINE_PATTERN, "$1")
-    .trim();
+  return closeUnterminatedMarkdownFence(
+    stripTextToolCallMarkup(content)
+      .replace(REPLY_DIRECTIVE_LINE_PATTERN, "")
+      .replace(REPLY_DIRECTIVE_INLINE_PATTERN, "$1")
+      .trim()
+  );
 }
 
 export function shouldUseMiniMaxReasoningSplit(
