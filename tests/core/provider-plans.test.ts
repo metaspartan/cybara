@@ -516,8 +516,14 @@ describe("provider plan monitoring", () => {
       return Response.json({
         data: {
           limits: [
-            { type: "TIME_LIMIT", percentage: 22 },
-            { type: "TOKENS_LIMIT", percentage: 91 },
+            {
+              type: "TIME_LIMIT",
+              unit: 5,
+              percentage: 22,
+              usageDetails: [{ modelCode: "search-prime", usage: 220 }],
+            },
+            { type: "TOKENS_LIMIT", unit: 3, number: 5, percentage: 91 },
+            { type: "TOKENS_LIMIT", unit: 6, number: 1, percentage: 37 },
           ],
         },
       });
@@ -536,7 +542,8 @@ describe("provider plan monitoring", () => {
     expect(snapshot?.manualPlanEditable).toBe(false);
     expect(snapshot?.windows.map((window) => [window.id, window.usedPercent])).toEqual([
       ["5h", 91],
-      ["weekly", 22],
+      ["weekly", 37],
+      ["billing_month", 22],
       ["local_30d", undefined],
     ]);
   });

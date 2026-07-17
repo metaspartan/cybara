@@ -115,6 +115,7 @@ describe("reasoning level support matrix", () => {
   test("Kimi K3 uses the current max-only reasoning contract", () => {
     expect(supportedReasoningEfforts("kimi-code", "k3")).toEqual(["max"]);
     expect(supportedReasoningEfforts("kimi-code-oauth", "k3")).toEqual(["max"]);
+    expect(supportedReasoningEfforts("kimi-code-subscription", "k3")).toEqual(["max"]);
     expect(coerceReasoningEffort("high", "kimi-code-oauth", "k3")).toBe("max");
   });
 

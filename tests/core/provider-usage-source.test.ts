@@ -253,13 +253,28 @@ describe("parseAntigravityUsageResponse", () => {
 });
 
 describe("parseZaiUsageResponse", () => {
-  test("maps quota-limit token and time percentages into five-hour and weekly windows", () => {
+  test("does not infer unlimited weekly usage when the provider omits the weekly bucket", () => {
     const result = parseZaiUsageResponse(
       {
         data: {
+          level: "pro",
           limits: [
-            { type: "TIME_LIMIT", percentage: 7, nextResetTime: 1783984001998 },
-            { type: "TOKENS_LIMIT", percentage: 44, nextResetTime: 1783489036671 },
+            {
+              type: "TIME_LIMIT",
+              percentage: 7,
+              nextResetTime: 1783984001998,
+              usageDetails: [
+                { modelCode: "search-prime", usage: 2 },
+                { modelCode: "web-reader", usage: 5 },
+              ],
+            },
+            {
+              type: "TOKENS_LIMIT",
+              unit: 3,
+              number: 5,
+              percentage: 44,
+              nextResetTime: 1783489036671,
+            },
           ],
         },
       },
@@ -270,15 +285,137 @@ describe("parseZaiUsageResponse", () => {
     expect(result?.source).toBe("provider_api");
     expect(result?.fiveHour?.usedPercent).toBe(44);
     expect(result?.fiveHour?.resetsAt).toBe(new Date(1783489036671).toISOString());
-    expect(result?.weekly?.usedPercent).toBe(7);
-    expect(result?.weekly?.resetsAt).toBe(new Date(1783984001998).toISOString());
+    expect(result?.weekly).toBeUndefined();
+    expect(result?.monthly?.usedPercent).toBe(7);
+    expect(result?.monthly?.resetsAt).toBe(new Date(1783984001998).toISOString());
     expect(result?.fetchedAt).toBe(800);
   });
 
-  test("returns null when no token quota limit is present", () => {
-    expect(
-      parseZaiUsageResponse({ data: { limits: [{ type: "TIME_LIMIT", percentage: 7 }] } }, 1)
-    ).toBeNull();
+  test("does not infer unlimited weekly usage for unknown plan levels", () => {
+    const result = parseZaiUsageResponse(
+      {
+        data: {
+          limits: [{ type: "TOKENS_LIMIT", unit: 3, percentage: 44 }],
+        },
+      },
+      801
+    );
+
+    expect(result?.fiveHour?.usedPercent).toBe(44);
+    expect(result?.weekly).toBeUndefined();
+  });
+
+  test("maps separate five-hour, weekly, and monthly limits by provider unit", () => {
+    const result = parseZaiUsageResponse(
+      {
+        data: {
+          limits: [
+            {
+              type: "TOKENS_LIMIT",
+              unit: 6,
+              number: 1,
+              percentage: 31,
+              nextResetTime: 1783984001998,
+            },
+            {
+              type: "TOKENS_LIMIT",
+              unit: 3,
+              number: 5,
+              percentage: 19,
+              nextResetTime: 1784084001998,
+            },
+            {
+              type: "TIME_LIMIT",
+              unit: 5,
+              number: 1,
+              percentage: 12,
+              nextResetTime: 1785984001998,
+            },
+          ],
+        },
+      },
+      900
+    );
+
+    expect(result?.fiveHour?.usedPercent).toBe(19);
+    expect(result?.weekly?.usedPercent).toBe(31);
+    expect(result?.weekly?.resetsAt).toBe(new Date(1783984001998).toISOString());
+    expect(result?.monthly?.usedPercent).toBe(12);
+    expect(result?.monthly?.resetsAt).toBe(new Date(1785984001998).toISOString());
+  });
+
+  test("maps a weekly tool-call quota by provider unit", () => {
+    const result = parseZaiUsageResponse(
+      {
+        data: {
+          limits: [
+            {
+              type: "TOKENS_LIMIT",
+              unit: 3,
+              number: 5,
+              percentage: 11,
+            },
+            {
+              type: "TOOL_CALL_LIMIT",
+              unit: 6,
+              number: 1,
+              percentage: 63,
+              nextResetTime: 1784584001998,
+            },
+            {
+              type: "TIME_LIMIT",
+              unit: 5,
+              number: 1,
+              percentage: 7,
+            },
+          ],
+        },
+      },
+      902
+    );
+
+    expect(result?.fiveHour?.usedPercent).toBe(11);
+    expect(result?.weekly?.usedPercent).toBe(63);
+    expect(result?.weekly?.resetsAt).toBe(new Date(1784584001998).toISOString());
+    expect(result?.monthly?.usedPercent).toBe(7);
+  });
+
+  test("uses an explicit unlimited weekly entitlement", () => {
+    const result = parseZaiUsageResponse(
+      {
+        data: {
+          limits: [
+            { type: "TOKENS_LIMIT", unit: 3, percentage: 22 },
+            { type: "WEEKLY_LIMIT", unit: 6, unlimited: true },
+          ],
+        },
+      },
+      903
+    );
+
+    expect(result?.weekly?.usedPercent).toBe(0);
+    expect(result?.weekly?.unlimited).toBe(true);
+  });
+
+  test("falls back to reset order for legacy token limits without unit metadata", () => {
+    const result = parseZaiUsageResponse(
+      {
+        data: {
+          limits: [
+            { type: "TOKENS_LIMIT", percentage: 70, nextResetTime: 1783984001998 },
+            { type: "TOKENS_LIMIT", percentage: 20, nextResetTime: 1783489036671 },
+          ],
+        },
+      },
+      901
+    );
+
+    expect(result?.fiveHour?.usedPercent).toBe(20);
+    expect(result?.weekly?.usedPercent).toBe(70);
+  });
+
+  test("returns null when no recognized quota limit is present", () => {
+    expect(parseZaiUsageResponse({ data: { limits: [{ type: "OTHER_LIMIT" }] } }, 1)).toBeNull();
     expect(parseZaiUsageResponse({}, 1)).toBeNull();
   });
 });

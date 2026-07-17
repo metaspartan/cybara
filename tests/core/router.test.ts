@@ -342,6 +342,39 @@ describe("provider selection", () => {
       tables.metrics.getKeyTotalsForWindows = originalGetKeyTotalsForWindows;
     }
   });
+
+  test("usage_aware prefers verified quota over unknown usage", () => {
+    setRouterConfig({
+      strategy: "usage_aware",
+      routes: {
+        minimax: { weight: 10 },
+        unknown: { weight: 100 },
+      },
+    });
+    config.set("provider_plan_monitoring", {
+      enabled: true,
+      routerEnforcement: true,
+      providers: {
+        minimax: { fiveHour: { tokenLimit: 1000 } },
+      },
+    });
+    const originalGetKeyTotalsForWindows = tables.metrics.getKeyTotalsForWindows;
+    tables.metrics.getKeyTotalsForWindows = ((type: string, startsSql: string[]) =>
+      type === "token_usage_by_provider"
+        ? [
+            {
+              key: "minimax",
+              totals: startsSql.map(() => 500),
+            },
+          ]
+        : []) as typeof tables.metrics.getKeyTotalsForWindows;
+
+    try {
+      expect(selectProvider()).toBe("minimax");
+    } finally {
+      tables.metrics.getKeyTotalsForWindows = originalGetKeyTotalsForWindows;
+    }
+  });
 });
 
 // ─── Input validation ───────────────────────────────────────────────────────

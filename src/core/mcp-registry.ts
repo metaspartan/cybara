@@ -11,11 +11,12 @@ export interface MCPRegistryServer {
   args?: string;
   url?: string;
   envVars?: string[];
+  envDefaults?: Record<string, string>;
   author?: string;
   stars?: number;
   categories?: string[];
   homepage?: string;
-  installType: "bunx" | "bun" | "smithery" | "remote";
+  installType: "bunx" | "bun" | "smithery" | "remote" | "uvx";
 }
 
 interface RegistryConfig {
@@ -110,6 +111,23 @@ const POPULAR_SERVERS: MCPRegistryServer[] = [
     args: "--bun @modelcontextprotocol/server-puppeteer",
     categories: ["browser", "automation"],
     installType: "bunx",
+  },
+  {
+    id: "mcp-blender",
+    name: "Blender",
+    description:
+      "Create and inspect Blender scenes through a community MCP server. Requires uvx and the Blender add-on.",
+    registry: "mcp.so",
+    package: "blender-mcp",
+    command: "uvx",
+    args: "--python 3.11 blender-mcp",
+    envDefaults: {
+      DISABLE_TELEMETRY: "true",
+      UV_PYTHON_PREFERENCE: "only-managed",
+    },
+    categories: ["3d", "creative", "blender"],
+    homepage: "https://github.com/ahujasid/blender-mcp",
+    installType: "uvx",
   },
   {
     id: "mcp-brave-search",
@@ -375,7 +393,10 @@ class MCPRegistryManager {
       url.searchParams.set("q", query);
       url.searchParams.set("pageSize", "20");
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: "application/json",
+        },
         signal: AbortSignal.timeout(5000),
       });
       if (!res.ok) return [];
@@ -491,12 +512,19 @@ class MCPRegistryManager {
     try {
       const fullCommand = server.command;
       const fullArgs = server.args || "";
+      const defaultEnvironment = Object.entries(server.envDefaults ?? {});
+      const environmentVariables = (server.envVars ?? [])
+        .filter((key) => !Object.hasOwn(server.envDefaults ?? {}, key))
+        .map((key): [string, string] => [key, ""]);
+      const environment = [...defaultEnvironment, ...environmentVariables]
+        .map(([key, value]) => `${key}=${value}`)
+        .join(",");
 
       const created = mcpManager.create({
         name: server.name,
         command: fullCommand,
         args: fullArgs,
-        env: server.envVars?.map((v) => `${v}=`).join(",") || undefined,
+        env: environment || undefined,
         url: server.url,
         enabled: true,
       });

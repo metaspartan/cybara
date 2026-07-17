@@ -485,6 +485,7 @@ export abstract class AgentProviderRuntime {
     const toolCallId = this.createToolCallStatusId(toolName);
     try {
       const startedAt = Date.now();
+      if (toolContext?.executionState) toolContext.executionState.toolCallsStarted += 1;
       this.broadcastAgentStatus(
         "tool_executing",
         toolContext,

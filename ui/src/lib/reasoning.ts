@@ -22,6 +22,13 @@ const ADAPTIVE_THINKING_PROVIDERS = new Set([
   "minimax-portal",
   "minimax-portal-cn",
 ]);
+const KIMI_CODE_PROVIDERS = new Set([
+  "kimi-code",
+  "kimi-code-oauth",
+  "kimi-coding",
+  "kimi-oauth",
+  "kimi-code-subscription",
+]);
 
 const LEVEL_LABELS: Record<ReasoningEffort, string> = {
   minimal: "Minimal",
@@ -85,6 +92,9 @@ function supportedEfforts(provider?: string | null, model?: string | null): Reas
     return ["medium"];
   }
   const modelId = normalizeModelId(model);
+  if (KIMI_CODE_PROVIDERS.has(providerId) && modelId === "k3") {
+    return ["max"];
+  }
   if (providerId === "anthropic" || providerId === "anthropic_vertex") {
     return resolveAnthropicModelEfforts(modelId);
   }

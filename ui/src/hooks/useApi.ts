@@ -5,6 +5,8 @@ import type {
   AgentReasoningEffort,
   AgentMessage,
   Provider,
+  ProviderAccountPool,
+  ProviderAccountPoolInput,
   Channel,
   Task,
   Skill,
@@ -227,6 +229,46 @@ export function useProviders() {
   });
 }
 
+export function useProviderAccountPools() {
+  return useQuery({
+    queryKey: ["provider-account-pools"],
+    queryFn: () => fetchApi<ProviderAccountPool[]>("/provider-account-pools"),
+  });
+}
+
+export function useCreateProviderAccountPool() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: ProviderAccountPoolInput) =>
+      fetchApi<ProviderAccountPool>("/provider-account-pools", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["provider-account-pools"] }),
+  });
+}
+
+export function useUpdateProviderAccountPool() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: ProviderAccountPoolInput }) =>
+      fetchApi<ProviderAccountPool>(`/provider-account-pools/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["provider-account-pools"] }),
+  });
+}
+
+export function useDeleteProviderAccountPool() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetchApi<{ success: boolean }>(`/provider-account-pools/${id}`, { method: "DELETE" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["provider-account-pools"] }),
+  });
+}
+
 export function useAvailableProviders() {
   return useQuery({
     queryKey: ["providers", "available"],
@@ -271,7 +313,10 @@ export function useDeleteProvider() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => fetchApi<void>(`/providers/${id}`, { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["providers"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["providers"] });
+      queryClient.invalidateQueries({ queryKey: ["provider-account-pools"] });
+    },
   });
 }
 

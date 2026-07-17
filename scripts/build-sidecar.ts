@@ -122,17 +122,32 @@ export function getHostTargetFor(platformName: string, archName: string): Target
   const p = platformName;
   const a = archName;
   if (p === "darwin" && a === "arm64")
-    return { bunTarget: "bun-darwin-arm64", tauriSuffix: "aarch64-apple-darwin" };
+    return {
+      bunTarget: "bun-darwin-arm64",
+      tauriSuffix: "aarch64-apple-darwin",
+    };
   if (p === "darwin" && a === "x64")
     return { bunTarget: "bun-darwin-x64", tauriSuffix: "x86_64-apple-darwin" };
   if (p === "linux" && a === "x64")
-    return { bunTarget: "bun-linux-x64", tauriSuffix: "x86_64-unknown-linux-gnu" };
+    return {
+      bunTarget: "bun-linux-x64",
+      tauriSuffix: "x86_64-unknown-linux-gnu",
+    };
   if (p === "linux" && a === "arm64")
-    return { bunTarget: "bun-linux-arm64", tauriSuffix: "aarch64-unknown-linux-gnu" };
+    return {
+      bunTarget: "bun-linux-arm64",
+      tauriSuffix: "aarch64-unknown-linux-gnu",
+    };
   if (p === "win32" && a === "x64")
-    return { bunTarget: "bun-windows-x64", tauriSuffix: "x86_64-pc-windows-msvc" };
+    return {
+      bunTarget: "bun-windows-x64",
+      tauriSuffix: "x86_64-pc-windows-msvc",
+    };
   if (p === "win32" && a === "arm64")
-    return { bunTarget: "bun-windows-arm64", tauriSuffix: "aarch64-pc-windows-msvc" };
+    return {
+      bunTarget: "bun-windows-arm64",
+      tauriSuffix: "aarch64-pc-windows-msvc",
+    };
 
   throw new Error(`Unsupported platform: ${p}/${a}`);
 }
@@ -153,12 +168,30 @@ export function getHostTarget(): Target {
 }
 
 const BUN_TARGET_MAP: Record<string, Target> = {
-  "bun-darwin-arm64": { bunTarget: "bun-darwin-arm64", tauriSuffix: "aarch64-apple-darwin" },
-  "bun-darwin-x64": { bunTarget: "bun-darwin-x64", tauriSuffix: "x86_64-apple-darwin" },
-  "bun-linux-x64": { bunTarget: "bun-linux-x64", tauriSuffix: "x86_64-unknown-linux-gnu" },
-  "bun-linux-arm64": { bunTarget: "bun-linux-arm64", tauriSuffix: "aarch64-unknown-linux-gnu" },
-  "bun-windows-x64": { bunTarget: "bun-windows-x64", tauriSuffix: "x86_64-pc-windows-msvc" },
-  "bun-windows-arm64": { bunTarget: "bun-windows-arm64", tauriSuffix: "aarch64-pc-windows-msvc" },
+  "bun-darwin-arm64": {
+    bunTarget: "bun-darwin-arm64",
+    tauriSuffix: "aarch64-apple-darwin",
+  },
+  "bun-darwin-x64": {
+    bunTarget: "bun-darwin-x64",
+    tauriSuffix: "x86_64-apple-darwin",
+  },
+  "bun-linux-x64": {
+    bunTarget: "bun-linux-x64",
+    tauriSuffix: "x86_64-unknown-linux-gnu",
+  },
+  "bun-linux-arm64": {
+    bunTarget: "bun-linux-arm64",
+    tauriSuffix: "aarch64-unknown-linux-gnu",
+  },
+  "bun-windows-x64": {
+    bunTarget: "bun-windows-x64",
+    tauriSuffix: "x86_64-pc-windows-msvc",
+  },
+  "bun-windows-arm64": {
+    bunTarget: "bun-windows-arm64",
+    tauriSuffix: "aarch64-pc-windows-msvc",
+  },
 };
 
 export function resolveTarget(): Target {
@@ -402,7 +435,9 @@ function installSharedOnnxRuntime(
   });
 
   copyPackageJson("onnxruntime-web", targetNodeModulesDir);
-  copyPackageDirectory("onnxruntime-web", "dist", targetNodeModulesDir, { omitSourceMaps: true });
+  copyPackageDirectory("onnxruntime-web", "dist", targetNodeModulesDir, {
+    omitSourceMaps: true,
+  });
 
   return copyOnnxRuntimeNodeRuntime(targetNodeModulesDir, runtimeTarget);
 }
@@ -448,7 +483,9 @@ export function copyTransformersRuntime(
   });
 
   copyPackageJson("kokoro-js", targetNodeModulesDir);
-  copyPackageDirectory("kokoro-js", "dist", targetNodeModulesDir, { omitSourceMaps: true });
+  copyPackageDirectory("kokoro-js", "dist", targetNodeModulesDir, {
+    omitSourceMaps: true,
+  });
   copyPackageDirectory("kokoro-js", "voices", targetNodeModulesDir);
   copyPackageFromRoot(NODE_MODULES_ROOT, "phonemizer", targetNodeModulesDir, ["dist"]);
 
@@ -683,7 +720,9 @@ export default instance.exports;
   const packagedRuntimeDir = join(TAURI_BIN_DIR, "runtime");
   await installBunRuntimeAt(packagedRuntimeDir, target.bunTarget);
   rmSync(join(packagedRuntimeDir, "local-speech-worker.ts"), { force: true });
-  rmSync(join(packagedRuntimeDir, "local-speech-worker-protocol.ts"), { force: true });
+  rmSync(join(packagedRuntimeDir, "local-speech-worker-protocol.ts"), {
+    force: true,
+  });
   await copyFilePortable(
     join(import.meta.dirname, "..", "src", "core", "local-speech-worker.mjs"),
     join(packagedRuntimeDir, "local-speech-worker.mjs")
@@ -705,6 +744,12 @@ export default instance.exports;
     removeAndCopyDirectory(packagedCuaDriverDir, join(dir, "cua-driver"));
   }
   console.log(`  📦 Copied computer-use driver v${CUA_DRIVER_VERSION}`);
+
+  const bundledPluginsDir = join(import.meta.dirname, "..", "plugins");
+  for (const dir of [RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]) {
+    removeAndCopyDirectory(bundledPluginsDir, join(dir, "plugins"));
+  }
+  console.log("  📦 Copied bundled plugins");
 
   // Copy secp256k1.wasm alongside the binary
   if (existsSync(wasmSource)) {

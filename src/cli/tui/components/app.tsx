@@ -8,6 +8,7 @@ import {
 } from "../../../core/update-check";
 import {
   type AvailableProviderInfo,
+  type ProviderAccountPoolInfo,
   type ProviderInfo,
 } from "../../commands/provider-commands";
 import { connectCliProviderOAuth } from "../../commands/provider-oauth";
@@ -373,6 +374,7 @@ function planWindow(
 const TUIProvidersCommand = () => {
   const exit = useTUIBack();
   const [providers, setProviders] = React.useState<ProviderInfo[]>([]);
+  const [pools, setPools] = React.useState<ProviderAccountPoolInfo[]>([]);
   const [plans, setPlans] = React.useState<TUIProviderPlanStatus | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -385,12 +387,14 @@ const TUIProvidersCommand = () => {
     Promise.all([
       fetchAPI<ProviderInfo[]>("/api/providers"),
       fetchAPI<TUIProviderPlanStatus>("/api/provider-plans/status"),
+      fetchAPI<ProviderAccountPoolInfo[]>("/api/provider-account-pools"),
     ])
-      .then(([providerData, planData]) => {
+      .then(([providerData, planData, poolData]) => {
         if (providerData)
           setProviders(Array.isArray(providerData) ? providerData : []);
         else setError("Failed to fetch providers");
         if (planData) setPlans(planData);
+        if (poolData) setPools(Array.isArray(poolData) ? poolData : []);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -471,6 +475,31 @@ const TUIProvidersCommand = () => {
           })}
         </Box>
       )}
+      <Box marginTop={1} flexDirection="column">
+        <Text bold color="cyan">
+          Account pools ({pools.length})
+        </Text>
+        {pools.length === 0 ? (
+          <Text color="gray">No named pools configured</Text>
+        ) : (
+          pools.map((pool) => (
+            <Box key={pool.id} flexDirection="column" marginTop={1}>
+              <Text bold>{pool.name} </Text>
+              <Text color={pool.enabled ? "green" : "yellow"}>
+                {pool.enabled ? "active" : "paused"}
+              </Text>
+              <Text color="gray">
+                {` ${pool.provider}  ${pool.routing_mode === "usage" ? "usage-balanced" : "priority override"}`}
+              </Text>
+              {pool.accounts.map((account, index) => (
+                <Text key={account.provider_id} color="gray">
+                  {`  ${index + 1}. ${account.provider_name || account.provider_id}  ${account.priority === null ? "automatic" : `priority ${account.priority}`}`}
+                </Text>
+              ))}
+            </Box>
+          ))
+        )}
+      </Box>
       <Box marginTop={1}>
         <Text color="gray">Press q to exit</Text>
       </Box>

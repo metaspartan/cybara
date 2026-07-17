@@ -6,6 +6,13 @@ import { integrationProviderCatalog } from "./providers/catalog-integrations";
 import { accountOAuthProviders } from "./providers/account-oauth";
 import { parseOAuthTokenPayload, type ProviderOAuthConfig } from "./provider-oauth";
 import { isKimiCodeProvider, kimiCodeIdentityHeaders } from "./providers/kimi-code";
+import {
+  getProviderAccountPool,
+  parseProviderAccountPoolRouteId,
+  providerAccountPoolCandidates,
+  providerAccountRemainingPercent,
+} from "./provider-account-pool";
+import { fetchLiveProviderUsage } from "./provider-usage-source";
 
 export const providers = {
   ...foundationProviderCatalog,
@@ -159,12 +166,76 @@ class ProviderManager {
     return this.mergeWithStaticConfig(dbProvider);
   }
 
+  getAccountPoolPrimary(poolId: string): Provider | undefined {
+    const pool = getProviderAccountPool(poolId);
+    if (!pool?.enabled) return undefined;
+    for (const account of pool.accounts) {
+      const provider = this.getWithCredentials(account.providerId);
+      if (provider?.provider === pool.provider) return provider;
+    }
+    return undefined;
+  }
+
+  resolveExecutionTarget(target: string): { provider: Provider; poolId?: string } | undefined {
+    const poolId = parseProviderAccountPoolRouteId(target);
+    if (poolId) {
+      const provider = this.getAccountPoolPrimary(poolId);
+      return provider ? { provider, poolId } : undefined;
+    }
+    const providerId = this.resolveProviderId(target);
+    const provider = providerId ? this.getWithCredentials(providerId) : undefined;
+    return provider ? { provider } : undefined;
+  }
+
+  async getAccountPoolCandidates(id: string, poolId?: string): Promise<Provider[]> {
+    const primary = this.getWithCredentials(id);
+    if (!primary) return [];
+    const storedProviders = tables.providers.all() as Provider[];
+    const candidates = providerAccountPoolCandidates(poolId, primary, storedProviders);
+    const resolvedCandidates = candidates.flatMap((candidate) => {
+      const resolved = this.getWithCredentials(candidate.id);
+      return resolved ? [resolved] : [];
+    });
+    if (resolvedCandidates.length < 2) return resolvedCandidates;
+
+    const usagePromise = Promise.all(
+      resolvedCandidates.map(async (candidate) => {
+        const usage = await fetchLiveProviderUsage({
+          id: candidate.id,
+          providerType: candidate.provider,
+          apiKey: candidate.api_key,
+          accessToken: candidate.access_token,
+          baseUrl: candidate.base_url,
+        });
+        return [candidate.id, providerAccountRemainingPercent(usage)] as const;
+      })
+    );
+    const usage = await Promise.race([usagePromise, Bun.sleep(750).then(() => undefined)]);
+    if (!usage) return resolvedCandidates;
+    const remainingByProviderId = new Map(
+      usage.filter((entry): entry is readonly [string, number] => entry[1] !== undefined)
+    );
+    const ranked = providerAccountPoolCandidates(
+      poolId,
+      primary,
+      storedProviders,
+      Date.now(),
+      remainingByProviderId
+    );
+    const resolvedById = new Map(resolvedCandidates.map((candidate) => [candidate.id, candidate]));
+    return ranked.flatMap((candidate) => {
+      const resolved = resolvedById.get(candidate.id);
+      return resolved ? [resolved] : [];
+    });
+  }
+
   private oauthRefreshInFlight = new Map<string, Promise<Provider | undefined>>();
   private oauthRefreshCooldownUntil = new Map<string, number>();
   private static readonly OAUTH_REFRESH_COOLDOWN_MS = 60_000;
 
   async refreshOAuthCredentialsIfNeeded(
-    provider: Provider | undefined
+    provider: Provider | undefined,
+    options?: { force?: boolean }
   ): Promise<Provider | undefined> {
     if (!provider?.id) return undefined;
     const staticConfig = providers[provider.provider as ProviderType] as
@@ -178,8 +249,8 @@ class ProviderManager {
     const now = Date.now();
     const skewMs = 120_000;
     const expiresAt = typeof provider.expires_at === "number" ? provider.expires_at : 0;
-    if (expiresAt > 0 && expiresAt - skewMs > now) return undefined;
-    if (expiresAt === 0) {
+    if (options?.force !== true && expiresAt > 0 && expiresAt - skewMs > now) return undefined;
+    if (options?.force !== true && expiresAt === 0) {
       const cooldownUntil = this.oauthRefreshCooldownUntil.get(provider.id) || 0;
       if (cooldownUntil > now) return undefined;
       this.oauthRefreshCooldownUntil.set(

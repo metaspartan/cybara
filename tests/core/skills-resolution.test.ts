@@ -48,6 +48,7 @@ describe("Skills SKILL.md resolution", () => {
       "authorized-web-pentest",
       "adversarial-ux-test",
       "cloudflare-temporary-deploy",
+      "blender-mcp",
     ];
 
     for (const name of expected) {
@@ -125,5 +126,28 @@ describe("Skills SKILL.md resolution", () => {
       hasConfig: () => true,
     });
     expect(ready.eligible).toBe(true);
+  });
+
+  test("gates Blender MCP on an available Python runner", async () => {
+    const entry = (await loadAllSkills({})).find((skill) => skill.skill.name === "blender-mcp");
+    expect(entry).toBeDefined();
+    if (!entry) throw new Error("Blender MCP skill was not loaded");
+
+    const missingRuntime = checkSkillEligibility(entry, {
+      platform: "darwin",
+      hasBin: () => false,
+      hasEnv: () => true,
+      hasConfig: () => true,
+    });
+    expect(missingRuntime.eligible).toBe(false);
+    expect(missingRuntime.missing.anyBins).toEqual(["uvx", "blender-mcp"]);
+
+    const uvxReady = checkSkillEligibility(entry, {
+      platform: "win32",
+      hasBin: (name) => name === "uvx",
+      hasEnv: () => true,
+      hasConfig: () => true,
+    });
+    expect(uvxReady.eligible).toBe(true);
   });
 });

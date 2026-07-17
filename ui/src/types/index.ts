@@ -6,6 +6,8 @@ export interface Agent {
   provider: string;
   provider_id?: string;
   provider_type?: string;
+  provider_pool_id?: string;
+  provider_pool_name?: string;
   fallback_provider_id?: string;
   type?: string;
   status?: "active" | "inactive" | "idle" | "running" | "stopped";
@@ -30,6 +32,8 @@ export interface AgentSummary {
   provider?: string;
   provider_id?: string;
   provider_type?: string;
+  provider_pool_id?: string;
+  provider_pool_name?: string;
   fallback_provider_id?: string;
   status?: Agent["status"];
   created_at?: string;
@@ -77,6 +81,30 @@ export interface Provider {
   authType?: ProviderAuthType;
   createdAt?: string;
   created_at?: string;
+}
+
+export interface ProviderAccountPool {
+  id: string;
+  name: string;
+  provider: string;
+  enabled: boolean;
+  routing_mode: "usage" | "priority_then_usage";
+  accounts: Array<{
+    provider_id: string;
+    provider_name?: string;
+    priority: number | null;
+  }>;
+}
+
+export interface ProviderAccountPoolInput {
+  name: string;
+  provider: string;
+  enabled: boolean;
+  accounts: Array<{
+    provider_id: string;
+    provider_name?: string;
+    priority?: number;
+  }>;
 }
 
 export type ProviderPlanStatusState = "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";

@@ -61,7 +61,8 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    provider list         List configured providers");
   console.log("    provider available    Show available types");
   console.log("    provider add <type>   Add provider (--name, --key, --token, --default)");
-  console.log("    provider update <id>  Update provider");
+  console.log("    provider update <id>  Update provider credentials and defaults");
+  console.log("    provider pool         Manage named same-provider account pools");
   console.log("    provider delete <id>  Delete provider");
   console.log("    provider models <id>  List provider models");
   console.log("    provider discover     Discover Ollama models");

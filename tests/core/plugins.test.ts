@@ -123,6 +123,9 @@ describe("plugin runtime", () => {
       const installed = listInstalledPlugins();
       expect(installed.filter((plugin) => plugin.builtIn)).toHaveLength(5);
       expect(installed.every((plugin) => plugin.enabled)).toBe(true);
+      expect(
+        installed.find((plugin) => plugin.manifest.id === "blender-workflows")?.skillNames
+      ).toEqual(["blender-mcp"]);
 
       setPluginEnabled("developer-essentials", false);
       clearSkillsCache();
@@ -365,7 +368,9 @@ describe("plugin runtime", () => {
       "exactly one"
     );
     expect(() =>
-      parsePluginInstallPayload({ archive: { name: "plugin.zip", dataBase64: "not base64" } })
+      parsePluginInstallPayload({
+        archive: { name: "plugin.zip", dataBase64: "not base64" },
+      })
     ).not.toThrow();
 
     const ambiguous = await validatePluginInstallPayload({
@@ -391,7 +396,10 @@ describe("plugin runtime", () => {
 
     const traversalZip = createStoredZip([{ path: "../escape.txt", content: "blocked" }]);
     const traversal = await validatePluginInstallPayload({
-      archive: { name: "traversal.zip", dataBase64: traversalZip.toString("base64") },
+      archive: {
+        name: "traversal.zip",
+        dataBase64: traversalZip.toString("base64"),
+      },
     });
     expect(traversal.valid).toBe(false);
     expect(traversal.errors.join(" ")).toContain("Unsafe plugin bundle path");
@@ -409,7 +417,10 @@ describe("plugin runtime", () => {
     const mismatchedZip = createStoredZip([{ path: "plugin/file.txt", content: "data" }]);
     mismatchedZip[30] = "x".charCodeAt(0);
     const mismatched = await validatePluginInstallPayload({
-      archive: { name: "mismatch.zip", dataBase64: mismatchedZip.toString("base64") },
+      archive: {
+        name: "mismatch.zip",
+        dataBase64: mismatchedZip.toString("base64"),
+      },
     });
     expect(mismatched.valid).toBe(false);
     expect(mismatched.errors.join(" ")).toContain("local path does not match");

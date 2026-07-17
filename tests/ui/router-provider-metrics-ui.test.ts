@@ -35,7 +35,9 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(source).toContain("providerPlanUsageClasses");
     expect(source).toContain("presetLimitSummary(preset)");
     expect(source).toContain("Array.isArray(p.info?.models)");
-    expect(source).toContain("displayName={plan?.providerName || providerName(routeType)}");
+    expect(source).toContain(
+      "displayName={route.targetName || plan?.providerName || providerName(routeType)}"
+    );
     expect(source).toContain("formatTokenPrice(route.priceInputPerM, route.priceOutputPerM)");
     expect(source).toContain("Lowest cost");
   });
@@ -55,8 +57,15 @@ describe("router, provider, and metrics UI wiring", () => {
 
   test("providers page renders empty model lists without a stray zero label", () => {
     const source = read("ui/src/pages/Providers.tsx");
+    const poolsSource = read("ui/src/components/providers/ProviderAccountPools.tsx");
     const displaySource = read("ui/src/lib/providerPlanDisplay.ts");
 
+    expect(source).toContain("import { ProviderAccountPools }");
+    expect(source).toContain("<ProviderAccountPools");
+    expect(poolsSource).toContain("Account pools");
+    expect(poolsSource).toContain("automatic usage");
+    expect(poolsSource).toContain("balancing and failover");
+    expect(poolsSource).toContain("Model Router route");
     expect(source).toContain("No bundled models listed");
     expect(source).toContain("provider.models.length > 0");
     expect(source).toContain("selectedProviderInfo.models.length > 0");

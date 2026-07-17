@@ -548,58 +548,105 @@ async function fetchMiniMaxUsage(
   return parseMiniMaxUsageResponse(await res.json(), Date.now());
 }
 
+const ZAI_FIVE_HOUR_UNIT = 3;
+const ZAI_MONTHLY_UNIT = 5;
+const ZAI_WEEKLY_UNIT = 6;
+
+function zaiLimitDescriptor(record: Record<string, unknown>): string {
+  return [record.type, record.name, record.label, record.description]
+    .map((value) => String(value ?? "").toLowerCase())
+    .join(" ");
+}
+
+function zaiLimitWindow(record: Record<string, unknown> | undefined): LiveUsageWindow | undefined {
+  if (!record) return undefined;
+  if (record.unlimited === true || record.isUnlimited === true || record.is_unlimited === true) {
+    return { usedPercent: 0, unlimited: true };
+  }
+  const usedPercent = clampPercent(
+    record.percentage ?? record.percent ?? record.used_percent ?? record.usedPercent
+  );
+  if (usedPercent === undefined) return undefined;
+  return {
+    usedPercent,
+    resetsAt: resetToIso(
+      record.nextResetTime,
+      record.next_reset_time,
+      record.resetsAt,
+      record.resets_at,
+      record.resetTime,
+      record.reset_time
+    ),
+  };
+}
+
+function zaiResetTimestamp(record: Record<string, unknown>): number {
+  const reset = toNumber(
+    record.nextResetTime ??
+      record.next_reset_time ??
+      record.resetsAt ??
+      record.resets_at ??
+      record.resetTime ??
+      record.reset_time
+  );
+  return reset !== undefined && reset > 0 ? reset : Number.POSITIVE_INFINITY;
+}
+
+function sortZaiTokenLimits(records: Record<string, unknown>[]): Record<string, unknown>[] {
+  return records.slice().sort((left, right) => {
+    const resetDifference = zaiResetTimestamp(left) - zaiResetTimestamp(right);
+    if (Number.isFinite(resetDifference) && resetDifference !== 0) return resetDifference;
+    return (
+      (clampPercent(left.percentage ?? left.percent) ?? 0) -
+      (clampPercent(right.percentage ?? right.percent) ?? 0)
+    );
+  });
+}
+
 export function parseZaiUsageResponse(body: unknown, now: number): LiveProviderUsage | null {
   const root = asRecord(body);
   const data = asRecord(root?.data) ?? root;
   const limits = Array.isArray(data?.limits) ? data.limits : [];
-  const tokenLimit = limits.find((entry) => {
-    const type = String(asRecord(entry)?.type ?? "").toLowerCase();
-    return type.includes("token");
+  const records = limits.flatMap((entry) => {
+    const record = asRecord(entry);
+    return record ? [record] : [];
   });
-  const timeLimit = limits.find((entry) => {
-    const type = String(asRecord(entry)?.type ?? "").toLowerCase();
-    return type.includes("time");
+  const weeklyByUnit = records.find((record) => toNumber(record.unit) === ZAI_WEEKLY_UNIT);
+  const weeklyByName = records.find((record) => zaiLimitDescriptor(record).includes("week"));
+  let weeklyRecord = weeklyByUnit ?? weeklyByName;
+  const tokenRecords = records.filter((record) => zaiLimitDescriptor(record).includes("token"));
+  let fiveHourRecord = records.find((record) => toNumber(record.unit) === ZAI_FIVE_HOUR_UNIT);
+  fiveHourRecord ??= records.find((record) => {
+    const descriptor = zaiLimitDescriptor(record);
+    return (
+      descriptor.includes("5 hour") || descriptor.includes("5h") || descriptor.includes("five hour")
+    );
   });
-  const record = asRecord(tokenLimit);
-  if (!record) return null;
-  const usedPercent = clampPercent(
-    record.percentage ?? record.percent ?? record.used_percent ?? record.usedPercent
+  const hasUnitMetadata = tokenRecords.some((record) => toNumber(record.unit) !== undefined);
+  const unclassifiedTokens = sortZaiTokenLimits(
+    tokenRecords.filter((record) => record !== weeklyRecord && record !== fiveHourRecord)
   );
-  if (usedPercent === undefined) return null;
-  const weeklyRecord = asRecord(timeLimit);
-  const weeklyPercent = clampPercent(
-    weeklyRecord?.percentage ??
-      weeklyRecord?.percent ??
-      weeklyRecord?.used_percent ??
-      weeklyRecord?.usedPercent
-  );
+  fiveHourRecord ??= unclassifiedTokens.shift();
+  if (!weeklyRecord && !hasUnitMetadata) weeklyRecord = unclassifiedTokens.shift();
+  const monthlyRecord = records.find((record) => {
+    if (record === weeklyRecord || record === fiveHourRecord) return false;
+    const value = zaiLimitDescriptor(record);
+    return (
+      toNumber(record.unit) === ZAI_MONTHLY_UNIT ||
+      value.includes("time_limit") ||
+      value.includes("month") ||
+      value.includes("mcp")
+    );
+  });
+  const fiveHour = zaiLimitWindow(fiveHourRecord);
+  const weekly = zaiLimitWindow(weeklyRecord);
+  const monthly = zaiLimitWindow(monthlyRecord);
+  if (!fiveHour && !weekly && !monthly) return null;
   return {
     planLabel: "GLM Coding Plan",
-    fiveHour: {
-      usedPercent,
-      resetsAt: resetToIso(
-        record.nextResetTime,
-        record.next_reset_time,
-        record.resetsAt,
-        record.resets_at,
-        record.resetTime,
-        record.reset_time
-      ),
-    },
-    weekly:
-      weeklyPercent === undefined
-        ? undefined
-        : {
-            usedPercent: weeklyPercent,
-            resetsAt: resetToIso(
-              weeklyRecord?.nextResetTime,
-              weeklyRecord?.next_reset_time,
-              weeklyRecord?.resetsAt,
-              weeklyRecord?.resets_at,
-              weeklyRecord?.resetTime,
-              weeklyRecord?.reset_time
-            ),
-          },
+    fiveHour,
+    weekly,
+    monthly,
     source: "provider_api",
     fetchedAt: now,
   };

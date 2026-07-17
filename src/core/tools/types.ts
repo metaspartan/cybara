@@ -20,6 +20,7 @@ export interface ToolContext {
   denyWritePrefixes?: string[];
   confineToWorkspace?: boolean;
   consumeSteeringMessages?: () => Array<{ id: string; content: string; createdAt: number }>;
+  executionState?: { toolCallsStarted: number };
 }
 
 export interface Tool {

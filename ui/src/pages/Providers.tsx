@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { openExternal } from "@/utils/openExternal";
 import { ProviderIcon, hasProviderIcon } from "@/components/ProviderIcon";
+import { ProviderAccountPools } from "@/components/providers/ProviderAccountPools";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -350,7 +351,7 @@ export function Providers() {
   return (
     <PageLayout
       title="Providers"
-      subtitle="Manage AI model providers"
+      subtitle="Manage provider accounts and usage-aware account pools"
       actions={
         <div className="flex gap-2">
           <Button
@@ -371,6 +372,11 @@ export function Providers() {
       }
     >
       <div className="space-y-6">
+        <ProviderAccountPools
+          providers={providers || []}
+          plans={providerPlanStatus?.providers || []}
+        />
+
         <div className="flex gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />

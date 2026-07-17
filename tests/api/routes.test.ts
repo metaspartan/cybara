@@ -1122,6 +1122,72 @@ describe("Providers API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  test("provider account pool CRUD keeps named same-provider membership", async () => {
+    const suffix = Date.now();
+    const first = await api("POST", "/api/providers", {
+      provider: "openai",
+      name: `pool-primary-${suffix}`,
+      api_key: `sk-pool-primary-${suffix}`,
+    });
+    const second = await api("POST", "/api/providers", {
+      provider: "openai",
+      name: `pool-backup-${suffix}`,
+      api_key: `sk-pool-backup-${suffix}`,
+    });
+    const pool = await api("POST", "/api/provider-account-pools", {
+      name: "Work plans",
+      provider: "openai",
+      accounts: [
+        { provider_id: first.data.id, priority: 20 },
+        { provider_id: second.data.id, priority: 10 },
+      ],
+    });
+
+    expect(pool.status).toBe(200);
+    expect(pool.data.name).toBe("Work plans");
+    expect(pool.data.routing_mode).toBe("priority_then_usage");
+    expect(
+      pool.data.accounts.map((account: { provider_id: string }) => account.provider_id)
+    ).toEqual([second.data.id, first.data.id]);
+    expect(
+      pool.data.accounts.map((account: { provider_name: string }) => account.provider_name)
+    ).toEqual([`pool-backup-${suffix}`, `pool-primary-${suffix}`]);
+
+    const listed = await api("GET", "/api/provider-account-pools");
+    expect(listed.status).toBe(200);
+    expect(listed.data.some((entry: { id: string }) => entry.id === pool.data.id)).toBe(true);
+
+    const agent = await api("POST", "/api/agents", {
+      name: `pool-agent-${suffix}`,
+      type: "main",
+      model: "gpt-5.2",
+      provider_pool_id: pool.data.id,
+    });
+    expect(agent.status).toBe(200);
+    expect(agent.data.provider_id).toBe(second.data.id);
+    expect(agent.data.config.provider_account_pool_id).toBe(pool.data.id);
+    const summary = await api("GET", "/api/agents/summary");
+    const poolAgent = summary.data.find((entry: { id: string }) => entry.id === agent.data.id);
+    expect(poolAgent?.provider_pool_id).toBe(pool.data.id);
+    expect(poolAgent?.provider_pool_name).toBe("Work plans");
+
+    const updated = await api("PUT", `/api/provider-account-pools/${pool.data.id}`, {
+      name: "Work plans",
+      provider: "openai",
+      enabled: false,
+      accounts: [{ provider_id: first.data.id }],
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.data.enabled).toBe(false);
+    expect(updated.data.routing_mode).toBe("usage");
+    expect(updated.data.accounts[0]?.priority).toBeNull();
+
+    await api("DELETE", `/api/agents/${agent.data.id}`);
+    expect((await api("DELETE", `/api/provider-account-pools/${pool.data.id}`)).status).toBe(200);
+    await api("DELETE", `/api/providers/${first.data.id}`);
+    await api("DELETE", `/api/providers/${second.data.id}`);
+  });
+
   test("POST /api/providers rejects invalid OpenAI key shapes", async () => {
     const bad = await api("POST", "/api/providers", {
       provider: "openai",
@@ -3415,7 +3481,9 @@ describe("Config API", () => {
     expect(getRes.status).toBe(200);
     expect(getRes.data[key]).toBe("***redacted***");
 
-    const echoRes = await api("PUT", "/api/config", { [key]: "***redacted***" });
+    const echoRes = await api("PUT", "/api/config", {
+      [key]: "***redacted***",
+    });
     expect(echoRes.status).toBe(200);
     expect(echoRes.data.success).toBe(true);
     expect(readRawConfig(key)).toBe(JSON.stringify(secret));
