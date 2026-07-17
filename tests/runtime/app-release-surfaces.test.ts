@@ -185,12 +185,29 @@ describe("app release surface wiring", () => {
     );
   });
 
-  test("CLI release binaries use the shared standalone build", () => {
+  test("CLI release binaries embed the UI for every supported OS and architecture", () => {
     const workflow = read(".github/workflows/release.yml");
+    const standaloneBuilder = read("scripts/build-standalone-cli.ts");
 
     expect(workflow).toContain(
       "bun run scripts/build-standalone-cli.ts bun-${{ matrix.target }} ${{ matrix.artifact }}"
     );
+    expect(workflow.indexOf("- name: Build UI")).toBeLessThan(
+      workflow.indexOf("- name: Cross-compile CLI binary")
+    );
+    for (const [target, artifact] of [
+      ["linux-x64", "cybara-linux-x64"],
+      ["linux-arm64", "cybara-linux-arm64"],
+      ["darwin-x64", "cybara-darwin-x64"],
+      ["darwin-arm64", "cybara-darwin-arm64"],
+      ["windows-x64", "cybara-windows-x64.exe"],
+      ["windows-arm64", "cybara-windows-arm64.exe"],
+    ]) {
+      expect(workflow).toContain(`target: ${target}`);
+      expect(workflow).toContain(`artifact: ${artifact}`);
+    }
+    expect(standaloneBuilder).toContain('with { type: "file" }');
+    expect(standaloneBuilder).toContain("__CYBARA_EMBEDDED_UI__");
   });
 
   test("Darwin x64 release artifact is smoke-tested on a macOS runner", () => {

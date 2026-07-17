@@ -8,16 +8,27 @@ import {
 } from "../../scripts/build-standalone-cli";
 
 describe("standalone CLI build", () => {
-  test("keeps architecture-specific ML runtimes external", () => {
-    const args = standaloneCliBuildArgs("bun-darwin-x64", "cybara-darwin-x64");
+  test("uses the embedded entrypoint for every released OS and architecture", () => {
+    const targets = [
+      ["bun-darwin-x64", "cybara-darwin-x64"],
+      ["bun-darwin-arm64", "cybara-darwin-arm64"],
+      ["bun-linux-x64", "cybara-linux-x64"],
+      ["bun-linux-arm64", "cybara-linux-arm64"],
+      ["bun-windows-x64", "cybara-windows-x64.exe"],
+      ["bun-windows-arm64", "cybara-windows-arm64.exe"],
+    ] as const;
 
-    expect(args).toContain("--target=bun-darwin-x64");
-    expect(args).toContain("--outfile=cybara-darwin-x64");
-    expect(args).toContain("@huggingface/transformers");
-    expect(args).toContain("kokoro-js");
-    expect(args).toContain("onnxruntime-node");
-    expect(args).toContain("onnxruntime-web");
-    expect(args).not.toContain("tiny-secp256k1");
+    for (const [target, outfile] of targets) {
+      const args = standaloneCliBuildArgs(target, outfile, ".cybara-standalone-entry.ts");
+      expect(args).toContain(".cybara-standalone-entry.ts");
+      expect(args).toContain(`--target=${target}`);
+      expect(args).toContain(`--outfile=${outfile}`);
+      expect(args).toContain("@huggingface/transformers");
+      expect(args).toContain("kokoro-js");
+      expect(args).toContain("onnxruntime-node");
+      expect(args).toContain("onnxruntime-web");
+      expect(args).not.toContain("tiny-secp256k1");
+    }
   });
 
   test("generates an entrypoint containing the complete production UI", () => {
