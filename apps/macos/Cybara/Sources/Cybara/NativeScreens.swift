@@ -3852,7 +3852,7 @@ struct ChatScreen: View {
         }
 
         if let detail = firstNonEmptyGatewayString(event.detail),
-           !["thinking", "thinking...", "generating response", "generating response..."].contains(detail.lowercased()) {
+           !nativeIsGenericStatusLabel(detail) {
             liveCurrentStep = detail
         } else if status == "generating" {
             liveCurrentStep = "Generating response..."
@@ -3876,7 +3876,8 @@ struct ChatScreen: View {
             liveCurrentStep = activeStep
         } else if let detail = firstNonEmptyGatewayString(snapshot.detail),
                   !preservingLocalLiveActivities,
-                  !["thinking", "thinking...", "generating response", "generating response...", "queued follow-up"].contains(detail.lowercased()) {
+                  !nativeIsGenericStatusLabel(detail),
+                  detail.lowercased() != "queued follow-up" {
             liveCurrentStep = detail
         }
     }
@@ -4245,10 +4246,14 @@ private struct NativeSubagentRunDetail: View {
                 .controlSize(.small)
             }
 
-            if let activities = subagent.activities, !activities.isEmpty {
+            let visibleActivities = (subagent.activities ?? []).filter {
+                guard let text = firstNonEmptyGatewayString($0.text) else { return true }
+                return !nativeIsGenericStatusLabel(text)
+            }
+            if !visibleActivities.isEmpty {
                 nativeSubagentSection("Activity") {
                     VStack(alignment: .leading, spacing: 9) {
-                        ForEach(activities) { activity in
+                        ForEach(visibleActivities) { activity in
                             HStack(alignment: .top, spacing: 8) {
                                 Circle()
                                     .fill(.secondary)

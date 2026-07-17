@@ -875,6 +875,12 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(activities.first?.toolCallId, "tool-exec")
     }
 
+    func testNativeToolTimelineHidesProviderRecoveryStatus() {
+        XCTAssertTrue(nativeIsGenericStatusLabel("Provider rate limited; retrying (2/5)..."))
+        XCTAssertTrue(nativeIsGenericStatusLabel("Provider session refreshed; continuing..."))
+        XCTAssertFalse(nativeIsGenericStatusLabel("Provider rate limit hit (429)."))
+    }
+
     func testNativeToolTimelineFallsBackToToolCallsInTimelineOrder() throws {
         let message = try decodeSessionMessage(
             #"""

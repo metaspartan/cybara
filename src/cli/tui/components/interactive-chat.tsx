@@ -1,4 +1,5 @@
 import React from "react";
+import { isProviderRecoveryStatusLabel } from "../../../../shared/chat-status";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
 import { resolveAgentIdentifier } from "../../commands/agent-resolution";
@@ -260,7 +261,9 @@ export function InteractiveChatTUI({
           return;
         }
         setStreamStatus(active.status);
-        setStreamDetail(active.detail || "");
+        setStreamDetail(
+          active.detail && !isProviderRecoveryStatusLabel(active.detail) ? active.detail : "",
+        );
         setLiveActivities(active.activities || []);
         return;
       }
@@ -270,7 +273,9 @@ export function InteractiveChatTUI({
         return;
       }
       setStreamStatus(event.status);
-      setStreamDetail(event.detail || "");
+      setStreamDetail(
+        event.detail && !isProviderRecoveryStatusLabel(event.detail) ? event.detail : "",
+      );
       if (!event.toolPhase && !event.toolName) return;
       const phase =
         event.toolPhase || (event.status === "error" ? "error" : "result");

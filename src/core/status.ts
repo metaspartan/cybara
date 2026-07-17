@@ -1,7 +1,7 @@
-import { createLogger } from "./logger";
-import { redactSecrets, redactSecretText } from "./redaction";
 import { stripReasoningTagTokens } from "./agent-internals";
+import { createLogger } from "./logger";
 import { notifyMobilePushForStatus, notifyMobilePushForTask } from "./mobile-push";
+import { redactSecrets, redactSecretText } from "./redaction";
 import {
   appendBufferedAssistantDelta,
   appendSessionEvent,
@@ -305,7 +305,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
   if (!sessionId) return;
 
   const previous = sessionStatusSnapshots.get(sessionId);
-  const nextActivities = previous?.activities ? [...previous.activities] : [];
+  const nextActivities = previous?.activities || [];
   const phase = statusToPhase(payload.status, payload.toolPhase);
   const rawActivityText = sanitizeActivityText(payload.detail);
   const activityText =

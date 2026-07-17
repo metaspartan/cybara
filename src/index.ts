@@ -1,7 +1,6 @@
-import { readFileSync, existsSync, statSync } from "fs";
-import { join, dirname, resolve, sep } from "path";
+import { existsSync, readFileSync, statSync } from "fs";
+import { dirname, join, resolve, sep } from "path";
 import { fileURLToPath } from "url";
-import { agentManager } from "./core/agent";
 import {
   handleChat,
   listPendingChatMessages,
@@ -10,50 +9,82 @@ import {
   steerPendingChatMessage,
   stopActiveChatTurn,
 } from "./api/chat";
+import { getClientIp } from "./api/client-ip";
+import { setGatewayHostApplyHandler } from "./api/gateway-network";
+import { gatewayRequestIdleTimeoutSeconds } from "./api/gateway-request-timeout";
 import { handleRequest } from "./api/routes";
 import {
+  getGatewayAuthSettings,
+  getGatewayBasePath,
+  revealGatewayApiKey,
+  securityCheck,
+} from "./api/security";
+import {
   createTerminalSession,
-  getTerminalSession,
   destroyTerminalSession,
+  getTerminalSession,
   listTerminalSessions,
-  writeToTerminal,
   startOutputReader,
+  writeToTerminal,
 } from "./api/terminal";
-import { config } from "./core/config";
-import { startScheduler, setAgentHandler, setWakeHandler } from "./core/cron";
+import { agentManager } from "./core/agent";
+import {
+  channelManager,
+  dingtalkAdapter,
+  discordAdapter,
+  feishuAdapter,
+  googleChatAdapter,
+  homeAssistantAdapter,
+  imessageAdapter,
+  ircAdapter,
+  lineAdapter,
+  type MessageHandlerFileInfo,
+  matrixAdapter,
+  mattermostAdapter,
+  msTeamsAdapter,
+  nextcloudAdapter,
+  ntfyAdapter,
+  signalAdapter,
+  slackAdapter,
+  synologyAdapter,
+  telegramBot,
+  telegramSessions,
+  twitchAdapter,
+  wecomAdapter,
+  whatsappAdapter,
+  zaloAdapter,
+  zulipAdapter,
+} from "./core/channels";
+import { resolveChannelAgentRouting } from "./core/channels/agent-selection";
+import { configureChannelChatRuntime } from "./core/channels/chat-runtime";
 import {
   handleSharedChannelManagementCommand,
   setChannelSubagentSpawnHandler,
 } from "./core/channels/commands";
-import { configureChannelChatRuntime } from "./core/channels/chat-runtime";
-import { resolveChannelAgentRouting } from "./core/channels/agent-selection";
 import {
-  channelManager,
-  telegramBot,
-  telegramSessions,
-  discordAdapter,
-  slackAdapter,
-  signalAdapter,
-  whatsappAdapter,
-  imessageAdapter,
-  matrixAdapter,
-  mattermostAdapter,
-  ircAdapter,
-  ntfyAdapter,
-  twitchAdapter,
-  lineAdapter,
-  googleChatAdapter,
-  msTeamsAdapter,
-  feishuAdapter,
-  dingtalkAdapter,
-  wecomAdapter,
-  homeAssistantAdapter,
-  zulipAdapter,
-  synologyAdapter,
-  nextcloudAdapter,
-  zaloAdapter,
-  type MessageHandlerFileInfo,
-} from "./core/channels";
+  buildChannelImages,
+  buildChannelMessageWithFileContext,
+} from "./core/channels/inbound-media";
+import { config } from "./core/config";
+import { setAgentHandler, setWakeHandler, startScheduler } from "./core/cron";
+import { startGatewayTelemetryMaintenance } from "./core/metrics";
+import { startNativeParentWatch } from "./core/native-parent-watch";
+import { nearbyService } from "./core/nearby";
+import { listInstalledPlugins } from "./core/plugins";
+import { activateInstalledPluginRuntimes } from "./core/plugins/runtime";
+import { providerManager } from "./core/providers";
+import { resolveMediaFile } from "./core/runtime/media-files";
+import { readUiIndexContent } from "./core/runtime/ui-index";
+import { resolveUiPath } from "./core/runtime/ui-path";
+import { logSandboxRuntimeStatus } from "./core/sandbox";
+import { taskScheduler } from "./core/scheduler";
+import {
+  addSSEClient,
+  createStatusSnapshotEvent,
+  onStatus,
+  onStatusStream,
+  removeSSEClient,
+} from "./core/status";
 import { handleSessionsSpawn } from "./core/tools/handlers/channel";
 import {
   handleMemoryContext,
@@ -61,36 +92,6 @@ import {
   handleMemorySearch,
 } from "./core/tools/handlers/memory";
 import { toolSchemas } from "./core/tools/index";
-import { providerManager } from "./core/providers";
-import { listInstalledPlugins } from "./core/plugins";
-import { activateInstalledPluginRuntimes } from "./core/plugins/runtime";
-import { taskScheduler } from "./core/scheduler";
-import {
-  onStatus,
-  addSSEClient,
-  removeSSEClient,
-  onStatusStream,
-  createStatusSnapshotEvent,
-} from "./core/status";
-import { logSandboxRuntimeStatus } from "./core/sandbox";
-import { resolveUiPath } from "./core/runtime/ui-path";
-import { resolveMediaFile } from "./core/runtime/media-files";
-import {
-  buildChannelImages,
-  buildChannelMessageWithFileContext,
-} from "./core/channels/inbound-media";
-import { readUiIndexContent } from "./core/runtime/ui-index";
-import {
-  getGatewayAuthSettings,
-  getGatewayBasePath,
-  revealGatewayApiKey,
-  securityCheck,
-} from "./api/security";
-import { setGatewayHostApplyHandler } from "./api/gateway-network";
-import { getClientIp } from "./api/client-ip";
-import { nearbyService } from "./core/nearby";
-import { startGatewayTelemetryMaintenance } from "./core/metrics";
-import { startNativeParentWatch } from "./core/native-parent-watch";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -378,6 +379,11 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
             headers: { "Content-Type": "application/json" },
           });
         }
+      }
+
+      const requestIdleTimeout = gatewayRequestIdleTimeoutSeconds(req.method, pathname);
+      if (requestIdleTimeout !== null) {
+        server.timeout(req, requestIdleTimeout);
       }
 
       const requestHeaders = Object.fromEntries(req.headers.entries());

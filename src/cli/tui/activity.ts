@@ -5,6 +5,7 @@ import {
   type SharedActivityItem,
   type SharedActivityPhase,
 } from "../../../shared/chat-activity-groups";
+import { isProviderRecoveryStatusLabel } from "../../../shared/chat-status";
 
 export interface TUIActivityItem {
   id?: string;
@@ -156,7 +157,7 @@ function normalizedActivities(
       );
     if (matchingTool) claimedTools.add(matchingTool);
     const text = completeActivityText(activity, matchingTool);
-    if (!text.trim()) return [];
+    if (!text.trim() || isProviderRecoveryStatusLabel(text)) return [];
     return [
       {
         id: activity.id || activity.toolCallId || `activity-${index}`,
@@ -235,7 +236,7 @@ export function summarizeTUIActivities(
   const raw = [
     ...activities.map((activity) => activity.text || activity.toolName || activity.phase || ""),
     ...tools.map((tool) => `${tool.name || "tool"}${tool.status ? ` ${tool.status}` : ""}`),
-  ].filter(Boolean);
+  ].filter((value) => Boolean(value) && !isProviderRecoveryStatusLabel(value));
   if (raw.length === 0) return null;
   const kinds = new Set(raw.map(classifyActivity));
   if (kinds.size > 1) kinds.delete("other");

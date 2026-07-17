@@ -2,6 +2,29 @@ import { classifyApiError } from "./error-classifier";
 
 const MAX_RETRY_DELAY_MS = 120_000;
 
+export interface ProviderRetryPolicy {
+  maxRetries: number;
+  maxDelayMs: number;
+}
+
+const DEFAULT_PROVIDER_RETRY_POLICY: ProviderRetryPolicy = {
+  maxRetries: 3,
+  maxDelayMs: MAX_RETRY_DELAY_MS,
+};
+
+const KIMI_PROVIDER_RETRY_POLICY: ProviderRetryPolicy = {
+  maxRetries: 5,
+  maxDelayMs: 180_000,
+};
+
+export function resolveProviderRetryPolicy(providerType?: string): ProviderRetryPolicy {
+  const normalized = providerType?.trim().toLowerCase() || "";
+  if (normalized === "kimi-code" || normalized === "kimi-code-oauth") {
+    return KIMI_PROVIDER_RETRY_POLICY;
+  }
+  return DEFAULT_PROVIDER_RETRY_POLICY;
+}
+
 function finiteNonNegative(value: string | null): number | undefined {
   if (value === null || !/^\d+(?:\.\d+)?$/.test(value.trim())) return undefined;
   const parsed = Number(value);
@@ -43,11 +66,12 @@ export function providerExceptionRetryDelayMs(
   error: unknown,
   attempt: number,
   signal?: AbortSignal,
-  random: () => number = Math.random
+  random: () => number = Math.random,
+  maxRetries = DEFAULT_PROVIDER_RETRY_POLICY.maxRetries
 ): number | undefined {
   if (signal?.aborted) return undefined;
   const classified = classifyApiError({ error });
-  if (!classified.retryable || attempt >= 3) return undefined;
+  if (!classified.retryable || attempt >= maxRetries) return undefined;
   return providerRetryDelayMs(0, new Headers(), attempt, random);
 }
 

@@ -4,6 +4,7 @@ import {
   normalizeActivityTextForPhase,
   type LiveActivityItem,
 } from "@/lib/chatActivities";
+import { isGenericChatStatusLabel } from "../../../../shared/chat-status";
 import type { PendingChatMessage } from "@/lib/status-stream";
 import type {
   AgentTransferInfo,
@@ -785,17 +786,7 @@ export function toActivityPath(path: string): string {
 }
 
 export function isGenericStatusLabel(detail: string): boolean {
-  const normalized = detail.trim().toLowerCase();
-  if (!normalized) return false;
-  return (
-    normalized === "thinking..." ||
-    normalized === "thinking" ||
-    normalized === "generating response..." ||
-    normalized === "generating response" ||
-    normalized === "idle" ||
-    normalized === "working..." ||
-    normalized === "working"
-  );
+  return isGenericChatStatusLabel(detail);
 }
 
 export function isMeaningfulThoughtDetail(detail: string): boolean {

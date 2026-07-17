@@ -37,6 +37,19 @@ describe("CLI TUI activity summaries", () => {
     expect(summarizeTUIActivities([], [])).toBeNull();
   });
 
+  test("does not present transient provider recovery as conversation work", () => {
+    const activities = [
+      {
+        id: "provider-retry",
+        phase: "start",
+        text: "Provider rate limited; retrying (2/5)...",
+        toolName: "__thought",
+      },
+    ];
+    expect(presentTUIActivities(activities, [])).toEqual([]);
+    expect(summarizeTUIActivities(activities, [])).toBeNull();
+  });
+
   test("bounds compact activity detail rows without hiding their count", () => {
     expect(limitTUIActivityDetails(["one", "two"], 0)).toEqual([]);
     expect(limitTUIActivityDetails(["one", "two", "three", "four", "five"], 3)).toEqual([

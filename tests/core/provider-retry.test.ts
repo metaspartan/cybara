@@ -4,6 +4,7 @@ import {
   parseProviderRetryAfterMs,
   providerExceptionRetryDelayMs,
   providerRetryDelayMs,
+  resolveProviderRetryPolicy,
 } from "../../src/core/provider-retry";
 
 describe("provider retry policy", () => {
@@ -41,5 +42,19 @@ describe("provider retry policy", () => {
   test("does not allow an empty credential pool to create an infinite delay", () => {
     expect(boundedPoolRetryDelayMs(Number.POSITIVE_INFINITY, 1_250)).toBe(1_250);
     expect(boundedPoolRetryDelayMs(3_000, 1_250)).toBe(3_000);
+  });
+
+  test("gives Kimi coding sessions a longer bounded transient recovery budget", () => {
+    expect(resolveProviderRetryPolicy("kimi-code-oauth")).toEqual({
+      maxRetries: 5,
+      maxDelayMs: 180_000,
+    });
+    expect(resolveProviderRetryPolicy("openai")).toEqual({
+      maxRetries: 3,
+      maxDelayMs: 120_000,
+    });
+    expect(
+      providerExceptionRetryDelayMs(new Error("fetch failed: ECONNRESET"), 4, undefined, () => 0, 5)
+    ).toBe(8_000);
   });
 });

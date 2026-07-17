@@ -7,6 +7,7 @@ import {
   type ToolUseBlock,
 } from "@aws-sdk/client-bedrock-runtime";
 import type { DocumentType as SmithyDocumentType } from "@smithy/types";
+import { isProviderRecoveryStatusLabel } from "../../shared/chat-status";
 import type { AgentMessage } from "./agent";
 import {
   compactAnthropicLoopMessagesForContext,
@@ -146,6 +147,7 @@ import {
   parseProviderRetryAfterMs,
   providerExceptionRetryDelayMs,
   providerRetryDelayMs,
+  resolveProviderRetryPolicy,
 } from "./provider-retry";
 import {
   getDefaultModel,
@@ -299,6 +301,11 @@ export abstract class AgentProviderRuntime {
     extra?: Partial<StatusPayload>
   ): void {
     if (toolContext?.suppressStreaming) return;
+    if (detail && isProviderRecoveryStatusLabel(detail)) {
+      const sessionId = toolContext?.sessionId?.trim() || "unscoped";
+      console.warn(`[Agent] ${detail} [session=${sessionId}]`);
+      return;
+    }
     broadcastStatus(this.buildStatusPayload(status, toolContext, detail, extra));
   }
 
@@ -378,19 +385,12 @@ export abstract class AgentProviderRuntime {
     return providerRetryDelayMs(status, headers, attempt);
   }
 
-  private broadcastProviderRetryStatus(
+  private logProviderRetryStatus(
     streamContext: { sessionId?: string | null; agentId?: string | null } | undefined,
     detail: string
   ): void {
-    const sessionId = streamContext?.sessionId?.trim();
-    if (!sessionId) return;
-    broadcastStatus({
-      status: "thinking",
-      timestamp: Date.now(),
-      detail,
-      sessionId,
-      agentId: streamContext?.agentId || undefined,
-    });
+    const sessionId = streamContext?.sessionId?.trim() || "unscoped";
+    console.warn(`[Agent] ${detail} [session=${sessionId}]`);
   }
 
   private recordHttpRateLimit(
@@ -1101,6 +1101,7 @@ export abstract class AgentProviderRuntime {
         : undefined;
     let streamingDisabled = false;
     let transientRetryCount = 0;
+    const retryPolicy = resolveProviderRetryPolicy(rateLimitContext?.providerType);
     const post = async (body: Record<string, unknown>): Promise<Response | OpenAIResponse> => {
       if (streamingDisabled) {
         try {
@@ -1115,13 +1116,15 @@ export abstract class AgentProviderRuntime {
           const retryDelayMs = providerExceptionRetryDelayMs(
             normalized,
             transientRetryCount,
-            signal
+            signal,
+            Math.random,
+            retryPolicy.maxRetries
           );
           if (retryDelayMs === undefined) throw normalized;
           transientRetryCount += 1;
-          this.broadcastProviderRetryStatus(
+          this.logProviderRetryStatus(
             streamContext,
-            `Provider connection interrupted; retrying (${transientRetryCount}/3)...`
+            `Provider connection interrupted; retrying (${transientRetryCount}/${retryPolicy.maxRetries})...`
           );
           await this.waitForRetryDelay(retryDelayMs, signal);
           return post(body);
@@ -1149,12 +1152,18 @@ export abstract class AgentProviderRuntime {
       } catch (error) {
         watchdog.dispose();
         const normalized = watchdog.wrapError(error);
-        const retryDelayMs = providerExceptionRetryDelayMs(normalized, transientRetryCount, signal);
+        const retryDelayMs = providerExceptionRetryDelayMs(
+          normalized,
+          transientRetryCount,
+          signal,
+          Math.random,
+          retryPolicy.maxRetries
+        );
         if (retryDelayMs === undefined) throw normalized;
         transientRetryCount += 1;
-        this.broadcastProviderRetryStatus(
+        this.logProviderRetryStatus(
           streamContext,
-          `Provider connection interrupted; retrying (${transientRetryCount}/3)...`
+          `Provider connection interrupted; retrying (${transientRetryCount}/${retryPolicy.maxRetries})...`
         );
         await this.waitForRetryDelay(retryDelayMs, signal);
         return post(body);
@@ -1194,8 +1203,8 @@ export abstract class AgentProviderRuntime {
     let attemptedToolChoiceCompatibilityRetry = false;
     let contextRetryCount = 0;
     let attemptedOAuthRefresh = false;
-    const maxTransientRetries = 3;
-    const maxRetryDelayMs = 120_000;
+    const maxTransientRetries = retryPolicy.maxRetries;
+    const maxRetryDelayMs = retryPolicy.maxDelayMs;
 
     let attemptedNonStreamingRetry = false;
     while (true) {
@@ -1216,10 +1225,7 @@ export abstract class AgentProviderRuntime {
         (await this.refreshProviderAuthorization(headers, rateLimitContext))
       ) {
         attemptedOAuthRefresh = true;
-        this.broadcastProviderRetryStatus(
-          streamContext,
-          "Provider session refreshed; continuing..."
-        );
+        this.logProviderRetryStatus(streamContext, "Provider session refreshed; continuing...");
         continue;
       }
       const classifiedError = classifyApiError({ status: response.status, body: errorText });
@@ -1234,7 +1240,7 @@ export abstract class AgentProviderRuntime {
         retryDelayMs <= maxRetryDelayMs
       ) {
         transientRetryCount += 1;
-        this.broadcastProviderRetryStatus(
+        this.logProviderRetryStatus(
           streamContext,
           response.status === 429
             ? `Provider rate limited; retrying (${transientRetryCount}/${maxTransientRetries})...`
@@ -2192,7 +2198,7 @@ export abstract class AgentProviderRuntime {
           );
           if (retryDelayMs === undefined) throw normalized;
           transientRetryCount += 1;
-          this.broadcastProviderRetryStatus(
+          this.logProviderRetryStatus(
             { sessionId, agentId },
             `Provider connection interrupted; retrying (${transientRetryCount}/3)...`
           );
@@ -2211,7 +2217,7 @@ export abstract class AgentProviderRuntime {
             (await this.refreshProviderAuthorization(headers, rateLimitContext))
           ) {
             attemptedOAuthRefresh = true;
-            this.broadcastProviderRetryStatus(
+            this.logProviderRetryStatus(
               { sessionId, agentId },
               "Provider session refreshed; continuing..."
             );
@@ -2225,7 +2231,7 @@ export abstract class AgentProviderRuntime {
           );
           if (classifiedError.retryable && transientRetryCount < 3 && retryDelayMs <= 120_000) {
             transientRetryCount += 1;
-            this.broadcastProviderRetryStatus(
+            this.logProviderRetryStatus(
               { sessionId, agentId },
               classifiedError.category === "rate_limit"
                 ? `Provider rate limited; retrying (${transientRetryCount}/3)...`

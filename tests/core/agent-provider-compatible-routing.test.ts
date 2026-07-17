@@ -4,6 +4,7 @@ import { config } from "../../src/core/config";
 import { providerManager } from "../../src/core/providers";
 import { getProviderAvailability, resetRouterForTests } from "../../src/core/router";
 import { summarizeSessionTokenUsage } from "../../src/core/session-context";
+import { onStatus } from "../../src/core/status";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -268,10 +269,16 @@ describe("Agent provider Google and compatible routing", () => {
 
   test("retries transient Kimi connection failures and rate limits", async () => {
     let calls = 0;
+    const recoveryStatusDetails: string[] = [];
+    const unsubscribe = onStatus((status) => {
+      if (status.sessionId === "kimi-transient-retry-session" && status.detail) {
+        recoveryStatusDetails.push(status.detail);
+      }
+    });
     globalThis.fetch = (async () => {
       calls += 1;
       if (calls === 1) throw new Error("fetch failed: ECONNRESET");
-      if (calls === 2) {
+      if (calls <= 5) {
         return Response.json(
           { error: { message: "temporary rate limit" } },
           { status: 429, headers: { "Retry-After": "0" } }
@@ -308,14 +315,20 @@ describe("Agent provider Google and compatible routing", () => {
     });
     createdAgentIds.push(agent.id);
 
-    const result = await agentManager.execute(
-      agent.id,
-      [{ role: "user", content: "reply briefly" }],
-      { useTools: false, sessionId: "kimi-transient-retry-session" }
-    );
+    const result = await (async () => {
+      try {
+        return await agentManager.execute(agent.id, [{ role: "user", content: "reply briefly" }], {
+          useTools: false,
+          sessionId: "kimi-transient-retry-session",
+        });
+      } finally {
+        unsubscribe();
+      }
+    })();
 
     expect(result.content).toBe("kimi-retry-ok");
-    expect(calls).toBe(3);
+    expect(calls).toBe(6);
+    expect(recoveryStatusDetails.some((detail) => detail.startsWith("Provider "))).toBe(false);
   });
 
   test("does not retry Kimi plan exhaustion as a transient rate limit", async () => {
@@ -358,6 +371,12 @@ describe("Agent provider Google and compatible routing", () => {
     const chatAuthorizations: string[] = [];
     let chatCalls = 0;
     let refreshCalls = 0;
+    const recoveryStatusDetails: string[] = [];
+    const unsubscribe = onStatus((status) => {
+      if (status.sessionId === "kimi-long-loop-refresh-session" && status.detail) {
+        recoveryStatusDetails.push(status.detail);
+      }
+    });
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === "https://auth.kimi.com/api/oauth/token") {
@@ -442,11 +461,17 @@ describe("Agent provider Google and compatible routing", () => {
     createdAgentIds.push(agent.id);
     config.set("tool_approval_mode", "always_allow");
 
-    const result = await agentManager.execute(
-      agent.id,
-      [{ role: "user", content: "Calculate six times seven" }],
-      { useTools: true, sessionId: "kimi-long-loop-refresh-session" }
-    );
+    const result = await (async () => {
+      try {
+        return await agentManager.execute(
+          agent.id,
+          [{ role: "user", content: "Calculate six times seven" }],
+          { useTools: true, sessionId: "kimi-long-loop-refresh-session" }
+        );
+      } finally {
+        unsubscribe();
+      }
+    })();
 
     expect(result.content).toBe("The result is 42.");
     expect(result.tool_calls).toHaveLength(1);
@@ -457,6 +482,7 @@ describe("Agent provider Google and compatible routing", () => {
       "Bearer stale-kimi-loop-token",
       "Bearer fresh-kimi-loop-token",
     ]);
+    expect(recoveryStatusDetails.some((detail) => detail.startsWith("Provider "))).toBe(false);
   });
 
   test("routes openai-codex-responses providers to codex responses endpoint", async () => {

@@ -1,9 +1,10 @@
-import { useMemo, useState, type ReactElement } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { type ReactElement, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Subagent } from "@/hooks/useApi";
 import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
+import { isProviderRecoveryStatusLabel } from "../../../../shared/chat-status";
 
 function formatJson(value: unknown): string {
   if (typeof value === "string") return value;
@@ -22,7 +23,10 @@ function formatJson(value: unknown): string {
 
 export function SubagentTimeline({ subagent }: { subagent: Subagent }): ReactElement {
   const activities = useMemo(
-    () => [...(subagent.activities || [])].sort((a, b) => a.timestamp - b.timestamp),
+    () =>
+      [...(subagent.activities || [])]
+        .filter((activity) => !isProviderRecoveryStatusLabel(activity.text))
+        .sort((a, b) => a.timestamp - b.timestamp),
     [subagent.activities]
   );
   const toolCalls = useMemo(

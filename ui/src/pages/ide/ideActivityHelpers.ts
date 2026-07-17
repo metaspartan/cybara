@@ -1,6 +1,6 @@
-/** IDE tool-call/status activity helpers — extracted from IDE.tsx. */
 import type { ToolCallLike, LiveActivityItem } from "@/lib/chatActivities";
 import { normalizeActivityTextForPhase } from "@/lib/chatActivities";
+import { isGenericChatStatusLabel } from "../../../../shared/chat-status";
 import { isPlainRecord } from "./ideDiffHelpers";
 import type { IdeProcessActivity, IdePendingFileDiff, IdeChatMessage } from "./ideTypes";
 
@@ -124,17 +124,7 @@ export function formatIdeSandboxProviderLabel(provider: string): string {
 }
 
 export function isGenericIdeStatusLabel(detail: string): boolean {
-  const normalized = detail.trim().toLowerCase();
-  if (!normalized) return false;
-  return (
-    normalized === "thinking..." ||
-    normalized === "thinking" ||
-    normalized === "generating response..." ||
-    normalized === "generating response" ||
-    normalized === "idle" ||
-    normalized === "working..." ||
-    normalized === "working"
-  );
+  return isGenericChatStatusLabel(detail);
 }
 
 export function isMeaningfulIdeThoughtDetail(detail: string): boolean {

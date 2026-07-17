@@ -1,3 +1,5 @@
+import { isProviderRecoveryStatusLabel } from "cybara-shared/chat-status";
+import { Bot, ChevronDown, ChevronRight, Plus, Square, Trash2, X } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -10,7 +12,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Bot, ChevronDown, ChevronRight, Plus, Square, Trash2, X } from "lucide-react-native";
 import { LiquidGlass } from "../components/LiquidGlass";
 import type { CybaraMobileApi, MobileSubagentSummary, MobileSubagentToolCall } from "../lib/api";
 import { colors, spacing } from "../theme/liquidGlass";
@@ -87,6 +88,9 @@ export function MobileSubagentsSheet({
   const [mutating, setMutating] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const visibleActivities = (selected?.activities || []).filter(
+    (activity) => !isProviderRecoveryStatusLabel(activity.text)
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -314,10 +318,10 @@ export function MobileSubagentsSheet({
                   </Pressable>
                 )}
               </View>
-              {(selected.activities || []).length > 0 ? (
+              {visibleActivities.length > 0 ? (
                 <View style={styles.section}>
                   <Text style={styles.sectionLabel}>Activity</Text>
-                  {selected.activities?.map((activity) => (
+                  {visibleActivities.map((activity) => (
                     <View key={activity.id} style={styles.activityRow}>
                       <View style={styles.activityDot} />
                       <View style={styles.activityTextWrap}>
