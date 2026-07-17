@@ -58,6 +58,7 @@ import {
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
 import { readMobileTokenOptimizationSettings } from "../../apps/mobile/src/screens/dashboardHelpers";
+import { readMobileChatSource } from "../source-fixtures";
 
 const dashboardScreenSource =
   readFileSync(
@@ -96,6 +97,7 @@ const dashboardScreenSource =
     new URL("../../apps/mobile/src/screens/dashboardSessionDetail.tsx", import.meta.url),
     "utf8"
   ) +
+  readMobileChatSource() +
   readFileSync(
     new URL("../../apps/mobile/src/screens/dashboardDetailPanels.tsx", import.meta.url),
     "utf8"

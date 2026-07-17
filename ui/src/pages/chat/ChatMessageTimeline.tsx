@@ -24,6 +24,7 @@ import { AgentTransferTimeline } from "./AgentTransferTimeline";
 import { AssistantMetaInline } from "./AssistantMetaInline";
 import { parseTimestampMs } from "./assistantMetaModel";
 import type { ArtifactSummaryView, ChatMessage, RevertTarget } from "./chatModel";
+import type { ChatLinkOpenOptions } from "./chatLinkRouting";
 import {
   formatToolIntent,
   getMessageProcessActivities,
@@ -56,6 +57,7 @@ interface ChatMessageTimelineProps {
   onForkSession: (index: number) => void;
   onOpenArtifact: (artifact: ArtifactSummaryView) => void;
   onOpenImage: (src: string, alt: string) => void;
+  onOpenLink: (href: string, options: ChatLinkOpenOptions) => boolean;
   onReadAloud: (index: number, content: string) => void;
   onRevert: (target: RevertTarget) => void;
   onSaveGolden: (index: number) => void;
@@ -80,6 +82,7 @@ export function ChatMessageTimeline({
   onForkSession,
   onOpenArtifact,
   onOpenImage,
+  onOpenLink,
   onReadAloud,
   onRevert,
   onSaveGolden,
@@ -188,7 +191,11 @@ export function ChatMessageTimeline({
                     })}
                   </div>
                 )}
-                <MessageContent content={message.content} onOpenImage={onOpenImage} />
+                <MessageContent
+                  content={message.content}
+                  onOpenImage={onOpenImage}
+                  onOpenLink={onOpenLink}
+                />
                 {message.role !== "user" && (
                   <ToolOutputImages
                     message={message}

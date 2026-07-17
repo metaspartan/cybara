@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readChatUiSource, readIdeUiSource } from "../source-fixtures";
 
 const pagesDir = fileURLToPath(new URL("../../ui/src/pages", import.meta.url));
 const libDir = fileURLToPath(new URL("../../ui/src/lib", import.meta.url));
@@ -214,9 +215,8 @@ describe("UI page API wiring", () => {
   });
 
   test("IDE page routes file and git operations through encoded API paths", () => {
-    // The file-tree browse fetch was extracted into ide/FileTree.tsx.
-    const ideSource = readPage("IDE.tsx") + readPage("ide/FileTree.tsx");
-    const codeViewerSource = readPage("ide/CodeViewer.tsx");
+    const ideSource = readIdeUiSource();
+    const codeViewerSource = readIdeUiSource();
     const createDialogSource = readPage("ide/CreateDialog.tsx");
     const gitStatusSource = readPage("ide/GitStatus.tsx");
 
@@ -234,8 +234,8 @@ describe("UI page API wiring", () => {
   });
 
   test("IDE page includes quick navigation controls for filtering and line jump", () => {
-    const ideSource = readPage("IDE.tsx");
-    const codeViewerSource = readPage("ide/CodeViewer.tsx");
+    const ideSource = readIdeUiSource();
+    const codeViewerSource = readIdeUiSource();
 
     expect(ideSource).toContain('placeholder="Filter files"');
     expect(ideSource).toContain('updateTreeFilter("")');
@@ -412,12 +412,7 @@ describe("UI page API wiring", () => {
   });
 
   test("Chat page wires live activity timeline to websocket status events", () => {
-    // Chat page logic is split across the page + its extracted chat/ modules.
-    const source =
-      readPage("Chat.tsx") +
-      readPage("chat/chatModel.ts") +
-      readPage("chat/MessageContent.tsx") +
-      readPage("chat/ChatMessageTimeline.tsx");
+    const source = readChatUiSource();
     const statusStreamSource = readLib("status-stream.ts");
 
     expect(source).toContain("connectStatusStream({");

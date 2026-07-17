@@ -8,8 +8,8 @@ import {
   mergeGitDiffDecorations,
   parseGitDiffDecorations,
 } from "../../ui/src/lib/idePendingDiffDecorations";
+import { readIdeUiSource } from "../source-fixtures";
 
-const ideSourcePath = fileURLToPath(new URL("../../ui/src/pages/IDE.tsx", import.meta.url));
 const codeViewerSourcePath = fileURLToPath(
   new URL("../../ui/src/pages/ide/CodeViewer.tsx", import.meta.url)
 );
@@ -18,11 +18,11 @@ const ideChatPanelSourcePath = fileURLToPath(
 );
 
 function readIdeSource(): string {
-  return readFileSync(ideSourcePath, "utf8");
+  return readIdeUiSource();
 }
 
 function readCodeViewerSource(): string {
-  return readFileSync(codeViewerSourcePath, "utf8");
+  return readFileSync(codeViewerSourcePath, "utf8") + readIdeUiSource();
 }
 
 function readIdeChatPanelSource(): string {

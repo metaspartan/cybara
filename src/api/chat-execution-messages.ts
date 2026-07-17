@@ -1,0 +1,93 @@
+import { type AgentMessage } from "../core/agent";
+import { compactChatContentForPrompt } from "../core/chat-token-optimization";
+import { hydrateImageDataFromPath } from "../core/chat/attachments";
+import { getActiveGoalContextLine } from "../core/session-goals";
+import type { ChatMessage } from "./chat-types";
+export { stripThinkingTags } from "./chat-formatting";
+export {
+  formatProcessActivityFromToolCall,
+  type ProcessActivityInfo,
+  type ToolCallInfo,
+} from "./chat-process-activities";
+export function buildChatExecutionMessagesForAgent(
+  sessionMessages: ChatMessage[],
+  options?: {
+    sessionId?: string;
+    materializedSteeringTurn?: boolean;
+    supportsImages?: boolean;
+    activeAgentId?: string;
+  }
+): AgentMessage[] {
+  const supportsImages = options?.supportsImages !== false;
+  const latestUserIndex = sessionMessages.findLastIndex((message) => message.role === "user");
+  const previousUserIndex = sessionMessages.findLastIndex(
+    (message, index) => message.role === "user" && index < latestUserIndex
+  );
+  const executionSource =
+    options?.materializedSteeringTurn &&
+    previousUserIndex >= 0 &&
+    latestUserIndex > previousUserIndex
+      ? [...sessionMessages.slice(0, previousUserIndex), ...sessionMessages.slice(latestUserIndex)]
+      : sessionMessages;
+  const executionMessages: AgentMessage[] = executionSource.map((sessionMessage) => {
+    const content = compactChatContentForPrompt(sessionMessage);
+    const imageContext = sessionMessage.image_context?.trim();
+    return {
+      role: sessionMessage.role,
+      content:
+        !supportsImages && sessionMessage.images?.length
+          ? `${content}\n\n${
+              imageContext
+                ? `[Attached image analysis]\n${imageContext}`
+                : "[Attached image unavailable to this text-only model]"
+            }`
+          : content,
+      ...(supportsImages && sessionMessage.images
+        ? { images: sessionMessage.images.map(hydrateImageDataFromPath) }
+        : {}),
+    };
+  });
+
+  const latestTransfer = sessionMessages
+    .flatMap((sessionMessage) => sessionMessage.agent_transfers || [])
+    .findLast((transfer) => transfer.toAgentId === options?.activeAgentId);
+  if (latestTransfer) {
+    const transferInstruction: AgentMessage = {
+      role: "system",
+      content: `The session transfer from ${latestTransfer.fromAgentName} to ${latestTransfer.toAgentName} is complete. You are ${latestTransfer.toAgentName}, the current active agent. Continue with the shared conversation and do not deny or simulate the completed transfer.`,
+    };
+    if (executionMessages[0]?.role === "system") {
+      executionMessages.splice(1, 0, transferInstruction);
+    } else {
+      executionMessages.unshift(transferInstruction);
+    }
+  }
+
+  const activeGoalLine = options?.sessionId ? getActiveGoalContextLine(options.sessionId) : null;
+  if (activeGoalLine) {
+    const goalInstruction: AgentMessage = {
+      role: "system",
+      content: activeGoalLine,
+    };
+    if (executionMessages[0]?.role === "system") {
+      executionMessages.splice(1, 0, goalInstruction);
+    } else {
+      executionMessages.unshift(goalInstruction);
+    }
+  }
+
+  if (options?.materializedSteeringTurn) {
+    const steeringInstruction: AgentMessage = {
+      role: "system",
+      content:
+        "The previous assistant turn was interrupted by user steering. Treat the latest user message as the active instruction. Do not continue abandoned earlier work unless the latest user message explicitly asks for it.",
+    };
+    if (executionMessages[0]?.role === "system") {
+      executionMessages.splice(1, 0, steeringInstruction);
+    } else {
+      executionMessages.unshift(steeringInstruction);
+    }
+  }
+
+  return executionMessages;
+}

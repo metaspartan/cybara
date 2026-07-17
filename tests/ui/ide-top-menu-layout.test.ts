@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readIdeUiSource } from "../source-fixtures";
 
-const ideSourcePath = fileURLToPath(new URL("../../ui/src/pages/IDE.tsx", import.meta.url));
 const ideTypesSourcePath = fileURLToPath(
   new URL("../../ui/src/pages/ide/ideTypes.ts", import.meta.url)
 );
 
 function readIdeSource(): string {
-  return readFileSync(ideSourcePath, "utf8");
+  return readIdeUiSource();
 }
 
 function readIdeTypesSource(): string {

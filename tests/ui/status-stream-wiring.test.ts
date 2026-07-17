@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readChatUiSource } from "../source-fixtures";
 
-const chatPath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
 const composerActionPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatComposerActionButton.tsx", import.meta.url)
 );
@@ -50,14 +50,15 @@ function readSource(path: string): string {
 describe("status stream websocket wiring", () => {
   test("chat page uses shared status websocket stream helper", () => {
     const contextUsageRingSource = readSource(contextUsageRingPath);
+    const reasoningSource = readSource(chatReasoningControlPath);
     const source = [
-      readSource(chatPath),
+      readChatUiSource(),
       readSource(chatComposerPath),
       readSource(chatAgentControlsPath),
       readSource(chatFollowUpControlsPath),
       readSource(composerActionPath),
       contextUsageRingSource,
-      readSource(chatReasoningControlPath),
+      reasoningSource,
       readSource(environmentOverviewPath),
     ].join("\n");
     const displaySource = readSource(providerPlanDisplayPath);
@@ -110,8 +111,8 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("onMouseEnter={() => setHelpOpen(true)}");
     expect(source).toContain("How much thinking the model does before answering.");
     expect(source).toContain("LEVEL_HINTS[option.label.toLowerCase()]");
-    expect(source).not.toContain("title={title}");
-    expect(source).not.toContain("setHovered");
+    expect(reasoningSource).not.toContain("title={title}");
+    expect(reasoningSource).not.toContain("setHovered");
     expect(source).toContain("supportedReasoningOptions");
     expect(source).toContain("useUpdateAgentReasoning");
     expect(source).toContain("chat-approval-control");
@@ -150,7 +151,7 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("payload.activeSessions?.find");
     expect(source).toContain("await refreshSessionMessagesRef.current(resolvedSessionId)");
     expect(source).toContain("activeSessionRef.current = sessionId");
-    expect(source).toContain("const refreshed = await loadSessionMutation.mutateAsync(sessionId)");
+    expect(source).toContain("const refreshed = await loadSteeredSession(sessionId)");
     expect(source).not.toContain("appendSessionMessages(sessionId, [preSteerMessage");
     expect(source).toContain("buildPreSteeringActivityMessage(");
     expect(source).not.toContain("const sessionStillActive =");
@@ -211,7 +212,7 @@ describe("status stream websocket wiring", () => {
   });
 
   test("chat composer controls collapse by available composer width", () => {
-    const chatSource = readSource(chatPath) + readSource(chatComposerPath);
+    const chatSource = readChatUiSource() + readSource(chatComposerPath);
     const controlsSource = readSource(chatAgentControlsPath);
     const followUpControlsSource = readSource(chatFollowUpControlsPath);
     const cssSource = readSource(indexCssPath);
@@ -294,13 +295,13 @@ describe("status stream websocket wiring", () => {
   });
 
   test("chat consumes status events buffered while its route is unmounted", () => {
-    const chatSource = readSource(chatPath);
+    const chatSource = readChatUiSource();
     expect(chatSource).toContain("replayBufferedSessionEvents: true");
     expect(chatSource).toContain("sequence: cached.sequence");
   });
 
   test("chat idle status refresh is not blocked by pending process capture", () => {
-    const source = readSource(chatPath);
+    const source = readChatUiSource();
     const idleBranch = source.slice(source.indexOf('if (status === "idle")'));
     expect(idleBranch).toContain("void refreshSessionMessagesRef.current(sessionToRefresh)");
     expect(idleBranch).toContain("if (!loadingRef.current) {");

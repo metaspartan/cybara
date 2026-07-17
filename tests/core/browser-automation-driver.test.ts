@@ -33,12 +33,17 @@ describe("browser automation driver", () => {
     });
     const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
     const page = await context.newPage();
+    let navigationCount = 0;
+    page.onNavigation(() => {
+      navigationCount += 1;
+    });
     const html =
       "<title>Cybara</title><input id='name' value='replace me'><button id='save'>Save</button><output id='result'></output><script>document.querySelector('#save').onclick=()=>document.querySelector('#result').textContent=document.querySelector('#name').value</script>";
     await page.goto(`data:text/html,${encodeURIComponent(html)}`, {
       waitUntil: "load",
       timeout: 10_000,
     });
+    expect(navigationCount).toBeGreaterThan(0);
 
     await page.locator("#name").fill("browser preview");
     await page.locator("#save").click();

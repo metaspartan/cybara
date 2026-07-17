@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { Loader2, MessageSquare, Square, Trash2 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { type Subagent, useClearSubagent, useKillSubagent, useSubagent } from "@/hooks/useApi";
-import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
 import { connectStatusStream } from "@/lib/status-stream";
 import { Button, Badge } from "@/components/ui";
+import type { ChatLinkOpenOptions } from "./chatLinkRouting";
+import { MessageContent } from "./MessageContent";
 import { SubagentTimeline } from "./SubagentTimeline";
 
 function statusVariant(status: Subagent["status"]): "success" | "error" | "default" {
@@ -29,10 +28,12 @@ function formatElapsed(startedAt?: string, endedAt?: string, now = Date.now()): 
 
 export function SubagentDetailPanel({
   onClear,
+  onOpenLink,
   onViewSession,
   runId,
 }: {
   onClear: () => void;
+  onOpenLink: (href: string, options: ChatLinkOpenOptions) => boolean;
   onViewSession: (sessionKey: string) => void;
   runId: string;
 }): ReactElement {
@@ -108,7 +109,7 @@ export function SubagentDetailPanel({
             </div>
           ) : null}
 
-          <SubagentTimeline subagent={subagent} />
+          <SubagentTimeline subagent={subagent} onOpenLink={onOpenLink} />
 
           {subagent.result || subagent.error ? (
             <section>
@@ -116,9 +117,10 @@ export function SubagentDetailPanel({
                 Final output
               </h4>
               <div className="chat-activity-text rounded-md bg-white/[0.025] p-3 text-gray-300">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {preprocessChatMarkdown(subagent.result || subagent.error || "")}
-                </ReactMarkdown>
+                <MessageContent
+                  content={subagent.result || subagent.error || ""}
+                  onOpenLink={onOpenLink}
+                />
               </div>
             </section>
           ) : null}

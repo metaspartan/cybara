@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { readIdeUiSource } from "../source-fixtures";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -59,7 +60,7 @@ describe("security-sensitive runtime defaults", () => {
       join(ROOT_DIR, "ui", "src", "pages", "ide", "ideConstants.ts"),
       "utf8"
     );
-    const ideSource = readFileSync(join(ROOT_DIR, "ui", "src", "pages", "IDE.tsx"), "utf8");
+    const ideSource = readIdeUiSource();
     const settingsSource = readFileSync(
       join(ROOT_DIR, "ui", "src", "pages", "settings", "MemoryBehaviorSettings.tsx"),
       "utf8"

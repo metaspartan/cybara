@@ -3,6 +3,7 @@ import {
   persistIdeChatSessionId,
   readPersistedIdeChatSessionId,
 } from "../../ui/src/pages/ide/idePersistence";
+import { readIdeUiSource } from "../source-fixtures";
 
 function createStorage(): Storage {
   const values = new Map<string, string>();
@@ -55,7 +56,7 @@ describe("IDE chat parity", () => {
   });
 
   test("loads the chat panel on demand and provides a narrow-screen overlay", async () => {
-    const ide = await Bun.file("ui/src/pages/IDE.tsx").text();
+    const ide = readIdeUiSource();
     expect(ide).toContain("const IDEChatPanel = lazy(() =>");
     expect(ide).toContain("<Suspense");
     expect(ide).toContain("absolute inset-0 z-40 h-full w-full");

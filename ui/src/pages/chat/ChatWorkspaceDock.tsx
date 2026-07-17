@@ -10,6 +10,7 @@ import {
   type WorkspaceTabInstance,
 } from "./ChatWorkspacePanel";
 import type { FileChangeItem, FileChangeSummary } from "./chatModel";
+import type { ChatLinkOpenOptions } from "./chatLinkRouting";
 import { SessionDiffPanel } from "./SessionDiffPanel";
 import { SubagentPanel } from "./SubagentPanel";
 import { SubagentDetailPanel } from "./SubagentDetailPanel";
@@ -30,6 +31,7 @@ interface ChatWorkspaceDockProps {
   onCloseTab: (id: string) => void;
   onOpenDiffInWorkspace: (file: FileChangeItem) => void;
   onOpenFullIde: (path: string) => void;
+  onOpenLink: (href: string, options: ChatLinkOpenOptions) => boolean;
   onOpenTab: (kind: ChatWorkspaceTab) => void;
   onOpenSubagent: (runId: string, title: string) => void;
   onRefreshDiff: () => void;
@@ -56,6 +58,7 @@ export function ChatWorkspaceDock({
   onCloseTab,
   onOpenDiffInWorkspace,
   onOpenFullIde,
+  onOpenLink,
   onOpenTab,
   onOpenSubagent,
   onRefreshDiff,
@@ -122,6 +125,8 @@ export function ChatWorkspaceDock({
                 visible={isOpen && active}
                 sessionId={sessionId}
                 pageKey={instance.pageKey}
+                navigationRequest={instance.navigationRequest}
+                navigationUrl={instance.navigationUrl}
                 onTitleChange={(title) => onUpdateTabTitle(instance.id, title)}
               />
             </div>
@@ -151,6 +156,7 @@ export function ChatWorkspaceDock({
               <SubagentDetailPanel
                 runId={instance.pageKey}
                 onClear={() => onCloseTab(instance.id)}
+                onOpenLink={onOpenLink}
                 onViewSession={onViewSubagentSession}
               />
             </div>

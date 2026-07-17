@@ -15,9 +15,8 @@ import {
   resolveDictationRuntime,
   resolveStatusSnapshotActivities,
 } from "../../ui/src/pages/chat/chatModel";
+import { readChatUiSource } from "../source-fixtures";
 
-const chatSourcePath = join(process.cwd(), "ui", "src", "pages", "Chat.tsx");
-const chatModelPath = join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts");
 const sidebarPath = join(process.cwd(), "ui", "src", "components", "layout", "Sidebar.tsx");
 const sessionSidebarPath = join(process.cwd(), "ui", "src", "pages", "chat", "SessionSidebar.tsx");
 const chatDictationPath = join(process.cwd(), "ui", "src", "pages", "chat", "useChatDictation.ts");
@@ -114,14 +113,14 @@ describe("Chat live activity persistence", () => {
   });
 
   test("keeps a dedicated run activity buffer for post-completion rendering", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain("const runActivityBufferRef = useRef<LiveActivityItem[]>([])");
     expect(source).toContain("const runActivities =");
     expect(source).toContain("activities: runActivities.map((activity) => ({ ...activity }))");
   });
 
   test("does not clear live activities on idle while a request is still loading", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain("!loadingRef.current &&");
     expect(source).toContain("activeSessionRef.current === resolvedSessionId &&");
     expect(source).toContain("!nextActiveIds.includes(resolvedSessionId)");
@@ -131,7 +130,7 @@ describe("Chat live activity persistence", () => {
   });
 
   test("discards cached running activity when the server reports no active session", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain("hasBufferedLive &&\n            loadingRef.current &&");
     expect(source).not.toContain("if (hasBufferedLive) return;");
     expect(source).toContain("liveActivitiesRef.current = [];");
@@ -139,7 +138,7 @@ describe("Chat live activity persistence", () => {
   });
 
   test("clears the temporary live timeline after attaching it to the completed assistant message", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain("pendingProcessCaptureRef.current = null;");
     expect(source).toContain("runActivityBufferRef.current = [];");
     expect(source).toContain("setLiveActivities([]);");
@@ -147,7 +146,7 @@ describe("Chat live activity persistence", () => {
   });
 
   test("uses server event timestamps when appending live activities to preserve order", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain("eventTimestamp?: number");
     expect(source).toContain(
       'typeof event.timestamp === "number" && Number.isFinite(event.timestamp)'
@@ -195,13 +194,13 @@ describe("Chat live activity persistence", () => {
   });
 
   test("ignores stale polling snapshots that arrive after newer SSE events", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain("latestStatusTimestampBySessionRef");
     expect(source).toContain("snapshotLatest + 25 < latestKnownTimestamp");
   });
 
   test("keeps remounted live activities when queue snapshots have no activity rows", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     const localActivities: LiveActivityItem[] = [
       {
         id: "tool-1-result",
@@ -274,7 +273,7 @@ describe("Chat live activity persistence", () => {
   });
 
   test("clears stale running step text after a tool completion with no in-flight step", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain(
       "const nextActiveStep = getLatestInFlightStep(runActivityBufferRef.current);"
     );
@@ -292,14 +291,14 @@ describe("Chat live activity persistence", () => {
   });
 
   test("does not truncate activity timeline display lists", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).not.toContain("activities.slice(-20)");
     expect(source).not.toContain(".slice(-50)");
     expect(source).not.toContain("finalizeCompletedActivities(processActivities).slice(-8)");
   });
 
   test("keeps the working timeline visible while the session remains active", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain("const currentSessionIsWorking = isLiveSessionRunning(");
     expect(source).toContain("const showWorkingTimeline = currentSessionIsWorking;");
     expect(source).not.toContain("pendingCaptureForCurrentSession ||");
@@ -310,7 +309,7 @@ describe("Chat live activity persistence", () => {
   });
 
   test("restores cached live state when a chat route remounts", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain("readCachedLiveSessionState(sessionId)");
     expect(source).toContain("writeCachedLiveSessionState(sessionId");
     expect(source).toContain("clearCachedLiveSessionState(sessionId)");
@@ -318,7 +317,7 @@ describe("Chat live activity persistence", () => {
   });
 
   test("keeps streamed assistant text visible until the final assistant message is attached", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain("if (!streamingContent || isLoading) return;");
     expect(source).toContain('if (latestMessage?.role === "assistant") {');
     // Clearing now happens via finalizeLiveState AFTER the persisted reply is
@@ -327,7 +326,7 @@ describe("Chat live activity persistence", () => {
   });
 
   test("persists message process map across reloads", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain('const MESSAGE_PROCESS_MAP_STORAGE_KEY = "cybara:messageProcessMap"');
     expect(source).toContain("readPersistedMessageProcessMap()");
     expect(source).toContain("persistMessageProcessMap(messageProcessMap)");
@@ -438,10 +437,10 @@ describe("Chat live activity persistence", () => {
   });
 
   test("steering reloads canonical gateway order and prunes live buffers", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain("const preSteerActivities = mergeActivityLists(");
     expect(source).toContain("buildPreSteeringActivityMessage(");
-    expect(source).toContain("const refreshed = await loadSessionMutation.mutateAsync(sessionId)");
+    expect(source).toContain("const refreshed = await loadSteeredSession(sessionId)");
     expect(source).toContain("materializedMessages = refreshed.messagesList as ChatMessage[]");
     expect(source).not.toContain("appendSessionMessages(sessionId, [preSteerMessage");
     expect(source).toContain("runActivityBufferRef.current = pruneCanonicalizedLiveActivities(");
@@ -478,12 +477,12 @@ describe("Chat live activity persistence", () => {
   });
 
   test("does not trim message process map history to last 199 entries", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).not.toContain("Object.entries(previous).slice(-199)");
   });
 
   test("does not cap persisted message process activities per message", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).not.toContain("MAX_PERSISTED_ACTIVITY_ITEMS_PER_MESSAGE");
     expect(source).not.toContain("normalized.slice(0, MAX_PERSISTED_ACTIVITY_ITEMS_PER_MESSAGE)");
     expect(source).not.toContain("value.slice(0, MAX_PERSISTED_ACTIVITY_ITEMS_PER_MESSAGE)");
@@ -504,7 +503,7 @@ describe("Chat live activity persistence", () => {
   });
 
   test("uses stable message process keys and supports legacy timestamp-key migration", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain("function getLegacyMessageProcessKey(");
     expect(source).toContain("function getMessageProcessActivities(");
     expect(source).toContain(
@@ -523,10 +522,7 @@ describe("Chat live activity persistence", () => {
   });
 
   test("restores process thoughts from persisted message metadata", () => {
-    const source =
-      readFileSync(chatSourcePath, "utf8") +
-      readFileSync(chatModelPath, "utf8") +
-      readChatMetadataSource();
+    const source = readChatUiSource() + readChatMetadataSource();
     expect(source).toContain("function normalizeMessageProcessActivities(");
     expect(source).toContain("message.process_activities");
     expect(source).toContain(
@@ -543,8 +539,7 @@ describe("Chat live activity persistence", () => {
 
   test("supports multiline compose and dictation controls", () => {
     const source =
-      readFileSync(chatSourcePath, "utf8") +
-      readFileSync(chatModelPath, "utf8") +
+      readChatUiSource() +
       readFileSync(chatDictationPath, "utf8") +
       readFileSync(chatComposerPath, "utf8");
     expect(source).toContain("<textarea");
@@ -612,7 +607,7 @@ describe("Chat live activity persistence", () => {
   });
 
   test("keeps session navigation durable in the main sidebar", () => {
-    const chatSource = readFileSync(chatSourcePath, "utf8");
+    const chatSource = readChatUiSource();
     const sidebarSource = readFileSync(sidebarPath, "utf8");
     const sessionSidebarSource = readFileSync(sessionSidebarPath, "utf8");
 
@@ -628,7 +623,7 @@ describe("Chat live activity persistence", () => {
   });
 
   test("stopping a response reloads the durable session timeline without stopping its agent", () => {
-    const source = readFileSync(chatSourcePath, "utf8");
+    const source = readChatUiSource();
     expect(source).toContain("await chatApi.stopSession(activeChatSessionId)");
     expect(source).toContain("await refreshSessionMessagesRef.current(activeChatSessionId)");
     expect(source).not.toContain("stopAgent.mutateAsync(activeAgentId)");

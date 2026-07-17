@@ -114,7 +114,12 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS)");
     expect(browserSource).toContain("data-browser-session-id={browserSessionId}");
     expect(browserSource).toContain("getBoundingClientRect");
-    expect(browserSource).toContain("/state`");
+    expect(browserSource).toContain("/state?includePage=false");
+    expect(browserSource).toContain('query.set("revision", previewRevisionRef.current)');
+    expect(browserSource).toContain('aria-label="Open in system browser"');
+    expect(chatSource).toContain("openWorkspaceBrowser(route.url)");
+    expect(chatSource).toContain("navigationRequest={instance.navigationRequest}");
+    expect(chatSource).toContain("navigationUrl={instance.navigationUrl}");
     expect(browserSource).toContain("browser-agent-cursor");
     expect(browserSource).toContain('cursor.source !== "agent"');
     expect(browserSource).toContain("browser-agent-click");

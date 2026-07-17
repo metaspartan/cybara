@@ -25,6 +25,7 @@ type TypeCall = {
 const browserMockState = {
   statusCalls: 0,
   tabsCalls: 0,
+  pageSummaryCalls: 0,
   createCalls: 0,
   createdPageIds: [] as string[],
   closePageCalls: [] as string[],
@@ -55,8 +56,10 @@ mock.module("../../src/core/browser/pw-manager", () => ({
       ...browserMockState.createdPageIds.map((id) => ({ id, url: "about:blank", title: "" })),
     ];
   },
-  getPageSummary: async (id: string) =>
-    id === "missing" ? null : { id, url: "https://example.com", title: "Example Domain" },
+  getPageSummary: async (id: string) => {
+    browserMockState.pageSummaryCalls += 1;
+    return id === "missing" ? null : { id, url: "https://example.com", title: "Example Domain" };
+  },
   createPage: async () => {
     browserMockState.createCalls += 1;
     browserMockState.createdPageIds.push("tab-created");
@@ -141,6 +144,7 @@ let handleRequest: (req: {
 function resetState() {
   browserMockState.statusCalls = 0;
   browserMockState.tabsCalls = 0;
+  browserMockState.pageSummaryCalls = 0;
   browserMockState.createCalls = 0;
   browserMockState.createdPageIds = [];
   browserMockState.closePageCalls = [];
@@ -299,6 +303,12 @@ describe("Browser route contracts (mocked manager)", () => {
         page: { id: "tab-1", url: "https://example.com", title: "Example Domain" },
       },
     });
+    expect(browserMockState.pageSummaryCalls).toBe(1);
+
+    const telemetryOnly = await api("GET", "/api/browser/tabs/tab-1/state?includePage=false");
+    expect(telemetryOnly.status).toBe(200);
+    expect((telemetryOnly.body as { data: { page: unknown } }).data.page).toBeNull();
+    expect(browserMockState.pageSummaryCalls).toBe(1);
   });
 
   test("GET /api/browser/tabs/:id/screenshot base64 encodes buffer", async () => {
@@ -308,6 +318,7 @@ describe("Browser route contracts (mocked manager)", () => {
       success: true,
       data: {
         screenshot: "aW1n",
+        revision: expect.any(String),
         contentType: "image/png",
         viewport: { width: 1280, height: 800 },
         cursor: {
@@ -325,6 +336,17 @@ describe("Browser route contracts (mocked manager)", () => {
       { id: "tab-1", options: { fullPage: true, type: "png" } },
     ]);
     expect(browserMockState.resizeCalls).toEqual([{ id: "tab-1", width: 1280, height: 800 }]);
+
+    const revision = (res.body as { data: { revision: string } }).data.revision;
+    const unchanged = await api(
+      "GET",
+      `/api/browser/tabs/tab-1/screenshot?revision=${encodeURIComponent(revision)}`
+    );
+    expect((unchanged.body as { data: Record<string, unknown> }).data).toMatchObject({
+      unchanged: true,
+      revision,
+    });
+    expect((unchanged.body as { data: Record<string, unknown> }).data.screenshot).toBeUndefined();
   });
 
   test("GET /api/browser/tabs/:id/screenshot supports bounded JPEG previews", async () => {

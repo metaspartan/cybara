@@ -17,7 +17,9 @@ import "katex/dist/katex.min.css";
 import { chatMarkdownImageSrc } from "@/lib/chatImages";
 import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
 import { cn } from "@/lib/utils";
+import { openExternal } from "@/utils/openExternal";
 import { MermaidCodeBlock } from "./MermaidCodeBlock";
+import { routeChatLink, type ChatLinkOpenOptions } from "./chatLinkRouting";
 
 function transformChatMarkdownUrl(url: string): string {
   return chatMarkdownImageSrc(url) ?? defaultUrlTransform(url);
@@ -274,13 +276,24 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
 function MessageContentComponent({
   content,
   onOpenImage,
+  onOpenLink,
 }: {
   content: string;
   onOpenImage?: (src: string, alt: string) => void;
+  onOpenLink?: (href: string, options: ChatLinkOpenOptions) => boolean;
 }) {
   type MarkdownPreProps = ComponentPropsWithoutRef<"pre">;
   type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
   const cleanedContent = useMemo(() => preprocessChatMarkdown(content), [content]);
+  const openLink = useCallback(
+    (target: string, options: ChatLinkOpenOptions): boolean => {
+      if (onOpenLink) return onOpenLink(target, options);
+      const route = routeChatLink(target, { external: true });
+      if (route.kind === "external") void openExternal(route.url);
+      return route.kind === "external" || route.kind === "blocked";
+    },
+    [onOpenLink]
+  );
 
   return (
     <div className="chat-markdown max-w-none text-gray-200">
@@ -341,16 +354,33 @@ function MessageContentComponent({
           h1: ({ children }) => <h1 className="text-xl font-bold mb-2">{children}</h1>,
           h2: ({ children }) => <h2 className="text-lg font-bold mb-2">{children}</h2>,
           h3: ({ children }) => <h3 className="text-base font-bold mb-2">{children}</h3>,
-          a: ({ href, children }) => (
-            <a
-              href={href}
-              className="text-indigo-400 hover:text-indigo-300 underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {children}
-            </a>
-          ),
+          a: ({ href, children }) => {
+            const target = typeof href === "string" ? href : "";
+            return (
+              <a
+                href={target}
+                className="text-indigo-400 hover:text-indigo-300 underline"
+                rel="noopener noreferrer"
+                onClick={(event) => {
+                  if (!target) return;
+                  const handled = openLink(target, {
+                    external: event.metaKey || event.ctrlKey || event.shiftKey || event.altKey,
+                  });
+                  if (!handled) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onAuxClick={(event) => {
+                  if (!target || event.button !== 1 || !openLink(target, { external: true }))
+                    return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+              >
+                {children}
+              </a>
+            );
+          },
           img: ({ src, alt }) => {
             const source = typeof src === "string" ? src : "";
             const imageSource = chatMarkdownImageSrc(source);

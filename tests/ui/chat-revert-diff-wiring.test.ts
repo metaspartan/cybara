@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readChatUiSource } from "../source-fixtures";
 import {
   type ChatMessage,
   formatFilePathForDisplay,
   summarizeSessionFileChanges,
 } from "../../ui/src/pages/chat/chatModel";
 
-const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
 const chatModelPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/chatModel.ts", import.meta.url)
 );
@@ -51,7 +51,7 @@ const desktopHostPath = fileURLToPath(new URL("../../ui/src/lib/desktopHost.ts",
 
 function readChatSource(): string {
   return (
-    readFileSync(chatPagePath, "utf8") +
+    readChatUiSource() +
     readFileSync(chatModelPath, "utf8") +
     readFileSync(sessionSidebarPath, "utf8") +
     readFileSync(activityTimelinePath, "utf8") +

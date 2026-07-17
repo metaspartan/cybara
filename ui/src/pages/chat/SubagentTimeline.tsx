@@ -1,10 +1,9 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { type ReactElement, useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import type { Subagent } from "@/hooks/useApi";
-import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
 import { isProviderRecoveryStatusLabel } from "../../../../shared/chat-status";
+import type { ChatLinkOpenOptions } from "./chatLinkRouting";
+import { MessageContent } from "./MessageContent";
 
 function formatJson(value: unknown): string {
   if (typeof value === "string") return value;
@@ -21,7 +20,13 @@ function formatJson(value: unknown): string {
   }
 }
 
-export function SubagentTimeline({ subagent }: { subagent: Subagent }): ReactElement {
+export function SubagentTimeline({
+  onOpenLink,
+  subagent,
+}: {
+  onOpenLink: (href: string, options: ChatLinkOpenOptions) => boolean;
+  subagent: Subagent;
+}): ReactElement {
   const activities = useMemo(
     () =>
       [...(subagent.activities || [])]
@@ -58,9 +63,7 @@ export function SubagentTimeline({ subagent }: { subagent: Subagent }): ReactEle
                   }
                 />
                 <div className="min-w-0">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {preprocessChatMarkdown(activity.text)}
-                  </ReactMarkdown>
+                  <MessageContent content={activity.text} onOpenLink={onOpenLink} />
                   {activity.toolName && activity.toolName !== "__thought" ? (
                     <span className="chat-meta-text mt-0.5 block font-mono text-gray-600">
                       {activity.toolName} · {activity.phase}
@@ -77,9 +80,7 @@ export function SubagentTimeline({ subagent }: { subagent: Subagent }): ReactEle
         <section>
           <h4 className="mb-2 text-[11px] font-semibold uppercase text-gray-500">Thinking</h4>
           <div className="chat-thought-text rounded-md bg-white/[0.025] p-3 text-gray-400">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {preprocessChatMarkdown(subagent.thinking)}
-            </ReactMarkdown>
+            <MessageContent content={subagent.thinking} onOpenLink={onOpenLink} />
           </div>
         </section>
       ) : null}

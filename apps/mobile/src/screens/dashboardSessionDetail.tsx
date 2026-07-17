@@ -1,11 +1,12 @@
+import { normalizeChatAppearanceSettings } from "cybara-shared/chat-appearance";
 import {
   ArrowDown,
   ArrowUp,
   Bot,
   Brain,
   Clock3,
-  Folder,
   FlaskConical,
+  Folder,
   Gauge,
   GitBranch,
   GitFork,
@@ -16,7 +17,6 @@ import {
   Pin,
   Send,
   Share2,
-  Settings2,
   ShieldAlert,
   Square,
   Trash2,
@@ -38,13 +38,11 @@ import {
   Image,
   Keyboard,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,15 +52,10 @@ import type {
   AgentSummary,
   CybaraMobileApi,
   GitBranchSummary,
-  MobileMessageImage,
   MobilePendingChatMessage,
-  PendingToolApproval,
   ProviderPlanStatusResponse,
-  SessionContextUsage,
   SessionDetailSummary,
   SessionSummary,
-  SessionTokenUsage,
-  ToolApprovalDecision,
 } from "../lib/api";
 import {
   chatIsWaitingForAssistant,
@@ -73,7 +66,6 @@ import {
 } from "../lib/chat-format";
 import {
   boundedMobileComposerHeight,
-  MOBILE_CHAT_CHROME,
   MOBILE_CHAT_COMPOSER,
   MOBILE_NAV_CHROME,
   mobileComposerHeightForDraft,
@@ -84,36 +76,20 @@ import {
   readMobileToolApprovalMode,
   sessionProviderModelLabel,
 } from "../lib/dashboard";
-import { Clipboard, ImagePicker } from "../lib/expoNativeModules";
 import { haptics } from "../lib/haptics";
 import { colors, spacing } from "../theme/liquidGlass";
-import { normalizeChatAppearanceSettings } from "cybara-shared/chat-appearance";
-import {
-  resolveSessionEventOrder,
-  type SessionEventCursor,
-  type SessionEventIdentity,
-} from "cybara-shared/session-event-order";
 import { ChatMessageRow, MobilePlanSummaryCard } from "./dashboardChat";
 import { absoluteTimestampLabel, relativeTimestamp } from "./dashboardHelpers";
 import {
   clearCachedMobileLiveAssistant,
-  isMobileSessionSnapshotCurrent,
-  liveActivityFromStatusEvent,
-  liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
   mergeLiveActivity,
   mobileAgentUsingBrowser,
   mobilePreSteerProcessActivities,
-  prunePersistedMobileLiveAssistant,
-  readCachedMobileLiveAssistant,
-  subscribeCachedMobileLiveAssistant,
-  writeCachedMobileLiveAssistant,
 } from "./dashboardLiveChat";
 import { mobileProviderPlanDetail } from "./dashboardMetricsPanels";
 import {
   clearCachedMobileOptimisticTranscript,
-  mergeCachedMobileOptimisticTranscript,
-  readCachedMobileOptimisticTranscript,
   writeCachedMobileOptimisticTranscriptMessage,
 } from "./dashboardOptimisticTranscript";
 import {
@@ -124,8 +100,27 @@ import {
   writeCachedMobileOptimisticPendingMessages,
 } from "./dashboardPendingQueue";
 import { EmptyState } from "./dashboardPrimitives";
+import {
+  compactWorkspace,
+  mobileContextUsageDetail,
+  mobileFormatTokenCount,
+  mobileProviderPlanFor,
+  mobileSessionTokenUsageDetail,
+} from "./dashboardSessionMetrics";
+import {
+  ChatApprovalBanner,
+  type ChatSettingsAction,
+  type ChatSettingsRow,
+  ChatSettingsSheet,
+} from "./dashboardSessionSettings";
 import { styles } from "./dashboardStyles";
 import { MobileSubagentsSheet } from "./dashboardSubagents";
+import {
+  MOBILE_CHAT_MAX_ATTACHMENTS,
+  pendingImageUri,
+  useMobileChatComposer,
+} from "./useMobileChatComposer";
+import { useMobileSessionRuntime } from "./useMobileSessionRuntime";
 
 export interface ChatHeaderAction {
   busy: boolean;
@@ -134,321 +129,12 @@ export interface ChatHeaderAction {
 
 const MOBILE_MODEL_ROUTER_SELECTOR_VALUE = "__model_router__";
 
-function optimisticMobileSessionDetail(
-  sessionId: string,
-  sessionSummary?: SessionSummary | null
-): SessionDetailSummary | null {
-  const messages = readCachedMobileOptimisticTranscript(sessionId);
-  if (messages.length === 0 && !readCachedMobileLiveAssistant(sessionId)) return null;
-  return {
-    id: sessionId,
-    title: sessionSummary?.title ?? null,
-    agentId: sessionSummary?.agent_id,
-    provider: sessionSummary?.provider,
-    providerId: sessionSummary?.provider_id,
-    providerName: sessionSummary?.provider_name,
-    model: sessionSummary?.model,
-    workspaceDir: sessionSummary?.workspace_dir,
-    createdAt: sessionSummary?.created_at,
-    updatedAt: sessionSummary?.updated_at,
-    pinned: sessionSummary?.pinned,
-    messages,
-  };
-}
-
 function pendingMessagesFromResponse(result: {
   pendingMessage?: MobilePendingChatMessage;
   pendingMessages?: MobilePendingChatMessage[];
 }): MobilePendingChatMessage[] {
   if (Array.isArray(result.pendingMessages)) return result.pendingMessages;
   return result.pendingMessage ? [result.pendingMessage] : [];
-}
-
-function ChatApprovalBanner({ api }: { api: CybaraMobileApi }) {
-  const [approvals, setApprovals] = useState<PendingToolApproval[]>([]);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    const poll = async () => {
-      try {
-        const pending = await api.toolApprovals();
-        if (active) setApprovals(pending);
-      } catch {
-        /* ignore */
-      }
-    };
-    void poll();
-    const interval = setInterval(poll, 3000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [api]);
-
-  const resolve = async (id: string, decision: ToolApprovalDecision) => {
-    setApprovals((prev) => prev.filter((a) => a.id !== id));
-    try {
-      await api.resolveToolApproval(id, decision);
-    } catch {
-      /* the next poll re-surfaces it if it failed */
-    }
-  };
-
-  if (approvals.length === 0) return null;
-
-  return (
-    <View style={styles.chatApprovalBanner}>
-      {approvals.map((req) => {
-        const expanded = expandedId === req.id;
-        const hasDetail = req.argsSummary.trim().length > 0;
-        return (
-          <View key={req.id} style={styles.chatApprovalRow}>
-            <View style={styles.chatApprovalLine}>
-              <ShieldAlert color={colors.amber} size={16} strokeWidth={2.3} />
-              <Pressable
-                style={styles.chatApprovalSummary}
-                onPress={() => hasDetail && setExpandedId(expanded ? null : req.id)}
-              >
-                <Text style={styles.chatApprovalTool}>{req.toolName}</Text>
-                {hasDetail ? (
-                  <Text numberOfLines={1} style={styles.chatApprovalArgs}>
-                    {req.argsSummary}
-                  </Text>
-                ) : null}
-              </Pressable>
-              <View style={styles.chatApprovalButtons}>
-                <Pressable
-                  style={[styles.chatApprovalBtn, { backgroundColor: `${colors.green}22` }]}
-                  onPress={() => void resolve(req.id, "approve_once")}
-                >
-                  <Text style={[styles.chatApprovalBtnText, { color: colors.green }]}>Once</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.chatApprovalBtn, { backgroundColor: `${colors.blueText}22` }]}
-                  onPress={() => void resolve(req.id, "approve_session")}
-                >
-                  <Text style={[styles.chatApprovalBtnText, { color: colors.blueText }]}>
-                    Session
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.chatApprovalBtn, { backgroundColor: `${colors.red}22` }]}
-                  onPress={() => void resolve(req.id, "deny")}
-                >
-                  <Text style={[styles.chatApprovalBtnText, { color: colors.red }]}>Deny</Text>
-                </Pressable>
-              </View>
-            </View>
-            {expanded && hasDetail ? (
-              <Text style={styles.chatApprovalDetail}>{req.argsSummary}</Text>
-            ) : null}
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-const MOBILE_CHAT_MAX_ATTACHMENTS = 8;
-const MOBILE_CHAT_MAX_IMAGE_BASE64_LENGTH = 7_000_000;
-
-type ChatSettingsAction = {
-  destructive?: boolean;
-  disabled?: boolean;
-  icon: typeof Settings2;
-  label: string;
-  onPress: () => void;
-};
-
-type ChatSettingsRow = {
-  detail?: string | null;
-  icon: typeof Settings2;
-  label: string;
-  value: string;
-};
-
-function pendingImageUri(image: MobileMessageImage): string {
-  return `data:${image.mimeType || "image/jpeg"};base64,${image.data ?? ""}`;
-}
-
-function ChatSettingsInfoRow({ row }: { row: ChatSettingsRow }) {
-  const Icon = row.icon;
-  return (
-    <View style={styles.chatSettingsInfoRow}>
-      <View style={styles.chatSettingsInfoIcon}>
-        <Icon color={colors.textMuted} size={16} strokeWidth={2.2} />
-      </View>
-      <View style={styles.chatSettingsInfoText}>
-        <Text style={styles.chatSettingsInfoLabel}>{row.label}</Text>
-        <Text selectable style={styles.chatSettingsInfoValue}>
-          {row.value}
-        </Text>
-        {row.detail ? (
-          <Text selectable style={styles.chatSettingsInfoDetail}>
-            {row.detail}
-          </Text>
-        ) : null}
-      </View>
-    </View>
-  );
-}
-
-function ChatSettingsActionButton({ action }: { action: ChatSettingsAction }) {
-  const Icon = action.icon;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={action.disabled}
-      onPress={action.onPress}
-      style={[
-        styles.chatSettingsActionButton,
-        action.destructive && styles.chatSettingsActionButtonDestructive,
-        action.disabled && styles.chatSettingsActionButtonDisabled,
-      ]}
-    >
-      <Icon color={action.destructive ? colors.red : colors.text} size={16} strokeWidth={2.3} />
-      <Text
-        style={[
-          styles.chatSettingsActionText,
-          action.destructive && styles.chatSettingsActionTextDestructive,
-        ]}
-      >
-        {action.label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function ChatSettingsSheet({
-  actions,
-  onClose,
-  rows,
-  subtitle,
-  title,
-  visible,
-}: {
-  actions: ChatSettingsAction[];
-  onClose: () => void;
-  rows: ChatSettingsRow[];
-  subtitle: string;
-  title: string;
-  visible: boolean;
-}) {
-  const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
-  const [dragOffset, setDragOffset] = useState(0);
-  const [expanded, setExpanded] = useState(true);
-  const availableHeight = Math.max(420, windowHeight - insets.top - insets.bottom - spacing.lg);
-  const expandedHeight = Math.min(availableHeight, Math.round(windowHeight * 0.84));
-  const collapsedHeight = Math.min(expandedHeight, Math.max(360, Math.round(windowHeight * 0.58)));
-  const sheetHeight = expanded ? expandedHeight : collapsedHeight;
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_event, gesture) =>
-          Math.abs(gesture.dy) > 7 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.15,
-        onPanResponderMove: (_event, gesture) => {
-          const lowerBound = expanded ? 0 : -90;
-          setDragOffset(Math.min(180, Math.max(lowerBound, gesture.dy)));
-        },
-        onPanResponderRelease: (_event, gesture) => {
-          if (!expanded && (gesture.dy < -48 || gesture.vy < -0.7)) {
-            setExpanded(true);
-            setDragOffset(0);
-            return;
-          }
-          if (expanded && gesture.dy > 76 && gesture.vy < 1.2) {
-            setExpanded(false);
-            setDragOffset(0);
-            return;
-          }
-          if (gesture.dy > 118 || gesture.vy > 1.1) {
-            setDragOffset(0);
-            onClose();
-            return;
-          }
-          setDragOffset(0);
-        },
-        onPanResponderTerminate: () => setDragOffset(0),
-      }),
-    [expanded, onClose]
-  );
-
-  useEffect(() => {
-    if (visible) {
-      setExpanded(true);
-      setDragOffset(0);
-    }
-  }, [visible]);
-
-  return (
-    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
-      <View style={styles.chatSettingsOverlay}>
-        <Pressable
-          accessibilityRole="button"
-          style={styles.chatSettingsBackdrop}
-          onPress={onClose}
-        />
-        <View
-          style={[
-            styles.chatSettingsSheetFrame,
-            {
-              height: sheetHeight,
-              marginBottom: Math.max(spacing.sm, insets.bottom + spacing.sm),
-              transform: [{ translateY: dragOffset }],
-            },
-          ]}
-        >
-          <LiquidGlass
-            intensity={76}
-            contentStyle={styles.chatSettingsSheetContent}
-            style={styles.chatSettingsSheet}
-          >
-            <View {...panResponder.panHandlers} style={styles.chatSettingsDragHandle}>
-              <View style={styles.chatSettingsGrabber} />
-              <View style={styles.chatSettingsHeader}>
-                <View style={styles.chatSettingsTitleWrap}>
-                  <Text numberOfLines={2} style={styles.chatSettingsTitle}>
-                    {title}
-                  </Text>
-                  <Text numberOfLines={1} style={styles.chatSettingsSubtitle}>
-                    {subtitle}
-                  </Text>
-                </View>
-                <Pressable
-                  accessibilityLabel="Close chat settings"
-                  accessibilityRole="button"
-                  hitSlop={8}
-                  onPress={onClose}
-                  style={styles.chatSettingsCloseButton}
-                >
-                  <X color={colors.textMuted} size={18} strokeWidth={2.4} />
-                </Pressable>
-              </View>
-            </View>
-            <ScrollView
-              contentContainerStyle={styles.chatSettingsScrollContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              style={styles.chatSettingsScroll}
-            >
-              <View style={styles.chatSettingsInfoGroup}>
-                {rows.map((row) => (
-                  <ChatSettingsInfoRow key={row.label} row={row} />
-                ))}
-              </View>
-              <View style={styles.chatSettingsActionsGrid}>
-                {actions.map((action) => (
-                  <ChatSettingsActionButton key={action.label} action={action} />
-                ))}
-              </View>
-            </ScrollView>
-          </LiquidGlass>
-        </View>
-      </View>
-    </Modal>
-  );
 }
 
 export function SessionDetailPanel({
@@ -497,26 +183,12 @@ export function SessionDetailPanel({
       hideSub.remove();
     };
   }, []);
-  const [detail, setDetail] = useState<SessionDetailSummary | null>(() =>
-    optimisticMobileSessionDetail(sessionId, sessionSummary)
-  );
   const [gitBranch, setGitBranch] = useState<string | null>(null);
   const [gitBranches, setGitBranches] = useState<GitBranchSummary[]>([]);
   const [gitBranchLoading, setGitBranchLoading] = useState(false);
   const [gitBranchError, setGitBranchError] = useState<string | null>(null);
   const [branchPickerVisible, setBranchPickerVisible] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [composerHeight, setComposerHeight] = useState<number>(MOBILE_CHAT_COMPOSER.minHeight);
-  const [composerBarHeight, setComposerBarHeight] = useState<number>(
-    MOBILE_CHAT_CHROME.composerHeight
-  );
-  const draftRef = useRef("");
-  const composerMeasuredHeightRef = useRef<number>(MOBILE_CHAT_COMPOSER.minHeight);
   const [sending, setSending] = useState(false);
-  const [pendingImages, setPendingImages] = useState<MobileMessageImage[]>([]);
-  const [pendingMessages, setPendingMessages] = useState<MobilePendingChatMessage[]>([]);
   const [steeringPendingId, setSteeringPendingId] = useState<string | null>(null);
   const [reorderingPendingId, setReorderingPendingId] = useState<string | null>(null);
   const [mutatingPendingId, setMutatingPendingId] = useState<string | null>(null);
@@ -538,37 +210,36 @@ export function SessionDetailPanel({
   const [routerEnabled, setRouterEnabled] = useState(false);
   const [useModelRouter, setUseModelRouter] = useState(false);
   const [chatSettingsVisible, setChatSettingsVisible] = useState(false);
-  const [sessionActive, setSessionActive] = useState(false);
   const [subagentsVisible, setSubagentsVisible] = useState(false);
   const [toolApprovalUpdating, setToolApprovalUpdating] = useState(false);
   const [pendingToolApprovalMode, setPendingToolApprovalMode] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const headerActionRef = useRef<() => void>(() => {});
-  const currentSessionIdRef = useRef(sessionId);
-  currentSessionIdRef.current = sessionId;
-  const sessionRefreshInFlight = useRef<{
-    sessionId: string;
-    token: symbol;
-    promise: Promise<void>;
-  } | null>(null);
-  const sendingRef = useRef(false);
-  const responseHapticActiveRef = useRef(false);
-  const optimisticPendingGraceUntilRef = useRef(0);
-  const optimisticPendingCounterRef = useRef(0);
-  const cachedLiveAssistant = readCachedMobileLiveAssistant(sessionId);
-  const [liveAssistant, setLiveAssistant] = useState<
-    SessionDetailSummary["messages"][number] | null
-  >(() => cachedLiveAssistant?.message ?? null);
-  const [liveNowMs, setLiveNowMs] = useState(() => cachedLiveAssistant?.nowMs ?? Date.now());
-  const liveEventCursorRef = useRef<SessionEventCursor | undefined>(
-    cachedLiveAssistant
-      ? {
-          runId: cachedLiveAssistant.runId,
-          sequence: cachedLiveAssistant.sequence,
-          timestamp: cachedLiveAssistant.updatedAt,
-        }
-      : undefined
-  );
+  const {
+    detail,
+    setDetail,
+    loading,
+    loadError,
+    setLoadError,
+    pendingMessages,
+    setPendingMessages,
+    sessionActive,
+    liveAssistant,
+    liveNowMs,
+    loadSession,
+    commitLiveAssistant,
+    responseHapticActiveRef,
+    optimisticPendingGraceUntilRef,
+    optimisticPendingCounterRef,
+  } = useMobileSessionRuntime({
+    api,
+    sessionId,
+    sessionSummary,
+    sending,
+    setPinned,
+    setPendingSessionAgentId,
+    scrollRef,
+  });
 
   useEffect(() => {
     let active = true;
@@ -606,517 +277,27 @@ export function SessionDetailPanel({
     };
   }, [api, sessionId]);
 
-  const commitLiveAssistant = useCallback(
-    (
-      updater: (
-        current: SessionDetailSummary["messages"][number] | null
-      ) => SessionDetailSummary["messages"][number] | null,
-      nowMs = Date.now()
-    ) => {
-      setLiveNowMs(nowMs);
-      setLiveAssistant((current) => {
-        const next = updater(current);
-        if (next) {
-          writeCachedMobileLiveAssistant(sessionId, next, nowMs, liveEventCursorRef.current);
-        } else {
-          clearCachedMobileLiveAssistant(sessionId);
-        }
-        return next;
-      });
-    },
-    [sessionId]
-  );
-
-  const acceptLiveEvent = useCallback(
-    (identity: SessionEventIdentity): boolean => {
-      const decision = resolveSessionEventOrder(liveEventCursorRef.current, identity);
-      if (!decision.accepted) return false;
-      liveEventCursorRef.current = decision.cursor;
-      if (decision.runChanged) commitLiveAssistant(() => null);
-      return true;
-    },
-    [commitLiveAssistant]
-  );
-
-  const applySessionDetail = useCallback(
-    (nextDetail: SessionDetailSummary) => {
-      const reconciledDetail = {
-        ...nextDetail,
-        messages: mergeCachedMobileOptimisticTranscript(sessionId, nextDetail.messages),
-      };
-      setDetail(reconciledDetail);
-      commitLiveAssistant((current) =>
-        prunePersistedMobileLiveAssistant(current, reconciledDetail.messages)
-      );
-      if (typeof reconciledDetail.pinned === "boolean") {
-        setPinned(reconciledDetail.pinned);
-      }
-    },
-    [commitLiveAssistant, sessionId]
-  );
-
-  const loadSession = useCallback(
-    (showLoading = false): Promise<void> => {
-      const requestedSessionId = sessionId;
-      const existing = sessionRefreshInFlight.current;
-      if (existing?.sessionId === requestedSessionId) return existing.promise;
-      const token = Symbol(requestedSessionId);
-      const promise = (async (): Promise<void> => {
-        if (showLoading) setLoading(true);
-        setLoadError(null);
-        try {
-          const nextDetail = await api.session(requestedSessionId);
-          if (currentSessionIdRef.current !== requestedSessionId) return;
-          applySessionDetail(nextDetail);
-        } catch (error) {
-          if (currentSessionIdRef.current === requestedSessionId) {
-            const optimistic = optimisticMobileSessionDetail(requestedSessionId);
-            if (optimistic) {
-              setDetail((current) => current ?? optimistic);
-              setLoadError(null);
-            } else {
-              setLoadError(error instanceof Error ? error.message : String(error));
-            }
-          }
-        } finally {
-          if (sessionRefreshInFlight.current?.token === token) {
-            sessionRefreshInFlight.current = null;
-          }
-          if (showLoading && currentSessionIdRef.current === requestedSessionId) setLoading(false);
-        }
-      })();
-      sessionRefreshInFlight.current = { sessionId: requestedSessionId, token, promise };
-      return promise;
-    },
-    [api, applySessionDetail, sessionId]
-  );
-
-  const shouldPreserveOptimisticPending = useCallback(
-    () => sendingRef.current || Date.now() < optimisticPendingGraceUntilRef.current,
-    []
-  );
-
-  const hydrateLiveAssistant = useCallback(async () => {
-    try {
-      const status = await api.sessionStatus(sessionId);
-      const snapshot =
-        status.session || status.activeSessions.find((entry) => entry.sessionId === sessionId);
-      const serverReportsActive =
-        status.active === true || status.activeSessionIds.includes(sessionId);
-      const snapshotFresh = isMobileSessionSnapshotCurrent(
-        snapshot?.timestamp,
-        serverReportsActive
-      );
-      if (snapshot && snapshotFresh) {
-        const snapshotAccepted = acceptLiveEvent(snapshot);
-        if (
-          !snapshotAccepted &&
-          snapshot.runId &&
-          liveEventCursorRef.current?.runId &&
-          snapshot.runId !== liveEventCursorRef.current.runId
-        ) {
-          return;
-        }
-      }
-      const snapshotStatus = String(snapshot?.status || "").toLowerCase();
-      const active =
-        !!snapshot &&
-        snapshotFresh &&
-        (serverReportsActive ||
-          snapshotStatus === "thinking" ||
-          snapshotStatus === "generating" ||
-          snapshotStatus === "tool_executing" ||
-          snapshotStatus === "compacting");
-      setSessionActive(active);
-      const snapshotPendingMessages = snapshot?.pendingMessages ?? [];
-      const preserveOptimisticPending = shouldPreserveOptimisticPending();
-      if (!preserveOptimisticPending && snapshotPendingMessages.length === 0) {
-        clearCachedMobileOptimisticPendingMessages(sessionId);
-      }
-      setPendingMessages((current) =>
-        mergeMobilePendingMessages(snapshotPendingMessages, current, {
-          preserveOptimistic: preserveOptimisticPending,
-        })
-      );
-      if (!active || !snapshot) {
-        if (!sendingRef.current) {
-          const cached = readCachedMobileLiveAssistant(sessionId);
-          if (cached) {
-            setLiveNowMs(cached.nowMs);
-            setLiveAssistant((current) => current ?? cached.message);
-          } else {
-            commitLiveAssistant(() => null);
-          }
-          if (!preserveOptimisticPending) {
-            clearCachedMobileOptimisticPendingMessages(sessionId);
-          }
-        }
-        return;
-      }
-      commitLiveAssistant(
-        (current) => liveAssistantFromStatusSnapshot(sessionId, current, snapshot),
-        snapshot.timestamp
-      );
-    } catch {
-      /* best effort */
-    }
-  }, [acceptLiveEvent, api, commitLiveAssistant, sessionId, shouldPreserveOptimisticPending]);
-
-  const hydratePendingMessages = useCallback(async () => {
-    try {
-      const pending = await api.pendingChatMessages(sessionId);
-      const pendingMessages = pending.pendingMessages ?? [];
-      const preserveOptimisticPending = shouldPreserveOptimisticPending();
-      if (!preserveOptimisticPending && pendingMessages.length === 0) {
-        clearCachedMobileOptimisticPendingMessages(sessionId);
-      }
-      setPendingMessages((current) =>
-        mergeMobilePendingMessages(pendingMessages, current, {
-          preserveOptimistic: preserveOptimisticPending,
-        })
-      );
-    } catch {
-      /* best effort */
-    }
-  }, [api, sessionId, shouldPreserveOptimisticPending]);
-
-  useEffect(() => {
-    if (typeof sessionSummary?.pinned === "boolean") {
-      setPinned(sessionSummary.pinned);
-    }
-  }, [sessionId, sessionSummary?.pinned]);
-
-  useEffect(() => {
-    setPendingSessionAgentId(null);
-    setSessionActive(false);
-    responseHapticActiveRef.current = false;
-  }, [sessionId]);
-
-  useEffect(() => {
-    sendingRef.current = sending;
-  }, [sending]);
-
-  useEffect(() => {
-    const cached = readCachedMobileLiveAssistant(sessionId);
-    liveEventCursorRef.current = cached
-      ? {
-          runId: cached.runId,
-          sequence: cached.sequence,
-          timestamp: cached.updatedAt,
-        }
-      : undefined;
-    setLiveAssistant(cached?.message ?? null);
-    setLiveNowMs(cached?.nowMs ?? Date.now());
-    const cachedOptimistic = readCachedMobileOptimisticPendingMessages(sessionId);
-    if (cachedOptimistic.length > 0) {
-      optimisticPendingGraceUntilRef.current = Date.now() + 15_000;
-      setPendingMessages((current) => mergeMobilePendingMessages(cachedOptimistic, current));
-    } else {
-      setPendingMessages([]);
-    }
-    void hydratePendingMessages();
-    void hydrateLiveAssistant();
-  }, [hydrateLiveAssistant, hydratePendingMessages, sessionId]);
-
-  useEffect(
-    () =>
-      subscribeCachedMobileLiveAssistant(sessionId, (cached) => {
-        setLiveAssistant(cached?.message ?? null);
-        setLiveNowMs(cached?.nowMs ?? Date.now());
-      }),
-    [sessionId]
-  );
-
-  useEffect(() => {
-    if (!sessionId) return;
-    writeCachedMobileOptimisticPendingMessages(sessionId, pendingMessages);
-  }, [pendingMessages, sessionId]);
-
-  useEffect(() => {
-    setDetail((current) =>
-      current?.id === sessionId ? current : optimisticMobileSessionDetail(sessionId, sessionSummary)
-    );
-    void loadSession(true);
-  }, [loadSession, sessionId, sessionSummary]);
-
-  useEffect(() => {
-    const disconnect = api.connectStatusStream({
-      onEvent: (event) => {
-        if (event.type === "assistant_token") {
-          if (event.sessionId !== sessionId) return;
-          if (!acceptLiveEvent(event)) return;
-          if (!responseHapticActiveRef.current) {
-            responseHapticActiveRef.current = true;
-            haptics.agentStarted();
-          }
-          haptics.agentProgress();
-          commitLiveAssistant((current) => {
-            const base = liveAssistantMessage(sessionId, current, event.timestamp);
-            return {
-              ...base,
-              content: `${base.content || ""}${event.delta}`,
-            };
-          }, event.timestamp);
-          return;
-        }
-
-        if (event.type === "snapshot") {
-          const snapshot = event.activeSessions.find((entry) => entry.sessionId === sessionId);
-          if (!snapshot) {
-            setSessionActive(false);
-            const preserveOptimisticPending = shouldPreserveOptimisticPending();
-            if (!preserveOptimisticPending) {
-              clearCachedMobileOptimisticPendingMessages(sessionId);
-            }
-            setPendingMessages((current) =>
-              mergeMobilePendingMessages([], current, {
-                preserveOptimistic: preserveOptimisticPending,
-              })
-            );
-            return;
-          }
-          const snapshotAccepted = acceptLiveEvent(snapshot);
-          if (
-            !snapshotAccepted &&
-            snapshot.runId &&
-            liveEventCursorRef.current?.runId &&
-            snapshot.runId !== liveEventCursorRef.current.runId
-          ) {
-            return;
-          }
-          setSessionActive(true);
-          const pendingMessages = snapshot.pendingMessages ?? [];
-          const preserveOptimisticPending = shouldPreserveOptimisticPending();
-          if (!preserveOptimisticPending && pendingMessages.length === 0) {
-            clearCachedMobileOptimisticPendingMessages(sessionId);
-          }
-          setPendingMessages((current) =>
-            mergeMobilePendingMessages(pendingMessages, current, {
-              preserveOptimistic: preserveOptimisticPending,
-            })
-          );
-          commitLiveAssistant(
-            (current) => liveAssistantFromStatusSnapshot(sessionId, current, snapshot),
-            snapshot.timestamp
-          );
-          return;
-        }
-
-        if (event.type !== "status" || event.sessionId !== sessionId) return;
-        if (!acceptLiveEvent(event)) return;
-        if (event.status === "idle") {
-          const steeringHandoff =
-            (event.detail || "").trim().toLowerCase() === "steering to follow-up...";
-          if (steeringHandoff) {
-            setSessionActive(true);
-            void loadSession(false);
-            return;
-          }
-          setSessionActive(false);
-          if (responseHapticActiveRef.current) {
-            responseHapticActiveRef.current = false;
-            haptics.agentCompleted();
-          }
-          if (!sendingRef.current) {
-            void loadSession(false).finally(() => {
-              void hydrateLiveAssistant();
-            });
-          }
-          return;
-        }
-        setSessionActive(event.status !== "error");
-        const activity = liveActivityFromStatusEvent(event);
-        if (!activity) return;
-        if (!responseHapticActiveRef.current) {
-          responseHapticActiveRef.current = true;
-          haptics.agentStarted();
-        } else {
-          haptics.agentProgress();
-        }
-        commitLiveAssistant((current) => {
-          const base = liveAssistantMessage(sessionId, current, event.timestamp);
-          return {
-            ...base,
-            processActivities: mergeLiveActivity(base.processActivities || [], activity),
-          };
-        }, event.timestamp);
-      },
-    });
-    return disconnect;
-  }, [
-    acceptLiveEvent,
-    api,
-    commitLiveAssistant,
-    hydrateLiveAssistant,
-    loadSession,
-    sessionId,
-    shouldPreserveOptimisticPending,
-  ]);
-
-  useEffect(() => {
-    const interval = setInterval(
-      () => {
-        void loadSession(false);
-      },
-      sending || liveAssistant ? 1800 : 3500
-    );
-    return () => clearInterval(interval);
-  }, [loadSession, liveAssistant, sending]);
-
-  useEffect(() => {
-    if (!liveAssistant) return;
-    const interval = setInterval(() => setLiveNowMs(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [liveAssistant]);
-
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    });
-  }, [
-    detail?.messages.length,
-    liveAssistant?.content,
-    liveAssistant?.processActivities?.length,
-    pendingMessages.length,
-    sending,
-  ]);
-
-  const setComposerDraft = (value: string) => {
-    draftRef.current = value;
-    setDraft(value);
-    setComposerHeight(mobileComposerHeightForDraft(value, composerMeasuredHeightRef.current));
-  };
-
-  const resetComposerDraft = () => {
-    draftRef.current = "";
-    composerMeasuredHeightRef.current = MOBILE_CHAT_COMPOSER.minHeight;
-    setDraft("");
-    setComposerHeight(MOBILE_CHAT_COMPOSER.minHeight);
-  };
-
-  const appendTextToComposer = (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const nextDraft = draftRef.current.trim()
-      ? `${draftRef.current.trimEnd()}\n\n${trimmed}`
-      : trimmed;
-    setComposerDraft(nextDraft);
-  };
-
-  const removePendingImage = (index: number) => {
-    setPendingImages((current) => current.filter((_, itemIndex) => itemIndex !== index));
-  };
-
-  const appendPendingImages = (candidates: MobileMessageImage[]) => {
-    setPendingImages((current) => {
-      const next = [...current];
-      for (const candidate of candidates) {
-        if (next.length >= MOBILE_CHAT_MAX_ATTACHMENTS) break;
-        const data = candidate.data;
-        if (!data || data.length > MOBILE_CHAT_MAX_IMAGE_BASE64_LENGTH) continue;
-        next.push(candidate);
-      }
-      return next;
-    });
-  };
-
-  const pickImages = async () => {
-    if (pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS) return;
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setLoadError("Photo library access is required to attach images.");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      base64: true,
-      quality: 0.8,
-      allowsMultipleSelection: true,
-      selectionLimit: MOBILE_CHAT_MAX_ATTACHMENTS,
-    });
-    if (result.canceled) return;
-    appendPendingImages(
-      result.assets.map((asset) => ({
-        data: asset.base64 ?? undefined,
-        mimeType: asset.mimeType ?? "image/jpeg",
-      }))
-    );
-  };
-
-  const pasteImage = async () => {
-    if (pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS) return;
-    const hasImage = await Clipboard.hasImageAsync();
-    if (!hasImage) {
-      Alert.alert("No image found", "Copy an image first, then attach it from the composer.");
-      return;
-    }
-    const img = await Clipboard.getImageAsync({ format: "png" });
-    if (!img) return;
-    const rawBase64 = img.data.replace(/^data:[^;]+;base64,/, "");
-    appendPendingImages([{ data: rawBase64, mimeType: "image/png" }]);
-  };
-
-  const pasteText = async () => {
-    const text = (await Clipboard.getStringAsync().catch(() => "")).trim();
-    if (!text) {
-      Alert.alert(
-        "No text found",
-        "Copy text from a message first, then paste it into the composer."
-      );
-      return;
-    }
-    appendTextToComposer(text);
-  };
-
-  const openAttachmentMenu = () => {
-    if (pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS) {
-      Alert.alert(
-        "Attachment limit reached",
-        `You can attach up to ${MOBILE_CHAT_MAX_ATTACHMENTS} images per message.`
-      );
-      return;
-    }
-    haptics.select();
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: "Attach",
-          options: ["Photo library", "Paste image", "Paste text", "Cancel"],
-          cancelButtonIndex: 3,
-        },
-        (index) => {
-          if (index === 0) void pickImages();
-          if (index === 1) void pasteImage();
-          if (index === 2) void pasteText();
-        }
-      );
-      return;
-    }
-    Alert.alert("Attach", "Choose an attachment source.", [
-      {
-        text: "Photo library",
-        onPress: () => {
-          void pickImages();
-        },
-      },
-      {
-        text: "Paste image",
-        onPress: () => {
-          void pasteImage();
-        },
-      },
-      {
-        text: "Paste text",
-        onPress: () => {
-          void pasteText();
-        },
-      },
-      { text: "Cancel", style: "cancel" },
-    ]);
-  };
+  const {
+    draft,
+    setComposerDraft,
+    appendTextToComposer,
+    resetComposerDraft,
+    draftRef,
+    composerHeight,
+    setComposerHeight,
+    composerBarHeight,
+    setComposerBarHeight,
+    composerMeasuredHeightRef,
+    pendingImages,
+    setPendingImages,
+    removePendingImage,
+    openAttachmentMenu,
+  } = useMobileChatComposer({ setLoadError });
 
   const replacePendingMessagesFromGateway = (messages: MobilePendingChatMessage[]) => {
-    const nextMessages = mergeMobilePendingMessages(messages, [], { preserveOptimistic: false });
+    const nextMessages = mergeMobilePendingMessages(messages, [], {
+      preserveOptimistic: false,
+    });
     setPendingMessages(nextMessages);
     if (nextMessages.length === 0) {
       clearCachedMobileOptimisticPendingMessages(sessionId);
@@ -2567,89 +1748,5 @@ export function SessionDetailPanel({
         </View>
       </Modal>
     </View>
-  );
-}
-
-function compactWorkspace(value?: string | null): string {
-  if (!value) return "No workspace";
-  const parts = value.split(/[\\/]/).filter(Boolean);
-  if (parts.length <= 2) return value;
-  return `.../${parts.slice(-2).join("/")}`;
-}
-
-function mobileFormatTokenCount(value: number): string {
-  if (!Number.isFinite(value)) return "0";
-  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(value) >= 1_000) return `${Math.round(value / 1_000)}k`;
-  return String(Math.max(0, Math.round(value)));
-}
-
-function mobileContextUsageDetail(usage?: SessionContextUsage): string {
-  if (!usage) return "Context usage is available after the session loads from the gateway.";
-  const details = [
-    `Active context: ${mobileFormatTokenCount(usage.usedTokens)} of ${mobileFormatTokenCount(
-      usage.limitTokens
-    )} tokens used (${usage.usedPercent}%). ${mobileFormatTokenCount(
-      usage.remainingTokens
-    )} tokens remaining.`,
-  ];
-  if (usage.compacted && (usage.compactionCount || 0) > 0) {
-    details.push(
-      `Compacted ${usage.compactionCount} time${usage.compactionCount === 1 ? "" : "s"}.`
-    );
-  }
-  if ((usage.metadataTokens || 0) > 0) {
-    details.push(
-      `${mobileFormatTokenCount(usage.metadataTokens || 0)} tool timeline tokens are not replayed.`
-    );
-  }
-  return details.join(" ");
-}
-
-function mobileSessionTokenUsageDetail(usage?: SessionTokenUsage): string | null {
-  if (!usage || usage.totalTokens <= 0) return null;
-  const speed =
-    usage.tokensPerSecond !== null && Number.isFinite(usage.tokensPerSecond)
-      ? ` · ${usage.tokensPerSecond} tok/s`
-      : "";
-  const firstToken =
-    usage.firstTokenMs !== null && Number.isFinite(usage.firstTokenMs)
-      ? ` · first token ${usage.firstTokenMs < 1000 ? `${Math.round(usage.firstTokenMs)}ms` : `${(usage.firstTokenMs / 1000).toFixed(1)}s`}`
-      : "";
-  const cache =
-    usage.cachedInputTokens > 0 || usage.cacheWriteTokens > 0
-      ? ` · cache ${mobileFormatTokenCount(usage.cachedInputTokens)} read / ${mobileFormatTokenCount(usage.cacheWriteTokens)} write`
-      : "";
-  return `Tokens: ${mobileFormatTokenCount(usage.inputTokens)} input / ${mobileFormatTokenCount(
-    usage.outputTokens
-  )} output · ${usage.callCount} calls${speed}${firstToken}${cache}`;
-}
-
-function mobileProviderPlanFor(
-  status: ProviderPlanStatusResponse | null | undefined,
-  source: {
-    agent?: AgentSummary | null;
-    detail?: SessionDetailSummary | null;
-    sessionSummary?: SessionSummary | null;
-  }
-): ProviderPlanStatusResponse["providers"][number] | null {
-  if (!status) return null;
-  const keys = new Set(
-    [
-      source.agent?.provider_id,
-      source.agent?.provider,
-      source.detail?.providerId,
-      source.detail?.provider,
-      source.sessionSummary?.provider_id,
-      source.sessionSummary?.provider,
-    ].filter((value): value is string => typeof value === "string" && value.length > 0)
-  );
-  if (keys.size === 0) return null;
-  return (
-    status.providers.find((plan) =>
-      [plan.configuredProviderId, plan.providerId, plan.providerType].some(
-        (key) => typeof key === "string" && keys.has(key)
-      )
-    ) ?? null
   );
 }

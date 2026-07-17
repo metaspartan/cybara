@@ -6,7 +6,9 @@ import { fileURLToPath } from "url";
 import { listWorkspaceOpenTargets, openWorkspaceTarget } from "../../src/api/ide-api";
 
 let workDir: string | null = null;
-const ideApiSourcePath = fileURLToPath(new URL("../../src/api/ide-api.ts", import.meta.url));
+const ideWorkspaceApiSourcePath = fileURLToPath(
+  new URL("../../src/api/ide-workspace-api.ts", import.meta.url)
+);
 const appIconDir = fileURLToPath(new URL("../../ui/public/app-icons/", import.meta.url));
 
 function createWorkspace(): string {
@@ -58,7 +60,7 @@ describe("IDE workspace open targets", () => {
   });
 
   test("Windows target detection avoids broad recursive Program Files scans", () => {
-    const source = readFileSync(ideApiSourcePath, "utf8");
+    const source = readFileSync(ideWorkspaceApiSourcePath, "utf8");
 
     expect(source).toContain("WORKSPACE_OPEN_TARGET_CACHE_MS");
     expect(source).toContain("windowsPathCommandPath");
@@ -74,7 +76,7 @@ describe("IDE workspace open targets", () => {
   });
 
   test("workspace open targets use packaged icons for Windows and Linux targets", () => {
-    const source = readFileSync(ideApiSourcePath, "utf8");
+    const source = readFileSync(ideWorkspaceApiSourcePath, "utf8");
     const iconPaths = [
       "vscode.svg",
       "cursor.svg",
