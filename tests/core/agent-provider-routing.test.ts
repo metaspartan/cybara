@@ -291,7 +291,7 @@ describe("Agent provider API-family routing", () => {
     ]);
   });
 
-  test("routes Grok OAuth through the Grok Build proxy and retries transient 429s", async () => {
+  test("routes Grok OAuth through the proxy and retries connection failures and 429s", async () => {
     let requestUrl = "";
     let requestHeaders = new Headers();
     let requestBody: Record<string, unknown> = {};
@@ -302,7 +302,8 @@ describe("Agent provider API-family routing", () => {
       requestUrl = String(input);
       requestHeaders = new Headers(init?.headers);
       requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
-      if (calls < 3) {
+      if (calls === 1) throw new Error("fetch failed: ECONNRESET");
+      if (calls === 2) {
         return Response.json(
           { error: { message: "temporary rate limit" } },
           { status: 429, headers: { "Retry-After": "0" } }
@@ -842,11 +843,12 @@ describe("Agent provider API-family routing", () => {
     ]);
   });
 
-  test("retries transient MiniMax rate limits before returning a response", async () => {
+  test("retries transient MiniMax connection failures and rate limits", async () => {
     let calls = 0;
     globalThis.fetch = (async () => {
       calls += 1;
-      if (calls < 3) {
+      if (calls === 1) throw new Error("fetch failed: ECONNRESET");
+      if (calls === 2) {
         return Response.json(
           { error: { message: "temporary rate limit" } },
           { status: 429, headers: { "Retry-After": "0" } }

@@ -142,6 +142,12 @@ import {
 } from "./openai-codex-models";
 import { type AnthropicCacheRequest, applyAnthropicCacheControl } from "./prompt-cache";
 import {
+  boundedPoolRetryDelayMs,
+  parseProviderRetryAfterMs,
+  providerExceptionRetryDelayMs,
+  providerRetryDelayMs,
+} from "./provider-retry";
+import {
   getDefaultModel,
   getProviderBaseUrl,
   type ProviderType,
@@ -327,17 +333,7 @@ export abstract class AgentProviderRuntime {
   }
 
   private parseRetryAfterMs(headers: Headers, defaultRetryAfterMs = 60_000): number {
-    const raw = headers.get("retry-after") || headers.get("Retry-After");
-    if (!raw) return defaultRetryAfterMs;
-    const seconds = Number(raw);
-    if (Number.isFinite(seconds) && seconds >= 0) {
-      return Math.max(0, Math.floor(seconds * 1000));
-    }
-    const dateMs = Date.parse(raw);
-    if (Number.isFinite(dateMs)) {
-      return Math.max(0, dateMs - Date.now());
-    }
-    return defaultRetryAfterMs;
+    return parseProviderRetryAfterMs(headers, defaultRetryAfterMs);
   }
 
   private async waitForRetryDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
@@ -379,8 +375,7 @@ export abstract class AgentProviderRuntime {
   }
 
   private providerRetryDelayMs(status: number, headers: Headers, attempt: number): number {
-    const fallback = Math.min(1000 * Math.pow(2, attempt), 8000);
-    return status === 429 ? this.parseRetryAfterMs(headers, fallback) : fallback;
+    return providerRetryDelayMs(status, headers, attempt);
   }
 
   private broadcastProviderRetryStatus(
@@ -401,9 +396,11 @@ export abstract class AgentProviderRuntime {
   private recordHttpRateLimit(
     status: number,
     headers: Headers,
-    context?: ProviderRateLimitContext
+    context?: ProviderRateLimitContext,
+    body = ""
   ): void {
     if (status !== 429) return;
+    if (classifyApiError({ status, body }).category === "overloaded") return;
     const retryAfterMs = this.parseRetryAfterMs(headers, context?.defaultRetryAfterMs);
     const keys = [context?.providerId?.trim(), context?.providerType?.trim()].filter(
       (key): key is string => Boolean(key)
@@ -1103,6 +1100,7 @@ export abstract class AgentProviderRuntime {
           }
         : undefined;
     let streamingDisabled = false;
+    let transientRetryCount = 0;
     const post = async (body: Record<string, unknown>): Promise<Response | OpenAIResponse> => {
       if (streamingDisabled) {
         try {
@@ -1113,7 +1111,20 @@ export abstract class AgentProviderRuntime {
             signal: withLlmRequestTimeout(signal),
           });
         } catch (error) {
-          throw normalizeLlmTimeoutError(error, signal);
+          const normalized = normalizeLlmTimeoutError(error, signal);
+          const retryDelayMs = providerExceptionRetryDelayMs(
+            normalized,
+            transientRetryCount,
+            signal
+          );
+          if (retryDelayMs === undefined) throw normalized;
+          transientRetryCount += 1;
+          this.broadcastProviderRetryStatus(
+            streamContext,
+            `Provider connection interrupted; retrying (${transientRetryCount}/3)...`
+          );
+          await this.waitForRetryDelay(retryDelayMs, signal);
+          return post(body);
         }
       }
 
@@ -1122,9 +1133,10 @@ export abstract class AgentProviderRuntime {
         callerSignal: signal,
         label: "chat.completions",
       });
+      const requestStartedAt = performance.now();
+      let response: Response;
       try {
-        const requestStartedAt = performance.now();
-        const response = await fetch(`${baseUrl}/chat/completions`, {
+        response = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
           headers,
           body: JSON.stringify({
@@ -1134,6 +1146,20 @@ export abstract class AgentProviderRuntime {
           }),
           signal: watchdog.signal,
         });
+      } catch (error) {
+        watchdog.dispose();
+        const normalized = watchdog.wrapError(error);
+        const retryDelayMs = providerExceptionRetryDelayMs(normalized, transientRetryCount, signal);
+        if (retryDelayMs === undefined) throw normalized;
+        transientRetryCount += 1;
+        this.broadcastProviderRetryStatus(
+          streamContext,
+          `Provider connection interrupted; retrying (${transientRetryCount}/3)...`
+        );
+        await this.waitForRetryDelay(retryDelayMs, signal);
+        return post(body);
+      }
+      try {
         if (!response.ok) {
           watchdog.dispose();
           return response;
@@ -1168,7 +1194,6 @@ export abstract class AgentProviderRuntime {
     let attemptedToolChoiceCompatibilityRetry = false;
     let contextRetryCount = 0;
     let attemptedOAuthRefresh = false;
-    let transientRetryCount = 0;
     const maxTransientRetries = 3;
     const maxRetryDelayMs = 120_000;
 
@@ -1184,7 +1209,7 @@ export abstract class AgentProviderRuntime {
       }
 
       const errorText = await response.text();
-      this.recordHttpRateLimit(response.status, response.headers, rateLimitContext);
+      this.recordHttpRateLimit(response.status, response.headers, rateLimitContext, errorText);
       if (
         response.status === 401 &&
         !attemptedOAuthRefresh &&
@@ -2156,13 +2181,26 @@ export abstract class AgentProviderRuntime {
           });
         } catch (error) {
           watchdog.dispose();
-          throw watchdog.wrapError(error);
+          const normalized = watchdog.wrapError(error);
+          const retryDelayMs = providerExceptionRetryDelayMs(
+            normalized,
+            transientRetryCount,
+            signal
+          );
+          if (retryDelayMs === undefined) throw normalized;
+          transientRetryCount += 1;
+          this.broadcastProviderRetryStatus(
+            { sessionId, agentId },
+            `Provider connection interrupted; retrying (${transientRetryCount}/3)...`
+          );
+          await this.waitForRetryDelay(retryDelayMs, signal);
+          continue;
         }
 
         if (!response.ok) {
           watchdog.dispose();
           const errorText = await response.text();
-          this.recordHttpRateLimit(response.status, response.headers, rateLimitContext);
+          this.recordHttpRateLimit(response.status, response.headers, rateLimitContext, errorText);
           finalError = `API error: ${response.status} - ${errorText}`;
           if (
             response.status === 401 &&
@@ -2186,7 +2224,7 @@ export abstract class AgentProviderRuntime {
             transientRetryCount += 1;
             this.broadcastProviderRetryStatus(
               { sessionId, agentId },
-              response.status === 429
+              classifiedError.category === "rate_limit"
                 ? `Provider rate limited; retrying (${transientRetryCount}/3)...`
                 : `Provider temporarily unavailable; retrying (${transientRetryCount}/3)...`
             );
@@ -2691,18 +2729,35 @@ export abstract class AgentProviderRuntime {
       let transientRetryCount = 0;
       let attemptedOAuthRefresh = false;
       while (true) {
-        response = await fetch(endpoint, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(requestBody),
-          signal: withLlmRequestTimeout(toolContext?.abortSignal),
-        });
+        try {
+          response = await fetch(endpoint, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(requestBody),
+            signal: withLlmRequestTimeout(toolContext?.abortSignal),
+          });
+        } catch (error) {
+          const retryDelayMs = providerExceptionRetryDelayMs(
+            error,
+            transientRetryCount,
+            toolContext?.abortSignal
+          );
+          if (retryDelayMs === undefined) throw error;
+          transientRetryCount += 1;
+          this.broadcastAgentStatus(
+            "thinking",
+            toolContext,
+            `Provider connection interrupted; retrying (${transientRetryCount}/3)...`
+          );
+          await this.waitForRetryDelay(retryDelayMs, toolContext?.abortSignal);
+          continue;
+        }
 
         if (response.ok) break;
 
         const errorText = await response.text();
         const rateLimitContext = { providerId, providerType: providerConfig };
-        this.recordHttpRateLimit(response.status, response.headers, rateLimitContext);
+        this.recordHttpRateLimit(response.status, response.headers, rateLimitContext, errorText);
         if (
           response.status === 401 &&
           !attemptedOAuthRefresh &&
@@ -2727,7 +2782,7 @@ export abstract class AgentProviderRuntime {
           this.broadcastAgentStatus(
             "thinking",
             toolContext,
-            response.status === 429
+            classifiedError.category === "rate_limit"
               ? `Provider rate limited; retrying (${transientRetryCount}/3)...`
               : `Provider temporarily unavailable; retrying (${transientRetryCount}/3)...`
           );
@@ -3246,12 +3301,29 @@ export abstract class AgentProviderRuntime {
       } else {
         headers["x-api-key"] = currentApiKey;
       }
-      response = await fetch(`${baseUrl}${anthropicEndpoint}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(requestBody),
-        signal: withLlmRequestTimeout(toolContext?.abortSignal),
-      });
+      try {
+        response = await fetch(`${baseUrl}${anthropicEndpoint}`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(requestBody),
+          signal: withLlmRequestTimeout(toolContext?.abortSignal),
+        });
+      } catch (error) {
+        const retryDelayMs = providerExceptionRetryDelayMs(
+          error,
+          initialRetryCount,
+          toolContext?.abortSignal
+        );
+        if (retryDelayMs === undefined) throw error;
+        initialRetryCount += 1;
+        this.broadcastAgentStatus(
+          "thinking",
+          toolContext,
+          `Provider connection interrupted; retrying (${initialRetryCount}/${INITIAL_MAX_RETRIES})...`
+        );
+        await this.waitForRetryDelay(retryDelayMs, toolContext?.abortSignal);
+        continue;
+      }
 
       if (response.ok) {
         if (activeCredential) markCredentialHealthy(poolName, activeCredential);
@@ -3260,11 +3332,19 @@ export abstract class AgentProviderRuntime {
 
       lastInitialError = await response.text();
 
-      if (activeCredential) recordRateLimit(activeCredential.label, response.headers);
-      this.recordHttpRateLimit(response.status, response.headers, {
-        providerId,
-        providerType: providerConfig,
-      });
+      const classifiedError = classifyApiError({ status: response.status, body: lastInitialError });
+      if (activeCredential && classifiedError.category === "rate_limit") {
+        recordRateLimit(activeCredential.label, response.headers);
+      }
+      this.recordHttpRateLimit(
+        response.status,
+        response.headers,
+        {
+          providerId,
+          providerType: providerConfig,
+        },
+        lastInitialError
+      );
 
       if (response.status === 401 && oauth && !attemptedInitialOAuthRefresh) {
         const refreshedToken = await this.refreshProviderAuthorization(headers, {
@@ -3283,7 +3363,6 @@ export abstract class AgentProviderRuntime {
         }
       }
 
-      const classifiedError = classifyApiError({ status: response.status, body: lastInitialError });
       const retryDelayMs = this.providerRetryDelayMs(
         response.status,
         response.headers,
@@ -3294,19 +3373,21 @@ export abstract class AgentProviderRuntime {
         initialRetryCount < INITIAL_MAX_RETRIES &&
         retryDelayMs <= 120_000
       ) {
-        if (response.status === 429 && activeCredential) {
+        if (classifiedError.category === "rate_limit" && activeCredential) {
           markCredentialCooldown(poolName, activeCredential, "rate_limit");
         }
         const rotated =
-          !vertex && !oauth && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
+          classifiedError.rotateCredential && !vertex && !oauth && poolSize(poolName) > 0
+            ? acquireCredential(poolName)
+            : null;
         if (rotated) {
           activeCredential = rotated;
           currentApiKey = rotated.value;
         }
         initialRetryCount += 1;
         const backoffMs =
-          response.status === 429
-            ? Math.max(msUntilAnyAvailable(poolName), retryDelayMs)
+          classifiedError.category === "rate_limit"
+            ? boundedPoolRetryDelayMs(msUntilAnyAvailable(poolName), retryDelayMs)
             : retryDelayMs;
         console.warn(
           `[Agent] Anthropic transient error ${response.status} on initial call, ` +
@@ -3315,7 +3396,7 @@ export abstract class AgentProviderRuntime {
         this.broadcastAgentStatus(
           "thinking",
           toolContext,
-          response.status === 429
+          classifiedError.category === "rate_limit"
             ? `Provider rate limited; retrying (${initialRetryCount}/${INITIAL_MAX_RETRIES})...`
             : `Provider temporarily unavailable; retrying (${initialRetryCount}/${INITIAL_MAX_RETRIES})...`
         );
@@ -3644,20 +3725,42 @@ export abstract class AgentProviderRuntime {
 
       try {
         while (loopRetryCount <= MAX_RETRIES) {
-          loopResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(loopRequestBody),
-            signal: withLlmRequestTimeout(toolContext?.abortSignal),
-          });
+          try {
+            loopResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify(loopRequestBody),
+              signal: withLlmRequestTimeout(toolContext?.abortSignal),
+            });
+          } catch (error) {
+            const retryDelayMs = providerExceptionRetryDelayMs(
+              error,
+              loopRetryCount,
+              toolContext?.abortSignal
+            );
+            if (retryDelayMs === undefined) throw error;
+            loopRetryCount += 1;
+            this.broadcastAgentStatus(
+              "thinking",
+              toolContext,
+              `Provider connection interrupted; retrying (${loopRetryCount}/${MAX_RETRIES})...`
+            );
+            await this.waitForRetryDelay(retryDelayMs, toolContext?.abortSignal);
+            continue;
+          }
 
           if (loopResponse.ok) break;
 
           lastLoopError = await loopResponse.text();
-          this.recordHttpRateLimit(loopResponse.status, loopResponse.headers, {
-            providerId,
-            providerType: providerConfig,
-          });
+          this.recordHttpRateLimit(
+            loopResponse.status,
+            loopResponse.headers,
+            {
+              providerId,
+              providerType: providerConfig,
+            },
+            lastLoopError
+          );
 
           if (loopResponse.status === 400 && isContextOverflowError(lastLoopError)) {
             compactAnthropicLoopMessagesForContext(
@@ -3679,10 +3782,15 @@ export abstract class AgentProviderRuntime {
             if (!retryResponse.ok) {
               loopFatalError = true;
               lastLoopError = await retryResponse.text();
-              this.recordHttpRateLimit(retryResponse.status, retryResponse.headers, {
-                providerId,
-                providerType: providerConfig,
-              });
+              this.recordHttpRateLimit(
+                retryResponse.status,
+                retryResponse.headers,
+                {
+                  providerId,
+                  providerType: providerConfig,
+                },
+                lastLoopError
+              );
               break;
             }
             loopResponse = retryResponse;
@@ -3728,7 +3836,7 @@ export abstract class AgentProviderRuntime {
             this.broadcastAgentStatus(
               "thinking",
               toolContext,
-              loopResponse.status === 429
+              classifiedError.category === "rate_limit"
                 ? `Provider rate limited; retrying (${loopRetryCount}/${MAX_RETRIES})...`
                 : `Provider temporarily unavailable; retrying (${loopRetryCount}/${MAX_RETRIES})...`
             );
@@ -3807,19 +3915,32 @@ export abstract class AgentProviderRuntime {
         let closingRetryCount = 0;
         let attemptedClosingOAuthRefresh = false;
         while (true) {
-          closingResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(closingBody),
-            signal: withLlmRequestTimeout(toolContext?.abortSignal),
-          });
+          try {
+            closingResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify(closingBody),
+              signal: withLlmRequestTimeout(toolContext?.abortSignal),
+            });
+          } catch (error) {
+            const retryDelayMs = providerExceptionRetryDelayMs(
+              error,
+              closingRetryCount,
+              toolContext?.abortSignal
+            );
+            if (retryDelayMs === undefined) throw error;
+            closingRetryCount += 1;
+            await this.waitForRetryDelay(retryDelayMs, toolContext?.abortSignal);
+            continue;
+          }
           if (closingResponse.ok) break;
           const errorText = await closingResponse.text();
           const rateLimitContext = { providerId, providerType: providerConfig };
           this.recordHttpRateLimit(
             closingResponse.status,
             closingResponse.headers,
-            rateLimitContext
+            rateLimitContext,
+            errorText
           );
           if (
             closingResponse.status === 401 &&

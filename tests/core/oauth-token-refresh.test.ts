@@ -270,7 +270,7 @@ describe("OAuth token refresh (openai-codex)", () => {
     expect(refreshed?.refresh_token).toBe("fresh-grok-refresh");
   });
 
-  test("refreshes MiniMax Portal tokens with the current client and scope", async () => {
+  test("retries transient MiniMax Portal token failures and refreshes credentials", async () => {
     const provider = providerManager.create({
       provider: "minimax-portal",
       name: "MiniMax Portal OAuth Test",
@@ -280,9 +280,17 @@ describe("OAuth token refresh (openai-codex)", () => {
     });
     createdProviderIds.push(provider.id);
     let request: RequestInit | undefined;
+    let calls = 0;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe("https://account.minimax.io/oauth2/token");
+      calls += 1;
       request = init;
+      if (calls === 1) {
+        return Response.json(
+          { error: "temporarily_unavailable" },
+          { status: 503, headers: { "Retry-After": "0" } }
+        );
+      }
       return Response.json({
         access_token: "fresh-minimax-token",
         refresh_token: "fresh-minimax-refresh",
@@ -295,12 +303,38 @@ describe("OAuth token refresh (openai-codex)", () => {
     );
     const body = new URLSearchParams(String(request?.body || ""));
 
+    expect(calls).toBe(2);
     expect(body.get("grant_type")).toBe("refresh_token");
     expect(body.get("refresh_token")).toBe("minimax-refresh");
     expect(body.get("client_id")).toBe("659cf4c1-615c-45f6-a5f6-4bf15eb476e5");
     expect(body.get("scope")).toBe("openid profile coding_plan");
     expect(refreshed?.access_token).toBe("fresh-minimax-token");
     expect(refreshed?.refresh_token).toBe("fresh-minimax-refresh");
+  });
+
+  test("adopts credentials refreshed by another process instead of reusing an old refresh token", async () => {
+    const provider = createCodexProvider({
+      access_token: "stale-token",
+      refresh_token: "single-use-refresh",
+      expires_at: Date.now() - 1_000,
+    });
+    const stale = providerManager.getWithCredentials(provider.id);
+    providerManager.update(provider.id, {
+      access_token: "externally-refreshed-token",
+      refresh_token: "rotated-refresh-token",
+      expires_at: Date.now() + 3_600_000,
+    });
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json({ error: "should_not_run" }, { status: 400 });
+    }) as typeof fetch;
+
+    const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(stale, { force: true });
+
+    expect(calls).toBe(0);
+    expect(refreshed?.access_token).toBe("externally-refreshed-token");
+    expect(refreshed?.refresh_token).toBe("rotated-refresh-token");
   });
 
   test("refreshes Kimi coding-plan tokens with stable device identity", async () => {

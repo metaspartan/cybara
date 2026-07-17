@@ -137,11 +137,12 @@ describe("Agent provider Google and compatible routing", () => {
     expect(requestHeaders.get("x-goog-api-key")).toBeNull();
   });
 
-  test("retries transient Google rate limits but not quota exhaustion", async () => {
+  test("retries transient Google connection failures and rate limits but not quota exhaustion", async () => {
     let transientCalls = 0;
     globalThis.fetch = (async () => {
       transientCalls += 1;
-      if (transientCalls < 3) {
+      if (transientCalls === 1) throw new Error("fetch failed: ECONNRESET");
+      if (transientCalls === 2) {
         return Response.json(
           { error: { message: "temporary rate limit" } },
           { status: 429, headers: { "Retry-After": "0" } }
@@ -265,11 +266,12 @@ describe("Agent provider Google and compatible routing", () => {
     expect(requestHeaders.get("X-Msh-Device-Id")).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  test("retries transient Kimi rate limits before surfacing an error", async () => {
+  test("retries transient Kimi connection failures and rate limits", async () => {
     let calls = 0;
     globalThis.fetch = (async () => {
       calls += 1;
-      if (calls < 3) {
+      if (calls === 1) throw new Error("fetch failed: ECONNRESET");
+      if (calls === 2) {
         return Response.json(
           { error: { message: "temporary rate limit" } },
           { status: 429, headers: { "Retry-After": "0" } }

@@ -35,6 +35,18 @@ describe("classifyApiError", () => {
     expect(classifyApiError({ body: "overloaded" }).category).toBe("overloaded");
   });
 
+  test("treats Z.AI provider overload as transient without rotating the account", () => {
+    const classified = classifyApiError({
+      status: 429,
+      body: JSON.stringify({
+        error: { code: 1305, message: "The service may be temporarily overloaded. Try again." },
+      }),
+    });
+    expect(classified.category).toBe("overloaded");
+    expect(classified.retryable).toBe(true);
+    expect(classified.rotateCredential).toBe(false);
+  });
+
   test("classifies context-too-long and suggests reducing context", () => {
     const c = classifyApiError({ body: "context length exceeded the maximum" });
     expect(c.category).toBe("context_too_long");
