@@ -31,6 +31,7 @@ describe("CLI gateway process management", () => {
       spawn: (command, options) => {
         receivedCommand = command;
         expect(options).toEqual({
+          env: { ...process.env, CYBARA_GATEWAY_LOG_CAPTURE: "0" },
           stdin: "ignore",
           stdout: 42,
           stderr: 42,

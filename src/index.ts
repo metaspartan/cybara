@@ -74,6 +74,7 @@ import { listInstalledPlugins } from "./core/plugins";
 import { activateInstalledPluginRuntimes } from "./core/plugins/runtime";
 import { providerManager } from "./core/providers";
 import { getEmbeddedUiBundle, readEmbeddedUiIndex } from "./core/runtime/embedded-ui";
+import { installGatewayLogCapture } from "./core/runtime/gateway-log-file";
 import { resolveMediaFile } from "./core/runtime/media-files";
 import { isCompiledRuntime } from "./core/runtime/runtime-mode";
 import { readUiIndexContent } from "./core/runtime/ui-index";
@@ -97,6 +98,7 @@ import { toolSchemas } from "./core/tools/index";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+installGatewayLogCapture({ environment: process.env });
 startNativeParentWatch();
 
 const isCompiledBinary = isCompiledRuntime();

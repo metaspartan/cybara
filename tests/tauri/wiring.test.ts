@@ -77,9 +77,13 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("child.kill()");
     expect(mainRs).toContain("get_gateway_startup_status");
     expect(mainRs).toContain('log::warn!(target: "cybara::sidecar"');
+    expect(mainRs).toContain('log::info!(target: "cybara::sidecar"');
+    expect(mainRs).toContain('Ok(value) if value == "0" || value.eq_ignore_ascii_case("false")');
     expect(mainRs).not.toContain('expect("Failed to spawn Cybara sidecar")');
     expect(mainRs).toContain(".max_file_size(5_000_000)");
     expect(mainRs).toContain(".rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))");
+    const gatewaySource = readFileSync(join(ROOT_DIR, "src", "index.ts"), "utf8");
+    expect(gatewaySource).toContain("installGatewayLogCapture({ environment: process.env })");
   });
 
   test("main.rs exposes a narrow desktop API key reader command", () => {

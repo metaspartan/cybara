@@ -3,10 +3,12 @@ import { spawn } from "bun";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, appendFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { resolveCybaraHome } from "./core/cybara-home";
+import { installGatewayLogCapture } from "./core/runtime/gateway-log-file";
 
 const CYBARA_DIR = resolveCybaraHome().dir;
 const PID_FILE = join(CYBARA_DIR, "cybara.pid");
 const LOG_FILE = join(CYBARA_DIR, "cybara.log");
+const GATEWAY_LOG_FILE = join(CYBARA_DIR, "logs", "gateway.out.log");
 
 try {
   mkdirSync(CYBARA_DIR, { recursive: true });
@@ -183,8 +185,9 @@ async function stopDaemon() {
 }
 
 async function showDaemonLogs() {
-  if (existsSync(LOG_FILE)) {
-    const content = readFileSync(LOG_FILE, "utf-8");
+  const path = existsSync(GATEWAY_LOG_FILE) ? GATEWAY_LOG_FILE : LOG_FILE;
+  if (existsSync(path)) {
+    const content = readFileSync(path, "utf-8");
     const lines = content.split("\n").slice(-50);
     console.log(lines.join("\n"));
   } else {
@@ -234,7 +237,7 @@ Options:
 
 Files:
   PID: ${PID_FILE}
-  Log: ${LOG_FILE}
+  Log: ${GATEWAY_LOG_FILE}
 `);
 }
 
@@ -246,6 +249,7 @@ async function main() {
   } else if (isServerStart && isDaemon && !isDaemonChild) {
     await startDaemon();
   } else if (isServerStart) {
+    const stopGatewayLogCapture = installGatewayLogCapture();
     writeFileSync(PID_FILE, String(process.pid));
 
     if (isDaemonChild) {
@@ -253,6 +257,7 @@ async function main() {
     }
 
     process.on("SIGINT", () => {
+      stopGatewayLogCapture();
       try {
         unlinkSync(PID_FILE);
       } catch (error) {
@@ -262,6 +267,7 @@ async function main() {
     });
     process.on("SIGTERM", () => {
       logDaemon("Received SIGTERM, shutting down...");
+      stopGatewayLogCapture();
       try {
         unlinkSync(PID_FILE);
       } catch (error) {

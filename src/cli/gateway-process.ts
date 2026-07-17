@@ -9,6 +9,7 @@ export interface GatewayBackgroundProcess {
 
 interface GatewaySpawnOptions {
   detached?: boolean;
+  env?: NodeJS.ProcessEnv;
   stdin: "ignore" | "inherit";
   stdout: "inherit" | number;
   stderr: "inherit" | number;
@@ -52,6 +53,7 @@ export function startGatewayBackground(
   const logFd = openLog(logPath);
   try {
     const child = spawn(["bun", "run", "dev"], {
+      env: { ...process.env, CYBARA_GATEWAY_LOG_CAPTURE: "0" },
       stdin: "ignore",
       stdout: logFd,
       stderr: logFd,
