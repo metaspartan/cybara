@@ -30,7 +30,7 @@ describe("CLI module layout", () => {
     ).toBe(true);
     expect(tuiModelFiles).toEqual([]);
     expect(componentFiles.length).toBeGreaterThan(10);
-    expect(componentFiles.every((name) => name.endsWith(".tsx"))).toBe(true);
+    expect(componentFiles.every((name) => /\.tsx?$/.test(name))).toBe(true);
     expect(
       componentFiles.every((name) => {
         const source = readFileSync(join(cli, "tui", "components", name), "utf8");

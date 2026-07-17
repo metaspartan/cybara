@@ -227,6 +227,10 @@ export function parseMobileConnectPayload(raw: unknown): MobileConnectPayload {
     if (url.protocol !== "cybara:") {
       throw new Error("Unsupported connection payload");
     }
+    const route = (url.hostname || url.pathname).replace(/^\/+/, "").toLowerCase();
+    if (route !== "connect") {
+      throw new Error("Unsupported Cybara mobile connection route");
+    }
     const nestedPayload = url.searchParams.get("payload");
     if (nestedPayload) {
       return parseMobileConnectPayload(nestedPayload);
@@ -293,11 +297,6 @@ function pairingExpiryMillis(value: unknown): number | undefined {
   return undefined;
 }
 
-/**
- * Exchange a one-time pairing code for a scoped device token at the gateway,
- * returning a direct-connect payload. Used by the newer, more secure pairing
- * flow where the QR carries only a short-lived code rather than a live token.
- */
 export async function redeemPairingCode(
   baseUrl: string,
   code: string,
@@ -342,11 +341,6 @@ export async function redeemPairingCode(
   });
 }
 
-/**
- * Resolve any pairing input into a connectable profile. Handles both the newer
- * one-time pairing-code QR (redeemed over the network) and the legacy direct-
- * token payload (JSON or `cybara:` deep link).
- */
 export async function resolveGatewayProfile(
   raw: unknown,
   now = new Date(),

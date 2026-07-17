@@ -135,6 +135,7 @@ let handleRequest: (req: {
   url: string;
   headers: Record<string, string>;
   body?: unknown;
+  ip?: string;
 }) => Promise<{ status: number; headers: Record<string, string>; body?: unknown }>;
 
 function resetState() {
@@ -161,6 +162,7 @@ async function api(method: string, path: string, body?: unknown) {
     url: `http://localhost:4269${path}`,
     headers: { host: "localhost:4269", "sec-fetch-site": "same-origin" },
     body,
+    ip: "127.0.0.1",
   });
 }
 

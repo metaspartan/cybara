@@ -1,5 +1,4 @@
 import React from "react";
-import { isProviderRecoveryStatusLabel } from "../../../../shared/chat-status";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
 import { resolveAgentIdentifier } from "../../commands/agent-resolution";
@@ -61,12 +60,6 @@ import {
   skillStatusLines,
 } from "../chat-inspection";
 import {
-  consumeTUIStatusStream,
-  type TUIStatusStreamEvent,
-  type TUIStreamActivity,
-  type TUIStreamStatus,
-} from "../status-stream";
-import {
   activeTUICapabilityMention,
   capabilitiesFromResponse,
   CapabilityPalette,
@@ -116,6 +109,7 @@ import {
   type RouterStatus,
 } from "../interactive-chat-data";
 import { useInteractiveChatLayout } from "./interactive-chat-layout";
+import { useInteractiveChatStatus } from "./interactive-chat-status";
 
 export function InteractiveChatTUI({
   apiBase,
@@ -143,10 +137,6 @@ export function InteractiveChatTUI({
   const [history, setHistory] = React.useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = React.useState<number | null>(null);
   const [sending, setSending] = React.useState(false);
-  const [streamStatus, setStreamStatus] = React.useState<TUIStreamStatus>("idle");
-  const [streamDetail, setStreamDetail] = React.useState("");
-  const [streamingText, setStreamingText] = React.useState("");
-  const [liveActivities, setLiveActivities] = React.useState<TUIStreamActivity[]>([]);
   const [capabilities, setCapabilities] = React.useState<TUICapabilityOption[]>([]);
   const [capabilityIndex, setCapabilityIndex] = React.useState(0);
   const [commandIndex, setCommandIndex] = React.useState(0);
@@ -199,6 +189,16 @@ export function InteractiveChatTUI({
     input: string;
     cursor: number;
   } | null>(null);
+  const {
+    liveActivities,
+    setLiveActivities,
+    setStreamDetail,
+    setStreamStatus,
+    setStreamingText,
+    streamDetail,
+    streamingText,
+    streamStatus,
+  } = useInteractiveChatStatus({ apiBase, apiKey, gatewayPassword, sessionIdRef });
 
   const activeCapabilityMention = React.useMemo(
     () => activeTUICapabilityMention(input, cursor),
@@ -245,75 +245,6 @@ export function InteractiveChatTUI({
       },
     );
   }, [activeCapabilityMention, fetchAPI, workspaceDir]);
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    const appendStatusActivity = (event: TUIStatusStreamEvent): void => {
-      const activeSessionId = sessionIdRef.current;
-      if (event.type === "snapshot") {
-        const active = event.activeSessions.find(
-          (session) => session.sessionId === activeSessionId,
-        );
-        if (!active) {
-          setStreamStatus("idle");
-          setStreamDetail("");
-          setLiveActivities([]);
-          return;
-        }
-        setStreamStatus(active.status);
-        setStreamDetail(
-          active.detail && !isProviderRecoveryStatusLabel(active.detail) ? active.detail : "",
-        );
-        setLiveActivities(active.activities || []);
-        return;
-      }
-      if (event.sessionId !== activeSessionId) return;
-      if (event.type === "assistant_token") {
-        setStreamingText((current) => current + event.delta);
-        return;
-      }
-      setStreamStatus(event.status);
-      setStreamDetail(
-        event.detail && !isProviderRecoveryStatusLabel(event.detail) ? event.detail : "",
-      );
-      if (!event.toolPhase && !event.toolName) return;
-      const phase =
-        event.toolPhase || (event.status === "error" ? "error" : "result");
-      const id =
-        event.toolCallId ||
-        `${event.toolName || "activity"}-${event.timestamp}`;
-      const activity: TUIStreamActivity = {
-        id,
-        phase,
-        text: event.detail || event.toolName || "Tool activity",
-        timestamp: event.timestamp,
-        toolName: event.toolName,
-        toolCallId: event.toolCallId,
-      };
-      setLiveActivities((current) => [
-        ...current.filter(
-          (item) =>
-            item.id !== id &&
-            (!event.toolCallId ||
-              item.toolCallId !== event.toolCallId ||
-              item.phase === phase),
-        ),
-        activity,
-      ]);
-    };
-    void consumeTUIStatusStream({
-      apiBase,
-      apiKey,
-      gatewayPassword,
-      signal: controller.signal,
-      onEvent: appendStatusActivity,
-    }).catch((cause) => {
-      if (!controller.signal.aborted) {
-        setStreamDetail(cause instanceof Error ? cause.message : String(cause));
-      }
-    });
-    return () => controller.abort();
-  }, [apiBase, apiKey, gatewayPassword]);
 
   const selectedAgent = React.useMemo(
     () => agents.find((agent) => agent.id === selectedAgentId),

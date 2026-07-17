@@ -5,6 +5,7 @@ import { join } from "path";
 const root = join(import.meta.dir, "..", "..");
 const webSettings = readFileSync(join(root, "ui/src/pages/Settings.tsx"), "utf8");
 const webApi = readFileSync(join(root, "ui/src/lib/api.ts"), "utf8");
+const webWalletApi = readFileSync(join(root, "ui/src/lib/api/wallet.ts"), "utf8");
 const webSafety = readFileSync(join(root, "ui/src/pages/settings/FeatureSettings.tsx"), "utf8");
 const webPolicy = readFileSync(
   join(root, "ui/src/pages/settings/WebToolPolicySettings.tsx"),
@@ -132,7 +133,8 @@ describe("settings surface parity", () => {
     expect(webWalletSettings).toContain("Reveal Seed Phrase");
     expect(webWalletSettings).toContain('seedConfirmText.trim() !== "REVEAL"');
     expect(webWalletSettings).toContain('walletApi.revealSeed(seedPassword, "REVEAL")');
-    expect(webApi).toContain('"/wallet/seed"');
+    expect(webApi).toContain('export * from "@/lib/api/wallet"');
+    expect(webWalletApi).toContain('"/wallet/seed"');
     expect(nativeConfigScreens).toContain('Text("Recovery Phrase")');
     expect(nativeConfigScreens).toContain('seedConfirmation == "REVEAL"');
     expect(nativeClient).toContain('request("api/wallet/seed", method: "POST"');

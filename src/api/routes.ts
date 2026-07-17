@@ -30,6 +30,7 @@ import {
   handleMemoryList,
   handleMemorySearch,
 } from "../api/memory/memory-api";
+import { getClientIp } from "./client-ip";
 import { agentManager, getBuiltinTools } from "../core/agent";
 import {
   type AgentEvalRun,
@@ -1221,8 +1222,8 @@ const routes: Record<string, RouteHandler> = {
     const agent = agentManager.createDefault();
     try {
       await agentManager.start(agent.id);
-    } catch {
-      /* keep the created agent even if start fails */
+    } catch (error) {
+      void error;
     }
     return agentManager.get(agent.id) ?? agent;
   },
@@ -1409,11 +1410,6 @@ const routes: Record<string, RouteHandler> = {
           : undefined,
       permissions: contextPermissions,
       enforcePermissions: data.context?.enforcePermissions === true,
-      // SECURITY: never let the HTTP caller self-grant dangerous-tool access.
-      // Honoring a client-supplied `allowDangerousTools` let any API caller
-      // bypass the dangerous-tool block and the approval gate (privilege
-      // escalation). Dangerous tools must go through the normal
-      // dangerous-tool policy / approval flow regardless of the request body.
       allowDangerousTools: false,
       confineToWorkspace:
         typeof data.context?.workspaceDir === "string" &&
@@ -3466,11 +3462,7 @@ export async function handleRequest(req: {
     };
   }
 
-  const clientIp =
-    req.ip ||
-    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-    req.headers["x-real-ip"] ||
-    "127.0.0.1";
+  const clientIp = getClientIp(req.headers, req.ip);
 
   const security = securityCheck(method, path, req.headers, clientIp);
   if (!security.passed) {
@@ -3642,9 +3634,6 @@ export async function handleRequest(req: {
       userMessage = "An error occurred while processing your request.";
     }
 
-    // Intentional messages (validation, not-found, conflict) stay user-facing,
-    // but redact any absolute filesystem paths they may carry so internals
-    // never leak to clients outside development.
     if (process.env.NODE_ENV !== "development") {
       userMessage = userMessage.replace(
         /(?:[A-Za-z]:)?[\\/](?:Users|home|private|var|tmp|opt)[\\/][^\s"']*/g,

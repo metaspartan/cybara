@@ -32,6 +32,14 @@ export interface StatusResponse {
   };
 }
 
+export type DoctorSeverity = "pass" | "warn" | "fail";
+
+export function classifyDoctorHealth(status: string | undefined): DoctorSeverity {
+  if (status === "healthy") return "pass";
+  if (status?.trim()) return "warn";
+  return "fail";
+}
+
 export interface MetricsResponse {
   tokenUsage: { total: number; input: number; output: number; cache: number };
   fileOperations: { filesRead: number; filesWritten: number; filesEdited: number };

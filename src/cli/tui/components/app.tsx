@@ -1,22 +1,20 @@
 import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
-import { spawn } from "child_process";
 import {
   checkForUpdateInBackground,
   isUpdateCheckDisabled,
 } from "../../../core/update-check";
 import {
   type AvailableProviderInfo,
-  type ProviderAccountPoolInfo,
-  type ProviderInfo,
 } from "../../commands/provider-commands";
 import { connectCliProviderOAuth } from "../../commands/provider-oauth";
 import {
   CLI_API_BASE,
-  CLI_API_KEY,
-  CLI_GATEWAY_PASSWORD,
   fetchCliAPI,
+  formatCliApiError,
+  resolveCliApiKey,
+  resolveCliGatewayPassword,
   TUI_INPUT_OPTIONS,
   withCliAuthHeaders,
 } from "../../client";
@@ -69,6 +67,12 @@ import {
   useTerminalScreen,
 } from "../terminal";
 import { openUrlInBrowser } from "../../../core/runtime/open-url";
+import { startGatewayBackground } from "../../gateway-process";
+import {
+  loadTUIProviderPanel,
+  type TUIProviderPanelData,
+  type TUIProviderPlanSnapshot,
+} from "../provider-panel-data";
 
 const API_BASE = CLI_API_BASE;
 const fetchAPI = fetchCliAPI;
@@ -250,31 +254,6 @@ interface TUIRouterStatus {
   routes: TUIRouterRoute[];
 }
 
-interface TUIProviderPlanWindow {
-  id: string;
-  kind: string;
-  title: string;
-  usedPercent?: number;
-  usageKnown?: boolean;
-  unlimited?: boolean;
-  resetsAt?: string;
-}
-
-interface TUIProviderPlanSnapshot {
-  providerId: string;
-  configuredProviderId?: string;
-  providerType: string;
-  providerName: string;
-  managedAutomatically?: boolean;
-  status: string;
-  sourceLabel?: string;
-  windows?: TUIProviderPlanWindow[];
-}
-
-interface TUIProviderPlanStatus {
-  providers: TUIProviderPlanSnapshot[];
-}
-
 interface TUIMobileDevice {
   id: string;
   name: string;
@@ -378,34 +357,48 @@ function planWindow(
 
 const TUIProvidersCommand = () => {
   const exit = useTUIBack();
-  const [providers, setProviders] = React.useState<ProviderInfo[]>([]);
-  const [pools, setPools] = React.useState<ProviderAccountPoolInfo[]>([]);
-  const [plans, setPlans] = React.useState<TUIProviderPlanStatus | null>(null);
+  const [data, setData] = React.useState<TUIProviderPanelData>({
+    providers: [],
+    pools: [],
+    plans: null,
+    warnings: [],
+  });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
+  const load = React.useCallback(async (): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    try {
+      setData(await loadTUIProviderPanel());
+    } catch (cause) {
+      setError(formatCliApiError(cause));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useInput((input) => {
     if (input === "q") exit();
+    if (input === "r") void load();
   }, TUI_INPUT_OPTIONS);
 
   React.useEffect(() => {
-    Promise.all([
-      fetchAPI<ProviderInfo[]>("/api/providers"),
-      fetchAPI<TUIProviderPlanStatus>("/api/provider-plans/status"),
-      fetchAPI<ProviderAccountPoolInfo[]>("/api/provider-account-pools"),
-    ])
-      .then(([providerData, planData, poolData]) => {
-        if (providerData)
-          setProviders(Array.isArray(providerData) ? providerData : []);
-        else setError("Failed to fetch providers");
-        if (planData) setPlans(planData);
-        if (poolData) setPools(Array.isArray(poolData) ? poolData : []);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+    void load();
+  }, [load]);
 
   if (loading) return <LoadingState message="Fetching providers..." />;
-  if (error) return <ErrorState message={error} />;
+  if (error) {
+    return (
+      <Box flexDirection="column">
+        <Logo compact />
+        <ErrorState message={error} />
+        <Text color="gray">Press r to retry · q to return</Text>
+      </Box>
+    );
+  }
+
+  const { plans, pools, providers, warnings } = data;
 
   const planByKey = new Map<string, TUIProviderPlanSnapshot>();
   for (const plan of plans?.providers || []) {
@@ -505,8 +498,13 @@ const TUIProvidersCommand = () => {
           ))
         )}
       </Box>
+      {warnings.map((warning) => (
+        <Text key={warning} color="yellow">
+          {warning}
+        </Text>
+      ))}
       <Box marginTop={1}>
-        <Text color="gray">Press q to exit</Text>
+        <Text color="gray">Press r to refresh · q to return</Text>
       </Box>
     </Box>
   );
@@ -1414,8 +1412,8 @@ function TUIContent({
       return (
         <TUIChatCommand
           apiBase={API_BASE}
-          apiKey={CLI_API_KEY}
-          gatewayPassword={CLI_GATEWAY_PASSWORD}
+          apiKey={resolveCliApiKey()}
+          gatewayPassword={resolveCliGatewayPassword()}
           fetchAPI={fetchAPI}
         />
       );
@@ -1449,7 +1447,7 @@ function TUIContent({
             void openUrlInBrowser(API_BASE);
           }}
           onStartServer={() => {
-            spawn("bun", ["run", "dev"], { stdio: "inherit" });
+            startGatewayBackground();
           }}
           updateBanner={<UpdateBanner />}
         />

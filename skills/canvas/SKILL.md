@@ -1,3 +1,8 @@
+---
+name: Canvas Skill
+description: Present interactive HTML, visualizations, dashboards, and generated interfaces on connected Cybara nodes.
+---
+
 # Canvas Skill
 
 Display HTML content on connected Cybara nodes (Mac app, iOS, Android).

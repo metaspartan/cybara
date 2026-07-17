@@ -49,4 +49,11 @@ describe("client IP resolution", () => {
       getClientIp({ "x-forwarded-for": "127.0.0.2" }, "127.0.0.1", { trustProxy: false })
     ).toBe("127.0.0.1");
   });
+
+  test("fails closed when a direct peer address is unavailable", () => {
+    expect(getClientIp({ "x-forwarded-for": "127.0.0.1" })).toBe("0.0.0.0");
+    expect(
+      security.authenticateRequest({ "sec-fetch-site": "same-origin" }, "0.0.0.0").authenticated
+    ).toBe(false);
+  });
 });

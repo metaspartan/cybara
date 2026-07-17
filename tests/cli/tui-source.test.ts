@@ -35,6 +35,7 @@ const cliTuiChatChromeSource = readFileSync(
 );
 const cliTuiInteractiveChatSource = [
   join(root, "src", "cli", "tui", "components", "interactive-chat.tsx"),
+  join(root, "src", "cli", "tui", "components", "interactive-chat-status.ts"),
   join(root, "src", "cli", "tui", "interactive-chat-data.ts"),
   join(root, "src", "cli", "tui", "components", "interactive-chat-layout.tsx"),
   join(root, "src", "cli", "tui", "components", "interactive-chat-view.tsx"),

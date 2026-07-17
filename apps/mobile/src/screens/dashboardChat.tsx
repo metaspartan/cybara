@@ -1,6 +1,5 @@
 import {
   Image,
-  Linking,
   Pressable,
   ScrollView,
   Text,
@@ -46,6 +45,7 @@ import {
 } from "../lib/chat-format";
 import type { SessionDetailSummary, SessionMessageSummary, SessionPlanSnapshot } from "../lib/api";
 import { Clipboard } from "../lib/expoNativeModules";
+import { openAllowedExternalUrl } from "../lib/externalUrl";
 import {
   getChatCodeFontSizePixels,
   getChatFontSizePixels,
@@ -213,7 +213,7 @@ function InlineMarkdown({
                   { textDecorationLine: appearance.underlineLinks ? "underline" : "none" },
                 ]}
                 onPress={() => {
-                  void Linking.openURL(token.href).catch(() => {});
+                  void openAllowedExternalUrl(token.href).catch(() => {});
                 }}
               >
                 {token.text}
@@ -411,7 +411,7 @@ function ChatImage({ uri }: { uri: string }) {
     <Pressable
       accessibilityRole="imagebutton"
       onPress={() => {
-        void Linking.openURL(uri).catch(() => {});
+        void openAllowedExternalUrl(uri).catch(() => {});
       }}
       style={styles.chatImageWrapper}
     >
