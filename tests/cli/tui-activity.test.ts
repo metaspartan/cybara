@@ -189,5 +189,11 @@ describe("CLI TUI activity summaries", () => {
       )
     ).toBe("0h 01m 02s");
     expect(formatTUIWorkedDuration([], [{ durationMs: 3_725_000 }])).toBe("1h 02m 05s");
+    expect(
+      formatTUIWorkedDuration([{ timestamp: 7_000, text: "Read a file" }], [], {
+        assistantTimestamp: 9_000,
+        turnStartedAt: 2_000,
+      })
+    ).toBe("0h 00m 07s");
   });
 });

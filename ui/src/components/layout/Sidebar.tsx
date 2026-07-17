@@ -469,7 +469,7 @@ export function Sidebar() {
       <aside
         style={{ "--main-sidebar-width": `${width}px` } as React.CSSProperties}
         className={cn(
-          "fixed left-0 top-0 h-full glass border-r border-white/5 z-40 overflow-hidden transition-[width,transform] duration-200",
+          "cybara-main-sidebar fixed left-0 top-0 h-full glass border-r border-white/5 z-40 overflow-hidden transition-[width,transform] duration-200",
           settingsMode || !collapsed ? "md:w-[var(--main-sidebar-width)]" : "md:w-16",
           "max-md:-translate-x-full max-md:w-64",
           mobileOpen && "max-md:translate-x-0"

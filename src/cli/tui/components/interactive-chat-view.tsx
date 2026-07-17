@@ -26,6 +26,8 @@ export interface AgentTransferItem {
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  timestamp?: number;
+  turnStartedAt?: number;
   process_activities?: TUIActivityItem[];
   tool_calls?: TUIToolCallItem[];
   agent_transfers?: AgentTransferItem[];
@@ -82,7 +84,10 @@ export function ActivitySummary({
   if (rows.length === 0 && steeringActivities.length === 0) return null;
   const hiddenLiveRows = live ? Math.max(0, rows.length - 6) : 0;
   const visibleRows = hiddenLiveRows > 0 ? rows.slice(-6) : rows;
-  const workedDuration = formatTUIWorkedDuration(workActivities, message.tool_calls || []);
+  const workedDuration = formatTUIWorkedDuration(workActivities, message.tool_calls || [], {
+    assistantTimestamp: message.timestamp,
+    turnStartedAt: message.turnStartedAt,
+  });
   return (
     <Box
       paddingLeft={2}

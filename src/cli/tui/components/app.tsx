@@ -69,7 +69,8 @@ import {
 import { openUrlInBrowser } from "../../../core/runtime/open-url";
 import { startGatewayBackground } from "../../gateway-process";
 import {
-  loadTUIProviderPanel,
+  loadTUIProviderPanelDetails,
+  loadTUIProviders,
   type TUIProviderPanelData,
   type TUIProviderPlanSnapshot,
 } from "../provider-panel-data";
@@ -365,15 +366,24 @@ const TUIProvidersCommand = () => {
   });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const requestGeneration = React.useRef(0);
 
   const load = React.useCallback(async (): Promise<void> => {
+    const generation = requestGeneration.current + 1;
+    requestGeneration.current = generation;
     setLoading(true);
     setError(null);
     try {
-      setData(await loadTUIProviderPanel());
+      const providers = await loadTUIProviders();
+      if (requestGeneration.current !== generation) return;
+      setData({ providers, pools: [], plans: null, warnings: [] });
+      setLoading(false);
+      const details = await loadTUIProviderPanelDetails();
+      if (requestGeneration.current !== generation) return;
+      setData({ providers, ...details });
     } catch (cause) {
+      if (requestGeneration.current !== generation) return;
       setError(formatCliApiError(cause));
-    } finally {
       setLoading(false);
     }
   }, []);
@@ -385,6 +395,9 @@ const TUIProvidersCommand = () => {
 
   React.useEffect(() => {
     void load();
+    return () => {
+      requestGeneration.current += 1;
+    };
   }, [load]);
 
   if (loading) return <LoadingState message="Fetching providers..." />;

@@ -38,6 +38,15 @@ const baseHeader: ChatHeaderState = {
 };
 
 describe("CLI TUI chat chrome", () => {
+  test("paints the complete terminal viewport at its measured dimensions", async () => {
+    const source = await Bun.file(
+      new URL("../../src/cli/tui/components/interactive-chat.tsx", import.meta.url),
+    ).text();
+    expect(source).toContain('height={layout.rows}');
+    expect(source).toContain('width={layout.columns}');
+    expect(source).toContain('backgroundColor={tuiPalette.canvas}');
+  });
+
   test("normalizes cross-platform workspace labels and run status", () => {
     expect(terminalWorkspaceName("C:\\Users\\Carsen\\Projects\\solarflow\\")).toBe(
       "solarflow",

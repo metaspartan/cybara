@@ -861,10 +861,14 @@ describe("mobile dashboard model", () => {
     expect(readMobileAccent({ theme: "dark" })).toBe("cyan");
     expect(readMobileAccent({ identity: { theme: "dark" } })).toBe("cyan");
     expect(readMobileAccent({ themeAccent: "purple" })).toBe("purple");
+    expect(readMobileAccent({ themeAccent: "catppuccin" })).toBe("catppuccin");
+    expect(readMobileAccent({ themeAccent: "matrix" })).toBe("matrix");
   });
 
   test("builds a shared gateway payload for mobile theme accents", () => {
     expect(MOBILE_ACCENT_KEYS).toContain("emerald");
+    expect(MOBILE_ACCENT_KEYS).toContain("catppuccin");
+    expect(MOBILE_ACCENT_KEYS).toContain("matrix");
     expect(mobileThemeConfigPayload("emerald")).toEqual({
       theme: "emerald",
       themeAccent: "emerald",

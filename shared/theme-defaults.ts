@@ -5,6 +5,8 @@ export const themeDefaultAccents = {
   "icy-dark": "cyan",
   "ash-grey": "blue",
   forest: "emerald",
+  catppuccin: "catppuccin",
+  matrix: "matrix",
   slate: "blue",
   "sand-dune": "amber",
   light: "blue",

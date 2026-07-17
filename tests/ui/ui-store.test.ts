@@ -7,12 +7,14 @@ import {
   defaultThemeAccentForMode,
   readThemeAccentFromConfig,
   readThemeModeFromIdentity,
+  resolveThemeSelectionMode,
   themeAccentKeys,
   themeAccents,
   themeConfigPayload,
   useUIStore,
 } from "../../ui/src/stores/uiStore";
 import { DEFAULT_CHAT_APPEARANCE_SETTINGS } from "../../shared/chat-appearance";
+import { createCustomThemeBundle } from "../../shared/custom-themes";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const STORE_PATH = join(ROOT_DIR, "ui", "src", "stores", "uiStore.ts").replace(/\\/g, "/");
@@ -48,6 +50,8 @@ beforeEach(() => {
   useUIStore.setState({
     accent: "indigo",
     mode: "dark",
+    customThemes: [],
+    activeCustomThemeId: null,
     chatAppearance: DEFAULT_CHAT_APPEARANCE_SETTINGS,
     loading: {},
     toasts: [],
@@ -77,7 +81,7 @@ describe("UI store theme helpers", () => {
   });
 
   test("every accent has a display name and rgb triple", () => {
-    expect(themeAccentKeys.length).toBe(10);
+    expect(themeAccentKeys.length).toBe(12);
     for (const key of themeAccentKeys) {
       const entry = themeAccents[key];
       expect(entry.primary).toMatch(/^\d{1,3}, \d{1,3}, \d{1,3}$/);
@@ -144,6 +148,8 @@ describe("UI store theme helpers", () => {
     expect(readThemeModeFromIdentity({ theme: 5 } as unknown as Record<string, unknown>)).toBe(
       "dark"
     );
+    expect(resolveThemeSelectionMode({ theme: "custom" }, null)).toBe("dark");
+    expect(resolveThemeSelectionMode({ theme: "custom" }, "studio-night")).toBe("custom");
   });
 });
 
@@ -249,6 +255,25 @@ describe("useUIStore actions", () => {
 
     state.closeModal();
     expect(useUIStore.getState().activeModal).toBeNull();
+  });
+
+  test("selects, updates, and removes a custom theme", () => {
+    const theme = createCustomThemeBundle("Studio Night");
+    useUIStore.getState().upsertCustomTheme(theme);
+    useUIStore.getState().selectCustomTheme(theme.id);
+    expect(useUIStore.getState().mode).toBe("custom");
+    expect(useUIStore.getState().activeCustomThemeId).toBe(theme.id);
+
+    useUIStore.getState().upsertCustomTheme({
+      ...theme,
+      dark: { ...theme.dark, accent: "#ff3366" },
+    });
+    expect(useUIStore.getState().customThemes[0]?.dark.accent).toBe("#ff3366");
+
+    useUIStore.getState().removeCustomTheme(theme.id);
+    expect(useUIStore.getState().customThemes).toEqual([]);
+    expect(useUIStore.getState().activeCustomThemeId).toBeNull();
+    expect(useUIStore.getState().mode).toBe("dark");
   });
 });
 
@@ -362,6 +387,8 @@ describe("useUIStore persistence", () => {
     expect(report.persistedAfterSet?.state).toEqual({
       accent: "amber",
       mode: "system",
+      customThemes: [],
+      activeCustomThemeId: null,
       chatAppearance: {
         fontSize: "large",
         codeFontSize: "large",

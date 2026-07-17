@@ -132,7 +132,7 @@ describe("UI page API wiring", () => {
     expect(source).not.toContain("apiFetch(");
   });
 
-  test("Web and Tauri theme accents sync through gateway config", () => {
+  test("Web and Tauri themes sync through gateway config", () => {
     const settingsSource = readSettingsSource();
     const appSource = readUiSource("App.tsx");
     const storeSource = readUiSource("stores/uiStore.ts");
@@ -142,9 +142,20 @@ describe("UI page API wiring", () => {
     expect(settingsSource).toContain("readThemeAccentFromConfig(result.data)");
     expect(appSource).toContain("function ThemeConfigSync()");
     expect(appSource).toContain("settingsApi.getConfig()");
+    expect(appSource).toContain("readCustomThemeCollectionFromConfig(result.data)");
+    expect(appSource).toContain("setCustomThemeCollection(customThemes);");
+    expect(appSource).toContain(
+      "setMode(resolveThemeSelectionMode(identity, customThemes.activeThemeId))"
+    );
     expect(appSource).toMatch(/window\.addEventListener\(["']focus["'],\s*syncTheme\)/);
     expect(storeSource).toContain("export function themeConfigPayload");
+    expect(storeSource).toContain("export function customThemeConfigPayload");
     expect(storeSource).toContain("config?.theme,");
+    expect(settingsSource).toContain("readCustomThemeFile(file)");
+    expect(settingsSource).toContain("downloadCustomTheme(draftTheme)");
+    expect(settingsSource).toContain("copyCustomTheme(draftTheme)");
+    expect(settingsSource).toContain("useUIStore.getState().activeCustomThemeId");
+    expect(settingsSource).toContain("identityThemeRef.current.initialized");
   });
 
   test("Setup page completes onboarding through setupApi helper", () => {

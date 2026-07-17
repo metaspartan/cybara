@@ -1,9 +1,5 @@
 import { commandExists } from "../../core/platform";
-import {
-  CLI_API_BASE as API_BASE,
-  fetchCliAPI as fetchAPI,
-  resolveCliApiKey,
-} from "../client";
+import { CLI_API_BASE as API_BASE, fetchCliAPI as fetchAPI, resolveCliApiKey } from "../client";
 import {
   classifyDoctorHealth,
   type DoctorSeverity,

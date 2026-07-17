@@ -61,6 +61,17 @@ function contentText(content: unknown): string {
     .trim();
 }
 
+function messageTimestamp(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+  const parsed = Date.parse(
+    value.endsWith("Z") || /[+-]\d\d:\d\d$/.test(value) ? value : `${value}Z`
+  );
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function activitiesFrom(value: unknown): TUIActivityItem[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => (isRecord(item) ? [item as TUIActivityItem] : []));
@@ -165,14 +176,19 @@ export function messagesFromResponse(value: unknown): ChatMessage[] {
         ? value.messagesList
         : [];
   const out: ChatMessage[] = [];
+  let latestUserTimestamp: number | undefined;
   for (const item of raw) {
     if (!isRecord(item)) continue;
     const role = item.role;
     const content = contentText(item.content);
     if ((role === "user" || role === "assistant" || role === "system") && content) {
+      const timestamp = messageTimestamp(item.timestamp ?? item.created_at ?? item.createdAt);
+      if (role === "user") latestUserTimestamp = timestamp;
       out.push({
         role,
         content,
+        timestamp,
+        turnStartedAt: role === "assistant" ? latestUserTimestamp : undefined,
         process_activities: activitiesFrom(item.process_activities),
         tool_calls: toolCallsFrom(item.tool_calls),
         agent_transfers: agentTransfersFrom(item.agent_transfers),

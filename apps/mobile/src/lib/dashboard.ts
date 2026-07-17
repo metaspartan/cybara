@@ -869,6 +869,8 @@ export const MOBILE_ACCENT_KEYS = [
   "rose",
   "pink",
   "purple",
+  "catppuccin",
+  "matrix",
 ] as const;
 
 export type MobileAccentKey = (typeof MOBILE_ACCENT_KEYS)[number];

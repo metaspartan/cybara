@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   loadTUIProviderPanel,
+  loadTUIProviderPanelDetails,
+  loadTUIProviders,
   type TUIProviderRequest,
 } from "../../src/cli/tui/provider-panel-data";
 
@@ -13,6 +15,36 @@ function providerRequest(responses: Readonly<Record<string, unknown | Error>>): 
 }
 
 describe("TUI provider panel data", () => {
+  test("loads providers without waiting for optional details", async () => {
+    let resolveDetails: ((value: { providers: [] }) => void) | undefined;
+    const details = new Promise<{ providers: [] }>((resolve) => {
+      resolveDetails = resolve;
+    });
+    const request: TUIProviderRequest = async <T>(endpoint: string): Promise<T> => {
+      if (endpoint === "/api/providers") {
+        return [
+          {
+            id: "provider-1",
+            name: "Provider One",
+            provider: "openai",
+            is_default: true,
+          },
+        ] as T;
+      }
+      if (endpoint === "/api/provider-plans/status") return details as Promise<T>;
+      return [] as T;
+    };
+
+    const providers = await loadTUIProviders(request);
+    expect(providers).toHaveLength(1);
+    resolveDetails?.({ providers: [] });
+    await expect(loadTUIProviderPanelDetails(request)).resolves.toEqual({
+      plans: { providers: [] },
+      pools: [],
+      warnings: [],
+    });
+  });
+
   test("keeps providers visible when optional usage and pool endpoints fail", async () => {
     const result = await loadTUIProviderPanel(
       providerRequest({

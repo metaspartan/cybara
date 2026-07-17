@@ -94,6 +94,14 @@ describe("index.css design-system utilities", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });
 
+  test("ships semantic Catppuccin, Matrix, and custom theme surfaces", () => {
+    const sidebar = read("../../ui/src/components/layout/Sidebar.tsx");
+    expect(css).toMatch(/html\[data-theme-mode="catppuccin"\][\s\S]*--surface-panel:\s*#1e1e2e/);
+    expect(css).toMatch(/html\[data-theme-mode="matrix"\][\s\S]*--surface-panel:\s*#06120a/);
+    expect(css).toContain('html[data-theme-mode="custom"][data-translucent-sidebar="false"]');
+    expect(sidebar).toContain("cybara-main-sidebar");
+  });
+
   test("uses theme-aware neutral tokens for chat and workspace actions", () => {
     const chat =
       read("../../ui/src/pages/Chat.tsx") + read("../../ui/src/pages/chat/ChatMessageTimeline.tsx");

@@ -5,6 +5,7 @@ export interface TuiSurfacePalette {
   activity: string;
   background: string;
   border: string;
+  canvas: string;
   chrome: string;
   code: string;
   danger: string;
@@ -40,6 +41,7 @@ export function tuiChatPalette(scheme: TuiColorScheme): TuiSurfacePalette {
       activity: "#4b5d6e",
       background: "#edf2f6",
       border: "#a8b3be",
+      canvas: "#f7f9fb",
       chrome: "#edf2f6",
       code: "#7e4ca5",
       danger: "#b42318",
@@ -60,6 +62,7 @@ export function tuiChatPalette(scheme: TuiColorScheme): TuiSurfacePalette {
     activity: "#aeb9c6",
     background: "#121922",
     border: "#3c4a59",
+    canvas: "#0a0f15",
     chrome: "#121922",
     code: "#d5a6f6",
     danger: "#f08080",

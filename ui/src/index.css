@@ -2276,6 +2276,71 @@ html.light[data-theme-mode="icy"] body::before {
   }
 }
 
+html[data-theme-mode="catppuccin"] {
+  --text-primary: #cdd6f4;
+  --text-secondary: #bac2de;
+  --text-muted: #a6adc8;
+  --text-subtle: #7f849c;
+  --icon-muted: #9399b2;
+  --icon-hover: #f5e0dc;
+  --surface-backdrop: #11111b;
+  --surface-panel: #1e1e2e;
+  --surface-raised: #313244;
+  --surface-hover: #45475a;
+  --surface-border: #45475a;
+  --glass-border: #45475a;
+  --glass-surface: rgba(205, 214, 244, 0.04);
+  --glass-bg: rgba(30, 30, 46, 0.82);
+  --glass-bg-strong: rgba(24, 24, 37, 0.96);
+  --context-ring-inner: #1e1e2e;
+  --context-tooltip-bg: #313244;
+  --context-tooltip-border: #585b70;
+  --chat-environment-panel-bg: #181825;
+  --chat-environment-panel-border: #45475a;
+  --workspace-open-menu-bg: #313244;
+}
+
+html[data-theme-mode="matrix"] {
+  --text-primary: #d7ffe0;
+  --text-secondary: #b3e9bd;
+  --text-muted: #70a97a;
+  --text-subtle: #47694e;
+  --icon-muted: #5f9168;
+  --icon-hover: #effff2;
+  --surface-backdrop: #020804;
+  --surface-panel: #06120a;
+  --surface-raised: #0b1f10;
+  --surface-hover: #103018;
+  --surface-border: #1b4d27;
+  --glass-border: #1b4d27;
+  --glass-surface: rgba(57, 255, 104, 0.035);
+  --glass-bg: rgba(6, 18, 10, 0.84);
+  --glass-bg-strong: rgba(2, 8, 4, 0.97);
+  --context-ring-inner: #06120a;
+  --context-tooltip-bg: #0b1f10;
+  --context-tooltip-border: #1b4d27;
+  --chat-environment-panel-bg: #06120a;
+  --chat-environment-panel-border: #1b4d27;
+  --workspace-open-menu-bg: #0b1f10;
+}
+
+html[data-theme-mode="catppuccin"] body::before,
+html[data-theme-mode="matrix"] body::before,
+html[data-theme-mode="custom"] body::before {
+  background: none;
+}
+
+html[data-theme-mode="custom"],
+html[data-theme-mode="custom"] body {
+  background: var(--surface-backdrop);
+}
+
+html[data-theme-mode="custom"][data-translucent-sidebar="false"] .cybara-main-sidebar {
+  background: var(--surface-panel);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 html[data-reduce-transparency="true"] {
   --glass-bg: var(--surface-panel, #11131c);
   --glass-bg-strong: var(--surface-panel, #11131c);

@@ -1814,7 +1814,12 @@ export function InteractiveChatTUI({
   );
 
   return (
-    <Box flexDirection="column" height={layout.rows} width="100%">
+    <Box
+      flexDirection="column"
+      height={layout.rows}
+      width={layout.columns}
+      backgroundColor={tuiPalette.canvas}
+    >
       <ChatHeader
         colorScheme={tuiColorScheme}
         state={{

@@ -33,22 +33,29 @@ export interface TUIProviderPanelData {
   warnings: string[];
 }
 
+export type TUIProviderPanelDetails = Omit<TUIProviderPanelData, "providers">;
+
 export interface TUIProviderRequest {
   <T>(endpoint: string): Promise<T>;
 }
 
-export async function loadTUIProviderPanel(
+export async function loadTUIProviders(
   request: TUIProviderRequest = requestCliAPI
-): Promise<TUIProviderPanelData> {
-  const [providersResult, plansResult, poolsResult] = await Promise.allSettled([
-    request<ProviderInfo[]>("/api/providers"),
+): Promise<ProviderInfo[]> {
+  const providers = await request<ProviderInfo[]>("/api/providers");
+  if (!Array.isArray(providers)) {
+    throw new Error("/api/providers returned an invalid response");
+  }
+  return providers;
+}
+
+export async function loadTUIProviderPanelDetails(
+  request: TUIProviderRequest = requestCliAPI
+): Promise<TUIProviderPanelDetails> {
+  const [plansResult, poolsResult] = await Promise.allSettled([
     request<TUIProviderPlanStatus>("/api/provider-plans/status"),
     request<ProviderAccountPoolInfo[]>("/api/provider-account-pools"),
   ]);
-  if (providersResult.status === "rejected") throw providersResult.reason;
-  if (!Array.isArray(providersResult.value)) {
-    throw new Error("/api/providers returned an invalid response");
-  }
   const warnings: string[] = [];
   if (plansResult.status === "rejected") {
     warnings.push(`Usage unavailable: ${formatCliApiError(plansResult.reason)}`);
@@ -57,12 +64,24 @@ export async function loadTUIProviderPanel(
     warnings.push(`Pools unavailable: ${formatCliApiError(poolsResult.reason)}`);
   }
   return {
-    providers: providersResult.value,
     plans: plansResult.status === "fulfilled" ? plansResult.value : null,
     pools:
       poolsResult.status === "fulfilled" && Array.isArray(poolsResult.value)
         ? poolsResult.value
         : [],
     warnings,
+  };
+}
+
+export async function loadTUIProviderPanel(
+  request: TUIProviderRequest = requestCliAPI
+): Promise<TUIProviderPanelData> {
+  const [providers, details] = await Promise.all([
+    loadTUIProviders(request),
+    loadTUIProviderPanelDetails(request),
+  ]);
+  return {
+    providers,
+    ...details,
   };
 }

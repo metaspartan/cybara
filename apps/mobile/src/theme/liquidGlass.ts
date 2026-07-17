@@ -106,6 +106,8 @@ export const accentPalette = {
   rose: "#f43f5e",
   pink: "#ec4899",
   purple: "#a855f7",
+  catppuccin: "#cba6f7",
+  matrix: "#39ff68",
 } as const;
 
 export type AccentKey = keyof typeof accentPalette;

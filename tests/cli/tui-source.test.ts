@@ -211,7 +211,9 @@ describe("CLI TUI source wiring", () => {
       /layout\.compact\s*\?\s*Math\.max\(18, layout\.columns - 26\)/
     );
     expect(cliTuiChatSource).toContain("layout.rows - (layout.compact ? 18 : 22)");
-    expect(cliTuiInteractiveChatSource).toContain('height={layout.rows} width="100%"');
+    expect(cliTuiInteractiveChatSource).toContain("height={layout.rows}");
+    expect(cliTuiInteractiveChatSource).toContain("width={layout.columns}");
+    expect(cliTuiInteractiveChatSource).toContain("backgroundColor={tuiPalette.canvas}");
     expect(cliTuiInteractiveChatSource).toContain("flexGrow={1}");
   });
 
