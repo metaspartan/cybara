@@ -2,6 +2,7 @@ import React from "react";
 import { isProviderRecoveryStatusLabel } from "../../../../shared/chat-status";
 import {
   consumeTUIStatusStream,
+  reconcileTUIStreamingText,
   type TUIStatusStreamEvent,
   type TUIStreamActivity,
   type TUIStreamStatus,
@@ -41,6 +42,7 @@ export function useInteractiveChatStatus({
     const appendStatusActivity = (event: TUIStatusStreamEvent): void => {
       const activeSessionId = sessionIdRef.current;
       if (event.type === "snapshot") {
+        setStreamingText((current) => reconcileTUIStreamingText(current, event, activeSessionId));
         const active = event.activeSessions.find(
           (session) => session.sessionId === activeSessionId
         );

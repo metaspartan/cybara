@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import {
@@ -72,5 +72,25 @@ describe("IDE search scan bounds", () => {
     expect(applied.scanTruncated).toBe(true);
     expect(applied.truncated).toBe(true);
     expect(applied.totalReplacements).toBe(2);
+  });
+
+  test("file-scoped search and replacement never include sibling files", async () => {
+    const root = createWorkspace(2);
+    const selectedFile = join(root, "file-0.txt");
+    const siblingFile = join(root, "file-1.txt");
+
+    const search = await searchWorkspace(selectedFile, "needle");
+    expect(search.success).toBe(true);
+    expect(search.path).toBe(selectedFile);
+    expect(search.filesScanned).toBe(1);
+    expect(search.files.map((file) => file.file)).toEqual([selectedFile]);
+
+    const listed = await listWorkspaceFiles(selectedFile);
+    expect(listed.files).toEqual([{ path: selectedFile, relativePath: "file-0.txt" }]);
+
+    const applied = await replaceInWorkspace(selectedFile, "needle", "done");
+    expect(applied.changedFiles).toEqual([{ file: selectedFile, replacements: 1 }]);
+    expect(readFileSync(selectedFile, "utf-8")).toContain("done");
+    expect(readFileSync(siblingFile, "utf-8")).toContain("needle");
   });
 });

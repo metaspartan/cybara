@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "path";
+import { readNativePlatformSource, readUiStylesSource } from "../shared/source-bundles";
 
 const root = join(import.meta.dir, "../..");
 
@@ -22,7 +23,7 @@ describe("plugin UI", () => {
     const installer = await Bun.file(
       join(root, "ui/src/pages/plugins/PluginInstallDialog.tsx")
     ).text();
-    const styles = await Bun.file(join(root, "ui/src/index.css")).text();
+    const styles = readUiStylesSource();
     expect(page).toContain('label: "Installed"');
     expect(page).toContain('label: "Account apps"');
     expect(page).toContain('label: "MCP services"');
@@ -77,9 +78,7 @@ describe("plugin UI", () => {
     const mobile = await Bun.file(
       join(root, "apps/mobile/src/screens/dashboardPluginsPanel.tsx")
     ).text();
-    const macos = await Bun.file(
-      join(root, "apps/macos/Cybara/Sources/Cybara/NativePlatformScreens.swift")
-    ).text();
+    const macos = readNativePlatformSource();
 
     expect(mobile).toContain("api.listPlugins()");
     expect(mobile).toContain("api.setPluginEnabled(plugin.id, enabled)");

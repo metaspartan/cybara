@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
+import { readUiStylesSource } from "../shared/source-bundles";
 
 const sidebarPath = fileURLToPath(
   new URL("../../ui/src/components/layout/Sidebar.tsx", import.meta.url)
@@ -52,10 +53,7 @@ describe("Sidebar status indicator behavior", () => {
       fileURLToPath(new URL("../../ui/src/components/CybaraThinkingMark.tsx", import.meta.url)),
       "utf8"
     );
-    const css = readFileSync(
-      fileURLToPath(new URL("../../ui/src/index.css", import.meta.url)),
-      "utf8"
-    );
+    const css = readUiStylesSource();
 
     expect(source).toMatch(/status === ["']active["']/);
     expect(source).not.toContain("ring-2 ring-amber-400/60");

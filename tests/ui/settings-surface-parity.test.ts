@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { readNativeConfigSource, readNativeSettingsSource } from "../shared/source-bundles";
 
 const root = join(import.meta.dir, "..", "..");
 const webSettings = readFileSync(join(root, "ui/src/pages/Settings.tsx"), "utf8");
@@ -37,18 +38,12 @@ const mobileSessionDetail = readFileSync(
 );
 const mobileApi = readFileSync(join(root, "apps/mobile/src/lib/api.ts"), "utf8");
 const mobileStyles = readFileSync(join(root, "apps/mobile/src/screens/dashboardStyles.ts"), "utf8");
-const nativeSettings = readFileSync(
-  join(root, "apps/macos/Cybara/Sources/Cybara/NativeSettingsScreen.swift"),
-  "utf8"
-);
+const nativeSettings = readNativeSettingsSource();
 const nativeClient = readFileSync(
   join(root, "apps/macos/Cybara/Sources/Cybara/GatewayClient.swift"),
   "utf8"
 );
-const nativeConfigScreens = readFileSync(
-  join(root, "apps/macos/Cybara/Sources/Cybara/NativeConfigScreens.swift"),
-  "utf8"
-);
+const nativeConfigScreens = readNativeConfigSource();
 const nativeChatAppearance = readFileSync(
   join(root, "apps/macos/Cybara/Sources/Cybara/NativeChatAppearance.swift"),
   "utf8"

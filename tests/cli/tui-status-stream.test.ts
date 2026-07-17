@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   consumeTUIStatusStream,
   parseTUIStatusEvent,
+  reconcileTUIStreamingText,
   type TUIStatusStreamEvent,
 } from "../../src/cli/tui/status-stream";
 
@@ -96,6 +97,26 @@ describe("CLI TUI status stream", () => {
         JSON.stringify({ type: "assistant_token", sessionId: "session-1", timestamp: 1 })
       )
     ).toBeNull();
+  });
+
+  test("clears partial assistant text when a snapshot no longer includes the chat", () => {
+    const snapshot = {
+      type: "snapshot" as const,
+      timestamp: 4,
+      activeSessions: [],
+    };
+
+    expect(reconcileTUIStreamingText("partial response", snapshot, "session-1")).toBe("");
+    expect(
+      reconcileTUIStreamingText(
+        "partial response",
+        {
+          ...snapshot,
+          activeSessions: [{ sessionId: "session-1", status: "thinking", activities: [] }],
+        },
+        "session-1"
+      )
+    ).toBe("partial response");
   });
 
   test("consumes authenticated SSE blocks in delivery order", async () => {

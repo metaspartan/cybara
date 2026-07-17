@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { normalizeRemoteItems } from "../../apps/mobile/src/lib/api";
+import { readNativeConfigSource } from "../shared/source-bundles";
 
 const root = join(import.meta.dir, "../..");
 
@@ -42,7 +43,7 @@ describe("channel agent selection parity", () => {
   });
 
   test("native macOS channels use the same gateway config field", () => {
-    const screen = source("apps/macos/Cybara/Sources/Cybara/NativeConfigScreens.swift");
+    const screen = readNativeConfigSource();
     const client = source("apps/macos/Cybara/Sources/Cybara/GatewayClient.swift");
 
     expect(screen).toContain('Label("Gateway default"');

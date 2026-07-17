@@ -181,7 +181,16 @@ export function messagesFromResponse(value: unknown): ChatMessage[] {
     if (!isRecord(item)) continue;
     const role = item.role;
     const content = contentText(item.content);
-    if ((role === "user" || role === "assistant" || role === "system") && content) {
+    const processActivities = activitiesFrom(item.process_activities);
+    const toolCalls = toolCallsFrom(item.tool_calls);
+    const agentTransfers = agentTransfersFrom(item.agent_transfers);
+    const hasAssistantActivity =
+      role === "assistant" &&
+      (processActivities.length > 0 || toolCalls.length > 0 || agentTransfers.length > 0);
+    if (
+      (role === "user" || role === "assistant" || role === "system") &&
+      (content || hasAssistantActivity)
+    ) {
       const timestamp = messageTimestamp(item.timestamp ?? item.created_at ?? item.createdAt);
       if (role === "user") latestUserTimestamp = timestamp;
       out.push({
@@ -189,9 +198,9 @@ export function messagesFromResponse(value: unknown): ChatMessage[] {
         content,
         timestamp,
         turnStartedAt: role === "assistant" ? latestUserTimestamp : undefined,
-        process_activities: activitiesFrom(item.process_activities),
-        tool_calls: toolCallsFrom(item.tool_calls),
-        agent_transfers: agentTransfersFrom(item.agent_transfers),
+        process_activities: processActivities,
+        tool_calls: toolCalls,
+        agent_transfers: agentTransfers,
       });
     }
   }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readUiStylesSource } from "../shared/source-bundles";
 
 const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
 const messageContentPath = fileURLToPath(
@@ -12,7 +13,6 @@ const activityTimelinePath = fileURLToPath(
 const mermaidCodeBlockPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/MermaidCodeBlock.tsx", import.meta.url)
 );
-const indexStylesPath = fileURLToPath(new URL("../../ui/src/index.css", import.meta.url));
 
 function readChatSource(): string {
   return readFileSync(chatPagePath, "utf8") + readFileSync(messageContentPath, "utf8");
@@ -65,7 +65,7 @@ describe("Chat markdown rendering behavior", () => {
 
   test("renders accessible inline and display LaTeX with theme-aware KaTeX", () => {
     const source = readFileSync(messageContentPath, "utf8");
-    const styles = readFileSync(indexStylesPath, "utf8");
+    const styles = readUiStylesSource();
 
     expect(source).toContain('import rehypeKatex from "rehype-katex"');
     expect(source).toContain('import remarkMath from "remark-math"');

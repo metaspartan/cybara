@@ -13,6 +13,7 @@ import {
   configureMobileNotificationPresentation,
   registerMobilePushNotifications,
 } from "./src/lib/pushNotifications";
+import { DeepLinkAttemptTracker } from "./src/lib/deepLinkAttempts";
 import { clearActiveProfile, getActiveProfile, saveProfile } from "./src/lib/storage";
 import { MobileErrorBoundary } from "./src/components/MobileErrorBoundary";
 import { ConnectScreen } from "./src/screens/ConnectScreen";
@@ -46,21 +47,24 @@ function AppShell() {
 
   useEffect(() => {
     let active = true;
-    const handled = new Set<string>();
+    const attempts = new DeepLinkAttemptTracker();
     const openConnection = async (url: string | null): Promise<void> => {
-      if (!url || handled.has(url)) return;
-      handled.add(url);
+      if (!url || !attempts.begin(url)) return;
       try {
         const nextProfile = await resolveGatewayProfile(url);
         await verifyGatewayProfile(nextProfile);
         if (!active) return;
         const saved = { ...nextProfile, lastConnectedAt: new Date().toISOString() };
         await saveProfile(saved);
-        if (active) setProfile(saved);
+        if (!active) return;
+        setProfile(saved);
+        attempts.complete(url);
       } catch (error) {
         if (!active) return;
         const message = error instanceof Error ? error.message : "Unable to open this connection.";
         Alert.alert("Connection failed", message);
+      } finally {
+        attempts.finish(url);
       }
     };
 

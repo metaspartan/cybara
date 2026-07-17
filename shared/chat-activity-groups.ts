@@ -182,13 +182,18 @@ export function groupSharedActivities<T extends SharedActivityItem>(
   activities: T[],
 ): SharedActivityDisplayEntry<T>[] {
   const entries: SharedActivityDisplayEntry<T>[] = [];
-  let run: { kinds: SharedActivityGroupKind[]; items: T[]; trailing: T[] } | null = null;
+  let run: {
+    kinds: SharedActivityGroupKind[];
+    items: T[];
+    trailing: T[];
+    startIndex: number;
+  } | null = null;
   const flush = (): void => {
     if (!run) return;
     if (run.kinds.length >= 2) {
       entries.push({
         type: "group",
-        id: run.items[0]?.id || "activity-group",
+        id: run.items[0]?.id || `activity-group-${run.startIndex}`,
         kind: dominantKind(run.kinds),
         label: groupLabel(run.kinds),
         items: run.items,
@@ -200,7 +205,7 @@ export function groupSharedActivities<T extends SharedActivityItem>(
     run = null;
   };
 
-  for (const activity of activities) {
+  for (const [index, activity] of activities.entries()) {
     if (activity.toolName === "__thought") {
       flush();
       entries.push({ type: "single", activity });
@@ -220,7 +225,7 @@ export function groupSharedActivities<T extends SharedActivityItem>(
       run.kinds.push(kind);
       run.items.push(activity);
     } else {
-      run = { kinds: [kind], items: [activity], trailing: [] };
+      run = { kinds: [kind], items: [activity], trailing: [], startIndex: index };
     }
   }
   flush();

@@ -7,6 +7,10 @@ import {
   resolveProviderRetryPolicy,
 } from "../../src/core/provider-retry";
 
+const codexRuntimeSource = await Bun.file(
+  new URL("../../src/core/agent-provider-codex-runtime.ts", import.meta.url)
+).text();
+
 describe("provider retry policy", () => {
   test("parses millisecond, second, and HTTP-date retry hints", () => {
     expect(parseProviderRetryAfterMs(new Headers({ "retry-after-ms": "125" }), 999, 1_000)).toBe(
@@ -56,5 +60,15 @@ describe("provider retry policy", () => {
     expect(
       providerExceptionRetryDelayMs(new Error("fetch failed: ECONNRESET"), 4, undefined, () => 0, 5)
     ).toBe(8_000);
+  });
+
+  test("uses the provider retry policy in the Codex and Grok transport", () => {
+    expect(codexRuntimeSource).toContain(
+      "resolveProviderRetryPolicy(rateLimitContext?.providerType)"
+    );
+    expect(codexRuntimeSource).toContain("transientRetryCount < retryPolicy.maxRetries");
+    expect(codexRuntimeSource).toContain("retryDelayMs <= retryPolicy.maxDelayMs");
+    expect(codexRuntimeSource).not.toContain("transientRetryCount < 3");
+    expect(codexRuntimeSource).not.toContain("${transientRetryCount}/3");
   });
 });

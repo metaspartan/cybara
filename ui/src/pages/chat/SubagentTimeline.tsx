@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { type ReactElement, useMemo, useState } from "react";
 import type { Subagent } from "@/hooks/useApi";
-import { isProviderRecoveryStatusLabel } from "../../../../shared/chat-status";
+import { isVisibleActivityText } from "../../../../shared/chat-status";
 import type { ChatLinkOpenOptions } from "./chatLinkRouting";
 import { MessageContent } from "./MessageContent";
 
@@ -30,7 +30,7 @@ export function SubagentTimeline({
   const activities = useMemo(
     () =>
       [...(subagent.activities || [])]
-        .filter((activity) => !isProviderRecoveryStatusLabel(activity.text))
+        .filter((activity) => isVisibleActivityText(activity.text))
         .sort((a, b) => a.timestamp - b.timestamp),
     [subagent.activities]
   );

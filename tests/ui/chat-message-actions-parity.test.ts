@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readNativeChatSource } from "../shared/source-bundles";
 
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(`../../${rel}`, import.meta.url)), "utf8");
@@ -30,7 +31,7 @@ describe("chat message actions parity (copy + confirmed revert on all clients)",
   });
 
   test("macos: actions row with pasteboard copy and confirmed revert", () => {
-    const screens = read("apps/macos/Cybara/Sources/Cybara/NativeScreens.swift");
+    const screens = readNativeChatSource();
     expect(screens).toContain("struct NativeMessageActions: View");
     expect(screens).toContain("NSPasteboard.general.setString(content, forType: .string)");
     expect(screens).toContain('.alert("Revert to this message?", isPresented: $showRevertConfirm)');

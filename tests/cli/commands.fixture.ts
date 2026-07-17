@@ -765,6 +765,10 @@ function buildCliCommandsFixture() {
       });
     }
 
+    if (method === "GET" && pathname === "/api/subagents/missing") {
+      return json({ error: "Subagent not found" });
+    }
+
     if (method === "POST" && pathname === "/api/subagents/spawn") {
       const parsed = body ? (JSON.parse(body) as { task?: string }) : {};
       if (!parsed.task) return json({ error: "missing task" }, 400);

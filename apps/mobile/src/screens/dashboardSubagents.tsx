@@ -1,4 +1,4 @@
-import { isProviderRecoveryStatusLabel } from "cybara-shared/chat-status";
+import { isVisibleActivityText } from "cybara-shared/chat-status";
 import { Bot, ChevronDown, ChevronRight, Plus, Square, Trash2, X } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -88,8 +88,8 @@ export function MobileSubagentsSheet({
   const [mutating, setMutating] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const visibleActivities = (selected?.activities || []).filter(
-    (activity) => !isProviderRecoveryStatusLabel(activity.text)
+  const visibleActivities = (selected?.activities || []).filter((activity) =>
+    isVisibleActivityText(activity.text)
   );
 
   const load = useCallback(async () => {

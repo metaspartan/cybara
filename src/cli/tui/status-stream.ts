@@ -51,6 +51,16 @@ export type TUIStatusStreamEvent =
   | TUIStreamTokenEvent
   | TUIStreamSnapshotEvent;
 
+export function reconcileTUIStreamingText(
+  currentText: string,
+  snapshot: TUIStreamSnapshotEvent,
+  sessionId: string
+): string {
+  return snapshot.activeSessions.some((session) => session.sessionId === sessionId)
+    ? currentText
+    : "";
+}
+
 export interface TUIStatusStreamOptions {
   apiBase: string;
   apiKey?: string | null;

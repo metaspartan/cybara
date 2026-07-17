@@ -3,6 +3,7 @@ import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { readIdeUiSource } from "../source-fixtures";
+import { readNativeSettingsSource } from "../shared/source-bundles";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -69,10 +70,7 @@ describe("security-sensitive runtime defaults", () => {
       join(ROOT_DIR, "apps", "mobile", "src", "screens", "dashboardHelpers.ts"),
       "utf8"
     );
-    const nativeSettingsSource = readFileSync(
-      join(ROOT_DIR, "apps", "macos", "Cybara", "Sources", "Cybara", "NativeSettingsScreen.swift"),
-      "utf8"
-    );
+    const nativeSettingsSource = readNativeSettingsSource();
     const indexerSource = readFileSync(
       join(ROOT_DIR, "src", "core", "workspace-indexer.ts"),
       "utf8"
@@ -96,9 +94,9 @@ describe("security-sensitive runtime defaults", () => {
     expect(mobileHelpersSource).toContain(
       'boolSetting(indexer, "autoReindexOnWorkspaceSet", false)'
     );
-    expect(nativeSettingsSource).toContain("@State private var indexEnabled = false");
-    expect(nativeSettingsSource).toContain("@State private var indexSemantic = false");
-    expect(nativeSettingsSource).toContain("@State private var indexAutoReindex = false");
+    expect(nativeSettingsSource).toContain("@State var indexEnabled = false");
+    expect(nativeSettingsSource).toContain("@State var indexSemantic = false");
+    expect(nativeSettingsSource).toContain("@State var indexAutoReindex = false");
     expect(nativeSettingsSource).toContain('indexer["enabled"] as? Bool ?? false');
     expect(nativeSettingsSource).toContain('indexer["semanticEnabled"] as? Bool ?? false');
     expect(nativeSettingsSource).toContain(
@@ -123,10 +121,7 @@ describe("security-sensitive runtime defaults", () => {
     ]
       .map((file) => readFileSync(join(ROOT_DIR, "apps", "mobile", "src", "screens", file), "utf8"))
       .join("\n");
-    const nativeSettingsSource = readFileSync(
-      join(ROOT_DIR, "apps", "macos", "Cybara", "Sources", "Cybara", "NativeSettingsScreen.swift"),
-      "utf8"
-    );
+    const nativeSettingsSource = readNativeSettingsSource();
 
     expect(configSource).toContain("DEFAULT_MEMORY_BEHAVIOR_SETTINGS: MemoryBehaviorSettings");
     expect(configSource).toContain("backgroundReviewEnabled: true");

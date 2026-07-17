@@ -2,18 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { readIdeUiSource } from "../source-fixtures";
+import { readNativePlatformSource } from "../shared/source-bundles";
 
 const ideSource = readIdeUiSource();
 const ideTypesSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/ide/ideTypes.ts", import.meta.url)),
   "utf8"
 );
-const nativeIdeSource = readFileSync(
-  fileURLToPath(
-    new URL("../../apps/macos/Cybara/Sources/Cybara/NativePlatformScreens.swift", import.meta.url)
-  ),
-  "utf8"
-);
+const nativeIdeSource = readNativePlatformSource();
 
 describe("IDE bounded-search UI wiring", () => {
   test("web IDE surfaces filesystem scan limits without treating them as hard errors", () => {

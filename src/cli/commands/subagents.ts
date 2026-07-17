@@ -99,13 +99,16 @@ async function listSubagents(args: string[], options: SubagentCliOptions): Promi
 
 async function showSubagent(id: string | undefined, options: SubagentCliOptions): Promise<void> {
   if (!id) throw new Error("Usage: cybara subagent show <id>");
-  const { data } = await request<SubagentInfo>(
+  const { response, data } = await request<SubagentInfo & { error?: string }>(
     options,
     `/api/subagents/${encodeURIComponent(id)}`,
     {
       headers: options.withAuthHeaders(),
     }
   );
+  if (!response.ok || data.error || !data.id) {
+    throw new Error(data.error || response.statusText || "Subagent not found");
+  }
   console.log(data.label || data.task || id);
   console.log("=".repeat(Math.max(8, Math.min(72, (data.label || data.task || id).length))));
   console.log(`id: ${data.id}`);

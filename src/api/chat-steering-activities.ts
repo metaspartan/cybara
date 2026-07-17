@@ -121,9 +121,9 @@ export function materializeInterruptedAssistantBeforeSteering(
   options?: { pendingSteeringId?: string; createEmptyBoundary?: boolean }
 ): ChatMessage | undefined {
   const pendingSteeringId = options?.pendingSteeringId;
+  if (!pendingSteeringId) return undefined;
   const isMatchingPendingMessage = (message: ChatMessage): boolean =>
-    !!message._pendingSteeringId &&
-    (!pendingSteeringId || message._pendingSteeringId === pendingSteeringId);
+    message._pendingSteeringId === pendingSteeringId;
   const steeringIndex = session.messages.findIndex(
     (message) => message.role === "user" && isMatchingPendingMessage(message)
   );
@@ -151,8 +151,6 @@ export function materializeInterruptedAssistantBeforeSteering(
     (steeringIndex >= 0
       ? parseIsoTimestampMs(session.messages[steeringIndex]?.timestamp)
       : parseIsoTimestampMs(previousInterruptedAssistant?.timestamp)) || Date.now();
-  const resolvedPendingSteeringId =
-    pendingSteeringId || previousInterruptedAssistant?._pendingSteeringId;
   const interruptedActivities = dedupeProcessActivities([
     ...(observedActivities || []),
     ...(getSessionProcessActivities(session.id, {
@@ -166,7 +164,7 @@ export function materializeInterruptedAssistantBeforeSteering(
     0
   );
   const steeringCompletion = buildSteeringCompletionActivity(
-    resolvedPendingSteeringId,
+    pendingSteeringId,
     Math.max(0, steeringTimestampMs - 1, latestActivityTimestamp + 1)
   );
   const processActivities = dedupeProcessActivities([...interruptedActivities, steeringCompletion]);
@@ -185,7 +183,7 @@ export function materializeInterruptedAssistantBeforeSteering(
     content: "",
     timestamp: new Date(Math.max(0, steeringTimestampMs - 1)).toISOString(),
     process_activities: processActivities,
-    ...(pendingSteeringId ? { _pendingSteeringId: pendingSteeringId } : {}),
+    _pendingSteeringId: pendingSteeringId,
   };
   session.messages.splice(steeringIndex, 0, assistantMessage);
   const lastMessage = session.messages[session.messages.length - 1] || assistantMessage;

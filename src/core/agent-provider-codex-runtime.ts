@@ -49,7 +49,7 @@ import {
   getOpenAICodexModelCandidates,
   shouldRetryOpenAICodexModel,
 } from "./openai-codex-models";
-import { providerExceptionRetryDelayMs } from "./provider-retry";
+import { providerExceptionRetryDelayMs, resolveProviderRetryPolicy } from "./provider-retry";
 import { broadcastTokenDelta } from "./status";
 import type { ToolContext } from "./tools/index";
 
@@ -394,6 +394,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
     rateLimitContext?: ProviderRateLimitContext,
     transport: "codex" | "grok" = "codex"
   ): Promise<OpenAICodexTurnResult & { resolvedModel: string }> {
+    const retryPolicy = resolveProviderRetryPolicy(rateLimitContext?.providerType);
     const candidates =
       transport === "codex" ? getOpenAICodexModelCandidates(requestedModel) : [requestedModel];
     let finalError = `${transport === "grok" ? "Grok Build" : "OpenAI Codex"} request failed`;
@@ -425,13 +426,15 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
           const retryDelayMs = providerExceptionRetryDelayMs(
             normalized,
             transientRetryCount,
-            signal
+            signal,
+            Math.random,
+            retryPolicy.maxRetries
           );
           if (retryDelayMs === undefined) throw normalized;
           transientRetryCount += 1;
           this.logProviderRetryStatus(
             { sessionId, agentId },
-            `Provider connection interrupted; retrying (${transientRetryCount}/3)...`
+            `Provider connection interrupted; retrying (${transientRetryCount}/${retryPolicy.maxRetries})...`
           );
           await this.waitForRetryDelay(retryDelayMs, signal);
           continue;
@@ -460,13 +463,17 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
             response.headers,
             transientRetryCount
           );
-          if (classifiedError.retryable && transientRetryCount < 3 && retryDelayMs <= 120_000) {
+          if (
+            classifiedError.retryable &&
+            transientRetryCount < retryPolicy.maxRetries &&
+            retryDelayMs <= retryPolicy.maxDelayMs
+          ) {
             transientRetryCount += 1;
             this.logProviderRetryStatus(
               { sessionId, agentId },
               classifiedError.category === "rate_limit"
-                ? `Provider rate limited; retrying (${transientRetryCount}/3)...`
-                : `Provider temporarily unavailable; retrying (${transientRetryCount}/3)...`
+                ? `Provider rate limited; retrying (${transientRetryCount}/${retryPolicy.maxRetries})...`
+                : `Provider temporarily unavailable; retrying (${transientRetryCount}/${retryPolicy.maxRetries})...`
             );
             await this.waitForRetryDelay(retryDelayMs, signal);
             continue;

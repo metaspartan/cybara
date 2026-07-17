@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readNativeSettingsSource } from "../shared/source-bundles";
 
 const root = join(import.meta.dir, "..", "..");
 const updateSettings = readFileSync(
@@ -15,10 +16,7 @@ const standaloneBuildScript = readFileSync(
   "utf8"
 );
 const releaseWorkflow = readFileSync(join(root, ".github", "workflows", "release.yml"), "utf8");
-const nativeSettings = readFileSync(
-  join(root, "apps", "macos", "Cybara", "Sources", "Cybara", "NativeSettingsScreen.swift"),
-  "utf8"
-);
+const nativeSettings = readNativeSettingsSource();
 
 describe("desktop update settings", () => {
   test("shows release provenance from the gateway build contract", () => {

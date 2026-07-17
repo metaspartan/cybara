@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { readChatUiSource, readMobileChatSource } from "../source-fixtures";
+import { readNativeChatSource } from "../shared/source-bundles";
 
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(`../../${rel}`, import.meta.url)), "utf8");
@@ -40,15 +41,15 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
   });
 
   test("macos: idle status loads messages before resetting the live timeline", () => {
-    const source = read("apps/macos/Cybara/Sources/Cybara/NativeScreens.swift");
+    const source = readNativeChatSource();
     const idleBlock = source.slice(source.indexOf('if status == "idle"'));
     const resetIndex = idleBlock.indexOf("resetLiveTimeline(clearStartedAt: true)");
     const loadIndex = idleBlock.indexOf("await loadMessages(id)");
     expect(loadIndex).toBeGreaterThan(-1);
     expect(resetIndex).toBeGreaterThan(loadIndex);
     const workingTimelineBlock = source.slice(
-      source.indexOf("private var showWorkingTimeline: Bool"),
-      source.indexOf("private var sortedPendingMessages")
+      source.indexOf("var showWorkingTimeline: Bool"),
+      source.indexOf("var sortedPendingMessages")
     );
     expect(workingTimelineBlock).toContain("activeSessionIDs.contains($0)");
     expect(workingTimelineBlock).not.toContain('"compacting"');
@@ -56,7 +57,7 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
   });
 
   test("macos: navigation keeps active transcripts and ignores late session loads", () => {
-    const source = read("apps/macos/Cybara/Sources/Cybara/NativeScreens.swift");
+    const source = readNativeChatSource();
     expect(source).toContain("messagesBySessionID");
     expect(source).toContain("guard selectedSessionID == id else { return }");
     expect(source).toContain("nativeMergeReloadedSessionMessages(");
@@ -79,7 +80,7 @@ describe("chat live auto-scroll", () => {
   });
 
   test("macos: scrolls the live thinking bubble into view as it streams", () => {
-    const source = read("apps/macos/Cybara/Sources/Cybara/NativeScreens.swift");
+    const source = readNativeChatSource();
     expect(source).toContain(".onChange(of: liveActivities.count)");
     expect(source).toContain(".onChange(of: streamingContent)");
     expect(source).toContain('proxy.scrollTo("thinking", anchor: .bottom)');

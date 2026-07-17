@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { readChatUiSource } from "../source-fixtures";
+import { readUiStylesSource } from "../shared/source-bundles";
 
 const composerActionPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatComposerActionButton.tsx", import.meta.url)
@@ -41,7 +42,6 @@ const statusStreamPath = fileURLToPath(
   new URL("../../ui/src/lib/status-stream.ts", import.meta.url)
 );
 const useChatPath = fileURLToPath(new URL("../../ui/src/hooks/useChat.ts", import.meta.url));
-const indexCssPath = fileURLToPath(new URL("../../ui/src/index.css", import.meta.url));
 
 function readSource(path: string): string {
   return readFileSync(path, "utf8");
@@ -215,7 +215,7 @@ describe("status stream websocket wiring", () => {
     const chatSource = readChatUiSource() + readSource(chatComposerPath);
     const controlsSource = readSource(chatAgentControlsPath);
     const followUpControlsSource = readSource(chatFollowUpControlsPath);
-    const cssSource = readSource(indexCssPath);
+    const cssSource = readUiStylesSource();
 
     expect(chatSource).toContain("chat-composer-responsive");
     expect(followUpControlsSource).toContain("chat-approval-control");

@@ -1,6 +1,6 @@
 import { existsSync } from "fs";
 import { readdir, readFile, stat, writeFile } from "fs/promises";
-import { dirname, extname, join, relative } from "path";
+import { basename, extname, join, relative } from "path";
 import type {
   IdeListFilesResult,
   IdeReplacePreviewFile,
@@ -163,11 +163,18 @@ async function collectSearchFiles(dirPath: string, collector: SearchFileCollecto
   }
 }
 
-function resolveWorkspaceSearchRoot(
+async function collectSearchTarget(
   targetPath: string,
-  targetStats: { isDirectory(): boolean }
-): string {
-  return targetStats.isDirectory() ? targetPath : dirname(targetPath);
+  targetStats: { isDirectory(): boolean; isFile(): boolean },
+  collector: SearchFileCollector
+): Promise<void> {
+  if (targetStats.isDirectory()) {
+    await collectSearchFiles(targetPath, collector);
+    return;
+  }
+  if (!targetStats.isFile() || !isTextSearchCandidate(targetPath)) return;
+  collector.filesScanned = 1;
+  collector.files.push(targetPath);
 }
 
 export async function searchWorkspace(
@@ -226,14 +233,13 @@ export async function searchWorkspace(
 
   const maxResults = Math.max(1, Math.min(options?.maxResults || 2000, 10000));
   const targetStats = await stat(targetPath);
-  const searchFilesStartPath = resolveWorkspaceSearchRoot(targetPath, targetStats);
   const collector: SearchFileCollector = {
     files: [],
     filesScanned: 0,
     truncated: false,
     maxFilesScanned: normalizeMaxFilesScanned(options?.maxFilesScanned),
   };
-  await collectSearchFiles(searchFilesStartPath, collector);
+  await collectSearchTarget(targetPath, targetStats, collector);
 
   const files: IdeSearchFileResult[] = [];
   let totalMatches = 0;
@@ -268,7 +274,7 @@ export async function searchWorkspace(
 
   return {
     success: true,
-    path: searchFilesStartPath,
+    path: targetPath,
     query: trimmedQuery,
     totalMatches,
     truncated,
@@ -517,14 +523,13 @@ export async function listWorkspaceFiles(
   }
 
   const targetStats = await stat(targetPath);
-  const searchRootPath = resolveWorkspaceSearchRoot(targetPath, targetStats);
   const collector: SearchFileCollector = {
     files: [],
     filesScanned: 0,
     truncated: false,
     maxFilesScanned: normalizeMaxFilesScanned(options?.maxFilesScanned),
   };
-  await collectSearchFiles(searchRootPath, collector);
+  await collectSearchTarget(targetPath, targetStats, collector);
 
   const normalizedQuery = query.toLowerCase();
   const limit = Math.max(1, Math.min(options?.limit || 200, 2000));
@@ -532,7 +537,9 @@ export async function listWorkspaceFiles(
   let truncated = collector.truncated;
 
   for (const filePath of collector.files) {
-    const relativePath = relative(searchRootPath, filePath).replaceAll("\\", "/");
+    const relativePath = targetStats.isDirectory()
+      ? relative(targetPath, filePath).replaceAll("\\", "/")
+      : basename(filePath);
     if (normalizedQuery && !relativePath.toLowerCase().includes(normalizedQuery)) continue;
     files.push({
       path: filePath,
@@ -548,7 +555,7 @@ export async function listWorkspaceFiles(
 
   return {
     success: true,
-    path: searchRootPath,
+    path: targetPath,
     query,
     totalFiles: files.length,
     truncated,

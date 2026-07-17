@@ -22,4 +22,8 @@ describe("mobile subagent parity", () => {
     expect(chatSource).toContain("workspaceDir={chatWorkspaceDir}");
     expect(sheetSource).toContain("requesterSessionId: sessionId");
   });
+
+  test("filters malformed and internal recovery activity labels safely", () => {
+    expect(sheetSource).toContain("isVisibleActivityText(activity.text)");
+  });
 });

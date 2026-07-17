@@ -746,6 +746,11 @@ describe("CLI Commands", () => {
     expect(show.stdout).toContain("Release summary complete");
     expect(show.stdout).toContain("read · completed");
 
+    const missing = await runCli(["subagent", "show", "missing"]);
+    expect(missing.exitCode).toBe(1);
+    expect(missing.stderr).toContain("Subagent not found");
+    expect(missing.stdout).not.toContain("undefined");
+
     const wait = await runCli(["subagent", "wait", "sub-2", "--timeout", "1"]);
     expect(wait.exitCode).toBe(0);
     expect(wait.stdout).toContain("status: completed");

@@ -28,4 +28,40 @@ describe("TUI interactive chat data", () => {
 
     expect(messages[0]?.turnStartedAt).toBeUndefined();
   });
+
+  test("preserves stopped assistant turns with activity and no text", () => {
+    const messages = messagesFromResponse([
+      {
+        role: "user",
+        content: "Inspect the workspace",
+        timestamp: "2026-07-17T09:45:43.043Z",
+      },
+      {
+        role: "assistant",
+        content: "",
+        timestamp: "2026-07-17T09:45:49.361Z",
+        source: "chat_stopped",
+        process_activities: [
+          {
+            id: "activity-1",
+            phase: "result",
+            text: "Explored package.json",
+            toolName: "read",
+          },
+        ],
+      },
+    ]);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[1]?.content).toBe("");
+    expect(messages[1]?.process_activities).toEqual([
+      {
+        id: "activity-1",
+        phase: "result",
+        text: "Explored package.json",
+        toolName: "read",
+      },
+    ]);
+    expect(messages[1]?.turnStartedAt).toBe(messages[0]?.timestamp);
+  });
 });

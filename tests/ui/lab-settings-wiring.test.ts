@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { readNativeSettingsSource } from "../shared/source-bundles";
 
 const root = process.cwd();
 
@@ -27,7 +28,7 @@ describe("Lab settings parity", () => {
   });
 
   test("native macOS, mobile, and TUI expose the shared Lab state", () => {
-    const nativeSettings = source("apps/macos/Cybara/Sources/Cybara/NativeSettingsScreen.swift");
+    const nativeSettings = readNativeSettingsSource();
     const nativeLab = source("apps/macos/Cybara/Sources/Cybara/NativeEvalsScreen.swift");
     const mobileLab = source("apps/mobile/src/screens/dashboardEvalsPanel.tsx");
     const tuiLab = source("src/cli/tui/components/evals.tsx");

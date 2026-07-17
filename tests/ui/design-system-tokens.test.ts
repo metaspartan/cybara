@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readUiStylesSource } from "../shared/source-bundles";
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
 describe("index.css design-system utilities", () => {
-  const css = read("../../ui/src/index.css");
+  const css = readUiStylesSource();
   const sessionSidebar = read("../../ui/src/pages/chat/SessionSidebar.tsx");
 
   test("defines the glass utilities that shared primitives reference", () => {

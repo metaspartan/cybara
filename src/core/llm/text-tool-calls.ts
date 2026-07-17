@@ -51,8 +51,8 @@ export interface NormalizedAnthropicToolUse {
 }
 
 const MODEL_SPECIAL_TOKEN_PATTERN = /<[|\uFF5C][^|\uFF5C]*[|\uFF5C]>/g;
-const MINIMAX_TEXT_SEGMENT_MARKER_PATTERN = /\]?<\]minimax\[\>\[?/gi;
-const MINIMAX_TEXT_SEGMENT_MARKER_QUICK_PATTERN = /\]?<\]minimax\[\>\[?/i;
+const MINIMAX_TEXT_SEGMENT_MARKER_PATTERN = /\]?<\]minimax\[>\[?/gi;
+const MINIMAX_TEXT_SEGMENT_MARKER_QUICK_PATTERN = /\]?<\]minimax\[>\[?/i;
 const TOOL_CALL_CONTAINER_PATTERN =
   /<(function_calls|function_call|tool_calls|tool_call)\b[^>]*>([\s\S]*?)<\/\1>/gi;
 const TOOL_CALL_RESULT_BLOCK_PATTERN =
@@ -817,12 +817,13 @@ export function toAnthropicReplayContentWithNormalizedToolUses(
 }
 
 export function sanitizeAssistantContent(content: string): string {
-  return closeUnterminatedMarkdownFence(
+  const sanitized = closeUnterminatedMarkdownFence(
     stripTextToolCallMarkup(content)
       .replace(REPLY_DIRECTIVE_LINE_PATTERN, "")
       .replace(REPLY_DIRECTIVE_INLINE_PATTERN, "$1")
       .trim()
   );
+  return sanitized === "[SILENT]" ? "" : sanitized;
 }
 
 export function shouldUseMiniMaxReasoningSplit(
