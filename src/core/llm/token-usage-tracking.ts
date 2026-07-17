@@ -19,11 +19,18 @@ export function trackTokenUsage(
     cachedInputTokens?: number;
     cacheWriteTokens?: number;
     firstTokenMs?: number;
+    routerRouteId?: string;
   }
 ): void {
   try {
-    // ── Feed the model router's usage tracking + circuit breaker ──
-    recordUsage(provider, inputTokens, outputTokens, true, model);
+    recordUsage(
+      options?.routerRouteId ?? provider,
+      inputTokens,
+      outputTokens,
+      true,
+      model,
+      provider
+    );
   } catch {
     /* router tracking is best-effort */
   }
@@ -49,6 +56,7 @@ export function trackTokenUsage(
       cachedInputTokens,
       cacheWriteTokens,
       firstTokenMs,
+      routerRouteId: options?.routerRouteId,
       sessionId:
         typeof options?.sessionId === "string" && options.sessionId.trim()
           ? options.sessionId.trim()
@@ -71,6 +79,16 @@ export function trackTokenUsage(
       value: totalTokens,
       metadata: serializeMetricMetadata({ ...tokenMetadata, url: providerUrl }),
     });
+
+    if (options?.routerRouteId && options.routerRouteId !== provider) {
+      tables.metrics.add({
+        id: crypto.randomUUID(),
+        type: "token_usage_by_provider",
+        key: options.routerRouteId,
+        value: totalTokens,
+        metadata: serializeMetricMetadata({ ...tokenMetadata, url: providerUrl }),
+      });
+    }
 
     if (typeof tokenMetadata.sessionId === "string") {
       tables.metrics.add({

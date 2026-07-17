@@ -1,5 +1,6 @@
 import { config } from "./config";
-import type { Provider } from "./database";
+import { tables, type Agent, type Provider } from "./database";
+import { parseAgentConfig } from "./agent-internals";
 import type { LiveProviderUsage } from "./provider-usage-source";
 
 export type ProviderAccountFailure = "auth" | "billing" | "rate_limit";
@@ -101,6 +102,17 @@ function saveProviderAccountPools(pools: ProviderAccountPool[]): void {
   config.set(STORAGE_KEY, pools);
 }
 
+function detachPoolsFromAgents(poolIds: ReadonlySet<string>): void {
+  if (poolIds.size === 0) return;
+  for (const agent of tables.agents.all() as Agent[]) {
+    const agentConfig = parseAgentConfig(agent.config, agent.id);
+    const poolId = agentConfig.provider_account_pool_id;
+    if (typeof poolId !== "string" || !poolIds.has(poolId)) continue;
+    delete agentConfig.provider_account_pool_id;
+    tables.agents.update(agent.id, { ...agent, config: agentConfig });
+  }
+}
+
 function normalizedPoolInput(
   input: ProviderAccountPoolInput,
   providers: readonly Provider[],
@@ -180,6 +192,7 @@ export function deleteProviderAccountPool(id: string): boolean {
   const next = pools.filter((pool) => pool.id !== id);
   if (next.length === pools.length) return false;
   saveProviderAccountPools(next);
+  detachPoolsFromAgents(new Set([id]));
   return true;
 }
 
@@ -189,7 +202,13 @@ export function removeProviderFromAccountPools(providerId: string): void {
     const accounts = pool.accounts.filter((account) => account.providerId !== providerId);
     return accounts.length > 0 ? [{ ...pool, accounts }] : [];
   });
-  if (JSON.stringify(next) !== JSON.stringify(pools)) saveProviderAccountPools(next);
+  if (JSON.stringify(next) !== JSON.stringify(pools)) {
+    saveProviderAccountPools(next);
+    const retainedIds = new Set(next.map((pool) => pool.id));
+    detachPoolsFromAgents(
+      new Set(pools.filter((pool) => !retainedIds.has(pool.id)).map((pool) => pool.id))
+    );
+  }
   cooldownUntil.delete(providerId);
 }
 

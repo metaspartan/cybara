@@ -506,7 +506,7 @@ describe("Agent provider API-family routing", () => {
     expect(authorization).toBe("Bearer preferred-router-key");
   });
 
-  test("running-agent messages do not enable the global router implicitly", async () => {
+  test("running-agent messages honor the enabled global router", async () => {
     let authorization = "";
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       authorization = new Headers(init?.headers).get("Authorization") || "";
@@ -530,13 +530,13 @@ describe("Agent provider API-family routing", () => {
       api_key: "running-agent-key",
     });
     const routed = providerManager.create({
-      provider: "synthetic",
-      name: "Implicit Router Provider",
-      api_key: "implicit-router-key",
+      provider: "openai",
+      name: "Running Agent Routed Provider",
+      api_key: "running-agent-routed-key",
     });
     createdProviderIds.push(direct.id, routed.id);
     const agent = agentManager.create({
-      name: "Running Agent Router Opt In",
+      name: "Running Agent Router",
       provider_id: direct.id,
       model: "gpt-5.2",
       tools: [],
@@ -546,13 +546,13 @@ describe("Agent provider API-family routing", () => {
       enabled: true,
       strategy: "priority",
       fallbackToAny: false,
-      routes: { synthetic: { weight: 100, priority: 0, enabled: true } },
+      routes: { [routed.id]: { weight: 100, priority: 0, enabled: true } },
     });
 
-    const result = await agentManager.message(agent.id, "Stay on the agent provider");
+    const result = await agentManager.message(agent.id, "Use the configured router");
 
     expect(result.response).toBe("running-agent-direct-ok");
-    expect(authorization).toBe("Bearer running-agent-key");
+    expect(authorization).toBe("Bearer running-agent-routed-key");
   });
 
   test("routes Grok OAuth through the proxy and retries connection failures and 429s", async () => {
@@ -902,6 +902,7 @@ describe("Agent provider API-family routing", () => {
       "Bearer router-pool-primary",
       "Bearer router-pool-backup",
     ]);
+    expect(getProviderAvailability(`pool:${pool.id}`).requestsIn5hWindow).toBe(1);
     expect(agentManager.get(agent.id)?.provider_id).toBe(originalProvider.id);
   });
 

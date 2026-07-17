@@ -376,7 +376,7 @@ class AgentManager extends AgentProviderRuntime {
     persistIfResolved = false
   ): ReturnType<typeof providerManager.getWithCredentials> {
     return this.resolveProviderExecutionTarget(agent, {
-      useRouter: false,
+      useRouter: true,
       persistIfResolved,
     })?.provider;
   }
@@ -845,7 +845,7 @@ class AgentManager extends AgentProviderRuntime {
     const { agent, messages } = state;
 
     const target = this.resolveProviderExecutionTarget(agent, {
-      useRouter: false,
+      useRouter: true,
       persistIfResolved: true,
     });
     if (!target) {
@@ -862,6 +862,7 @@ class AgentManager extends AgentProviderRuntime {
       tools = this.getAgentTools(agent);
     }
     const toolContext = this.buildToolExecutionContext(agent);
+    toolContext.routerRouteId = target.routeId;
 
     const routedModel = target.routeId ? getRouterRouteModel(target.routeId) : undefined;
     const selectedModel =
@@ -897,7 +898,7 @@ class AgentManager extends AgentProviderRuntime {
               activeModel,
               fullMessages,
               tools,
-              toolContext
+              { ...toolContext, routerRouteId: undefined }
             );
             return {
               response: fallbackResult.content,
@@ -1052,6 +1053,7 @@ class AgentManager extends AgentProviderRuntime {
     }
 
     const toolContext = this.buildToolExecutionContext(agent, options);
+    toolContext.routerRouteId = target.routeId;
 
     const routerActive = options?.useModelRouter === true && !!provider;
     const routedToDifferentProvider = routerActive && provider!.id !== agent.provider_id;
@@ -1098,7 +1100,7 @@ class AgentManager extends AgentProviderRuntime {
               activeModel,
               workspaceAwareMessages,
               tools,
-              toolContext
+              { ...toolContext, routerRouteId: undefined }
             );
             if (options?.abortSignal?.aborted) throw options.abortSignal.reason;
             return fallbackResult;

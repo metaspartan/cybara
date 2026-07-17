@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { parseAgentConfig } from "../../src/core/agent-internals";
 import { config } from "../../src/core/config";
-import type { Provider } from "../../src/core/database";
+import { tables, type Agent, type Provider } from "../../src/core/database";
 import {
   createProviderAccountPool,
   deleteProviderAccountPool,
@@ -14,6 +15,8 @@ import {
   updateProviderAccountPool,
 } from "../../src/core/provider-account-pool";
 
+const createdAgentIds: string[] = [];
+
 function provider(id: string, providerType: string): Provider {
   return {
     id,
@@ -23,7 +26,29 @@ function provider(id: string, providerType: string): Provider {
   };
 }
 
-afterEach(() => resetProviderAccountPoolsForTests());
+afterEach(() => {
+  for (const agentId of createdAgentIds.splice(0)) tables.agents.delete(agentId);
+  resetProviderAccountPoolsForTests();
+});
+
+function agentForPool(poolId: string, providerId: string): Agent {
+  const agent: Agent = {
+    id: crypto.randomUUID(),
+    name: `Agent ${poolId}`,
+    provider_id: providerId,
+    config: { provider_account_pool_id: poolId, retained: true },
+    status: "stopped",
+    memory_enabled: false,
+  };
+  tables.agents.create(agent);
+  createdAgentIds.push(agent.id);
+  return agent;
+}
+
+function storedAgentConfig(agentId: string): Record<string, unknown> {
+  const stored = tables.agents.get(agentId) as Agent | undefined;
+  return parseAgentConfig(stored?.config, agentId);
+}
 
 describe("provider account pools", () => {
   test("keeps accounts isolated until a named pool includes them", () => {
@@ -143,6 +168,36 @@ describe("provider account pools", () => {
     removeProviderFromAccountPools(backup.id);
     expect(listProviderAccountPools()[0]?.accounts).toEqual([{ providerId: primary.id }]);
     expect(deleteProviderAccountPool(pool.id)).toBe(true);
+    expect(listProviderAccountPools()).toEqual([]);
+  });
+
+  test("detaches agents when pools are deleted or lose their last account", () => {
+    const first = provider("first", "openai-codex");
+    const second = provider("second", "openai-codex");
+    const deletedPool = createProviderAccountPool(
+      {
+        name: "Deleted Pool",
+        provider: "openai-codex",
+        accounts: [{ providerId: first.id }],
+      },
+      [first, second]
+    );
+    const emptiedPool = createProviderAccountPool(
+      {
+        name: "Emptied Pool",
+        provider: "openai-codex",
+        accounts: [{ providerId: second.id }],
+      },
+      [first, second]
+    );
+    const deletedPoolAgent = agentForPool(deletedPool.id, first.id);
+    const emptiedPoolAgent = agentForPool(emptiedPool.id, second.id);
+
+    expect(deleteProviderAccountPool(deletedPool.id)).toBe(true);
+    removeProviderFromAccountPools(second.id);
+
+    expect(storedAgentConfig(deletedPoolAgent.id)).toEqual({ retained: true });
+    expect(storedAgentConfig(emptiedPoolAgent.id)).toEqual({ retained: true });
     expect(listProviderAccountPools()).toEqual([]);
   });
 

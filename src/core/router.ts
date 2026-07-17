@@ -449,7 +449,7 @@ export function getProviderAvailability(
   const price = resolvePrice(route, providerType);
   const circuitOpen = isCircuitOpen(providerId);
   const inCooldown = isInCooldown(providerId);
-  const plan = getProviderPlanRouteConstraint(providerType, planContext);
+  const plan = getProviderPlanRouteConstraint(providerId, planContext);
 
   let available = route.enabled !== false;
   let reason: string | undefined;
@@ -544,9 +544,7 @@ export function selectProvider(preferredProviderId?: string): string | null {
     preferredRouteId,
     ...routeIds,
     ...fallbackProviderIds.filter((id) => !routerCfg.routes[id]),
-  ]
-    .filter((id): id is string => Boolean(id))
-    .map((id) => providerAccountPoolRouteProvider(id) ?? id);
+  ].filter((id): id is string => Boolean(id));
   const planContext = hasProviderPlanRouteConstraints(planRouteKeys)
     ? createProviderPlanEvaluationContext()
     : undefined;
@@ -654,15 +652,18 @@ export function recordUsage(
   inputTokens: number,
   outputTokens: number,
   success: boolean,
-  model?: string
+  model?: string,
+  providerType?: string
 ): void {
   const routerCfg = getRouterConfig();
   const route = routerCfg.routes[providerId] ? normalizeRoute(routerCfg.routes[providerId]) : null;
+  const pricingProviderId =
+    providerType ?? providerAccountPoolRouteProvider(providerId) ?? providerId;
   const price = route
-    ? resolvePrice(route, providerId)
+    ? resolvePrice(route, pricingProviderId)
     : {
-        inputPerM: getPricing(providerId, model)?.inputPerM ?? 0,
-        outputPerM: getPricing(providerId, model)?.outputPerM ?? 0,
+        inputPerM: getPricing(pricingProviderId, model)?.inputPerM ?? 0,
+        outputPerM: getPricing(pricingProviderId, model)?.outputPerM ?? 0,
       };
 
   const estimatedCost =
@@ -719,8 +720,7 @@ export interface RouterStatus {
 export function getRouterStatus(): RouterStatus {
   const cfg = getRouterConfig();
   const routeIds = Object.keys(cfg.routes);
-  const planRouteKeys = routeIds.map((id) => providerAccountPoolRouteProvider(id) ?? id);
-  const planContext = hasProviderPlanRouteConstraints(planRouteKeys)
+  const planContext = hasProviderPlanRouteConstraints(routeIds)
     ? createProviderPlanEvaluationContext()
     : undefined;
   return {

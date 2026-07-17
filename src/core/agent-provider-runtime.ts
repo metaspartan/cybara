@@ -1465,6 +1465,7 @@ export abstract class AgentProviderRuntime {
       providerUrl: baseUrl,
       durationMs,
       sessionId: sessionIdForVisibleTokenUsage(toolContext),
+      routerRouteId: toolContext?.routerRouteId,
     });
 
     if (!message) {
@@ -1743,6 +1744,7 @@ export abstract class AgentProviderRuntime {
         providerUrl: baseUrl,
         durationMs: Math.round(performance.now() - loopRequestStartedAt),
         sessionId: sessionIdForVisibleTokenUsage(toolContext),
+        routerRouteId: toolContext?.routerRouteId,
       });
       const loopChoice = loopData.choices?.[0];
       message = loopChoice?.message as OpenAIMessage;
@@ -1793,6 +1795,7 @@ export abstract class AgentProviderRuntime {
           providerUrl: baseUrl,
           durationMs: Math.round(performance.now() - nudgeStartedAt),
           sessionId: sessionIdForVisibleTokenUsage(toolContext),
+          routerRouteId: toolContext?.routerRouteId,
         });
         const nudgeContent = nudgeData.choices?.[0]?.message?.content;
         if (typeof nudgeContent === "string" && nudgeContent.trim()) finalContent = nudgeContent;
@@ -2447,6 +2450,7 @@ export abstract class AgentProviderRuntime {
             cachedInputTokens: turn.usage.cachedInputTokens,
             cacheWriteTokens: turn.usage.cacheWriteTokens,
             firstTokenMs: turn.firstTokenMs ?? durationMs,
+            routerRouteId: toolContext?.routerRouteId,
           }
         );
       }
@@ -2802,6 +2806,7 @@ export abstract class AgentProviderRuntime {
           sessionId: sessionIdForVisibleTokenUsage(toolContext),
           cachedInputTokens: usage.cachedContentTokenCount || 0,
           firstTokenMs: durationMs,
+          routerRouteId: toolContext?.routerRouteId,
         });
       }
 
@@ -3055,6 +3060,7 @@ export abstract class AgentProviderRuntime {
           {
             sessionId: sessionIdForVisibleTokenUsage(toolContext),
             firstTokenMs: durationMs,
+            routerRouteId: toolContext?.routerRouteId,
           }
         );
       }
@@ -3423,6 +3429,7 @@ export abstract class AgentProviderRuntime {
         cachedInputTokens: data.usage.cache_read_input_tokens || 0,
         cacheWriteTokens: data.usage.cache_creation_input_tokens || 0,
         firstTokenMs: durationMs,
+        routerRouteId: toolContext?.routerRouteId,
       });
     }
 
@@ -3885,6 +3892,7 @@ export abstract class AgentProviderRuntime {
             cachedInputTokens: responseData.usage.cache_read_input_tokens || 0,
             cacheWriteTokens: responseData.usage.cache_creation_input_tokens || 0,
             firstTokenMs: Math.round(performance.now() - loopRequestStartedAt),
+            routerRouteId: toolContext?.routerRouteId,
           }
         );
       }
@@ -3987,6 +3995,7 @@ export abstract class AgentProviderRuntime {
                 cachedInputTokens: closingData.usage.cache_read_input_tokens || 0,
                 cacheWriteTokens: closingData.usage.cache_creation_input_tokens || 0,
                 firstTokenMs: Math.round(performance.now() - closingStartedAt),
+                routerRouteId: toolContext?.routerRouteId,
               }
             );
           }
@@ -4094,6 +4103,7 @@ export abstract class AgentProviderRuntime {
       providerUrl: baseUrl,
       durationMs,
       sessionId: sessionIdForVisibleTokenUsage(toolContext),
+      routerRouteId: toolContext?.routerRouteId,
     });
 
     if (!message) {
@@ -4346,6 +4356,7 @@ export abstract class AgentProviderRuntime {
         providerUrl: baseUrl,
         durationMs: Math.round(performance.now() - loopRequestStartedAt),
         sessionId: sessionIdForVisibleTokenUsage(toolContext),
+        routerRouteId: toolContext?.routerRouteId,
       });
       const loopChoice = loopData.choices?.[0];
       message = loopChoice?.message as OpenAIMessage;
@@ -4386,6 +4397,7 @@ export abstract class AgentProviderRuntime {
           providerUrl: baseUrl,
           durationMs: Math.round(performance.now() - closingStartedAt),
           sessionId: sessionIdForVisibleTokenUsage(toolContext),
+          routerRouteId: toolContext?.routerRouteId,
         });
         const closingContent = closingData.choices?.[0]?.message?.content;
         if (typeof closingContent === "string" && closingContent.trim()) {
