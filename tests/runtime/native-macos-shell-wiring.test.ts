@@ -617,6 +617,11 @@ describe("native macOS shell wiring", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
     const gatewayModels = readGatewayModelsSource();
     const nativeScreens = readNativeChatSource();
+    const nativePlatform = readNativePlatformSource();
+    const nativeArtifacts = readFileSync(
+      join(MACOS_APP_DIR, "NativeArtifactsScreen.swift"),
+      "utf8"
+    );
     const configScreens = readNativeConfigSource();
     const settings = readNativeSettingsSource();
 
@@ -633,6 +638,17 @@ describe("native macOS shell wiring", () => {
     expect(gatewayClient).toContain("timeoutInterval: TimeInterval = 120");
     expect(gatewayClient).toContain("timeoutInterval: 86_400");
     expect(gatewayClient).toContain('payload["useModelRouter"] = true');
+    expect(nativePlatform).toContain('request("api/plugins/\\(pathSegment(id))"');
+    expect(nativeScreens).toContain("subagentsLoadingSessionID");
+    expect(nativeScreens).toContain(
+      "guard selectedSessionID == requestedSessionID else { return }"
+    );
+    expect(nativeScreens).toContain(
+      "nativeMergeLiveActivities(liveActivities, incoming: snapshotActivities)"
+    );
+    expect(nativeArtifacts).toContain(
+      "content = try await client.readArtifact(artifact)\n            error = nil"
+    );
     expect(gatewayClient).toContain('request("api/sessions/\\(id)/agent", method: "PUT"');
     expect(nativeScreens).toContain("var composerControls: some View");
     expect(nativeScreens).toContain("var activeTokenUsage: GatewaySessionTokenUsage?");

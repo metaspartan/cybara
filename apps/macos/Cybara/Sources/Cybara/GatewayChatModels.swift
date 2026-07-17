@@ -696,6 +696,7 @@ struct GatewaySession: Decodable, Identifiable, Hashable {
     let id: String
     let title: String?
     let agent_id: String?
+    let use_model_router: Bool?
     let agent_name: String?
     let agent_type: String?
     let provider: String?
@@ -713,7 +714,8 @@ struct GatewaySession: Decodable, Identifiable, Hashable {
     let messagesList: [GatewaySessionMessage]?
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, agent_id, agentId, agent_name, agentName, agent_type, agentType
+        case id, title, agent_id, agentId, use_model_router, useModelRouter
+        case agent_name, agentName, agent_type, agentType
         case provider, provider_id, providerId, provider_name, providerName, model
         case message_count, messageCount, created_at, createdAt, updated_at, updatedAt
         case workspace_dir, workspaceDir, pinned, last_message, lastMessage
@@ -725,6 +727,7 @@ struct GatewaySession: Decodable, Identifiable, Hashable {
         id = try container.decodeFlexibleString(forKeys: [.id]) ?? UUID().uuidString
         title = try container.decodeFlexibleString(forKeys: [.title])
         agent_id = try container.decodeFlexibleString(forKeys: [.agent_id, .agentId])
+        use_model_router = try container.decodeFlexibleBool(forKeys: [.use_model_router, .useModelRouter])
         agent_name = try container.decodeFlexibleString(forKeys: [.agent_name, .agentName])
         agent_type = try container.decodeFlexibleString(forKeys: [.agent_type, .agentType])
         provider = try container.decodeFlexibleString(forKeys: [.provider])
@@ -973,6 +976,7 @@ struct GatewaySessionAgentUpdateResponse: Decodable, Hashable {
     let sessionId: String?
     let agentId: String?
     let agentName: String?
+    let useModelRouter: Bool?
     let provider: String?
     let providerId: String?
     let providerName: String?
@@ -983,6 +987,7 @@ struct GatewaySessionAgentUpdateResponse: Decodable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case success, sessionId, session_id, agentId, agent_id, agentName, agent_name
+        case useModelRouter, use_model_router
         case provider, providerId, provider_id, providerName, provider_name, model
         case contextUsage, context_usage, tokenUsage, token_usage, error
     }
@@ -993,6 +998,7 @@ struct GatewaySessionAgentUpdateResponse: Decodable, Hashable {
         sessionId = try container.decodeFlexibleString(forKeys: [.sessionId, .session_id])
         agentId = try container.decodeFlexibleString(forKeys: [.agentId, .agent_id])
         agentName = try container.decodeFlexibleString(forKeys: [.agentName, .agent_name])
+        useModelRouter = try container.decodeFlexibleBool(forKeys: [.useModelRouter, .use_model_router])
         provider = try container.decodeFlexibleString(forKeys: [.provider])
         providerId = try container.decodeFlexibleString(forKeys: [.providerId, .provider_id])
         providerName = try container.decodeFlexibleString(forKeys: [.providerName, .provider_name])

@@ -688,6 +688,15 @@ describe("handleChat per-session serialization", () => {
 
     const persisted = await loadPersistedSession(sessionId);
     expect(persisted?.agentId).toBe(secondAgent.id);
+
+    const routed = await updateSessionAgent(sessionId, undefined, true);
+    expect(routed.agentId).toBe(secondAgent.id);
+    expect(routed.useModelRouter).toBe(true);
+    expect((await loadPersistedSession(sessionId))?.useModelRouter).toBe(true);
+
+    const concrete = await updateSessionAgent(sessionId, firstAgent.id, false);
+    expect(concrete.useModelRouter).toBe(false);
+    expect((await loadPersistedSession(sessionId))?.useModelRouter).toBe(false);
   });
 
   test("transfers an active turn to another agent and persists shared ownership", async () => {

@@ -430,6 +430,15 @@ describe("UI API client wiring", () => {
     });
   });
 
+  test("chatApi persists model router selection for an existing session", async () => {
+    await chatApi.updateSessionAgent("session-router", undefined, true);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("/api/sessions/session-router/agent");
+    expect(calls[0].init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ useModelRouter: true });
+  });
+
   test("logsApi activity/stats attach query params", async () => {
     await logsApi.getActivity(30);
     await logsApi.getStats(12);

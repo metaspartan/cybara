@@ -23,7 +23,7 @@ extension GatewayClient {
 
     func setNativePluginEnabled(_ id: String, enabled: Bool) async throws -> NativePluginSummary {
         let body = try JSONSerialization.data(withJSONObject: ["enabled": enabled])
-        let data = try await request("api/plugins/\(id)", method: "PUT", body: body)
+        let data = try await request("api/plugins/\(pathSegment(id))", method: "PUT", body: body)
         let response = try JSONDecoder().decode(NativePluginInstallResponse.self, from: data)
         guard response.success, let plugin = response.plugin else {
             throw GatewayClientError.decodingFailed("api/plugins/\(id)", "Plugin update failed")

@@ -106,6 +106,7 @@ struct ArtifactsScreen: View {
         loadingContent = true
         do {
             content = try await client.readArtifact(artifact)
+            error = nil
         } catch {
             self.error = error.localizedDescription
         }

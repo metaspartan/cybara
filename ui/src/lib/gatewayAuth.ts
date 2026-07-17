@@ -10,6 +10,10 @@ export type GatewayAccessFetcher = (
   init?: RequestInit
 ) => Promise<Response>;
 
+export function shouldDiscardGatewayCredentials(result: GatewayAccessCheck): boolean {
+  return result.status === "required";
+}
+
 function responseErrorMessage(value: unknown): string | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const error = (value as Record<string, unknown>).error;

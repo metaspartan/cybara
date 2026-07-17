@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { checkGatewayAccess, type GatewayAccessFetcher } from "./gatewayAuth";
+import {
+  checkGatewayAccess,
+  type GatewayAccessFetcher,
+  shouldDiscardGatewayCredentials,
+} from "./gatewayAuth";
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
@@ -35,5 +39,13 @@ describe("gateway browser authentication", () => {
       message: "Gateway is starting",
       status: "unavailable",
     });
+  });
+
+  test("discards credentials only after an authorization rejection", () => {
+    expect(shouldDiscardGatewayCredentials({ message: "Denied", status: "required" })).toBe(true);
+    expect(shouldDiscardGatewayCredentials({ message: "Starting", status: "unavailable" })).toBe(
+      false
+    );
+    expect(shouldDiscardGatewayCredentials({ message: "", status: "ready" })).toBe(false);
   });
 });

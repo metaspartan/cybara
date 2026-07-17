@@ -3,6 +3,12 @@ import type { ApiResponse } from "@/types";
 
 const API_BASE = "/api";
 
+export function withJsonRequestHeaders(options: RequestInit = {}): RequestInit {
+  const headers = new Headers(options.headers);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  return { ...options, headers };
+}
+
 export function extractApiError<T>(response: ApiResponse<T>, fallback: string): string {
   const data = response.data as { error?: unknown } | undefined;
   const dataError =
@@ -15,12 +21,7 @@ export async function fetchApi<T>(
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
   const url = `${API_BASE}${endpoint}`;
-  const response = await apiFetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-    },
-    ...options,
-  });
+  const response = await apiFetch(url, withJsonRequestHeaders(options));
 
   if (!response.ok) {
     const error = await response.text();

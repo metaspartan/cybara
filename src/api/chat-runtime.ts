@@ -298,7 +298,8 @@ async function finishInterruptedChatTurn(
       session.agentId,
       session.messages,
       session.workspaceDir,
-      session.title
+      session.title,
+      session.useModelRouter
     );
     persistActiveSessionContext(session);
     upsertPersistedSessionIndex({
@@ -968,7 +969,8 @@ export async function steerPendingChatMessage(
     session.agentId,
     session.messages,
     session.workspaceDir,
-    session.title
+    session.title,
+    session.useModelRouter
   );
   persistActiveSessionContext(session);
   upsertPersistedSessionIndex({
@@ -1005,7 +1007,7 @@ async function handleChatTurn(
   effectiveSessionId: string
 ): Promise<ChatResponse> {
   const { message, agentId, tools = true, channel, userId, source, workspaceDir } = request;
-  const useModelRouter = request.useModelRouter === true;
+  let useModelRouter = request.useModelRouter === true;
   const requestedModelOverride =
     typeof request.modelOverride === "string" && request.modelOverride.trim()
       ? request.modelOverride.trim()
@@ -1053,6 +1055,7 @@ async function handleChatTurn(
     session = {
       id: newSessionId,
       agentId: agent.id,
+      useModelRouter,
       title: null,
       messages: [
         {
@@ -1079,6 +1082,10 @@ async function handleChatTurn(
       agentId: agent.id,
       model: agent.model,
     });
+  } else if (typeof request.useModelRouter === "boolean") {
+    session.useModelRouter = request.useModelRouter;
+  } else {
+    useModelRouter = session.useModelRouter;
   }
 
   if (requestedWorkspaceDir !== undefined) {

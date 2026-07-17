@@ -82,6 +82,7 @@ export interface SessionSummary {
   id: string;
   title: string | null;
   agent_id?: string;
+  use_model_router?: boolean;
   provider?: string;
   provider_id?: string;
   provider_type?: string;
@@ -894,6 +895,7 @@ export interface SessionDetailSummary {
   id: string;
   title: string | null;
   agentId?: string;
+  useModelRouter?: boolean;
   provider?: string;
   providerId?: string;
   providerName?: string;

@@ -655,6 +655,7 @@ export function IDEChatPanel({
           setActiveAgentId(nextAgentId);
           onSelectedAgentIdChange(nextAgentId);
         }
+        setUseModelRouter(response.data.use_model_router === true);
         setMessages(
           response.data.messagesList
             .map((message) => mapApiMessageToIde(message))
@@ -1246,17 +1247,32 @@ export function IDEChatPanel({
   );
 
   const handleSelectAgent = useCallback(
-    (agentId?: string) => {
+    async (agentId?: string) => {
+      const previousUseModelRouter = useModelRouter;
+      const previousAgentId = activeAgentId;
       if (agentId === MODEL_ROUTER_SELECTOR_VALUE) {
+        if (!modelRouterEnabled) return;
         setUseModelRouter(true);
+        if (!sessionId) return;
+        const response = await chatApi.updateSessionAgent(sessionId, undefined, true);
+        if (!response.success || !response.data?.success) {
+          setUseModelRouter(previousUseModelRouter);
+          setError(response.error || response.data?.error || "Failed to update session routing");
+        }
         return;
       }
       setUseModelRouter(false);
       onSelectedAgentIdChange(agentId || "");
+      if (!sessionId || !agentId) return;
+      const response = await chatApi.updateSessionAgent(sessionId, agentId, false);
+      if (!response.success || !response.data?.success) {
+        setUseModelRouter(previousUseModelRouter);
+        onSelectedAgentIdChange(previousAgentId);
+        setError(response.error || response.data?.error || "Failed to update session agent");
+      }
     },
-    [onSelectedAgentIdChange]
+    [activeAgentId, modelRouterEnabled, onSelectedAgentIdChange, sessionId, useModelRouter]
   );
-
   const setDecisionForFileKeys = useCallback(
     (keys: string[], decision: "accepted" | "rejected") => {
       if (keys.length === 0) return;

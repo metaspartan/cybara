@@ -262,6 +262,11 @@ export function SessionDetailPanel({
   }, [api, sessionId]);
 
   useEffect(() => {
+    if (!routerEnabled) return;
+    setUseModelRouter(detail?.useModelRouter === true);
+  }, [detail?.useModelRouter, routerEnabled]);
+
+  useEffect(() => {
     let active = true;
     setNearbyEnabled(false);
     api
@@ -897,9 +902,24 @@ export function SessionDetailPanel({
 
   const changeSessionAgent = async (agentId: string) => {
     if (agentId === MOBILE_MODEL_ROUTER_SELECTOR_VALUE) {
-      if (!routerEnabled) return;
+      if (!routerEnabled || agentUpdating) return;
       setUseModelRouter(true);
+      setAgentUpdating(true);
       haptics.select();
+      try {
+        const result = await api.updateSessionAgent(sessionId, undefined, true);
+        if (!result.success) {
+          throw new Error(result.error || "Failed to update session routing.");
+        }
+        setDetail((current) =>
+          current ? { ...current, useModelRouter: result.useModelRouter === true } : current
+        );
+      } catch (error) {
+        setUseModelRouter(false);
+        setLoadError(error instanceof Error ? error.message : "Failed to update session routing.");
+      } finally {
+        setAgentUpdating(false);
+      }
       return;
     }
     if (!agentId || agentId === currentAgentId || agentUpdating) return;
@@ -916,6 +936,7 @@ export function SessionDetailPanel({
         current
           ? {
               ...current,
+              useModelRouter: false,
               agentId: result.agentId ?? agentId,
               provider: result.provider ?? current.provider,
               providerId: result.providerId ?? current.providerId,

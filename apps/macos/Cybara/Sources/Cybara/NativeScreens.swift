@@ -572,6 +572,7 @@ struct ChatScreen: View {
     @State var activeWorkspaceTab = NativeChatWorkspaceTab.review
     @State var subagents: [NativeSubagentSummary] = []
     @State var subagentsLoading = false
+    @State var subagentsLoadingSessionID: String?
     @State var selectedSubagent: NativeSubagentSummary?
     @State var showSpawnSubagent = false
     @State var subagentTaskDraft = ""

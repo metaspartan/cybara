@@ -6,7 +6,11 @@ import {
   setApiAuthToken,
   setGatewayAccessPassword,
 } from "@/lib/auth";
-import { checkGatewayAccess, type GatewayAccessCheck } from "@/lib/gatewayAuth";
+import {
+  checkGatewayAccess,
+  type GatewayAccessCheck,
+  shouldDiscardGatewayCredentials,
+} from "@/lib/gatewayAuth";
 import { ensureUpdatePolling } from "@/lib/updateStore";
 
 export function GatewayAuthGate({ children }: { children: ReactNode }) {
@@ -45,7 +49,7 @@ export function GatewayAuthGate({ children }: { children: ReactNode }) {
       clearGatewayAccessPassword();
     }
     const result = await verify();
-    if (result.status !== "ready") clearApiAuthToken();
+    if (shouldDiscardGatewayCredentials(result)) clearApiAuthToken();
   }
 
   if (access.status === "ready" && !checking) return <>{children}</>;

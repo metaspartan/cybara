@@ -10,7 +10,7 @@ import {
   normalizeSessionWorkspaceDir,
   persistSession,
   resolveSessionModelMetadata,
-  setPersistedSessionAgent,
+  setPersistedSessionRouting,
   setPersistedSessionPinned,
   summarizeSessionTokenUsage,
 } from "../core/session-context";
@@ -164,6 +164,7 @@ export async function getSession(sessionId: string) {
     const restoredSession = {
       id: sessionId,
       agentId: persisted.agentId,
+      useModelRouter: persisted.useModelRouter,
       title: resolvedTitle,
       messages: persisted.contextMessages ?? recoveredMessages,
       createdAt,
@@ -176,6 +177,7 @@ export async function getSession(sessionId: string) {
     upsertPersistedSessionIndex({
       id: sessionId,
       agentId: persisted.agentId,
+      useModelRouter: persisted.useModelRouter,
       title: resolvedTitle,
       messageCount: countVisibleSessionMessages(recoveredMessages),
       createdAt,
@@ -196,14 +198,11 @@ export async function getSession(sessionId: string) {
 
 export async function updateSessionAgent(
   sessionId: string,
-  agentId: string
+  agentId?: string,
+  useModelRouter = false
 ): Promise<ChatSessionAgentUpdate> {
   const normalizedAgentId =
     typeof agentId === "string" && agentId.trim().length > 0 ? agentId.trim() : "";
-  const agent = normalizedAgentId ? agentManager.get(normalizedAgentId) : undefined;
-  if (!agent) {
-    throw new Error("Agent not found");
-  }
 
   await getSession(sessionId);
   const session = getResidentChatSession(sessionId);
@@ -211,15 +210,32 @@ export async function updateSessionAgent(
     throw new Error("Session not found");
   }
 
-  await applyActiveAgentToSession(session, agent);
-  const persistedAgent = await setPersistedSessionAgent(session.id, agent.id);
-  if (!persistedAgent) {
+  const agent = useModelRouter
+    ? agentManager.get(session.agentId)
+    : normalizedAgentId
+      ? agentManager.get(normalizedAgentId)
+      : undefined;
+  if (!agent) {
+    throw new Error("Agent not found");
+  }
+
+  if (!useModelRouter) {
+    await applyActiveAgentToSession(session, agent);
+  }
+  session.useModelRouter = useModelRouter;
+  const persistedRouting = await setPersistedSessionRouting(
+    session.id,
+    session.agentId,
+    useModelRouter
+  );
+  if (!persistedRouting) {
     session.persisted = await persistSession(
       session.id,
       session.agentId,
       session.messages,
       session.workspaceDir,
-      session.title
+      session.title,
+      session.useModelRouter
     );
   }
   persistActiveSessionContext(session);
@@ -228,6 +244,7 @@ export async function updateSessionAgent(
   upsertPersistedSessionIndex({
     id: session.id,
     agentId: session.agentId,
+    useModelRouter: session.useModelRouter,
     title: session.title,
     messageCount: countVisibleSessionMessages(session.messages),
     createdAt: session.createdAt,
@@ -242,6 +259,7 @@ export async function updateSessionAgent(
     sessionId: session.id,
     agentId: agent.id,
     agentName: agent.name,
+    useModelRouter: session.useModelRouter,
     provider: modelMetadata?.provider,
     providerId: modelMetadata?.provider_id,
     providerName: modelMetadata?.provider_name,
@@ -306,6 +324,7 @@ async function buildSessionListIndex(): Promise<SessionListEntry[]> {
     memorySessions.push({
       id: persisted.id,
       agentId: persisted.agentId,
+      useModelRouter: persisted.useModelRouter,
       title: persisted.title,
       messageCount: persisted.messageCount,
       createdAt: persisted.createdAt,
@@ -591,6 +610,7 @@ export async function revertSessionToMessage(
     cacheChatSession({
       id: sessionId,
       agentId,
+      useModelRouter: "useModelRouter" in session && session.useModelRouter === true,
       title: sessionTitle,
       messages: keptMessages,
       createdAt,
@@ -671,6 +691,7 @@ export async function updateSessionWorkspace(
     cacheChatSession({
       id: sessionId,
       agentId,
+      useModelRouter: "useModelRouter" in session && session.useModelRouter === true,
       title: sessionTitle,
       messages,
       createdAt,
@@ -734,6 +755,7 @@ export async function updateSessionTitle(
     cacheChatSession({
       id: sessionId,
       agentId,
+      useModelRouter: "useModelRouter" in session && session.useModelRouter === true,
       title: normalizedTitle,
       messages,
       createdAt,

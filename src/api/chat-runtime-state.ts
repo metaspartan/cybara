@@ -33,6 +33,7 @@ export {
 export interface InMemoryChatSession {
   id: string;
   agentId: string;
+  useModelRouter: boolean;
   title: string | null;
   messages: ChatMessage[];
   createdAt: string;
@@ -53,6 +54,7 @@ export interface ChatSessionAgentUpdate {
   sessionId: string;
   agentId: string;
   agentName: string;
+  useModelRouter: boolean;
   provider?: string;
   providerId?: string;
   providerName?: string;
@@ -71,6 +73,7 @@ const SESSION_LAST_MESSAGE_PREVIEW_MAX_CHARS = 500;
 export interface SessionListEntry {
   id: string;
   agentId: string;
+  useModelRouter: boolean;
   title: string | null;
   messageCount: number;
   createdAt: string;
@@ -197,9 +200,13 @@ export function buildLastMessagePreview(message?: ChatMessage): SessionLastMessa
 }
 
 export function normalizePersistedIndexEntry(
-  entry: Omit<PersistedSessionIndexEntry, "title" | "lastMessage" | "pinned" | "modelMetadata"> & {
+  entry: Omit<
+    PersistedSessionIndexEntry,
+    "title" | "lastMessage" | "pinned" | "modelMetadata" | "useModelRouter"
+  > & {
     title?: string | null;
     pinned?: boolean;
+    useModelRouter?: boolean;
     lastMessage?: SessionLastMessagePreview | null;
     modelMetadata?: SessionModelMetadata | null;
   }
@@ -207,6 +214,8 @@ export function normalizePersistedIndexEntry(
   const modelMetadata = entry.modelMetadata ?? resolveSessionModelMetadata(entry.agentId);
   return {
     ...entry,
+    useModelRouter:
+      entry.useModelRouter ?? persistedSessionIndex.get(entry.id)?.useModelRouter ?? false,
     title: stripSessionTitleAgentPrefix(entry.title, [modelMetadata?.agent_name, entry.agentId]),
     // Preserve an existing pin when the caller doesn't supply one, so unrelated
     // index updates (new messages, title regen, etc.) never clear it.
@@ -222,9 +231,13 @@ export function normalizePersistedIndexEntry(
 }
 
 export function upsertPersistedSessionIndex(
-  entry: Omit<PersistedSessionIndexEntry, "title" | "lastMessage" | "pinned" | "modelMetadata"> & {
+  entry: Omit<
+    PersistedSessionIndexEntry,
+    "title" | "lastMessage" | "pinned" | "modelMetadata" | "useModelRouter"
+  > & {
     title?: string | null;
     pinned?: boolean;
+    useModelRouter?: boolean;
     lastMessage?: SessionLastMessagePreview | null;
     modelMetadata?: SessionModelMetadata | null;
   }
@@ -246,11 +259,13 @@ export async function persistChatSessionSnapshot(
     session.agentId,
     session.messages,
     session.workspaceDir,
-    session.title
+    session.title,
+    session.useModelRouter
   );
   upsertPersistedSessionIndex({
     id: session.id,
     agentId: session.agentId,
+    useModelRouter: session.useModelRouter,
     title: session.title,
     messageCount: countVisibleSessionMessages(session.messages),
     createdAt: session.createdAt,
@@ -275,6 +290,7 @@ export function buildMemorySessionListEntries(): SessionListEntry[] {
     return {
       id: s.id,
       agentId: s.agentId,
+      useModelRouter: s.useModelRouter,
       title: shouldRegenerateSessionTitle(s.title)
         ? stripSessionTitleAgentPrefix(deriveSessionTitleFromMessages(s.messages), [
             modelMetadata?.agent_name,
@@ -300,6 +316,7 @@ export function persistedSessionToIndexEntry(
   return normalizePersistedIndexEntry({
     id: persisted.id,
     agentId: persisted.agentId,
+    useModelRouter: persisted.useModelRouter,
     title: persisted.title,
     messageCount: persisted.messageCount,
     createdAt: persisted.createdAt,
@@ -356,6 +373,7 @@ export async function restorePersistedChatSessionForChat(
     const restored: InMemoryChatSession = {
       id: sessionId,
       agentId: persisted.agentId,
+      useModelRouter: persisted.useModelRouter,
       title: stripSessionTitleAgentPrefix(persisted.title, [
         modelMetadata?.agent_name,
         persisted.agentId,

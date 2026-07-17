@@ -7,10 +7,8 @@ import {
   type AgenticLoopState,
   type AgentToolCallResult,
   DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
-  type OpenAIChoice,
   type OpenAICodexTurnResult,
   type OpenAICodexUsage,
-  type OpenAIUsage,
   parseServerSentEvents,
   parseToolArguments,
   summarizeProgressThought,
@@ -50,6 +48,7 @@ import {
   shouldRetryOpenAICodexModel,
 } from "./openai-codex-models";
 import { providerExceptionRetryDelayMs, resolveProviderRetryPolicy } from "./provider-retry";
+import { parseOpenAICodexJsonTurnResponse } from "./openai-codex-response";
 import { broadcastTokenDelta } from "./status";
 import type { ToolContext } from "./tools/index";
 
@@ -148,32 +147,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
 
     if (contentType.includes("application/json")) {
       const json = (await response.json()) as Record<string, unknown>;
-      const choice = (json.choices as OpenAIChoice[] | undefined)?.[0];
-      if (choice?.message) {
-        return {
-          content: choice.message.content || "",
-          toolCalls: (choice.message.tool_calls || []).map((toolCall) => ({
-            id: toolCall.id,
-            callId: toolCall.id.split("|")[0] || toolCall.id,
-            itemId: toolCall.id.split("|")[1] || undefined,
-            name: toolCall.function?.name || "",
-            args: parseToolArguments(toolCall.function?.arguments),
-          })),
-          usage: json.usage
-            ? {
-                inputTokens: Number((json.usage as OpenAIUsage).prompt_tokens || 0),
-                outputTokens: Number((json.usage as OpenAIUsage).completion_tokens || 0),
-                cachedInputTokens: Number(
-                  (json.usage as OpenAIUsage).prompt_tokens_details?.cached_tokens || 0
-                ),
-              }
-            : undefined,
-          firstTokenMs:
-            requestStartedAt !== undefined
-              ? Math.max(0, Math.round(performance.now() - requestStartedAt))
-              : undefined,
-        };
-      }
+      return parseOpenAICodexJsonTurnResponse(json, requestStartedAt);
     }
 
     if (!response.body) {

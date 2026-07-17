@@ -1154,9 +1154,14 @@ struct GatewayClient: Sendable {
 
     func updateSessionAgent(
         _ id: String,
-        agentId: String
+        agentId: String? = nil,
+        useModelRouter: Bool = false
     ) async throws -> GatewaySessionAgentUpdateResponse {
-        let body = try JSONSerialization.data(withJSONObject: ["agentId": agentId])
+        var payload: [String: Any] = ["useModelRouter": useModelRouter]
+        if let agentId = firstNonEmptyGatewayString(agentId) {
+            payload["agentId"] = agentId
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
         let data = try await request("api/sessions/\(id)/agent", method: "PUT", body: body)
         return try JSONDecoder().decode(GatewaySessionAgentUpdateResponse.self, from: data)
     }

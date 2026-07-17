@@ -1200,6 +1200,7 @@ const routes: Record<string, RouteHandler> = {
       return {
         id: session.id,
         agent_id: session.agentId,
+        use_model_router: session.useModelRouter,
         ...modelMetadata,
         title: typeof session.title === "string" && session.title.trim() ? session.title : null,
         created_at: normalizeTimestamp(session.createdAt),
@@ -1260,6 +1261,7 @@ const routes: Record<string, RouteHandler> = {
     return {
       id: session.id,
       agent_id: session.agentId,
+      use_model_router: "useModelRouter" in session && session.useModelRouter === true,
       ...detailModelMetadata,
       title:
         "title" in session && typeof session.title === "string" && session.title.trim()
@@ -1315,7 +1317,12 @@ const routes: Record<string, RouteHandler> = {
     };
   },
   "PUT /api/sessions/:sessionId/agent": async (body, params) => {
-    const data = (body || {}) as { agentId?: string; agent_id?: string };
+    const data = (body || {}) as {
+      agentId?: string;
+      agent_id?: string;
+      useModelRouter?: boolean;
+      use_model_router?: boolean;
+    };
     const agentId =
       typeof data.agentId === "string" && data.agentId.trim()
         ? data.agentId.trim()
@@ -1323,7 +1330,11 @@ const routes: Record<string, RouteHandler> = {
           ? data.agent_id.trim()
           : "";
     try {
-      return await updateSessionAgent(params!.sessionId, agentId);
+      return await updateSessionAgent(
+        params!.sessionId,
+        agentId || undefined,
+        data.useModelRouter === true || data.use_model_router === true
+      );
     } catch (error) {
       return {
         success: false,

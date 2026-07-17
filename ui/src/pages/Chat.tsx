@@ -588,11 +588,25 @@ export function Chat() {
     async (agentId?: string) => {
       if (agentId === MODEL_ROUTER_SELECTOR_VALUE) {
         if (!modelRouterEnabled) return;
+        const previousUseModelRouter = useModelRouter;
         setUseModelRouter(true);
         setSessionContextUsage(null);
         setSessionTokenUsage(null);
+        if (!sessionId) return;
+        try {
+          const updated = await updateSessionAgent.mutateAsync({
+            sessionId,
+            useModelRouter: true,
+          });
+          setSessionContextUsage(updated.contextUsage ?? null);
+          setSessionTokenUsage(updated.tokenUsage ?? null);
+        } catch (error) {
+          setUseModelRouter(previousUseModelRouter);
+          console.error("Failed to update session routing:", error);
+        }
         return;
       }
+      const previousUseModelRouter = useModelRouter;
       const previousSelectedAgentId = selectedAgentId;
       const previousSessionAgentId = sessionAgentId;
       const nextAgentId = resolveSelectableSessionAgentId(agentId);
@@ -628,6 +642,7 @@ export function Chat() {
         setSessionContextUsage(updated.contextUsage ?? null);
         setSessionTokenUsage(updated.tokenUsage ?? null);
       } catch (error) {
+        setUseModelRouter(previousUseModelRouter);
         setSelectedAgentId(previousSelectedAgentId);
         setSessionAgentId(previousSessionAgentId);
         console.error("Failed to update session agent:", error);
@@ -636,6 +651,7 @@ export function Chat() {
     [
       resolveSelectableSessionAgentId,
       modelRouterEnabled,
+      useModelRouter,
       selectedAgentId,
       sessionAgentId,
       sessionId,
@@ -1281,6 +1297,7 @@ export function Chat() {
           result.workspace_dir || null
         );
         syncSessionAgentSelection(result.agent_id || null);
+        setUseModelRouter(result.use_model_router === true);
         setSessionContextUsage(
           (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
         );

@@ -253,6 +253,7 @@ final class GatewayClientModelTests: XCTestCase {
             {
               "id": "session-1",
               "agentId": "agent-1",
+              "useModelRouter": true,
               "messageCount": 3,
               "createdAt": "2026-07-02T18:00:00.000Z",
               "updatedAt": "2026-07-02T18:03:00.000Z",
@@ -266,6 +267,7 @@ final class GatewayClientModelTests: XCTestCase {
         )
 
         XCTAssertEqual(session.agent_id, "agent-1")
+        XCTAssertEqual(session.use_model_router, true)
         XCTAssertEqual(session.message_count, 3)
         XCTAssertEqual(session.created_at, "2026-07-02T18:00:00.000Z")
         XCTAssertEqual(session.updated_at, "2026-07-02T18:03:00.000Z")

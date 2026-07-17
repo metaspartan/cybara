@@ -1344,6 +1344,7 @@ export const chatApi = {
       {
         id: string;
         agent_id: string;
+        use_model_router?: boolean;
         title?: string | null;
         created_at: string;
         updated_at: string;
@@ -1358,6 +1359,7 @@ export const chatApi = {
     fetchApi<{
       id: string;
       agent_id: string;
+      use_model_router?: boolean;
       provider?: string;
       provider_id?: string;
       provider_name?: string;
@@ -1375,12 +1377,13 @@ export const chatApi = {
     }),
   getSessionPlan: (id: string) =>
     fetchApi<{ sessionId: string; plan: SessionPlanSnapshot | null }>("/sessions/" + id + "/plan"),
-  updateSessionAgent: (id: string, agentId: string) =>
+  updateSessionAgent: (id: string, agentId?: string, useModelRouter = false) =>
     fetchApi<{
       success: boolean;
       sessionId: string;
       agentId: string;
       agentName: string;
+      useModelRouter: boolean;
       provider?: string;
       providerId?: string;
       providerName?: string;
@@ -1390,7 +1393,7 @@ export const chatApi = {
       error?: string;
     }>("/sessions/" + id + "/agent", {
       method: "PUT",
-      body: JSON.stringify({ agentId }),
+      body: JSON.stringify({ agentId, ...(useModelRouter ? { useModelRouter: true } : {}) }),
     }),
   revertSession: (
     id: string,

@@ -26,17 +26,25 @@ extension ChatScreen {
     }
 
     func loadSubagents() async {
-        guard !subagentsLoading else { return }
+        guard let requestedSessionID = selectedSessionID else {
+            subagents = []
+            return
+        }
+        guard subagentsLoadingSessionID != requestedSessionID else { return }
         subagentsLoading = true
-        defer { subagentsLoading = false }
-        do {
-            guard let selectedSessionID else {
-                subagents = []
-                return
+        subagentsLoadingSessionID = requestedSessionID
+        defer {
+            if subagentsLoadingSessionID == requestedSessionID {
+                subagentsLoading = false
+                subagentsLoadingSessionID = nil
             }
-            subagents = try await client.nativeSubagents(sessionID: selectedSessionID)
+        }
+        do {
+            let loadedSubagents = try await client.nativeSubagents(sessionID: requestedSessionID)
+            guard selectedSessionID == requestedSessionID else { return }
+            subagents = loadedSubagents
         } catch {
-            if subagents.isEmpty {
+            if selectedSessionID == requestedSessionID && subagents.isEmpty {
                 subagents = []
             }
         }
@@ -273,9 +281,28 @@ extension ChatScreen {
 
     func changeChatAgent(_ agentID: String) async {
         guard !agentSaving else { return }
+        let previousUseModelRouter = useModelRouter
         guard agentID != nativeModelRouterSelectorValue else {
             guard modelRouterEnabled else { return }
             useModelRouter = true
+            guard let selectedSessionID else { return }
+            agentSaving = true
+            do {
+                let response = try await client.updateSessionAgent(
+                    selectedSessionID,
+                    useModelRouter: true
+                )
+                if response.success == false {
+                    throw GatewayClientError.badStatus(200, response.error ?? "Failed to update session routing")
+                }
+                await loadSessions()
+                await loadMessages(selectedSessionID)
+                error = nil
+            } catch {
+                useModelRouter = previousUseModelRouter
+                self.error = error.localizedDescription
+            }
+            agentSaving = false
             return
         }
         useModelRouter = false
@@ -292,7 +319,11 @@ extension ChatScreen {
         pendingAgentSessionID = selectedSessionID
         agentSaving = true
         do {
-            let response = try await client.updateSessionAgent(selectedSessionID, agentId: agentID)
+            let response = try await client.updateSessionAgent(
+                selectedSessionID,
+                agentId: agentID,
+                useModelRouter: false
+            )
             if response.success == false {
                 throw GatewayClientError.badStatus(200, response.error ?? "Failed to update session agent")
             }
@@ -302,6 +333,7 @@ extension ChatScreen {
             pendingAgentID = ""
             error = nil
         } catch {
+            useModelRouter = previousUseModelRouter
             pendingAgentSessionID = nil
             pendingAgentID = ""
             self.error = error.localizedDescription

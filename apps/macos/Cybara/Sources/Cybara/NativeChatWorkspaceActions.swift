@@ -114,6 +114,7 @@ extension ChatScreen {
                 return message.withAttachedImages(cached)
             }
             guard selectedSessionID == id else { return }
+            useModelRouter = detail.use_model_router == true
             let reference = messagesBySessionID[id] ?? messages
             let nextMessages = nativeMergeReloadedSessionMessages(
                 reference: reference,
@@ -448,7 +449,7 @@ extension ChatScreen {
         let snapshotActivities = nativeLiveActivities(from: snapshot)
         let preservingLocalLiveActivities = snapshotActivities.isEmpty && !liveActivities.isEmpty
         if !snapshotActivities.isEmpty {
-            liveActivities = nativeMergeLiveActivities([], incoming: snapshotActivities)
+            liveActivities = nativeMergeLiveActivities(liveActivities, incoming: snapshotActivities)
         }
         if let activeStep = liveActivities.reversed().first(where: { $0.phase == .start })?.text {
             liveCurrentStep = activeStep
