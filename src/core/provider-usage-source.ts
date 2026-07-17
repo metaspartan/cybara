@@ -11,6 +11,7 @@ export interface LiveUsageWindow {
   resetsAt?: string;
   windowSeconds?: number;
   unlimited?: boolean;
+  title?: string;
 }
 
 export interface LiveProviderUsage {
@@ -549,6 +550,7 @@ async function fetchMiniMaxUsage(
 }
 
 const ZAI_FIVE_HOUR_UNIT = 3;
+const ZAI_DAILY_UNIT = 4;
 const ZAI_MONTHLY_UNIT = 5;
 const ZAI_WEEKLY_UNIT = 6;
 
@@ -563,9 +565,23 @@ function zaiLimitWindow(record: Record<string, unknown> | undefined): LiveUsageW
   if (record.unlimited === true || record.isUnlimited === true || record.is_unlimited === true) {
     return { usedPercent: 0, unlimited: true };
   }
-  const usedPercent = clampPercent(
+  const directPercent = clampPercent(
     record.percentage ?? record.percent ?? record.used_percent ?? record.usedPercent
   );
+  const limit = toNumber(record.usage ?? record.total ?? record.limit);
+  const current = toNumber(record.currentValue ?? record.current_value ?? record.used);
+  const remaining = toNumber(record.remaining ?? record.remainingValue ?? record.remaining_value);
+  const usedFromRemaining =
+    limit !== undefined && remaining !== undefined ? limit - remaining : undefined;
+  const used =
+    current !== undefined && usedFromRemaining !== undefined
+      ? Math.max(current, usedFromRemaining)
+      : (current ?? usedFromRemaining);
+  const computedPercent =
+    limit !== undefined && limit > 0 && used !== undefined
+      ? clampPercent((used / limit) * 100)
+      : undefined;
+  const usedPercent = computedPercent ?? directPercent;
   if (usedPercent === undefined) return undefined;
   return {
     usedPercent,
@@ -596,15 +612,28 @@ function sortZaiTokenLimits(records: Record<string, unknown>[]): Record<string, 
   return records.slice().sort((left, right) => {
     const resetDifference = zaiResetTimestamp(left) - zaiResetTimestamp(right);
     if (Number.isFinite(resetDifference) && resetDifference !== 0) return resetDifference;
-    return (
-      (clampPercent(left.percentage ?? left.percent) ?? 0) -
-      (clampPercent(right.percentage ?? right.percent) ?? 0)
-    );
+    return 0;
   });
+}
+
+function zaiPlanLabel(data: Record<string, unknown>): string {
+  for (const value of [data.planName, data.plan, data.plan_type, data.packageName]) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "GLM Coding Plan";
+}
+
+function zaiApiErrorCode(body: unknown): number | undefined {
+  const root = asRecord(body);
+  if (!root) return undefined;
+  const code = toNumber(root.code);
+  if (root.success === false || (code !== undefined && code >= 400)) return code ?? 500;
+  return undefined;
 }
 
 export function parseZaiUsageResponse(body: unknown, now: number): LiveProviderUsage | null {
   const root = asRecord(body);
+  if (!root || zaiApiErrorCode(root) !== undefined) return null;
   const data = asRecord(root?.data) ?? root;
   const limits = Array.isArray(data?.limits) ? data.limits : [];
   const records = limits.flatMap((entry) => {
@@ -622,12 +651,21 @@ export function parseZaiUsageResponse(body: unknown, now: number): LiveProviderU
       descriptor.includes("5 hour") || descriptor.includes("5h") || descriptor.includes("five hour")
     );
   });
-  const hasUnitMetadata = tokenRecords.some((record) => toNumber(record.unit) !== undefined);
   const unclassifiedTokens = sortZaiTokenLimits(
-    tokenRecords.filter((record) => record !== weeklyRecord && record !== fiveHourRecord)
+    tokenRecords.filter(
+      (record) =>
+        record !== weeklyRecord &&
+        record !== fiveHourRecord &&
+        toNumber(record.unit) !== ZAI_DAILY_UNIT
+    )
   );
-  fiveHourRecord ??= unclassifiedTokens.shift();
-  if (!weeklyRecord && !hasUnitMetadata) weeklyRecord = unclassifiedTokens.shift();
+  if (!fiveHourRecord && !weeklyRecord && unclassifiedTokens.length > 1) {
+    fiveHourRecord = unclassifiedTokens.shift();
+    weeklyRecord = unclassifiedTokens.pop();
+  } else {
+    fiveHourRecord ??= unclassifiedTokens.shift();
+    weeklyRecord ??= unclassifiedTokens.pop();
+  }
   const monthlyRecord = records.find((record) => {
     if (record === weeklyRecord || record === fiveHourRecord) return false;
     const value = zaiLimitDescriptor(record);
@@ -640,10 +678,11 @@ export function parseZaiUsageResponse(body: unknown, now: number): LiveProviderU
   });
   const fiveHour = zaiLimitWindow(fiveHourRecord);
   const weekly = zaiLimitWindow(weeklyRecord);
-  const monthly = zaiLimitWindow(monthlyRecord);
+  const monthlyWindow = zaiLimitWindow(monthlyRecord);
+  const monthly = monthlyWindow ? { ...monthlyWindow, title: "Monthly MCP" } : undefined;
   if (!fiveHour && !weekly && !monthly) return null;
   return {
-    planLabel: "GLM Coding Plan",
+    planLabel: zaiPlanLabel(data),
     fiveHour,
     weekly,
     monthly,
@@ -676,7 +715,14 @@ async function fetchZaiUsage(token: string, baseUrl?: string): Promise<LiveProvi
       },
       signal: AbortSignal.timeout(10_000),
     });
-    if (res.ok) return parseZaiUsageResponse(await res.json(), Date.now());
+    if (res.ok) {
+      const body: unknown = await res.json();
+      const parsed = parseZaiUsageResponse(body, Date.now());
+      if (parsed) return parsed;
+      const errorCode = zaiApiErrorCode(body);
+      if (errorCode !== 401 && errorCode !== 403) return null;
+      continue;
+    }
     if (res.status !== 401 && res.status !== 403) return null;
   }
   return null;
@@ -1068,7 +1114,11 @@ function scanGrokProtobuf(
       const value = readVarint(data, index);
       if (!value) break;
       index = value.next;
-      scan.varintFields.push({ path: nextPath, value: value.value, order: scan.order++ });
+      scan.varintFields.push({
+        path: nextPath,
+        value: value.value,
+        order: scan.order++,
+      });
       continue;
     }
 
@@ -1122,7 +1172,11 @@ export function parseGrokWebBillingResponse(
   if (payloads.length === 0 && looksLikeProtobufPayload(data)) payloads = [data];
   if (payloads.length === 0) return null;
 
-  const scan: GrokProtobufScan = { fixed32Fields: [], varintFields: [], order: 0 };
+  const scan: GrokProtobufScan = {
+    fixed32Fields: [],
+    varintFields: [],
+    order: 0,
+  };
   for (const payload of payloads) scanGrokProtobuf(payload, 0, [], scan);
 
   const percent = scan.fixed32Fields

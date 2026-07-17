@@ -344,7 +344,74 @@ describe("parseZaiUsageResponse", () => {
     expect(result?.monthly?.resetsAt).toBe(new Date(1785984001998).toISOString());
   });
 
-  test("maps a weekly tool-call quota by provider unit", () => {
+  test("uses quota totals when they are more precise than the reported percentage", () => {
+    const result = parseZaiUsageResponse(
+      {
+        code: 200,
+        success: true,
+        data: {
+          planName: "GLM Coding Plan Pro",
+          limits: [
+            {
+              type: "TOKENS_LIMIT",
+              unit: 3,
+              number: 5,
+              usage: 400,
+              currentValue: 101,
+              remaining: 299,
+              percentage: 25,
+            },
+            {
+              type: "TOKENS_LIMIT",
+              unit: 6,
+              number: 1,
+              usage: 1000,
+              currentValue: 91,
+              remaining: 909,
+              percentage: 9,
+            },
+            {
+              type: "TIME_LIMIT",
+              unit: 5,
+              number: 1,
+              usage: 1000,
+              currentValue: 224,
+              remaining: 776,
+              percentage: 22,
+            },
+          ],
+        },
+      },
+      904
+    );
+
+    expect(result?.planLabel).toBe("GLM Coding Plan Pro");
+    expect(result?.fiveHour?.usedPercent).toBeCloseTo(25.25);
+    expect(result?.weekly?.usedPercent).toBeCloseTo(9.1);
+    expect(result?.monthly?.usedPercent).toBeCloseTo(22.4);
+  });
+
+  test("computes usage when percentage is absent", () => {
+    const result = parseZaiUsageResponse(
+      {
+        data: {
+          limits: [
+            {
+              type: "TIME_LIMIT",
+              usage: "1000",
+              currentValue: "19",
+              remaining: "981",
+            },
+          ],
+        },
+      },
+      905
+    );
+
+    expect(result?.monthly?.usedPercent).toBe(1.9);
+  });
+
+  test("maps the weekly coding-plan quota by provider unit", () => {
     const result = parseZaiUsageResponse(
       {
         data: {
@@ -356,7 +423,7 @@ describe("parseZaiUsageResponse", () => {
               percentage: 11,
             },
             {
-              type: "TOOL_CALL_LIMIT",
+              type: "TOKENS_LIMIT",
               unit: 6,
               number: 1,
               percentage: 63,
@@ -402,8 +469,16 @@ describe("parseZaiUsageResponse", () => {
       {
         data: {
           limits: [
-            { type: "TOKENS_LIMIT", percentage: 70, nextResetTime: 1783984001998 },
-            { type: "TOKENS_LIMIT", percentage: 20, nextResetTime: 1783489036671 },
+            {
+              type: "TOKENS_LIMIT",
+              percentage: 70,
+              nextResetTime: 1783984001998,
+            },
+            {
+              type: "TOKENS_LIMIT",
+              percentage: 20,
+              nextResetTime: 1783489036671,
+            },
           ],
         },
       },
@@ -412,6 +487,37 @@ describe("parseZaiUsageResponse", () => {
 
     expect(result?.fiveHour?.usedPercent).toBe(20);
     expect(result?.weekly?.usedPercent).toBe(70);
+  });
+
+  test("does not mislabel a daily token quota as the five-hour quota", () => {
+    const result = parseZaiUsageResponse(
+      {
+        data: {
+          limits: [
+            { type: "TOKENS_LIMIT", unit: 4, percentage: 35 },
+            { type: "TOKENS_LIMIT", unit: 6, percentage: 70 },
+          ],
+        },
+      },
+      906
+    );
+
+    expect(result?.fiveHour).toBeUndefined();
+    expect(result?.weekly?.usedPercent).toBe(70);
+  });
+
+  test("rejects API-level failures returned with HTTP-success payloads", () => {
+    expect(
+      parseZaiUsageResponse(
+        {
+          code: 401,
+          success: false,
+          msg: "token expired",
+          data: { limits: [{ type: "TOKENS_LIMIT", unit: 3, percentage: 0 }] },
+        },
+        907
+      )
+    ).toBeNull();
   });
 
   test("returns null when no recognized quota limit is present", () => {
@@ -424,14 +530,28 @@ describe("parseKimiUsageResponse", () => {
   test("maps coding-plan usage payloads into 5h, weekly, and monthly windows", () => {
     const result = parseKimiUsageResponse(
       {
-        usage: { name: "Weekly Usage", limit: 1000, used: 300, resetTime: 1783665881000 },
+        usage: {
+          name: "Weekly Usage",
+          limit: 1000,
+          used: 300,
+          resetTime: 1783665881000,
+        },
         limits: [
           {
-            detail: { name: "Fast 5h", limit: 100, remaining: 25, reset_in: 3600 },
+            detail: {
+              name: "Fast 5h",
+              limit: 100,
+              remaining: 25,
+              reset_in: 3600,
+            },
             window: { duration: 5, time_unit: "HOUR" },
           },
           {
-            detail: { name: "Monthly", percent: 41, reset_at: "2026-07-31T00:00:00Z" },
+            detail: {
+              name: "Monthly",
+              percent: 41,
+              reset_at: "2026-07-31T00:00:00Z",
+            },
             window: { duration: 1, time_unit: "MONTH" },
           },
         ],
@@ -547,7 +667,11 @@ describe("parseOpenCodeUsageResponse", () => {
           renewAt: "2026-08-01T00:00:00Z",
           usage: {
             rollingUsage: { usagePercent: 12.5, resetInSec: 3600 },
-            weeklyUsage: { used: 44, limit: 100, resetAt: "2026-07-14T00:00:00Z" },
+            weeklyUsage: {
+              used: 44,
+              limit: 100,
+              resetAt: "2026-07-14T00:00:00Z",
+            },
             monthlyUsage: { usage_percent: 65 },
           },
         },

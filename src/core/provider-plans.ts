@@ -982,7 +982,10 @@ function resolveStatus(
   const warning = providerConfig.warningThresholdPct ?? globalWarning;
   const worst = windows.reduce((max, window) => Math.max(max, window.usedPercent ?? 0), 0);
   if (worst >= hardStop) {
-    return { status: "exhausted", reason: `Plan usage reached ${Math.round(worst)}%` };
+    return {
+      status: "exhausted",
+      reason: `Plan usage reached ${Math.round(worst)}%`,
+    };
   }
   if (worst >= warning) {
     return { status: "warning", reason: `Plan usage is ${Math.round(worst)}%` };
@@ -1156,12 +1159,20 @@ export function getProviderPlanSnapshot(
   const windows =
     configuredWindows.length > 0 || !managedAutomatically
       ? configuredWindows
-      : [buildAutomaticUsageWindow({ usedTokens: localTokens30d, usedSpend: localSpend30d })];
+      : [
+          buildAutomaticUsageWindow({
+            usedTokens: localTokens30d,
+            usedSpend: localSpend30d,
+          }),
+        ];
 
   const resolved = !monitored
     ? { status: "disabled" as const, reason: "Provider is not monitored" }
     : managedAutomatically && !providerConfig
-      ? { status: "ok" as const, reason: "Automatic provider-plan tracking active" }
+      ? {
+          status: "ok" as const,
+          reason: "Automatic provider-plan tracking active",
+        }
       : resolveStatus(windows, providerConfig, cfg.warningThresholdPct);
 
   return {
@@ -1316,14 +1327,21 @@ function liveUsageWindow(
   id: string,
   title: string,
   kind: ProviderPlanWindowKind,
-  live: { usedPercent: number; resetsAt?: string; unlimited?: boolean } | undefined,
+  live:
+    | {
+        usedPercent: number;
+        resetsAt?: string;
+        unlimited?: boolean;
+        title?: string;
+      }
+    | undefined,
   resetDescription: string
 ): ProviderPlanUsageWindow | null {
   if (!live) return base ?? null;
   const resetsAt = live.resetsAt ?? base?.resetsAt;
   return {
     id,
-    title,
+    title: live.title ?? title,
     kind,
     usedTokens: base?.usedTokens ?? 0,
     tokenLimit: base?.tokenLimit,
