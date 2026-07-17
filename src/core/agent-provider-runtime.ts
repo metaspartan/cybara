@@ -26,8 +26,6 @@ import {
   CONTEXT_CHARS_PER_TOKEN_ESTIMATE,
   DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
   DEFAULT_MODEL_MAX_OUTPUT_TOKENS,
-  extractSandboxProviderFromToolResult,
-  formatToolActivityDetail,
   type GoogleContent,
   type GooglePart,
   type GoogleResponse,
@@ -53,9 +51,7 @@ import {
   consumeAgenticLoopBudgetWarning,
   createAgenticLoopRuntimeTracker,
   evaluateNoProgressLoop,
-  pauseAgenticLoopRuntime,
   resolveAgenticLoopLimit,
-  resumeAgenticLoopRuntime,
   updateNoProgressLoopState,
 } from "./agent-loop-runtime";
 import {
@@ -63,6 +59,7 @@ import {
   resolveModelMaxOutputTokens,
   shouldPreferMaxCompletionTokens,
 } from "./agent-model-limits";
+import { executeAgentTool } from "./agent-tool-execution";
 import { hasAgentTransferEnvelope } from "./agent-transfer";
 import {
   countWebResearchCalls,
@@ -81,16 +78,16 @@ import {
 import type { Agent, Provider, ToolDefinition } from "./database";
 import { classifyApiError } from "./error-classifier";
 import {
+  callCursorAgentTransport,
+  callDevinAgentTransport,
+  callGitLabDuoTransport,
+} from "./llm/agent-provider-transports";
+import {
   anthropicEndpointPath,
   anthropicRequestBase,
   anthropicRequestHeaders,
 } from "./llm/anthropic-vertex";
 import { applyProviderApiKey } from "./llm/auth-headers";
-import {
-  callCursorAgentTransport,
-  callDevinAgentTransport,
-  callGitLabDuoTransport,
-} from "./llm/agent-provider-transports";
 import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
 import { googleFunctionDeclaration } from "./llm/google-tool-schema";
 import {
@@ -101,6 +98,7 @@ import {
   toGoogleImagePart,
   toOpenAIImageBlock,
 } from "./llm/image-blocks";
+import { normalizeAnthropicModelToolUses, normalizeModelToolCalls } from "./llm/model-dialect";
 import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
 import {
@@ -130,7 +128,6 @@ import {
   toAnthropicReplayContentWithNormalizedToolUses,
   toOpenAIReplayMessageWithNormalizedToolCalls,
 } from "./llm/text-tool-calls";
-import { normalizeAnthropicModelToolUses, normalizeModelToolCalls } from "./llm/model-dialect";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
 import {
   compactOpenAIRequestMessagesForContext as compactOpenAIRequestMessages,
@@ -141,6 +138,7 @@ import {
   getOpenAICodexModelCandidates,
   shouldRetryOpenAICodexModel,
 } from "./openai-codex-models";
+import { getPluginProviderContribution } from "./plugins/provider-registry";
 import { type AnthropicCacheRequest, applyAnthropicCacheControl } from "./prompt-cache";
 import {
   boundedPoolRetryDelayMs,
@@ -156,7 +154,6 @@ import {
   providers as providerCatalog,
   providerManager,
 } from "./providers";
-import { getPluginProviderContribution } from "./plugins/provider-registry";
 import { recordRateLimit } from "./rate-limit-tracker";
 import { recordRateLimit as recordRouterRateLimit } from "./router";
 import {
@@ -165,16 +162,7 @@ import {
   broadcastTokenDelta,
   type StatusPayload,
 } from "./status";
-import { coerceToolArguments } from "./tool-argument-coercion";
-import { isToolPolicyBlockedMessage, sanitizeToolErrorMessage } from "./tool-result-classification";
-import {
-  executeTool,
-  formatMissingRequiredToolArgumentsError,
-  getMissingRequiredToolArguments,
-  hasTool,
-} from "./tools/handlers/index";
-import { noteToolActivityForTodoReminder } from "./tools/handlers/todo";
-import { type ToolContext, toolSchemas } from "./tools/index";
+import type { ToolContext } from "./tools/index";
 
 const SKILL_NUDGE_TRIVIAL_TOOLS = new Set([
   "read",
@@ -419,13 +407,6 @@ export abstract class AgentProviderRuntime {
     return "I stopped because the model produced tool calls without the required arguments.";
   }
 
-  private createToolCallStatusId(toolName: string): string {
-    const normalizedToolName = toolName.trim().toLowerCase() || "tool";
-    return `${normalizedToolName}-${Date.now().toString(36)}-${Math.random()
-      .toString(36)
-      .slice(2, 10)}`;
-  }
-
   private async executeToolWithHooks(
     toolName: string,
     args: Record<string, unknown>,
@@ -434,168 +415,16 @@ export abstract class AgentProviderRuntime {
     hookContext: AgentHookContext,
     runtimeTracker?: AgenticLoopRuntimeTracker
   ): Promise<{ skipped: boolean; result?: unknown }> {
-    if (!runtimeTracker) {
-      return await this.executeToolWithHooksInternal(
-        toolName,
-        args,
-        allowedToolNames,
-        toolContext,
-        hookContext
-      );
-    }
-    pauseAgenticLoopRuntime(runtimeTracker);
-    try {
-      return await this.executeToolWithHooksInternal(
-        toolName,
-        args,
-        allowedToolNames,
-        toolContext,
-        hookContext
-      );
-    } finally {
-      resumeAgenticLoopRuntime(runtimeTracker);
-    }
-  }
-
-  private async executeToolWithHooksInternal(
-    toolName: string,
-    args: Record<string, unknown>,
-    allowedToolNames: Set<string>,
-    toolContext: ToolContext | undefined,
-    hookContext: AgentHookContext
-  ): Promise<{ skipped: boolean; result?: unknown }> {
-    if (!hasTool(toolName)) {
-      const reason = `Tool not found: ${toolName}`;
-      await emitAgentHook({
-        type: "tool_blocked",
-        context: hookContext,
-        toolName,
-        args,
-        reason,
-      });
-      return { skipped: false, result: { error: reason } };
-    }
-
-    if (!allowedToolNames.has(toolName)) {
-      const reason = `Tool not enabled for this agent: ${toolName}`;
-      await emitAgentHook({
-        type: "tool_blocked",
-        context: hookContext,
-        toolName,
-        args,
-        reason,
-      });
-      return { skipped: false, result: { error: reason } };
-    }
-
-    args = coerceToolArguments(toolName, args, toolSchemas[toolName]?.input_schema);
-
-    const missingArgs = getMissingRequiredToolArguments(toolName, args);
-    if (missingArgs.length > 0) {
-      const reason = formatMissingRequiredToolArgumentsError(toolName, missingArgs);
-      await emitAgentHook({
-        type: "tool_blocked",
-        context: hookContext,
-        toolName,
-        args,
-        reason,
-      });
-      return { skipped: false, result: { error: reason } };
-    }
-
-    const hookDecision = await emitAgentHook({
-      type: "tool_before",
-      context: hookContext,
+    return await executeAgentTool({
       toolName,
       args,
+      allowedToolNames,
+      toolContext,
+      hookContext,
+      runtimeTracker,
+      broadcastStatus: (status, context, detail, extra) =>
+        this.broadcastAgentStatus(status, context, detail, extra),
     });
-    if (hookDecision?.block) {
-      const reason = hookDecision.reason || `Tool blocked by hook: ${toolName}`;
-      await emitAgentHook({
-        type: "tool_blocked",
-        context: hookContext,
-        toolName,
-        args,
-        reason,
-      });
-      return { skipped: false, result: { error: reason } };
-    }
-
-    const toolCallId = this.createToolCallStatusId(toolName);
-    try {
-      const startedAt = Date.now();
-      if (toolContext?.executionState) toolContext.executionState.toolCallsStarted += 1;
-      this.broadcastAgentStatus(
-        "tool_executing",
-        toolContext,
-        formatToolActivityDetail(toolName, args, "start"),
-        {
-          toolName,
-          toolCallId,
-          toolPhase: "start",
-        }
-      );
-      const result = await executeTool(toolName, args, toolContext);
-      const todoReminder = noteToolActivityForTodoReminder(toolName, toolContext);
-      if (todoReminder && result && typeof result === "object" && !Array.isArray(result)) {
-        (result as Record<string, unknown>).system_reminder = todoReminder;
-      }
-      this.broadcastAgentStatus(
-        "tool_completed",
-        toolContext,
-        formatToolActivityDetail(toolName, args, "result", result),
-        {
-          toolName,
-          toolCallId,
-          toolPhase: "result",
-          durationMs: Date.now() - startedAt,
-          sandboxProvider: extractSandboxProviderFromToolResult(result),
-        }
-      );
-      await emitAgentHook({
-        type: "tool_after",
-        context: hookContext,
-        toolName,
-        args,
-        result,
-      });
-      return { skipped: false, result };
-    } catch (error) {
-      const errorMessage = sanitizeToolErrorMessage(this.normalizeErrorMessage(error));
-      const blocked = isToolPolicyBlockedMessage(errorMessage);
-      const phase = blocked ? "blocked" : "error";
-      this.broadcastAgentStatus(
-        blocked ? "tool_completed" : "error",
-        toolContext,
-        formatToolActivityDetail(toolName, args, phase, errorMessage),
-        {
-          toolName,
-          toolCallId,
-          toolPhase: phase,
-        }
-      );
-      if (blocked) {
-        await emitAgentHook({
-          type: "tool_blocked",
-          context: hookContext,
-          toolName,
-          args,
-          reason: errorMessage,
-        });
-        return {
-          skipped: false,
-          result: { error: errorMessage, blocked: true },
-        };
-      }
-      await emitAgentHook({
-        type: "tool_error",
-        context: hookContext,
-        toolName,
-        args,
-        error: errorMessage,
-      });
-      return { skipped: false, result: { error: errorMessage } };
-    }
   }
 
   async callLLM(

@@ -1,0 +1,444 @@
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { agentManager } from "../../core/agent";
+import {
+  type AgentEvalRun,
+  applyGoldenAssertions,
+  buildTrajectoryStructure,
+  cancelIntelligenceBenchmarkRun,
+  clearIntelligenceBenchmarkCancelRequest,
+  compareTrajectoryStructures,
+  countTrajectories,
+  createEvalRun,
+  createEvalSuiteBundle,
+  createIntelligenceBenchmarkRun,
+  createResearchDatasetCard,
+  deleteGolden,
+  deleteIntelligenceBenchmarkRun,
+  deleteSessionTrajectories,
+  type EvalReplayOptions,
+  ensureSessionTrajectory,
+  evalSuiteJsonl,
+  explainIntelligenceBenchmarkGrade,
+  exportResearchTraces,
+  failIntelligenceBenchmarkRun,
+  findRunningIntelligenceBenchmark,
+  finishEvalRun,
+  forkSessionFromMessages,
+  getGolden,
+  getTrajectory,
+  gradeIntelligenceBenchmarkTask,
+  INTELLIGENCE_RATING_EDGE_MARGIN,
+  INTELLIGENCE_RATING_SUITE_ID,
+  importGoldens,
+  intelligenceRatingManifest,
+  intelligenceRatingTasks,
+  isIntelligenceBenchmarkCancelRequested,
+  listEvalRuns,
+  listGoldens,
+  listIntelligenceBenchmarkRuns,
+  listSessionTrajectories,
+  listTrajectories,
+  parseEvalSuiteBundle,
+  parseResearchExportFormat,
+  registerEvalReplayExecutor,
+  requestIntelligenceBenchmarkCancel,
+  saveGolden,
+  summarizeGolden,
+  summarizeResearchTraces,
+  updateGoldenAssertions,
+  updateIntelligenceBenchmarkRun,
+} from "../../core/agent-eval";
+import { config } from "../../core/config";
+import { deleteSession, handleChat } from "../chat";
+import type { RouteHandler } from "./_shared";
+import { parseBoundedQueryNumber } from "./request-runtime";
+
+function requireLabEnabled(): void {
+  if (!config.getLabSettings().enabled) {
+    throw new Error("Validation error: Lab is disabled in Settings");
+  }
+}
+
+function requireGoldenTurnsEnabled(): void {
+  requireLabEnabled();
+  if (!config.getLabSettings().goldenTurnsEnabled) {
+    throw new Error("Validation error: Golden turns are disabled in Lab settings");
+  }
+}
+
+async function runGoldenReplay(
+  goldenId: string,
+  options?: EvalReplayOptions
+): Promise<AgentEvalRun> {
+  const golden = getGolden(goldenId);
+  if (!golden) throw new Error("Golden test not found");
+  const run = createEvalRun(golden.id);
+  try {
+    const baseline = golden.baseline;
+    const replayAgentId = options?.agentId?.trim() || baseline.agentId;
+    const fork = await forkSessionFromMessages({
+      sourceSessionId: baseline.sessionId,
+      messages: baseline.request.messages.slice(0, -1),
+      workspaceDir: baseline.request.workspaceDir,
+      agentId: replayAgentId,
+      title: `${golden.name} replay`,
+    });
+    const response = await handleChat({
+      sessionId: fork.sessionId,
+      agentId: replayAgentId,
+      message: baseline.request.userMessage.content,
+      workspaceDir: baseline.request.workspaceDir ?? undefined,
+      modelOverride: options?.modelOverride,
+      source: "eval_replay",
+      tools: true,
+    });
+    const actual = buildTrajectoryStructure(response.message);
+    const comparison = applyGoldenAssertions(
+      compareTrajectoryStructures(baseline.structure, actual),
+      golden.assertions,
+      response.message
+    );
+    return finishEvalRun(run.id, {
+      replaySessionId: fork.sessionId,
+      comparison,
+    });
+  } catch (error) {
+    return finishEvalRun(run.id, {
+      error: error instanceof Error ? error.message : "Replay failed",
+    });
+  }
+}
+
+async function runQuickIntelligenceBenchmark(runId: string, agentId: string): Promise<void> {
+  let workspaceDir: string | null = null;
+  const sessionIds: string[] = [];
+  try {
+    const agent = agentManager.get(agentId);
+    if (!agent) throw new Error("Agent not found");
+    workspaceDir = mkdtempSync(join(tmpdir(), "cybara-benchmark-"));
+    await Bun.write(join(workspaceDir, "benchmark.txt"), "ORCHID-742");
+    await Bun.write(join(workspaceDir, "data.csv"), "value\n17\n25\n41\n9\n");
+    const results = [];
+    let cancelled = false;
+    for (const task of intelligenceRatingTasks) {
+      if (isIntelligenceBenchmarkCancelRequested(runId)) {
+        cancelled = true;
+        break;
+      }
+      const sessionId = crypto.randomUUID();
+      sessionIds.push(sessionId);
+      const startedAt = Date.now();
+      try {
+        const response = await handleChat({
+          sessionId,
+          agentId,
+          message: task.prompt,
+          workspaceDir: workspaceDir ?? undefined,
+          source: "intelligence_benchmark",
+          tools: task.requiredTool !== undefined,
+        });
+        const calls = (response.message.tool_calls ?? []).map((call) => call.name);
+        const passed = gradeIntelligenceBenchmarkTask(task, response.message.content, calls);
+        results.push({
+          taskId: task.id,
+          label: task.label,
+          category: task.category,
+          passed,
+          score: passed ? 100 : 0,
+          rating: task.rating,
+          response: response.message.content,
+          expected: task.expected,
+          difficulty: task.difficulty,
+          weight: task.weight,
+          gradingReason: explainIntelligenceBenchmarkGrade(task, response.message.content, calls),
+          durationMs: Date.now() - startedAt,
+          toolCalls: calls,
+          error: null,
+        });
+      } catch (error) {
+        results.push({
+          taskId: task.id,
+          label: task.label,
+          category: task.category,
+          passed: false,
+          score: 0,
+          rating: task.rating,
+          response: "",
+          expected: task.expected,
+          difficulty: task.difficulty,
+          weight: task.weight,
+          gradingReason: error instanceof Error ? error.message : "The task failed to run.",
+          durationMs: Date.now() - startedAt,
+          toolCalls: [],
+          error: error instanceof Error ? error.message : "Benchmark task failed",
+        });
+      }
+      updateIntelligenceBenchmarkRun(runId, results, false);
+    }
+    if (cancelled) cancelIntelligenceBenchmarkRun(runId, results);
+    else updateIntelligenceBenchmarkRun(runId, results, true);
+  } catch (error) {
+    failIntelligenceBenchmarkRun(
+      runId,
+      error instanceof Error ? error.message : "Benchmark failed"
+    );
+  } finally {
+    clearIntelligenceBenchmarkCancelRequest(runId);
+    await Promise.all(sessionIds.map((sessionId) => deleteSession(sessionId)));
+    sessionIds.forEach((sessionId) => deleteSessionTrajectories(sessionId));
+    if (workspaceDir) rmSync(workspaceDir, { recursive: true, force: true });
+  }
+}
+
+registerEvalReplayExecutor(runGoldenReplay);
+
+export const evalRoutes: Record<string, RouteHandler> = {
+  "GET /api/evals": () => ({
+    goldens: listGoldens().map(summarizeGolden),
+    runs: listEvalRuns(),
+  }),
+  "GET /api/evals/runs": (_body, params) => ({
+    runs: listEvalRuns(parseBoundedQueryNumber(params?.limit, 1, 500) ?? 100),
+  }),
+  "GET /api/evals/research/traces": (_body, params) => {
+    const limit = parseBoundedQueryNumber(params?.limit, 1, 1000) ?? 200;
+    const offset = parseBoundedQueryNumber(params?.offset, 0, 1_000_000) ?? 0;
+    const page = summarizeResearchTraces(listTrajectories(limit, offset));
+    const all = summarizeResearchTraces(listTrajectories(1000));
+    return {
+      traces: page.traces,
+      stats: all.stats,
+      total: countTrajectories(),
+      limit,
+      offset,
+    };
+  },
+  "GET /api/evals/research/export": (_body, params) => {
+    const lab = config.getLabSettings();
+    const ids = (params?.ids ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .slice(0, 1000);
+    const trajectories =
+      ids.length > 0
+        ? ids.map(getTrajectory).filter((trajectory) => trajectory !== null)
+        : listTrajectories(1000);
+    return exportResearchTraces(trajectories, {
+      format: parseResearchExportFormat(params?.format ?? lab.defaultExportFormat),
+      sanitize:
+        params?.sanitize === undefined
+          ? lab.sanitizeExportsByDefault
+          : params.sanitize === "true" || params.sanitize === "1",
+    });
+  },
+  "GET /api/evals/research/card": (_body, params) => {
+    const lab = config.getLabSettings();
+    const ids = (params?.ids ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .slice(0, 1000);
+    const trajectories =
+      ids.length > 0
+        ? ids.map(getTrajectory).filter((trajectory) => trajectory !== null)
+        : listTrajectories(1000);
+    return createResearchDatasetCard(trajectories, {
+      format: parseResearchExportFormat(params?.format ?? lab.defaultExportFormat),
+      sanitize:
+        params?.sanitize === undefined
+          ? lab.sanitizeExportsByDefault
+          : params.sanitize === "true" || params.sanitize === "1",
+    });
+  },
+  "GET /api/evals/benchmarks": (_body, params) => ({
+    suite: {
+      id: INTELLIGENCE_RATING_SUITE_ID,
+      name: "Cybara Capability Smoke Score",
+      description: `A reproducible, judge-free smoke suite with ${intelligenceRatingTasks.length} objectively graded tasks. The score is an internal ordinal for comparing runs of this suite version, not an externally calibrated intelligence measure.`,
+      taskCount: intelligenceRatingTasks.length,
+      minRating: Math.min(...intelligenceRatingTasks.map((task) => task.rating)),
+      maxRating:
+        Math.max(...intelligenceRatingTasks.map((task) => task.rating)) +
+        INTELLIGENCE_RATING_EDGE_MARGIN,
+      tasks: intelligenceRatingTasks.map(({ expected: _expected, ...task }) => task),
+    },
+    runs: listIntelligenceBenchmarkRuns(parseBoundedQueryNumber(params?.limit, 1, 200) ?? 50),
+  }),
+  "GET /api/evals/benchmarks/manifest": () => {
+    const manifest = intelligenceRatingManifest();
+    return {
+      filename: `${INTELLIGENCE_RATING_SUITE_ID}-manifest.json`,
+      mimeType: "application/json",
+      content: JSON.stringify(manifest, null, 2),
+      manifest,
+    };
+  },
+  "GET /api/evals/benchmarks/export": () => {
+    const runs = listIntelligenceBenchmarkRuns(200);
+    return {
+      filename: `cybara-benchmarks-${new Date().toISOString().slice(0, 10)}.jsonl`,
+      mimeType: "application/x-ndjson",
+      content: runs.map((run) => JSON.stringify(run)).join("\n"),
+      count: runs.length,
+    };
+  },
+  "POST /api/evals/benchmarks/cancel": (body) => {
+    const data = (body || {}) as { runId?: string };
+    if (!data.runId?.trim()) return { success: false, error: "runId is required" };
+    const run = requestIntelligenceBenchmarkCancel(data.runId.trim());
+    if (!run) return { success: false, error: "No running benchmark with that id" };
+    return { success: true, run };
+  },
+  "DELETE /api/evals/benchmarks": (body) => {
+    const data = (body || {}) as { runId?: string };
+    if (!data.runId?.trim()) return { success: false, error: "runId is required" };
+    const deleted = deleteIntelligenceBenchmarkRun(data.runId.trim());
+    if (!deleted) {
+      return {
+        success: false,
+        error: "Run not found or still running; cancel it first",
+      };
+    }
+    return { success: true };
+  },
+  "POST /api/evals/benchmarks/run": async (body) => {
+    const data = (body || {}) as { agentId?: string };
+    if (!data.agentId?.trim()) return { success: false, error: "agentId is required" };
+    const agentId = data.agentId.trim();
+    const running = findRunningIntelligenceBenchmark();
+    if (running) {
+      return {
+        success: false,
+        error: "A benchmark is already running",
+        run: running,
+      };
+    }
+    const agent = agentManager.get(agentId);
+    if (!agent) return { success: false, error: "Agent not found" };
+    const run = createIntelligenceBenchmarkRun({
+      agentId,
+      provider: agent.provider_id || agent.provider || null,
+      model: agent.model || null,
+    });
+    void runQuickIntelligenceBenchmark(run.id, agentId);
+    return { success: true, run };
+  },
+  "GET /api/evals/export": (_body, params) => {
+    const goldens = listGoldens();
+    const runs = listEvalRuns(500);
+    const sanitized = params?.sanitize === "true" || params?.sanitize === "1";
+    const date = new Date().toISOString().slice(0, 10);
+    if (params?.format === "jsonl") {
+      return {
+        filename: `cybara-eval-trajectories-${date}.jsonl`,
+        mimeType: "application/x-ndjson",
+        content: evalSuiteJsonl(goldens, { sanitize: sanitized, runs }),
+        count: goldens.length,
+      };
+    }
+    return {
+      filename: `cybara-eval-suite-${date}.json`,
+      mimeType: "application/json",
+      content: JSON.stringify(createEvalSuiteBundle(goldens, { sanitize: sanitized }), null, 2),
+      count: goldens.length,
+    };
+  },
+  "POST /api/evals/import": (body) => {
+    const data = (body || {}) as { bundle?: unknown };
+    try {
+      const imported = importGoldens(parseEvalSuiteBundle(data.bundle));
+      return { success: true, imported, count: imported.length };
+    } catch (error) {
+      return {
+        success: false,
+        imported: [],
+        count: 0,
+        error: error instanceof Error ? error.message : "Invalid eval suite",
+      };
+    }
+  },
+  "POST /api/evals/goldens": async (body) => {
+    requireGoldenTurnsEnabled();
+    const data = (body || {}) as {
+      sessionId?: string;
+      messageIndex?: number;
+      name?: string;
+      description?: string;
+      tags?: string[];
+      assertions?: unknown;
+    };
+    if (!data.sessionId?.trim()) return { success: false, error: "sessionId is required" };
+    const trajectory = await ensureSessionTrajectory(data.sessionId.trim(), data.messageIndex);
+    const golden = saveGolden({
+      trajectory,
+      name:
+        data.name?.trim() || trajectory.request.userMessage.content.slice(0, 80) || "Golden run",
+      description: data.description,
+      tags: Array.isArray(data.tags) ? data.tags : [],
+      assertions: data.assertions,
+    });
+    return { success: true, golden };
+  },
+  "DELETE /api/evals/goldens/:id": (_body, params) => ({
+    success: deleteGolden(params?.id || ""),
+  }),
+  "PUT /api/evals/goldens/:id/assertions": (body, params) => {
+    const data = (body || {}) as { assertions?: unknown };
+    const golden = updateGoldenAssertions(params?.id || "", data.assertions);
+    return golden ? { success: true, golden } : { success: false, error: "Golden test not found" };
+  },
+  "POST /api/evals/goldens/:id/replay": async (body, params) => {
+    const data = (body || {}) as { agentId?: string; modelOverride?: string };
+    return {
+      success: true,
+      run: await runGoldenReplay(params?.id || "", {
+        agentId: data.agentId,
+        modelOverride: data.modelOverride,
+      }),
+    };
+  },
+  "POST /api/evals/run": async (body) => {
+    const data = (body || {}) as { goldenIds?: string[] };
+    const selected = Array.isArray(data.goldenIds)
+      ? listGoldens().filter((golden) => data.goldenIds?.includes(golden.id))
+      : listGoldens();
+    const runs: AgentEvalRun[] = [];
+    for (const golden of selected) {
+      runs.push(await runGoldenReplay(golden.id));
+    }
+    return { success: true, runs };
+  },
+  "GET /api/sessions/:sessionId/trajectories": (_body, params) => {
+    requireLabEnabled();
+    const sessionId = params?.sessionId || "";
+    return {
+      sessionId,
+      trajectories: listSessionTrajectories(sessionId),
+    };
+  },
+  "POST /api/sessions/:sessionId/golden": async (body, params) => {
+    requireGoldenTurnsEnabled();
+    const data = (body || {}) as {
+      messageIndex?: number;
+      name?: string;
+      description?: string;
+      tags?: string[];
+      assertions?: unknown;
+    };
+    const trajectory = await ensureSessionTrajectory(params?.sessionId || "", data.messageIndex);
+    return {
+      success: true,
+      golden: saveGolden({
+        trajectory,
+        name:
+          data.name?.trim() || trajectory.request.userMessage.content.slice(0, 80) || "Golden run",
+        description: data.description,
+        tags: Array.isArray(data.tags) ? data.tags : [],
+        assertions: data.assertions,
+      }),
+    };
+  },
+};

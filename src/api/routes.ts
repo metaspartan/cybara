@@ -1,5 +1,3 @@
-import { mkdtempSync, rmSync } from "fs";
-import { tmpdir } from "os";
 import { dirname, isAbsolute, join, resolve } from "path";
 import {
   type ChatMessage,
@@ -30,57 +28,8 @@ import {
   handleMemoryList,
   handleMemorySearch,
 } from "../api/memory/memory-api";
-import { getClientIp } from "./client-ip";
 import { agentManager, getBuiltinTools } from "../core/agent";
-import {
-  type AgentEvalRun,
-  applyGoldenAssertions,
-  buildTrajectoryStructure,
-  cancelIntelligenceBenchmarkRun,
-  clearIntelligenceBenchmarkCancelRequest,
-  compareTrajectoryStructures,
-  countTrajectories,
-  createResearchDatasetCard,
-  createEvalRun,
-  createEvalSuiteBundle,
-  createIntelligenceBenchmarkRun,
-  deleteGolden,
-  deleteIntelligenceBenchmarkRun,
-  deleteSessionTrajectories,
-  type EvalReplayOptions,
-  ensureSessionTrajectory,
-  evalSuiteJsonl,
-  explainIntelligenceBenchmarkGrade,
-  exportResearchTraces,
-  failIntelligenceBenchmarkRun,
-  findRunningIntelligenceBenchmark,
-  finishEvalRun,
-  forkSession,
-  forkSessionFromMessages,
-  getGolden,
-  getTrajectory,
-  gradeIntelligenceBenchmarkTask,
-  INTELLIGENCE_RATING_EDGE_MARGIN,
-  INTELLIGENCE_RATING_SUITE_ID,
-  importGoldens,
-  intelligenceRatingManifest,
-  intelligenceRatingTasks,
-  isIntelligenceBenchmarkCancelRequested,
-  listEvalRuns,
-  listGoldens,
-  listIntelligenceBenchmarkRuns,
-  listSessionTrajectories,
-  listTrajectories,
-  parseEvalSuiteBundle,
-  parseResearchExportFormat,
-  registerEvalReplayExecutor,
-  requestIntelligenceBenchmarkCancel,
-  saveGolden,
-  summarizeGolden,
-  summarizeResearchTraces,
-  updateIntelligenceBenchmarkRun,
-  updateGoldenAssertions,
-} from "../core/agent-eval";
+import { forkSession } from "../core/agent-eval";
 import { agentImageSupportById, agentSupportsImages } from "../core/agent-image-capabilities";
 import { parseAgentConfig } from "../core/agent-internals";
 import {
@@ -114,19 +63,6 @@ import { config, redactSandboxRuntimeConfig } from "../core/config";
 import { credentialDestinationChanged } from "../core/credential-destination";
 import { resolveCybaraHome, setCybaraHomeOverride } from "../core/cybara-home";
 import { tables } from "../core/database";
-import {
-  LOCAL_STT_MODELS,
-  LOCAL_TTS_MODELS,
-  LOCAL_TTS_VOICES,
-  listLocalSttModelStatus,
-  listLocalTtsModelStatus,
-  loadLocalSttModel,
-  loadLocalTtsModel,
-  transcribeLocalSpeech,
-  unloadLocalSttModel,
-  unloadLocalTtsModel,
-} from "../core/local-speech";
-import { normalizeLocalTranscriptionAudio } from "../core/local-speech-audio";
 import { createLogger } from "../core/logger";
 import {
   getAgentLogs,
@@ -163,7 +99,16 @@ import {
   listPluginCommands,
   listPluginProviderContributions,
 } from "../core/plugins/runtime";
-import { discoverMarketplacePlugins, installMarketplacePlugin } from "./plugin-marketplace";
+import {
+  createProviderAccountPool,
+  deleteProviderAccountPool,
+  getProviderAccountPool,
+  listProviderAccountPools,
+  type ProviderAccountPool,
+  type ProviderAccountPoolInput,
+  removeProviderFromAccountPools,
+  updateProviderAccountPool,
+} from "../core/provider-account-pool";
 import {
   enrichProviderPlanStatusWithLiveUsage,
   getProviderPlanAvailability,
@@ -171,28 +116,13 @@ import {
   getProviderPlanStatus,
   setProviderPlanMonitoringConfig,
 } from "../core/provider-plans";
-import {
-  createProviderAccountPool,
-  deleteProviderAccountPool,
-  getProviderAccountPool,
-  listProviderAccountPools,
-  removeProviderFromAccountPools,
-  type ProviderAccountPool,
-  type ProviderAccountPoolInput,
-  updateProviderAccountPool,
-} from "../core/provider-account-pool";
+import { normalizeProviderSettings } from "../core/provider-settings";
 import {
   type ProviderType,
   providerManager,
   providers,
   resolveProviderType,
 } from "../core/providers";
-import { normalizeProviderSettings } from "../core/provider-settings";
-import {
-  createRealtimeVoiceSession,
-  getRealtimeVoiceStatus,
-  testRealtimeVoiceConnection,
-} from "../core/realtime-voice";
 import { getAllPricing, getRouterStatus, type RouterConfig, selectProvider } from "../core/router";
 import { openUrlInBrowser } from "../core/runtime/open-url";
 import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbox";
@@ -217,7 +147,6 @@ import {
   runSourceMigration,
   type SourceMigrationRequest,
 } from "../core/source-migration";
-import { resolveSpeechTtsProvider, synthesizeSpeech } from "../core/speech";
 import * as subagentRegistry from "../core/subagent-registry";
 import {
   createSystemBackup,
@@ -228,7 +157,6 @@ import {
   systemBackupDirectory,
 } from "../core/system-backup";
 import { buildSystemPrompt } from "../core/system-prompt";
-import { detectSystemSpeechCapability } from "../core/system-speech";
 import { getAlwaysAllowlist, getPendingApprovals, resolveApproval } from "../core/tool-approval";
 import {
   clearSubagentSession,
@@ -246,17 +174,19 @@ import {
 } from "../core/tools/index";
 import { checkForUpdate, isUpdateCheckDisabled } from "../core/update-check";
 import { workspaceIndexer } from "../core/workspace-indexer";
+import { getClientIp } from "./client-ip";
 import { getCybaraDataDirConfigInfo, getCybaraDataDirInfo } from "./data-dir-info";
 import { gatewayAuthSettingsResponse, updateGatewayHostSetting } from "./gateway-network";
 import { buildJourney } from "./journey";
 import { mobileRoutes } from "./mobile";
+import { discoverMarketplacePlugins, installMarketplacePlugin } from "./plugin-marketplace";
 import { pollProviderDeviceCodeOAuth, startProviderDeviceCodeOAuth } from "./provider-oauth-device";
 import { pollProviderRedirectOAuth, startProviderRedirectOAuth } from "./provider-oauth-redirect";
 import { getCombinedLogs, getCombinedLogsPage, getLogStats, normalizeTimestamp } from "./queries";
 import { cacheMetricsRoutes, invalidateCachedRoute, prewarmMetricsRoutes } from "./route-cache";
+import { createRouteMatcher } from "./route-matcher";
 import {
   buildGoogleAuthHeaders,
-  decodeDictationAudioBase64,
   formatChannelTestError,
   isLikelyGoogleApiKey,
   isRawHttpResponse,
@@ -266,25 +196,21 @@ import {
   normalizeSecretString,
   normalizeSystemPromptConfig,
   parseJsonObject,
-  pickDictationProvider,
   type RouteContext,
   type RouteHandler,
   type SessionMessageView,
   sanitizeSessionMessages,
-  transcribeWithOpenAICompatibleProvider,
 } from "./routes/_shared";
-import { ideLspRoutes } from "./routes/ide-lsp-routes";
-import { integrationCredentialRoutes } from "./routes/integration-credential-routes";
 import { accountConnectorRoutes } from "./routes/account-connectors";
-import { mcpRoutes } from "./routes/mcp";
-import { metricsRoutes } from "./routes/metrics";
-import { sessionEventRoutes } from "./routes/session-events";
+import { browserSupervisionRoutes } from "./routes/browser-supervision";
+import { evalRoutes } from "./routes/evals";
 import { externalTelemetryRoutes } from "./routes/external-telemetry";
 import { getProcessMemoryUsage, healthRoutes } from "./routes/health";
-import { toolCapabilityPolicyRoutes } from "./routes/tool-capability-policy";
-import { browserSupervisionRoutes } from "./routes/browser-supervision";
+import { ideLspRoutes } from "./routes/ide-lsp-routes";
+import { integrationCredentialRoutes } from "./routes/integration-credential-routes";
+import { mcpRoutes } from "./routes/mcp";
+import { metricsRoutes } from "./routes/metrics";
 import { nearbyRoutes } from "./routes/nearby";
-import { createRouteMatcher } from "./route-matcher";
 import {
   validateProviderBaseUrlShape,
   validateProviderCredentialShape,
@@ -299,6 +225,7 @@ import {
   securityHeaders,
 } from "./routes/request-runtime";
 import { runtimeRoutes } from "./routes/runtime-routes";
+import { sessionEventRoutes } from "./routes/session-events";
 import {
   latestSessionModelMetadata,
   type SessionModelMetadata,
@@ -306,6 +233,8 @@ import {
   sessionModelMetadataSnapshot,
 } from "./routes/session-model-metadata";
 import { formatSkillInstallSpec } from "./routes/skill-formatting";
+import { speechRoutes } from "./routes/speech";
+import { toolCapabilityPolicyRoutes } from "./routes/tool-capability-policy";
 import { walletRoutes } from "./routes/wallet";
 import { webResearchRoutes } from "./routes/web-research-routes";
 import {
@@ -324,64 +253,6 @@ import {
 import { serializeSubagentDetail, serializeSubagentSummary } from "./subagents";
 
 const log = createLogger("API");
-
-function requireLabEnabled(): void {
-  if (!config.getLabSettings().enabled) {
-    throw new Error("Validation error: Lab is disabled in Settings");
-  }
-}
-
-function requireGoldenTurnsEnabled(): void {
-  requireLabEnabled();
-  if (!config.getLabSettings().goldenTurnsEnabled) {
-    throw new Error("Validation error: Golden turns are disabled in Lab settings");
-  }
-}
-
-async function runGoldenReplay(
-  goldenId: string,
-  options?: EvalReplayOptions
-): Promise<AgentEvalRun> {
-  const golden = getGolden(goldenId);
-  if (!golden) throw new Error("Golden test not found");
-  const run = createEvalRun(golden.id);
-  try {
-    const baseline = golden.baseline;
-    const replayAgentId = options?.agentId?.trim() || baseline.agentId;
-    const fork = await forkSessionFromMessages({
-      sourceSessionId: baseline.sessionId,
-      messages: baseline.request.messages.slice(0, -1),
-      workspaceDir: baseline.request.workspaceDir,
-      agentId: replayAgentId,
-      title: `${golden.name} replay`,
-    });
-    const response = await handleChat({
-      sessionId: fork.sessionId,
-      agentId: replayAgentId,
-      message: baseline.request.userMessage.content,
-      workspaceDir: baseline.request.workspaceDir ?? undefined,
-      modelOverride: options?.modelOverride,
-      source: "eval_replay",
-      tools: true,
-    });
-    const actual = buildTrajectoryStructure(response.message);
-    const comparison = applyGoldenAssertions(
-      compareTrajectoryStructures(baseline.structure, actual),
-      golden.assertions,
-      response.message
-    );
-    return finishEvalRun(run.id, {
-      replaySessionId: fork.sessionId,
-      comparison,
-    });
-  } catch (error) {
-    return finishEvalRun(run.id, {
-      error: error instanceof Error ? error.message : "Replay failed",
-    });
-  }
-}
-
-registerEvalReplayExecutor(runGoldenReplay);
 
 function providerAccountPoolResponse(pool: ProviderAccountPool): Record<string, unknown> {
   return {
@@ -434,87 +305,6 @@ function providerAccountPoolInput(
   };
 }
 
-async function runQuickIntelligenceBenchmark(runId: string, agentId: string): Promise<void> {
-  let workspaceDir: string | null = null;
-  const sessionIds: string[] = [];
-  try {
-    const agent = agentManager.get(agentId);
-    if (!agent) throw new Error("Agent not found");
-    workspaceDir = mkdtempSync(join(tmpdir(), "cybara-benchmark-"));
-    await Bun.write(join(workspaceDir, "benchmark.txt"), "ORCHID-742");
-    await Bun.write(join(workspaceDir, "data.csv"), "value\n17\n25\n41\n9\n");
-    const results = [];
-    let cancelled = false;
-    for (const task of intelligenceRatingTasks) {
-      if (isIntelligenceBenchmarkCancelRequested(runId)) {
-        cancelled = true;
-        break;
-      }
-      const sessionId = crypto.randomUUID();
-      sessionIds.push(sessionId);
-      const startedAt = Date.now();
-      try {
-        const response = await handleChat({
-          sessionId,
-          agentId,
-          message: task.prompt,
-          workspaceDir: workspaceDir ?? undefined,
-          source: "intelligence_benchmark",
-          tools: task.requiredTool !== undefined,
-        });
-        const calls = (response.message.tool_calls ?? []).map((call) => call.name);
-        const passed = gradeIntelligenceBenchmarkTask(task, response.message.content, calls);
-        results.push({
-          taskId: task.id,
-          label: task.label,
-          category: task.category,
-          passed,
-          score: passed ? 100 : 0,
-          rating: task.rating,
-          response: response.message.content,
-          expected: task.expected,
-          difficulty: task.difficulty,
-          weight: task.weight,
-          gradingReason: explainIntelligenceBenchmarkGrade(task, response.message.content, calls),
-          durationMs: Date.now() - startedAt,
-          toolCalls: calls,
-          error: null,
-        });
-      } catch (error) {
-        results.push({
-          taskId: task.id,
-          label: task.label,
-          category: task.category,
-          passed: false,
-          score: 0,
-          rating: task.rating,
-          response: "",
-          expected: task.expected,
-          difficulty: task.difficulty,
-          weight: task.weight,
-          gradingReason: error instanceof Error ? error.message : "The task failed to run.",
-          durationMs: Date.now() - startedAt,
-          toolCalls: [],
-          error: error instanceof Error ? error.message : "Benchmark task failed",
-        });
-      }
-      updateIntelligenceBenchmarkRun(runId, results, false);
-    }
-    if (cancelled) cancelIntelligenceBenchmarkRun(runId, results);
-    else updateIntelligenceBenchmarkRun(runId, results, true);
-  } catch (error) {
-    failIntelligenceBenchmarkRun(
-      runId,
-      error instanceof Error ? error.message : "Benchmark failed"
-    );
-  } finally {
-    clearIntelligenceBenchmarkCancelRequest(runId);
-    await Promise.all(sessionIds.map((sessionId) => deleteSession(sessionId)));
-    sessionIds.forEach((sessionId) => deleteSessionTrajectories(sessionId));
-    if (workspaceDir) rmSync(workspaceDir, { recursive: true, force: true });
-  }
-}
-
 function pluginSummary(plugin: ReturnType<typeof listInstalledPlugins>[number]) {
   return {
     id: plugin.manifest.id,
@@ -540,6 +330,8 @@ const routes: Record<string, RouteHandler> = {
   ...walletRoutes,
   ...mobileRoutes,
   ...metricsRoutes,
+  ...evalRoutes,
+  ...speechRoutes,
   ...sessionEventRoutes,
   ...externalTelemetryRoutes,
   ...toolCapabilityPolicyRoutes,
@@ -619,221 +411,6 @@ const routes: Record<string, RouteHandler> = {
       ...((body || {}) as SourceMigrationRequest),
       dryRun: false,
     }),
-  "GET /api/evals": () => ({
-    goldens: listGoldens().map(summarizeGolden),
-    runs: listEvalRuns(),
-  }),
-  "GET /api/evals/runs": (_body, params) => ({
-    runs: listEvalRuns(parseBoundedQueryNumber(params?.limit, 1, 500) ?? 100),
-  }),
-  "GET /api/evals/research/traces": (_body, params) => {
-    const limit = parseBoundedQueryNumber(params?.limit, 1, 1000) ?? 200;
-    const offset = parseBoundedQueryNumber(params?.offset, 0, 1_000_000) ?? 0;
-    const page = summarizeResearchTraces(listTrajectories(limit, offset));
-    const all = summarizeResearchTraces(listTrajectories(1000));
-    return {
-      traces: page.traces,
-      stats: all.stats,
-      total: countTrajectories(),
-      limit,
-      offset,
-    };
-  },
-  "GET /api/evals/research/export": (_body, params) => {
-    const lab = config.getLabSettings();
-    const ids = (params?.ids ?? "")
-      .split(",")
-      .map((id) => id.trim())
-      .filter(Boolean)
-      .slice(0, 1000);
-    const trajectories =
-      ids.length > 0
-        ? ids.map(getTrajectory).filter((trajectory) => trajectory !== null)
-        : listTrajectories(1000);
-    return exportResearchTraces(trajectories, {
-      format: parseResearchExportFormat(params?.format ?? lab.defaultExportFormat),
-      sanitize:
-        params?.sanitize === undefined
-          ? lab.sanitizeExportsByDefault
-          : params.sanitize === "true" || params.sanitize === "1",
-    });
-  },
-  "GET /api/evals/research/card": (_body, params) => {
-    const lab = config.getLabSettings();
-    const ids = (params?.ids ?? "")
-      .split(",")
-      .map((id) => id.trim())
-      .filter(Boolean)
-      .slice(0, 1000);
-    const trajectories =
-      ids.length > 0
-        ? ids.map(getTrajectory).filter((trajectory) => trajectory !== null)
-        : listTrajectories(1000);
-    return createResearchDatasetCard(trajectories, {
-      format: parseResearchExportFormat(params?.format ?? lab.defaultExportFormat),
-      sanitize:
-        params?.sanitize === undefined
-          ? lab.sanitizeExportsByDefault
-          : params.sanitize === "true" || params.sanitize === "1",
-    });
-  },
-  "GET /api/evals/benchmarks": (_body, params) => ({
-    suite: {
-      id: INTELLIGENCE_RATING_SUITE_ID,
-      name: "Cybara Capability Smoke Score",
-      description: `A reproducible, judge-free smoke suite with ${intelligenceRatingTasks.length} objectively graded tasks. The score is an internal ordinal for comparing runs of this suite version, not an externally calibrated intelligence measure.`,
-      taskCount: intelligenceRatingTasks.length,
-      minRating: Math.min(...intelligenceRatingTasks.map((task) => task.rating)),
-      maxRating:
-        Math.max(...intelligenceRatingTasks.map((task) => task.rating)) +
-        INTELLIGENCE_RATING_EDGE_MARGIN,
-      tasks: intelligenceRatingTasks.map(({ expected: _expected, ...task }) => task),
-    },
-    runs: listIntelligenceBenchmarkRuns(parseBoundedQueryNumber(params?.limit, 1, 200) ?? 50),
-  }),
-  "GET /api/evals/benchmarks/manifest": () => {
-    const manifest = intelligenceRatingManifest();
-    return {
-      filename: `${INTELLIGENCE_RATING_SUITE_ID}-manifest.json`,
-      mimeType: "application/json",
-      content: JSON.stringify(manifest, null, 2),
-      manifest,
-    };
-  },
-  "GET /api/evals/benchmarks/export": () => {
-    const runs = listIntelligenceBenchmarkRuns(200);
-    return {
-      filename: `cybara-benchmarks-${new Date().toISOString().slice(0, 10)}.jsonl`,
-      mimeType: "application/x-ndjson",
-      content: runs.map((run) => JSON.stringify(run)).join("\n"),
-      count: runs.length,
-    };
-  },
-  "POST /api/evals/benchmarks/cancel": (body) => {
-    const data = (body || {}) as { runId?: string };
-    if (!data.runId?.trim()) return { success: false, error: "runId is required" };
-    const run = requestIntelligenceBenchmarkCancel(data.runId.trim());
-    if (!run) return { success: false, error: "No running benchmark with that id" };
-    return { success: true, run };
-  },
-  "DELETE /api/evals/benchmarks": (body) => {
-    const data = (body || {}) as { runId?: string };
-    if (!data.runId?.trim()) return { success: false, error: "runId is required" };
-    const deleted = deleteIntelligenceBenchmarkRun(data.runId.trim());
-    if (!deleted) {
-      return {
-        success: false,
-        error: "Run not found or still running; cancel it first",
-      };
-    }
-    return { success: true };
-  },
-  "POST /api/evals/benchmarks/run": async (body) => {
-    const data = (body || {}) as { agentId?: string };
-    if (!data.agentId?.trim()) return { success: false, error: "agentId is required" };
-    const agentId = data.agentId.trim();
-    const running = findRunningIntelligenceBenchmark();
-    if (running)
-      return {
-        success: false,
-        error: "A benchmark is already running",
-        run: running,
-      };
-    const agent = agentManager.get(agentId);
-    if (!agent) return { success: false, error: "Agent not found" };
-    const run = createIntelligenceBenchmarkRun({
-      agentId,
-      provider: agent.provider_id || agent.provider || null,
-      model: agent.model || null,
-    });
-    void runQuickIntelligenceBenchmark(run.id, agentId);
-    return { success: true, run };
-  },
-  "GET /api/evals/export": (_body, params) => {
-    const goldens = listGoldens();
-    const runs = listEvalRuns(500);
-    const sanitized = params?.sanitize === "true" || params?.sanitize === "1";
-    const date = new Date().toISOString().slice(0, 10);
-    if (params?.format === "jsonl") {
-      return {
-        filename: `cybara-eval-trajectories-${date}.jsonl`,
-        mimeType: "application/x-ndjson",
-        content: evalSuiteJsonl(goldens, { sanitize: sanitized, runs }),
-        count: goldens.length,
-      };
-    }
-    return {
-      filename: `cybara-eval-suite-${date}.json`,
-      mimeType: "application/json",
-      content: JSON.stringify(createEvalSuiteBundle(goldens, { sanitize: sanitized }), null, 2),
-      count: goldens.length,
-    };
-  },
-  "POST /api/evals/import": (body) => {
-    const data = (body || {}) as { bundle?: unknown };
-    try {
-      const imported = importGoldens(parseEvalSuiteBundle(data.bundle));
-      return { success: true, imported, count: imported.length };
-    } catch (error) {
-      return {
-        success: false,
-        imported: [],
-        count: 0,
-        error: error instanceof Error ? error.message : "Invalid eval suite",
-      };
-    }
-  },
-  "POST /api/evals/goldens": async (body) => {
-    requireGoldenTurnsEnabled();
-    const data = (body || {}) as {
-      sessionId?: string;
-      messageIndex?: number;
-      name?: string;
-      description?: string;
-      tags?: string[];
-      assertions?: unknown;
-    };
-    if (!data.sessionId?.trim()) return { success: false, error: "sessionId is required" };
-    const trajectory = await ensureSessionTrajectory(data.sessionId.trim(), data.messageIndex);
-    const golden = saveGolden({
-      trajectory,
-      name:
-        data.name?.trim() || trajectory.request.userMessage.content.slice(0, 80) || "Golden run",
-      description: data.description,
-      tags: Array.isArray(data.tags) ? data.tags : [],
-      assertions: data.assertions,
-    });
-    return { success: true, golden };
-  },
-  "DELETE /api/evals/goldens/:id": (_body, params) => ({
-    success: deleteGolden(params!.id),
-  }),
-  "PUT /api/evals/goldens/:id/assertions": (body, params) => {
-    const data = (body || {}) as { assertions?: unknown };
-    const golden = updateGoldenAssertions(params!.id, data.assertions);
-    return golden ? { success: true, golden } : { success: false, error: "Golden test not found" };
-  },
-  "POST /api/evals/goldens/:id/replay": async (body, params) => {
-    const data = (body || {}) as { agentId?: string; modelOverride?: string };
-    return {
-      success: true,
-      run: await runGoldenReplay(params!.id, {
-        agentId: data.agentId,
-        modelOverride: data.modelOverride,
-      }),
-    };
-  },
-  "POST /api/evals/run": async (body) => {
-    const data = (body || {}) as { goldenIds?: string[] };
-    const selected = Array.isArray(data.goldenIds)
-      ? listGoldens().filter((golden) => data.goldenIds?.includes(golden.id))
-      : listGoldens();
-    const runs: AgentEvalRun[] = [];
-    for (const golden of selected) {
-      runs.push(await runGoldenReplay(golden.id));
-    }
-    return { success: true, runs };
-  },
   "GET /api/config": () => ({
     ...redactSecretConfig(config.getAll()),
     dangerous_tool_policy: config.getDangerousToolPolicy(),
@@ -932,172 +509,6 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/auth/rotate-key": () => ({
     success: true,
     ...rotateGatewayApiKey(),
-  }),
-  "GET /api/speech/settings": () => config.getSpeechSettings(),
-  "GET /api/speech/status": () => {
-    const settings = config.getSpeechSettings();
-    let tts: {
-      ready: boolean;
-      provider: string | null;
-      type: string | null;
-      systemFallback: boolean;
-      error: string | null;
-    } = {
-      ready: false,
-      provider: null,
-      type: null,
-      systemFallback: false,
-      error: null,
-    };
-    const systemVoice = detectSystemSpeechCapability();
-    tts.systemFallback = settings.tts.fallbackToSystem && systemVoice.available;
-    if (settings.tts.provider === "local") {
-      const localStatus = listLocalTtsModelStatus()[0];
-      tts = {
-        ...tts,
-        ready: localStatus?.state !== "error",
-        provider: "Kokoro 82M (local)",
-        type: "local",
-        error: localStatus?.state === "error" ? localStatus.lastError : null,
-      };
-    } else if (settings.tts.provider === "system") {
-      tts = {
-        ...tts,
-        ready: systemVoice.available,
-        provider: systemVoice.available ? systemVoice.label : null,
-        type: "system",
-        error: systemVoice.error,
-      };
-    } else {
-      try {
-        const resolved = resolveSpeechTtsProvider({ settings });
-        if (resolved) {
-          tts = {
-            ...tts,
-            ready: true,
-            provider: resolved.provider.name,
-            type: resolved.type,
-          };
-        } else if (tts.systemFallback) {
-          tts = {
-            ...tts,
-            ready: true,
-            provider: `${systemVoice.label} (fallback)`,
-            type: "system",
-          };
-        } else {
-          tts.error =
-            settings.tts.provider === "auto"
-              ? "No speech provider yet. Add OpenAI/ElevenLabs, pick Local Kokoro, or enable the system-voice fallback."
-              : `No ${settings.tts.provider} provider with speech credentials is configured.`;
-        }
-      } catch (error) {
-        tts.error = error instanceof Error ? error.message : "TTS provider resolution failed";
-      }
-    }
-    let stt: {
-      ready: boolean;
-      provider: string | null;
-      type: string | null;
-      native: boolean;
-      error: string | null;
-    } = {
-      ready: false,
-      provider: null,
-      type: null,
-      native: settings.stt.provider === "native",
-      error: null,
-    };
-    if (stt.native) {
-      stt.ready = true;
-    } else if (settings.stt.provider === "local" || settings.stt.provider === "auto") {
-      const localStatus = listLocalSttModelStatus()[0];
-      stt = {
-        ...stt,
-        ready: localStatus?.state !== "error",
-        provider: "Whisper (local)",
-        type: "local",
-        error: localStatus?.state === "error" ? localStatus.lastError : null,
-      };
-    } else {
-      try {
-        const provider = pickDictationProvider(settings.stt.providerId || undefined);
-        stt = {
-          ...stt,
-          ready: true,
-          provider: provider.name,
-          type: provider.provider,
-        };
-      } catch (error) {
-        stt.error =
-          error instanceof Error ? error.message : "Transcription provider resolution failed";
-      }
-    }
-    return {
-      success: true,
-      tts,
-      stt,
-      realtime: getRealtimeVoiceStatus(settings.realtime),
-      settings: {
-        ttsProvider: settings.tts.provider,
-        ttsVoice: settings.tts.voice,
-        sttProvider: settings.stt.provider,
-        realtimeProvider: settings.realtime.provider,
-      },
-    };
-  },
-  "PUT /api/speech/settings": (body) => ({
-    success: true,
-    speech: config.setSpeechSettings(body),
-  }),
-  "GET /api/speech/local/models": () => ({
-    success: true,
-    tts: {
-      models: LOCAL_TTS_MODELS,
-      voices: LOCAL_TTS_VOICES,
-      status: listLocalTtsModelStatus(),
-    },
-    stt: {
-      models: LOCAL_STT_MODELS,
-      status: listLocalSttModelStatus(),
-    },
-  }),
-  "POST /api/speech/local/load": async (body) => {
-    const data = (body || {}) as { model?: string; kind?: string };
-    try {
-      if (data.kind === "stt") {
-        await loadLocalSttModel(data.model?.trim() || undefined);
-        return { success: true, status: listLocalSttModelStatus() };
-      }
-      await loadLocalTtsModel(data.model?.trim() || undefined);
-      return { success: true, status: listLocalTtsModelStatus() };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Model load failed",
-        status: data.kind === "stt" ? listLocalSttModelStatus() : listLocalTtsModelStatus(),
-      };
-    }
-  },
-  "POST /api/speech/local/unload": (body) => {
-    const data = (body || {}) as { model?: string; kind?: string };
-    const unloaded =
-      data.kind === "stt"
-        ? unloadLocalSttModel(data.model?.trim() || undefined)
-        : unloadLocalTtsModel(data.model?.trim() || undefined);
-    return {
-      success: true,
-      unloaded,
-      status: data.kind === "stt" ? listLocalSttModelStatus() : listLocalTtsModelStatus(),
-    };
-  },
-  "POST /api/speech/realtime/session": async () => ({
-    success: true,
-    session: await createRealtimeVoiceSession(),
-  }),
-  "POST /api/speech/realtime/test": async () => ({
-    success: true,
-    result: await testRealtimeVoiceConnection(),
   }),
   "GET /api/sandbox/status": () => getSandboxRuntimeStatus(),
   "PUT /api/config": async (body) => {
@@ -2324,105 +1735,6 @@ const routes: Record<string, RouteHandler> = {
       ...listChatCommands(),
     ],
   }),
-  "POST /api/speech/dictate": async (body) => {
-    const data = body as {
-      audioBase64?: string;
-      mimeType?: string;
-      fileName?: string;
-      model?: string;
-      providerId?: string;
-      provider?: string;
-    };
-
-    if (!data.audioBase64 || typeof data.audioBase64 !== "string") {
-      throw new Error("Validation error: audioBase64 is required");
-    }
-
-    const fallbackMimeType =
-      typeof data.mimeType === "string" && data.mimeType.trim()
-        ? data.mimeType.trim()
-        : "audio/webm";
-    const decoded = decodeDictationAudioBase64(data.audioBase64, fallbackMimeType);
-    const speechSettings = config.getSpeechSettings();
-    const requestedProviderId =
-      typeof data.providerId === "string" && data.providerId.trim()
-        ? data.providerId.trim()
-        : undefined;
-    const requestedProvider =
-      typeof data.provider === "string" && data.provider.trim()
-        ? data.provider.trim().toLowerCase()
-        : speechSettings.stt.provider;
-    if (requestedProvider === "local") {
-      let pcmBytes: Uint8Array;
-      try {
-        pcmBytes = normalizeLocalTranscriptionAudio(decoded);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Recording could not be decoded";
-        throw new Error(`Validation error: ${message}`);
-      }
-      const result = await transcribeLocalSpeech({
-        pcmBytes,
-        model:
-          typeof data.model === "string" && data.model.trim()
-            ? data.model.trim()
-            : speechSettings.stt.provider === "local"
-              ? speechSettings.stt.model || undefined
-              : undefined,
-        language: speechSettings.stt.language || undefined,
-      });
-      return {
-        success: true,
-        text: result.text,
-        providerId: "local",
-        providerType: "local",
-        model: result.model,
-      };
-    }
-    const provider = pickDictationProvider(
-      requestedProviderId ||
-        (speechSettings.stt.providerId ? speechSettings.stt.providerId : undefined)
-    );
-    const result = await transcribeWithOpenAICompatibleProvider({
-      provider,
-      bytes: decoded.bytes,
-      mimeType: decoded.mimeType,
-      fileName:
-        typeof data.fileName === "string" && data.fileName.trim()
-          ? data.fileName.trim()
-          : "dictation.webm",
-      model:
-        typeof data.model === "string" && data.model.trim()
-          ? data.model.trim()
-          : speechSettings.stt.model || undefined,
-    });
-
-    return {
-      success: true,
-      text: result.text,
-      providerId: provider.id,
-      providerType: provider.provider,
-      model: result.model,
-    };
-  },
-  "POST /api/speech/synthesize": async (body) => {
-    const data = body as {
-      text?: string;
-      providerId?: string;
-      model?: string;
-      voice?: string;
-      format?: string;
-      speed?: number;
-    };
-    const result = await synthesizeSpeech({
-      text: typeof data.text === "string" ? data.text : "",
-      providerId: typeof data.providerId === "string" ? data.providerId : undefined,
-      model: typeof data.model === "string" ? data.model : undefined,
-      voice: typeof data.voice === "string" ? data.voice : undefined,
-      format: typeof data.format === "string" ? data.format : undefined,
-      speed: typeof data.speed === "number" ? data.speed : undefined,
-    });
-    return { success: true, ...result };
-  },
   "GET /api/sessions/search": (_body, params) =>
     searchSessionMessages(typeof params?.q === "string" ? params.q : "", {
       limit: parseBoundedQueryNumber(params?.limit, 1, 100) ?? 20,
@@ -2973,35 +2285,6 @@ const routes: Record<string, RouteHandler> = {
     return {
       sessionId,
       plan: extractLatestSessionPlan(sessionId, messages),
-    };
-  },
-  "GET /api/sessions/:sessionId/trajectories": (_body, params) => {
-    requireLabEnabled();
-    return {
-      sessionId: params!.sessionId,
-      trajectories: listSessionTrajectories(params!.sessionId),
-    };
-  },
-  "POST /api/sessions/:sessionId/golden": async (body, params) => {
-    requireGoldenTurnsEnabled();
-    const data = (body || {}) as {
-      messageIndex?: number;
-      name?: string;
-      description?: string;
-      tags?: string[];
-      assertions?: unknown;
-    };
-    const trajectory = await ensureSessionTrajectory(params!.sessionId, data.messageIndex);
-    return {
-      success: true,
-      golden: saveGolden({
-        trajectory,
-        name:
-          data.name?.trim() || trajectory.request.userMessage.content.slice(0, 80) || "Golden run",
-        description: data.description,
-        tags: Array.isArray(data.tags) ? data.tags : [],
-        assertions: data.assertions,
-      }),
     };
   },
   "POST /api/sessions/:sessionId/fork": async (body, params) => {
