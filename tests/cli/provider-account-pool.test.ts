@@ -82,4 +82,26 @@ describe("CLI provider account pools", () => {
       accounts: [{ provider_id: "primary", priority: 10 }],
     });
   });
+
+  test("updates only explicitly supplied pool fields", async () => {
+    let requestUrl = "";
+    let requestBody: Record<string, unknown> = {};
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestUrl = String(input);
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json({
+        id: "pool-1",
+        name: "Work plans",
+        provider: "openai-codex",
+        enabled: false,
+        accounts: [{ provider_id: "primary", priority: null }],
+      });
+    }) as typeof fetch;
+
+    const flags = commands().parsePoolFlags(["--disabled"]);
+    await commands().poolUpdate("pool-1", flags);
+
+    expect(requestUrl).toBe("http://127.0.0.1:4269/api/provider-account-pools/pool-1");
+    expect(requestBody).toEqual({ enabled: false });
+  });
 });

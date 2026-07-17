@@ -325,16 +325,16 @@ class AgentManager extends AgentProviderRuntime {
     agent: Pick<Agent, "id" | "provider_id" | "config">,
     options: { useRouter: boolean; persistIfResolved: boolean }
   ): ProviderExecutionTarget | undefined {
-    if (options.useRouter && isModelRouterEnabled()) {
-      const routeId = selectProvider();
-      const routed = routeId ? providerManager.resolveExecutionTarget(routeId) : undefined;
-      if (routed && routeId) return { ...routed, routeId };
-    }
-
     const poolId = this.agentProviderPoolId(agent);
     if (poolId) {
       const provider = providerManager.getAccountPoolPrimary(poolId);
-      return provider ? { provider, poolId } : undefined;
+      if (provider) return { provider, poolId };
+    }
+
+    if (options.useRouter && isModelRouterEnabled()) {
+      const routeId = selectProvider(agent.provider_id);
+      const routed = routeId ? providerManager.resolveExecutionTarget(routeId) : undefined;
+      if (routed && routeId) return { ...routed, routeId };
     }
 
     let resolvedProvider =
@@ -376,7 +376,7 @@ class AgentManager extends AgentProviderRuntime {
     persistIfResolved = false
   ): ReturnType<typeof providerManager.getWithCredentials> {
     return this.resolveProviderExecutionTarget(agent, {
-      useRouter: true,
+      useRouter: false,
       persistIfResolved,
     })?.provider;
   }
@@ -578,6 +578,9 @@ class AgentManager extends AgentProviderRuntime {
     const poolProviderId = requestedPool?.accounts[0]?.providerId;
     const providerSelectionChanged =
       updates.provider_id !== undefined || updates.provider !== undefined;
+    if (providerSelectionChanged && !poolSelectionChanged) {
+      delete updatedConfig.provider_account_pool_id;
+    }
     const resolvedProviderId =
       poolProviderId ||
       (providerSelectionChanged
@@ -842,7 +845,7 @@ class AgentManager extends AgentProviderRuntime {
     const { agent, messages } = state;
 
     const target = this.resolveProviderExecutionTarget(agent, {
-      useRouter: isModelRouterEnabled(),
+      useRouter: false,
       persistIfResolved: true,
     });
     if (!target) {

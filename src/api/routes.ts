@@ -173,6 +173,7 @@ import {
 import {
   createProviderAccountPool,
   deleteProviderAccountPool,
+  getProviderAccountPool,
   listProviderAccountPools,
   removeProviderFromAccountPools,
   type ProviderAccountPool,
@@ -401,7 +402,10 @@ function providerAccountPoolResponse(pool: ProviderAccountPool): Record<string, 
   };
 }
 
-function providerAccountPoolInput(body: unknown): ProviderAccountPoolInput {
+function providerAccountPoolInput(
+  body: unknown,
+  existing?: ProviderAccountPool
+): ProviderAccountPoolInput {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     throw new Error("Validation error: Provider pool body is required");
   }
@@ -420,11 +424,11 @@ function providerAccountPoolInput(body: unknown): ProviderAccountPoolInput {
             ]
           : [];
       })
-    : [];
+    : (existing?.accounts ?? []);
   return {
-    name: normalizeOptionalString(record.name) || "",
-    provider: normalizeOptionalString(record.provider) || "",
-    enabled: record.enabled !== false,
+    name: normalizeOptionalString(record.name) || existing?.name || "",
+    provider: normalizeOptionalString(record.provider) || existing?.provider || "",
+    enabled: typeof record.enabled === "boolean" ? record.enabled : existing?.enabled !== false,
     accounts,
   };
 }
@@ -1429,9 +1433,11 @@ const routes: Record<string, RouteHandler> = {
       createProviderAccountPool(providerAccountPoolInput(body), providerManager.list())
     ),
   "PUT /api/provider-account-pools/:id": (body, params) => {
+    const existing = getProviderAccountPool(params!.id);
+    if (!existing) throw new Error("Provider account pool not found");
     const pool = updateProviderAccountPool(
       params!.id,
-      providerAccountPoolInput(body),
+      providerAccountPoolInput(body, existing),
       providerManager.list()
     );
     if (!pool) throw new Error("Provider account pool not found");

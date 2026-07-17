@@ -527,6 +527,13 @@ export function selectProvider(preferredProviderId?: string): string | null {
   const routerCfg = getRouterConfig();
   if (!routerCfg.enabled) return preferredProviderId ?? null;
   const routeIds = Object.keys(routerCfg.routes);
+  const preferredProvider = preferredProviderId
+    ? providerManager.getWithCredentials(preferredProviderId)
+    : undefined;
+  const preferredRouteId = [preferredProviderId, preferredProvider?.provider].find(
+    (candidate): candidate is string =>
+      typeof candidate === "string" && candidate in routerCfg.routes
+  );
   const fallbackProviderIds = routerCfg.fallbackToAny
     ? providerManager
         .list()
@@ -534,7 +541,7 @@ export function selectProvider(preferredProviderId?: string): string | null {
         .filter((provider): provider is string => Boolean(provider))
     : [];
   const planRouteKeys = [
-    preferredProviderId,
+    preferredRouteId,
     ...routeIds,
     ...fallbackProviderIds.filter((id) => !routerCfg.routes[id]),
   ]
@@ -545,8 +552,8 @@ export function selectProvider(preferredProviderId?: string): string | null {
     : undefined;
 
   // Preferred provider passthrough.
-  if (preferredProviderId && getProviderAvailability(preferredProviderId, planContext).available) {
-    return preferredProviderId;
+  if (preferredRouteId && getProviderAvailability(preferredRouteId, planContext).available) {
+    return preferredRouteId;
   }
 
   // Build candidates from configured routes.

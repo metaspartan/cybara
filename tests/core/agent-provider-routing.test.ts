@@ -7,6 +7,7 @@ import { summarizeSessionTokenUsage } from "../../src/core/session-context";
 import {
   createProviderAccountPool,
   resetProviderAccountPoolsForTests,
+  updateProviderAccountPool,
 } from "../../src/core/provider-account-pool";
 
 const createdAgentIds: string[] = [];
@@ -289,6 +290,269 @@ describe("Agent provider API-family routing", () => {
       "Bearer primary-side-effect-key",
       "Bearer primary-side-effect-key",
     ]);
+  });
+
+  test("falls back to the agent provider when its account pool is paused", async () => {
+    let authorization = "";
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      authorization = new Headers(init?.headers).get("Authorization") || "";
+      return Response.json({
+        id: "paused-pool-response",
+        object: "chat.completion",
+        model: "gpt-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "direct-provider-ok" },
+          },
+        ],
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Paused Pool Provider",
+      api_key: "paused-pool-key",
+    });
+    createdProviderIds.push(provider.id);
+    const pool = createProviderAccountPool(
+      {
+        name: "Paused plans",
+        provider: "openai",
+        accounts: [{ providerId: provider.id }],
+      },
+      [provider]
+    );
+    const agent = agentManager.create({
+      name: "Paused Pool Agent",
+      provider_id: provider.id,
+      provider_pool_id: pool.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+    updateProviderAccountPool(
+      pool.id,
+      {
+        name: pool.name,
+        provider: pool.provider,
+        enabled: false,
+        accounts: pool.accounts,
+      },
+      [provider]
+    );
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Use the direct provider" }],
+      { useTools: false }
+    );
+
+    expect(result.content).toBe("direct-provider-ok");
+    expect(authorization).toBe("Bearer paused-pool-key");
+  });
+
+  test("changing an agent provider detaches its previous account pool", () => {
+    const primary = providerManager.create({
+      provider: "openai",
+      name: "Pool Provider",
+      api_key: "pool-provider-key",
+    });
+    const replacement = providerManager.create({
+      provider: "openai",
+      name: "Replacement Provider",
+      api_key: "replacement-provider-key",
+    });
+    createdProviderIds.push(primary.id, replacement.id);
+    const pool = createProviderAccountPool(
+      {
+        name: "Replace provider plans",
+        provider: "openai",
+        accounts: [{ providerId: primary.id }],
+      },
+      [primary, replacement]
+    );
+    const agent = agentManager.create({
+      name: "Replace Pool Agent",
+      provider_id: primary.id,
+      provider_pool_id: pool.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const updated = agentManager.update(agent.id, { provider_id: replacement.id });
+
+    expect(updated?.provider_id).toBe(replacement.id);
+    expect(agentManager.get(agent.id)?.provider_pool_id).toBeUndefined();
+  });
+
+  test("keeps an explicit agent pool ahead of global router routes", async () => {
+    let requestUrl = "";
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      requestUrl = String(input);
+      return Response.json({
+        id: "explicit-pool-response",
+        object: "chat.completion",
+        model: "gpt-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "explicit-pool-ok" },
+          },
+        ],
+      });
+    }) as typeof fetch;
+
+    const poolProvider = providerManager.create({
+      provider: "openai",
+      name: "Explicit Pool Provider",
+      api_key: "explicit-pool-key",
+    });
+    const routerProvider = providerManager.create({
+      provider: "synthetic",
+      name: "Global Router Provider",
+      api_key: "global-router-key",
+    });
+    createdProviderIds.push(poolProvider.id, routerProvider.id);
+    const pool = createProviderAccountPool(
+      {
+        name: "Explicit pool",
+        provider: "openai",
+        accounts: [{ providerId: poolProvider.id }],
+      },
+      [poolProvider, routerProvider]
+    );
+    const agent = agentManager.create({
+      name: "Explicit Pool Routing Agent",
+      provider_id: poolProvider.id,
+      provider_pool_id: pool.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("router", {
+      enabled: true,
+      strategy: "priority",
+      fallbackToAny: false,
+      routes: { synthetic: { weight: 100, priority: 0, enabled: true } },
+    });
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Keep the selected pool" }],
+      { useTools: false, useModelRouter: true }
+    );
+
+    expect(result.content).toBe("explicit-pool-ok");
+    expect(requestUrl.endsWith("/chat/completions")).toBe(true);
+  });
+
+  test("prefers the agent provider when it is a configured router route", async () => {
+    let authorization = "";
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      authorization = new Headers(init?.headers).get("Authorization") || "";
+      return Response.json({
+        id: "preferred-route-response",
+        object: "chat.completion",
+        model: "gpt-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "preferred-route-ok" },
+          },
+        ],
+      });
+    }) as typeof fetch;
+
+    const preferred = providerManager.create({
+      provider: "openai",
+      name: "Preferred Router Provider",
+      api_key: "preferred-router-key",
+    });
+    const alternate = providerManager.create({
+      provider: "synthetic",
+      name: "Alternate Router Provider",
+      api_key: "alternate-router-key",
+    });
+    createdProviderIds.push(preferred.id, alternate.id);
+    const agent = agentManager.create({
+      name: "Preferred Router Agent",
+      provider_id: preferred.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("router", {
+      enabled: true,
+      strategy: "priority",
+      fallbackToAny: false,
+      routes: {
+        openai: { weight: 100, priority: 10, enabled: true },
+        synthetic: { weight: 100, priority: 0, enabled: true },
+      },
+    });
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Use my configured provider" }],
+      { useTools: false, useModelRouter: true }
+    );
+
+    expect(result.content).toBe("preferred-route-ok");
+    expect(authorization).toBe("Bearer preferred-router-key");
+  });
+
+  test("running-agent messages do not enable the global router implicitly", async () => {
+    let authorization = "";
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      authorization = new Headers(init?.headers).get("Authorization") || "";
+      return Response.json({
+        id: "running-agent-response",
+        object: "chat.completion",
+        model: "gpt-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "running-agent-direct-ok" },
+          },
+        ],
+      });
+    }) as typeof fetch;
+
+    const direct = providerManager.create({
+      provider: "openai",
+      name: "Running Agent Provider",
+      api_key: "running-agent-key",
+    });
+    const routed = providerManager.create({
+      provider: "synthetic",
+      name: "Implicit Router Provider",
+      api_key: "implicit-router-key",
+    });
+    createdProviderIds.push(direct.id, routed.id);
+    const agent = agentManager.create({
+      name: "Running Agent Router Opt In",
+      provider_id: direct.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("router", {
+      enabled: true,
+      strategy: "priority",
+      fallbackToAny: false,
+      routes: { synthetic: { weight: 100, priority: 0, enabled: true } },
+    });
+
+    const result = await agentManager.message(agent.id, "Stay on the agent provider");
+
+    expect(result.response).toBe("running-agent-direct-ok");
+    expect(authorization).toBe("Bearer running-agent-key");
   });
 
   test("routes Grok OAuth through the proxy and retries connection failures and 429s", async () => {

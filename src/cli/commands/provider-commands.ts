@@ -47,7 +47,7 @@ export interface ProviderPoolFlags {
   name?: string;
   provider?: string;
   enabled?: boolean;
-  accounts: Array<{ provider_id: string; priority?: number }>;
+  accounts?: Array<{ provider_id: string; priority?: number }>;
 }
 
 interface CliProviderCommands {
@@ -341,7 +341,7 @@ export function createCliProviderCommands(
     let name: string | undefined;
     let provider: string | undefined;
     let enabled: boolean | undefined;
-    const accounts: ProviderPoolFlags["accounts"] = [];
+    const accounts: NonNullable<ProviderPoolFlags["accounts"]> = [];
     for (let index = 0; index < args.length; index += 1) {
       const flag = args[index];
       if (flag === "--name" || flag === "-n") name = args[++index];
@@ -367,7 +367,12 @@ export function createCliProviderCommands(
         }
       }
     }
-    return { name, provider, enabled, accounts };
+    return {
+      ...(name !== undefined ? { name } : {}),
+      ...(provider !== undefined ? { provider } : {}),
+      ...(enabled !== undefined ? { enabled } : {}),
+      ...(accounts.length > 0 ? { accounts } : {}),
+    };
   };
 
   const poolList = async (): Promise<void> => {

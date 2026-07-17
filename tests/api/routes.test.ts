@@ -1182,6 +1182,17 @@ describe("Providers API", () => {
     expect(updated.data.routing_mode).toBe("usage");
     expect(updated.data.accounts[0]?.priority).toBeNull();
 
+    const renamed = await api("PUT", `/api/provider-account-pools/${pool.data.id}`, {
+      name: "Renamed work plans",
+    });
+    expect(renamed.status).toBe(200);
+    expect(renamed.data.name).toBe("Renamed work plans");
+    expect(renamed.data.provider).toBe("openai");
+    expect(renamed.data.enabled).toBe(false);
+    expect(
+      renamed.data.accounts.map((account: { provider_id: string }) => account.provider_id)
+    ).toEqual([first.data.id]);
+
     await api("DELETE", `/api/agents/${agent.data.id}`);
     expect((await api("DELETE", `/api/provider-account-pools/${pool.data.id}`)).status).toBe(200);
     await api("DELETE", `/api/providers/${first.data.id}`);
