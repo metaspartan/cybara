@@ -78,6 +78,7 @@ import {
   poolSize,
 } from "./credential-pool";
 import type { Agent, Provider, ToolDefinition } from "./database";
+import { classifyApiError } from "./error-classifier";
 import {
   anthropicEndpointPath,
   anthropicRequestBase,
@@ -353,6 +354,47 @@ export abstract class AgentProviderRuntime {
       const timeout = setTimeout(finish, delayMs);
       if (signal?.aborted) abort();
       else signal?.addEventListener("abort", abort, { once: true });
+    });
+  }
+
+  private async refreshOpenAICompatibleAuthorization(
+    headers: Record<string, string>,
+    context?: ProviderRateLimitContext
+  ): Promise<boolean> {
+    const providerId = context?.providerId?.trim();
+    if (!providerId) return false;
+    const authorizationKey = Object.keys(headers).find(
+      (key) => key.toLowerCase() === "authorization"
+    );
+    if (!authorizationKey || !headers[authorizationKey]?.startsWith("Bearer ")) return false;
+    const provider = providerManager.getWithCredentials(providerId);
+    if (!provider?.refresh_token) return false;
+    const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(provider, {
+      force: true,
+    });
+    const accessToken = refreshed?.access_token?.trim();
+    if (!accessToken) return false;
+    headers[authorizationKey] = `Bearer ${accessToken}`;
+    return true;
+  }
+
+  private openAICompatibleRetryDelayMs(status: number, headers: Headers, attempt: number): number {
+    const fallback = Math.min(1000 * Math.pow(2, attempt), 8000);
+    return status === 429 ? this.parseRetryAfterMs(headers, fallback) : fallback;
+  }
+
+  private broadcastProviderRetryStatus(
+    streamContext: { sessionId?: string | null; agentId?: string | null } | undefined,
+    detail: string
+  ): void {
+    const sessionId = streamContext?.sessionId?.trim();
+    if (!sessionId) return;
+    broadcastStatus({
+      status: "thinking",
+      timestamp: Date.now(),
+      detail,
+      sessionId,
+      agentId: streamContext?.agentId || undefined,
     });
   }
 
@@ -1125,6 +1167,10 @@ export abstract class AgentProviderRuntime {
     let attemptedMaxCompletionRetry = false;
     let attemptedToolChoiceCompatibilityRetry = false;
     let contextRetryCount = 0;
+    let attemptedOAuthRefresh = false;
+    let transientRetryCount = 0;
+    const maxTransientRetries = 3;
+    const maxRetryDelayMs = 120_000;
 
     let attemptedNonStreamingRetry = false;
     while (true) {
@@ -1139,6 +1185,39 @@ export abstract class AgentProviderRuntime {
 
       const errorText = await response.text();
       this.recordHttpRateLimit(response.status, response.headers, rateLimitContext);
+      if (
+        response.status === 401 &&
+        !attemptedOAuthRefresh &&
+        (await this.refreshOpenAICompatibleAuthorization(headers, rateLimitContext))
+      ) {
+        attemptedOAuthRefresh = true;
+        this.broadcastProviderRetryStatus(
+          streamContext,
+          "Provider session refreshed; continuing..."
+        );
+        continue;
+      }
+      const classifiedError = classifyApiError({ status: response.status, body: errorText });
+      const retryDelayMs = this.openAICompatibleRetryDelayMs(
+        response.status,
+        response.headers,
+        transientRetryCount
+      );
+      if (
+        classifiedError.retryable &&
+        transientRetryCount < maxTransientRetries &&
+        retryDelayMs <= maxRetryDelayMs
+      ) {
+        transientRetryCount += 1;
+        this.broadcastProviderRetryStatus(
+          streamContext,
+          response.status === 429
+            ? `Provider rate limited; retrying (${transientRetryCount}/${maxTransientRetries})...`
+            : `Provider temporarily unavailable; retrying (${transientRetryCount}/${maxTransientRetries})...`
+        );
+        await this.waitForRetryDelay(retryDelayMs, signal);
+        continue;
+      }
       if (
         !attemptedNonStreamingRetry &&
         !streamingDisabled &&

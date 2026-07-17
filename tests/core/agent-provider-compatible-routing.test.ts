@@ -191,6 +191,198 @@ describe("Agent provider Google and compatible routing", () => {
     expect(requestHeaders.get("X-Msh-Device-Id")).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  test("retries transient Kimi rate limits before surfacing an error", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls < 3) {
+        return Response.json(
+          { error: { message: "temporary rate limit" } },
+          { status: 429, headers: { "Retry-After": "0" } }
+        );
+      }
+      return Response.json({
+        id: "kimi-retry-response",
+        object: "chat.completion",
+        model: "k3",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "kimi-retry-ok" },
+          },
+        ],
+        usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Transient Retry Provider",
+      access_token: "kimi-transient-access-token",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Kimi Transient Retry Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "k3",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "kimi-transient-retry-session" }
+    );
+
+    expect(result.content).toBe("kimi-retry-ok");
+    expect(calls).toBe(3);
+  });
+
+  test("does not retry Kimi plan exhaustion as a transient rate limit", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json(
+        { error: { message: "weekly quota exceeded" } },
+        { status: 429, headers: { "Retry-After": "0" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Exhausted Provider",
+      access_token: "kimi-exhausted-access-token",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Kimi Exhausted Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "k3",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "kimi-exhausted-session" }
+    );
+
+    expect(result.content.toLowerCase()).toContain("quota");
+    expect(calls).toBe(1);
+  });
+
+  test("refreshes Kimi OAuth in place when a long tool loop crosses token expiry", async () => {
+    const chatAuthorizations: string[] = [];
+    let chatCalls = 0;
+    let refreshCalls = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://auth.kimi.com/api/oauth/token") {
+        refreshCalls += 1;
+        return Response.json({
+          access_token: "fresh-kimi-loop-token",
+          refresh_token: "fresh-kimi-loop-refresh",
+          expires_in: 900,
+        });
+      }
+
+      chatCalls += 1;
+      chatAuthorizations.push(new Headers(init?.headers).get("Authorization") || "");
+      if (chatCalls === 1) {
+        return Response.json({
+          id: "kimi-loop-tool-response",
+          object: "chat.completion",
+          model: "k3",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "tool_calls",
+              message: {
+                role: "assistant",
+                content: "",
+                tool_calls: [
+                  {
+                    id: "kimi-loop-calc",
+                    type: "function",
+                    function: { name: "calc", arguments: '{"expression":"6 * 7"}' },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+        });
+      }
+      if (chatCalls === 2) {
+        return Response.json({ error: { message: "access token expired" } }, { status: 401 });
+      }
+      return Response.json({
+        id: "kimi-loop-final-response",
+        object: "chat.completion",
+        model: "k3",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "The result is 42." },
+          },
+        ],
+        usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Long Loop Provider",
+      access_token: "stale-kimi-loop-token",
+      refresh_token: "stale-kimi-loop-refresh",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Kimi Long Loop Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "k3",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("tool_approval_mode", "always_allow");
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate six times seven" }],
+      { useTools: true, sessionId: "kimi-long-loop-refresh-session" }
+    );
+
+    expect(result.content).toBe("The result is 42.");
+    expect(result.tool_calls).toHaveLength(1);
+    expect(chatCalls).toBe(3);
+    expect(refreshCalls).toBe(1);
+    expect(chatAuthorizations).toEqual([
+      "Bearer stale-kimi-loop-token",
+      "Bearer stale-kimi-loop-token",
+      "Bearer fresh-kimi-loop-token",
+    ]);
+  });
+
   test("routes openai-codex-responses providers to codex responses endpoint", async () => {
     let requestUrl = "";
     let requestBody: Record<string, unknown> = {};
