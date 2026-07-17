@@ -176,11 +176,14 @@ async fn stop_native_recording(app: tauri::AppHandle) -> Result<NativeRecordingD
 }
 
 fn should_log_sidecar_output() -> bool {
-    cfg!(debug_assertions)
-        || matches!(
-            std::env::var("CYBARA_TAURI_LOG_SIDECAR"),
-            Ok(value) if value == "1" || value.eq_ignore_ascii_case("true")
-        )
+    !matches!(
+        std::env::var("CYBARA_TAURI_LOG_SIDECAR"),
+        Ok(value) if value == "0" || value.eq_ignore_ascii_case("false")
+    )
+}
+
+fn bounded_sidecar_output(value: &str) -> String {
+    value.trim().chars().take(64 * 1024).collect()
 }
 
 fn set_gateway_startup_status(app: &tauri::AppHandle, status: GatewayStartupStatus) {
@@ -411,7 +414,12 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_log::Builder::new().build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .max_file_size(5_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
+                .build(),
+        )
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -488,11 +496,13 @@ fn main() {
                     match event {
                         CommandEvent::Stdout(line) => {
                             let output = String::from_utf8_lossy(&line);
-                            if is_browser_diagnostic_line(&output) {
-                                log::info!(target: "cybara::browser", "{}", output.trim());
-                            }
-                            if log_sidecar_output {
-                                println!("[Cybara] {}", output);
+                            let output = bounded_sidecar_output(&output);
+                            if !output.is_empty() {
+                                if is_browser_diagnostic_line(&output) {
+                                    log::info!(target: "cybara::browser", "{output}");
+                                } else if log_sidecar_output {
+                                    log::info!(target: "cybara::sidecar", "{output}");
+                                }
                             }
                         }
                         CommandEvent::Stderr(line) => {
@@ -504,9 +514,6 @@ fn main() {
                                 } else {
                                     log::warn!(target: "cybara::sidecar", "{output}");
                                 }
-                            }
-                            if log_sidecar_output {
-                                eprintln!("[Cybara] {output}");
                             }
                         }
                         CommandEvent::Terminated(payload) => {

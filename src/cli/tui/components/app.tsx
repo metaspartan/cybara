@@ -1,21 +1,20 @@
 import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
-import { spawn } from "child_process";
 import {
   checkForUpdateInBackground,
   isUpdateCheckDisabled,
 } from "../../../core/update-check";
 import {
   type AvailableProviderInfo,
-  type ProviderAccountPoolInfo,
-  type ProviderInfo,
 } from "../../commands/provider-commands";
 import { connectCliProviderOAuth } from "../../commands/provider-oauth";
 import {
   CLI_API_BASE,
-  CLI_API_KEY,
   fetchCliAPI,
+  formatCliApiError,
+  resolveCliApiKey,
+  resolveCliGatewayPassword,
   TUI_INPUT_OPTIONS,
   withCliAuthHeaders,
 } from "../../client";
@@ -62,8 +61,19 @@ import {
   TUIStatusCommand,
 } from "./system-panels";
 import { TUISettingsCommand } from "./settings";
-import { useTerminalScreen } from "../terminal";
+import {
+  terminalSelectionWindow,
+  useTerminalLayout,
+  useTerminalScreen,
+} from "../terminal";
 import { openUrlInBrowser } from "../../../core/runtime/open-url";
+import { startGatewayBackground } from "../../gateway-process";
+import {
+  loadTUIProviderPanelDetails,
+  loadTUIProviders,
+  type TUIProviderPanelData,
+  type TUIProviderPlanSnapshot,
+} from "../provider-panel-data";
 
 const API_BASE = CLI_API_BASE;
 const fetchAPI = fetchCliAPI;
@@ -245,31 +255,6 @@ interface TUIRouterStatus {
   routes: TUIRouterRoute[];
 }
 
-interface TUIProviderPlanWindow {
-  id: string;
-  kind: string;
-  title: string;
-  usedPercent?: number;
-  usageKnown?: boolean;
-  unlimited?: boolean;
-  resetsAt?: string;
-}
-
-interface TUIProviderPlanSnapshot {
-  providerId: string;
-  configuredProviderId?: string;
-  providerType: string;
-  providerName: string;
-  managedAutomatically?: boolean;
-  status: string;
-  sourceLabel?: string;
-  windows?: TUIProviderPlanWindow[];
-}
-
-interface TUIProviderPlanStatus {
-  providers: TUIProviderPlanSnapshot[];
-}
-
 interface TUIMobileDevice {
   id: string;
   name: string;
@@ -373,34 +358,60 @@ function planWindow(
 
 const TUIProvidersCommand = () => {
   const exit = useTUIBack();
-  const [providers, setProviders] = React.useState<ProviderInfo[]>([]);
-  const [pools, setPools] = React.useState<ProviderAccountPoolInfo[]>([]);
-  const [plans, setPlans] = React.useState<TUIProviderPlanStatus | null>(null);
+  const [data, setData] = React.useState<TUIProviderPanelData>({
+    providers: [],
+    pools: [],
+    plans: null,
+    warnings: [],
+  });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const requestGeneration = React.useRef(0);
+
+  const load = React.useCallback(async (): Promise<void> => {
+    const generation = requestGeneration.current + 1;
+    requestGeneration.current = generation;
+    setLoading(true);
+    setError(null);
+    try {
+      const providers = await loadTUIProviders();
+      if (requestGeneration.current !== generation) return;
+      setData({ providers, pools: [], plans: null, warnings: [] });
+      setLoading(false);
+      const details = await loadTUIProviderPanelDetails();
+      if (requestGeneration.current !== generation) return;
+      setData({ providers, ...details });
+    } catch (cause) {
+      if (requestGeneration.current !== generation) return;
+      setError(formatCliApiError(cause));
+      setLoading(false);
+    }
+  }, []);
 
   useInput((input) => {
     if (input === "q") exit();
+    if (input === "r") void load();
   }, TUI_INPUT_OPTIONS);
 
   React.useEffect(() => {
-    Promise.all([
-      fetchAPI<ProviderInfo[]>("/api/providers"),
-      fetchAPI<TUIProviderPlanStatus>("/api/provider-plans/status"),
-      fetchAPI<ProviderAccountPoolInfo[]>("/api/provider-account-pools"),
-    ])
-      .then(([providerData, planData, poolData]) => {
-        if (providerData)
-          setProviders(Array.isArray(providerData) ? providerData : []);
-        else setError("Failed to fetch providers");
-        if (planData) setPlans(planData);
-        if (poolData) setPools(Array.isArray(poolData) ? poolData : []);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+    void load();
+    return () => {
+      requestGeneration.current += 1;
+    };
+  }, [load]);
 
   if (loading) return <LoadingState message="Fetching providers..." />;
-  if (error) return <ErrorState message={error} />;
+  if (error) {
+    return (
+      <Box flexDirection="column">
+        <Logo compact />
+        <ErrorState message={error} />
+        <Text color="gray">Press r to retry · q to return</Text>
+      </Box>
+    );
+  }
+
+  const { plans, pools, providers, warnings } = data;
 
   const planByKey = new Map<string, TUIProviderPlanSnapshot>();
   for (const plan of plans?.providers || []) {
@@ -500,8 +511,13 @@ const TUIProvidersCommand = () => {
           ))
         )}
       </Box>
+      {warnings.map((warning) => (
+        <Text key={warning} color="yellow">
+          {warning}
+        </Text>
+      ))}
       <Box marginTop={1}>
-        <Text color="gray">Press q to exit</Text>
+        <Text color="gray">Press r to refresh · q to return</Text>
       </Box>
     </Box>
   );
@@ -872,6 +888,7 @@ const FALLBACK_PROVIDER_OPTIONS: ProviderOption[] = [
 
 const SetupWizard = () => {
   const { exit } = useApp();
+  const layout = useTerminalLayout();
   const [step, setStep] = React.useState<
     "welcome" | "provider" | "apikey" | "oauth" | "permissions" | "complete"
   >("welcome");
@@ -879,6 +896,9 @@ const SetupWizard = () => {
     ProviderOption[]
   >(FALLBACK_PROVIDER_OPTIONS);
   const [selectedProvider, setSelectedProvider] = React.useState(0);
+  const [providerQuery, setProviderQuery] = React.useState("");
+  const [providerSearchOpen, setProviderSearchOpen] = React.useState(false);
+  const [chosenProvider, setChosenProvider] = React.useState<ProviderOption | null>(null);
   const [apiKey, setApiKey] = React.useState("");
   const [oauthVerification, setOAuthVerification] = React.useState<{
     code?: string;
@@ -891,6 +911,26 @@ const SetupWizard = () => {
     message: string;
     type: "info" | "success" | "error" | "loading";
   } | null>(null);
+  const providerMatches = React.useMemo(() => {
+    const query = providerQuery.trim().toLowerCase();
+    if (!query) return providerOptions;
+    return providerOptions.filter(
+      (provider) =>
+        provider.name.toLowerCase().includes(query) ||
+        provider.id.toLowerCase().includes(query) ||
+        provider.description.toLowerCase().includes(query),
+    );
+  }, [providerOptions, providerQuery]);
+  const providerRows = Math.max(4, layout.rows - 11);
+  const providerWindow = terminalSelectionWindow(
+    providerMatches.length,
+    selectedProvider,
+    providerRows,
+  );
+  const visibleProviders = providerMatches.slice(
+    providerWindow.start,
+    providerWindow.start + providerWindow.count,
+  );
 
   React.useEffect(() => {
     fetchAPI<AvailableProviderInfo[]>("/api/providers/available")
@@ -924,14 +964,14 @@ const SetupWizard = () => {
   }, []);
 
   React.useEffect(() => {
-    if (providerOptions.length === 0) {
+    if (providerMatches.length === 0) {
       setSelectedProvider(0);
       return;
     }
-    if (selectedProvider >= providerOptions.length) {
-      setSelectedProvider(providerOptions.length - 1);
+    if (selectedProvider >= providerMatches.length) {
+      setSelectedProvider(providerMatches.length - 1);
     }
-  }, [providerOptions, selectedProvider]);
+  }, [providerMatches.length, selectedProvider]);
 
   useInput((input, key) => {
     if (step === "welcome") {
@@ -943,15 +983,17 @@ const SetupWizard = () => {
     } else if (step === "provider") {
       if (key.upArrow) {
         setSelectedProvider((s) =>
-          s > 0 ? s - 1 : Math.max(0, providerOptions.length - 1),
+          s > 0 ? s - 1 : Math.max(0, providerMatches.length - 1),
         );
       } else if (key.downArrow) {
         setSelectedProvider((s) =>
-          s < providerOptions.length - 1 ? s + 1 : 0,
+          s < providerMatches.length - 1 ? s + 1 : 0,
         );
       } else if (key.return) {
-        const provider = providerOptions[selectedProvider];
+        const provider = providerMatches[selectedProvider];
         if (!provider) return;
+        setChosenProvider(provider);
+        setProviderSearchOpen(false);
         if (provider.authType === "oauth") {
           setStep("oauth");
           void createOAuthProvider(provider);
@@ -960,13 +1002,31 @@ const SetupWizard = () => {
         } else {
           createProvider(provider.id, "");
         }
+      } else if (key.escape) {
+        if (providerSearchOpen || providerQuery) {
+          setProviderSearchOpen(false);
+          setProviderQuery("");
+          setSelectedProvider(0);
+        } else {
+          setStep("welcome");
+        }
+      } else if (providerSearchOpen && (key.backspace || key.delete)) {
+        setProviderQuery((query) => query.slice(0, -1));
+        setSelectedProvider(0);
+      } else if (providerSearchOpen && input && !key.ctrl && !key.meta) {
+        setProviderQuery((query) => query + input);
+        setSelectedProvider(0);
+      } else if (input.startsWith("/")) {
+        setProviderSearchOpen(true);
+        setProviderQuery(input.slice(1));
+        setSelectedProvider(0);
       } else if (input === "q") {
         exit();
       }
     } else if (step === "apikey") {
       if (key.return) {
         if (apiKey.length > 0) {
-          const provider = providerOptions[selectedProvider];
+          const provider = chosenProvider;
           if (provider) {
             createProvider(provider.id, apiKey);
           }
@@ -981,6 +1041,7 @@ const SetupWizard = () => {
     } else if (step === "oauth") {
       if (input.toLowerCase() === "b") {
         setStep("provider");
+        setChosenProvider(null);
         setOAuthVerification(null);
         setStatus(null);
       } else if (input === "q") {
@@ -1111,10 +1172,11 @@ const SetupWizard = () => {
   };
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={layout.rows} width="100%">
       <Logo />
       <Box
         flexDirection="column"
+        flexGrow={1}
         borderStyle="round"
         borderColor="cyan"
         paddingX={2}
@@ -1150,22 +1212,42 @@ const SetupWizard = () => {
         {step === "provider" && (
           <>
             <Text bold>Select AI Provider</Text>
-            <Box marginTop={1} flexDirection="column">
-              {providerOptions.map((p, i) => (
+            <Text color={providerSearchOpen ? "cyan" : "gray"}>
+              {providerSearchOpen
+                ? `Search: ${providerQuery || "type a provider name"}▏`
+                : providerQuery
+                  ? `Filtered by: ${providerQuery}`
+                  : "Search: press /"}
+            </Text>
+            <Box marginTop={1} flexDirection="column" flexGrow={1}>
+              {providerWindow.start > 0 && (
+                <Text color="gray">↑ {providerWindow.start} more</Text>
+              )}
+              {visibleProviders.map((p, localIndex) => {
+                const index = providerWindow.start + localIndex;
+                return (
                 <Box key={p.id}>
-                  <Text color={i === selectedProvider ? "cyan" : "white"}>
-                    {i === selectedProvider ? "❯ " : "  "}
+                  <Text color={index === selectedProvider ? "cyan" : "white"}>
+                    {index === selectedProvider ? "❯ " : "  "}
                     {p.name}
                   </Text>
-                  <Text color="gray"> - {p.description}</Text>
+                  {!layout.narrow && <Text color="gray"> - {p.description}</Text>}
                 </Box>
-              ))}
-              {providerOptions.length === 0 && (
-                <Text color="gray">No providers available</Text>
+                );
+              })}
+              {providerMatches.length === 0 && (
+                <Text color="gray">No providers match “{providerQuery}”</Text>
+              )}
+              {providerWindow.start + providerWindow.count < providerMatches.length && (
+                <Text color="gray">
+                  ↓ {providerMatches.length - providerWindow.start - providerWindow.count} more
+                </Text>
               )}
             </Box>
-            <Box marginTop={1}>
-              <Text color="gray">↑↓ to select, ENTER to confirm</Text>
+            <Box>
+              <Text color="gray">
+                ↑↓ select · Enter confirm · / search · Esc back
+              </Text>
             </Box>
           </>
         )}
@@ -1174,7 +1256,7 @@ const SetupWizard = () => {
           <>
             <Text bold>
               Enter API Key for{" "}
-              {providerOptions[selectedProvider]?.name || "Provider"}
+              {chosenProvider?.name || "Provider"}
             </Text>
             <Box marginTop={1}>
               <Text color="gray">API Key: </Text>
@@ -1194,7 +1276,7 @@ const SetupWizard = () => {
           <>
             <Text bold>
               Connect{" "}
-              {providerOptions[selectedProvider]?.name || "OAuth Provider"}
+              {chosenProvider?.name || "OAuth Provider"}
             </Text>
             <Box marginTop={1} flexDirection="column">
               {oauthVerification?.code && (
@@ -1343,7 +1425,8 @@ function TUIContent({
       return (
         <TUIChatCommand
           apiBase={API_BASE}
-          apiKey={CLI_API_KEY}
+          apiKey={resolveCliApiKey()}
+          gatewayPassword={resolveCliGatewayPassword()}
           fetchAPI={fetchAPI}
         />
       );
@@ -1377,7 +1460,7 @@ function TUIContent({
             void openUrlInBrowser(API_BASE);
           }}
           onStartServer={() => {
-            spawn("bun", ["run", "dev"], { stdio: "inherit" });
+            startGatewayBackground();
           }}
           updateBanner={<UpdateBanner />}
         />

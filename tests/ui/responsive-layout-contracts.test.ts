@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readIdeUiSource } from "../source-fixtures";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
@@ -26,7 +27,7 @@ describe("responsive layout contracts", () => {
   });
 
   test("IDE uses a single-pane composition on mobile", () => {
-    const ideSource = read("ui/src/pages/IDE.tsx");
+    const ideSource = readIdeUiSource();
 
     expect(ideSource).toContain("max-md:h-[calc(100vh-3.5rem)]");
     expect(ideSource).toContain("max-md:pr-14");

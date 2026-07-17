@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readIdeUiSource } from "../source-fixtures";
 
 const uiSrc = fileURLToPath(new URL("../../ui/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${uiSrc}/${rel}`, "utf8");
@@ -55,7 +56,7 @@ describe("UI render performance wiring", () => {
   });
 
   test("IDE large-file plain overlay only renders the visible line window", () => {
-    const source = read("pages/ide/CodeViewer.tsx");
+    const source = readIdeUiSource();
 
     expect(source).toContain("disableTokenizedHighlight");
     expect(source).toContain("visibleLineIndices.map((i) =>");
@@ -65,7 +66,7 @@ describe("UI render performance wiring", () => {
   });
 
   test("IDE explorer filters schedule large tree updates without blocking typing", () => {
-    const source = read("pages/IDE.tsx");
+    const source = readIdeUiSource();
 
     expect(source).toContain("useTransition");
     expect(source).toContain('const [treeFilterDraft, setTreeFilterDraft] = useState("")');

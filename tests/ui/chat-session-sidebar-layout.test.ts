@@ -1,24 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { readChatUiSource } from "../source-fixtures";
 
 const chatSource = () =>
-  readFileSync(join(process.cwd(), "ui", "src", "pages", "Chat.tsx"), "utf8") +
+  readChatUiSource() +
   readFileSync(join(process.cwd(), "ui", "src", "components", "layout", "Sidebar.tsx"), "utf8") +
-  readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts"), "utf8") +
-  readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "ChatEmptyState.tsx"), "utf8") +
-  readFileSync(
-    join(process.cwd(), "ui", "src", "pages", "chat", "NewChatWorkspaceBar.tsx"),
-    "utf8"
-  ) +
-  readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "SessionSidebar.tsx"), "utf8") +
-  readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "sessionGrouping.ts"), "utf8");
+  readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "SessionSidebar.tsx"), "utf8");
 
 const modalSource = () =>
   readFileSync(join(process.cwd(), "ui", "src", "components", "ui", "Modal.tsx"), "utf8");
 
 const sessionSidebarSource = () =>
   readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "SessionSidebar.tsx"), "utf8");
+
+const newChatWorkspaceSource = () =>
+  readFileSync(
+    join(process.cwd(), "ui", "src", "pages", "chat", "NewChatWorkspaceBar.tsx"),
+    "utf8"
+  );
 
 describe("chat session sidebar layout", () => {
   test("lets session text use the full row width while actions float above it", () => {
@@ -87,7 +87,7 @@ describe("chat session sidebar layout", () => {
   });
 
   test("uses semantic theme surfaces for the new-chat workspace", () => {
-    const source = chatSource();
+    const source = newChatWorkspaceSource();
 
     expect(source).toContain("new-chat-workspace-bar");
     expect(source).toContain("text-[var(--text-secondary)]");

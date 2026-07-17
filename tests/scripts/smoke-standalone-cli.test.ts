@@ -13,5 +13,8 @@ describe("standalone CLI smoke script", () => {
     expect(source).toContain('if "$BINARY" status');
     expect(source).toContain('"$BINARY" daemon-logs || true');
     expect(source).toContain('"$BINARY" stop || true');
+    expect(source).toContain("DASHBOARD_HTML=");
+    expect(source).toContain("ASSET_PATH=");
+    expect(source).toContain("curl --fail --silent --show-error");
   });
 });

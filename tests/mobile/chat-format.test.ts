@@ -195,6 +195,25 @@ describe("mobile chat formatting", () => {
     });
   });
 
+  test("hides persisted provider recovery status from mobile work", () => {
+    const timeline = buildMobileWorkTimeline({
+      id: "assistant-provider-recovery",
+      role: "assistant",
+      content: "Recovered",
+      processActivities: [
+        {
+          id: "provider-refresh",
+          phase: "start",
+          text: "Provider session refreshed; continuing...",
+          timestamp: 10_000,
+          toolName: "__thought",
+        },
+      ],
+    });
+
+    expect(timeline.activities).toEqual([]);
+  });
+
   test("keeps repeated persisted tool calls with distinct ids", () => {
     const timeline = buildMobileWorkTimeline({
       id: "assistant-repeated-tools",

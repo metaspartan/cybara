@@ -182,10 +182,12 @@ function sessionRowMeta(
 export function TUIChatCommand({
   apiBase,
   apiKey,
+  gatewayPassword,
   fetchAPI,
 }: {
   apiBase: string;
   apiKey?: string | null;
+  gatewayPassword?: string | null;
   fetchAPI: TUIFetchAPI;
 }) {
   const exit = useTUIBack();
@@ -436,6 +438,7 @@ export function TUIChatCommand({
       <InteractiveChatTUI
         apiBase={apiBase}
         apiKey={apiKey}
+        gatewayPassword={gatewayPassword}
         fetchAPI={fetchAPI}
         initialAgentId={openSession.agent_id || openSession.agentId}
         initialWorkspaceDir={sessionWorkspace(openSession) || process.cwd()}

@@ -6,7 +6,7 @@
 import db, { tables } from "../core/database";
 import { closeSync, existsSync, fstatSync, openSync, readSync } from "fs";
 import { join } from "path";
-import { cybaraDir } from "../core/paths";
+import { cybaraDir, logsDir } from "../core/paths";
 
 // ============================================
 // TYPES
@@ -267,9 +267,11 @@ function readLogFileTail(path: string): string | null {
  * entries. Lines are structured JSON, "[ISO] message" daemon lines, or plain
  * stdout; plain lines inherit the most recent timestamp seen above them.
  */
-export function getCliLogs(limit: number = 1000): CombinedLogEntry[] {
-  const text = readLogFileTail(join(cybaraDir, "cybara.log"));
-  if (!text) return [];
+function parseRuntimeLogText(
+  text: string,
+  idPrefix: string,
+  defaultSource: string
+): CombinedLogEntry[] {
   const entries: CombinedLogEntry[] = [];
   let lastTimestamp = new Date().toISOString();
   const lines = text.split("\n");
@@ -280,12 +282,14 @@ export function getCliLogs(limit: number = 1000): CombinedLogEntry[] {
     let message = line;
     let created_at: string | null = null;
     let metadata: string | undefined;
+    let source = defaultSource;
     if (line.startsWith("{")) {
       try {
         const parsed = JSON.parse(line) as {
           timestamp?: string;
           level?: string;
           module?: string;
+          source?: string;
           message?: string;
           context?: unknown;
         };
@@ -293,6 +297,7 @@ export function getCliLogs(limit: number = 1000): CombinedLogEntry[] {
         if (typeof parsed.level === "string" && CLI_LOG_LEVELS.has(parsed.level)) {
           level = parsed.level;
         }
+        if (typeof parsed.source === "string" && parsed.source.trim()) source = parsed.source;
         message = `${parsed.module ? `[${parsed.module}] ` : ""}${parsed.message ?? line}`;
         if (parsed.context !== undefined) metadata = JSON.stringify(parsed.context);
       } catch {
@@ -309,16 +314,31 @@ export function getCliLogs(limit: number = 1000): CombinedLogEntry[] {
     }
     if (created_at) lastTimestamp = created_at;
     entries.push({
-      id: `cli-${i}`,
+      id: `${idPrefix}-${i}`,
       level,
-      source: "cli",
+      source,
       message: message.length > 500 ? `${message.slice(0, 500)}...` : message,
       metadata,
       created_at: normalizeTimestamp(created_at ?? lastTimestamp)!,
-      logType: "cli",
+      logType: defaultSource,
     });
   }
-  return entries.slice(-Math.max(1, limit)).reverse();
+  return entries.reverse();
+}
+
+export function getCliLogs(limit: number = 1000): CombinedLogEntry[] {
+  const files = [
+    { path: join(cybaraDir, "cybara.log"), id: "cli", source: "cli" },
+    { path: join(logsDir, "gateway.out.1.log"), id: "gateway-1", source: "gateway" },
+    { path: join(logsDir, "gateway.out.log"), id: "gateway", source: "gateway" },
+  ];
+  return files
+    .flatMap((file) => {
+      const text = readLogFileTail(file.path);
+      return text ? parseRuntimeLogText(text, file.id, file.source) : [];
+    })
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, Math.max(1, limit));
 }
 
 export function getCombinedLogTotal(): number {

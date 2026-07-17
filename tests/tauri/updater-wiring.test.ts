@@ -2,6 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import {
+  isValidTauriUpdaterPublicKey,
+  TAURI_DEVELOPMENT_UPDATER_PUBLIC_KEY,
+} from "../../src/core/versioning";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -44,14 +48,16 @@ describe("desktop updater wiring", () => {
     expect(cargoToml).toContain('tauri-plugin-window-state = "2"');
     expect(mainRs).toContain("tauri_plugin_updater::Builder::new().build()");
     expect(mainRs).toContain("tauri_plugin_process::init()");
-    expect(mainRs).toContain("tauri_plugin_log::Builder::new().build()");
+    expect(mainRs).toContain("tauri_plugin_log::Builder::new()");
     expect(mainRs).toContain('target: "cybara::browser"');
     expect(mainRs).toContain("tauri_plugin_window_state::Builder::default().build()");
     expect(capabilityJson).toContain('"updater:default"');
     expect(capabilityJson).toContain('"process:default"');
     expect(tauriConfig).toContain('"updater"');
     expect(tauriConfig).toContain('"endpoints": []');
-    expect(tauriConfig).toContain('"pubkey": "dev-placeholder-updater-key"');
+    expect(tauriConfig).not.toContain("placeholder");
+    expect(tauriConfig).toContain(TAURI_DEVELOPMENT_UPDATER_PUBLIC_KEY);
+    expect(isValidTauriUpdaterPublicKey(TAURI_DEVELOPMENT_UPDATER_PUBLIC_KEY)).toBe(true);
     expect(infoPlist).toContain("NSMicrophoneUsageDescription");
     expect(entitlements).toContain("com.apple.security.device.audio-input");
   });
@@ -60,7 +66,10 @@ describe("desktop updater wiring", () => {
     const trayRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "tray.rs"), "utf8");
     const mainRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "main.rs"), "utf8");
     const updaterRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "desktop_update.rs"), "utf8");
-    const mainTsx = readFileSync(join(ROOT_DIR, "ui", "src", "main.tsx"), "utf8");
+    const authGateTsx = readFileSync(
+      join(ROOT_DIR, "ui", "src", "components", "GatewayAuthGate.tsx"),
+      "utf8"
+    );
     const updateStore = readFileSync(join(ROOT_DIR, "ui", "src", "lib", "updateStore.ts"), "utf8");
 
     expect(trayRs).toContain("crate::desktop_update::spawn_install(app.clone())");
@@ -71,7 +80,7 @@ describe("desktop updater wiring", () => {
     expect(updaterRs).toContain('snapshot.phase = "downloading".to_string()');
     expect(updaterRs).toContain('snapshot.phase = "installing".to_string()');
     expect(updaterRs).toContain('snapshot.phase = "available".to_string()');
-    expect(mainTsx).toContain("ensureUpdatePolling()");
+    expect(authGateTsx).toContain("ensureUpdatePolling()");
     expect(updateStore).toContain("listenForDesktopUpdateState");
     expect(updateStore).toContain("Click to install and restart Cybara");
     expect(updateStore).toContain("notification.onclick = () =>");
@@ -96,6 +105,7 @@ describe("desktop updater wiring", () => {
     expect(workflow).toContain("tagName: ${{ github.ref_name }}");
     expect(workflow).toContain("--config src-tauri/tauri.release.conf.json");
     expect(workflow).toContain("releaseDraft: true");
+    expect(workflow).toContain("CYBARA_TAURI_UPDATER_PUBKEY");
     expect(workflow).toContain("publish-release:");
     expect(workflow).not.toContain("universal-apple-darwin");
   });

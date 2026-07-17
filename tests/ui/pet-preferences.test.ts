@@ -3,13 +3,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parsePetEnabled, readPetEnabled } from "../../ui/src/lib/petPreferences";
 import { PET_WINDOW_URL } from "../../ui/src/lib/tauriPet";
+import { readNativeSettingsSource, readUiStylesSource } from "../shared/source-bundles";
 
-const nativeSettingsSource = readFileSync(
-  fileURLToPath(
-    new URL("../../apps/macos/Cybara/Sources/Cybara/NativeSettingsScreen.swift", import.meta.url)
-  ),
-  "utf8"
-);
+const nativeSettingsSource = readNativeSettingsSource();
 const nativePetSource = readFileSync(
   fileURLToPath(new URL("../../apps/macos/Cybara/Sources/Cybara/PetPanel.swift", import.meta.url)),
   "utf8"
@@ -22,10 +18,7 @@ const overlaySource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/PetOverlay.tsx", import.meta.url)),
   "utf8"
 );
-const cssSource = readFileSync(
-  fileURLToPath(new URL("../../ui/src/index.css", import.meta.url)),
-  "utf8"
-);
+const cssSource = readUiStylesSource();
 const htmlSource = readFileSync(
   fileURLToPath(new URL("../../ui/index.html", import.meta.url)),
   "utf8"
@@ -42,7 +35,7 @@ describe("pet preferences", () => {
 
   test("keeps native macOS disabled until explicitly enabled", () => {
     expect(nativeSettingsSource).toContain(
-      '@AppStorage("cybara.petEnabled") private var petEnabled = false'
+      '@AppStorage("cybara.petEnabled") var petEnabled = false'
     );
     expect(nativePetSource).toContain(
       'UserDefaults.standard.object(forKey: "cybara.petEnabled") as? Bool ?? false'

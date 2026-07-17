@@ -5,6 +5,7 @@ import {
   type SharedActivityItem,
   type SharedActivityPhase,
 } from "../../../shared/chat-activity-groups";
+import { isProviderRecoveryStatusLabel } from "../../../shared/chat-status";
 
 export interface TUIActivityItem {
   id?: string;
@@ -156,7 +157,7 @@ function normalizedActivities(
       );
     if (matchingTool) claimedTools.add(matchingTool);
     const text = completeActivityText(activity, matchingTool);
-    if (!text.trim()) return [];
+    if (!text.trim() || isProviderRecoveryStatusLabel(text)) return [];
     return [
       {
         id: activity.id || activity.toolCallId || `activity-${index}`,
@@ -235,7 +236,7 @@ export function summarizeTUIActivities(
   const raw = [
     ...activities.map((activity) => activity.text || activity.toolName || activity.phase || ""),
     ...tools.map((tool) => `${tool.name || "tool"}${tool.status ? ` ${tool.status}` : ""}`),
-  ].filter(Boolean);
+  ].filter((value) => Boolean(value) && !isProviderRecoveryStatusLabel(value));
   if (raw.length === 0) return null;
   const kinds = new Set(raw.map(classifyActivity));
   if (kinds.size > 1) kinds.delete("other");
@@ -268,19 +269,30 @@ function timestampMs(value: unknown): number | undefined {
 
 export function formatTUIWorkedDuration(
   activities: TUIActivityItem[],
-  tools: TUIToolCallItem[]
+  tools: TUIToolCallItem[],
+  options: { assistantTimestamp?: number; turnStartedAt?: number } = {}
 ): string {
   const timestamps = [
     ...activities.map((activity) => timestampMs(activity.timestamp)),
     ...tools.map((tool) => timestampMs(tool.started_at)),
   ].filter((value): value is number => value !== undefined);
-  const timelineDuration =
-    timestamps.length >= 2 ? Math.max(...timestamps) - Math.min(...timestamps) : 0;
+  const durationCandidates = [
+    timestamps.length >= 2 ? Math.max(...timestamps) - Math.min(...timestamps) : 0,
+    timestamps.length > 0 && options.assistantTimestamp
+      ? options.assistantTimestamp - Math.min(...timestamps)
+      : 0,
+    options.assistantTimestamp && options.turnStartedAt
+      ? options.assistantTimestamp - options.turnStartedAt
+      : 0,
+  ];
   const toolDuration = tools.reduce(
     (total, tool) => total + Math.max(durationMs(tool.durationMs), durationMs(tool.duration)),
     0
   );
-  const totalSeconds = Math.max(0, Math.floor(Math.max(timelineDuration, toolDuration) / 1000));
+  const totalSeconds = Math.max(
+    0,
+    Math.floor(Math.max(toolDuration, ...durationCandidates.filter(Number.isFinite)) / 1000)
+  );
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;

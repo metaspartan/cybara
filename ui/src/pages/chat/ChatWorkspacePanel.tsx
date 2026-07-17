@@ -26,6 +26,8 @@ export interface WorkspaceTabInstance {
   kind: ChatWorkspaceTab;
   title?: string;
   pageKey?: string;
+  navigationUrl?: string;
+  navigationRequest?: number;
 }
 
 export const WORKSPACE_SINGLETON_KINDS: ReadonlySet<ChatWorkspaceTab> = new Set([
@@ -44,11 +46,19 @@ const TAB_DETAILS: Record<
   }
 > = {
   review: { label: "Review", labelKey: "chat.tabs.review", icon: FileText },
-  terminal: { label: "Terminal", labelKey: "chat.tabs.terminal", icon: SquareTerminal },
+  terminal: {
+    label: "Terminal",
+    labelKey: "chat.tabs.terminal",
+    icon: SquareTerminal,
+  },
   browser: { label: "Browser", labelKey: "chat.tabs.browser", icon: Globe2 },
   computer: { label: "Desktop", labelKey: "chat.tabs.computer", icon: Monitor },
   files: { label: "Files", labelKey: "chat.tabs.files", icon: FolderTree },
-  subagents: { label: "Side task", labelKey: "chat.tabs.subagents", icon: SubagentIcon },
+  subagents: {
+    label: "Side task",
+    labelKey: "chat.tabs.subagents",
+    icon: SubagentIcon,
+  },
 };
 
 export function chatWorkspaceTabLabel(tab: ChatWorkspaceTab): string {

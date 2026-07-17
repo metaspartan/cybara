@@ -247,6 +247,7 @@ jobs:
         env:
           CYBARA_TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
           CYBARA_RELEASE_REPOSITORY: ${{ github.repository }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: bun run tauri:prepare-release
       # Stage the App Store Connect API key (.p8) only when the full Apple
       # signing/notarization secret set exists. Passing empty Apple env vars to

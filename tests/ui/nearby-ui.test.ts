@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { canShareNearbySession } from "../../ui/src/hooks/useNearbyStatus";
+import { readNativeChatSource } from "../shared/source-bundles";
 
 const root = join(import.meta.dir, "../..");
 
@@ -101,10 +102,7 @@ describe("nearby UI", () => {
   });
 
   test("native chat hides nearby sharing until the gateway enables it", () => {
-    const source = readFileSync(
-      join(root, "apps/macos/Cybara/Sources/Cybara/NativeScreens.swift"),
-      "utf8"
-    );
+    const source = readNativeChatSource();
     expect(source).toContain("if selectedSessionID != nil, nearbyStatus?.settings.enabled == true");
     expect(source).toContain("await loadNearbyShare()");
   });

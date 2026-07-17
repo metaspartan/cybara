@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readProviderRuntimeSource } from "../source-fixtures";
 
-const providerRuntimeSource = readFileSync(
-  fileURLToPath(new URL("../../src/core/agent-provider-runtime.ts", import.meta.url)),
-  "utf8"
-);
+const providerRuntimeSource = readProviderRuntimeSource();
 
 describe("agent reasoning runtime wiring", () => {
   test("applies selected effort to Codex Responses", () => {

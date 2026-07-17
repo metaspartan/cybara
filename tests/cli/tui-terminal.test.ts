@@ -5,6 +5,7 @@ import {
   composerWindow,
   resolveTerminalChatInspector,
   resolveTerminalLayout,
+  terminalSelectionWindow,
   terminalScreenSequence,
   transcriptMessageLimit,
   transcriptWindow,
@@ -47,6 +48,14 @@ describe("CLI TUI terminal behavior", () => {
     });
   });
 
+  test("keeps long selection lists inside the available terminal rows", () => {
+    expect(terminalSelectionWindow(76, 0, 12)).toEqual({ count: 12, start: 0 });
+    expect(terminalSelectionWindow(76, 38, 12)).toEqual({ count: 12, start: 32 });
+    expect(terminalSelectionWindow(76, 75, 12)).toEqual({ count: 12, start: 64 });
+    expect(terminalSelectionWindow(0, 0, 12)).toEqual({ count: 0, start: 0 });
+    expect(terminalSelectionWindow(3, 7, 0)).toEqual({ count: 1, start: 2 });
+  });
+
   test("keeps the cursor line visible in bounded multiline prompts", () => {
     const input = ["one", "two", "three", "four", "five", "six"].join("\n");
     const cursor = input.indexOf("four") + 2;
@@ -59,6 +68,7 @@ describe("CLI TUI terminal behavior", () => {
   test("dismisses chat overlays and drafts before leaving the session", () => {
     expect(chatEscapeAction(true, true)).toBe("close_panel");
     expect(chatEscapeAction(false, true)).toBe("clear_draft");
+    expect(chatEscapeAction(false, false, true)).toBe("keep_run");
     expect(chatEscapeAction(false, false)).toBe("back");
   });
 
@@ -99,6 +109,8 @@ describe("CLI TUI terminal behavior", () => {
     ].join("\n");
     const visible = transcriptWindow(content, 5, 24);
     expect(visible.some((line) => line.hidden)).toBe(true);
+    expect(visible[0]?.text.endsWith("…")).toBe(true);
+    expect(visible.at(-1)?.text.startsWith("…")).toBe(true);
     expect(
       visible.reduce((total, line) => total + Math.ceil(line.text.length / 24), 0)
     ).toBeLessThanOrEqual(7);

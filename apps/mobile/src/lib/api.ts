@@ -762,12 +762,14 @@ export class CybaraMobileApi {
 
   async updateSessionAgent(
     id: string,
-    agentId: string
+    agentId?: string,
+    useModelRouter = false
   ): Promise<{
     success: boolean;
     sessionId?: string;
     agentId?: string;
     agentName?: string;
+    useModelRouter?: boolean;
     provider?: string;
     providerId?: string;
     providerName?: string;
@@ -778,7 +780,7 @@ export class CybaraMobileApi {
   }> {
     const response = await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}/agent`, {
       method: "PUT",
-      body: JSON.stringify({ agentId }),
+      body: JSON.stringify({ agentId, ...(useModelRouter ? { useModelRouter: true } : {}) }),
     });
     const record = asRecord(response);
     return {
@@ -786,6 +788,7 @@ export class CybaraMobileApi {
       sessionId: readString(record, ["sessionId", "session_id"]),
       agentId: readString(record, ["agentId", "agent_id"]),
       agentName: readString(record, ["agentName", "agent_name"]),
+      useModelRouter: record?.useModelRouter === true || record?.use_model_router === true,
       provider: readString(record, ["provider"]),
       providerId: readString(record, ["providerId", "provider_id"]),
       providerName: readString(record, ["providerName", "provider_name"]),

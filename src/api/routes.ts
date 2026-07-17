@@ -1,6 +1,4 @@
-import { mkdtempSync, rmSync } from "fs";
-import { tmpdir } from "os";
-import { dirname, isAbsolute, join, resolve } from "path";
+import { dirname } from "path";
 import {
   type ChatMessage,
   deletePendingChatMessage,
@@ -31,77 +29,11 @@ import {
   handleMemorySearch,
 } from "../api/memory/memory-api";
 import { agentManager, getBuiltinTools } from "../core/agent";
-import {
-  type AgentEvalRun,
-  applyGoldenAssertions,
-  buildTrajectoryStructure,
-  cancelIntelligenceBenchmarkRun,
-  clearIntelligenceBenchmarkCancelRequest,
-  compareTrajectoryStructures,
-  countTrajectories,
-  createResearchDatasetCard,
-  createEvalRun,
-  createEvalSuiteBundle,
-  createIntelligenceBenchmarkRun,
-  deleteGolden,
-  deleteIntelligenceBenchmarkRun,
-  deleteSessionTrajectories,
-  type EvalReplayOptions,
-  ensureSessionTrajectory,
-  evalSuiteJsonl,
-  explainIntelligenceBenchmarkGrade,
-  exportResearchTraces,
-  failIntelligenceBenchmarkRun,
-  findRunningIntelligenceBenchmark,
-  finishEvalRun,
-  forkSession,
-  forkSessionFromMessages,
-  getGolden,
-  getTrajectory,
-  gradeIntelligenceBenchmarkTask,
-  INTELLIGENCE_RATING_EDGE_MARGIN,
-  INTELLIGENCE_RATING_SUITE_ID,
-  importGoldens,
-  intelligenceRatingManifest,
-  intelligenceRatingTasks,
-  isIntelligenceBenchmarkCancelRequested,
-  listEvalRuns,
-  listGoldens,
-  listIntelligenceBenchmarkRuns,
-  listSessionTrajectories,
-  listTrajectories,
-  parseEvalSuiteBundle,
-  parseResearchExportFormat,
-  registerEvalReplayExecutor,
-  requestIntelligenceBenchmarkCancel,
-  saveGolden,
-  summarizeGolden,
-  summarizeResearchTraces,
-  updateIntelligenceBenchmarkRun,
-  updateGoldenAssertions,
-} from "../core/agent-eval";
-import { agentImageSupportById, agentSupportsImages } from "../core/agent-image-capabilities";
-import { parseAgentConfig } from "../core/agent-internals";
-import {
-  cancelAgentLoopRun,
-  getAgentLoopRun,
-  listAgentLoopRuns,
-  startAgentLoop,
-} from "../core/agent-loop";
-import {
-  parseAgentReasoningSetting,
-  readAgentReasoningSetting,
-  withAgentReasoningSetting,
-} from "../core/agent-reasoning";
+import { forkSession } from "../core/agent-eval";
+import { cancelAgentLoopRun, getAgentLoopRun, listAgentLoopRuns } from "../core/agent-loop";
 import { deleteArtifact, listAllArtifacts, listArtifacts, readArtifact } from "../core/artifacts";
 import { getAppVersion, getBuildProvenance, getReleaseRepositoryUrl } from "../core/build-info";
-import {
-  channelManager,
-  channels,
-  processTelegramWebhook,
-  securityManager,
-  whatsappAdapter,
-} from "../core/channels";
+import { channelManager } from "../core/channels";
 import { listChatCapabilities, listChatCommands } from "../core/chat/capability-mentions";
 import {
   createCheckpoint,
@@ -110,22 +42,8 @@ import {
   restoreCheckpoint,
 } from "../core/checkpoint";
 import { config, redactSandboxRuntimeConfig } from "../core/config";
-import { credentialDestinationChanged } from "../core/credential-destination";
-import { resolveCybaraHome, setCybaraHomeOverride } from "../core/cybara-home";
+import { setCybaraHomeOverride } from "../core/cybara-home";
 import { tables } from "../core/database";
-import {
-  LOCAL_STT_MODELS,
-  LOCAL_TTS_MODELS,
-  LOCAL_TTS_VOICES,
-  listLocalSttModelStatus,
-  listLocalTtsModelStatus,
-  loadLocalSttModel,
-  loadLocalTtsModel,
-  transcribeLocalSpeech,
-  unloadLocalSttModel,
-  unloadLocalTtsModel,
-} from "../core/local-speech";
-import { normalizeLocalTranscriptionAudio } from "../core/local-speech-audio";
 import { createLogger } from "../core/logger";
 import {
   getAgentLogs,
@@ -141,7 +59,6 @@ import {
   testMemoryProvider,
 } from "../core/memory/providers";
 import { getVectorStore } from "../core/memory/vector-store";
-import { discoverProviderModels } from "../core/model-discovery";
 import { cybaraDir, homeDir as runtimeHomeDir } from "../core/paths";
 import {
   getBuiltinPluginCatalog,
@@ -157,41 +74,11 @@ import {
   activateInstalledPluginRuntimes,
   activatePluginRuntime,
   deactivatePluginRuntime,
-  getPluginProviderContribution,
   listPluginChannelContributions,
   listPluginCommands,
   listPluginProviderContributions,
 } from "../core/plugins/runtime";
-import { discoverMarketplacePlugins, installMarketplacePlugin } from "./plugin-marketplace";
-import {
-  enrichProviderPlanStatusWithLiveUsage,
-  getProviderPlanAvailability,
-  getProviderPlanMonitoringConfig,
-  getProviderPlanStatus,
-  setProviderPlanMonitoringConfig,
-} from "../core/provider-plans";
-import {
-  createProviderAccountPool,
-  deleteProviderAccountPool,
-  getProviderAccountPool,
-  listProviderAccountPools,
-  removeProviderFromAccountPools,
-  type ProviderAccountPool,
-  type ProviderAccountPoolInput,
-  updateProviderAccountPool,
-} from "../core/provider-account-pool";
-import {
-  type ProviderType,
-  providerManager,
-  providers,
-  resolveProviderType,
-} from "../core/providers";
-import { normalizeProviderSettings } from "../core/provider-settings";
-import {
-  createRealtimeVoiceSession,
-  getRealtimeVoiceStatus,
-  testRealtimeVoiceConnection,
-} from "../core/realtime-voice";
+import { providerManager } from "../core/providers";
 import { getAllPricing, getRouterStatus, type RouterConfig, selectProvider } from "../core/router";
 import { openUrlInBrowser } from "../core/runtime/open-url";
 import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbox";
@@ -216,7 +103,6 @@ import {
   runSourceMigration,
   type SourceMigrationRequest,
 } from "../core/source-migration";
-import { resolveSpeechTtsProvider, synthesizeSpeech } from "../core/speech";
 import * as subagentRegistry from "../core/subagent-registry";
 import {
   createSystemBackup,
@@ -227,7 +113,6 @@ import {
   systemBackupDirectory,
 } from "../core/system-backup";
 import { buildSystemPrompt } from "../core/system-prompt";
-import { detectSystemSpeechCapability } from "../core/system-speech";
 import { getAlwaysAllowlist, getPendingApprovals, resolveApproval } from "../core/tool-approval";
 import {
   clearSubagentSession,
@@ -245,49 +130,39 @@ import {
 } from "../core/tools/index";
 import { checkForUpdate, isUpdateCheckDisabled } from "../core/update-check";
 import { workspaceIndexer } from "../core/workspace-indexer";
+import { agentRoutes } from "./agent-routes";
+import { channelRoutes } from "./channel-routes";
+import { getClientIp } from "./client-ip";
 import { getCybaraDataDirConfigInfo, getCybaraDataDirInfo } from "./data-dir-info";
 import { gatewayAuthSettingsResponse, updateGatewayHostSetting } from "./gateway-network";
 import { buildJourney } from "./journey";
 import { mobileRoutes } from "./mobile";
+import { discoverMarketplacePlugins, installMarketplacePlugin } from "./plugin-marketplace";
 import { pollProviderDeviceCodeOAuth, startProviderDeviceCodeOAuth } from "./provider-oauth-device";
 import { pollProviderRedirectOAuth, startProviderRedirectOAuth } from "./provider-oauth-redirect";
+import { providerRoutes } from "./provider-routes";
 import { getCombinedLogs, getCombinedLogsPage, getLogStats, normalizeTimestamp } from "./queries";
-import { cacheMetricsRoutes, invalidateCachedRoute, prewarmMetricsRoutes } from "./route-cache";
-import {
-  buildGoogleAuthHeaders,
-  decodeDictationAudioBase64,
-  formatChannelTestError,
-  isLikelyGoogleApiKey,
-  isRawHttpResponse,
-  makeRawHttpResponse,
-  normalizeIdentityConfig,
-  normalizeOptionalString,
-  normalizeSecretString,
-  normalizeSystemPromptConfig,
-  parseJsonObject,
-  pickDictationProvider,
-  type RouteContext,
-  type RouteHandler,
-  type SessionMessageView,
-  sanitizeSessionMessages,
-  transcribeWithOpenAICompatibleProvider,
-} from "./routes/_shared";
-import { ideLspRoutes } from "./routes/ide-lsp-routes";
-import { integrationCredentialRoutes } from "./routes/integration-credential-routes";
-import { accountConnectorRoutes } from "./routes/account-connectors";
-import { mcpRoutes } from "./routes/mcp";
-import { metricsRoutes } from "./routes/metrics";
-import { sessionEventRoutes } from "./routes/session-events";
-import { externalTelemetryRoutes } from "./routes/external-telemetry";
-import { getProcessMemoryUsage, healthRoutes } from "./routes/health";
-import { toolCapabilityPolicyRoutes } from "./routes/tool-capability-policy";
-import { browserSupervisionRoutes } from "./routes/browser-supervision";
-import { nearbyRoutes } from "./routes/nearby";
+import { cacheMetricsRoutes, prewarmMetricsRoutes } from "./route-cache";
 import { createRouteMatcher } from "./route-matcher";
 import {
-  validateProviderBaseUrlShape,
-  validateProviderCredentialShape,
-} from "./routes/provider-validation";
+  isRawHttpResponse,
+  normalizeIdentityConfig,
+  normalizeOptionalString,
+  normalizeSystemPromptConfig,
+  type RouteHandler,
+  sanitizeSessionMessages,
+  type SessionMessageView,
+} from "./routes/_shared";
+import { accountConnectorRoutes } from "./routes/account-connectors";
+import { browserSupervisionRoutes } from "./routes/browser-supervision";
+import { evalRoutes } from "./routes/evals";
+import { externalTelemetryRoutes } from "./routes/external-telemetry";
+import { getProcessMemoryUsage, healthRoutes } from "./routes/health";
+import { ideLspRoutes } from "./routes/ide-lsp-routes";
+import { integrationCredentialRoutes } from "./routes/integration-credential-routes";
+import { mcpRoutes } from "./routes/mcp";
+import { metricsRoutes } from "./routes/metrics";
+import { nearbyRoutes } from "./routes/nearby";
 import {
   buildCorsHeaders,
   logRequest,
@@ -298,6 +173,7 @@ import {
   securityHeaders,
 } from "./routes/request-runtime";
 import { runtimeRoutes } from "./routes/runtime-routes";
+import { sessionEventRoutes } from "./routes/session-events";
 import {
   latestSessionModelMetadata,
   type SessionModelMetadata,
@@ -305,10 +181,11 @@ import {
   sessionModelMetadataSnapshot,
 } from "./routes/session-model-metadata";
 import { formatSkillInstallSpec } from "./routes/skill-formatting";
+import { speechRoutes } from "./routes/speech";
+import { toolCapabilityPolicyRoutes } from "./routes/tool-capability-policy";
 import { walletRoutes } from "./routes/wallet";
 import { webResearchRoutes } from "./routes/web-research-routes";
 import {
-  type AuthResult,
   clearGatewayPassword,
   getGatewayAuthSettings,
   revealGatewayApiKey,
@@ -323,196 +200,6 @@ import {
 import { serializeSubagentDetail, serializeSubagentSummary } from "./subagents";
 
 const log = createLogger("API");
-
-function requireLabEnabled(): void {
-  if (!config.getLabSettings().enabled) {
-    throw new Error("Validation error: Lab is disabled in Settings");
-  }
-}
-
-function requireGoldenTurnsEnabled(): void {
-  requireLabEnabled();
-  if (!config.getLabSettings().goldenTurnsEnabled) {
-    throw new Error("Validation error: Golden turns are disabled in Lab settings");
-  }
-}
-
-async function runGoldenReplay(
-  goldenId: string,
-  options?: EvalReplayOptions
-): Promise<AgentEvalRun> {
-  const golden = getGolden(goldenId);
-  if (!golden) throw new Error("Golden test not found");
-  const run = createEvalRun(golden.id);
-  try {
-    const baseline = golden.baseline;
-    const replayAgentId = options?.agentId?.trim() || baseline.agentId;
-    const fork = await forkSessionFromMessages({
-      sourceSessionId: baseline.sessionId,
-      messages: baseline.request.messages.slice(0, -1),
-      workspaceDir: baseline.request.workspaceDir,
-      agentId: replayAgentId,
-      title: `${golden.name} replay`,
-    });
-    const response = await handleChat({
-      sessionId: fork.sessionId,
-      agentId: replayAgentId,
-      message: baseline.request.userMessage.content,
-      workspaceDir: baseline.request.workspaceDir ?? undefined,
-      modelOverride: options?.modelOverride,
-      source: "eval_replay",
-      tools: true,
-    });
-    const actual = buildTrajectoryStructure(response.message);
-    const comparison = applyGoldenAssertions(
-      compareTrajectoryStructures(baseline.structure, actual),
-      golden.assertions,
-      response.message
-    );
-    return finishEvalRun(run.id, {
-      replaySessionId: fork.sessionId,
-      comparison,
-    });
-  } catch (error) {
-    return finishEvalRun(run.id, {
-      error: error instanceof Error ? error.message : "Replay failed",
-    });
-  }
-}
-
-registerEvalReplayExecutor(runGoldenReplay);
-
-function providerAccountPoolResponse(pool: ProviderAccountPool): Record<string, unknown> {
-  return {
-    id: pool.id,
-    name: pool.name,
-    provider: pool.provider,
-    enabled: pool.enabled,
-    routing_mode: pool.accounts.some((account) => account.priority !== undefined)
-      ? "priority_then_usage"
-      : "usage",
-    accounts: pool.accounts.map((account) => {
-      const provider = providerManager.get(account.providerId);
-      return {
-        provider_id: account.providerId,
-        provider_name: provider?.name ?? account.providerId,
-        priority: account.priority ?? null,
-      };
-    }),
-  };
-}
-
-function providerAccountPoolInput(
-  body: unknown,
-  existing?: ProviderAccountPool
-): ProviderAccountPoolInput {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    throw new Error("Validation error: Provider pool body is required");
-  }
-  const record = body as Record<string, unknown>;
-  const accounts = Array.isArray(record.accounts)
-    ? record.accounts.flatMap((entry) => {
-        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
-        const account = entry as Record<string, unknown>;
-        const providerId = normalizeOptionalString(account.provider_id ?? account.providerId);
-        return providerId
-          ? [
-              {
-                providerId,
-                priority: typeof account.priority === "number" ? account.priority : undefined,
-              },
-            ]
-          : [];
-      })
-    : (existing?.accounts ?? []);
-  return {
-    name: normalizeOptionalString(record.name) || existing?.name || "",
-    provider: normalizeOptionalString(record.provider) || existing?.provider || "",
-    enabled: typeof record.enabled === "boolean" ? record.enabled : existing?.enabled !== false,
-    accounts,
-  };
-}
-
-async function runQuickIntelligenceBenchmark(runId: string, agentId: string): Promise<void> {
-  let workspaceDir: string | null = null;
-  const sessionIds: string[] = [];
-  try {
-    const agent = agentManager.get(agentId);
-    if (!agent) throw new Error("Agent not found");
-    workspaceDir = mkdtempSync(join(tmpdir(), "cybara-benchmark-"));
-    await Bun.write(join(workspaceDir, "benchmark.txt"), "ORCHID-742");
-    await Bun.write(join(workspaceDir, "data.csv"), "value\n17\n25\n41\n9\n");
-    const results = [];
-    let cancelled = false;
-    for (const task of intelligenceRatingTasks) {
-      if (isIntelligenceBenchmarkCancelRequested(runId)) {
-        cancelled = true;
-        break;
-      }
-      const sessionId = crypto.randomUUID();
-      sessionIds.push(sessionId);
-      const startedAt = Date.now();
-      try {
-        const response = await handleChat({
-          sessionId,
-          agentId,
-          message: task.prompt,
-          workspaceDir: workspaceDir ?? undefined,
-          source: "intelligence_benchmark",
-          tools: task.requiredTool !== undefined,
-        });
-        const calls = (response.message.tool_calls ?? []).map((call) => call.name);
-        const passed = gradeIntelligenceBenchmarkTask(task, response.message.content, calls);
-        results.push({
-          taskId: task.id,
-          label: task.label,
-          category: task.category,
-          passed,
-          score: passed ? 100 : 0,
-          rating: task.rating,
-          response: response.message.content,
-          expected: task.expected,
-          difficulty: task.difficulty,
-          weight: task.weight,
-          gradingReason: explainIntelligenceBenchmarkGrade(task, response.message.content, calls),
-          durationMs: Date.now() - startedAt,
-          toolCalls: calls,
-          error: null,
-        });
-      } catch (error) {
-        results.push({
-          taskId: task.id,
-          label: task.label,
-          category: task.category,
-          passed: false,
-          score: 0,
-          rating: task.rating,
-          response: "",
-          expected: task.expected,
-          difficulty: task.difficulty,
-          weight: task.weight,
-          gradingReason: error instanceof Error ? error.message : "The task failed to run.",
-          durationMs: Date.now() - startedAt,
-          toolCalls: [],
-          error: error instanceof Error ? error.message : "Benchmark task failed",
-        });
-      }
-      updateIntelligenceBenchmarkRun(runId, results, false);
-    }
-    if (cancelled) cancelIntelligenceBenchmarkRun(runId, results);
-    else updateIntelligenceBenchmarkRun(runId, results, true);
-  } catch (error) {
-    failIntelligenceBenchmarkRun(
-      runId,
-      error instanceof Error ? error.message : "Benchmark failed"
-    );
-  } finally {
-    clearIntelligenceBenchmarkCancelRequest(runId);
-    await Promise.all(sessionIds.map((sessionId) => deleteSession(sessionId)));
-    sessionIds.forEach((sessionId) => deleteSessionTrajectories(sessionId));
-    if (workspaceDir) rmSync(workspaceDir, { recursive: true, force: true });
-  }
-}
 
 function pluginSummary(plugin: ReturnType<typeof listInstalledPlugins>[number]) {
   return {
@@ -539,6 +226,8 @@ const routes: Record<string, RouteHandler> = {
   ...walletRoutes,
   ...mobileRoutes,
   ...metricsRoutes,
+  ...evalRoutes,
+  ...speechRoutes,
   ...sessionEventRoutes,
   ...externalTelemetryRoutes,
   ...toolCapabilityPolicyRoutes,
@@ -551,6 +240,9 @@ const routes: Record<string, RouteHandler> = {
   ...integrationCredentialRoutes,
   ...webResearchRoutes,
   ...healthRoutes,
+  ...providerRoutes,
+  ...channelRoutes,
+  ...agentRoutes,
   "GET /api/metrics": () => ({
     requestCount: requestLogs.length,
     recentRequests: requestLogs.slice(0, 100),
@@ -618,221 +310,6 @@ const routes: Record<string, RouteHandler> = {
       ...((body || {}) as SourceMigrationRequest),
       dryRun: false,
     }),
-  "GET /api/evals": () => ({
-    goldens: listGoldens().map(summarizeGolden),
-    runs: listEvalRuns(),
-  }),
-  "GET /api/evals/runs": (_body, params) => ({
-    runs: listEvalRuns(parseBoundedQueryNumber(params?.limit, 1, 500) ?? 100),
-  }),
-  "GET /api/evals/research/traces": (_body, params) => {
-    const limit = parseBoundedQueryNumber(params?.limit, 1, 1000) ?? 200;
-    const offset = parseBoundedQueryNumber(params?.offset, 0, 1_000_000) ?? 0;
-    const page = summarizeResearchTraces(listTrajectories(limit, offset));
-    const all = summarizeResearchTraces(listTrajectories(1000));
-    return {
-      traces: page.traces,
-      stats: all.stats,
-      total: countTrajectories(),
-      limit,
-      offset,
-    };
-  },
-  "GET /api/evals/research/export": (_body, params) => {
-    const lab = config.getLabSettings();
-    const ids = (params?.ids ?? "")
-      .split(",")
-      .map((id) => id.trim())
-      .filter(Boolean)
-      .slice(0, 1000);
-    const trajectories =
-      ids.length > 0
-        ? ids.map(getTrajectory).filter((trajectory) => trajectory !== null)
-        : listTrajectories(1000);
-    return exportResearchTraces(trajectories, {
-      format: parseResearchExportFormat(params?.format ?? lab.defaultExportFormat),
-      sanitize:
-        params?.sanitize === undefined
-          ? lab.sanitizeExportsByDefault
-          : params.sanitize === "true" || params.sanitize === "1",
-    });
-  },
-  "GET /api/evals/research/card": (_body, params) => {
-    const lab = config.getLabSettings();
-    const ids = (params?.ids ?? "")
-      .split(",")
-      .map((id) => id.trim())
-      .filter(Boolean)
-      .slice(0, 1000);
-    const trajectories =
-      ids.length > 0
-        ? ids.map(getTrajectory).filter((trajectory) => trajectory !== null)
-        : listTrajectories(1000);
-    return createResearchDatasetCard(trajectories, {
-      format: parseResearchExportFormat(params?.format ?? lab.defaultExportFormat),
-      sanitize:
-        params?.sanitize === undefined
-          ? lab.sanitizeExportsByDefault
-          : params.sanitize === "true" || params.sanitize === "1",
-    });
-  },
-  "GET /api/evals/benchmarks": (_body, params) => ({
-    suite: {
-      id: INTELLIGENCE_RATING_SUITE_ID,
-      name: "Cybara Capability Smoke Score",
-      description: `A reproducible, judge-free smoke suite with ${intelligenceRatingTasks.length} objectively graded tasks. The score is an internal ordinal for comparing runs of this suite version, not an externally calibrated intelligence measure.`,
-      taskCount: intelligenceRatingTasks.length,
-      minRating: Math.min(...intelligenceRatingTasks.map((task) => task.rating)),
-      maxRating:
-        Math.max(...intelligenceRatingTasks.map((task) => task.rating)) +
-        INTELLIGENCE_RATING_EDGE_MARGIN,
-      tasks: intelligenceRatingTasks.map(({ expected: _expected, ...task }) => task),
-    },
-    runs: listIntelligenceBenchmarkRuns(parseBoundedQueryNumber(params?.limit, 1, 200) ?? 50),
-  }),
-  "GET /api/evals/benchmarks/manifest": () => {
-    const manifest = intelligenceRatingManifest();
-    return {
-      filename: `${INTELLIGENCE_RATING_SUITE_ID}-manifest.json`,
-      mimeType: "application/json",
-      content: JSON.stringify(manifest, null, 2),
-      manifest,
-    };
-  },
-  "GET /api/evals/benchmarks/export": () => {
-    const runs = listIntelligenceBenchmarkRuns(200);
-    return {
-      filename: `cybara-benchmarks-${new Date().toISOString().slice(0, 10)}.jsonl`,
-      mimeType: "application/x-ndjson",
-      content: runs.map((run) => JSON.stringify(run)).join("\n"),
-      count: runs.length,
-    };
-  },
-  "POST /api/evals/benchmarks/cancel": (body) => {
-    const data = (body || {}) as { runId?: string };
-    if (!data.runId?.trim()) return { success: false, error: "runId is required" };
-    const run = requestIntelligenceBenchmarkCancel(data.runId.trim());
-    if (!run) return { success: false, error: "No running benchmark with that id" };
-    return { success: true, run };
-  },
-  "DELETE /api/evals/benchmarks": (body) => {
-    const data = (body || {}) as { runId?: string };
-    if (!data.runId?.trim()) return { success: false, error: "runId is required" };
-    const deleted = deleteIntelligenceBenchmarkRun(data.runId.trim());
-    if (!deleted) {
-      return {
-        success: false,
-        error: "Run not found or still running; cancel it first",
-      };
-    }
-    return { success: true };
-  },
-  "POST /api/evals/benchmarks/run": async (body) => {
-    const data = (body || {}) as { agentId?: string };
-    if (!data.agentId?.trim()) return { success: false, error: "agentId is required" };
-    const agentId = data.agentId.trim();
-    const running = findRunningIntelligenceBenchmark();
-    if (running)
-      return {
-        success: false,
-        error: "A benchmark is already running",
-        run: running,
-      };
-    const agent = agentManager.get(agentId);
-    if (!agent) return { success: false, error: "Agent not found" };
-    const run = createIntelligenceBenchmarkRun({
-      agentId,
-      provider: agent.provider_id || agent.provider || null,
-      model: agent.model || null,
-    });
-    void runQuickIntelligenceBenchmark(run.id, agentId);
-    return { success: true, run };
-  },
-  "GET /api/evals/export": (_body, params) => {
-    const goldens = listGoldens();
-    const runs = listEvalRuns(500);
-    const sanitized = params?.sanitize === "true" || params?.sanitize === "1";
-    const date = new Date().toISOString().slice(0, 10);
-    if (params?.format === "jsonl") {
-      return {
-        filename: `cybara-eval-trajectories-${date}.jsonl`,
-        mimeType: "application/x-ndjson",
-        content: evalSuiteJsonl(goldens, { sanitize: sanitized, runs }),
-        count: goldens.length,
-      };
-    }
-    return {
-      filename: `cybara-eval-suite-${date}.json`,
-      mimeType: "application/json",
-      content: JSON.stringify(createEvalSuiteBundle(goldens, { sanitize: sanitized }), null, 2),
-      count: goldens.length,
-    };
-  },
-  "POST /api/evals/import": (body) => {
-    const data = (body || {}) as { bundle?: unknown };
-    try {
-      const imported = importGoldens(parseEvalSuiteBundle(data.bundle));
-      return { success: true, imported, count: imported.length };
-    } catch (error) {
-      return {
-        success: false,
-        imported: [],
-        count: 0,
-        error: error instanceof Error ? error.message : "Invalid eval suite",
-      };
-    }
-  },
-  "POST /api/evals/goldens": async (body) => {
-    requireGoldenTurnsEnabled();
-    const data = (body || {}) as {
-      sessionId?: string;
-      messageIndex?: number;
-      name?: string;
-      description?: string;
-      tags?: string[];
-      assertions?: unknown;
-    };
-    if (!data.sessionId?.trim()) return { success: false, error: "sessionId is required" };
-    const trajectory = await ensureSessionTrajectory(data.sessionId.trim(), data.messageIndex);
-    const golden = saveGolden({
-      trajectory,
-      name:
-        data.name?.trim() || trajectory.request.userMessage.content.slice(0, 80) || "Golden run",
-      description: data.description,
-      tags: Array.isArray(data.tags) ? data.tags : [],
-      assertions: data.assertions,
-    });
-    return { success: true, golden };
-  },
-  "DELETE /api/evals/goldens/:id": (_body, params) => ({
-    success: deleteGolden(params!.id),
-  }),
-  "PUT /api/evals/goldens/:id/assertions": (body, params) => {
-    const data = (body || {}) as { assertions?: unknown };
-    const golden = updateGoldenAssertions(params!.id, data.assertions);
-    return golden ? { success: true, golden } : { success: false, error: "Golden test not found" };
-  },
-  "POST /api/evals/goldens/:id/replay": async (body, params) => {
-    const data = (body || {}) as { agentId?: string; modelOverride?: string };
-    return {
-      success: true,
-      run: await runGoldenReplay(params!.id, {
-        agentId: data.agentId,
-        modelOverride: data.modelOverride,
-      }),
-    };
-  },
-  "POST /api/evals/run": async (body) => {
-    const data = (body || {}) as { goldenIds?: string[] };
-    const selected = Array.isArray(data.goldenIds)
-      ? listGoldens().filter((golden) => data.goldenIds?.includes(golden.id))
-      : listGoldens();
-    const runs: AgentEvalRun[] = [];
-    for (const golden of selected) {
-      runs.push(await runGoldenReplay(golden.id));
-    }
-    return { success: true, runs };
-  },
   "GET /api/config": () => ({
     ...redactSecretConfig(config.getAll()),
     dangerous_tool_policy: config.getDangerousToolPolicy(),
@@ -932,172 +409,6 @@ const routes: Record<string, RouteHandler> = {
     success: true,
     ...rotateGatewayApiKey(),
   }),
-  "GET /api/speech/settings": () => config.getSpeechSettings(),
-  "GET /api/speech/status": () => {
-    const settings = config.getSpeechSettings();
-    let tts: {
-      ready: boolean;
-      provider: string | null;
-      type: string | null;
-      systemFallback: boolean;
-      error: string | null;
-    } = {
-      ready: false,
-      provider: null,
-      type: null,
-      systemFallback: false,
-      error: null,
-    };
-    const systemVoice = detectSystemSpeechCapability();
-    tts.systemFallback = settings.tts.fallbackToSystem && systemVoice.available;
-    if (settings.tts.provider === "local") {
-      const localStatus = listLocalTtsModelStatus()[0];
-      tts = {
-        ...tts,
-        ready: localStatus?.state !== "error",
-        provider: "Kokoro 82M (local)",
-        type: "local",
-        error: localStatus?.state === "error" ? localStatus.lastError : null,
-      };
-    } else if (settings.tts.provider === "system") {
-      tts = {
-        ...tts,
-        ready: systemVoice.available,
-        provider: systemVoice.available ? systemVoice.label : null,
-        type: "system",
-        error: systemVoice.error,
-      };
-    } else {
-      try {
-        const resolved = resolveSpeechTtsProvider({ settings });
-        if (resolved) {
-          tts = {
-            ...tts,
-            ready: true,
-            provider: resolved.provider.name,
-            type: resolved.type,
-          };
-        } else if (tts.systemFallback) {
-          tts = {
-            ...tts,
-            ready: true,
-            provider: `${systemVoice.label} (fallback)`,
-            type: "system",
-          };
-        } else {
-          tts.error =
-            settings.tts.provider === "auto"
-              ? "No speech provider yet. Add OpenAI/ElevenLabs, pick Local Kokoro, or enable the system-voice fallback."
-              : `No ${settings.tts.provider} provider with speech credentials is configured.`;
-        }
-      } catch (error) {
-        tts.error = error instanceof Error ? error.message : "TTS provider resolution failed";
-      }
-    }
-    let stt: {
-      ready: boolean;
-      provider: string | null;
-      type: string | null;
-      native: boolean;
-      error: string | null;
-    } = {
-      ready: false,
-      provider: null,
-      type: null,
-      native: settings.stt.provider === "native",
-      error: null,
-    };
-    if (stt.native) {
-      stt.ready = true;
-    } else if (settings.stt.provider === "local" || settings.stt.provider === "auto") {
-      const localStatus = listLocalSttModelStatus()[0];
-      stt = {
-        ...stt,
-        ready: localStatus?.state !== "error",
-        provider: "Whisper (local)",
-        type: "local",
-        error: localStatus?.state === "error" ? localStatus.lastError : null,
-      };
-    } else {
-      try {
-        const provider = pickDictationProvider(settings.stt.providerId || undefined);
-        stt = {
-          ...stt,
-          ready: true,
-          provider: provider.name,
-          type: provider.provider,
-        };
-      } catch (error) {
-        stt.error =
-          error instanceof Error ? error.message : "Transcription provider resolution failed";
-      }
-    }
-    return {
-      success: true,
-      tts,
-      stt,
-      realtime: getRealtimeVoiceStatus(settings.realtime),
-      settings: {
-        ttsProvider: settings.tts.provider,
-        ttsVoice: settings.tts.voice,
-        sttProvider: settings.stt.provider,
-        realtimeProvider: settings.realtime.provider,
-      },
-    };
-  },
-  "PUT /api/speech/settings": (body) => ({
-    success: true,
-    speech: config.setSpeechSettings(body),
-  }),
-  "GET /api/speech/local/models": () => ({
-    success: true,
-    tts: {
-      models: LOCAL_TTS_MODELS,
-      voices: LOCAL_TTS_VOICES,
-      status: listLocalTtsModelStatus(),
-    },
-    stt: {
-      models: LOCAL_STT_MODELS,
-      status: listLocalSttModelStatus(),
-    },
-  }),
-  "POST /api/speech/local/load": async (body) => {
-    const data = (body || {}) as { model?: string; kind?: string };
-    try {
-      if (data.kind === "stt") {
-        await loadLocalSttModel(data.model?.trim() || undefined);
-        return { success: true, status: listLocalSttModelStatus() };
-      }
-      await loadLocalTtsModel(data.model?.trim() || undefined);
-      return { success: true, status: listLocalTtsModelStatus() };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Model load failed",
-        status: data.kind === "stt" ? listLocalSttModelStatus() : listLocalTtsModelStatus(),
-      };
-    }
-  },
-  "POST /api/speech/local/unload": (body) => {
-    const data = (body || {}) as { model?: string; kind?: string };
-    const unloaded =
-      data.kind === "stt"
-        ? unloadLocalSttModel(data.model?.trim() || undefined)
-        : unloadLocalTtsModel(data.model?.trim() || undefined);
-    return {
-      success: true,
-      unloaded,
-      status: data.kind === "stt" ? listLocalSttModelStatus() : listLocalTtsModelStatus(),
-    };
-  },
-  "POST /api/speech/realtime/session": async () => ({
-    success: true,
-    session: await createRealtimeVoiceSession(),
-  }),
-  "POST /api/speech/realtime/test": async () => ({
-    success: true,
-    result: await testRealtimeVoiceConnection(),
-  }),
   "GET /api/sandbox/status": () => getSandboxRuntimeStatus(),
   "PUT /api/config": async (body) => {
     const data = body as Record<string, unknown>;
@@ -1185,157 +496,6 @@ const routes: Record<string, RouteHandler> = {
     };
   },
 
-  "GET /api/agents": () => agentManager.list(),
-  "GET /api/agents/summary": () => {
-    const agents = agentManager.list();
-    const imageSupport = agentImageSupportById(agents);
-    return agents.map((agent) => {
-      const toolProfile = parseAgentConfig(agent.config).tool_profile;
-      return {
-        id: agent.id,
-        name: agent.name,
-        type: agent.type,
-        model: agent.model,
-        provider: agent.provider,
-        provider_id: agent.provider_id,
-        provider_type: agent.provider_type,
-        provider_pool_id: agent.provider_pool_id,
-        provider_pool_name: agent.provider_pool_name,
-        fallback_provider_id: agent.fallback_provider_id,
-        status: agent.status,
-        created_at: agent.created_at,
-        reasoning_effort: readAgentReasoningSetting(agent.config),
-        tool_profile: typeof toolProfile === "string" ? toolProfile : "full",
-        supports_images: imageSupport.get(agent.id) ?? false,
-      };
-    });
-  },
-  "POST /api/agents": (body) => {
-    const data = body as Parameters<typeof agentManager.create>[0];
-    return agentManager.create(data);
-  },
-  "POST /api/agents/default": async () => {
-    if (agentManager.hasDefaultAgent()) {
-      return { error: "Default agent already exists" };
-    }
-    const agent = agentManager.createDefault();
-    try {
-      await agentManager.start(agent.id);
-    } catch {
-      /* keep the created agent even if start fails */
-    }
-    return agentManager.get(agent.id) ?? agent;
-  },
-  "GET /api/agents/:id": (_body, params) => agentManager.get(params!.id),
-  "PUT /api/agents/:id": (body, params) =>
-    agentManager.update(params!.id, body as Parameters<typeof agentManager.update>[1]),
-  "PUT /api/agents/:id/reasoning": (body, params) => {
-    const agent = agentManager.get(params!.id);
-    if (!agent) return { success: false, error: "Agent not found" };
-    const parsed = parseAgentReasoningSetting(
-      (body as { reasoning_effort?: unknown } | undefined)?.reasoning_effort
-    );
-    if (!parsed.valid) return { success: false, error: "Invalid reasoning effort" };
-    const updated = agentManager.update(params!.id, {
-      config: withAgentReasoningSetting(agent.config, parsed.effort),
-    });
-    if (!updated) return { success: false, error: "Agent not found" };
-    return {
-      success: true,
-      reasoning_effort: readAgentReasoningSetting(updated.config),
-    };
-  },
-  "POST /api/agents/:id/start": async (_body, params) => ({
-    success: await agentManager.start(params!.id),
-  }),
-  "POST /api/agents/:id/stop": async (_body, params) => ({
-    success: await agentManager.stop(params!.id),
-  }),
-  "DELETE /api/agents/:id": (_body, params) => ({
-    success: agentManager.delete(params!.id),
-  }),
-
-  "POST /api/agents/:id/message": async (body, params) => {
-    const data = body as { message: string };
-    if (!data.message) throw new Error("Message content is required");
-    const result = await agentManager.message(params!.id, data.message);
-    return result;
-  },
-  "POST /api/agents/:id/loops": async (body, params) => {
-    const data = body as {
-      objective?: string;
-      label?: string;
-      maxIterations?: number;
-      maxDurationSeconds?: number;
-      maxDuration?: number;
-      model?: string;
-      useTools?: boolean;
-    };
-
-    if (!data.objective || !data.objective.trim()) {
-      return { success: false, error: "objective is required" };
-    }
-
-    try {
-      const run = startAgentLoop({
-        agentId: params!.id,
-        objective: data.objective,
-        label: data.label,
-        maxIterations: data.maxIterations,
-        maxDurationSeconds:
-          typeof data.maxDurationSeconds === "number" ? data.maxDurationSeconds : data.maxDuration,
-        modelOverride: data.model,
-        useTools: data.useTools,
-      });
-
-      return { success: true, runId: run.id, run };
-    } catch (error) {
-      return { success: false, error: (error as Error).message };
-    }
-  },
-  "GET /api/agents/:id/loops": (_body, params) => ({
-    runs: listAgentLoopRuns(params!.id),
-  }),
-  "GET /api/agents/:id/history": (_body, params) => {
-    return { messages: agentManager.getHistory(params!.id) };
-  },
-  "DELETE /api/agents/:id/history": (_body, params) => {
-    return { success: agentManager.clearHistory(params!.id) };
-  },
-  "GET /api/agents/:id/state": (_body, params) => {
-    const state = agentManager.getState(params!.id);
-    if (!state) return { running: false };
-    return {
-      running: true,
-      startedAt: state.startedAt.toISOString(),
-      pid: state.pid,
-      messageCount: state.messages.length,
-      lastActive: state.lastActive.toISOString(),
-    };
-  },
-
-  "POST /api/agents/:id/chat": async (body, params) => {
-    const data = body as {
-      message: string;
-      sessionId?: string;
-      clientPendingId?: string;
-      workspaceDir?: string;
-      queueMode?: "queue" | "steer";
-      useModelRouter?: boolean;
-      images?: Array<{ data?: string; url?: string; mimeType?: string }>;
-    };
-    return await handleChat({
-      message: data.message,
-      agentId: params!.id,
-      sessionId: data.sessionId,
-      clientPendingId: data.clientPendingId,
-      workspaceDir: data.workspaceDir,
-      queueMode: data.queueMode,
-      useModelRouter: data.useModelRouter,
-      images: data.images,
-    });
-  },
-
   "GET /api/tools/builtin": () => getBuiltinTools(),
   "GET /api/tools": () => getToolSchemasForLLM(),
   "GET /api/tools/dangerous": () => ({
@@ -1409,11 +569,6 @@ const routes: Record<string, RouteHandler> = {
           : undefined,
       permissions: contextPermissions,
       enforcePermissions: data.context?.enforcePermissions === true,
-      // SECURITY: never let the HTTP caller self-grant dangerous-tool access.
-      // Honoring a client-supplied `allowDangerousTools` let any API caller
-      // bypass the dangerous-tool block and the approval gate (privilege
-      // escalation). Dangerous tools must go through the normal
-      // dangerous-tool policy / approval flow regardless of the request body.
       allowDangerousTools: false,
       confineToWorkspace:
         typeof data.context?.workspaceDir === "string" &&
@@ -1424,464 +579,6 @@ const routes: Record<string, RouteHandler> = {
       ...context,
     });
   },
-
-  "GET /api/providers": () => providerManager.list(),
-  "GET /api/provider-account-pools": () =>
-    listProviderAccountPools().map(providerAccountPoolResponse),
-  "POST /api/provider-account-pools": (body) =>
-    providerAccountPoolResponse(
-      createProviderAccountPool(providerAccountPoolInput(body), providerManager.list())
-    ),
-  "PUT /api/provider-account-pools/:id": (body, params) => {
-    const existing = getProviderAccountPool(params!.id);
-    if (!existing) throw new Error("Provider account pool not found");
-    const pool = updateProviderAccountPool(
-      params!.id,
-      providerAccountPoolInput(body, existing),
-      providerManager.list()
-    );
-    if (!pool) throw new Error("Provider account pool not found");
-    return providerAccountPoolResponse(pool);
-  },
-  "DELETE /api/provider-account-pools/:id": (_body, params) => ({
-    success: deleteProviderAccountPool(params!.id),
-  }),
-  "GET /api/providers/available": () => [
-    ...Object.entries(providers).map(([key, value]) => ({
-      id: key,
-      name: value.name,
-      description: `Use ${value.name} models`,
-      baseUrl: value.baseUrl,
-      authType: value.authType,
-      oauthFlow: (value as Record<string, unknown>).oauthFlow || null,
-      hasOAuthConfig: !!(value as Record<string, unknown>).oauthConfig,
-      oauthLoginUrl: (value as Record<string, unknown>).oauthLoginUrl || null,
-      models: value.models.map((m) => ({
-        id: m.id,
-        name: m.name,
-        context: m.context,
-        maxTokens: m.maxTokens,
-        reasoning: m.reasoning,
-        input: m.input,
-      })),
-    })),
-    ...listPluginProviderContributions().map((provider) => ({
-      id: provider.runtimeId,
-      name: provider.name,
-      description: `Use ${provider.name} models`,
-      baseUrl: provider.baseUrl,
-      authType: provider.authType === "none" ? "none" : "api_key",
-      oauthFlow: null,
-      hasOAuthConfig: false,
-      oauthLoginUrl: null,
-      models: provider.models.map((model) => ({
-        id: model,
-        name: model,
-        input: ["text"],
-      })),
-    })),
-  ],
-  "GET /api/provider-plans/config": () => getProviderPlanMonitoringConfig(),
-  "PUT /api/provider-plans/config": (body) => {
-    const result = setProviderPlanMonitoringConfig(body);
-    invalidateCachedRoute("GET /api/provider-plans/status");
-    return result;
-  },
-  "GET /api/provider-plans/availability": () => getProviderPlanAvailability(),
-  "GET /api/provider-plans/status": () =>
-    enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus()),
-  "POST /api/providers/:id/test": async (_body, params) => {
-    const provider = providerManager.getWithCredentials(params!.id);
-    if (!provider) {
-      throw new Error("Provider not found");
-    }
-
-    const providerInfo = providers[provider.provider as ProviderType];
-    if (!providerInfo) {
-      throw new Error(`Unknown provider type: ${provider.provider}`);
-    }
-
-    const requiresCredentials = providerInfo.authType !== "none";
-    const hasCredentials = !!(provider.api_key || provider.access_token || provider.refresh_token);
-
-    if (requiresCredentials && !hasCredentials) {
-      return {
-        success: false,
-        provider: provider.provider,
-        message: "Provider credentials are missing",
-      };
-    }
-
-    if (provider.provider === "ollama") {
-      const baseUrl = provider.base_url || providerInfo.baseUrl || "http://localhost:11434";
-      try {
-        const response = await fetch(`${baseUrl}/api/tags`, {
-          signal: AbortSignal.timeout(5000),
-        });
-        return {
-          success: response.ok,
-          provider: provider.provider,
-          message: response.ok
-            ? "Ollama connection verified"
-            : `Ollama returned HTTP ${response.status}`,
-        };
-      } catch (error) {
-        return {
-          success: false,
-          provider: provider.provider,
-          message: `Failed to connect to Ollama: ${(error as Error).message}`,
-        };
-      }
-    }
-
-    if (provider.provider === "openai") {
-      const apiKey = provider.api_key || provider.access_token;
-      const baseUrl = provider.base_url || providerInfo.baseUrl || "https://api.openai.com/v1";
-      if (!apiKey) {
-        return {
-          success: false,
-          provider: provider.provider,
-          message: "OpenAI API key is missing",
-        };
-      }
-
-      try {
-        const response = await fetch(`${baseUrl}/models`, {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-          },
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!response.ok) {
-          const text = await response.text();
-          const safeText = text.slice(0, 300);
-          return {
-            success: false,
-            provider: provider.provider,
-            message: `OpenAI auth/model check failed: HTTP ${response.status}${safeText ? ` - ${safeText}` : ""}`,
-          };
-        }
-
-        return {
-          success: true,
-          provider: provider.provider,
-          message: "OpenAI credentials verified",
-        };
-      } catch (error) {
-        return {
-          success: false,
-          provider: provider.provider,
-          message: `OpenAI test failed: ${(error as Error).message}`,
-        };
-      }
-    }
-
-    if (provider.provider === "elevenlabs") {
-      const apiKey = provider.api_key || provider.access_token;
-      const baseUrl = (
-        provider.base_url ||
-        providerInfo.baseUrl ||
-        "https://api.elevenlabs.io/v1"
-      ).replace(/\/+$/, "");
-      if (!apiKey) {
-        return {
-          success: false,
-          provider: provider.provider,
-          message: "ElevenLabs API key is missing",
-        };
-      }
-
-      try {
-        const response = await fetch(`${baseUrl}/voices`, {
-          headers: {
-            "xi-api-key": apiKey,
-          },
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!response.ok) {
-          const text = await response.text();
-          const safeText = text.slice(0, 300);
-          return {
-            success: false,
-            provider: provider.provider,
-            message: `ElevenLabs voice check failed: HTTP ${response.status}${safeText ? ` - ${safeText}` : ""}`,
-          };
-        }
-
-        return {
-          success: true,
-          provider: provider.provider,
-          message: "ElevenLabs credentials verified",
-        };
-      } catch (error) {
-        return {
-          success: false,
-          provider: provider.provider,
-          message: `ElevenLabs test failed: ${(error as Error).message}`,
-        };
-      }
-    }
-
-    if (providerInfo.api === "google-generative-ai") {
-      const baseUrl = (
-        provider.base_url ||
-        providerInfo.baseUrl ||
-        "https://generativelanguage.googleapis.com/v1beta"
-      ).replace(/\/+$/, "");
-      if ((providerInfo.authType || "api_key") === "api_key") {
-        const storedApiKey = provider.api_key?.trim();
-        if (!storedApiKey) {
-          return {
-            success: false,
-            provider: provider.provider,
-            message: "Google API key is missing",
-          };
-        }
-        if (/^https?:\/\//i.test(storedApiKey) || !isLikelyGoogleApiKey(storedApiKey)) {
-          return {
-            success: false,
-            provider: provider.provider,
-            message:
-              "Stored Google API key appears invalid. Paste an AI Studio key that starts with 'AIza'.",
-          };
-        }
-      }
-      const authHeaders = buildGoogleAuthHeaders(providerInfo.authType || "api_key", {
-        apiKey: provider.api_key ?? undefined,
-        accessToken: provider.access_token ?? undefined,
-      });
-      const probeModelId = providerInfo.models?.[0]?.id || "gemini-3-pro-preview";
-      if (!authHeaders.Authorization && !authHeaders["x-goog-api-key"]) {
-        return {
-          success: false,
-          provider: provider.provider,
-          message: "Google credentials are missing",
-        };
-      }
-
-      try {
-        const response = await fetch(`${baseUrl}/models/${encodeURIComponent(probeModelId)}`, {
-          method: "GET",
-          headers: authHeaders,
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!response.ok) {
-          const text = await response.text();
-          const safeText = text.slice(0, 300);
-          return {
-            success: false,
-            provider: provider.provider,
-            message: `Google auth/model check failed: HTTP ${response.status}${safeText ? ` - ${safeText}` : ""}`,
-          };
-        }
-        return {
-          success: true,
-          provider: provider.provider,
-          message: "Google credentials verified",
-        };
-      } catch (error) {
-        return {
-          success: false,
-          provider: provider.provider,
-          message: `Google test failed: ${(error as Error).message}`,
-        };
-      }
-    }
-
-    return {
-      success: true,
-      provider: provider.provider,
-      message: "Provider configuration appears valid",
-    };
-  },
-  "GET /api/providers/:id": (_body, params) => {
-    const provider = providerManager.get(params!.id);
-    return provider || { error: "Provider not found" };
-  },
-  "POST /api/providers": (body) => {
-    const data = body as {
-      provider: string;
-      name: string;
-      api_key?: string;
-      access_token?: string;
-      refresh_token?: string;
-      expires_at?: number;
-      base_url?: string;
-      settings?: Record<string, unknown>;
-      is_default?: boolean;
-    };
-
-    const apiKey = normalizeSecretString(data.api_key);
-    const accessToken = normalizeSecretString(data.access_token);
-    const refreshToken = normalizeSecretString(data.refresh_token);
-    const normalizedBaseUrl = normalizeOptionalString(data.base_url);
-    if (normalizedBaseUrl) {
-      validateProviderBaseUrlShape(normalizedBaseUrl);
-    }
-    const resolvedProviderType = resolveProviderType(data.provider);
-    const pluginProvider = getPluginProviderContribution(data.provider);
-    if (!resolvedProviderType && !pluginProvider) {
-      throw new Error(`Validation error: unknown provider '${data.provider}'`);
-    }
-    if (resolvedProviderType) {
-      validateProviderCredentialShape(resolvedProviderType, {
-        apiKey,
-        accessToken,
-      });
-    } else if (pluginProvider?.authType !== "none" && !apiKey && !accessToken) {
-      throw new Error("Validation error: plugin provider API key is required");
-    }
-    const providerSettings = normalizeProviderSettings(resolvedProviderType || "", data.settings);
-    if (resolvedProviderType === "devin" && data.settings && !providerSettings) {
-      throw new Error("Validation error: Devin organization ID is invalid");
-    }
-
-    if (pluginProvider) {
-      const id = crypto.randomUUID();
-      tables.providers.create({
-        id,
-        provider: pluginProvider.runtimeId,
-        name: normalizeOptionalString(data.name) || data.name,
-        api_key: apiKey,
-        access_token: accessToken,
-        base_url: normalizedBaseUrl || pluginProvider.baseUrl,
-        settings: providerSettings,
-        is_default: data.is_default === true,
-      });
-      for (const model of pluginProvider.models) {
-        tables.providerModels.upsert({
-          id: crypto.randomUUID(),
-          provider_id: id,
-          model_id: model,
-          model_name: model,
-        });
-      }
-      invalidateCachedRoute("GET /api/provider-plans/status");
-      return providerManager.get(id);
-    }
-    const created = providerManager.create({
-      provider: resolvedProviderType as Parameters<typeof providerManager.create>[0]["provider"],
-      name: normalizeOptionalString(data.name) || data.name,
-      api_key: apiKey,
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      settings: providerSettings,
-      expires_at: typeof data.expires_at === "number" ? data.expires_at : undefined,
-      base_url: normalizedBaseUrl,
-      is_default: data.is_default,
-    });
-    invalidateCachedRoute("GET /api/provider-plans/status");
-    return created;
-  },
-  "PUT /api/providers/:id": (body, params) => {
-    const existing = providerManager.getWithCredentials(params!.id);
-    if (!existing) {
-      throw new Error("Provider not found");
-    }
-
-    const data = (body || {}) as Record<string, unknown>;
-    const updates: Parameters<typeof providerManager.update>[1] = {};
-
-    if ("name" in data) {
-      const normalizedName = normalizeOptionalString(data.name);
-      if (normalizedName) {
-        updates.name = normalizedName;
-      }
-    }
-
-    if ("base_url" in data) {
-      const normalizedBaseUrl = normalizeOptionalString(data.base_url);
-      if (normalizedBaseUrl) {
-        validateProviderBaseUrlShape(normalizedBaseUrl);
-        updates.base_url = normalizedBaseUrl;
-      }
-    }
-
-    if ("is_default" in data) {
-      updates.is_default = data.is_default === true;
-    }
-
-    if ("settings" in data) {
-      const providerSettings = normalizeProviderSettings(existing.provider, {
-        ...(existing.settings || {}),
-        ...((data.settings && typeof data.settings === "object" && !Array.isArray(data.settings)
-          ? data.settings
-          : {}) as Record<string, unknown>),
-      });
-      if (existing.provider === "devin" && !providerSettings) {
-        throw new Error("Validation error: Devin organization ID is invalid");
-      }
-      updates.settings = providerSettings;
-    }
-
-    if ("api_key" in data) {
-      const normalizedApiKey = normalizeSecretString(data.api_key);
-      if (normalizedApiKey) {
-        updates.api_key = normalizedApiKey;
-      }
-    }
-
-    if ("access_token" in data) {
-      const normalizedAccessToken = normalizeSecretString(data.access_token);
-      if (normalizedAccessToken) {
-        updates.access_token = normalizedAccessToken;
-      }
-    }
-
-    if ("refresh_token" in data) {
-      const normalizedRefreshToken = normalizeSecretString(data.refresh_token);
-      if (normalizedRefreshToken) {
-        updates.refresh_token = normalizedRefreshToken;
-      }
-    }
-
-    if ("expires_at" in data && typeof data.expires_at === "number") {
-      updates.expires_at = data.expires_at;
-    }
-
-    const existingProviderType = resolveProviderType(existing.provider);
-    const existingBaseUrl =
-      existing.base_url ||
-      (existingProviderType ? providers[existingProviderType]?.baseUrl : undefined);
-    if (
-      updates.base_url &&
-      credentialDestinationChanged(existingBaseUrl, updates.base_url) &&
-      ((existing.api_key && !updates.api_key) ||
-        (existing.access_token && !updates.access_token) ||
-        (existing.refresh_token && !updates.refresh_token))
-    ) {
-      throw new Error(
-        "Validation error: credentials must be re-entered when changing the provider destination"
-      );
-    }
-
-    validateProviderCredentialShape(existing.provider, {
-      apiKey: updates.api_key,
-      accessToken: updates.access_token,
-    });
-
-    const success = providerManager.update(params!.id, updates);
-    if (success) invalidateCachedRoute("GET /api/provider-plans/status");
-    return { success };
-  },
-  "DELETE /api/providers/:id": (_body, params) => {
-    const success = providerManager.delete(params!.id);
-    if (success) {
-      removeProviderFromAccountPools(params!.id);
-      invalidateCachedRoute("GET /api/provider-plans/status");
-    }
-    return { success };
-  },
-  "GET /api/providers/:id/models": async (_body, params) => {
-    const provider = providerManager.get(params!.id);
-    const discovery = discoverProviderModels(params!.id);
-    const waitMs = provider?.provider === "openai-codex" ? 2500 : 600;
-    await Promise.race([discovery, Bun.sleep(waitMs)]);
-    return providerManager.getModels(params!.id);
-  },
-  "POST /api/providers/:id/models/discover": async (_body, params) =>
-    await discoverProviderModels(params!.id, { force: true }),
-  "POST /api/providers/discover/ollama": async () => await providerManager.discoverOllamaModels(),
 
   "GET /api/checkpoints": (_body, params) => {
     const workspaceDir = params?.workspace as string;
@@ -1979,265 +676,6 @@ const routes: Record<string, RouteHandler> = {
 
   "POST /api/providers/oauth/start": startProviderRedirectOAuth,
   "POST /api/providers/oauth/callback-status": pollProviderRedirectOAuth,
-  "GET /api/channels": () => channelManager.list(),
-  "GET /api/channels/available": () =>
-    Object.entries(channels).map(([key, value]) => ({
-      id: key,
-      ...value,
-      fields: value.fields,
-      webhook: !!channelManager.getAdapter(key as keyof typeof channels)?.handleWebhook,
-    })),
-  "POST /api/channels/telegram/setup": async (body) => {
-    const data = body as { botToken?: string; webhookUrl?: string };
-    if (!data.botToken) {
-      throw new Error("Validation error: botToken is required");
-    }
-
-    let baseUrl = data.webhookUrl;
-    if (baseUrl) {
-      const parsed = new URL(baseUrl);
-      baseUrl = `${parsed.protocol}//${parsed.host}`;
-    } else {
-      const configuredBaseUrl =
-        config.get<string>("public_url") ||
-        config.get<string>("base_url") ||
-        `http://localhost:${config.get<number>("port") || 4269}`;
-      baseUrl = configuredBaseUrl;
-    }
-
-    const channel = await channelManager.setupTelegram(data.botToken, baseUrl);
-    if (!channel) {
-      throw new Error("Failed to set up Telegram channel");
-    }
-    return channel;
-  },
-  "POST /api/channels": (body) => {
-    const data = body as {
-      type?: string;
-      name?: string;
-      config?: Record<string, unknown>;
-    };
-    if (!data.type || !data.name) {
-      throw new Error("Validation error: type and name are required");
-    }
-    return channelManager.create(
-      data.type as Parameters<typeof channelManager.create>[0],
-      data.name,
-      data.config || {}
-    );
-  },
-  "GET /api/channels/:id": (_body, params) => {
-    const channel = channelManager.list().find((c) => c.id === params!.id);
-    return channel || { error: "Channel not found" };
-  },
-  "PUT /api/channels/:id": (body, params) => ({
-    success: channelManager.update(params!.id, body as Parameters<typeof channelManager.update>[1]),
-  }),
-  "POST /api/channels/:id/toggle": (body, params) => {
-    const data = body as { enabled: boolean };
-    return {
-      success: channelManager.update(params!.id, { enabled: data.enabled }),
-    };
-  },
-  "POST /api/channels/:id/test": async (_body, params) => {
-    const channel = channelManager.get(params!.id);
-    if (!channel) {
-      throw new Error("Channel not found");
-    }
-
-    const adapter = channelManager.getAdapter(channel.type as keyof typeof channels);
-    if (!adapter) {
-      return {
-        success: false,
-        error: `No adapter registered for channel type: ${channel.type}`,
-      };
-    }
-
-    const config = parseJsonObject(channel.config) || {};
-
-    const channelDef = channels[channel.type as keyof typeof channels];
-    const missingRequired = channelDef.fields
-      .filter((f) => f.required)
-      .map((f) => f.name)
-      .filter((key) => {
-        const value = (config as Record<string, unknown>)[key];
-        return (
-          value === undefined ||
-          value === null ||
-          (typeof value === "string" && value.trim().length === 0)
-        );
-      });
-
-    if (missingRequired.length > 0) {
-      return {
-        success: false,
-        error: `Missing required config fields: ${missingRequired.join(", ")}`,
-        running: adapter.isRunning(channel.id),
-      };
-    }
-
-    if (!adapter.isRunning(channel.id) && channel.enabled) {
-      try {
-        await adapter.start(channel.id, config as Record<string, unknown>);
-      } catch (error) {
-        return {
-          success: false,
-          error: formatChannelTestError(channel.type, error),
-          running: adapter.isRunning(channel.id),
-          type: channel.type,
-          enabled: channel.enabled,
-        };
-      }
-    }
-
-    const running = adapter.isRunning(channel.id);
-
-    if (!channel.enabled && !running) {
-      return {
-        success: false,
-        running,
-        type: channel.type,
-        enabled: channel.enabled,
-        message: "Channel is disabled. Enable it to run a live connection test.",
-      };
-    }
-
-    if (channel.type === "whatsapp") {
-      const whatsappState = whatsappAdapter.getState(channel.id);
-      if (whatsappState.ready) {
-        return {
-          success: true,
-          running: true,
-          type: channel.type,
-          enabled: channel.enabled,
-          whatsapp: whatsappState,
-          message:
-            "WhatsApp client is connected and ready. Send from another contact, or enable 'Allow Self Messages' in channel config for self-chat testing.",
-        };
-      }
-
-      if (whatsappState.awaitingQr) {
-        return {
-          success: false,
-          running: whatsappState.running,
-          type: channel.type,
-          enabled: channel.enabled,
-          whatsapp: whatsappState,
-          message:
-            "WhatsApp is waiting for QR scan. Open the channel QR view in UI and scan with your phone.",
-        };
-      }
-
-      return {
-        success: false,
-        running: whatsappState.running,
-        type: channel.type,
-        enabled: channel.enabled,
-        whatsapp: whatsappState,
-        message:
-          whatsappState.lastError ||
-          "WhatsApp client is starting. If this persists, click Test again or restart the channel.",
-      };
-    }
-
-    return {
-      success: running,
-      running,
-      type: channel.type,
-      enabled: channel.enabled,
-      ...(channel.type === "discord" && running
-        ? {
-            message:
-              "Discord connection looks good. Invite the bot to your server before expecting messages in guild channels.",
-          }
-        : {}),
-    };
-  },
-  "GET /api/channels/:id/whatsapp/state": (_body, params) => {
-    const channel = channelManager.get(params!.id);
-    if (!channel) {
-      throw new Error("Channel not found");
-    }
-    if (channel.type !== "whatsapp") {
-      throw new Error("Channel is not a WhatsApp channel");
-    }
-    const state = whatsappAdapter.getState(channel.id);
-    return {
-      success: true,
-      channelId: channel.id,
-      enabled: !!channel.enabled,
-      ...state,
-    };
-  },
-  "DELETE /api/channels/:id": (_body, params) => ({
-    success: channelManager.delete(params!.id),
-  }),
-
-  "GET /api/channels/:id/pairings": (_body, params) => {
-    const channelId = params!.id;
-    const rawPairings = securityManager.getAllPairings(channelId);
-    const pairings = rawPairings.map(
-      (p: {
-        id: string;
-        sender_id: string;
-        code: string;
-        platform: string;
-        sender_name?: string;
-        status: string;
-        created_at: number;
-        expires_at: number;
-      }) => ({
-        id: p.id,
-        senderId: p.sender_id,
-        code: p.code,
-        platform: p.platform,
-        displayName: p.sender_name,
-        status: p.status,
-        createdAt: new Date(p.created_at).toISOString(),
-        expiresAt: new Date(p.expires_at).toISOString(),
-      })
-    );
-    return {
-      pairings,
-      pendingCount: securityManager.getPendingPairings(channelId).length,
-      config: securityManager.getConfig(channelId),
-    };
-  },
-  "POST /api/channels/:id/pairings/verify": (body, params) => {
-    const channelId = params!.id;
-    const { code } = body as { code: string };
-    return securityManager.verifyPairing(channelId, code);
-  },
-  "POST /api/channels/:id/pairings/:pairingId/reject": (_body, params) => {
-    const { id, pairingId } = params!;
-    return { success: securityManager.rejectPairing(id, pairingId) };
-  },
-  "GET /api/channels/:id/allowed-senders": (_body, params) => {
-    return { senders: securityManager.getAllowedSenders(params!.id) };
-  },
-  "POST /api/channels/:id/allowed-senders": (body, params) => {
-    const { senderId } = body as { senderId: string };
-    securityManager.addAllowedSender(params!.id, senderId);
-    return { success: true };
-  },
-  "DELETE /api/channels/:id/allowed-senders/:senderId": (_body, params) => {
-    return {
-      success: securityManager.removeAllowedSender(params!.id, params!.senderId),
-    };
-  },
-  "PUT /api/channels/:id/security": (body, params) => {
-    const channelId = params!.id;
-    const config = body as {
-      dm_policy?: string;
-      group_policy?: string;
-      group_owner_sender_id?: string;
-      pairing_expiry_minutes?: number;
-      max_pending_pairings?: number;
-    };
-    securityManager.setConfig(channelId, config as Parameters<typeof securityManager.setConfig>[1]);
-    return { success: true, config: securityManager.getConfig(channelId) };
-  },
-
   "GET /api/tasks": () => taskScheduler.list(),
   "GET /api/tasks/:id": (_body, params) => {
     const task = taskScheduler.get(params!.id);
@@ -2268,26 +706,6 @@ const routes: Record<string, RouteHandler> = {
   "DELETE /api/tasks/:id": (_body, params) => ({
     success: taskScheduler.delete(params!.id),
   }),
-
-  "POST /api/webhooks/telegram/:channelId": async (body, params, ctx) => {
-    const { channelId } = params!;
-    const headers = ctx?.headers ?? {};
-    const secretToken =
-      headers["x-telegram-bot-api-secret-token"] || headers["X-Telegram-Bot-Api-Secret-Token"];
-    const success = await processTelegramWebhook(
-      channelId,
-      body as Record<string, unknown>,
-      secretToken
-    );
-    return { ok: success };
-  },
-
-  "POST /api/channels/:channelId/webhook": async (body, params, ctx) => {
-    return dispatchChannelWebhook(body, params, ctx);
-  },
-  "GET /api/channels/:channelId/webhook": async (body, params, ctx) => {
-    return dispatchChannelWebhook(body, params, ctx);
-  },
 
   "GET /api/computer-use/status": async () => {
     const { computerUseDoctor } = await import("../core/computer-use");
@@ -2328,105 +746,6 @@ const routes: Record<string, RouteHandler> = {
       ...listChatCommands(),
     ],
   }),
-  "POST /api/speech/dictate": async (body) => {
-    const data = body as {
-      audioBase64?: string;
-      mimeType?: string;
-      fileName?: string;
-      model?: string;
-      providerId?: string;
-      provider?: string;
-    };
-
-    if (!data.audioBase64 || typeof data.audioBase64 !== "string") {
-      throw new Error("Validation error: audioBase64 is required");
-    }
-
-    const fallbackMimeType =
-      typeof data.mimeType === "string" && data.mimeType.trim()
-        ? data.mimeType.trim()
-        : "audio/webm";
-    const decoded = decodeDictationAudioBase64(data.audioBase64, fallbackMimeType);
-    const speechSettings = config.getSpeechSettings();
-    const requestedProviderId =
-      typeof data.providerId === "string" && data.providerId.trim()
-        ? data.providerId.trim()
-        : undefined;
-    const requestedProvider =
-      typeof data.provider === "string" && data.provider.trim()
-        ? data.provider.trim().toLowerCase()
-        : speechSettings.stt.provider;
-    if (requestedProvider === "local") {
-      let pcmBytes: Uint8Array;
-      try {
-        pcmBytes = normalizeLocalTranscriptionAudio(decoded);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Recording could not be decoded";
-        throw new Error(`Validation error: ${message}`);
-      }
-      const result = await transcribeLocalSpeech({
-        pcmBytes,
-        model:
-          typeof data.model === "string" && data.model.trim()
-            ? data.model.trim()
-            : speechSettings.stt.provider === "local"
-              ? speechSettings.stt.model || undefined
-              : undefined,
-        language: speechSettings.stt.language || undefined,
-      });
-      return {
-        success: true,
-        text: result.text,
-        providerId: "local",
-        providerType: "local",
-        model: result.model,
-      };
-    }
-    const provider = pickDictationProvider(
-      requestedProviderId ||
-        (speechSettings.stt.providerId ? speechSettings.stt.providerId : undefined)
-    );
-    const result = await transcribeWithOpenAICompatibleProvider({
-      provider,
-      bytes: decoded.bytes,
-      mimeType: decoded.mimeType,
-      fileName:
-        typeof data.fileName === "string" && data.fileName.trim()
-          ? data.fileName.trim()
-          : "dictation.webm",
-      model:
-        typeof data.model === "string" && data.model.trim()
-          ? data.model.trim()
-          : speechSettings.stt.model || undefined,
-    });
-
-    return {
-      success: true,
-      text: result.text,
-      providerId: provider.id,
-      providerType: provider.provider,
-      model: result.model,
-    };
-  },
-  "POST /api/speech/synthesize": async (body) => {
-    const data = body as {
-      text?: string;
-      providerId?: string;
-      model?: string;
-      voice?: string;
-      format?: string;
-      speed?: number;
-    };
-    const result = await synthesizeSpeech({
-      text: typeof data.text === "string" ? data.text : "",
-      providerId: typeof data.providerId === "string" ? data.providerId : undefined,
-      model: typeof data.model === "string" ? data.model : undefined,
-      voice: typeof data.voice === "string" ? data.voice : undefined,
-      format: typeof data.format === "string" ? data.format : undefined,
-      speed: typeof data.speed === "number" ? data.speed : undefined,
-    });
-    return { success: true, ...result };
-  },
   "GET /api/sessions/search": (_body, params) =>
     searchSessionMessages(typeof params?.q === "string" ? params.q : "", {
       limit: parseBoundedQueryNumber(params?.limit, 1, 100) ?? 20,
@@ -2881,6 +1200,7 @@ const routes: Record<string, RouteHandler> = {
       return {
         id: session.id,
         agent_id: session.agentId,
+        use_model_router: session.useModelRouter,
         ...modelMetadata,
         title: typeof session.title === "string" && session.title.trim() ? session.title : null,
         created_at: normalizeTimestamp(session.createdAt),
@@ -2941,6 +1261,7 @@ const routes: Record<string, RouteHandler> = {
     return {
       id: session.id,
       agent_id: session.agentId,
+      use_model_router: "useModelRouter" in session && session.useModelRouter === true,
       ...detailModelMetadata,
       title:
         "title" in session && typeof session.title === "string" && session.title.trim()
@@ -2979,35 +1300,6 @@ const routes: Record<string, RouteHandler> = {
       plan: extractLatestSessionPlan(sessionId, messages),
     };
   },
-  "GET /api/sessions/:sessionId/trajectories": (_body, params) => {
-    requireLabEnabled();
-    return {
-      sessionId: params!.sessionId,
-      trajectories: listSessionTrajectories(params!.sessionId),
-    };
-  },
-  "POST /api/sessions/:sessionId/golden": async (body, params) => {
-    requireGoldenTurnsEnabled();
-    const data = (body || {}) as {
-      messageIndex?: number;
-      name?: string;
-      description?: string;
-      tags?: string[];
-      assertions?: unknown;
-    };
-    const trajectory = await ensureSessionTrajectory(params!.sessionId, data.messageIndex);
-    return {
-      success: true,
-      golden: saveGolden({
-        trajectory,
-        name:
-          data.name?.trim() || trajectory.request.userMessage.content.slice(0, 80) || "Golden run",
-        description: data.description,
-        tags: Array.isArray(data.tags) ? data.tags : [],
-        assertions: data.assertions,
-      }),
-    };
-  },
   "POST /api/sessions/:sessionId/fork": async (body, params) => {
     const data = (body || {}) as {
       throughMessageIndex?: number;
@@ -3025,7 +1317,12 @@ const routes: Record<string, RouteHandler> = {
     };
   },
   "PUT /api/sessions/:sessionId/agent": async (body, params) => {
-    const data = (body || {}) as { agentId?: string; agent_id?: string };
+    const data = (body || {}) as {
+      agentId?: string;
+      agent_id?: string;
+      useModelRouter?: boolean;
+      use_model_router?: boolean;
+    };
     const agentId =
       typeof data.agentId === "string" && data.agentId.trim()
         ? data.agentId.trim()
@@ -3033,7 +1330,11 @@ const routes: Record<string, RouteHandler> = {
           ? data.agent_id.trim()
           : "";
     try {
-      return await updateSessionAgent(params!.sessionId, agentId);
+      return await updateSessionAgent(
+        params!.sessionId,
+        agentId || undefined,
+        data.useModelRouter === true || data.use_model_router === true
+      );
     } catch (error) {
       return {
         success: false,
@@ -3407,38 +1708,6 @@ function getCircuitBreakersStatus(): Record<string, { state: string; failureCoun
   return breakers;
 }
 
-async function dispatchChannelWebhook(
-  body: unknown,
-  params: Record<string, string> | undefined,
-  ctx?: { headers?: Record<string, string>; rawBody?: string }
-): Promise<unknown> {
-  const { channelId, ...query } = params || {};
-  if (!channelId) return { status: 400, body: { error: "channelId required" } };
-  const channel = channelManager.get(channelId);
-  if (!channel) return { status: 404, body: { error: "channel not found" } };
-  const adapter = channelManager.getAdapter(channel.type);
-  if (!adapter?.handleWebhook) {
-    return {
-      status: 400,
-      body: { error: `channel ${channel.type} does not accept webhooks` },
-    };
-  }
-  const result = await adapter.handleWebhook(channelId, {
-    body,
-    rawBody: ctx?.rawBody ?? (body !== undefined ? JSON.stringify(body) : ""),
-    headers: ctx?.headers ?? {},
-    query: query as Record<string, string>,
-  });
-  if (result?.rawBody !== undefined) {
-    return makeRawHttpResponse(
-      result.rawBody,
-      result.contentType || "text/plain",
-      result.status || 200
-    );
-  }
-  return result?.body !== undefined ? result.body : { ok: true };
-}
-
 export async function handleRequest(req: {
   method: string;
   url: string;
@@ -3466,11 +1735,7 @@ export async function handleRequest(req: {
     };
   }
 
-  const clientIp =
-    req.ip ||
-    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-    req.headers["x-real-ip"] ||
-    "127.0.0.1";
+  const clientIp = getClientIp(req.headers, req.ip);
 
   const security = securityCheck(method, path, req.headers, clientIp);
   if (!security.passed) {
@@ -3642,9 +1907,6 @@ export async function handleRequest(req: {
       userMessage = "An error occurred while processing your request.";
     }
 
-    // Intentional messages (validation, not-found, conflict) stay user-facing,
-    // but redact any absolute filesystem paths they may carry so internals
-    // never leak to clients outside development.
     if (process.env.NODE_ENV !== "development") {
       userMessage = userMessage.replace(
         /(?:[A-Za-z]:)?[\\/](?:Users|home|private|var|tmp|opt)[\\/][^\s"']*/g,

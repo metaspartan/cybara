@@ -220,6 +220,7 @@ let legacyContext: BrowserContext | null = null;
 const legacyPages = new Map<string, Page>();
 const consoleLogs = new Map<string, Array<{ type: string; text: string; location?: string }>>();
 const pointerStates = new Map<string, BrowserPointerState>();
+const preparedPreviewPages = new WeakSet<Page>();
 const BROWSER_PREVIEW_STYLE = `
 :root { --cybara-agent-browser-preview: 1; }
 button[aria-label^="Cybara pet"] { display: none !important; }
@@ -424,6 +425,8 @@ export async function createPage(): Promise<string> {
     pointerStates.delete(id);
   });
 
+  page.onNavigation(() => preparedPreviewPages.delete(page));
+
   page.onConsole((msg) => {
     const logs = consoleLogs.get(id) || [];
     logs.push({
@@ -486,7 +489,6 @@ export async function navigate(
     waitUntil: options?.waitUntil || "domcontentloaded",
     timeout: 30000,
   });
-
   return {
     url: page.url(),
     title: await page.title(),
@@ -719,9 +721,9 @@ async function getInteractiveSnapshotNodes(page: Page): Promise<BrowserSnapshotN
 }
 
 async function prepareBrowserPreviewPage(page: Page): Promise<void> {
-  const existing = page.locator("style").filter({ hasText: "--cybara-agent-browser-preview" });
-  if ((await existing.count()) > 0) return;
+  if (preparedPreviewPages.has(page)) return;
   await page.addStyleTag({ content: BROWSER_PREVIEW_STYLE });
+  preparedPreviewPages.add(page);
 }
 
 function firstNonEmptyBrowserValue(...values: Array<string | null>): string {

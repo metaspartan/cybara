@@ -1,6 +1,8 @@
 import { commandExists } from "../../core/platform";
-import { CLI_API_BASE as API_BASE, CLI_API_KEY, fetchCliAPI as fetchAPI } from "../client";
+import { CLI_API_BASE as API_BASE, fetchCliAPI as fetchAPI, resolveCliApiKey } from "../client";
 import {
+  classifyDoctorHealth,
+  type DoctorSeverity,
   formatStatusBytes,
   formatStatusPct,
   formatStatusStorageBytes,
@@ -56,7 +58,7 @@ export async function rawStatus(): Promise<void> {
 
 interface DoctorCheckResult {
   name: string;
-  ok: boolean;
+  severity: DoctorSeverity;
   details: string;
   latencyMs?: number;
 }
@@ -68,21 +70,21 @@ function formatDoctorLatency(latencyMs?: number): string {
 
 async function runDoctorCheck(
   name: string,
-  check: () => Promise<{ ok: boolean; details: string }>
+  check: () => Promise<{ severity: DoctorSeverity; details: string }>
 ): Promise<DoctorCheckResult> {
   const startedAt = Date.now();
   try {
     const result = await check();
     return {
       name,
-      ok: result.ok,
+      severity: result.severity,
       details: result.details,
       latencyMs: Date.now() - startedAt,
     };
   } catch (error) {
     return {
       name,
-      ok: false,
+      severity: "fail",
       details: error instanceof Error ? error.message : String(error),
       latencyMs: Date.now() - startedAt,
     };
@@ -93,7 +95,8 @@ async function checkStatusWebSocket(): Promise<{
   ok: boolean;
   details: string;
 }> {
-  const tokenParam = CLI_API_KEY ? `?token=${encodeURIComponent(CLI_API_KEY)}` : "";
+  const apiKey = resolveCliApiKey();
+  const tokenParam = apiKey ? `?token=${encodeURIComponent(apiKey)}` : "";
   const wsUrl = `${API_BASE.replace(/^http/i, "ws")}/api/ws/status${tokenParam}`;
   return await new Promise((resolve) => {
     let settled = false;
@@ -206,9 +209,9 @@ export async function rawDoctor(): Promise<void> {
   checks.push(
     await runDoctorCheck("health", async () => {
       const data = await fetchAPI<StatusResponse>("/api/health");
-      if (!data) return { ok: false, details: "no response from /api/health" };
+      if (!data) return { severity: "fail", details: "no response from /api/health" };
       return {
-        ok: data.status === "healthy",
+        severity: classifyDoctorHealth(data.status),
         details: `status=${data.status} uptime=${Math.floor(data.uptime)}s`,
       };
     })
@@ -220,44 +223,47 @@ export async function rawDoctor(): Promise<void> {
         version?: string;
         stats?: Record<string, unknown>;
       }>("/api/info");
-      if (!data) return { ok: false, details: "no response from /api/info" };
-      return { ok: true, details: `version=${data.version || "unknown"}` };
+      if (!data) return { severity: "fail", details: "no response from /api/info" };
+      return { severity: "pass", details: `version=${data.version || "unknown"}` };
     })
   );
 
   checks.push(
     await runDoctorCheck("sessions-api", async () => {
       const sessions = await fetchAPI<Array<{ id: string }>>("/api/sessions");
-      if (!sessions) return { ok: false, details: "failed to fetch /api/sessions" };
-      return { ok: true, details: `${sessions.length} sessions loaded` };
+      if (!sessions) return { severity: "fail", details: "failed to fetch /api/sessions" };
+      return { severity: "pass", details: `${sessions.length} sessions loaded` };
     })
   );
 
   checks.push(
     await runDoctorCheck("status-ws", async () => {
-      return await checkStatusWebSocket();
+      const result = await checkStatusWebSocket();
+      return { severity: result.ok ? "pass" : "fail", details: result.details };
     })
   );
 
   checks.push(
     await runDoctorCheck("sandbox-runtime", async () => {
-      return checkSandboxRuntime();
+      const result = checkSandboxRuntime();
+      return { severity: result.ok ? "pass" : "fail", details: result.details };
     })
   );
 
-  const passed = checks.filter((check) => check.ok).length;
-  const failed = checks.length - passed;
+  const passed = checks.filter((check) => check.severity === "pass").length;
+  const warned = checks.filter((check) => check.severity === "warn").length;
+  const failed = checks.filter((check) => check.severity === "fail").length;
 
   console.log("CYBARA DOCTOR");
   console.log("=============");
   for (const check of checks) {
-    const marker = check.ok ? "PASS" : "FAIL";
+    const marker = check.severity.toUpperCase();
     console.log(
       `  [${marker}] ${check.name}${formatDoctorLatency(check.latencyMs)} - ${check.details}`
     );
   }
   console.log("");
-  console.log(`Summary: ${passed}/${checks.length} passed, ${failed} failed`);
+  console.log(`Summary: ${passed}/${checks.length} passed, ${warned} warned, ${failed} failed`);
 
   if (failed > 0) {
     process.exitCode = 1;

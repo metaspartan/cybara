@@ -1,4 +1,12 @@
-import { ArrowLeft, ArrowRight, Globe2, Loader2, MousePointer2, RefreshCw } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ExternalLink,
+  Globe2,
+  Loader2,
+  MousePointer2,
+  RefreshCw,
+} from "lucide-react";
 import {
   type KeyboardEvent,
   type MouseEvent,
@@ -10,11 +18,13 @@ import {
 } from "react";
 import { apiFetch } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import { openExternal } from "@/utils/openExternal";
 import {
   containerPointToPreview,
   previewPointToContainer,
   type PreviewSize,
 } from "./previewGeometry";
+import { routeChatLink } from "./chatLinkRouting";
 
 interface BrowserPage {
   id: string;
@@ -38,6 +48,7 @@ interface BrowserViewport {
 
 interface BrowserPreview {
   screenshot: string;
+  revision: string;
   cursor: BrowserCursor | null;
   viewport: BrowserViewport | null;
   page: BrowserPage | null;
@@ -196,11 +207,15 @@ export function ChatWorkspaceBrowser({
   visible,
   sessionId,
   pageKey,
+  navigationRequest,
+  navigationUrl,
   onTitleChange,
 }: {
   visible: boolean;
   sessionId?: string | null;
   pageKey?: string;
+  navigationRequest?: number;
+  navigationUrl?: string;
   onTitleChange?: (title: string) => void;
 }) {
   const baseSessionId = sessionId?.trim() || "preview-new-chat";
@@ -215,6 +230,8 @@ export function ChatWorkspaceBrowser({
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
   const requestInFlightRef = useRef(false);
   const stateRequestInFlightRef = useRef(false);
+  const previewRevisionRef = useRef("");
+  const lastNavigationRequestRef = useRef(0);
   const onTitleChangeRef = useRef(onTitleChange);
   const [browserViewport, setBrowserViewport] = useState(DEFAULT_BROWSER_VIEWPORT);
   const [previewSurfaceSize, setPreviewSurfaceSize] = useState<PreviewSize | null>(null);
@@ -256,6 +273,7 @@ export function ChatWorkspaceBrowser({
           viewportWidth: String(browserViewport.width),
           viewportHeight: String(browserViewport.height),
         });
+        if (previewRevisionRef.current) query.set("revision", previewRevisionRef.current);
         const response = await apiFetch(
           `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/screenshot?${query}`,
           { signal: AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS) }
@@ -263,6 +281,7 @@ export function ChatWorkspaceBrowser({
         if (response.status === 404) {
           const replacement = await createSessionPage(browserSessionId);
           setPreview(null);
+          previewRevisionRef.current = "";
           syncPage(replacement);
           return;
         }
@@ -273,14 +292,23 @@ export function ChatWorkspaceBrowser({
             ? (data as { data?: Record<string, unknown> }).data
             : null;
         const screenshot = payload?.screenshot;
-        if (typeof screenshot !== "string") throw new Error("Browser preview is unavailable");
+        const unchanged = payload?.unchanged === true;
+        if (!unchanged && typeof screenshot !== "string") {
+          throw new Error("Browser preview is unavailable");
+        }
+        const revision = typeof payload?.revision === "string" ? payload.revision : "";
         const nextPage = parseBrowserPage(payload?.page) ?? targetPage;
-        const nextScreenshot = `data:${String(payload?.contentType || "image/jpeg")};base64,${screenshot}`;
+        const nextScreenshot =
+          typeof screenshot === "string"
+            ? `data:${String(payload?.contentType || "image/jpeg")};base64,${screenshot}`
+            : null;
         const nextCursor = parseBrowserCursor(payload?.cursor);
         const nextViewport = parseBrowserViewport(payload?.viewport);
         setPreview((current) => {
+          const resolvedScreenshot = nextScreenshot ?? current?.screenshot ?? "";
           if (
-            current?.screenshot === nextScreenshot &&
+            current?.screenshot === resolvedScreenshot &&
+            current?.revision === revision &&
             sameBrowserCursor(current.cursor, nextCursor) &&
             sameBrowserViewport(current.viewport, nextViewport) &&
             sameBrowserPage(current.page, nextPage)
@@ -288,12 +316,14 @@ export function ChatWorkspaceBrowser({
             return current;
           }
           return {
-            screenshot: nextScreenshot,
+            screenshot: resolvedScreenshot,
+            revision,
             cursor: nextCursor,
             viewport: nextViewport,
             page: nextPage,
           };
         });
+        previewRevisionRef.current = revision;
         syncPage(nextPage);
         setError(null);
       } catch (reason) {
@@ -311,7 +341,7 @@ export function ChatWorkspaceBrowser({
       stateRequestInFlightRef.current = true;
       try {
         const response = await apiFetch(
-          `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/state`,
+          `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/state?includePage=false`,
           { signal: AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS) }
         );
         if (!response.ok) return;
@@ -334,7 +364,13 @@ export function ChatWorkspaceBrowser({
           }
           return current
             ? { ...current, cursor, viewport, page: nextPage }
-            : { screenshot: "", cursor, viewport, page: nextPage };
+            : {
+                screenshot: "",
+                revision: "",
+                cursor,
+                viewport,
+                page: nextPage,
+              };
         });
         syncPage(nextPage);
       } finally {
@@ -371,6 +407,7 @@ export function ChatWorkspaceBrowser({
 
   useEffect(() => {
     if (!visible) return;
+    if (navigationUrl && navigationRequest) return;
     let cancelled = false;
     setLoading(true);
     void ensurePage()
@@ -388,7 +425,7 @@ export function ChatWorkspaceBrowser({
     return () => {
       cancelled = true;
     };
-  }, [ensurePage, loadPreview, visible]);
+  }, [ensurePage, loadPreview, navigationRequest, navigationUrl, visible]);
 
   useEffect(() => {
     if (!visible || !loading || preview?.screenshot) return;
@@ -457,35 +494,55 @@ export function ChatWorkspaceBrowser({
     }
   };
 
-  const navigate = async () => {
+  const navigateTo = useCallback(
+    async (target: string): Promise<void> => {
+      setLoading(true);
+      try {
+        const activePage = page ?? (await ensurePage());
+        const response = await apiFetch(
+          `/api/browser/tabs/${encodeURIComponent(activePage.id)}/navigate`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: target,
+              waitUntil: "domcontentloaded",
+            }),
+          }
+        );
+        if (!response.ok) {
+          throw await responseError(response, `Navigation returned ${response.status}`);
+        }
+        const data: unknown = await response.json();
+        const nextPage = parseBrowserPage(
+          data && typeof data === "object" ? (data as { data?: unknown }).data : null
+        );
+        const resolvedPage = nextPage ? { ...nextPage, id: activePage.id } : activePage;
+        previewRevisionRef.current = "";
+        syncPage(resolvedPage);
+        await loadPreview(resolvedPage);
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "Navigation failed");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [ensurePage, loadPreview, page, syncPage]
+  );
+
+  const navigate = (): void => {
     const target = address.trim();
     if (!target || loading) return;
-    setLoading(true);
-    try {
-      const activePage = page ?? (await ensurePage());
-      const response = await apiFetch(
-        `/api/browser/tabs/${encodeURIComponent(activePage.id)}/navigate`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: target, waitUntil: "domcontentloaded" }),
-        }
-      );
-      if (!response.ok)
-        throw await responseError(response, `Navigation returned ${response.status}`);
-      const data: unknown = await response.json();
-      const nextPage = parseBrowserPage(
-        data && typeof data === "object" ? (data as { data?: unknown }).data : null
-      );
-      const resolvedPage = nextPage ? { ...nextPage, id: activePage.id } : activePage;
-      syncPage(resolvedPage);
-      await loadPreview(resolvedPage);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Navigation failed");
-    } finally {
-      setLoading(false);
-    }
+    void navigateTo(target);
   };
+
+  useEffect(() => {
+    if (!visible || !navigationUrl || !navigationRequest) return;
+    if (lastNavigationRequestRef.current === navigationRequest) return;
+    lastNavigationRequestRef.current = navigationRequest;
+    setAddress(navigationUrl);
+    void navigateTo(navigationUrl);
+  }, [navigateTo, navigationRequest, navigationUrl, visible]);
 
   const sendPageInput = useCallback(
     async (action: "pointer/click" | "scroll" | "keyboard", body: Record<string, unknown>) => {
@@ -525,7 +582,10 @@ export function ChatWorkspaceBrowser({
   const handlePreviewWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (!page) return;
     event.preventDefault();
-    void sendPageInput("scroll", { deltaX: event.deltaX, deltaY: event.deltaY });
+    void sendPageInput("scroll", {
+      deltaX: event.deltaX,
+      deltaY: event.deltaY,
+    });
   };
 
   const handlePreviewKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -610,6 +670,20 @@ export function ChatWorkspaceBrowser({
           placeholder="Search or enter address"
           aria-label="Browser address"
         />
+        <button
+          type="button"
+          onClick={() => {
+            const target = page?.url?.trim() || address.trim();
+            const route = routeChatLink(target, { external: true });
+            if (route.kind === "external") void openExternal(route.url);
+          }}
+          disabled={!page?.url && !address.trim()}
+          className="workspace-browser-nav-button"
+          title="Open in system browser"
+          aria-label="Open in system browser"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+        </button>
       </div>
       <div
         ref={previewSurfaceRef}

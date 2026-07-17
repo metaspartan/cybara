@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readIdeUiSource } from "../source-fixtures";
 
-const src = readFileSync(
-  fileURLToPath(new URL("../../ui/src/pages/ide/CodeViewer.tsx", import.meta.url)),
-  "utf8"
-);
+const src = readIdeUiSource();
 
 describe("IDE git blame — per-line toggle (Zed-style)", () => {
   test("has an all-lines blame toggle state", () => {

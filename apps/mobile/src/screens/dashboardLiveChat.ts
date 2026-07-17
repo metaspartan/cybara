@@ -4,6 +4,7 @@ import type {
   SessionDetailSummary,
   SessionProcessActivitySummary,
 } from "../lib/api";
+import { isProviderRecoveryStatusLabel } from "cybara-shared/chat-status";
 import type { SessionEventIdentity } from "cybara-shared/session-event-order";
 
 type StatusEvent = Extract<MobileStatusStreamEvent, { type: "status" }>;
@@ -199,6 +200,7 @@ export function liveStatusPhase(event: StatusEvent): SessionProcessActivitySumma
 function isMeaningfulLiveDetail(value: string | undefined): value is string {
   const normalized = (value || "").trim().toLowerCase();
   if (!normalized) return false;
+  if (isProviderRecoveryStatusLabel(normalized)) return false;
   return ![
     "idle",
     "working",

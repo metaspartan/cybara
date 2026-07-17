@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chatWorkspaceTabLabel } from "../../ui/src/pages/chat/ChatWorkspacePanel";
+import { readNativeChatSource, readUiStylesSource } from "../shared/source-bundles";
 
 const chatSource = [
   "../../ui/src/pages/Chat.tsx",
@@ -36,16 +37,8 @@ const nativeBrowserSource = readFileSync(
   ),
   "utf8"
 );
-const nativeChatSource = readFileSync(
-  fileURLToPath(
-    new URL("../../apps/macos/Cybara/Sources/Cybara/NativeScreens.swift", import.meta.url)
-  ),
-  "utf8"
-);
-const styleSource = readFileSync(
-  fileURLToPath(new URL("../../ui/src/index.css", import.meta.url)),
-  "utf8"
-);
+const nativeChatSource = readNativeChatSource();
+const styleSource = readUiStylesSource();
 const panelSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/chat/ChatWorkspacePanel.tsx", import.meta.url)),
   "utf8"
@@ -114,7 +107,12 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS)");
     expect(browserSource).toContain("data-browser-session-id={browserSessionId}");
     expect(browserSource).toContain("getBoundingClientRect");
-    expect(browserSource).toContain("/state`");
+    expect(browserSource).toContain("/state?includePage=false");
+    expect(browserSource).toContain('query.set("revision", previewRevisionRef.current)');
+    expect(browserSource).toContain('aria-label="Open in system browser"');
+    expect(chatSource).toContain("openWorkspaceBrowser(route.url)");
+    expect(chatSource).toContain("navigationRequest={instance.navigationRequest}");
+    expect(chatSource).toContain("navigationUrl={instance.navigationUrl}");
     expect(browserSource).toContain("browser-agent-cursor");
     expect(browserSource).toContain('cursor.source !== "agent"');
     expect(browserSource).toContain("browser-agent-click");

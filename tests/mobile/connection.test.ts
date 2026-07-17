@@ -52,6 +52,14 @@ describe("mobile gateway connection payloads", () => {
     expect(profile.createdAt).toBe("2026-06-30T00:00:00.000Z");
   });
 
+  test("rejects unrelated Cybara deep-link routes", () => {
+    expect(() =>
+      parseMobileConnectPayload(
+        "cybara://settings?baseUrl=http%3A%2F%2F10.0.0.4%3A4269&apiKey=cybara_key"
+      )
+    ).toThrow("Unsupported Cybara mobile connection route");
+  });
+
   test("rejects unsupported protocols and empty secrets", () => {
     expect(() => parseMobileConnectPayload('{"protocol":"other"}')).toThrow(
       "Unsupported Cybara mobile connection protocol"

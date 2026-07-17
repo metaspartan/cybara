@@ -1,4 +1,5 @@
 import type { MobileMessageImage, SessionMessageSummary } from "./api";
+import { isProviderRecoveryStatusLabel } from "cybara-shared/chat-status";
 
 export function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0 || !Number.isFinite(bytes)) return "";
@@ -359,6 +360,7 @@ function parseDurationMs(value: unknown): number | undefined {
 
 function isGenericStatusLabel(value: string): boolean {
   const normalized = value.trim().toLowerCase();
+  if (isProviderRecoveryStatusLabel(normalized)) return true;
   return [
     "none",
     "value",

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  classifyDoctorHealth,
   formatStatusBytes,
   formatStatusPct,
   formatStatusStorageBytes,
@@ -22,5 +23,12 @@ describe("CLI status formatting", () => {
     expect(formatStatusPct(12.345)).toBe("12.3%");
     expect(formatStatusPct(Number.NaN)).toBe("n/a");
     expect(formatStatusPct(null)).toBe("n/a");
+  });
+
+  test("distinguishes degraded gateway health from failed diagnostics", () => {
+    expect(classifyDoctorHealth("healthy")).toBe("pass");
+    expect(classifyDoctorHealth("warning")).toBe("warn");
+    expect(classifyDoctorHealth("critical")).toBe("warn");
+    expect(classifyDoctorHealth(undefined)).toBe("fail");
   });
 });

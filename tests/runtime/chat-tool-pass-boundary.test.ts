@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { readChatRuntimeSource } from "../source-fixtures";
 
 describe("chat tool pass boundary", () => {
   test("does not start another tool-capable model loop after a completed response", () => {
-    const source = readFileSync(join(process.cwd(), "src/api/chat.ts"), "utf8");
+    const source = readChatRuntimeSource();
 
     expect(source).not.toContain("If more actions are needed to fully complete");
     expect(source).not.toContain("summaryToolPolicy");

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readMobileChatSource } from "../source-fixtures";
 
 const root = join(import.meta.dir, "../..");
 
@@ -19,7 +20,7 @@ describe("mobile haptic wiring", () => {
 
   test("surfaces a local toggle and chat lifecycle feedback", () => {
     const settings = source("apps/mobile/src/screens/dashboardDetailPanels.tsx");
-    const chat = source("apps/mobile/src/screens/dashboardSessionDetail.tsx");
+    const chat = readMobileChatSource();
     expect(settings).toContain('label="Haptic feedback"');
     expect(settings).toContain("setHapticsEnabled(!hapticsEnabled)");
     expect(chat).toContain("haptics.messageSent()");

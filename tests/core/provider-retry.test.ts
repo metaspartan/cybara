@@ -4,7 +4,12 @@ import {
   parseProviderRetryAfterMs,
   providerExceptionRetryDelayMs,
   providerRetryDelayMs,
+  resolveProviderRetryPolicy,
 } from "../../src/core/provider-retry";
+
+const codexRuntimeSource = await Bun.file(
+  new URL("../../src/core/agent-provider-codex-runtime.ts", import.meta.url)
+).text();
 
 describe("provider retry policy", () => {
   test("parses millisecond, second, and HTTP-date retry hints", () => {
@@ -41,5 +46,29 @@ describe("provider retry policy", () => {
   test("does not allow an empty credential pool to create an infinite delay", () => {
     expect(boundedPoolRetryDelayMs(Number.POSITIVE_INFINITY, 1_250)).toBe(1_250);
     expect(boundedPoolRetryDelayMs(3_000, 1_250)).toBe(3_000);
+  });
+
+  test("gives Kimi coding sessions a longer bounded transient recovery budget", () => {
+    expect(resolveProviderRetryPolicy("kimi-code-oauth")).toEqual({
+      maxRetries: 5,
+      maxDelayMs: 180_000,
+    });
+    expect(resolveProviderRetryPolicy("openai")).toEqual({
+      maxRetries: 3,
+      maxDelayMs: 120_000,
+    });
+    expect(
+      providerExceptionRetryDelayMs(new Error("fetch failed: ECONNRESET"), 4, undefined, () => 0, 5)
+    ).toBe(8_000);
+  });
+
+  test("uses the provider retry policy in the Codex and Grok transport", () => {
+    expect(codexRuntimeSource).toContain(
+      "resolveProviderRetryPolicy(rateLimitContext?.providerType)"
+    );
+    expect(codexRuntimeSource).toContain("transientRetryCount < retryPolicy.maxRetries");
+    expect(codexRuntimeSource).toContain("retryDelayMs <= retryPolicy.maxDelayMs");
+    expect(codexRuntimeSource).not.toContain("transientRetryCount < 3");
+    expect(codexRuntimeSource).not.toContain("${transientRetryCount}/3");
   });
 });

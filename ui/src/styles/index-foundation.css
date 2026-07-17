@@ -1,0 +1,1147 @@
+@import "tailwindcss";
+
+:root {
+  /* Tailwind v4 base spacing unit */
+  --spacing: 0.25rem;
+
+  --font-ui: 'Outfit', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-zed-ui: 'Zed Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Zed Mono', Menlo, Monaco, Consolas, 'Courier New', 'Droid Sans Mono', 'Liberation Mono', monospace;
+  --font-zed-mono: 'Zed Mono', Menlo, Monaco, Consolas, 'Courier New', 'Droid Sans Mono', 'Liberation Mono', monospace;
+
+  font-family: var(--font-ui);
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: dark;
+  color: rgba(255, 255, 255, 0.92);
+  background-color: #050508;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-surface: rgba(255, 255, 255, 0.03);
+  --glass-highlight: rgba(255, 255, 255, 0.12);
+  --glass-bg: rgba(18, 18, 26, 0.7);
+  --glass-bg-strong: rgba(13, 13, 18, 0.95);
+  --context-ring-ok: #34d399;
+  --context-ring-warn: #fbbf24;
+  --context-ring-danger: #f87171;
+  --context-ring-track: rgba(255, 255, 255, 0.18);
+  --context-ring-inner: #171820;
+  --context-tooltip-bg: rgba(43, 43, 47, 0.96);
+  --context-tooltip-border: rgba(255, 255, 255, 0.1);
+  --context-tooltip-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+  --context-tooltip-title: var(--text-muted);
+  --context-tooltip-body: var(--text-secondary);
+  --context-tooltip-detail: var(--text-primary);
+  --chat-environment-panel-bg: #0d0f15;
+  --chat-environment-panel-border: #343843;
+  --chat-environment-panel-text: var(--text-primary);
+  --workspace-open-menu-bg: #202126;
+  --text-secondary: #c6c7cd;
+  --text-muted: #92949d;
+  --text-subtle: #6f727c;
+  --icon-muted: #747782;
+  --icon-hover: #e5e7eb;
+  --text-primary: var(--icon-hover);
+  --surface-backdrop: #050508;
+  --surface-panel: #11131c;
+  --surface-raised: #171b24;
+  --surface-hover: #1f2937;
+  --surface-border: rgba(255, 255, 255, 0.1);
+  --form-control-bg: color-mix(in srgb, var(--surface-raised) 72%, var(--surface-panel));
+  --form-control-bg-hover: var(--surface-hover);
+  --form-control-border: var(--glass-border);
+  --form-control-text: var(--text-primary);
+  --form-control-placeholder: var(--text-muted);
+  --form-control-popover: var(--surface-panel);
+  --form-control-option-hover: var(--surface-hover);
+  --chat-inline-code-bg: color-mix(in srgb, var(--surface-raised) 82%, transparent);
+  --chat-inline-code-border: var(--surface-border);
+  --chat-inline-code-text: var(--text-primary);
+  --chat-code-bg: color-mix(in srgb, var(--surface-backdrop) 72%, var(--surface-panel));
+  --chat-code-header-bg: color-mix(in srgb, var(--surface-raised) 64%, transparent);
+  --chat-code-border: var(--surface-border);
+
+  /* Theme accent color (set dynamically via JS) */
+  --accent-primary: 99, 102, 241;
+  /* Default: Indigo */
+
+  /* Brand Gradients for accents - uses accent color */
+  --accent-gradient: linear-gradient(135deg, rgb(var(--accent-primary)) 0%, #8b5cf6 50%, #d946ef 100%);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+html[data-runtime="tauri"][data-platform="linux"] {
+  scroll-behavior: auto;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #050508;
+  position: relative;
+  overflow-x: hidden;
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+summary,
+a[href] {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+select {
+  color-scheme: dark;
+}
+
+select,
+select option,
+select optgroup {
+  background-color: var(--form-control-popover);
+  color: var(--form-control-text);
+}
+
+select option:checked,
+select option:hover {
+  background-color: var(--form-control-option-hover);
+  color: var(--form-control-text);
+}
+
+/* ==================== BACKGROUND ==================== */
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 15% 50%, rgba(30, 30, 40, 0.4) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(30, 30, 40, 0.2) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* Removed animated mesh and pulse effects per user request */
+
+#root {
+  min-height: 100vh;
+  isolation: isolate;
+  /* Create new stacking context */
+}
+
+/* ==================== SCROLLBARS ==================== */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 99px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ==================== INTERACTION HYGIENE ==================== */
+
+/* Keyboard focus: a clearly visible accent ring. The previous 1px 30%-white
+   ring failed WCAG 2.4.11/1.4.11 (non-text contrast) and was invisible on most
+   surfaces. Use a 2px accent-colored ring with a dark offset halo so it reads on
+   both light and dark glass. Mouse focus stays quiet (:focus-visible only). */
+:focus-visible {
+  outline: 2px solid rgb(var(--accent-primary));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Respect reduced-motion: disable the decorative animations for users who ask
+   the OS to minimize motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Prevent layout shifts */
+.glass-card,
+.glass-button {
+  /* Hardware acceleration hint */
+  transform: translateZ(0);
+}
+
+/* ==================== CLEAN GLASS UTILITIES ==================== */
+
+/* 
+   Glass hierarchy:
+   1. .glass - Standard panels, sidebar
+   2. .glass-strong - Headers, modals, ensuring contrast
+   3. .glass-card - Interactive cards with hover states
+*/
+
+.glass {
+  background: var(--glass-bg, rgba(18, 18, 26, 0.7));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+}
+
+.sidebar-footer {
+  background: color-mix(in srgb, var(--surface-hover, #1a1d24) 30%, transparent);
+}
+
+.composer-icon-btn {
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.composer-icon-btn:hover {
+  background: color-mix(in srgb, var(--surface-hover, #1f2937) 60%, transparent);
+}
+
+.theme-muted-icon {
+  color: var(--icon-muted);
+}
+
+.theme-text-primary {
+  color: var(--text-primary);
+}
+
+.theme-text-secondary {
+  color: var(--text-secondary);
+}
+
+.theme-text-muted {
+  color: var(--text-muted);
+}
+
+.theme-text-subtle {
+  color: var(--text-subtle);
+}
+
+.theme-tooltip-panel {
+  background: var(--context-tooltip-bg);
+  border-color: var(--context-tooltip-border);
+  color: var(--context-tooltip-body);
+  box-shadow: var(--context-tooltip-shadow);
+}
+
+.theme-muted-icon-button,
+.chat-message-action {
+  color: var(--icon-muted);
+  background: transparent;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.theme-muted-icon-button:hover,
+.chat-message-action:hover {
+  color: var(--icon-hover);
+  background: color-mix(in srgb, var(--surface-hover, #1f2937) 60%, transparent);
+}
+
+.glass-strong {
+  background: var(--glass-bg-strong, rgba(13, 13, 18, 0.95));
+  /* Darker, more opaque */
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transition: background 0.2s ease, border-color 0.2s ease;
+  border-radius: 0.75rem;
+  /* Organic rounded corners */
+}
+
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-runtime="tauri"][data-platform="linux"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(20, 20, 28, 0.22) 0%, transparent 44%),
+    radial-gradient(circle at 85% 30%, rgba(20, 20, 28, 0.14) 0%, transparent 42%);
+}
+
+html[data-runtime="tauri"][data-platform="linux"] .glass,
+html[data-runtime="tauri"][data-platform="linux"] .glass-strong,
+html[data-runtime="tauri"][data-platform="linux"] .glass-card,
+html[data-runtime="tauri"][data-platform="linux"] .glass-button {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+html[data-runtime="tauri"][data-platform="linux"] .glass {
+  background: rgba(18, 18, 26, 0.94);
+}
+
+html[data-runtime="tauri"][data-platform="linux"] .glass-strong {
+  background: rgba(13, 13, 18, 0.98);
+}
+
+html[data-runtime="tauri"][data-platform="linux"] .glass-card {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+html[data-runtime="tauri"][data-platform="linux"] .glass-button {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+html[data-runtime="tauri"][data-platform="linux"] .shimmer {
+  animation: none;
+}
+
+/* Liquid Chip/Badge Style - Simplified */
+.glass-chip {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Clean Buttons */
+.glass-button {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: all 0.2s ease;
+  color: white;
+}
+
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.glass-button:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.chat-environment-panel {
+  background: var(--chat-environment-panel-bg) !important;
+  background-color: var(--chat-environment-panel-bg) !important;
+  background-image: none !important;
+  border-color: var(--chat-environment-panel-border) !important;
+  color: var(--chat-environment-panel-text) !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  isolation: isolate;
+}
+
+.chat-environment-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--chat-environment-panel-bg);
+}
+
+.workspace-open-menu-panel {
+  background: var(--workspace-open-menu-bg) !important;
+  background-color: var(--workspace-open-menu-bg) !important;
+  background-image: none !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  isolation: isolate;
+}
+
+/* ---- Utilities referenced by shared primitives ----
+   These were used by components (TextArea, GlassButton, GlassCard, Button) but
+   defined nowhere, so those primitives rendered unstyled. Defined here against
+   the existing glass/accent tokens. */
+
+/* TextArea / text inputs (components/ui/TextArea.tsx) */
+.glass-input {
+  background: var(--form-control-bg);
+  border: 1px solid var(--form-control-border);
+  border-radius: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  color: var(--form-control-text);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.glass-input::placeholder {
+  color: var(--form-control-placeholder);
+}
+.glass-input:hover {
+  background: var(--form-control-bg-hover);
+  border-color: color-mix(in srgb, var(--form-control-border) 55%, var(--form-control-text));
+}
+.glass-input:focus,
+.glass-input:focus-visible {
+  outline: none;
+  border-color: rgb(var(--accent-primary));
+  box-shadow: 0 0 0 3px rgba(var(--accent-primary), 0.25);
+  background: var(--form-control-bg-hover);
+}
+
+.themed-form-label {
+  color: var(--text-secondary);
+}
+
+.themed-form-control {
+  background: var(--form-control-bg);
+  border-color: var(--form-control-border);
+  color: var(--form-control-text);
+  color-scheme: inherit;
+}
+
+.themed-form-control::placeholder {
+  color: var(--form-control-placeholder);
+  opacity: 1;
+}
+
+.themed-form-control:hover:not(:disabled) {
+  background: var(--form-control-bg-hover);
+  border-color: color-mix(in srgb, var(--form-control-border) 55%, var(--form-control-text));
+}
+
+.themed-form-control:focus,
+.themed-form-control:focus-visible {
+  background: var(--form-control-bg-hover);
+  border-color: rgba(var(--accent-primary), 0.65);
+  box-shadow: 0 0 0 3px rgba(var(--accent-primary), 0.14);
+  outline: none;
+}
+
+.themed-form-control[aria-invalid="true"] {
+  border-color: rgb(248 113 113 / 0.7);
+}
+
+.themed-form-control[aria-invalid="true"]:focus,
+.themed-form-control[aria-invalid="true"]:focus-visible {
+  border-color: rgb(248 113 113 / 0.85);
+  box-shadow: 0 0 0 3px rgb(248 113 113 / 0.14);
+}
+
+.themed-form-help {
+  color: var(--text-muted);
+}
+
+.themed-form-error {
+  color: var(--context-ring-danger);
+}
+
+.themed-select-icon {
+  color: var(--icon-muted);
+}
+
+.themed-select-popover {
+  background: var(--form-control-popover);
+  border-color: var(--form-control-border);
+  color: var(--form-control-text);
+  box-shadow: var(--context-tooltip-shadow);
+}
+
+.themed-select-search {
+  border-color: var(--form-control-border);
+}
+
+.themed-select-option {
+  color: var(--text-secondary);
+}
+
+.themed-select-option:hover,
+.themed-select-option[data-active="true"] {
+  background: var(--form-control-option-hover);
+  color: var(--form-control-text);
+}
+
+.themed-select-option[aria-selected="true"] {
+  color: var(--form-control-text);
+}
+
+/* Primary variant of GlassButton (components/ui/GlassButton.tsx) */
+.glass-button-primary {
+  background: rgb(var(--accent-primary));
+  border: 1px solid rgb(var(--accent-primary));
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(var(--accent-primary), 0.3);
+  transition: filter 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+.glass-button-primary:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 6px 20px rgba(var(--accent-primary), 0.4);
+}
+.glass-button-primary:active {
+  filter: brightness(0.95);
+}
+
+/* Hoverable card affordance (components/ui/GlassCard.tsx) */
+.glass-card-hover {
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.glass-card-hover:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(var(--accent-primary), 0.4);
+}
+
+/* Glow emphasis for Button glow prop (components/ui/Button.tsx) */
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--accent-primary), 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(var(--accent-primary), 0);
+  }
+}
+.glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* ==================== ACCENT THEME UTILITIES ==================== */
+
+/* Primary accent button - uses dynamic accent color */
+.accent-button {
+  background: rgb(var(--accent-primary));
+  color: white;
+  box-shadow: 0 4px 14px rgba(var(--accent-primary), 0.3);
+  transition: all 0.2s ease;
+}
+
+.accent-button:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 20px rgba(var(--accent-primary), 0.4);
+  transform: translateY(-1px);
+}
+
+.accent-button:active {
+  filter: brightness(0.95);
+  transform: translateY(0);
+}
+
+/* Accent text */
+.accent-text {
+  color: rgb(var(--accent-primary));
+}
+
+/* Accent border */
+.accent-border {
+  border-color: rgb(var(--accent-primary));
+}
+
+/* Accent gradient background */
+.accent-gradient {
+  background: linear-gradient(135deg, rgb(var(--accent-primary)) 0%, rgb(var(--accent-primary) / 0.7) 100%);
+}
+
+/* Accent ring */
+.accent-ring {
+  box-shadow: 0 0 0 3px rgba(var(--accent-primary), 0.3);
+}
+
+/* Sidebar accent indicator */
+.accent-indicator {
+  background: rgb(var(--accent-primary));
+}
+
+/* Shimmer Effect for Loading States */
+.shimmer {
+  background: linear-gradient(90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.05) 50%,
+      rgba(255, 255, 255, 0) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* ==================== UTILITIES ==================== */
+
+.text-glow {
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.25);
+}
+
+.gradient-text {
+  color: white;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* ==================== ANIMATIONS ==================== */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-from-bottom {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes zoom-in {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-slow {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-in {
+  animation-duration: 0.3s;
+  animation-fill-mode: both;
+}
+
+.fade-in {
+  animation-name: fade-in;
+}
+
+.slide-in-from-right-full {
+  animation-name: slide-in-from-right;
+}
+
+.slide-in-from-bottom-4 {
+  animation-name: slide-in-from-bottom;
+}
+
+.zoom-in-95 {
+  animation-name: zoom-in;
+}
+
+.float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Selection */
+::selection {
+  background: rgba(var(--accent-primary), 0.3);
+  color: white;
+}
+
+/* Code Blocks */
+code {
+  font-family: var(--font-zed-mono), var(--font-mono);
+  font-size: 0.9em;
+}
+
+pre {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Form Elements - Autofill */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--form-control-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--form-control-bg) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Input Focus States - uses accent color */
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: rgba(var(--accent-primary), 0.5);
+  box-shadow: 0 0 0 3px rgba(var(--accent-primary), 0.1);
+}
+
+textarea[data-chat-composer-input="true"]:focus,
+textarea[data-chat-composer-input="true"]:focus-visible {
+  outline: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+textarea[data-chat-composer-input="true"]::placeholder {
+  color: var(--form-control-placeholder);
+  opacity: 1;
+}
+
+.chat-approval-toggle,
+.chat-agent-selector,
+.chat-approval-toggle:hover,
+.chat-agent-selector:hover,
+.chat-approval-toggle:focus,
+.chat-agent-selector:focus,
+.chat-approval-toggle:focus-visible,
+.chat-agent-selector:focus-visible {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-color: transparent;
+  border-radius: 9999px;
+  box-shadow: none;
+  outline: none;
+}
+
+.workspace-browser-nav-button {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgb(107 114 128);
+}
+
+.workspace-browser-nav-button:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.06);
+  color: rgb(229 231 235);
+}
+
+.workspace-browser-nav-button:focus,
+.workspace-browser-nav-button:focus-visible {
+  box-shadow: none;
+  outline: none;
+}
+
+.workspace-browser-nav-button:disabled {
+  opacity: 0.35;
+}
+
+.browser-agent-click-pulse {
+  animation: browser-agent-click-pulse 420ms ease-out forwards;
+}
+
+@keyframes browser-agent-click-pulse {
+  from {
+    opacity: 0.9;
+    transform: scale(0.45);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+.chat-composer-responsive {
+  container-type: inline-size;
+}
+
+.chat-composer-surface {
+  background: color-mix(in srgb, var(--surface-raised) 42%, transparent);
+  border-color: var(--surface-border);
+}
+
+.chat-composer-responsive[data-layout="new-chat"] .chat-composer-surface {
+  margin-top: -1px;
+}
+
+.new-chat-workspace-bar {
+  background: color-mix(in srgb, var(--surface-panel) 88%, var(--surface-raised));
+  border-color: var(--surface-border);
+  color: var(--text-secondary);
+}
+
+.chat-reasoning-popover {
+  background: var(--context-tooltip-bg);
+  border-color: var(--context-tooltip-border);
+  color: var(--context-tooltip-body);
+  box-shadow: var(--context-tooltip-shadow);
+}
+
+.chat-reasoning-slider {
+  accent-color: rgb(var(--accent-primary));
+}
+
+.usage-fill-unlimited {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.18) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.18) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 12px 12px;
+  animation: usage-fill-shimmer 1.6s linear infinite;
+}
+
+@keyframes usage-fill-shimmer {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 12px 0;
+  }
+}
+
+@container (max-width: 600px) {
+  .chat-reasoning-trigger {
+    width: 32px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+@container (max-width: 460px) {
+  .chat-approval-control {
+    width: 32px;
+    flex: 0 0 32px;
+  }
+
+  .chat-approval-toggle {
+    width: 32px;
+    padding-left: 0;
+    padding-right: 0;
+    gap: 0;
+  }
+
+  .chat-approval-label {
+    display: none;
+  }
+
+  .chat-agent-selector:hover,
+  .chat-agent-selector:focus {
+    color: transparent !important;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .chat-agent-selector-shell,
+  .chat-agent-selector {
+    width: min(132px, 38cqw);
+    min-width: 0;
+  }
+
+  .chat-agent-selector {
+    color: transparent !important;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .chat-agent-selector-compact-label {
+    display: flex;
+  }
+}
+
+/* ==================== RESPONSIVE LAYOUTS ==================== */
+
+@media (max-width: 768px) {
+  html {
+    font-size: 14px;
+  }
+
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: rgba(13, 13, 18, 0.95);
+    /* More opaque on mobile */
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 30;
+  }
+
+  .sidebar-overlay.open {
+    display: block;
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  .mobile-menu-btn {
+    display: flex !important;
+  }
+
+  .page-container {
+    padding: 1rem !important;
+  }
+
+  .grid-cols-2:not([role="tablist"]),
+  .grid-cols-3:not([role="tablist"]),
+  .grid-cols-4:not([role="tablist"]) {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  html {
+    font-size: 15px;
+  }
+
+  .sidebar {
+    width: 220px !important;
+  }
+
+  .main-content {
+    margin-left: 220px !important;
+  }
+
+  .grid-cols-3:not([role="tablist"]),
+  .grid-cols-4:not([role="tablist"]) {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (min-width: 1025px) {
+  .mobile-menu-btn {
+    display: none !important;
+  }
+
+  .sidebar-overlay {
+    display: none !important;
+  }
+}
+
+@media (min-width: 1440px) {
+  .page-container {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+}
+
+.deferred-list-row {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 88px;
+}
+
+.deferred-chat-message {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 180px;
+}
+
+.context-usage-ring-fill {
+  background: var(--context-ring-inner);
+}
+
+.context-usage-tooltip {
+  background: var(--context-tooltip-bg);
+  border-color: var(--context-tooltip-border);
+  box-shadow: var(--context-tooltip-shadow);
+  color: var(--context-tooltip-detail);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.context-usage-tooltip-title {
+  color: var(--context-tooltip-title);
+}
+
+.context-usage-tooltip-body {
+  color: var(--context-tooltip-body);
+}
+
+.context-usage-tooltip-detail {
+  color: var(--context-tooltip-detail);
+}
+
+.context-usage-tooltip-plan {
+  border-color: var(--context-tooltip-border);
+  color: var(--context-tooltip-body);
+}
+
+.chat-markdown .katex {
+  color: inherit;
+  font-size: 1.04em;
+}
+
+.chat-markdown {
+  font-size: var(--chat-font-size, 14px);
+  line-height: var(--chat-line-height, 1.6);
+}
+
+.chat-inline-code {
+  background: var(--chat-inline-code-bg);
+  border-color: var(--chat-inline-code-border);
+  color: var(--chat-inline-code-text);
+}
+
+.chat-code-surface {
+  background: var(--chat-code-bg);
+  border-color: var(--chat-code-border);
+}
+
+.chat-code-header {
+  background: var(--chat-code-header-bg);
+  border-color: var(--chat-code-border);
+  color: var(--text-muted);
+}
+
+.chat-activity-text,
+.chat-thought-text {
+  font-size: var(--chat-font-size, 14px);
+  line-height: var(--chat-line-height, 1.6);
+}
+
+.chat-activity-text code,
+.chat-thought-text code {
+  font-size: var(--chat-code-font-size, 12px);
+}
+
+.chat-meta-text {
+  font-size: calc(var(--chat-font-size, 14px) * 0.8);
+  line-height: 1.4;
+}
+
+.chat-code-text {
+  font-size: var(--chat-code-font-size, 12px);
+  line-height: 1.5;
+}
+
+.chat-code-block pre,
+.chat-code-block .font-mono {
+  font-size: var(--chat-code-font-size, 12px);
+}
+
+html[data-reduce-motion="true"] *,
+html[data-reduce-motion="true"] *::before,
+html[data-reduce-motion="true"] *::after {
+  scroll-behavior: auto !important;
+  transition-duration: 0.001ms !important;
+}
+
+html[data-reduce-motion="true"] .animate-pulse,
+html[data-reduce-motion="true"] .animate-bounce {
+  animation: none !important;
+}
+
+.chat-markdown .katex-display {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 0.75rem;
+  background: var(--surface-panel, #11131c);
+  padding: 0.875rem 1rem;
+}
+
+.chat-markdown .katex-display > .katex {
+  min-width: max-content;
+}
+
+/* Print Styles */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  .no-print,
+  .sidebar {
+    display: none !important;
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+  }
+}

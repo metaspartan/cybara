@@ -1,10 +1,5 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, Loader2, Plus, RotateCcw, Share2, Square } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
-import { PageLayout } from "@/components/layout";
-import { Badge, Button, GlassCard, Input, Modal } from "@/components/ui";
+import { Button, Modal } from "@/components/ui";
 import { useAgentSummaries, useInfo, useSubagents, useUpdateAgentReasoning } from "@/hooks/useApi";
 import {
   type LoadedChatSession,
@@ -27,31 +22,21 @@ import {
   mergeActivityLists,
   suppressRecoveredWebFailureActivities,
 } from "@/lib/chatActivities";
-import { loadPersistedCompletion } from "@/lib/chatCompletion";
-import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
 import { useI18n } from "@/lib/i18n";
-import {
-  connectStatusStream,
-  type PendingChatMessage,
-  type StatusSessionSnapshot,
-  type StatusStreamStatusEvent,
-  type StatusStreamTokenEvent,
-} from "@/lib/status-stream";
+import { type PendingChatMessage, type StatusSessionSnapshot } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
-import type {
-  Agent,
-  ProviderPlanSnapshot,
-  ProviderPlanStatusResponse,
-  SessionContextUsage,
-  SessionTokenUsage,
-} from "@/types";
+import type { ProviderPlanStatusResponse, SessionContextUsage, SessionTokenUsage } from "@/types";
+import { openExternal } from "@/utils/openExternal";
+import { useQueryClient } from "@tanstack/react-query";
+import { ArrowDown, Loader2, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   resolveSessionEventOrder,
   type SessionEventCursor,
   type SessionEventIdentity,
 } from "../../../shared/session-event-order";
-import { LiveActivityTimeline } from "./chat/ActivityTimeline";
 import { ArtifactViewerPanel } from "./chat/ArtifactViewerPanel";
 import { parseTimestampMs } from "./chat/assistantMetaModel";
 import { MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
@@ -59,68 +44,37 @@ import { ChatComposer, type ChatComposerProps } from "./chat/ChatComposer";
 import { ChatEmptyState } from "./chat/ChatEmptyState";
 import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFollowUpControls";
 import { ChatImageLightbox } from "./chat/ChatImageLightbox";
+import { type ChatLinkOpenOptions, routeChatLink } from "./chat/chatLinkRouting";
 import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
-import { ChatPageHeader } from "./chat/ChatPageHeader";
-import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
-import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
 import {
-  applyLiveActivityEvent,
-  buildPreSteeringActivityMessage,
   type ChatMessage,
-  clampDiffPanelWidth,
   extractLatestPlanFromMessages,
-  type FileChangeItem,
-  type FileChangeSummary,
-  formatSandboxProviderLabel,
   formatToolIntent,
-  formatWorkspaceLabel,
-  getLatestInFlightStep,
   getLegacyMessageProcessKey,
   getMessageProcessKey,
   isAgentUsingBrowser,
-  isGenericStatusLabel,
-  isMeaningfulThoughtDetail,
-  isSessionStatusSnapshotCurrent,
   normalizeMessageProcessActivities,
-  normalizeSessionStatus,
-  normalizeSnapshotActivities,
   PENDING_CAPTURE_TIMEOUT_MS,
   type PendingProcessCapture,
-  persistDiffPanelWidth,
   persistMessageProcessMap,
   persistSessionId,
   persistWorkspaceDir,
-  pruneCanonicalizedLiveActivities,
-  type RevertTarget,
-  readPersistedDiffPanelWidth,
   readPersistedMessageProcessMap,
   readPersistedSessionId,
   readPersistedWorkspaceDir,
-  resolvePathForIde,
-  resolveStatusSnapshotActivities,
+  type RevertTarget,
   type SessionStatusResponse,
   type SessionStatusSnapshot,
   shouldShowSessionPlanInComposer,
-  type ToolCall,
-  toLiveActivityItems,
 } from "./chat/chatModel";
+import { ChatPageHeader } from "./chat/ChatPageHeader";
 import { parseInitialChatRoute } from "./chat/chatRoute";
-import { type GitBranchOption, GitBranchSelector } from "./chat/GitBranchSelector";
-import {
-  clearCachedLiveSessionState,
-  isLiveSessionRunning,
-  readCachedLiveSessionState,
-  writeCachedLiveSessionState,
-} from "./chat/liveSessionState";
-import { writeCachedSessionMessages } from "./chat/messageCache";
+import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
+import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
+import { clearCachedLiveSessionState, isLiveSessionRunning } from "./chat/liveSessionState";
 import { NearbyShareModal } from "./chat/NearbyShareModal";
 import { PendingApprovalsBanner } from "./chat/PendingApprovalsBanner";
-import {
-  clearCachedOptimisticPendingMessages,
-  readCachedOptimisticPendingMessages,
-  writeCachedOptimisticPendingMessages,
-} from "./chat/pendingQueueCache";
-import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
+import { normalizePendingChatMessages } from "./chat/pendingQueueState";
 import {
   isStoppedRunSuppressed,
   markStoppedRun,
@@ -130,8 +84,11 @@ import { useArtifactViewer } from "./chat/useArtifactViewer";
 import { useChatAttachments } from "./chat/useChatAttachments";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { useChatDictation } from "./chat/useChatDictation";
+import { useChatLiveSessionRuntime } from "./chat/useChatLiveSessionRuntime";
 import { useChatMessageActions } from "./chat/useChatMessageActions";
+import { useChatPendingMutations } from "./chat/useChatPendingMutations";
 import { useChatScroll } from "./chat/useChatScroll";
+import { useChatWorkspaceActions } from "./chat/useChatWorkspaceActions";
 import { useChatWorkspaceTabs } from "./chat/useChatWorkspaceTabs";
 import { useEnvironmentGitBranches } from "./chat/useEnvironmentGitBranches";
 import { useSessionFileChanges } from "./chat/useSessionFileChanges";
@@ -235,8 +192,6 @@ export function Chat() {
     speakingMessageIndex,
   } = useChatMessageActions();
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const [workspaceSaving, setWorkspaceSaving] = useState(false);
-  const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
   const [forkingMessageIndex, setForkingMessageIndex] = useState<number | null>(null);
   const [showNearbyShare, setShowNearbyShare] = useState(false);
@@ -254,6 +209,7 @@ export function Chat() {
     isOpen: showWorkspacePanel,
     openTab: openWorkspaceTab,
     openFile: openWorkspaceFile,
+    openBrowser: openWorkspaceBrowser,
     openSubagent: openWorkspaceSubagent,
     selectTab: setActiveWorkspaceTab,
     setOpen: setShowWorkspacePanel,
@@ -261,9 +217,22 @@ export function Chat() {
     toggleTab: toggleWorkspaceTab,
     updateTabTitle: updateWorkspaceTabTitle,
   } = useChatWorkspaceTabs({ onOpen: closeEnvironmentOverview, sessionId });
+  const handleOpenChatLink = useCallback(
+    (href: string, options: ChatLinkOpenOptions): boolean => {
+      const route = routeChatLink(href, options);
+      if (route.kind === "preview") {
+        openWorkspaceBrowser(route.url);
+        return true;
+      }
+      if (route.kind === "external") {
+        void openExternal(route.url);
+        return true;
+      }
+      return route.kind === "blocked";
+    },
+    [openWorkspaceBrowser]
+  );
   const [hiddenComposerPlanKey, setHiddenComposerPlanKey] = useState<string | null>(null);
-  const [diffPanelWidth, setDiffPanelWidth] = useState<number>(() => readPersistedDiffPanelWidth());
-  const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
   const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
   const {
     closeArtifactViewer,
@@ -297,8 +266,6 @@ export function Chat() {
   const [sessionTokenUsage, setSessionTokenUsage] = useState<SessionTokenUsage | null>(null);
   const [timeToFirstTokenMs, setTimeToFirstTokenMs] = useState<number | null>(null);
   const ttftStartRef = useRef<number | null>(null);
-  const [steeringMessageId, setSteeringMessageId] = useState<string | null>(null);
-  const [pendingMessageMutationId, setPendingMessageMutationId] = useState<string | null>(null);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [restoringInitialSession, setRestoringInitialSession] = useState(
     !initialChatRoute.startFresh
@@ -316,11 +283,6 @@ export function Chat() {
   );
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
-  const diffPanelResizeStateRef = useRef<{
-    startX: number;
-    startWidth: number;
-  } | null>(null);
-  const diffPanelResizeCleanupRef = useRef<(() => void) | null>(null);
   const activeSessionRef = useRef<string | null>(null);
   const restoreSessionGenerationRef = useRef(0);
   const suppressAutoRestoreRef = useRef(false);
@@ -626,11 +588,25 @@ export function Chat() {
     async (agentId?: string) => {
       if (agentId === MODEL_ROUTER_SELECTOR_VALUE) {
         if (!modelRouterEnabled) return;
+        const previousUseModelRouter = useModelRouter;
         setUseModelRouter(true);
         setSessionContextUsage(null);
         setSessionTokenUsage(null);
+        if (!sessionId) return;
+        try {
+          const updated = await updateSessionAgent.mutateAsync({
+            sessionId,
+            useModelRouter: true,
+          });
+          setSessionContextUsage(updated.contextUsage ?? null);
+          setSessionTokenUsage(updated.tokenUsage ?? null);
+        } catch (error) {
+          setUseModelRouter(previousUseModelRouter);
+          console.error("Failed to update session routing:", error);
+        }
         return;
       }
+      const previousUseModelRouter = useModelRouter;
       const previousSelectedAgentId = selectedAgentId;
       const previousSessionAgentId = sessionAgentId;
       const nextAgentId = resolveSelectableSessionAgentId(agentId);
@@ -666,6 +642,7 @@ export function Chat() {
         setSessionContextUsage(updated.contextUsage ?? null);
         setSessionTokenUsage(updated.tokenUsage ?? null);
       } catch (error) {
+        setUseModelRouter(previousUseModelRouter);
         setSelectedAgentId(previousSelectedAgentId);
         setSessionAgentId(previousSessionAgentId);
         console.error("Failed to update session agent:", error);
@@ -674,6 +651,7 @@ export function Chat() {
     [
       resolveSelectableSessionAgentId,
       modelRouterEnabled,
+      useModelRouter,
       selectedAgentId,
       sessionAgentId,
       sessionId,
@@ -743,19 +721,8 @@ export function Chat() {
   }, []);
 
   useEffect(() => {
-    return () => {
-      diffPanelResizeCleanupRef.current?.();
-      diffPanelResizeCleanupRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
     persistMessageProcessMap(messageProcessMap);
   }, [messageProcessMap]);
-
-  useEffect(() => {
-    persistDiffPanelWidth(diffPanelWidth);
-  }, [diffPanelWidth]);
 
   useEffect(() => {
     if (!sessionId || typedMessages.length === 0) return;
@@ -797,24 +764,6 @@ export function Chat() {
       return changed ? next : previous;
     });
   }, [sessionId, typedMessages, turnStartedAtMsByIndex]);
-
-  useEffect(() => {
-    if (!sessionFileChanges || sessionFileChanges.files.length === 0) {
-      if (selectedDiffPath !== null) {
-        setSelectedDiffPath(null);
-      }
-      return;
-    }
-
-    if (
-      selectedDiffPath &&
-      sessionFileChanges.files.some((file) => file.path === selectedDiffPath)
-    ) {
-      return;
-    }
-
-    setSelectedDiffPath(sessionFileChanges.files[0]?.path || null);
-  }, [selectedDiffPath, sessionFileChanges]);
 
   useEffect(() => {
     activeSessionRef.current = sessionId;
@@ -955,484 +904,46 @@ export function Chat() {
     setLiveCurrentStep(null);
   }, [isLoading, liveActivities, sessionId, typedMessages, turnStartedAtMsByIndex]);
 
-  const markFirstTokenLatency = useCallback((forSessionId?: string | null) => {
-    if (ttftStartRef.current === null) return;
-    if (forSessionId && activeSessionRef.current && forSessionId !== activeSessionRef.current) {
-      return;
-    }
-    const elapsed = Math.round(performance.now() - ttftStartRef.current);
-    ttftStartRef.current = null;
-    setTimeToFirstTokenMs(elapsed);
-  }, []);
-
-  const appendLiveActivity = useCallback(
-    (
-      phase: "start" | "result" | "error" | "blocked",
-      text: string,
-      toolName?: string,
-      eventTimestamp?: number,
-      toolCallId?: string,
-      sandboxProvider?: string
-    ) => {
-      markFirstTokenLatency();
-
-      const applyEvent = (previous: LiveActivityItem[]): LiveActivityItem[] =>
-        applyLiveActivityEvent(previous, {
-          phase,
-          text,
-          timestamp: eventTimestamp,
-          toolName,
-          toolCallId,
-          sandboxProvider,
-        });
-
-      runActivityBufferRef.current = applyEvent(runActivityBufferRef.current);
-      setLiveActivities((previous) => applyEvent(previous));
-    },
-    [markFirstTokenLatency]
-  );
-
-  const snapshotLatestTimestamp = useCallback((snapshot: LiveStatusSnapshotLike): number => {
-    let latest =
-      typeof snapshot.timestamp === "number" && Number.isFinite(snapshot.timestamp)
-        ? snapshot.timestamp
-        : 0;
-    if (Array.isArray(snapshot.activities)) {
-      for (const activity of snapshot.activities) {
-        if (
-          activity &&
-          typeof activity.timestamp === "number" &&
-          Number.isFinite(activity.timestamp) &&
-          activity.timestamp > latest
-        ) {
-          latest = activity.timestamp;
-        }
-      }
-    }
-    return latest;
-  }, []);
-
-  const resolveSnapshotLiveState = useCallback(
-    (snapshot: LiveStatusSnapshotLike, localActivities: LiveActivityItem[]) => {
-      const normalizedStatus = normalizeSessionStatus(snapshot.status);
-      const snapshotActivities = normalizeSnapshotActivities(
-        mergeActivityLists([], toLiveActivityItems(snapshot.activities)),
-        snapshot.status
-      );
-      const activities = resolveStatusSnapshotActivities(
-        snapshotActivities,
-        localActivities,
-        normalizedStatus
-      );
-      const activeStep = getLatestInFlightStep(activities);
-      let currentStep: string | null = null;
-      if (activeStep && !isGenericStatusLabel(activeStep)) {
-        currentStep = activeStep;
-      } else {
-        const detail = typeof snapshot.detail === "string" ? snapshot.detail.trim() : "";
-        if (isMeaningfulThoughtDetail(detail)) {
-          currentStep = detail;
-        } else if (normalizedStatus === "generating") {
-          currentStep = "Generating response...";
-        } else if (normalizedStatus === "compacting") {
-          currentStep = "Compacting earlier context...";
-        } else if (normalizedStatus === "thinking") {
-          currentStep = "Thinking...";
-        }
-      }
-      return { status: normalizedStatus, activities, currentStep };
-    },
-    []
-  );
-
-  const cacheLiveStatusSnapshot = useCallback(
-    (snapshot: LiveStatusSnapshotLike) => {
-      const snapshotSessionId =
-        typeof snapshot.sessionId === "string" && snapshot.sessionId.trim()
-          ? snapshot.sessionId.trim()
-          : null;
-      if (!snapshotSessionId) return false;
-      const snapshotStatus = typeof snapshot.status === "string" ? snapshot.status : "";
-      if (
-        isSessionStopSuppressed(snapshotSessionId, snapshot.runId) &&
-        snapshotStatus !== "idle" &&
-        snapshotStatus !== "error"
-      ) {
-        return false;
-      }
-      const latestTimestamp = snapshotLatestTimestamp(snapshot);
-      if (
-        !acceptSessionEvent(snapshotSessionId, {
-          runId: snapshot.runId,
-          sequence: snapshot.sequence,
-          timestamp: latestTimestamp,
-        })
-      ) {
-        return false;
-      }
-      const cached = readCachedLiveSessionState(snapshotSessionId);
-      const localActivities = cached?.activities || [];
-      const next = resolveSnapshotLiveState(snapshot, localActivities);
-      if (latestTimestamp > 0) {
-        const previousTimestamp = latestStatusTimestampBySessionRef.current[snapshotSessionId] || 0;
-        if (latestTimestamp > previousTimestamp) {
-          latestStatusTimestampBySessionRef.current[snapshotSessionId] = latestTimestamp;
-        }
-      }
-      writeCachedLiveSessionState(snapshotSessionId, {
-        status: next.status,
-        activities: next.activities,
-        currentStep: next.currentStep,
-        streamingContent: cached?.streamingContent ?? null,
-        runId: eventCursorBySessionRef.current[snapshotSessionId]?.runId ?? null,
-        sequence:
-          eventCursorBySessionRef.current[snapshotSessionId]?.sequence ?? cached?.sequence ?? 0,
-        startedAtMs: cached?.startedAtMs ?? (latestTimestamp || Date.now()),
-      });
-      return true;
-    },
-    [acceptSessionEvent, isSessionStopSuppressed, resolveSnapshotLiveState, snapshotLatestTimestamp]
-  );
-
-  const cacheAssistantToken = useCallback(
-    (payload: StatusStreamTokenEvent) => {
-      const tokenSessionId =
-        typeof payload.sessionId === "string" && payload.sessionId.trim()
-          ? payload.sessionId.trim()
-          : null;
-      const delta = typeof payload.delta === "string" ? payload.delta : "";
-      if (!tokenSessionId || !delta) return false;
-      if (isSessionStopSuppressed(tokenSessionId, payload.runId)) return false;
-      if (
-        !acceptSessionEvent(tokenSessionId, {
-          runId: payload.runId,
-          sequence: payload.sequence,
-          timestamp: payload.timestamp,
-        })
-      ) {
-        return false;
-      }
-      markFirstTokenLatency(tokenSessionId);
-      const cached = readCachedLiveSessionState(tokenSessionId);
-      writeCachedLiveSessionState(tokenSessionId, {
-        status: "generating",
-        activities: cached?.activities || [],
-        currentStep: cached?.currentStep || "Generating response...",
-        streamingContent: `${cached?.streamingContent || ""}${delta}`,
-        runId: eventCursorBySessionRef.current[tokenSessionId]?.runId ?? null,
-        sequence:
-          eventCursorBySessionRef.current[tokenSessionId]?.sequence ?? cached?.sequence ?? 0,
-        startedAtMs: cached?.startedAtMs ?? (payload.timestamp || Date.now()),
-      });
-      return true;
-    },
-    [acceptSessionEvent, isSessionStopSuppressed, markFirstTokenLatency]
-  );
-
-  const cacheLiveStatusEvent = useCallback(
-    (payload: StatusStreamStatusEvent) => {
-      const payloadSessionId =
-        typeof payload.sessionId === "string" && payload.sessionId.trim()
-          ? payload.sessionId.trim()
-          : null;
-      if (!payloadSessionId) return false;
-      const status = typeof payload.status === "string" ? payload.status : "";
-      if (!status) return false;
-      if (
-        isSessionStopSuppressed(payloadSessionId, payload.runId) &&
-        status !== "idle" &&
-        status !== "error"
-      ) {
-        return false;
-      }
-      if (
-        !acceptSessionEvent(payloadSessionId, {
-          runId: payload.runId,
-          sequence: payload.sequence,
-          timestamp: payload.timestamp,
-        })
-      ) {
-        return false;
-      }
-      const statusDetail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-      const isSteeringHandoff =
-        status === "idle" && statusDetail.toLowerCase() === "steering to follow-up...";
-      if (status === "error") {
-        clearCachedLiveSessionState(payloadSessionId);
-        return true;
-      }
-      if (status === "idle" && !isSteeringHandoff) {
-        clearCachedLiveSessionState(payloadSessionId);
-        return true;
-      }
-
-      const cached = readCachedLiveSessionState(payloadSessionId);
-      const eventTimestamp =
-        typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
-          ? payload.timestamp
-          : undefined;
-      let activities = cached?.activities || [];
-      let currentStep = cached?.currentStep || null;
-      const normalizedStatus = normalizeSessionStatus(status);
-
-      if (status === "thinking" || status === "generating" || status === "compacting") {
-        const activeToolStep = getLatestInFlightStep(activities);
-        if (!payload.toolName) {
-          const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-          if (status === "compacting") {
-            currentStep = activeToolStep || detail || "Compacting earlier context...";
-          } else if (isMeaningfulThoughtDetail(detail)) {
-            const text = detail;
-            activities = applyLiveActivityEvent(activities, {
-              phase: "result",
-              text,
-              timestamp: eventTimestamp,
-              toolName: "__thought",
-            });
-            currentStep = activeToolStep || text;
-          } else {
-            currentStep =
-              activeToolStep ||
-              (status === "generating"
-                ? "Generating response..."
-                : status === "thinking"
-                  ? "Thinking..."
-                  : null);
-          }
-        }
-        writeCachedLiveSessionState(payloadSessionId, {
-          status: normalizedStatus,
-          activities,
-          currentStep,
-          streamingContent: cached?.streamingContent ?? null,
-          runId: eventCursorBySessionRef.current[payloadSessionId]?.runId ?? null,
-          sequence:
-            eventCursorBySessionRef.current[payloadSessionId]?.sequence ?? cached?.sequence ?? 0,
-          startedAtMs: cached?.startedAtMs ?? (eventTimestamp || Date.now()),
-        });
-        return true;
-      }
-
-      if (isSteeringHandoff) {
-        activities = applyLiveActivityEvent(activities, {
-          phase: "result",
-          text: statusDetail,
-          timestamp: eventTimestamp,
-          toolName: "__thought",
-        });
-        writeCachedLiveSessionState(payloadSessionId, {
-          status: "thinking",
-          activities,
-          currentStep: statusDetail,
-          streamingContent: cached?.streamingContent ?? null,
-          runId: eventCursorBySessionRef.current[payloadSessionId]?.runId ?? null,
-          sequence:
-            eventCursorBySessionRef.current[payloadSessionId]?.sequence ?? cached?.sequence ?? 0,
-          startedAtMs: cached?.startedAtMs ?? (eventTimestamp || Date.now()),
-        });
-        return true;
-      }
-
-      if (status === "tool_executing" || status === "tool_completed") {
-        const phase: "start" | "result" = status === "tool_executing" ? "start" : "result";
-        const toolName = payload.toolName || "tool";
-        const text = formatToolIntent(toolName, {}, phase, payload.detail);
-        activities = applyLiveActivityEvent(activities, {
-          phase,
-          text,
-          timestamp: eventTimestamp,
-          toolName: payload.toolName,
-          toolCallId: payload.toolCallId,
-          sandboxProvider: payload.sandboxProvider,
-        });
-        writeCachedLiveSessionState(payloadSessionId, {
-          status: phase === "start" ? "thinking" : normalizedStatus,
-          activities,
-          currentStep:
-            phase === "start"
-              ? isGenericStatusLabel(text)
-                ? "Thinking..."
-                : text
-              : getLatestInFlightStep(activities),
-          streamingContent: cached?.streamingContent ?? null,
-          runId: eventCursorBySessionRef.current[payloadSessionId]?.runId ?? null,
-          sequence:
-            eventCursorBySessionRef.current[payloadSessionId]?.sequence ?? cached?.sequence ?? 0,
-          startedAtMs: cached?.startedAtMs ?? (eventTimestamp || Date.now()),
-        });
-      }
-      return true;
-    },
-    [acceptSessionEvent, isSessionStopSuppressed]
-  );
-
-  const hydrateSessionStatus = useCallback(
-    async (targetSessionId?: string | null) => {
-      const resolvedSessionId =
-        typeof targetSessionId === "string" && targetSessionId.trim().length > 0
-          ? targetSessionId.trim()
-          : null;
-
-      try {
-        const response = await chatApi.getSessionStatus(resolvedSessionId || undefined);
-        if (!response.success || !response.data) return;
-        const payload = response.data as SessionStatusResponse;
-        const rawActiveIds = Array.isArray(payload.activeSessionIds)
-          ? payload.activeSessionIds
-          : [];
-        const visibleActiveIds = rawActiveIds.filter(
-          (candidateId) => !isSessionStopSuppressed(candidateId)
-        );
-
-        if (!resolvedSessionId) return;
-        const snapshot = payload.session;
-        const stopSuppressed = isSessionStopSuppressed(resolvedSessionId);
-        const serverReportsActive =
-          payload.active === true || visibleActiveIds.includes(resolvedSessionId);
-        const snapshotFresh = isSessionStatusSnapshotCurrent(
-          snapshot?.timestamp,
-          serverReportsActive
-        );
-        const nextActiveIds =
-          snapshot && !snapshotFresh
-            ? visibleActiveIds.filter((candidateId) => candidateId !== resolvedSessionId)
-            : visibleActiveIds;
-        setActiveSessionIds(nextActiveIds);
-        if (stopSuppressed) {
-          if (activeSessionRef.current === resolvedSessionId) {
-            setLiveStatus("idle");
-            setLiveActivities([]);
-            liveActivitiesRef.current = [];
-            setLiveCurrentStep(null);
-            runActivityBufferRef.current = [];
-          }
-          clearCachedLiveSessionState(resolvedSessionId);
-          return;
-        }
-        const isActive =
-          !!snapshot &&
-          snapshotFresh &&
-          (payload.active === true ||
-            snapshot.status === "thinking" ||
-            snapshot.status === "generating" ||
-            snapshot.status === "compacting" ||
-            snapshot.status === "tool_executing" ||
-            snapshot.status === "tool_completed");
-        setPendingMessages((current) =>
-          mergePendingChatMessages(snapshot?.pendingMessages, current)
-        );
-        if (snapshot && snapshotFresh) {
-          const snapshotAccepted = cacheLiveStatusSnapshot(snapshot);
-          if (
-            !snapshotAccepted &&
-            snapshot.runId &&
-            latestRunIdBySessionRef.current[resolvedSessionId] &&
-            snapshot.runId !== latestRunIdBySessionRef.current[resolvedSessionId]
-          ) {
-            return;
-          }
-        }
-
-        if (!isActive || !snapshot) {
-          const bufferedLive = readCachedLiveSessionState(resolvedSessionId);
-          const hasBufferedLive =
-            !!bufferedLive &&
-            (bufferedLive.activities.length > 0 ||
-              bufferedLive.status !== "idle" ||
-              !!bufferedLive.streamingContent);
-          if (
-            hasBufferedLive &&
-            loadingRef.current &&
-            activeSessionRef.current === resolvedSessionId
-          ) {
-            return;
-          }
-          if (
-            hasBufferedLive &&
-            !loadingRef.current &&
-            activeSessionRef.current === resolvedSessionId
-          ) {
-            await refreshSessionMessagesRef.current(resolvedSessionId);
-          }
-          if (
-            !loadingRef.current &&
-            activeSessionRef.current === resolvedSessionId &&
-            !nextActiveIds.includes(resolvedSessionId)
-          ) {
-            setLiveStatus("idle");
-            setLiveActivities([]);
-            liveActivitiesRef.current = [];
-            setLiveCurrentStep(null);
-            runActivityBufferRef.current = [];
-            setStreamingContent(null);
-          }
-          if (!nextActiveIds.includes(resolvedSessionId)) {
-            clearCachedLiveSessionState(resolvedSessionId);
-          }
-          return;
-        }
-
-        if (activeSessionRef.current !== resolvedSessionId) return;
-        const snapshotLatest = snapshotLatestTimestamp(snapshot);
-        const latestKnownTimestamp =
-          latestStatusTimestampBySessionRef.current[resolvedSessionId] || 0;
-        if (
-          snapshotLatest > 0 &&
-          latestKnownTimestamp > 0 &&
-          snapshotLatest + 25 < latestKnownTimestamp
-        ) {
-          return;
-        }
-        if (snapshotLatest > latestKnownTimestamp) {
-          latestStatusTimestampBySessionRef.current[resolvedSessionId] = snapshotLatest;
-        }
-        const localActivities = mergeActivityLists(
-          runActivityBufferRef.current,
-          liveActivitiesRef.current
-        );
-        const resolved = resolveSnapshotLiveState(snapshot, localActivities);
-        setLiveStatus(resolved.status);
-        setLiveActivities(resolved.activities);
-        liveActivitiesRef.current = resolved.activities.map((activity) => ({
-          ...activity,
-        }));
-        runActivityBufferRef.current = resolved.activities.map((activity) => ({
-          ...activity,
-        }));
-        setLiveCurrentStep(resolved.currentStep);
-      } catch (error) {
-        console.error("Failed to hydrate session status:", error);
-      }
-    },
-    [
-      cacheLiveStatusSnapshot,
-      isSessionStopSuppressed,
-      resolveSnapshotLiveState,
-      snapshotLatestTimestamp,
-    ]
-  );
-
-  const refreshPendingMessages = useCallback(async (targetSessionId?: string | null) => {
-    const resolvedSessionId =
-      typeof targetSessionId === "string" && targetSessionId.trim().length > 0
-        ? targetSessionId.trim()
-        : null;
-    if (!resolvedSessionId) return;
-    try {
-      const response = await chatApi.getPendingMessages(resolvedSessionId);
-      if (!response.success || !response.data) return;
-      if (activeSessionRef.current !== resolvedSessionId) return;
-      const serverMessages = response.data?.pendingMessages;
-      setPendingMessages((current) =>
-        mergePendingChatMessages(serverMessages, current, {
-          preserveOptimistic: false,
-        })
-      );
-      if (Array.isArray(serverMessages) && serverMessages.length === 0) {
-        clearCachedOptimisticPendingMessages(resolvedSessionId);
-      }
-    } catch {}
-  }, []);
+  const { hydrateSessionStatus } = useChatLiveSessionRuntime({
+    sessionId,
+    typedMessages,
+    isLoading,
+    currentSessionIsWorking,
+    activeSessionIds,
+    setActiveSessionIds,
+    liveStatus,
+    setLiveStatus,
+    liveActivities,
+    setLiveActivities,
+    liveCurrentStep,
+    setLiveCurrentStep,
+    streamingContent,
+    setStreamingContent,
+    liveRunStartedAtMs,
+    setLiveRunStartedAtMs,
+    pendingMessages,
+    setPendingMessages,
+    setSessionContextUsage,
+    setSessionTokenUsage,
+    setTimeToFirstTokenMs,
+    ttftStartRef,
+    activeSessionRef,
+    loadingRef,
+    acceptEventsUntilRef,
+    runStartSyncedSessionsRef,
+    runActivityBufferRef,
+    liveActivitiesRef,
+    liveRunStartedAtMsRef,
+    latestStatusTimestampBySessionRef,
+    latestRunIdBySessionRef,
+    eventCursorBySessionRef,
+    refreshSessionMessagesRef,
+    isSessionStopSuppressed,
+    acceptSessionEvent,
+    setShowEnvironmentOverview,
+    loadFreshSession: loadSessionMutation.loadFresh,
+    loadSession,
+  });
 
   const resetChatSession = useCallback(
     (options?: { resetAgentSelection?: boolean }) => {
@@ -1486,417 +997,6 @@ export function Chat() {
     if (pending) window.requestAnimationFrame(() => handleAction(pending));
     return () => window.removeEventListener(APP_HOTKEY_EVENT, onHotkey);
   }, [resetChatSession]);
-
-  useEffect(() => {
-    activeSessionRef.current = sessionId;
-  }, [sessionId]);
-
-  useEffect(() => {
-    setShowEnvironmentOverview(false);
-  }, [sessionId]);
-
-  useEffect(() => {
-    const cached = readCachedLiveSessionState(sessionId);
-    if (cached) {
-      if (sessionId) {
-        eventCursorBySessionRef.current[sessionId] = {
-          runId: cached.runId,
-          sequence: cached.sequence,
-          timestamp: cached.updatedAt,
-        };
-        if (cached.runId) latestRunIdBySessionRef.current[sessionId] = cached.runId;
-      }
-      liveRunStartedAtMsRef.current = cached.startedAtMs;
-      setLiveRunStartedAtMs(cached.startedAtMs);
-      setLiveStatus(cached.status);
-      setLiveActivities(cached.activities);
-      liveActivitiesRef.current = cached.activities.map((activity) => ({
-        ...activity,
-      }));
-      setStreamingContent(cached.streamingContent);
-      setLiveCurrentStep(cached.currentStep);
-      runActivityBufferRef.current = cached.activities.map((activity) => ({
-        ...activity,
-      }));
-    } else {
-      liveRunStartedAtMsRef.current = null;
-      setLiveRunStartedAtMs(null);
-      setLiveStatus("idle");
-      setLiveActivities([]);
-      liveActivitiesRef.current = [];
-      setStreamingContent(null);
-      setLiveCurrentStep(null);
-      runActivityBufferRef.current = [];
-    }
-    acceptEventsUntilRef.current = 0;
-    if (!sessionId) {
-      setPendingMessages([]);
-      return;
-    }
-
-    const cachedOptimistic = readCachedOptimisticPendingMessages(sessionId);
-    if (cachedOptimistic.length > 0) {
-      setPendingMessages((current) => mergePendingChatMessages(current, cachedOptimistic));
-    }
-
-    void refreshPendingMessages(sessionId);
-    void hydrateSessionStatus(sessionId);
-    return;
-  }, [hydrateSessionStatus, refreshPendingMessages, sessionId]);
-
-  useEffect(() => {
-    liveActivitiesRef.current = liveActivities.map((activity) => ({
-      ...activity,
-    }));
-  }, [liveActivities]);
-
-  useEffect(() => {
-    if (!sessionId || liveActivities.length === 0 || typedMessages.length === 0) return;
-    const prunedActivities = pruneCanonicalizedLiveActivities(typedMessages, liveActivities);
-    const prunedBuffer = pruneCanonicalizedLiveActivities(
-      typedMessages,
-      runActivityBufferRef.current
-    );
-    const activitiesChanged = prunedActivities.length !== liveActivities.length;
-    const bufferChanged = prunedBuffer.length !== runActivityBufferRef.current.length;
-    if (!activitiesChanged && !bufferChanged) return;
-
-    if (bufferChanged) {
-      runActivityBufferRef.current = prunedBuffer.map((activity) => ({
-        ...activity,
-      }));
-    }
-    if (activitiesChanged) {
-      setLiveActivities(prunedActivities);
-    }
-    if (
-      prunedActivities.length === 0 &&
-      prunedBuffer.length === 0 &&
-      !isLoading &&
-      !activeSessionIds.includes(sessionId)
-    ) {
-      setLiveStatus("idle");
-      setLiveCurrentStep(null);
-      clearCachedLiveSessionState(sessionId);
-    }
-  }, [activeSessionIds, isLoading, liveActivities, sessionId, typedMessages]);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    writeCachedOptimisticPendingMessages(sessionId, pendingMessages);
-  }, [pendingMessages, sessionId]);
-
-  useEffect(() => {
-    if (!sessionId || typedMessages.length === 0) return;
-    writeCachedSessionMessages(sessionId, typedMessages);
-  }, [sessionId, typedMessages]);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    if (!currentSessionIsWorking) {
-      clearCachedLiveSessionState(sessionId);
-      return;
-    }
-    writeCachedLiveSessionState(sessionId, {
-      status: liveStatus,
-      activities: liveActivities,
-      currentStep: liveCurrentStep,
-      streamingContent,
-      runId: latestRunIdBySessionRef.current[sessionId] ?? null,
-      sequence: eventCursorBySessionRef.current[sessionId]?.sequence,
-      startedAtMs: liveRunStartedAtMs,
-    });
-  }, [
-    activeSessionIds,
-    currentSessionIsWorking,
-    liveActivities,
-    liveCurrentStep,
-    liveRunStartedAtMs,
-    liveStatus,
-    sessionId,
-    streamingContent,
-  ]);
-
-  useEffect(() => {
-    refreshSessionMessagesRef.current = async (sid: string) => {
-      try {
-        const result = await loadPersistedCompletion(() => loadSessionMutation.loadFresh(sid));
-        if (result?.messagesList && activeSessionRef.current === sid) {
-          loadSession(
-            sid,
-            result.messagesList as ChatMessage[],
-            (result as { workspace_dir?: string | null }).workspace_dir || null
-          );
-          setSessionContextUsage(
-            (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
-          );
-          setSessionTokenUsage(
-            (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
-          );
-          return true;
-        }
-      } catch {
-        return false;
-      }
-      return false;
-    };
-  });
-
-  useEffect(() => {
-    const disconnect = connectStatusStream({
-      replayBufferedSessionEvents: true,
-      onEvent: (payload) => {
-        if (!payload || typeof payload !== "object") return;
-        if (payload.type === "snapshot") {
-          const snapshotIds = Array.isArray(payload.activeSessionIds)
-            ? payload.activeSessionIds.filter(
-                (candidate): candidate is string =>
-                  typeof candidate === "string" &&
-                  candidate.trim().length > 0 &&
-                  !isSessionStopSuppressed(
-                    candidate,
-                    payload.activeSessions?.find((snapshot) => snapshot.sessionId === candidate)
-                      ?.runId
-                  )
-              )
-            : [];
-          for (const snapshot of payload.activeSessions || []) {
-            cacheLiveStatusSnapshot(snapshot);
-          }
-          setActiveSessionIds(snapshotIds);
-          const activeSession = activeSessionRef.current;
-          if (activeSession) {
-            void hydrateSessionStatus(activeSession);
-          }
-          return;
-        }
-        if (payload.type !== "status") {
-          if (payload.type === "assistant_token") {
-            const delta = typeof payload.delta === "string" ? payload.delta : "";
-            if (delta) {
-              const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : "";
-              if (isSessionStopSuppressed(sessionId, payload.runId)) return;
-              if (!cacheAssistantToken(payload)) return;
-              const activeSession = activeSessionRef.current;
-              if (activeSession && sessionId === activeSession) {
-                setStreamingContent((prev) => (prev === null ? delta : prev + delta));
-              }
-            }
-          }
-          return;
-        }
-        const status = typeof payload.status === "string" ? payload.status : "";
-        if (!status) return;
-        const statusDetail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-        const isSteeringHandoff =
-          status === "idle" && statusDetail.toLowerCase() === "steering to follow-up...";
-        const payloadSessionId =
-          typeof payload.sessionId === "string" && payload.sessionId.trim()
-            ? payload.sessionId
-            : null;
-        const statusIsActive =
-          status === "thinking" ||
-          status === "generating" ||
-          status === "compacting" ||
-          status === "tool_executing" ||
-          status === "tool_completed";
-        if (
-          payloadSessionId &&
-          isSessionStopSuppressed(payloadSessionId, payload.runId) &&
-          statusIsActive
-        ) {
-          setActiveSessionIds((previous) => previous.filter((id) => id !== payloadSessionId));
-          if (payloadSessionId === activeSessionRef.current) {
-            setLiveStatus("idle");
-            setLiveCurrentStep(null);
-            setLiveActivities([]);
-            liveActivitiesRef.current = [];
-            runActivityBufferRef.current = [];
-          }
-          clearCachedLiveSessionState(payloadSessionId);
-          runStartSyncedSessionsRef.current.delete(payloadSessionId);
-          return;
-        }
-        if (!cacheLiveStatusEvent(payload)) return;
-        const payloadTimestamp =
-          typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
-            ? payload.timestamp
-            : 0;
-        if (payloadSessionId && payloadTimestamp > 0) {
-          const previousTimestamp =
-            latestStatusTimestampBySessionRef.current[payloadSessionId] || 0;
-          if (payloadTimestamp > previousTimestamp) {
-            latestStatusTimestampBySessionRef.current[payloadSessionId] = payloadTimestamp;
-          }
-        }
-
-        if (payloadSessionId) {
-          if (statusIsActive) {
-            setActiveSessionIds((previous) =>
-              previous.includes(payloadSessionId) ? previous : [...previous, payloadSessionId]
-            );
-          }
-          if ((status === "idle" && !isSteeringHandoff) || status === "error") {
-            setActiveSessionIds((previous) => previous.filter((id) => id !== payloadSessionId));
-            runStartSyncedSessionsRef.current.delete(payloadSessionId);
-          }
-        }
-
-        const activeSession = activeSessionRef.current;
-        const isEventForVisibleSession =
-          !!activeSession && !!payloadSessionId && payloadSessionId === activeSession;
-        if (
-          !loadingRef.current &&
-          Date.now() > acceptEventsUntilRef.current &&
-          !isEventForVisibleSession
-        ) {
-          return;
-        }
-
-        if (activeSession && payload.sessionId && payload.sessionId !== activeSession) return;
-        if (activeSession && !payload.sessionId) return;
-
-        if (
-          statusIsActive &&
-          activeSession &&
-          !loadingRef.current &&
-          Date.now() > acceptEventsUntilRef.current &&
-          !runStartSyncedSessionsRef.current.has(activeSession)
-        ) {
-          runStartSyncedSessionsRef.current.add(activeSession);
-          void refreshSessionMessagesRef.current(activeSession);
-        }
-
-        if (status === "thinking") {
-          markFirstTokenLatency(payloadSessionId);
-          if (!payload.toolName) {
-            const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
-            const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-            const eventTimestamp =
-              typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
-                ? payload.timestamp
-                : undefined;
-            if (isMeaningfulThoughtDetail(detail)) {
-              appendLiveActivity("result", detail, "__thought", eventTimestamp);
-              setLiveCurrentStep(activeToolStep || detail);
-            } else {
-              setLiveCurrentStep(activeToolStep || "Thinking...");
-            }
-          }
-          setLiveStatus("thinking");
-          return;
-        }
-        if (status === "generating") {
-          markFirstTokenLatency(payloadSessionId);
-          if (!payload.toolName) {
-            const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
-            const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-            const eventTimestamp =
-              typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
-                ? payload.timestamp
-                : undefined;
-            if (isMeaningfulThoughtDetail(detail)) {
-              appendLiveActivity("result", detail, "__thought", eventTimestamp);
-              setLiveCurrentStep(activeToolStep || detail);
-            } else {
-              setLiveCurrentStep(activeToolStep || "Generating response...");
-            }
-          }
-          setLiveStatus("generating");
-          return;
-        }
-        if (status === "compacting") {
-          if (!payload.toolName) {
-            const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
-            const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-            const compactingDetail = isMeaningfulThoughtDetail(detail)
-              ? detail
-              : "Compacting earlier context...";
-            setLiveCurrentStep(activeToolStep || compactingDetail);
-          }
-          setLiveStatus("compacting");
-          return;
-        }
-        if (status === "idle") {
-          if (isSteeringHandoff) {
-            const eventTimestamp =
-              typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
-                ? payload.timestamp
-                : undefined;
-            appendLiveActivity("result", statusDetail, "__thought", eventTimestamp);
-            setLiveStatus("thinking");
-            setLiveCurrentStep(statusDetail);
-            return;
-          }
-          setLiveStatus("idle");
-          setLiveCurrentStep(null);
-          if (!loadingRef.current) {
-            const sessionToRefresh = payloadSessionId || activeSession;
-            const finalizeLiveState = () => {
-              setStreamingContent(null);
-              liveRunStartedAtMsRef.current = null;
-              setLiveRunStartedAtMs(null);
-              setLiveActivities([]);
-              runActivityBufferRef.current = [];
-              clearCachedLiveSessionState(sessionToRefresh);
-            };
-            if (sessionToRefresh && sessionToRefresh === activeSessionRef.current) {
-              void refreshSessionMessagesRef.current(sessionToRefresh).finally(finalizeLiveState);
-            } else {
-              finalizeLiveState();
-            }
-          }
-          return;
-        }
-        if (status === "tool_executing" || status === "tool_completed" || status === "error") {
-          const phase =
-            payload.toolPhase ||
-            (status === "tool_executing"
-              ? "start"
-              : status === "tool_completed"
-                ? "result"
-                : "error");
-          const toolName = payload.toolName || "tool";
-          const text = formatToolIntent(toolName, {}, phase, payload.detail);
-          const eventTimestamp =
-            typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
-              ? payload.timestamp
-              : undefined;
-          appendLiveActivity(
-            phase,
-            text,
-            payload.toolName,
-            eventTimestamp,
-            payload.toolCallId,
-            payload.sandboxProvider
-          );
-          if (phase === "start") {
-            setLiveStatus("thinking");
-            setLiveCurrentStep(isGenericStatusLabel(text) ? "Thinking..." : text);
-          } else {
-            const nextActiveStep = getLatestInFlightStep(runActivityBufferRef.current);
-            if (nextActiveStep) {
-              setLiveCurrentStep(nextActiveStep);
-            } else {
-              setLiveCurrentStep(null);
-            }
-          }
-        }
-      },
-    });
-
-    return () => {
-      disconnect();
-    };
-  }, [
-    appendLiveActivity,
-    cacheAssistantToken,
-    cacheLiveStatusEvent,
-    cacheLiveStatusSnapshot,
-    hydrateSessionStatus,
-    isSessionStopSuppressed,
-    markFirstTokenLatency,
-  ]);
 
   useEffect(() => {
     const inputEl = inputRef.current;
@@ -2031,188 +1131,27 @@ export function Chat() {
     }
   };
 
-  const handleSteerPendingMessage = useCallback(
-    async (pendingMessageId: string) => {
-      if (!sessionId) return;
-      setSteeringMessageId(pendingMessageId);
-      const preSteerActivities = mergeActivityLists(runActivityBufferRef.current, liveActivities);
-      const preSteerProcessActivities = finalizeCompletedActivities(preSteerActivities)
-        .filter((activity) => {
-          const text = activity.text.trim().toLowerCase();
-          return (
-            text.length > 0 &&
-            text !== "steering to follow-up..." &&
-            text !== "starting queued follow-up"
-          );
-        })
-        .map((activity) => ({
-          id: activity.id,
-          phase: activity.phase,
-          text: activity.text,
-          timestamp: activity.timestamp,
-          toolName: activity.toolName,
-          toolCallId: activity.toolCallId,
-          sandboxProvider: activity.sandboxProvider,
-        }));
-      try {
-        const response = await chatApi.steerPendingMessage(sessionId, pendingMessageId, {
-          processActivities: preSteerProcessActivities,
-        });
-        if (response.success && response.data) {
-          setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));
-          if (response.data.pendingMessages.length === 0) {
-            clearCachedOptimisticPendingMessages(sessionId);
-          }
-          let materializedMessages: ChatMessage[] = [];
-          try {
-            const refreshed = await loadSessionMutation.mutateAsync(sessionId);
-            if (refreshed?.messagesList) {
-              materializedMessages = refreshed.messagesList as ChatMessage[];
-              loadSession(
-                sessionId,
-                materializedMessages,
-                (refreshed as { workspace_dir?: string | null }).workspace_dir || null
-              );
-              syncSessionAgentSelection(
-                (refreshed as { agent_id?: string | null }).agent_id || null
-              );
-              setSessionContextUsage(
-                (refreshed as { contextUsage?: SessionContextUsage | null }).contextUsage || null
-              );
-              setSessionTokenUsage(
-                (refreshed as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
-              );
-            }
-          } catch (error) {
-            console.error("Failed to refresh steered chat session:", error);
-          }
-          if (materializedMessages.length === 0) {
-            const steeredMessage = response.data.message as ChatMessage;
-            const preSteerMessage =
-              (response.data.interruptedMessage as ChatMessage | undefined) ||
-              buildPreSteeringActivityMessage(steeredMessage, preSteerActivities);
-            materializedMessages = [preSteerMessage, steeredMessage].filter(
-              (message): message is ChatMessage => !!message
-            );
-          }
-          runActivityBufferRef.current = pruneCanonicalizedLiveActivities(
-            materializedMessages,
-            runActivityBufferRef.current
-          );
-          if (pendingProcessCaptureRef.current) {
-            pendingProcessCaptureRef.current = {
-              ...pendingProcessCaptureRef.current,
-              activities: pruneCanonicalizedLiveActivities(
-                materializedMessages,
-                pendingProcessCaptureRef.current.activities
-              ),
-            };
-          }
-          setLiveActivities((previous) =>
-            pruneCanonicalizedLiveActivities(materializedMessages, previous)
-          );
-          return;
-        }
-        console.error("Failed to steer pending message:", response.error || response.data?.error);
-      } finally {
-        setSteeringMessageId(null);
-      }
-    },
-    [loadSession, loadSessionMutation, liveActivities, sessionId, syncSessionAgentSelection]
-  );
-
-  const handleReorderPendingMessages = useCallback(
-    async (orderedIds: string[]) => {
-      if (!sessionId || orderedIds.length === 0) return;
-      const previousMessages = pendingMessages;
-      const byId = new Map(previousMessages.map((message) => [message.id, message]));
-      const orderedMessages = orderedIds
-        .map((id) => byId.get(id))
-        .filter((message): message is PendingChatMessage => !!message);
-      if (orderedMessages.length === previousMessages.length) {
-        setPendingMessages(orderedMessages);
-      }
-      try {
-        const response = await chatApi.reorderPendingMessages(sessionId, orderedIds);
-        if (response.success && response.data?.success) {
-          setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));
-          return;
-        }
-        setPendingMessages(previousMessages);
-        console.error(
-          "Failed to reorder pending messages:",
-          response.error || response.data?.error
-        );
-      } catch (error) {
-        setPendingMessages(previousMessages);
-        console.error("Failed to reorder pending messages:", error);
-      }
-    },
-    [pendingMessages, sessionId]
-  );
-
-  const handleUpdatePendingMessage = useCallback(
-    async (pendingMessageId: string, content: string) => {
-      if (!sessionId || pendingMessageId.startsWith("optimistic-")) return;
-      const nextContent = content.trim();
-      if (!nextContent) return;
-      const previousMessages = pendingMessages;
-      const now = Date.now();
-      setPendingMessages((current) =>
-        normalizePendingChatMessages(
-          current.map((message) =>
-            message.id === pendingMessageId
-              ? { ...message, content: nextContent, updatedAt: now }
-              : message
-          )
-        )
-      );
-      setPendingMessageMutationId(pendingMessageId);
-      try {
-        const response = await chatApi.updatePendingMessage(
-          sessionId,
-          pendingMessageId,
-          nextContent
-        );
-        if (response.success && response.data?.success) {
-          setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));
-          return;
-        }
-        setPendingMessages(previousMessages);
-        console.error("Failed to update pending message:", response.error || response.data?.error);
-      } catch (error) {
-        setPendingMessages(previousMessages);
-        console.error("Failed to update pending message:", error);
-      } finally {
-        setPendingMessageMutationId(null);
-      }
-    },
-    [pendingMessages, sessionId]
-  );
-
-  const handleDeletePendingMessage = useCallback(
-    async (pendingMessageId: string) => {
-      if (!sessionId || pendingMessageId.startsWith("optimistic-")) return;
-      const previousMessages = pendingMessages;
-      setPendingMessages((current) => current.filter((message) => message.id !== pendingMessageId));
-      setPendingMessageMutationId(pendingMessageId);
-      try {
-        const response = await chatApi.deletePendingMessage(sessionId, pendingMessageId);
-        if (response.success && response.data?.success) {
-          setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));
-          return;
-        }
-        setPendingMessages(previousMessages);
-        console.error("Failed to delete pending message:", response.error || response.data?.error);
-      } catch (error) {
-        setPendingMessages(previousMessages);
-        console.error("Failed to delete pending message:", error);
-      } finally {
-        setPendingMessageMutationId(null);
-      }
-    },
-    [pendingMessages, sessionId]
-  );
+  const {
+    steeringMessageId,
+    pendingMessageMutationId,
+    handleSteerPendingMessage,
+    handleReorderPendingMessages,
+    handleUpdatePendingMessage,
+    handleDeletePendingMessage,
+  } = useChatPendingMutations({
+    sessionId,
+    pendingMessages,
+    setPendingMessages,
+    liveActivities,
+    setLiveActivities,
+    runActivityBufferRef,
+    pendingProcessCaptureRef,
+    loadSteeredSession: loadSessionMutation.mutateAsync,
+    loadSession,
+    syncSessionAgentSelection,
+    setSessionContextUsage,
+    setSessionTokenUsage,
+  });
 
   useEffect(() => {
     if (!streamingContent || isLoading) return;
@@ -2255,170 +1194,29 @@ export function Chat() {
     }
   }, [isStoppingSession, markSessionStopped, sessionId, stopGenerating]);
 
-  const applySessionWorkspace = useCallback(
-    async (nextWorkspaceDir: string | null) => {
-      const previousWorkspaceDir = workspaceDir;
-      setWorkspaceDir(nextWorkspaceDir);
-      if (nextWorkspaceDir) {
-        persistWorkspaceDir(nextWorkspaceDir);
-        setLastWorkspaceDir(nextWorkspaceDir);
-      }
-
-      if (!sessionId) {
-        return;
-      }
-
-      setWorkspaceSaving(true);
-      try {
-        const response = await chatApi.updateSessionWorkspace(sessionId, nextWorkspaceDir);
-        if (!response.success || !response.data || response.data.success === false) {
-          const message =
-            (response.data && "error" in response.data ? response.data.error : null) ||
-            response.error ||
-            "Failed to update session workspace";
-          throw new Error(message || "Failed to update session workspace");
-        }
-        const resolvedWorkspaceDir = response.data.workspaceDir || null;
-        setWorkspaceDir(resolvedWorkspaceDir);
-        if (resolvedWorkspaceDir) {
-          persistWorkspaceDir(resolvedWorkspaceDir);
-          setLastWorkspaceDir(resolvedWorkspaceDir);
-        }
-      } catch (error) {
-        setWorkspaceDir(previousWorkspaceDir || null);
-        console.error("Failed to update session workspace:", error);
-      } finally {
-        setWorkspaceSaving(false);
-      }
-    },
-    [sessionId, setWorkspaceDir, workspaceDir]
-  );
-
-  const handleSelectWorkspace = useCallback(async () => {
-    try {
-      let selectedPath: string | null = null;
-      if (isDesktopHostRuntime()) {
-        selectedPath = await openDesktopDirectoryDialog({
-          defaultPath: effectiveWorkspaceDir || undefined,
-          title: "Select Session Workspace",
-        });
-      } else {
-        const response = await apiFetch("/api/system/folder-dialog", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            default_path: effectiveWorkspaceDir || undefined,
-            title: "Select Session Workspace",
-          }),
-        });
-        const result = (await response.json()) as {
-          path?: string | null;
-          success?: boolean;
-          supported?: boolean;
-        };
-        if (!response.ok || result.success === false || result.supported === false) {
-          setShowWorkspacePicker(true);
-          return;
-        }
-        selectedPath = result.path || null;
-      }
-      if (selectedPath) {
-        await applySessionWorkspace(selectedPath);
-      }
-    } catch (error) {
-      console.error("Failed to select workspace:", error);
-      setShowWorkspacePicker(true);
-    }
-  }, [applySessionWorkspace, effectiveWorkspaceDir]);
-
-  const handleOpenWorkspaceInCybaraIde = useCallback(
-    async (targetWorkspaceDir: string) => {
-      const normalized = targetWorkspaceDir.trim();
-      if (!normalized) return;
-      try {
-        persistWorkspaceDir(normalized);
-        setLastWorkspaceDir(normalized);
-        const params = new URLSearchParams();
-        params.set("workspacePath", normalized);
-        navigate(`/ide?${params.toString()}`);
-      } catch (error) {
-        useUIStore
-          .getState()
-          .addToast(
-            "error",
-            error instanceof Error ? error.message : "Unable to open workspace in Cybara IDE"
-          );
-      }
-    },
-    [navigate]
-  );
-
-  const handleOpenPathInIde = useCallback(
-    (path: string) => {
-      const resolvedPath = resolvePathForIde(path, effectiveWorkspaceDir);
-      if (!resolvedPath) return;
-      const params = new URLSearchParams();
-      params.set("path", resolvedPath);
-      if (effectiveWorkspaceDir) params.set("workspacePath", effectiveWorkspaceDir);
-      params.set("from", "chat-workspace");
-      navigate(`/ide?${params.toString()}`);
-    },
-    [effectiveWorkspaceDir, navigate]
-  );
-
-  const handleOpenDiffFileInWorkspace = useCallback(
-    (file: FileChangeItem) => {
-      const resolvedPath = resolvePathForIde(file.path, effectiveWorkspaceDir);
-      if (!resolvedPath) return;
-      openWorkspaceFile(resolvedPath);
-    },
-    [effectiveWorkspaceDir, openWorkspaceFile]
-  );
-
-  const handleDiffPanelResizeStart = useCallback(
-    (event: React.MouseEvent<HTMLElement>) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      diffPanelResizeCleanupRef.current?.();
-      diffPanelResizeCleanupRef.current = null;
-      diffPanelResizeStateRef.current = {
-        startX: event.clientX,
-        startWidth: diffPanelWidth,
-      };
-      const previousCursor = document.body.style.cursor;
-      const previousUserSelect = document.body.style.userSelect;
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-
-      const handleMouseMove = (moveEvent: MouseEvent) => {
-        const state = diffPanelResizeStateRef.current;
-        if (!state) return;
-        const delta = state.startX - moveEvent.clientX;
-        setDiffPanelWidth(clampDiffPanelWidth(state.startWidth + delta));
-      };
-
-      const handleMouseUp = () => {
-        diffPanelResizeStateRef.current = null;
-        document.body.style.cursor = previousCursor;
-        document.body.style.userSelect = previousUserSelect;
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-        diffPanelResizeCleanupRef.current = null;
-      };
-
-      diffPanelResizeCleanupRef.current = () => {
-        diffPanelResizeStateRef.current = null;
-        document.body.style.cursor = previousCursor;
-        document.body.style.userSelect = previousUserSelect;
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-      };
-
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-    },
-    [diffPanelWidth]
-  );
+  const {
+    workspaceSaving,
+    showWorkspacePicker,
+    setShowWorkspacePicker,
+    diffPanelWidth,
+    selectedDiffPath,
+    setSelectedDiffPath,
+    applySessionWorkspace,
+    handleSelectWorkspace,
+    handleOpenWorkspaceInCybaraIde,
+    handleOpenPathInIde,
+    handleOpenDiffFileInWorkspace,
+    handleDiffPanelResizeStart,
+  } = useChatWorkspaceActions({
+    sessionId,
+    workspaceDir,
+    setWorkspaceDir,
+    setLastWorkspaceDir,
+    effectiveWorkspaceDir,
+    navigate,
+    openWorkspaceFile,
+    sessionFileChanges,
+  });
 
   const handleViewSubagentSession = useCallback(
     async (sessionKey: string): Promise<void> => {
@@ -2499,6 +1297,7 @@ export function Chat() {
           result.workspace_dir || null
         );
         syncSessionAgentSelection(result.agent_id || null);
+        setUseModelRouter(result.use_model_router === true);
         setSessionContextUsage(
           (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
         );
@@ -2844,6 +1643,7 @@ export function Chat() {
                     onForkSession={(index) => void handleForkSession(index)}
                     onOpenArtifact={(artifact) => void openArtifactViewer(artifact)}
                     onOpenImage={openChatImage}
+                    onOpenLink={handleOpenChatLink}
                     onReadAloud={(index, content) => void handleReadAloud(index, content)}
                     onRevert={setRevertTarget}
                     onSaveGolden={(index) => void handleSaveGolden(index)}
@@ -2886,6 +1686,7 @@ export function Chat() {
             onCloseTab={closeWorkspaceTab}
             onOpenDiffInWorkspace={handleOpenDiffFileInWorkspace}
             onOpenFullIde={handleOpenPathInIde}
+            onOpenLink={handleOpenChatLink}
             onOpenTab={openWorkspaceTab}
             onOpenSubagent={openWorkspaceSubagent}
             onRefreshDiff={refreshSessionFileChanges}

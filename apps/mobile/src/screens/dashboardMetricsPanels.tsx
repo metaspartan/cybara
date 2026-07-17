@@ -101,8 +101,8 @@ function sortPlanRows(
   }
   const rank = new Map(customOrder.map((id, index) => [id, index]));
   return [...rows].sort((a, b) => {
-    const rankA = rank.has(a.id) ? rank.get(a.id)! : Number.MAX_SAFE_INTEGER;
-    const rankB = rank.has(b.id) ? rank.get(b.id)! : Number.MAX_SAFE_INTEGER;
+    const rankA = rank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+    const rankB = rank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
     if (rankA !== rankB) return rankA - rankB;
     return statusRank(a.status) - statusRank(b.status);
   });

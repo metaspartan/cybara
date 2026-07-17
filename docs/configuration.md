@@ -9,6 +9,7 @@
 | `CYBARA_HOST` | `127.0.0.1` | Bind address (localhost only) |
 | `CYBARA_API_KEY` | auto-generated | API key for auth |
 | `CYBARA_API` | `http://localhost:4269` | API endpoint for CLI |
+| `CYBARA_GATEWAY_PASSWORD` | unset | Gateway password sent by CLI/TUI and native macOS clients when connecting through protected remote access |
 | `FIRECRAWL_API_KEY` | - | Firecrawl search and resilient page/PDF extraction |
 | `FIRECRAWL_API_URL` | Firecrawl cloud | Optional self-hosted Firecrawl base URL |
 | `PARALLEL_API_KEY` | - | Parallel search and relevance-aware page/PDF extraction |

@@ -48,6 +48,7 @@ export interface TuiTaskSummary {
   title: string;
   status: string;
   priority?: string;
+  sessionId?: string;
 }
 
 export interface TuiSubagentSummary {
@@ -69,6 +70,21 @@ export interface TuiEnvironmentSnapshot {
   fileChanges: TuiFileChangeSummary | null;
   workspaceDir: string | null;
   gitBranch: string | null;
+}
+
+export function environmentSnapshotWithWorkspace(
+  snapshot: TuiEnvironmentSnapshot | null,
+  workspaceDir: string
+): TuiEnvironmentSnapshot | null {
+  if (!workspaceDir || snapshot?.workspaceDir) return snapshot;
+  return {
+    contextUsage: snapshot?.contextUsage || null,
+    tokenUsage: snapshot?.tokenUsage || null,
+    plan: snapshot?.plan || null,
+    fileChanges: snapshot?.fileChanges || null,
+    workspaceDir,
+    gitBranch: snapshot?.gitBranch || null,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -340,9 +356,14 @@ export function tasksFromResponse(value: unknown): TuiTaskSummary[] {
         title: title || id,
         status: asString(task.status) || "unknown",
         priority: asString(task.priority) || undefined,
+        sessionId: asString(task.session_id) || asString(task.sessionId) || undefined,
       },
     ];
   });
+}
+
+export function tasksForSession(value: unknown, sessionId: string): TuiTaskSummary[] {
+  return tasksFromResponse(value).filter((task) => !task.sessionId || task.sessionId === sessionId);
 }
 
 export function subagentsFromResponse(value: unknown): TuiSubagentSummary[] {

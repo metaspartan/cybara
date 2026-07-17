@@ -1,17 +1,17 @@
-import db, { tables } from "./database";
-import { agentManager } from "./agent";
-import { providerManager, providers } from "./providers";
-import type { ChatMessage } from "../api/chat";
-import { attachmentsToImages } from "./chat/attachments";
-import { deriveSessionTitleFromMessages, normalizeSessionTitle } from "./session-title";
+import { createHash } from "crypto";
 import { existsSync, statSync } from "fs";
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
-import { createLogger } from "./logger";
-import { createHash } from "crypto";
+import type { ChatMessage } from "../api/chat";
+import { agentManager } from "./agent";
+import { attachmentsToImages } from "./chat/attachments";
 import { compactChatContentForPrompt } from "./chat-token-optimization";
-import { capSessionMessageMetadata } from "./session-message-metadata";
+import db, { tables } from "./database";
 import { sanitizeAssistantContent } from "./llm/text-tool-calls";
+import { createLogger } from "./logger";
+import { providerManager, providers } from "./providers";
+import { capSessionMessageMetadata } from "./session-message-metadata";
+import { deriveSessionTitleFromMessages, normalizeSessionTitle } from "./session-title";
 
 const log = createLogger("Session");
 
@@ -41,6 +41,8 @@ type SessionMessageMetadata = Partial<
     | "tool_calls"
     | "process_activities"
     | "agent_transfers"
+    | "run_id"
+    | "interrupted"
   >
 >;
 
@@ -83,6 +85,12 @@ function serializeSessionMessageMetadata(
   }
   if (Array.isArray(message.agent_transfers) && message.agent_transfers.length > 0) {
     metadata.agent_transfers = message.agent_transfers;
+  }
+  if (typeof message.run_id === "string" && message.run_id.trim()) {
+    metadata.run_id = message.run_id.trim();
+  }
+  if (message.interrupted === true) {
+    metadata.interrupted = true;
   }
   return Object.keys(metadata).length > 0
     ? capSessionMessageMetadata(JSON.stringify(metadata))
@@ -811,7 +819,8 @@ export async function persistSession(
   agentId: string,
   messages: ChatMessage[],
   workspaceDir?: string | null,
-  sessionTitle?: string | null
+  sessionTitle?: string | null,
+  useModelRouter?: boolean
 ): Promise<boolean> {
   try {
     const hasWorkspaceUpdate = workspaceDir !== undefined;
@@ -850,12 +859,16 @@ export async function persistSession(
           "UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
         ).run(derivedTitle, sessionId);
       }
+      if (typeof useModelRouter === "boolean") {
+        tables.chatSessions.updateRouting(sessionId, agentId, useModelRouter);
+      }
     } else {
       db.prepare(
-        "INSERT INTO chat_sessions (id, agent_id, title, messages, workspace_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        "INSERT INTO chat_sessions (id, agent_id, use_model_router, title, messages, workspace_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
       ).run(
         sessionId,
         agentId,
+        useModelRouter === true ? 1 : 0,
         derivedTitle,
         JSON.stringify(messages.slice(0, 2)),
         normalizedWorkspaceDir
@@ -944,6 +957,7 @@ export function clearSessionContextState(sessionId: string): boolean {
 
 export async function loadPersistedSession(sessionId: string): Promise<{
   agentId: string;
+  useModelRouter: boolean;
   messages: ChatMessage[];
   contextMessages: ChatMessage[] | null;
   compactionCount: number;
@@ -972,10 +986,11 @@ export async function loadPersistedSession(sessionId: string): Promise<{
 
     const session = db
       .prepare(
-        "SELECT agent_id, workspace_dir, title, context_state FROM chat_sessions WHERE id = ?"
+        "SELECT agent_id, use_model_router, workspace_dir, title, context_state FROM chat_sessions WHERE id = ?"
       )
       .get(sessionId) as {
       agent_id?: string;
+      use_model_router?: number;
       workspace_dir?: string | null;
       title?: string | null;
       context_state?: string | null;
@@ -995,6 +1010,7 @@ export async function loadPersistedSession(sessionId: string): Promise<{
 
     return {
       agentId: agentId || "default",
+      useModelRouter: session?.use_model_router === 1,
       messages,
       contextMessages: contextState?.messages ?? null,
       compactionCount: contextState?.compactionCount ?? 0,
@@ -1010,6 +1026,7 @@ export async function loadPersistedSession(sessionId: string): Promise<{
 export interface PersistedSessionListEntry {
   id: string;
   agentId: string;
+  useModelRouter: boolean;
   title: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1024,6 +1041,7 @@ export interface PersistedSessionListEntry {
 interface PersistedSessionListRow {
   id: string;
   agentId: string;
+  useModelRouter: number;
   title: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1040,6 +1058,7 @@ function normalizePersistedSessionListRow(
 ): PersistedSessionListEntry {
   return {
     ...session,
+    useModelRouter: session.useModelRouter === 1,
     lastMessageContent:
       typeof session.lastMessageContent === "string" && session.lastMessageRole === "assistant"
         ? sanitizeAssistantContent(session.lastMessageContent)
@@ -1068,6 +1087,7 @@ function persistedSessionListSql(
       SELECT
         cs.id,
         cs.agent_id as agentId,
+        COALESCE(cs.use_model_router, 0) as useModelRouter,
         cs.title as title,
         cs.created_at as createdAt,
         cs.updated_at as updatedAt,
@@ -1190,6 +1210,16 @@ export async function setPersistedSessionAgent(
     .prepare("UPDATE chat_sessions SET agent_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
     .run(normalizedAgentId, sessionId);
   return (result.changes ?? 0) > 0;
+}
+
+export async function setPersistedSessionRouting(
+  sessionId: string,
+  agentId: string,
+  useModelRouter: boolean
+): Promise<boolean> {
+  const normalizedAgentId = nonEmptyString(agentId);
+  if (!normalizedAgentId) return false;
+  return tables.chatSessions.updateRouting(sessionId, normalizedAgentId, useModelRouter);
 }
 
 /** Returns true when a chat_sessions row was actually updated (i.e. it exists). */

@@ -1,15 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import { StatusBar, StyleSheet, View } from "react-native";
+import { Alert, Linking, StatusBar, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { HapticsProvider } from "./src/haptics/HapticsContext";
 import { MobileI18nProvider } from "./src/i18n";
 import { CybaraMobileApi } from "./src/lib/api";
-import type { GatewayProfile } from "./src/lib/connection";
+import {
+  resolveGatewayProfile,
+  verifyGatewayProfile,
+  type GatewayProfile,
+} from "./src/lib/connection";
 import {
   configureMobileNotificationPresentation,
   registerMobilePushNotifications,
 } from "./src/lib/pushNotifications";
+import { DeepLinkAttemptTracker } from "./src/lib/deepLinkAttempts";
 import { clearActiveProfile, getActiveProfile, saveProfile } from "./src/lib/storage";
+import { MobileErrorBoundary } from "./src/components/MobileErrorBoundary";
 import { ConnectScreen } from "./src/screens/ConnectScreen";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
 import { type Palette, spacing } from "./src/theme/liquidGlass";
@@ -36,6 +42,39 @@ function AppShell() {
       });
     return () => {
       mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const attempts = new DeepLinkAttemptTracker();
+    const openConnection = async (url: string | null): Promise<void> => {
+      if (!url || !attempts.begin(url)) return;
+      try {
+        const nextProfile = await resolveGatewayProfile(url);
+        await verifyGatewayProfile(nextProfile);
+        if (!active) return;
+        const saved = { ...nextProfile, lastConnectedAt: new Date().toISOString() };
+        await saveProfile(saved);
+        if (!active) return;
+        setProfile(saved);
+        attempts.complete(url);
+      } catch (error) {
+        if (!active) return;
+        const message = error instanceof Error ? error.message : "Unable to open this connection.";
+        Alert.alert("Connection failed", message);
+      } finally {
+        attempts.finish(url);
+      }
+    };
+
+    void Linking.getInitialURL().then(openConnection);
+    const subscription = Linking.addEventListener("url", (event) => {
+      void openConnection(event.url);
+    });
+    return () => {
+      active = false;
+      subscription.remove();
     };
   }, []);
 
@@ -86,7 +125,9 @@ export default function App() {
       <ThemeProvider>
         <HapticsProvider>
           <MobileI18nProvider>
-            <AppShell />
+            <MobileErrorBoundary>
+              <AppShell />
+            </MobileErrorBoundary>
           </MobileI18nProvider>
         </HapticsProvider>
       </ThemeProvider>

@@ -54,14 +54,11 @@ export function getClientIp(
   }
 
   if (directIp) {
-    // A same-host reverse proxy connects over loopback but represents a remote
-    // client in X-Forwarded-For. Treat that remote address as the client so the
-    // development localhost bypass is not inherited by public proxy traffic.
     if (isLoopbackIp(directIp) && forwarded && !isLoopbackIp(forwarded)) {
       return forwarded;
     }
     return directIp;
   }
 
-  return "127.0.0.1";
+  return "0.0.0.0";
 }

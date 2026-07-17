@@ -3,12 +3,18 @@ import Foundation
 // ─── Client ──────────────────────────────────────────────────────────────────
 
 enum GatewayClientError: LocalizedError {
+    case unauthorized
+    case forbidden
     case badStatus(Int, String)
     case invalidResponse
     case decodingFailed(String, String)
 
     var errorDescription: String? {
         switch self {
+        case .unauthorized:
+            return "Gateway authentication failed. Check CYBARA_API_KEY or ~/.cybara/api_key."
+        case .forbidden:
+            return "Gateway access was denied. Check the gateway password and access settings."
         case .badStatus(let code, let body):
             return "Gateway error \(code): \(body.prefix(200))"
         case .invalidResponse:
@@ -16,6 +22,12 @@ enum GatewayClientError: LocalizedError {
         case .decodingFailed(let path, let detail):
             return "The gateway response for /\(path) could not be decoded: \(detail.prefix(240))"
         }
+    }
+
+    static func response(statusCode: Int, body: String) -> GatewayClientError {
+        if statusCode == 401 { return .unauthorized }
+        if statusCode == 403 { return .forbidden }
+        return .badStatus(statusCode, body)
     }
 }
 
@@ -58,16 +70,37 @@ struct GatewayClient: Sendable {
         }
     }
 
+    static func resolveAPIKey(environment: [String: String], fileValue: String?) -> String? {
+        if let value = normalizedCredential(environment["CYBARA_API_KEY"]) {
+            return value
+        }
+        return normalizedCredential(fileValue)
+    }
+
+    static func resolveGatewayPassword(environment: [String: String], storedValue: String?) -> String? {
+        if let value = normalizedCredential(environment["CYBARA_GATEWAY_PASSWORD"]) {
+            return value
+        }
+        return normalizedCredential(storedValue)
+    }
+
     static func loadAPIKey() -> String? {
         let path = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".cybara/api_key")
-        guard let raw = try? String(contentsOf: path, encoding: .utf8) else { return nil }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        let raw = try? String(contentsOf: path, encoding: .utf8)
+        return resolveAPIKey(environment: ProcessInfo.processInfo.environment, fileValue: raw)
     }
 
     static func loadGatewayPassword() -> String? {
-        GatewayPasswordStore.load()
+        resolveGatewayPassword(
+            environment: ProcessInfo.processInfo.environment,
+            storedValue: GatewayPasswordStore.load()
+        )
+    }
+
+    private static func normalizedCredential(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     func request(
@@ -100,7 +133,10 @@ struct GatewayClient: Sendable {
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw GatewayClientError.invalidResponse }
         guard (200 ..< 300).contains(http.statusCode) else {
-            throw GatewayClientError.badStatus(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+            throw GatewayClientError.response(
+                statusCode: http.statusCode,
+                body: String(data: data, encoding: .utf8) ?? ""
+            )
         }
         return data
     }
@@ -1118,9 +1154,14 @@ struct GatewayClient: Sendable {
 
     func updateSessionAgent(
         _ id: String,
-        agentId: String
+        agentId: String? = nil,
+        useModelRouter: Bool = false
     ) async throws -> GatewaySessionAgentUpdateResponse {
-        let body = try JSONSerialization.data(withJSONObject: ["agentId": agentId])
+        var payload: [String: Any] = ["useModelRouter": useModelRouter]
+        if let agentId = firstNonEmptyGatewayString(agentId) {
+            payload["agentId"] = agentId
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
         let data = try await request("api/sessions/\(id)/agent", method: "PUT", body: body)
         return try JSONDecoder().decode(GatewaySessionAgentUpdateResponse.self, from: data)
     }

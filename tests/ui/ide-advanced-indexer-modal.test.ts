@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { readIdeUiSource } from "../source-fixtures";
 
-const idePath = join(process.cwd(), "ui", "src", "pages", "IDE.tsx");
 const modalPath = join(
   process.cwd(),
   "ui",
@@ -14,7 +14,7 @@ const modalPath = join(
 
 describe("advanced IDE indexer settings", () => {
   test("keeps the advanced modal in a dedicated controlled component", () => {
-    const ideSource = readFileSync(idePath, "utf8");
+    const ideSource = readIdeUiSource();
     const modalSource = readFileSync(modalPath, "utf8");
 
     expect(ideSource).toContain("<AdvancedIndexerSettingsModal");

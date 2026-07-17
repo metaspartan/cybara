@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   appendApiTokenParam,
   apiFetch,
+  clearApiAuthToken,
   getApiAuthToken,
+  setApiAuthToken,
   withApiAuthHeaders,
 } from "../../ui/src/lib/auth";
 
@@ -203,5 +205,38 @@ describe("UI auth token helpers", () => {
     expect(new Headers(capturedInits[0].headers).get("Authorization")).toBeNull();
     expect(new Headers(capturedInits[1].headers).get("Authorization")).toBe("Bearer desktop-token");
     expect(window.localStorage.getItem("cybara_api_key")).toBeNull();
+  });
+
+  test("apiFetch replaces a stale Tauri token after an authorization failure", async () => {
+    const win = createWindow("") as ReturnType<typeof createWindow> & {
+      __TAURI_INTERNALS__: {
+        invoke: (command: string) => Promise<string | null>;
+      };
+    };
+    win.__TAURI_INTERNALS__ = {
+      invoke: async (command: string) => {
+        expect(command).toBe("read_cybara_api_key");
+        return "fresh-desktop-token";
+      },
+    };
+    (globalThis as unknown as { window: Window }).window = win as unknown as Window;
+    setApiAuthToken("stale-desktop-token");
+
+    const authorizations: Array<string | null> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const authorization = new Headers(init?.headers).get("Authorization");
+      authorizations.push(authorization);
+      return new Response("{}", {
+        status: authorization === "Bearer fresh-desktop-token" ? 200 : 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const response = await apiFetch("/api/info");
+
+    expect(response.status).toBe(200);
+    expect(authorizations).toEqual(["Bearer stale-desktop-token", "Bearer fresh-desktop-token"]);
+    clearApiAuthToken();
+    expect(getApiAuthToken()).toBeNull();
   });
 });

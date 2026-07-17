@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { CybaraPet } from "@/components/CybaraPet";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { GatewayAuthGate } from "@/components/GatewayAuthGate";
 import { GatewayStartupFailure } from "@/components/GatewayStartupFailure";
 import { Sidebar, SidebarProvider, useSidebar } from "@/components/layout/Sidebar";
 import { ToastContainer } from "@/components/ui/Toast";
@@ -22,7 +23,12 @@ import { readSetupComplete, resolveSetupGate, writeSetupComplete } from "@/lib/s
 import { isPetWindow } from "@/lib/tauriPet";
 import { cn } from "@/lib/utils";
 import { PetOverlay } from "@/pages/PetOverlay";
-import { readThemeAccentFromConfig, readThemeModeFromIdentity, useUIStore } from "@/stores/uiStore";
+import {
+  readCustomThemeCollectionFromConfig,
+  readThemeAccentFromConfig,
+  resolveThemeSelectionMode,
+  useUIStore,
+} from "@/stores/uiStore";
 import { readChatAppearanceFromConfig } from "../../shared/chat-appearance";
 
 const Dashboard = lazy(() =>
@@ -61,7 +67,7 @@ const Setup = lazy(() => import("@/pages/Setup").then((module) => ({ default: mo
 function PageLoader() {
   return (
     <div className="flex min-h-[45vh] items-center justify-center">
-      <Loader2 className="h-7 w-7 animate-spin text-indigo-500" />
+      <Loader2 className="h-7 w-7 animate-spin text-[rgb(var(--accent-primary))]" />
     </div>
   );
 }
@@ -121,8 +127,8 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 
   if (decision === "spinner") {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a0a0f]">
-        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--surface-backdrop)]">
+        <Loader2 className="h-8 w-8 animate-spin text-[rgb(var(--accent-primary))]" />
       </div>
     );
   }
@@ -240,6 +246,7 @@ function AppRoutes() {
 function ThemeConfigSync() {
   const setAccent = useUIStore((state) => state.setAccent);
   const setMode = useUIStore((state) => state.setMode);
+  const setCustomThemeCollection = useUIStore((state) => state.setCustomThemeCollection);
   const setChatAppearance = useUIStore((state) => state.setChatAppearance);
 
   useEffect(() => {
@@ -250,8 +257,10 @@ function ThemeConfigSync() {
         if (!mounted || !result.success) return;
         const accent = readThemeAccentFromConfig(result.data);
         if (accent) setAccent(accent);
+        const customThemes = readCustomThemeCollectionFromConfig(result.data);
+        setCustomThemeCollection(customThemes);
         const identity = result.data?.identity as Record<string, unknown> | undefined;
-        setMode(readThemeModeFromIdentity(identity));
+        setMode(resolveThemeSelectionMode(identity, customThemes.activeThemeId));
         const chatAppearance = readChatAppearanceFromConfig(result.data);
         if (chatAppearance) setChatAppearance(chatAppearance);
       } catch {
@@ -268,7 +277,7 @@ function ThemeConfigSync() {
       window.clearInterval(interval);
       window.removeEventListener("focus", syncTheme);
     };
-  }, [setAccent, setChatAppearance, setMode]);
+  }, [setAccent, setChatAppearance, setCustomThemeCollection, setMode]);
 
   return null;
 }
@@ -280,31 +289,33 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <SidebarProvider>
-        <div className="flex min-h-screen bg-[#0a0a0f] overflow-hidden">
-          <ThemeConfigSync />
-          <AppHotkeys />
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/setup" element={<Setup />} />
+      <GatewayAuthGate>
+        <SidebarProvider>
+          <div className="flex min-h-screen overflow-hidden bg-[var(--surface-backdrop)]">
+            <ThemeConfigSync />
+            <AppHotkeys />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/setup" element={<Setup />} />
 
-              <Route
-                path="*"
-                element={
-                  <SetupGuard>
-                    <Sidebar />
-                    <MainContent>
-                      <AppRoutes />
-                    </MainContent>
-                    <CybaraPet />
-                  </SetupGuard>
-                }
-              />
-            </Routes>
-          </Suspense>
-          <ToastContainer />
-        </div>
-      </SidebarProvider>
+                <Route
+                  path="*"
+                  element={
+                    <SetupGuard>
+                      <Sidebar />
+                      <MainContent>
+                        <AppRoutes />
+                      </MainContent>
+                      <CybaraPet />
+                    </SetupGuard>
+                  }
+                />
+              </Routes>
+            </Suspense>
+            <ToastContainer />
+          </div>
+        </SidebarProvider>
+      </GatewayAuthGate>
     </ErrorBoundary>
   );
 }

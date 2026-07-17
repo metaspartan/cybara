@@ -1237,8 +1237,17 @@ private func nativeNormalizeActivityText(_ value: String) -> String {
     .joined(separator: " ")
 }
 
-private func nativeIsGenericStatusLabel(_ value: String) -> Bool {
-    [
+func nativeIsGenericStatusLabel(_ value: String) -> Bool {
+    let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if [
+        "provider connection interrupted; retrying",
+        "provider rate limited; retrying",
+        "provider temporarily unavailable; retrying",
+        "provider session refreshed; continuing",
+    ].contains(where: { normalized.hasPrefix($0) }) {
+        return true
+    }
+    return [
         "none",
         "value",
         "completed",
@@ -1248,7 +1257,14 @@ private func nativeIsGenericStatusLabel(_ value: String) -> Bool {
         "error",
         "running",
         "pending",
-    ].contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        "thinking",
+        "thinking...",
+        "generating response",
+        "generating response...",
+        "idle",
+        "working",
+        "working...",
+    ].contains(normalized)
 }
 
 private func nativeIsMeaningfulThoughtLabel(_ value: String) -> Bool {

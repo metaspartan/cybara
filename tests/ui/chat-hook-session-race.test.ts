@@ -101,8 +101,8 @@ describe("useChat session race guards", () => {
     const sendStart = source.indexOf("const handleSend = async () =>");
     const sendEnd = source.indexOf("const handleSteerPendingMessage", sendStart);
     const sendBlock = source.slice(sendStart, sendEnd);
-    expect(sendBlock).toContain(
-      "if (requestSessionId && activeSessionRef.current !== requestSessionId) return"
+    expect(sendBlock).toMatch(
+      /if\s*\(\s*requestSessionId\s*&&\s*activeSessionRef\.current\s*!==\s*requestSessionId\s*\)\s*return/
     );
     expect(sendBlock.indexOf("activeSessionRef.current !== requestSessionId")).toBeLessThan(
       sendBlock.indexOf("setSessionContextUsage")

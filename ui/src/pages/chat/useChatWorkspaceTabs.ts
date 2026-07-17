@@ -16,6 +16,7 @@ interface UseChatWorkspaceTabsResult {
   activeTabId: string | null;
   closeTab: (id: string) => void;
   isOpen: boolean;
+  openBrowser: (url: string) => void;
   openTab: (kind: ChatWorkspaceTab) => void;
   openFile: (path: string) => void;
   openSubagent: (runId: string, title: string) => void;
@@ -93,6 +94,40 @@ export function useChatWorkspaceTabs({
     [activeKind, isOpen, openTab]
   );
 
+  const openBrowser = useCallback(
+    (url: string): void => {
+      const navigationUrl = url.trim();
+      if (!navigationUrl) return;
+      setOpen(true);
+      onOpen();
+      const existing =
+        tabs.find((instance) => instance.id === activeTabId && instance.kind === "browser") ??
+        tabs.find((instance) => instance.kind === "browser");
+      if (existing) {
+        selectTab(existing.id);
+        setTabs((current) =>
+          current.map((instance) =>
+            instance.id === existing.id
+              ? {
+                  ...instance,
+                  navigationUrl,
+                  navigationRequest: (instance.navigationRequest ?? 0) + 1,
+                }
+              : instance
+          )
+        );
+        return;
+      }
+      const id = `browser-${(tabIdRef.current += 1)}`;
+      selectTab(id);
+      setTabs((current) => [
+        ...current,
+        { id, kind: "browser", navigationUrl, navigationRequest: 1 },
+      ]);
+    },
+    [activeTabId, onOpen, tabs]
+  );
+
   const openFile = useCallback(
     (path: string): void => {
       const normalizedPath = path.trim();
@@ -168,6 +203,7 @@ export function useChatWorkspaceTabs({
     activeTabId,
     closeTab,
     isOpen,
+    openBrowser,
     openFile,
     openSubagent,
     openTab,

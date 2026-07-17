@@ -36,14 +36,7 @@ interface SubagentWaitResponse {
 
 interface SubagentCliOptions {
   apiBase: string;
-  apiKey?: string | null;
-}
-
-function headers(apiKey: string | null | undefined, json = false): Record<string, string> {
-  return {
-    ...(json ? { "Content-Type": "application/json" } : {}),
-    ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-  };
+  withAuthHeaders(headers?: RequestInit["headers"], ensureJsonContentType?: boolean): Headers;
 }
 
 async function request<T>(
@@ -79,7 +72,7 @@ async function listSubagents(args: string[], options: SubagentCliOptions): Promi
   const sessionId = flagValue(args, "--session");
   const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
   const { data } = await request<SubagentInfo[]>(options, `/api/subagents${query}`, {
-    headers: headers(options.apiKey),
+    headers: options.withAuthHeaders(),
   });
   const subagents = Array.isArray(data) ? data : [];
   console.log("CYBARA SUBAGENTS");
@@ -106,13 +99,16 @@ async function listSubagents(args: string[], options: SubagentCliOptions): Promi
 
 async function showSubagent(id: string | undefined, options: SubagentCliOptions): Promise<void> {
   if (!id) throw new Error("Usage: cybara subagent show <id>");
-  const { data } = await request<SubagentInfo>(
+  const { response, data } = await request<SubagentInfo & { error?: string }>(
     options,
     `/api/subagents/${encodeURIComponent(id)}`,
     {
-      headers: headers(options.apiKey),
+      headers: options.withAuthHeaders(),
     }
   );
+  if (!response.ok || data.error || !data.id) {
+    throw new Error(data.error || response.statusText || "Subagent not found");
+  }
   console.log(data.label || data.task || id);
   console.log("=".repeat(Math.max(8, Math.min(72, (data.label || data.task || id).length))));
   console.log(`id: ${data.id}`);
@@ -143,7 +139,7 @@ async function spawnSubagent(args: string[], options: SubagentCliOptions): Promi
     warning?: string;
   }>(options, "/api/subagents/spawn", {
     method: "POST",
-    headers: headers(options.apiKey, true),
+    headers: options.withAuthHeaders(undefined, true),
     body: JSON.stringify(payload),
   });
   const id = data.subagentId || data.id;
@@ -157,7 +153,7 @@ async function killSubagent(id: string | undefined, options: SubagentCliOptions)
   const { data } = await request<{ success?: boolean; error?: string }>(
     options,
     `/api/subagents/${encodeURIComponent(id)}/kill`,
-    { method: "POST", headers: headers(options.apiKey) }
+    { method: "POST", headers: options.withAuthHeaders() }
   );
   if (!data.success) throw new Error(data.error || "Subagent is not active");
   console.log(`✓ Killed subagent: ${id}`);
@@ -175,7 +171,7 @@ async function clearSubagents(args: string[], options: SubagentCliOptions): Prom
   const { data } = await request<{ success?: boolean; error?: string; cleared?: number }>(
     options,
     path,
-    { method: "DELETE", headers: headers(options.apiKey) }
+    { method: "DELETE", headers: options.withAuthHeaders() }
   );
   if (!data.success) throw new Error(data.error || "Clear failed");
   console.log(
@@ -195,7 +191,7 @@ async function waitForSubagents(args: string[], options: SubagentCliOptions): Pr
   }
   const { data } = await request<SubagentWaitResponse>(options, "/api/subagents/wait", {
     method: "POST",
-    headers: headers(options.apiKey, true),
+    headers: options.withAuthHeaders(undefined, true),
     body: JSON.stringify({ runIds, timeoutSeconds, requesterSessionId: sessionId }),
   });
   if (data.success === false || !Array.isArray(data.runs)) {

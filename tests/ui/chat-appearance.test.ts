@@ -8,6 +8,7 @@ import {
   normalizeChatAppearanceSettings,
   readChatAppearanceFromConfig,
 } from "../../shared/chat-appearance";
+import { readUiStylesSource } from "../shared/source-bundles";
 
 const ROOT_DIR = join(import.meta.dir, "..", "..");
 
@@ -110,7 +111,7 @@ describe("chat appearance settings", () => {
         )
       )
     ).join("\n");
-    const styles = await Bun.file(join(ROOT_DIR, "ui", "src", "index.css")).text();
+    const styles = readUiStylesSource();
     const routes = await Bun.file(join(ROOT_DIR, "src", "api", "routes.ts")).text();
 
     expect(settings).toContain("Chat text size");

@@ -456,6 +456,7 @@ CYBARA_HOME=~/.cybara     # Runtime data root
 CYBARA_HOST=127.0.0.1     # Bind address (default: localhost only)
 CYBARA_API_KEY=...        # API key (auto-generated if not set)
 CYBARA_API=http://localhost:4269  # API endpoint for CLI
+CYBARA_GATEWAY_PASSWORD=...       # second factor for protected remote gateways
 FIRECRAWL_API_KEY=...     # Search and page/PDF extraction
 FIRECRAWL_API_URL=...     # Optional self-hosted Firecrawl endpoint
 PARALLEL_API_KEY=...      # Search and relevance-aware extraction

@@ -6,7 +6,17 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const hasPython = Bun.spawnSync(["python3", "--version"]).exitCode === 0;
+function executableIsAvailable(command: string): boolean {
+  try {
+    return (
+      Bun.spawnSync([command, "--version"], { stdout: "ignore", stderr: "ignore" }).exitCode === 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+const hasPython = executableIsAvailable("python3");
 
 let homeDir = "";
 

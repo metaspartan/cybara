@@ -1,10 +1,7 @@
 #!/usr/bin/env bun
-import { spawn } from "child_process";
-import { mkdirSync, openSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
 import { getAppVersion } from "../core/build-info";
 import { runMcpStdioServer } from "../core/mcp-host-server";
+import { runGatewayForeground, startGatewayBackground } from "./gateway-process";
 import { runMobileCommand } from "./commands/mobile";
 import { runNearbyCommand } from "./commands/nearby";
 import { rawHelp } from "./commands/help";
@@ -1036,30 +1033,14 @@ function wantsForegroundStart(rest: string[]): boolean {
   return hasFlag(rest, "--foreground", "--attach", "-f");
 }
 
-function resolveGatewayLogPath(): string {
-  const base =
-    process.env.CYBARA_HOME || join(process.env.HOME || homedir(), ".cybara");
-  const dir = join(base, "logs");
-  mkdirSync(dir, { recursive: true });
-  return join(dir, "gateway.out.log");
-}
-
-function launchGateway(rest: string[]): void {
+async function launchGateway(rest: string[]): Promise<void> {
   if (wantsForegroundStart(rest)) {
-    spawn("bun", ["run", "dev"], { stdio: "inherit" });
+    process.exitCode = await runGatewayForeground();
     return;
   }
-  const logPath = resolveGatewayLogPath();
-  const logFd = openSync(logPath, "a");
-  const child = spawn("bun", ["run", "dev"], {
-    stdio: ["ignore", logFd, logFd],
-    detached: true,
-  });
-  child.unref();
-  console.log(
-    `Cybara gateway starting in the background (pid ${child.pid ?? "?"}).`,
-  );
-  console.log(`  Logs:   ${logPath}`);
+  const processInfo = startGatewayBackground();
+  console.log(`Cybara gateway starting in the background (pid ${processInfo.pid}).`);
+  console.log(`  Logs:   ${processInfo.logPath}`);
   console.log("  Status: cybara status");
   console.log("  Follow: cybara gateway logs --follow");
   console.log("  Attach instead next time with: cybara start --foreground");
@@ -1465,7 +1446,7 @@ async function main() {
     case "subagents":
       await runSubagentCommand(args.slice(1), {
         apiBase: API_BASE,
-        apiKey: CLI_API_KEY,
+        withAuthHeaders: withCliAuthHeaders,
       });
       break;
     case "loop":
@@ -1828,10 +1809,10 @@ async function main() {
       break;
 
     case "start":
-      launchGateway(args.slice(1));
+      await launchGateway(args.slice(1));
       break;
     case "dev":
-      spawn("bun", ["run", "dev"], { stdio: "inherit" });
+      process.exitCode = await runGatewayForeground();
       break;
 
     case "wizard":

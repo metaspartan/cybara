@@ -181,6 +181,7 @@ try {
   CREATE TABLE IF NOT EXISTS chat_sessions (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
+    use_model_router INTEGER NOT NULL DEFAULT 0,
     title TEXT,
     messages TEXT NOT NULL,
     context_state TEXT,
@@ -445,6 +446,11 @@ try {
   try {
     db.exec("ALTER TABLE chat_sessions ADD COLUMN context_state TEXT");
     console.error("[Database] Migration: Added context_state column to chat_sessions");
+  } catch {}
+
+  try {
+    db.exec("ALTER TABLE chat_sessions ADD COLUMN use_model_router INTEGER NOT NULL DEFAULT 0");
+    console.error("[Database] Migration: Added use_model_router column to chat_sessions");
   } catch {}
 
   try {
@@ -774,6 +780,9 @@ const stmts = {
     updateTitle: prepare(
       "UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
     ),
+    updateRouting: prepare(
+      "UPDATE chat_sessions SET agent_id = ?, use_model_router = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ),
     getWorkspace: prepare("SELECT workspace_dir FROM chat_sessions WHERE id = ?"),
     getTitle: prepare("SELECT title FROM chat_sessions WHERE id = ?"),
     // Pin toggle deliberately does NOT bump updated_at — pinning is not chat activity.
@@ -816,6 +825,18 @@ const stmts = {
       "SELECT * FROM session_events WHERE session_id = ? AND sequence > ? ORDER BY sequence ASC LIMIT ?"
     ),
     byRun: prepare("SELECT * FROM session_events WHERE run_id = ? ORDER BY sequence ASC LIMIT ?"),
+    byRunAfter: prepare(
+      "SELECT * FROM session_events WHERE run_id = ? AND sequence > ? ORDER BY sequence ASC LIMIT ?"
+    ),
+    incompleteRuns: prepare(
+      `SELECT run_id as runId, MIN(sequence) as firstSequence, MAX(sequence) as lastSequence
+       FROM session_events
+       WHERE session_id = ?
+       GROUP BY run_id
+       HAVING SUM(CASE WHEN event_type = 'run_started' THEN 1 ELSE 0 END) > 0
+          AND SUM(CASE WHEN event_type = 'run_completed' THEN 1 ELSE 0 END) = 0
+       ORDER BY firstSequence ASC`
+    ),
     latestSequence: prepare(
       "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM session_events WHERE session_id = ?"
     ),
@@ -1295,6 +1316,10 @@ export const tables = {
       stmts.chatSessions?.updateWorkspace.run(workspaceDir, id),
     updateTitle: (id: string, title: string | null) =>
       stmts.chatSessions?.updateTitle.run(title, id),
+    updateRouting: (id: string, agentId: string, useModelRouter: boolean): boolean => {
+      const result = stmts.chatSessions?.updateRouting.run(agentId, useModelRouter ? 1 : 0, id);
+      return (result?.changes ?? 0) > 0;
+    },
     getWorkspace: (id: string): string | null => {
       const row = stmts.chatSessions?.getWorkspace.get(id) as {
         workspace_dir?: string | null;
@@ -1381,6 +1406,9 @@ export const tables = {
     bySession: (sessionId: string, afterSequence = 0, limit = 1000) =>
       stmts.sessionEvents.bySession.all(sessionId, afterSequence, limit),
     byRun: (runId: string, limit = 1000) => stmts.sessionEvents.byRun.all(runId, limit),
+    byRunAfter: (runId: string, afterSequence = 0, limit = 1000) =>
+      stmts.sessionEvents.byRunAfter.all(runId, afterSequence, limit),
+    incompleteRuns: (sessionId: string) => stmts.sessionEvents.incompleteRuns.all(sessionId),
     latestSequence: (sessionId: string): number => {
       const row = stmts.sessionEvents.latestSequence.get(sessionId) as { sequence?: number } | null;
       return typeof row?.sequence === "number" ? row.sequence : 0;
@@ -1701,6 +1729,7 @@ export interface TaskRun {
 export interface ChatSessionDB {
   id: string;
   agent_id: string;
+  use_model_router?: number;
   title?: string | null;
   messages: string;
   workspace_dir?: string | null;

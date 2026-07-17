@@ -26,6 +26,7 @@ const SESSION_DETAIL_TIMEOUT_MS = 15_000;
 export interface LoadedChatSession {
   id: string;
   agent_id: string;
+  use_model_router?: boolean;
   provider?: string;
   provider_id?: string;
   provider_name?: string;
@@ -441,8 +442,16 @@ export function useUpdateSessionAgent() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ sessionId, agentId }: { sessionId: string; agentId: string }) => {
-      const response = await chatApi.updateSessionAgent(sessionId, agentId);
+    mutationFn: async ({
+      sessionId,
+      agentId,
+      useModelRouter,
+    }: {
+      sessionId: string;
+      agentId?: string;
+      useModelRouter?: boolean;
+    }) => {
+      const response = await chatApi.updateSessionAgent(sessionId, agentId, useModelRouter);
       if (response.success && response.data?.success) {
         return response.data;
       }

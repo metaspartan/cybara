@@ -7,6 +7,7 @@ import {
   buildTauriReleaseConfigPatch,
   computeReleaseVersion,
   isDraftReleaseUrl,
+  isValidTauriUpdaterPublicKey,
   normalizeReleaseTag,
   replaceCargoTomlVersion,
   replaceJsonVersion,
@@ -14,9 +15,11 @@ import {
   resolveReleaseBinaryFilename,
   resolveSelfUpdateDestination,
   TAURI_DESKTOP_UPDATER_PLATFORMS,
+  TAURI_DEVELOPMENT_UPDATER_PUBLIC_KEY,
   TAURI_WINDOWS_X64_MSI_FALLBACK_PLATFORMS,
   TAURI_WINDOWS_X64_RELEASE_PLATFORMS,
   validateTauriUpdaterManifest,
+  validateTauriReleaseSigningConfig,
 } from "../../src/core/versioning";
 
 describe("versioning helpers", () => {
@@ -67,20 +70,33 @@ describe("versioning helpers", () => {
   });
 
   test("builds a release-only Tauri updater patch", () => {
-    expect(buildTauriReleaseConfigPatch("metaspartan/cybara", "PUBLIC_KEY", null)).toEqual({
+    expect(
+      buildTauriReleaseConfigPatch("metaspartan/cybara", TAURI_DEVELOPMENT_UPDATER_PUBLIC_KEY, null)
+    ).toEqual({
       bundle: {
         createUpdaterArtifacts: true,
       },
       plugins: {
         updater: {
           endpoints: ["https://github.com/metaspartan/cybara/releases/latest/download/latest.json"],
-          pubkey: "PUBLIC_KEY",
+          pubkey: TAURI_DEVELOPMENT_UPDATER_PUBLIC_KEY,
           windows: {
             installMode: "passive",
           },
         },
       },
     });
+  });
+
+  test("validates updater keys and rejects development signing material for releases", () => {
+    expect(isValidTauriUpdaterPublicKey(TAURI_DEVELOPMENT_UPDATER_PUBLIC_KEY)).toBe(true);
+    expect(validateTauriReleaseSigningConfig("placeholder", "placeholder")).toEqual([
+      "TAURI_SIGNING_PUBLIC_KEY is missing or malformed",
+      "TAURI_SIGNING_PRIVATE_KEY is missing or malformed",
+    ]);
+    expect(
+      validateTauriReleaseSigningConfig(TAURI_DEVELOPMENT_UPDATER_PUBLIC_KEY, "private-key")
+    ).toEqual(["TAURI_SIGNING_PUBLIC_KEY must not use the development updater key"]);
   });
 
   test("validates Windows Tauri updater platform keys before publishing a release", () => {

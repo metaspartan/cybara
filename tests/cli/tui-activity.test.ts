@@ -37,6 +37,19 @@ describe("CLI TUI activity summaries", () => {
     expect(summarizeTUIActivities([], [])).toBeNull();
   });
 
+  test("does not present transient provider recovery as conversation work", () => {
+    const activities = [
+      {
+        id: "provider-retry",
+        phase: "start",
+        text: "Provider rate limited; retrying (2/5)...",
+        toolName: "__thought",
+      },
+    ];
+    expect(presentTUIActivities(activities, [])).toEqual([]);
+    expect(summarizeTUIActivities(activities, [])).toBeNull();
+  });
+
   test("bounds compact activity detail rows without hiding their count", () => {
     expect(limitTUIActivityDetails(["one", "two"], 0)).toEqual([]);
     expect(limitTUIActivityDetails(["one", "two", "three", "four", "five"], 3)).toEqual([
@@ -102,6 +115,24 @@ describe("CLI TUI activity summaries", () => {
     expect(rows.map(tuiActivityTone)).toEqual(["activity", "danger", "warning"]);
   });
 
+  test("keeps a tool row stable when later results join its group", () => {
+    const first = presentTUIActivities(
+      [{ id: "skill-load", phase: "result", text: "skill_load complete", toolName: "exec" }],
+      []
+    );
+    const grouped = presentTUIActivities(
+      [
+        { id: "skill-load", phase: "result", text: "skill_load complete", toolName: "exec" },
+        { id: "list-files", phase: "result", text: "Listed a location", toolName: "list" },
+      ],
+      []
+    );
+
+    expect(first[0]?.id).toBe("skill-load");
+    expect(grouped[0]?.id).toBe("skill-load");
+    expect(grouped[0]?.label).toBe("Ran a command, listed a location");
+  });
+
   test("uses semantic tones for completed tool groups", () => {
     const toneFor = (text: string, toolName: string): string => {
       const row = presentTUIActivities([{ id: toolName, phase: "result", text, toolName }], [])[0];
@@ -158,5 +189,11 @@ describe("CLI TUI activity summaries", () => {
       )
     ).toBe("0h 01m 02s");
     expect(formatTUIWorkedDuration([], [{ durationMs: 3_725_000 }])).toBe("1h 02m 05s");
+    expect(
+      formatTUIWorkedDuration([{ timestamp: 7_000, text: "Read a file" }], [], {
+        assistantTimestamp: 9_000,
+        turnStartedAt: 2_000,
+      })
+    ).toBe("0h 00m 07s");
   });
 });

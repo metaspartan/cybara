@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readMobileChatSource } from "../source-fixtures";
 
 const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
@@ -12,7 +13,7 @@ const readStyles = (): string =>
 describe("mobile: chat management", () => {
   const screen =
     read("screens/DashboardScreen.tsx") +
-    read("screens/dashboardSessionDetail.tsx") +
+    readMobileChatSource() +
     read("screens/dashboardSurfaceData.ts");
 
   test("long-pressing a chat offers a native delete confirmation", () => {
@@ -240,7 +241,7 @@ describe("mobile: chat management", () => {
 
   test("new chats navigate immediately and hydrate from optimistic state", () => {
     const newChat = read("components/NewChatPanel.tsx");
-    const detail = read("screens/dashboardSessionDetail.tsx");
+    const detail = readMobileChatSource();
     const dashboard = read("screens/DashboardScreen.tsx");
     const startedIndex = newChat.indexOf("onCreated(sessionId)");
     const requestIndex = newChat.indexOf(".sendChat({", startedIndex);

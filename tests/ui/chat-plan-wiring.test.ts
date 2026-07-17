@@ -8,8 +8,8 @@ import {
   isSessionPlanComplete,
   shouldShowSessionPlanInComposer,
 } from "../../ui/src/pages/chat/chatModel";
+import { readChatUiSource } from "../source-fixtures";
 
-const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
 const chatModelPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/chatModel.ts", import.meta.url)
 );
@@ -36,7 +36,7 @@ const artifactsPath = fileURLToPath(new URL("../../ui/src/pages/Artifacts.tsx", 
 
 function readUiSource(): string {
   return [
-    readFileSync(chatPagePath, "utf8"),
+    readChatUiSource(),
     readFileSync(chatModelPath, "utf8"),
     readFileSync(chatComposerPath, "utf8"),
     readFileSync(chatPageHeaderPath, "utf8"),
@@ -50,9 +50,7 @@ function readUiSource(): string {
 }
 
 function readChatPageSource(): string {
-  return [chatPagePath, chatComposerPath, chatPageHeaderPath]
-    .map((path) => readFileSync(path, "utf8"))
-    .join("\n");
+  return readChatUiSource();
 }
 
 function readEnvironmentOverviewSource(): string {

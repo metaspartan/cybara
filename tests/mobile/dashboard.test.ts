@@ -58,6 +58,7 @@ import {
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
 import { readMobileTokenOptimizationSettings } from "../../apps/mobile/src/screens/dashboardHelpers";
+import { readMobileChatSource } from "../source-fixtures";
 
 const dashboardScreenSource =
   readFileSync(
@@ -96,6 +97,7 @@ const dashboardScreenSource =
     new URL("../../apps/mobile/src/screens/dashboardSessionDetail.tsx", import.meta.url),
     "utf8"
   ) +
+  readMobileChatSource() +
   readFileSync(
     new URL("../../apps/mobile/src/screens/dashboardDetailPanels.tsx", import.meta.url),
     "utf8"
@@ -861,10 +863,14 @@ describe("mobile dashboard model", () => {
     expect(readMobileAccent({ theme: "dark" })).toBe("cyan");
     expect(readMobileAccent({ identity: { theme: "dark" } })).toBe("cyan");
     expect(readMobileAccent({ themeAccent: "purple" })).toBe("purple");
+    expect(readMobileAccent({ themeAccent: "catppuccin" })).toBe("catppuccin");
+    expect(readMobileAccent({ themeAccent: "matrix" })).toBe("matrix");
   });
 
   test("builds a shared gateway payload for mobile theme accents", () => {
     expect(MOBILE_ACCENT_KEYS).toContain("emerald");
+    expect(MOBILE_ACCENT_KEYS).toContain("catppuccin");
+    expect(MOBILE_ACCENT_KEYS).toContain("matrix");
     expect(mobileThemeConfigPayload("emerald")).toEqual({
       theme: "emerald",
       themeAccent: "emerald",

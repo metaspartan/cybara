@@ -30,6 +30,18 @@ interface StoredSessionEvent {
   created_at: string;
 }
 
+export interface IncompleteSessionRun {
+  runId: string;
+  firstSequence: number;
+  lastSequence: number;
+}
+
+interface StoredIncompleteSessionRun {
+  runId: string;
+  firstSequence: number;
+  lastSequence: number;
+}
+
 const activeRunIds = new Map<string, string>();
 const pendingAssistantDeltas = new Map<
   string,
@@ -234,6 +246,48 @@ export function listRunEvents(runId: string, limit = 1000): SessionLedgerEvent[]
   return (tables.sessionEvents.byRun(runId.trim(), boundedLimit) as StoredSessionEvent[]).map(
     toLedgerEvent
   );
+}
+
+export function listAllRunEvents(runId: string, pageSize = 5000): SessionLedgerEvent[] {
+  const normalizedRunId = runId.trim();
+  if (!normalizedRunId) return [];
+  for (const pending of pendingAssistantDeltas.values()) {
+    if (pending.runId !== normalizedRunId) continue;
+    flushBufferedAssistantDeltas(pending.sessionId, normalizedRunId);
+    break;
+  }
+  const boundedPageSize = Number.isFinite(pageSize)
+    ? Math.min(5000, Math.max(1, Math.floor(pageSize)))
+    : 5000;
+  const events: SessionLedgerEvent[] = [];
+  let afterSequence = 0;
+  while (true) {
+    const page = (
+      tables.sessionEvents.byRunAfter(
+        normalizedRunId,
+        afterSequence,
+        boundedPageSize
+      ) as StoredSessionEvent[]
+    ).map(toLedgerEvent);
+    events.push(...page);
+    if (page.length < boundedPageSize) break;
+    const nextSequence = page[page.length - 1]?.sequence ?? afterSequence;
+    if (nextSequence <= afterSequence) break;
+    afterSequence = nextSequence;
+  }
+  return events;
+}
+
+export function listIncompleteSessionRuns(sessionId: string): IncompleteSessionRun[] {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) return [];
+  return (
+    tables.sessionEvents.incompleteRuns(normalizedSessionId) as StoredIncompleteSessionRun[]
+  ).map((run) => ({
+    runId: run.runId,
+    firstSequence: run.firstSequence,
+    lastSequence: run.lastSequence,
+  }));
 }
 
 export function latestSessionEventSequence(sessionId: string): number {

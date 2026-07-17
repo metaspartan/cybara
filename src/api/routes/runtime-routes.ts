@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { agentManager } from "../../core/agent";
 import * as pwManager from "../../core/browser/pw-manager";
 import {
@@ -252,14 +253,17 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     const result = await getSnapshot(params!.id);
     return { success: true, data: result };
   },
-  "GET /api/browser/tabs/:id/state": async (_body, params) => ({
-    success: true,
-    data: {
-      viewport: pwManager.getViewportSize(params!.id),
-      cursor: pwManager.getPointerState(params!.id),
-      page: await pwManager.getPageSummary(params!.id),
-    },
-  }),
+  "GET /api/browser/tabs/:id/state": async (_body, params) => {
+    const includePage = params?.includePage !== "false";
+    return {
+      success: true,
+      data: {
+        viewport: pwManager.getViewportSize(params!.id),
+        cursor: pwManager.getPointerState(params!.id),
+        page: includePage ? await pwManager.getPageSummary(params!.id) : null,
+      },
+    };
+  },
   "GET /api/browser/tabs/:id/screenshot": async (_body, params) => {
     const screenshot = pwManager.screenshot;
     const width = browserViewportDimension(params?.viewportWidth, 1280, 2560);
@@ -271,11 +275,14 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
       type: format,
       ...(format === "jpeg" ? { quality: browserScreenshotQuality(params?.quality) } : {}),
     });
+    const revision = createHash("sha256").update(screenshotBuffer).digest("base64url").slice(0, 16);
+    const unchanged = params?.revision === revision;
     const page = await pwManager.getPageSummary(params!.id);
     return {
       success: true,
       data: {
-        screenshot: screenshotBuffer.toString("base64"),
+        ...(unchanged ? { unchanged: true } : { screenshot: screenshotBuffer.toString("base64") }),
+        revision,
         contentType: format === "jpeg" ? "image/jpeg" : "image/png",
         viewport: pwManager.getViewportSize(params!.id),
         cursor: pwManager.getPointerState(params!.id),

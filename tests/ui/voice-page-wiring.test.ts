@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { readUiStylesSource } from "../shared/source-bundles";
 
 const root = process.cwd();
 const voice = readFileSync(join(root, "ui", "src", "pages", "Voice.tsx"), "utf8");
@@ -32,7 +33,7 @@ describe("voice UI wiring", () => {
     expect(voice).toContain("Hands-free");
     expect(voice).toContain("nextVoiceActivityState");
     expect(voice).toContain('voiceModeRef.current === "hands-free"');
-    const css = readFileSync(join(root, "ui", "src", "index.css"), "utf8");
+    const css = readUiStylesSource();
     expect(css).toContain(".voice-orb-body");
     expect(css).toContain("voice-orb-breathe");
     expect(css).toContain("prefers-reduced-motion");

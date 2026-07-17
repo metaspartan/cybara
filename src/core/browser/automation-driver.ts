@@ -78,6 +78,7 @@ export interface AutomationPage {
   onClose(listener: () => void): void;
   onConsole(listener: (message: AutomationConsoleMessage) => void): void;
   onDialog(listener: (dialog: AutomationDialog) => Promise<void>): void;
+  onNavigation(listener: () => void): void;
   goto(
     url: string,
     options: { waitUntil: "load" | "domcontentloaded" | "networkidle"; timeout: number }
@@ -327,6 +328,10 @@ class PlaywrightPageAdapter implements AutomationPage {
 
   onDialog(listener: (dialog: AutomationDialog) => Promise<void>): void {
     this.page.on("dialog", listener);
+  }
+
+  onNavigation(listener: () => void): void {
+    this.page.on("framenavigated", listener);
   }
 
   async goto(
@@ -702,6 +707,10 @@ class PuppeteerPageAdapter implements AutomationPage {
 
   onDialog(listener: (dialog: AutomationDialog) => Promise<void>): void {
     this.page.on("dialog", (dialog) => void listener(new PuppeteerDialogAdapter(dialog)));
+  }
+
+  onNavigation(listener: () => void): void {
+    this.page.on("framenavigated", listener);
   }
 
   async goto(

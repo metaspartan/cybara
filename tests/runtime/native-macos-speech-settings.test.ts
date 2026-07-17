@@ -1,16 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readNativeSettingsSource } from "../shared/source-bundles";
 
-const settingsSource = readFileSync(
-  new URL("../../apps/macos/Cybara/Sources/Cybara/NativeSettingsScreen.swift", import.meta.url),
-  "utf8"
-);
+const settingsSource = readNativeSettingsSource();
 
 describe("native macOS speech settings wiring", () => {
   test("exposes speech tab and persists the shared speech config key", () => {
     expect(settingsSource).toContain('case .speech: return "settings.voice"');
     expect(settingsSource).toContain('case .speech: return "waveform"');
-    expect(settingsSource).toContain("private var speechTab: some View");
+    expect(settingsSource).toContain("var speechTab: some View");
     expect(settingsSource).toContain('"speech": [');
     expect(settingsSource).toContain('"provider": speechTTSProvider');
     expect(settingsSource).toContain('"provider": speechSTTProvider');

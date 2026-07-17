@@ -13,7 +13,7 @@ beforeEach(() => {
 });
 
 describe("Skills SKILL.md resolution", () => {
-  test("resolves heading-only skills by both heading name and folder slug", () => {
+  test("resolves bundled skills by both frontmatter name and folder slug", () => {
     const byHeading = getSkill("Canvas Skill");
     const bySlug = getSkill("canvas");
 
@@ -24,7 +24,7 @@ describe("Skills SKILL.md resolution", () => {
     expect(byHeading?.location).toMatch(/skills[\\/]+canvas[\\/]+SKILL\.md$/);
   });
 
-  test("returns manual execution hint for non-automated heading-only skills", async () => {
+  test("returns manual execution hint for non-automated bundled skills", async () => {
     const result = await executeSkill("Canvas Skill", {});
 
     expect(result).toMatchObject({
@@ -34,6 +34,13 @@ describe("Skills SKILL.md resolution", () => {
       },
       hint: "Read the skill's SKILL.md for manual instructions",
     });
+  });
+
+  test("loads Canvas metadata from valid frontmatter", () => {
+    const skill = getSkill("canvas");
+
+    expect(skill?.name).toBe("Canvas Skill");
+    expect(skill?.description).toContain("interactive HTML");
   });
 
   test("loads bundled skills", () => {

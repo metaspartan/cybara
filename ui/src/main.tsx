@@ -7,11 +7,9 @@ import { getDesktopHostRuntime } from "./lib/desktopHost";
 import { getGatewayBasePath } from "./lib/auth";
 import { I18nProvider } from "./lib/i18n";
 import { installPreloadRecovery } from "./lib/preloadRecovery";
-import { ensureUpdatePolling } from "./lib/updateStore";
 import "./index.css";
 
 installPreloadRecovery();
-ensureUpdatePolling();
 
 const rootElement = document.documentElement;
 const desktopRuntime = getDesktopHostRuntime();

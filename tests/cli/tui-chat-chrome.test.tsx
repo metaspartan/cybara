@@ -10,6 +10,8 @@ import {
   terminalWorkspaceName,
   type ChatHeaderState,
 } from "../../src/cli/tui/components/chat-chrome";
+import { LiveRunView } from "../../src/cli/tui/components/interactive-chat-view";
+import { tuiChatPalette } from "../../src/cli/tui/theme";
 
 const baseHeader: ChatHeaderState = {
   approvalCount: 0,
@@ -36,6 +38,15 @@ const baseHeader: ChatHeaderState = {
 };
 
 describe("CLI TUI chat chrome", () => {
+  test("paints the complete terminal viewport at its measured dimensions", async () => {
+    const source = await Bun.file(
+      new URL("../../src/cli/tui/components/interactive-chat.tsx", import.meta.url),
+    ).text();
+    expect(source).toContain('height={layout.rows}');
+    expect(source).toContain('width={layout.columns}');
+    expect(source).toContain('backgroundColor={tuiPalette.canvas}');
+  });
+
   test("normalizes cross-platform workspace labels and run status", () => {
     expect(terminalWorkspaceName("C:\\Users\\Carsen\\Projects\\solarflow\\")).toBe(
       "solarflow",
@@ -129,5 +140,29 @@ describe("CLI TUI chat chrome", () => {
     expect(header).not.toMatch(/[┌┐└┘]/);
     expect(shortcuts).toContain("@ capabilities");
     expect(shortcuts).toContain("Ctrl+O work");
+  });
+
+  test("keeps live work bounded while preserving the newest activity", () => {
+    const output = renderToString(
+      <LiveRunView
+        activities={Array.from({ length: 8 }, (_, index) => ({
+          id: `thought-${index}`,
+          phase: "result" as const,
+          text: `Inspection thought ${index}`,
+          timestamp: index,
+          toolName: "__thought",
+        }))}
+        content=""
+        detail="Inspecting the workspace"
+        maxColumns={72}
+        colorScheme="dark"
+        palette={tuiChatPalette("dark")}
+      />,
+      { columns: 80 },
+    );
+
+    expect(output).toContain("… 2 earlier work groups");
+    expect(output).not.toContain("Inspection thought 0");
+    expect(output).toContain("Inspection thought 7");
   });
 });

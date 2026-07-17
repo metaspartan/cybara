@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
+import { readNativeSettingsSource } from "../shared/source-bundles";
 
 const root = join(import.meta.dir, "../..");
 
@@ -75,7 +76,7 @@ describe("application navigation architecture", () => {
 
   test("keeps native management destinations in settings", async () => {
     const content = await source("apps/macos/Cybara/Sources/Cybara/ContentView.swift");
-    const settings = await source("apps/macos/Cybara/Sources/Cybara/NativeSettingsScreen.swift");
+    const settings = readNativeSettingsSource();
     expect(content).toContain("NativePrimarySessionList(");
     expect(content).toContain("showsSessionList: false");
     for (const tab of [

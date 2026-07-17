@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readIdeUiSource } from "../source-fixtures";
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
@@ -24,7 +25,7 @@ describe("GitStatus refresh + cleanup", () => {
 });
 
 describe("IDE workspace browse lifecycle", () => {
-  const src = read("../../ui/src/pages/IDE.tsx");
+  const src = readIdeUiSource();
 
   test("aborts superseded workspace requests and ignores stale responses", () => {
     expect(src).toContain("const controller = new AbortController()");
@@ -48,7 +49,7 @@ describe("Terminal WebSocket + xterm cleanup on unmount", () => {
 });
 
 describe("CodeViewer LSP keyboard + hover fixes", () => {
-  const src = read("../../ui/src/pages/ide/CodeViewer.tsx");
+  const src = readIdeUiSource();
 
   test("go-to-definition/references fall back to the live cursor (F12 without a context menu)", () => {
     // resolveLspLocations now uses the cursor as a fallback instead of bailing

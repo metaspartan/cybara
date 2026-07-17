@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { readChatUiSource } from "../source-fixtures";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -55,7 +56,7 @@ describe("desktop host runtime wiring", () => {
   });
 
   test("chat workspace picker routes through shared desktop host dialog", () => {
-    const chatTsx = readFileSync(join(ROOT_DIR, "ui", "src", "pages", "Chat.tsx"), "utf8");
+    const chatTsx = readChatUiSource();
     const localFolderPicker = readFileSync(
       join(ROOT_DIR, "ui", "src", "components", "LocalFolderPickerModal.tsx"),
       "utf8"

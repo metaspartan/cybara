@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
-const read = (path: string) => readFileSync(join(root, path), "utf8");
+const read = (path: string) => readFileSync(join(root, path), "utf8").replaceAll("\r\n", "\n");
 
 describe("metrics performance wiring", () => {
   test("token analysis uses a bounded recent sample instead of scanning raw history", () => {

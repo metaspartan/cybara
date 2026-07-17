@@ -34,6 +34,7 @@ export interface ControlPlaneState {
 export interface InteractiveChatProps {
   apiBase: string;
   apiKey?: string | null;
+  gatewayPassword?: string | null;
   fetchAPI: TUIFetchAPI;
   initialAgentId?: string;
   initialWorkspaceDir?: string;
@@ -58,6 +59,17 @@ function contentText(content: unknown): string {
     .filter(Boolean)
     .join("\n")
     .trim();
+}
+
+function messageTimestamp(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+  const parsed = Date.parse(
+    value.endsWith("Z") || /[+-]\d\d:\d\d$/.test(value) ? value : `${value}Z`
+  );
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function activitiesFrom(value: unknown): TUIActivityItem[] {
@@ -164,17 +176,31 @@ export function messagesFromResponse(value: unknown): ChatMessage[] {
         ? value.messagesList
         : [];
   const out: ChatMessage[] = [];
+  let latestUserTimestamp: number | undefined;
   for (const item of raw) {
     if (!isRecord(item)) continue;
     const role = item.role;
     const content = contentText(item.content);
-    if ((role === "user" || role === "assistant" || role === "system") && content) {
+    const processActivities = activitiesFrom(item.process_activities);
+    const toolCalls = toolCallsFrom(item.tool_calls);
+    const agentTransfers = agentTransfersFrom(item.agent_transfers);
+    const hasAssistantActivity =
+      role === "assistant" &&
+      (processActivities.length > 0 || toolCalls.length > 0 || agentTransfers.length > 0);
+    if (
+      (role === "user" || role === "assistant" || role === "system") &&
+      (content || hasAssistantActivity)
+    ) {
+      const timestamp = messageTimestamp(item.timestamp ?? item.created_at ?? item.createdAt);
+      if (role === "user") latestUserTimestamp = timestamp;
       out.push({
         role,
         content,
-        process_activities: activitiesFrom(item.process_activities),
-        tool_calls: toolCallsFrom(item.tool_calls),
-        agent_transfers: agentTransfersFrom(item.agent_transfers),
+        timestamp,
+        turnStartedAt: role === "assistant" ? latestUserTimestamp : undefined,
+        process_activities: processActivities,
+        tool_calls: toolCalls,
+        agent_transfers: agentTransfers,
       });
     }
   }
@@ -220,6 +246,24 @@ export function deleteBefore(value: string, cursor: number): [string, number] {
 export function deleteAt(value: string, cursor: number): string {
   if (cursor >= value.length) return value;
   return value.slice(0, cursor) + value.slice(cursor + 1);
+}
+
+export function previousWordCursor(value: string, cursor: number): number {
+  const before = value.slice(0, Math.max(0, cursor));
+  const withoutTrailingSpace = before.replace(/\s+$/, "");
+  const boundary = withoutTrailingSpace.search(/\S+$/);
+  return boundary < 0 ? 0 : boundary;
+}
+
+export function nextWordCursor(value: string, cursor: number): number {
+  const after = value.slice(Math.max(0, cursor));
+  const match = after.match(/^\s*\S+\s*/);
+  return Math.min(value.length, cursor + (match?.[0].length ?? after.length));
+}
+
+export function deletePreviousWord(value: string, cursor: number): [string, number] {
+  const start = previousWordCursor(value, cursor);
+  return [value.slice(0, start) + value.slice(cursor), start];
 }
 
 export async function fetchControlPlaneState(

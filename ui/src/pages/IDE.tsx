@@ -1,44 +1,7 @@
+import { type IdeTerminalPanelState } from "@/components/ide/EmbeddedTerminalPanel";
+import { apiFetch } from "@/lib/auth";
 import {
-  AlertCircle,
-  AlertTriangle,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  ChevronUp,
-  Code,
-  Copy,
-  ExternalLink,
-  Eye,
-  File,
-  FileCode,
-  FileJson,
-  FilePlus,
-  FileText,
-  Folder,
-  FolderOpen,
-  FolderPlus,
-  GitBranch,
-  Home,
-  Info,
-  ListTree,
-  Loader2,
-  MessageSquare,
-  RotateCcw,
-  Search,
-  Settings2,
-  Sparkles,
-  Square,
-  TerminalSquare,
-  X,
-  Zap,
-} from "lucide-react";
-import { Highlight, themes } from "prism-react-renderer";
-import {
-  type CSSProperties,
   lazy,
-  memo,
-  Suspense,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -47,144 +10,23 @@ import {
   useState,
   useTransition,
 } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
 import { useLocation, useNavigate } from "react-router-dom";
-import remarkGfm from "remark-gfm";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import EmbeddedTerminalPanel, {
-  type IdeTerminalPanelState,
-} from "@/components/ide/EmbeddedTerminalPanel";
-import { Button } from "@/components/ui/Button";
-import { Switch } from "@/components/ui/Switch";
-import { useStopAgent } from "@/hooks/useApi";
-import { agentsApi, chatApi } from "@/lib/api";
-import { apiFetch } from "@/lib/auth";
-import {
-  buildActivitiesFromToolCalls,
-  finalizeCompletedActivities,
-  type LiveActivityItem,
-  mergeActivityLists,
-  normalizeActivityTextForPhase,
-  type ToolCallLike,
-} from "@/lib/chatActivities";
-import {
-  buildPendingInlinePreviewRows,
-  countGitDiffLineChanges,
-  emptyIdePendingDiffDecorations,
-  type IdePendingDeletedBlock,
-  type IdePendingDiffDecorations,
-  type IdePendingInlinePreviewRow,
-  type IdePendingLineState,
-  mergeGitDiffDecorations,
-  parseGitDiffDecorations,
-} from "@/lib/idePendingDiffDecorations";
-import { connectStatusStream } from "@/lib/status-stream";
-import { cn } from "@/lib/utils";
-import { AdvancedIndexerSettingsModal } from "./ide/AdvancedIndexerSettingsModal";
-import { CodeViewer } from "./ide/CodeViewer";
-import { CreateDialog } from "./ide/CreateDialog";
-import { FileTree, treeBrowseCache } from "./ide/FileTree";
-import { GitStatus } from "./ide/GitStatus";
-import { IDEKeyboardSettingsPanel } from "./ide/IDEKeyboardSettingsPanel";
-import { IDETerminalSettingsPanel } from "./ide/IDETerminalSettingsPanel";
-import { IDEWelcomeScreen } from "./ide/IDEWelcomeScreen";
-import {
-  IdeActivityText,
-  IdeLiveActivityTimeline,
-  IdeProcessActivityList,
-} from "./ide/IdeActivityTimeline";
-import { IndexerSettingsPanel } from "./ide/IndexerSettingsPanel";
-import {
-  formatIdeSandboxProviderLabel,
-  formatIdeStatusEventText,
-  getIdeHeaderTitle,
-  getIdeToolCallArgs,
-  getIdeToolCallCommand,
-  getIdeToolCallExitCode,
-  getIdeToolCallResultSummary,
-  getLatestIdeInFlightStep,
-  isGenericIdeStatusLabel,
-  isMeaningfulIdeThoughtDetail,
-  normalizeIdeSandboxProviderValue,
-  parseIdeTimestampMs,
-  toIdeLiveActivityItems,
-} from "./ide/ideActivityHelpers";
-import {
-  COMPLETION_CACHE_MAX_ENTRIES,
-  COMPLETION_CACHE_TTL_MS,
-  COMPLETION_LOCAL_SCAN_AFTER,
-  COMPLETION_LOCAL_SCAN_BEFORE,
-  DEFAULT_INDEXER_SETTINGS_DRAFT,
-  EDITOR_FONT_SIZE_PX,
-  EDITOR_LARGE_FILE_CHAR_THRESHOLD,
-  EDITOR_LARGE_FILE_LINE_THRESHOLD,
-  EDITOR_LINE_HEIGHT_PX,
-  EDITOR_TYPING_BURST_MS,
-  EXPLORER_VIRTUALIZATION_MIN_ENTRIES,
-  EXPLORER_VIRTUALIZATION_OVERSCAN,
-  EXPLORER_VIRTUALIZATION_ROW_HEIGHT,
-  IDE_CHAT_AGENT_STORAGE_KEY,
-  IDE_CHAT_DEFAULT_WIDTH,
-  IDE_CHAT_MAX_WIDTH,
-  IDE_CHAT_MIN_WIDTH,
-  IDE_CHAT_OPEN_STORAGE_KEY,
-  IDE_CHAT_WIDTH_STORAGE_KEY,
-  IDE_DEFAULT_PREFERENCES,
-  IDE_SETTINGS_STORAGE_KEY,
-  IDE_SIDEBAR_DEFAULT_WIDTH,
-  IDE_SIDEBAR_MAX_WIDTH,
-  IDE_SIDEBAR_MIN_WIDTH,
-  IDE_SIDEBAR_WIDTH_STORAGE_KEY,
-  IDE_TERMINAL_MIN_HEIGHT,
-  IDE_TERMINAL_OPEN_STORAGE_KEY,
-  IDE_WORKSPACE_PATH_STORAGE_KEY,
-} from "./ide/ideConstants";
-import {
-  countDiffLines,
-  getIdePendingFileDecisionKey,
-  getIdeToolCallsInTimelineOrder,
-  getPendingLineContainerClass,
-  getPendingLineDecorationStyle,
-  getPendingLineTextClass,
-  isIdeToolCallLike,
-  isPlainRecord,
-  isSameIdePath,
-  mergeIdeFileChangeSummaries,
-  normalizeIdePath,
-  parseIdeChangeRecord,
-  parseIdePatchFileChanges,
-  reverseUnifiedDiff,
-  shouldHydratePendingFileDiffFromGit,
-  summarizeIdeActivityFileChanges,
-  summarizeIdeFileChanges,
-  summarizeIdeMessageFileChanges,
-  summarizeIdeTextFileChanges,
-  summarizePendingDeletedBlocks,
-  truncateDiffPreview,
-} from "./ide/ideDiffHelpers";
-import {
-  bindingFromEvent,
-  type IdeActionId,
-  loadKeymapOverrides,
-  persistKeymapOverrides,
-  resolveKeymap,
-} from "./ide/ideKeymap";
-import { getActiveLanguageFromExtension } from "./ide/ideLanguageMaps";
+import { treeBrowseCache } from "./ide/FileTree";
+import { IDE_TERMINAL_MIN_HEIGHT } from "./ide/ideConstants";
+import { isSameIdePath } from "./ide/ideDiffHelpers";
+import { bindingFromEvent, type IdeActionId, resolveKeymap } from "./ide/ideKeymap";
 import {
   clampChatWidth,
   clampSidebarWidth,
   clampTerminalHeight,
   persistChatOpen,
   persistChatWidth,
-  persistIdeChatAgentId,
-  persistIdePreferences,
   persistOpenTabs,
   persistSidebarWidth,
   persistTerminalOpen,
   persistWorkspacePath,
   readPersistedChatOpen,
   readPersistedChatWidth,
-  readPersistedIdeChatAgentId,
   readPersistedIdePreferences,
   readPersistedOpenTabs,
   readPersistedSidebarWidth,
@@ -193,71 +35,39 @@ import {
 } from "./ide/idePersistence";
 import type {
   BrowseResult,
-  Diagnostic,
   FileEntry,
-  FlattenedOutlineSymbol,
   GitHistoryStatus,
-  IdeBlameLine,
-  IdeBlameResult,
   IdeBreadcrumb,
-  IdeChatAgentOption,
-  IdeChatMessage,
   IdeCommandItem,
-  IdeCompletionItem,
-  IdeCompletionResponse,
-  IdeFileChangeItem,
-  IdeFileChangeSummary,
-  IdeInlineCompletionResponse,
-  IdeListFilesResult,
   IdeOutlineResponse,
   IdeOutlineSymbol,
   IdePendingFileDiff,
   IdePendingFileDiffController,
-  IdePreferences,
-  IdeProcessActivity,
-  IdeReplacePreviewFile,
   IdeReplacePreviewResult,
   IdeReplaceResult,
-  IdeSearchFileResult,
-  IdeSearchMatch,
   IdeSearchResult,
-  IdeSettingsSectionId,
   IdeTab,
   IdeTopMenuId,
-  LspActiveServer,
-  ReadResult,
   TreeContextMenuState,
-  WorkspaceEmbeddingCatalogResponse,
-  WorkspaceEmbeddingProviderOption,
-  WorkspaceEmbeddingRuntimeResponse,
   WorkspaceIndexerSearchResult,
-  WorkspaceIndexerSettings,
-  WorkspaceIndexerStatusResponse,
 } from "./ide/ideTypes";
 import {
   fileEntryFromPath,
   flattenOutlineSymbols,
-  formatBlameDateTime,
-  formatBlameStamp,
-  formatSize,
-  getFileIcon,
-  getLineAndColumn,
   getPrismLanguage,
-  getSeverityIcon,
-  getSymbolKindLabel,
-  ideMarkdownComponents,
-  isMarkdownExtension,
   scoreQuickOpenResult,
   splitPathForBreadcrumbs,
 } from "./ide/ideUtils";
-import {
-  computeRuntimeModelStatus,
-  resolveEmbeddingRuntimeSelection as resolveEmbeddingRuntimeSelectionModel,
-} from "./ide/indexerModel";
-import { LSPStatus } from "./ide/LSPStatus";
+import { IDEView } from "./ide/IDEView";
+import { useIDEAgents } from "./ide/useIDEAgents";
+import { useIDEIndexer } from "./ide/useIDEIndexer";
+import { useIDESettings } from "./ide/useIDESettings";
+import { useIDETopMenus } from "./ide/useIDETopMenus";
 
 const IDEChatPanel = lazy(() =>
-  import("./ide/IDEChatPanel").then((module) => ({ default: module.IDEChatPanel }))
+  import("./ide/IDEChatPanel").then((module) => ({
+    default: module.IDEChatPanel,
+  }))
 );
 
 function formatIdeScannedFiles(value?: number): string | null {
@@ -328,13 +138,6 @@ export function IDE() {
   const [quickOpenNotice, setQuickOpenNotice] = useState<string | null>(null);
   const [quickOpenSelectedIndex, setQuickOpenSelectedIndex] = useState(0);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [keymapOverrides, setKeymapOverrides] = useState<Record<string, string>>(() =>
-    loadKeymapOverrides()
-  );
-  const [recordingActionId, setRecordingActionId] = useState<IdeActionId | null>(null);
-  const isMacPlatform =
-    typeof navigator !== "undefined" &&
-    /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
   const [commandQuery, setCommandQuery] = useState("");
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
   const [outlineSymbols, setOutlineSymbols] = useState<IdeOutlineSymbol[]>([]);
@@ -344,35 +147,6 @@ export function IDE() {
   const [explorerScrollTop, setExplorerScrollTop] = useState(0);
   const [explorerViewportHeight, setExplorerViewportHeight] = useState(0);
   const [treeContextMenu, setTreeContextMenu] = useState<TreeContextMenuState | null>(null);
-  const [ideChatSelectedAgentId, setIdeChatSelectedAgentId] = useState<string>(() =>
-    readPersistedIdeChatAgentId()
-  );
-  const [ideAgentOptions, setIdeAgentOptions] = useState<IdeChatAgentOption[]>([]);
-  const [showIdeSettings, setShowIdeSettings] = useState(false);
-  const [ideSettingsSection, setIdeSettingsSection] = useState<IdeSettingsSectionId>("general");
-  const [ideSettingsSearch, setIdeSettingsSearch] = useState("");
-  const [idePreferences, setIdePreferences] = useState<IdePreferences>(() =>
-    readPersistedIdePreferences()
-  );
-  const [showIndexerSettings, setShowIndexerSettings] = useState(false);
-  const [indexStatus, setIndexStatus] = useState<WorkspaceIndexerStatusResponse | null>(null);
-  const [indexSettingsDraft, setIndexSettingsDraft] = useState<WorkspaceIndexerSettings | null>(
-    null
-  );
-  const [indexSettingsDirty, setIndexSettingsDirty] = useState(false);
-  const [indexStatusLoading, setIndexStatusLoading] = useState(false);
-  const [indexActionLoading, setIndexActionLoading] = useState(false);
-  const [indexSettingsError, setIndexSettingsError] = useState<string | null>(null);
-  const [indexSettingsMessage, setIndexSettingsMessage] = useState<string | null>(null);
-  const [embeddingProviders, setEmbeddingProviders] = useState<WorkspaceEmbeddingProviderOption[]>(
-    []
-  );
-  const [embeddingCatalogLoading, setEmbeddingCatalogLoading] = useState(false);
-  const [embeddingRuntime, setEmbeddingRuntime] =
-    useState<WorkspaceEmbeddingRuntimeResponse | null>(null);
-  const [embeddingRuntimeLoading, setEmbeddingRuntimeLoading] = useState(false);
-  const [embeddingRuntimeActionLoading, setEmbeddingRuntimeActionLoading] = useState(false);
-  const [embeddingModelCustom, setEmbeddingModelCustom] = useState(false);
   const [isIdeChatOpen, setIsIdeChatOpen] = useState<boolean>(() => readPersistedChatOpen());
   const [idePendingFileDiffs, setIdePendingFileDiffs] = useState<IdePendingFileDiff[]>([]);
   const [idePendingFileDiffController, setIdePendingFileDiffController] =
@@ -401,14 +175,86 @@ export function IDE() {
   const commandInputRef = useRef<HTMLInputElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const explorerScrollRef = useRef<HTMLDivElement | null>(null);
-  const lastIndexedWorkspaceAssignmentRef = useRef<string | null>(null);
   const pendingCursorPositionRef = useRef<{
     line: number;
     column: number;
   } | null>(null);
   const cursorPublishTimeoutRef = useRef<number | null>(null);
-  const settingsSearchRef = useRef<HTMLInputElement | null>(null);
   const effectiveWorkspacePath = rootInfo?.path || currentPath;
+
+  const {
+    keymapOverrides,
+    recordingActionId,
+    setRecordingActionId,
+    isMacPlatform,
+    showIdeSettings,
+    setShowIdeSettings,
+    ideSettingsSection,
+    setIdeSettingsSection,
+    ideSettingsSearch,
+    setIdeSettingsSearch,
+    idePreferences,
+    setIdePreferences,
+    settingsSearchRef,
+    openIdeSettings,
+    updateIdePreferences,
+    resetKeymapAction,
+    resetAllKeymap,
+    normalizedSettingsSearch,
+    matchesIdeSettingsSearch,
+    settingsSections,
+    visibleSettingsSectionIds,
+  } = useIDESettings();
+
+  const { ideChatSelectedAgentId, setIdeChatSelectedAgentId, ideAgentOptions } = useIDEAgents({
+    idePreferences,
+    updateIdePreferences,
+  });
+
+  const {
+    showIndexerSettings,
+    setShowIndexerSettings,
+    indexStatus,
+    setIndexSettingsDraft,
+    indexSettingsDirty,
+    setIndexSettingsDirty,
+    indexStatusLoading,
+    indexActionLoading,
+    indexSettingsError,
+    setIndexSettingsError,
+    indexSettingsMessage,
+    embeddingProviders,
+    embeddingCatalogLoading,
+    embeddingRuntime,
+    embeddingRuntimeLoading,
+    embeddingRuntimeActionLoading,
+    embeddingModelCustom,
+    setEmbeddingModelCustom,
+    fetchIndexStatus,
+    fetchEmbeddingCatalog,
+    fetchEmbeddingRuntimeStatus,
+    saveIndexSettings,
+    runWorkspaceReindex,
+    stopWorkspaceIndexing,
+    loadEmbeddingRuntime,
+    stopEmbeddingRuntime,
+    indexStatusLabel,
+    activeIndexSettings,
+    selectedEmbeddingProvider,
+    selectedEmbeddingModelOptions,
+    runtimeTargetProvider,
+    runtimeTargetModel,
+    canManageLocalRuntime,
+    canUnloadLocalRuntime,
+    selectedTransformersRuntimeEntry,
+    effectiveRuntimeNote,
+    runtimeModelStatus,
+  } = useIDEIndexer({
+    currentPath,
+    effectiveWorkspacePath,
+    showIdeSettings,
+    ideSettingsSection,
+  });
 
   const handleCursorPositionChange = useCallback(
     (position: { line: number; column: number } | null) => {
@@ -438,301 +284,6 @@ export function IDE() {
   );
 
   useEffect(() => {
-    let isCancelled = false;
-    const loadAgents = async () => {
-      try {
-        const response = await agentsApi.summaries();
-        if (!response.success || !response.data || isCancelled) return;
-        const options = (response.data || [])
-          .map((agent) => ({
-            id: typeof agent.id === "string" ? agent.id : "",
-            name: typeof agent.name === "string" ? agent.name : "Agent",
-            model: typeof agent.model === "string" ? agent.model : "",
-            provider: typeof agent.provider === "string" ? agent.provider : "",
-            provider_id: typeof agent.provider_id === "string" ? agent.provider_id : undefined,
-            fallback_provider_id:
-              typeof agent.fallback_provider_id === "string"
-                ? agent.fallback_provider_id
-                : undefined,
-            status: typeof agent.status === "string" ? agent.status : undefined,
-            reasoning_effort: agent.reasoning_effort ?? null,
-          }))
-          .filter((agent) => agent.id);
-        setIdeAgentOptions(options);
-      } catch {
-        void 0;
-      }
-    };
-    void loadAgents();
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
-
-  const fetchIndexStatus = useCallback(
-    async (workspacePath?: string, options?: { silent?: boolean }) => {
-      const targetPath = workspacePath || effectiveWorkspacePath;
-      const silent = options?.silent === true;
-      if (!silent) {
-        setIndexStatusLoading(true);
-      }
-      try {
-        const params = new URLSearchParams();
-        if (targetPath) params.set("workspacePath", targetPath);
-        const query = params.toString();
-        const response = await apiFetch(`/api/ide/index/status${query ? `?${query}` : ""}`);
-        const data: WorkspaceIndexerStatusResponse = await response.json();
-        if (data.success) {
-          setIndexStatus(data);
-          if (!indexSettingsDirty) {
-            setIndexSettingsDraft(data.settings);
-          }
-          if (!silent) {
-            setIndexSettingsError(null);
-          }
-        } else {
-          if (!silent) {
-            setIndexSettingsError(data.error || "Failed to load indexer status");
-          }
-        }
-      } catch (error) {
-        if (!silent && (error as Error)?.name !== "AbortError") {
-          setIndexSettingsError(String(error));
-        }
-      } finally {
-        if (!silent) {
-          setIndexStatusLoading(false);
-        }
-      }
-    },
-    [effectiveWorkspacePath, indexSettingsDirty]
-  );
-
-  const fetchEmbeddingCatalog = useCallback(async () => {
-    setEmbeddingCatalogLoading(true);
-    try {
-      const response = await apiFetch("/api/ide/index/embeddings");
-      const data: WorkspaceEmbeddingCatalogResponse = await response.json();
-      if (data.success) {
-        setEmbeddingProviders(Array.isArray(data.providers) ? data.providers : []);
-      } else {
-        setEmbeddingProviders([]);
-        setIndexSettingsError(data.error || "Failed to load embedding providers");
-      }
-    } catch (error) {
-      setEmbeddingProviders([]);
-      setIndexSettingsError(String(error));
-    } finally {
-      setEmbeddingCatalogLoading(false);
-    }
-  }, []);
-
-  const resolveEmbeddingRuntimeSelection = useCallback(() => {
-    const activeSettings =
-      indexSettingsDraft || indexStatus?.settings || DEFAULT_INDEXER_SETTINGS_DRAFT;
-    return resolveEmbeddingRuntimeSelectionModel(activeSettings, embeddingRuntime);
-  }, [embeddingRuntime, indexSettingsDraft, indexStatus?.settings]);
-
-  const resolveEmbeddingRuntimeSelectionRef = useRef(resolveEmbeddingRuntimeSelection);
-  resolveEmbeddingRuntimeSelectionRef.current = resolveEmbeddingRuntimeSelection;
-
-  const fetchEmbeddingRuntimeStatus = useCallback(async (options?: { silent?: boolean }) => {
-    const selection = resolveEmbeddingRuntimeSelectionRef.current();
-    const silent = options?.silent === true;
-    if (!silent) setEmbeddingRuntimeLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (selection.provider) params.set("provider", selection.provider);
-      if (selection.model) params.set("model", selection.model);
-      const query = params.toString();
-      const response = await apiFetch(
-        `/api/ide/index/embedding/runtime${query ? `?${query}` : ""}`
-      );
-      const data: WorkspaceEmbeddingRuntimeResponse = await response.json();
-      if (data.success) {
-        setEmbeddingRuntime(data);
-        if (!silent) {
-          setIndexSettingsError(null);
-        }
-      } else if (!silent) {
-        setIndexSettingsError(data.error || "Failed to load embedding runtime status");
-      }
-    } catch (error) {
-      if (!silent) {
-        setIndexSettingsError(String(error));
-      }
-    } finally {
-      if (!silent) setEmbeddingRuntimeLoading(false);
-    }
-  }, []);
-
-  const assignWorkspaceToIndexer = useCallback(
-    async (workspacePath: string) => {
-      try {
-        const response = await apiFetch("/api/ide/index/workspace", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workspacePath }),
-        });
-        const data: WorkspaceIndexerStatusResponse = await response.json();
-        if (data.success) {
-          setIndexStatus(data);
-          if (!indexSettingsDirty) {
-            setIndexSettingsDraft(data.settings);
-          }
-        } else {
-          setIndexSettingsError(data.error || "Failed to start workspace indexing");
-        }
-      } catch (error) {
-        setIndexSettingsError(String(error));
-      }
-    },
-    [indexSettingsDirty]
-  );
-
-  const saveIndexSettings = useCallback(async () => {
-    if (!indexSettingsDraft) return;
-    setIndexActionLoading(true);
-    setIndexSettingsError(null);
-    setIndexSettingsMessage(null);
-    try {
-      const response = await apiFetch("/api/ide/index/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(indexSettingsDraft),
-      });
-      const data: WorkspaceIndexerStatusResponse = await response.json();
-      if (data.success) {
-        setIndexStatus(data);
-        setIndexSettingsDraft(data.settings);
-        setIndexSettingsDirty(false);
-        setIndexSettingsMessage("Indexer settings saved.");
-        void fetchEmbeddingCatalog();
-      } else {
-        setIndexSettingsError(data.error || "Failed to save indexer settings");
-      }
-    } catch (error) {
-      setIndexSettingsError(String(error));
-    } finally {
-      setIndexActionLoading(false);
-    }
-  }, [fetchEmbeddingCatalog, indexSettingsDraft]);
-
-  const runWorkspaceReindex = useCallback(async () => {
-    setIndexActionLoading(true);
-    setIndexSettingsError(null);
-    setIndexSettingsMessage(null);
-    try {
-      const response = await apiFetch("/api/ide/index/reindex", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspacePath: effectiveWorkspacePath }),
-      });
-      const data: WorkspaceIndexerStatusResponse = await response.json();
-      if (data.success) {
-        setIndexStatus(data);
-        setIndexSettingsMessage("Workspace reindex started.");
-      } else {
-        setIndexSettingsError(data.error || "Failed to reindex workspace");
-      }
-    } catch (error) {
-      setIndexSettingsError(String(error));
-    } finally {
-      setIndexActionLoading(false);
-    }
-  }, [effectiveWorkspacePath]);
-
-  const stopWorkspaceIndexing = useCallback(async () => {
-    setIndexActionLoading(true);
-    setIndexSettingsError(null);
-    setIndexSettingsMessage(null);
-    try {
-      const response = await apiFetch("/api/ide/index/stop", {
-        method: "POST",
-      });
-      const data: WorkspaceIndexerStatusResponse = await response.json();
-      if (data.success) {
-        setIndexStatus(data);
-        setIndexSettingsMessage("Workspace indexing stopped.");
-      } else {
-        setIndexSettingsError(data.error || "Failed to stop workspace indexer");
-      }
-    } catch (error) {
-      setIndexSettingsError(String(error));
-    } finally {
-      setIndexActionLoading(false);
-    }
-  }, []);
-
-  const loadEmbeddingRuntime = useCallback(async () => {
-    const selection = resolveEmbeddingRuntimeSelection();
-    setEmbeddingRuntimeActionLoading(true);
-    setIndexSettingsError(null);
-    setIndexSettingsMessage(null);
-    try {
-      const response = await apiFetch("/api/ide/index/embedding/load", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(selection),
-      });
-      const data = (await response.json()) as {
-        success: boolean;
-        message?: string;
-        status?: WorkspaceIndexerStatusResponse;
-        runtime?: WorkspaceEmbeddingRuntimeResponse;
-        error?: string;
-      };
-      if (data.success) {
-        if (data.status) setIndexStatus(data.status);
-        if (data.runtime) setEmbeddingRuntime(data.runtime);
-        setIndexSettingsMessage(data.message || "Local embedding runtime loaded.");
-      } else {
-        setIndexSettingsError(data.error || data.message || "Failed to load embedding runtime");
-      }
-    } catch (error) {
-      setIndexSettingsError(String(error));
-    } finally {
-      setEmbeddingRuntimeActionLoading(false);
-    }
-  }, [resolveEmbeddingRuntimeSelection]);
-
-  const stopEmbeddingRuntime = useCallback(async () => {
-    const selection = resolveEmbeddingRuntimeSelection();
-    setEmbeddingRuntimeActionLoading(true);
-    setIndexSettingsError(null);
-    setIndexSettingsMessage(null);
-    try {
-      const response = await apiFetch("/api/ide/index/embedding/stop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(selection),
-      });
-      const data = (await response.json()) as {
-        success: boolean;
-        message?: string;
-        status?: WorkspaceIndexerStatusResponse;
-        runtime?: WorkspaceEmbeddingRuntimeResponse;
-        error?: string;
-      };
-      if (data.success) {
-        if (data.status) {
-          setIndexStatus(data.status);
-        }
-        if (data.runtime) {
-          setEmbeddingRuntime(data.runtime);
-        }
-        setIndexSettingsMessage(data.message || "Local embedding runtime stopped.");
-      } else {
-        setIndexSettingsError(data.error || data.message || "Failed to stop embedding runtime");
-      }
-    } catch (error) {
-      setIndexSettingsError(String(error));
-    } finally {
-      setEmbeddingRuntimeActionLoading(false);
-    }
-  }, [resolveEmbeddingRuntimeSelection]);
-
-  useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
     const fetchRoot = async (): Promise<void> => {
@@ -760,73 +311,6 @@ export function IDE() {
       controller.abort();
     };
   }, [currentPath, refreshKey]);
-
-  const autoAssignIndexerWorkspace = Boolean(
-    (indexSettingsDraft || indexStatus?.settings || DEFAULT_INDEXER_SETTINGS_DRAFT).enabled &&
-      (indexSettingsDraft || indexStatus?.settings || DEFAULT_INDEXER_SETTINGS_DRAFT)
-        .autoReindexOnWorkspaceSet
-  );
-
-  useEffect(() => {
-    if (!effectiveWorkspacePath) return;
-    if (!autoAssignIndexerWorkspace) return;
-    if (lastIndexedWorkspaceAssignmentRef.current === effectiveWorkspacePath) return;
-    lastIndexedWorkspaceAssignmentRef.current = effectiveWorkspacePath;
-    setIndexSettingsError(null);
-    void assignWorkspaceToIndexer(effectiveWorkspacePath);
-  }, [assignWorkspaceToIndexer, autoAssignIndexerWorkspace, effectiveWorkspacePath]);
-
-  useEffect(() => {
-    void fetchIndexStatus(currentPath);
-  }, [currentPath, fetchIndexStatus]);
-
-  useEffect(() => {
-    const indexingSettingsVisible =
-      showIndexerSettings || (showIdeSettings && ideSettingsSection === "indexing");
-    if (!indexingSettingsVisible && !indexStatus?.isIndexing) return;
-    const interval = window.setInterval(() => {
-      void fetchIndexStatus(effectiveWorkspacePath, { silent: true });
-      if (indexingSettingsVisible) {
-        void fetchEmbeddingRuntimeStatus({ silent: true });
-      }
-    }, 1200);
-    return () => window.clearInterval(interval);
-  }, [
-    effectiveWorkspacePath,
-    fetchEmbeddingRuntimeStatus,
-    fetchIndexStatus,
-    ideSettingsSection,
-    indexStatus?.isIndexing,
-    showIdeSettings,
-    showIndexerSettings,
-  ]);
-
-  useEffect(() => {
-    const indexingSettingsVisible =
-      showIndexerSettings || (showIdeSettings && ideSettingsSection === "indexing");
-    if (!indexingSettingsVisible) return;
-    void fetchIndexStatus(effectiveWorkspacePath);
-  }, [
-    effectiveWorkspacePath,
-    fetchIndexStatus,
-    ideSettingsSection,
-    showIdeSettings,
-    showIndexerSettings,
-  ]);
-
-  useEffect(() => {
-    const indexingSettingsVisible =
-      showIndexerSettings || (showIdeSettings && ideSettingsSection === "indexing");
-    if (!indexingSettingsVisible) return;
-    void fetchEmbeddingCatalog();
-  }, [fetchEmbeddingCatalog, ideSettingsSection, showIdeSettings, showIndexerSettings]);
-
-  useEffect(() => {
-    const indexingSettingsVisible =
-      showIndexerSettings || (showIdeSettings && ideSettingsSection === "indexing");
-    if (!indexingSettingsVisible) return;
-    void fetchEmbeddingRuntimeStatus();
-  }, [fetchEmbeddingRuntimeStatus, ideSettingsSection, showIdeSettings, showIndexerSettings]);
 
   useEffect(() => {
     const updateViewport = () => {
@@ -1361,55 +845,6 @@ export function IDE() {
     setShowCommandPalette(false);
   }, []);
 
-  const openIdeSettings = useCallback((section: IdeSettingsSectionId = "general") => {
-    setIdeSettingsSection(section);
-    setShowIdeSettings(true);
-    setIdeSettingsSearch("");
-    window.requestAnimationFrame(() => {
-      settingsSearchRef.current?.focus();
-      settingsSearchRef.current?.select();
-    });
-  }, []);
-
-  const updateIdePreferences = useCallback((patch: Partial<IdePreferences>) => {
-    setIdePreferences((previous) => {
-      const merged: IdePreferences = {
-        ...previous,
-        ...patch,
-      };
-      merged.editorFontSizePx = Math.max(11, Math.min(22, Math.round(merged.editorFontSizePx)));
-      merged.editorLineHeightPx = Math.max(16, Math.min(38, Math.round(merged.editorLineHeightPx)));
-      merged.completionDebounceMs = Math.max(
-        30,
-        Math.min(800, Math.round(merged.completionDebounceMs))
-      );
-      merged.ghostDebounceMs = Math.max(60, Math.min(1400, Math.round(merged.ghostDebounceMs)));
-      merged.terminalPanelHeight = clampTerminalHeight(merged.terminalPanelHeight);
-      return merged;
-    });
-  }, []);
-
-  useEffect(() => {
-    if (ideAgentOptions.length === 0) return;
-    if (!ideChatSelectedAgentId) return;
-    if (ideAgentOptions.some((agent) => agent.id === ideChatSelectedAgentId)) return;
-    setIdeChatSelectedAgentId("");
-  }, [ideAgentOptions, ideChatSelectedAgentId]);
-
-  useEffect(() => {
-    if (ideAgentOptions.length === 0) return;
-    if (idePreferences.useChatAgentForCompletions) return;
-    const selected = idePreferences.completionAgentId;
-    if (!selected) return;
-    if (ideAgentOptions.some((agent) => agent.id === selected)) return;
-    updateIdePreferences({ completionAgentId: "" });
-  }, [
-    ideAgentOptions,
-    idePreferences.completionAgentId,
-    idePreferences.useChatAgentForCompletions,
-    updateIdePreferences,
-  ]);
-
   const toggleTerminalPanel = useCallback(() => {
     setIsTerminalPanelOpen((previous) => !previous);
   }, []);
@@ -1864,46 +1299,6 @@ export function IDE() {
     toggleTerminalPanel,
   ]);
 
-  const applyKeymapOverride = useCallback((id: IdeActionId, binding: string) => {
-    setKeymapOverrides((previous) => {
-      const next = { ...previous, [id]: binding };
-      persistKeymapOverrides(next);
-      return next;
-    });
-  }, []);
-
-  const resetKeymapAction = useCallback((id: IdeActionId) => {
-    setKeymapOverrides((previous) => {
-      if (!(id in previous)) return previous;
-      const next = { ...previous };
-      delete next[id];
-      persistKeymapOverrides(next);
-      return next;
-    });
-  }, []);
-
-  const resetAllKeymap = useCallback(() => {
-    setKeymapOverrides({});
-    persistKeymapOverrides({});
-  }, []);
-
-  useEffect(() => {
-    if (!recordingActionId) return;
-    const capture = (event: KeyboardEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.key === "Escape") {
-        setRecordingActionId(null);
-        return;
-      }
-      if (["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
-      applyKeymapOverride(recordingActionId, bindingFromEvent(event));
-      setRecordingActionId(null);
-    };
-    window.addEventListener("keydown", capture, true);
-    return () => window.removeEventListener("keydown", capture, true);
-  }, [recordingActionId, applyKeymapOverride]);
-
   const handleSidebarResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const container = workspacePaneRef.current;
@@ -2015,14 +1410,6 @@ export function IDE() {
       setGitHistoryStatus("idle");
     }
   }, [selectedFile?.path]);
-
-  useEffect(() => {
-    persistIdeChatAgentId(ideChatSelectedAgentId);
-  }, [ideChatSelectedAgentId]);
-
-  useEffect(() => {
-    persistIdePreferences(idePreferences);
-  }, [idePreferences]);
 
   useEffect(() => {
     persistOpenTabs(openTabs, activeTabPath);
@@ -2219,1906 +1606,237 @@ export function IDE() {
             : treeContextMenu.y,
       }
     : null;
-  const indexStatusLabel = useMemo(() => {
-    if (!indexStatus) return null;
-    if (indexStatus.isIndexing) {
-      return `Indexing ${indexStatus.filesIndexed.toLocaleString()} files`;
-    }
-    if (indexStatus.state === "ready") {
-      return `Indexed ${indexStatus.filesIndexed.toLocaleString()} files`;
-    }
-    if (indexStatus.state === "error") {
-      return "Index error";
-    }
-    if (!indexStatus.settings.enabled) {
-      return "Index disabled";
-    }
-    if (indexStatus.state === "stopped") {
-      return "Index stopped";
-    }
-    return "Index idle";
-  }, [indexStatus]);
-  const activeIndexSettings =
-    indexSettingsDraft || indexStatus?.settings || DEFAULT_INDEXER_SETTINGS_DRAFT;
-  const selectedEmbeddingProvider = useMemo(
-    () =>
-      embeddingProviders.find((option) => option.id === activeIndexSettings.embeddingProvider) ||
-      null,
-    [activeIndexSettings.embeddingProvider, embeddingProviders]
-  );
-  const selectedEmbeddingModelOptions = useMemo(() => {
-    if (!selectedEmbeddingProvider) return [];
-    return selectedEmbeddingProvider.models || [];
-  }, [selectedEmbeddingProvider]);
-  const runtimeTargetProvider = useMemo(() => {
-    if (activeIndexSettings.embeddingProvider !== "auto") {
-      return activeIndexSettings.embeddingProvider;
-    }
-    if (
-      embeddingRuntime?.vectorProvider === "transformers_js" ||
-      embeddingRuntime?.vectorProvider === "ollama"
-    ) {
-      return embeddingRuntime.vectorProvider;
-    }
-    return "transformers_js";
-  }, [activeIndexSettings.embeddingProvider, embeddingRuntime?.vectorProvider]);
-  const runtimeTargetModel = useMemo(() => {
-    if (activeIndexSettings.embeddingModel.trim()) {
-      return activeIndexSettings.embeddingModel.trim();
-    }
-    if (runtimeTargetProvider === "transformers_js") {
-      return (
-        embeddingRuntime?.transformers?.selectedModel ||
-        selectedEmbeddingProvider?.defaultModel ||
-        ""
-      );
-    }
-    return embeddingRuntime?.vectorModel || selectedEmbeddingProvider?.defaultModel || "";
-  }, [
-    activeIndexSettings.embeddingModel,
-    embeddingRuntime?.transformers?.selectedModel,
-    embeddingRuntime?.vectorModel,
-    runtimeTargetProvider,
-    selectedEmbeddingProvider?.defaultModel,
-  ]);
-  const canManageLocalRuntime =
-    runtimeTargetProvider === "transformers_js" || runtimeTargetProvider === "ollama";
-  const canUnloadLocalRuntime =
-    canManageLocalRuntime &&
-    (runtimeTargetProvider !== "transformers_js"
-      ? true
-      : embeddingRuntime?.transformers?.selectedState === "ready" ||
-        embeddingRuntime?.transformers?.selectedState === "loading" ||
-        (embeddingRuntime?.transformers?.loadedModels?.length || 0) > 0);
-  const selectedTransformersRuntimeError = useMemo(() => {
-    if (!embeddingRuntime?.transformers) return null;
-    const selectedModel = embeddingRuntime.transformers.selectedModel;
-    const selectedEntry = embeddingRuntime.transformers.loadedModels.find(
-      (entry) => entry.model === selectedModel
-    );
-    return selectedEntry?.lastError || null;
-  }, [embeddingRuntime?.transformers]);
-  const selectedTransformersRuntimeEntry = useMemo(() => {
-    if (!embeddingRuntime?.transformers) return null;
-    const selectedModel = embeddingRuntime.transformers.selectedModel;
-    return (
-      embeddingRuntime.transformers.loadedModels.find((entry) => entry.model === selectedModel) ||
-      null
-    );
-  }, [embeddingRuntime?.transformers]);
-  const effectiveRuntimeNote = useMemo(() => {
-    if (runtimeTargetProvider === "transformers_js" && selectedTransformersRuntimeError) {
-      return selectedTransformersRuntimeError;
-    }
-    if (
-      runtimeTargetProvider === "transformers_js" &&
-      embeddingRuntime?.transformers?.selectedState === "ready"
-    ) {
-      return null;
-    }
-    if (runtimeTargetProvider === "ollama" && embeddingRuntime?.vectorProvider === "ollama") {
-      return null;
-    }
-    return embeddingRuntime?.vectorFallbackReason || null;
-  }, [
-    embeddingRuntime?.transformers?.selectedState,
-    embeddingRuntime?.vectorFallbackReason,
-    embeddingRuntime?.vectorProvider,
-    runtimeTargetProvider,
-    selectedTransformersRuntimeError,
-  ]);
-
-  const runtimeModelStatus = useMemo(
-    () =>
-      computeRuntimeModelStatus(
-        runtimeTargetProvider,
-        embeddingRuntime,
-        selectedTransformersRuntimeEntry
-      ),
-    [embeddingRuntime, runtimeTargetProvider, selectedTransformersRuntimeEntry]
-  );
-
-  useEffect(() => {
-    const indexingSettingsVisible =
-      showIndexerSettings || (showIdeSettings && ideSettingsSection === "indexing");
-    if (!indexingSettingsVisible) return;
-    const timeout = window.setTimeout(() => {
-      void fetchEmbeddingRuntimeStatus({ silent: true });
-    }, 180);
-    return () => window.clearTimeout(timeout);
-  }, [
-    activeIndexSettings.embeddingModel,
-    activeIndexSettings.embeddingProvider,
-    fetchEmbeddingRuntimeStatus,
-    ideSettingsSection,
-    showIdeSettings,
-    showIndexerSettings,
-  ]);
-  const normalizedSettingsSearch = ideSettingsSearch.trim().toLowerCase();
-  const matchesIdeSettingsSearch = (...parts: string[]) => {
-    if (!normalizedSettingsSearch) return true;
-    return parts.join(" ").toLowerCase().includes(normalizedSettingsSearch);
-  };
-  const settingsSections: Array<{
-    id: IdeSettingsSectionId;
-    label: string;
-    description: string;
-  }> = [
-    {
-      id: "general",
-      label: "General",
-      description: "Workspace and layout defaults",
-    },
-    {
-      id: "editor",
-      label: "Editor",
-      description: "Font, line-height, minimap",
-    },
-    {
-      id: "indexing",
-      label: "Indexing",
-      description: "Workspace index and semantic search",
-    },
-    {
-      id: "shortcuts",
-      label: "Shortcuts",
-      description: "Customize keyboard shortcuts",
-    },
-    {
-      id: "terminal",
-      label: "Terminal",
-      description: "Integrated terminal behavior",
-    },
-  ];
-  const visibleSettingsSectionIds = useMemo(() => {
-    if (!normalizedSettingsSearch) return settingsSections.map((section) => section.id);
-    return settingsSections
-      .filter((section) =>
-        [section.label, section.description]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalizedSettingsSearch)
-      )
-      .map((section) => section.id);
-  }, [normalizedSettingsSearch, settingsSections]);
-  useEffect(() => {
-    if (!showIdeSettings) return;
-    if (visibleSettingsSectionIds.length === 0) return;
-    if (!visibleSettingsSectionIds.includes(ideSettingsSection)) {
-      setIdeSettingsSection(visibleSettingsSectionIds[0] || "general");
-    }
-  }, [ideSettingsSection, showIdeSettings, visibleSettingsSectionIds]);
-
-  const topMenus = useMemo<
-    Array<{
-      id: IdeTopMenuId;
-      label: string;
-      widthClassName?: string;
-      items: Array<{
-        id: string;
-        label: string;
-        shortcut?: string;
-        dividerAbove?: boolean;
-        run: () => void;
-      }>;
-    }>
-  >(
-    () => [
-      {
-        id: "file",
-        label: "File",
-        widthClassName: "w-72",
-        items: [
-          {
-            id: "save",
-            label: "Save",
-            shortcut: "Ctrl/Cmd+S",
-            run: () => setSaveRequestToken((previous) => previous + 1),
-          },
-          {
-            id: "new-file",
-            label: "New File",
-            shortcut: "Ctrl/Cmd+N",
-            dividerAbove: true,
-            run: () => {
-              setCreateParentPath(rootInfo?.path || currentPath);
-              setCreateType("file");
-            },
-          },
-          {
-            id: "new-folder",
-            label: "New Folder",
-            shortcut: "Ctrl/Cmd+Shift+N",
-            run: () => {
-              setCreateParentPath(rootInfo?.path || currentPath);
-              setCreateType("directory");
-            },
-          },
-          {
-            id: "open-workspace",
-            label: "Open Workspace Folder",
-            shortcut: "Ctrl/Cmd+O",
-            run: () => {
-              void handlePromptOpenWorkspace();
-            },
-          },
-          {
-            id: "refresh-workspace",
-            label: "Refresh Workspace",
-            dividerAbove: true,
-            run: () => handleRefresh(),
-          },
-          {
-            id: "ide-settings",
-            label: "IDE Settings",
-            shortcut: "Ctrl/Cmd+,",
-            run: () => openIdeSettings("general"),
-          },
-        ],
-      },
-      {
-        id: "edit",
-        label: "Edit",
-        widthClassName: "w-72",
-        items: [
-          {
-            id: "command-palette",
-            label: "Command Palette",
-            shortcut: "Ctrl/Cmd+Shift+P",
-            run: () => openCommandPalette(),
-          },
-          {
-            id: "quick-open",
-            label: "Quick Open",
-            shortcut: "Ctrl/Cmd+P",
-            run: () => openQuickOpenPalette(),
-          },
-          {
-            id: "global-search",
-            label: "Search in Workspace",
-            shortcut: "Ctrl/Cmd+Shift+F",
-            dividerAbove: true,
-            run: () => openGlobalSearchPanel(),
-          },
-        ],
-      },
-      {
-        id: "view",
-        label: "View",
-        widthClassName: "w-72",
-        items: [
-          {
-            id: "show-explorer",
-            label: "Show Explorer",
-            shortcut: "Ctrl/Cmd+Shift+E",
-            run: () => setSidebarMode("explorer"),
-          },
-          {
-            id: "show-search",
-            label: "Show Search",
-            shortcut: "Ctrl/Cmd+Shift+F",
-            run: () => openGlobalSearchPanel(),
-          },
-          {
-            id: "show-outline",
-            label: "Show Outline",
-            shortcut: "Ctrl/Cmd+Shift+O",
-            run: () => {
-              setSidebarMode("outline");
-              window.requestAnimationFrame(() => {
-                outlineInputRef.current?.focus();
-                outlineInputRef.current?.select();
-              });
-            },
-          },
-          {
-            id: "toggle-chat",
-            label: isIdeChatOpen ? "Hide IDE Chat" : "Show IDE Chat",
-            shortcut: "Ctrl/Cmd+\\",
-            dividerAbove: true,
-            run: () => setIsIdeChatOpen((previous) => !previous),
-          },
-        ],
-      },
-      {
-        id: "terminal",
-        label: "Terminal",
-        widthClassName: "w-72",
-        items: [
-          {
-            id: "toggle-terminal",
-            label: isTerminalPanelOpen ? "Hide Terminal Panel" : "Show Terminal Panel",
-            shortcut: "Ctrl/Cmd+`",
-            run: () => toggleTerminalPanel(),
-          },
-          {
-            id: "new-terminal",
-            label: "New Terminal",
-            shortcut: "Ctrl/Cmd+Shift+`",
-            run: () => openNewTerminal(),
-          },
-        ],
-      },
-      {
-        id: "go",
-        label: "Go",
-        widthClassName: "w-72",
-        items: [
-          {
-            id: "next-tab",
-            label: "Next Tab",
-            shortcut: "Ctrl/Cmd+Tab",
-            run: () => handleCycleTabs(1),
-          },
-          {
-            id: "previous-tab",
-            label: "Previous Tab",
-            shortcut: "Ctrl/Cmd+Shift+Tab",
-            run: () => handleCycleTabs(-1),
-          },
-          {
-            id: "go-home",
-            label: "Go Home Workspace",
-            dividerAbove: true,
-            run: () => handleGoHome(),
-          },
-        ],
-      },
-    ],
-    [
-      currentPath,
-      handleCycleTabs,
-      handleGoHome,
-      handlePromptOpenWorkspace,
-      handleRefresh,
-      isIdeChatOpen,
-      isTerminalPanelOpen,
-      openCommandPalette,
-      openGlobalSearchPanel,
-      openIdeSettings,
-      openNewTerminal,
-      openQuickOpenPalette,
-      rootInfo?.path,
-      toggleTerminalPanel,
-    ]
-  );
+  const topMenus = useIDETopMenus({
+    currentPath,
+    workspacePath: rootInfo?.path,
+    isIdeChatOpen,
+    isTerminalPanelOpen,
+    setSaveRequestToken,
+    setCreateParentPath,
+    setCreateType,
+    handlePromptOpenWorkspace,
+    handleRefresh,
+    openIdeSettings,
+    openCommandPalette,
+    openQuickOpenPalette,
+    openGlobalSearchPanel,
+    setSidebarMode,
+    outlineInputRef,
+    setIsIdeChatOpen,
+    toggleTerminalPanel,
+    openNewTerminal,
+    handleCycleTabs,
+    handleGoHome,
+  });
 
   return (
-    <div className="h-screen max-md:h-[calc(100vh-3.5rem)] flex min-w-0 flex-col overflow-hidden bg-[#050508]">
-      <div
-        ref={menuRef}
-        className="h-8 px-2 max-md:pr-14 border-b border-white/10 bg-white/[0.02] flex min-w-0 items-center justify-between text-xs"
-      >
-        <div className="hidden items-center gap-1 relative md:flex">
-          {topMenus.map((menu) => (
-            <div key={`top-menu:${menu.id}`} className="relative">
-              <button
-                type="button"
-                onClick={() => setOpenMenu((previous) => (previous === menu.id ? null : menu.id))}
-                className={cn(
-                  "px-2 py-1 rounded text-gray-300 hover:bg-white/5",
-                  openMenu === menu.id && "bg-white/10"
-                )}
-              >
-                {menu.label}
-              </button>
-              {openMenu === menu.id && (
-                <div
-                  className={cn(
-                    "absolute top-full left-0 mt-1 rounded-md border border-white/10 bg-[#0a0a10] shadow-xl z-40 overflow-hidden",
-                    menu.widthClassName || "w-72"
-                  )}
-                >
-                  {menu.items.map((item) => (
-                    <div key={`top-menu-item:${menu.id}:${item.id}`}>
-                      {item.dividerAbove && <div className="h-px bg-white/10" />}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          item.run();
-                          setOpenMenu(null);
-                        }}
-                        className="w-full text-left px-3 py-2 text-gray-200 hover:bg-white/5 text-sm flex items-center justify-between gap-3"
-                      >
-                        <span>{item.label}</span>
-                        {item.shortcut ? (
-                          <span className="text-xs text-gray-500">{item.shortcut}</span>
-                        ) : (
-                          <span />
-                        )}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="ml-auto flex min-w-0 max-w-full items-center gap-1 md:gap-2 md:max-w-[70vw]">
-          <div
-            className="min-w-0 flex-1 truncate text-gray-500"
-            title={rootInfo?.path || currentPath}
-          >
-            {(rootInfo?.path || currentPath)
-              .replace(/^\/Users\/[^/]+/, "~")
-              .replace(/^C:\\Users\\[^\\]+/, "~")}
-          </div>
-          <button
-            type="button"
-            onClick={() => toggleTerminalPanel()}
-            className={cn(
-              "px-2 py-1 rounded text-xs border transition-colors flex items-center justify-center gap-1 max-md:h-7 max-md:w-7 max-md:px-0",
-              isTerminalPanelOpen
-                ? "border-indigo-500/40 bg-indigo-500/20 text-indigo-200"
-                : "border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/5"
-            )}
-            title={isTerminalPanelOpen ? "Hide terminal panel" : "Show terminal panel"}
-          >
-            <TerminalSquare className="w-3.5 h-3.5" />
-            <span className="max-md:hidden">Terminal</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsIdeChatOpen((previous) => !previous)}
-            className={cn(
-              "px-2 py-1 rounded text-xs border transition-colors flex items-center justify-center gap-1 max-md:h-7 max-md:w-7 max-md:px-0",
-              isIdeChatOpen
-                ? "border-indigo-500/40 bg-indigo-500/20 text-indigo-200"
-                : "border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/5"
-            )}
-            title={isIdeChatOpen ? "Hide IDE chat panel" : "Show IDE chat panel"}
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span className="max-md:hidden">Chat</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => openIdeSettings("general")}
-            className="px-2 py-1 rounded text-xs border border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-colors flex items-center justify-center gap-1 max-md:h-7 max-md:w-7 max-md:px-0"
-            title="Open IDE settings"
-          >
-            <Settings2 className="w-3.5 h-3.5" />
-            <span className="max-md:hidden">Settings</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="flex-1 flex min-w-0 overflow-hidden" ref={workspacePaneRef}>
-        <div
-          className="hidden border-r border-white/10 flex-col overflow-hidden bg-white/[0.01] relative md:flex"
-          style={{ width: `${sidebarWidth}px` }}
-        >
-          <div className="px-3 py-2 border-b border-white/10 bg-white/5 text-xs uppercase tracking-wide text-gray-500">
-            {sidebarMode === "search"
-              ? "Search"
-              : sidebarMode === "outline"
-                ? "Outline"
-                : "Explorer"}
-          </div>
-
-          {sidebarMode === "explorer" ? (
-            <>
-              <div className="px-3 py-2 border-b border-white/10 bg-white/5">
-                <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm" onClick={handleGoHome} className="p-1 h-6 w-6">
-                    <Home className="w-3.5 h-3.5" />
-                  </Button>
-                  {rootInfo?.parent && (
-                    <Button variant="ghost" size="sm" onClick={handleGoUp} className="p-1">
-                      <ChevronRight className="w-4 h-4 rotate-180" />
-                    </Button>
-                  )}
-                  <span className="text-xs text-gray-400 truncate flex-1" title={rootInfo?.path}>
-                    {rootInfo?.path
-                      ?.replace(/^\/Users\/[^/]+/, "~")
-                      .replace(/^C:\\Users\\[^\\]+/, "~") || currentPath}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setCreateParentPath(rootInfo?.path || currentPath);
-                      setCreateType("file");
-                    }}
-                    className="p-1"
-                    title="New File"
-                  >
-                    <FilePlus className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setCreateParentPath(rootInfo?.path || currentPath);
-                      setCreateType("directory");
-                    }}
-                    className="p-1"
-                    title="New Folder"
-                  >
-                    <FolderPlus className="w-4 h-4" />
-                  </Button>
-                </div>
-                <div className="mt-2 flex items-center gap-1">
-                  <div className="flex items-center flex-1 px-2 py-1 rounded-md border border-white/10 bg-black/20">
-                    <Search className="w-3.5 h-3.5 text-gray-500 mr-1.5" />
-                    <input
-                      ref={treeFilterInputRef}
-                      type="text"
-                      value={treeFilterDraft}
-                      onChange={(event) => updateTreeFilter(event.target.value)}
-                      placeholder="Filter files"
-                      className="w-full bg-transparent text-xs text-gray-200 placeholder-gray-600 !outline-none"
-                    />
-                    {isTreeFilterPending && (
-                      <Loader2 className="h-3 w-3 animate-spin text-gray-500" />
-                    )}
-                    {treeFilterDraft.trim() && (
-                      <button
-                        type="button"
-                        onClick={() => updateTreeFilter("")}
-                        className="text-gray-500 hover:text-gray-300"
-                        title="Clear filter"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleExpandTopLevel}
-                    className="p-1 h-7 w-7"
-                    title="Expand top-level folders"
-                  >
-                    <FolderOpen className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCollapseAll}
-                    className="p-1 h-7 w-7"
-                    title="Collapse all folders"
-                  >
-                    <Folder className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              </div>
-
-              <div
-                ref={explorerScrollRef}
-                className="flex-1 overflow-y-auto py-2"
-                key={refreshKey}
-                onScroll={(event) => {
-                  const element = event.currentTarget;
-                  setExplorerScrollTop(element.scrollTop);
-                  setExplorerViewportHeight(element.clientHeight);
-                }}
-              >
-                <FileTree
-                  path={rootInfo?.path || currentPath}
-                  selectedPath={selectedFile?.path || null}
-                  onSelectFile={handleSelectFile}
-                  onContextMenu={handleTreeContextMenu}
-                  expandedDirs={expandedDirs}
-                  onToggleDir={handleToggleDir}
-                  filterQuery={deferredTreeFilter}
-                  refreshToken={refreshKey}
-                  rootScrollTop={explorerScrollTop}
-                  rootViewportHeight={explorerViewportHeight}
-                />
-              </div>
-            </>
-          ) : sidebarMode === "outline" ? (
-            <div className="flex-1 flex flex-col overflow-hidden bg-[#0a0a10]">
-              <div className="p-3 border-b border-white/10 space-y-2">
-                <input
-                  ref={outlineInputRef}
-                  type="text"
-                  value={outlineFilter}
-                  onChange={(event) => setOutlineFilter(event.target.value)}
-                  placeholder="Filter symbols"
-                  className="w-full px-2.5 py-1.5 rounded border border-white/10 bg-black/40 text-sm text-gray-200 !outline-none focus:border-indigo-500/40"
-                />
-                <div className="text-[11px] text-gray-500 flex items-center justify-between">
-                  <span className="inline-flex items-center gap-1">
-                    <ListTree className="w-3 h-3" />
-                    {selectedFile?.name || "No file selected"}
-                  </span>
-                  <span>{flattenedOutlineRows.length} symbols</span>
-                </div>
-              </div>
-
-              {outlineError && (
-                <div className="px-3 py-2 border-b border-red-500/20 bg-red-500/10 text-xs text-red-300">
-                  {outlineError}
-                </div>
-              )}
-
-              <div className="flex-1 overflow-y-auto py-2">
-                {outlineLoading ? (
-                  <div className="text-center py-6 text-gray-500">
-                    <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" />
-                    Loading outline...
-                  </div>
-                ) : !selectedFile ? (
-                  <div className="px-3 py-6 text-sm text-gray-500">
-                    Open a file to view symbols.
-                  </div>
-                ) : filteredOutlineRows.length > 0 ? (
-                  filteredOutlineRows.map((symbol) => (
-                    <button
-                      key={symbol.key}
-                      type="button"
-                      onClick={() => openFileAtPath(selectedFile.path, symbol.line)}
-                      className="w-full text-left px-2 py-1.5 hover:bg-white/5 transition-colors"
-                      style={{ paddingLeft: `${symbol.depth * 14 + 8}px` }}
-                      title={`Line ${symbol.line}${symbol.detail ? ` · ${symbol.detail}` : ""}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded border border-white/10 text-gray-500">
-                          {getSymbolKindLabel(symbol.kind)}
-                        </span>
-                        <span className="text-xs text-gray-200 truncate">{symbol.name}</span>
-                      </div>
-                      <div className="text-[10px] text-gray-500 truncate">
-                        Ln {symbol.line}
-                        {symbol.detail ? ` · ${symbol.detail}` : ""}
-                      </div>
-                    </button>
-                  ))
-                ) : (
-                  <div className="px-3 py-6 text-sm text-gray-500">
-                    {outlineFilter.trim()
-                      ? "No matching symbols."
-                      : "No symbols found for this file."}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col overflow-hidden bg-[#0a0a10]">
-              <div className="p-3 border-b border-white/10 space-y-2">
-                <input
-                  ref={globalSearchInputRef}
-                  type="text"
-                  value={globalSearchQuery}
-                  onChange={(event) => setGlobalSearchQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void runGlobalSearch();
-                    }
-                  }}
-                  placeholder="Find in workspace"
-                  className="w-full px-2.5 py-1.5 rounded border border-white/10 bg-black/40 text-sm text-gray-200 !outline-none focus:border-indigo-500/40"
-                />
-                <input
-                  type="text"
-                  value={globalSearchReplace}
-                  onChange={(event) => setGlobalSearchReplace(event.target.value)}
-                  placeholder="Replace with"
-                  className="w-full px-2.5 py-1.5 rounded border border-white/10 bg-black/40 text-sm text-gray-200 !outline-none focus:border-indigo-500/40"
-                />
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setGlobalSearchCaseSensitive((previous) => !previous)}
-                    className={cn(
-                      "px-2 py-1 rounded text-[11px] border transition-colors",
-                      globalSearchCaseSensitive
-                        ? "border-indigo-500/40 bg-indigo-500/20 text-indigo-300"
-                        : "border-white/10 text-gray-500 hover:text-gray-300"
-                    )}
-                  >
-                    Case
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGlobalSearchWholeWord((previous) => !previous)}
-                    className={cn(
-                      "px-2 py-1 rounded text-[11px] border transition-colors",
-                      globalSearchWholeWord
-                        ? "border-indigo-500/40 bg-indigo-500/20 text-indigo-300"
-                        : "border-white/10 text-gray-500 hover:text-gray-300"
-                    )}
-                  >
-                    Word
-                  </button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void runGlobalSearch()}
-                    disabled={globalSearchLoading}
-                    className="h-7 px-2"
-                  >
-                    {globalSearchLoading ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Search className="w-3.5 h-3.5" />
-                    )}
-                    <span className="ml-1 text-xs">Search</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void handleGlobalPreviewReplace()}
-                    disabled={globalPreviewLoading || !globalSearchQuery.trim()}
-                    className="h-7 px-2 text-indigo-300 hover:text-indigo-200"
-                  >
-                    {globalPreviewLoading ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Eye className="w-3.5 h-3.5" />
-                    )}
-                    <span className="ml-1 text-xs">Preview</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void handleGlobalReplaceAll()}
-                    disabled={
-                      globalReplaceLoading ||
-                      !globalSearchQuery.trim() ||
-                      !globalReplacePreview ||
-                      globalReplacePreview.query !== globalSearchQuery.trim() ||
-                      globalReplacePreview.replacement !== globalSearchReplace
-                    }
-                    className="h-7 px-2 text-amber-300 hover:text-amber-200 disabled:text-gray-600"
-                  >
-                    {globalReplaceLoading ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Zap className="w-3.5 h-3.5" />
-                    )}
-                    <span className="ml-1 text-xs">Apply</span>
-                  </Button>
-                </div>
-              </div>
-
-              <div className="px-3 py-2 border-b border-white/10 text-xs text-gray-500 flex items-center justify-between">
-                <span>
-                  {globalSearchResults
-                    ? [
-                        `${globalSearchResults.totalMatches} matches in ${globalSearchResults.files.length} files`,
-                        formatIdeScannedFiles(globalSearchResults.filesScanned),
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")
-                    : "No results"}
-                </span>
-                <div className="flex items-center gap-2">
-                  {globalReplacePreview && (
-                    <span className="text-indigo-300">
-                      Preview: {globalReplacePreview.totalReplacements}
-                    </span>
-                  )}
-                  {globalSearchResults?.scanTruncated && (
-                    <span
-                      className="text-amber-300"
-                      title="The filesystem scan hit its safety limit before visiting every candidate file."
-                    >
-                      Scan limited
-                    </span>
-                  )}
-                  {globalSearchResults?.truncated && !globalSearchResults.scanTruncated && (
-                    <span className="text-amber-300">Match limit reached</span>
-                  )}
-                </div>
-              </div>
-
-              {globalSearchError && (
-                <div className="px-3 py-2 border-b border-red-500/20 bg-red-500/10 text-xs text-red-300">
-                  {globalSearchError}
-                </div>
-              )}
-
-              <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                {globalReplacePreview && (
-                  <div className="rounded border border-indigo-500/30 bg-indigo-500/10 overflow-hidden">
-                    <div className="px-2 py-1 border-b border-indigo-500/20 text-[11px] text-indigo-200 flex items-center justify-between">
-                      <span>
-                        Replace Preview: {globalReplacePreview.totalReplacements} replacements in{" "}
-                        {globalReplacePreview.files.length} files
-                        {formatIdeScannedFiles(globalReplacePreview.filesScanned)
-                          ? ` · ${formatIdeScannedFiles(globalReplacePreview.filesScanned)}`
-                          : ""}
-                      </span>
-                      {globalReplacePreview.scanTruncated ? (
-                        <span
-                          className="text-amber-300"
-                          title="The filesystem scan hit its safety limit before visiting every candidate file."
-                        >
-                          Scan limited
-                        </span>
-                      ) : globalReplacePreview.truncated ? (
-                        <span className="text-amber-300">Preview limited</span>
-                      ) : null}
-                    </div>
-                    <div className="max-h-56 overflow-y-auto divide-y divide-indigo-500/10">
-                      {globalReplacePreview.files.map((file) => (
-                        <div key={`preview:${file.file}`} className="px-2 py-1.5">
-                          <div className="text-[11px] text-indigo-100 truncate" title={file.file}>
-                            {file.file}{" "}
-                            <span className="text-indigo-300">({file.replacements})</span>
-                          </div>
-                          <div className="mt-1 space-y-1">
-                            {file.preview.map((line) => (
-                              <div
-                                key={`${file.file}:${line.line}:${line.before}`}
-                                className="text-[11px] font-mono"
-                              >
-                                <div className="text-red-300 truncate">
-                                  - Ln {line.line}: {line.before}
-                                </div>
-                                <div className="text-emerald-300 truncate">
-                                  + Ln {line.line}: {line.after}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {globalSearchLoading ? (
-                  <div className="text-center py-6 text-gray-500">
-                    <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" />
-                    Searching...
-                  </div>
-                ) : globalSearchResults?.files?.length ? (
-                  globalSearchResults.files.map((file) => (
-                    <div
-                      key={file.file}
-                      className="rounded border border-white/10 bg-white/[0.02] overflow-hidden"
-                    >
-                      <div className="px-2 py-1 border-b border-white/10 text-[11px] text-gray-300 flex items-center justify-between gap-2">
-                        <span className="truncate" title={file.file}>
-                          {file.file}
-                        </span>
-                        <span className="text-gray-500">{file.count}</span>
-                      </div>
-                      <div className="divide-y divide-white/5">
-                        {file.matches.map((match, index) => (
-                          <button
-                            key={`${file.file}:${match.line}:${match.column}:${index}`}
-                            type="button"
-                            onClick={() => openGlobalSearchMatch(file.file, match.line)}
-                            className="w-full text-left px-2 py-1.5 hover:bg-white/5 transition-colors"
-                          >
-                            <div className="text-[11px] text-indigo-300">
-                              Ln {match.line}, Col {match.column}
-                            </div>
-                            <div className="text-[12px] text-gray-300 font-mono truncate">
-                              {match.text}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-6 text-gray-500 text-sm">
-                    Run a search with <code>Ctrl/Cmd+Shift+F</code>.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div
-            role="separator"
-            aria-label="Resize file tree"
-            aria-orientation="vertical"
-            onMouseDown={handleSidebarResizeStart}
-            className="absolute top-0 right-0 hidden h-full w-1.5 cursor-col-resize bg-transparent hover:bg-indigo-500/40 transition-colors md:block"
-          />
-        </div>
-
-        <div className="relative flex-1 flex min-w-0 overflow-hidden bg-[#0d0d12]">
-          <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-              <div
-                className="h-9 border-b border-white/10 bg-black/20 flex items-center overflow-x-auto"
-                style={{
-                  fontFamily: "var(--font-zed-ui), var(--font-ui), Inter, system-ui, sans-serif",
-                }}
-              >
-                {openTabs.length > 0 ? (
-                  openTabs.map((tab) => {
-                    const isActive = (activeTabPath || selectedFile?.path) === tab.path;
-                    return (
-                      <div
-                        key={`tab:${tab.path}`}
-                        className={cn(
-                          "h-full min-w-[160px] max-w-[320px] px-3 border-r border-white/10 flex items-center gap-2 text-xs",
-                          isActive
-                            ? "bg-indigo-500/20 text-indigo-200"
-                            : "bg-transparent text-gray-400 hover:text-gray-200 hover:bg-white/5"
-                        )}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedFile(fileEntryFromPath(tab.path));
-                            setActiveTabPath(tab.path);
-                            setRequestedJumpLine(null);
-                          }}
-                          className="flex-1 min-w-0 truncate text-left"
-                          title={tab.path}
-                        >
-                          {tab.previewMode && (
-                            <Eye className="w-3 h-3 text-indigo-300/80 flex-shrink-0" />
-                          )}
-                          {tab.name}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleCloseTab(tab.path)}
-                          className="p-0.5 rounded text-gray-500 hover:text-gray-300 hover:bg-white/10"
-                          title="Close tab"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="h-full min-w-[160px] max-w-[320px] px-3 border-r border-white/10 flex items-center gap-2 text-xs bg-indigo-500/20 text-indigo-200">
-                    <Code className="w-3.5 h-3.5" />
-                    <span>Welcome</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="h-8 border-b border-white/10 bg-black/25 px-2 flex items-center gap-1 overflow-x-auto">
-                {breadcrumbs.length > 0 ? (
-                  breadcrumbs.map((crumb, index) => (
-                    <div key={`crumb:${crumb.path}`} className="flex items-center gap-1 min-w-0">
-                      {index > 0 && (
-                        <ChevronRight className="w-3 h-3 text-gray-600 flex-shrink-0" />
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleNavigateToBreadcrumb(crumb)}
-                        className={cn(
-                          "px-1.5 py-0.5 rounded text-xs truncate",
-                          crumb.isFile
-                            ? "text-indigo-200 bg-indigo-500/15"
-                            : "text-gray-400 hover:text-gray-200 hover:bg-white/5"
-                        )}
-                        title={crumb.path}
-                      >
-                        {crumb.label}
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <span className="text-xs text-gray-600 px-1">No file selected</span>
-                )}
-              </div>
-
-              {selectedFile?.path ? (
-                <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
-                  <ErrorBoundary
-                    onReset={() => {
-                      setSelectedFile(null);
-                      setRefreshKey((k) => k + 1);
-                    }}
-                  >
-                    <CodeViewer
-                      path={selectedFile.path}
-                      previewMode={activeTab?.previewMode === true}
-                      autoRefresh={true}
-                      jumpToLineRequest={requestedJumpLine}
-                      externalRefreshKey={refreshKey}
-                      saveRequestToken={saveRequestToken}
-                      onSaveSuccess={handleRefresh}
-                      onCursorChange={handleCursorPositionChange}
-                      onGitHistoryStatusChange={setGitHistoryStatus}
-                      onOpenLocation={(filePath, line) => {
-                        openFileAtPath(filePath, line, false);
-                      }}
-                      completionAgentId={resolvedCompletionAgentId}
-                      editorFontSizePx={idePreferences.editorFontSizePx}
-                      editorLineHeightPx={idePreferences.editorLineHeightPx}
-                      showMinimap={idePreferences.showMinimap}
-                      enableCompletions={false}
-                      enableGhostCompletions={false}
-                      pendingFileDiffs={idePendingFileDiffs}
-                    />
-                  </ErrorBoundary>
-                  {activePendingEditorFile && idePendingFileDiffController && (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
-                      <div className="pointer-events-auto inline-flex max-w-[calc(100%-2rem)] items-center gap-2 rounded-full border border-white/10 bg-[#0b0f19]/95 px-3 py-2 shadow-[0_18px_45px_rgba(0,0,0,0.42)] backdrop-blur">
-                        <button
-                          type="button"
-                          onClick={() => openPendingEditorFile(activePendingEditorFileIndex - 1)}
-                          disabled={activePendingEditorFileIndex <= 0}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-gray-300 hover:bg-white/5 disabled:opacity-40"
-                          title="Previous pending file"
-                        >
-                          <ChevronRight className="h-4 w-4 rotate-180" />
-                        </button>
-                        <div className="min-w-0 px-1 text-center">
-                          <div
-                            className="max-w-[32vw] truncate text-[11px] font-medium text-gray-100"
-                            title={activePendingEditorFile.path}
-                          >
-                            {activePendingEditorFile.path}
-                          </div>
-                          <div className="text-[10px] text-gray-500">
-                            File {activePendingEditorFileIndex + 1} of {pendingEditorFiles.length} ·{" "}
-                            <span className="text-emerald-300">
-                              +{activePendingEditorFile.added}
-                            </span>{" "}
-                            <span className="text-red-300">-{activePendingEditorFile.removed}</span>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => void handleRejectActivePendingEditorFile()}
-                          className="inline-flex h-8 items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-3 text-[11px] text-red-200 hover:bg-red-500/20"
-                          title="Reject changes for this file"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          Reject Changes
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleAcceptActivePendingEditorFile}
-                          className="inline-flex h-8 items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 text-[11px] text-emerald-200 hover:bg-emerald-500/20"
-                          title="Accept changes for this file"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                          Accept Changes
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openPendingEditorFile(activePendingEditorFileIndex + 1)}
-                          disabled={
-                            activePendingEditorFileIndex < 0 ||
-                            activePendingEditorFileIndex >= pendingEditorFiles.length - 1
-                          }
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-gray-300 hover:bg-white/5 disabled:opacity-40"
-                          title="Next pending file"
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <IDEWelcomeScreen
-                  workspacePath={effectiveWorkspacePath}
-                  onNewFile={() => {
-                    setCreateParentPath(rootInfo?.path || currentPath);
-                    setCreateType("file");
-                  }}
-                  onOpenWorkspace={() => {
-                    void handlePromptOpenWorkspace();
-                  }}
-                  onOpenCommandPalette={openCommandPalette}
-                  onOpenSettings={() => openIdeSettings("general")}
-                  onOpenAiSettings={() => navigate("/providers")}
-                  onOpenIndexerSettings={() => {
-                    openIdeSettings("indexing");
-                  }}
-                />
-              )}
-            </div>
-
-            {isTerminalPanelOpen && (
-              <div
-                role="separator"
-                aria-label="Resize terminal panel"
-                aria-orientation="horizontal"
-                onMouseDown={handleTerminalResizeStart}
-                className="h-1.5 cursor-row-resize bg-transparent hover:bg-indigo-500/40 transition-colors"
-              />
-            )}
-
-            <div
-              className={cn(
-                "border-t border-white/10 bg-[#050508] overflow-hidden transition-[height] duration-150",
-                !isTerminalPanelOpen && "border-transparent"
-              )}
-              style={{
-                height: isTerminalPanelOpen ? `${terminalPanelHeight}px` : "0px",
-              }}
-            >
-              <EmbeddedTerminalPanel
-                workspacePath={effectiveWorkspacePath}
-                visible={isTerminalPanelOpen}
-                createRequestToken={terminalCreateRequestToken}
-                autoCreateOnVisible={idePreferences.autoCreateTerminalOnOpen}
-                onStateChange={setTerminalPanelState}
-              />
-            </div>
-          </div>
-
-          {isIdeChatOpen && (
-            <>
-              <div
-                role="separator"
-                aria-label="Resize IDE chat panel"
-                aria-orientation="vertical"
-                onMouseDown={handleChatResizeStart}
-                className="hidden w-1.5 cursor-col-resize bg-transparent hover:bg-indigo-500/40 transition-colors md:block"
-              />
-              <div
-                className="absolute inset-0 z-40 h-full w-full border-l border-[var(--surface-border)] bg-[var(--surface-panel)] md:relative md:inset-auto md:z-auto md:min-w-[300px] md:w-[min(var(--ide-chat-width),48%)]"
-                style={{ "--ide-chat-width": `${chatPanelWidth}px` } as CSSProperties}
-              >
-                <Suspense
-                  fallback={
-                    <div className="flex h-full items-center justify-center text-sm text-[var(--text-muted)]">
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Loading chat...
-                    </div>
-                  }
-                >
-                  <IDEChatPanel
-                    workspaceDir={rootInfo?.path || currentPath}
-                    contextPath={selectedFile?.path || null}
-                    terminalContext={{
-                      isOpen: isTerminalPanelOpen,
-                      sessionCount: terminalPanelState.sessionCount,
-                      activeSessionId: terminalPanelState.activeSessionId,
-                    }}
-                    onWorkspaceMutated={handleRefresh}
-                    onClose={() => setIsIdeChatOpen(false)}
-                    selectedAgentId={ideChatSelectedAgentId}
-                    onSelectedAgentIdChange={setIdeChatSelectedAgentId}
-                    agents={ideAgentOptions}
-                    onPendingFileDiffsChange={setIdePendingFileDiffs}
-                    onPendingFileDiffControllerChange={setIdePendingFileDiffController}
-                  />
-                </Suspense>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {showCommandPalette && (
-        <div
-          className="absolute inset-0 z-50 bg-black/40 flex items-start justify-center pt-16"
-          onMouseDown={closeCommandPalette}
-        >
-          <div
-            className="w-[640px] max-w-[92vw] rounded-xl border border-white/15 bg-[#0b0b12] shadow-2xl overflow-hidden"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-indigo-300" />
-              <input
-                ref={commandInputRef}
-                type="text"
-                value={commandQuery}
-                onChange={(event) => {
-                  setCommandQuery(event.target.value);
-                  setCommandSelectedIndex(0);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    setCommandSelectedIndex((previous) =>
-                      filteredCommandItems.length
-                        ? Math.min(previous + 1, filteredCommandItems.length - 1)
-                        : 0
-                    );
-                    return;
-                  }
-                  if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    setCommandSelectedIndex((previous) =>
-                      filteredCommandItems.length ? Math.max(previous - 1, 0) : 0
-                    );
-                    return;
-                  }
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    handleCommandConfirm();
-                    return;
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    closeCommandPalette();
-                  }
-                }}
-                placeholder="Command Palette (Ctrl/Cmd+Shift+P)"
-                className="flex-1 bg-transparent text-sm text-gray-100 placeholder-gray-500 !outline-none"
-              />
-              <button
-                type="button"
-                onClick={closeCommandPalette}
-                className="p-1 rounded text-gray-500 hover:text-white hover:bg-white/5"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="max-h-[55vh] overflow-y-auto divide-y divide-white/5">
-              {filteredCommandItems.length > 0 ? (
-                filteredCommandItems.map((command, index) => (
-                  <button
-                    key={`command:${command.id}`}
-                    type="button"
-                    onClick={() => handleCommandConfirm(index)}
-                    className={cn(
-                      "w-full text-left px-3 py-2 transition-colors",
-                      index === commandSelectedIndex
-                        ? "bg-indigo-500/20 text-indigo-200"
-                        : "hover:bg-white/5 text-gray-300"
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm truncate">{command.label}</span>
-                      {command.shortcut && (
-                        <span className="text-[11px] text-gray-500">{command.shortcut}</span>
-                      )}
-                    </div>
-                    {command.detail && (
-                      <div className="text-[11px] text-gray-500 truncate">{command.detail}</div>
-                    )}
-                  </button>
-                ))
-              ) : (
-                <div className="px-3 py-6 text-center text-gray-500 text-sm">
-                  No matching commands
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showQuickOpen && (
-        <div
-          className="absolute inset-0 z-50 bg-black/40 flex items-start justify-center pt-16"
-          onMouseDown={closeQuickOpenPalette}
-        >
-          <div
-            className="w-[680px] max-w-[92vw] rounded-xl border border-white/15 bg-[#0b0b12] shadow-2xl overflow-hidden"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-              <Search className="w-4 h-4 text-indigo-300" />
-              <input
-                ref={quickOpenInputRef}
-                type="text"
-                value={quickOpenQuery}
-                onChange={(event) => {
-                  setQuickOpenQuery(event.target.value);
-                  setQuickOpenSelectedIndex(0);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "ArrowDown") {
-                    event.preventDefault();
-                    setQuickOpenSelectedIndex((previous) =>
-                      quickOpenResults.length
-                        ? Math.min(previous + 1, quickOpenResults.length - 1)
-                        : 0
-                    );
-                    return;
-                  }
-                  if (event.key === "ArrowUp") {
-                    event.preventDefault();
-                    setQuickOpenSelectedIndex((previous) =>
-                      quickOpenResults.length ? Math.max(previous - 1, 0) : 0
-                    );
-                    return;
-                  }
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    handleQuickOpenConfirm();
-                    return;
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    closeQuickOpenPalette();
-                  }
-                }}
-                placeholder="Quick Open (Ctrl/Cmd+P) — file or file:line"
-                className="flex-1 bg-transparent text-sm text-gray-100 placeholder-gray-500 !outline-none"
-              />
-              {quickOpenLoading && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
-              <button
-                type="button"
-                onClick={closeQuickOpenPalette}
-                className="p-1 rounded text-gray-500 hover:text-white hover:bg-white/5"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {quickOpenError && (
-              <div className="px-3 py-2 border-b border-red-500/20 bg-red-500/10 text-xs text-red-300">
-                {quickOpenError}
-              </div>
-            )}
-            {quickOpenNotice && !quickOpenError && (
-              <div className="px-3 py-2 border-b border-amber-500/20 bg-amber-500/10 text-xs text-amber-200">
-                {quickOpenNotice}
-              </div>
-            )}
-
-            <div className="max-h-[55vh] overflow-y-auto divide-y divide-white/5">
-              {quickOpenResults.length > 0 ? (
-                quickOpenResults.map((file, index) => (
-                  <button
-                    key={`quick-open:${file.path}`}
-                    type="button"
-                    onClick={() => handleQuickOpenConfirm(index)}
-                    className={cn(
-                      "w-full text-left px-3 py-2 transition-colors",
-                      index === quickOpenSelectedIndex
-                        ? "bg-indigo-500/20 text-indigo-200"
-                        : "hover:bg-white/5 text-gray-300"
-                    )}
-                  >
-                    <div className="text-sm truncate">{file.relativePath}</div>
-                    <div className="text-[11px] text-gray-500 truncate">{file.path}</div>
-                  </button>
-                ))
-              ) : (
-                <div className="px-3 py-6 text-center text-gray-500 text-sm">
-                  {quickOpenLoading ? "Searching files..." : "No files found"}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showIdeSettings && (
-        <div
-          className="absolute inset-0 z-50 bg-black/45 flex items-start justify-center pt-10"
-          onMouseDown={() => setShowIdeSettings(false)}
-        >
-          <div
-            className="w-[1040px] max-w-[96vw] max-h-[86vh] rounded-xl border border-white/15 bg-[#0b0b12] shadow-2xl overflow-hidden flex"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="w-64 border-r border-white/10 bg-black/20 flex flex-col">
-              <div className="px-3 py-3 border-b border-white/10">
-                <input
-                  ref={settingsSearchRef}
-                  type="text"
-                  value={ideSettingsSearch}
-                  onChange={(event) => setIdeSettingsSearch(event.target.value)}
-                  placeholder="Search settings..."
-                  className="w-full rounded border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
-                />
-              </div>
-              <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                {settingsSections
-                  .filter(
-                    (section) =>
-                      visibleSettingsSectionIds.includes(section.id) ||
-                      normalizedSettingsSearch.length === 0
-                  )
-                  .map((section) => (
-                    <button
-                      key={`ide-settings-section:${section.id}`}
-                      type="button"
-                      onClick={() => setIdeSettingsSection(section.id)}
-                      className={cn(
-                        "w-full rounded px-2.5 py-2 text-left transition-colors",
-                        ideSettingsSection === section.id
-                          ? "bg-indigo-500/20 text-indigo-200"
-                          : "text-gray-300 hover:bg-white/5"
-                      )}
-                    >
-                      <div className="text-xs font-medium">{section.label}</div>
-                      <div className="text-[11px] text-gray-500 truncate">
-                        {section.description}
-                      </div>
-                    </button>
-                  ))}
-              </div>
-            </div>
-
-            <div className="flex-1 flex flex-col min-w-0">
-              <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-gray-100">IDE Settings</div>
-                  <div className="text-xs text-gray-500">
-                    Editor, indexing, and terminal preferences.
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowIdeSettings(false)}
-                  className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-white/5"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-4 space-y-5">
-                {ideSettingsSection === "general" && (
-                  <div className="space-y-3">
-                    {matchesIdeSettingsSearch("workspace", "remember", "path") && (
-                      <div className="rounded border border-white/10 bg-white/[0.02] px-3 py-2.5 text-xs">
-                        <div className="text-gray-200 font-medium">Workspace path persistence</div>
-                        <div className="text-gray-500 mt-1">
-                          Cybara restores your last workspace automatically.
-                        </div>
-                      </div>
-                    )}
-                    {matchesIdeSettingsSearch("chat", "panel", "startup") && (
-                      <div className="flex items-start justify-between gap-3 text-xs text-gray-300">
-                        <span>
-                          <span className="text-gray-200 font-medium">Open IDE chat panel</span>
-                          <span className="block text-gray-500 mt-0.5">
-                            Persist this as your default chat panel state.
-                          </span>
-                        </span>
-                        <Switch checked={isIdeChatOpen} onChange={setIsIdeChatOpen} />
-                      </div>
-                    )}
-                    {matchesIdeSettingsSearch("settings", "providers") && (
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate("/providers")}
-                          className="h-7 px-2 text-xs"
-                        >
-                          Open AI Providers
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate("/settings")}
-                          className="h-7 px-2 text-xs"
-                        >
-                          Open Global App Settings
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {ideSettingsSection === "editor" && (
-                  <div className="space-y-3">
-                    {matchesIdeSettingsSearch("font", "size") && (
-                      <label className="block text-xs text-gray-400 space-y-1.5">
-                        <span>Editor font size</span>
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="range"
-                            min={11}
-                            max={22}
-                            value={idePreferences.editorFontSizePx}
-                            onChange={(event) =>
-                              updateIdePreferences({
-                                editorFontSizePx: Number.parseInt(event.target.value || "14", 10),
-                              })
-                            }
-                            className="flex-1"
-                          />
-                          <span className="w-10 text-right text-gray-200 tabular-nums">
-                            {idePreferences.editorFontSizePx}
-                          </span>
-                        </div>
-                      </label>
-                    )}
-                    {matchesIdeSettingsSearch("line", "height", "spacing") && (
-                      <label className="block text-xs text-gray-400 space-y-1.5">
-                        <span>Editor line height</span>
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="range"
-                            min={16}
-                            max={38}
-                            value={idePreferences.editorLineHeightPx}
-                            onChange={(event) =>
-                              updateIdePreferences({
-                                editorLineHeightPx: Number.parseInt(event.target.value || "22", 10),
-                              })
-                            }
-                            className="flex-1"
-                          />
-                          <span className="w-10 text-right text-gray-200 tabular-nums">
-                            {idePreferences.editorLineHeightPx}
-                          </span>
-                        </div>
-                      </label>
-                    )}
-                    {matchesIdeSettingsSearch("minimap") && (
-                      <div className="flex items-start justify-between gap-3 text-xs text-gray-300">
-                        <span>
-                          <span className="text-gray-200 font-medium">Show minimap</span>
-                          <span className="block text-gray-500 mt-0.5">
-                            Display the minimap in the editor gutter.
-                          </span>
-                        </span>
-                        <Switch
-                          checked={idePreferences.showMinimap}
-                          onChange={(next) => updateIdePreferences({ showMinimap: next })}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {ideSettingsSection === "indexing" && (
-                  <IndexerSettingsPanel
-                    indexStatus={indexStatus}
-                    activeIndexSettings={activeIndexSettings}
-                    embeddingProviders={embeddingProviders}
-                    selectedEmbeddingProvider={selectedEmbeddingProvider}
-                    selectedEmbeddingModelOptions={selectedEmbeddingModelOptions}
-                    embeddingModelCustom={embeddingModelCustom}
-                    runtimeTargetProvider={runtimeTargetProvider}
-                    runtimeTargetModel={runtimeTargetModel}
-                    runtimeModelStatus={runtimeModelStatus}
-                    selectedTransformersRuntimeEntry={selectedTransformersRuntimeEntry}
-                    effectiveRuntimeNote={effectiveRuntimeNote}
-                    embeddingRuntime={embeddingRuntime}
-                    embeddingCatalogLoading={embeddingCatalogLoading}
-                    embeddingRuntimeActionLoading={embeddingRuntimeActionLoading}
-                    embeddingRuntimeLoading={embeddingRuntimeLoading}
-                    canManageLocalRuntime={canManageLocalRuntime}
-                    canUnloadLocalRuntime={canUnloadLocalRuntime}
-                    indexActionLoading={indexActionLoading}
-                    indexSettingsDirty={indexSettingsDirty}
-                    effectiveWorkspacePath={effectiveWorkspacePath}
-                    setIndexSettingsDraft={setIndexSettingsDraft}
-                    setIndexSettingsDirty={setIndexSettingsDirty}
-                    setEmbeddingModelCustom={setEmbeddingModelCustom}
-                    setShowIndexerSettings={setShowIndexerSettings}
-                    setIndexSettingsError={setIndexSettingsError}
-                    fetchEmbeddingCatalog={() => void fetchEmbeddingCatalog()}
-                    fetchEmbeddingRuntimeStatus={() => void fetchEmbeddingRuntimeStatus()}
-                    loadEmbeddingRuntime={() => void loadEmbeddingRuntime()}
-                    stopEmbeddingRuntime={() => void stopEmbeddingRuntime()}
-                    fetchIndexStatus={(path) => void fetchIndexStatus(path)}
-                    saveIndexSettings={() => void saveIndexSettings()}
-                    runWorkspaceReindex={() => void runWorkspaceReindex()}
-                    matchesIdeSettingsSearch={matchesIdeSettingsSearch}
-                  />
-                )}
-
-                {ideSettingsSection === "shortcuts" && (
-                  <IDEKeyboardSettingsPanel
-                    isMacPlatform={isMacPlatform}
-                    keymapOverrides={keymapOverrides}
-                    recordingActionId={recordingActionId}
-                    onRecordAction={setRecordingActionId}
-                    onResetAction={resetKeymapAction}
-                    onResetAll={resetAllKeymap}
-                  />
-                )}
-
-                {ideSettingsSection === "terminal" && (
-                  <IDETerminalSettingsPanel
-                    isTerminalPanelOpen={isTerminalPanelOpen}
-                    preferences={idePreferences}
-                    terminalPanelState={terminalPanelState}
-                    onNewTerminal={openNewTerminal}
-                    onSetTerminalPanelOpen={setIsTerminalPanelOpen}
-                    onToggleTerminalPanel={toggleTerminalPanel}
-                    onUpdatePreferences={updateIdePreferences}
-                  />
-                )}
-              </div>
-
-              <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between text-[11px] text-gray-500">
-                <span>Settings are saved automatically.</span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setIdePreferences(IDE_DEFAULT_PREFERENCES);
-                      setTerminalPanelHeight(IDE_DEFAULT_PREFERENCES.terminalPanelHeight);
-                    }}
-                    className="h-7 px-2 text-xs"
-                  >
-                    Reset IDE Defaults
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowIdeSettings(false)}
-                    className="h-7 px-2 text-xs"
-                  >
-                    Close
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showIndexerSettings && (
-        <AdvancedIndexerSettingsModal
-          activeSettings={activeIndexSettings}
-          actionLoading={indexActionLoading}
-          catalogLoading={embeddingCatalogLoading}
-          error={indexSettingsError}
-          message={indexSettingsMessage}
-          status={indexStatus}
-          statusLoading={indexStatusLoading}
-          workspacePath={effectiveWorkspacePath}
-          onChangeSettings={(settings) => {
-            setIndexSettingsDraft(settings);
-            setIndexSettingsDirty(true);
-          }}
-          onClose={() => setShowIndexerSettings(false)}
-          onRefreshModels={() => void fetchEmbeddingCatalog()}
-          onReindex={() => void runWorkspaceReindex()}
-          onSave={() => void saveIndexSettings()}
-          onStop={() => void stopWorkspaceIndexing()}
-          settingsDirty={indexSettingsDirty}
-        />
-      )}
-
-      {treeContextMenu &&
-        contextMenuPosition &&
-        (() => {
-          const entry = treeContextMenu.entry;
-          const separatorIndex = Math.max(
-            entry.path.lastIndexOf("/"),
-            entry.path.lastIndexOf("\\")
-          );
-          const parentPath =
-            entry.type === "directory"
-              ? entry.path
-              : separatorIndex >= 0
-                ? entry.path.slice(0, separatorIndex)
-                : rootInfo?.path || currentPath;
-          return (
-            <div
-              className="fixed z-[80] min-w-[220px] rounded-md border border-white/15 bg-[#0a0a10] p-1 shadow-2xl"
-              style={{
-                left: `${contextMenuPosition.left}px`,
-                top: `${contextMenuPosition.top}px`,
-              }}
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  if (entry.type === "file") {
-                    openFileInEditor(entry, null, { previewMode: false });
-                  } else {
-                    handleToggleDir(entry.path);
-                  }
-                  setTreeContextMenu(null);
-                }}
-                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
-              >
-                {entry.type === "file"
-                  ? "Open"
-                  : expandedDirs.has(entry.path)
-                    ? "Collapse"
-                    : "Expand"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void handleRenameEntry(entry);
-                }}
-                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
-              >
-                Rename
-              </button>
-              {entry.type === "file" && isMarkdownExtension(entry.extension) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    openFileInEditor(entry, null, { previewMode: true });
-                    setTreeContextMenu(null);
-                  }}
-                  className="w-full rounded px-2 py-1.5 text-left text-xs text-indigo-200 hover:bg-white/10"
-                >
-                  Open Preview
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  void handleRevealInExplorer(entry.path);
-                  setTreeContextMenu(null);
-                }}
-                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center gap-1.5"
-              >
-                <ExternalLink className="w-3 h-3" />
-                <span>View in Explorer</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (navigator.clipboard?.writeText) {
-                    void navigator.clipboard.writeText(entry.path);
-                  }
-                  setTreeContextMenu(null);
-                }}
-                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10 flex items-center gap-1.5"
-              >
-                <Copy className="w-3 h-3" />
-                <span>Copy Path</span>
-              </button>
-              {entry.type === "directory" && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleSetWorkspacePath(entry.path);
-                    setTreeContextMenu(null);
-                  }}
-                  className="w-full rounded px-2 py-1.5 text-left text-xs text-emerald-200 hover:bg-white/10"
-                >
-                  Set Folder as Workspace
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  handleRefresh();
-                  setTreeContextMenu(null);
-                }}
-                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
-              >
-                Refresh Explorer
-              </button>
-              <div className="my-1 h-px bg-white/10" />
-              <button
-                type="button"
-                onClick={() => {
-                  setCreateParentPath(parentPath);
-                  setCreateType("file");
-                  setTreeContextMenu(null);
-                }}
-                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
-              >
-                New File Here
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCreateParentPath(parentPath);
-                  setCreateType("directory");
-                  setTreeContextMenu(null);
-                }}
-                className="w-full rounded px-2 py-1.5 text-left text-xs text-gray-200 hover:bg-white/10"
-              >
-                New Folder Here
-              </button>
-            </div>
-          );
-        })()}
-
-      <div className="h-8 border-t border-white/10 bg-black/30 px-3 flex min-w-0 items-center justify-between gap-3 text-xs">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="text-gray-600">Ready</span>
-          <GitStatus path={rootInfo?.path || currentPath} compact />
-        </div>
-        <div className="flex min-w-0 items-center justify-end gap-2 md:gap-3">
-          <span className="shrink-0 text-gray-500 tabular-nums">
-            {selectedFile
-              ? `Ln ${cursorPosition?.line || 1}, Col ${cursorPosition?.column || 1}`
-              : "Ln -, Col -"}
-          </span>
-          <span className="hidden text-gray-600 md:inline">{statusEncoding || "-"}</span>
-          <span className="hidden text-gray-600 md:inline">{statusEol || "-"}</span>
-          <span className="hidden text-gray-600 md:inline">{statusIndent || "-"}</span>
-          <span className="hidden text-gray-500 md:inline">{statusLanguage || "-"}</span>
-          {gitHistoryStatusLabel && (
-            <span
-              className={cn(
-                "hidden items-center gap-1 md:inline-flex",
-                gitHistoryStatus === "loading"
-                  ? "text-indigo-300"
-                  : gitHistoryStatus === "error"
-                    ? "text-red-300"
-                    : gitHistoryStatus === "ready"
-                      ? "text-emerald-300"
-                      : "text-gray-500"
-              )}
-              title="Git line history status for the active file"
-            >
-              {gitHistoryStatus === "loading" && <Loader2 className="w-3 h-3 animate-spin" />}
-              {gitHistoryStatusLabel}
-            </span>
-          )}
-          <span className="hidden text-gray-600 md:inline">
-            {sidebarMode === "search"
-              ? "Global Search"
-              : sidebarMode === "outline"
-                ? "Outline"
-                : "Editor"}
-          </span>
-          <button
-            type="button"
-            onClick={() => toggleTerminalPanel()}
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1 text-xs transition-colors",
-              terminalPanelState.capability === "disabled"
-                ? "text-amber-300 hover:text-amber-200"
-                : isTerminalPanelOpen
-                  ? "text-indigo-300 hover:text-indigo-200"
-                  : "text-gray-500 hover:text-gray-300"
-            )}
-            title={
-              terminalPanelState.capability === "disabled"
-                ? "Terminal disabled"
-                : isTerminalPanelOpen
-                  ? "Hide terminal panel"
-                  : "Show terminal panel"
-            }
-          >
-            <TerminalSquare className="w-3.5 h-3.5" />
-            {terminalPanelState.capability === "disabled"
-              ? "Terminal off"
-              : `Term ${terminalPanelState.sessionCount}`}
-          </button>
-          {indexStatusLabel && (
-            <button
-              type="button"
-              onClick={() => {
-                openIdeSettings("indexing");
-              }}
-              className={cn(
-                "min-w-0 truncate text-xs transition-colors max-md:max-w-24",
-                indexStatus?.state === "error"
-                  ? "text-red-300 hover:text-red-200"
-                  : indexStatus?.isIndexing
-                    ? "text-indigo-300 hover:text-indigo-200"
-                    : "text-gray-500 hover:text-gray-300"
-              )}
-              title="Open IDE indexing settings"
-            >
-              {indexStatusLabel}
-            </button>
-          )}
-          <div className="hidden md:block">
-            <LSPStatus
-              compact
-              activeFilePath={selectedFile?.path || null}
-              activeExtension={selectedFile?.extension || null}
-            />
-          </div>
-        </div>
-      </div>
-
-      <CreateDialog
-        isOpen={createType !== null}
-        type={createType || "file"}
-        parentPath={createParentPath || rootInfo?.path || currentPath}
-        onClose={() => {
-          setCreateType(null);
-          setCreateParentPath(null);
-        }}
-        onSuccess={handleRefresh}
-      />
-    </div>
+    <IDEView
+      model={{
+        IDEChatPanel,
+        formatIdeScannedFiles,
+        navigate,
+        currentPath,
+        selectedFile,
+        setSelectedFile,
+        openTabs,
+        activeTabPath,
+        setActiveTabPath,
+        expandedDirs,
+        treeFilterDraft,
+        isTreeFilterPending,
+        deferredTreeFilter,
+        rootInfo,
+        createType,
+        setCreateType,
+        createParentPath,
+        setCreateParentPath,
+        refreshKey,
+        setRefreshKey,
+        saveRequestToken,
+        requestedJumpLine,
+        setRequestedJumpLine,
+        cursorPosition,
+        gitHistoryStatus,
+        setGitHistoryStatus,
+        sidebarWidth,
+        sidebarMode,
+        openMenu,
+        setOpenMenu,
+        globalSearchQuery,
+        setGlobalSearchQuery,
+        globalSearchReplace,
+        setGlobalSearchReplace,
+        globalSearchCaseSensitive,
+        setGlobalSearchCaseSensitive,
+        globalSearchWholeWord,
+        setGlobalSearchWholeWord,
+        globalSearchResults,
+        globalReplacePreview,
+        globalSearchLoading,
+        globalSearchError,
+        globalReplaceLoading,
+        globalPreviewLoading,
+        showQuickOpen,
+        quickOpenQuery,
+        setQuickOpenQuery,
+        quickOpenResults,
+        quickOpenLoading,
+        quickOpenError,
+        quickOpenNotice,
+        quickOpenSelectedIndex,
+        setQuickOpenSelectedIndex,
+        showCommandPalette,
+        keymapOverrides,
+        recordingActionId,
+        setRecordingActionId,
+        isMacPlatform,
+        commandQuery,
+        setCommandQuery,
+        commandSelectedIndex,
+        setCommandSelectedIndex,
+        outlineLoading,
+        outlineError,
+        outlineFilter,
+        setOutlineFilter,
+        explorerScrollTop,
+        setExplorerScrollTop,
+        explorerViewportHeight,
+        setExplorerViewportHeight,
+        treeContextMenu,
+        setTreeContextMenu,
+        ideChatSelectedAgentId,
+        setIdeChatSelectedAgentId,
+        ideAgentOptions,
+        showIdeSettings,
+        setShowIdeSettings,
+        ideSettingsSection,
+        setIdeSettingsSection,
+        ideSettingsSearch,
+        setIdeSettingsSearch,
+        idePreferences,
+        setIdePreferences,
+        showIndexerSettings,
+        setShowIndexerSettings,
+        indexStatus,
+        setIndexSettingsDraft,
+        indexSettingsDirty,
+        setIndexSettingsDirty,
+        indexStatusLoading,
+        indexActionLoading,
+        indexSettingsError,
+        setIndexSettingsError,
+        indexSettingsMessage,
+        embeddingProviders,
+        embeddingCatalogLoading,
+        embeddingRuntime,
+        embeddingRuntimeLoading,
+        embeddingRuntimeActionLoading,
+        embeddingModelCustom,
+        setEmbeddingModelCustom,
+        isIdeChatOpen,
+        setIsIdeChatOpen,
+        idePendingFileDiffs,
+        setIdePendingFileDiffs,
+        idePendingFileDiffController,
+        setIdePendingFileDiffController,
+        isTerminalPanelOpen,
+        setIsTerminalPanelOpen,
+        terminalPanelHeight,
+        setTerminalPanelHeight,
+        terminalCreateRequestToken,
+        terminalPanelState,
+        setTerminalPanelState,
+        chatPanelWidth,
+        workspacePaneRef,
+        globalSearchInputRef,
+        treeFilterInputRef,
+        outlineInputRef,
+        quickOpenInputRef,
+        commandInputRef,
+        menuRef,
+        explorerScrollRef,
+        settingsSearchRef,
+        effectiveWorkspacePath,
+        handleCursorPositionChange,
+        updateTreeFilter,
+        fetchIndexStatus,
+        fetchEmbeddingCatalog,
+        fetchEmbeddingRuntimeStatus,
+        saveIndexSettings,
+        runWorkspaceReindex,
+        stopWorkspaceIndexing,
+        loadEmbeddingRuntime,
+        stopEmbeddingRuntime,
+        handleToggleDir,
+        openFileInEditor,
+        handleCloseTab,
+        handleSelectFile,
+        handleTreeContextMenu,
+        handleRevealInExplorer,
+        handleSetWorkspacePath,
+        handlePromptOpenWorkspace,
+        handleRenameEntry,
+        handleGoHome,
+        handleGoUp,
+        handleRefresh,
+        handleExpandTopLevel,
+        handleCollapseAll,
+        openFileAtPath,
+        handleNavigateToBreadcrumb,
+        runGlobalSearch,
+        openGlobalSearchMatch,
+        closeQuickOpenPalette,
+        openCommandPalette,
+        closeCommandPalette,
+        openIdeSettings,
+        updateIdePreferences,
+        toggleTerminalPanel,
+        openNewTerminal,
+        handleQuickOpenConfirm,
+        filteredCommandItems,
+        handleCommandConfirm,
+        handleGlobalPreviewReplace,
+        handleGlobalReplaceAll,
+        resetKeymapAction,
+        resetAllKeymap,
+        handleSidebarResizeStart,
+        handleChatResizeStart,
+        handleTerminalResizeStart,
+        activeTab,
+        pendingEditorFiles,
+        activePendingEditorFileIndex,
+        activePendingEditorFile,
+        resolvedCompletionAgentId,
+        openPendingEditorFile,
+        handleAcceptActivePendingEditorFile,
+        handleRejectActivePendingEditorFile,
+        breadcrumbs,
+        flattenedOutlineRows,
+        filteredOutlineRows,
+        statusLanguage,
+        statusEncoding,
+        statusEol,
+        statusIndent,
+        gitHistoryStatusLabel,
+        contextMenuPosition,
+        indexStatusLabel,
+        activeIndexSettings,
+        selectedEmbeddingProvider,
+        selectedEmbeddingModelOptions,
+        runtimeTargetProvider,
+        runtimeTargetModel,
+        canManageLocalRuntime,
+        canUnloadLocalRuntime,
+        selectedTransformersRuntimeEntry,
+        effectiveRuntimeNote,
+        runtimeModelStatus,
+        normalizedSettingsSearch,
+        matchesIdeSettingsSearch,
+        settingsSections,
+        visibleSettingsSectionIds,
+        topMenus,
+      }}
+    />
   );
 }
 

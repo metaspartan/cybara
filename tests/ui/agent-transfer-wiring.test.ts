@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { readNativeChatSource } from "../shared/source-bundles";
 
 const files = {
   "ui/src/pages/chat/ChatMessageTimeline.tsx": "AgentTransferTimeline",
   "ui/src/pages/ide/IDEChatPanel.tsx": "AgentTransferTimeline",
   "apps/mobile/src/screens/dashboardChat.tsx": "MobileAgentTransferTimeline",
-  "apps/macos/Cybara/Sources/Cybara/NativeScreens.swift": "Transferred from",
   "src/cli/commands/chat.ts": "Transferred from",
   "src/cli/tui/components/interactive-chat-view.tsx": "Transferred from",
 };
@@ -16,6 +16,9 @@ describe("agent transfer client wiring", () => {
       expect(source).toMatch(/agent_transfers|agentTransfers/);
       expect(source).toContain(transferPresentation);
     }
+    const nativeSource = readNativeChatSource();
+    expect(nativeSource).toMatch(/agent_transfers|agentTransfers/);
+    expect(nativeSource).toContain("Transferred from");
   });
 
   test("web activity timeline uses a transfer-specific icon", async () => {

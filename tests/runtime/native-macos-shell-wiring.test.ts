@@ -2,6 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import {
+  readGatewayModelsSource,
+  readGatewayModelTestsSource,
+  readNativeChatSource,
+  readNativeConfigSource,
+  readNativePlatformSource,
+  readNativeSettingsSource,
+} from "../shared/source-bundles";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const MACOS_APP_DIR = join(ROOT_DIR, "apps", "macos", "Cybara", "Sources", "Cybara");
@@ -58,7 +66,7 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native workspace open targets use a stable optical icon column", () => {
-    const screens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const screens = readNativeChatSource();
     const icon = readFileSync(join(MACOS_APP_DIR, "NativeWorkspaceOpenTargetIcon.swift"), "utf8");
 
     expect(screens).toContain("NativeWorkspaceOpenTargetIcon(target: target)");
@@ -96,7 +104,7 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native terminal presents an enable action instead of a disabled endpoint error", () => {
-    const screens = readFileSync(join(MACOS_APP_DIR, "NativePlatformScreens.swift"), "utf8");
+    const screens = readNativePlatformSource();
 
     expect(screens).toContain('Label("Terminal Disabled", systemImage: "terminal")');
     expect(screens).toContain('Button("Enable Terminal")');
@@ -115,11 +123,8 @@ describe("native macOS shell wiring", () => {
   test("native shell exposes major web and Tauri destinations as SwiftUI screens", () => {
     const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
     const app = readFileSync(join(ROOT_DIR, "ui", "src", "App.tsx"), "utf8");
-    const nativePlatformScreens = readFileSync(
-      join(MACOS_APP_DIR, "NativePlatformScreens.swift"),
-      "utf8"
-    );
-    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const nativePlatformScreens = readNativePlatformSource();
+    const nativeScreens = readNativeChatSource();
 
     for (const route of [
       "/agents",
@@ -257,10 +262,7 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native LSP operations expose an explicit progress label", () => {
-    const platformScreens = readFileSync(
-      join(MACOS_APP_DIR, "NativePlatformScreens.swift"),
-      "utf8"
-    );
+    const platformScreens = readNativePlatformSource();
 
     expect(platformScreens).toContain(
       'installed?.installed == true ? "Removing..." : "Installing..."'
@@ -269,11 +271,8 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native IDE screen provides browser editor and search replace controls", () => {
-    const nativePlatformScreens = readFileSync(
-      join(MACOS_APP_DIR, "NativePlatformScreens.swift"),
-      "utf8"
-    );
-    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const nativePlatformScreens = readNativePlatformSource();
+    const nativeScreens = readNativeChatSource();
 
     for (const snippet of [
       "NativeIDEBrowseResult",
@@ -305,7 +304,7 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native settings centers its content column and keeps cards left-aligned", () => {
-    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+    const settings = readNativeSettingsSource();
     const i18n = readFileSync(join(MACOS_APP_DIR, "NativeI18n.swift"), "utf8");
 
     expect(settings).toContain("static let maxContentWidth: CGFloat = 900");
@@ -328,7 +327,7 @@ describe("native macOS shell wiring", () => {
   });
 
   test("system settings expose native backup and restore controls", () => {
-    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+    const settings = readNativeSettingsSource();
     const backups = readFileSync(join(MACOS_APP_DIR, "NativeBackupsScreen.swift"), "utf8");
 
     expect(settings).toContain("case .backups:");
@@ -339,7 +338,7 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native settings has a Memory tab with provider picker and indexing split", () => {
-    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+    const settings = readNativeSettingsSource();
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
 
     expect(settings).toContain("case .memory:");
@@ -361,7 +360,7 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native settings follows the shared grouped settings navigation", () => {
-    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+    const settings = readNativeSettingsSource();
 
     for (const tab of [
       "general",
@@ -398,8 +397,8 @@ describe("native macOS shell wiring", () => {
 
   test("native logs use bounded paged gateway reads instead of full log downloads", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
-    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
-    const configScreens = readFileSync(join(MACOS_APP_DIR, "NativeConfigScreens.swift"), "utf8");
+    const gatewayModels = readGatewayModelsSource();
+    const configScreens = readNativeConfigSource();
 
     expect(gatewayClient).toContain("func systemLogsPage(limit: Int = 200, offset: Int = 0)");
     expect(gatewayClient).toContain('URLQueryItem(name: "limit"');
@@ -417,7 +416,7 @@ describe("native macOS shell wiring", () => {
       join(MACOS_APP_DIR, "GatewayManagementClient.swift"),
       "utf8"
     );
-    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+    const settings = readNativeSettingsSource();
     const sidecarManager = readFileSync(join(MACOS_APP_DIR, "SidecarManager.swift"), "utf8");
 
     expect(gatewayClient).toContain("func restartGateway() async throws -> [String: Any]");
@@ -475,8 +474,8 @@ describe("native macOS shell wiring", () => {
       join(MACOS_APP_DIR, "GatewayManagementClient.swift"),
       "utf8"
     );
-    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
-    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+    const gatewayModels = readGatewayModelsSource();
+    const settings = readNativeSettingsSource();
 
     expect(gatewayModels).toContain("struct GatewayMigrationSource");
     expect(gatewayModels).toContain("struct GatewayMigrationReport");
@@ -498,9 +497,9 @@ describe("native macOS shell wiring", () => {
 
   test("native chat pending queue exposes reorder, edit, and delete controls", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
-    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const nativeScreens = readNativeChatSource();
     const toolTimeline = readFileSync(join(MACOS_APP_DIR, "NativeToolTimeline.swift"), "utf8");
-    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const gatewayModels = readGatewayModelsSource();
 
     expect(gatewayClient).toContain("func reorderPendingMessages(");
     expect(gatewayClient).toContain("func updatePendingMessage(");
@@ -532,7 +531,7 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("await stopResponse()");
     expect(nativeScreens).toContain('"stop.circle.fill"');
     expect(nativeScreens).toContain("activeSessionIDs.remove(sessionID)");
-    const stopResponseIndex = nativeScreens.indexOf("private func stopResponse");
+    const stopResponseIndex = nativeScreens.indexOf("func stopResponse");
     const stoppedReloadIndex = nativeScreens.indexOf(
       "await loadMessages(sessionID)",
       stopResponseIndex
@@ -549,7 +548,7 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native chat prunes live tool rows after persisted steering reloads", () => {
-    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const nativeScreens = readNativeChatSource();
     const toolTimeline = readFileSync(join(MACOS_APP_DIR, "NativeToolTimeline.swift"), "utf8");
 
     expect(toolTimeline).toContain("func nativePrunePersistedLiveActivities(");
@@ -572,7 +571,7 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native chat keeps visible live work when queued snapshots are activity-empty", () => {
-    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const nativeScreens = readNativeChatSource();
 
     expect(nativeScreens).toContain(
       "let snapshotActivities = nativeLiveActivities(from: snapshot)"
@@ -585,7 +584,7 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native chat only shows live work for a sending or server-active session", () => {
-    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const nativeScreens = readNativeChatSource();
 
     expect(nativeScreens).toContain(
       "sending || selectedSessionID.map { activeSessionIDs.contains($0) } == true"
@@ -595,12 +594,12 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native chat includes live and persisted edit activities in file changes", () => {
-    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const nativeScreens = readNativeChatSource();
 
     expect(nativeScreens).toContain(
       "summarizeNativeChatFileChanges(messages, liveActivities: liveActivities)"
     );
-    expect(nativeScreens).toContain("private func nativeActivityFileChange");
+    expect(nativeScreens).toContain("func nativeActivityFileChange");
     expect(nativeScreens).toContain('parts.first?.lowercased() == "edited"');
     expect(nativeScreens).toContain(
       "for activity in messages.flatMap({ $0.process_activities ?? [] })"
@@ -609,17 +608,22 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain(
       "nativeChatFilePathDisplay(file.path, workspaceDir: activeWorkspaceDir)"
     );
-    expect(nativeScreens).toContain("private struct NativeChatFilePathDisplay");
+    expect(nativeScreens).toContain("struct NativeChatFilePathDisplay");
     expect(nativeScreens).toContain('"Outside workspace"');
     expect(nativeScreens).toContain(".help(display.fullPath)");
   });
 
   test("native chat composer exposes agent switching and context usage", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
-    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
-    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
-    const configScreens = readFileSync(join(MACOS_APP_DIR, "NativeConfigScreens.swift"), "utf8");
-    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+    const gatewayModels = readGatewayModelsSource();
+    const nativeScreens = readNativeChatSource();
+    const nativePlatform = readNativePlatformSource();
+    const nativeArtifacts = readFileSync(
+      join(MACOS_APP_DIR, "NativeArtifactsScreen.swift"),
+      "utf8"
+    );
+    const configScreens = readNativeConfigSource();
+    const settings = readNativeSettingsSource();
 
     expect(gatewayModels).toContain("struct GatewaySessionContextUsage");
     expect(gatewayModels).toContain("let contextUsage: GatewaySessionContextUsage?");
@@ -634,21 +638,32 @@ describe("native macOS shell wiring", () => {
     expect(gatewayClient).toContain("timeoutInterval: TimeInterval = 120");
     expect(gatewayClient).toContain("timeoutInterval: 86_400");
     expect(gatewayClient).toContain('payload["useModelRouter"] = true');
+    expect(nativePlatform).toContain('request("api/plugins/\\(pathSegment(id))"');
+    expect(nativeScreens).toContain("subagentsLoadingSessionID");
+    expect(nativeScreens).toContain(
+      "guard selectedSessionID == requestedSessionID else { return }"
+    );
+    expect(nativeScreens).toContain(
+      "nativeMergeLiveActivities(liveActivities, incoming: snapshotActivities)"
+    );
+    expect(nativeArtifacts).toContain(
+      "content = try await client.readArtifact(artifact)\n            error = nil"
+    );
     expect(gatewayClient).toContain('request("api/sessions/\\(id)/agent", method: "PUT"');
-    expect(nativeScreens).toContain("private var composerControls: some View");
-    expect(nativeScreens).toContain("private var activeTokenUsage: GatewaySessionTokenUsage?");
+    expect(nativeScreens).toContain("var composerControls: some View");
+    expect(nativeScreens).toContain("var activeTokenUsage: GatewaySessionTokenUsage?");
     expect(nativeScreens).toContain("Session tokens:");
     expect(nativeScreens).toContain('NativeEnvironmentUsageStat(label: "Input"');
     expect(nativeScreens).toContain(".trim(from: 0, to: contextUsageProgress)");
-    expect(nativeScreens).toContain("private var composerSecurityControls: some View");
+    expect(nativeScreens).toContain("var composerSecurityControls: some View");
     expect(nativeScreens).toContain('Label("Always Allow", systemImage: "exclamationmark.shield")');
     expect(nativeScreens).toContain('Label("Ask Me", systemImage: "questionmark.circle")');
     expect(settings).toContain('"follow_up_behavior_enabled": followUpBehaviorEnabled');
     expect(settings).toContain('"Queue / Steer follow-ups"');
     expect(nativeScreens).toContain("guard !chatBusy || followUpBehaviorEnabled else { return }");
     expect(nativeScreens).toContain('config["follow_up_behavior_enabled"] as? Bool ?? true');
-    expect(nativeScreens).toContain("private var toolApprovalIconName: String");
-    expect(nativeScreens).toContain("private var toolApprovalColor: Color");
+    expect(nativeScreens).toContain("var toolApprovalIconName: String");
+    expect(nativeScreens).toContain("var toolApprovalColor: Color");
     expect(nativeScreens).toContain("try await client.updateAppConfig(body)");
     expect(nativeScreens).toContain('"tool_approval_mode": normalized');
     expect(configScreens).toContain("Compact structured tool results");
@@ -661,15 +676,15 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("ViewThatFits(in: .horizontal)");
     expect(nativeScreens).toContain("composerAgentPicker(compact: true)");
     expect(nativeScreens).toContain("nativeChatAgentLabel(name: agent.name");
-    expect(nativeScreens).toContain("private var reasoningEffortPopover: some View");
+    expect(nativeScreens).toContain("var reasoningEffortPopover: some View");
     expect(nativeScreens).toContain("client.updateAgentReasoning");
     expect(nativeScreens).toContain('Image(systemName: "brain")');
-    expect(nativeScreens).toContain("private var contextUsageText: String");
-    expect(nativeScreens).toContain("private var contextUsagePopover: some View");
+    expect(nativeScreens).toContain("var contextUsageText: String");
+    expect(nativeScreens).toContain("var contextUsagePopover: some View");
     expect(nativeScreens).toContain("providerPlanStatus: ProviderPlanStatusResponse?");
-    expect(nativeScreens).toContain("private var activeProviderPlan: ProviderPlanSnapshot?");
-    expect(nativeScreens).toContain("private var providerPlanText: String?");
-    expect(nativeScreens).toContain("private var providerPlanUsageRows");
+    expect(nativeScreens).toContain("var activeProviderPlan: ProviderPlanSnapshot?");
+    expect(nativeScreens).toContain("var providerPlanText: String?");
+    expect(nativeScreens).toContain("var providerPlanUsageRows");
     expect(nativeScreens).toContain("NativeContextProviderPlanUsageBar");
     expect(nativeScreens).toContain("nativeContextProviderPlanUsageTint");
     expect(nativeScreens).toContain("if percent < 40 { return .green }");
@@ -678,7 +693,7 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("if percent < 95 { return .orange }");
     expect(nativeScreens).toContain("client.providerPlanStatus()");
     expect(nativeScreens).toContain("pendingAgentSessionID = selectedSessionID");
-    expect(nativeScreens).toContain("private func changeChatAgent(_ agentID: String) async");
+    expect(nativeScreens).toContain("func changeChatAgent(_ agentID: String) async");
     expect(nativeScreens).toContain(
       "agentId: selectedConcreteChatAgentID.isEmpty ? nil : selectedConcreteChatAgentID"
     );
@@ -707,7 +722,7 @@ describe("native macOS shell wiring", () => {
       join(MACOS_APP_DIR, "NativeProvidersScreen.swift"),
       "utf8"
     );
-    const configScreens = readFileSync(join(MACOS_APP_DIR, "NativeConfigScreens.swift"), "utf8");
+    const configScreens = readNativeConfigSource();
 
     expect(providersScreen).toContain("planManualEditable");
     expect(providersScreen).toContain("Plan usage is automatic");
@@ -813,7 +828,7 @@ describe("native macOS shell wiring", () => {
 
   test("native skills screen supports status, local creation, registry browse, and install parity", () => {
     const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
-    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const gatewayModels = readGatewayModelsSource();
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
     const skillsScreen = readFileSync(join(MACOS_APP_DIR, "NativeSkillsScreen.swift"), "utf8");
 
@@ -848,13 +863,13 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native chat sidebar groups sessions compactly by workspace", () => {
-    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const nativeScreens = readNativeChatSource();
 
     expect(nativeScreens).toContain("struct NativeSessionGroup");
     expect(nativeScreens).toContain("collapsedSessionGroupIDs");
     expect(nativeScreens).toContain("toggleSessionGroup(group.id)");
     expect(nativeScreens).toContain("if $0.kind == .workspace && $1.kind == .unassigned");
-    expect(nativeScreens).toContain("private func sessionListTooltip(for session: GatewaySession)");
+    expect(nativeScreens).toContain("func sessionListTooltip(for session: GatewaySession)");
     expect(nativeScreens).toContain(".help(sessionListTooltip(for: session))");
     expect(nativeScreens).toContain("sessionListRow(for: session)");
     expect(nativeScreens).toContain(
@@ -884,7 +899,7 @@ describe("native macOS shell wiring", () => {
 
   test("native chat environment reads git branch through the gateway client", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
-    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const gatewayModels = readGatewayModelsSource();
 
     expect(gatewayClient).toContain("func gitBranch(path: String) async throws -> String?");
     expect(gatewayClient).toContain("func gitBranches(path: String) async throws");
@@ -899,7 +914,7 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native chat file changes dedupe activity and structured tool paths", () => {
-    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const nativeScreens = readNativeChatSource();
 
     expect(nativeScreens).toContain("func pathKey(_ path: String) -> String");
     expect(nativeScreens).toContain("func matchingKey(_ path: String) -> String?");
@@ -909,19 +924,8 @@ describe("native macOS shell wiring", () => {
   });
 
   test("gateway model labels trim blank titles before falling back", () => {
-    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
-    const modelTests = readFileSync(
-      join(
-        ROOT_DIR,
-        "apps",
-        "macos",
-        "Cybara",
-        "Tests",
-        "CybaraTests",
-        "GatewayClientModelTests.swift"
-      ),
-      "utf8"
-    );
+    const gatewayModels = readGatewayModelsSource();
+    const modelTests = readGatewayModelTestsSource();
 
     expect(gatewayModels).toContain("func firstNonEmptyGatewayString");
     expect(gatewayModels).toContain("var displayTitle: String {");
@@ -941,9 +945,9 @@ describe("native macOS shell wiring", () => {
 
   test("native chat requests complete tool call payloads for transcripts", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
-    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const gatewayModels = readGatewayModelsSource();
     const toolTimeline = readFileSync(join(MACOS_APP_DIR, "NativeToolTimeline.swift"), "utf8");
-    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const nativeScreens = readNativeChatSource();
 
     expect(gatewayClient).toContain('URLQueryItem(name: "includeFullToolCalls", value: "1")');
     expect(gatewayModels).toContain("let tool_calls: [GatewayToolCall]?");
@@ -973,10 +977,10 @@ describe("native macOS shell wiring", () => {
   });
 
   test("native chat strips assistant reasoning markup without altering user messages", () => {
-    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const gatewayModels = readGatewayModelsSource();
     const markdown = readFileSync(join(MACOS_APP_DIR, "NativeMarkdown.swift"), "utf8");
     const markdownViews = readFileSync(join(MACOS_APP_DIR, "NativeMarkdownViews.swift"), "utf8");
-    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const nativeScreens = readNativeChatSource();
 
     expect(markdown).toContain("stripAssistantMarkupTags");
     expect(markdown).toContain("NativeAssistantMarkupResult");
@@ -992,20 +996,9 @@ describe("native macOS shell wiring", () => {
 
   test("native memory screen uses gateway CRUD/search routes with encoded filenames", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
-    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
-    const configScreens = readFileSync(join(MACOS_APP_DIR, "NativeConfigScreens.swift"), "utf8");
-    const modelTests = readFileSync(
-      join(
-        ROOT_DIR,
-        "apps",
-        "macos",
-        "Cybara",
-        "Tests",
-        "CybaraTests",
-        "GatewayClientModelTests.swift"
-      ),
-      "utf8"
-    );
+    const gatewayModels = readGatewayModelsSource();
+    const configScreens = readNativeConfigSource();
+    const modelTests = readGatewayModelTestsSource();
 
     expect(gatewayClient).toContain("func pathSegment");
     expect(gatewayClient).toContain('allowed.remove(charactersIn: "/")');
@@ -1035,7 +1028,7 @@ describe("native macOS shell wiring", () => {
 
   test("native wallet screen exposes user send routes with confirmation", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
-    const configScreens = readFileSync(join(MACOS_APP_DIR, "NativeConfigScreens.swift"), "utf8");
+    const configScreens = readNativeConfigSource();
 
     expect(gatewayClient).toContain('request("api/wallet/send", method: "POST"');
     expect(gatewayClient).toContain('request("api/wallet/send-token", method: "POST"');
@@ -1050,20 +1043,9 @@ describe("native macOS shell wiring", () => {
 
   test("native mobile pairing uses gateway connect-info before QR creation", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
-    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const gatewayModels = readGatewayModelsSource();
     const mobileScreen = readFileSync(join(MACOS_APP_DIR, "MobileScreen.swift"), "utf8");
-    const modelTests = readFileSync(
-      join(
-        ROOT_DIR,
-        "apps",
-        "macos",
-        "Cybara",
-        "Tests",
-        "CybaraTests",
-        "GatewayClientModelTests.swift"
-      ),
-      "utf8"
-    );
+    const modelTests = readGatewayModelTestsSource();
 
     expect(gatewayClient).toContain(
       "func mobileConnectInfo() async throws -> GatewayMobileConnectInfo"

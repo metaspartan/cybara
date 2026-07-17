@@ -11,12 +11,13 @@ import {
   normalizeMobileGatewayUrl,
 } from "../core/mobile-devices";
 import { cybaraDir } from "../core/paths";
+import { isProductionRuntime } from "../core/runtime/runtime-mode";
 
 const log = createLogger("Security");
 
 const API_KEY_FILE = join(cybaraDir, "api_key");
 const SECURITY_SETTINGS_FILE = join(cybaraDir, "security.json");
-let cachedApiKey: string | null | undefined;
+let cachedApiKey: string | undefined;
 
 interface PersistedSecuritySettings {
   requireAuthForLocalhost?: boolean;
@@ -102,7 +103,9 @@ function writePersistedSecuritySettings(settings: PersistedSecuritySettings): vo
   });
   try {
     chmodSync(SECURITY_SETTINGS_FILE, 0o600);
-  } catch {}
+  } catch {
+    void 0;
+  }
   cachedSecuritySettings = settings;
 }
 
@@ -156,7 +159,7 @@ function readPersistedRemoteAccessSettings(
   };
 }
 
-function getOrCreateApiKey(): string | null {
+function getOrCreateApiKey(): string {
   if (existsSync(API_KEY_FILE)) {
     try {
       chmodSync(API_KEY_FILE, 0o600);
@@ -177,7 +180,7 @@ function getOrCreateApiKey(): string | null {
   }
 
   try {
-    writeFileSync(API_KEY_FILE, newKey, { mode: 0o600 }); // Read/write only by owner
+    writeFileSync(API_KEY_FILE, newKey, { mode: 0o600 });
     log.info("Generated new API key", { path: API_KEY_FILE });
     console.log(`
 ╔══════════════════════════════════════════════════════════════════╗
@@ -188,19 +191,19 @@ function getOrCreateApiKey(): string | null {
 ║                                                                  ║
 ║  Send it as:    Authorization: Bearer <your key>                 ║
 ║                                                                  ║
-║  Localhost connections are allowed without auth in dev mode.     ║
+║  Browser clients can authenticate with the saved API key.        ║
 ║  Set CYBARA_API_KEY env var to override.                         ║
 ╚══════════════════════════════════════════════════════════════════╝
 `);
   } catch (error) {
     log.error("Failed to save API key", { error: (error as Error).message });
-    return newKey; // Still use the key, just don't persist
+    return newKey;
   }
 
   return newKey;
 }
 
-function getEffectiveApiKey(): string | null {
+function getEffectiveApiKey(): string {
   const envKey = process.env.CYBARA_API_KEY?.trim();
   if (envKey) {
     return envKey;
@@ -216,7 +219,7 @@ function getEffectiveApiKey(): string | null {
 
 function isLocalhostBypassAllowed(): boolean {
   if (process.env.CYBARA_REQUIRE_AUTH === "1") return false;
-  if (process.env.NODE_ENV === "production") return false;
+  if (isProductionRuntime()) return false;
   if (readPersistedSecuritySettings().requireAuthForLocalhost === true) return false;
   return true;
 }
@@ -336,10 +339,6 @@ export function rateLimitEndpoint(
 export interface AuthResult {
   authenticated: boolean;
   reason?: string;
-  /**
-   * Capability scopes for a scoped principal (a paired mobile device). Undefined
-   * means full access (root API key / trusted localhost) — no scope gating.
-   */
   scopes?: string[];
   mobileDevice?: MobileDeviceView;
 }
@@ -355,22 +354,15 @@ function isLocalhostIP(ip: string): boolean {
 }
 
 function isSameOriginRequest(headers: Record<string, string>): boolean {
-  // Browser fetch-metadata: real same-origin fetch/XHR/SSE requests always send
-  // `Sec-Fetch-Site`. Non-browser local clients (curl, other local processes,
-  // daemons) do NOT — so a header-less request must NOT be treated as
-  // same-origin. This closes the "any local process inherits the localhost auth
-  // bypass" hole while keeping the same-origin web UI working.
   const secFetchSite = (headers["sec-fetch-site"] || headers["Sec-Fetch-Site"] || "")
     .toString()
     .toLowerCase();
   if (secFetchSite) {
-    // "same-origin" = UI fetch/SSE; "none" = top-level navigation to our own page.
     return secFetchSite === "same-origin" || secFetchSite === "none";
   }
 
-  // WebSocket upgrades (and some clients) send Origin but no Sec-Fetch-Site.
   const origin = headers.origin || headers.Origin;
-  if (!origin) return false; // no browser signal at all -> require the API key
+  if (!origin) return false;
 
   const host = headers.host || headers.Host;
   if (!host) return false;
@@ -383,14 +375,6 @@ function isSameOriginRequest(headers: Record<string, string>): boolean {
   }
 }
 
-/**
- * DNS-rebinding guard for the localhost bypass. A malicious site can point its
- * own domain at 127.0.0.1, making the victim's browser send requests that ARE
- * same-origin (to the attacker's origin) and DO arrive from a loopback IP —
- * but the Host header still names the attacker's domain. Browsers always send
- * Host, so a present-but-non-local Host disqualifies the bypass; an absent
- * Host stays neutral (non-browser clients never get the bypass anyway).
- */
 function isLocalHostHeader(headers: Record<string, string>): boolean {
   const rawHost = (headers.host || headers.Host || "").toString().trim().toLowerCase();
   if (!rawHost) return true;
@@ -418,7 +402,6 @@ export function hasLocalhostBypass(headers: Record<string, string>, ip: string):
   );
 }
 
-/** Length-safe constant-time string compare, to avoid token timing leaks. */
 function constantTimeEqual(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
@@ -476,10 +459,6 @@ function gatewayPasswordSatisfied(headers: Record<string, string>, ip: string): 
 export function authenticateRequest(headers: Record<string, string>, ip: string): AuthResult {
   const effectiveApiKey = config.apiKey;
 
-  if (!effectiveApiKey) {
-    return { authenticated: true };
-  }
-
   if (hasLocalhostBypass(headers, ip)) {
     log.debug("Localhost bypass for auth", { ip });
     return { authenticated: true };
@@ -511,17 +490,6 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
   return { authenticated: true };
 }
 
-/**
- * The scope a route requires, or null when any authenticated principal may use
- * it. Mutating management surfaces require `manage`; wallet, terminal, and MCP
- * process-management routes keep narrower high-risk scopes so paired-device
- * tokens cannot escalate into fund movement or local code execution.
- */
-/**
- * Normalize an optional URL prefix the gateway serves under (e.g. "/cybara").
- * Returns "" for none. Accepts 1-4 path segments of URL-safe characters; the
- * env override CYBARA_BASE_PATH wins over the persisted setting.
- */
 export function normalizeGatewayBasePath(value: unknown): string {
   if (typeof value !== "string") return "";
   const trimmed = value.trim();
@@ -529,9 +497,7 @@ export function normalizeGatewayBasePath(value: unknown): string {
   const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
   const cleaned = withSlash.replace(/\/+$/, "");
   if (!/^(\/[A-Za-z0-9._~-]{1,64}){1,4}$/.test(cleaned)) return "";
-  // "." / ".." segments would alias other paths.
   if (cleaned.split("/").some((segment) => /^\.+$/.test(segment) && segment !== "")) return "";
-  // Reserve the API namespace so a prefix can't shadow real routes confusingly.
   if (cleaned === "/api" || cleaned.startsWith("/api/")) return "";
   return cleaned;
 }
@@ -758,8 +724,7 @@ export interface GatewayAuthSettings {
 export function getGatewayAuthSettings(): GatewayAuthSettings {
   const envKey = process.env.CYBARA_API_KEY?.trim();
   const key = config.apiKey;
-  const requireForced =
-    process.env.CYBARA_REQUIRE_AUTH === "1" || process.env.NODE_ENV === "production";
+  const requireForced = process.env.CYBARA_REQUIRE_AUTH === "1" || isProductionRuntime();
   return {
     apiKeyConfigured: Boolean(key),
     apiKeyPreview: key ? `${key.slice(0, 12)}…${key.slice(-4)}` : null,
@@ -834,9 +799,6 @@ export function rotateGatewayApiKey(): { apiKey: string } {
 }
 
 export function routeRequiredScope(method: string, path: string): MobileScope | "root" | null {
-  // Gateway auth management can mint/reveal the root key, so scoped
-  // principals (paired devices) must never reach it. "root" is intentionally
-  // not a grantable device scope.
   if (path.startsWith("/api/auth")) {
     return "root";
   }
@@ -1261,9 +1223,6 @@ export function securityCheck(
     return { passed: true };
   }
 
-  // Onboarding-safe, read-only catalog/status endpoints: needed by the first-run
-  // setup wizard before any API key exists, and expose only the static provider/
-  // channel catalog (no secrets, same data as the open-source registry).
   const onboardingPublicPaths = [
     "/api/providers/available",
     "/api/channels/available",
@@ -1273,9 +1232,6 @@ export function securityCheck(
     return { passed: true };
   }
 
-  // Pairing-code redemption is reachable by an unpaired device (it has no token
-  // yet). The pairing code itself is the secret — one-time and expiring — and
-  // this endpoint is pairing-rate-limited to blunt guessing.
   if (method === "POST" && path === "/api/mobile/pair/redeem") {
     const limit = rateLimitEndpoint(path, ip, "pairing");
     if (!limit.allowed) {
@@ -1359,9 +1315,6 @@ export function securityCheck(
     };
   }
 
-  // Scope enforcement: a scoped principal (paired device) may only reach a
-  // gated capability if it holds the required scope. Full-access principals
-  // (root key / trusted localhost) have `auth.scopes` undefined and skip this.
   if (auth.scopes) {
     const required = routeRequiredScope(method, path);
     if (required && !auth.scopes.includes(required)) {

@@ -120,4 +120,48 @@ describe("chat response formatting", () => {
 
     expect(message.content).toBe("Summary\n```text\nunfinished output\n```");
   });
+
+  test("hides the exact internal silent reply sentinel", () => {
+    const [message] = sanitizeSessionMessages([
+      {
+        role: "assistant",
+        content: "[SILENT]",
+        process_activities: [
+          {
+            id: "read-result",
+            phase: "result",
+            text: "Explored package.json",
+            timestamp: 1,
+            toolName: "read",
+          },
+        ],
+      },
+    ]);
+
+    expect(message.content).toBe("");
+    expect(message.process_activities?.[0]?.text).toBe("Explored package.json");
+  });
+
+  test("preserves every long-run activity in session responses", () => {
+    const processActivities = Array.from({ length: 301 }, (_, index) => ({
+      id: `activity-${index}`,
+      phase: "result" as const,
+      text: `Read file ${index}`,
+      timestamp: index,
+      toolName: "read",
+      toolCallId: `read-${index}`,
+    }));
+
+    const [message] = sanitizeSessionMessages([
+      {
+        role: "assistant",
+        content: "Long task complete",
+        process_activities: processActivities,
+      },
+    ]);
+
+    expect(message.process_activities).toHaveLength(301);
+    expect(message.process_activities?.[0]?.toolCallId).toBe("read-0");
+    expect(message.process_activities?.[300]?.toolCallId).toBe("read-300");
+  });
 });

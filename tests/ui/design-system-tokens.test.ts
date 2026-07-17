@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readUiStylesSource } from "../shared/source-bundles";
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
 describe("index.css design-system utilities", () => {
-  const css = read("../../ui/src/index.css");
+  const css = readUiStylesSource();
   const sessionSidebar = read("../../ui/src/pages/chat/SessionSidebar.tsx");
 
   test("defines the glass utilities that shared primitives reference", () => {
@@ -92,6 +93,14 @@ describe("index.css design-system utilities", () => {
 
   test("honors prefers-reduced-motion", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+  });
+
+  test("ships semantic Catppuccin, Matrix, and custom theme surfaces", () => {
+    const sidebar = read("../../ui/src/components/layout/Sidebar.tsx");
+    expect(css).toMatch(/html\[data-theme-mode="catppuccin"\][\s\S]*--surface-panel:\s*#1e1e2e/);
+    expect(css).toMatch(/html\[data-theme-mode="matrix"\][\s\S]*--surface-panel:\s*#06120a/);
+    expect(css).toContain('html[data-theme-mode="custom"][data-translucent-sidebar="false"]');
+    expect(sidebar).toContain("cybara-main-sidebar");
   });
 
   test("uses theme-aware neutral tokens for chat and workspace actions", () => {

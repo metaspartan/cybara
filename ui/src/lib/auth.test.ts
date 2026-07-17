@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   appendApiTokenParam,
+  clearApiAuthToken,
   clearGatewayAccessPassword,
   getApiAuthToken,
   getGatewayAccessPassword,
   setGatewayAccessPassword,
+  setApiAuthToken,
   withApiAuthHeaders,
 } from "./auth";
 
@@ -79,6 +81,18 @@ describe("getApiAuthToken", () => {
   test("no token anywhere returns null", () => {
     setWindow("", makeStorage());
     expect(getApiAuthToken()).toBe(null);
+  });
+
+  test("keeps browser API keys in session storage and clears them", () => {
+    const local = makeStorage();
+    setWindow("", local);
+
+    setApiAuthToken(" session-key ");
+
+    expect(getApiAuthToken()).toBe("session-key");
+    expect(local.getItem("cybara_api_key")).toBeNull();
+    clearApiAuthToken();
+    expect(getApiAuthToken()).toBeNull();
   });
 });
 

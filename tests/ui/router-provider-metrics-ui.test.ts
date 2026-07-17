@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readUiStylesSource } from "../shared/source-bundles";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
@@ -8,7 +9,7 @@ const read = (path: string) => readFileSync(join(root, path), "utf8");
 describe("router, provider, and metrics UI wiring", () => {
   test("native selects keep readable option colors across Tauri themes", () => {
     const selectSource = read("ui/src/components/ui/Select.tsx");
-    const cssSource = read("ui/src/index.css");
+    const cssSource = readUiStylesSource();
 
     expect(selectSource).toContain("themed-form-control");
     expect(selectSource).not.toContain("[color-scheme:dark]");

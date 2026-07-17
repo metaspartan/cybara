@@ -26,6 +26,8 @@ export interface AgentTransferItem {
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  timestamp?: number;
+  turnStartedAt?: number;
   process_activities?: TUIActivityItem[];
   tool_calls?: TUIToolCallItem[];
   agent_transfers?: AgentTransferItem[];
@@ -80,7 +82,12 @@ export function ActivitySummary({
   );
   const rows = presentTUIActivities(workActivities, message.tool_calls || []);
   if (rows.length === 0 && steeringActivities.length === 0) return null;
-  const workedDuration = formatTUIWorkedDuration(workActivities, message.tool_calls || []);
+  const hiddenLiveRows = live ? Math.max(0, rows.length - 6) : 0;
+  const visibleRows = hiddenLiveRows > 0 ? rows.slice(-6) : rows;
+  const workedDuration = formatTUIWorkedDuration(workActivities, message.tool_calls || [], {
+    assistantTimestamp: message.timestamp,
+    turnStartedAt: message.turnStartedAt,
+  });
   return (
     <Box
       paddingLeft={2}
@@ -94,27 +101,42 @@ export function ActivitySummary({
           {workedDuration}
         </Text>
       ) : null}
+      {hiddenLiveRows > 0 ? (
+        <Text color={palette.subtle}>… {hiddenLiveRows} earlier work groups</Text>
+      ) : null}
       {rows.length > 0 && (live || expanded)
-        ? rows.map((row, rowIndex) => (
+        ? visibleRows.map((row, rowIndex) => (
             <Box key={`${row.id}-${rowIndex}`} flexDirection="column">
               {row.thought ? (
-                <TerminalInlineText
-                  line={row.label}
-                  baseColor={palette.detail}
-                  colorScheme={colorScheme}
-                />
+                live ? (
+                  <Text color={palette.detail} wrap="truncate-end">
+                    {row.label}
+                  </Text>
+                ) : (
+                  <TerminalInlineText
+                    line={row.label}
+                    baseColor={palette.detail}
+                    colorScheme={colorScheme}
+                  />
+                )
               ) : (
-                <Text color={palette[tuiActivityTone(row)]} wrap="wrap">
+                <Text
+                  color={palette[tuiActivityTone(row)]}
+                  wrap={live ? "truncate-end" : "wrap"}
+                >
                   {row.icon ? `${row.icon} ` : ""}
                   {row.label}
                 </Text>
               )}
-              {limitTUIActivityDetails(row.details, maxDetails ?? row.details.length).map(
+              {limitTUIActivityDetails(
+                row.details,
+                live ? Math.min(4, maxDetails ?? 4) : (maxDetails ?? row.details.length),
+              ).map(
                 (label, index, details) => (
                   <Text
                     key={`${row.id}-${rowIndex}-${index}`}
                     color={palette.detail}
-                    wrap="wrap"
+                    wrap={live ? "truncate-end" : "wrap"}
                   >
                     {index === details.length - 1 ? "└" : "├"} {label}
                   </Text>
@@ -245,7 +267,7 @@ export function LiveRunView({
           />
         </Box>
       ) : detail ? (
-        <Text color={palette.muted} wrap="wrap">
+        <Text color={palette.muted} wrap="truncate-end">
           {" "}
           {detail}
         </Text>
@@ -339,7 +361,7 @@ export function HelpPanel({
         <Text bold color={palette.heading}>
           Chat controls
         </Text>
-        <Text>Enter send · ^J newline · Tab complete</Text>
+        <Text>Enter send · Shift+Enter/^J newline · Tab complete</Text>
         <Text>^P commands · ^F search · PgUp/PgDn scroll</Text>
         <Text>Esc sessions · ^C quit</Text>
         <Text>/model · /agent · /permissions · /followups · /reasoning</Text>
@@ -360,8 +382,9 @@ export function HelpPanel({
         Chat controls
       </Text>
       <Text>
-        Enter send · Ctrl+J newline · ←/→ move · ↑/↓ palette or history · PgUp/PgDn transcript
+        Enter send · Shift+Enter/Ctrl+J newline · ←/→ move · ↑/↓ palette or history
       </Text>
+      <Text>Alt+←/→ words · Ctrl+W delete word · PgUp/PgDn transcript</Text>
       <Text>Ctrl+P commands · Ctrl+F transcript search · Esc closes the active panel</Text>
       <Text>
         Tab completes slash commands and @ capabilities · approvals use 1/2/3/4 or y/s/a/n
