@@ -11,6 +11,7 @@ import {
 } from "./approvals";
 import {
   environmentSnapshotFromDetail,
+  environmentSnapshotWithWorkspace,
   lspServersFromResponse,
   formatContextUsageLine,
   formatFileChangeLine,
@@ -97,12 +98,15 @@ import {
   compact,
   deleteAt,
   deleteBefore,
+  deletePreviousWord,
   fetchControlPlaneState,
   insertAt,
   isRecord,
   isTransientRuntimeCommand,
   messagesFromResponse,
   pendingFrom,
+  nextWordCursor,
+  previousWordCursor,
   resolvePendingId,
   resolvePendingIds,
   type AgentSummary,
@@ -115,6 +119,7 @@ import { useInteractiveChatLayout } from "./interactive-chat-layout";
 export function InteractiveChatTUI({
   apiBase,
   apiKey,
+  gatewayPassword,
   fetchAPI,
   initialAgentId,
   initialWorkspaceDir,
@@ -294,6 +299,7 @@ export function InteractiveChatTUI({
     void consumeTUIStatusStream({
       apiBase,
       apiKey,
+      gatewayPassword,
       signal: controller.signal,
       onEvent: appendStatusActivity,
     }).catch((cause) => {
@@ -302,7 +308,7 @@ export function InteractiveChatTUI({
       }
     });
     return () => controller.abort();
-  }, [apiBase, apiKey]);
+  }, [apiBase, apiKey, gatewayPassword]);
 
   const selectedAgent = React.useMemo(
     () => agents.find((agent) => agent.id === selectedAgentId),
@@ -351,18 +357,27 @@ export function InteractiveChatTUI({
     [fetchAPI],
   );
 
-  const loadTasks = React.useCallback(async () => {
+  const loadTasks = React.useCallback(async (targetSessionId = localSessionId) => {
+    if (!targetSessionId) {
+      setTasks([]);
+      return [];
+    }
     const response = await fetchAPI<unknown>("/api/tasks");
-    const next = tasksFromResponse(response);
+    const next = tasksFromResponse(response).filter(
+      (task) => task.sessionId === targetSessionId,
+    );
     setTasks(next);
     return next;
-  }, [fetchAPI]);
+  }, [fetchAPI, localSessionId]);
 
-  const loadSubagents = React.useCallback(async () => {
-    const query = localSessionId
-      ? "?sessionId=" + encodeURIComponent(localSessionId)
-      : "";
-    const response = await fetchAPI<unknown>("/api/subagents" + query);
+  const loadSubagents = React.useCallback(async (targetSessionId = localSessionId) => {
+    if (!targetSessionId) {
+      setSubagents([]);
+      return [];
+    }
+    const response = await fetchAPI<unknown>(
+      "/api/subagents?sessionId=" + encodeURIComponent(targetSessionId),
+    );
     const next = subagentsFromResponse(response);
     setSubagents(next);
     return next;
@@ -658,7 +673,6 @@ export function InteractiveChatTUI({
             );
             return true;
           }
-          await loadMessages();
         }
         const nextAgent = availableAgents.find((agent) => agent.id === agentId);
         setNotice(
@@ -1395,6 +1409,7 @@ export function InteractiveChatTUI({
       setLiveActivities([]);
       const turnSessionId = localSessionId || crypto.randomUUID();
       sessionIdRef.current = turnSessionId;
+      if (!localSessionId) setLocalSessionId(turnSessionId);
       try {
         const response = await fetchAPI<unknown>("/api/chat", {
           method: "POST",
@@ -1448,7 +1463,10 @@ export function InteractiveChatTUI({
             setMessages([...persistedMessages, responseMessage]);
           }
           finishLiveRun();
-          await loadSubagents().catch(() => undefined);
+          await Promise.all([
+            loadTasks(nextSessionId),
+            loadSubagents(nextSessionId),
+          ]).catch(() => undefined);
         }
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -1675,6 +1693,7 @@ export function InteractiveChatTUI({
       const action = chatEscapeAction(
         environmentStackedVisible || showHelp,
         input.length > 0,
+        sending,
       );
       if (action === "close_panel") {
         dismissTransientEnvironmentPanel();
@@ -1685,6 +1704,10 @@ export function InteractiveChatTUI({
       if (action === "clear_draft") {
         resetInput();
         setNotice("Draft cleared. Press Esc again to return to sessions.");
+        return;
+      }
+      if (action === "keep_run") {
+        setNotice("Run is still active. Use Ctrl+C or /stop to stop it.");
         return;
       }
       onExit();
@@ -1703,7 +1726,7 @@ export function InteractiveChatTUI({
       );
       return;
     }
-    if (key.ctrl && value === "j") {
+    if ((key.ctrl && value === "j") || (key.return && key.shift)) {
       const [next, nextCursor] = insertAt(input, cursor, "\n");
       setInput(next);
       setCursor(nextCursor);
@@ -1718,11 +1741,15 @@ export function InteractiveChatTUI({
       return;
     }
     if (key.leftArrow) {
-      setCursor((previous) => Math.max(0, previous - 1));
+      setCursor((previous) =>
+        key.meta ? previousWordCursor(input, previous) : Math.max(0, previous - 1),
+      );
       return;
     }
     if (key.rightArrow) {
-      setCursor((previous) => Math.min(input.length, previous + 1));
+      setCursor((previous) =>
+        key.meta ? nextWordCursor(input, previous) : Math.min(input.length, previous + 1),
+      );
       return;
     }
     if (key.upArrow) {
@@ -1785,7 +1812,17 @@ export function InteractiveChatTUI({
       setCursor(nextCursor);
       return;
     }
+    if (key.ctrl && value === "w") {
+      const [next, nextCursor] = deletePreviousWord(input, cursor);
+      setInput(next);
+      setCursor(nextCursor);
+      return;
+    }
     if (key.ctrl && value === "d") {
+      if (!input && !sending) {
+        onExit();
+        return;
+      }
       setInput(deleteAt(input, cursor));
       return;
     }
@@ -1837,6 +1874,10 @@ export function InteractiveChatTUI({
     : "Ask Cybara";
   const composerTextColor =
     sending && !followUpBehaviorEnabled ? tuiPalette.muted : tuiPalette.text;
+  const displayEnvironmentSnapshot = environmentSnapshotWithWorkspace(
+    environmentSnapshot,
+    workspaceDir,
+  );
 
   return (
     <Box flexDirection="column" height={layout.rows} width="100%">
@@ -1845,9 +1886,9 @@ export function InteractiveChatTUI({
         state={{
           approvalCount: approvalRequests.length,
           approvalMode,
-          branch: environmentSnapshot?.gitBranch || null,
+          branch: displayEnvironmentSnapshot?.gitBranch || null,
           columns: layout.columns,
-          contextUsage: environmentSnapshot?.contextUsage || null,
+          contextUsage: displayEnvironmentSnapshot?.contextUsage || null,
           model: activeModelLine,
           pendingCount: pendingMessages.length,
           profile: agentToolProfile(selectedAgent),
@@ -1919,7 +1960,7 @@ export function InteractiveChatTUI({
         </Box>
         {environmentSidebarVisible ? (
           <EnvironmentPanel
-            snapshot={environmentSnapshot}
+            snapshot={displayEnvironmentSnapshot}
             tasks={tasks}
             subagents={subagents}
             lspServers={lspServers}
@@ -1943,7 +1984,7 @@ export function InteractiveChatTUI({
       <PendingQueue messages={pendingMessages} palette={tuiPalette} />
       {environmentStackedVisible ? (
         <EnvironmentPanel
-          snapshot={environmentSnapshot}
+          snapshot={displayEnvironmentSnapshot}
           tasks={tasks}
           subagents={subagents}
           lspServers={lspServers}

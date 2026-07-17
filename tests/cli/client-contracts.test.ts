@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { buildCliAuthHeaders, resolveCliApiKey } from "../../src/cli/client";
+import {
+  buildCliAuthHeaders,
+  resolveCliApiKey,
+  resolveCliGatewayPassword,
+} from "../../src/cli/client";
 import {
   type AgentItem,
   sessionAgentLabel,
@@ -37,20 +41,42 @@ describe("CLI client contracts", () => {
     expect(resolveCliApiKey({}, createTempHome())).toBeNull();
   });
 
+  test("normalizes the optional remote gateway password", () => {
+    expect(resolveCliGatewayPassword({ CYBARA_GATEWAY_PASSWORD: " remote-secret " })).toBe(
+      "remote-secret"
+    );
+    expect(resolveCliGatewayPassword({ CYBARA_GATEWAY_PASSWORD: "  " })).toBeNull();
+  });
+
   test("merges authentication without replacing caller headers", () => {
-    const headers = buildCliAuthHeaders("secret", { "X-Request-ID": "request-1" }, true);
+    const headers = buildCliAuthHeaders(
+      "secret",
+      { "X-Request-ID": "request-1" },
+      true,
+      "gateway-secret"
+    );
 
     expect(headers.get("Authorization")).toBe("Bearer secret");
     expect(headers.get("Content-Type")).toBe("application/json");
     expect(headers.get("X-Request-ID")).toBe("request-1");
+    expect(headers.get("X-Cybara-Gateway-Password")).toBe("gateway-secret");
 
     const preserved = buildCliAuthHeaders(
       "secret",
       { Authorization: "Bearer override", "Content-Type": "text/plain" },
-      true
+      true,
+      "gateway-secret"
     );
     expect(preserved.get("Authorization")).toBe("Bearer override");
     expect(preserved.get("Content-Type")).toBe("text/plain");
+
+    const preservedPassword = buildCliAuthHeaders(
+      "secret",
+      { "X-Cybara-Gateway-Password": "override" },
+      false,
+      "gateway-secret"
+    );
+    expect(preservedPassword.get("X-Cybara-Gateway-Password")).toBe("override");
   });
 });
 

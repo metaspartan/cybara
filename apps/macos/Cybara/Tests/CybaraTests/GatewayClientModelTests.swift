@@ -4,6 +4,43 @@ import XCTest
 
 final class GatewayClientModelTests: XCTestCase {
 
+    func testNativeGatewayCredentialsPreferEnvironmentAndNormalizeValues() {
+        XCTAssertEqual(
+            GatewayClient.resolveAPIKey(
+                environment: ["CYBARA_API_KEY": " env-key "],
+                fileValue: "file-key\n"
+            ),
+            "env-key"
+        )
+        XCTAssertEqual(
+            GatewayClient.resolveAPIKey(environment: [:], fileValue: " file-key\n"),
+            "file-key"
+        )
+        XCTAssertNil(GatewayClient.resolveAPIKey(environment: [:], fileValue: "  "))
+        XCTAssertEqual(
+            GatewayClient.resolveGatewayPassword(
+                environment: ["CYBARA_GATEWAY_PASSWORD": " env-password "],
+                storedValue: "stored-password"
+            ),
+            "env-password"
+        )
+    }
+
+    func testNativeGatewayErrorsExplainAuthenticationRecovery() {
+        XCTAssertEqual(
+            GatewayClientError.response(statusCode: 401, body: "").errorDescription,
+            "Gateway authentication failed. Check CYBARA_API_KEY or ~/.cybara/api_key."
+        )
+        XCTAssertEqual(
+            GatewayClientError.response(statusCode: 403, body: "").errorDescription,
+            "Gateway access was denied. Check the gateway password and access settings."
+        )
+        XCTAssertEqual(
+            GatewayClientError.response(statusCode: 500, body: "failure").errorDescription,
+            "Gateway error 500: failure"
+        )
+    }
+
     func testPathSegmentEncodesRouteSeparators() throws {
         let url = try XCTUnwrap(URL(string: "http://127.0.0.1:4269"))
         let client = GatewayClient(baseURL: url)

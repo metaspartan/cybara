@@ -100,10 +100,12 @@ describe("CLI TUI status stream", () => {
 
   test("consumes authenticated SSE blocks in delivery order", async () => {
     let authorization = "";
+    let gatewayPassword = "";
     const server = Bun.serve({
       port: 0,
       fetch(request) {
         authorization = request.headers.get("authorization") || "";
+        gatewayPassword = request.headers.get("x-cybara-gateway-password") || "";
         return new Response(
           [
             'data: {"type":"status","status":"thinking","timestamp":1,"sessionId":"s1"}',
@@ -121,11 +123,13 @@ describe("CLI TUI status stream", () => {
     await consumeTUIStatusStream({
       apiBase: server.url.origin,
       apiKey: "secret",
+      gatewayPassword: "gateway-secret",
       signal: new AbortController().signal,
       onEvent: (event) => events.push(event),
     });
 
     expect(authorization).toBe("Bearer secret");
+    expect(gatewayPassword).toBe("gateway-secret");
     expect(events.map((event) => event.type)).toEqual(["status", "assistant_token"]);
   });
 });

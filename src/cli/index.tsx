@@ -1465,7 +1465,7 @@ async function main() {
     case "subagents":
       await runSubagentCommand(args.slice(1), {
         apiBase: API_BASE,
-        apiKey: CLI_API_KEY,
+        withAuthHeaders: withCliAuthHeaders,
       });
       break;
     case "loop":

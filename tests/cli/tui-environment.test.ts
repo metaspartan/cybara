@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   environmentSnapshotFromDetail,
+  environmentSnapshotWithWorkspace,
   fileChangesFromMessages,
   formatContextUsageLine,
   formatFileChangeLine,
@@ -129,13 +130,31 @@ describe("CLI TUI environment helpers", () => {
     expect(
       tasksFromResponse({
         tasks: [
-          { id: "task-1", title: "Review UI", status: "active", priority: "high" },
+          {
+            id: "task-1",
+            title: "Review UI",
+            status: "active",
+            priority: "high",
+            session_id: "session-1",
+          },
           { name: "Backfill tests", status: "queued" },
         ],
       })
     ).toEqual([
-      { id: "task-1", title: "Review UI", status: "active", priority: "high" },
-      { id: "Backfill tests", title: "Backfill tests", status: "queued", priority: undefined },
+      {
+        id: "task-1",
+        title: "Review UI",
+        status: "active",
+        priority: "high",
+        sessionId: "session-1",
+      },
+      {
+        id: "Backfill tests",
+        title: "Backfill tests",
+        status: "queued",
+        priority: undefined,
+        sessionId: undefined,
+      },
     ]);
 
     expect(
@@ -149,6 +168,17 @@ describe("CLI TUI environment helpers", () => {
       { id: "sub-1", label: "Tester", status: "running" },
       { id: "sub-2", label: "Audit CLI", status: "done" },
     ]);
+  });
+
+  test("shows a selected workspace before a session has persisted", () => {
+    expect(environmentSnapshotWithWorkspace(null, "/tmp/cybara-tui-e2e")).toEqual({
+      contextUsage: null,
+      tokenUsage: null,
+      plan: null,
+      fileChanges: null,
+      workspaceDir: "/tmp/cybara-tui-e2e",
+      gitBranch: null,
+    });
   });
 
   test("normalizes only initialized LSP servers", () => {

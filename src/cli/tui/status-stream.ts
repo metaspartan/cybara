@@ -54,6 +54,7 @@ export type TUIStatusStreamEvent =
 export interface TUIStatusStreamOptions {
   apiBase: string;
   apiKey?: string | null;
+  gatewayPassword?: string | null;
   signal: AbortSignal;
   onEvent: (event: TUIStatusStreamEvent) => void;
 }
@@ -186,6 +187,9 @@ export function parseTUIStatusEvent(value: string): TUIStatusStreamEvent | null 
 export async function consumeTUIStatusStream(options: TUIStatusStreamOptions): Promise<void> {
   const headers = new Headers({ Accept: "text/event-stream" });
   if (options.apiKey) headers.set("Authorization", `Bearer ${options.apiKey}`);
+  if (options.gatewayPassword) {
+    headers.set("X-Cybara-Gateway-Password", options.gatewayPassword);
+  }
   const response = await fetch(`${options.apiBase}/api/sse/status`, {
     headers,
     signal: options.signal,

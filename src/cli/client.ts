@@ -28,10 +28,19 @@ export function resolveCliApiKey(
 
 export const CLI_API_KEY = resolveCliApiKey();
 
+export function resolveCliGatewayPassword(
+  environment: Readonly<Record<string, string | undefined>> = process.env
+): string | null {
+  return environment.CYBARA_GATEWAY_PASSWORD?.trim() || null;
+}
+
+export const CLI_GATEWAY_PASSWORD = resolveCliGatewayPassword();
+
 export function buildCliAuthHeaders(
   apiKey: string | null,
   headers?: RequestInit["headers"],
-  ensureJsonContentType = false
+  ensureJsonContentType = false,
+  gatewayPassword: string | null = null
 ): Headers {
   const merged = new Headers(headers);
   if (ensureJsonContentType && !merged.has("Content-Type")) {
@@ -40,6 +49,9 @@ export function buildCliAuthHeaders(
   if (apiKey && !merged.has("Authorization")) {
     merged.set("Authorization", `Bearer ${apiKey}`);
   }
+  if (gatewayPassword && !merged.has("X-Cybara-Gateway-Password")) {
+    merged.set("X-Cybara-Gateway-Password", gatewayPassword);
+  }
   return merged;
 }
 
@@ -47,7 +59,7 @@ export function withCliAuthHeaders(
   headers?: RequestInit["headers"],
   ensureJsonContentType = false
 ): Headers {
-  return buildCliAuthHeaders(CLI_API_KEY, headers, ensureJsonContentType);
+  return buildCliAuthHeaders(CLI_API_KEY, headers, ensureJsonContentType, CLI_GATEWAY_PASSWORD);
 }
 
 export async function fetchCliAPI<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
@@ -66,6 +78,9 @@ export async function fetchCliAPI<T>(endpoint: string, options?: RequestInit): P
     } else if (message.includes("HTTP 401")) {
       console.error("ERROR: Unauthorized API request (401)");
       console.error("Set CYBARA_API_KEY or create ~/.cybara/api_key");
+    } else if (message.includes("HTTP 403")) {
+      console.error("ERROR: Gateway access denied (403)");
+      console.error("Set CYBARA_GATEWAY_PASSWORD when the remote gateway requires one");
     }
     return null;
   }

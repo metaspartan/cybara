@@ -30,11 +30,21 @@ export interface TerminalChatInspectorLayout {
   width: number;
 }
 
-export type ChatEscapeAction = "close_panel" | "clear_draft" | "back";
+export interface TerminalSelectionWindow {
+  count: number;
+  start: number;
+}
 
-export function chatEscapeAction(hasPanel: boolean, hasDraft: boolean): ChatEscapeAction {
+export type ChatEscapeAction = "close_panel" | "clear_draft" | "keep_run" | "back";
+
+export function chatEscapeAction(
+  hasPanel: boolean,
+  hasDraft: boolean,
+  activeRun = false
+): ChatEscapeAction {
   if (hasPanel) return "close_panel";
   if (hasDraft) return "clear_draft";
+  if (activeRun) return "keep_run";
   return "back";
 }
 
@@ -91,6 +101,18 @@ export function resolveTerminalChatInspector(columns: number): TerminalChatInspe
   };
 }
 
+export function terminalSelectionWindow(
+  itemCount: number,
+  selectedIndex: number,
+  availableRows: number
+): TerminalSelectionWindow {
+  const count = Math.min(Math.max(0, itemCount), Math.max(1, availableRows));
+  if (count === 0) return { count: 0, start: 0 };
+  const selected = Math.min(Math.max(0, selectedIndex), itemCount - 1);
+  const start = Math.max(0, Math.min(itemCount - count, selected - Math.floor(count / 2)));
+  return { count, start };
+}
+
 export function transcriptMessageLimit(layoutLimit: number, expanded: boolean): number {
   return expanded ? 1 : Math.max(1, layoutLimit);
 }
@@ -142,9 +164,12 @@ function terminalLineFragment(
   const characters = Math.max(1, maxColumns * rows);
   const values = Array.from(line.text);
   if (values.length <= characters) return line;
+  if (characters === 1) return { ...line, text: "…" };
   return {
     ...line,
-    text: tail ? values.slice(-characters).join("") : values.slice(0, characters).join(""),
+    text: tail
+      ? `…${values.slice(-(characters - 1)).join("")}`
+      : `${values.slice(0, characters - 1).join("")}…`,
   };
 }
 

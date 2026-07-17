@@ -169,6 +169,18 @@ export function setApiAuthToken(token: string): void {
   }
 }
 
+export function clearApiAuthToken(): void {
+  desktopToken = null;
+  desktopTokenHydration = null;
+  if (typeof window === "undefined" || isTauriDesktopRuntime()) return;
+  window.sessionStorage?.removeItem("cybara_api_key");
+  window.sessionStorage?.removeItem("CYBARA_API_KEY");
+  window.localStorage?.removeItem("cybara_api_key");
+  window.localStorage?.removeItem("CYBARA_API_KEY");
+  const volatile = currentVolatileCredentials();
+  if (volatile) delete volatile.token;
+}
+
 export function appendApiTokenParam(
   urlOrPath: string,
   token = getApiAuthToken() || getQueryToken()
@@ -239,7 +251,7 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   if (
     !explicitAuthorization &&
     (response.status === 401 || response.status === 403) &&
-    !getApiAuthToken() &&
+    (isTauriDesktopRuntime() || !getApiAuthToken()) &&
     (await hydrateTauriDesktopToken(true))
   ) {
     return fetchWithNetworkRetry(target, {

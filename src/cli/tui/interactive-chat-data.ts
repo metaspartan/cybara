@@ -34,6 +34,7 @@ export interface ControlPlaneState {
 export interface InteractiveChatProps {
   apiBase: string;
   apiKey?: string | null;
+  gatewayPassword?: string | null;
   fetchAPI: TUIFetchAPI;
   initialAgentId?: string;
   initialWorkspaceDir?: string;
@@ -220,6 +221,24 @@ export function deleteBefore(value: string, cursor: number): [string, number] {
 export function deleteAt(value: string, cursor: number): string {
   if (cursor >= value.length) return value;
   return value.slice(0, cursor) + value.slice(cursor + 1);
+}
+
+export function previousWordCursor(value: string, cursor: number): number {
+  const before = value.slice(0, Math.max(0, cursor));
+  const withoutTrailingSpace = before.replace(/\s+$/, "");
+  const boundary = withoutTrailingSpace.search(/\S+$/);
+  return boundary < 0 ? 0 : boundary;
+}
+
+export function nextWordCursor(value: string, cursor: number): number {
+  const after = value.slice(Math.max(0, cursor));
+  const match = after.match(/^\s*\S+\s*/);
+  return Math.min(value.length, cursor + (match?.[0].length ?? after.length));
+}
+
+export function deletePreviousWord(value: string, cursor: number): [string, number] {
+  const start = previousWordCursor(value, cursor);
+  return [value.slice(0, start) + value.slice(cursor), start];
 }
 
 export async function fetchControlPlaneState(

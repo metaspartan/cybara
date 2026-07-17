@@ -102,6 +102,24 @@ describe("CLI TUI activity summaries", () => {
     expect(rows.map(tuiActivityTone)).toEqual(["activity", "danger", "warning"]);
   });
 
+  test("keeps a tool row stable when later results join its group", () => {
+    const first = presentTUIActivities(
+      [{ id: "skill-load", phase: "result", text: "skill_load complete", toolName: "exec" }],
+      []
+    );
+    const grouped = presentTUIActivities(
+      [
+        { id: "skill-load", phase: "result", text: "skill_load complete", toolName: "exec" },
+        { id: "list-files", phase: "result", text: "Listed a location", toolName: "list" },
+      ],
+      []
+    );
+
+    expect(first[0]?.id).toBe("skill-load");
+    expect(grouped[0]?.id).toBe("skill-load");
+    expect(grouped[0]?.label).toBe("Ran a command, listed a location");
+  });
+
   test("uses semantic tones for completed tool groups", () => {
     const toneFor = (text: string, toolName: string): string => {
       const row = presentTUIActivities([{ id: toolName, phase: "result", text, toolName }], [])[0];

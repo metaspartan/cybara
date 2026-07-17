@@ -244,6 +244,8 @@ Desktop auto-updates require signing keys in GitHub Actions:
 
 The release workflow generates `src-tauri/tauri.release.conf.json`, enables updater artifacts, signs the updater bundle, and uploads `latest.json` to the tagged GitHub release.
 
+The committed Tauri configuration contains a valid development-only updater public key with no endpoints. Release preparation rejects that key and requires the established production public/private keypair from GitHub Actions secrets.
+
 The final publish job refuses to flip a release from draft to published unless `latest.json` is present and passes `scripts/verify-tauri-updater-manifest.ts`. If the signing secrets are missing, `tauri-action` can skip `latest.json`, so the workflow fails loudly with a maintainer-actionable message instead of shipping a desktop app whose in-app updater 404s forever.
 
 ### CLI updater integrity

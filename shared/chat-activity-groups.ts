@@ -188,7 +188,7 @@ export function groupSharedActivities<T extends SharedActivityItem>(
     if (run.kinds.length >= 2) {
       entries.push({
         type: "group",
-        id: `group-${run.items[0]?.id || "activity"}-${run.items.length}`,
+        id: run.items[0]?.id || "activity-group",
         kind: dominantKind(run.kinds),
         label: groupLabel(run.kinds),
         items: run.items,

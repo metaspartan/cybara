@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { CybaraPet } from "@/components/CybaraPet";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { GatewayAuthGate } from "@/components/GatewayAuthGate";
 import { GatewayStartupFailure } from "@/components/GatewayStartupFailure";
 import { Sidebar, SidebarProvider, useSidebar } from "@/components/layout/Sidebar";
 import { ToastContainer } from "@/components/ui/Toast";
@@ -280,31 +281,33 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <SidebarProvider>
-        <div className="flex min-h-screen bg-[#0a0a0f] overflow-hidden">
-          <ThemeConfigSync />
-          <AppHotkeys />
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route path="/setup" element={<Setup />} />
+      <GatewayAuthGate>
+        <SidebarProvider>
+          <div className="flex min-h-screen bg-[#0a0a0f] overflow-hidden">
+            <ThemeConfigSync />
+            <AppHotkeys />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/setup" element={<Setup />} />
 
-              <Route
-                path="*"
-                element={
-                  <SetupGuard>
-                    <Sidebar />
-                    <MainContent>
-                      <AppRoutes />
-                    </MainContent>
-                    <CybaraPet />
-                  </SetupGuard>
-                }
-              />
-            </Routes>
-          </Suspense>
-          <ToastContainer />
-        </div>
-      </SidebarProvider>
+                <Route
+                  path="*"
+                  element={
+                    <SetupGuard>
+                      <Sidebar />
+                      <MainContent>
+                        <AppRoutes />
+                      </MainContent>
+                      <CybaraPet />
+                    </SetupGuard>
+                  }
+                />
+              </Routes>
+            </Suspense>
+            <ToastContainer />
+          </div>
+        </SidebarProvider>
+      </GatewayAuthGate>
     </ErrorBoundary>
   );
 }

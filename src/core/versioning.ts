@@ -2,6 +2,39 @@ import { homedir } from "os";
 import { basename, join } from "path";
 
 export const DEFAULT_RELEASE_REPOSITORY = "metaspartan/cybara";
+export const TAURI_DEVELOPMENT_UPDATER_PUBLIC_KEY =
+  "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVENUZGRjNGRDU1M0E5RkIKUldUN3FWUFZQLzlmN1ZoeGFqREd1a0k0MzRYVXdSR1I4WDQySlZkbzlhSHpxb1RTQ2UxVjR5WFAK";
+
+export function isValidTauriUpdaterPublicKey(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  try {
+    const decoded = Buffer.from(trimmed, "base64").toString("utf8");
+    const lines = decoded.trim().split(/\r?\n/);
+    return (
+      lines.length === 2 &&
+      lines[0]?.startsWith("untrusted comment: minisign public key:") === true &&
+      /^RW[A-Za-z0-9+/=]+$/.test(lines[1] || "")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function validateTauriReleaseSigningConfig(publicKey: string, privateKey: string): string[] {
+  const errors: string[] = [];
+  const trimmedPublicKey = publicKey.trim();
+  const trimmedPrivateKey = privateKey.trim();
+  if (!isValidTauriUpdaterPublicKey(trimmedPublicKey)) {
+    errors.push("TAURI_SIGNING_PUBLIC_KEY is missing or malformed");
+  } else if (trimmedPublicKey === TAURI_DEVELOPMENT_UPDATER_PUBLIC_KEY) {
+    errors.push("TAURI_SIGNING_PUBLIC_KEY must not use the development updater key");
+  }
+  if (!trimmedPrivateKey || /placeholder/i.test(trimmedPrivateKey)) {
+    errors.push("TAURI_SIGNING_PRIVATE_KEY is missing or malformed");
+  }
+  return errors;
+}
 
 export function normalizeReleaseTag(versionOrTag: string): string {
   return versionOrTag.trim().replace(/^v/i, "");
@@ -264,8 +297,8 @@ export function buildTauriReleaseConfigPatch(
   endpointOverride?: string | null
 ): TauriReleaseConfigPatch {
   const trimmedPublicKey = publicKey.trim();
-  if (!trimmedPublicKey) {
-    throw new Error("Updater public key is required");
+  if (!isValidTauriUpdaterPublicKey(trimmedPublicKey)) {
+    throw new Error("Updater public key is missing or malformed");
   }
 
   const trimmedEndpoint = endpointOverride?.trim();

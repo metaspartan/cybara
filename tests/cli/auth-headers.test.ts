@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const AUTH_KEY = "cybara_cli_direct_auth_test_key";
+const GATEWAY_PASSWORD = "cybara_cli_gateway_password";
 
 let server: ReturnType<typeof Bun.serve>;
 let apiBase = "";
@@ -20,6 +21,9 @@ function requireAuth(request: Request): Response | null {
   const auth = request.headers.get("authorization");
   if (auth !== `Bearer ${AUTH_KEY}`) {
     return json({ error: "Missing Authorization header" }, 401);
+  }
+  if (request.headers.get("x-cybara-gateway-password") !== GATEWAY_PASSWORD) {
+    return json({ error: "Missing gateway password" }, 403);
   }
   return null;
 }
@@ -144,6 +148,7 @@ async function runCli(
       ...process.env,
       CYBARA_API: apiBase,
       CYBARA_API_KEY: AUTH_KEY,
+      CYBARA_GATEWAY_PASSWORD: GATEWAY_PASSWORD,
       ...envOverride,
     },
     stdout: "pipe",
@@ -240,6 +245,13 @@ describe("CLI auth header forwarding", () => {
     });
     expect(setNoAuth.exitCode).toBe(1);
     expect(setNoAuth.stderr).toContain("Failed to set config: 401");
+
+    const setNoPassword = await runCli(
+      ["config", "set", "theme", "auth-header-test-missing-password"],
+      { CYBARA_GATEWAY_PASSWORD: "" }
+    );
+    expect(setNoPassword.exitCode).toBe(1);
+    expect(setNoPassword.stderr).toContain("Failed to set config: 403");
   });
 
   test("chat request path uses auth header helper for /api/chat", () => {
