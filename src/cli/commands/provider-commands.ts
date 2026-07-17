@@ -12,6 +12,7 @@ export interface ProviderInfo {
   name: string;
   is_default: boolean;
   config?: Record<string, unknown>;
+  settings?: Record<string, unknown>;
 }
 
 export interface AvailableProviderInfo {
@@ -33,6 +34,22 @@ export interface ProviderFlags {
   oauth: boolean;
 }
 
+export interface ProviderAccountPoolInfo {
+  id: string;
+  name: string;
+  provider: string;
+  enabled: boolean;
+  routing_mode: "usage" | "priority_then_usage";
+  accounts: Array<{ provider_id: string; provider_name?: string; priority: number | null }>;
+}
+
+export interface ProviderPoolFlags {
+  name?: string;
+  provider?: string;
+  enabled?: boolean;
+  accounts?: Array<{ provider_id: string; priority?: number }>;
+}
+
 interface CliProviderCommands {
   add: (
     type: string,
@@ -48,6 +65,11 @@ interface CliProviderCommands {
   list: () => Promise<void>;
   models: (id: string) => Promise<void>;
   parseFlags: (args: string[]) => ProviderFlags;
+  parsePoolFlags: (args: string[]) => ProviderPoolFlags;
+  poolCreate: (flags: ProviderPoolFlags) => Promise<void>;
+  poolDelete: (id: string) => Promise<void>;
+  poolList: () => Promise<void>;
+  poolUpdate: (id: string, flags: ProviderPoolFlags) => Promise<void>;
   update: (
     id: string,
     name?: string,
@@ -315,5 +337,117 @@ export function createCliProviderCommands(
     return { name, key, token, isDefault, oauth };
   };
 
-  return { add, available, delete: remove, discover, list, models, parseFlags, update };
+  const parsePoolFlags = (args: string[]): ProviderPoolFlags => {
+    let name: string | undefined;
+    let provider: string | undefined;
+    let enabled: boolean | undefined;
+    const accounts: NonNullable<ProviderPoolFlags["accounts"]> = [];
+    for (let index = 0; index < args.length; index += 1) {
+      const flag = args[index];
+      if (flag === "--name" || flag === "-n") name = args[++index];
+      else if (flag === "--provider" || flag === "-p") provider = args[++index];
+      else if (flag === "--enabled") enabled = true;
+      else if (flag === "--disabled") enabled = false;
+      else if (flag === "--account" || flag === "-a") {
+        const value = args[++index] || "";
+        const separator = value.lastIndexOf(":");
+        const providerId = (separator > 0 ? value.slice(0, separator) : value).trim();
+        const parsedPriority = separator > 0 ? Number(value.slice(separator + 1)) : undefined;
+        if (providerId) {
+          accounts.push(
+            parsedPriority !== undefined && Number.isFinite(parsedPriority)
+              ? {
+                  provider_id: providerId,
+                  priority: Math.max(0, Math.min(10_000, Math.round(parsedPriority))),
+                }
+              : {
+                  provider_id: providerId,
+                }
+          );
+        }
+      }
+    }
+    return {
+      ...(name !== undefined ? { name } : {}),
+      ...(provider !== undefined ? { provider } : {}),
+      ...(enabled !== undefined ? { enabled } : {}),
+      ...(accounts.length > 0 ? { accounts } : {}),
+    };
+  };
+
+  const poolList = async (): Promise<void> => {
+    const pools = await fetchAPI<ProviderAccountPoolInfo[]>("/api/provider-account-pools");
+    if (!pools) exitWithError(["ERROR: Failed to fetch account pools from", apiBase]);
+    console.log("PROVIDER ACCOUNT POOLS");
+    console.log("======================");
+    if (pools.length === 0) {
+      console.log("No account pools configured");
+      return;
+    }
+    for (const pool of pools) {
+      console.log(
+        `\n${pool.name}  ${pool.provider}  ${pool.enabled ? "active" : "paused"}  ${pool.routing_mode === "usage" ? "usage-balanced" : "priority override"}`
+      );
+      for (const [index, account] of pool.accounts.entries()) {
+        console.log(
+          `  ${index + 1}. ${account.provider_name || account.provider_id}  ${account.priority === null ? "automatic" : `priority ${account.priority}`}`
+        );
+      }
+    }
+  };
+
+  const savePool = async (
+    method: "POST" | "PUT",
+    endpoint: string,
+    flags: ProviderPoolFlags
+  ): Promise<void> => {
+    const response = await fetch(`${apiBase}${endpoint}`, {
+      method,
+      headers: withAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(flags),
+    });
+    const result = (await response.json()) as ProviderAccountPoolInfo & { error?: string };
+    if (!response.ok || !result.id) {
+      exitWithError([`Failed to save account pool: ${result.error || "Unknown error"}`]);
+    }
+    console.log(`Saved account pool: ${result.name} (${result.id})`);
+  };
+
+  const poolCreate = async (flags: ProviderPoolFlags): Promise<void> => {
+    await savePool("POST", "/api/provider-account-pools", flags);
+  };
+
+  const poolUpdate = async (id: string, flags: ProviderPoolFlags): Promise<void> => {
+    if (!id) exitWithError(["Usage: cybara provider pool update <pool-id> [options]"]);
+    await savePool("PUT", `/api/provider-account-pools/${encodeURIComponent(id)}`, flags);
+  };
+
+  const poolDelete = async (id: string): Promise<void> => {
+    if (!id) exitWithError(["Usage: cybara provider pool delete <pool-id>"]);
+    const response = await fetch(
+      `${apiBase}/api/provider-account-pools/${encodeURIComponent(id)}`,
+      { method: "DELETE", headers: withAuthHeaders() }
+    );
+    const result = (await response.json()) as { success?: boolean; error?: string };
+    if (!response.ok || !result.success) {
+      exitWithError([`Failed to delete account pool: ${result.error || "Unknown error"}`]);
+    }
+    console.log(`Deleted account pool: ${id}`);
+  };
+
+  return {
+    add,
+    available,
+    delete: remove,
+    discover,
+    list,
+    models,
+    parseFlags,
+    parsePoolFlags,
+    poolCreate,
+    poolDelete,
+    poolList,
+    poolUpdate,
+    update,
+  };
 }

@@ -12,6 +12,7 @@ import {
 import type { FileChangeItem, FileChangeSummary } from "./chatModel";
 import { SessionDiffPanel } from "./SessionDiffPanel";
 import { SubagentPanel } from "./SubagentPanel";
+import { SubagentDetailPanel } from "./SubagentDetailPanel";
 
 interface ChatWorkspaceDockProps {
   activeTab: string | null;
@@ -30,6 +31,7 @@ interface ChatWorkspaceDockProps {
   onOpenDiffInWorkspace: (file: FileChangeItem) => void;
   onOpenFullIde: (path: string) => void;
   onOpenTab: (kind: ChatWorkspaceTab) => void;
+  onOpenSubagent: (runId: string, title: string) => void;
   onRefreshDiff: () => void;
   onResizeStart: (event: MouseEvent<HTMLDivElement>) => void;
   onSelectDiffPath: (path: string | null) => void;
@@ -55,6 +57,7 @@ export function ChatWorkspaceDock({
   onOpenDiffInWorkspace,
   onOpenFullIde,
   onOpenTab,
+  onOpenSubagent,
   onRefreshDiff,
   onResizeStart,
   onSelectDiffPath,
@@ -142,6 +145,17 @@ export function ChatWorkspaceDock({
             </div>
           );
         }
+        if (instance.pageKey) {
+          return (
+            <div key={instance.id} className={hiddenClass}>
+              <SubagentDetailPanel
+                runId={instance.pageKey}
+                onClear={() => onCloseTab(instance.id)}
+                onViewSession={onViewSubagentSession}
+              />
+            </div>
+          );
+        }
         return (
           <div key={instance.id} className={hiddenClass}>
             <SubagentPanel
@@ -151,7 +165,7 @@ export function ChatWorkspaceDock({
               onClose={() => onCloseTab(instance.id)}
               sessionId={sessionId}
               workspaceDir={workspaceDir}
-              onViewSession={onViewSubagentSession}
+              onOpenSubagent={onOpenSubagent}
             />
           </div>
         );

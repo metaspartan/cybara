@@ -16,18 +16,22 @@ interface ServerShape {
   args?: string;
   url?: string;
   envVars?: string[];
+  envDefaults?: Record<string, string>;
   categories?: string[];
+  homepage?: string;
   installType: string;
 }
 
 interface WorkerReport {
   popularDefault: ServerShape[];
   popularLimited: ServerShape[];
+  popularAllCount: number;
   categories: string[];
   byCategorySearch: string[];
   byCategoryUpper: string[];
   byCategoryMissing: string[];
   detailsGithub: ServerShape | null;
+  detailsBlender: ServerShape | null;
   detailsMissing: boolean;
   registries: Array<{ id: string; name: string; enabled: boolean }>;
   searchGitOfficial: string[];
@@ -37,8 +41,17 @@ interface WorkerReport {
   searchNoMatch: string[];
   searchEmptyNoRegistry: number;
   searchNpmFetchDown: string[];
+  searchBlender: string[];
   fetchCalls: number;
   installKnown: { success: boolean; hasId: boolean; error?: string };
+  installBlender: {
+    success: boolean;
+    hasId: boolean;
+    command?: string;
+    args?: string;
+    env?: string;
+    error?: string;
+  };
   installCustom: { success: boolean; hasId: boolean; error?: string };
   installMalicious: { success: boolean; hasId: boolean; error?: string };
   installValidCustoms: Array<{ name: string; success: boolean; hasId: boolean; error?: string }>;
@@ -51,6 +64,7 @@ interface WorkerReport {
 // thrower so the npm search path can never touch the network.
 const WORKER_SOURCE = `
 import { mcpRegistry } from "${join(ROOT_DIR, "src", "core", "mcp-registry.ts").replace(/\\/g, "/")}";
+import { mcpManager } from "${join(ROOT_DIR, "src", "core", "mcp.ts").replace(/\\/g, "/")}";
 
 let fetchCalls = 0;
 globalThis.fetch = ((..._args: unknown[]) => {
@@ -62,11 +76,13 @@ const ids = (servers: Array<{ id: string }>) => servers.map((s) => s.id).sort();
 
 const popularDefault = mcpRegistry.getPopular();
 const popularLimited = mcpRegistry.getPopular(3);
+const popularAllCount = mcpRegistry.getPopular(100).length;
 const categories = mcpRegistry.getCategories();
 const byCategorySearch = ids(mcpRegistry.getByCategory("search"));
 const byCategoryUpper = ids(mcpRegistry.getByCategory("SEARCH"));
 const byCategoryMissing = ids(mcpRegistry.getByCategory("no-such-category"));
 const detailsGithub = mcpRegistry.getDetails("mcp-github") ?? null;
+const detailsBlender = mcpRegistry.getDetails("mcp-blender") ?? null;
 const detailsMissing = mcpRegistry.getDetails("does-not-exist") === undefined;
 const registries = mcpRegistry.getRegistries();
 
@@ -77,8 +93,13 @@ const searchDescriptionMatch = ids(await mcpRegistry.search("knowledge graph", "
 const searchNoMatch = ids(await mcpRegistry.search("zzz-no-such-server", "official"));
 const searchEmptyNoRegistry = (await mcpRegistry.search("")).length;
 const searchNpmFetchDown = ids(await mcpRegistry.search("filesystem"));
+const searchBlender = ids(await mcpRegistry.search("blender", "mcp.so"));
 
 const installKnown = await mcpRegistry.installByPackage("io.github/github-mcp-server");
+const installBlenderResult = await mcpRegistry.installByPackage("blender-mcp");
+const installedBlender = installBlenderResult.id
+  ? mcpManager.get(installBlenderResult.id)
+  : undefined;
 const installCustom = await mcpRegistry.installByPackage("some-custom-mcp-pkg");
 const installMalicious = await mcpRegistry.installByPackage("safe-name;touch /tmp/cyb-pwned");
 const validCustomNames = ["@scope/pkg.name", "pkg_name", "pkg.name-1"];
@@ -119,11 +140,13 @@ console.log(
     JSON.stringify({
       popularDefault,
       popularLimited,
+      popularAllCount,
       categories,
       byCategorySearch,
       byCategoryUpper,
       byCategoryMissing,
       detailsGithub,
+      detailsBlender,
       detailsMissing,
       registries,
       searchGitOfficial,
@@ -133,11 +156,20 @@ console.log(
       searchNoMatch,
       searchEmptyNoRegistry,
       searchNpmFetchDown,
+      searchBlender,
       fetchCalls,
       installKnown: {
         success: installKnown.success,
         hasId: typeof installKnown.id === "string" && installKnown.id.length > 0,
         error: installKnown.error,
+      },
+      installBlender: {
+        success: installBlenderResult.success,
+        hasId: typeof installBlenderResult.id === "string" && installBlenderResult.id.length > 0,
+        command: installedBlender?.command,
+        args: installedBlender?.args,
+        env: installedBlender?.env,
+        error: installBlenderResult.error,
       },
       installCustom: {
         success: installCustom.success,
@@ -202,10 +234,13 @@ describe("mcpRegistry catalog surface", () => {
       expect(server.name.length).toBeGreaterThan(0);
       expect(server.description.length).toBeGreaterThan(0);
       expect(["smithery", "mcp.so", "npm", "official"]).toContain(server.registry);
-      expect(["bunx", "bun", "smithery", "remote"]).toContain(server.installType);
+      expect(["bunx", "bun", "smithery", "remote", "uvx"]).toContain(server.installType);
       if (server.installType === "remote") {
         expect(server.command).toBe("");
         expect(server.url).toStartWith("https://");
+      } else if (server.installType === "uvx") {
+        expect(server.command).toBe("uvx");
+        expect(server.args).toContain(server.package);
       } else {
         expect(server.command).toBe("bunx");
         expect(server.args).toContain(
@@ -236,6 +271,23 @@ describe("mcpRegistry catalog surface", () => {
     expect(report.detailsGithub?.url).toBe("https://api.githubcopilot.com/mcp/");
     expect(report.detailsGithub?.installType).toBe("remote");
     expect(report.detailsMissing).toBe(true);
+  });
+
+  test("includes community Blender MCP setup metadata", () => {
+    expect(report.popularDefault.map((server) => server.id)).toContain("mcp-blender");
+    expect(report.detailsBlender).toMatchObject({
+      name: "Blender",
+      registry: "mcp.so",
+      package: "blender-mcp",
+      command: "uvx",
+      args: "--python 3.11 blender-mcp",
+      installType: "uvx",
+      homepage: "https://github.com/ahujasid/blender-mcp",
+      envDefaults: {
+        DISABLE_TELEMETRY: "true",
+        UV_PYTHON_PREFERENCE: "only-managed",
+      },
+    });
   });
 
   test("getRegistries lists the four known registries as enabled", () => {
@@ -272,12 +324,16 @@ describe("mcpRegistry search", () => {
   });
 
   test("empty query without registry returns curated list without npm fetch", () => {
-    expect(report.searchEmptyNoRegistry).toBe(report.popularDefault.length);
+    expect(report.searchEmptyNoRegistry).toBe(report.popularAllCount);
   });
 
   test("npm search failure degrades to local matches only", () => {
     expect(report.fetchCalls).toBeGreaterThan(0);
     expect(report.searchNpmFetchDown).toContain("mcp-filesystem");
+  });
+
+  test("finds Blender from the curated community catalog without network access", () => {
+    expect(report.searchBlender).toEqual(["mcp-blender"]);
   });
 });
 
@@ -285,6 +341,17 @@ describe("mcpRegistry install", () => {
   test("installByPackage registers a curated server", () => {
     expect(report.installKnown.success).toBe(true);
     expect(report.installKnown.hasId).toBe(true);
+  });
+
+  test("installs Blender with uvx and privacy defaults", () => {
+    expect(report.installBlender).toMatchObject({
+      success: true,
+      hasId: true,
+      command: "uvx",
+      args: "--python 3.11 blender-mcp",
+    });
+    expect(report.installBlender.env).toContain("DISABLE_TELEMETRY=true");
+    expect(report.installBlender.env).toContain("UV_PYTHON_PREFERENCE=only-managed");
   });
 
   test("installByPackage synthesizes an entry for unknown packages", () => {

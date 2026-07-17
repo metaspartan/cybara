@@ -7,6 +7,7 @@ export interface OpenAIResponseUsageContext {
   providerUrl: string;
   durationMs: number;
   sessionId?: string;
+  routerRouteId?: string;
 }
 
 export function trackOpenAIResponseUsage(
@@ -30,6 +31,7 @@ export function trackOpenAIResponseUsage(
         0,
       cacheWriteTokens: response.usage.cache_creation_input_tokens || 0,
       firstTokenMs: response.first_token_ms ?? context.durationMs,
+      routerRouteId: context.routerRouteId,
     }
   );
   return true;

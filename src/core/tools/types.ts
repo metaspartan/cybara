@@ -5,6 +5,7 @@ export interface ToolHandler {
 export interface ToolContext {
   agentId: string;
   sessionId?: string;
+  routerRouteId?: string;
   workspaceDir?: string;
   channel?: string;
   userId?: string;
@@ -20,6 +21,7 @@ export interface ToolContext {
   denyWritePrefixes?: string[];
   confineToWorkspace?: boolean;
   consumeSteeringMessages?: () => Array<{ id: string; content: string; createdAt: number }>;
+  executionState?: { toolCallsStarted: number };
 }
 
 export interface Tool {

@@ -93,6 +93,7 @@ export function trackEstimatedSessionTokenUsage(input: LlmUsageFallbackInput): b
   trackTokenUsage(model, provider, providerUrl, inputTokens, outputTokens, input.durationMs, {
     sessionId,
     firstTokenMs: input.durationMs,
+    routerRouteId: input.toolContext?.routerRouteId,
   });
   if (getSessionTokenUsageSnapshot(sessionId).totalTokens <= input.before.totalTokens) {
     addSessionTokenUsageRow({

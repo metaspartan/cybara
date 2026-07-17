@@ -1,6 +1,7 @@
 import {
   CheckCircle,
   Download,
+  ExternalLink,
   Globe2,
   KeyRound,
   Package,
@@ -409,6 +410,16 @@ export function MCPServers() {
                 >
                   Install
                 </Button>
+                {server.homepage ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    leftIcon={<ExternalLink className="w-4 h-4" />}
+                    onClick={() => void openExternal(server.homepage ?? "")}
+                  >
+                    Setup
+                  </Button>
+                ) : null}
               </div>
             </Card>
           ))}

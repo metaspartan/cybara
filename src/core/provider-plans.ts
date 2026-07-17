@@ -1,5 +1,6 @@
 import { config } from "./config";
 import { tables, type Provider } from "./database";
+import { providerAccountPoolRouteProvider } from "./provider-account-pool";
 import { providerManager, providers, resolveProviderType, type ProviderType } from "./providers";
 import { fetchLiveProviderUsage, type LiveProviderUsage } from "./provider-usage-source";
 
@@ -703,7 +704,8 @@ function configuredProviderForRoute(
     context?.providerById.get(routeKey) ??
     (!context ? (tables.providers.get(routeKey) as Provider | undefined) : undefined);
   if (direct) return direct;
-  const resolvedType = resolveProviderType(routeKey) ?? routeKey;
+  const resolvedType =
+    providerAccountPoolRouteProvider(routeKey) ?? resolveProviderType(routeKey) ?? routeKey;
   if (context) return context.firstProviderByType.get(resolvedType);
   return (tables.providers.all() as Provider[]).find(
     (provider) => provider.provider === resolvedType || providerTypeOf(provider) === resolvedType
@@ -713,20 +715,24 @@ function configuredProviderForRoute(
 function planConfigFor(
   cfg: ProviderPlanMonitoringConfig,
   providerId: string,
-  providerType: string
+  providerType: string,
+  routeKey?: string
 ): ProviderPlanProviderConfig | undefined {
-  const byId = cfg.providers[providerId];
-  const byType = cfg.providers[providerType];
-  if (byId && byType && byId !== byType) {
-    return {
-      ...byType,
-      ...byId,
-      fiveHour: byId.fiveHour ?? byType.fiveHour,
-      weekly: byId.weekly ?? byType.weekly,
-      monthly: byId.monthly ?? byType.monthly,
-    };
+  let merged: ProviderPlanProviderConfig | undefined;
+  for (const key of new Set([providerType, providerId, routeKey].filter(Boolean) as string[])) {
+    const current = cfg.providers[key];
+    if (!current) continue;
+    merged = merged
+      ? {
+          ...merged,
+          ...current,
+          fiveHour: current.fiveHour ?? merged.fiveHour,
+          weekly: current.weekly ?? merged.weekly,
+          monthly: current.monthly ?? merged.monthly,
+        }
+      : current;
   }
-  return byId ?? byType;
+  return merged;
 }
 
 function hasWindowLimit(windowConfig?: ProviderPlanWindowConfig): boolean {
@@ -982,7 +988,10 @@ function resolveStatus(
   const warning = providerConfig.warningThresholdPct ?? globalWarning;
   const worst = windows.reduce((max, window) => Math.max(max, window.usedPercent ?? 0), 0);
   if (worst >= hardStop) {
-    return { status: "exhausted", reason: `Plan usage reached ${Math.round(worst)}%` };
+    return {
+      status: "exhausted",
+      reason: `Plan usage reached ${Math.round(worst)}%`,
+    };
   }
   if (worst >= warning) {
     return { status: "warning", reason: `Plan usage is ${Math.round(worst)}%` };
@@ -1011,6 +1020,10 @@ function buildProviderPlanEvaluationContext(
     const providerType = providerTypeOf(provider);
     const providerConfig = planConfigFor(cfg, provider.id, providerType);
     const month = monthWindow(now, providerConfig?.billingCycleAnchorDay ?? 1);
+    metricStarts.add(month.startMs);
+  }
+  for (const providerConfig of Object.values(cfg.providers)) {
+    const month = monthWindow(now, providerConfig.billingCycleAnchorDay ?? 1);
     metricStarts.add(month.startMs);
   }
   return {
@@ -1042,18 +1055,23 @@ function providerMetricKeys(params: {
   providerName: string;
   configuredProviderType?: string;
 }): Set<string> {
+  const explicitRouteConfig = Boolean(params.cfg.providers[params.routeKey]);
   const explicitProviderIdConfig = Boolean(params.cfg.providers[params.providerId]);
   const explicitProviderTypeConfig = Boolean(params.cfg.providers[params.providerType]);
   const keyCandidates =
-    explicitProviderIdConfig && !explicitProviderTypeConfig
-      ? [params.routeKey, params.providerId, params.providerName]
-      : [
-          params.routeKey,
-          params.providerId,
-          params.providerType,
-          params.configuredProviderType,
-          params.providerName,
-        ];
+    explicitRouteConfig &&
+    params.routeKey !== params.providerId &&
+    params.routeKey !== params.providerType
+      ? [params.routeKey]
+      : explicitProviderIdConfig && !explicitProviderTypeConfig
+        ? [params.routeKey, params.providerId, params.providerName]
+        : [
+            params.routeKey,
+            params.providerId,
+            params.providerType,
+            params.configuredProviderType,
+            params.providerName,
+          ];
   return new Set(keyCandidates.filter(Boolean) as string[]);
 }
 
@@ -1064,12 +1082,12 @@ export function hasProviderPlanRouteConstraints(routeKeys: string[]): boolean {
     const configured = configuredProviderForRoute(routeKey);
     const providerType = configured
       ? providerTypeOf(configured)
-      : (resolveProviderType(routeKey) ?? routeKey);
+      : (providerAccountPoolRouteProvider(routeKey) ?? resolveProviderType(routeKey) ?? routeKey);
     const staticInfo = providers[providerType as ProviderType];
     const authType = staticInfo?.authType ?? "unknown";
     if (!isPlanCapableProvider(providerType, authType)) continue;
     const providerId = configured?.id ?? routeKey;
-    if (hasProviderPlanLimits(planConfigFor(cfg, providerId, providerType))) return true;
+    if (hasProviderPlanLimits(planConfigFor(cfg, providerId, providerType, routeKey))) return true;
   }
   return false;
 }
@@ -1156,12 +1174,20 @@ export function getProviderPlanSnapshot(
   const windows =
     configuredWindows.length > 0 || !managedAutomatically
       ? configuredWindows
-      : [buildAutomaticUsageWindow({ usedTokens: localTokens30d, usedSpend: localSpend30d })];
+      : [
+          buildAutomaticUsageWindow({
+            usedTokens: localTokens30d,
+            usedSpend: localSpend30d,
+          }),
+        ];
 
   const resolved = !monitored
     ? { status: "disabled" as const, reason: "Provider is not monitored" }
     : managedAutomatically && !providerConfig
-      ? { status: "ok" as const, reason: "Automatic provider-plan tracking active" }
+      ? {
+          status: "ok" as const,
+          reason: "Automatic provider-plan tracking active",
+        }
       : resolveStatus(windows, providerConfig, cfg.warningThresholdPct);
 
   return {
@@ -1205,12 +1231,12 @@ export function getProviderPlanRouteConstraint(
   const configuredProvider = configuredProviderForRoute(routeKey, context);
   const providerType = configuredProvider
     ? providerTypeOf(configuredProvider)
-    : (resolveProviderType(routeKey) ?? routeKey);
+    : (providerAccountPoolRouteProvider(routeKey) ?? resolveProviderType(routeKey) ?? routeKey);
   const staticInfo = providers[providerType as ProviderType];
   const authType = staticInfo?.authType ?? "unknown";
   const providerId = configuredProvider?.id ?? routeKey;
   const providerName = configuredProvider?.name || staticInfo?.name || routeKey;
-  const providerConfig = planConfigFor(cfg, providerId, providerType);
+  const providerConfig = planConfigFor(cfg, providerId, providerType, routeKey);
   const monitored = cfg.enabled && isPlanCapableProvider(providerType, authType);
 
   if (!monitored) {
@@ -1316,14 +1342,21 @@ function liveUsageWindow(
   id: string,
   title: string,
   kind: ProviderPlanWindowKind,
-  live: { usedPercent: number; resetsAt?: string; unlimited?: boolean } | undefined,
+  live:
+    | {
+        usedPercent: number;
+        resetsAt?: string;
+        unlimited?: boolean;
+        title?: string;
+      }
+    | undefined,
   resetDescription: string
 ): ProviderPlanUsageWindow | null {
   if (!live) return base ?? null;
   const resetsAt = live.resetsAt ?? base?.resetsAt;
   return {
     id,
-    title,
+    title: live.title ?? title,
     kind,
     usedTokens: base?.usedTokens ?? 0,
     tokenLimit: base?.tokenLimit,

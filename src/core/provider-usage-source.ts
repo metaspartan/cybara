@@ -11,6 +11,7 @@ export interface LiveUsageWindow {
   resetsAt?: string;
   windowSeconds?: number;
   unlimited?: boolean;
+  title?: string;
 }
 
 export interface LiveProviderUsage {
@@ -548,58 +549,143 @@ async function fetchMiniMaxUsage(
   return parseMiniMaxUsageResponse(await res.json(), Date.now());
 }
 
-export function parseZaiUsageResponse(body: unknown, now: number): LiveProviderUsage | null {
-  const root = asRecord(body);
-  const data = asRecord(root?.data) ?? root;
-  const limits = Array.isArray(data?.limits) ? data.limits : [];
-  const tokenLimit = limits.find((entry) => {
-    const type = String(asRecord(entry)?.type ?? "").toLowerCase();
-    return type.includes("token");
-  });
-  const timeLimit = limits.find((entry) => {
-    const type = String(asRecord(entry)?.type ?? "").toLowerCase();
-    return type.includes("time");
-  });
-  const record = asRecord(tokenLimit);
-  if (!record) return null;
-  const usedPercent = clampPercent(
+const ZAI_FIVE_HOUR_UNIT = 3;
+const ZAI_DAILY_UNIT = 4;
+const ZAI_MONTHLY_UNIT = 5;
+const ZAI_WEEKLY_UNIT = 6;
+
+function zaiLimitDescriptor(record: Record<string, unknown>): string {
+  return [record.type, record.name, record.label, record.description]
+    .map((value) => String(value ?? "").toLowerCase())
+    .join(" ");
+}
+
+function zaiLimitWindow(record: Record<string, unknown> | undefined): LiveUsageWindow | undefined {
+  if (!record) return undefined;
+  if (record.unlimited === true || record.isUnlimited === true || record.is_unlimited === true) {
+    return { usedPercent: 0, unlimited: true };
+  }
+  const directPercent = clampPercent(
     record.percentage ?? record.percent ?? record.used_percent ?? record.usedPercent
   );
-  if (usedPercent === undefined) return null;
-  const weeklyRecord = asRecord(timeLimit);
-  const weeklyPercent = clampPercent(
-    weeklyRecord?.percentage ??
-      weeklyRecord?.percent ??
-      weeklyRecord?.used_percent ??
-      weeklyRecord?.usedPercent
-  );
+  const limit = toNumber(record.usage ?? record.total ?? record.limit);
+  const current = toNumber(record.currentValue ?? record.current_value ?? record.used);
+  const remaining = toNumber(record.remaining ?? record.remainingValue ?? record.remaining_value);
+  const usedFromRemaining =
+    limit !== undefined && remaining !== undefined ? limit - remaining : undefined;
+  const used =
+    current !== undefined && usedFromRemaining !== undefined
+      ? Math.max(current, usedFromRemaining)
+      : (current ?? usedFromRemaining);
+  const computedPercent =
+    limit !== undefined && limit > 0 && used !== undefined
+      ? clampPercent((used / limit) * 100)
+      : undefined;
+  const usedPercent = computedPercent ?? directPercent;
+  if (usedPercent === undefined) return undefined;
   return {
-    planLabel: "GLM Coding Plan",
-    fiveHour: {
-      usedPercent,
-      resetsAt: resetToIso(
-        record.nextResetTime,
-        record.next_reset_time,
-        record.resetsAt,
-        record.resets_at,
-        record.resetTime,
-        record.reset_time
-      ),
-    },
-    weekly:
-      weeklyPercent === undefined
-        ? undefined
-        : {
-            usedPercent: weeklyPercent,
-            resetsAt: resetToIso(
-              weeklyRecord?.nextResetTime,
-              weeklyRecord?.next_reset_time,
-              weeklyRecord?.resetsAt,
-              weeklyRecord?.resets_at,
-              weeklyRecord?.resetTime,
-              weeklyRecord?.reset_time
-            ),
-          },
+    usedPercent,
+    resetsAt: resetToIso(
+      record.nextResetTime,
+      record.next_reset_time,
+      record.resetsAt,
+      record.resets_at,
+      record.resetTime,
+      record.reset_time
+    ),
+  };
+}
+
+function zaiResetTimestamp(record: Record<string, unknown>): number {
+  const reset = toNumber(
+    record.nextResetTime ??
+      record.next_reset_time ??
+      record.resetsAt ??
+      record.resets_at ??
+      record.resetTime ??
+      record.reset_time
+  );
+  return reset !== undefined && reset > 0 ? reset : Number.POSITIVE_INFINITY;
+}
+
+function sortZaiTokenLimits(records: Record<string, unknown>[]): Record<string, unknown>[] {
+  return records.slice().sort((left, right) => {
+    const resetDifference = zaiResetTimestamp(left) - zaiResetTimestamp(right);
+    if (Number.isFinite(resetDifference) && resetDifference !== 0) return resetDifference;
+    return 0;
+  });
+}
+
+function zaiPlanLabel(data: Record<string, unknown>): string {
+  for (const value of [data.planName, data.plan, data.plan_type, data.packageName]) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "GLM Coding Plan";
+}
+
+function zaiApiErrorCode(body: unknown): number | undefined {
+  const root = asRecord(body);
+  if (!root) return undefined;
+  const code = toNumber(root.code);
+  if (root.success === false || (code !== undefined && code >= 400)) return code ?? 500;
+  return undefined;
+}
+
+export function parseZaiUsageResponse(body: unknown, now: number): LiveProviderUsage | null {
+  const root = asRecord(body);
+  if (!root || zaiApiErrorCode(root) !== undefined) return null;
+  const data = asRecord(root?.data) ?? root;
+  const limits = Array.isArray(data?.limits) ? data.limits : [];
+  const records = limits.flatMap((entry) => {
+    const record = asRecord(entry);
+    return record ? [record] : [];
+  });
+  const weeklyByUnit = records.find((record) => toNumber(record.unit) === ZAI_WEEKLY_UNIT);
+  const weeklyByName = records.find((record) => zaiLimitDescriptor(record).includes("week"));
+  let weeklyRecord = weeklyByUnit ?? weeklyByName;
+  const tokenRecords = records.filter((record) => zaiLimitDescriptor(record).includes("token"));
+  let fiveHourRecord = records.find((record) => toNumber(record.unit) === ZAI_FIVE_HOUR_UNIT);
+  fiveHourRecord ??= records.find((record) => {
+    const descriptor = zaiLimitDescriptor(record);
+    return (
+      descriptor.includes("5 hour") || descriptor.includes("5h") || descriptor.includes("five hour")
+    );
+  });
+  const unclassifiedTokens = sortZaiTokenLimits(
+    tokenRecords.filter(
+      (record) =>
+        record !== weeklyRecord &&
+        record !== fiveHourRecord &&
+        toNumber(record.unit) !== ZAI_DAILY_UNIT
+    )
+  );
+  if (!fiveHourRecord && !weeklyRecord && unclassifiedTokens.length > 1) {
+    fiveHourRecord = unclassifiedTokens.shift();
+    weeklyRecord = unclassifiedTokens.pop();
+  } else {
+    fiveHourRecord ??= unclassifiedTokens.shift();
+    weeklyRecord ??= unclassifiedTokens.pop();
+  }
+  const monthlyRecord = records.find((record) => {
+    if (record === weeklyRecord || record === fiveHourRecord) return false;
+    const value = zaiLimitDescriptor(record);
+    return (
+      toNumber(record.unit) === ZAI_MONTHLY_UNIT ||
+      value.includes("time_limit") ||
+      value.includes("month") ||
+      value.includes("mcp")
+    );
+  });
+  const fiveHour = zaiLimitWindow(fiveHourRecord);
+  const weekly = zaiLimitWindow(weeklyRecord);
+  const monthlyWindow = zaiLimitWindow(monthlyRecord);
+  const monthly = monthlyWindow ? { ...monthlyWindow, title: "Monthly MCP" } : undefined;
+  if (!fiveHour && !weekly && !monthly) return null;
+  return {
+    planLabel: zaiPlanLabel(data),
+    fiveHour,
+    weekly,
+    monthly,
     source: "provider_api",
     fetchedAt: now,
   };
@@ -629,7 +715,14 @@ async function fetchZaiUsage(token: string, baseUrl?: string): Promise<LiveProvi
       },
       signal: AbortSignal.timeout(10_000),
     });
-    if (res.ok) return parseZaiUsageResponse(await res.json(), Date.now());
+    if (res.ok) {
+      const body: unknown = await res.json();
+      const parsed = parseZaiUsageResponse(body, Date.now());
+      if (parsed) return parsed;
+      const errorCode = zaiApiErrorCode(body);
+      if (errorCode !== 401 && errorCode !== 403) return null;
+      continue;
+    }
     if (res.status !== 401 && res.status !== 403) return null;
   }
   return null;
@@ -1021,7 +1114,11 @@ function scanGrokProtobuf(
       const value = readVarint(data, index);
       if (!value) break;
       index = value.next;
-      scan.varintFields.push({ path: nextPath, value: value.value, order: scan.order++ });
+      scan.varintFields.push({
+        path: nextPath,
+        value: value.value,
+        order: scan.order++,
+      });
       continue;
     }
 
@@ -1075,7 +1172,11 @@ export function parseGrokWebBillingResponse(
   if (payloads.length === 0 && looksLikeProtobufPayload(data)) payloads = [data];
   if (payloads.length === 0) return null;
 
-  const scan: GrokProtobufScan = { fixed32Fields: [], varintFields: [], order: 0 };
+  const scan: GrokProtobufScan = {
+    fixed32Fields: [],
+    varintFields: [],
+    order: 0,
+  };
   for (const payload of payloads) scanGrokProtobuf(payload, 0, [], scan);
 
   const percent = scan.fixed32Fields

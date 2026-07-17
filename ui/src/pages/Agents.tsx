@@ -13,6 +13,7 @@ import {
   useAgent,
   useAgentSummaries,
   useProviders,
+  useProviderAccountPools,
   useProviderModels,
   useCreateAgent,
   useCreateDefaultAgent,
@@ -28,7 +29,9 @@ import {
   supportedReasoningOptions,
 } from "@/lib/reasoning";
 import { buildAgentChatPath } from "./chat/chatRoute";
-import type { Agent, AgentSummary } from "@/types";
+import type { Agent, AgentSummary, ProviderAccountPool } from "@/types";
+
+const POOL_TARGET_PREFIX = "pool:";
 
 const agentTypes = [
   { value: "main", label: "Main Assistant" },
@@ -88,6 +91,7 @@ export function Agents() {
   const { data: agents, isLoading } = useAgentSummaries();
   const { data: editingAgent } = useAgent(editingAgentId);
   const { data: providers } = useProviders();
+  const { data: providerPools } = useProviderAccountPools();
   const { addToast } = useUIStore();
 
   const createAgent = useCreateAgent();
@@ -143,6 +147,7 @@ export function Agents() {
         type: formData.get("type") as string,
         model: formData.get("model") as string,
         provider_id: formData.get("provider_id") as string,
+        provider_pool_id: formData.get("provider_pool_id") as string,
         system_prompt: formData.get("system_prompt") as string,
         config: buildConfig(formData),
       });
@@ -172,6 +177,7 @@ export function Agents() {
           type: formData.get("type") as string,
           model: formData.get("model") as string,
           provider_id: formData.get("provider_id") as string,
+          provider_pool_id: formData.get("provider_pool_id") as string,
           system_prompt: formData.get("system_prompt") as string,
           config: buildConfig(formData, editingAgent.config),
         },
@@ -275,6 +281,7 @@ export function Agents() {
         onSubmit={handleCreate}
         title="Create Agent"
         providers={providers || []}
+        pools={providerPools || []}
         isLoading={createAgent.isPending}
       />
 
@@ -284,6 +291,7 @@ export function Agents() {
         onSubmit={handleUpdate}
         title="Edit Agent"
         providers={providers || []}
+        pools={providerPools || []}
         isLoading={updateAgent.isPending}
         initialData={editingAgent}
       />
@@ -347,6 +355,12 @@ function AgentCard({
             <span className="text-gray-300">{agent.model}</span>
           </div>
           <div className="flex justify-between">
+            <span className="text-gray-500">Provider</span>
+            <span className="text-gray-300">
+              {agent.provider_pool_name || agent.provider_type || "Default"}
+            </span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-gray-500">Reasoning</span>
             <span className="text-gray-300">{agentReasoningLabel(agent)}</span>
           </div>
@@ -393,6 +407,7 @@ function AgentModal({
   onSubmit,
   title,
   providers,
+  pools,
   isLoading,
   initialData,
 }: {
@@ -401,12 +416,19 @@ function AgentModal({
   onSubmit: (formData: FormData) => void;
   title: string;
   providers: Array<{ id: string; name: string; provider?: string }>;
+  pools: ProviderAccountPool[];
   isLoading: boolean;
   initialData?: Agent;
 }) {
-  const [selectedProvider, setSelectedProvider] = useState(
-    initialData?.provider || providers[0]?.id || ""
-  );
+  const initialTarget = initialData?.provider_pool_id
+    ? `${POOL_TARGET_PREFIX}${initialData.provider_pool_id}`
+    : initialData?.provider_id || initialData?.provider || providers[0]?.id || "";
+  const [selectedTarget, setSelectedTarget] = useState(initialTarget);
+  const selectedPoolId = selectedTarget.startsWith(POOL_TARGET_PREFIX)
+    ? selectedTarget.slice(POOL_TARGET_PREFIX.length)
+    : "";
+  const selectedPool = pools.find((pool) => pool.id === selectedPoolId);
+  const selectedProvider = selectedPool?.accounts[0]?.provider_id || selectedTarget;
   const [selectedModel, setSelectedModel] = useState(initialData?.model || "");
   const [customModel, setCustomModel] = useState("");
   const [useCustomModel, setUseCustomModel] = useState(false);
@@ -420,11 +442,15 @@ function AgentModal({
       setUseCustomModel(false);
     }
     providerChangedRef.current = true;
-  }, [selectedProvider]);
+  }, [selectedTarget]);
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedProvider(initialData?.provider || providers[0]?.id || "");
+      setSelectedTarget(
+        initialData?.provider_pool_id
+          ? `${POOL_TARGET_PREFIX}${initialData.provider_pool_id}`
+          : initialData?.provider_id || initialData?.provider || providers[0]?.id || ""
+      );
       setSelectedModel(initialData?.model || "");
       setCustomModel("");
       setUseCustomModel(false);
@@ -438,6 +464,7 @@ function AgentModal({
     const modelValue = useCustomModel ? customModel : selectedModel;
     formData.set("model", modelValue);
     formData.set("provider_id", selectedProvider);
+    formData.set("provider_pool_id", selectedPoolId);
     onSubmit(formData);
   };
 
@@ -451,7 +478,9 @@ function AgentModal({
 
   const activeFormModel = useCustomModel ? customModel : selectedModel;
   const selectedProviderType =
-    providers.find((provider) => provider.id === selectedProvider)?.provider ?? selectedProvider;
+    selectedPool?.provider ??
+    providers.find((provider) => provider.id === selectedProvider)?.provider ??
+    selectedProvider;
   const reasoningEffortOptions = useMemo(
     () => supportedReasoningOptions(selectedProviderType, activeFormModel),
     [selectedProviderType, activeFormModel]
@@ -479,10 +508,21 @@ function AgentModal({
 
           <Select
             label="Provider"
-            name="provider_id"
-            value={selectedProvider}
-            onChange={(val) => setSelectedProvider(val)}
-            options={providers.map((p) => ({ value: p.id, label: p.name }))}
+            name="provider_target"
+            value={selectedTarget}
+            onChange={(val) => setSelectedTarget(val)}
+            options={[
+              ...pools
+                .filter((pool) => pool.enabled && pool.accounts.length > 0)
+                .map((pool) => ({
+                  value: `${POOL_TARGET_PREFIX}${pool.id}`,
+                  label: `${pool.name} pool (${pool.accounts.length})`,
+                })),
+              ...providers.map((provider) => ({
+                value: provider.id,
+                label: `${provider.name} account`,
+              })),
+            ]}
           />
 
           <div className="space-y-2">

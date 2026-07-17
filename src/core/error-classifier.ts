@@ -76,6 +76,21 @@ export function classifyApiError(input: {
       message,
     };
   }
+  if (
+    (status === 429 || status === 529) &&
+    /temporarily overloaded|service (?:is )?overloaded|overloaded.{0,80}(?:retry|try again)|["']?code["']?\s*[:=]\s*1305/.test(
+      text
+    )
+  ) {
+    return {
+      category: "overloaded",
+      retryable: true,
+      rotateCredential: false,
+      reduceContext: false,
+      status,
+      message,
+    };
+  }
   // Rate limit
   if (status === 429 || /rate.?limit|too many requests|429/.test(text)) {
     return {

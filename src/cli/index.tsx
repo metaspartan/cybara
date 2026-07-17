@@ -171,6 +171,11 @@ const {
   list: rawProviders,
   models: rawProviderModels,
   parseFlags: parseProviderFlags,
+  parsePoolFlags: parseProviderPoolFlags,
+  poolCreate: rawProviderPoolCreate,
+  poolDelete: rawProviderPoolDelete,
+  poolList: rawProviderPoolList,
+  poolUpdate: rawProviderPoolUpdate,
   update: rawProviderUpdate,
 } = createCliProviderCommands(fetchAPI, API_BASE, withCliAuthHeaders);
 
@@ -1332,6 +1337,29 @@ async function main() {
           );
           break;
         }
+        case "pool": {
+          const poolCommand = args[2] || "list";
+          if (poolCommand === "list") await rawProviderPoolList();
+          else if (poolCommand === "create") {
+            await rawProviderPoolCreate(parseProviderPoolFlags(args.slice(3)));
+          } else if (poolCommand === "update") {
+            await rawProviderPoolUpdate(args[3], parseProviderPoolFlags(args.slice(4)));
+          } else if (poolCommand === "delete" || poolCommand === "remove") {
+            await rawProviderPoolDelete(args[3]);
+          } else {
+            console.log("Provider Pool Commands:");
+            console.log("  cybara provider pool list");
+            console.log(
+              "  cybara provider pool create --name <name> --provider <type> --account <provider-id[:priority]>"
+            );
+            console.log(
+              "  cybara provider pool update <pool-id> --name <name> --provider <type> --account <provider-id[:priority]>"
+            );
+            console.log("  Omit :priority to balance accounts by tracked plan usage");
+            console.log("  cybara provider pool delete <pool-id>");
+          }
+          break;
+        }
         case "delete":
         case "remove":
           await rawProviderDelete(provArg);
@@ -1357,6 +1385,7 @@ async function main() {
           console.log("    --oauth       Connect via OAuth device code flow");
           console.log("    --default     Set as default");
           console.log("  cybara provider update <id>   - Update provider");
+          console.log("  cybara provider pool          - Manage named account pools");
           console.log("  cybara provider delete <id>   - Delete provider");
           console.log("  cybara provider models <id>   - List provider models");
           console.log(

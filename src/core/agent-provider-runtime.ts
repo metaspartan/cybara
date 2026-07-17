@@ -78,6 +78,7 @@ import {
   poolSize,
 } from "./credential-pool";
 import type { Agent, Provider, ToolDefinition } from "./database";
+import { classifyApiError } from "./error-classifier";
 import {
   anthropicEndpointPath,
   anthropicRequestBase,
@@ -140,6 +141,12 @@ import {
   shouldRetryOpenAICodexModel,
 } from "./openai-codex-models";
 import { type AnthropicCacheRequest, applyAnthropicCacheControl } from "./prompt-cache";
+import {
+  boundedPoolRetryDelayMs,
+  parseProviderRetryAfterMs,
+  providerExceptionRetryDelayMs,
+  providerRetryDelayMs,
+} from "./provider-retry";
 import {
   getDefaultModel,
   getProviderBaseUrl,
@@ -326,17 +333,7 @@ export abstract class AgentProviderRuntime {
   }
 
   private parseRetryAfterMs(headers: Headers, defaultRetryAfterMs = 60_000): number {
-    const raw = headers.get("retry-after") || headers.get("Retry-After");
-    if (!raw) return defaultRetryAfterMs;
-    const seconds = Number(raw);
-    if (Number.isFinite(seconds) && seconds >= 0) {
-      return Math.max(0, Math.floor(seconds * 1000));
-    }
-    const dateMs = Date.parse(raw);
-    if (Number.isFinite(dateMs)) {
-      return Math.max(0, dateMs - Date.now());
-    }
-    return defaultRetryAfterMs;
+    return parseProviderRetryAfterMs(headers, defaultRetryAfterMs);
   }
 
   private async waitForRetryDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
@@ -356,12 +353,54 @@ export abstract class AgentProviderRuntime {
     });
   }
 
+  private async refreshProviderAuthorization(
+    headers: Record<string, string>,
+    context?: ProviderRateLimitContext
+  ): Promise<string | undefined> {
+    const providerId = context?.providerId?.trim();
+    if (!providerId) return undefined;
+    const authorizationKey = Object.keys(headers).find(
+      (key) => key.toLowerCase() === "authorization"
+    );
+    if (!authorizationKey || !headers[authorizationKey]?.startsWith("Bearer ")) return undefined;
+    const provider = providerManager.getWithCredentials(providerId);
+    if (!provider?.refresh_token) return undefined;
+    const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(provider, {
+      force: true,
+    });
+    const accessToken = refreshed?.access_token?.trim();
+    if (!accessToken) return undefined;
+    headers[authorizationKey] = `Bearer ${accessToken}`;
+    return accessToken;
+  }
+
+  private providerRetryDelayMs(status: number, headers: Headers, attempt: number): number {
+    return providerRetryDelayMs(status, headers, attempt);
+  }
+
+  private broadcastProviderRetryStatus(
+    streamContext: { sessionId?: string | null; agentId?: string | null } | undefined,
+    detail: string
+  ): void {
+    const sessionId = streamContext?.sessionId?.trim();
+    if (!sessionId) return;
+    broadcastStatus({
+      status: "thinking",
+      timestamp: Date.now(),
+      detail,
+      sessionId,
+      agentId: streamContext?.agentId || undefined,
+    });
+  }
+
   private recordHttpRateLimit(
     status: number,
     headers: Headers,
-    context?: ProviderRateLimitContext
+    context?: ProviderRateLimitContext,
+    body = ""
   ): void {
     if (status !== 429) return;
+    if (classifyApiError({ status, body }).category === "overloaded") return;
     const retryAfterMs = this.parseRetryAfterMs(headers, context?.defaultRetryAfterMs);
     const keys = [context?.providerId?.trim(), context?.providerType?.trim()].filter(
       (key): key is string => Boolean(key)
@@ -485,6 +524,7 @@ export abstract class AgentProviderRuntime {
     const toolCallId = this.createToolCallStatusId(toolName);
     try {
       const startedAt = Date.now();
+      if (toolContext?.executionState) toolContext.executionState.toolCallsStarted += 1;
       this.broadcastAgentStatus(
         "tool_executing",
         toolContext,
@@ -1060,6 +1100,7 @@ export abstract class AgentProviderRuntime {
           }
         : undefined;
     let streamingDisabled = false;
+    let transientRetryCount = 0;
     const post = async (body: Record<string, unknown>): Promise<Response | OpenAIResponse> => {
       if (streamingDisabled) {
         try {
@@ -1070,7 +1111,20 @@ export abstract class AgentProviderRuntime {
             signal: withLlmRequestTimeout(signal),
           });
         } catch (error) {
-          throw normalizeLlmTimeoutError(error, signal);
+          const normalized = normalizeLlmTimeoutError(error, signal);
+          const retryDelayMs = providerExceptionRetryDelayMs(
+            normalized,
+            transientRetryCount,
+            signal
+          );
+          if (retryDelayMs === undefined) throw normalized;
+          transientRetryCount += 1;
+          this.broadcastProviderRetryStatus(
+            streamContext,
+            `Provider connection interrupted; retrying (${transientRetryCount}/3)...`
+          );
+          await this.waitForRetryDelay(retryDelayMs, signal);
+          return post(body);
         }
       }
 
@@ -1079,9 +1133,10 @@ export abstract class AgentProviderRuntime {
         callerSignal: signal,
         label: "chat.completions",
       });
+      const requestStartedAt = performance.now();
+      let response: Response;
       try {
-        const requestStartedAt = performance.now();
-        const response = await fetch(`${baseUrl}/chat/completions`, {
+        response = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
           headers,
           body: JSON.stringify({
@@ -1091,6 +1146,20 @@ export abstract class AgentProviderRuntime {
           }),
           signal: watchdog.signal,
         });
+      } catch (error) {
+        watchdog.dispose();
+        const normalized = watchdog.wrapError(error);
+        const retryDelayMs = providerExceptionRetryDelayMs(normalized, transientRetryCount, signal);
+        if (retryDelayMs === undefined) throw normalized;
+        transientRetryCount += 1;
+        this.broadcastProviderRetryStatus(
+          streamContext,
+          `Provider connection interrupted; retrying (${transientRetryCount}/3)...`
+        );
+        await this.waitForRetryDelay(retryDelayMs, signal);
+        return post(body);
+      }
+      try {
         if (!response.ok) {
           watchdog.dispose();
           return response;
@@ -1124,6 +1193,9 @@ export abstract class AgentProviderRuntime {
     let attemptedMaxCompletionRetry = false;
     let attemptedToolChoiceCompatibilityRetry = false;
     let contextRetryCount = 0;
+    let attemptedOAuthRefresh = false;
+    const maxTransientRetries = 3;
+    const maxRetryDelayMs = 120_000;
 
     let attemptedNonStreamingRetry = false;
     while (true) {
@@ -1137,7 +1209,40 @@ export abstract class AgentProviderRuntime {
       }
 
       const errorText = await response.text();
-      this.recordHttpRateLimit(response.status, response.headers, rateLimitContext);
+      this.recordHttpRateLimit(response.status, response.headers, rateLimitContext, errorText);
+      if (
+        response.status === 401 &&
+        !attemptedOAuthRefresh &&
+        (await this.refreshProviderAuthorization(headers, rateLimitContext))
+      ) {
+        attemptedOAuthRefresh = true;
+        this.broadcastProviderRetryStatus(
+          streamContext,
+          "Provider session refreshed; continuing..."
+        );
+        continue;
+      }
+      const classifiedError = classifyApiError({ status: response.status, body: errorText });
+      const retryDelayMs = this.providerRetryDelayMs(
+        response.status,
+        response.headers,
+        transientRetryCount
+      );
+      if (
+        classifiedError.retryable &&
+        transientRetryCount < maxTransientRetries &&
+        retryDelayMs <= maxRetryDelayMs
+      ) {
+        transientRetryCount += 1;
+        this.broadcastProviderRetryStatus(
+          streamContext,
+          response.status === 429
+            ? `Provider rate limited; retrying (${transientRetryCount}/${maxTransientRetries})...`
+            : `Provider temporarily unavailable; retrying (${transientRetryCount}/${maxTransientRetries})...`
+        );
+        await this.waitForRetryDelay(retryDelayMs, signal);
+        continue;
+      }
       if (
         !attemptedNonStreamingRetry &&
         !streamingDisabled &&
@@ -1360,6 +1465,7 @@ export abstract class AgentProviderRuntime {
       providerUrl: baseUrl,
       durationMs,
       sessionId: sessionIdForVisibleTokenUsage(toolContext),
+      routerRouteId: toolContext?.routerRouteId,
     });
 
     if (!message) {
@@ -1638,6 +1744,7 @@ export abstract class AgentProviderRuntime {
         providerUrl: baseUrl,
         durationMs: Math.round(performance.now() - loopRequestStartedAt),
         sessionId: sessionIdForVisibleTokenUsage(toolContext),
+        routerRouteId: toolContext?.routerRouteId,
       });
       const loopChoice = loopData.choices?.[0];
       message = loopChoice?.message as OpenAIMessage;
@@ -1688,6 +1795,7 @@ export abstract class AgentProviderRuntime {
           providerUrl: baseUrl,
           durationMs: Math.round(performance.now() - nudgeStartedAt),
           sessionId: sessionIdForVisibleTokenUsage(toolContext),
+          routerRouteId: toolContext?.routerRouteId,
         });
         const nudgeContent = nudgeData.choices?.[0]?.message?.content;
         if (typeof nudgeContent === "string" && nudgeContent.trim()) finalContent = nudgeContent;
@@ -2056,99 +2164,104 @@ export abstract class AgentProviderRuntime {
     for (let index = 0; index < candidates.length; index++) {
       const candidate = candidates[index];
       const body = { ...requestBody, model: candidate };
-      const watchdog = createStreamWatchdog({
-        ...resolveLlmWatchdogDefaults(url),
-        callerSignal: signal,
-        label: transport === "grok" ? "Grok Build" : "Codex",
-      });
-      let response: Response;
-      const requestStartedAt = performance.now();
-      try {
-        response = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-          signal: watchdog.signal,
-        });
-      } catch (error) {
-        watchdog.dispose();
-        throw watchdog.wrapError(error);
-      }
+      let attemptedOAuthRefresh = false;
+      let transientRetryCount = 0;
 
-      if (!response.ok) {
-        watchdog.dispose();
-        const errorText = await response.text();
-        this.recordHttpRateLimit(response.status, response.headers, rateLimitContext);
-        finalError = `API error: ${response.status} - ${errorText}`;
-        if (transport === "grok" && response.status === 429 && index === 0) {
-          const retryAfterMs = this.parseRetryAfterMs(response.headers, 2_000);
-          await this.waitForRetryDelay(retryAfterMs, signal);
-          const retryWatchdog = createStreamWatchdog({
-            ...resolveLlmWatchdogDefaults(url),
-            callerSignal: signal,
-            label: "Grok Build",
+      while (true) {
+        const watchdog = createStreamWatchdog({
+          ...resolveLlmWatchdogDefaults(url),
+          callerSignal: signal,
+          label: transport === "grok" ? "Grok Build" : "Codex",
+        });
+        let response: Response;
+        const requestStartedAt = performance.now();
+        try {
+          response = await fetch(url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
+            signal: watchdog.signal,
           });
-          const retryStartedAt = performance.now();
-          let retryResponse: Response;
-          try {
-            retryResponse = await fetch(url, {
-              method: "POST",
-              headers,
-              body: JSON.stringify(body),
-              signal: retryWatchdog.signal,
-            });
-          } catch (error) {
-            retryWatchdog.dispose();
-            throw retryWatchdog.wrapError(error);
-          }
-          if (!retryResponse.ok) {
-            retryWatchdog.dispose();
-            const retryErrorText = await retryResponse.text();
-            this.recordHttpRateLimit(retryResponse.status, retryResponse.headers, rateLimitContext);
-            throw new Error(`API error: ${retryResponse.status} - ${retryErrorText}`);
-          }
-          try {
-            const parsed = await this.parseOpenAICodexTurnResponse(
-              retryResponse,
-              sessionId,
-              agentId,
-              retryWatchdog,
-              retryStartedAt
-            );
-            retryWatchdog.dispose();
-            return { ...parsed, resolvedModel: candidate };
-          } catch (error) {
-            retryWatchdog.dispose();
-            throw retryWatchdog.wrapError(error);
-          }
-        }
-        if (
-          transport === "codex" &&
-          index < candidates.length - 1 &&
-          shouldRetryOpenAICodexModel(response.status, errorText)
-        ) {
-          console.warn(
-            `[Agent] OpenAI Codex model ${candidate} unavailable, retrying with ${candidates[index + 1]}`
+        } catch (error) {
+          watchdog.dispose();
+          const normalized = watchdog.wrapError(error);
+          const retryDelayMs = providerExceptionRetryDelayMs(
+            normalized,
+            transientRetryCount,
+            signal
           );
+          if (retryDelayMs === undefined) throw normalized;
+          transientRetryCount += 1;
+          this.broadcastProviderRetryStatus(
+            { sessionId, agentId },
+            `Provider connection interrupted; retrying (${transientRetryCount}/3)...`
+          );
+          await this.waitForRetryDelay(retryDelayMs, signal);
           continue;
         }
-        throw new Error(finalError);
-      }
 
-      try {
-        watchdog.touch();
-        const parsed = await this.parseOpenAICodexTurnResponse(
-          response,
-          sessionId,
-          agentId,
-          watchdog,
-          requestStartedAt
-        );
-        watchdog.dispose();
-        return { ...parsed, resolvedModel: candidate };
-      } catch (error) {
-        watchdog.dispose();
-        throw watchdog.wrapError(error);
+        if (!response.ok) {
+          watchdog.dispose();
+          const errorText = await response.text();
+          this.recordHttpRateLimit(response.status, response.headers, rateLimitContext, errorText);
+          finalError = `API error: ${response.status} - ${errorText}`;
+          if (
+            response.status === 401 &&
+            !attemptedOAuthRefresh &&
+            (await this.refreshProviderAuthorization(headers, rateLimitContext))
+          ) {
+            attemptedOAuthRefresh = true;
+            this.broadcastProviderRetryStatus(
+              { sessionId, agentId },
+              "Provider session refreshed; continuing..."
+            );
+            continue;
+          }
+          const classifiedError = classifyApiError({ status: response.status, body: errorText });
+          const retryDelayMs = this.providerRetryDelayMs(
+            response.status,
+            response.headers,
+            transientRetryCount
+          );
+          if (classifiedError.retryable && transientRetryCount < 3 && retryDelayMs <= 120_000) {
+            transientRetryCount += 1;
+            this.broadcastProviderRetryStatus(
+              { sessionId, agentId },
+              classifiedError.category === "rate_limit"
+                ? `Provider rate limited; retrying (${transientRetryCount}/3)...`
+                : `Provider temporarily unavailable; retrying (${transientRetryCount}/3)...`
+            );
+            await this.waitForRetryDelay(retryDelayMs, signal);
+            continue;
+          }
+          if (
+            transport === "codex" &&
+            index < candidates.length - 1 &&
+            shouldRetryOpenAICodexModel(response.status, errorText)
+          ) {
+            console.warn(
+              `[Agent] OpenAI Codex model ${candidate} unavailable, retrying with ${candidates[index + 1]}`
+            );
+            break;
+          }
+          throw new Error(finalError);
+        }
+
+        try {
+          watchdog.touch();
+          const parsed = await this.parseOpenAICodexTurnResponse(
+            response,
+            sessionId,
+            agentId,
+            watchdog,
+            requestStartedAt
+          );
+          watchdog.dispose();
+          return { ...parsed, resolvedModel: candidate };
+        } catch (error) {
+          watchdog.dispose();
+          throw watchdog.wrapError(error);
+        }
       }
     }
 
@@ -2337,6 +2450,7 @@ export abstract class AgentProviderRuntime {
             cachedInputTokens: turn.usage.cachedInputTokens,
             cacheWriteTokens: turn.usage.cacheWriteTokens,
             firstTokenMs: turn.firstTokenMs ?? durationMs,
+            routerRouteId: toolContext?.routerRouteId,
           }
         );
       }
@@ -2545,7 +2659,7 @@ export abstract class AgentProviderRuntime {
       return { role, parts: [{ text: message.content }] };
     });
 
-    const headers = vertex
+    const headers: Record<string, string> = vertex
       ? {
           "Content-Type": "application/json",
           Authorization: `Bearer ${auth.trim()}`,
@@ -2615,19 +2729,70 @@ export abstract class AgentProviderRuntime {
       }
 
       const startTime = performance.now();
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(requestBody),
-        signal: withLlmRequestTimeout(toolContext?.abortSignal),
-      });
+      let response: Response | null = null;
+      let transientRetryCount = 0;
+      let attemptedOAuthRefresh = false;
+      while (true) {
+        try {
+          response = await fetch(endpoint, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(requestBody),
+            signal: withLlmRequestTimeout(toolContext?.abortSignal),
+          });
+        } catch (error) {
+          const retryDelayMs = providerExceptionRetryDelayMs(
+            error,
+            transientRetryCount,
+            toolContext?.abortSignal
+          );
+          if (retryDelayMs === undefined) throw error;
+          transientRetryCount += 1;
+          this.broadcastAgentStatus(
+            "thinking",
+            toolContext,
+            `Provider connection interrupted; retrying (${transientRetryCount}/3)...`
+          );
+          await this.waitForRetryDelay(retryDelayMs, toolContext?.abortSignal);
+          continue;
+        }
 
-      if (!response.ok) {
+        if (response.ok) break;
+
         const errorText = await response.text();
-        this.recordHttpRateLimit(response.status, response.headers, {
-          providerId,
-          providerType: providerConfig,
-        });
+        const rateLimitContext = { providerId, providerType: providerConfig };
+        this.recordHttpRateLimit(response.status, response.headers, rateLimitContext, errorText);
+        if (
+          response.status === 401 &&
+          !attemptedOAuthRefresh &&
+          (await this.refreshProviderAuthorization(headers, rateLimitContext))
+        ) {
+          attemptedOAuthRefresh = true;
+          this.broadcastAgentStatus(
+            "thinking",
+            toolContext,
+            "Provider session refreshed; continuing..."
+          );
+          continue;
+        }
+        const classifiedError = classifyApiError({ status: response.status, body: errorText });
+        const retryDelayMs = this.providerRetryDelayMs(
+          response.status,
+          response.headers,
+          transientRetryCount
+        );
+        if (classifiedError.retryable && transientRetryCount < 3 && retryDelayMs <= 120_000) {
+          transientRetryCount += 1;
+          this.broadcastAgentStatus(
+            "thinking",
+            toolContext,
+            classifiedError.category === "rate_limit"
+              ? `Provider rate limited; retrying (${transientRetryCount}/3)...`
+              : `Provider temporarily unavailable; retrying (${transientRetryCount}/3)...`
+          );
+          await this.waitForRetryDelay(retryDelayMs, toolContext?.abortSignal);
+          continue;
+        }
         throw new Error(`API error: ${response.status} - ${errorText}`);
       }
 
@@ -2641,6 +2806,7 @@ export abstract class AgentProviderRuntime {
           sessionId: sessionIdForVisibleTokenUsage(toolContext),
           cachedInputTokens: usage.cachedContentTokenCount || 0,
           firstTokenMs: durationMs,
+          routerRouteId: toolContext?.routerRouteId,
         });
       }
 
@@ -2894,6 +3060,7 @@ export abstract class AgentProviderRuntime {
           {
             sessionId: sessionIdForVisibleTokenUsage(toolContext),
             firstTokenMs: durationMs,
+            routerRouteId: toolContext?.routerRouteId,
           }
         );
       }
@@ -3099,7 +3266,7 @@ export abstract class AgentProviderRuntime {
       requestBody.tool_choice = { type: "auto" };
     }
 
-    const oauth = providerConfig === "anthropic-oauth";
+    const oauth = providerCatalog[providerConfig as ProviderType]?.authType === "oauth";
     const headers: Record<string, string> = anthropicRequestHeaders(auth, vertex, oauth);
 
     if (!vertex && modelParams?.context1m === true) {
@@ -3122,16 +3289,17 @@ export abstract class AgentProviderRuntime {
     requestBody.messages = cached.messages;
 
     const startTime = performance.now();
-    const INITIAL_TRANSIENT_CODES = new Set([429, 500, 502, 503, 520, 529]);
     const INITIAL_MAX_RETRIES = 3;
     let response: Response | null = null;
     let lastInitialError = "";
+    let initialRetryCount = 0;
+    let attemptedInitialOAuthRefresh = false;
     const poolName = "anthropic";
     let activeCredential: PooledCredential | null =
       !vertex && !oauth && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
     let currentApiKey = activeCredential?.value ?? auth;
 
-    for (let attempt = 0; attempt <= INITIAL_MAX_RETRIES; attempt++) {
+    while (initialRetryCount <= INITIAL_MAX_RETRIES) {
       if (vertex) {
         headers.Authorization = `Bearer ${currentApiKey}`;
       } else if (oauth) {
@@ -3139,12 +3307,29 @@ export abstract class AgentProviderRuntime {
       } else {
         headers["x-api-key"] = currentApiKey;
       }
-      response = await fetch(`${baseUrl}${anthropicEndpoint}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(requestBody),
-        signal: withLlmRequestTimeout(toolContext?.abortSignal),
-      });
+      try {
+        response = await fetch(`${baseUrl}${anthropicEndpoint}`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(requestBody),
+          signal: withLlmRequestTimeout(toolContext?.abortSignal),
+        });
+      } catch (error) {
+        const retryDelayMs = providerExceptionRetryDelayMs(
+          error,
+          initialRetryCount,
+          toolContext?.abortSignal
+        );
+        if (retryDelayMs === undefined) throw error;
+        initialRetryCount += 1;
+        this.broadcastAgentStatus(
+          "thinking",
+          toolContext,
+          `Provider connection interrupted; retrying (${initialRetryCount}/${INITIAL_MAX_RETRIES})...`
+        );
+        await this.waitForRetryDelay(retryDelayMs, toolContext?.abortSignal);
+        continue;
+      }
 
       if (response.ok) {
         if (activeCredential) markCredentialHealthy(poolName, activeCredential);
@@ -3153,31 +3338,75 @@ export abstract class AgentProviderRuntime {
 
       lastInitialError = await response.text();
 
-      if (activeCredential) recordRateLimit(activeCredential.label, response.headers);
-      this.recordHttpRateLimit(response.status, response.headers, {
-        providerId,
-        providerType: providerConfig,
-      });
+      const classifiedError = classifyApiError({ status: response.status, body: lastInitialError });
+      if (activeCredential && classifiedError.category === "rate_limit") {
+        recordRateLimit(activeCredential.label, response.headers);
+      }
+      this.recordHttpRateLimit(
+        response.status,
+        response.headers,
+        {
+          providerId,
+          providerType: providerConfig,
+        },
+        lastInitialError
+      );
 
-      if (INITIAL_TRANSIENT_CODES.has(response.status) && attempt < INITIAL_MAX_RETRIES) {
-        if (response.status === 429 && activeCredential) {
+      if (response.status === 401 && oauth && !attemptedInitialOAuthRefresh) {
+        const refreshedToken = await this.refreshProviderAuthorization(headers, {
+          providerId,
+          providerType: providerConfig,
+        });
+        if (refreshedToken) {
+          attemptedInitialOAuthRefresh = true;
+          currentApiKey = refreshedToken;
+          this.broadcastAgentStatus(
+            "thinking",
+            toolContext,
+            "Provider session refreshed; continuing..."
+          );
+          continue;
+        }
+      }
+
+      const retryDelayMs = this.providerRetryDelayMs(
+        response.status,
+        response.headers,
+        initialRetryCount
+      );
+      if (
+        classifiedError.retryable &&
+        initialRetryCount < INITIAL_MAX_RETRIES &&
+        retryDelayMs <= 120_000
+      ) {
+        if (classifiedError.category === "rate_limit" && activeCredential) {
           markCredentialCooldown(poolName, activeCredential, "rate_limit");
         }
         const rotated =
-          !vertex && !oauth && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
+          classifiedError.rotateCredential && !vertex && !oauth && poolSize(poolName) > 0
+            ? acquireCredential(poolName)
+            : null;
         if (rotated) {
           activeCredential = rotated;
           currentApiKey = rotated.value;
         }
+        initialRetryCount += 1;
         const backoffMs =
-          response.status === 429
-            ? Math.max(msUntilAnyAvailable(poolName), Math.min(1000 * Math.pow(2, attempt), 8000))
-            : Math.min(1000 * Math.pow(2, attempt), 8000);
+          classifiedError.category === "rate_limit"
+            ? boundedPoolRetryDelayMs(msUntilAnyAvailable(poolName), retryDelayMs)
+            : retryDelayMs;
         console.warn(
           `[Agent] Anthropic transient error ${response.status} on initial call, ` +
-            `retrying in ${backoffMs}ms (attempt ${attempt + 1}/${INITIAL_MAX_RETRIES})...`
+            `retrying in ${backoffMs}ms (attempt ${initialRetryCount}/${INITIAL_MAX_RETRIES})...`
         );
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        this.broadcastAgentStatus(
+          "thinking",
+          toolContext,
+          classifiedError.category === "rate_limit"
+            ? `Provider rate limited; retrying (${initialRetryCount}/${INITIAL_MAX_RETRIES})...`
+            : `Provider temporarily unavailable; retrying (${initialRetryCount}/${INITIAL_MAX_RETRIES})...`
+        );
+        await this.waitForRetryDelay(backoffMs, toolContext?.abortSignal);
         continue;
       }
 
@@ -3200,6 +3429,7 @@ export abstract class AgentProviderRuntime {
         cachedInputTokens: data.usage.cache_read_input_tokens || 0,
         cacheWriteTokens: data.usage.cache_creation_input_tokens || 0,
         firstTokenMs: durationMs,
+        routerRouteId: toolContext?.routerRouteId,
       });
     }
 
@@ -3492,29 +3722,52 @@ export abstract class AgentProviderRuntime {
       if (loopCached.system !== undefined) loopRequestBody.system = loopCached.system;
       loopRequestBody.messages = loopCached.messages;
 
-      const TRANSIENT_STATUS_CODES = new Set([429, 500, 502, 503, 520, 529]);
       const MAX_RETRIES = 3;
       let loopResponse: Response | null = null;
       let lastLoopError = "";
       let loopFatalError = false;
+      let loopRetryCount = 0;
+      let attemptedLoopOAuthRefresh = false;
       const loopRequestStartedAt = performance.now();
 
       try {
-        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-          loopResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(loopRequestBody),
-            signal: withLlmRequestTimeout(toolContext?.abortSignal),
-          });
+        while (loopRetryCount <= MAX_RETRIES) {
+          try {
+            loopResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify(loopRequestBody),
+              signal: withLlmRequestTimeout(toolContext?.abortSignal),
+            });
+          } catch (error) {
+            const retryDelayMs = providerExceptionRetryDelayMs(
+              error,
+              loopRetryCount,
+              toolContext?.abortSignal
+            );
+            if (retryDelayMs === undefined) throw error;
+            loopRetryCount += 1;
+            this.broadcastAgentStatus(
+              "thinking",
+              toolContext,
+              `Provider connection interrupted; retrying (${loopRetryCount}/${MAX_RETRIES})...`
+            );
+            await this.waitForRetryDelay(retryDelayMs, toolContext?.abortSignal);
+            continue;
+          }
 
           if (loopResponse.ok) break;
 
           lastLoopError = await loopResponse.text();
-          this.recordHttpRateLimit(loopResponse.status, loopResponse.headers, {
-            providerId,
-            providerType: providerConfig,
-          });
+          this.recordHttpRateLimit(
+            loopResponse.status,
+            loopResponse.headers,
+            {
+              providerId,
+              providerType: providerConfig,
+            },
+            lastLoopError
+          );
 
           if (loopResponse.status === 400 && isContextOverflowError(lastLoopError)) {
             compactAnthropicLoopMessagesForContext(
@@ -3536,26 +3789,65 @@ export abstract class AgentProviderRuntime {
             if (!retryResponse.ok) {
               loopFatalError = true;
               lastLoopError = await retryResponse.text();
-              this.recordHttpRateLimit(retryResponse.status, retryResponse.headers, {
-                providerId,
-                providerType: providerConfig,
-              });
+              this.recordHttpRateLimit(
+                retryResponse.status,
+                retryResponse.headers,
+                {
+                  providerId,
+                  providerType: providerConfig,
+                },
+                lastLoopError
+              );
               break;
             }
             loopResponse = retryResponse;
             break;
           }
 
-          if (TRANSIENT_STATUS_CODES.has(loopResponse.status) && attempt < MAX_RETRIES) {
-            const backoffMs =
-              loopResponse.status === 429
-                ? Math.min(this.parseRetryAfterMs(loopResponse.headers), 120_000)
-                : Math.min(1000 * Math.pow(2, attempt), 8000);
+          if (loopResponse.status === 401 && oauth && !attemptedLoopOAuthRefresh) {
+            const refreshedToken = await this.refreshProviderAuthorization(headers, {
+              providerId,
+              providerType: providerConfig,
+            });
+            if (refreshedToken) {
+              attemptedLoopOAuthRefresh = true;
+              currentApiKey = refreshedToken;
+              this.broadcastAgentStatus(
+                "thinking",
+                toolContext,
+                "Provider session refreshed; continuing..."
+              );
+              continue;
+            }
+          }
+
+          const classifiedError = classifyApiError({
+            status: loopResponse.status,
+            body: lastLoopError,
+          });
+          const retryDelayMs = this.providerRetryDelayMs(
+            loopResponse.status,
+            loopResponse.headers,
+            loopRetryCount
+          );
+          if (
+            classifiedError.retryable &&
+            loopRetryCount < MAX_RETRIES &&
+            retryDelayMs <= 120_000
+          ) {
+            loopRetryCount += 1;
             console.warn(
               `[Agent] Anthropic transient error ${loopResponse.status} on iteration ${iterations}, ` +
-                `retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`
+                `retrying in ${retryDelayMs}ms (attempt ${loopRetryCount}/${MAX_RETRIES})...`
             );
-            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            this.broadcastAgentStatus(
+              "thinking",
+              toolContext,
+              classifiedError.category === "rate_limit"
+                ? `Provider rate limited; retrying (${loopRetryCount}/${MAX_RETRIES})...`
+                : `Provider temporarily unavailable; retrying (${loopRetryCount}/${MAX_RETRIES})...`
+            );
+            await this.waitForRetryDelay(retryDelayMs, toolContext?.abortSignal);
             continue;
           }
 
@@ -3600,6 +3892,7 @@ export abstract class AgentProviderRuntime {
             cachedInputTokens: responseData.usage.cache_read_input_tokens || 0,
             cacheWriteTokens: responseData.usage.cache_creation_input_tokens || 0,
             firstTokenMs: Math.round(performance.now() - loopRequestStartedAt),
+            routerRouteId: toolContext?.routerRouteId,
           }
         );
       }
@@ -3626,12 +3919,67 @@ export abstract class AgentProviderRuntime {
           closingBody.system = systemMessage.content;
         }
         const closingStartedAt = performance.now();
-        const closingResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(closingBody),
-          signal: withLlmRequestTimeout(toolContext?.abortSignal),
-        });
+        let closingResponse: Response | null = null;
+        let closingRetryCount = 0;
+        let attemptedClosingOAuthRefresh = false;
+        while (true) {
+          try {
+            closingResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify(closingBody),
+              signal: withLlmRequestTimeout(toolContext?.abortSignal),
+            });
+          } catch (error) {
+            const retryDelayMs = providerExceptionRetryDelayMs(
+              error,
+              closingRetryCount,
+              toolContext?.abortSignal
+            );
+            if (retryDelayMs === undefined) throw error;
+            closingRetryCount += 1;
+            await this.waitForRetryDelay(retryDelayMs, toolContext?.abortSignal);
+            continue;
+          }
+          if (closingResponse.ok) break;
+          const errorText = await closingResponse.text();
+          const rateLimitContext = { providerId, providerType: providerConfig };
+          this.recordHttpRateLimit(
+            closingResponse.status,
+            closingResponse.headers,
+            rateLimitContext,
+            errorText
+          );
+          if (
+            closingResponse.status === 401 &&
+            oauth &&
+            !attemptedClosingOAuthRefresh &&
+            (await this.refreshProviderAuthorization(headers, rateLimitContext))
+          ) {
+            attemptedClosingOAuthRefresh = true;
+            this.broadcastAgentStatus(
+              "thinking",
+              toolContext,
+              "Provider session refreshed; continuing..."
+            );
+            continue;
+          }
+          const classifiedError = classifyApiError({
+            status: closingResponse.status,
+            body: errorText,
+          });
+          const retryDelayMs = this.providerRetryDelayMs(
+            closingResponse.status,
+            closingResponse.headers,
+            closingRetryCount
+          );
+          if (classifiedError.retryable && closingRetryCount < 3 && retryDelayMs <= 120_000) {
+            closingRetryCount += 1;
+            await this.waitForRetryDelay(retryDelayMs, toolContext?.abortSignal);
+            continue;
+          }
+          throw new Error(`API error: ${closingResponse.status} - ${errorText}`);
+        }
         if (closingResponse.ok) {
           const closingData = (await closingResponse.json()) as AnthropicResponse;
           if (closingData.usage) {
@@ -3647,6 +3995,7 @@ export abstract class AgentProviderRuntime {
                 cachedInputTokens: closingData.usage.cache_read_input_tokens || 0,
                 cacheWriteTokens: closingData.usage.cache_creation_input_tokens || 0,
                 firstTokenMs: Math.round(performance.now() - closingStartedAt),
+                routerRouteId: toolContext?.routerRouteId,
               }
             );
           }
@@ -3754,6 +4103,7 @@ export abstract class AgentProviderRuntime {
       providerUrl: baseUrl,
       durationMs,
       sessionId: sessionIdForVisibleTokenUsage(toolContext),
+      routerRouteId: toolContext?.routerRouteId,
     });
 
     if (!message) {
@@ -4006,6 +4356,7 @@ export abstract class AgentProviderRuntime {
         providerUrl: baseUrl,
         durationMs: Math.round(performance.now() - loopRequestStartedAt),
         sessionId: sessionIdForVisibleTokenUsage(toolContext),
+        routerRouteId: toolContext?.routerRouteId,
       });
       const loopChoice = loopData.choices?.[0];
       message = loopChoice?.message as OpenAIMessage;
@@ -4046,6 +4397,7 @@ export abstract class AgentProviderRuntime {
           providerUrl: baseUrl,
           durationMs: Math.round(performance.now() - closingStartedAt),
           sessionId: sessionIdForVisibleTokenUsage(toolContext),
+          routerRouteId: toolContext?.routerRouteId,
         });
         const closingContent = closingData.choices?.[0]?.message?.content;
         if (typeof closingContent === "string" && closingContent.trim()) {

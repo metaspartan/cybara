@@ -171,6 +171,16 @@ import {
   setProviderPlanMonitoringConfig,
 } from "../core/provider-plans";
 import {
+  createProviderAccountPool,
+  deleteProviderAccountPool,
+  getProviderAccountPool,
+  listProviderAccountPools,
+  removeProviderFromAccountPools,
+  type ProviderAccountPool,
+  type ProviderAccountPoolInput,
+  updateProviderAccountPool,
+} from "../core/provider-account-pool";
+import {
   type ProviderType,
   providerManager,
   providers,
@@ -371,6 +381,57 @@ async function runGoldenReplay(
 }
 
 registerEvalReplayExecutor(runGoldenReplay);
+
+function providerAccountPoolResponse(pool: ProviderAccountPool): Record<string, unknown> {
+  return {
+    id: pool.id,
+    name: pool.name,
+    provider: pool.provider,
+    enabled: pool.enabled,
+    routing_mode: pool.accounts.some((account) => account.priority !== undefined)
+      ? "priority_then_usage"
+      : "usage",
+    accounts: pool.accounts.map((account) => {
+      const provider = providerManager.get(account.providerId);
+      return {
+        provider_id: account.providerId,
+        provider_name: provider?.name ?? account.providerId,
+        priority: account.priority ?? null,
+      };
+    }),
+  };
+}
+
+function providerAccountPoolInput(
+  body: unknown,
+  existing?: ProviderAccountPool
+): ProviderAccountPoolInput {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error("Validation error: Provider pool body is required");
+  }
+  const record = body as Record<string, unknown>;
+  const accounts = Array.isArray(record.accounts)
+    ? record.accounts.flatMap((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+        const account = entry as Record<string, unknown>;
+        const providerId = normalizeOptionalString(account.provider_id ?? account.providerId);
+        return providerId
+          ? [
+              {
+                providerId,
+                priority: typeof account.priority === "number" ? account.priority : undefined,
+              },
+            ]
+          : [];
+      })
+    : (existing?.accounts ?? []);
+  return {
+    name: normalizeOptionalString(record.name) || existing?.name || "",
+    provider: normalizeOptionalString(record.provider) || existing?.provider || "",
+    enabled: typeof record.enabled === "boolean" ? record.enabled : existing?.enabled !== false,
+    accounts,
+  };
+}
 
 async function runQuickIntelligenceBenchmark(runId: string, agentId: string): Promise<void> {
   let workspaceDir: string | null = null;
@@ -1138,6 +1199,8 @@ const routes: Record<string, RouteHandler> = {
         provider: agent.provider,
         provider_id: agent.provider_id,
         provider_type: agent.provider_type,
+        provider_pool_id: agent.provider_pool_id,
+        provider_pool_name: agent.provider_pool_name,
         fallback_provider_id: agent.fallback_provider_id,
         status: agent.status,
         created_at: agent.created_at,
@@ -1363,6 +1426,26 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "GET /api/providers": () => providerManager.list(),
+  "GET /api/provider-account-pools": () =>
+    listProviderAccountPools().map(providerAccountPoolResponse),
+  "POST /api/provider-account-pools": (body) =>
+    providerAccountPoolResponse(
+      createProviderAccountPool(providerAccountPoolInput(body), providerManager.list())
+    ),
+  "PUT /api/provider-account-pools/:id": (body, params) => {
+    const existing = getProviderAccountPool(params!.id);
+    if (!existing) throw new Error("Provider account pool not found");
+    const pool = updateProviderAccountPool(
+      params!.id,
+      providerAccountPoolInput(body, existing),
+      providerManager.list()
+    );
+    if (!pool) throw new Error("Provider account pool not found");
+    return providerAccountPoolResponse(pool);
+  },
+  "DELETE /api/provider-account-pools/:id": (_body, params) => ({
+    success: deleteProviderAccountPool(params!.id),
+  }),
   "GET /api/providers/available": () => [
     ...Object.entries(providers).map(([key, value]) => ({
       id: key,
@@ -1662,6 +1745,7 @@ const routes: Record<string, RouteHandler> = {
         api_key: apiKey,
         access_token: accessToken,
         base_url: normalizedBaseUrl || pluginProvider.baseUrl,
+        settings: providerSettings,
         is_default: data.is_default === true,
       });
       for (const model of pluginProvider.models) {
@@ -1718,7 +1802,12 @@ const routes: Record<string, RouteHandler> = {
     }
 
     if ("settings" in data) {
-      const providerSettings = normalizeProviderSettings(existing.provider, data.settings);
+      const providerSettings = normalizeProviderSettings(existing.provider, {
+        ...(existing.settings || {}),
+        ...((data.settings && typeof data.settings === "object" && !Array.isArray(data.settings)
+          ? data.settings
+          : {}) as Record<string, unknown>),
+      });
       if (existing.provider === "devin" && !providerSettings) {
         throw new Error("Validation error: Devin organization ID is invalid");
       }
@@ -1777,7 +1866,10 @@ const routes: Record<string, RouteHandler> = {
   },
   "DELETE /api/providers/:id": (_body, params) => {
     const success = providerManager.delete(params!.id);
-    if (success) invalidateCachedRoute("GET /api/provider-plans/status");
+    if (success) {
+      removeProviderFromAccountPools(params!.id);
+      invalidateCachedRoute("GET /api/provider-plans/status");
+    }
     return { success };
   },
   "GET /api/providers/:id/models": async (_body, params) => {

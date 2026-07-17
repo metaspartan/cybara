@@ -26,10 +26,14 @@ import type {
   ProviderPlanSnapshot,
   ProviderPlanStatusResponse,
   ProviderPlanPresetSuggestion,
+  ProviderAccountPool,
 } from "@/types";
 
 interface RouteStatus {
   providerId: string;
+  providerType?: string;
+  targetName?: string;
+  targetType?: "provider" | "pool";
   weight: number;
   enabled: boolean;
   available: boolean;
@@ -99,10 +103,26 @@ const STRATEGY_OPTIONS: Array<{
   label: string;
   costHint: string;
 }> = [
-  { value: "weighted", label: "Weighted", costHint: "Best when you want a blended plan." },
-  { value: "round_robin", label: "Round robin", costHint: "Useful for even provider testing." },
-  { value: "lowest_cost", label: "Lowest cost", costHint: "Uses your $/M token prices." },
-  { value: "priority", label: "Priority", costHint: "Best for a primary subscription plan." },
+  {
+    value: "weighted",
+    label: "Weighted",
+    costHint: "Best when you want a blended plan.",
+  },
+  {
+    value: "round_robin",
+    label: "Round robin",
+    costHint: "Useful for even provider testing.",
+  },
+  {
+    value: "lowest_cost",
+    label: "Lowest cost",
+    costHint: "Uses your $/M token prices.",
+  },
+  {
+    value: "priority",
+    label: "Priority",
+    costHint: "Best for a primary subscription plan.",
+  },
   {
     value: "usage_aware",
     label: "Usage aware",
@@ -177,6 +197,7 @@ export function RouterSettings() {
   const [planStatus, setPlanStatus] = useState<ProviderPlanStatusResponse | null>(null);
   const [planConfig, setPlanConfig] = useState<ProviderPlanMonitoringConfig | null>(null);
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
+  const [providerPools, setProviderPools] = useState<ProviderAccountPool[]>([]);
   const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -255,6 +276,16 @@ export function RouterSettings() {
     }
   }, []);
 
+  const fetchProviderPools = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/provider-account-pools");
+      const data = await res.json();
+      setProviderPools(Array.isArray(data) ? data : []);
+    } catch {
+      setProviderPools([]);
+    }
+  }, []);
+
   const fetchAgents = useCallback(async () => {
     try {
       const res = await apiFetch("/api/agents/summary");
@@ -263,7 +294,10 @@ export function RouterSettings() {
       setAgents(
         list
           .filter((a: { id?: unknown }) => typeof a?.id === "string")
-          .map((a: { id: string; name?: string }) => ({ id: a.id, name: a.name || a.id }))
+          .map((a: { id: string; name?: string }) => ({
+            id: a.id,
+            name: a.name || a.id,
+          }))
       );
     } catch {
       /* ignore */
@@ -278,6 +312,7 @@ export function RouterSettings() {
       void fetchPlanStatus();
       void fetchPlanConfig();
       void fetchProviders();
+      void fetchProviderPools();
       void fetchAgents();
     };
     const refreshStatus = () => {
@@ -295,7 +330,15 @@ export function RouterSettings() {
       clearInterval(statusInterval);
       clearInterval(planInterval);
     };
-  }, [fetchStatus, fetchConfig, fetchPlanStatus, fetchPlanConfig, fetchProviders, fetchAgents]);
+  }, [
+    fetchStatus,
+    fetchConfig,
+    fetchPlanStatus,
+    fetchPlanConfig,
+    fetchProviders,
+    fetchProviderPools,
+    fetchAgents,
+  ]);
 
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -347,9 +390,18 @@ export function RouterSettings() {
   }
 
   const routedTypes = Object.keys(config.routes);
-  const unroutedProviders = providers.filter((p) => !routedTypes.includes(p.type));
+  const poolTargets: ProviderMeta[] = providerPools
+    .filter((pool) => pool.enabled && pool.accounts.length > 0)
+    .map((pool) => ({
+      id: pool.id,
+      type: `pool:${pool.id}`,
+      name: `${pool.name} pool`,
+      models: providerModels(pool.provider),
+    }));
+  const routeTargets = [...providers, ...poolTargets];
+  const unroutedProviders = routeTargets.filter((target) => !routedTypes.includes(target.type));
   // Routing is only meaningful between at least two providers.
-  const hasEnoughProviders = providers.length >= 2;
+  const hasEnoughProviders = routeTargets.length >= 2;
   const hasEnoughRoutes = routedTypes.length >= 2;
   const setupComplete = hasEnoughProviders && hasEnoughRoutes && config.enabled;
   const activeRoutes = status?.routes.filter((route) => route.enabled && route.available) || [];
@@ -570,7 +622,10 @@ export function RouterSettings() {
                 <select
                   value={config.moaAggregatorAgentId ?? ""}
                   onChange={(e) =>
-                    saveConfig({ ...config, moaAggregatorAgentId: e.target.value || undefined })
+                    saveConfig({
+                      ...config,
+                      moaAggregatorAgentId: e.target.value || undefined,
+                    })
                   }
                   className={`${SELECT_CONTROL_CLASS} w-full`}
                 >
@@ -676,7 +731,9 @@ export function RouterSettings() {
                       ? "bg-amber-400"
                       : "bg-emerald-400"
                 )}
-                style={{ width: `${dailyLimit > 0 ? Math.max(2, budgetUsedPct) : 0}%` }}
+                style={{
+                  width: `${dailyLimit > 0 ? Math.max(2, budgetUsedPct) : 0}%`,
+                }}
               />
             </div>
           </div>
@@ -720,7 +777,11 @@ export function RouterSettings() {
               </button>
               <button
                 type="button"
-                onClick={() => savePlanConfigPatch({ routerEnforcement: !planEnforcementEnabled })}
+                onClick={() =>
+                  savePlanConfigPatch({
+                    routerEnforcement: !planEnforcementEnabled,
+                  })
+                }
                 disabled={!planConfigLoaded}
                 className={cn(
                   "flex items-center justify-between gap-2 rounded-lg border border-cyan-200/15 bg-black/20 px-3 py-2 text-left",
@@ -755,14 +816,14 @@ export function RouterSettings() {
         {status && status.routes.length > 0 ? (
           status.routes.map((route) => {
             const plan = planByRoute.get(route.providerId);
-            const routeType = plan?.providerType || route.providerId;
+            const routeType = route.providerType || plan?.providerType || route.providerId;
             return (
               <RouteRow
                 key={route.providerId}
                 route={route}
                 config={config}
                 onSave={saveConfig}
-                displayName={plan?.providerName || providerName(routeType)}
+                displayName={route.targetName || plan?.providerName || providerName(routeType)}
                 models={providerModels(routeType)}
                 plan={plan}
                 planConfig={planConfig?.providers?.[route.providerId] || null}

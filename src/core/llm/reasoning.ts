@@ -40,7 +40,13 @@ const ADAPTIVE_THINKING_PROVIDERS = new Set([
   "minimax-portal",
   "minimax-portal-cn",
 ]);
-const KIMI_CODE_PROVIDERS = new Set(["kimi-code", "kimi-code-oauth", "kimi-coding", "kimi-oauth"]);
+const KIMI_CODE_PROVIDERS = new Set([
+  "kimi-code",
+  "kimi-code-oauth",
+  "kimi-coding",
+  "kimi-oauth",
+  "kimi-code-subscription",
+]);
 
 const GPT_5_EFFORTS: ReasoningEffort[] = ["minimal", "low", "medium", "high"];
 const GPT_51_EFFORTS: ReasoningEffort[] = ["low", "medium", "high"];

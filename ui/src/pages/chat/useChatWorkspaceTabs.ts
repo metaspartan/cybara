@@ -8,6 +8,7 @@ import {
 
 interface UseChatWorkspaceTabsOptions {
   onOpen: () => void;
+  sessionId: string | null;
 }
 
 interface UseChatWorkspaceTabsResult {
@@ -17,6 +18,7 @@ interface UseChatWorkspaceTabsResult {
   isOpen: boolean;
   openTab: (kind: ChatWorkspaceTab) => void;
   openFile: (path: string) => void;
+  openSubagent: (runId: string, title: string) => void;
   selectTab: Dispatch<SetStateAction<string | null>>;
   setOpen: Dispatch<SetStateAction<boolean>>;
   tabs: WorkspaceTabInstance[];
@@ -26,11 +28,13 @@ interface UseChatWorkspaceTabsResult {
 
 export function useChatWorkspaceTabs({
   onOpen,
+  sessionId,
 }: UseChatWorkspaceTabsOptions): UseChatWorkspaceTabsResult {
   const [isOpen, setOpen] = useState(false);
   const [tabs, setTabs] = useState<WorkspaceTabInstance[]>([]);
   const [activeTabId, selectTab] = useState<string | null>(null);
   const tabIdRef = useRef(0);
+  const previousSessionIdRef = useRef(sessionId);
   const activeKind = useMemo(
     () => tabs.find((instance) => instance.id === activeTabId)?.kind ?? null,
     [activeTabId, tabs]
@@ -42,28 +46,40 @@ export function useChatWorkspaceTabs({
     selectTab(tabs[0].id);
   }, [activeTabId, isOpen, tabs]);
 
+  useEffect(() => {
+    if (previousSessionIdRef.current === sessionId) return;
+    previousSessionIdRef.current = sessionId;
+    const detailTabIds = new Set(
+      tabs
+        .filter((instance) => instance.kind === "subagents" && instance.pageKey)
+        .map((instance) => instance.id)
+    );
+    if (detailTabIds.size === 0) return;
+    const next = tabs.filter((instance) => !detailTabIds.has(instance.id));
+    if (activeTabId && detailTabIds.has(activeTabId)) {
+      selectTab(next[0]?.id ?? null);
+    }
+    setTabs(next);
+  }, [activeTabId, sessionId, tabs]);
+
   const openTab = useCallback(
     (kind: ChatWorkspaceTab): void => {
       setOpen(true);
       onOpen();
-      setTabs((current) => {
-        if (WORKSPACE_SINGLETON_KINDS.has(kind)) {
-          const existing = current.find((instance) => instance.kind === kind);
-          if (existing) {
-            selectTab(existing.id);
-            return current;
-          }
-        }
-        const id = `${kind}-${(tabIdRef.current += 1)}`;
-        const pageKey =
-          kind === "browser" && current.some((instance) => instance.kind === "browser")
-            ? id
-            : undefined;
-        selectTab(id);
-        return [...current, { id, kind, pageKey }];
-      });
+      const existing = WORKSPACE_SINGLETON_KINDS.has(kind)
+        ? tabs.find((instance) => instance.kind === kind)
+        : undefined;
+      if (existing) {
+        selectTab(existing.id);
+        return;
+      }
+      const id = `${kind}-${(tabIdRef.current += 1)}`;
+      const pageKey =
+        kind === "browser" && tabs.some((instance) => instance.kind === "browser") ? id : undefined;
+      selectTab(id);
+      setTabs((current) => [...current, { id, kind, pageKey }]);
     },
-    [onOpen]
+    [onOpen, tabs]
   );
 
   const toggleTab = useCallback(
@@ -83,33 +99,63 @@ export function useChatWorkspaceTabs({
       if (!normalizedPath) return;
       setOpen(true);
       onOpen();
-      setTabs((current) => {
-        const existing = current.find((instance) => instance.kind === "files");
-        if (existing) {
-          selectTab(existing.id);
-          return current.map((instance) =>
+      const existing = tabs.find((instance) => instance.kind === "files");
+      if (existing) {
+        selectTab(existing.id);
+        setTabs((current) =>
+          current.map((instance) =>
             instance.id === existing.id ? { ...instance, pageKey: normalizedPath } : instance
-          );
-        }
-        const id = `files-${(tabIdRef.current += 1)}`;
-        selectTab(id);
-        return [...current, { id, kind: "files", pageKey: normalizedPath }];
-      });
+          )
+        );
+        return;
+      }
+      const id = `files-${(tabIdRef.current += 1)}`;
+      selectTab(id);
+      setTabs((current) => [...current, { id, kind: "files", pageKey: normalizedPath }]);
     },
-    [onOpen]
+    [onOpen, tabs]
   );
 
-  const closeTab = useCallback((id: string): void => {
-    setTabs((current) => {
-      const index = current.findIndex((instance) => instance.id === id);
-      if (index === -1) return current;
-      const next = current.filter((instance) => instance.id !== id);
-      selectTab((previous) =>
-        previous === id ? (next[Math.min(index, next.length - 1)]?.id ?? null) : previous
+  const openSubagent = useCallback(
+    (runId: string, title: string): void => {
+      const normalizedRunId = runId.trim();
+      if (!normalizedRunId) return;
+      setOpen(true);
+      onOpen();
+      const existing = tabs.find(
+        (instance) => instance.kind === "subagents" && instance.pageKey === normalizedRunId
       );
-      return next;
-    });
-  }, []);
+      if (existing) {
+        selectTab(existing.id);
+        return;
+      }
+      const id = `subagent-${(tabIdRef.current += 1)}`;
+      selectTab(id);
+      setTabs((current) => [
+        ...current,
+        {
+          id,
+          kind: "subagents",
+          pageKey: normalizedRunId,
+          title: title.trim() || "Subagent",
+        },
+      ]);
+    },
+    [onOpen, tabs]
+  );
+
+  const closeTab = useCallback(
+    (id: string): void => {
+      const index = tabs.findIndex((instance) => instance.id === id);
+      if (index === -1) return;
+      const next = tabs.filter((instance) => instance.id !== id);
+      if (activeTabId === id) {
+        selectTab(next[Math.min(index, next.length - 1)]?.id ?? null);
+      }
+      setTabs(next);
+    },
+    [activeTabId, tabs]
+  );
 
   const updateTabTitle = useCallback((id: string, title: string): void => {
     setTabs((current) =>
@@ -123,6 +169,7 @@ export function useChatWorkspaceTabs({
     closeTab,
     isOpen,
     openFile,
+    openSubagent,
     openTab,
     selectTab,
     setOpen,

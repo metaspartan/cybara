@@ -4,6 +4,11 @@ import { config } from "../../src/core/config";
 import { providerManager } from "../../src/core/providers";
 import { getProviderAvailability, resetRouterForTests } from "../../src/core/router";
 import { summarizeSessionTokenUsage } from "../../src/core/session-context";
+import {
+  createProviderAccountPool,
+  resetProviderAccountPoolsForTests,
+  updateProviderAccountPool,
+} from "../../src/core/provider-account-pool";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -20,10 +25,537 @@ afterEach(() => {
     providerManager.delete(providerId);
   }
   resetRouterForTests();
+  resetProviderAccountPoolsForTests();
 });
 
 describe("Agent provider API-family routing", () => {
-  test("routes Grok OAuth through the Grok Build proxy and retries one transient 429", async () => {
+  test("orders automatic coding-plan accounts by tracked remaining usage", async () => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const authorization = new Headers(init?.headers).get("Authorization") || "";
+      const usedPercent = authorization.includes("primary-usage-key") ? 88 : 24;
+      return Response.json({
+        data: {
+          level: "pro",
+          limits: [
+            { type: "TOKENS_LIMIT", unit: 3, percentage: usedPercent },
+            { type: "TOKENS_LIMIT", unit: 6, percentage: usedPercent },
+          ],
+        },
+      });
+    }) as typeof fetch;
+
+    const primary = providerManager.create({
+      provider: "z.ai-coding",
+      name: "Primary Usage Account",
+      api_key: "primary-usage-key",
+    });
+    const backup = providerManager.create({
+      provider: "z.ai-coding",
+      name: "Backup Usage Account",
+      api_key: "backup-usage-key",
+    });
+    createdProviderIds.push(primary.id, backup.id);
+    const pool = createProviderAccountPool(
+      {
+        name: "Usage-balanced plans",
+        provider: "z.ai-coding",
+        accounts: [{ providerId: primary.id }, { providerId: backup.id }],
+      },
+      [primary, backup]
+    );
+
+    expect(
+      (await providerManager.getAccountPoolCandidates(primary.id, pool.id)).map((item) => item.id)
+    ).toEqual([backup.id, primary.id]);
+  });
+
+  test("fails over to the next enabled account after quota exhaustion", async () => {
+    const authorizationHeaders: string[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const authorization = new Headers(init?.headers).get("Authorization") || "";
+      authorizationHeaders.push(authorization);
+      if (authorization === "Bearer primary-pool-key") {
+        return Response.json({ error: { message: "weekly quota exceeded" } }, { status: 429 });
+      }
+      return Response.json({
+        id: "pool-response",
+        object: "chat.completion",
+        model: "gpt-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "backup-account-ok" },
+          },
+        ],
+        usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+      });
+    }) as typeof fetch;
+
+    const primary = providerManager.create({
+      provider: "openai",
+      name: "Primary Pool Account",
+      api_key: "primary-pool-key",
+    });
+    const backup = providerManager.create({
+      provider: "openai",
+      name: "Backup Pool Account",
+      api_key: "backup-pool-key",
+    });
+    createdProviderIds.push(primary.id, backup.id);
+    const pool = createProviderAccountPool(
+      {
+        name: "OpenAI plans",
+        provider: "openai",
+        accounts: [
+          { providerId: primary.id, priority: 10 },
+          { providerId: backup.id, priority: 20 },
+        ],
+      },
+      [primary, backup]
+    );
+    const agent = agentManager.create({
+      name: "Account Pool Agent",
+      type: "main",
+      provider_id: primary.id,
+      provider_pool_id: pool.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Use the available account" }],
+      { useTools: false, sessionId: "provider-account-pool-session" }
+    );
+
+    expect(result.content).toBe("backup-account-ok");
+    expect(authorizationHeaders).toEqual(["Bearer primary-pool-key", "Bearer backup-pool-key"]);
+    expect(agentManager.get(agent.id)?.provider_id).toBe(primary.id);
+    expect(agentManager.get(agent.id)?.provider_pool_id).toBe(pool.id);
+  });
+
+  test("keeps an explicitly selected account pinned even when it belongs to a pool", async () => {
+    const authorizationHeaders: string[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const authorization = new Headers(init?.headers).get("Authorization") || "";
+      authorizationHeaders.push(authorization);
+      return Response.json({ error: { message: "weekly quota exceeded" } }, { status: 429 });
+    }) as typeof fetch;
+
+    const primary = providerManager.create({
+      provider: "openai",
+      name: "Pinned Pool Member",
+      api_key: "pinned-pool-key",
+    });
+    const backup = providerManager.create({
+      provider: "openai",
+      name: "Unused Pool Member",
+      api_key: "unused-pool-key",
+    });
+    createdProviderIds.push(primary.id, backup.id);
+    createProviderAccountPool(
+      {
+        name: "Pinned behavior",
+        provider: "openai",
+        accounts: [{ providerId: primary.id }, { providerId: backup.id }],
+      },
+      [primary, backup]
+    );
+    const agent = agentManager.create({
+      name: "Pinned Account Agent",
+      type: "main",
+      provider_id: primary.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    await agentManager.execute(agent.id, [{ role: "user", content: "Stay pinned" }], {
+      useTools: false,
+    });
+
+    expect(authorizationHeaders).toEqual(["Bearer pinned-pool-key"]);
+    expect(agentManager.get(agent.id)?.provider_pool_id).toBeUndefined();
+  });
+
+  test("does not replay a turn on another account after a tool starts", async () => {
+    config.set("tool_approval_mode", "always_allow");
+    const authorizationHeaders: string[] = [];
+    let primaryCalls = 0;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const authorization = new Headers(init?.headers).get("Authorization") || "";
+      authorizationHeaders.push(authorization);
+      if (authorization === "Bearer primary-side-effect-key") {
+        primaryCalls += 1;
+        if (primaryCalls === 1) {
+          return Response.json({
+            id: "pool-tool-response",
+            object: "chat.completion",
+            model: "gpt-5.2",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: "I will calculate that.",
+                  tool_calls: [
+                    {
+                      id: "call-pool-calc",
+                      type: "function",
+                      function: {
+                        name: "calc",
+                        arguments: '{"expression":"6*7"}',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+          });
+        }
+        return Response.json({ error: { message: "weekly quota exceeded" } }, { status: 429 });
+      }
+      return Response.json({
+        id: "unexpected-backup-response",
+        object: "chat.completion",
+        model: "gpt-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "backup-replayed-the-turn" },
+          },
+        ],
+      });
+    }) as typeof fetch;
+
+    const primary = providerManager.create({
+      provider: "openai",
+      name: "Primary Side Effect Account",
+      api_key: "primary-side-effect-key",
+    });
+    const backup = providerManager.create({
+      provider: "openai",
+      name: "Backup Side Effect Account",
+      api_key: "backup-side-effect-key",
+    });
+    createdProviderIds.push(primary.id, backup.id);
+    const pool = createProviderAccountPool(
+      {
+        name: "Side effect plans",
+        provider: "openai",
+        accounts: [
+          { providerId: primary.id, priority: 10 },
+          { providerId: backup.id, priority: 20 },
+        ],
+      },
+      [primary, backup]
+    );
+    const agent = agentManager.create({
+      name: "Side Effect Pool Agent",
+      type: "main",
+      provider_id: primary.id,
+      provider_pool_id: pool.id,
+      model: "gpt-5.2",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate six times seven" }],
+      {
+        useTools: true,
+        sessionId: `provider-side-effect-${crypto.randomUUID()}`,
+      }
+    );
+
+    expect(result.content).not.toContain("backup-replayed-the-turn");
+    expect(primaryCalls).toBe(2);
+    expect(authorizationHeaders).toEqual([
+      "Bearer primary-side-effect-key",
+      "Bearer primary-side-effect-key",
+    ]);
+  });
+
+  test("falls back to the agent provider when its account pool is paused", async () => {
+    let authorization = "";
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      authorization = new Headers(init?.headers).get("Authorization") || "";
+      return Response.json({
+        id: "paused-pool-response",
+        object: "chat.completion",
+        model: "gpt-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "direct-provider-ok" },
+          },
+        ],
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Paused Pool Provider",
+      api_key: "paused-pool-key",
+    });
+    createdProviderIds.push(provider.id);
+    const pool = createProviderAccountPool(
+      {
+        name: "Paused plans",
+        provider: "openai",
+        accounts: [{ providerId: provider.id }],
+      },
+      [provider]
+    );
+    const agent = agentManager.create({
+      name: "Paused Pool Agent",
+      provider_id: provider.id,
+      provider_pool_id: pool.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+    updateProviderAccountPool(
+      pool.id,
+      {
+        name: pool.name,
+        provider: pool.provider,
+        enabled: false,
+        accounts: pool.accounts,
+      },
+      [provider]
+    );
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Use the direct provider" }],
+      { useTools: false }
+    );
+
+    expect(result.content).toBe("direct-provider-ok");
+    expect(authorization).toBe("Bearer paused-pool-key");
+  });
+
+  test("changing an agent provider detaches its previous account pool", () => {
+    const primary = providerManager.create({
+      provider: "openai",
+      name: "Pool Provider",
+      api_key: "pool-provider-key",
+    });
+    const replacement = providerManager.create({
+      provider: "openai",
+      name: "Replacement Provider",
+      api_key: "replacement-provider-key",
+    });
+    createdProviderIds.push(primary.id, replacement.id);
+    const pool = createProviderAccountPool(
+      {
+        name: "Replace provider plans",
+        provider: "openai",
+        accounts: [{ providerId: primary.id }],
+      },
+      [primary, replacement]
+    );
+    const agent = agentManager.create({
+      name: "Replace Pool Agent",
+      provider_id: primary.id,
+      provider_pool_id: pool.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const updated = agentManager.update(agent.id, { provider_id: replacement.id });
+
+    expect(updated?.provider_id).toBe(replacement.id);
+    expect(agentManager.get(agent.id)?.provider_pool_id).toBeUndefined();
+  });
+
+  test("keeps an explicit agent pool ahead of global router routes", async () => {
+    let requestUrl = "";
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      requestUrl = String(input);
+      return Response.json({
+        id: "explicit-pool-response",
+        object: "chat.completion",
+        model: "gpt-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "explicit-pool-ok" },
+          },
+        ],
+      });
+    }) as typeof fetch;
+
+    const poolProvider = providerManager.create({
+      provider: "openai",
+      name: "Explicit Pool Provider",
+      api_key: "explicit-pool-key",
+    });
+    const routerProvider = providerManager.create({
+      provider: "synthetic",
+      name: "Global Router Provider",
+      api_key: "global-router-key",
+    });
+    createdProviderIds.push(poolProvider.id, routerProvider.id);
+    const pool = createProviderAccountPool(
+      {
+        name: "Explicit pool",
+        provider: "openai",
+        accounts: [{ providerId: poolProvider.id }],
+      },
+      [poolProvider, routerProvider]
+    );
+    const agent = agentManager.create({
+      name: "Explicit Pool Routing Agent",
+      provider_id: poolProvider.id,
+      provider_pool_id: pool.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("router", {
+      enabled: true,
+      strategy: "priority",
+      fallbackToAny: false,
+      routes: { synthetic: { weight: 100, priority: 0, enabled: true } },
+    });
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Keep the selected pool" }],
+      { useTools: false, useModelRouter: true }
+    );
+
+    expect(result.content).toBe("explicit-pool-ok");
+    expect(requestUrl.endsWith("/chat/completions")).toBe(true);
+  });
+
+  test("prefers the agent provider when it is a configured router route", async () => {
+    let authorization = "";
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      authorization = new Headers(init?.headers).get("Authorization") || "";
+      return Response.json({
+        id: "preferred-route-response",
+        object: "chat.completion",
+        model: "gpt-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "preferred-route-ok" },
+          },
+        ],
+      });
+    }) as typeof fetch;
+
+    const preferred = providerManager.create({
+      provider: "openai",
+      name: "Preferred Router Provider",
+      api_key: "preferred-router-key",
+    });
+    const alternate = providerManager.create({
+      provider: "synthetic",
+      name: "Alternate Router Provider",
+      api_key: "alternate-router-key",
+    });
+    createdProviderIds.push(preferred.id, alternate.id);
+    const agent = agentManager.create({
+      name: "Preferred Router Agent",
+      provider_id: preferred.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("router", {
+      enabled: true,
+      strategy: "priority",
+      fallbackToAny: false,
+      routes: {
+        openai: { weight: 100, priority: 10, enabled: true },
+        synthetic: { weight: 100, priority: 0, enabled: true },
+      },
+    });
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Use my configured provider" }],
+      { useTools: false, useModelRouter: true }
+    );
+
+    expect(result.content).toBe("preferred-route-ok");
+    expect(authorization).toBe("Bearer preferred-router-key");
+  });
+
+  test("running-agent messages honor the enabled global router", async () => {
+    let authorization = "";
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      authorization = new Headers(init?.headers).get("Authorization") || "";
+      return Response.json({
+        id: "running-agent-response",
+        object: "chat.completion",
+        model: "gpt-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "running-agent-direct-ok" },
+          },
+        ],
+      });
+    }) as typeof fetch;
+
+    const direct = providerManager.create({
+      provider: "openai",
+      name: "Running Agent Provider",
+      api_key: "running-agent-key",
+    });
+    const routed = providerManager.create({
+      provider: "openai",
+      name: "Running Agent Routed Provider",
+      api_key: "running-agent-routed-key",
+    });
+    createdProviderIds.push(direct.id, routed.id);
+    const agent = agentManager.create({
+      name: "Running Agent Router",
+      provider_id: direct.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("router", {
+      enabled: true,
+      strategy: "priority",
+      fallbackToAny: false,
+      routes: { [routed.id]: { weight: 100, priority: 0, enabled: true } },
+    });
+
+    const result = await agentManager.message(agent.id, "Use the configured router");
+
+    expect(result.response).toBe("running-agent-direct-ok");
+    expect(authorization).toBe("Bearer running-agent-routed-key");
+  });
+
+  test("routes Grok OAuth through the proxy and retries connection failures and 429s", async () => {
     let requestUrl = "";
     let requestHeaders = new Headers();
     let requestBody: Record<string, unknown> = {};
@@ -34,7 +566,8 @@ describe("Agent provider API-family routing", () => {
       requestUrl = String(input);
       requestHeaders = new Headers(init?.headers);
       requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
-      if (calls === 1) {
+      if (calls === 1) throw new Error("fetch failed: ECONNRESET");
+      if (calls === 2) {
         return Response.json(
           { error: { message: "temporary rate limit" } },
           { status: 429, headers: { "Retry-After": "0" } }
@@ -74,7 +607,7 @@ describe("Agent provider API-family routing", () => {
     );
 
     expect(result.content).toBe("grok-ok");
-    expect(calls).toBe(2);
+    expect(calls).toBe(3);
     expect(requestUrl).toBe("https://cli-chat-proxy.grok.com/v1/responses");
     expect(requestHeaders.get("Authorization")).toBe("Bearer grok-oauth-token");
     expect(requestHeaders.get("X-XAI-Token-Auth")).toBe("xai-grok-cli");
@@ -93,6 +626,138 @@ describe("Agent provider API-family routing", () => {
     expect(requestBody.stream).toBe(true);
     expect(requestBody.store).toBe(false);
     expect(Array.isArray(requestBody.input)).toBe(true);
+  });
+
+  test("does not retry Grok weekly quota exhaustion", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json(
+        { error: { message: "weekly quota exceeded" } },
+        { status: 429, headers: { "Retry-After": "0" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "xai-oauth",
+      name: "Grok Exhausted OAuth Provider",
+      access_token: "grok-exhausted-token",
+      base_url: "https://api.x.ai/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Grok Exhausted OAuth Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "grok-4.5",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "grok-exhausted-session" }
+    );
+
+    expect(result.content.toLowerCase()).toContain("quota");
+    expect(calls).toBe(1);
+  });
+
+  test("refreshes Grok OAuth in place when a tool loop crosses token expiry", async () => {
+    const chatAuthorizations: string[] = [];
+    let chatCalls = 0;
+    let refreshCalls = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://auth.x.ai/oauth2/token") {
+        refreshCalls += 1;
+        return Response.json({
+          access_token: "fresh-grok-loop-token",
+          refresh_token: "fresh-grok-loop-refresh",
+          expires_in: 3600,
+        });
+      }
+
+      chatCalls += 1;
+      chatAuthorizations.push(new Headers(init?.headers).get("Authorization") || "");
+      if (chatCalls === 1) {
+        return Response.json({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: "",
+                tool_calls: [
+                  {
+                    id: "grok-loop-calc",
+                    type: "function",
+                    function: { name: "calc", arguments: '{"expression":"6 * 7"}' },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+        });
+      }
+      if (chatCalls === 2) {
+        return Response.json({ error: { message: "access token expired" } }, { status: 401 });
+      }
+      return Response.json({
+        choices: [
+          {
+            message: { role: "assistant", content: "GROK_LOOP_OK 42" },
+          },
+        ],
+        usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "xai-oauth",
+      name: "Grok Long Loop OAuth Provider",
+      access_token: "stale-grok-loop-token",
+      refresh_token: "stale-grok-loop-refresh",
+      expires_at: Date.now() + 3_600_000,
+      base_url: "https://api.x.ai/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Grok Long Loop OAuth Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "grok-4.5",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("tool_approval_mode", "always_allow");
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate six times seven" }],
+      { useTools: true, sessionId: "grok-long-loop-refresh-session" }
+    );
+
+    expect(result.content).toBe("GROK_LOOP_OK 42");
+    expect(result.tool_calls).toHaveLength(1);
+    expect(chatCalls).toBe(3);
+    expect(refreshCalls).toBe(1);
+    expect(chatAuthorizations).toEqual([
+      "Bearer stale-grok-loop-token",
+      "Bearer stale-grok-loop-token",
+      "Bearer fresh-grok-loop-token",
+    ]);
   });
 
   test("model router resolves provider-type routes without changing the selected agent", async () => {
@@ -146,12 +811,98 @@ describe("Agent provider API-family routing", () => {
     const result = await agentManager.execute(
       agent.id,
       [{ role: "user", content: "route this request" }],
-      { useTools: false, useModelRouter: true, sessionId: "router-provider-type-session" }
+      {
+        useTools: false,
+        useModelRouter: true,
+        sessionId: "router-provider-type-session",
+      }
     );
 
     expect(result.content).toBe("router-ok");
     expect(requestUrl.endsWith("/messages")).toBe(true);
     expect(requestHeaders.get("x-api-key")).toBe("synthetic-router-key");
+    expect(agentManager.get(agent.id)?.provider_id).toBe(originalProvider.id);
+  });
+
+  test("model router targets a named provider pool and fails over within that pool", async () => {
+    const authorizationHeaders: string[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const authorization = new Headers(init?.headers).get("Authorization") || "";
+      authorizationHeaders.push(authorization);
+      if (authorization === "Bearer router-pool-primary") {
+        return Response.json({ error: { message: "quota exhausted" } }, { status: 429 });
+      }
+      return Response.json({
+        id: "router-pool-response",
+        object: "chat.completion",
+        model: "gpt-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "router-pool-ok" },
+          },
+        ],
+        usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+      });
+    }) as typeof fetch;
+
+    const originalProvider = providerManager.create({
+      provider: "synthetic",
+      name: "Router Pool Agent Provider",
+      api_key: "router-pool-agent",
+    });
+    const primary = providerManager.create({
+      provider: "openai",
+      name: "Router Pool Primary",
+      api_key: "router-pool-primary",
+    });
+    const backup = providerManager.create({
+      provider: "openai",
+      name: "Router Pool Backup",
+      api_key: "router-pool-backup",
+    });
+    createdProviderIds.push(originalProvider.id, primary.id, backup.id);
+    const pool = createProviderAccountPool(
+      {
+        name: "Router OpenAI Pool",
+        provider: "openai",
+        accounts: [
+          { providerId: primary.id, priority: 10 },
+          { providerId: backup.id, priority: 20 },
+        ],
+      },
+      [primary, backup]
+    );
+    const agent = agentManager.create({
+      name: "Router Pool Agent",
+      type: "main",
+      provider_id: originalProvider.id,
+      model: "gpt-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("router", {
+      enabled: true,
+      strategy: "priority",
+      fallbackToAny: false,
+      routes: {
+        [`pool:${pool.id}`]: { weight: 100, priority: 0, enabled: true },
+      },
+    });
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "route through the pool" }],
+      { useTools: false, useModelRouter: true }
+    );
+
+    expect(result.content).toBe("router-pool-ok");
+    expect(authorizationHeaders).toEqual([
+      "Bearer router-pool-primary",
+      "Bearer router-pool-backup",
+    ]);
+    expect(getProviderAvailability(`pool:${pool.id}`).requestsIn5hWindow).toBe(1);
     expect(agentManager.get(agent.id)?.provider_id).toBe(originalProvider.id);
   });
 
@@ -263,6 +1014,179 @@ describe("Agent provider API-family routing", () => {
     expect(requestHeaders.get("authorization")).toBe("Bearer oauth-access-token");
     expect(requestHeaders.get("x-api-key")).toBeNull();
     expect(requestHeaders.get("anthropic-beta")).toBe("oauth-2025-04-20");
+  });
+
+  test("refreshes MiniMax Portal OAuth in place when a tool loop crosses token expiry", async () => {
+    const chatAuthorizations: string[] = [];
+    let chatCalls = 0;
+    let refreshCalls = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://account.minimax.io/oauth2/token") {
+        refreshCalls += 1;
+        return Response.json({
+          access_token: "fresh-minimax-loop-token",
+          refresh_token: "fresh-minimax-loop-refresh",
+          expires_in: 3600,
+        });
+      }
+
+      chatCalls += 1;
+      chatAuthorizations.push(new Headers(init?.headers).get("Authorization") || "");
+      if (chatCalls === 1) {
+        return Response.json({
+          id: "minimax-loop-tool-response",
+          type: "message",
+          role: "assistant",
+          model: "MiniMax-M3",
+          content: [
+            {
+              type: "tool_use",
+              id: "minimax-loop-calc",
+              name: "calc",
+              input: { expression: "6 * 7" },
+            },
+          ],
+          usage: { input_tokens: 8, output_tokens: 3 },
+        });
+      }
+      if (chatCalls === 2) {
+        return Response.json({ error: { message: "access token expired" } }, { status: 401 });
+      }
+      return Response.json({
+        id: "minimax-loop-final-response",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M3",
+        content: [{ type: "text", text: "MINIMAX_LOOP_OK 42" }],
+        usage: { input_tokens: 12, output_tokens: 4 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "minimax-portal",
+      name: "MiniMax Portal Long Loop Provider",
+      access_token: "stale-minimax-loop-token",
+      refresh_token: "stale-minimax-loop-refresh",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "MiniMax Portal Long Loop Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "MiniMax-M3",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("tool_approval_mode", "always_allow");
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate six times seven" }],
+      { useTools: true, sessionId: "minimax-long-loop-refresh-session" }
+    );
+
+    expect(result.content).toBe("MINIMAX_LOOP_OK 42");
+    expect(result.tool_calls).toHaveLength(1);
+    expect(chatCalls).toBe(3);
+    expect(refreshCalls).toBe(1);
+    expect(chatAuthorizations).toEqual([
+      "Bearer stale-minimax-loop-token",
+      "Bearer stale-minimax-loop-token",
+      "Bearer fresh-minimax-loop-token",
+    ]);
+  });
+
+  test("retries transient MiniMax connection failures and rate limits", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("fetch failed: ECONNRESET");
+      if (calls === 2) {
+        return Response.json(
+          { error: { message: "temporary rate limit" } },
+          { status: 429, headers: { "Retry-After": "0" } }
+        );
+      }
+      return Response.json({
+        id: "minimax-retry-response",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M3",
+        content: [{ type: "text", text: "minimax-retry-ok" }],
+        usage: { input_tokens: 5, output_tokens: 2 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "minimax",
+      name: "MiniMax Transient Retry Provider",
+      api_key: "minimax-transient-key",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "MiniMax Transient Retry Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "MiniMax-M3",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "minimax-transient-retry-session" }
+    );
+
+    expect(result.content).toBe("minimax-retry-ok");
+    expect(calls).toBe(3);
+  });
+
+  test("does not retry MiniMax plan exhaustion as a transient rate limit", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json(
+        { error: { message: "weekly quota exceeded" } },
+        { status: 429, headers: { "Retry-After": "0" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "minimax",
+      name: "MiniMax Exhausted Provider",
+      api_key: "minimax-exhausted-key",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "MiniMax Exhausted Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "MiniMax-M3",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "minimax-exhausted-session" }
+    );
+
+    expect(result.content.toLowerCase()).toContain("quota");
+    expect(calls).toBe(1);
   });
 
   test("routes Devin accounts through the native transport validation", async () => {
@@ -385,7 +1309,12 @@ describe("Agent provider API-family routing", () => {
             type: "message",
             role: "assistant",
             model: "claude-sonnet-4-20250514",
-            content: [{ type: "text", text: "I could not run that tool, but I can still help." }],
+            content: [
+              {
+                type: "text",
+                text: "I could not run that tool, but I can still help.",
+              },
+            ],
             usage: { input_tokens: 18, output_tokens: 12 },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
@@ -590,7 +1519,12 @@ describe("Agent provider API-family routing", () => {
             type: "message",
             role: "assistant",
             model: "claude-sonnet-4-20250514",
-            content: [{ type: "text", text: "Completed work summarized at the safety boundary." }],
+            content: [
+              {
+                type: "text",
+                text: "Completed work summarized at the safety boundary.",
+              },
+            ],
             usage: { input_tokens: 10, output_tokens: 8 },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
@@ -1045,13 +1979,20 @@ describe("Agent provider API-family routing", () => {
                     {
                       id: "call-calc-1",
                       type: "function",
-                      function: { name: "calc", arguments: '{"expression":"21*2"}' },
+                      function: {
+                        name: "calc",
+                        arguments: '{"expression":"21*2"}',
+                      },
                     },
                   ],
                 },
               },
             ],
-            usage: { prompt_tokens: 10, completion_tokens: 3, total_tokens: 13 },
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 3,
+              total_tokens: 13,
+            },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         );

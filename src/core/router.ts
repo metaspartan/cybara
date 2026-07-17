@@ -26,6 +26,11 @@ import {
   type ProviderPlanEvaluationContext,
   type ProviderPlanRouteConstraint,
 } from "./provider-plans";
+import {
+  getProviderAccountPool,
+  parseProviderAccountPoolRouteId,
+  providerAccountPoolRouteProvider,
+} from "./provider-account-pool";
 
 // ─── Built-in pricing data ($USD per 1M tokens) ─────────────────────────────
 // Stamped pricing data + estimates.
@@ -232,6 +237,9 @@ export interface RouterUsageRecord {
 
 export interface ProviderAvailability {
   providerId: string;
+  providerType?: string;
+  targetName?: string;
+  targetType?: "provider" | "pool";
   weight: number;
   priority: number;
   enabled: boolean;
@@ -272,7 +280,13 @@ const WINDOW_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function getRouterConfig(): RouterConfig {
   const cfg = config.get<RouterConfig>("router");
-  if (!cfg) return { enabled: false, strategy: "weighted", fallbackToAny: true, routes: {} };
+  if (!cfg)
+    return {
+      enabled: false,
+      strategy: "weighted",
+      fallbackToAny: true,
+      routes: {},
+    };
   return {
     enabled: cfg.enabled === true,
     strategy: normalizeRouterStrategy(cfg.strategy),
@@ -306,7 +320,10 @@ export function getMixtureOfAgentsRoutingConfig(): {
   aggregatorAgentId?: string;
 } {
   const cfg = getRouterConfig();
-  return { maxAgents: cfg.moaMaxAgents, aggregatorAgentId: cfg.moaAggregatorAgentId };
+  return {
+    maxAgents: cfg.moaMaxAgents,
+    aggregatorAgentId: cfg.moaAggregatorAgentId,
+  };
 }
 
 function normalizeRoute(route: ProviderRouteConfig): ProviderRouteConfig {
@@ -363,7 +380,10 @@ function isCircuitOpen(providerId: string): boolean {
 
 /** Record a provider failure. Opens the circuit after CIRCUIT_FAILURE_THRESHOLD. */
 export function recordProviderFailure(providerId: string, reason?: string): void {
-  const state = circuitState.get(providerId) ?? { consecutiveFailures: 0, openUntil: 0 };
+  const state = circuitState.get(providerId) ?? {
+    consecutiveFailures: 0,
+    openUntil: 0,
+  };
   state.consecutiveFailures += 1;
   if (state.consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD) {
     state.openUntil = Date.now() + CIRCUIT_RECOVERY_MS;
@@ -401,7 +421,10 @@ function resolvePrice(
   providerId: string
 ): { inputPerM: number; outputPerM: number } {
   if (route.priceInputPerM !== undefined && route.priceOutputPerM !== undefined) {
-    return { inputPerM: route.priceInputPerM, outputPerM: route.priceOutputPerM };
+    return {
+      inputPerM: route.priceInputPerM,
+      outputPerM: route.priceOutputPerM,
+    };
   }
   const builtIn = getPricing(providerId, route.model);
   return {
@@ -414,19 +437,27 @@ export function getProviderAvailability(
   providerId: string,
   planContext?: ProviderPlanEvaluationContext
 ): ProviderAvailability {
+  const poolId = parseProviderAccountPoolRouteId(providerId);
+  const pool = poolId ? getProviderAccountPool(poolId) : undefined;
+  const providerType = pool?.provider ?? providerId;
   const routerCfg = getRouterConfig();
   const route = normalizeRoute(routerCfg.routes[providerId] ?? { weight: 50, enabled: true });
   const requests5h = getWindowedRequests(providerId, WINDOW_5H_MS);
   const requestsWeek = getWindowedRequests(providerId, WINDOW_WEEK_MS);
   const spendToday = getWindowedSpend(providerId, WINDOW_DAY_MS);
   const spendWeek = getWindowedSpend(providerId, WINDOW_WEEK_MS);
-  const price = resolvePrice(route, providerId);
+  const price = resolvePrice(route, providerType);
   const circuitOpen = isCircuitOpen(providerId);
   const inCooldown = isInCooldown(providerId);
   const plan = getProviderPlanRouteConstraint(providerId, planContext);
 
   let available = route.enabled !== false;
   let reason: string | undefined;
+
+  if (poolId && (!pool?.enabled || pool.accounts.length === 0)) {
+    available = false;
+    reason = pool ? "Provider pool is disabled" : "Provider pool not found";
+  }
 
   if (circuitOpen) {
     available = false;
@@ -470,6 +501,9 @@ export function getProviderAvailability(
 
   return {
     providerId,
+    providerType,
+    targetName: pool?.name,
+    targetType: pool ? "pool" : "provider",
     weight: route.weight,
     priority: route.priority ?? 0,
     enabled: route.enabled !== false,
@@ -493,6 +527,13 @@ export function selectProvider(preferredProviderId?: string): string | null {
   const routerCfg = getRouterConfig();
   if (!routerCfg.enabled) return preferredProviderId ?? null;
   const routeIds = Object.keys(routerCfg.routes);
+  const preferredProvider = preferredProviderId
+    ? providerManager.getWithCredentials(preferredProviderId)
+    : undefined;
+  const preferredRouteId = [preferredProviderId, preferredProvider?.provider].find(
+    (candidate): candidate is string =>
+      typeof candidate === "string" && candidate in routerCfg.routes
+  );
   const fallbackProviderIds = routerCfg.fallbackToAny
     ? providerManager
         .list()
@@ -500,7 +541,7 @@ export function selectProvider(preferredProviderId?: string): string | null {
         .filter((provider): provider is string => Boolean(provider))
     : [];
   const planRouteKeys = [
-    preferredProviderId,
+    preferredRouteId,
     ...routeIds,
     ...fallbackProviderIds.filter((id) => !routerCfg.routes[id]),
   ].filter((id): id is string => Boolean(id));
@@ -509,8 +550,8 @@ export function selectProvider(preferredProviderId?: string): string | null {
     : undefined;
 
   // Preferred provider passthrough.
-  if (preferredProviderId && getProviderAvailability(preferredProviderId, planContext).available) {
-    return preferredProviderId;
+  if (preferredRouteId && getProviderAvailability(preferredRouteId, planContext).available) {
+    return preferredRouteId;
   }
 
   // Build candidates from configured routes.
@@ -560,15 +601,20 @@ export function selectProvider(preferredProviderId?: string): string | null {
       return pool[0].id;
     }
     case "usage_aware": {
-      const remainingFor = (c: { avail: ProviderAvailability }): number => {
-        if (c.avail.plan?.status === "exhausted") return -1;
-        const remaining = c.avail.plan?.primaryRemainingPercent;
-        if (typeof remaining === "number") return remaining;
-        return 100;
+      const remainingFor = (candidate: { avail: ProviderAvailability }): number | undefined => {
+        if (candidate.avail.plan?.status === "exhausted") return -1;
+        return candidate.avail.plan?.primaryRemainingPercent;
       };
-      candidates.sort(
-        (a, b) => remainingFor(b) - remainingFor(a) || b.avail.weight - a.avail.weight
-      );
+      candidates.sort((left, right) => {
+        const leftRemaining = remainingFor(left);
+        const rightRemaining = remainingFor(right);
+        if (leftRemaining !== undefined || rightRemaining !== undefined) {
+          if (leftRemaining === undefined) return 1;
+          if (rightRemaining === undefined) return -1;
+          if (leftRemaining !== rightRemaining) return rightRemaining - leftRemaining;
+        }
+        return right.avail.weight - left.avail.weight;
+      });
       return candidates[0].id;
     }
     case "weighted":
@@ -606,15 +652,18 @@ export function recordUsage(
   inputTokens: number,
   outputTokens: number,
   success: boolean,
-  model?: string
+  model?: string,
+  providerType?: string
 ): void {
   const routerCfg = getRouterConfig();
   const route = routerCfg.routes[providerId] ? normalizeRoute(routerCfg.routes[providerId]) : null;
+  const pricingProviderId =
+    providerType ?? providerAccountPoolRouteProvider(providerId) ?? providerId;
   const price = route
-    ? resolvePrice(route, providerId)
+    ? resolvePrice(route, pricingProviderId)
     : {
-        inputPerM: getPricing(providerId, model)?.inputPerM ?? 0,
-        outputPerM: getPricing(providerId, model)?.outputPerM ?? 0,
+        inputPerM: getPricing(pricingProviderId, model)?.inputPerM ?? 0,
+        outputPerM: getPricing(pricingProviderId, model)?.outputPerM ?? 0,
       };
 
   const estimatedCost =

@@ -31,6 +31,7 @@ const SIDEcar_ONNX_PATH = join(ROOT, "release", "onnxruntime");
 const SIDEcar_NODE_MODULES_PATH = join(ROOT, "release", "node_modules");
 const SIDEcar_RUNTIME_PATH = join(ROOT, "release", "runtime");
 const SIDEcar_CUA_DRIVER_PATH = join(ROOT, "release", "cua-driver");
+const SIDEcar_PLUGINS_PATH = join(ROOT, "release", "plugins");
 const UI_DIST_PATH = join(ROOT, "ui", "dist");
 const ICON_SOURCE_PATH = join(ROOT, "cybara.png");
 
@@ -124,6 +125,7 @@ export interface NativeMacOSSidecarLayout {
   nodeModulesDir: string;
   runtimeDir: string;
   cuaDriverDir: string;
+  pluginsDir: string;
 }
 
 export function createNativeMacOSSidecarLayout(contentsPath: string): NativeMacOSSidecarLayout {
@@ -138,6 +140,7 @@ export function createNativeMacOSSidecarLayout(contentsPath: string): NativeMacO
     nodeModulesDir: join(resourceDir, "node_modules"),
     runtimeDir: join(resourceDir, "runtime"),
     cuaDriverDir: join(resourceDir, "cua-driver"),
+    pluginsDir: join(resourceDir, "plugins"),
   };
 }
 
@@ -575,6 +578,10 @@ export async function packageNativeMacOSApp(): Promise<NativeMacOSPackageResult>
 
   if (existsSync(SIDEcar_CUA_DRIVER_PATH)) {
     copyDirectory(SIDEcar_CUA_DRIVER_PATH, sidecarLayout.cuaDriverDir);
+  }
+
+  if (existsSync(SIDEcar_PLUGINS_PATH)) {
+    copyDirectory(SIDEcar_PLUGINS_PATH, sidecarLayout.pluginsDir);
   }
 
   ensureDirectory(dirname(sidecarLayout.uiDistDir));

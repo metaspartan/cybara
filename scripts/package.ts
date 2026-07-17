@@ -80,6 +80,9 @@ export async function runPackage(): Promise<void> {
   cpSync(uiDistSrc, releaseUiPath, { recursive: true });
   console.log("   ✓ UI assets bundled with binary");
 
+  cpSync("plugins", join(RELEASE_DIR, "plugins"), { recursive: true });
+  console.log("   ✓ Bundled plugins copied");
+
   const driverTarget = getCuaDriverTarget(platform, arch);
   if (!driverTarget) throw new Error(`Unsupported computer-use target: ${platform}/${arch}`);
   await installCuaDriverAt(join(RELEASE_DIR, "cua-driver"), driverTarget);

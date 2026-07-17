@@ -22,6 +22,7 @@ afterEach(() => {
   resetRouterForTests();
   config.set("router", null);
   config.set("provider_plan_monitoring", null);
+  config.set("provider_account_pools", null);
 });
 
 describe("mixture-of-agents strategy", () => {
@@ -338,6 +339,93 @@ describe("provider selection", () => {
 
     try {
       expect(selectProvider()).toBe("z.ai");
+    } finally {
+      tables.metrics.getKeyTotalsForWindows = originalGetKeyTotalsForWindows;
+    }
+  });
+
+  test("usage_aware prefers verified quota over unknown usage", () => {
+    setRouterConfig({
+      strategy: "usage_aware",
+      routes: {
+        minimax: { weight: 10 },
+        unknown: { weight: 100 },
+      },
+    });
+    config.set("provider_plan_monitoring", {
+      enabled: true,
+      routerEnforcement: true,
+      providers: {
+        minimax: { fiveHour: { tokenLimit: 1000 } },
+      },
+    });
+    const originalGetKeyTotalsForWindows = tables.metrics.getKeyTotalsForWindows;
+    tables.metrics.getKeyTotalsForWindows = ((type: string, startsSql: string[]) =>
+      type === "token_usage_by_provider"
+        ? [
+            {
+              key: "minimax",
+              totals: startsSql.map(() => 500),
+            },
+          ]
+        : []) as typeof tables.metrics.getKeyTotalsForWindows;
+
+    try {
+      expect(selectProvider()).toBe("minimax");
+    } finally {
+      tables.metrics.getKeyTotalsForWindows = originalGetKeyTotalsForWindows;
+    }
+  });
+
+  test("keeps pool plan constraints isolated by route", () => {
+    config.set("provider_account_pools", [
+      {
+        id: "primary-pool",
+        name: "Primary Pool",
+        provider: "z.ai-coding",
+        enabled: true,
+        accounts: [{ providerId: "primary-account" }],
+      },
+      {
+        id: "backup-pool",
+        name: "Backup Pool",
+        provider: "z.ai-coding",
+        enabled: true,
+        accounts: [{ providerId: "backup-account" }],
+      },
+    ]);
+    setRouterConfig({
+      strategy: "priority",
+      fallbackToAny: false,
+      routes: {
+        "pool:primary-pool": { weight: 100, priority: 0 },
+        "pool:backup-pool": { weight: 100, priority: 1 },
+      },
+    });
+    config.set("provider_plan_monitoring", {
+      enabled: true,
+      routerEnforcement: true,
+      providers: {
+        "pool:primary-pool": { fiveHour: { tokenLimit: 100 } },
+        "pool:backup-pool": { fiveHour: { tokenLimit: 100 } },
+      },
+    });
+    const originalGetKeyTotalsForWindows = tables.metrics.getKeyTotalsForWindows;
+    tables.metrics.getKeyTotalsForWindows = ((type: string, startsSql: string[]) =>
+      type === "token_usage_by_provider"
+        ? [
+            {
+              key: "pool:primary-pool",
+              totals: startsSql.map(() => 100),
+            },
+          ]
+        : []) as typeof tables.metrics.getKeyTotalsForWindows;
+
+    try {
+      expect(selectProvider()).toBe("pool:backup-pool");
+      const status = getRouterStatus();
+      expect(status.routes[0].plan.status).toBe("exhausted");
+      expect(status.routes[1].plan.status).toBe("ok");
     } finally {
       tables.metrics.getKeyTotalsForWindows = originalGetKeyTotalsForWindows;
     }

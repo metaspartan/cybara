@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, rmSync } from "fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { agentManager } from "../../src/core/agent";
@@ -15,10 +15,12 @@ import { broadcastStatus, createStatusSnapshotEvent } from "../../src/core/statu
 import {
   getRun,
   getRunsByRequester,
+  initSubagentRegistry,
   markRunCompleted,
   onSubagentLifecycle,
   registerSubagentRun,
   resetSubagentRegistryForTests,
+  configureSubagentRegistry,
 } from "../../src/core/subagent-registry";
 import {
   configureChannelChatRuntime,
@@ -76,6 +78,62 @@ afterEach(() => {
 });
 
 describe("Subagent execution wiring", () => {
+  test("leaves ordinary subagent runs unbounded unless a timeout is requested", () => {
+    const run = registerSubagentRun({
+      childSessionKey: `child-default-timeout-${process.pid}`,
+      requesterSessionKey: `parent-default-timeout-${process.pid}`,
+      task: "Continue until the delegated work is complete",
+    });
+
+    expect(run.runTimeoutSeconds).toBe(0);
+  });
+
+  test("closes restored active runs as interrupted while retaining partial details", () => {
+    const restorePath = join(tmpdir(), `cybara-subagent-restore-${process.pid}.json`);
+    const runId = `restored-active-${process.pid}`;
+    resetSubagentRegistryForTests();
+    configureSubagentRegistry({ persistPath: restorePath });
+    writeFileSync(
+      restorePath,
+      JSON.stringify([
+        [
+          runId,
+          {
+            runId,
+            childSessionKey: `child-${runId}`,
+            requesterSessionKey: `parent-${runId}`,
+            requesterDisplayKey: `parent-${runId}`,
+            task: "Long-running review",
+            cleanup: "keep",
+            createdAt: Date.now() - 60_000,
+            startedAt: Date.now() - 59_000,
+            activities: [
+              {
+                id: "read-1",
+                phase: "result",
+                text: "Read package metadata",
+                timestamp: Date.now() - 30_000,
+                toolName: "read",
+              },
+            ],
+          },
+        ],
+      ])
+    );
+
+    initSubagentRegistry();
+
+    expect(getRun(runId)?.outcome).toEqual({
+      status: "error",
+      error: "Subagent interrupted by gateway restart",
+    });
+    expect(getRun(runId)?.endedAt).toBeNumber();
+    expect(getRun(runId)?.activities?.[0]?.text).toBe("Read package metadata");
+    resetSubagentRegistryForTests();
+    configureSubagentRegistry({ persistPath: testRegistryPath });
+    rmSync(restorePath, { force: true });
+  });
+
   test("preserves oversized final results in the private recovery cache", () => {
     const runId = `result-recovery-${process.pid}`;
     registerSubagentRun({
@@ -164,6 +222,11 @@ describe("Subagent execution wiring", () => {
         }
       | undefined;
     let capturedLiveActivities: string[] = [];
+    let capturedLiveToolCalls: Array<{
+      name: string;
+      status?: "pending" | "executing" | "completed" | "failed";
+      result: unknown;
+    }> = [];
 
     const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
     (agentManager as unknown as { execute: ExecuteShape }).execute = async (
@@ -197,6 +260,12 @@ describe("Subagent execution wiring", () => {
       });
       capturedLiveActivities =
         getRunsByRequester("main")[0]?.activities?.map((activity) => activity.text) || [];
+      capturedLiveToolCalls =
+        getRunsByRequester("main")[0]?.toolCalls?.map((toolCall) => ({
+          name: toolCall.name,
+          status: toolCall.status,
+          result: toolCall.result,
+        })) || [];
       return {
         content: "subagent complete",
         thinking: "The package metadata confirms the result.",
@@ -253,6 +322,13 @@ describe("Subagent execution wiring", () => {
       expect(capturedLiveActivities).toEqual([
         "Inspecting the requested files",
         "Read package metadata",
+      ]);
+      expect(capturedLiveToolCalls).toEqual([
+        {
+          name: "read",
+          status: "completed",
+          result: "Read package metadata",
+        },
       ]);
       expect(
         createStatusSnapshotEvent().activeSessionIds.includes(spawnResult.childSessionKey)

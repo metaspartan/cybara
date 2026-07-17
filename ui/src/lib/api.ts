@@ -431,7 +431,9 @@ export interface MCPRegistryServer {
   args?: string;
   url?: string;
   envVars?: string[];
+  envDefaults?: Record<string, string>;
   categories?: string[];
+  homepage?: string;
   installType?: string;
 }
 

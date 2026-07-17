@@ -137,6 +137,81 @@ describe("Agent provider Google and compatible routing", () => {
     expect(requestHeaders.get("x-goog-api-key")).toBeNull();
   });
 
+  test("retries transient Google connection failures and rate limits but not quota exhaustion", async () => {
+    let transientCalls = 0;
+    globalThis.fetch = (async () => {
+      transientCalls += 1;
+      if (transientCalls === 1) throw new Error("fetch failed: ECONNRESET");
+      if (transientCalls === 2) {
+        return Response.json(
+          { error: { message: "temporary rate limit" } },
+          { status: 429, headers: { "Retry-After": "0" } }
+        );
+      }
+      return Response.json({
+        candidates: [{ content: { parts: [{ text: "google-retry-ok" }] } }],
+        usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 2, totalTokenCount: 9 },
+      });
+    }) as typeof fetch;
+
+    const transientProvider = providerManager.create({
+      provider: "google",
+      name: "Google Transient Retry Provider",
+      api_key: "google-transient-key",
+    });
+    createdProviderIds.push(transientProvider.id);
+    const transientAgent = agentManager.create({
+      name: "Google Transient Retry Agent",
+      type: "main",
+      provider_id: transientProvider.id,
+      model: "gemini-3-pro-preview",
+      tools: [],
+    });
+    createdAgentIds.push(transientAgent.id);
+
+    const transientResult = await agentManager.execute(
+      transientAgent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "google-transient-retry-session" }
+    );
+
+    expect(transientResult.content).toBe("google-retry-ok");
+    expect(transientCalls).toBe(3);
+
+    let exhaustedCalls = 0;
+    globalThis.fetch = (async () => {
+      exhaustedCalls += 1;
+      return Response.json(
+        { error: { message: "weekly quota exceeded" } },
+        { status: 429, headers: { "Retry-After": "0" } }
+      );
+    }) as typeof fetch;
+
+    const exhaustedProvider = providerManager.create({
+      provider: "google",
+      name: "Google Exhausted Provider",
+      api_key: "google-exhausted-key",
+    });
+    createdProviderIds.push(exhaustedProvider.id);
+    const exhaustedAgent = agentManager.create({
+      name: "Google Exhausted Agent",
+      type: "main",
+      provider_id: exhaustedProvider.id,
+      model: "gemini-3-pro-preview",
+      tools: [],
+    });
+    createdAgentIds.push(exhaustedAgent.id);
+
+    const exhaustedResult = await agentManager.execute(
+      exhaustedAgent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "google-exhausted-session" }
+    );
+
+    expect(exhaustedResult.content.toLowerCase()).toContain("quota");
+    expect(exhaustedCalls).toBe(1);
+  });
+
   test("applies static provider headers for openai-compatible requests", async () => {
     let requestHeaders = new Headers();
 
@@ -189,6 +264,199 @@ describe("Agent provider Google and compatible routing", () => {
     expect(requestHeaders.get("User-Agent")).toMatch(/^Cybara\//);
     expect(requestHeaders.get("X-Msh-Platform")).toBe("kimi_code_cli");
     expect(requestHeaders.get("X-Msh-Device-Id")).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  test("retries transient Kimi connection failures and rate limits", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("fetch failed: ECONNRESET");
+      if (calls === 2) {
+        return Response.json(
+          { error: { message: "temporary rate limit" } },
+          { status: 429, headers: { "Retry-After": "0" } }
+        );
+      }
+      return Response.json({
+        id: "kimi-retry-response",
+        object: "chat.completion",
+        model: "k3",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "kimi-retry-ok" },
+          },
+        ],
+        usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Transient Retry Provider",
+      access_token: "kimi-transient-access-token",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Kimi Transient Retry Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "k3",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "kimi-transient-retry-session" }
+    );
+
+    expect(result.content).toBe("kimi-retry-ok");
+    expect(calls).toBe(3);
+  });
+
+  test("does not retry Kimi plan exhaustion as a transient rate limit", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json(
+        { error: { message: "weekly quota exceeded" } },
+        { status: 429, headers: { "Retry-After": "0" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Exhausted Provider",
+      access_token: "kimi-exhausted-access-token",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Kimi Exhausted Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "k3",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "kimi-exhausted-session" }
+    );
+
+    expect(result.content.toLowerCase()).toContain("quota");
+    expect(calls).toBe(1);
+  });
+
+  test("refreshes Kimi OAuth in place when a long tool loop crosses token expiry", async () => {
+    const chatAuthorizations: string[] = [];
+    let chatCalls = 0;
+    let refreshCalls = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://auth.kimi.com/api/oauth/token") {
+        refreshCalls += 1;
+        return Response.json({
+          access_token: "fresh-kimi-loop-token",
+          refresh_token: "fresh-kimi-loop-refresh",
+          expires_in: 900,
+        });
+      }
+
+      chatCalls += 1;
+      chatAuthorizations.push(new Headers(init?.headers).get("Authorization") || "");
+      if (chatCalls === 1) {
+        return Response.json({
+          id: "kimi-loop-tool-response",
+          object: "chat.completion",
+          model: "k3",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "tool_calls",
+              message: {
+                role: "assistant",
+                content: "",
+                tool_calls: [
+                  {
+                    id: "kimi-loop-calc",
+                    type: "function",
+                    function: { name: "calc", arguments: '{"expression":"6 * 7"}' },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+        });
+      }
+      if (chatCalls === 2) {
+        return Response.json({ error: { message: "access token expired" } }, { status: 401 });
+      }
+      return Response.json({
+        id: "kimi-loop-final-response",
+        object: "chat.completion",
+        model: "k3",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "The result is 42." },
+          },
+        ],
+        usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Long Loop Provider",
+      access_token: "stale-kimi-loop-token",
+      refresh_token: "stale-kimi-loop-refresh",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Kimi Long Loop Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "k3",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("tool_approval_mode", "always_allow");
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate six times seven" }],
+      { useTools: true, sessionId: "kimi-long-loop-refresh-session" }
+    );
+
+    expect(result.content).toBe("The result is 42.");
+    expect(result.tool_calls).toHaveLength(1);
+    expect(chatCalls).toBe(3);
+    expect(refreshCalls).toBe(1);
+    expect(chatAuthorizations).toEqual([
+      "Bearer stale-kimi-loop-token",
+      "Bearer stale-kimi-loop-token",
+      "Bearer fresh-kimi-loop-token",
+    ]);
   });
 
   test("routes openai-codex-responses providers to codex responses endpoint", async () => {
@@ -510,11 +778,14 @@ describe("Agent provider Google and compatible routing", () => {
   });
 
   test("records provider cooldown when openai-codex returns 429", async () => {
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ error: { message: "rate limit reached" } }), {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ error: { message: "rate limit reached" } }), {
         status: 429,
-        headers: { "Content-Type": "application/json", "Retry-After": "7" },
-      })) as typeof fetch;
+        headers: { "Content-Type": "application/json", "Retry-After": "0" },
+      });
+    }) as typeof fetch;
 
     const provider = providerManager.create({
       provider: "openai-codex",
@@ -539,6 +810,7 @@ describe("Agent provider Google and compatible routing", () => {
     );
 
     expect(result.content.toLowerCase()).toContain("rate limit");
+    expect(calls).toBe(4);
     const availability = getProviderAvailability(provider.id);
     expect(availability.inCooldown).toBe(true);
     expect(availability.available).toBe(false);

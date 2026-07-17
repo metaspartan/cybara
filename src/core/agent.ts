@@ -25,6 +25,7 @@ import {
 import {
   getRouterRouteModel,
   selectProvider,
+  isModelRouterEnabled,
   isMixtureOfAgentsRoutingActive,
   getMixtureOfAgentsRoutingConfig,
 } from "./router";
@@ -50,6 +51,14 @@ import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from ".
 import { resolveAgentToolPolicy } from "./toolsets";
 import { formatLlmFailure } from "./agent-error-format";
 import { resolveModelContextWindowTokens } from "./agent-model-limits";
+import { classifyApiError, type ClassifiedApiError } from "./error-classifier";
+import {
+  getProviderAccountPool,
+  markProviderAccountHealthy,
+  markProviderAccountUnavailable,
+  parseProviderAccountPoolRouteId,
+  type ProviderAccountFailure,
+} from "./provider-account-pool";
 
 export { resolveAgentToolSelection } from "./agent-tool-selection";
 
@@ -68,6 +77,7 @@ export interface AgentDefinition {
   model?: string;
   provider_id?: string;
   provider?: string;
+  provider_pool_id?: string;
   fallback_provider_id?: string;
   fallback_provider?: string;
   system_prompt?: string;
@@ -162,6 +172,20 @@ interface RunningAgentState {
   lastActive: Date;
 }
 
+type ResolvedProvider = NonNullable<ReturnType<typeof providerManager.getWithCredentials>>;
+
+interface ProviderExecutionTarget {
+  provider: ResolvedProvider;
+  poolId?: string;
+  routeId?: string;
+}
+
+interface AgentProviderResult {
+  content: string;
+  thinking?: string;
+  tool_calls?: AgentToolCallResult[];
+}
+
 class AgentManager extends AgentProviderRuntime {
   private runningAgents: Map<string, RunningAgentState> = new Map();
 
@@ -227,25 +251,90 @@ class AgentManager extends AgentProviderRuntime {
     return supported ? agentModel : getDefaultModel(provider.provider);
   }
 
-  private resolveProviderForAgent(
-    agent: Pick<Agent, "id" | "provider_id" | "config">,
-    persistIfResolved = false
-  ): ReturnType<typeof providerManager.getWithCredentials> {
-    const routerSelected = selectProvider(agent.provider_id);
-    if (routerSelected) {
-      const routedProviderId = providerManager.resolveProviderId(routerSelected);
-      const routedProvider = routedProviderId
-        ? providerManager.getWithCredentials(routedProviderId)
-        : undefined;
-      if (routedProvider) {
-        if (persistIfResolved && agent.provider_id !== routedProvider.id) {
-          this.update(agent.id, { provider_id: routedProvider.id });
-          if ("provider_id" in agent) {
-            agent.provider_id = routedProvider.id;
+  private providerAccountFailure(error: ClassifiedApiError): ProviderAccountFailure | undefined {
+    if (error.category === "auth") return "auth";
+    if (error.category === "billing") return "billing";
+    if (error.category === "rate_limit") return "rate_limit";
+    return undefined;
+  }
+
+  private async callLLMWithAccountPool(
+    primary: ResolvedProvider,
+    poolId: string | undefined,
+    model: string | undefined,
+    messages: AgentMessage[],
+    tools: ToolDefinition[],
+    toolContext?: ToolContext
+  ): Promise<AgentProviderResult> {
+    const candidates = await providerManager.getAccountPoolCandidates(primary.id, poolId);
+    if (candidates.length === 0) {
+      throw new Error(`All ${primary.provider} accounts are cooling down or unavailable.`);
+    }
+
+    let lastError: unknown;
+    for (const candidate of candidates) {
+      const toolCallsBefore = toolContext?.executionState?.toolCallsStarted ?? 0;
+      try {
+        const result = await this.callLLM(candidate, model, messages, tools, toolContext);
+        markProviderAccountHealthy(candidate.id);
+        return result;
+      } catch (error) {
+        lastError = error;
+        let classified = classifyApiError({ error });
+        let failure = this.providerAccountFailure(classified);
+        if (!failure || (toolContext?.executionState?.toolCallsStarted ?? 0) > toolCallsBefore) {
+          throw error;
+        }
+
+        if (failure === "auth" && candidate.refresh_token) {
+          const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(candidate, {
+            force: true,
+          });
+          if (refreshed) {
+            try {
+              const result = await this.callLLM(refreshed, model, messages, tools, toolContext);
+              markProviderAccountHealthy(candidate.id);
+              return result;
+            } catch (refreshError) {
+              lastError = refreshError;
+              classified = classifyApiError({ error: refreshError });
+              failure = this.providerAccountFailure(classified);
+              if (
+                !failure ||
+                (toolContext?.executionState?.toolCallsStarted ?? 0) > toolCallsBefore
+              ) {
+                throw refreshError;
+              }
+            }
           }
         }
-        return routedProvider;
+
+        markProviderAccountUnavailable(candidate.id, failure);
       }
+    }
+
+    throw lastError ?? new Error(`All ${primary.provider} accounts are unavailable.`);
+  }
+
+  private agentProviderPoolId(agent: Pick<Agent, "config">): string | undefined {
+    const value = parseAgentConfig(agent.config).provider_account_pool_id;
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  }
+
+  private resolveProviderExecutionTarget(
+    agent: Pick<Agent, "id" | "provider_id" | "config">,
+    options: { useRouter: boolean; persistIfResolved: boolean }
+  ): ProviderExecutionTarget | undefined {
+    const poolId = this.agentProviderPoolId(agent);
+    if (poolId) {
+      const provider = providerManager.getAccountPoolPrimary(poolId);
+      if (provider) return { provider, poolId };
+    }
+
+    if (options.useRouter && isModelRouterEnabled()) {
+      const routeId = selectProvider(agent.provider_id);
+      const routed = routeId ? providerManager.resolveExecutionTarget(routeId) : undefined;
+      if (routed && routeId) return { ...routed, routeId };
     }
 
     let resolvedProvider =
@@ -253,7 +342,7 @@ class AgentManager extends AgentProviderRuntime {
         ? providerManager.getWithCredentials(agent.provider_id)
         : undefined;
 
-    if (resolvedProvider) return resolvedProvider;
+    if (resolvedProvider) return { provider: resolvedProvider };
 
     const config = parseAgentConfig(agent.config, agent.id);
     const configProviderInput =
@@ -272,25 +361,40 @@ class AgentManager extends AgentProviderRuntime {
     resolvedProvider = providerManager.getWithCredentials(resolvedProviderId);
     if (!resolvedProvider) return undefined;
 
-    if (persistIfResolved && agent.provider_id !== resolvedProviderId) {
+    if (options.persistIfResolved && agent.provider_id !== resolvedProviderId) {
       this.update(agent.id, { provider_id: resolvedProviderId });
       if ("provider_id" in agent) {
         agent.provider_id = resolvedProviderId;
       }
     }
 
-    return resolvedProvider;
+    return { provider: resolvedProvider };
+  }
+
+  private resolveProviderForAgent(
+    agent: Pick<Agent, "id" | "provider_id" | "config">,
+    persistIfResolved = false
+  ): ReturnType<typeof providerManager.getWithCredentials> {
+    return this.resolveProviderExecutionTarget(agent, {
+      useRouter: true,
+      persistIfResolved,
+    })?.provider;
   }
 
   resolveProvider(id: string): ReturnType<typeof providerManager.getWithCredentials> {
     const agent = this.get(id);
     if (!agent) return undefined;
-    return this.resolveProviderForAgent(agent, true);
+    return this.resolveProviderExecutionTarget(agent, {
+      useRouter: false,
+      persistIfResolved: true,
+    })?.provider;
   }
 
   list(): (Agent & {
     provider?: string;
     provider_type?: string;
+    provider_pool_id?: string;
+    provider_pool_name?: string;
     providerInfo?: { name: string };
     typeConfig?: typeof AGENT_TYPES.main;
   })[] {
@@ -300,6 +404,8 @@ class AgentManager extends AgentProviderRuntime {
     );
     return all.map((a) => {
       const provider = a.provider_id ? providersById.get(a.provider_id) : undefined;
+      const providerPoolId = this.agentProviderPoolId(a);
+      const providerPool = providerPoolId ? getProviderAccountPool(providerPoolId) : undefined;
       const typeConfig = a.type ? AGENT_TYPES[a.type as keyof typeof AGENT_TYPES] : undefined;
       const status = this.runningAgents.has(a.id) ? "running" : "stopped";
       return {
@@ -307,6 +413,8 @@ class AgentManager extends AgentProviderRuntime {
         status,
         provider: a.provider_id,
         provider_type: provider?.provider,
+        provider_pool_id: providerPoolId,
+        provider_pool_name: providerPool?.name,
         providerInfo: provider ? { name: provider.name } : undefined,
         typeConfig,
       };
@@ -317,6 +425,8 @@ class AgentManager extends AgentProviderRuntime {
     | (Agent & {
         provider?: string;
         provider_type?: string;
+        provider_pool_id?: string;
+        provider_pool_name?: string;
         typeConfig?: typeof AGENT_TYPES.main;
       })
     | undefined {
@@ -324,6 +434,8 @@ class AgentManager extends AgentProviderRuntime {
     if (!agent) return undefined;
     const typeConfig = agent.type ? AGENT_TYPES[agent.type as keyof typeof AGENT_TYPES] : undefined;
     const status = this.runningAgents.has(agent.id) ? "running" : "stopped";
+    const providerPoolId = this.agentProviderPoolId(agent);
+    const providerPool = providerPoolId ? getProviderAccountPool(providerPoolId) : undefined;
     return {
       ...agent,
       status,
@@ -331,6 +443,8 @@ class AgentManager extends AgentProviderRuntime {
       provider_type: agent.provider_id
         ? providerManager.get(agent.provider_id)?.provider
         : undefined,
+      provider_pool_id: providerPoolId,
+      provider_pool_name: providerPool?.name,
       typeConfig,
     };
   }
@@ -350,8 +464,19 @@ class AgentManager extends AgentProviderRuntime {
     const systemPrompt =
       definition.system_prompt || typeConfig?.systemPrompt || AGENT_TYPE_PROMPTS.main;
 
+    const agentConfig = { ...(definition.config || {}) };
+    const requestedPoolId =
+      typeof definition.provider_pool_id === "string" ? definition.provider_pool_id.trim() : "";
+    const requestedPool = requestedPoolId ? getProviderAccountPool(requestedPoolId) : undefined;
+    if (requestedPoolId && (!requestedPool?.enabled || requestedPool.accounts.length === 0)) {
+      throw new Error("Validation error: Provider account pool is unavailable");
+    }
+    if (requestedPool) agentConfig.provider_account_pool_id = requestedPool.id;
+    const poolProviderId = requestedPool?.accounts[0]?.providerId;
     const resolvedProviderId =
+      providerManager.resolveProviderId(poolProviderId) ||
       providerManager.resolveProviderId(definition.provider_id || definition.provider) ||
+      poolProviderId ||
       definition.provider_id;
     const resolvedFallbackProviderId =
       providerManager.resolveProviderId(
@@ -367,7 +492,7 @@ class AgentManager extends AgentProviderRuntime {
       fallback_provider_id: resolvedFallbackProviderId,
       system_prompt: systemPrompt,
       tools: definition.tools ?? getBuiltinTools(),
-      config: definition.config || {},
+      config: agentConfig,
       status: "stopped",
       memory_enabled: definition.memory_enabled || false,
     };
@@ -433,12 +558,36 @@ class AgentManager extends AgentProviderRuntime {
       resolvedModel = resolveModelAlias(resolvedModel, undefined);
     }
 
+    const existingConfig = parseAgentConfig(existing.config, id);
+    const updatedConfig = updates.config ? { ...updates.config } : { ...existingConfig };
+    const poolSelectionChanged = updates.provider_pool_id !== undefined;
+    const requestedPoolId =
+      typeof updates.provider_pool_id === "string" ? updates.provider_pool_id.trim() : "";
+    const requestedPool = requestedPoolId ? getProviderAccountPool(requestedPoolId) : undefined;
+    if (
+      poolSelectionChanged &&
+      requestedPoolId &&
+      (!requestedPool?.enabled || requestedPool.accounts.length === 0)
+    ) {
+      throw new Error("Validation error: Provider account pool is unavailable");
+    }
+    if (poolSelectionChanged) {
+      if (requestedPool) updatedConfig.provider_account_pool_id = requestedPool.id;
+      else delete updatedConfig.provider_account_pool_id;
+    }
+    const poolProviderId = requestedPool?.accounts[0]?.providerId;
+    const providerSelectionChanged =
+      updates.provider_id !== undefined || updates.provider !== undefined;
+    if (providerSelectionChanged && !poolSelectionChanged) {
+      delete updatedConfig.provider_account_pool_id;
+    }
     const resolvedProviderId =
-      updates.provider_id !== undefined || updates.provider !== undefined
+      poolProviderId ||
+      (providerSelectionChanged
         ? providerManager.resolveProviderId(
             (updates.provider_id as string | undefined) || (updates.provider as string | undefined)
           )
-        : undefined;
+        : undefined);
     const resolvedFallbackProviderId =
       updates.fallback_provider_id !== undefined || updates.fallback_provider !== undefined
         ? providerManager.resolveProviderId(
@@ -452,7 +601,7 @@ class AgentManager extends AgentProviderRuntime {
       type: updates.type || existing.type,
       model: resolvedModel || existing.model,
       provider_id:
-        updates.provider_id !== undefined || updates.provider !== undefined
+        providerSelectionChanged || poolSelectionChanged
           ? (resolvedProviderId ?? existing.provider_id)
           : existing.provider_id,
       fallback_provider_id:
@@ -464,7 +613,7 @@ class AgentManager extends AgentProviderRuntime {
       tools: updates.tools || existing.tools,
       memory_enabled:
         updates.memory_enabled !== undefined ? updates.memory_enabled : existing.memory_enabled,
-      config: updates.config || parseAgentConfig(existing.config, id),
+      config: updatedConfig,
     };
 
     tables.agents.update(id, updated);
@@ -695,10 +844,14 @@ class AgentManager extends AgentProviderRuntime {
   ): Promise<{ response: string; thinking?: string }> {
     const { agent, messages } = state;
 
-    const provider = this.resolveProviderForAgent(agent, true);
-    if (!provider) {
+    const target = this.resolveProviderExecutionTarget(agent, {
+      useRouter: true,
+      persistIfResolved: true,
+    });
+    if (!target) {
       return { response: this.generateFallbackResponse(messages) };
     }
+    const provider = target.provider;
 
     const fullMessages = await this.injectMemoryRecall(messages, agent);
 
@@ -708,13 +861,29 @@ class AgentManager extends AgentProviderRuntime {
     if (supportsTools) {
       tools = this.getAgentTools(agent);
     }
+    const toolContext = this.buildToolExecutionContext(agent);
+    toolContext.routerRouteId = target.routeId;
 
-    const resolvedExecution = this.resolveProviderModelForExecution(provider, agent.model);
+    const routedModel = target.routeId ? getRouterRouteModel(target.routeId) : undefined;
+    const selectedModel =
+      routedModel ||
+      (target.routeId && provider.id !== agent.provider_id
+        ? this.resolveModelForRoutedProvider(provider, agent.model)
+        : agent.model);
+    const resolvedExecution = this.resolveProviderModelForExecution(provider, selectedModel);
     const activeProvider = resolvedExecution.provider;
     const activeModel = resolvedExecution.model;
+    const activePoolId = activeProvider.provider === provider.provider ? target.poolId : undefined;
 
     try {
-      const result = await this.callLLM(activeProvider, activeModel, fullMessages, tools);
+      const result = await this.callLLMWithAccountPool(
+        activeProvider,
+        activePoolId,
+        activeModel,
+        fullMessages,
+        tools,
+        toolContext
+      );
       return { response: result.content, thinking: result.thinking };
     } catch (error) {
       console.error("[Agent] LLM call failed:", error);
@@ -723,11 +892,13 @@ class AgentManager extends AgentProviderRuntime {
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
           try {
-            const fallbackResult = await this.callLLM(
+            const fallbackResult = await this.callLLMWithAccountPool(
               fallbackProvider,
+              undefined,
               activeModel,
               fullMessages,
-              tools
+              tools,
+              { ...toolContext, routerRouteId: undefined }
             );
             return {
               response: fallbackResult.content,
@@ -835,12 +1006,14 @@ class AgentManager extends AgentProviderRuntime {
       throw new Error("Agent not found");
     }
 
-    let provider = options?.useModelRouter
-      ? this.resolveProviderForAgent({ ...agent, provider_id: undefined }, false)
-      : this.resolveProviderForAgent(agent, true);
-    if (!provider) {
+    const target = this.resolveProviderExecutionTarget(agent, {
+      useRouter: options?.useModelRouter === true,
+      persistIfResolved: options?.useModelRouter !== true,
+    });
+    if (!target) {
       return { content: this.generateFallbackResponse(messages) };
     }
+    let provider = target.provider;
 
     const hasSystemMessage = messages.some((message) => message.role === "system");
     const fallbackSystemPrompt =
@@ -880,12 +1053,12 @@ class AgentManager extends AgentProviderRuntime {
     }
 
     const toolContext = this.buildToolExecutionContext(agent, options);
+    toolContext.routerRouteId = target.routeId;
 
     const routerActive = options?.useModelRouter === true && !!provider;
     const routedToDifferentProvider = routerActive && provider!.id !== agent.provider_id;
-    const routedModel = routerActive
-      ? (getRouterRouteModel(provider!.id) ?? getRouterRouteModel(provider!.provider))
-      : undefined;
+    const routedModel =
+      routerActive && target.routeId ? getRouterRouteModel(target.routeId) : undefined;
     const overrideModel =
       typeof options?.modelOverride === "string" && options.modelOverride.trim().length > 0
         ? options.modelOverride.trim()
@@ -900,10 +1073,12 @@ class AgentManager extends AgentProviderRuntime {
     const resolvedExecution = this.resolveProviderModelForExecution(provider, selectedModel);
     const activeProvider = resolvedExecution.provider;
     const activeModel = resolvedExecution.model;
+    const activePoolId = activeProvider.provider === provider.provider ? target.poolId : undefined;
 
     try {
-      const result = await this.callLLM(
+      const result = await this.callLLMWithAccountPool(
         activeProvider,
+        activePoolId,
         activeModel,
         workspaceAwareMessages,
         tools,
@@ -919,12 +1094,13 @@ class AgentManager extends AgentProviderRuntime {
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
           try {
-            const fallbackResult = await this.callLLM(
+            const fallbackResult = await this.callLLMWithAccountPool(
               fallbackProvider,
+              undefined,
               activeModel,
               workspaceAwareMessages,
               tools,
-              toolContext
+              { ...toolContext, routerRouteId: undefined }
             );
             if (options?.abortSignal?.aborted) throw options.abortSignal.reason;
             return fallbackResult;
@@ -993,6 +1169,7 @@ class AgentManager extends AgentProviderRuntime {
       confineToWorkspace:
         typeof options?.workspaceDir === "string" && options.workspaceDir.trim().length > 0,
       consumeSteeringMessages: options?.consumeSteeringMessages,
+      executionState: { toolCallsStarted: 0 },
     };
   }
 

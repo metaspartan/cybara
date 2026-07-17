@@ -45,7 +45,10 @@ function addProviderTokens(providerKey: string, tokens: number): void {
     type: "token_usage_by_provider",
     key: providerKey,
     value: tokens,
-    metadata: JSON.stringify({ providerId: providerKey, provider: providerKey }),
+    metadata: JSON.stringify({
+      providerId: providerKey,
+      provider: providerKey,
+    }),
   });
 }
 
@@ -365,7 +368,10 @@ describe("provider plan monitoring", () => {
   test("refreshes expired xAI OAuth before loading Grok Build usage", async () => {
     const providerId = createProvider("xai-oauth", "o".repeat(64), "https://api.x.ai/v1");
     const stored = tables.providers.get(providerId) as Provider;
-    tables.providers.update(providerId, { ...stored, expires_at: Date.now() - 1 });
+    tables.providers.update(providerId, {
+      ...stored,
+      expires_at: Date.now() - 1,
+    });
     const refreshedToken = "n".repeat(64);
     const seenUrls: string[] = [];
     const hex =
@@ -376,7 +382,10 @@ describe("provider plan monitoring", () => {
     globalThis.fetch = (async (url, init) => {
       seenUrls.push(String(url));
       if (String(url) === "https://auth.x.ai/oauth2/token") {
-        return Response.json({ access_token: refreshedToken, expires_in: 3600 });
+        return Response.json({
+          access_token: refreshedToken,
+          expires_in: 3600,
+        });
       }
       expect(String(url)).toBe(
         "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig"
@@ -458,22 +467,33 @@ describe("provider plan monitoring", () => {
         });
       }
       if (String(url).endsWith("v1internal:retrieveUserQuotaSummary")) {
-        expect(JSON.parse(String(init?.body))).toEqual({ project: "managed-project-123" });
+        expect(JSON.parse(String(init?.body))).toEqual({
+          project: "managed-project-123",
+        });
         return Response.json({
           response: {
             groups: [
               {
                 displayName: "Gemini Models",
                 buckets: [
-                  { bucketId: "gemini-5h", remaining: { remainingFraction: 0.91 } },
-                  { bucketId: "gemini-weekly", remaining: { remainingFraction: 0.82 } },
+                  {
+                    bucketId: "gemini-5h",
+                    remaining: { remainingFraction: 0.91 },
+                  },
+                  {
+                    bucketId: "gemini-weekly",
+                    remaining: { remainingFraction: 0.82 },
+                  },
                 ],
               },
               {
                 displayName: "Claude and GPT models",
                 buckets: [
                   { bucketId: "3p-5h", remaining: { remainingFraction: 0.73 } },
-                  { bucketId: "3p-weekly", remaining: { remainingFraction: 0.64 } },
+                  {
+                    bucketId: "3p-weekly",
+                    remaining: { remainingFraction: 0.64 },
+                  },
                 ],
               },
             ],
@@ -516,8 +536,14 @@ describe("provider plan monitoring", () => {
       return Response.json({
         data: {
           limits: [
-            { type: "TIME_LIMIT", percentage: 22 },
-            { type: "TOKENS_LIMIT", percentage: 91 },
+            {
+              type: "TIME_LIMIT",
+              unit: 5,
+              percentage: 22,
+              usageDetails: [{ modelCode: "search-prime", usage: 220 }],
+            },
+            { type: "TOKENS_LIMIT", unit: 3, number: 5, percentage: 91 },
+            { type: "TOKENS_LIMIT", unit: 6, number: 1, percentage: 37 },
           ],
         },
       });
@@ -536,9 +562,49 @@ describe("provider plan monitoring", () => {
     expect(snapshot?.manualPlanEditable).toBe(false);
     expect(snapshot?.windows.map((window) => [window.id, window.usedPercent])).toEqual([
       ["5h", 91],
-      ["weekly", 22],
+      ["weekly", 37],
+      ["billing_month", 22],
       ["local_30d", undefined],
     ]);
+    expect(snapshot?.windows.find((window) => window.id === "billing_month")?.title).toBe(
+      "Monthly MCP"
+    );
+  });
+
+  test("retries Z.ai usage with bearer authorization after an API-level auth failure", async () => {
+    const providerId = createProvider(
+      "z.ai-coding",
+      "zai-bearer-token",
+      "https://api.z.ai/api/coding/paas/v4"
+    );
+    const seenAuthorization: string[] = [];
+    globalThis.fetch = (async (_url, init) => {
+      const authorization = (init?.headers as Record<string, string>)?.Authorization ?? "";
+      seenAuthorization.push(authorization);
+      if (authorization === "zai-bearer-token") {
+        return Response.json({
+          code: 401,
+          success: false,
+          msg: "token expired",
+        });
+      }
+      return Response.json({
+        code: 200,
+        success: true,
+        data: {
+          limits: [{ type: "TOKENS_LIMIT", unit: 3, number: 5, percentage: 18 }],
+        },
+      });
+    }) as typeof fetch;
+    setProviderPlanMonitoringConfig({ enabled: true, providers: {} });
+
+    const status = await enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus());
+    const snapshot = status.providers.find(
+      (provider) => provider.configuredProviderId === providerId
+    );
+
+    expect(seenAuthorization).toEqual(["zai-bearer-token", "Bearer zai-bearer-token"]);
+    expect(snapshot?.windows.find((window) => window.id === "5h")?.usedPercent).toBe(18);
   });
 
   test("enriches Kimi coding plan quota from provider usage endpoint", async () => {
@@ -554,10 +620,20 @@ describe("provider plan monitoring", () => {
         "Bearer sk-kimi-test-token"
       );
       return Response.json({
-        usage: { name: "Weekly Usage", limit: 1000, used: 420, resetTime: 1783665881000 },
+        usage: {
+          name: "Weekly Usage",
+          limit: 1000,
+          used: 420,
+          resetTime: 1783665881000,
+        },
         limits: [
           {
-            detail: { name: "5h Limit", limit: 100, used: 64, resetTime: 1783405927000 },
+            detail: {
+              name: "5h Limit",
+              limit: 100,
+              used: 64,
+              resetTime: 1783405927000,
+            },
             window: { duration: 5, time_unit: "HOUR" },
           },
         ],

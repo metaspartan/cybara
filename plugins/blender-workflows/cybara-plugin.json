@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "blender-workflows",
+  "name": "Blender Workflows",
+  "version": "1.0.0",
+  "description": "Scene inspection, focused editing, rendering, and visual validation workflows for Blender MCP.",
+  "author": "Cybara",
+  "homepage": "https://github.com/ahujasid/blender-mcp",
+  "contributions": {
+    "skills": {
+      "dirs": ["skills"]
+    }
+  }
+}

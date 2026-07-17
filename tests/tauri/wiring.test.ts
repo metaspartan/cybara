@@ -11,7 +11,11 @@ describe("Tauri wiring", () => {
   test("tauri.conf.json includes Cybara sidecar + bundled UI assets", () => {
     const confPath = join(ROOT_DIR, "src-tauri", "tauri.conf.json");
     const conf = JSON.parse(readFileSync(confPath, "utf8")) as {
-      build?: { frontendDist?: string; beforeDevCommand?: string; beforeBuildCommand?: string };
+      build?: {
+        frontendDist?: string;
+        beforeDevCommand?: string;
+        beforeBuildCommand?: string;
+      };
       bundle?: {
         resources?: string[] | Record<string, string>;
         externalBin?: string[];
@@ -29,6 +33,7 @@ describe("Tauri wiring", () => {
         "bin/ui/dist": "ui/dist",
         "bin/node_modules": "node_modules",
         "bin/cua-driver": "cua-driver",
+        "bin/plugins": "plugins",
       });
     }
     expect(conf.bundle?.externalBin).toContain("bin/cybara");

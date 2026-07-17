@@ -63,6 +63,23 @@ describe("supportedReasoningOptions per-model matrix", () => {
     expect(reasoningEffortLabel(null, "minimax-portal", "MiniMax-M3")).toBe("Adaptive");
   });
 
+  test("Kimi K3 exposes its max-only coding-plan reasoning contract", () => {
+    for (const provider of [
+      "kimi-code",
+      "kimi-code-oauth",
+      "kimi-coding",
+      "kimi-oauth",
+      "kimi-code-subscription",
+    ]) {
+      expect(supportedReasoningOptions(provider, "k3")).toEqual([
+        { value: "", label: "Default" },
+        { value: "max", label: "Max" },
+      ]);
+    }
+    expect(supportsXHighReasoning("kimi-code-oauth", "k3")).toBe(false);
+    expect(reasoningEffortLabel("max", "kimi-code-oauth", "k3")).toBe("Max");
+  });
+
   test("codex models expose Low..Max and exclude Minimal", () => {
     const codex = supportedReasoningOptions("openai", "gpt-5.3-codex");
     expect(codex.map((o) => o.value)).toEqual(["", "low", "medium", "high", "xhigh"]);

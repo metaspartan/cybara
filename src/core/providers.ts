@@ -5,7 +5,16 @@ import { foundationProviderCatalog } from "./providers/catalog-foundation";
 import { integrationProviderCatalog } from "./providers/catalog-integrations";
 import { accountOAuthProviders } from "./providers/account-oauth";
 import { parseOAuthTokenPayload, type ProviderOAuthConfig } from "./provider-oauth";
+import { classifyApiError } from "./error-classifier";
+import { providerExceptionRetryDelayMs, providerRetryDelayMs } from "./provider-retry";
 import { isKimiCodeProvider, kimiCodeIdentityHeaders } from "./providers/kimi-code";
+import {
+  getProviderAccountPool,
+  parseProviderAccountPoolRouteId,
+  providerAccountPoolCandidates,
+  providerAccountRemainingPercent,
+} from "./provider-account-pool";
+import { fetchLiveProviderUsage } from "./provider-usage-source";
 
 export const providers = {
   ...foundationProviderCatalog,
@@ -159,12 +168,76 @@ class ProviderManager {
     return this.mergeWithStaticConfig(dbProvider);
   }
 
+  getAccountPoolPrimary(poolId: string): Provider | undefined {
+    const pool = getProviderAccountPool(poolId);
+    if (!pool?.enabled) return undefined;
+    for (const account of pool.accounts) {
+      const provider = this.getWithCredentials(account.providerId);
+      if (provider?.provider === pool.provider) return provider;
+    }
+    return undefined;
+  }
+
+  resolveExecutionTarget(target: string): { provider: Provider; poolId?: string } | undefined {
+    const poolId = parseProviderAccountPoolRouteId(target);
+    if (poolId) {
+      const provider = this.getAccountPoolPrimary(poolId);
+      return provider ? { provider, poolId } : undefined;
+    }
+    const providerId = this.resolveProviderId(target);
+    const provider = providerId ? this.getWithCredentials(providerId) : undefined;
+    return provider ? { provider } : undefined;
+  }
+
+  async getAccountPoolCandidates(id: string, poolId?: string): Promise<Provider[]> {
+    const primary = this.getWithCredentials(id);
+    if (!primary) return [];
+    const storedProviders = tables.providers.all() as Provider[];
+    const candidates = providerAccountPoolCandidates(poolId, primary, storedProviders);
+    const resolvedCandidates = candidates.flatMap((candidate) => {
+      const resolved = this.getWithCredentials(candidate.id);
+      return resolved ? [resolved] : [];
+    });
+    if (resolvedCandidates.length < 2) return resolvedCandidates;
+
+    const usagePromise = Promise.all(
+      resolvedCandidates.map(async (candidate) => {
+        const usage = await fetchLiveProviderUsage({
+          id: candidate.id,
+          providerType: candidate.provider,
+          apiKey: candidate.api_key,
+          accessToken: candidate.access_token,
+          baseUrl: candidate.base_url,
+        });
+        return [candidate.id, providerAccountRemainingPercent(usage)] as const;
+      })
+    );
+    const usage = await Promise.race([usagePromise, Bun.sleep(750).then(() => undefined)]);
+    if (!usage) return resolvedCandidates;
+    const remainingByProviderId = new Map(
+      usage.filter((entry): entry is readonly [string, number] => entry[1] !== undefined)
+    );
+    const ranked = providerAccountPoolCandidates(
+      poolId,
+      primary,
+      storedProviders,
+      Date.now(),
+      remainingByProviderId
+    );
+    const resolvedById = new Map(resolvedCandidates.map((candidate) => [candidate.id, candidate]));
+    return ranked.flatMap((candidate) => {
+      const resolved = resolvedById.get(candidate.id);
+      return resolved ? [resolved] : [];
+    });
+  }
+
   private oauthRefreshInFlight = new Map<string, Promise<Provider | undefined>>();
   private oauthRefreshCooldownUntil = new Map<string, number>();
   private static readonly OAUTH_REFRESH_COOLDOWN_MS = 60_000;
 
   async refreshOAuthCredentialsIfNeeded(
-    provider: Provider | undefined
+    provider: Provider | undefined,
+    options?: { force?: boolean }
   ): Promise<Provider | undefined> {
     if (!provider?.id) return undefined;
     const staticConfig = providers[provider.provider as ProviderType] as
@@ -178,8 +251,8 @@ class ProviderManager {
     const now = Date.now();
     const skewMs = 120_000;
     const expiresAt = typeof provider.expires_at === "number" ? provider.expires_at : 0;
-    if (expiresAt > 0 && expiresAt - skewMs > now) return undefined;
-    if (expiresAt === 0) {
+    if (options?.force !== true && expiresAt > 0 && expiresAt - skewMs > now) return undefined;
+    if (options?.force !== true && expiresAt === 0) {
       const cooldownUntil = this.oauthRefreshCooldownUntil.get(provider.id) || 0;
       if (cooldownUntil > now) return undefined;
       this.oauthRefreshCooldownUntil.set(
@@ -203,40 +276,63 @@ class ProviderManager {
     oauth: ProviderOAuthConfig
   ): Promise<Provider | undefined> {
     try {
-      const fields: Record<string, string> = {
-        grant_type: "refresh_token",
-        refresh_token: provider.refresh_token || "",
-      };
-      if (oauth.clientId) fields.client_id = oauth.clientId;
-      if (oauth.clientSecret) fields.client_secret = oauth.clientSecret;
-      if (oauth.scope && provider.provider !== "xai-oauth") fields.scope = oauth.scope;
       const cursor = oauth.refreshMode === "cursor";
       const json = oauth.tokenRequestFormat === "json" || cursor;
-      const request = () =>
-        fetch(oauth.tokenUrl || "", {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": json ? "application/json" : "application/x-www-form-urlencoded",
-            ...(cursor ? { Authorization: `Bearer ${provider.refresh_token}` } : {}),
-            ...oauth.refreshHeaders,
-            ...(oauth.identityHeaders === "kimi-code" ? kimiCodeIdentityHeaders() : {}),
-          },
-          body: json ? JSON.stringify(cursor ? {} : fields) : new URLSearchParams(fields),
-          signal: AbortSignal.timeout(30_000),
-        });
-      let response = await request();
+      let credentialSource = this.getWithCredentials(provider.id) ?? provider;
       if (
-        (provider.provider === "xai-oauth" || provider.provider === "kimi-code-oauth") &&
-        (response.status === 429 || response.status >= 500)
+        credentialSource.access_token &&
+        credentialSource.access_token !== provider.access_token &&
+        (!(credentialSource.expires_at ?? 0) || (credentialSource.expires_at ?? 0) > Date.now())
       ) {
-        const retryAfter = Number(response.headers.get("retry-after"));
-        const delayMs = Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter * 1000 : 200;
-        await response.body?.cancel();
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        response = await request();
+        return credentialSource;
       }
-      if (!response.ok) return undefined;
+
+      let response: Response | undefined;
+      for (let attempt = 0; attempt <= 2; attempt++) {
+        const fields: Record<string, string> = {
+          grant_type: "refresh_token",
+          refresh_token: credentialSource.refresh_token || "",
+        };
+        if (oauth.clientId) fields.client_id = oauth.clientId;
+        if (oauth.clientSecret) fields.client_secret = oauth.clientSecret;
+        if (oauth.scope && provider.provider !== "xai-oauth") fields.scope = oauth.scope;
+        try {
+          response = await fetch(oauth.tokenUrl || "", {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": json ? "application/json" : "application/x-www-form-urlencoded",
+              ...(cursor ? { Authorization: `Bearer ${credentialSource.refresh_token}` } : {}),
+              ...oauth.refreshHeaders,
+              ...(oauth.identityHeaders === "kimi-code" ? kimiCodeIdentityHeaders() : {}),
+            },
+            body: json ? JSON.stringify(cursor ? {} : fields) : new URLSearchParams(fields),
+            signal: AbortSignal.timeout(30_000),
+          });
+        } catch (error) {
+          const delayMs = providerExceptionRetryDelayMs(error, attempt);
+          if (delayMs === undefined || delayMs > 30_000) return undefined;
+          await Bun.sleep(delayMs);
+          continue;
+        }
+        if (response.ok) break;
+        const errorBody = await response.text();
+        const classified = classifyApiError({ status: response.status, body: errorBody });
+        if (!classified.retryable || attempt >= 2) return undefined;
+        const delayMs = providerRetryDelayMs(response.status, response.headers, attempt);
+        if (delayMs > 30_000) return undefined;
+        await Bun.sleep(delayMs);
+        const latest = this.getWithCredentials(provider.id);
+        if (
+          latest?.access_token &&
+          latest.access_token !== credentialSource.access_token &&
+          (!(latest.expires_at ?? 0) || (latest.expires_at ?? 0) > Date.now())
+        ) {
+          return latest;
+        }
+        credentialSource = latest ?? credentialSource;
+      }
+      if (!response?.ok) return undefined;
       const token = parseOAuthTokenPayload(await response.json(), oauth);
       if (!token) return undefined;
 
@@ -245,7 +341,7 @@ class ProviderManager {
       tables.providers.update(provider.id, {
         ...current,
         access_token: token.accessToken,
-        refresh_token: token.refreshToken || provider.refresh_token,
+        refresh_token: token.refreshToken || credentialSource.refresh_token,
         expires_at: token.expiresAt,
       });
       return this.getWithCredentials(provider.id);

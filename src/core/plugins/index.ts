@@ -46,10 +46,14 @@ function getBundledPluginsRoot(): string {
   const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.includes("/bun");
   if (isCompiledBinary) {
     const execDir = dirname(process.execPath);
-    const repoPlugins = resolve(execDir, "..", "plugins");
-    const sidePlugins = join(execDir, "plugins");
-    if (existsSync(repoPlugins)) return repoPlugins;
-    if (existsSync(sidePlugins)) return sidePlugins;
+    const candidates = [
+      join(execDir, "plugins"),
+      resolve(execDir, "..", "plugins"),
+      resolve(execDir, "..", "..", "Resources", "sidecar", "plugins"),
+    ];
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) return candidate;
+    }
     return join(getCybaraHomeDir(), "bundled-plugins");
   }
   return resolve(__dirname, "../../../plugins");
