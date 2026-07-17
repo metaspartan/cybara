@@ -103,9 +103,13 @@ describe("chat appearance settings", () => {
     const activity = await Bun.file(
       join(ROOT_DIR, "ui", "src", "pages", "chat", "ActivityTimeline.tsx")
     ).text();
-    const subagents = await Bun.file(
-      join(ROOT_DIR, "ui", "src", "pages", "chat", "SubagentPanel.tsx")
-    ).text();
+    const subagents = (
+      await Promise.all(
+        ["SubagentPanel.tsx", "SubagentDetailPanel.tsx", "SubagentTimeline.tsx"].map((file) =>
+          Bun.file(join(ROOT_DIR, "ui", "src", "pages", "chat", file)).text()
+        )
+      )
+    ).join("\n");
     const styles = await Bun.file(join(ROOT_DIR, "ui", "src", "index.css")).text();
     const routes = await Bun.file(join(ROOT_DIR, "src", "api", "routes.ts")).text();
 

@@ -82,7 +82,7 @@ const defaultPersistPath =
 
 const DEFAULT_CONFIG: SubagentConfig = {
   archiveAfterMinutes: 60,
-  defaultTimeoutSeconds: 600,
+  defaultTimeoutSeconds: 0,
   persistPath: defaultPersistPath,
 };
 const SUBAGENT_RESULT_MAX_CHARS = 12_000;
@@ -199,7 +199,6 @@ export function configureSubagentRegistry(cfg: Partial<SubagentConfig>): void {
 }
 
 const subagentRuns = new Map<string, SubagentRunRecord>();
-const resumedRuns = new Set<string>();
 let sweeper: ReturnType<typeof setInterval> | null = null;
 let listenerStarted = false;
 let restoreAttempted = false;
@@ -375,28 +374,6 @@ function finalizeSubagentCleanup(runId: string, cleanup: "delete" | "keep"): voi
   persistSubagentRuns();
 }
 
-function resumeSubagentRun(runId: string): void {
-  if (!runId || resumedRuns.has(runId)) return;
-
-  const entry = subagentRuns.get(runId);
-  if (!entry) return;
-  if (entry.cleanupCompletedAt) return;
-
-  if (typeof entry.endedAt === "number" && entry.endedAt > 0) {
-    if (beginSubagentCleanup(runId)) {
-      finalizeSubagentCleanup(runId, entry.cleanup);
-    }
-    resumedRuns.add(runId);
-    return;
-  }
-
-  const timeoutMs = resolveRunTimeoutMs(entry.runTimeoutSeconds);
-  if (timeoutMs) {
-    void waitForSubagentCompletion(runId, timeoutMs);
-  }
-  resumedRuns.add(runId);
-}
-
 function restoreSubagentRunsOnce(): void {
   if (restoreAttempted) return;
   restoreAttempted = true;
@@ -405,8 +382,19 @@ function restoreSubagentRunsOnce(): void {
     const restored = loadSubagentRegistryFromDisk();
     if (restored.size === 0) return;
 
+    const restoredAt = Date.now();
     for (const [runId, entry] of restored.entries()) {
       if (!runId || !entry) continue;
+      if (!entry.endedAt) {
+        entry.endedAt = restoredAt;
+        entry.outcome = {
+          status: "error",
+          error: "Subagent interrupted by gateway restart",
+        };
+        entry.cleanupHandled = true;
+        entry.cleanupCompletedAt = restoredAt;
+      }
+      if (entry.cleanup === "delete") continue;
       if (!subagentRuns.has(runId)) {
         subagentRuns.set(runId, entry);
       }
@@ -416,9 +404,7 @@ function restoreSubagentRunsOnce(): void {
     if ([...subagentRuns.values()].some((e) => e.archiveAtMs)) {
       startSweeper();
     }
-    for (const runId of subagentRuns.keys()) {
-      resumeSubagentRun(runId);
-    }
+    persistSubagentRuns();
 
     console.log(`[Subagent] Restored ${restored.size} runs from disk`);
   } catch (err) {
@@ -492,7 +478,7 @@ export function registerSubagentRun(params: {
     label: params.label,
     model: params.model,
     workspaceDir: params.workspaceDir,
-    runTimeoutSeconds: params.runTimeoutSeconds,
+    runTimeoutSeconds: params.runTimeoutSeconds ?? config.defaultTimeoutSeconds,
     silent: params.silent === true,
     createdAt: now,
     startedAt: now,
@@ -749,7 +735,6 @@ export function initSubagentRegistry(): void {
 
 export function resetSubagentRegistryForTests(): void {
   subagentRuns.clear();
-  resumedRuns.clear();
   stopSweeper();
   restoreAttempted = false;
   listenerStarted = false;

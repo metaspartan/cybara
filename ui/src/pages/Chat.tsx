@@ -7,10 +7,10 @@ import { PageLayout } from "@/components/layout";
 import { Badge, Button, GlassCard, Input, Modal } from "@/components/ui";
 import { useAgentSummaries, useInfo, useSubagents, useUpdateAgentReasoning } from "@/hooks/useApi";
 import {
+  type LoadedChatSession,
   useChat,
   useLoadSession,
   useUpdateSessionAgent,
-  type LoadedChatSession,
 } from "@/hooks/useChat";
 import { canShareNearbySession, useNearbyStatus } from "@/hooks/useNearbyStatus";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
@@ -39,11 +39,6 @@ import {
 } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
-import {
-  resolveSessionEventOrder,
-  type SessionEventCursor,
-  type SessionEventIdentity,
-} from "../../../shared/session-event-order";
 import type {
   Agent,
   ProviderPlanSnapshot,
@@ -51,6 +46,11 @@ import type {
   SessionContextUsage,
   SessionTokenUsage,
 } from "@/types";
+import {
+  resolveSessionEventOrder,
+  type SessionEventCursor,
+  type SessionEventIdentity,
+} from "../../../shared/session-event-order";
 import { LiveActivityTimeline } from "./chat/ActivityTimeline";
 import { ArtifactViewerPanel } from "./chat/ArtifactViewerPanel";
 import { parseTimestampMs } from "./chat/assistantMetaModel";
@@ -98,9 +98,9 @@ import {
   readPersistedWorkspaceDir,
   resolvePathForIde,
   resolveStatusSnapshotActivities,
-  shouldShowSessionPlanInComposer,
   type SessionStatusResponse,
   type SessionStatusSnapshot,
+  shouldShowSessionPlanInComposer,
   type ToolCall,
   toLiveActivityItems,
 } from "./chat/chatModel";
@@ -121,8 +121,13 @@ import {
   writeCachedOptimisticPendingMessages,
 } from "./chat/pendingQueueCache";
 import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
-import { useChatAttachments } from "./chat/useChatAttachments";
+import {
+  isStoppedRunSuppressed,
+  markStoppedRun,
+  type StoppedRunSuppressions,
+} from "./chat/stopSuppression";
 import { useArtifactViewer } from "./chat/useArtifactViewer";
+import { useChatAttachments } from "./chat/useChatAttachments";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { useChatDictation } from "./chat/useChatDictation";
 import { useChatMessageActions } from "./chat/useChatMessageActions";
@@ -130,11 +135,6 @@ import { useChatScroll } from "./chat/useChatScroll";
 import { useChatWorkspaceTabs } from "./chat/useChatWorkspaceTabs";
 import { useEnvironmentGitBranches } from "./chat/useEnvironmentGitBranches";
 import { useSessionFileChanges } from "./chat/useSessionFileChanges";
-import {
-  isStoppedRunSuppressed,
-  markStoppedRun,
-  type StoppedRunSuppressions,
-} from "./chat/stopSuppression";
 
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
 
@@ -254,12 +254,13 @@ export function Chat() {
     isOpen: showWorkspacePanel,
     openTab: openWorkspaceTab,
     openFile: openWorkspaceFile,
+    openSubagent: openWorkspaceSubagent,
     selectTab: setActiveWorkspaceTab,
     setOpen: setShowWorkspacePanel,
     tabs: workspaceTabs,
     toggleTab: toggleWorkspaceTab,
     updateTabTitle: updateWorkspaceTabTitle,
-  } = useChatWorkspaceTabs({ onOpen: closeEnvironmentOverview });
+  } = useChatWorkspaceTabs({ onOpen: closeEnvironmentOverview, sessionId });
   const [hiddenComposerPlanKey, setHiddenComposerPlanKey] = useState<string | null>(null);
   const [diffPanelWidth, setDiffPanelWidth] = useState<number>(() => readPersistedDiffPanelWidth());
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
@@ -2886,6 +2887,7 @@ export function Chat() {
             onOpenDiffInWorkspace={handleOpenDiffFileInWorkspace}
             onOpenFullIde={handleOpenPathInIde}
             onOpenTab={openWorkspaceTab}
+            onOpenSubagent={openWorkspaceSubagent}
             onRefreshDiff={refreshSessionFileChanges}
             onResizeStart={handleDiffPanelResizeStart}
             onSelectDiffPath={setSelectedDiffPath}

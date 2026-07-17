@@ -75,6 +75,9 @@ describe("chat workspace panel", () => {
     expect(chatSource).toContain("openWorkspaceFile");
     expect(chatSource).toContain("<SessionDiffPanel");
     expect(chatSource).toContain("<SubagentPanel");
+    expect(chatSource).toContain("<SubagentDetailPanel");
+    expect(chatSource).toContain("openSubagent");
+    expect(chatSource).toContain("onOpenSubagent");
     expect(chatSource).toContain('toggleWorkspaceTab("review")');
     expect(chatSource).toContain('toggleWorkspaceTab("subagents")');
     expect(panelSource).toContain('aria-label="Add workspace tool"');
@@ -170,7 +173,17 @@ describe("chat workspace panel", () => {
     expect(panelSource).toContain("WORKSPACE_SINGLETON_KINDS");
     expect(chatSource).toContain("tabIdRef");
     expect(chatSource).toContain('kind === "browser"');
-    expect(chatSource).toContain('current.some((instance) => instance.kind === "browser")');
+    expect(chatSource).toContain('tabs.some((instance) => instance.kind === "browser")');
+  });
+
+  test("opens each subagent run in a durable workspace tab", () => {
+    expect(chatSource).toContain(
+      'instance.kind === "subagents" && instance.pageKey === normalizedRunId'
+    );
+    expect(chatSource).toContain("id = `subagent-${(tabIdRef.current += 1)}`");
+    expect(chatSource).toContain("runId={instance.pageKey}");
+    expect(chatSource).toContain("previousSessionIdRef.current === sessionId");
+    expect(chatSource).toContain('instance.kind === "subagents" && instance.pageKey');
   });
 
   test("workspace tools remain mounted when the panel is hidden", () => {

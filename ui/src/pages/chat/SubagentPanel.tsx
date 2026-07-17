@@ -1,29 +1,21 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Loader2, Plus, Square, Trash2, X } from "lucide-react";
 import {
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  MessageSquare,
-  Plus,
-  Square,
-  Trash2,
-  X,
-} from "lucide-react";
+  type ReactElement,
+  type MouseEvent as ReactMouseEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { Badge, Button, Modal } from "@/components/ui";
 import {
   type Subagent,
-  useClearSubagent,
   useClearSubagentHistory,
   useKillSubagent,
   useSpawnSubagent,
-  useSubagent,
   useSubagents,
 } from "@/hooks/useApi";
 import { connectStatusStream } from "@/lib/status-stream";
-import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
 import { useUIStore } from "@/stores/uiStore";
-import { Badge, Button, Modal } from "@/components/ui";
 import { SubagentIcon } from "./SubagentIcon";
 import {
   clampSubagentPanelWidth,
@@ -36,7 +28,7 @@ interface SubagentPanelProps {
   embedded?: boolean;
   isOpen: boolean;
   onClose: () => void;
-  onViewSession?: (sessionKey: string) => void;
+  onOpenSubagent?: (runId: string, title: string) => void;
   sessionId: string | null;
   workspaceDir?: string | null;
 }
@@ -59,174 +51,46 @@ function statusVariant(status: Subagent["status"]): "success" | "error" | "defau
   return "default";
 }
 
-function formatJson(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const record = value as Record<string, unknown>;
-    for (const key of ["content", "output", "stdout"]) {
-      if (typeof record[key] === "string" && record[key].trim()) return record[key];
-    }
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-function SubagentTimeline({ subagent }: { subagent: Subagent }) {
-  const activities = useMemo(
-    () => [...(subagent.activities || [])].sort((a, b) => a.timestamp - b.timestamp),
-    [subagent.activities]
-  );
-  const toolCalls = useMemo(
-    () =>
-      [...(subagent.toolCalls || [])].sort(
-        (a, b) =>
-          (a.timeline_index ?? Number.MAX_SAFE_INTEGER) -
-          (b.timeline_index ?? Number.MAX_SAFE_INTEGER)
-      ),
-    [subagent.toolCalls]
-  );
-  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
-
-  return (
-    <div className="space-y-4">
-      {activities.length > 0 && (
-        <section>
-          <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            Activity
-          </h4>
-          <div className="space-y-1.5 border-l border-white/10 pl-3">
-            {activities.map((activity) => (
-              <div key={activity.id} className="chat-activity-text flex gap-2 text-gray-400">
-                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-500" />
-                <div className="min-w-0">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {preprocessChatMarkdown(activity.text)}
-                  </ReactMarkdown>
-                  {activity.toolName && activity.toolName !== "__thought" && (
-                    <span className="chat-meta-text mt-0.5 block font-mono text-gray-600">
-                      {activity.toolName} · {activity.phase}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {subagent.thinking && activities.every((activity) => activity.toolName !== "__thought") && (
-        <section>
-          <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            Thinking
-          </h4>
-          <div className="chat-thought-text max-h-52 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-3 text-gray-400">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {preprocessChatMarkdown(subagent.thinking)}
-            </ReactMarkdown>
-          </div>
-        </section>
-      )}
-
-      {toolCalls.length > 0 && (
-        <section>
-          <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            Tool calls
-          </h4>
-          <div className="space-y-1.5">
-            {toolCalls.map((toolCall, index) => {
-              const key = toolCall.id || `${toolCall.name}-${index}`;
-              const expanded = expandedTools.has(key);
-              return (
-                <div
-                  key={key}
-                  className="overflow-hidden rounded-lg border border-white/10 bg-black/20"
-                >
-                  <button
-                    type="button"
-                    className="chat-activity-text flex w-full items-center gap-2 px-3 py-2 text-left text-gray-300 hover:bg-white/[0.04]"
-                    onClick={() =>
-                      setExpandedTools((current) => {
-                        const next = new Set(current);
-                        if (next.has(key)) next.delete(key);
-                        else next.add(key);
-                        return next;
-                      })
-                    }
-                  >
-                    {expanded ? (
-                      <ChevronDown className="h-3 w-3" />
-                    ) : (
-                      <ChevronRight className="h-3 w-3" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate font-mono">{toolCall.name}</span>
-                    <span className="chat-meta-text capitalize text-gray-600">
-                      {toolCall.status || "completed"}
-                    </span>
-                  </button>
-                  {expanded && (
-                    <div className="grid gap-2 border-t border-white/10 p-2.5">
-                      {toolCall.args && Object.keys(toolCall.args).length > 0 && (
-                        <div>
-                          <div className="chat-meta-text mb-1 uppercase text-gray-600">
-                            Arguments
-                          </div>
-                          <pre className="chat-code-text max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-black/30 p-2 text-gray-400">
-                            {formatJson(toolCall.args)}
-                          </pre>
-                        </div>
-                      )}
-                      <div>
-                        <div className="chat-meta-text mb-1 uppercase text-gray-600">Output</div>
-                        <pre className="chat-code-text max-h-56 overflow-auto whitespace-pre-wrap break-all rounded bg-black/30 p-2 text-gray-300">
-                          {formatJson(toolCall.result)}
-                        </pre>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-    </div>
-  );
-}
-
 export function SubagentPanel({
   agentId,
   embedded = false,
   isOpen,
   onClose,
-  onViewSession,
+  onOpenSubagent,
   sessionId,
   workspaceDir,
-}: SubagentPanelProps) {
+}: SubagentPanelProps): ReactElement | null {
   const { data: subagents = [], isLoading, refetch } = useSubagents(sessionId);
   const spawnSubagent = useSpawnSubagent();
   const killSubagent = useKillSubagent();
   const clearHistory = useClearSubagentHistory();
-  const clearSubagent = useClearSubagent();
   const [newTask, setNewTask] = useState("");
   const [showSpawnModal, setShowSpawnModal] = useState(false);
   const [showClearModal, setShowClearModal] = useState(false);
-  const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null);
   const [panelWidth, setPanelWidth] = useState(readSubagentPanelWidth);
-  const { data: selectedSubagent, isLoading: detailLoading } = useSubagent(selectedSubagentId);
   const subagentRefreshTimerRef = useRef<number | null>(null);
+  const subagentSessionKeysRef = useRef<Set<string>>(new Set());
   const panelResizeCleanupRef = useRef<(() => void) | null>(null);
   const completedCount = subagents.filter(
     (subagent) => subagent.status !== "running" && subagent.status !== "pending"
   ).length;
 
   useEffect(() => {
+    subagentSessionKeysRef.current = new Set(
+      subagents.map((subagent) => subagent.sessionKey).filter(Boolean)
+    );
+  }, [subagents]);
+
+  useEffect(() => {
     const disconnect = connectStatusStream({
       onEvent: (event) => {
-        if (!event || typeof event !== "object") return;
-        if (event.type !== "status" && event.type !== "task_completed") return;
+        if (
+          event.type !== "status" ||
+          !event.sessionId ||
+          !subagentSessionKeysRef.current.has(event.sessionId)
+        ) {
+          return;
+        }
         if (subagentRefreshTimerRef.current !== null) {
           window.clearTimeout(subagentRefreshTimerRef.current);
         }
@@ -243,10 +107,6 @@ export function SubagentPanel({
       }
     };
   }, [refetch]);
-
-  useEffect(() => {
-    setSelectedSubagentId(null);
-  }, [sessionId]);
 
   useEffect(() => {
     const handleWindowResize = () => {
@@ -315,15 +175,17 @@ export function SubagentPanel({
     const task = newTask.trim();
     if (!task || !sessionId || spawnSubagent.isPending) return;
     try {
-      await spawnSubagent.mutateAsync({
+      const label = `Task: ${task.slice(0, 30)}${task.length > 30 ? "..." : ""}`;
+      const spawned = await spawnSubagent.mutateAsync({
         task,
-        label: `Task: ${task.slice(0, 30)}${task.length > 30 ? "..." : ""}`,
+        label,
         agentId,
         workspaceDir: workspaceDir || undefined,
         requesterSessionId: sessionId,
       });
       setNewTask("");
       setShowSpawnModal(false);
+      onOpenSubagent?.(spawned.subagentId, label);
     } catch (error) {
       useUIStore
         .getState()
@@ -426,14 +288,14 @@ export function SubagentPanel({
                 <button
                   type="button"
                   className="min-w-0 flex-1 text-left"
-                  onClick={() => setSelectedSubagentId(subagent.id)}
+                  onClick={() => onOpenSubagent?.(subagent.id, subagent.label)}
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[12px] font-medium text-gray-200">
                       {subagent.label}
                     </p>
                     <p className="mt-0.5 text-[10px] text-gray-600">
-                      {subagent.toolCallCount} tools ·{" "}
+                      {subagent.activityCount} updates · {subagent.toolCallCount} tools ·{" "}
                       {new Date(subagent.createdAt).toLocaleTimeString()}
                     </p>
                   </div>
@@ -525,78 +387,6 @@ export function SubagentPanel({
             </Button>
           </div>
         </div>
-      </Modal>
-
-      <Modal
-        isOpen={!!selectedSubagentId}
-        onClose={() => setSelectedSubagentId(null)}
-        title={selectedSubagent?.label || "Subagent Details"}
-        size="lg"
-      >
-        {detailLoading || !selectedSubagent ? (
-          <div className="py-12 text-center text-gray-500">
-            <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <Badge variant={statusVariant(selectedSubagent.status)}>
-                {selectedSubagent.status}
-              </Badge>
-              <span className="text-[11px] text-gray-600">
-                {selectedSubagent.toolCallCount} tool{" "}
-                {selectedSubagent.toolCallCount === 1 ? "call" : "calls"}
-              </span>
-            </div>
-            <div className="chat-activity-text rounded-lg border border-white/10 bg-white/[0.03] p-3 text-gray-300 whitespace-pre-wrap">
-              {selectedSubagent.task}
-            </div>
-            <SubagentTimeline subagent={selectedSubagent} />
-            {(selectedSubagent.result || selectedSubagent.error) && (
-              <section>
-                <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                  Final output
-                </h4>
-                <div className="chat-activity-text max-h-64 overflow-auto rounded-lg border border-white/10 bg-black/20 p-3 text-gray-300">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {preprocessChatMarkdown(
-                      selectedSubagent.result || selectedSubagent.error || ""
-                    )}
-                  </ReactMarkdown>
-                </div>
-              </section>
-            )}
-            <div className="flex flex-wrap justify-end gap-2 border-t border-white/10 pt-4">
-              {onViewSession && (
-                <Button
-                  variant="secondary"
-                  onClick={() => onViewSession(selectedSubagent.sessionKey)}
-                >
-                  <MessageSquare className="mr-2 h-4 w-4" /> View Session
-                </Button>
-              )}
-              {selectedSubagent.status === "running" ? (
-                <Button
-                  variant="danger"
-                  onClick={() => void killSubagent.mutateAsync(selectedSubagent.id)}
-                >
-                  <Square className="mr-2 h-4 w-4" /> Stop
-                </Button>
-              ) : (
-                <Button
-                  variant="danger"
-                  disabled={clearSubagent.isPending}
-                  onClick={async () => {
-                    await clearSubagent.mutateAsync(selectedSubagent.id);
-                    setSelectedSubagentId(null);
-                  }}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" /> Clear
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
       </Modal>
     </>
   );

@@ -1076,8 +1076,11 @@ export function useSubagent(id?: string | null) {
       throw new Error(response.error || "Failed to fetch subagent details");
     },
     enabled: !!id,
+    refetchOnWindowFocus: true,
     refetchInterval: (query) =>
-      (query.state.data as Subagent | null)?.status === "running" ? LIST_POLL_INTERVAL_MS : false,
+      ["pending", "running"].includes((query.state.data as Subagent | null)?.status || "")
+        ? 2_000
+        : false,
   });
 }
 

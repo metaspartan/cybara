@@ -519,6 +519,28 @@ function recordSubagentActivity(
   return true;
 }
 
+function recordSubagentToolCall(
+  toolCalls: subagentRegistry.SubagentToolCall[],
+  payload: StatusPayload
+): boolean {
+  const phase = statusPhase(payload);
+  if (!phase || (!payload.toolName && !payload.toolCallId)) return false;
+  const id = payload.toolCallId || `${payload.toolName}-${payload.timestamp}`;
+  const existingIndex = toolCalls.findIndex((toolCall) => toolCall.id === id);
+  const status = phase === "start" ? "executing" : phase === "result" ? "completed" : "failed";
+  const next: subagentRegistry.SubagentToolCall = {
+    id,
+    name: payload.toolName || "tool",
+    result: phase === "start" ? null : payload.detail || null,
+    status,
+    timeline_index:
+      existingIndex >= 0 ? toolCalls[existingIndex]?.timeline_index : toolCalls.length,
+  };
+  if (existingIndex >= 0) toolCalls[existingIndex] = next;
+  else toolCalls.push(next);
+  return true;
+}
+
 async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Promise<void> {
   const session = sessions.get(sessionId);
   if (!session) return;
@@ -529,12 +551,15 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
   }
 
   const activities: subagentRegistry.SubagentActivity[] = [];
+  const liveToolCalls: subagentRegistry.SubagentToolCall[] = [];
   const abortController = new AbortController();
   subagentAbortControllers.set(sessionId, abortController);
   const stopStatusCapture = onStatus((payload) => {
     if (payload.sessionId !== sessionId) return;
-    if (recordSubagentActivity(activities, payload) && run) {
-      subagentRegistry.updateRunDetails(run.runId, { activities });
+    const activityChanged = recordSubagentActivity(activities, payload);
+    const toolCallChanged = recordSubagentToolCall(liveToolCalls, payload);
+    if ((activityChanged || toolCallChanged) && run) {
+      subagentRegistry.updateRunDetails(run.runId, { activities, toolCalls: liveToolCalls });
     }
   });
 
