@@ -166,5 +166,10 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/metaspartan/cybara.git"
+  },
+  "knip": {
+    "ignore": [
+      "tests/fixtures/session-crash-recovery-worker.ts"
+    ]
   }
 }

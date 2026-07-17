@@ -24,9 +24,11 @@ import { getRunBySessionKey } from "../core/subagent-registry";
 import { getSubagentSession } from "../core/tools/handlers/index";
 import { getRateLimitStatus } from "../core/tools/index";
 import { applyActiveAgentToSession } from "./chat-agent-prompt";
+import { recoverInterruptedSessionMessages } from "./chat-run-recovery";
 import {
   buildLastMessagePreview,
   buildMemorySessionListEntries,
+  type ChatSessionAgentUpdate,
   cacheChatSession,
   chatSessions,
   countVisibleSessionMessages,
@@ -37,13 +39,13 @@ import {
   persistedSessionIndex,
   persistedSessionToIndexEntry,
   removePersistedSessionIndex,
+  type SessionListEntry,
   sortSessionListEntries,
   upsertPersistedSessionIndex,
-  type ChatSessionAgentUpdate,
-  type SessionListEntry,
 } from "./chat-runtime-state";
 import type { ChatMessage } from "./chat-types";
 import { mergeSessionTranscriptMessages } from "./session-transcript";
+
 export { stripThinkingTags } from "./chat-formatting";
 export {
   formatProcessActivityFromToolCall,
@@ -141,6 +143,11 @@ export async function getSession(sessionId: string) {
   const indexed = persistedSessionIndex.get(sessionId);
   const persisted = await loadPersistedSession(sessionId);
   if (persisted) {
+    const recoveredMessages = await recoverInterruptedSessionMessages(
+      sessionId,
+      persisted.agentId,
+      persisted.messages
+    );
     const modelMetadata = indexed?.modelMetadata ?? resolveSessionModelMetadata(persisted.agentId);
     const resolvedTitle = shouldRegenerateSessionTitle(persisted.title)
       ? stripSessionTitleAgentPrefix(deriveSessionTitleFromMessages(persisted.messages), [
@@ -158,7 +165,7 @@ export async function getSession(sessionId: string) {
       id: sessionId,
       agentId: persisted.agentId,
       title: resolvedTitle,
-      messages: persisted.contextMessages ?? persisted.messages,
+      messages: persisted.contextMessages ?? recoveredMessages,
       createdAt,
       updatedAt,
       workspaceDir,
@@ -170,11 +177,11 @@ export async function getSession(sessionId: string) {
       id: sessionId,
       agentId: persisted.agentId,
       title: resolvedTitle,
-      messageCount: countVisibleSessionMessages(persisted.messages),
+      messageCount: countVisibleSessionMessages(recoveredMessages),
       createdAt,
       updatedAt,
       workspaceDir,
-      lastMessage: buildLastMessagePreview(persisted.messages[persisted.messages.length - 1]),
+      lastMessage: buildLastMessagePreview(recoveredMessages[recoveredMessages.length - 1]),
       modelMetadata,
     });
     return restoredSession;
@@ -253,7 +260,12 @@ export async function getSessionMessages(sessionId: string): Promise<ChatMessage
   if ("isSubagent" in session && session.isSubagent === true) return session.messages || [];
   const persisted = await loadPersistedSession(sessionId);
   if (!persisted) return session.messages || [];
-  return mergeSessionTranscriptMessages(persisted.messages, session.messages || []);
+  const recoveredMessages = await recoverInterruptedSessionMessages(
+    sessionId,
+    persisted.agentId,
+    persisted.messages
+  );
+  return mergeSessionTranscriptMessages(recoveredMessages, session.messages || []);
 }
 
 function normalizeSessionPageOptions(options?: { limit?: number; offset?: number }): {

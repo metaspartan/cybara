@@ -24,4 +24,10 @@ if [ "$ready" -ne 1 ]; then
   exit 1
 fi
 
+DASHBOARD_HTML="$(curl --fail --silent --show-error http://127.0.0.1:4269/)"
+printf '%s' "$DASHBOARD_HTML" | grep -q '<div id="root"></div>'
+ASSET_PATH="$(printf '%s' "$DASHBOARD_HTML" | grep -oE '(src|href)="[^"]+\.(js|css)"' | head -1 | cut -d'"' -f2)"
+test -n "$ASSET_PATH"
+curl --fail --silent --show-error "http://127.0.0.1:4269${ASSET_PATH}" >/dev/null
+
 "$BINARY" stop

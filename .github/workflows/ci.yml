@@ -104,6 +104,9 @@ jobs:
       - name: Install root dependencies
         run: bash scripts/ci-install.sh --ignore-scripts && bun run scripts/postinstall.ts
 
+      - name: Build UI
+        run: cd ui && bash ../scripts/ci-install.sh && bun run build
+
       - name: Build Darwin x64 CLI
         env:
           CYBARA_BUILD_COMMIT: ${{ github.sha }}

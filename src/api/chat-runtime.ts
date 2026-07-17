@@ -1,23 +1,23 @@
-import { agentManager, type AgentMessage } from "../core/agent";
+import { type AgentMessage, agentManager } from "../core/agent";
 import { recordCompletedTrajectory } from "../core/agent-eval";
 import { emitAgentHook } from "../core/agent-hooks";
 import { agentSupportsImages } from "../core/agent-image-capabilities";
 import {
+  type AgentTransferEnvelope,
   buildAgentTransferMessages,
   findAgentTransferEnvelope,
-  type AgentTransferEnvelope,
 } from "../core/agent-transfer";
 import { maybeRunBackgroundReview } from "../core/background-review";
 import { resolveChannelAgentId } from "../core/channels/agent-selection";
-import {
-  buildMemoryFlushMessages,
-  formatToolResultPromptBlock,
-} from "../core/chat-token-optimization";
 import { persistImageAttachments } from "../core/chat/attachments";
 import {
   applyChatCapabilityInstruction,
   resolveChatCapabilityMentions,
 } from "../core/chat/capability-mentions";
+import {
+  buildMemoryFlushMessages,
+  formatToolResultPromptBlock,
+} from "../core/chat-token-optimization";
 import { stopComputerUseTrajectoryForSession } from "../core/computer-use";
 import { config } from "../core/config";
 import { hasImages, sanitizeAgentImages } from "../core/llm/image-blocks";
@@ -46,6 +46,7 @@ import {
   summarizeSessionTokenUsage,
   upsertPersistedSessionMessage,
 } from "../core/session-context";
+import { getActiveSessionRunId } from "../core/session-event-ledger";
 import { handleSessionGoalCommand } from "../core/session-goals";
 import { extractLatestSessionPlan } from "../core/session-plan";
 import {
@@ -58,8 +59,8 @@ import {
   broadcastStatusSnapshot,
   getSessionRunStatusSnapshot,
   isSessionStatusActive,
-  setSessionPendingChatMessages,
   type PendingChatMessageSnapshot,
+  setSessionPendingChatMessages,
 } from "../core/status";
 import { handleMemorySave } from "../core/tools/handlers/memory";
 import {
@@ -94,8 +95,10 @@ import {
   deferredSessionMessages,
   generateSessionTitleViaModel,
   getResidentChatSession,
+  type InMemoryChatSession,
   interruptedChatTurnSteeringIds,
   MAX_PENDING_CHAT_MESSAGES_PER_SESSION,
+  type PendingChatItem,
   parseIsoTimestampMs,
   pendingChatCompletions,
   pendingChatDrainScheduled,
@@ -105,8 +108,6 @@ import {
   restorePersistedChatSessionForChat,
   stoppedChatTurnControllers,
   upsertPersistedSessionIndex,
-  type InMemoryChatSession,
-  type PendingChatItem,
 } from "./chat-runtime-state";
 import {
   collectAttachedProcessActivityIds,
@@ -129,6 +130,7 @@ import type {
   ChatResponse,
   SteerPendingChatMessageOptions,
 } from "./chat-types";
+
 export { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 export { stripThinkingTags } from "./chat-formatting";
 export {
@@ -136,6 +138,7 @@ export {
   type ProcessActivityInfo,
   type ToolCallInfo,
 } from "./chat-process-activities";
+
 const log = createLogger("Chat");
 let pendingChatSequence = 0;
 
@@ -1802,6 +1805,7 @@ async function handleChatTurn(
     tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
     process_activities: visibleProcessActivities,
     agent_transfers: agentTransfers.length > 0 ? agentTransfers : undefined,
+    run_id: getActiveSessionRunId(session.id),
   };
   appendAssistantMessage(session, assistantMessage);
   if (!session.title || shouldRegenerateSessionTitle(session.title)) {
@@ -1817,6 +1821,7 @@ async function handleChatTurn(
       tool_calls: allToolCalls,
       process_activities: assistantMessage.process_activities,
       agent_transfers: assistantMessage.agent_transfers,
+      run_id: assistantMessage.run_id,
     },
   });
   persistActiveSessionContext(session);

@@ -206,6 +206,7 @@ describe("app release surface wiring", () => {
     const workflow = read(".github/workflows/ci.yml");
 
     expect(workflow).toContain("darwin-x64-cli-build:");
+    expect(workflow).toContain("cd ui && bash ../scripts/ci-install.sh && bun run build");
     expect(workflow).toContain(
       "bun run scripts/build-standalone-cli.ts bun-darwin-x64 cybara-darwin-x64"
     );

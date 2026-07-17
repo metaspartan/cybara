@@ -1,17 +1,17 @@
-import db, { tables } from "./database";
-import { agentManager } from "./agent";
-import { providerManager, providers } from "./providers";
-import type { ChatMessage } from "../api/chat";
-import { attachmentsToImages } from "./chat/attachments";
-import { deriveSessionTitleFromMessages, normalizeSessionTitle } from "./session-title";
+import { createHash } from "crypto";
 import { existsSync, statSync } from "fs";
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
-import { createLogger } from "./logger";
-import { createHash } from "crypto";
+import type { ChatMessage } from "../api/chat";
+import { agentManager } from "./agent";
+import { attachmentsToImages } from "./chat/attachments";
 import { compactChatContentForPrompt } from "./chat-token-optimization";
-import { capSessionMessageMetadata } from "./session-message-metadata";
+import db, { tables } from "./database";
 import { sanitizeAssistantContent } from "./llm/text-tool-calls";
+import { createLogger } from "./logger";
+import { providerManager, providers } from "./providers";
+import { capSessionMessageMetadata } from "./session-message-metadata";
+import { deriveSessionTitleFromMessages, normalizeSessionTitle } from "./session-title";
 
 const log = createLogger("Session");
 
@@ -41,6 +41,8 @@ type SessionMessageMetadata = Partial<
     | "tool_calls"
     | "process_activities"
     | "agent_transfers"
+    | "run_id"
+    | "interrupted"
   >
 >;
 
@@ -83,6 +85,12 @@ function serializeSessionMessageMetadata(
   }
   if (Array.isArray(message.agent_transfers) && message.agent_transfers.length > 0) {
     metadata.agent_transfers = message.agent_transfers;
+  }
+  if (typeof message.run_id === "string" && message.run_id.trim()) {
+    metadata.run_id = message.run_id.trim();
+  }
+  if (message.interrupted === true) {
+    metadata.interrupted = true;
   }
   return Object.keys(metadata).length > 0
     ? capSessionMessageMetadata(JSON.stringify(metadata))

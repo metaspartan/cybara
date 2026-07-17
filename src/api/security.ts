@@ -11,6 +11,7 @@ import {
   normalizeMobileGatewayUrl,
 } from "../core/mobile-devices";
 import { cybaraDir } from "../core/paths";
+import { isProductionRuntime } from "../core/runtime/runtime-mode";
 
 const log = createLogger("Security");
 
@@ -102,7 +103,9 @@ function writePersistedSecuritySettings(settings: PersistedSecuritySettings): vo
   });
   try {
     chmodSync(SECURITY_SETTINGS_FILE, 0o600);
-  } catch {}
+  } catch {
+    void 0;
+  }
   cachedSecuritySettings = settings;
 }
 
@@ -188,7 +191,7 @@ function getOrCreateApiKey(): string {
 ║                                                                  ║
 ║  Send it as:    Authorization: Bearer <your key>                 ║
 ║                                                                  ║
-║  Localhost connections are allowed without auth in dev mode.     ║
+║  Browser clients can authenticate with the saved API key.        ║
 ║  Set CYBARA_API_KEY env var to override.                         ║
 ╚══════════════════════════════════════════════════════════════════╝
 `);
@@ -216,7 +219,7 @@ function getEffectiveApiKey(): string {
 
 function isLocalhostBypassAllowed(): boolean {
   if (process.env.CYBARA_REQUIRE_AUTH === "1") return false;
-  if (process.env.NODE_ENV === "production") return false;
+  if (isProductionRuntime()) return false;
   if (readPersistedSecuritySettings().requireAuthForLocalhost === true) return false;
   return true;
 }
@@ -721,8 +724,7 @@ export interface GatewayAuthSettings {
 export function getGatewayAuthSettings(): GatewayAuthSettings {
   const envKey = process.env.CYBARA_API_KEY?.trim();
   const key = config.apiKey;
-  const requireForced =
-    process.env.CYBARA_REQUIRE_AUTH === "1" || process.env.NODE_ENV === "production";
+  const requireForced = process.env.CYBARA_REQUIRE_AUTH === "1" || isProductionRuntime();
   return {
     apiKeyConfigured: Boolean(key),
     apiKeyPreview: key ? `${key.slice(0, 12)}…${key.slice(-4)}` : null,

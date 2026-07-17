@@ -1,7 +1,7 @@
 import type { ChatMessage } from "./chat";
 
 function messageIdentity(message: ChatMessage): string {
-  return `${message.role}\u0000${message.content}`;
+  return `${message.role}\u0000${message.run_id || ""}\u0000${message.content}`;
 }
 
 export function mergeSessionTranscriptMessages(

@@ -4,6 +4,7 @@ import { type SessionContextUsage, type SessionTokenUsage } from "../core/sessio
 import { type SessionPlanSnapshot } from "../core/session-plan";
 import { type PendingChatMessageSnapshot } from "../core/status";
 import { type ProcessActivityInfo, type ToolCallInfo } from "./chat-process-activities";
+
 export { stripThinkingTags } from "./chat-formatting";
 export {
   formatProcessActivityFromToolCall,
@@ -25,6 +26,8 @@ export interface ChatMessage {
   tool_calls?: ToolCallInfo[];
   process_activities?: ProcessActivityInfo[];
   agent_transfers?: AgentTransferEnvelope[];
+  run_id?: string;
+  interrupted?: boolean;
   /** Optional image inputs (vision) attached to a user message. */
   images?: AgentImage[];
   image_context?: string;

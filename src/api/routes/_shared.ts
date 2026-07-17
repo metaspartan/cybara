@@ -6,25 +6,26 @@
 import { existsSync, statSync } from "fs";
 import { readdir, stat } from "fs/promises";
 import { join } from "path";
-import type { MetricsEntry } from "../queries";
-import { cybaraDir, dataDir, memoryDir, logsDir, secureDir, userSkillsDir } from "../../core/paths";
 import { getArtifactsRootDir } from "../../core/artifacts";
-import { sanitizeTodoToolResult } from "../../core/session-plan";
-import type { ChatMessage } from "../chat";
-import type { WalletChain, WalletTokenChain } from "../../core/wallet";
 import { sanitizeAssistantContent } from "../../core/llm/text-tool-calls";
-import { sanitizeProcessThoughtText } from "../chat-formatting";
+import { cybaraDir, dataDir, logsDir, memoryDir, secureDir, userSkillsDir } from "../../core/paths";
+import {
+  type ProviderType,
+  providerManager,
+  providers,
+  resolveProviderType,
+} from "../../core/providers";
+import { sanitizeTodoToolResult } from "../../core/session-plan";
 import {
   extractScreenshotPathFromText,
   sanitizeToolMediaResult,
 } from "../../core/tool-media-result";
-import {
-  providerManager,
-  providers,
-  resolveProviderType,
-  type ProviderType,
-} from "../../core/providers";
+import type { WalletChain, WalletTokenChain } from "../../core/wallet";
+import type { ChatMessage } from "../chat";
+import { sanitizeProcessThoughtText } from "../chat-formatting";
+import type { MetricsEntry } from "../queries";
 import type { AuthResult } from "../security";
+
 export { isSessionStatusActive } from "../../core/status";
 
 export interface LspDiagnosticLike {
@@ -998,7 +999,7 @@ export function sanitizeSessionMessages(
   const truncateLargeFields = options?.includeFullToolCalls !== true;
   const MAX_RESULT_SIZE = truncateLargeFields ? 500 : 0;
   const MAX_ERROR_SIZE = truncateLargeFields ? 200 : 0;
-  const PROCESS_OPTIONS = truncateLargeFields ? { maxItems: 240, maxTextLength: 500 } : undefined;
+  const PROCESS_OPTIONS = truncateLargeFields ? { maxTextLength: 500 } : undefined;
   const DEFAULT_MAX_TOOL_CALLS = 50;
   const maxToolCallsRaw = options?.maxToolCalls;
   const MAX_TOOL_CALLS =

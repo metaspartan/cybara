@@ -300,12 +300,21 @@ function findMatchingStartActivityIndex(
   return -1;
 }
 
-function upsertSessionStatusSnapshot(payload: StatusPayload): void {
-  const sessionId = typeof payload.sessionId === "string" ? payload.sessionId.trim() : "";
-  if (!sessionId) return;
+function statusActivityId(payload: StatusPayload): string {
+  if (payload.runId && typeof payload.sequence === "number") {
+    return `${payload.runId}:${payload.sequence}`;
+  }
+  return `${payload.timestamp}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
-  const previous = sessionStatusSnapshots.get(sessionId);
-  const nextActivities = previous?.activities || [];
+export function reduceSessionStatusSnapshot(
+  previous: SessionStatusSnapshot | undefined,
+  payload: StatusPayload
+): SessionStatusSnapshot | null {
+  const sessionId = typeof payload.sessionId === "string" ? payload.sessionId.trim() : "";
+  if (!sessionId) return previous ?? null;
+
+  const nextActivities = previous?.activities.map((activity) => ({ ...activity })) || [];
   const phase = statusToPhase(payload.status, payload.toolPhase);
   const rawActivityText = sanitizeActivityText(payload.detail);
   const activityText =
@@ -320,7 +329,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
     if (phase === "start") {
       const startText = activityText || defaultToolActivityText(toolName, "start");
       nextActivities.push({
-        id: `${payload.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+        id: statusActivityId(payload),
         phase: "start",
         text: startText,
         timestamp: payload.timestamp,
@@ -354,7 +363,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
       } else {
         const fallbackText = activityText || defaultToolActivityText(toolName, phase);
         nextActivities.push({
-          id: `${payload.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+          id: statusActivityId(payload),
           phase,
           text: fallbackText,
           timestamp: payload.timestamp,
@@ -372,7 +381,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
       lastActivity.text.trim().toLowerCase() === activityText.toLowerCase();
     if (!duplicateThought) {
       nextActivities.push({
-        id: `${payload.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+        id: statusActivityId(payload),
         phase: "result",
         text: activityText,
         timestamp: payload.timestamp,
@@ -382,11 +391,10 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
   }
 
   if (payload.status === "idle") {
-    sessionStatusSnapshots.delete(sessionId);
-    return;
+    return null;
   }
 
-  sessionStatusSnapshots.set(sessionId, {
+  return {
     sessionId,
     runId: payload.runId || previous?.runId,
     sequence: payload.sequence ?? previous?.sequence,
@@ -395,7 +403,18 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
     detail: sanitizeActivityText(payload.detail),
     agentId: payload.agentId,
     activities: nextActivities,
-  });
+  };
+}
+
+function upsertSessionStatusSnapshot(payload: StatusPayload): void {
+  const sessionId = typeof payload.sessionId === "string" ? payload.sessionId.trim() : "";
+  if (!sessionId) return;
+  const next = reduceSessionStatusSnapshot(sessionStatusSnapshots.get(sessionId), payload);
+  if (!next) {
+    sessionStatusSnapshots.delete(sessionId);
+    return;
+  }
+  sessionStatusSnapshots.set(sessionId, next);
 }
 
 function cleanupStaleSnapshots(now = Date.now()): void {

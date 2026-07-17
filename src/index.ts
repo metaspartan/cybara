@@ -73,7 +73,9 @@ import { nearbyService } from "./core/nearby";
 import { listInstalledPlugins } from "./core/plugins";
 import { activateInstalledPluginRuntimes } from "./core/plugins/runtime";
 import { providerManager } from "./core/providers";
+import { getEmbeddedUiBundle, readEmbeddedUiIndex } from "./core/runtime/embedded-ui";
 import { resolveMediaFile } from "./core/runtime/media-files";
+import { isCompiledRuntime } from "./core/runtime/runtime-mode";
 import { readUiIndexContent } from "./core/runtime/ui-index";
 import { resolveUiPath } from "./core/runtime/ui-path";
 import { logSandboxRuntimeStatus } from "./core/sandbox";
@@ -97,7 +99,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 startNativeParentWatch();
 
-const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.includes("/bun");
+const isCompiledBinary = isCompiledRuntime();
 
 function discoverUiPath(): string {
   const firstCandidate = resolveUiPath({
@@ -134,24 +136,34 @@ function discoverUiPath(): string {
 }
 
 const uiPath = discoverUiPath();
+const embeddedUi = getEmbeddedUiBundle();
 let uiContent: string;
 let uiExists = false;
+let externalUiExists = false;
 
 try {
   uiContent = readFileSync(join(uiPath, "index.html"), "utf-8");
   uiExists = true;
+  externalUiExists = true;
   console.log(`[UI] Serving UI from: ${uiPath}`);
 } catch {
-  console.error(
-    `[UI] Failed to load UI index at ${join(uiPath, "index.html")} (execPath=${process.execPath}, cwd=${process.cwd()})`
-  );
-  uiContent = `<!DOCTYPE html><html><head><title>Cybara</title></head><body style="font-family: system-ui; background: #0a0a0f; color: #f0f0f5; padding: 40px;"><h1>Cybara</h1><p>UI not built. Run <code>cd ui && bun run build</code> to build the React app.</p></body></html>`;
+  const embeddedIndex = embeddedUi ? readEmbeddedUiIndex(embeddedUi) : undefined;
+  if (embeddedIndex) {
+    uiContent = embeddedIndex;
+    uiExists = true;
+    console.log("[UI] Serving embedded UI");
+  } else {
+    console.error(
+      `[UI] Failed to load UI index at ${join(uiPath, "index.html")} (execPath=${process.execPath}, cwd=${process.cwd()})`
+    );
+    uiContent = `<!DOCTYPE html><html><head><title>Cybara</title></head><body style="font-family: system-ui; background: #0a0a0f; color: #f0f0f5; padding: 40px;"><h1>Cybara</h1><p>UI not built. Run <code>cd ui && bun run build</code> to build the React app.</p></body></html>`;
+  }
 }
 
 function readUiIndex(): string {
   const raw = readUiIndexContent({
     uiPath,
-    uiExists,
+    uiExists: externalUiExists,
     fallbackContent: uiContent,
   });
   const basePath = getGatewayBasePath();
@@ -643,6 +655,38 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
 
       if (pathname === "/" || pathname === "/index.html" || !fileLikePath) {
         return new Response(readUiIndex(), { headers: htmlHeaders });
+      }
+
+      if (!externalUiExists) {
+        const embeddedAssetPath = embeddedUi?.assets[pathname];
+        if (!embeddedAssetPath) {
+          return new Response("Static asset not found", {
+            status: 404,
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8",
+              ...commonSecurityHeaders,
+            },
+          });
+        }
+        const ext = pathname.substring(pathname.lastIndexOf("."));
+        const contentType = mimeTypes[ext] || "application/octet-stream";
+        try {
+          return new Response(readFileSync(embeddedAssetPath), {
+            headers: {
+              "Content-Type": contentType,
+              "Cache-Control": cacheControlForStaticAsset(ext),
+              ...commonSecurityHeaders,
+            },
+          });
+        } catch {
+          return new Response("File error", {
+            status: 500,
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8",
+              ...commonSecurityHeaders,
+            },
+          });
+        }
       }
 
       const uiRoot = resolve(uiPath);

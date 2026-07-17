@@ -816,6 +816,18 @@ const stmts = {
       "SELECT * FROM session_events WHERE session_id = ? AND sequence > ? ORDER BY sequence ASC LIMIT ?"
     ),
     byRun: prepare("SELECT * FROM session_events WHERE run_id = ? ORDER BY sequence ASC LIMIT ?"),
+    byRunAfter: prepare(
+      "SELECT * FROM session_events WHERE run_id = ? AND sequence > ? ORDER BY sequence ASC LIMIT ?"
+    ),
+    incompleteRuns: prepare(
+      `SELECT run_id as runId, MIN(sequence) as firstSequence, MAX(sequence) as lastSequence
+       FROM session_events
+       WHERE session_id = ?
+       GROUP BY run_id
+       HAVING SUM(CASE WHEN event_type = 'run_started' THEN 1 ELSE 0 END) > 0
+          AND SUM(CASE WHEN event_type = 'run_completed' THEN 1 ELSE 0 END) = 0
+       ORDER BY firstSequence ASC`
+    ),
     latestSequence: prepare(
       "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM session_events WHERE session_id = ?"
     ),
@@ -1381,6 +1393,9 @@ export const tables = {
     bySession: (sessionId: string, afterSequence = 0, limit = 1000) =>
       stmts.sessionEvents.bySession.all(sessionId, afterSequence, limit),
     byRun: (runId: string, limit = 1000) => stmts.sessionEvents.byRun.all(runId, limit),
+    byRunAfter: (runId: string, afterSequence = 0, limit = 1000) =>
+      stmts.sessionEvents.byRunAfter.all(runId, afterSequence, limit),
+    incompleteRuns: (sessionId: string) => stmts.sessionEvents.incompleteRuns.all(sessionId),
     latestSequence: (sessionId: string): number => {
       const row = stmts.sessionEvents.latestSequence.get(sessionId) as { sequence?: number } | null;
       return typeof row?.sequence === "number" ? row.sequence : 0;
