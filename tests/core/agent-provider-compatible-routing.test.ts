@@ -137,6 +137,80 @@ describe("Agent provider Google and compatible routing", () => {
     expect(requestHeaders.get("x-goog-api-key")).toBeNull();
   });
 
+  test("retries transient Google rate limits but not quota exhaustion", async () => {
+    let transientCalls = 0;
+    globalThis.fetch = (async () => {
+      transientCalls += 1;
+      if (transientCalls < 3) {
+        return Response.json(
+          { error: { message: "temporary rate limit" } },
+          { status: 429, headers: { "Retry-After": "0" } }
+        );
+      }
+      return Response.json({
+        candidates: [{ content: { parts: [{ text: "google-retry-ok" }] } }],
+        usageMetadata: { promptTokenCount: 7, candidatesTokenCount: 2, totalTokenCount: 9 },
+      });
+    }) as typeof fetch;
+
+    const transientProvider = providerManager.create({
+      provider: "google",
+      name: "Google Transient Retry Provider",
+      api_key: "google-transient-key",
+    });
+    createdProviderIds.push(transientProvider.id);
+    const transientAgent = agentManager.create({
+      name: "Google Transient Retry Agent",
+      type: "main",
+      provider_id: transientProvider.id,
+      model: "gemini-3-pro-preview",
+      tools: [],
+    });
+    createdAgentIds.push(transientAgent.id);
+
+    const transientResult = await agentManager.execute(
+      transientAgent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "google-transient-retry-session" }
+    );
+
+    expect(transientResult.content).toBe("google-retry-ok");
+    expect(transientCalls).toBe(3);
+
+    let exhaustedCalls = 0;
+    globalThis.fetch = (async () => {
+      exhaustedCalls += 1;
+      return Response.json(
+        { error: { message: "weekly quota exceeded" } },
+        { status: 429, headers: { "Retry-After": "0" } }
+      );
+    }) as typeof fetch;
+
+    const exhaustedProvider = providerManager.create({
+      provider: "google",
+      name: "Google Exhausted Provider",
+      api_key: "google-exhausted-key",
+    });
+    createdProviderIds.push(exhaustedProvider.id);
+    const exhaustedAgent = agentManager.create({
+      name: "Google Exhausted Agent",
+      type: "main",
+      provider_id: exhaustedProvider.id,
+      model: "gemini-3-pro-preview",
+      tools: [],
+    });
+    createdAgentIds.push(exhaustedAgent.id);
+
+    const exhaustedResult = await agentManager.execute(
+      exhaustedAgent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "google-exhausted-session" }
+    );
+
+    expect(exhaustedResult.content.toLowerCase()).toContain("quota");
+    expect(exhaustedCalls).toBe(1);
+  });
+
   test("applies static provider headers for openai-compatible requests", async () => {
     let requestHeaders = new Headers();
 
@@ -702,11 +776,14 @@ describe("Agent provider Google and compatible routing", () => {
   });
 
   test("records provider cooldown when openai-codex returns 429", async () => {
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ error: { message: "rate limit reached" } }), {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ error: { message: "rate limit reached" } }), {
         status: 429,
-        headers: { "Content-Type": "application/json", "Retry-After": "7" },
-      })) as typeof fetch;
+        headers: { "Content-Type": "application/json", "Retry-After": "0" },
+      });
+    }) as typeof fetch;
 
     const provider = providerManager.create({
       provider: "openai-codex",
@@ -731,6 +808,7 @@ describe("Agent provider Google and compatible routing", () => {
     );
 
     expect(result.content.toLowerCase()).toContain("rate limit");
+    expect(calls).toBe(4);
     const availability = getProviderAvailability(provider.id);
     expect(availability.inCooldown).toBe(true);
     expect(availability.available).toBe(false);

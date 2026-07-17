@@ -291,7 +291,7 @@ describe("Agent provider API-family routing", () => {
     ]);
   });
 
-  test("routes Grok OAuth through the Grok Build proxy and retries one transient 429", async () => {
+  test("routes Grok OAuth through the Grok Build proxy and retries transient 429s", async () => {
     let requestUrl = "";
     let requestHeaders = new Headers();
     let requestBody: Record<string, unknown> = {};
@@ -302,7 +302,7 @@ describe("Agent provider API-family routing", () => {
       requestUrl = String(input);
       requestHeaders = new Headers(init?.headers);
       requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
-      if (calls === 1) {
+      if (calls < 3) {
         return Response.json(
           { error: { message: "temporary rate limit" } },
           { status: 429, headers: { "Retry-After": "0" } }
@@ -342,7 +342,7 @@ describe("Agent provider API-family routing", () => {
     );
 
     expect(result.content).toBe("grok-ok");
-    expect(calls).toBe(2);
+    expect(calls).toBe(3);
     expect(requestUrl).toBe("https://cli-chat-proxy.grok.com/v1/responses");
     expect(requestHeaders.get("Authorization")).toBe("Bearer grok-oauth-token");
     expect(requestHeaders.get("X-XAI-Token-Auth")).toBe("xai-grok-cli");
@@ -361,6 +361,138 @@ describe("Agent provider API-family routing", () => {
     expect(requestBody.stream).toBe(true);
     expect(requestBody.store).toBe(false);
     expect(Array.isArray(requestBody.input)).toBe(true);
+  });
+
+  test("does not retry Grok weekly quota exhaustion", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json(
+        { error: { message: "weekly quota exceeded" } },
+        { status: 429, headers: { "Retry-After": "0" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "xai-oauth",
+      name: "Grok Exhausted OAuth Provider",
+      access_token: "grok-exhausted-token",
+      base_url: "https://api.x.ai/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Grok Exhausted OAuth Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "grok-4.5",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "grok-exhausted-session" }
+    );
+
+    expect(result.content.toLowerCase()).toContain("quota");
+    expect(calls).toBe(1);
+  });
+
+  test("refreshes Grok OAuth in place when a tool loop crosses token expiry", async () => {
+    const chatAuthorizations: string[] = [];
+    let chatCalls = 0;
+    let refreshCalls = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://auth.x.ai/oauth2/token") {
+        refreshCalls += 1;
+        return Response.json({
+          access_token: "fresh-grok-loop-token",
+          refresh_token: "fresh-grok-loop-refresh",
+          expires_in: 3600,
+        });
+      }
+
+      chatCalls += 1;
+      chatAuthorizations.push(new Headers(init?.headers).get("Authorization") || "");
+      if (chatCalls === 1) {
+        return Response.json({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: "",
+                tool_calls: [
+                  {
+                    id: "grok-loop-calc",
+                    type: "function",
+                    function: { name: "calc", arguments: '{"expression":"6 * 7"}' },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+        });
+      }
+      if (chatCalls === 2) {
+        return Response.json({ error: { message: "access token expired" } }, { status: 401 });
+      }
+      return Response.json({
+        choices: [
+          {
+            message: { role: "assistant", content: "GROK_LOOP_OK 42" },
+          },
+        ],
+        usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "xai-oauth",
+      name: "Grok Long Loop OAuth Provider",
+      access_token: "stale-grok-loop-token",
+      refresh_token: "stale-grok-loop-refresh",
+      expires_at: Date.now() + 3_600_000,
+      base_url: "https://api.x.ai/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Grok Long Loop OAuth Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "grok-4.5",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("tool_approval_mode", "always_allow");
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate six times seven" }],
+      { useTools: true, sessionId: "grok-long-loop-refresh-session" }
+    );
+
+    expect(result.content).toBe("GROK_LOOP_OK 42");
+    expect(result.tool_calls).toHaveLength(1);
+    expect(chatCalls).toBe(3);
+    expect(refreshCalls).toBe(1);
+    expect(chatAuthorizations).toEqual([
+      "Bearer stale-grok-loop-token",
+      "Bearer stale-grok-loop-token",
+      "Bearer fresh-grok-loop-token",
+    ]);
   });
 
   test("model router resolves provider-type routes without changing the selected agent", async () => {
@@ -616,6 +748,178 @@ describe("Agent provider API-family routing", () => {
     expect(requestHeaders.get("authorization")).toBe("Bearer oauth-access-token");
     expect(requestHeaders.get("x-api-key")).toBeNull();
     expect(requestHeaders.get("anthropic-beta")).toBe("oauth-2025-04-20");
+  });
+
+  test("refreshes MiniMax Portal OAuth in place when a tool loop crosses token expiry", async () => {
+    const chatAuthorizations: string[] = [];
+    let chatCalls = 0;
+    let refreshCalls = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://account.minimax.io/oauth2/token") {
+        refreshCalls += 1;
+        return Response.json({
+          access_token: "fresh-minimax-loop-token",
+          refresh_token: "fresh-minimax-loop-refresh",
+          expires_in: 3600,
+        });
+      }
+
+      chatCalls += 1;
+      chatAuthorizations.push(new Headers(init?.headers).get("Authorization") || "");
+      if (chatCalls === 1) {
+        return Response.json({
+          id: "minimax-loop-tool-response",
+          type: "message",
+          role: "assistant",
+          model: "MiniMax-M3",
+          content: [
+            {
+              type: "tool_use",
+              id: "minimax-loop-calc",
+              name: "calc",
+              input: { expression: "6 * 7" },
+            },
+          ],
+          usage: { input_tokens: 8, output_tokens: 3 },
+        });
+      }
+      if (chatCalls === 2) {
+        return Response.json({ error: { message: "access token expired" } }, { status: 401 });
+      }
+      return Response.json({
+        id: "minimax-loop-final-response",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M3",
+        content: [{ type: "text", text: "MINIMAX_LOOP_OK 42" }],
+        usage: { input_tokens: 12, output_tokens: 4 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "minimax-portal",
+      name: "MiniMax Portal Long Loop Provider",
+      access_token: "stale-minimax-loop-token",
+      refresh_token: "stale-minimax-loop-refresh",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "MiniMax Portal Long Loop Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "MiniMax-M3",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("tool_approval_mode", "always_allow");
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate six times seven" }],
+      { useTools: true, sessionId: "minimax-long-loop-refresh-session" }
+    );
+
+    expect(result.content).toBe("MINIMAX_LOOP_OK 42");
+    expect(result.tool_calls).toHaveLength(1);
+    expect(chatCalls).toBe(3);
+    expect(refreshCalls).toBe(1);
+    expect(chatAuthorizations).toEqual([
+      "Bearer stale-minimax-loop-token",
+      "Bearer stale-minimax-loop-token",
+      "Bearer fresh-minimax-loop-token",
+    ]);
+  });
+
+  test("retries transient MiniMax rate limits before returning a response", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls < 3) {
+        return Response.json(
+          { error: { message: "temporary rate limit" } },
+          { status: 429, headers: { "Retry-After": "0" } }
+        );
+      }
+      return Response.json({
+        id: "minimax-retry-response",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M3",
+        content: [{ type: "text", text: "minimax-retry-ok" }],
+        usage: { input_tokens: 5, output_tokens: 2 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "minimax",
+      name: "MiniMax Transient Retry Provider",
+      api_key: "minimax-transient-key",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "MiniMax Transient Retry Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "MiniMax-M3",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "minimax-transient-retry-session" }
+    );
+
+    expect(result.content).toBe("minimax-retry-ok");
+    expect(calls).toBe(3);
+  });
+
+  test("does not retry MiniMax plan exhaustion as a transient rate limit", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json(
+        { error: { message: "weekly quota exceeded" } },
+        { status: 429, headers: { "Retry-After": "0" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "minimax",
+      name: "MiniMax Exhausted Provider",
+      api_key: "minimax-exhausted-key",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "MiniMax Exhausted Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "MiniMax-M3",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "minimax-exhausted-session" }
+    );
+
+    expect(result.content.toLowerCase()).toContain("quota");
+    expect(calls).toBe(1);
   });
 
   test("routes Devin accounts through the native transport validation", async () => {
