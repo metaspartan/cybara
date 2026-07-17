@@ -22,7 +22,7 @@ import {
   formatTokenUsageLine,
   messagesFromDetail,
   subagentsFromResponse,
-  tasksFromResponse,
+  tasksForSession,
   type TuiEnvironmentSnapshot,
   type TuiLspSummary,
   type TuiSubagentSummary,
@@ -368,9 +368,7 @@ export function InteractiveChatTUI({
       return [];
     }
     const response = await fetchAPI<unknown>("/api/tasks");
-    const next = tasksFromResponse(response).filter(
-      (task) => task.sessionId === targetSessionId,
-    );
+    const next = tasksForSession(response, targetSessionId);
     setTasks(next);
     return next;
   }, [fetchAPI, localSessionId]);

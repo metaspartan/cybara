@@ -878,6 +878,9 @@ final class GatewayClientModelTests: XCTestCase {
     func testNativeToolTimelineHidesProviderRecoveryStatus() {
         XCTAssertTrue(nativeIsGenericStatusLabel("Provider rate limited; retrying (2/5)..."))
         XCTAssertTrue(nativeIsGenericStatusLabel("Provider session refreshed; continuing..."))
+        XCTAssertTrue(nativeIsGenericStatusLabel("Thinking..."))
+        XCTAssertTrue(nativeIsGenericStatusLabel("Generating response..."))
+        XCTAssertTrue(nativeIsGenericStatusLabel("Working..."))
         XCTAssertFalse(nativeIsGenericStatusLabel("Provider rate limit hit (429)."))
     }
 

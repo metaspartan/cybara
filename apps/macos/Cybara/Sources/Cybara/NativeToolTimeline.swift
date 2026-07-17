@@ -1257,6 +1257,13 @@ func nativeIsGenericStatusLabel(_ value: String) -> Bool {
         "error",
         "running",
         "pending",
+        "thinking",
+        "thinking...",
+        "generating response",
+        "generating response...",
+        "idle",
+        "working",
+        "working...",
     ].contains(normalized)
 }
 

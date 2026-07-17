@@ -9,6 +9,7 @@ import {
   formatTokenUsageLine,
   lspServersFromResponse,
   subagentsFromResponse,
+  tasksForSession,
   tasksFromResponse,
 } from "../../src/cli/tui/chat-environment";
 
@@ -167,6 +168,21 @@ describe("CLI TUI environment helpers", () => {
     ).toEqual([
       { id: "sub-1", label: "Tester", status: "running" },
       { id: "sub-2", label: "Audit CLI", status: "done" },
+    ]);
+  });
+
+  test("keeps global scheduler tasks alongside tasks for the active session", () => {
+    const response = {
+      tasks: [
+        { id: "global", title: "Global task", status: "active" },
+        { id: "current", title: "Current task", status: "active", session_id: "session-1" },
+        { id: "other", title: "Other task", status: "active", session_id: "session-2" },
+      ],
+    };
+
+    expect(tasksForSession(response, "session-1").map((task) => task.id)).toEqual([
+      "global",
+      "current",
     ]);
   });
 

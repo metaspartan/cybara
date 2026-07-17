@@ -362,6 +362,10 @@ export function tasksFromResponse(value: unknown): TuiTaskSummary[] {
   });
 }
 
+export function tasksForSession(value: unknown, sessionId: string): TuiTaskSummary[] {
+  return tasksFromResponse(value).filter((task) => !task.sessionId || task.sessionId === sessionId);
+}
+
 export function subagentsFromResponse(value: unknown): TuiSubagentSummary[] {
   const raw = Array.isArray(value)
     ? value
