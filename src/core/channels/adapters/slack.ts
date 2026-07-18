@@ -159,11 +159,11 @@ export class SlackAdapter implements ChannelAdapter {
     say: (text: string) => Promise<unknown>,
     _client: unknown
   ): Promise<void> {
-    // Ignore bot messages
     if (message.subtype === "bot_message" || message.bot_id) return;
-
-    // Ignore message edits
     if (message.subtype === "message_changed") return;
+
+    const chatId = message.channel;
+    if (!chatId.startsWith("D")) return;
 
     const text = message.text || "";
     const trimmedText = text.trim();
@@ -173,11 +173,9 @@ export class SlackAdapter implements ChannelAdapter {
     const content = this.composeContentWithFileContext(trimmedText, inboundFile);
 
     const userId = message.user;
-    const chatId = message.channel;
-    const isGroupChannel = !chatId.startsWith("D");
 
     const accessCheck = securityManager.checkAccess(channelId, userId, "slack", undefined, {
-      isGroup: isGroupChannel,
+      isGroup: false,
     });
 
     if (!accessCheck.permitted) {

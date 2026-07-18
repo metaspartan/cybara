@@ -4,6 +4,7 @@ export interface LineInbound {
   replyToken: string;
   sourceId: string;
   text: string;
+  isGroup: boolean;
 }
 
 export function verifyLineSignature(
@@ -27,13 +28,18 @@ export function parseLineEvents(body: unknown): LineInbound[] {
       type?: string;
       replyToken?: string;
       message?: { type?: string; text?: string };
-      source?: { userId?: string; groupId?: string; roomId?: string };
+      source?: { type?: string; userId?: string; groupId?: string; roomId?: string };
     };
     if (e.type !== "message" || e.message?.type !== "text") continue;
     const text = typeof e.message.text === "string" ? e.message.text.trim() : "";
     if (!text) continue;
     const sourceId = e.source?.groupId || e.source?.roomId || e.source?.userId || "";
-    out.push({ replyToken: e.replyToken || "", sourceId, text });
+    out.push({
+      replyToken: e.replyToken || "",
+      sourceId,
+      text,
+      isGroup: e.source?.type === "group" || e.source?.type === "room",
+    });
   }
   return out;
 }

@@ -6,6 +6,7 @@ export interface MsTeamsInbound {
   sender: string;
   senderName: string;
   text: string;
+  isGroup: boolean;
 }
 
 export function verifyMsTeamsSignature(
@@ -41,7 +42,7 @@ export function parseMsTeamsActivity(body: unknown): MsTeamsInbound | null {
     text?: string;
     serviceUrl?: string;
     from?: { id?: string; name?: string };
-    conversation?: { id?: string };
+    conversation?: { id?: string; isGroup?: boolean; conversationType?: string };
   };
   if (a?.type !== "message") return null;
   const text = typeof a.text === "string" ? stripMentions(a.text) : "";
@@ -52,5 +53,9 @@ export function parseMsTeamsActivity(body: unknown): MsTeamsInbound | null {
     sender: a.from?.id || "",
     senderName: a.from?.name || "",
     text,
+    isGroup:
+      a.conversation?.isGroup === true ||
+      a.conversation?.conversationType === "groupChat" ||
+      a.conversation?.conversationType === "channel",
   };
 }

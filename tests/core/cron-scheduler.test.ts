@@ -118,6 +118,24 @@ async function main() {
     check("runJob failure sets state.lastStatus error", getJob(agFail.id)?.state.lastStatus === "error");
     check("runJob failure recorded lastError", getJob(agFail.id)?.state.lastError === "handler-failed");
 
+    let releaseConcurrent;
+    const concurrentGate = new Promise((resolve) => { releaseConcurrent = resolve; });
+    let concurrentCalls = 0;
+    setAgentHandler(async () => {
+      concurrentCalls++;
+      await concurrentGate;
+      return { success: true };
+    });
+    const concurrentJob = createJob(base({ name: "concurrent", payload: { kind: "agentTurn", message: "once" } }));
+    const concurrentOne = runJob(concurrentJob.id);
+    const concurrentTwo = runJob(concurrentJob.id);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    check("concurrent triggers invoke handler once", concurrentCalls === 1);
+    releaseConcurrent();
+    const [concurrentLogOne, concurrentLogTwo] = await Promise.all([concurrentOne, concurrentTwo]);
+    check("concurrent triggers share one run", concurrentLogOne.runId === concurrentLogTwo.runId);
+    stopScheduler();
+
     // deleteAfterRun + 'at' schedule removes the job after running.
     const oneShot = createJob(base({ name: "oneshot", deleteAfterRun: true, schedule: { kind: "at", atMs: Date.now() + 10_000_000 }, payload: { kind: "systemEvent", text: "x" } }));
     await runJob(oneShot.id);

@@ -7,6 +7,12 @@ export interface MatrixInboundMessage {
 
 interface MatrixSyncResponse {
   next_batch?: string;
+  account_data?: {
+    events?: Array<{
+      type?: string;
+      content?: Record<string, string[]>;
+    }>;
+  };
   rooms?: {
     join?: Record<
       string,
@@ -29,13 +35,21 @@ export function parseSyncMessages(
   sync: unknown,
   selfUserId: string,
   options: { ignoreInitial?: boolean } = {}
-): { nextBatch: string | null; messages: MatrixInboundMessage[] } {
+): {
+  nextBatch: string | null;
+  messages: MatrixInboundMessage[];
+  directRoomIds: string[] | null;
+} {
   const data = (sync || {}) as MatrixSyncResponse;
   const nextBatch = typeof data.next_batch === "string" ? data.next_batch : null;
   const messages: MatrixInboundMessage[] = [];
+  const directEvent = data.account_data?.events?.find((event) => event.type === "m.direct");
+  const directRoomIds = directEvent?.content
+    ? [...new Set(Object.values(directEvent.content).flat())]
+    : null;
 
   if (options.ignoreInitial) {
-    return { nextBatch, messages };
+    return { nextBatch, messages, directRoomIds };
   }
 
   const join = data.rooms?.join || {};
@@ -53,7 +67,7 @@ export function parseSyncMessages(
     }
   }
 
-  return { nextBatch, messages };
+  return { nextBatch, messages, directRoomIds };
 }
 
 export function buildLoginBody(user: string, password: string): Record<string, unknown> {

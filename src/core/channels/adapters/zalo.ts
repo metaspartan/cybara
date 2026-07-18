@@ -109,7 +109,7 @@ export class ZaloAdapter implements ChannelAdapter {
 
     await logChannelMessage("zalo", "incoming", text, { channelId, senderId });
 
-    const access = evaluateChannelAccess(channelId, String(senderId), "zalo");
+    const access = evaluateChannelAccess(channelId, String(senderId), "zalo", { isGroup: false });
     if (!access.permitted) {
       if (access.reply) await this.sendMessage(channelId, senderId, access.reply);
       return;

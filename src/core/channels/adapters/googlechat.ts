@@ -88,7 +88,13 @@ export class GoogleChatAdapter implements ChannelAdapter {
     const event = parseGoogleChatEvent(payload.body);
     if (!event) return { status: 200, body: {} };
 
-    const reply = await this.dispatch(channelId, event.space, event.sender, event.text);
+    const reply = await this.dispatch(
+      channelId,
+      event.space,
+      event.sender,
+      event.text,
+      event.isGroup
+    );
     return { status: 200, body: reply ? { text: reply } : {} };
   }
 
@@ -96,7 +102,8 @@ export class GoogleChatAdapter implements ChannelAdapter {
     channelId: string,
     space: string,
     sender: string,
-    text: string
+    text: string,
+    isGroup: boolean
   ): Promise<string | null> {
     const sessionKey = `${channelId}:${space}`;
     let sessionId = googleChatSessions.get(sessionKey);
@@ -107,7 +114,7 @@ export class GoogleChatAdapter implements ChannelAdapter {
 
     await logChannelMessage("googlechat", "incoming", text, { channelId, senderId: sender });
 
-    const access = evaluateChannelAccess(channelId, String(sender), "googlechat");
+    const access = evaluateChannelAccess(channelId, String(sender), "googlechat", { isGroup });
     if (!access.permitted) return access.reply ?? null;
 
     let response: string;

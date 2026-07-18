@@ -15,6 +15,7 @@ describe("DingTalk message parsing", () => {
       senderStaffId: "staff-1",
       senderNick: "Carsen",
       sessionWebhook: "https://oapi.dingtalk.com/robot/sendBySession?session=xyz",
+      conversationType: "1",
     };
     expect(parseDingTalkMessage(body)).toEqual({
       conversationId: "cidABC",
@@ -22,6 +23,7 @@ describe("DingTalk message parsing", () => {
       senderNick: "Carsen",
       text: "hello ding",
       sessionWebhook: "https://oapi.dingtalk.com/robot/sendBySession?session=xyz",
+      isGroup: true,
     });
   });
 

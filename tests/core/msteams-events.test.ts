@@ -12,7 +12,7 @@ describe("Microsoft Teams activity parsing", () => {
       text: "hello there",
       serviceUrl: "https://smba.trafficmanager.net/",
       from: { id: "29:abc", name: "Carsen" },
-      conversation: { id: "19:meeting@thread.v2" },
+      conversation: { id: "19:meeting@thread.v2", isGroup: true },
     };
     expect(parseMsTeamsActivity(body)).toEqual({
       conversationId: "19:meeting@thread.v2",
@@ -20,6 +20,7 @@ describe("Microsoft Teams activity parsing", () => {
       sender: "29:abc",
       senderName: "Carsen",
       text: "hello there",
+      isGroup: true,
     });
   });
 

@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { describe, expect, test } from "bun:test";
 import { FeishuAdapter } from "../../src/core/channels/adapters/feishu";
 import { GoogleChatAdapter } from "../../src/core/channels/adapters/googlechat";
@@ -8,6 +9,25 @@ import type { WebhookPayload } from "../../src/core/channels/types";
 
 function payload(body: unknown): WebhookPayload {
   return { body, rawBody: JSON.stringify(body), headers: {}, query: {} };
+}
+
+function signedFeishuPayload(body: unknown, encryptKey: string): WebhookPayload {
+  const rawBody = JSON.stringify(body);
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const nonce = "nonce";
+  const signature = createHash("sha256")
+    .update(timestamp + nonce + encryptKey + rawBody, "utf8")
+    .digest("hex");
+  return {
+    body,
+    rawBody,
+    headers: {
+      "x-lark-request-timestamp": timestamp,
+      "x-lark-request-nonce": nonce,
+      "x-lark-signature": signature,
+    },
+    query: {},
+  };
 }
 
 describe("channel webhook authentication", () => {
@@ -34,20 +54,24 @@ describe("channel webhook authentication", () => {
       app_id: "app",
       app_secret: "secret",
       verification_token: "expected",
+      encrypt_key: "encrypt-key",
     });
     const result = await adapter.handleWebhook(
       "feishu-auth",
-      payload({
-        header: { event_type: "im.message.receive_v1" },
-        event: {
-          message: {
-            chat_id: "chat",
-            message_type: "text",
-            content: JSON.stringify({ text: "hello" }),
+      signedFeishuPayload(
+        {
+          header: { event_type: "im.message.receive_v1" },
+          event: {
+            message: {
+              chat_id: "chat",
+              message_type: "text",
+              content: JSON.stringify({ text: "hello" }),
+            },
+            sender: { sender_id: { open_id: "sender" } },
           },
-          sender: { sender_id: { open_id: "sender" } },
         },
-      })
+        "encrypt-key"
+      )
     );
     expect(result.status).toBe(401);
     await adapter.stop("feishu-auth");
@@ -58,6 +82,21 @@ describe("channel webhook authentication", () => {
     await expect(
       adapter.start("feishu-auth-missing", { app_id: "app", app_secret: "secret" })
     ).rejects.toThrow("verification_token is required");
+  });
+
+  test("Feishu requires signed requests and rejects replay", async () => {
+    const adapter = new FeishuAdapter();
+    await adapter.start("feishu-signed", {
+      app_id: "app",
+      app_secret: "secret",
+      verification_token: "expected",
+      encrypt_key: "encrypt-key",
+    });
+    const body = { type: "url_verification", challenge: "ready", token: "expected" };
+    const signed = signedFeishuPayload(body, "encrypt-key");
+    expect((await adapter.handleWebhook("feishu-signed", signed)).status).toBe(200);
+    expect((await adapter.handleWebhook("feishu-signed", signed)).status).toBe(409);
+    await adapter.stop("feishu-signed");
   });
 
   test("Google Chat refuses to start without inbound authentication", async () => {

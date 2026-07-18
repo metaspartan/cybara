@@ -224,7 +224,6 @@ export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
         name: { type: "string", description: "Profile name for create/delete/start/stopProfile" },
         profile: { type: "string", description: "Profile name for profile-related actions" },
         color: { type: "string", description: "Profile color (hex)" },
-        executablePath: { type: "string", description: "Chrome executable path for profile" },
         headless: {
           type: "boolean",
           description:
@@ -235,7 +234,6 @@ export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
           description:
             "Launch a separate Chrome window with a persistent profile only when explicitly requested",
         },
-        userDataDir: { type: "string", description: "Custom user data directory for profile" },
         pageId: { type: "string", description: "Page ID for closeProfileTab" },
         url: {
           type: "string",

@@ -302,18 +302,12 @@ export async function handleBrowser(
     case "createProfile": {
       const name = args.name as string;
       const color = args.color as string;
-      const executablePath = args.executablePath as string;
-      const headless = args.headless as boolean;
-      const userDataDir = args.userDataDir as string;
 
       if (!name) throw new Error("Profile name required");
 
       const profile = await profileManager.createProfile({
         name,
         color,
-        executablePath,
-        headless,
-        userDataDir,
       });
 
       return {

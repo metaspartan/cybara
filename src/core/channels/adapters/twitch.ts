@@ -157,7 +157,9 @@ export class TwitchAdapter implements ChannelAdapter {
 
     await logChannelMessage("twitch", "incoming", text, { channelId, senderId: senderNick });
 
-    const access = evaluateChannelAccess(channelId, String(senderNick), "twitch");
+    const access = evaluateChannelAccess(channelId, String(senderNick), "twitch", {
+      isGroup: true,
+    });
     if (!access.permitted) {
       if (access.reply) await this.sendMessage(channelId, target, access.reply);
       return;

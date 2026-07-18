@@ -1,4 +1,5 @@
 import { isLikelyGoogleApiKey } from "./_shared";
+import { validatePublicHttpUrlShape } from "../../core/outbound-url-policy";
 
 export function validateProviderCredentialShape(
   providerType: string,
@@ -39,5 +40,19 @@ export function validateProviderBaseUrlShape(baseUrl: string): void {
 
   if (parsed.username || parsed.password) {
     throw new Error("Validation error: Provider base URL cannot include embedded credentials.");
+  }
+}
+
+export function validatePluginProviderBaseUrl(
+  baseUrl: string,
+  allowPrivateEndpoint: boolean
+): void {
+  validateProviderBaseUrlShape(baseUrl);
+  if (allowPrivateEndpoint) return;
+  const validation = validatePublicHttpUrlShape(baseUrl);
+  if (!validation.valid) {
+    throw new Error(
+      `Validation error: Plugin provider endpoint is not public: ${validation.error || "blocked destination"}`
+    );
   }
 }

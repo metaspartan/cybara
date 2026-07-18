@@ -95,7 +95,14 @@ export class LineAdapter implements ChannelAdapter {
     }
 
     for (const event of parseLineEvents(payload.body)) {
-      await this.dispatch(channelId, cfg, event.sourceId, event.replyToken, event.text);
+      await this.dispatch(
+        channelId,
+        cfg,
+        event.sourceId,
+        event.replyToken,
+        event.text,
+        event.isGroup
+      );
     }
     return { status: 200, body: { ok: true } };
   }
@@ -116,7 +123,8 @@ export class LineAdapter implements ChannelAdapter {
     cfg: LineConfig,
     sourceId: string,
     replyToken: string,
-    text: string
+    text: string,
+    isGroup: boolean
   ): Promise<void> {
     const sessionKey = `${channelId}:${sourceId}`;
     let sessionId = lineSessions.get(sessionKey);
@@ -127,7 +135,7 @@ export class LineAdapter implements ChannelAdapter {
 
     await logChannelMessage("line", "incoming", text, { channelId, senderId: sourceId });
 
-    const access = evaluateChannelAccess(channelId, String(sourceId), "line");
+    const access = evaluateChannelAccess(channelId, String(sourceId), "line", { isGroup });
     if (!access.permitted) {
       if (access.reply) await this.sendMessage(channelId, sourceId, access.reply);
       return;

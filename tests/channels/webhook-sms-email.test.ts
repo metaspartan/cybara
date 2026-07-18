@@ -1,11 +1,12 @@
+import { createHmac } from "crypto";
 import { describe, expect, test } from "bun:test";
-import { verifyWebhookSignature } from "../../src/core/channels/adapters/webhook";
+import { verifyWebhookSignature, WebhookAdapter } from "../../src/core/channels/adapters/webhook";
+import { securityManager } from "../../src/core/channels/security";
 import { smsAdapter } from "../../src/core/channels/adapters/sms";
 import { emailAdapter } from "../../src/core/channels/adapters/email";
 import { channels } from "../../src/core/channels/types";
 
 function sign(body: string, secret: string): string {
-  const { createHmac } = require("crypto");
   return createHmac("sha256", secret).update(body).digest("hex");
 }
 
@@ -33,6 +34,39 @@ describe("new channel adapters", () => {
 
   test("webhook signature: unsigned rejected when no secret configured", () => {
     expect(verifyWebhookSignature("body", undefined, "")).toBe(false);
+  });
+
+  test("webhook adapter verifies signatures and routes accepted messages", async () => {
+    const adapter = new WebhookAdapter();
+    const channelId = `webhook-${Date.now()}`;
+    const rawBody = JSON.stringify({
+      message: "deployment complete",
+      sender_id: "ci-runner",
+      conversation_id: "release-42",
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async (message, chatId) => `${chatId}:${message}`);
+    await adapter.start(channelId, { secret: "topsecret", dm_policy: "open" });
+
+    const rejected = await adapter.handleWebhook(channelId, {
+      body: JSON.parse(rawBody),
+      rawBody,
+      headers: { "x-cybara-signature": "wrong" },
+      query: {},
+    });
+    expect(rejected.status).toBe(401);
+
+    const accepted = await adapter.handleWebhook(channelId, {
+      body: JSON.parse(rawBody),
+      rawBody,
+      headers: { "X-Cybara-Signature": sign(rawBody, "topsecret") },
+      query: {},
+    });
+    expect(accepted).toMatchObject({
+      status: 200,
+      body: { response: "release-42:deployment complete" },
+    });
+    await adapter.stop(channelId);
   });
 });
 

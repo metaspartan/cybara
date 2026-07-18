@@ -29,6 +29,10 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export const telegramSessions = new Map<string, string>();
 const telegramUserSessionHistory = new Map<string, string[]>();
 const telegramSessionLastActive = new Map<string, string>();
@@ -790,6 +794,8 @@ export class TelegramBotManager implements ChannelAdapter {
       token: string;
       channelId: string;
       mode: "webhook" | "polling";
+      username: string;
+      groupMentionsOnly: boolean;
       pollingTimer?: ReturnType<typeof setTimeout>;
     }
   > = new Map();
@@ -809,6 +815,7 @@ export class TelegramBotManager implements ChannelAdapter {
     const botToken = config.bot_token as string;
     const webhookUrl = config.webhook_url as string | undefined;
     const reactionScope = normalizeTelegramReactionScope(config.reaction_notifications);
+    const groupMentionsOnly = config.group_mentions_only !== false;
 
     if (!botToken) {
       throw new Error("bot_token is required");
@@ -831,7 +838,13 @@ export class TelegramBotManager implements ChannelAdapter {
     if (isLocalhost) {
       console.log("[Telegram] Localhost detected - using polling mode");
       await deleteTelegramWebhook(botToken);
-      this.bots.set(channelId, { token: botToken, channelId, mode: "polling" });
+      this.bots.set(channelId, {
+        token: botToken,
+        channelId,
+        mode: "polling",
+        username: botInfo.username,
+        groupMentionsOnly,
+      });
       this.startPolling(channelId, botToken);
     } else {
       console.log(`[Telegram] Setting up webhook: ${webhookUrl}`);
@@ -855,7 +868,13 @@ export class TelegramBotManager implements ChannelAdapter {
             config: { ...storedConfig, webhook_secret: webhookSecret },
           });
         }
-        this.bots.set(channelId, { token: botToken, channelId, mode: "webhook" });
+        this.bots.set(channelId, {
+          token: botToken,
+          channelId,
+          mode: "webhook",
+          username: botInfo.username,
+          groupMentionsOnly,
+        });
       } else {
         throw new Error("Webhook setup failed");
       }
@@ -1192,6 +1211,18 @@ export class TelegramBotManager implements ChannelAdapter {
 
     const chatId = message.chat.id;
     const userId = message.from.id;
+    const bot = this.bots.get(channelId);
+    const isGroup = message.chat.type !== "private";
+
+    if (
+      isGroup &&
+      bot?.groupMentionsOnly !== false &&
+      !new RegExp(`(^|\\s)@${escapeRegExp(bot?.username || "")}(?=\\s|$|[.,!?;:])`, "i").test(
+        message.text || message.caption || ""
+      )
+    ) {
+      return;
+    }
 
     let content = (message.text || message.caption || "").trim();
     let hasFile = false;
@@ -1292,7 +1323,7 @@ export class TelegramBotManager implements ChannelAdapter {
       userId.toString(),
       "telegram",
       message.from.username || message.from.first_name,
-      { isGroup: message.chat.type !== "private" }
+      { isGroup }
     );
 
     if (!accessCheck.permitted) {

@@ -5,6 +5,7 @@ import {
   deleteSession,
   formatProcessActivityFromToolCall,
   handleChat,
+  waitForPendingChatCompletion,
   getSessionMessages,
   listPendingChatMessages,
   deletePendingChatMessage,
@@ -48,6 +49,85 @@ afterEach(async () => {
 });
 
 describe("handleChat per-session serialization", () => {
+  test("settles awaited steering consumed inside the active turn", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Inline Steering Provider",
+      api_key: "sk-inline-steering",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Inline Steering Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-inline-steering",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+    const sessionId = `inline-steering-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    globalThis.fetch = (async () =>
+      Response.json({
+        id: "inline-steering-title",
+        object: "chat.completion",
+        model: "gpt-inline-steering",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "Inline steering" },
+          },
+        ],
+      })) as typeof fetch;
+
+    const originalExecute = agentManager.execute.bind(agentManager);
+    let started: (() => void) | undefined;
+    let continueExecution: (() => void) | undefined;
+    const executionStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const executionReleased = new Promise<void>((resolve) => {
+      continueExecution = resolve;
+    });
+    agentManager.execute = (async (_agentId, _messages, options) => {
+      started?.();
+      await executionReleased;
+      expect(options?.consumeSteeringMessages?.().map((item) => item.content)).toEqual([
+        "adjust inline",
+      ]);
+      return { content: "adjusted response" };
+    }) as typeof agentManager.execute;
+
+    try {
+      const activeTurn = handleChat({
+        message: "start work",
+        agentId: agent.id,
+        sessionId,
+        tools: true,
+      });
+      await executionStarted;
+      const queued = await handleChat({
+        message: "adjust inline",
+        agentId: agent.id,
+        sessionId,
+        tools: true,
+        queueMode: "steer",
+        awaitQueuedCompletion: true,
+      });
+      expect(queued.queued).toBe(true);
+      const pendingId = queued.pendingMessage?.id;
+      expect(pendingId).toBeString();
+      const completion = waitForPendingChatCompletion(pendingId || "");
+      continueExecution?.();
+      const [activeResponse, steeredResponse] = await Promise.all([activeTurn, completion]);
+      expect(steeredResponse.message.content).toBe("adjusted response");
+      expect(steeredResponse).toEqual(activeResponse);
+    } finally {
+      agentManager.execute = originalExecute;
+    }
+  });
+
   test("persists a new session before the provider returns", async () => {
     const provider = providerManager.create({
       provider: "openai",

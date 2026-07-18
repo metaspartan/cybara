@@ -111,4 +111,10 @@ describe("tool governance invariants", () => {
       "notion_create_page"
     );
   });
+
+  test("browser profiles do not expose executable or user data paths", () => {
+    const properties = toolSchemas.browser.input_schema.properties ?? {};
+    expect(properties.executablePath).toBeUndefined();
+    expect(properties.userDataDir).toBeUndefined();
+  });
 });

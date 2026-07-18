@@ -673,8 +673,9 @@ const routes: Record<string, RouteHandler> = {
     return { ok: true };
   },
 
-  "POST /api/providers/oauth/start": startProviderRedirectOAuth,
-  "POST /api/providers/oauth/callback-status": pollProviderRedirectOAuth,
+  "POST /api/providers/oauth/start": (body, _params, ctx) => startProviderRedirectOAuth(body, ctx),
+  "POST /api/providers/oauth/callback-status": (body, _params, ctx) =>
+    pollProviderRedirectOAuth(body, ctx),
   "GET /api/tasks": () => taskScheduler.list(),
   "GET /api/tasks/:id": (_body, params) => {
     const task = taskScheduler.get(params!.id);

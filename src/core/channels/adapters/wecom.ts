@@ -181,7 +181,7 @@ export class WeComAdapter implements ChannelAdapter {
 
     await logChannelMessage("wecom", "incoming", text, { channelId, senderId: userId });
 
-    const access = evaluateChannelAccess(channelId, String(userId), "wecom");
+    const access = evaluateChannelAccess(channelId, String(userId), "wecom", { isGroup: false });
     if (!access.permitted) {
       if (access.reply) await this.sendMessage(channelId, userId, access.reply);
       return;

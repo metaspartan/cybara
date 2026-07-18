@@ -23,10 +23,6 @@ export interface BrowserProfileConfig {
   name: string;
   cdpPort?: number;
   color?: string;
-  headless?: boolean;
-  executablePath?: string;
-  userDataDir?: string;
-  attachOnly?: boolean;
 }
 
 const browsers = new Map<string, { process: ChildProcess; browser: Browser }>();
@@ -78,7 +74,7 @@ export async function createProfile(config: BrowserProfileConfig): Promise<Brows
   const name = config.name;
   const cdpPort = config.cdpPort || findAvailablePort();
   const color = config.color || "#F4B400"; // Cybara gold (like Cybara yellow)
-  const userDataDir = config.userDataDir || resolveUserDataDir(name);
+  const userDataDir = resolveUserDataDir(name);
 
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true });
@@ -166,6 +162,7 @@ export async function startBrowser(profileName: string): Promise<Browser> {
   if (!profile) {
     profile = await createProfile({ name: profileName });
   }
+  const activeProfile = profile;
 
   if (browsers.has(profileName)) {
     return browsers.get(profileName)!.browser;
@@ -208,63 +205,99 @@ export async function startBrowser(profileName: string): Promise<Browser> {
       detached: false,
     });
 
+    let settled = false;
+    let connecting = false;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    let startupTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const fail = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+      if (startupTimer) clearTimeout(startupTimer);
+      proc.kill();
+      activeProfile.running = false;
+      reject(error);
+    };
+
     proc.on("error", (err) => {
-      reject(new Error(`Failed to start Chrome: ${err.message}`));
+      fail(new Error(`Failed to start Chrome: ${err.message}`));
     });
 
-    const cdpUrl = profile!.cdpUrl;
-    const maxAttempts = 30; // 30 * 500ms = 15 seconds max
+    proc.on("exit", (code, signal) => {
+      if (!settled) {
+        fail(
+          new Error(
+            `Chrome exited before CDP connected${code === null ? "" : ` with code ${code}`}${signal ? ` (${signal})` : ""}`
+          )
+        );
+      }
+    });
+
+    const cdpUrl = activeProfile.cdpUrl;
+    const maxAttempts = 30;
     let attempts = 0;
-    let connected = false; // Flag to prevent multiple connections
 
     const checkCDP = async () => {
-      if (connected) return; // Already connected, stop polling
+      if (settled || connecting) return;
 
       attempts++;
       try {
         const response = await fetch(`${cdpUrl}/json/version`, {
           signal: AbortSignal.timeout(1000),
         });
-        if (response.ok && !connected) {
+        if (response.ok && !settled) {
           const versionData = (await response.json()) as { webSocketDebuggerUrl?: string };
           const wsUrl = versionData.webSocketDebuggerUrl;
 
           if (!wsUrl) {
-            console.log(`[Browser] CDP responded but no WebSocket URL, retrying...`);
-            return; // Retry
+            throw new Error("CDP response did not include a WebSocket URL");
           }
 
-          connected = true; // Mark as connected immediately
-
+          connecting = true;
           console.log(`[Browser] CDP ready after ${attempts * 500}ms, connecting via ${wsUrl}...`);
-          const browser = await puppeteer.connect({
-            browserWSEndpoint: wsUrl,
-            defaultViewport: null, // Use Chrome window's natural viewport size
-          });
+          try {
+            const browser = await puppeteer.connect({
+              browserWSEndpoint: wsUrl,
+              defaultViewport: null,
+            });
 
-          browsers.set(profileName, { process: proc, browser });
-          profile!.running = true;
+            if (settled) {
+              await browser.close().catch(() => {});
+              return;
+            }
 
-          console.log(`[Browser] Connected to Chrome via CDP WebSocket (Puppeteer)`);
-          resolve(browser);
-          return;
+            settled = true;
+            if (pollTimer) clearTimeout(pollTimer);
+            if (startupTimer) clearTimeout(startupTimer);
+            browsers.set(profileName, { process: proc, browser });
+            activeProfile.running = true;
+            console.log(`[Browser] Connected to Chrome via CDP WebSocket (Puppeteer)`);
+            resolve(browser);
+            return;
+          } finally {
+            connecting = false;
+          }
         }
       } catch {
         void 0;
       }
 
-      if (connected) return; // Check again in case connection happened
+      if (settled) return;
 
       if (attempts >= maxAttempts) {
-        proc.kill();
-        reject(new Error(`Chrome CDP not available at ${cdpUrl} after ${maxAttempts * 500}ms`));
+        fail(new Error(`Chrome CDP not available at ${cdpUrl} after ${maxAttempts * 500}ms`));
         return;
       }
 
-      setTimeout(checkCDP, 500);
+      pollTimer = setTimeout(checkCDP, 500);
     };
 
-    setTimeout(checkCDP, 500);
+    startupTimer = setTimeout(
+      () => fail(new Error(`Chrome CDP connection timed out at ${cdpUrl}`)),
+      maxAttempts * 500 + 2000
+    );
+    pollTimer = setTimeout(checkCDP, 500);
   });
 }
 

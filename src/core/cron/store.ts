@@ -1,4 +1,12 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import type { CronJob, CronJobCreate, CronJobPatch, CronStoreFile, CronRunLog } from "./types";
@@ -17,21 +25,57 @@ function ensureDir(): void {
 
 export function loadJobs(): CronJob[] {
   ensureDir();
-  if (!existsSync(JOBS_FILE)) {
-    return [];
+  const store = readJsonWithBackup(JOBS_FILE, isCronStoreFile);
+  return store?.jobs ?? [];
+}
+
+function readJsonWithBackup<T>(
+  filePath: string,
+  validate: (value: unknown) => value is T
+): T | null {
+  for (const candidate of [filePath, `${filePath}.bak`]) {
+    if (!existsSync(candidate)) continue;
+    try {
+      const value: unknown = JSON.parse(readFileSync(candidate, "utf-8"));
+      if (validate(value)) return value;
+    } catch {
+      continue;
+    }
   }
+  return null;
+}
+
+function isCronStoreFile(value: unknown): value is CronStoreFile {
+  if (!value || typeof value !== "object") return false;
+  return Array.isArray((value as { jobs?: unknown }).jobs);
+}
+
+function isCronRunLogs(value: unknown): value is CronRunLog[] {
+  return Array.isArray(value);
+}
+
+function writeJsonAtomic(filePath: string, value: unknown): void {
+  ensureDir();
+  const tempPath = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
   try {
-    const data = JSON.parse(readFileSync(JOBS_FILE, "utf-8")) as CronStoreFile;
-    return data.jobs || [];
-  } catch {
-    return [];
+    if (existsSync(filePath)) {
+      try {
+        JSON.parse(readFileSync(filePath, "utf-8"));
+        copyFileSync(filePath, `${filePath}.bak`);
+      } catch {
+        void 0;
+      }
+    }
+    writeFileSync(tempPath, JSON.stringify(value, null, 2), { mode: 0o600 });
+    renameSync(tempPath, filePath);
+  } finally {
+    if (existsSync(tempPath)) unlinkSync(tempPath);
   }
 }
 
 export function saveJobs(jobs: CronJob[]): void {
-  ensureDir();
   const store: CronStoreFile = { version: 1, jobs };
-  writeFileSync(JOBS_FILE, JSON.stringify(store, null, 2), { mode: 0o600 });
+  writeJsonAtomic(JOBS_FILE, store);
 }
 
 function generateId(): string {
@@ -140,44 +184,32 @@ export function computeNextRun(schedule: CronJob["schedule"], fromMs: number = D
     case "every": {
       const anchor = schedule.anchorMs || fromMs;
       const interval = schedule.everyMs;
-      if (interval <= 0) return fromMs + 60000; // Default 1 minute
+      if (!Number.isFinite(interval) || interval <= 0) {
+        throw new Error("Interval schedule must be greater than zero");
+      }
 
       const elapsed = fromMs - anchor;
-      const periods = Math.ceil(elapsed / interval);
+      if (elapsed < 0) return anchor;
+      const periods = Math.floor(elapsed / interval) + 1;
       return anchor + periods * interval;
     }
 
     case "cron":
-      try {
-        return nextCronRun(schedule.expr, fromMs, schedule.tz);
-      } catch (error) {
-        console.warn(
-          `[Cron] Invalid cron expression "${schedule.expr}": ${(error as Error).message}. Falling back to +1m.`
-        );
-        return fromMs + 60000;
-      }
+      return nextCronRun(schedule.expr, fromMs, schedule.tz);
 
     default:
-      return fromMs + 60000;
+      throw new Error("Unsupported cron schedule");
   }
 }
 
 export function loadRunLogs(): CronRunLog[] {
   ensureDir();
-  if (!existsSync(RUNS_FILE)) {
-    return [];
-  }
-  try {
-    return JSON.parse(readFileSync(RUNS_FILE, "utf-8")) as CronRunLog[];
-  } catch {
-    return [];
-  }
+  return readJsonWithBackup(RUNS_FILE, isCronRunLogs) ?? [];
 }
 
 export function saveRunLogs(logs: CronRunLog[]): void {
-  ensureDir();
   const trimmed = logs.slice(-MAX_RUN_LOGS);
-  writeFileSync(RUNS_FILE, JSON.stringify(trimmed, null, 2), { mode: 0o600 });
+  writeJsonAtomic(RUNS_FILE, trimmed);
 }
 
 export function addRunLog(log: CronRunLog): void {

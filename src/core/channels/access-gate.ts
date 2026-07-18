@@ -9,10 +9,15 @@ export function evaluateChannelAccess(
   channelId: string,
   senderId: string,
   platform: string,
-  senderName?: string,
-  options?: { isGroup?: boolean }
+  options: { isGroup: boolean; senderName?: string }
 ): AccessGateDecision {
-  const result = securityManager.checkAccess(channelId, senderId, platform, senderName, options);
+  const result = securityManager.checkAccess(
+    channelId,
+    senderId,
+    platform,
+    options.senderName,
+    options
+  );
 
   if (result.permitted) return { permitted: true };
   if (result.silent) return { permitted: false };

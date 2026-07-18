@@ -1474,8 +1474,17 @@ export async function embedInSubBatches(
 ): Promise<number[][]> {
   const batchSize = Math.max(1, options.batchSize ?? 96);
   const concurrency = Math.max(1, options.concurrency ?? 4);
+  const embedValidated = async (batch: string[]): Promise<number[][]> => {
+    const embeddings = await embedBatch(batch);
+    if (embeddings.length !== batch.length) {
+      throw new Error(
+        `Embedding provider returned ${embeddings.length} vectors for ${batch.length} inputs`
+      );
+    }
+    return embeddings;
+  };
   if (texts.length <= batchSize) {
-    return embedBatch(texts);
+    return embedValidated(texts);
   }
 
   const batches: string[][] = [];
@@ -1490,7 +1499,7 @@ export async function embedInSubBatches(
       const batchIndex = cursor;
       cursor += 1;
       if (batchIndex >= batches.length) return;
-      const embeddings = await embedBatch(batches[batchIndex]);
+      const embeddings = await embedValidated(batches[batchIndex]);
       const offset = batchIndex * batchSize;
       for (let position = 0; position < embeddings.length; position += 1) {
         results[offset + position] = embeddings[position];

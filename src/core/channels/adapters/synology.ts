@@ -108,7 +108,10 @@ export class SynologyAdapter implements ChannelAdapter {
       senderId: username || userId,
     });
 
-    const access = evaluateChannelAccess(channelId, String(userId), "synology", username);
+    const access = evaluateChannelAccess(channelId, String(userId), "synology", {
+      isGroup: true,
+      senderName: username,
+    });
     if (!access.permitted) return access.reply ?? null;
 
     let response: string;

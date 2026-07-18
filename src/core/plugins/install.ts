@@ -1,17 +1,48 @@
 import { join } from "path";
 import { mkdirSync, rmSync, existsSync, cpSync } from "fs";
 import { tmpdir } from "os";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID, timingSafeEqual } from "crypto";
 import { getLocalPluginsRoot, loadPluginFromRoot, validatePluginAtPath } from "./index";
 import type { InstalledCybaraPlugin } from "./types";
 
-/**
- * Installs a Cybara plugin directly from a GitHub repository via git clone.
- * Supports "owner/repo" shorthand or full URLs.
- *
- * @param repoUrl Repository specifier
- * @returns The installed plugin details
- */
+interface NpmPackageIntegrity {
+  integrity?: string;
+  shasum?: string;
+}
+
+const PLUGIN_FETCH_TIMEOUT_MS = 15_000;
+const MAX_PLUGIN_ARCHIVE_BYTES = 100 * 1024 * 1024;
+
+async function fetchPluginResource(url: string): Promise<Response> {
+  return fetch(url, { signal: AbortSignal.timeout(PLUGIN_FETCH_TIMEOUT_MS) });
+}
+
+function digestMatches(payload: Uint8Array, algorithm: string, expected: string): boolean {
+  const encoding = algorithm === "sha1" ? "hex" : "base64";
+  const actual = createHash(algorithm).update(payload).digest(encoding);
+  if (actual.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+}
+
+export function verifyNpmPackageIntegrity(
+  payload: Uint8Array,
+  integrity: NpmPackageIntegrity
+): boolean {
+  const sriCandidates = (integrity.integrity || "")
+    .split(/\s+/)
+    .map((candidate) => candidate.trim())
+    .filter(Boolean)
+    .map((candidate) => candidate.match(/^(sha(?:256|384|512))-([A-Za-z0-9+/=]+)$/))
+    .filter((candidate): candidate is RegExpMatchArray => candidate !== null);
+  for (const candidate of sriCandidates) {
+    if (digestMatches(payload, candidate[1], candidate[2])) return true;
+  }
+  if (integrity.shasum && /^[a-f0-9]{40}$/i.test(integrity.shasum)) {
+    return digestMatches(payload, "sha1", integrity.shasum.toLowerCase());
+  }
+  return false;
+}
+
 export async function installPluginFromGitHub(repoUrl: string): Promise<InstalledCybaraPlugin> {
   const tmpDir = join(tmpdir(), `cybara-plugin-${randomUUID()}`);
   mkdirSync(tmpDir, { recursive: true });
@@ -41,7 +72,6 @@ export async function installPluginFromGitHub(repoUrl: string): Promise<Installe
     mkdirSync(getLocalPluginsRoot(), { recursive: true });
     rmSync(targetRoot, { recursive: true, force: true });
 
-    // Remove .git directory before copying
     rmSync(join(tmpDir, ".git"), { recursive: true, force: true });
     cpSync(tmpDir, targetRoot, { recursive: true });
 
@@ -55,13 +85,6 @@ export async function installPluginFromGitHub(repoUrl: string): Promise<Installe
   }
 }
 
-/**
- * Installs a Cybara plugin directly from the NPM registry.
- * Downloads the tarball natively without relying on any package managers like `npm`.
- *
- * @param spec NPM package specifier (e.g. "@scope/package", "my-plugin@1.0.0")
- * @returns The installed plugin details
- */
 export async function installPluginFromNpmSpec(spec: string): Promise<InstalledCybaraPlugin> {
   const match = spec.trim().match(/^(@?[^@]+)(?:@(.+))?$/);
   if (!match) throw new Error(`Invalid npm package spec: ${spec}`);
@@ -69,21 +92,18 @@ export async function installPluginFromNpmSpec(spec: string): Promise<InstalledC
   const pkgName = match[1];
   const versionSpec = match[2] || "latest";
 
-  // 1. Fetch NPM registry data
   const registryUrl = `https://registry.npmjs.org/${encodeURIComponent(pkgName).replace("%40", "@")}`;
-  const res = await fetch(registryUrl);
+  const res = await fetchPluginResource(registryUrl);
 
   if (!res.ok) {
     throw new Error(`Failed to fetch npm package info for ${pkgName} (HTTP ${res.status})`);
   }
 
-  // npm packument shape: { "dist-tags": {...}, versions: { [ver]: { dist: { tarball } } } }
   const data = (await res.json()) as {
     "dist-tags"?: Record<string, string>;
-    versions?: Record<string, { dist?: { tarball?: string } }>;
+    versions?: Record<string, { dist?: { tarball?: string; integrity?: string; shasum?: string } }>;
   };
 
-  // 2. Resolve version to a specific semantic version string
   let resolvedVersion = versionSpec;
   if (data["dist-tags"] && data["dist-tags"][versionSpec]) {
     resolvedVersion = data["dist-tags"][versionSpec];
@@ -95,24 +115,36 @@ export async function installPluginFromNpmSpec(spec: string): Promise<InstalledC
   if (!versions) {
     throw new Error(`No versions found for package ${pkgName}`);
   }
-  const tarballUrl = versions[resolvedVersion]?.dist?.tarball;
+  const distribution = versions[resolvedVersion]?.dist;
+  const tarballUrl = distribution?.tarball;
   if (!tarballUrl) {
     throw new Error(`No tarball URL found for ${pkgName}@${resolvedVersion}`);
   }
 
   const tmpDir = join(tmpdir(), `cybara-plugin-npm-${randomUUID()}`);
   const tarballPath = join(tmpDir, "package.tgz");
-  const extractedDir = join(tmpDir, "package"); // npm tarballs always extract to a "package" folder
+  const extractedDir = join(tmpDir, "package");
 
   mkdirSync(tmpDir, { recursive: true });
 
   try {
-    // 3. Download tarball
-    const tarballRes = await fetch(tarballUrl);
+    const tarballRes = await fetchPluginResource(tarballUrl);
     if (!tarballRes.ok) throw new Error("Failed to download plugin tarball from npm");
+    const contentLength = Number(tarballRes.headers.get("content-length") || 0);
+    if (contentLength > MAX_PLUGIN_ARCHIVE_BYTES) {
+      throw new Error("Plugin archive exceeds the maximum allowed size");
+    }
 
-    const arrayBuffer = await tarballRes.arrayBuffer();
-    await Bun.write(tarballPath, arrayBuffer);
+    const payload = new Uint8Array(await tarballRes.arrayBuffer());
+    if (payload.byteLength > MAX_PLUGIN_ARCHIVE_BYTES) {
+      throw new Error("Plugin archive exceeds the maximum allowed size");
+    }
+    if (!distribution || !verifyNpmPackageIntegrity(payload, distribution)) {
+      throw new Error(
+        `Plugin package integrity verification failed for ${pkgName}@${resolvedVersion}`
+      );
+    }
+    await Bun.write(tarballPath, payload);
 
     const listResult = Bun.spawnSync(["tar", "-tzf", tarballPath]);
     if (listResult.exitCode !== 0) {
@@ -141,13 +173,11 @@ export async function installPluginFromNpmSpec(spec: string): Promise<InstalledC
       throw new Error("Invalid npm package format: missing 'package' directory in tarball");
     }
 
-    // 5. Validate that it's a valid cybara plugin
     const validation = validatePluginAtPath(extractedDir);
     if (!validation.valid || !validation.manifest) {
       throw new Error(validation.errors.join("; ") || "Invalid cybara plugin package");
     }
 
-    // 6. Install to cybara local plugins directory
     const targetRoot = join(getLocalPluginsRoot(), validation.manifest.id);
 
     mkdirSync(getLocalPluginsRoot(), { recursive: true });
@@ -155,7 +185,6 @@ export async function installPluginFromNpmSpec(spec: string): Promise<InstalledC
 
     cpSync(extractedDir, targetRoot, { recursive: true });
 
-    // 7. Verify the installation
     const installed = loadPluginFromRoot(targetRoot, "local");
     if (!installed) {
       throw new Error("Installed plugin could not be reloaded");

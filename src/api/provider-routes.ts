@@ -40,6 +40,7 @@ import {
 import {
   validateProviderBaseUrlShape,
   validateProviderCredentialShape,
+  validatePluginProviderBaseUrl,
 } from "./routes/provider-validation";
 
 function providerAccountPoolResponse(pool: ProviderAccountPool): Record<string, unknown> {
@@ -413,6 +414,8 @@ export const providerRoutes: Record<string, RouteHandler> = {
     }
 
     if (pluginProvider) {
+      const pluginBaseUrl = normalizedBaseUrl || pluginProvider.baseUrl;
+      validatePluginProviderBaseUrl(pluginBaseUrl, pluginProvider.allowPrivateEndpoint);
       const id = crypto.randomUUID();
       tables.providers.create({
         id,
@@ -420,7 +423,7 @@ export const providerRoutes: Record<string, RouteHandler> = {
         name: normalizeOptionalString(data.name) || data.name,
         api_key: apiKey,
         access_token: accessToken,
-        base_url: normalizedBaseUrl || pluginProvider.baseUrl,
+        base_url: pluginBaseUrl,
         settings: providerSettings,
         is_default: data.is_default === true,
       });
@@ -469,7 +472,15 @@ export const providerRoutes: Record<string, RouteHandler> = {
     if ("base_url" in data) {
       const normalizedBaseUrl = normalizeOptionalString(data.base_url);
       if (normalizedBaseUrl) {
-        validateProviderBaseUrlShape(normalizedBaseUrl);
+        const pluginProvider = getPluginProviderContribution(existing.provider);
+        if (existing.provider.startsWith("plugin:") && !pluginProvider) {
+          throw new Error("Validation error: Plugin provider contribution is unavailable");
+        }
+        if (pluginProvider) {
+          validatePluginProviderBaseUrl(normalizedBaseUrl, pluginProvider.allowPrivateEndpoint);
+        } else {
+          validateProviderBaseUrlShape(normalizedBaseUrl);
+        }
         updates.base_url = normalizedBaseUrl;
       }
     }

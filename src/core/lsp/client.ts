@@ -72,10 +72,14 @@ export class LSPClient extends EventEmitter {
 
         this.process.on("error", (err) => {
           console.error(`[LSP ${this.command}] process error:`, err);
+          this.terminate(err);
           reject(err);
         });
 
         this.process.on("exit", (code, signal) => {
+          this.rejectPending(new Error(`LSP process exited: ${this.command}`));
+          this.process = null;
+          this.initialized = false;
           console.log(`[LSP ${this.command}] exited with code ${code}, signal ${signal}`);
           this.emit("exit", code, signal);
         });
@@ -143,6 +147,18 @@ export class LSPClient extends EventEmitter {
     this.process.kill();
     this.process = null;
     this.initialized = false;
+  }
+
+  terminate(reason: Error = new Error(`LSP process terminated: ${this.command}`)): void {
+    this.rejectPending(reason);
+    this.process?.kill();
+    this.process = null;
+    this.initialized = false;
+  }
+
+  private rejectPending(error: Error): void {
+    for (const pending of this.pendingRequests.values()) pending.reject(error);
+    this.pendingRequests.clear();
   }
 
   didOpen(params: DidOpenTextDocumentParams): void {

@@ -63,9 +63,37 @@ describe("matrix sync parsing", () => {
     expect(r.messages).toEqual([]);
   });
 
+  test("extracts direct room ids from account data", () => {
+    const sync = {
+      account_data: {
+        events: [
+          {
+            type: "m.direct",
+            content: {
+              "@alice:example.org": ["!dm:example.org"],
+              "@bob:example.org": ["!other:example.org", "!dm:example.org"],
+            },
+          },
+        ],
+      },
+    };
+    expect(parseSyncMessages(sync, SELF).directRoomIds?.sort()).toEqual([
+      "!dm:example.org",
+      "!other:example.org",
+    ]);
+  });
+
   test("handles empty/garbage sync", () => {
-    expect(parseSyncMessages(null, SELF)).toEqual({ nextBatch: null, messages: [] });
-    expect(parseSyncMessages({}, SELF)).toEqual({ nextBatch: null, messages: [] });
+    expect(parseSyncMessages(null, SELF)).toEqual({
+      nextBatch: null,
+      messages: [],
+      directRoomIds: null,
+    });
+    expect(parseSyncMessages({}, SELF)).toEqual({
+      nextBatch: null,
+      messages: [],
+      directRoomIds: null,
+    });
   });
 
   test("login body shape", () => {

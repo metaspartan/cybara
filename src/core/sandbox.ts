@@ -1,5 +1,5 @@
 import { homedir } from "os";
-import { delimiter, isAbsolute, resolve } from "path";
+import { delimiter, isAbsolute, join, resolve } from "path";
 import {
   config,
   type SandboxNetworkMode,
@@ -240,8 +240,18 @@ function buildAppleSandboxPolicy(
     "/opt",
     "/private/etc",
     "/private/tmp",
+    "/private/var/select",
     "/tmp",
     workdir,
+    join(homedir(), ".bun"),
+    join(homedir(), ".rustup"),
+    join(homedir(), ".cargo", "bin"),
+    join(homedir(), ".cargo", "git"),
+    join(homedir(), ".cargo", "registry"),
+    join(homedir(), ".cache", "uv"),
+    join(homedir(), ".local", "share", "uv"),
+    join(homedir(), "go", "bin"),
+    join(homedir(), "go", "pkg", "mod"),
     ...String(process.env.PATH || "")
       .split(delimiter)
       .map((entry) => entry.trim())
@@ -251,12 +261,28 @@ function buildAppleSandboxPolicy(
     readableRoots,
     (path) => `(allow file-read* (subpath "${escapeSandboxPath(resolve(path))}"))`
   );
+  const readableFiles = [
+    ".gitconfig",
+    ".profile",
+    ".bash_profile",
+    ".bashrc",
+    ".zprofile",
+    ".zshenv",
+    ".zshrc",
+    join(".cargo", "config"),
+    join(".cargo", "config.toml"),
+  ].map((path) => join(homedir(), path));
+  const fileReadRules = readableFiles.map(
+    (path) => `(allow file-read* (literal "${escapeSandboxPath(resolve(path))}"))`
+  );
   return [
     "(version 1)",
     "(deny default)",
     '(import "system.sb")',
     "(allow process*)",
+    "(allow file-read-metadata)",
     ...readRules,
+    ...fileReadRules,
     `(allow file-write* (subpath "${escapedWorkdir}"))`,
     '(allow file-write* (subpath "/private/tmp"))',
     '(allow file-write* (subpath "/tmp"))',
@@ -443,7 +469,7 @@ export function buildSandboxedShellPlan(params: {
       network: resolution.runtime.network,
     });
     return {
-      command: ["sandbox-exec", "-p", policy, "sh", "-lc", params.command],
+      command: ["sandbox-exec", "-p", policy, "sh", "-c", params.command],
       cwd: workdir,
       env: sandboxEnv,
       provider: "apple_sandbox",

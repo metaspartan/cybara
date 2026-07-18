@@ -300,6 +300,44 @@ describe("Telegram webhook mocked flows", () => {
     expect(payload.reply_to_message_id).toBe(101);
   });
 
+  test("requires a bot mention for group messages by default", async () => {
+    let handlerCalls = 0;
+    telegramBot.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "handled";
+    });
+    securityManager.setConfig(channelId, { group_policy: "open" });
+    (
+      telegramBot as unknown as {
+        bots: Map<
+          string,
+          {
+            token: string;
+            channelId: string;
+            mode: "webhook" | "polling";
+            username: string;
+            groupMentionsOnly: boolean;
+          }
+        >;
+      }
+    ).bots.set(channelId, {
+      token: "test-bot-token",
+      channelId,
+      mode: "webhook",
+      username: "cybara_test_bot",
+      groupMentionsOnly: true,
+    });
+    const unmentioned = makeTelegramUpdate("ambient group conversation");
+    if (unmentioned.message) unmentioned.message.chat.type = "group";
+    expect(await processAuthenticatedTelegramWebhook(channelId, unmentioned)).toBe(true);
+    expect(handlerCalls).toBe(0);
+
+    const mentioned = makeTelegramUpdate("@cybara_test_bot please help");
+    if (mentioned.message) mentioned.message.chat.type = "group";
+    expect(await processAuthenticatedTelegramWebhook(channelId, mentioned)).toBe(true);
+    expect(handlerCalls).toBe(1);
+  });
+
   test("preserves photo captions and passes persisted image metadata to the channel bridge", async () => {
     const handlerInputs: Array<{
       message: string;

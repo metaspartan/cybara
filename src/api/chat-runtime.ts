@@ -1163,8 +1163,15 @@ async function handleChatTurn(
 
   let provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
   const turnAbortController = new AbortController();
-  const consumeSteeringMessagesForActiveTurn = () =>
-    turnAbortController.signal.aborted ? [] : consumeSteeringMessages(session);
+  const consumedSteeringCompletionIds = new Set<string>();
+  const consumeSteeringMessagesForActiveTurn = () => {
+    if (turnAbortController.signal.aborted) return [];
+    const consumed = consumeSteeringMessages(session);
+    for (const item of consumed) {
+      if (pendingChatCompletions.has(item.id)) consumedSteeringCompletionIds.add(item.id);
+    }
+    return consumed;
+  };
   if (provider && agent) {
     activeChatTurnAbortControllers.set(session.id, turnAbortController);
   }
@@ -1706,9 +1713,17 @@ async function handleChatTurn(
     } catch (error) {
       if (isChatTurnInterrupted(error, turnAbortController.signal)) {
         if (isStoppedChatTurn(turnAbortController)) {
-          return await finishStoppedChatTurn(session, agent, turnAbortController);
+          const response = await finishStoppedChatTurn(session, agent, turnAbortController);
+          for (const id of consumedSteeringCompletionIds) {
+            resolvePendingChatCompletion(id, response);
+          }
+          return response;
         }
-        return await finishInterruptedChatTurn(session, agent, turnAbortController);
+        const response = await finishInterruptedChatTurn(session, agent, turnAbortController);
+        for (const id of consumedSteeringCompletionIds) {
+          resolvePendingChatCompletion(id, response);
+        }
+        return response;
       }
       if (provider) recordCircuitFailure(`llm:${provider.id}`);
       log.error("LLM API error", {
@@ -1882,7 +1897,7 @@ async function handleChatTurn(
     agentId: agent?.id,
   });
 
-  return {
+  const response: ChatResponse = {
     sessionId: session.id,
     workspaceDir: session.workspaceDir ?? null,
     contextUsage: estimateSessionContextUsage(
@@ -1905,6 +1920,8 @@ async function handleChatTurn(
     thinking: finalThinking || undefined,
     tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
   };
+  for (const id of consumedSteeringCompletionIds) resolvePendingChatCompletion(id, response);
+  return response;
 }
 
 function injectSessionMessage(session: InMemoryChatSession, message: ChatMessage): void {

@@ -16,5 +16,7 @@ describe("source LOC gate", () => {
     }
     expect(script).toContain("READ_BATCH_SIZE");
     expect(script).toContain("files.slice(offset, offset + READ_BATCH_SIZE)");
+    expect(script).toContain('scannedPath.replaceAll("\\\\", "/")');
+    expect(script).toContain('normalizedPath.split("/")');
   });
 });

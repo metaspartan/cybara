@@ -117,7 +117,13 @@ export class MattermostAdapter implements ChannelAdapter {
       const data = typeof ev.data === "string" ? ev.data : "";
       const inbound = parseMattermostEvent(data, runtime.selfUserId);
       if (inbound)
-        void this.dispatch(channelId, inbound.channelId, inbound.userId, inbound.message);
+        void this.dispatch(
+          channelId,
+          inbound.channelId,
+          inbound.userId,
+          inbound.message,
+          inbound.isGroup
+        );
     });
 
     ws.addEventListener("close", () => {
@@ -138,7 +144,8 @@ export class MattermostAdapter implements ChannelAdapter {
     channelId: string,
     mmChannelId: string,
     userId: string,
-    message: string
+    message: string,
+    isGroup: boolean
   ): Promise<void> {
     const sessionKey = `${channelId}:${mmChannelId}`;
     let sessionId = mattermostSessions.get(sessionKey);
@@ -149,7 +156,7 @@ export class MattermostAdapter implements ChannelAdapter {
 
     await logChannelMessage("mattermost", "incoming", message, { channelId, senderId: userId });
 
-    const access = evaluateChannelAccess(channelId, String(userId), "mattermost");
+    const access = evaluateChannelAccess(channelId, String(userId), "mattermost", { isGroup });
     if (!access.permitted) {
       if (access.reply) await this.sendMessage(channelId, mmChannelId, access.reply);
       return;

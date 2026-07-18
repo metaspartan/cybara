@@ -31,14 +31,11 @@ import {
 import {
   type BrowserProfile,
   type BrowserProfileConfig,
-  closePage as closeProfilePage,
   createProfile,
-  createPage as createProfilePage,
   deleteProfile,
   getBrowsersMap,
   getPagesMap,
   getProfile,
-  getProfilePages,
   listProfiles,
   shutdownAll,
   startBrowser,
@@ -395,21 +392,6 @@ export async function startBrowserProfile(name: string): Promise<unknown> {
 
 export async function stopBrowserProfile(name: string): Promise<void> {
   return await stopBrowser(name);
-}
-
-export async function createPageInProfile(profileName: string, url?: string): Promise<string> {
-  await createProfilePage(profileName, url);
-  return `${profileName}-${Date.now()}`;
-}
-
-export function getPagesInProfile(
-  profileName: string
-): Promise<Array<{ id: string; url: string; title: string }>> {
-  return getProfilePages(profileName);
-}
-
-export async function closePageInProfile(profileName: string, pageId: string): Promise<boolean> {
-  return await closeProfilePage(profileName, pageId);
 }
 
 export async function createPage(): Promise<string> {
@@ -1027,12 +1009,8 @@ export async function acceptDialog(pageId: string, promptText?: string): Promise
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  page.onDialog(async (dialog) => {
-    if (promptText) {
-      await dialog.accept(promptText);
-    } else {
-      await dialog.accept();
-    }
+  page.onceDialog(async (dialog) => {
+    void (promptText ? dialog.accept(promptText) : dialog.accept()).catch(() => undefined);
   });
 }
 
@@ -1040,8 +1018,8 @@ export async function dismissDialog(pageId: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  page.onDialog(async (dialog) => {
-    await dialog.dismiss();
+  page.onceDialog(async (dialog) => {
+    void dialog.dismiss().catch(() => undefined);
   });
 }
 

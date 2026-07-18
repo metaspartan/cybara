@@ -106,7 +106,13 @@ export class DingTalkAdapter implements ChannelAdapter {
       this.webhooks.set(`${channelId}:${message.conversationId}`, message.sessionWebhook);
     }
 
-    void this.dispatch(channelId, message.conversationId, message.senderId, message.text);
+    void this.dispatch(
+      channelId,
+      message.conversationId,
+      message.senderId,
+      message.text,
+      message.isGroup
+    );
     return { status: 200, body: {} };
   }
 
@@ -114,7 +120,8 @@ export class DingTalkAdapter implements ChannelAdapter {
     channelId: string,
     conversationId: string,
     sender: string,
-    text: string
+    text: string,
+    isGroup: boolean
   ): Promise<void> {
     const sessionKey = `${channelId}:${conversationId}`;
     let sessionId = dingtalkSessions.get(sessionKey);
@@ -125,7 +132,7 @@ export class DingTalkAdapter implements ChannelAdapter {
 
     await logChannelMessage("dingtalk", "incoming", text, { channelId, senderId: sender });
 
-    const access = evaluateChannelAccess(channelId, String(sender), "dingtalk");
+    const access = evaluateChannelAccess(channelId, String(sender), "dingtalk", { isGroup });
     if (!access.permitted) {
       if (access.reply) await this.sendMessage(channelId, conversationId, access.reply);
       return;

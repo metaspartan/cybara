@@ -93,7 +93,8 @@ export class MsTeamsAdapter implements ChannelAdapter {
       channelId,
       activity.conversationId,
       activity.sender,
-      activity.text
+      activity.text,
+      activity.isGroup
     );
     return { status: 200, body: { type: "message", text: reply || "" } };
   }
@@ -102,7 +103,8 @@ export class MsTeamsAdapter implements ChannelAdapter {
     channelId: string,
     conversationId: string,
     sender: string,
-    text: string
+    text: string,
+    isGroup: boolean
   ): Promise<string | null> {
     const sessionKey = `${channelId}:${conversationId}`;
     let sessionId = msTeamsSessions.get(sessionKey);
@@ -113,7 +115,7 @@ export class MsTeamsAdapter implements ChannelAdapter {
 
     await logChannelMessage("msteams", "incoming", text, { channelId, senderId: sender });
 
-    const access = evaluateChannelAccess(channelId, String(sender), "msteams");
+    const access = evaluateChannelAccess(channelId, String(sender), "msteams", { isGroup });
     if (!access.permitted) return access.reply ?? null;
 
     let response: string;

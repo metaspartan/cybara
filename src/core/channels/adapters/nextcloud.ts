@@ -120,7 +120,9 @@ export class NextcloudAdapter implements ChannelAdapter {
 
     await logChannelMessage("nextcloud", "incoming", text, { channelId, senderId: actorId });
 
-    const access = evaluateChannelAccess(channelId, String(actorId), "nextcloud");
+    const access = evaluateChannelAccess(channelId, String(actorId), "nextcloud", {
+      isGroup: true,
+    });
     if (!access.permitted) {
       if (access.reply) await this.sendMessage(channelId, roomToken, access.reply);
       return;

@@ -40,5 +40,7 @@ describe("CLI chat source wiring", () => {
     expect(chatSource).toContain("formatMarkdownForTerminal");
     expect(chatSource).toContain("agentId = await resolveAgentId(agentId)");
     expect(chatSource).toContain('fetchAPI<CliChatSessionSummary[]>("/api/sessions?limit=10")');
+    expect(chatSource).toContain("`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`");
+    expect(chatSource).not.toContain("`/api/sessions/${encodeURIComponent(sessionId)}/messages`");
   });
 });

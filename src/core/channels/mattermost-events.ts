@@ -3,12 +3,13 @@ export interface MattermostInbound {
   userId: string;
   message: string;
   postId: string;
+  isGroup: boolean;
 }
 
 export function parseMattermostEvent(raw: string, selfUserId: string): MattermostInbound | null {
   let event: {
     event?: string;
-    data?: { post?: string; sender_name?: string };
+    data?: { post?: string; sender_name?: string; channel_type?: string };
   };
   try {
     event = JSON.parse(raw);
@@ -34,6 +35,7 @@ export function parseMattermostEvent(raw: string, selfUserId: string): Mattermos
     userId,
     message,
     postId: post.id || "",
+    isGroup: event.data.channel_type !== "D",
   };
 }
 

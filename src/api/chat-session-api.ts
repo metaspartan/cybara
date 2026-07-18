@@ -41,6 +41,7 @@ import {
   removePersistedSessionIndex,
   type SessionListEntry,
   sortSessionListEntries,
+  chatTurnMutex,
   upsertPersistedSessionIndex,
 } from "./chat-runtime-state";
 import type { ChatMessage } from "./chat-types";
@@ -570,6 +571,9 @@ export async function revertSessionToMessage(
   removedCount: number;
   removedFromIndex: number;
 }> {
+  if (chatTurnMutex.isLocked(sessionId)) {
+    throw new Error("Cannot revert a session while a chat turn is active");
+  }
   const session = await getSession(sessionId);
   if (!session) {
     throw new Error("Session not found");

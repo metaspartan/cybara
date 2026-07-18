@@ -6,6 +6,7 @@ export interface DingTalkInbound {
   senderNick: string;
   text: string;
   sessionWebhook: string;
+  isGroup: boolean;
 }
 
 export function signDingTalk(timestamp: string, appSecret: string): string {
@@ -35,6 +36,7 @@ export function parseDingTalkMessage(body: unknown): DingTalkInbound | null {
     senderId?: string;
     senderNick?: string;
     sessionWebhook?: string;
+    conversationType?: string;
   };
   if (b?.msgtype !== "text") return null;
   const text = typeof b.text?.content === "string" ? b.text.content.trim() : "";
@@ -45,5 +47,6 @@ export function parseDingTalkMessage(body: unknown): DingTalkInbound | null {
     senderNick: b.senderNick || "",
     text,
     sessionWebhook: typeof b.sessionWebhook === "string" ? b.sessionWebhook : "",
+    isGroup: b.conversationType !== "2",
   };
 }

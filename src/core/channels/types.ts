@@ -33,6 +33,13 @@ export const channels = {
         description: "Only this sender can use the bot in groups when Group Policy is owner_only.",
       },
       {
+        name: "group_mentions_only",
+        label: "Require Group Mention",
+        type: "boolean",
+        required: false,
+        default: true,
+      },
+      {
         name: "reaction_notifications",
         label: "Reaction Notifications",
         type: "select",
@@ -384,7 +391,7 @@ export const channels = {
     fields: [
       { name: "app_id", label: "App ID", type: "password", required: true },
       { name: "app_secret", label: "App Secret", type: "password", required: true },
-      { name: "encrypt_key", label: "Encrypt Key", type: "password", required: false },
+      { name: "encrypt_key", label: "Encrypt Key", type: "password", required: true },
       {
         name: "verification_token",
         label: "Verification Token",
@@ -473,7 +480,7 @@ export const channels = {
         name: "secret",
         label: "HMAC Secret",
         type: "password",
-        required: false,
+        required: true,
         description:
           "Shared secret for HMAC-SHA256 signature verification (x-cybara-signature header).",
       },

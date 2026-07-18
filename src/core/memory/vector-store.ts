@@ -380,14 +380,7 @@ export class VectorStore {
   ): Promise<number> {
     await this.ensureReady();
 
-    const oldChunks = Array.from(this.chunks.values()).filter((chunk) => chunk.path === path);
-    for (const chunk of oldChunks) {
-      this.chunks.delete(chunk.id);
-      this.db.run("DELETE FROM chunks WHERE id = ?", [chunk.id]);
-    }
-
     const textChunks = chunkMarkdown(content);
-    if (textChunks.length === 0) return 0;
 
     const provider = this.provider;
     const withEmbeddings = this.canEmbed() && provider;
@@ -406,15 +399,17 @@ export class VectorStore {
       "INSERT OR REPLACE INTO chunks (id, path, start_line, end_line, content, embedding, source, created_at, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     );
 
-    let insertedCount = 0;
+    const replacementChunks: MemoryChunk[] = [];
     for (let i = 0; i < textChunks.length; i += 1) {
       const chunk = textChunks[i];
-      const embedding = embeddings[i] || [];
-      if (withEmbeddings && embedding.length === 0) continue;
+      const embedding = embeddings[i] ?? [];
+      if (withEmbeddings && embedding.length === 0) {
+        throw new Error(`Embedding provider returned an empty vector for chunk ${i + 1}`);
+      }
 
       const hash = hashContent(chunk.text);
       const id = `${path}:${chunk.startLine}:${hash}`;
-      const memoryChunk: MemoryChunk = {
+      replacementChunks.push({
         id,
         path,
         startLine: chunk.startLine,
@@ -424,25 +419,34 @@ export class VectorStore {
         source,
         createdAt: now,
         hash,
-      };
-
-      this.chunks.set(id, memoryChunk);
-      stmt.run(
-        id,
-        path,
-        chunk.startLine,
-        chunk.endLine,
-        chunk.text,
-        JSON.stringify(embedding),
-        source,
-        now,
-        hash
-      );
-      insertedCount += 1;
+      });
     }
 
-    console.log(`[VectorStore] Indexed ${insertedCount} chunks for ${path}`);
-    return insertedCount;
+    const replace = this.db.transaction((chunks: MemoryChunk[]) => {
+      this.db.run("DELETE FROM chunks WHERE path = ?", [path]);
+      for (const chunk of chunks) {
+        stmt.run(
+          chunk.id,
+          chunk.path,
+          chunk.startLine,
+          chunk.endLine,
+          chunk.content,
+          JSON.stringify(chunk.embedding),
+          chunk.source,
+          chunk.createdAt,
+          chunk.hash
+        );
+      }
+    });
+    replace(replacementChunks);
+
+    for (const [id, chunk] of this.chunks) {
+      if (chunk.path === path) this.chunks.delete(id);
+    }
+    for (const chunk of replacementChunks) this.chunks.set(chunk.id, chunk);
+
+    console.log(`[VectorStore] Indexed ${replacementChunks.length} chunks for ${path}`);
+    return replacementChunks.length;
   }
 
   async search(

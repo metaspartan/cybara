@@ -78,6 +78,7 @@ export interface AutomationPage {
   onClose(listener: () => void): void;
   onConsole(listener: (message: AutomationConsoleMessage) => void): void;
   onDialog(listener: (dialog: AutomationDialog) => Promise<void>): void;
+  onceDialog(listener: (dialog: AutomationDialog) => Promise<void>): void;
   onNavigation(listener: () => void): void;
   goto(
     url: string,
@@ -328,6 +329,10 @@ class PlaywrightPageAdapter implements AutomationPage {
 
   onDialog(listener: (dialog: AutomationDialog) => Promise<void>): void {
     this.page.on("dialog", listener);
+  }
+
+  onceDialog(listener: (dialog: AutomationDialog) => Promise<void>): void {
+    this.page.once("dialog", listener);
   }
 
   onNavigation(listener: () => void): void {
@@ -707,6 +712,10 @@ class PuppeteerPageAdapter implements AutomationPage {
 
   onDialog(listener: (dialog: AutomationDialog) => Promise<void>): void {
     this.page.on("dialog", (dialog) => void listener(new PuppeteerDialogAdapter(dialog)));
+  }
+
+  onceDialog(listener: (dialog: AutomationDialog) => Promise<void>): void {
+    this.page.once("dialog", (dialog) => void listener(new PuppeteerDialogAdapter(dialog)));
   }
 
   onNavigation(listener: () => void): void {

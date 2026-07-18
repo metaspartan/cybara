@@ -17,9 +17,10 @@ const skippedDirectories = new Set([".build", ".git", "build", "dist", "node_mod
 
 async function collectSourceFiles(root: string): Promise<string[]> {
   const files: string[] = [];
-  for await (const path of sourceGlob.scan({ cwd: root, onlyFiles: true })) {
-    if (path.split("/").some((segment) => skippedDirectories.has(segment))) continue;
-    files.push(`${root}/${path}`);
+  for await (const scannedPath of sourceGlob.scan({ cwd: root, onlyFiles: true })) {
+    const normalizedPath = scannedPath.replaceAll("\\", "/");
+    if (normalizedPath.split("/").some((segment) => skippedDirectories.has(segment))) continue;
+    files.push(`${root}/${normalizedPath}`);
   }
   return files;
 }
