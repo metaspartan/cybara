@@ -28,6 +28,8 @@ export interface ChatMessage {
   agent_transfers?: AgentTransferEnvelope[];
   run_id?: string;
   interrupted?: boolean;
+  pending_chat_id?: string;
+  client_pending_id?: string;
   /** Optional image inputs (vision) attached to a user message. */
   images?: AgentImage[];
   image_context?: string;

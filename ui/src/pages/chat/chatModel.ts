@@ -56,6 +56,8 @@ export interface ChatMessage {
   }>;
   thinking?: string;
   images?: ChatImageAttachment[];
+  pending_chat_id?: string;
+  client_pending_id?: string;
   _truncated?: string;
   _tool_calls_hidden_count?: number;
   _tool_calls_total_count?: number;

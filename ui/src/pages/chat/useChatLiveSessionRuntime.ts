@@ -11,7 +11,14 @@ import {
   type StatusStreamTokenEvent,
 } from "@/lib/status-stream";
 import type { SessionContextUsage, SessionTokenUsage } from "@/types";
-import { type Dispatch, type RefObject, type SetStateAction, useCallback, useEffect } from "react";
+import {
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useRef,
+} from "react";
 import type { SessionEventIdentity } from "../../../../shared/session-event-order";
 import {
   applyLiveActivityEvent,
@@ -40,7 +47,7 @@ import {
   readCachedOptimisticPendingMessages,
   writeCachedOptimisticPendingMessages,
 } from "./pendingQueueCache";
-import { mergePendingChatMessages } from "./pendingQueueState";
+import { materializedPendingChatIds, mergePendingChatMessages } from "./pendingQueueState";
 
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
 type LiveStatus = "thinking" | "generating" | "compacting" | "idle";
@@ -138,6 +145,14 @@ export function useChatLiveSessionRuntime({
 }: UseChatLiveSessionRuntimeOptions): {
   hydrateSessionStatus: (targetSessionId?: string | null) => Promise<void>;
 } {
+  const typedMessagesRef = useRef(typedMessages);
+  const currentSessionIsWorkingRef = useRef(currentSessionIsWorking);
+
+  useEffect(() => {
+    typedMessagesRef.current = typedMessages;
+    currentSessionIsWorkingRef.current = currentSessionIsWorking;
+  }, [currentSessionIsWorking, typedMessages]);
+
   const markFirstTokenLatency = useCallback((forSessionId?: string | null) => {
     if (ttftStartRef.current === null) return;
     if (forSessionId && activeSessionRef.current && forSessionId !== activeSessionRef.current) {
@@ -501,8 +516,12 @@ export function useChatLiveSessionRuntime({
             snapshot.status === "compacting" ||
             snapshot.status === "tool_executing" ||
             snapshot.status === "tool_completed");
+        const transcriptPendingIds = materializedPendingChatIds(typedMessagesRef.current);
         setPendingMessages((current) =>
-          mergePendingChatMessages(snapshot?.pendingMessages, current)
+          mergePendingChatMessages(snapshot?.pendingMessages, current, {
+            preserveAcknowledged: true,
+            materializedPendingIds: transcriptPendingIds,
+          })
         );
         if (snapshot && snapshotFresh) {
           const snapshotAccepted = cacheLiveStatusSnapshot(snapshot);
@@ -606,12 +625,16 @@ export function useChatLiveSessionRuntime({
       if (!response.success || !response.data) return;
       if (activeSessionRef.current !== resolvedSessionId) return;
       const serverMessages = response.data?.pendingMessages;
+      const transcriptPendingIds = materializedPendingChatIds(typedMessagesRef.current);
+      const preservePending = currentSessionIsWorkingRef.current;
       setPendingMessages((current) =>
         mergePendingChatMessages(serverMessages, current, {
-          preserveOptimistic: false,
+          preserveOptimistic: preservePending,
+          preserveAcknowledged: true,
+          materializedPendingIds: transcriptPendingIds,
         })
       );
-      if (Array.isArray(serverMessages) && serverMessages.length === 0) {
+      if (Array.isArray(serverMessages) && serverMessages.length === 0 && !preservePending) {
         clearCachedOptimisticPendingMessages(resolvedSessionId);
       }
     } catch {}
@@ -715,6 +738,14 @@ export function useChatLiveSessionRuntime({
     if (!sessionId) return;
     writeCachedOptimisticPendingMessages(sessionId, pendingMessages);
   }, [pendingMessages, sessionId]);
+
+  useEffect(() => {
+    const transcriptPendingIds = materializedPendingChatIds(typedMessages);
+    if (transcriptPendingIds.size === 0) return;
+    setPendingMessages((current) =>
+      current.filter((message) => !transcriptPendingIds.has(message.id))
+    );
+  }, [typedMessages]);
 
   useEffect(() => {
     if (!sessionId || typedMessages.length === 0) return;

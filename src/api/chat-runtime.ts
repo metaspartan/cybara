@@ -56,11 +56,9 @@ import {
 } from "../core/session-title";
 import {
   broadcastStatus,
-  broadcastStatusSnapshot,
   getSessionRunStatusSnapshot,
   isSessionStatusActive,
   type PendingChatMessageSnapshot,
-  setSessionPendingChatMessages,
 } from "../core/status";
 import { handleMemorySave } from "../core/tools/handlers/memory";
 import {
@@ -77,6 +75,21 @@ import {
 } from "./chat-agent-prompt";
 import { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
+import {
+  deletePersistedPendingChatItem,
+  persistPendingChatItem,
+  persistPendingChatItems,
+} from "./chat-pending-store";
+import {
+  findMaterializedPendingMessage,
+  hasPendingChatMessages,
+  materializePendingMessage,
+  nextPendingChatSequence,
+  pendingChatSnapshot,
+  pendingChatSnapshots,
+  restorePendingChatQueueState,
+  syncPendingChatStatus,
+} from "./chat-pending-state";
 import {
   buildFallbackProcessActivities,
   dedupeProcessActivities,
@@ -140,7 +153,6 @@ export {
 } from "./chat-process-activities";
 
 const log = createLogger("Chat");
-let pendingChatSequence = 0;
 
 export type {
   ChatMessage,
@@ -338,36 +350,6 @@ async function finishInterruptedChatTurn(
   };
 }
 
-function pendingChatSnapshot(item: PendingChatItem): PendingChatMessageSnapshot {
-  return {
-    id: item.id,
-    sessionId: item.sessionId,
-    ...(item.clientPendingId ? { clientPendingId: item.clientPendingId } : {}),
-    content: item.content,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-    mode: item.mode,
-    sequence: item.sequence,
-  };
-}
-
-function pendingChatSnapshots(sessionId: string): PendingChatMessageSnapshot[] {
-  return (pendingChatQueues.get(sessionId) || [])
-    .filter((item) => item.materialized !== true)
-    .map(pendingChatSnapshot);
-}
-
-function syncPendingChatStatus(sessionId: string): PendingChatMessageSnapshot[] {
-  const snapshots = pendingChatSnapshots(sessionId);
-  setSessionPendingChatMessages(sessionId, snapshots);
-  broadcastStatusSnapshot();
-  return snapshots;
-}
-
-function hasPendingChatMessages(sessionId: string): boolean {
-  return (pendingChatQueues.get(sessionId)?.length || 0) > 0;
-}
-
 function enqueuePendingChatMessage(
   request: ChatRequest,
   sessionId: string,
@@ -392,7 +374,7 @@ function enqueuePendingChatMessage(
     createdAt: now,
     updatedAt: now,
     mode,
-    sequence: ++pendingChatSequence,
+    sequence: nextPendingChatSequence(),
   };
 
   if (queue.length >= MAX_PENDING_CHAT_MESSAGES_PER_SESSION) {
@@ -401,6 +383,7 @@ function enqueuePendingChatMessage(
   if (request.awaitQueuedCompletion) createPendingChatCompletion(item.id);
 
   queue.push(item);
+  persistPendingChatItem(item);
   pendingChatQueues.set(sessionId, queue);
 
   const pendingMessages = syncPendingChatStatus(sessionId);
@@ -441,15 +424,16 @@ function consumeSteeringMessages(session: InMemoryChatSession): Array<{
   } else {
     pendingChatQueues.delete(session.id);
   }
-  syncPendingChatStatus(session.id);
 
   for (const item of steeringItems) {
-    let materializedMessage = findMaterializedSteeringMessage(session, item.id);
+    let materializedMessage = findMaterializedPendingMessage(session, item.id);
     if (!materializedMessage) {
-      materializedMessage = materializeSteeringMessage(session, item);
+      materializedMessage = materializePendingMessage(session, item);
     }
     delete materializedMessage._pendingSteeringId;
+    deletePersistedPendingChatItem(item.id);
   }
+  syncPendingChatStatus(session.id);
 
   return steeringItems.map((item) => ({
     id: item.id,
@@ -465,41 +449,6 @@ function schedulePendingChatDrain(sessionId: string, delayMs = 0): void {
     pendingChatDrainScheduled.delete(sessionId);
     void drainPendingChatQueue(sessionId);
   }, delayMs);
-}
-
-function findMaterializedSteeringMessage(
-  session: InMemoryChatSession,
-  pendingMessageId: string
-): ChatMessage | undefined {
-  return session.messages.find(
-    (message) => message.role === "user" && message._pendingSteeringId === pendingMessageId
-  );
-}
-
-function materializeSteeringMessage(
-  session: InMemoryChatSession,
-  item: PendingChatItem
-): ChatMessage {
-  const existing = findMaterializedSteeringMessage(session, item.id);
-  if (existing) return existing;
-
-  const latestMessageTimestamp = session.messages.reduce((latest, message) => {
-    const parsed = parseIsoTimestampMs(message.timestamp);
-    return parsed ? Math.max(latest, parsed) : latest;
-  }, 0);
-  const timestamp = new Date(
-    Math.max(item.updatedAt || item.createdAt, latestMessageTimestamp + 2)
-  ).toISOString();
-  const message: ChatMessage = {
-    role: "user",
-    content: item.content,
-    timestamp,
-    _pendingSteeringId: item.id,
-    ...(hasImages(item.request.images) ? { images: item.request.images } : {}),
-  };
-  session.messages.push(message);
-  session.updatedAt = timestamp;
-  return message;
 }
 
 function finalizeStoppedProcessActivity(activity: ProcessActivityInfo): ProcessActivityInfo {
@@ -600,18 +549,40 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
   }
 
   const queue = pendingChatQueues.get(sessionId) || [];
-  const next = queue.shift();
+  const next = queue[0];
   if (!next) {
     pendingChatQueues.delete(sessionId);
     syncPendingChatStatus(sessionId);
     return;
   }
 
-  if (queue.length > 0) {
-    pendingChatQueues.set(sessionId, queue);
-  } else {
-    pendingChatQueues.delete(sessionId);
+  const session =
+    getResidentChatSession(sessionId) || (await restorePersistedChatSessionForChat(sessionId));
+  if (!session) {
+    log.error("Queued chat session could not be restored", { sessionId, pendingId: next.id });
+    schedulePendingChatDrain(sessionId, 1000);
+    return;
   }
+
+  const materializedMessage = materializePendingMessage(session, next);
+  await upsertPersistedSessionMessage(session.id, session.agentId, materializedMessage, {
+    stableKey: `pending:${next.id}`,
+    metadata: { source: "chat_queue" },
+  });
+  const materializedPersisted = await persistChatSessionSnapshot(session, materializedMessage);
+  if (!materializedPersisted) {
+    schedulePendingChatDrain(sessionId, 1000);
+    return;
+  }
+  persistActiveSessionContext(session);
+
+  next.materialized = true;
+  persistPendingChatItem(next);
+  const currentQueue = pendingChatQueues.get(sessionId) || [];
+  const remaining = currentQueue.filter((item) => item.id !== next.id);
+  if (remaining.length > 0) pendingChatQueues.set(sessionId, remaining);
+  else pendingChatQueues.delete(sessionId);
+  deletePersistedPendingChatItem(next.id);
   syncPendingChatStatus(sessionId);
 
   try {
@@ -628,7 +599,7 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
         message: next.content,
         sessionId,
         queueMode: "queue",
-        recordedUserMessageId: next.materialized ? next.id : undefined,
+        recordedUserMessageId: next.id,
       },
       sessionId
     );
@@ -746,6 +717,10 @@ export function listPendingChatMessages(sessionId: string): PendingChatMessageSn
   return pendingChatSnapshots(sessionId.trim());
 }
 
+export function restorePersistedPendingChatQueues(schedule = true): number {
+  return restorePendingChatQueueState(schedule ? schedulePendingChatDrain : undefined);
+}
+
 export function reorderPendingChatMessages(
   sessionId: string,
   pendingMessageIds: string[]
@@ -786,11 +761,12 @@ export function reorderPendingChatMessages(
   ].map((item) => ({
     ...item,
     updatedAt: now,
-    sequence: ++pendingChatSequence,
+    sequence: nextPendingChatSequence(),
   }));
   const materializedItems = queue.filter((item) => item.materialized === true);
 
   pendingChatQueues.set(key, [...materializedItems, ...orderedVisibleItems]);
+  persistPendingChatItems([...materializedItems, ...orderedVisibleItems]);
   const pendingMessages = syncPendingChatStatus(key);
   return { success: true, pendingMessages };
 }
@@ -843,6 +819,7 @@ export function updatePendingChatMessage(
   };
   queue[index] = item;
   pendingChatQueues.set(key, queue);
+  persistPendingChatItem(item);
   const pendingMessages = syncPendingChatStatus(key);
   return {
     success: true,
@@ -880,6 +857,7 @@ export function deletePendingChatMessage(
   } else {
     pendingChatQueues.delete(key);
   }
+  deletePersistedPendingChatItem(pendingMessageId);
   const pendingMessages = syncPendingChatStatus(key);
   rejectPendingChatCompletion(pendingMessageId, new Error("Pending chat message was deleted"));
   return { success: true, pendingMessages };
@@ -939,13 +917,13 @@ export async function steerPendingChatMessage(
     };
   }
 
-  const item = queue[index];
-  item.mode = "steering";
-  item.updatedAt = Date.now();
-  item.materialized = true;
-  queue[index] = item;
-  pendingChatQueues.set(key, queue);
-  const materializedMessage = materializeSteeringMessage(session, item);
+  const item: PendingChatItem = {
+    ...queue[index],
+    mode: "steering",
+    updatedAt: Date.now(),
+    materialized: true,
+  };
+  const materializedMessage = materializePendingMessage(session, item);
   const interruptedMessage = materializeInterruptedAssistantBeforeSteering(
     session,
     sanitizeObservedProcessActivities(options?.processActivities),
@@ -961,7 +939,7 @@ export async function steerPendingChatMessage(
     });
   }
   await upsertPersistedSessionMessage(session.id, session.agentId, materializedMessage, {
-    stableKey: `steering:${item.id}`,
+    stableKey: `pending:${item.id}`,
     metadata: { source: "chat_steering" },
   });
   session.persisted = await persistSession(
@@ -972,6 +950,9 @@ export async function steerPendingChatMessage(
     session.title,
     session.useModelRouter
   );
+  queue[index] = item;
+  pendingChatQueues.set(key, queue);
+  persistPendingChatItem(item);
   persistActiveSessionContext(session);
   upsertPersistedSessionIndex({
     id: session.id,
@@ -1001,6 +982,8 @@ export async function steerPendingChatMessage(
     pendingMessages,
   };
 }
+
+setTimeout(() => restorePersistedPendingChatQueues(), 1200);
 
 async function handleChatTurn(
   request: ChatRequest,
@@ -1144,7 +1127,7 @@ async function handleChatTurn(
       ? request.recordedUserMessageId.trim()
       : undefined;
   let userMessage = recordedUserMessageId
-    ? findMaterializedSteeringMessage(session, recordedUserMessageId)
+    ? findMaterializedPendingMessage(session, recordedUserMessageId)
     : undefined;
   const isMaterializedSteeringTurn = !!userMessage;
   const shouldLogUserMessage = !userMessage;

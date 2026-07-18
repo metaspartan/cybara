@@ -10,12 +10,15 @@ import {
   listPendingChatMessages,
   deletePendingChatMessage,
   reorderPendingChatMessages,
+  restorePersistedPendingChatQueues,
   sendToSession,
   steerPendingChatMessage,
   stopActiveChatTurn,
   updatePendingChatMessage,
   updateSessionAgent,
 } from "../../src/api/chat";
+import { loadPersistedPendingChatItems } from "../../src/api/chat-pending-store";
+import { pendingChatQueues } from "../../src/api/chat-runtime-state";
 import { broadcastStatus, onStatusStream } from "../../src/core/status";
 import { config } from "../../src/core/config";
 import { listSessionEvents } from "../../src/core/session-event-ledger";
@@ -1155,27 +1158,50 @@ describe("handleChat per-session serialization", () => {
     const sessionId = `serialize-${Date.now()}`;
     createdSessionIds.push(sessionId);
     const statusDetails: string[] = [];
+    const queueHandoffVisibility: Array<Promise<boolean>> = [];
+    let observeQueueHandoff = false;
     const unsubscribe = onStatusStream((event) => {
       if (event.type === "status" && typeof event.detail === "string") {
         statusDetails.push(event.detail);
       }
+      if (observeQueueHandoff && event.type === "snapshot") {
+        const pending = event.activeSessions
+          .find((snapshot) => snapshot.sessionId === sessionId)
+          ?.pendingMessages?.some((message) => message.content === "second");
+        if (!pending) {
+          queueHandoffVisibility.push(
+            loadPersistedSession(sessionId).then((session) =>
+              (session?.messages || []).some(
+                (message) =>
+                  message.role === "user" &&
+                  message.content === "second" &&
+                  typeof message.pending_chat_id === "string"
+              )
+            )
+          );
+        }
+      }
     });
 
-    const [firstResponse, secondResponse] = await Promise.all([
-      handleChat({
-        message: "first",
-        agentId: agent.id,
-        sessionId,
-        tools: false,
-      }),
-      handleChat({
-        message: "second",
-        agentId: agent.id,
-        sessionId,
-        clientPendingId: "optimistic-second",
-        tools: false,
-      }),
-    ]).finally(() => unsubscribe());
+    const firstTurn = handleChat({
+      message: "first",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const secondResponse = await handleChat({
+      message: "second",
+      agentId: agent.id,
+      sessionId,
+      clientPendingId: "optimistic-second",
+      tools: false,
+    });
+    observeQueueHandoff = true;
+    expect(loadPersistedPendingChatItems(sessionId).map((item) => item.content)).toEqual([
+      "second",
+    ]);
+    const firstResponse = await firstTurn;
 
     expect(firstResponse.queued).toBeUndefined();
     expect(secondResponse.queued).toBe(true);
@@ -1197,6 +1223,10 @@ describe("handleChat per-session serialization", () => {
     expect(messages[2]?.content).toBe("second");
     expect(messages[3]?.role).toBe("assistant");
     expect(listPendingChatMessages(sessionId)).toEqual([]);
+    expect(loadPersistedPendingChatItems(sessionId)).toEqual([]);
+    expect(queueHandoffVisibility.length).toBeGreaterThan(0);
+    expect(await Promise.all(queueHandoffVisibility)).not.toContain(false);
+    unsubscribe();
   });
 
   test("queued follow-up can interrupt the active turn as steering", async () => {
@@ -1726,6 +1756,15 @@ describe("handleChat per-session serialization", () => {
 
     expect(queued.queued).toBe(true);
     expect(queued.pendingMessages?.map((message) => message.content)).toEqual(["second"]);
+    expect(loadPersistedPendingChatItems(sessionId).map((item) => item.content)).toEqual([
+      "second",
+    ]);
+    pendingChatQueues.delete(sessionId);
+    expect(listPendingChatMessages(sessionId)).toEqual([]);
+    expect(restorePersistedPendingChatQueues(false)).toBeGreaterThanOrEqual(1);
+    expect(listPendingChatMessages(sessionId).map((message) => message.content)).toEqual([
+      "second",
+    ]);
     broadcastStatus({
       status: "thinking",
       timestamp: Date.now(),
@@ -1758,6 +1797,7 @@ describe("handleChat per-session serialization", () => {
     expect(messages[1]?.role).toBe("assistant");
     expect(messages[2]?.content).toBe("second");
     expect(messages[3]?.role).toBe("assistant");
+    expect(loadPersistedPendingChatItems(sessionId)).toEqual([]);
   });
 
   test("pending follow-ups can be reordered before they drain", async () => {

@@ -157,7 +157,9 @@ describe("status stream websocket wiring", () => {
     expect(source).not.toContain("const sessionStillActive =");
     expect(source).not.toContain("if (!sessionStillActive) {");
     expect(source).toContain("refreshPendingMessages(sessionId)");
-    expect(source).toContain("mergePendingChatMessages(snapshot?.pendingMessages, current)");
+    expect(source).toContain("mergePendingChatMessages(snapshot?.pendingMessages, current, {");
+    expect(source).toContain("preserveAcknowledged: true");
+    expect(source).toContain("materializedPendingIds: transcriptPendingIds");
     expect(source).toContain("readCachedOptimisticPendingMessages(sessionId)");
     expect(source).toContain("writeCachedOptimisticPendingMessages(sessionId, pendingMessages)");
     expect(source).toContain("const resetChatSession = useCallback");
