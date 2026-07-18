@@ -62,6 +62,15 @@ export function baseSubprocessEnvironment(
   return environment;
 }
 
+export function sanitizeSubprocessEnvironment(source: unknown): Record<string, string> {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return {};
+  const environment: Record<string, string> = {};
+  for (const [name, value] of Object.entries(source)) {
+    if (typeof value === "string" && safeEnvironmentName(name)) environment[name] = value;
+  }
+  return environment;
+}
+
 export function buildSubprocessEnvironment(
   overrides: Readonly<Record<string, string | undefined>> = {},
   source: Readonly<Record<string, string | undefined>> = process.env

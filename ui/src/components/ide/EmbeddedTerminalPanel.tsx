@@ -5,7 +5,7 @@ import { Terminal as XTerminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { buildXtermTheme } from "../../pages/ide/xtermTheme";
 import { Button } from "@/components/ui/Button";
-import { appendApiTokenParam } from "@/lib/auth";
+import { createAuthenticatedWebSocket, withGatewayBasePath } from "@/lib/auth";
 import { fitAndNotifyTerminal, type TerminalDimensions } from "@/lib/terminal-runtime";
 import { checkTerminalAccess, enableTerminalAccess } from "@/lib/terminal-access";
 import { cn } from "@/lib/utils";
@@ -165,8 +165,8 @@ export function EmbeddedTerminalPanel({
     term.loadAddon(fitAddon);
 
     const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsPath = appendApiTokenParam(`/api/terminal/ws?session=${encodeURIComponent(id)}`);
-    const ws = new WebSocket(`${wsProto}//${window.location.host}${wsPath}`);
+    const wsPath = withGatewayBasePath(`/api/terminal/ws?session=${encodeURIComponent(id)}`);
+    const ws = createAuthenticatedWebSocket(`${wsProto}//${window.location.host}${wsPath}`);
     ws.binaryType = "arraybuffer";
 
     ws.onopen = () => {

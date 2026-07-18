@@ -245,16 +245,19 @@ describe("UI page API wiring", () => {
     expect(codeViewerSource).toContain("data-line-number={i + 1}");
   });
 
-  test("Terminal page uses token-aware websocket URL helper", () => {
+  test("Terminal page uses authenticated websocket transport", () => {
     const source = readPage("Terminal.tsx");
 
     expect(source).toContain("import { checkTerminalAccess, enableTerminalAccess }");
     expect(source).toContain("void refreshTerminalAccess()");
     expect(source).toContain("await enableTerminalAccess()");
     expect(source).toContain(
-      "appendApiTokenParam(`/api/terminal/ws?session=${encodeURIComponent(id)}`)"
+      "withGatewayBasePath(`/api/terminal/ws?session=${encodeURIComponent(id)}`)"
     );
-    expect(source).toContain("new WebSocket(`${proto}//${window.location.host}${wsPath}`)");
+    expect(source).toContain(
+      "createAuthenticatedWebSocket(`${proto}//${window.location.host}${wsPath}`)"
+    );
+    expect(source).not.toContain("appendApiTokenParam");
     expect(source).toContain("term.onData((data) => {");
     expect(source).toContain("ws.send(data)");
     expect(source).toContain("Enable Web Terminal");
@@ -416,8 +419,10 @@ describe("UI page API wiring", () => {
     const statusStreamSource = readLib("status-stream.ts");
 
     expect(source).toContain("connectStatusStream({");
-    expect(statusStreamSource).toContain('new WebSocket(toWebSocketUrl("/api/ws/status"))');
-    expect(statusStreamSource).toContain("appendApiTokenParam(path)");
+    expect(statusStreamSource).toContain(
+      'createAuthenticatedWebSocket(toWebSocketUrl("/api/ws/status"))'
+    );
+    expect(statusStreamSource).not.toContain("appendApiTokenParam");
     expect(source).toContain('status === "tool_executing"');
     expect(source).toContain('status === "tool_completed"');
     expect(source).toContain("<LiveActivityTimeline");

@@ -36,4 +36,53 @@ describe("VectorStore atomic indexing", () => {
     expect(results.some((result) => result.content.includes("replacement marker"))).toBe(false);
     store.close();
   });
+
+  test("embeds only appended file content while preserving existing chunks", async () => {
+    const store = new VectorStore();
+    await store.ensureReady();
+    await store.indexFile("incremental.md", "The original durable marker remains searchable.");
+
+    const embeddedBatches: string[][] = [];
+    const internals = store as unknown as VectorStoreInternals;
+    internals.provider = {
+      id: "voyage",
+      model: "incremental-test-provider",
+      dimensions: 1,
+      embedQuery: async () => [1],
+      embedBatch: async (texts) => {
+        embeddedBatches.push([...texts]);
+        return texts.map(() => [1]);
+      },
+    };
+    internals.providerReady = Promise.resolve();
+    internals.providerSource = "voyage";
+
+    const appended = await store.appendFileContent(
+      "incremental.md",
+      "\n## fact\n\nThe newly appended durable marker is indexed independently.\n",
+      1
+    );
+
+    expect(appended).toBe(1);
+    expect(embeddedBatches.flat()).toEqual([
+      "## fact\n\nThe newly appended durable marker is indexed independently.\n",
+    ]);
+
+    internals.provider = null;
+    internals.providerSource = "none";
+    const original = await store.search("original durable marker");
+    const added = await store.search("newly appended durable marker");
+    expect(original.some((result) => result.content.includes("original durable marker"))).toBe(
+      true
+    );
+    expect(added.some((result) => result.startLine === 3)).toBe(true);
+    store.close();
+  });
+
+  test("requests a full replacement when the prior file is not indexed", async () => {
+    const store = new VectorStore();
+    await store.ensureReady();
+    expect(await store.appendFileContent("missing.md", "New content", 0)).toBeNull();
+    store.close();
+  });
 });

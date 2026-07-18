@@ -6,6 +6,7 @@ import { logChannelMessage } from "../../logging";
 import {
   parseSyncMessages,
   buildLoginBody,
+  isMatrixGroupRoom,
   sendEventPath,
   normalizeHomeserverUrl,
 } from "../matrix-sync";
@@ -26,6 +27,7 @@ interface MatrixRuntime {
   abort: AbortController;
   txn: number;
   directRoomIds: Set<string>;
+  roomMemberCounts: Map<string, number>;
 }
 
 export class MatrixAdapter implements ChannelAdapter {
@@ -89,6 +91,7 @@ export class MatrixAdapter implements ChannelAdapter {
       abort: new AbortController(),
       txn: Date.now(),
       directRoomIds: new Set(),
+      roomMemberCounts: new Map(),
     };
     this.runtimes.set(channelId, runtime);
 
@@ -98,10 +101,13 @@ export class MatrixAdapter implements ChannelAdapter {
       "GET",
       "/_matrix/client/v3/sync?timeout=0"
     );
-    const { nextBatch, directRoomIds } = parseSyncMessages(initial, selfUserId, {
+    const { nextBatch, directRoomIds, roomMemberCounts } = parseSyncMessages(initial, selfUserId, {
       ignoreInitial: true,
     });
     if (directRoomIds) runtime.directRoomIds = new Set(directRoomIds);
+    for (const [roomId, memberCount] of Object.entries(roomMemberCounts)) {
+      runtime.roomMemberCounts.set(roomId, memberCount);
+    }
     void this.syncLoop(channelId, nextBatch);
     console.log(`[Matrix] Connected as ${selfUserId} on ${homeserver}`);
   }
@@ -157,8 +163,14 @@ export class MatrixAdapter implements ChannelAdapter {
           `/_matrix/client/v3/sync?${query}`,
           { signal: runtime.abort.signal }
         );
-        const { nextBatch, messages, directRoomIds } = parseSyncMessages(sync, runtime.selfUserId);
+        const { nextBatch, messages, directRoomIds, roomMemberCounts } = parseSyncMessages(
+          sync,
+          runtime.selfUserId
+        );
         if (directRoomIds) runtime.directRoomIds = new Set(directRoomIds);
+        for (const [roomId, memberCount] of Object.entries(roomMemberCounts)) {
+          runtime.roomMemberCounts.set(roomId, memberCount);
+        }
         cursor = nextBatch ?? cursor;
 
         for (const msg of messages) {
@@ -167,7 +179,7 @@ export class MatrixAdapter implements ChannelAdapter {
             msg.roomId,
             msg.sender,
             msg.body,
-            !runtime.directRoomIds.has(msg.roomId)
+            isMatrixGroupRoom(msg.roomId, runtime.directRoomIds, runtime.roomMemberCounts)
           );
         }
       } catch (error) {

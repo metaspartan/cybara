@@ -7,7 +7,11 @@ import { runInRemoteSandbox } from "../../sandbox/remote-sandbox";
 import { createLogger } from "../../logger";
 import { getPathSeparator, isWindows, shellEscapeArg } from "../../platform";
 import { persistToolOutputForRecovery } from "../../tool-output-recovery";
-import { buildContainerRuntimeEnvironment, buildSubprocessEnvironment } from "../../subprocess-env";
+import {
+  buildContainerRuntimeEnvironment,
+  buildSubprocessEnvironment,
+  sanitizeSubprocessEnvironment,
+} from "../../subprocess-env";
 import type { ToolContext } from "../index";
 
 const log = createLogger("ProcessTool");
@@ -264,7 +268,7 @@ export async function handleExec(
         : "";
   const timeout = args.timeout as number | undefined;
   const workdir = expandTilde(args.workdir as string | undefined);
-  const env = args.env as Record<string, string> | undefined;
+  const env = sanitizeSubprocessEnvironment(args.env);
 
   if (!command) {
     return {

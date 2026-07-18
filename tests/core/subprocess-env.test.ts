@@ -3,6 +3,7 @@ import {
   baseSubprocessEnvironment,
   buildContainerRuntimeEnvironment,
   buildSubprocessEnvironment,
+  sanitizeSubprocessEnvironment,
 } from "../../src/core/subprocess-env";
 
 describe("subprocess environment", () => {
@@ -30,6 +31,22 @@ describe("subprocess environment", () => {
     );
 
     expect(environment).toEqual({ PATH: "/bin", MCP_TOKEN: "scoped" });
+  });
+
+  test("filters untrusted child overrides", () => {
+    const environment = sanitizeSubprocessEnvironment({
+      PATH: "/workspace/bin",
+      LANG: "en_US.UTF-8",
+      OPENAI_API_KEY: "secret",
+      NODE_OPTIONS: "--require=/tmp/hook.js",
+      LD_PRELOAD: "/tmp/hook.so",
+      INVALID: 42,
+    });
+
+    expect(environment).toEqual({
+      PATH: "/workspace/bin",
+      LANG: "en_US.UTF-8",
+    });
   });
 
   test("preserves container daemon routing without provider credentials", () => {

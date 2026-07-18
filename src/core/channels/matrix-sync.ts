@@ -17,6 +17,9 @@ interface MatrixSyncResponse {
     join?: Record<
       string,
       {
+        summary?: {
+          "m.joined_member_count"?: number;
+        };
         timeline?: {
           events?: Array<{
             type?: string;
@@ -39,6 +42,7 @@ export function parseSyncMessages(
   nextBatch: string | null;
   messages: MatrixInboundMessage[];
   directRoomIds: string[] | null;
+  roomMemberCounts: Record<string, number>;
 } {
   const data = (sync || {}) as MatrixSyncResponse;
   const nextBatch = typeof data.next_batch === "string" ? data.next_batch : null;
@@ -47,12 +51,19 @@ export function parseSyncMessages(
   const directRoomIds = directEvent?.content
     ? [...new Set(Object.values(directEvent.content).flat())]
     : null;
-
-  if (options.ignoreInitial) {
-    return { nextBatch, messages, directRoomIds };
+  const roomMemberCounts: Record<string, number> = {};
+  const join = data.rooms?.join || {};
+  for (const [roomId, room] of Object.entries(join)) {
+    const joinedMemberCount = room.summary?.["m.joined_member_count"];
+    if (typeof joinedMemberCount === "number" && Number.isFinite(joinedMemberCount)) {
+      roomMemberCounts[roomId] = joinedMemberCount;
+    }
   }
 
-  const join = data.rooms?.join || {};
+  if (options.ignoreInitial) {
+    return { nextBatch, messages, directRoomIds, roomMemberCounts };
+  }
+
   for (const [roomId, room] of Object.entries(join)) {
     const events = room.timeline?.events || [];
     for (const event of events) {
@@ -67,7 +78,7 @@ export function parseSyncMessages(
     }
   }
 
-  return { nextBatch, messages, directRoomIds };
+  return { nextBatch, messages, directRoomIds, roomMemberCounts };
 }
 
 export function buildLoginBody(user: string, password: string): Record<string, unknown> {
@@ -87,4 +98,12 @@ export function normalizeHomeserverUrl(raw: string): string {
   if (!trimmed) return "";
   if (!/^https?:\/\//i.test(trimmed)) return `https://${trimmed}`;
   return trimmed;
+}
+
+export function isMatrixGroupRoom(
+  roomId: string,
+  directRoomIds: ReadonlySet<string>,
+  roomMemberCounts: ReadonlyMap<string, number>
+): boolean {
+  return !directRoomIds.has(roomId) && roomMemberCounts.get(roomId) !== 2;
 }

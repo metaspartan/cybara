@@ -4,6 +4,7 @@ import { createServer } from "net";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { createWebSocketAuthProtocol } from "../../shared/websocket-auth";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 function executableIsAvailable(command: string): boolean {
@@ -123,8 +124,12 @@ async function readFirstSseChunk(
   return { status: response.status, headers: response.headers, chunk };
 }
 
-async function openWebSocket(url: string, timeoutMs = 15000): Promise<WebSocket> {
-  const ws = new WebSocket(url);
+async function openWebSocket(
+  url: string,
+  protocol?: string,
+  timeoutMs = 15000
+): Promise<WebSocket> {
+  const ws = protocol ? new WebSocket(url, protocol) : new WebSocket(url);
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("WebSocket open timeout")), timeoutMs);
     ws.onopen = () => {
@@ -421,6 +426,12 @@ describe("Security auth e2e", () => {
       await expectWebSocketOpenFailure(
         `${baseWsUrl}/api/terminal/ws?session=${encodeURIComponent(`unauth-${Date.now()}`)}`
       );
+
+      const authProtocol = createWebSocketAuthProtocol({ token: apiKey });
+      expect(authProtocol).not.toBeNull();
+      const statusWs = await openWebSocket(`${baseWsUrl}/api/ws/status`, authProtocol || undefined);
+      expect(statusWs.protocol).toBe(authProtocol);
+      statusWs.close();
 
       if (hasPython) {
         const ws = await openWebSocket(

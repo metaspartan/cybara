@@ -291,7 +291,8 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("consumeStatusStreamReplayEvents()");
     expect(source).toContain('socket.send("ping")');
     expect(source).toContain('if (String(event.data) === "pong") return;');
-    expect(source.match(/new WebSocket/g)?.length).toBe(1);
+    expect(source.match(/createAuthenticatedWebSocket/g)?.length).toBe(2);
+    expect(source).not.toContain("appendApiTokenParam");
   });
 
   test("chat consumes status events buffered while its route is unmounted", () => {

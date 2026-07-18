@@ -63,6 +63,21 @@ describe("handleExec", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  test("filters unsafe environment overrides", async () => {
+    const result = await handleExec({
+      command:
+        "bun -e \"console.log([process.env.CYBARA_RESOURCE_DIR, process.env.OPENAI_API_KEY, process.env.NODE_OPTIONS].map((value) => value || 'missing').join('|'))\"",
+      env: {
+        CYBARA_RESOURCE_DIR: "safe-resource-dir",
+        OPENAI_API_KEY: "provider-secret",
+        NODE_OPTIONS: "--require=/tmp/untrusted-hook.js",
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output.trim()).toBe("safe-resource-dir|missing|missing");
+  });
+
   test("starts long-running commands in the background without blocking", async () => {
     const startedAt = Date.now();
     const result = await handleExec({

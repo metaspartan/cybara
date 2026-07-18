@@ -47,6 +47,6 @@ export function parseDingTalkMessage(body: unknown): DingTalkInbound | null {
     senderNick: b.senderNick || "",
     text,
     sessionWebhook: typeof b.sessionWebhook === "string" ? b.sessionWebhook : "",
-    isGroup: b.conversationType !== "2",
+    isGroup: b.conversationType === "2",
   };
 }
