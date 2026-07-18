@@ -149,6 +149,7 @@ describe("settings surface parity", () => {
     expect(nativeSettings).toContain("NativeI18n.t(tab.titleKey)");
     expect(nativeSettings).toContain('["chat_appearance": chatAppearance.payload]');
     expect(nativeChatAppearance).toContain('config["chat_appearance"]');
+    expect(nativeChatAppearance).toContain('"horizontalPadding": horizontalPadding');
     expect(nativeChatAppearance).toContain("var activityFontSize: CGFloat");
     expect(nativeLiquidGlass).toContain("chatAppearance.reduceTransparency");
     expect(nativeLiquidGlass).toContain("systemReduceTransparency");

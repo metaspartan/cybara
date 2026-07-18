@@ -902,6 +902,7 @@ final class GatewayRuntimeModelTests: XCTestCase {
                 "font_size": "extra_large",
                 "codeFontSize": "large",
                 "line_spacing": "spacious",
+                "horizontal_padding": "wide",
                 "reduce_motion": true,
                 "reduceTransparency": true,
                 "high_contrast": true,
@@ -912,6 +913,7 @@ final class GatewayRuntimeModelTests: XCTestCase {
         XCTAssertEqual(appearance.fontSize, "extra_large")
         XCTAssertEqual(appearance.codeFontSize, "large")
         XCTAssertEqual(appearance.lineSpacing, "spacious")
+        XCTAssertEqual(appearance.horizontalPadding, "wide")
         XCTAssertEqual(appearance.bodyFontSize, 18)
         XCTAssertEqual(appearance.codeTextSize, 14)
         XCTAssertTrue(appearance.reduceMotion)
@@ -919,6 +921,7 @@ final class GatewayRuntimeModelTests: XCTestCase {
         XCTAssertTrue(appearance.highContrast)
         XCTAssertTrue(appearance.underlineLinks)
         XCTAssertEqual(appearance.payload["fontSize"] as? String, "extra_large")
+        XCTAssertEqual(appearance.payload["horizontalPadding"] as? String, "wide")
     }
 
     func testNativeSessionEventCursorRejectsStaleEventsAcrossRuns() {
