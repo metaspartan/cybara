@@ -24,6 +24,8 @@ describe("onboarding boot: no shell flash + full-screen spinner", () => {
   test("the setup loading state is a full-screen centered spinner", () => {
     expect(app).toContain("fixed inset-0");
     expect(app).toContain("animate-spin");
+    expect(app).toContain("bg-[var(--surface-backdrop)]");
+    expect(app).toContain("text-[rgb(var(--accent-primary))]");
   });
 
   test("app boot gates on lightweight setup status instead of full agents/providers", () => {
@@ -124,6 +126,15 @@ describe("Onboarding provider and agent setup", () => {
     expect(setup).not.toContain("useAgents()");
     expect(setup).not.toContain("providersLoading");
     expect(setup).not.toContain("agentsLoading");
+  });
+
+  test("uses active theme tokens throughout the onboarding surface", () => {
+    expect(setup).toContain("bg-[var(--surface-backdrop)]");
+    expect(setup).toContain("text-[var(--text-primary)]");
+    expect(setup).toContain("border-[var(--surface-border)]");
+    expect(setup).toContain("bg-[rgb(var(--accent-primary))]");
+    expect(setup).not.toContain("bg-[#0a0a0f]");
+    expect(setup).not.toContain("bg-gradient-to-br");
   });
 });
 

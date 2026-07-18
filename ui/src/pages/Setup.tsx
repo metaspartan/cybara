@@ -228,7 +228,7 @@ export function Setup() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#0a0a0f] flex items-center justify-center">
+    <div className="flex min-h-screen w-full items-center justify-center bg-[var(--surface-backdrop)] text-[var(--text-primary)]">
       <div className="w-full max-w-xl mx-auto px-4">
         <div className="flex items-center justify-center mb-8">
           {progressSteps.map((s, i) => (
@@ -236,10 +236,10 @@ export function Setup() {
               <div
                 className={`w-2.5 h-2.5 rounded-full shrink-0 transition-colors ${
                   step === s || (step === "oauth" && s === "apikey")
-                    ? "bg-indigo-500"
+                    ? "bg-[rgb(var(--accent-primary))]"
                     : progressSteps.indexOf(step) > i || (step === "oauth" && i < 2)
                       ? "bg-emerald-500"
-                      : "bg-white/20"
+                      : "bg-[var(--surface-border)]"
                 }`}
               />
               {i < progressSteps.length - 1 && (
@@ -247,7 +247,7 @@ export function Setup() {
                   className={`w-8 h-0.5 mx-1.5 shrink-0 transition-colors ${
                     progressSteps.indexOf(step) > i || (step === "oauth" && i < 2)
                       ? "bg-emerald-500"
-                      : "bg-white/20"
+                      : "bg-[var(--surface-border)]"
                   }`}
                 />
               )}
@@ -255,7 +255,7 @@ export function Setup() {
           ))}
         </div>
 
-        <Card className="backdrop-blur-xl bg-white/5 border-white/10">
+        <Card variant="liquid">
           <CardContent className="p-8">
             {step === "welcome" && (
               <div className="text-center space-y-6">
@@ -267,24 +267,28 @@ export function Setup() {
                   />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold text-white mb-2">Welcome to Cybara!</h1>
-                  <p className="text-gray-400 text-lg">Let's get you set up in just a few steps</p>
+                  <h1 className="mb-2 text-3xl font-bold text-[var(--text-primary)]">
+                    Welcome to Cybara!
+                  </h1>
+                  <p className="text-lg text-[var(--text-muted)]">
+                    Let's get you set up in just a few steps
+                  </p>
                 </div>
                 <div className="text-left space-y-3 py-4">
-                  <div className="flex items-center gap-3 text-gray-300">
-                    <Cloud className="w-5 h-5 text-indigo-400 shrink-0" />
+                  <div className="flex items-center gap-3 text-[var(--text-secondary)]">
+                    <Cloud className="h-5 w-5 shrink-0 text-[rgb(var(--accent-primary))]" />
                     <span>Connect an AI provider</span>
                   </div>
-                  <div className="flex items-center gap-3 text-gray-300">
-                    <Bot className="w-5 h-5 text-indigo-400 shrink-0" />
+                  <div className="flex items-center gap-3 text-[var(--text-secondary)]">
+                    <Bot className="h-5 w-5 shrink-0 text-[rgb(var(--accent-primary))]" />
                     <span>Create your first AI agent</span>
                   </div>
-                  <div className="flex items-center gap-3 text-gray-300">
-                    <Shield className="w-5 h-5 text-indigo-400 shrink-0" />
+                  <div className="flex items-center gap-3 text-[var(--text-secondary)]">
+                    <Shield className="h-5 w-5 shrink-0 text-[rgb(var(--accent-primary))]" />
                     <span>Choose tool permission mode</span>
                   </div>
-                  <div className="flex items-center gap-3 text-gray-300">
-                    <CheckCircle className="w-5 h-5 text-indigo-400 shrink-0" />
+                  <div className="flex items-center gap-3 text-[var(--text-secondary)]">
+                    <CheckCircle className="h-5 w-5 shrink-0 text-[rgb(var(--accent-primary))]" />
                     <span>Start chatting and building</span>
                   </div>
                 </div>
@@ -297,8 +301,10 @@ export function Setup() {
             {step === "provider" && (
               <div className="space-y-6">
                 <div className="text-center">
-                  <h2 className="text-2xl font-bold text-white mb-2">Choose AI Provider</h2>
-                  <p className="text-gray-400">Select which AI service to connect</p>
+                  <h2 className="mb-2 text-2xl font-bold text-[var(--text-primary)]">
+                    Choose AI Provider
+                  </h2>
+                  <p className="text-[var(--text-muted)]">Select which AI service to connect</p>
                 </div>
                 <Input
                   type="text"
@@ -308,7 +314,7 @@ export function Setup() {
                 />
                 {availableLoading ? (
                   <div className="flex justify-center py-8">
-                    <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+                    <Loader2 className="h-6 w-6 animate-spin text-[rgb(var(--accent-primary))]" />
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
@@ -316,18 +322,19 @@ export function Setup() {
                       const authFlow = getAuthFlow(provider);
                       return (
                         <button
+                          type="button"
                           key={provider.id}
                           onClick={() => handleProviderSelect(provider)}
-                          className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all text-left group relative"
+                          className="group relative flex items-center gap-2.5 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-raised)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-hover)]"
                         >
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center text-white">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[var(--text-primary)]">
                             {hasProviderIcon(provider.id) ? (
                               <ProviderIcon provider={provider.id} size={20} />
                             ) : (
-                              <Cloud className="h-4 w-4 text-gray-400" />
+                              <Cloud className="h-4 w-4 text-[var(--icon-muted)]" />
                             )}
                           </span>
-                          <span className="min-w-0 flex-1 truncate font-medium text-sm text-white group-hover:text-indigo-300 transition-colors">
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--text-primary)] transition-colors group-hover:text-[rgb(var(--accent-primary))]">
                             {provider.name}
                           </span>
                           {authFlow === "none" && (
@@ -349,7 +356,7 @@ export function Setup() {
                       );
                     })}
                     {filteredProviders.length === 0 && (
-                      <div className="col-span-2 text-center py-8 text-sm text-gray-500">
+                      <div className="col-span-2 py-8 text-center text-sm text-[var(--text-muted)]">
                         {availableError ? (
                           <div className="space-y-2">
                             <p className="text-red-400">Couldn't load the provider list.</p>
@@ -371,7 +378,7 @@ export function Setup() {
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-2">
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-[var(--text-muted)]">
                     {availableProviders?.length
                       ? `${filteredProviders.length} of ${availableProviders.length} providers`
                       : ""}
@@ -386,13 +393,13 @@ export function Setup() {
             {step === "apikey" && selectedProvider && (
               <div className="space-y-6">
                 <div className="text-center">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
-                    <Key className="w-8 h-8 text-white" />
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-[var(--surface-raised)]">
+                    <Key className="h-8 w-8 text-[rgb(var(--accent-primary))]" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">
+                  <h2 className="mb-2 text-2xl font-bold text-[var(--text-primary)]">
                     {selectedCredentialCopy?.title}
                   </h2>
-                  <p className="text-gray-400">{selectedCredentialCopy?.description}</p>
+                  <p className="text-[var(--text-muted)]">{selectedCredentialCopy?.description}</p>
                 </div>
 
                 <div className="space-y-4">
@@ -422,7 +429,7 @@ export function Setup() {
                   <button
                     type="button"
                     onClick={() => setStep("permissions")}
-                    className="w-full text-center text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                    className="w-full text-center text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
                   >
                     Skip for now
                   </button>
@@ -433,11 +440,13 @@ export function Setup() {
             {step === "oauth" && selectedProvider && (
               <div className="space-y-6">
                 <div className="text-center">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
-                    <AlertCircle className="w-8 h-8 text-white" />
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-[var(--surface-raised)]">
+                    <AlertCircle className="h-8 w-8 text-[rgb(var(--accent-primary))]" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">OAuth Required</h2>
-                  <p className="text-gray-400">
+                  <h2 className="mb-2 text-2xl font-bold text-[var(--text-primary)]">
+                    OAuth Required
+                  </h2>
+                  <p className="text-[var(--text-muted)]">
                     {selectedProvider.name} requires OAuth authentication
                   </p>
                 </div>
@@ -462,7 +471,7 @@ export function Setup() {
                     >
                       {oauth.deviceCode.user_code}
                     </button>
-                    <p className="text-xs text-gray-400">Waiting for authorization…</p>
+                    <p className="text-xs text-[var(--text-muted)]">Waiting for authorization…</p>
                   </div>
                 )}
 
@@ -498,11 +507,15 @@ export function Setup() {
             {step === "permissions" && (
               <div className="space-y-6">
                 <div className="text-center">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center">
-                    <Shield className="w-8 h-8 text-white" />
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-[var(--surface-raised)]">
+                    <Shield className="h-8 w-8 text-[rgb(var(--accent-primary))]" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">Tool Permissions</h2>
-                  <p className="text-gray-400">Choose how dangerous tools should be handled</p>
+                  <h2 className="mb-2 text-2xl font-bold text-[var(--text-primary)]">
+                    Tool Permissions
+                  </h2>
+                  <p className="text-[var(--text-muted)]">
+                    Choose how dangerous tools should be handled
+                  </p>
                 </div>
 
                 <div className="space-y-3">
@@ -511,12 +524,12 @@ export function Setup() {
                     onClick={() => setToolApprovalMode("always_allow")}
                     className={`w-full text-left p-4 rounded-xl border transition-colors cursor-pointer ${
                       toolApprovalMode === "always_allow"
-                        ? "border-indigo-500/60 bg-indigo-500/10"
-                        : "border-white/10 bg-white/5 hover:border-white/20"
+                        ? "border-[rgb(var(--accent-primary))] bg-[rgba(var(--accent-primary),0.10)]"
+                        : "border-[var(--surface-border)] bg-[var(--surface-raised)] hover:bg-[var(--surface-hover)]"
                     }`}
                   >
-                    <p className="text-white font-medium text-sm">Always Allow</p>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-sm font-medium text-[var(--text-primary)]">Always Allow</p>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
                       Run tools immediately in chat and channels.
                     </p>
                   </button>
@@ -525,12 +538,12 @@ export function Setup() {
                     onClick={() => setToolApprovalMode("ask")}
                     className={`w-full text-left p-4 rounded-xl border transition-colors cursor-pointer ${
                       toolApprovalMode === "ask"
-                        ? "border-indigo-500/60 bg-indigo-500/10"
-                        : "border-white/10 bg-white/5 hover:border-white/20"
+                        ? "border-[rgb(var(--accent-primary))] bg-[rgba(var(--accent-primary),0.10)]"
+                        : "border-[var(--surface-border)] bg-[var(--surface-raised)] hover:bg-[var(--surface-hover)]"
                     }`}
                   >
-                    <p className="text-white font-medium text-sm">Ask Me First</p>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-sm font-medium text-[var(--text-primary)]">Ask Me First</p>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
                       Require confirmation before dangerous tool calls.
                     </p>
                   </button>
@@ -553,7 +566,7 @@ export function Setup() {
                 <button
                   type="button"
                   onClick={() => setStep("agent")}
-                  className="w-full text-center text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                  className="w-full text-center text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
                 >
                   Skip for now
                 </button>
@@ -563,11 +576,15 @@ export function Setup() {
             {step === "agent" && (
               <div className="space-y-6">
                 <div className="text-center">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                    <Bot className="w-8 h-8 text-white" />
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-[var(--surface-raised)]">
+                    <Bot className="h-8 w-8 text-[rgb(var(--accent-primary))]" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">Create Your Agent</h2>
-                  <p className="text-gray-400">Configure an agent with your connected provider</p>
+                  <h2 className="mb-2 text-2xl font-bold text-[var(--text-primary)]">
+                    Create Your Agent
+                  </h2>
+                  <p className="text-[var(--text-muted)]">
+                    Configure an agent with your connected provider
+                  </p>
                 </div>
 
                 <div className="space-y-4">
@@ -577,12 +594,12 @@ export function Setup() {
                     onChange={(event) => setAgentName(event.target.value)}
                     placeholder="My Agent"
                   />
-                  <label className="block space-y-2 text-sm text-gray-300">
+                  <label className="block space-y-2 text-sm text-[var(--text-secondary)]">
                     <span>Model</span>
                     <select
                       value={agentModel}
                       onChange={(event) => setAgentModel(event.target.value)}
-                      className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-white"
+                      className="w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface-raised)] px-3 py-2.5 text-[var(--text-primary)]"
                       disabled={modelsLoading || !discoveredModels?.length}
                     >
                       {modelsLoading && <option value="">Discovering models…</option>}
@@ -611,7 +628,9 @@ export function Setup() {
                     </Button>
                   )}
                   {configuredProvider && (
-                    <p className="text-xs text-gray-400">Using {configuredProvider.name}</p>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Using {configuredProvider.name}
+                    </p>
                   )}
                 </div>
 
@@ -635,12 +654,14 @@ export function Setup() {
 
             {step === "complete" && (
               <div className="text-center space-y-6">
-                <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                  <CheckCircle className="w-10 h-10 text-white" />
+                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-[var(--surface-raised)]">
+                  <CheckCircle className="h-10 w-10 text-[rgb(var(--accent-primary))]" />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold text-white mb-2">You're All Set! 🎉</h1>
-                  <p className="text-gray-400 text-lg">Cybara is ready to use</p>
+                  <h1 className="mb-2 text-3xl font-bold text-[var(--text-primary)]">
+                    You're All Set!
+                  </h1>
+                  <p className="text-lg text-[var(--text-muted)]">Cybara is ready to use</p>
                 </div>
                 <Button size="lg" onClick={handleGoToDashboard} className="w-full">
                   Go to Dashboard <ChevronRight className="w-5 h-5 ml-2" />

@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "theme-files"
+description = "Allows the Cybara interface to export validated custom theme files."
+commands.allow = ["write_theme_file"]

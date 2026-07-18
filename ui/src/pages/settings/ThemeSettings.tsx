@@ -392,7 +392,18 @@ export function ThemeSettings() {
               </button>
               <button
                 type="button"
-                onClick={() => downloadCustomTheme(draftTheme)}
+                onClick={() => {
+                  void downloadCustomTheme(draftTheme)
+                    .then((saved) => {
+                      if (saved) addToast("success", "Theme exported");
+                    })
+                    .catch((error: unknown) =>
+                      addToast(
+                        "error",
+                        error instanceof Error ? error.message : "Theme export failed"
+                      )
+                    );
+                }}
                 className="theme-muted-icon-button rounded-md p-2"
                 aria-label="Export theme"
                 title="Export theme"

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "container-operations",
+  "name": "Container Operations",
+  "version": "1.0.0",
+  "description": "Build, inspect, debug, and validate containerized applications and Compose stacks.",
+  "author": "Cybara",
+  "contributions": {
+    "skills": {
+      "dirs": ["skills"]
+    }
+  }
+}

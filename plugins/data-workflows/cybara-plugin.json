@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "data-workflows",
+  "name": "Data Workflows",
+  "version": "1.0.0",
+  "description": "Database inspection, migrations, query analysis, and safe data transformation workflows.",
+  "author": "Cybara",
+  "contributions": {
+    "skills": {
+      "dirs": ["skills"]
+    }
+  }
+}

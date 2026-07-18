@@ -60,7 +60,6 @@ import {
   isSessionStatusActive,
   type PendingChatMessageSnapshot,
 } from "../core/status";
-import { handleMemorySave } from "../core/tools/handlers/memory";
 import {
   checkCircuit,
   checkRateLimit,
@@ -75,6 +74,7 @@ import {
 } from "./chat-agent-prompt";
 import { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
+import { appendToolImageReferences, maybeSaveAutomaticMemory } from "./chat-response-enrichment";
 import { settlePendingChatFailure } from "./chat-pending-failure";
 import {
   deletePersistedPendingChatItem,
@@ -1746,51 +1746,19 @@ async function handleChatTurn(
       "No AI provider configured. Please add a provider (like MiniMax, OpenAI, or Ollama) to enable AI responses.";
   }
 
-  // Surface any image files produced by tools (e.g. computer_use/browser
-  // screenshots) so channel adapters can attach them. We append a file:// link
-  // for each image path not already referenced; the adapter extracts these,
-  // attaches the file, and strips the marker from the visible text.
-  const imageToolPaths = allToolCalls
-    .map((tc) => (tc.result as { filePath?: unknown } | undefined)?.filePath)
-    .filter((p): p is string => typeof p === "string" && /\.(png|jpe?g|gif|webp)$/i.test(p));
-  for (const imgPath of [...new Set(imageToolPaths)]) {
-    if (!responseContent.includes(imgPath)) {
-      responseContent += `\n\n![screenshot](file://${imgPath})`;
-    }
-  }
+  responseContent = appendToolImageReferences(responseContent, allToolCalls);
 
   const { content: extractedContent, thinking: extractedThinking } =
     stripThinkingTags(responseContent);
   const cleanContent = sanitizeAssistantContent(extractedContent);
   const finalThinking = sanitizeProcessThoughtText(thinkingContent || extractedThinking);
 
-  const memoryPatterns = [
-    /(?:remember|save to memory|store this|note this|don't forget)(?: that |: )?(.+)/i,
-    /(?:I'll|I will|I've) (?:already )?(?:saved|stored|remembered|noted)(?: that |: )?(.+)/i,
-    /(?:I'll|I will|I've) (?:already )?(?:saved|stored|remembered|noted|keep that in mind|noted it)(?: that |: | for )?(.+)/i,
-  ];
-
-  if (allToolCalls.length === 0 && provider?.provider === "minimax") {
-    for (const pattern of memoryPatterns) {
-      const match = message.match(pattern);
-      if (match && match[1] && match[1].length > 3 && match[1].length < 500) {
-        try {
-          await handleMemorySave({
-            content: match[1].trim(),
-            type: "context",
-            tags: ["auto-saved"],
-          });
-          log.info("Auto-saved memory", {
-            sessionId: session.id,
-            preview: match[1].substring(0, 50),
-          });
-        } catch {
-          // Ignore memory save errors
-        }
-        break;
-      }
-    }
-  }
+  await maybeSaveAutomaticMemory({
+    message,
+    providerType: provider?.provider,
+    sessionId: session.id,
+    toolCallCount: allToolCalls.length,
+  });
 
   const assistantTimestamp = new Date().toISOString();
   const assistantTimestampMs = parseIsoTimestampMs(assistantTimestamp) || Date.now();

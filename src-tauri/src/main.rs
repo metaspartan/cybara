@@ -175,6 +175,25 @@ async fn stop_native_recording(app: tauri::AppHandle) -> Result<NativeRecordingD
     read_native_recording(recording.file_path).await
 }
 
+#[tauri::command]
+fn write_theme_file(path: String, content: String) -> Result<(), String> {
+    const MAX_THEME_BYTES: usize = 64 * 1024;
+    if content.len() > MAX_THEME_BYTES {
+        return Err("theme file exceeds the maximum supported size".into());
+    }
+    let target = std::path::PathBuf::from(path);
+    let file_name = target
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    if !file_name.ends_with(".cybara-theme.json") {
+        return Err("theme export path must end with .cybara-theme.json".into());
+    }
+    serde_json::from_str::<serde_json::Value>(&content)
+        .map_err(|_| "theme export content is not valid JSON".to_string())?;
+    std::fs::write(target, content).map_err(|error| error.to_string())
+}
+
 fn should_log_sidecar_output() -> bool {
     !matches!(
         std::env::var("CYBARA_TAURI_LOG_SIDECAR"),
@@ -429,6 +448,7 @@ fn main() {
             get_gateway_startup_status,
             start_native_recording,
             stop_native_recording,
+            write_theme_file,
             desktop_update::get_desktop_update_state,
             desktop_update::check_desktop_update,
             desktop_update::install_desktop_update
@@ -599,7 +619,7 @@ struct GatewayStartupState(std::sync::Mutex<GatewayStartupStatus>);
 
 #[cfg(test)]
 mod tests {
-    use super::is_server_running_at;
+    use super::{is_server_running_at, write_theme_file};
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::thread;
@@ -673,5 +693,43 @@ mod tests {
             assert!(is_server_running_at(&addr.to_string()));
             handle.join().expect("join test server");
         }
+    }
+
+    #[test]
+    fn theme_export_writes_valid_json_to_theme_file() {
+        let root = std::env::temp_dir().join(format!("cybara-theme-export-{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("create theme export root");
+        let path = root.join("studio.cybara-theme.json");
+        write_theme_file(
+            path.to_string_lossy().into_owned(),
+            "{\"version\":1}".into(),
+        )
+        .expect("write theme export");
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read theme export"),
+            "{\"version\":1}"
+        );
+        std::fs::remove_dir_all(root).expect("remove theme export root");
+    }
+
+    #[test]
+    fn theme_export_rejects_wrong_extension_and_invalid_json() {
+        let root = std::env::temp_dir();
+        assert!(
+            write_theme_file(
+                root.join("studio.json").to_string_lossy().into_owned(),
+                "{\"version\":1}".into()
+            )
+            .is_err()
+        );
+        assert!(
+            write_theme_file(
+                root.join("studio.cybara-theme.json")
+                    .to_string_lossy()
+                    .into_owned(),
+                "not-json".into()
+            )
+            .is_err()
+        );
     }
 }

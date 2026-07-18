@@ -101,14 +101,13 @@ import {
   pendingFrom,
   nextWordCursor,
   previousWordCursor,
-  resolvePendingId,
-  resolvePendingIds,
   type AgentSummary,
   type ControlPlaneState,
   type InteractiveChatProps,
   type RouterStatus,
 } from "../interactive-chat-data";
 import { useInteractiveChatLayout } from "./interactive-chat-layout";
+import { executePendingChatCommand } from "./interactive-chat-pending-commands";
 import { useInteractiveChatStatus } from "./interactive-chat-status";
 
 export function InteractiveChatTUI({
@@ -1123,137 +1122,23 @@ export function InteractiveChatTUI({
         onExit();
         return true;
       }
-      if (normalizedCommand === "pending") {
-        await loadPending();
-        setNotice("Pending queue refreshed.");
-        return true;
-      }
-      if (normalizedCommand === "queue") {
-        if (!localSessionId) {
-          setNotice("Send the first turn before queueing follow-ups.");
-          return true;
-        }
-        if (!argument) {
-          setNotice("Usage: /queue <message>");
-          return true;
-        }
-        const response = await fetchAPI<unknown>("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentId: selectedAgentId || undefined,
-            message: argument,
-            modelOverride: useModelRouter
-              ? undefined
-              : modelOverride || undefined,
-            queueMode: "queue",
-            sessionId: localSessionId,
-            useModelRouter,
-            workspaceDir: workspaceDir || undefined,
-          }),
-        });
-        setPendingMessages(
-          pendingFrom(isRecord(response) ? response.pendingMessages : []),
-        );
-        setNotice("Queued follow-up.");
-        return true;
-      }
-      if (normalizedCommand === "steer") {
-        const pendingId = resolvePendingId(rest[0], pendingMessages);
-        if (!localSessionId || !pendingId) {
-          setNotice("Usage: /steer <id|#n>");
-          return true;
-        }
-        const response = await fetchAPI<unknown>(
-          `/api/chat/sessions/${encodeURIComponent(localSessionId)}/pending/${encodeURIComponent(
-            pendingId,
-          )}/steer`,
-          { method: "POST", headers: { "Content-Type": "application/json" } },
-        );
-        setPendingMessages(
-          pendingFrom(isRecord(response) ? response.pendingMessages : []),
-        );
-        await loadMessages();
-        setNotice("Steered queued message.");
-        return true;
-      }
-      if (normalizedCommand === "edit") {
-        const pendingId = resolvePendingId(rest[0], pendingMessages);
-        const content = rest.slice(1).join(" ").trim();
-        if (!localSessionId || !pendingId || !content) {
-          setNotice("Usage: /edit <id|#n> <message>");
-          return true;
-        }
-        const response = await fetchAPI<unknown>(
-          `/api/chat/sessions/${encodeURIComponent(localSessionId)}/pending/${encodeURIComponent(
-            pendingId,
-          )}`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ content }),
-          },
-        );
-        setPendingMessages(
-          pendingFrom(isRecord(response) ? response.pendingMessages : []),
-        );
-        setNotice("Edited queued follow-up.");
-        return true;
-      }
-      if (normalizedCommand === "delete") {
-        const pendingId = resolvePendingId(rest[0], pendingMessages);
-        if (!localSessionId || !pendingId) {
-          setNotice("Usage: /delete <id|#n>");
-          return true;
-        }
-        const response = await fetchAPI<unknown>(
-          `/api/chat/sessions/${encodeURIComponent(localSessionId)}/pending/${encodeURIComponent(
-            pendingId,
-          )}`,
-          { method: "DELETE" },
-        );
-        setPendingMessages(
-          pendingFrom(isRecord(response) ? response.pendingMessages : []),
-        );
-        setNotice("Deleted queued follow-up.");
-        return true;
-      }
-      if (normalizedCommand === "reorder") {
-        const pendingMessageIds = resolvePendingIds(rest, pendingMessages);
-        if (!localSessionId || pendingMessageIds.length === 0) {
-          setNotice("Usage: /reorder <id|#n>...");
-          return true;
-        }
-        const response = await fetchAPI<unknown>(
-          `/api/chat/sessions/${encodeURIComponent(localSessionId)}/pending/reorder`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pendingMessageIds }),
-          },
-        );
-        setPendingMessages(
-          pendingFrom(isRecord(response) ? response.pendingMessages : []),
-        );
-        setNotice("Reordered queued follow-ups.");
-        return true;
-      }
-      if (normalizedCommand === "stop") {
-        if (!localSessionId) {
-          setNotice("No active session to stop.");
-          return true;
-        }
-        await fetchAPI(
-          `/api/chat/sessions/${encodeURIComponent(localSessionId)}/stop`,
-          {
-            method: "POST",
-          },
-        );
-        setSending(false);
-        setNotice("Stop requested.");
-        return true;
-      }
-      return false;
+      return await executePendingChatCommand({
+        argument,
+        command: normalizedCommand,
+        fetchAPI,
+        loadMessages,
+        loadPending,
+        localSessionId,
+        modelOverride,
+        pendingMessages,
+        rest,
+        selectedAgentId,
+        setNotice,
+        setPendingMessages,
+        setSending,
+        useModelRouter,
+        workspaceDir,
+      });
     },
     [
       agents,

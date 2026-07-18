@@ -405,6 +405,12 @@
           "markdownDescription": "Allows the Cybara interface to start and stop native microphone recording."
         },
         {
+          "description": "Allows the Cybara interface to export validated custom theme files.",
+          "type": "string",
+          "const": "theme-files",
+          "markdownDescription": "Allows the Cybara interface to export validated custom theme files."
+        },
+        {
           "description": "Default permissions for the Audio Recorder plugin - allows all audio recording operations\n#### This default permission set includes:\n\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-pause-recording`\n- `allow-resume-recording`\n- `allow-get-status`\n- `allow-get-devices`\n- `allow-check-permission`\n- `allow-request-permission`",
           "type": "string",
           "const": "audio-recorder:default",
