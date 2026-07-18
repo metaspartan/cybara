@@ -94,7 +94,9 @@ describe("settings surface parity", () => {
     expect(nativeSettings).toContain('Label("Capabilities", systemImage: "key.horizontal")');
     expect(nativeSettings).toContain("NativeBrowserSupervisionSettingsScreen(client: client)");
     expect(nativeSettings).toContain('Text("Remote").tag("remote")');
-    expect(nativeSettings).toContain('"remoteUrl": sandboxRemoteURL');
+    expect(nativeSettings).toContain('"remoteUrl": remoteURL');
+    expect(nativeSettings).toContain('sandboxProvider == "remote" && remoteURL.isEmpty');
+    expect(nativeSettings).toContain('error = "Enter a remote sandbox URL."');
     expect(nativeSettings).toContain('"remoteApiKey": clearRemoteAPIKey');
     expect(nativeSettings).toContain("saveSandboxRuntime(clearRemoteAPIKey: true)");
     expect(nativeSettings).toContain('request("api/browser/supervision")');

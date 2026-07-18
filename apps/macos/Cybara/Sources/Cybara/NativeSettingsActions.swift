@@ -30,13 +30,18 @@ extension NativeSettingsScreen {
 
     func saveSandboxRuntime(clearRemoteAPIKey: Bool = false) {
         let remoteAPIKey = sandboxRemoteAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let remoteURL = sandboxRemoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if sandboxEnabled && sandboxProvider == "remote" && remoteURL.isEmpty {
+            error = "Enter a remote sandbox URL."
+            return
+        }
         saveConfigPatch(
             [
                 "sandbox_runtime": [
                     "enabled": sandboxEnabled,
                     "provider": sandboxProvider,
                     "network": sandboxNetwork,
-                    "remoteUrl": sandboxRemoteURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                    "remoteUrl": remoteURL,
                     "remoteApiKey": clearRemoteAPIKey
                         ? ""
                         : remoteAPIKey.isEmpty && sandboxRemoteAPIKeyConfigured
