@@ -93,7 +93,6 @@ interface UseChatLiveSessionRuntimeOptions {
     sessionId: string | null | undefined,
     identity: SessionEventIdentity
   ) => boolean;
-  setShowEnvironmentOverview: Dispatch<SetStateAction<boolean>>;
   loadFreshSession: (sessionId: string) => Promise<LoadedChatSession>;
   loadSession: (
     sessionId: string,
@@ -139,7 +138,6 @@ export function useChatLiveSessionRuntime({
   refreshSessionMessagesRef,
   isSessionStopSuppressed,
   acceptSessionEvent,
-  setShowEnvironmentOverview,
   loadFreshSession,
   loadSession,
 }: UseChatLiveSessionRuntimeOptions): {
@@ -172,8 +170,6 @@ export function useChatLiveSessionRuntime({
       toolCallId?: string,
       sandboxProvider?: string
     ) => {
-      markFirstTokenLatency();
-
       const applyEvent = (previous: LiveActivityItem[]): LiveActivityItem[] =>
         applyLiveActivityEvent(previous, {
           phase,
@@ -187,7 +183,7 @@ export function useChatLiveSessionRuntime({
       runActivityBufferRef.current = applyEvent(runActivityBufferRef.current);
       setLiveActivities((previous) => applyEvent(previous));
     },
-    [markFirstTokenLatency]
+    []
   );
 
   const snapshotLatestTimestamp = useCallback((snapshot: LiveStatusSnapshotLike): number => {
@@ -645,10 +641,6 @@ export function useChatLiveSessionRuntime({
   }, [sessionId]);
 
   useEffect(() => {
-    setShowEnvironmentOverview(false);
-  }, [sessionId]);
-
-  useEffect(() => {
     const cached = readCachedLiveSessionState(sessionId);
     if (cached) {
       if (sessionId) {
@@ -929,7 +921,6 @@ export function useChatLiveSessionRuntime({
         }
 
         if (status === "thinking") {
-          markFirstTokenLatency(payloadSessionId);
           if (!payload.toolName) {
             const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
             const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
@@ -948,7 +939,6 @@ export function useChatLiveSessionRuntime({
           return;
         }
         if (status === "generating") {
-          markFirstTokenLatency(payloadSessionId);
           if (!payload.toolName) {
             const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
             const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";

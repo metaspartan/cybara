@@ -59,6 +59,7 @@ export function accessibilityConfigLines(config: Record<string, unknown>): strin
     `chat text size: ${appearance.fontSize}`,
     `code text size: ${appearance.codeFontSize}`,
     `line spacing: ${appearance.lineSpacing}`,
+    `chat side padding: ${appearance.horizontalPadding}`,
     `underline links: ${appearance.underlineLinks ? "on" : "off"}`,
     `reduce motion: ${appearance.reduceMotion ? "on" : "off"}`,
     `reduce transparency: ${appearance.reduceTransparency ? "on" : "off"}`,

@@ -92,7 +92,7 @@ export function trackEstimatedSessionTokenUsage(input: LlmUsageFallbackInput): b
   const providerUrl = input.providerUrl || "";
   trackTokenUsage(model, provider, providerUrl, inputTokens, outputTokens, input.durationMs, {
     sessionId,
-    firstTokenMs: input.durationMs,
+    estimated: true,
     routerRouteId: input.toolContext?.routerRouteId,
   });
   if (getSessionTokenUsageSnapshot(sessionId).totalTokens <= input.before.totalTokens) {

@@ -83,7 +83,12 @@ describe("chat plan and artifact UI wiring", () => {
     expect(source).toContain("Search branches");
     expect(source).toContain("New branch name");
     expect(chatPage).toContain('environmentKey={sessionId || "new-chat-environment"}');
-    expect(chatPage).toContain("setShowEnvironmentOverview(false);");
+    expect(chatPage).toContain("state.chatEnvironmentOpen");
+    expect(chatPage).toContain("state.setChatEnvironmentOpen");
+    expect(chatPage).not.toContain("setShowEnvironmentOverview(false);");
+    expect(chatPage).toContain('data-chat-environment-reserved="true"');
+    expect(chatPage).toContain("showEnvironmentOverview && !showWorkspacePanel");
+    expect(environmentOverview).not.toContain("Close environment overview");
     expect(chatPage).toContain("sessionId={sessionId}");
     expect(chatPage).toContain("hiddenComposerPlanKey");
     expect(chatPage).toContain("showComposerPlan");

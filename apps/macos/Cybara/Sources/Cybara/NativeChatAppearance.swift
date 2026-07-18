@@ -4,6 +4,7 @@ struct NativeChatAppearanceSettings: Equatable {
     var fontSize = "standard"
     var codeFontSize = "standard"
     var lineSpacing = "comfortable"
+    var horizontalPadding = "default"
     var reduceMotion = false
     var reduceTransparency = false
     var highContrast = false
@@ -18,6 +19,7 @@ struct NativeChatAppearanceSettings: Equatable {
         fontSize = Self.option(value["fontSize"] ?? value["font_size"], allowed: ["compact", "standard", "large", "extra_large"], fallback: "standard")
         codeFontSize = Self.option(value["codeFontSize"] ?? value["code_font_size"], allowed: ["compact", "standard", "large"], fallback: "standard")
         lineSpacing = Self.option(value["lineSpacing"] ?? value["line_spacing"], allowed: ["compact", "comfortable", "spacious"], fallback: "comfortable")
+        horizontalPadding = Self.option(value["horizontalPadding"] ?? value["horizontal_padding"], allowed: ["default", "roomy", "wide", "maximum"], fallback: "default")
         reduceMotion = Self.boolean(value["reduceMotion"] ?? value["reduce_motion"])
         reduceTransparency = Self.boolean(value["reduceTransparency"] ?? value["reduce_transparency"])
         highContrast = Self.boolean(value["highContrast"] ?? value["high_contrast"])
@@ -29,6 +31,7 @@ struct NativeChatAppearanceSettings: Equatable {
             "fontSize": fontSize,
             "codeFontSize": codeFontSize,
             "lineSpacing": lineSpacing,
+            "horizontalPadding": horizontalPadding,
             "reduceMotion": reduceMotion,
             "reduceTransparency": reduceTransparency,
             "highContrast": highContrast,

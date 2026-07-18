@@ -191,6 +191,7 @@ struct NativeChatBrowserPanel: View {
     let client: GatewayClient
     let sessionID: String?
     let isActive: Bool
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @State private var page: NativeBrowserTab?
     @State private var address = ""
     @State private var image: NSImage?
@@ -263,7 +264,7 @@ struct NativeChatBrowserPanel: View {
                                     viewportHeight: viewport.height,
                                     container: proxy.size
                                 ))
-                                .animation(.easeOut(duration: 0.15), value: cursor.updatedAt ?? 0)
+                                .animation(systemReduceMotion ? nil : .easeOut(duration: 0.15), value: cursor.updatedAt ?? 0)
                         }
                     }
                 } else if loading {
@@ -432,6 +433,7 @@ struct NativeChatComputerPanel: View {
     let client: GatewayClient
     let sessionID: String?
     let isActive: Bool
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @State private var image: NSImage?
     @State private var cursor: NativeComputerPreviewCursor?
     @State private var action = ""
@@ -488,7 +490,7 @@ struct NativeChatComputerPanel: View {
                                     viewportHeight: viewport?.height ?? image.size.height,
                                     container: proxy.size
                                 ))
-                                .animation(.easeOut(duration: 0.15), value: cursor.updatedAt)
+                                .animation(systemReduceMotion ? nil : .easeOut(duration: 0.15), value: cursor.updatedAt)
                         }
                     }
                 } else {

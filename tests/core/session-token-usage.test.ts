@@ -9,13 +9,13 @@ describe("session token usage", () => {
       sessionId,
       cachedInputTokens: 40,
       cacheWriteTokens: 10,
-      firstTokenMs: 320,
+      firstTokenMs: 1000,
     });
     trackTokenUsage("model-a", "provider-a", "https://provider.test", 80, 30, 1000, {
       sessionId,
       cachedInputTokens: 20,
       cacheWriteTokens: 5,
-      firstTokenMs: 140,
+      firstTokenMs: 500,
     });
 
     expect(summarizeSessionTokenUsage(sessionId)).toEqual({
@@ -27,8 +27,8 @@ describe("session token usage", () => {
       totalTokens: 230,
       callCount: 2,
       durationMs: 3000,
-      tokensPerSecond: 16.67,
-      firstTokenMs: 140,
+      tokensPerSecond: 33.33,
+      firstTokenMs: 500,
       source: "metrics",
     });
   });
@@ -44,5 +44,17 @@ describe("session token usage", () => {
     const usage = summarizeSessionTokenUsage(sessionId);
     expect(usage.cachedInputTokens).toBe(60);
     expect(usage.cacheHitRate).toBeNull();
+  });
+
+  test("does not infer generation speed or TTFT from non-streaming latency", () => {
+    const sessionId = `session-non-stream-${crypto.randomUUID()}`;
+    trackTokenUsage("model-c", "provider-c", "https://provider.test", 80, 20, 1000, {
+      sessionId,
+    });
+
+    const usage = summarizeSessionTokenUsage(sessionId);
+    expect(usage.durationMs).toBe(1000);
+    expect(usage.tokensPerSecond).toBeNull();
+    expect(usage.firstTokenMs).toBeNull();
   });
 });

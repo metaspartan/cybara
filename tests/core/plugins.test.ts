@@ -123,9 +123,16 @@ describe("plugin runtime", () => {
       const installed = listInstalledPlugins();
       expect(installed.filter((plugin) => plugin.builtIn)).toHaveLength(5);
       expect(installed.every((plugin) => plugin.enabled)).toBe(true);
-      expect(
-        installed.find((plugin) => plugin.manifest.id === "blender-workflows")?.skillNames
-      ).toEqual(["blender-mcp"]);
+      const bundledSkills = new Map(
+        installed
+          .filter((plugin) => plugin.source === "bundled")
+          .map((plugin) => [plugin.manifest.id, plugin.skillNames])
+      );
+      expect(bundledSkills.get("blender-workflows")).toEqual(["blender-mcp"]);
+      expect(bundledSkills.get("browser-quality")).toEqual(["browser-qa"]);
+      expect(bundledSkills.get("container-operations")).toEqual(["container-operations"]);
+      expect(bundledSkills.get("data-workflows")).toEqual(["database-operations"]);
+      expect(bundledSkills.get("media-workflows")).toEqual(["media-processing"]);
 
       setPluginEnabled("developer-essentials", false);
       clearSkillsCache();

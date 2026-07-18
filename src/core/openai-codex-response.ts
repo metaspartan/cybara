@@ -7,8 +7,7 @@ import {
 import { redactSecretText } from "./redaction";
 
 export function parseOpenAICodexJsonTurnResponse(
-  json: Record<string, unknown>,
-  requestStartedAt?: number
+  json: Record<string, unknown>
 ): OpenAICodexTurnResult {
   const choice = (json.choices as OpenAIChoice[] | undefined)?.[0];
   if (!choice?.message) {
@@ -33,9 +32,5 @@ export function parseOpenAICodexJsonTurnResponse(
           ),
         }
       : undefined,
-    firstTokenMs:
-      requestStartedAt !== undefined
-        ? Math.max(0, Math.round(performance.now() - requestStartedAt))
-        : undefined,
   };
 }

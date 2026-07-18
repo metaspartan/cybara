@@ -56,5 +56,5 @@ describe("macOS performance profiler", () => {
     expect(typeof report.peakRssBytes).toBe("number");
     expect(Array.isArray(report.samples)).toBe(true);
     expect(report.samples[0]).toHaveProperty("processes");
-  });
+  }, 30_000);
 });

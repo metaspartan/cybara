@@ -11,6 +11,14 @@ const ideChatStatusSourcePath = join(
   "ide",
   "IDEChatStatus.tsx"
 );
+const ideChatRoutingSourcePath = join(
+  process.cwd(),
+  "ui",
+  "src",
+  "pages",
+  "ide",
+  "useIDEChatRouting.ts"
+);
 const ideActivityHelpersSourcePath = join(
   process.cwd(),
   "ui",
@@ -29,7 +37,7 @@ const chatAgentControlsSourcePath = join(
 );
 
 function readIdeChatPanelSource(): string {
-  return [ideChatPanelSourcePath, ideChatStatusSourcePath]
+  return [ideChatPanelSourcePath, ideChatStatusSourcePath, ideChatRoutingSourcePath]
     .map((path) => readFileSync(path, "utf8"))
     .join("\n");
 }

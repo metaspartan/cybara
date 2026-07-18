@@ -125,8 +125,8 @@ tables.metrics.add({ id: id("m"), type: "model_latency", key: "gpt", value: 100 
 tables.metrics.add({ id: id("m"), type: "model_latency", key: "gpt", value: 300 });
 tables.metrics.add({ id: id("m"), type: "token_usage_by_model", key: "gpt", value: 111 });
 tables.metrics.add({ id: id("m"), type: "token_usage_by_model", key: "gpt", value: 222 });
-tables.metrics.add({ id: id("m"), type: "token_usage", key: "all", value: 170, metadata: JSON.stringify({ callId: "c1", model: "gpt", provider: "openai", inputTokens: 120, outputTokens: 50, durationMs: 1000 }) });
-tables.metrics.add({ id: id("m"), type: "token_usage", key: "all", value: 180, metadata: JSON.stringify({ callId: "c2", model: "gpt", provider: "openai", inputTokens: 80, outputTokens: 100, durationMs: 4000 }) });
+tables.metrics.add({ id: id("m"), type: "token_usage", key: "all", value: 170, metadata: JSON.stringify({ callId: "c1", model: "gpt", provider: "openai", inputTokens: 120, outputTokens: 50, durationMs: 1000, generationDurationMs: 1000 }) });
+tables.metrics.add({ id: id("m"), type: "token_usage", key: "all", value: 180, metadata: JSON.stringify({ callId: "c2", model: "gpt", provider: "openai", inputTokens: 80, outputTokens: 100, durationMs: 4000, generationDurationMs: 4000 }) });
 
 results.metrics = getModelMetrics();
 

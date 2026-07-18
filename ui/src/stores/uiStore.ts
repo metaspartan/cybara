@@ -202,6 +202,9 @@ interface UIState {
   chatAppearance: ChatAppearanceSettings;
   setChatAppearance: (settings: ChatAppearanceSettings) => void;
 
+  chatEnvironmentOpen: boolean;
+  setChatEnvironmentOpen: (open: boolean) => void;
+
   loading: Record<string, boolean>;
   setLoading: (key: string, value: boolean) => void;
 
@@ -481,6 +484,9 @@ export const useUIStore = create<UIState>()(
         set({ chatAppearance: normalized });
       },
 
+      chatEnvironmentOpen: false,
+      setChatEnvironmentOpen: (open) => set({ chatEnvironmentOpen: open }),
+
       loading: {},
       setLoading: (key, value) =>
         set((state) => ({
@@ -520,6 +526,7 @@ export const useUIStore = create<UIState>()(
         customThemes: state.customThemes,
         activeCustomThemeId: state.activeCustomThemeId,
         chatAppearance: state.chatAppearance,
+        chatEnvironmentOpen: state.chatEnvironmentOpen,
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.accent) applyTheme(state.accent);

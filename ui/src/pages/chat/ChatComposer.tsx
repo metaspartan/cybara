@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import type { ClipboardEvent, DragEvent, RefObject } from "react";
+import type { ChatHorizontalPadding } from "../../../../shared/chat-appearance";
 import type { ChatFileAttachment } from "@/lib/chatImages";
 import {
   chatImageSrc,
@@ -35,6 +36,7 @@ import {
   type ToolApprovalMode,
 } from "./ChatFollowUpControls";
 import { ChatReasoningControl } from "./ChatReasoningControl";
+import { chatHorizontalPaddingClassName } from "./chatAppearanceLayout";
 import type { SessionPlanView } from "./chatModel";
 import { PlanSummaryCard } from "./PlanSummaryCard";
 import type { useChatCapabilityPicker } from "./useChatCapabilityPicker";
@@ -61,6 +63,7 @@ export interface ChatComposerProps {
   followUpBehaviorEnabled: boolean;
   imageDragActive: boolean;
   imageInputRef: RefObject<HTMLInputElement | null>;
+  horizontalPadding: ChatHorizontalPadding;
   input: string;
   inputRef: RefObject<HTMLTextAreaElement | null>;
   isLoading: boolean;
@@ -122,6 +125,7 @@ export function ChatComposer({
   followUpBehaviorEnabled,
   imageDragActive,
   imageInputRef,
+  horizontalPadding,
   input,
   inputRef,
   isLoading,
@@ -168,7 +172,10 @@ export function ChatComposer({
         "chat-composer-responsive flex-shrink-0",
         layout === "new-chat"
           ? "w-full bg-transparent p-0"
-          : "border-t border-white/5 bg-[#0a0a0f]/80 px-3 py-3 backdrop-blur-xl sm:px-4"
+          : cn(
+              "w-full border-t border-white/5 bg-[#0a0a0f]/80 py-3 backdrop-blur-xl",
+              chatHorizontalPaddingClassName(horizontalPadding)
+            )
       )}
     >
       {showPlan && currentPlan && currentPlanKey ? (

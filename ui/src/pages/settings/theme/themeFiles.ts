@@ -4,6 +4,9 @@ import {
   normalizeCustomThemeBundle,
   serializeCustomThemeBundle,
 } from "../../../../../shared/custom-themes";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
+import { isTauriDesktopRuntime } from "@/lib/desktopHost";
 
 export async function readCustomThemeFile(file: File): Promise<CustomThemeBundle> {
   if (file.size > CUSTOM_THEME_FILE_MAX_BYTES) {
@@ -20,14 +23,35 @@ export async function readCustomThemeFile(file: File): Promise<CustomThemeBundle
   return theme;
 }
 
-export function downloadCustomTheme(theme: CustomThemeBundle): void {
-  const blob = new Blob([serializeCustomThemeBundle(theme)], { type: "application/json" });
+function themeFileName(theme: CustomThemeBundle): string {
+  return `${theme.id}.cybara-theme.json`;
+}
+
+export async function downloadCustomTheme(theme: CustomThemeBundle): Promise<boolean> {
+  const content = serializeCustomThemeBundle(theme);
+  const fileName = themeFileName(theme);
+  if (isTauriDesktopRuntime()) {
+    const path = await save({
+      defaultPath: fileName,
+      title: "Export theme",
+      filters: [{ name: "Cybara theme", extensions: ["json"] }],
+    });
+    if (!path) return false;
+    await invoke("write_theme_file", { path, content });
+    return true;
+  }
+
+  const blob = new Blob([content], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${theme.id}.cybara-theme.json`;
+  anchor.download = fileName;
+  anchor.hidden = true;
+  document.body.appendChild(anchor);
   anchor.click();
-  URL.revokeObjectURL(url);
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  return true;
 }
 
 export async function copyCustomTheme(theme: CustomThemeBundle): Promise<void> {

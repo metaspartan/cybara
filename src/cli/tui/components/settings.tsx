@@ -3,6 +3,7 @@ import { Box, Text, useInput } from "ink";
 import {
   chatCodeFontSizeOptions,
   chatFontSizeOptions,
+  chatHorizontalPaddingOptions,
   chatLineSpacingOptions,
   normalizeChatAppearanceSettings,
   type ChatAppearanceSettings,
@@ -120,6 +121,10 @@ export function TUISettingsCommand({ fetchAPI }: { fetchAPI: FetchAPI }): React.
     const fontSize = nextOption(appearance.fontSize, chatFontSizeOptions);
     const codeFontSize = nextOption(appearance.codeFontSize, chatCodeFontSizeOptions);
     const lineSpacing = nextOption(appearance.lineSpacing, chatLineSpacingOptions);
+    const horizontalPadding = nextOption(
+      appearance.horizontalPadding,
+      chatHorizontalPaddingOptions
+    );
     const approvalMode = config?.tool_approval_mode === "ask" ? "ask" : "always_allow";
     const terminalEnabled = config?.terminal_enabled === true;
     const acpEnabled = config?.acp_enabled !== false;
@@ -172,6 +177,18 @@ export function TUISettingsCommand({ fetchAPI }: { fetchAPI: FetchAPI }): React.
             "lineSpacing",
             lineSpacing,
             `Line spacing: ${optionLabel(lineSpacing, chatLineSpacingOptions)}`
+          ),
+      },
+      {
+        id: "chat-padding",
+        group: "Accessibility",
+        label: "Chat side padding",
+        value: optionLabel(appearance.horizontalPadding, chatHorizontalPaddingOptions),
+        activate: () =>
+          updateAppearance(
+            "horizontalPadding",
+            horizontalPadding,
+            `Chat side padding: ${optionLabel(horizontalPadding, chatHorizontalPaddingOptions)}`
           ),
       },
       ...(

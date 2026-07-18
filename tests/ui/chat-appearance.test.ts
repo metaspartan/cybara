@@ -9,6 +9,7 @@ import {
   readChatAppearanceFromConfig,
 } from "../../shared/chat-appearance";
 import { readUiStylesSource } from "../shared/source-bundles";
+import { chatHorizontalPaddingClassName } from "../../ui/src/pages/chat/chatAppearanceLayout";
 
 const ROOT_DIR = join(import.meta.dir, "..", "..");
 
@@ -18,6 +19,7 @@ describe("chat appearance settings", () => {
       fontSize: "standard",
       codeFontSize: "standard",
       lineSpacing: "comfortable",
+      horizontalPadding: "default",
       reduceMotion: false,
       reduceTransparency: false,
       highContrast: false,
@@ -26,6 +28,10 @@ describe("chat appearance settings", () => {
     expect(getChatFontSizePixels("standard")).toBe(14);
     expect(getChatCodeFontSizePixels("standard")).toBe(12);
     expect(getChatLineHeight("comfortable")).toBe(1.6);
+    expect(chatHorizontalPaddingClassName("default")).toBe("px-5 sm:px-8");
+    expect(chatHorizontalPaddingClassName("maximum")).toBe(
+      "px-6 sm:px-8 lg:px-[max(2rem,calc((100%_-_46rem)_/_2))]"
+    );
   });
 
   test("normalizes camel case and snake case values", () => {
@@ -34,6 +40,7 @@ describe("chat appearance settings", () => {
         fontSize: "large",
         codeFontSize: "compact",
         lineSpacing: "spacious",
+        horizontalPadding: "wide",
         reduceMotion: true,
         reduceTransparency: true,
         highContrast: true,
@@ -43,6 +50,7 @@ describe("chat appearance settings", () => {
       fontSize: "large",
       codeFontSize: "compact",
       lineSpacing: "spacious",
+      horizontalPadding: "wide",
       reduceMotion: true,
       reduceTransparency: true,
       highContrast: true,
@@ -53,6 +61,7 @@ describe("chat appearance settings", () => {
         font_size: "extra_large",
         code_font_size: "large",
         line_spacing: "compact",
+        horizontal_padding: "maximum",
         reduce_motion: true,
         reduce_transparency: true,
         high_contrast: true,
@@ -62,6 +71,7 @@ describe("chat appearance settings", () => {
       fontSize: "extra_large",
       codeFontSize: "large",
       lineSpacing: "compact",
+      horizontalPadding: "maximum",
       reduceMotion: true,
       reduceTransparency: true,
       highContrast: true,
@@ -98,6 +108,10 @@ describe("chat appearance settings", () => {
     const settings = await Bun.file(
       join(ROOT_DIR, "ui", "src", "pages", "settings", "ChatAccessibilitySettings.tsx")
     ).text();
+    const chat = await Bun.file(join(ROOT_DIR, "ui", "src", "pages", "Chat.tsx")).text();
+    const composer = await Bun.file(
+      join(ROOT_DIR, "ui", "src", "pages", "chat", "ChatComposer.tsx")
+    ).text();
     const message = await Bun.file(
       join(ROOT_DIR, "ui", "src", "pages", "chat", "MessageContent.tsx")
     ).text();
@@ -117,6 +131,10 @@ describe("chat appearance settings", () => {
     expect(settings).toContain("Chat text size");
     expect(settings).toContain("Code text size");
     expect(settings).toContain("Line spacing");
+    expect(settings).toContain("Chat side padding");
+    expect(settings).toContain("chatHorizontalPaddingClassName");
+    expect(chat).toContain("horizontalPadding: chatAppearance.horizontalPadding");
+    expect(composer).toContain("chatHorizontalPaddingClassName(horizontalPadding)");
     expect(settings).toContain("Reduce motion");
     expect(settings).toContain("Reduce transparency");
     expect(settings).toContain("Increase contrast");

@@ -12,8 +12,11 @@ import {
   type ChatLineSpacing,
   chatCodeFontSizeOptions,
   chatFontSizeOptions,
+  chatHorizontalPaddingOptions,
   chatLineSpacingOptions,
+  type ChatHorizontalPadding,
 } from "../../../../shared/chat-appearance";
+import { chatHorizontalPaddingClassName } from "../chat/chatAppearanceLayout";
 import { createSerializedSettingsPersistence } from "./serializedSettingsPersistence";
 
 interface ChoiceOption<T extends string> {
@@ -165,6 +168,12 @@ export function ChatAccessibilitySettings() {
               options={chatLineSpacingOptions}
               onChange={(value) => updateAppearance("lineSpacing", value)}
             />
+            <SegmentedChoice<ChatHorizontalPadding>
+              label="Chat side padding"
+              value={chatAppearance.horizontalPadding}
+              options={chatHorizontalPaddingOptions}
+              onChange={(value) => updateAppearance("horizontalPadding", value)}
+            />
             <Switch
               checked={chatAppearance.underlineLinks}
               onChange={(value) => updateAppearance("underlineLinks", value)}
@@ -224,7 +233,12 @@ export function ChatAccessibilitySettings() {
             </span>
           </div>
           <div className="glass-card overflow-hidden rounded-xl border border-white/10">
-            <div className="space-y-4 p-4 sm:p-5">
+            <div
+              className={cn(
+                "space-y-4 py-4 sm:py-5",
+                chatHorizontalPaddingClassName(chatAppearance.horizontalPadding)
+              )}
+            >
               <div className="ml-auto max-w-[82%] rounded-xl bg-white/8 px-3 py-2 text-right">
                 <p className="chat-markdown text-gray-200">Make the settings screen accessible.</p>
               </div>

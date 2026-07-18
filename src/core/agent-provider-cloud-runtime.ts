@@ -37,6 +37,10 @@ import { googleFunctionDeclaration } from "./llm/google-tool-schema";
 import { bedrockUserContent, hasImages, toGoogleImagePart } from "./llm/image-blocks";
 import { googleThinkingConfig, normalizeReasoningEffort } from "./llm/reasoning";
 import { withLlmRequestTimeout } from "./llm/request-timeout";
+import {
+  normalizeProviderTokenUsage,
+  resolveGoogleOutputTokens,
+} from "./llm/token-usage-normalization";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
 import { providerExceptionRetryDelayMs } from "./provider-retry";
 import type { ToolContext } from "./tools/index";
@@ -216,14 +220,25 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
       const durationMs = Math.round(performance.now() - startTime);
       const usage = data.usageMetadata;
       if (usage) {
-        const inputTokens = usage.promptTokenCount || 0;
-        const outputTokens = usage.candidatesTokenCount || 0;
-        trackTokenUsage(modelId, providerConfig, baseUrl, inputTokens, outputTokens, durationMs, {
-          sessionId: sessionIdForVisibleTokenUsage(toolContext),
-          cachedInputTokens: usage.cachedContentTokenCount || 0,
-          firstTokenMs: durationMs,
-          routerRouteId: toolContext?.routerRouteId,
+        const normalizedUsage = normalizeProviderTokenUsage({
+          inputTokens: usage.promptTokenCount,
+          outputTokens: resolveGoogleOutputTokens(usage),
+          cachedInputTokens: usage.cachedContentTokenCount,
+          cacheTokenAccounting: "included",
         });
+        trackTokenUsage(
+          modelId,
+          providerConfig,
+          baseUrl,
+          normalizedUsage.inputTokens,
+          normalizedUsage.outputTokens,
+          durationMs,
+          {
+            sessionId: sessionIdForVisibleTokenUsage(toolContext),
+            cachedInputTokens: normalizedUsage.cachedInputTokens,
+            routerRouteId: toolContext?.routerRouteId,
+          }
+        );
       }
 
       const candidate = data.candidates?.[0];
@@ -464,18 +479,24 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
       const durationMs = Math.round(performance.now() - startTime);
       const usage = response.usage;
       if (usage) {
-        const inputTokens = usage.inputTokens || 0;
-        const outputTokens = usage.outputTokens || 0;
+        const normalizedUsage = normalizeProviderTokenUsage({
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          cachedInputTokens: usage.cacheReadInputTokens,
+          cacheWriteTokens: usage.cacheWriteInputTokens,
+          cacheTokenAccounting: "separate",
+        });
         trackTokenUsage(
           modelId,
           providerConfig,
           baseUrl || "",
-          inputTokens,
-          outputTokens,
+          normalizedUsage.inputTokens,
+          normalizedUsage.outputTokens,
           durationMs,
           {
             sessionId: sessionIdForVisibleTokenUsage(toolContext),
-            firstTokenMs: durationMs,
+            cachedInputTokens: normalizedUsage.cachedInputTokens,
+            cacheWriteTokens: normalizedUsage.cacheWriteTokens,
             routerRouteId: toolContext?.routerRouteId,
           }
         );

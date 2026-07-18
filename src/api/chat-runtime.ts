@@ -1,4 +1,4 @@
-import { type AgentMessage, agentManager } from "../core/agent";
+import { type AgentExecutionResult, type AgentMessage, agentManager } from "../core/agent";
 import { recordCompletedTrajectory } from "../core/agent-eval";
 import { emitAgentHook } from "../core/agent-hooks";
 import { agentSupportsImages } from "../core/agent-image-capabilities";
@@ -41,6 +41,7 @@ import {
   normalizeSessionWorkspaceDir,
   persistSession,
   resolveSessionModelMetadata,
+  type SessionModelMetadata,
   setPersistedSessionAgent,
   shouldCompactContext,
   summarizeSessionTokenUsage,
@@ -60,7 +61,6 @@ import {
   isSessionStatusActive,
   type PendingChatMessageSnapshot,
 } from "../core/status";
-import { handleMemorySave } from "../core/tools/handlers/memory";
 import {
   checkCircuit,
   checkRateLimit,
@@ -75,6 +75,7 @@ import {
 } from "./chat-agent-prompt";
 import { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
+import { appendToolImageReferences, maybeSaveAutomaticMemory } from "./chat-response-enrichment";
 import { settlePendingChatFailure } from "./chat-pending-failure";
 import {
   deletePersistedPendingChatItem,
@@ -157,6 +158,20 @@ export {
 } from "./chat-process-activities";
 
 const log = createLogger("Chat");
+
+function executionMetadataFromResult(result: AgentExecutionResult): SessionModelMetadata | null {
+  const metadata: SessionModelMetadata = {
+    provider: result.provider,
+    provider_id: result.provider_id,
+    provider_name: result.provider_name,
+    model: result.model,
+  };
+  return Object.values(metadata).some(
+    (value) => typeof value === "string" && value.trim().length > 0
+  )
+    ? metadata
+    : null;
+}
 
 export type {
   ChatMessage,
@@ -1422,6 +1437,7 @@ async function handleChatTurn(
   }
 
   let responseContent: string;
+  let executionModelMetadata: SessionModelMetadata | null = null;
   const thinkingContent: string = "";
   const allToolCalls: ToolCallInfo[] = [];
   const agentTransfers: AgentTransferEnvelope[] = [];
@@ -1479,6 +1495,7 @@ async function handleChatTurn(
         modelOverride: activeModelOverride,
         allowedToolNames,
       });
+      executionModelMetadata = executionMetadataFromResult(result);
       let toolResults = result.tool_calls || [];
       const maximumTransferDepth = 4;
 
@@ -1578,6 +1595,7 @@ async function handleChatTurn(
           useModelRouter,
           allowedToolNames,
         });
+        executionModelMetadata = executionMetadataFromResult(result);
         toolResults.push(...(result.tool_calls || []));
       }
       responseContent = result.content;
@@ -1635,6 +1653,7 @@ async function handleChatTurn(
             : forcedToolCalls.length > 0;
           if (forcedToolCalls.length > 0 && forcedHasRequiredTool) {
             result = forcedResult;
+            executionModelMetadata = executionMetadataFromResult(forcedResult);
             responseContent = forcedResult.content;
             toolResults = [...toolResults, ...forcedToolCalls];
           }
@@ -1746,51 +1765,19 @@ async function handleChatTurn(
       "No AI provider configured. Please add a provider (like MiniMax, OpenAI, or Ollama) to enable AI responses.";
   }
 
-  // Surface any image files produced by tools (e.g. computer_use/browser
-  // screenshots) so channel adapters can attach them. We append a file:// link
-  // for each image path not already referenced; the adapter extracts these,
-  // attaches the file, and strips the marker from the visible text.
-  const imageToolPaths = allToolCalls
-    .map((tc) => (tc.result as { filePath?: unknown } | undefined)?.filePath)
-    .filter((p): p is string => typeof p === "string" && /\.(png|jpe?g|gif|webp)$/i.test(p));
-  for (const imgPath of [...new Set(imageToolPaths)]) {
-    if (!responseContent.includes(imgPath)) {
-      responseContent += `\n\n![screenshot](file://${imgPath})`;
-    }
-  }
+  responseContent = appendToolImageReferences(responseContent, allToolCalls);
 
   const { content: extractedContent, thinking: extractedThinking } =
     stripThinkingTags(responseContent);
   const cleanContent = sanitizeAssistantContent(extractedContent);
   const finalThinking = sanitizeProcessThoughtText(thinkingContent || extractedThinking);
 
-  const memoryPatterns = [
-    /(?:remember|save to memory|store this|note this|don't forget)(?: that |: )?(.+)/i,
-    /(?:I'll|I will|I've) (?:already )?(?:saved|stored|remembered|noted)(?: that |: )?(.+)/i,
-    /(?:I'll|I will|I've) (?:already )?(?:saved|stored|remembered|noted|keep that in mind|noted it)(?: that |: | for )?(.+)/i,
-  ];
-
-  if (allToolCalls.length === 0 && provider?.provider === "minimax") {
-    for (const pattern of memoryPatterns) {
-      const match = message.match(pattern);
-      if (match && match[1] && match[1].length > 3 && match[1].length < 500) {
-        try {
-          await handleMemorySave({
-            content: match[1].trim(),
-            type: "context",
-            tags: ["auto-saved"],
-          });
-          log.info("Auto-saved memory", {
-            sessionId: session.id,
-            preview: match[1].substring(0, 50),
-          });
-        } catch {
-          // Ignore memory save errors
-        }
-        break;
-      }
-    }
-  }
+  await maybeSaveAutomaticMemory({
+    message,
+    providerType: provider?.provider,
+    sessionId: session.id,
+    toolCallCount: allToolCalls.length,
+  });
 
   const assistantTimestamp = new Date().toISOString();
   const assistantTimestampMs = parseIsoTimestampMs(assistantTimestamp) || Date.now();
@@ -1823,7 +1810,10 @@ async function handleChatTurn(
           )
         : "Completed.";
 
-  const modelMetadata = resolveSessionModelMetadata(agent?.id ?? session.agentId);
+  const configuredModelMetadata = resolveSessionModelMetadata(agent?.id ?? session.agentId);
+  const modelMetadata = executionModelMetadata
+    ? { ...(configuredModelMetadata ?? {}), ...executionModelMetadata }
+    : configuredModelMetadata;
 
   const assistantMessage: ChatMessage = {
     role: "assistant",

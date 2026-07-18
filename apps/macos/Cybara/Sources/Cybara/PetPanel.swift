@@ -70,6 +70,7 @@ final class PetPanelController {
 }
 
 private struct PetPanelView: View {
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @State private var hovering = false
 
     var body: some View {
@@ -89,7 +90,7 @@ private struct PetPanelView: View {
         }
         .frame(width: 64, height: 64)
         .scaleEffect(hovering ? 1.06 : 1)
-        .animation(.easeOut(duration: 0.15), value: hovering)
+        .animation(systemReduceMotion ? nil : .easeOut(duration: 0.15), value: hovering)
         .onHover { hovering = $0 }
         .onTapGesture {
             NSApp.activate(ignoringOtherApps: true)

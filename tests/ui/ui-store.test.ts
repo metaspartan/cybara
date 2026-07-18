@@ -53,6 +53,7 @@ beforeEach(() => {
     customThemes: [],
     activeCustomThemeId: null,
     chatAppearance: DEFAULT_CHAT_APPEARANCE_SETTINGS,
+    chatEnvironmentOpen: false,
     loading: {},
     toasts: [],
     activeModal: null,
@@ -218,6 +219,7 @@ describe("useUIStore actions", () => {
       fontSize: "large",
       codeFontSize: "large",
       lineSpacing: "spacious",
+      horizontalPadding: "wide",
       reduceMotion: true,
       reduceTransparency: true,
       highContrast: true,
@@ -238,6 +240,7 @@ describe("useUIStore actions", () => {
       fontSize: "large",
       codeFontSize: "large",
       lineSpacing: "spacious",
+      horizontalPadding: "wide",
       reduceMotion: true,
       reduceTransparency: true,
       highContrast: true,
@@ -249,6 +252,9 @@ describe("useUIStore actions", () => {
     expect(state.activeModal).toBe("settings");
     expect(state.modalData).toEqual({ tab: "theme" });
     expect(state.sidebarOpen).toBe(false);
+
+    state.setChatEnvironmentOpen(true);
+    expect(useUIStore.getState().chatEnvironmentOpen).toBe(true);
 
     state.removeToast(state.toasts[0].id);
     expect(useUIStore.getState().toasts.map((toast) => toast.message)).toEqual(["broke"]);
@@ -323,12 +329,14 @@ useUIStore.getState().setChatAppearance({
   fontSize: "large",
   codeFontSize: "large",
   lineSpacing: "spacious",
+  horizontalPadding: "wide",
   reduceMotion: true,
   reduceTransparency: true,
   highContrast: true,
   underlineLinks: true,
 });
 useUIStore.getState().setLoading("x", true);
+useUIStore.getState().setChatEnvironmentOpen(true);
 useUIStore.getState().openModal("m");
 const raw = ls.getItem("cybara-ui-settings");
 const persistedAfterSet = raw ? JSON.parse(raw) : null;
@@ -382,7 +390,7 @@ describe("useUIStore persistence", () => {
     expect(report.hasPersistApi).toBe(true);
   });
 
-  test("persists only appearance settings", () => {
+  test("persists appearance and panel preferences", () => {
     expect(report.persistedAfterSet).not.toBeNull();
     expect(report.persistedAfterSet?.state).toEqual({
       accent: "amber",
@@ -393,11 +401,13 @@ describe("useUIStore persistence", () => {
         fontSize: "large",
         codeFontSize: "large",
         lineSpacing: "spacious",
+        horizontalPadding: "wide",
         reduceMotion: true,
         reduceTransparency: true,
         highContrast: true,
         underlineLinks: true,
       },
+      chatEnvironmentOpen: true,
     });
   });
 

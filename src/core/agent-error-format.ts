@@ -39,6 +39,12 @@ export function formatLlmFailure(error: unknown): string {
   if (lower.includes("model_not_found") || lower.includes("does not exist")) {
     return "Configured model is not available for this provider. Select another model and try again.";
   }
+  if (/monthly usage limit|usage limit.{0,40}billing cycle/.test(lower)) {
+    return "Provider monthly usage quota reached. Wait for the billing-cycle reset, enable extra usage when supported, or use another account/provider.";
+  }
+  if (/usage limit.{0,40}(?:period|rolling)|reached.{0,40}usage limit/.test(lower)) {
+    return "Provider rolling usage window reached. Wait for the reset shown in Usage, enable extra usage when supported, or use another account/provider.";
+  }
   if (lower.includes("insufficient_quota") || lower.includes("quota")) {
     return "Provider quota/billing limit reached. Update billing or use a different provider.";
   }
@@ -51,8 +57,14 @@ export function formatLlmFailure(error: unknown): string {
   if (lower.includes("403")) {
     return "Provider rejected access (403). Verify account permissions and model access.";
   }
+  if (lower.includes("too many requests")) {
+    return "Provider concurrent-request limit remained active after automatic retries. Wait briefly or use another account/provider.";
+  }
+  if (lower.includes("overloaded")) {
+    return "Provider remained overloaded after automatic retries. Wait briefly or use another provider.";
+  }
   if (lower.includes("429") || lower.includes("rate limit")) {
-    return "Provider rate limit hit (429). Retry shortly or switch providers.";
+    return "Provider rate limit remained active after automatic retries. Wait briefly or use another account/provider.";
   }
 
   const detail = extractLlmErrorDetail(message);

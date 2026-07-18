@@ -17,14 +17,23 @@ export const chatLineSpacingOptions = [
   { value: "spacious", label: "Spacious", lineHeight: 1.8 },
 ] as const;
 
+export const chatHorizontalPaddingOptions = [
+  { value: "default", label: "Default" },
+  { value: "roomy", label: "Roomy" },
+  { value: "wide", label: "Wide" },
+  { value: "maximum", label: "Maximum" },
+] as const;
+
 export type ChatFontSize = (typeof chatFontSizeOptions)[number]["value"];
 export type ChatCodeFontSize = (typeof chatCodeFontSizeOptions)[number]["value"];
 export type ChatLineSpacing = (typeof chatLineSpacingOptions)[number]["value"];
+export type ChatHorizontalPadding = (typeof chatHorizontalPaddingOptions)[number]["value"];
 
 export interface ChatAppearanceSettings {
   fontSize: ChatFontSize;
   codeFontSize: ChatCodeFontSize;
   lineSpacing: ChatLineSpacing;
+  horizontalPadding: ChatHorizontalPadding;
   reduceMotion: boolean;
   reduceTransparency: boolean;
   highContrast: boolean;
@@ -35,6 +44,7 @@ export const DEFAULT_CHAT_APPEARANCE_SETTINGS: ChatAppearanceSettings = {
   fontSize: "standard",
   codeFontSize: "standard",
   lineSpacing: "comfortable",
+  horizontalPadding: "default",
   reduceMotion: false,
   reduceTransparency: false,
   highContrast: false,
@@ -44,6 +54,9 @@ export const DEFAULT_CHAT_APPEARANCE_SETTINGS: ChatAppearanceSettings = {
 const chatFontSizes = new Set<string>(chatFontSizeOptions.map((option) => option.value));
 const chatCodeFontSizes = new Set<string>(chatCodeFontSizeOptions.map((option) => option.value));
 const chatLineSpacings = new Set<string>(chatLineSpacingOptions.map((option) => option.value));
+const chatHorizontalPaddings = new Set<string>(
+  chatHorizontalPaddingOptions.map((option) => option.value)
+);
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -76,6 +89,11 @@ export function normalizeChatAppearanceSettings(value: unknown): ChatAppearanceS
       record.lineSpacing ?? record.line_spacing,
       chatLineSpacings,
       DEFAULT_CHAT_APPEARANCE_SETTINGS.lineSpacing
+    ),
+    horizontalPadding: normalizeOption(
+      record.horizontalPadding ?? record.horizontal_padding,
+      chatHorizontalPaddings,
+      DEFAULT_CHAT_APPEARANCE_SETTINGS.horizontalPadding
     ),
     reduceMotion:
       typeof (record.reduceMotion ?? record.reduce_motion) === "boolean"

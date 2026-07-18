@@ -1,4 +1,14 @@
 import {
+  chatCodeFontSizeOptions,
+  chatFontSizeOptions,
+  chatLineSpacingOptions,
+  getChatCodeFontSizePixels,
+  getChatFontSizePixels,
+  getChatLineHeight,
+  normalizeChatAppearanceSettings,
+} from "cybara-shared/chat-appearance";
+import { defaultThemeAccentForMode } from "cybara-shared/theme-defaults";
+import {
   Accessibility,
   Brain,
   CalendarCheck,
@@ -13,17 +23,9 @@ import {
   Trash2,
   Volume2,
 } from "lucide-react-native";
-import {
-  chatCodeFontSizeOptions,
-  chatFontSizeOptions,
-  chatLineSpacingOptions,
-  getChatCodeFontSizePixels,
-  getChatFontSizePixels,
-  getChatLineHeight,
-  normalizeChatAppearanceSettings,
-} from "cybara-shared/chat-appearance";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { useEffectiveChatAppearance } from "../accessibility/SystemAccessibilityContext";
 import { useHapticsControls } from "../haptics/HapticsContext";
 import type {
   ActivitySummary,
@@ -60,7 +62,8 @@ import {
 import { haptics } from "../lib/haptics";
 import { type AccentKey, accentPalette, colors } from "../theme/liquidGlass";
 import { useThemeControls } from "../theme/ThemeContext";
-import { defaultThemeAccentForMode } from "cybara-shared/theme-defaults";
+import { AgentSettingsPanel } from "./dashboardAgentSettingsPanel";
+import { MobileComputerUsePanel } from "./dashboardComputerUsePanel";
 import {
   DetailInfoSection,
   SettingSelector,
@@ -69,6 +72,7 @@ import {
   SettingToggle,
   StableDetailPanel,
 } from "./dashboardControls";
+import { MobileEvalsPanel } from "./dashboardEvalsPanel";
 import {
   absoluteTimestampLabel,
   booleanSetting,
@@ -80,9 +84,11 @@ import {
   objectRecord,
   readMobileSpeechSettings,
 } from "./dashboardHelpers";
+import { JourneyPanel } from "./dashboardJourneyPanel";
+import { MobileMcpSettingsPanel } from "./dashboardMcpPanel";
+import { ModelRouterPanel } from "./dashboardModelRouterPanel";
+import { MobilePluginsPanel } from "./dashboardPluginsPanel";
 import { EmptyState, GatewayDetailPill, LoadingState, SettingsRow } from "./dashboardPrimitives";
-import { MobileWebPolicyPanel } from "./dashboardWebPolicyPanel";
-import { MobileComputerUsePanel } from "./dashboardComputerUsePanel";
 import {
   ApprovalSettingsPanel,
   ChannelSettingsPanel,
@@ -95,15 +101,7 @@ import {
   TaskSettingsPanel,
   WalletPolicyPanel,
 } from "./dashboardSettingsPanels";
-import { AgentSettingsPanel } from "./dashboardAgentSettingsPanel";
-import { JourneyPanel } from "./dashboardJourneyPanel";
-import { ModelRouterPanel } from "./dashboardModelRouterPanel";
 import { SpeechSettingsPanel } from "./dashboardSpeechSettingsPanel";
-import { MobileMcpSettingsPanel } from "./dashboardMcpPanel";
-import { MobilePluginsPanel } from "./dashboardPluginsPanel";
-import { MobileEvalsPanel } from "./dashboardEvalsPanel";
-import { MobileTelemetrySettingsPanel } from "./dashboardTelemetryPanel";
-import { MobileToolCapabilityPanel } from "./dashboardToolCapabilityPanel";
 import { styles } from "./dashboardStyles";
 import {
   type DetailRoute,
@@ -111,6 +109,9 @@ import {
   surfaceMeta,
   surfaceRows,
 } from "./dashboardSurfaceData";
+import { MobileTelemetrySettingsPanel } from "./dashboardTelemetryPanel";
+import { MobileToolCapabilityPanel } from "./dashboardToolCapabilityPanel";
+import { MobileWebPolicyPanel } from "./dashboardWebPolicyPanel";
 
 function MobileAccessibilityPreview({
   appearance,
@@ -693,7 +694,10 @@ export function SettingsPanel({
         logs: "logs",
       } as Partial<Record<MobileSettingsTab, MobileSurfaceKey>>
     )[selectedSettingsTab] ?? null;
-  const chatAppearance = normalizeChatAppearanceSettings(summary?.config?.chat_appearance);
+  const configuredChatAppearance = normalizeChatAppearanceSettings(
+    summary?.config?.chat_appearance
+  );
+  const chatAppearance = useEffectiveChatAppearance(configuredChatAppearance);
 
   const saveConfigPatch = async (
     key: string,
@@ -841,7 +845,7 @@ export function SettingsPanel({
                 label="Chat text size"
                 onSelect={(value) => {
                   void saveConfigPatch("chat_appearance", {
-                    chat_appearance: { ...chatAppearance, fontSize: value },
+                    chat_appearance: { ...configuredChatAppearance, fontSize: value },
                   });
                 }}
                 options={chatFontSizeOptions.map((option) => ({
@@ -857,7 +861,7 @@ export function SettingsPanel({
                 label="Code text size"
                 onSelect={(value) => {
                   void saveConfigPatch("chat_appearance", {
-                    chat_appearance: { ...chatAppearance, codeFontSize: value },
+                    chat_appearance: { ...configuredChatAppearance, codeFontSize: value },
                   });
                 }}
                 options={chatCodeFontSizeOptions.map((option) => ({
@@ -873,7 +877,7 @@ export function SettingsPanel({
                 label="Line spacing"
                 onSelect={(value) => {
                   void saveConfigPatch("chat_appearance", {
-                    chat_appearance: { ...chatAppearance, lineSpacing: value },
+                    chat_appearance: { ...configuredChatAppearance, lineSpacing: value },
                   });
                 }}
                 options={chatLineSpacingOptions.map((option) => ({
@@ -892,8 +896,8 @@ export function SettingsPanel({
                 onPress={() => {
                   void saveConfigPatch("chat_appearance", {
                     chat_appearance: {
-                      ...chatAppearance,
-                      underlineLinks: !chatAppearance.underlineLinks,
+                      ...configuredChatAppearance,
+                      underlineLinks: !configuredChatAppearance.underlineLinks,
                     },
                   });
                 }}
@@ -925,11 +929,14 @@ export function SettingsPanel({
                   label={label}
                   onPress={() => {
                     void saveConfigPatch("chat_appearance", {
-                      chat_appearance: { ...chatAppearance, [key]: !chatAppearance[key] },
+                      chat_appearance: {
+                        ...configuredChatAppearance,
+                        [key]: !configuredChatAppearance[key],
+                      },
                     });
                   }}
                   tone={accentColor}
-                  value={chatAppearance[key]}
+                  value={configuredChatAppearance[key]}
                 />
               ))}
             </SettingsSection>

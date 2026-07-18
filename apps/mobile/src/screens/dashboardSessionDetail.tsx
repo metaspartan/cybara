@@ -46,6 +46,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useEffectiveChatAppearance } from "../accessibility/SystemAccessibilityContext";
 import { LiquidGlass } from "../components/LiquidGlass";
 import { MobileBranchPicker } from "../components/MobileBranchPicker";
 import type {
@@ -1377,7 +1378,9 @@ export function SessionDetailPanel({
   // sits just above the keyboard; otherwise it floats above the nav chrome.
   const composerBottom =
     keyboardHeight > 0 ? keyboardHeight + spacing.xs : navFootprint + spacing.xs;
-  const chatAppearance = normalizeChatAppearanceSettings(config?.chat_appearance);
+  const chatAppearance = useEffectiveChatAppearance(
+    normalizeChatAppearanceSettings(config?.chat_appearance)
+  );
 
   return (
     <View style={styles.chatShell}>

@@ -10,8 +10,24 @@ describe("session runtime metrics", () => {
        VALUES (?, ?, ?, '[]', ?)`
     ).run(sessionId, "agent-1", "Metrics chat", "/tmp/project");
     for (const [index, usage] of [
-      { input: 100, output: 50, cached: 25, write: 5, duration: 1000, first: 300 },
-      { input: 200, output: 150, cached: 50, write: 10, duration: 3000, first: 500 },
+      {
+        input: 100,
+        output: 50,
+        cached: 25,
+        write: 5,
+        duration: 1000,
+        generationDuration: 500,
+        first: 300,
+      },
+      {
+        input: 200,
+        output: 150,
+        cached: 50,
+        write: 10,
+        duration: 3000,
+        generationDuration: 1500,
+        first: 500,
+      },
     ].entries()) {
       db.prepare(
         `INSERT INTO metrics (id, type, key, value, metadata)
@@ -28,6 +44,7 @@ describe("session runtime metrics", () => {
           cachedInputTokens: usage.cached,
           cacheWriteTokens: usage.write,
           durationMs: usage.duration,
+          generationDurationMs: usage.generationDuration,
           firstTokenMs: usage.first,
         })
       );
@@ -69,7 +86,7 @@ describe("session runtime metrics", () => {
       totalTokens: 500,
       callCount: 3,
       durationMs: 4000,
-      tokensPerSecond: 50,
+      tokensPerSecond: 100,
       firstTokenMs: 400,
       latencyCallCount: 2,
       compactionCount: 1,
@@ -79,7 +96,7 @@ describe("session runtime metrics", () => {
       sessions: 1,
       totalTokens: 500,
       callCount: 3,
-      tokensPerSecond: 50,
+      tokensPerSecond: 100,
       firstTokenMs: 400,
     });
   });

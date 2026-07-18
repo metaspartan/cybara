@@ -17,6 +17,18 @@ describe("agent helper modules", () => {
       formatLlmFailure(new Error('API error: 400 - {"error":{"message":"too many tokens"}}'))
     ).toBe("Provider rejected the request (400): too many tokens");
     expect(formatLlmFailure(new Error("429 rate limit"))).toContain("rate limit");
+    expect(
+      formatLlmFailure(
+        new Error(
+          "API error: 429 - You've reached your usage limit for this period. Your quota will be refreshed in the next period."
+        )
+      )
+    ).toContain("rolling usage window");
+    expect(
+      formatLlmFailure(
+        new Error("API error: 429 - We're receiving too many requests at the moment.")
+      )
+    ).toContain("automatic retries");
   });
 
   test("keeps provider-specific token parameter preference outside AgentManager", () => {

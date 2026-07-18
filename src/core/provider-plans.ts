@@ -1432,6 +1432,44 @@ function applyLiveUsageToSnapshot(
   };
 }
 
+export async function getLiveProviderPlanRouteConstraint(
+  routeKey: string,
+  context?: ProviderPlanEvaluationContext
+): Promise<ProviderPlanRouteConstraint> {
+  const base = getProviderPlanRouteConstraint(routeKey, context);
+  const cfg = context?.cfg ?? getProviderPlanMonitoringConfig();
+  if (!cfg.enabled) return base;
+  const row = configuredProviderForRoute(routeKey, context);
+  if (!row) return base;
+  const storedCredentials = providerManager.getWithCredentials(row.id);
+  const refreshedCredentials =
+    await providerManager.refreshOAuthCredentialsIfNeeded(storedCredentials);
+  const credentials = refreshedCredentials ?? storedCredentials;
+  const live = await fetchLiveProviderUsage({
+    id: row.id,
+    providerType: providerTypeOf(row),
+    apiKey: credentials?.api_key,
+    accessToken: credentials?.access_token,
+    baseUrl: credentials?.base_url,
+  });
+  if (!live) return base;
+  const snapshot = applyLiveUsageToSnapshot(getProviderPlanSnapshot(routeKey, context), live);
+  const primaryRemainingPercent = snapshot.windows
+    .map((window) => window.remainingPercent)
+    .filter((value): value is number => typeof value === "number")
+    .sort((left, right) => left - right)[0];
+  const configured = primaryRemainingPercent !== undefined;
+  const enforced = cfg.routerEnforcement && configured && snapshot.status === "exhausted";
+  return {
+    monitored: snapshot.monitored,
+    configured,
+    enforced,
+    status: snapshot.status,
+    reason: snapshot.reason,
+    primaryRemainingPercent,
+  };
+}
+
 export async function enrichProviderPlanStatusWithLiveUsage(
   status: ProviderPlanStatusResponse
 ): Promise<ProviderPlanStatusResponse> {

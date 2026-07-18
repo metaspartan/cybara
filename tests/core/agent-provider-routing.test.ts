@@ -116,6 +116,10 @@ describe("Agent provider API-family routing", () => {
     );
 
     expect(result.content).toBe("backup-account-ok");
+    expect(result.provider_id).toBe(backup.id);
+    expect(result.provider_name).toBe("Backup Pool Account");
+    expect(result.provider).toBe("openai");
+    expect(result.model).toBe("gpt-5.2");
     expect(authorizationHeaders).toEqual(["Bearer primary-pool-key", "Bearer backup-pool-key"]);
     expect(agentManager.get(agent.id)?.provider_id).toBe(primary.id);
     expect(agentManager.get(agent.id)?.provider_pool_id).toBe(pool.id);
@@ -809,6 +813,11 @@ describe("Agent provider API-family routing", () => {
     );
 
     expect(result.content).toBe("router-ok");
+    expect(result.provider_id).toBe(routedProvider.id);
+    expect(result.provider_name).toBe("Routed Synthetic Provider");
+    expect(result.provider).toBe("synthetic");
+    expect(result.model).toBe("hf:MiniMaxAI/MiniMax-M2.1");
+    expect(result.router_route_id).toBe("synthetic");
     expect(requestUrl.endsWith("/messages")).toBe(true);
     expect(requestHeaders.get("x-api-key")).toBe("synthetic-router-key");
     expect(agentManager.get(agent.id)?.provider_id).toBe(originalProvider.id);
@@ -888,6 +897,9 @@ describe("Agent provider API-family routing", () => {
     );
 
     expect(result.content).toBe("router-pool-ok");
+    expect(result.provider_id).toBe(backup.id);
+    expect(result.provider_name).toBe("Router Pool Backup");
+    expect(result.router_route_id).toBe(`pool:${pool.id}`);
     expect(authorizationHeaders).toEqual([
       "Bearer router-pool-primary",
       "Bearer router-pool-backup",

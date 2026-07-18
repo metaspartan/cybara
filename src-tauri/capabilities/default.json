@@ -35,6 +35,7 @@
         "desktop-gateway",
         "desktop-updater",
         "native-recording",
+        "theme-files",
         "process:default",
         "updater:default"
     ]

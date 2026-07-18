@@ -88,6 +88,7 @@ export function IDEChatComposer({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const submitRef = useRef<() => Promise<void>>(async () => undefined);
   const addToast = useUIStore((state) => state.addToast);
+  const horizontalPadding = useUIStore((state) => state.chatAppearance.horizontalPadding);
   const attachments = useChatAttachments();
   const dictation = useChatDictation(setInput);
   const capabilityPicker = useChatCapabilityPicker({
@@ -310,6 +311,7 @@ export function IDEChatComposer({
       followUpBehaviorEnabled={followUpBehaviorEnabled}
       imageDragActive={attachments.imageDragActive}
       imageInputRef={imageInputRef}
+      horizontalPadding={horizontalPadding}
       input={input}
       inputRef={inputRef}
       isLoading={isLoading}

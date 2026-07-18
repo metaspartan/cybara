@@ -30,7 +30,7 @@ import {
 import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
-import { chatApi, providerPlansApi } from "@/lib/api";
+import { chatApi } from "@/lib/api";
 import { chatImageSrc } from "@/lib/chatImages";
 import { useUpdateAgentReasoning } from "@/hooks/useApi";
 import { MODEL_ROUTER_SELECTOR_VALUE } from "../chat/ChatAgentControls";
@@ -91,7 +91,6 @@ import {
 import {
   isPlainRecord,
   normalizeIdePath,
-  getIdePendingFileDecisionKey,
   isSameIdePath,
   countDiffLines,
   truncateDiffPreview,
@@ -104,9 +103,6 @@ import {
   parseIdeChangeRecord,
   summarizeIdeFileChanges,
   summarizeIdeTextFileChanges,
-  summarizeIdeMessageFileChanges,
-  summarizeIdeActivityFileChanges,
-  mergeIdeFileChangeSummaries,
   reverseUnifiedDiff,
   isIdeToolCallLike,
   getIdeToolCallsInTimelineOrder,
@@ -145,13 +141,7 @@ import {
 import { IDEChatPendingChangesBar } from "./IDEChatPendingChangesBar";
 import { IDEChatStatus } from "./IDEChatStatus";
 import { IDEChatHeader } from "./IDEChatHeader";
-import type {
-  AgentSummary,
-  AgentTransferInfo,
-  ProviderPlanSnapshot,
-  ProviderPlanStatusResponse,
-  SessionContextUsage,
-} from "@/types";
+import type { AgentTransferInfo, SessionContextUsage } from "@/types";
 import type {
   FileEntry,
   BrowseResult,
@@ -174,7 +164,6 @@ import type {
   IdeChatAgentOption,
   IdeProcessActivity,
   IdeFileChangeItem,
-  IdeFileChangeSummary,
   IdePendingFileDiff,
   IdePendingFileDiffController,
   TreeContextMenuState,
@@ -192,6 +181,8 @@ import type {
   IDEChatPanelProps,
 } from "./ideTypes";
 import { IdeActivityText, IdeProcessActivityList } from "./IdeActivityTimeline";
+import { useIDEChatDiffSummary } from "./useIDEChatDiffSummary";
+import { useIDEChatRouting } from "./useIDEChatRouting";
 
 export function IDEChatPanel({
   workspaceDir,
@@ -220,11 +211,6 @@ export function IDEChatPanel({
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [liveCurrentStep, setLiveCurrentStep] = useState<string | null>(null);
   const [sessionContextUsage, setSessionContextUsage] = useState<SessionContextUsage | null>(null);
-  const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
-    null
-  );
-  const [modelRouterEnabled, setModelRouterEnabled] = useState(false);
-  const [useModelRouter, setUseModelRouter] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileDiffDecision, setFileDiffDecision] = useState<Record<string, "accepted" | "rejected">>(
     {}
@@ -284,162 +270,22 @@ export function IDEChatPanel({
     onSelectedAgentIdChange("");
   }, [agents, onSelectedAgentIdChange, selectedAgentId]);
 
-  const chatAgentOptions = useMemo<AgentSummary[]>(
-    () =>
-      agents.map((agent) => ({
-        id: agent.id,
-        name: agent.name,
-        model: agent.model || "",
-        provider: agent.provider || "",
-        provider_id: agent.provider_id,
-        fallback_provider_id: agent.fallback_provider_id,
-        status: agent.status as AgentSummary["status"],
-        reasoning_effort: agent.reasoning_effort ?? null,
-      })),
-    [agents]
-  );
-
-  const activeAgentForPlan = useMemo(
-    () => chatAgentOptions.find((agent) => agent.id === (activeAgentId || selectedAgentId)) ?? null,
-    [activeAgentId, chatAgentOptions, selectedAgentId]
-  );
-
-  const activeProviderPlan = useMemo<ProviderPlanSnapshot | null>(() => {
-    if (useModelRouter) return null;
-    if (!providerPlanStatus || !activeAgentForPlan) return null;
-    const keys = new Set(
-      [
-        activeAgentForPlan.provider_id,
-        activeAgentForPlan.provider,
-        activeAgentForPlan.fallback_provider_id,
-      ].filter((value): value is string => typeof value === "string" && value.length > 0)
-    );
-    return (
-      providerPlanStatus.providers.find((plan) =>
-        [plan.configuredProviderId, plan.providerId, plan.providerType].some(
-          (key) => typeof key === "string" && keys.has(key)
-        )
-      ) ?? null
-    );
-  }, [activeAgentForPlan, providerPlanStatus, useModelRouter]);
-
-  useEffect(() => {
-    let active = true;
-    const loadRouterConfig = async () => {
-      try {
-        const response = await apiFetch("/api/router/config");
-        if (!active) return;
-        const data = await response.json();
-        setModelRouterEnabled(data?.enabled === true);
-        if (data?.enabled !== true) {
-          setUseModelRouter(false);
-        }
-      } catch {
-        if (active) {
-          setModelRouterEnabled(false);
-          setUseModelRouter(false);
-        }
-      }
-    };
-    const loadProviderPlans = async () => {
-      const response = await providerPlansApi.status();
-      if (!active) return;
-      setProviderPlanStatus(response.success ? (response.data ?? null) : null);
-    };
-    void loadRouterConfig();
-    void loadProviderPlans();
-    const interval = window.setInterval(loadProviderPlans, 60_000);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, []);
-
-  const getMessageKey = useCallback((message: IdeChatMessage, index: number): string => {
-    return `${message.role}:${message.timestamp}:${index}`;
-  }, []);
-
-  const messageChangeSummaryByKey = useMemo(() => {
-    const map = new Map<string, IdeFileChangeSummary>();
-    messages.forEach((message, index) => {
-      if (message.role !== "assistant") return;
-      const toolSummary = summarizeIdeMessageFileChanges(message.tool_calls);
-      const summary =
-        toolSummary ||
-        mergeIdeFileChangeSummaries(
-          summarizeIdeActivityFileChanges(message.process_activities),
-          summarizeIdeTextFileChanges(message.content)
-        );
-      if (!summary) return;
-      map.set(getMessageKey(message, index), summary);
-    });
-    return map;
-  }, [getMessageKey, messages]);
-
-  const resolvedFileEntriesByMessageKey = useMemo(() => {
-    const map = new Map<string, IdePendingFileDiff[]>();
-    for (const [messageKey, summary] of messageChangeSummaryByKey.entries()) {
-      map.set(
-        messageKey,
-        summary.files.map((file) => {
-          const fileKey = getIdePendingFileDecisionKey(messageKey, file.path);
-          return {
-            key: fileKey,
-            messageKey,
-            path: file.path,
-            type: file.type,
-            added: file.added,
-            removed: file.removed,
-            diff:
-              resolvedPendingDiffs[fileKey] ||
-              (typeof file.diff === "string" ? file.diff : undefined),
-          } satisfies IdePendingFileDiff;
-        })
-      );
-    }
-    return map;
-  }, [messageChangeSummaryByKey, resolvedPendingDiffs]);
-
-  const pendingFileDiffs = useMemo(() => {
-    const items: IdePendingFileDiff[] = [];
-    for (const files of resolvedFileEntriesByMessageKey.values()) {
-      for (const file of files) {
-        if (!fileDiffDecision[file.key]) {
-          items.push(file);
-        }
-      }
-    }
-    return items;
-  }, [fileDiffDecision, resolvedFileEntriesByMessageKey]);
-
-  const pendingMessageChangeKeys = useMemo(() => {
-    const keys: string[] = [];
-    for (const [messageKey, files] of resolvedFileEntriesByMessageKey.entries()) {
-      if (files.some((file) => !fileDiffDecision[file.key])) {
-        keys.push(messageKey);
-      }
-    }
-    return keys;
-  }, [fileDiffDecision, resolvedFileEntriesByMessageKey]);
-
-  const pendingChangeAggregate = useMemo(() => {
-    const byPath = new Map<string, { added: number; removed: number }>();
-    for (const file of pendingFileDiffs) {
-      const existing = byPath.get(file.path) || { added: 0, removed: 0 };
-      existing.added += file.added;
-      existing.removed += file.removed;
-      byPath.set(file.path, existing);
-    }
-    const files = Array.from(byPath.entries()).map(([path, values]) => ({
-      path,
-      ...values,
-    }));
-    return {
-      fileCount: files.length,
-      totalAdded: files.reduce((sum, file) => sum + file.added, 0),
-      totalRemoved: files.reduce((sum, file) => sum + file.removed, 0),
-    };
-  }, [pendingFileDiffs]);
+  const {
+    activeAgentForPlan,
+    activeProviderPlan,
+    chatAgentOptions,
+    modelRouterEnabled,
+    setUseModelRouter,
+    useModelRouter,
+  } = useIDEChatRouting({ activeAgentId, agents, selectedAgentId });
+  const {
+    getMessageKey,
+    messageChangeSummaryByKey,
+    pendingChangeAggregate,
+    pendingFileDiffs,
+    pendingMessageChangeKeys,
+    resolvedFileEntriesByMessageKey,
+  } = useIDEChatDiffSummary({ fileDiffDecision, messages, resolvedPendingDiffs });
 
   const conversationTitle = useMemo(
     () => getIdeHeaderTitle(sessionTitle, messages),

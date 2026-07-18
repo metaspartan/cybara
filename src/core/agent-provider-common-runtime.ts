@@ -988,7 +988,6 @@ export abstract class AgentProviderCommonRuntime {
         const contentType = response.headers.get("content-type")?.toLowerCase() || "";
         if (!contentType.includes("text/event-stream")) {
           const json = (await response.json()) as OpenAIResponse;
-          json.first_token_ms = Math.max(0, Math.round(performance.now() - requestStartedAt));
           watchdog.dispose();
           return json;
         }

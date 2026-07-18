@@ -147,7 +147,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
 
     if (contentType.includes("application/json")) {
       const json = (await response.json()) as Record<string, unknown>;
-      return parseOpenAICodexJsonTurnResponse(json, requestStartedAt);
+      return parseOpenAICodexJsonTurnResponse(json);
     }
 
     if (!response.body) {
@@ -667,7 +667,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
             sessionId: sessionIdForVisibleTokenUsage(toolContext),
             cachedInputTokens: turn.usage.cachedInputTokens,
             cacheWriteTokens: turn.usage.cacheWriteTokens,
-            firstTokenMs: turn.firstTokenMs ?? durationMs,
+            firstTokenMs: turn.firstTokenMs,
             routerRouteId: toolContext?.routerRouteId,
           }
         );

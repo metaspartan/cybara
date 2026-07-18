@@ -346,6 +346,8 @@ interface SessionTokenUsageRow {
   cacheWriteTokens?: number;
   totalTokens?: number;
   durationMs?: number;
+  generationDurationMs?: number;
+  throughputOutputTokens?: number;
   callCount?: number;
 }
 
@@ -384,6 +386,16 @@ export function summarizeSessionTokenUsage(sessionId: string): SessionTokenUsage
            THEN CAST(json_extract(metadata, '$.durationMs') AS REAL)
            ELSE 0
          END), 0) as durationMs,
+         COALESCE(SUM(CASE
+           WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) > 0
+           THEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL)
+           ELSE 0
+         END), 0) as generationDurationMs,
+         COALESCE(SUM(CASE
+           WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) > 0
+           THEN CAST(json_extract(metadata, '$.outputTokens') AS REAL)
+           ELSE 0
+         END), 0) as throughputOutputTokens,
          COUNT(*) as callCount
        FROM metrics
        WHERE type = 'token_usage_by_session'
@@ -415,8 +427,12 @@ export function summarizeSessionTokenUsage(sessionId: string): SessionTokenUsage
     Math.round(Number(row?.totalTokens || 0))
   );
   const durationMs = Math.max(0, Number(row?.durationMs || 0));
+  const generationDurationMs = Math.max(0, Number(row?.generationDurationMs || 0));
+  const throughputOutputTokens = Math.max(0, Number(row?.throughputOutputTokens || 0));
   const tokensPerSecond =
-    durationMs > 0 ? Number(((outputTokens / durationMs) * 1000).toFixed(2)) : null;
+    generationDurationMs > 0
+      ? Number(((throughputOutputTokens / generationDurationMs) * 1000).toFixed(2))
+      : null;
   const firstTokenMs = Number(latestLatency?.firstTokenMs);
 
   return {

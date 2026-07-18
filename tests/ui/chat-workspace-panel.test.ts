@@ -132,7 +132,10 @@ describe("chat workspace panel", () => {
     expect(chatSource).toContain("onTitleChange={(title) => onUpdateTabTitle(instance.id, title)}");
     expect(browserManagerSource).toContain('button[aria-label^="Cybara pet"]');
     expect(nativeBrowserSource).toContain(
-      ".animation(.easeOut(duration: 0.15), value: cursor.updatedAt ?? 0)"
+      "@Environment(\\.accessibilityReduceMotion) private var systemReduceMotion"
+    );
+    expect(nativeBrowserSource).toContain(
+      ".animation(systemReduceMotion ? nil : .easeOut(duration: 0.15), value: cursor.updatedAt ?? 0)"
     );
     expect(nativeBrowserSource).toContain("@FocusState private var addressFocused: Bool");
     expect(nativeBrowserSource).toContain("guard isActive else { return }");

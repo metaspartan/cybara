@@ -156,6 +156,7 @@ describe("Tauri wiring", () => {
     expect(capability.permissions).not.toContain("shell:allow-execute");
     expect(capability.permissions).toContain("desktop-gateway");
     expect(capability.permissions).toContain("desktop-updater");
+    expect(capability.permissions).toContain("theme-files");
     expect(tauriConfig).toContain('"csp": "default-src');
   });
 
@@ -168,11 +169,22 @@ describe("Tauri wiring", () => {
       join(ROOT_DIR, "src-tauri", "permissions", "desktop-updater.toml"),
       "utf8"
     );
+    const themePermission = readFileSync(
+      join(ROOT_DIR, "src-tauri", "permissions", "theme-files.toml"),
+      "utf8"
+    );
+    const themeFiles = readFileSync(
+      join(ROOT_DIR, "ui", "src", "pages", "settings", "theme", "themeFiles.ts"),
+      "utf8"
+    );
 
     expect(gatewayPermission).toContain('"read_cybara_api_key"');
     expect(gatewayPermission).toContain('"get_gateway_startup_status"');
     expect(updaterPermission).toContain('"get_desktop_update_state"');
     expect(updaterPermission).toContain('"check_desktop_update"');
     expect(updaterPermission).toContain('"install_desktop_update"');
+    expect(themePermission).toContain('"write_theme_file"');
+    expect(themeFiles).toContain('invoke("write_theme_file", { path, content })');
+    expect(themeFiles).toContain("document.body.appendChild(anchor)");
   });
 });

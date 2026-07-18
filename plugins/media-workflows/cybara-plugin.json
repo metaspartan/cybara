@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "media-workflows",
+  "name": "Media Workflows",
+  "version": "1.0.0",
+  "description": "Inspect, convert, compress, and validate audio and video assets with reproducible commands.",
+  "author": "Cybara",
+  "contributions": {
+    "skills": {
+      "dirs": ["skills"]
+    }
+  }
+}

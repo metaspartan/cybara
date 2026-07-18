@@ -65,6 +65,8 @@ interface SessionRuntimeMetricsDatabaseRow {
   totalTokens: number;
   callCount: number;
   durationMs: number;
+  generationDurationMs: number;
+  throughputOutputTokens: number;
   firstTokenMs: number | null;
   latencyCallCount: number;
   compactionCount: number;
@@ -80,6 +82,8 @@ interface SessionRuntimeMetricsTotalsDatabaseRow {
   totalTokens: number;
   callCount: number;
   durationMs: number;
+  generationDurationMs: number;
+  throughputOutputTokens: number;
   firstTokenTotal: number;
   firstTokenCalls: number;
   compactionCount: number;
@@ -94,6 +98,8 @@ function runtimeRow(row: SessionRuntimeMetricsDatabaseRow): SessionRuntimeMetric
   const inputTokens = Math.round(nonNegative(row.inputTokens));
   const outputTokens = Math.round(nonNegative(row.outputTokens));
   const durationMs = nonNegative(row.durationMs);
+  const generationDurationMs = nonNegative(row.generationDurationMs);
+  const throughputOutputTokens = nonNegative(row.throughputOutputTokens);
   const totalTokens = Math.max(
     inputTokens + outputTokens,
     Math.round(nonNegative(row.totalTokens))
@@ -115,7 +121,9 @@ function runtimeRow(row: SessionRuntimeMetricsDatabaseRow): SessionRuntimeMetric
     callCount: Math.round(nonNegative(row.callCount)),
     durationMs: Math.round(durationMs),
     tokensPerSecond:
-      durationMs > 0 ? Number(((outputTokens / durationMs) * 1000).toFixed(2)) : null,
+      generationDurationMs > 0
+        ? Number(((throughputOutputTokens / generationDurationMs) * 1000).toFixed(2))
+        : null,
     firstTokenMs:
       firstTokenMs !== null && Number.isFinite(firstTokenMs)
         ? Math.round(nonNegative(firstTokenMs))
@@ -128,6 +136,8 @@ function runtimeRow(row: SessionRuntimeMetricsDatabaseRow): SessionRuntimeMetric
 
 function runtimeTotals(row: SessionRuntimeMetricsTotalsDatabaseRow): SessionRuntimeMetricsTotals {
   const durationMs = nonNegative(row.durationMs);
+  const generationDurationMs = nonNegative(row.generationDurationMs);
+  const throughputOutputTokens = nonNegative(row.throughputOutputTokens);
   const outputTokens = Math.round(nonNegative(row.outputTokens));
   const firstTokenCalls = Math.round(nonNegative(row.firstTokenCalls));
   return {
@@ -140,7 +150,9 @@ function runtimeTotals(row: SessionRuntimeMetricsTotalsDatabaseRow): SessionRunt
     callCount: Math.round(nonNegative(row.callCount)),
     durationMs: Math.round(durationMs),
     tokensPerSecond:
-      durationMs > 0 ? Number(((outputTokens / durationMs) * 1000).toFixed(2)) : null,
+      generationDurationMs > 0
+        ? Number(((throughputOutputTokens / generationDurationMs) * 1000).toFixed(2))
+        : null,
     firstTokenMs:
       firstTokenCalls > 0 ? Math.round(nonNegative(row.firstTokenTotal) / firstTokenCalls) : null,
     compactionCount: Math.round(nonNegative(row.compactionCount)),
@@ -164,6 +176,16 @@ function loadSessionRuntimeTotals(): SessionRuntimeMetricsTotals {
              THEN CAST(json_extract(metadata, '$.durationMs') AS REAL)
              ELSE 0
            END) AS durationMs,
+           SUM(CASE
+             WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) > 0
+             THEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL)
+             ELSE 0
+           END) AS generationDurationMs,
+           SUM(CASE
+             WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) > 0
+             THEN CAST(json_extract(metadata, '$.outputTokens') AS REAL)
+             ELSE 0
+           END) AS throughputOutputTokens,
            SUM(CASE
              WHEN json_type(metadata, '$.firstTokenMs') IN ('integer', 'real')
                AND CAST(json_extract(metadata, '$.firstTokenMs') AS REAL) > 0
@@ -195,6 +217,8 @@ function loadSessionRuntimeTotals(): SessionRuntimeMetricsTotals {
          COALESCE(SUM(usage.totalTokens), 0) AS totalTokens,
          COALESCE(SUM(usage.callCount), 0) AS callCount,
          COALESCE(SUM(usage.durationMs), 0) AS durationMs,
+         COALESCE(SUM(usage.generationDurationMs), 0) AS generationDurationMs,
+         COALESCE(SUM(usage.throughputOutputTokens), 0) AS throughputOutputTokens,
          COALESCE(SUM(usage.firstTokenTotal), 0) AS firstTokenTotal,
          COALESCE(SUM(usage.firstTokenCalls), 0) AS firstTokenCalls,
          COALESCE(SUM(compaction.compactionCount), 0) AS compactionCount,
@@ -235,6 +259,16 @@ export function listSessionRuntimeMetrics(page = 1, pageSize = 25): SessionRunti
              THEN CAST(json_extract(metrics.metadata, '$.durationMs') AS REAL)
              ELSE 0
            END) AS durationMs,
+           SUM(CASE
+             WHEN CAST(json_extract(metrics.metadata, '$.generationDurationMs') AS REAL) > 0
+             THEN CAST(json_extract(metrics.metadata, '$.generationDurationMs') AS REAL)
+             ELSE 0
+           END) AS generationDurationMs,
+           SUM(CASE
+             WHEN CAST(json_extract(metrics.metadata, '$.generationDurationMs') AS REAL) > 0
+             THEN CAST(json_extract(metrics.metadata, '$.outputTokens') AS REAL)
+             ELSE 0
+           END) AS throughputOutputTokens,
            AVG(CASE
              WHEN json_type(metrics.metadata, '$.firstTokenMs') IN ('integer', 'real')
                AND CAST(json_extract(metrics.metadata, '$.firstTokenMs') AS REAL) > 0
@@ -274,6 +308,8 @@ export function listSessionRuntimeMetrics(page = 1, pageSize = 25): SessionRunti
          COALESCE(usage.totalTokens, 0) AS totalTokens,
          COALESCE(usage.callCount, 0) AS callCount,
          COALESCE(usage.durationMs, 0) AS durationMs,
+         COALESCE(usage.generationDurationMs, 0) AS generationDurationMs,
+         COALESCE(usage.throughputOutputTokens, 0) AS throughputOutputTokens,
          usage.firstTokenMs,
          COALESCE(usage.latencyCallCount, 0) AS latencyCallCount,
          COALESCE(compaction.compactionCount, 0) AS compactionCount,

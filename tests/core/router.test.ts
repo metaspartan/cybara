@@ -459,6 +459,34 @@ describe("status + spend tracking", () => {
     expect(status.routes[0].outputPerM).toBe(25.0);
   });
 
+  test("recordUsage applies cache read and write pricing to normalized input", () => {
+    setRouterConfig({ routes: { anthropic: { weight: 70, model: "claude-opus-4-8" } } });
+    recordUsage("anthropic", 3_000_000, 0, true, "claude-opus-4-8", "anthropic", {
+      readTokens: 1_000_000,
+      writeTokens: 1_000_000,
+    });
+
+    expect(getRouterStatus().routes[0].spendToday).toBeCloseTo(11.75, 2);
+  });
+
+  test("recordUsage ignores non-finite token counts", () => {
+    setRouterConfig({ routes: { anthropic: { weight: 70, model: "claude-opus-4-8" } } });
+    recordUsage(
+      "anthropic",
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      true,
+      "claude-opus-4-8",
+      "anthropic",
+      {
+        readTokens: Number.NaN,
+        writeTokens: Number.POSITIVE_INFINITY,
+      }
+    );
+
+    expect(getRouterStatus().routes[0].spendToday).toBe(0);
+  });
+
   test("getRouterStatus skips provider plan metric scans when no plan limits are configured", () => {
     setRouterConfig({
       routes: {

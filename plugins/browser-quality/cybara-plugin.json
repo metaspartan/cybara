@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "browser-quality",
+  "name": "Browser Quality",
+  "version": "1.0.0",
+  "description": "Browser automation, responsive validation, screenshots, and accessibility checks.",
+  "author": "Cybara",
+  "contributions": {
+    "skills": {
+      "dirs": ["skills"]
+    }
+  }
+}

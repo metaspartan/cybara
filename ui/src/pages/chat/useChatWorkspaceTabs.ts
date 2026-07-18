@@ -7,7 +7,6 @@ import {
 } from "./ChatWorkspacePanel";
 
 interface UseChatWorkspaceTabsOptions {
-  onOpen: () => void;
   sessionId: string | null;
 }
 
@@ -28,7 +27,6 @@ interface UseChatWorkspaceTabsResult {
 }
 
 export function useChatWorkspaceTabs({
-  onOpen,
   sessionId,
 }: UseChatWorkspaceTabsOptions): UseChatWorkspaceTabsResult {
   const [isOpen, setOpen] = useState(false);
@@ -66,7 +64,6 @@ export function useChatWorkspaceTabs({
   const openTab = useCallback(
     (kind: ChatWorkspaceTab): void => {
       setOpen(true);
-      onOpen();
       const existing = WORKSPACE_SINGLETON_KINDS.has(kind)
         ? tabs.find((instance) => instance.kind === kind)
         : undefined;
@@ -80,7 +77,7 @@ export function useChatWorkspaceTabs({
       selectTab(id);
       setTabs((current) => [...current, { id, kind, pageKey }]);
     },
-    [onOpen, tabs]
+    [tabs]
   );
 
   const toggleTab = useCallback(
@@ -99,7 +96,6 @@ export function useChatWorkspaceTabs({
       const navigationUrl = url.trim();
       if (!navigationUrl) return;
       setOpen(true);
-      onOpen();
       const existing =
         tabs.find((instance) => instance.id === activeTabId && instance.kind === "browser") ??
         tabs.find((instance) => instance.kind === "browser");
@@ -125,7 +121,7 @@ export function useChatWorkspaceTabs({
         { id, kind: "browser", navigationUrl, navigationRequest: 1 },
       ]);
     },
-    [activeTabId, onOpen, tabs]
+    [activeTabId, tabs]
   );
 
   const openFile = useCallback(
@@ -133,7 +129,6 @@ export function useChatWorkspaceTabs({
       const normalizedPath = path.trim();
       if (!normalizedPath) return;
       setOpen(true);
-      onOpen();
       const existing = tabs.find((instance) => instance.kind === "files");
       if (existing) {
         selectTab(existing.id);
@@ -148,7 +143,7 @@ export function useChatWorkspaceTabs({
       selectTab(id);
       setTabs((current) => [...current, { id, kind: "files", pageKey: normalizedPath }]);
     },
-    [onOpen, tabs]
+    [tabs]
   );
 
   const openSubagent = useCallback(
@@ -156,7 +151,6 @@ export function useChatWorkspaceTabs({
       const normalizedRunId = runId.trim();
       if (!normalizedRunId) return;
       setOpen(true);
-      onOpen();
       const existing = tabs.find(
         (instance) => instance.kind === "subagents" && instance.pageKey === normalizedRunId
       );
@@ -176,7 +170,7 @@ export function useChatWorkspaceTabs({
         },
       ]);
     },
-    [onOpen, tabs]
+    [tabs]
   );
 
   const closeTab = useCallback(
