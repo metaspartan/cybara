@@ -154,10 +154,7 @@ export class FeishuAdapter implements ChannelAdapter {
     for (const [key, seenAt] of this.processedSignatures) {
       if (seenAt < replayCutoff) this.processedSignatures.delete(key);
     }
-    if (this.processedSignatures.has(replayKey)) {
-      return { status: 409, body: { error: "replayed request" } };
-    }
-    this.processedSignatures.set(replayKey, Date.now());
+    const alreadyProcessed = this.processedSignatures.has(replayKey);
 
     let body: unknown = payload.body;
     const encrypted = (payload.body as { encrypt?: string })?.encrypt;
@@ -170,7 +167,10 @@ export class FeishuAdapter implements ChannelAdapter {
     }
 
     const challenge = extractFeishuChallenge(body);
-    if (challenge) return { status: 200, body: { challenge } };
+    if (challenge) {
+      if (!alreadyProcessed) this.processedSignatures.set(replayKey, Date.now());
+      return { status: 200, body: { challenge } };
+    }
 
     const token =
       (body as { token?: string; header?: { token?: string } })?.token ||
@@ -179,6 +179,8 @@ export class FeishuAdapter implements ChannelAdapter {
     if (!token || !constantTimeEqual(token, cfg.verificationToken)) {
       return { status: 401, body: { error: "invalid token" } };
     }
+    if (alreadyProcessed) return { status: 200, body: {} };
+    this.processedSignatures.set(replayKey, Date.now());
 
     const message = parseFeishuMessage(body);
     if (!message) return { status: 200, body: {} };

@@ -84,7 +84,7 @@ describe("channel webhook authentication", () => {
     ).rejects.toThrow("verification_token is required");
   });
 
-  test("Feishu requires signed requests and rejects replay", async () => {
+  test("Feishu requires signed requests and acknowledges challenge retries", async () => {
     const adapter = new FeishuAdapter();
     await adapter.start("feishu-signed", {
       app_id: "app",
@@ -94,9 +94,58 @@ describe("channel webhook authentication", () => {
     });
     const body = { type: "url_verification", challenge: "ready", token: "expected" };
     const signed = signedFeishuPayload(body, "encrypt-key");
-    expect((await adapter.handleWebhook("feishu-signed", signed)).status).toBe(200);
-    expect((await adapter.handleWebhook("feishu-signed", signed)).status).toBe(409);
+    expect(await adapter.handleWebhook("feishu-signed", signed)).toEqual({
+      status: 200,
+      body: { challenge: "ready" },
+    });
+    expect(await adapter.handleWebhook("feishu-signed", signed)).toEqual({
+      status: 200,
+      body: { challenge: "ready" },
+    });
     await adapter.stop("feishu-signed");
+  });
+
+  test("Feishu acknowledges event retries without dispatching twice", async () => {
+    const adapter = new FeishuAdapter();
+    await adapter.start("feishu-retry", {
+      app_id: "app",
+      app_secret: "secret",
+      verification_token: "expected",
+      encrypt_key: "encrypt-key",
+      dm_policy: "open",
+    });
+    let calls = 0;
+    let markHandled: (() => void) | undefined;
+    const handled = new Promise<void>((resolve) => {
+      markHandled = resolve;
+    });
+    adapter.setMessageHandler(async () => {
+      calls += 1;
+      markHandled?.();
+      return "";
+    });
+    const signed = signedFeishuPayload(
+      {
+        token: "expected",
+        header: { event_type: "im.message.receive_v1" },
+        event: {
+          message: {
+            chat_id: "chat",
+            chat_type: "p2p",
+            message_type: "text",
+            content: JSON.stringify({ text: "hello" }),
+          },
+          sender: { sender_id: { open_id: "sender" } },
+        },
+      },
+      "encrypt-key"
+    );
+
+    expect((await adapter.handleWebhook("feishu-retry", signed)).status).toBe(200);
+    await handled;
+    expect((await adapter.handleWebhook("feishu-retry", signed)).status).toBe(200);
+    expect(calls).toBe(1);
+    await adapter.stop("feishu-retry");
   });
 
   test("Google Chat refuses to start without inbound authentication", async () => {
