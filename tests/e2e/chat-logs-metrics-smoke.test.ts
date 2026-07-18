@@ -94,7 +94,7 @@ describe("Chat + Logs + Metrics e2e smoke", () => {
     homeDir = mkdtempSync(join(tmpdir(), "cybara-chat-logs-metrics-home-"));
     const port = await getFreePort();
     baseUrl = `http://127.0.0.1:${port}`;
-    apiKey = `cybara_e2e_chat_${Date.now()}`;
+    apiKey = "cybara-e2e-chat-test-key";
 
     serverProc = Bun.spawn([process.execPath, "run", "src/index.ts"], {
       cwd: ROOT_DIR,

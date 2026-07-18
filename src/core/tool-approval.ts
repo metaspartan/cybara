@@ -50,7 +50,7 @@ const COMMAND_BEARING_ARG: Record<string, readonly string[]> = {
 const FILE_MUTATION_ARG: Record<string, readonly string[]> = {
   write: ["path", "content"],
   edit: ["path", "oldText", "newText"],
-  apply_patch: ["path", "patch"],
+  apply_patch: ["path", "patch", "dryRun"],
 };
 
 /**

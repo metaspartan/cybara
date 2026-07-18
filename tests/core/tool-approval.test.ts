@@ -183,6 +183,24 @@ describe("tool-approval per-command scoping (security)", () => {
     expect(buildApprovalKey("write", { path: "src/b.ts", content: "one" })).not.toBe(original);
   });
 
+  test("apply_patch dry runs cannot authorize a real write", () => {
+    const dryRun = buildApprovalKey("apply_patch", {
+      path: "src/a.ts",
+      patch: "@@ -1 +1 @@\n-old\n+new",
+      dryRun: true,
+    });
+    const write = buildApprovalKey("apply_patch", {
+      path: "src/a.ts",
+      patch: "@@ -1 +1 @@\n-old\n+new",
+      dryRun: false,
+    });
+
+    expect(write).not.toBe(dryRun);
+    approveToolForSession("s1", dryRun);
+    expect(isToolApproved("s1", dryRun)).toBe(true);
+    expect(isToolApproved("s1", write)).toBe(false);
+  });
+
   test("requestToolApproval fast-path is scoped to the exact command", async () => {
     // Pre-approve `exec ls` for the session.
     approveToolForSession("s1", buildApprovalKey("exec", { command: "ls" }));
