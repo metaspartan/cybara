@@ -367,6 +367,83 @@ describe("Agent provider Google and compatible routing", () => {
     expect(calls).toBe(1);
   });
 
+  test("removes empty assistant records before switching to Kimi", async () => {
+    let requestMessages: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      requestMessages = Array.isArray(body.messages)
+        ? (body.messages as Array<Record<string, unknown>>)
+        : [];
+      return Response.json({
+        id: "kimi-provider-switch",
+        object: "chat.completion",
+        model: "k3",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "continued" },
+          },
+        ],
+        usage: { prompt_tokens: 12, completion_tokens: 2, total_tokens: 14 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Provider Switch",
+      access_token: "kimi-provider-switch-token",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Kimi Provider Switch Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "k3",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [
+        { role: "user", content: "start with grok" },
+        { role: "assistant", content: "" },
+        { role: "user", content: "continue with kimi" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [{ id: "call-1", name: "read", arguments: { path: "README.md" } }],
+        },
+        { role: "tool", content: "read result", tool_call_id: "call-1" },
+        { role: "user", content: "summarize" },
+      ],
+      { useTools: false, sessionId: "kimi-provider-switch-session" }
+    );
+
+    expect(result.content).toBe("continued");
+    expect(
+      requestMessages.some((message) => message.role === "assistant" && message.content === "")
+    ).toBe(false);
+    expect(requestMessages).toContainEqual({
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        {
+          id: "call-1",
+          type: "function",
+          function: { name: "read", arguments: '{"path":"README.md"}' },
+        },
+      ],
+    });
+    expect(requestMessages).toContainEqual({
+      role: "tool",
+      content: "read result",
+      tool_call_id: "call-1",
+    });
+  });
+
   test("refreshes Kimi OAuth in place when a long tool loop crosses token expiry", async () => {
     const chatAuthorizations: string[] = [];
     let chatCalls = 0;

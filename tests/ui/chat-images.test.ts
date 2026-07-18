@@ -4,6 +4,8 @@ import {
   chatMarkdownImageSrc,
   chatMarkdownImageSources,
   imageToolResultSrc,
+  loadChatImageSource,
+  requiresAuthenticatedImageFetch,
   screenshotMediaSrc,
   toolOutputImageSources,
 } from "../../ui/src/lib/chatImages";
@@ -14,6 +16,7 @@ const chatSource =
   (await Bun.file("ui/src/pages/chat/ChatMessageTimeline.tsx").text());
 const messageSource = await Bun.file("ui/src/pages/chat/MessageContent.tsx").text();
 const lightboxSource = await Bun.file("ui/src/pages/chat/ChatImageLightbox.tsx").text();
+const previewSource = await Bun.file("ui/src/pages/chat/ChatImagePreview.tsx").text();
 
 describe("chat image rendering", () => {
   test("maps browser screenshot file links through the secured media route", () => {
@@ -38,6 +41,50 @@ describe("chat image rendering", () => {
       expect(src).not.toContain("token=");
       expect(src).not.toContain("api_key=");
     }
+  });
+
+  test("loads protected gateway images through authenticated fetch before rendering", async () => {
+    const source = "/api/media?path=screenshots%2Fprotected.png";
+    let requested = "";
+    let revoked = "";
+    const loaded = await loadChatImageSource(
+      source,
+      (async (input: RequestInfo | URL) => {
+        requested = String(input);
+        return new Response(new Blob(["png"], { type: "image/png" }), {
+          headers: { "Content-Type": "image/png" },
+        });
+      }) as typeof fetch,
+      () => "blob:protected-image",
+      (url) => {
+        revoked = url;
+      }
+    );
+
+    expect(requiresAuthenticatedImageFetch(source)).toBe(true);
+    expect(requiresAuthenticatedImageFetch("https://example.com/api/media?path=x")).toBe(false);
+    expect(requested).toBe(source);
+    expect(loaded.src).toBe("blob:protected-image");
+    loaded.revoke?.();
+    expect(revoked).toBe("blob:protected-image");
+  });
+
+  test("rejects failed and non-image media responses", async () => {
+    await expect(
+      loadChatImageSource(
+        "/api/media?path=screenshots%2Fmissing.png",
+        (async () => new Response("missing", { status: 404 })) as typeof fetch
+      )
+    ).rejects.toThrow("Image request failed (404)");
+    await expect(
+      loadChatImageSource(
+        "/api/media?path=screenshots%2Fwrong.png",
+        (async () =>
+          new Response("not image", {
+            headers: { "Content-Type": "application/json" },
+          })) as typeof fetch
+      )
+    ).rejects.toThrow("unsupported content");
   });
 
   test("keeps web and data images while rejecting arbitrary local files", () => {
@@ -91,9 +138,10 @@ describe("chat image rendering", () => {
 
   test("chat attachments, markdown images, and tool screenshots open one gallery", () => {
     expect(chatSource).toContain("<ChatImageLightbox");
-    expect(chatSource).toContain("data-chat-lightbox-src={src}");
+    expect(previewSource).toContain("data-chat-lightbox-src={displaySource}");
     expect(chatSource).toContain("onOpenImage={openChatImage}");
-    expect(messageSource).toContain("data-chat-lightbox-src={imageSource}");
+    expect(previewSource).toContain("data-chat-lightbox-src={displaySource}");
+    expect(previewSource).toContain("loadChatImageSource(source)");
     expect(messageSource).toContain("urlTransform={transformChatMarkdownUrl}");
     expect(messageSource).toContain("if (!imageSource) return null");
     expect(chatSource).toContain(

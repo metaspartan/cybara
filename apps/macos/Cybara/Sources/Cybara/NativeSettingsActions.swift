@@ -28,16 +28,32 @@ extension NativeSettingsScreen {
         )
     }
 
-    func saveSandboxRuntime() {
+    func saveSandboxRuntime(clearRemoteAPIKey: Bool = false) {
+        let remoteAPIKey = sandboxRemoteAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         saveConfigPatch(
             [
                 "sandbox_runtime": [
                     "enabled": sandboxEnabled,
                     "provider": sandboxProvider,
                     "network": sandboxNetwork,
+                    "remoteUrl": sandboxRemoteURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                    "remoteApiKey": clearRemoteAPIKey
+                        ? ""
+                        : remoteAPIKey.isEmpty && sandboxRemoteAPIKeyConfigured
+                            ? "***redacted***"
+                            : remoteAPIKey,
                 ],
             ],
-            key: "sandbox_runtime"
+            key: "sandbox_runtime",
+            onSuccess: {
+                if clearRemoteAPIKey {
+                    sandboxRemoteAPIKeyConfigured = false
+                    sandboxRemoteAPIKey = ""
+                } else if !remoteAPIKey.isEmpty {
+                    sandboxRemoteAPIKeyConfigured = true
+                    sandboxRemoteAPIKey = ""
+                }
+            }
         )
     }
 
@@ -618,6 +634,9 @@ extension NativeSettingsScreen {
         sandboxEnabled = sandbox["enabled"] as? Bool ?? false
         sandboxProvider = sandbox["provider"] as? String ?? "auto"
         sandboxNetwork = sandbox["network"] as? String == "allow" ? "allow" : "deny"
+        sandboxRemoteURL = sandbox["remoteUrl"] as? String ?? ""
+        sandboxRemoteAPIKeyConfigured = !(sandbox["remoteApiKey"] as? String ?? "").isEmpty
+        sandboxRemoteAPIKey = ""
         let speech = config["speech"] as? [String: Any] ?? [:]
         let tts = speech["tts"] as? [String: Any] ?? [:]
         let stt = speech["stt"] as? [String: Any] ?? [:]
@@ -708,7 +727,6 @@ extension NativeSettingsScreen {
         case backups
         case logs
         case telemetry
-        case permissions
 
         var id: String { rawValue }
 
@@ -722,7 +740,6 @@ extension NativeSettingsScreen {
             case .backups: return "Backups"
             case .logs: return "Logs"
             case .telemetry: return "Telemetry"
-            case .permissions: return "Permissions"
             }
         }
 
@@ -736,7 +753,6 @@ extension NativeSettingsScreen {
             case .backups: return "externaldrive.badge.timemachine"
             case .logs: return "list.bullet.rectangle"
             case .telemetry: return "waveform.path.ecg.rectangle"
-            case .permissions: return "key.horizontal"
             }
         }
     }

@@ -15,12 +15,18 @@ const featureSettings = readFileSync(
   join(root, "ui", "src", "pages", "settings", "FeatureSettings.tsx"),
   "utf8"
 );
+const webPolicySettings = readFileSync(
+  join(root, "ui", "src", "pages", "settings", "WebToolPolicySettings.tsx"),
+  "utf8"
+);
 
 describe("safety settings", () => {
   test("renders capability and browser policies through the themed select contract", () => {
     expect(capabilitySettings).toContain("options={POLICY_OPTIONS}");
     expect(capabilitySettings).not.toContain("<option");
     expect(browserSettings).toContain("options={DOWNLOAD_POLICY_OPTIONS}");
+    expect(browserSettings).toContain("options={HEALTH_CHECK_OPTIONS}");
+    expect(browserSettings).toContain('label="Health check interval"');
     expect(browserSettings).not.toContain("<option");
   });
 
@@ -39,5 +45,7 @@ describe("safety settings", () => {
     expect(featureSettings).toContain("Command isolation");
     expect(featureSettings).not.toContain("border-white/10");
     expect(featureSettings).not.toContain("text-gray-");
+    expect(webPolicySettings).not.toContain("border-white/10");
+    expect(webPolicySettings).not.toContain("text-gray-");
   });
 });

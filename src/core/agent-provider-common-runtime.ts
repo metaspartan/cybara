@@ -28,6 +28,7 @@ import {
   callGitLabDuoTransport,
 } from "./llm/agent-provider-transports";
 import { normalizeLlmTimeoutError, withLlmRequestTimeout } from "./llm/request-timeout";
+import { normalizeProviderMessages } from "./llm/provider-messages";
 import {
   getSessionTokenUsageSnapshot,
   trackEstimatedSessionTokenUsage,
@@ -414,7 +415,7 @@ export abstract class AgentProviderCommonRuntime {
     thinking?: string;
     tool_calls?: AgentToolCallResult[];
   }> {
-    messages = coalesceSystemMessages(messages);
+    messages = normalizeProviderMessages(coalesceSystemMessages(messages));
     if (provider && typeof provider === "object" && "id" in provider) {
       const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
         provider as Parameters<typeof providerManager.refreshOAuthCredentialsIfNeeded>[0]

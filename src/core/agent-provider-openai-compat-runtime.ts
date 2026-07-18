@@ -99,6 +99,23 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
             ],
           };
         }
+        if (m.role === "assistant" && m.tool_calls?.length) {
+          return {
+            role: m.role,
+            content: m.content || null,
+            tool_calls: m.tool_calls.map((toolCall) => ({
+              id: toolCall.id,
+              type: "function",
+              function: {
+                name: toolCall.name,
+                arguments: JSON.stringify(toolCall.arguments),
+              },
+            })),
+          };
+        }
+        if (m.role === "tool" && m.tool_call_id) {
+          return { role: m.role, content: m.content, tool_call_id: m.tool_call_id };
+        }
         return { role: m.role, content: m.content };
       }),
     };
@@ -233,12 +250,9 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
     const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
-    const currentMessages: Record<string, unknown>[] = [
-      ...messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
-    ];
+    const currentMessages = (requestBody.messages as Record<string, unknown>[]).map((message) => ({
+      ...message,
+    }));
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const allToolCalls: AgentToolCallResult[] = [];
     let finalContent = "";

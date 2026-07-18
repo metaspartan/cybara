@@ -138,6 +138,9 @@ struct NativeSettingsScreen: View {
     @State var sandboxEnabled = false
     @State var sandboxProvider = "auto"
     @State var sandboxNetwork = "deny"
+    @State var sandboxRemoteURL = ""
+    @State var sandboxRemoteAPIKey = ""
+    @State var sandboxRemoteAPIKeyConfigured = false
     @State var speechTTSProvider = "auto"
     @State var speechTTSProviderId = ""
     @State var speechTTSModel = ""
@@ -341,7 +344,15 @@ struct NativeSettingsScreen: View {
         case .wallet: WalletScreen(client: client)
         case .updates: updatesTab
         case .migration: migrationTab
-        case .features: featuresTab
+        case .features:
+            TabView {
+                featuresTab
+                    .tabItem { Label("Runtime", systemImage: "checkmark.shield") }
+                NativeToolCapabilitySettingsScreen(client: client)
+                    .tabItem { Label("Capabilities", systemImage: "key.horizontal") }
+                NativeBrowserSupervisionSettingsScreen(client: client)
+                    .tabItem { Label("Browser", systemImage: "globe") }
+            }
         case .advanced: advancedTab
         case .agents: AgentsScreen(client: client)
         case .providers: ProvidersScreen(client: client)

@@ -41,8 +41,6 @@ extension NativeSettingsScreen {
             LogsScreen(client: client)
         case .telemetry:
             NativeTelemetrySettingsScreen(client: client)
-        case .permissions:
-            NativeToolCapabilitySettingsScreen(client: client)
         }
     }
 

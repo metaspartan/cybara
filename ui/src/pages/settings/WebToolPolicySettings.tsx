@@ -99,10 +99,12 @@ export function WebToolPolicySettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
+        <div className="flex items-center justify-between gap-4 border-b border-[var(--surface-border)] pb-4">
           <div>
-            <p className="text-sm font-medium text-white">Enforce host allowlists</p>
-            <p className="mt-0.5 text-xs text-gray-400">
+            <p className="text-sm font-medium text-[var(--text-primary)]">
+              Enforce host allowlists
+            </p>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">
               When enabled, an empty list blocks that category instead of allowing every host.
             </p>
           </div>

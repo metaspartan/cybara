@@ -74,17 +74,42 @@ extension NativeSettingsScreen {
                             Text("Apple Sandbox").tag("apple_sandbox")
                             Text("Podman").tag("podman")
                             Text("Docker").tag("docker")
+                            Text("Remote").tag("remote")
                         }
                         .pickerStyle(.menu)
                         .disabled(!sandboxEnabled)
-                        .onChange(of: sandboxProvider) { _, _ in saveSandboxRuntime() }
-                        Picker("Network", selection: $sandboxNetwork) {
-                            Text("Deny").tag("deny")
-                            Text("Allow").tag("allow")
+                        .onChange(of: sandboxProvider) { _, value in
+                            if value != "remote" { saveSandboxRuntime() }
                         }
-                        .pickerStyle(.segmented)
-                        .disabled(!sandboxEnabled)
-                        .onChange(of: sandboxNetwork) { _, _ in saveSandboxRuntime() }
+                        if sandboxProvider == "remote" {
+                            TextField("Remote sandbox URL", text: $sandboxRemoteURL)
+                                .textFieldStyle(.roundedBorder)
+                            SecureField(
+                                sandboxRemoteAPIKeyConfigured ? "Stored API key" : "Optional API key",
+                                text: $sandboxRemoteAPIKey
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            HStack {
+                                if sandboxRemoteAPIKeyConfigured {
+                                    Button("Remove Stored Key", role: .destructive) {
+                                        saveSandboxRuntime(clearRemoteAPIKey: true)
+                                    }
+                                    .disabled(savingKey == "sandbox_runtime")
+                                }
+                                Spacer()
+                                Button("Save Remote Sandbox") { saveSandboxRuntime() }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(savingKey == "sandbox_runtime")
+                            }
+                        } else {
+                            Picker("Network", selection: $sandboxNetwork) {
+                                Text("Deny").tag("deny")
+                                Text("Allow").tag("allow")
+                            }
+                            .pickerStyle(.segmented)
+                            .disabled(!sandboxEnabled)
+                            .onChange(of: sandboxNetwork) { _, _ in saveSandboxRuntime() }
+                        }
                     }
                 }
 

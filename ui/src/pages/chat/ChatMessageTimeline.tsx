@@ -23,6 +23,7 @@ import { LiveActivityTimeline } from "./ActivityTimeline";
 import { AgentTransferTimeline } from "./AgentTransferTimeline";
 import { AssistantMetaInline } from "./AssistantMetaInline";
 import { parseTimestampMs } from "./assistantMetaModel";
+import { ChatImagePreview } from "./ChatImagePreview";
 import type { ArtifactSummaryView, ChatMessage, RevertTarget } from "./chatModel";
 import type { ChatLinkOpenOptions } from "./chatLinkRouting";
 import {
@@ -168,25 +169,16 @@ export function ChatMessageTimeline({
                       if (!src) return null;
                       const alt = image.name || "Attachment";
                       return (
-                        <button
-                          type="button"
+                        <ChatImagePreview
                           key={`msg-image-${originalIndex}-${imageIndex}`}
-                          onClick={() => onOpenImage(src, alt)}
-                          data-chat-lightbox-src={src}
-                          data-chat-lightbox-alt={alt}
-                          className="block max-w-[220px] cursor-zoom-in overflow-hidden rounded-lg border border-white/12"
-                          aria-label={`Open ${alt} preview`}
-                        >
-                          <img
-                            src={src}
-                            alt="Attachment"
-                            loading="lazy"
-                            decoding="async"
-                            width={220}
-                            height={165}
-                            className="aspect-[4/3] max-h-64 w-full object-contain"
-                          />
-                        </button>
+                          source={src}
+                          alt={alt}
+                          width={220}
+                          height={165}
+                          className="aspect-[4/3] max-h-64 w-full object-contain"
+                          containerClassName="block max-w-[220px] cursor-zoom-in overflow-hidden rounded-lg border border-white/12"
+                          onOpen={onOpenImage}
+                        />
                       );
                     })}
                   </div>
@@ -342,25 +334,16 @@ function ToolOutputImages({
   return (
     <div className="mt-2 flex flex-wrap gap-2">
       {outputImages.map((src, imageIndex) => (
-        <button
-          type="button"
+        <ChatImagePreview
           key={`tool-image-${messageIndex}-${imageIndex}`}
-          onClick={() => onOpenImage(src, "Tool output")}
-          data-chat-lightbox-src={src}
-          data-chat-lightbox-alt="Tool output"
-          className="block max-w-[320px] cursor-zoom-in overflow-hidden rounded-lg border border-white/12"
-          aria-label="Open tool output preview"
-        >
-          <img
-            src={src}
-            alt="Tool output"
-            loading="lazy"
-            decoding="async"
-            width={320}
-            height={200}
-            className="aspect-[16/10] max-h-80 w-full object-contain"
-          />
-        </button>
+          source={src}
+          alt="Tool output"
+          width={320}
+          height={200}
+          className="aspect-[16/10] max-h-80 w-full object-contain"
+          containerClassName="block max-w-[320px] cursor-zoom-in overflow-hidden rounded-lg border border-white/12"
+          onOpen={onOpenImage}
+        />
       ))}
     </div>
   );
