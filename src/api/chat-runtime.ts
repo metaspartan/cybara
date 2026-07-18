@@ -87,6 +87,7 @@ import {
   nextPendingChatSequence,
   pendingChatSnapshot,
   pendingChatSnapshots,
+  preparePendingMessage,
   restorePendingChatQueueState,
   syncPendingChatStatus,
 } from "./chat-pending-state";
@@ -564,20 +565,34 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
     return;
   }
 
-  const materializedMessage = materializePendingMessage(session, next);
-  await upsertPersistedSessionMessage(session.id, session.agentId, materializedMessage, {
-    stableKey: `pending:${next.id}`,
-    metadata: { source: "chat_queue" },
-  });
-  const materializedPersisted = await persistChatSessionSnapshot(session, materializedMessage);
-  if (!materializedPersisted) {
+  const preparedMessage = preparePendingMessage(session, next);
+  try {
+    await upsertPersistedSessionMessage(session.id, session.agentId, preparedMessage, {
+      stableKey: `pending:${next.id}`,
+      metadata: { source: "chat_queue" },
+    });
+  } catch (error) {
+    log.exception("Queued user turn could not be persisted", error, {
+      sessionId,
+      pendingId: next.id,
+    });
     schedulePendingChatDrain(sessionId, 1000);
     return;
   }
-  persistActiveSessionContext(session);
 
+  const materializedMessage = materializePendingMessage(session, next);
   next.materialized = true;
   persistPendingChatItem(next);
+  syncPendingChatStatus(sessionId);
+  const materializedPersisted = await persistChatSessionSnapshot(session, materializedMessage);
+  if (!materializedPersisted) {
+    log.warn("Queued user turn session metadata could not be persisted", {
+      sessionId,
+      pendingId: next.id,
+    });
+  }
+  persistActiveSessionContext(session);
+
   const currentQueue = pendingChatQueues.get(sessionId) || [];
   const remaining = currentQueue.filter((item) => item.id !== next.id);
   if (remaining.length > 0) pendingChatQueues.set(sessionId, remaining);

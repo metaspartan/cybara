@@ -47,7 +47,7 @@ export function syncPendingChatStatus(sessionId: string): PendingChatMessageSnap
 }
 
 export function hasPendingChatMessages(sessionId: string): boolean {
-  return (pendingChatQueues.get(sessionId)?.length || 0) > 0;
+  return (pendingChatQueues.get(sessionId) || []).some((item) => item.materialized !== true);
 }
 
 export function findMaterializedPendingMessage(
@@ -62,7 +62,7 @@ export function findMaterializedPendingMessage(
   );
 }
 
-export function materializePendingMessage(
+export function preparePendingMessage(
   session: InMemoryChatSession,
   item: PendingChatItem
 ): ChatMessage {
@@ -84,8 +84,18 @@ export function materializePendingMessage(
     ...(item.clientPendingId ? { client_pending_id: item.clientPendingId } : {}),
     ...(hasImages(item.request.images) ? { images: item.request.images } : {}),
   };
+  return message;
+}
+
+export function materializePendingMessage(
+  session: InMemoryChatSession,
+  item: PendingChatItem
+): ChatMessage {
+  const existing = findMaterializedPendingMessage(session, item.id);
+  if (existing) return existing;
+  const message = preparePendingMessage(session, item);
   session.messages.push(message);
-  session.updatedAt = timestamp;
+  session.updatedAt = message.timestamp || new Date().toISOString();
   return message;
 }
 
