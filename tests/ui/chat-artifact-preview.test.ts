@@ -18,6 +18,9 @@ const assistantMetaModelPath = fileURLToPath(
 const chatMessageTimelinePath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatMessageTimeline.tsx", import.meta.url)
 );
+const artifactViewerHookPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/useArtifactViewer.ts", import.meta.url)
+);
 
 function readChatSource(): string {
   return (
@@ -26,7 +29,8 @@ function readChatSource(): string {
     readFileSync(artifactViewerPath, "utf8") +
     readFileSync(assistantMetaInlinePath, "utf8") +
     readFileSync(assistantMetaModelPath, "utf8") +
-    readFileSync(chatMessageTimelinePath, "utf8")
+    readFileSync(chatMessageTimelinePath, "utf8") +
+    readFileSync(artifactViewerHookPath, "utf8")
   );
 }
 
@@ -50,6 +54,8 @@ describe("Chat artifact preview wiring", () => {
     expect(source).not.toContain("View {artifactSummaries[0].fileName}");
     expect(source).not.toContain("Preview {artifactSummaries[0].fileName}");
     expect(source).toContain("Loading artifact...");
+    expect(source).toContain("chatApi.readSessionArtifact(artifact.sessionId, artifact.fileName)");
+    expect(source).not.toContain("appendApiTokenParam");
   });
 
   test("renders artifact viewer as a full chat-area panel with markdown/raw toggle", () => {

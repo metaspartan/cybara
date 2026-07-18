@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
 import { chatApi, settingsApi } from "@/lib/api";
-import { appendApiTokenParam } from "@/lib/auth";
+import { loadAuthenticatedAudioSource } from "@/lib/authenticatedMedia";
 import { useProviders } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
 import {
@@ -361,6 +361,7 @@ export function SpeechSettingsSection() {
   const [testing, setTesting] = useState(false);
   const [activeTab, setActiveTab] = useState<"output" | "input" | "realtime">("output");
   const testAudioRef = useRef<HTMLAudioElement | null>(null);
+  const testAudioRevokeRef = useRef<(() => void) | null>(null);
 
   const refreshStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -394,6 +395,16 @@ export function SpeechSettingsSection() {
     };
   }, [refreshStatus]);
 
+  useEffect(
+    () => () => {
+      testAudioRef.current?.pause();
+      testAudioRevokeRef.current?.();
+      testAudioRef.current = null;
+      testAudioRevokeRef.current = null;
+    },
+    []
+  );
+
   const testVoice = async () => {
     setTesting(true);
     try {
@@ -408,13 +419,27 @@ export function SpeechSettingsSection() {
         throw new Error(result.error || "Voice test failed");
       }
       testAudioRef.current?.pause();
-      const audio = new Audio(
-        appendApiTokenParam(`/api/media?path=${encodeURIComponent(result.data.audioPath)}`)
+      testAudioRevokeRef.current?.();
+      const loadedSource = await loadAuthenticatedAudioSource(
+        `/api/media?path=${encodeURIComponent(result.data.audioPath)}`
       );
+      const audio = new Audio(loadedSource.src);
       testAudioRef.current = audio;
+      testAudioRevokeRef.current = loadedSource.revoke ?? null;
+      const clear = (): void => {
+        if (testAudioRef.current !== audio) return;
+        testAudioRef.current = null;
+        testAudioRevokeRef.current?.();
+        testAudioRevokeRef.current = null;
+      };
+      audio.addEventListener("ended", clear, { once: true });
+      audio.addEventListener("error", clear, { once: true });
       await audio.play();
       addToast("success", `Playing ${result.data.provider} voice`);
     } catch (error) {
+      testAudioRef.current = null;
+      testAudioRevokeRef.current?.();
+      testAudioRevokeRef.current = null;
       addToast("error", error instanceof Error ? error.message : "Voice test failed");
     } finally {
       setTesting(false);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { chatApi } from "@/lib/api";
-import { appendApiTokenParam } from "@/lib/auth";
+import { loadAuthenticatedAudioSource } from "@/lib/authenticatedMedia";
 import { useUIStore } from "@/stores/uiStore";
 import type { ChatLightboxImage } from "./ChatImageLightbox";
 
@@ -38,6 +38,7 @@ export function useChatMessageActions(): ChatMessageActions {
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const speechAudioRef = useRef<HTMLAudioElement | null>(null);
+  const speechAudioRevokeRef = useRef<(() => void) | null>(null);
   const copiedMessageTimerRef = useRef<number | null>(null);
 
   useEffect(
@@ -47,6 +48,8 @@ export function useChatMessageActions(): ChatMessageActions {
       }
       speechAudioRef.current?.pause();
       speechAudioRef.current = null;
+      speechAudioRevokeRef.current?.();
+      speechAudioRevokeRef.current = null;
     },
     []
   );
@@ -87,6 +90,8 @@ export function useChatMessageActions(): ChatMessageActions {
       if (activeAudio) {
         activeAudio.pause();
         speechAudioRef.current = null;
+        speechAudioRevokeRef.current?.();
+        speechAudioRevokeRef.current = null;
         setSpeakingMessageIndex(null);
         if (speakingMessageIndex === index) return;
       }
@@ -96,13 +101,17 @@ export function useChatMessageActions(): ChatMessageActions {
         if (!result.success || !result.data?.audioPath) {
           throw new Error(result.error || "Speech synthesis failed");
         }
-        const mediaUrl = appendApiTokenParam(
+        const loadedSource = await loadAuthenticatedAudioSource(
           `/api/media?path=${encodeURIComponent(result.data.audioPath)}`
         );
-        const audio = new Audio(mediaUrl);
+        const audio = new Audio(loadedSource.src);
         speechAudioRef.current = audio;
+        speechAudioRevokeRef.current = loadedSource.revoke ?? null;
         const clear = (): void => {
-          if (speechAudioRef.current === audio) speechAudioRef.current = null;
+          if (speechAudioRef.current !== audio) return;
+          speechAudioRef.current = null;
+          speechAudioRevokeRef.current?.();
+          speechAudioRevokeRef.current = null;
           setSpeakingMessageIndex(null);
         };
         audio.addEventListener("ended", clear, { once: true });
@@ -110,6 +119,8 @@ export function useChatMessageActions(): ChatMessageActions {
         await audio.play();
       } catch (error) {
         speechAudioRef.current = null;
+        speechAudioRevokeRef.current?.();
+        speechAudioRevokeRef.current = null;
         setSpeakingMessageIndex(null);
         useUIStore
           .getState()

@@ -1,4 +1,9 @@
 import { apiFetch, withGatewayBasePath } from "@/lib/auth";
+import {
+  loadAuthenticatedMediaSource,
+  type LoadedAuthenticatedMediaSource,
+  requiresAuthenticatedMediaFetch,
+} from "@/lib/authenticatedMedia";
 import type { ChatImageAttachment } from "@/types";
 
 export const MAX_CHAT_IMAGES = 8;
@@ -51,21 +56,10 @@ export function chatMarkdownImageSrc(source: string): string | null {
   }
 }
 
-export interface LoadedChatImageSource {
-  src: string;
-  revoke?: () => void;
-}
+export type LoadedChatImageSource = LoadedAuthenticatedMediaSource;
 
 export function requiresAuthenticatedImageFetch(source: string): boolean {
-  try {
-    const base = typeof window === "undefined" ? "http://localhost" : window.location.href;
-    const url = new URL(source, base);
-    const currentOrigin =
-      typeof window === "undefined" ? new URL(base).origin : window.location.origin;
-    return url.origin === currentOrigin && /\/api\/media$/.test(url.pathname);
-  } catch {
-    return false;
-  }
+  return requiresAuthenticatedMediaFetch(source);
 }
 
 export async function loadChatImageSource(
@@ -74,15 +68,14 @@ export async function loadChatImageSource(
   createObjectUrl: (blob: Blob) => string = URL.createObjectURL,
   revokeObjectUrl: (url: string) => void = URL.revokeObjectURL
 ): Promise<LoadedChatImageSource> {
-  if (!requiresAuthenticatedImageFetch(source)) return { src: source };
-  const response = await fetcher(source);
-  if (!response.ok) throw new Error(`Image request failed (${response.status})`);
-  const contentType = response.headers.get("Content-Type") || "";
-  if (!contentType.toLowerCase().startsWith("image/")) {
-    throw new Error("Image request returned unsupported content");
-  }
-  const objectUrl = createObjectUrl(await response.blob());
-  return { src: objectUrl, revoke: () => revokeObjectUrl(objectUrl) };
+  return loadAuthenticatedMediaSource(
+    source,
+    "image/",
+    fetcher,
+    createObjectUrl,
+    revokeObjectUrl,
+    "Image"
+  );
 }
 
 export function chatMarkdownImageSources(content: string): string[] {
