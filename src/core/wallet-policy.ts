@@ -1,26 +1,14 @@
-/**
- * Pure agent-authorization checks for the wallet. Extracted from WalletManager
- * so the fund-movement guards can be unit-tested in isolation (and reused by
- * every fund-moving path: sends, token sends, swaps, and contract calls).
- *
- * These enforce the two operator-configured limits that contain a compromised
- * or prompt-injected agent: a recipient allowlist and a per-transaction cap.
- */
-
 export interface WalletAgentLimits {
-  /** Lowercased addresses the agent may send to. Empty = no allowlist configured. */
   allowedSendRecipients: string[];
-  /** Human-unit per-transaction cap as a string. Empty/invalid = no cap. */
   maxSendAmount: string;
 }
 
-/** Throw if `recipient` is set and not in a non-empty allowlist. */
 export function assertRecipientAllowed(
   recipient: string | undefined,
   limits: WalletAgentLimits
 ): void {
   const target = String(recipient || "").trim();
-  if (!target) return; // no explicit recipient → funds stay with the wallet
+  if (!target) return;
   const allow = limits.allowedSendRecipients.map((address) => address.trim().toLowerCase());
   if (!allow.includes(target.toLowerCase())) {
     throw new Error(
@@ -29,7 +17,6 @@ export function assertRecipientAllowed(
   }
 }
 
-/** Throw if `amount` exceeds a configured, positive, finite per-transaction cap. */
 export function assertAmountWithinCap(amount: string | undefined, limits: WalletAgentLimits): void {
   const cap = Number(limits.maxSendAmount);
   if (limits.maxSendAmount?.trim() && Number.isFinite(cap) && cap > 0) {
@@ -40,4 +27,13 @@ export function assertAmountWithinCap(amount: string | undefined, limits: Wallet
       );
     }
   }
+}
+
+export function assertSendWithinPolicy(
+  recipient: string | undefined,
+  amount: string | undefined,
+  limits: WalletAgentLimits
+): void {
+  assertRecipientAllowed(recipient, limits);
+  assertAmountWithinCap(amount, limits);
 }

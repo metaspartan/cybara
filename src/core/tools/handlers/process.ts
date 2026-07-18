@@ -7,7 +7,7 @@ import { runInRemoteSandbox } from "../../sandbox/remote-sandbox";
 import { createLogger } from "../../logger";
 import { getPathSeparator, isWindows, shellEscapeArg } from "../../platform";
 import { persistToolOutputForRecovery } from "../../tool-output-recovery";
-import { buildSubprocessEnvironment } from "../../subprocess-env";
+import { buildContainerRuntimeEnvironment, buildSubprocessEnvironment } from "../../subprocess-env";
 import type { ToolContext } from "../index";
 
 const log = createLogger("ProcessTool");
@@ -332,7 +332,10 @@ export async function handleExec(
       timeoutSeconds: timeoutSeconds || null,
     });
 
-    const spawnEnv = buildSubprocessEnvironment(plan.env, fullEnv);
+    const spawnEnv =
+      plan.provider === "docker" || plan.provider === "podman"
+        ? buildContainerRuntimeEnvironment(plan.env, { ...process.env, ...fullEnv })
+        : buildSubprocessEnvironment(plan.env, fullEnv);
     if (args.background === true) {
       const proc = Bun.spawn(plan.command, {
         cwd: plan.cwd,
@@ -450,11 +453,15 @@ export async function handleExecAsync(
     sandboxProvider: plan.provider || "host",
   });
 
+  const spawnEnv =
+    plan.provider === "docker" || plan.provider === "podman"
+      ? buildContainerRuntimeEnvironment(plan.env)
+      : buildSubprocessEnvironment(plan.env);
   const captured = await runCapturedProcess({
     command: plan.command,
     displayCommand: command,
     cwd: plan.cwd,
-    env: buildSubprocessEnvironment(plan.env),
+    env: spawnEnv,
     timeoutSeconds: 300,
     signal: context?.abortSignal,
     toolName: "exec-async",

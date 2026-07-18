@@ -45,7 +45,11 @@ import {
   parseOptionalNumber,
 } from "./wallet-internal";
 import { WalletOperations } from "./wallet-operations";
-import { assertAmountWithinCap, assertRecipientAllowed } from "./wallet-policy";
+import {
+  assertAmountWithinCap,
+  assertRecipientAllowed,
+  assertSendWithinPolicy,
+} from "./wallet-policy";
 import { checkWalletRpcStatus } from "./wallet-rpc-health";
 import { fetchWalletJson } from "./wallet-runtime";
 import {
@@ -379,16 +383,7 @@ class WalletManager extends WalletOperations {
   }
 
   private assertAgentSendWithinPolicy(to: string, amount: string, policy: WalletAgentPolicy): void {
-    const recipient = String(to || "").trim();
-    if (policy.allowedSendRecipients.length > 0) {
-      const allow = policy.allowedSendRecipients.map((a) => a.trim().toLowerCase());
-      if (!recipient || !allow.includes(recipient.toLowerCase())) {
-        throw new Error(
-          "Validation error: Recipient is not in the agent send allowlist (wallet policy)"
-        );
-      }
-    }
-    assertAmountWithinCap(amount, policy);
+    assertSendWithinPolicy(to, amount, policy);
   }
 
   private assertAgentAmountWithinCap(amount: string | undefined, policy: WalletAgentPolicy): void {
