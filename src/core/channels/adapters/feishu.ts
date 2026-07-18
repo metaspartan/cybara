@@ -88,6 +88,16 @@ export class FeishuAdapter implements ChannelAdapter {
     return this.running.has(channelId);
   }
 
+  private claimSignature(key: string, now: number): boolean {
+    const replayCutoff = now - 5 * 60_000;
+    for (const [storedKey, seenAt] of this.processedSignatures) {
+      if (seenAt < replayCutoff) this.processedSignatures.delete(storedKey);
+    }
+    if (this.processedSignatures.has(key)) return false;
+    this.processedSignatures.set(key, now);
+    return true;
+  }
+
   private async getTenantToken(channelId: string): Promise<string | null> {
     const cfg = this.configs.get(channelId);
     if (!cfg) return null;
@@ -150,11 +160,6 @@ export class FeishuAdapter implements ChannelAdapter {
       return { status: 401, body: { error: "invalid signature" } };
     }
     const replayKey = `${channelId}:${signature}`;
-    const replayCutoff = Date.now() - 5 * 60_000;
-    for (const [key, seenAt] of this.processedSignatures) {
-      if (seenAt < replayCutoff) this.processedSignatures.delete(key);
-    }
-    const alreadyProcessed = this.processedSignatures.has(replayKey);
 
     let body: unknown = payload.body;
     const encrypted = (payload.body as { encrypt?: string })?.encrypt;
@@ -168,7 +173,7 @@ export class FeishuAdapter implements ChannelAdapter {
 
     const challenge = extractFeishuChallenge(body);
     if (challenge) {
-      if (!alreadyProcessed) this.processedSignatures.set(replayKey, Date.now());
+      this.claimSignature(replayKey, Date.now());
       return { status: 200, body: { challenge } };
     }
 
@@ -179,8 +184,7 @@ export class FeishuAdapter implements ChannelAdapter {
     if (!token || !constantTimeEqual(token, cfg.verificationToken)) {
       return { status: 401, body: { error: "invalid token" } };
     }
-    if (alreadyProcessed) return { status: 200, body: {} };
-    this.processedSignatures.set(replayKey, Date.now());
+    if (!this.claimSignature(replayKey, Date.now())) return { status: 200, body: {} };
 
     const message = parseFeishuMessage(body);
     if (!message) return { status: 200, body: {} };

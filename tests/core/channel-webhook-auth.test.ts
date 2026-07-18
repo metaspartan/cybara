@@ -141,7 +141,11 @@ describe("channel webhook authentication", () => {
       "encrypt-key"
     );
 
-    expect((await adapter.handleWebhook("feishu-retry", signed)).status).toBe(200);
+    const deliveries = await Promise.all([
+      adapter.handleWebhook("feishu-retry", signed),
+      adapter.handleWebhook("feishu-retry", signed),
+    ]);
+    expect(deliveries.map((result) => result.status)).toEqual([200, 200]);
     await handled;
     expect((await adapter.handleWebhook("feishu-retry", signed)).status).toBe(200);
     expect(calls).toBe(1);
