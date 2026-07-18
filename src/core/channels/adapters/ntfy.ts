@@ -166,7 +166,7 @@ export class NtfyAdapter implements ChannelAdapter {
 
     await logChannelMessage("ntfy", "incoming", event.message, { channelId });
 
-    const access = evaluateChannelAccess(channelId, String(topic), "ntfy");
+    const access = evaluateChannelAccess(channelId, String(topic), "ntfy", { isGroup: true });
     if (!access.permitted) {
       if (access.reply) await this.sendMessage(channelId, topic, access.reply);
       return;

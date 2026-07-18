@@ -11,6 +11,19 @@ import { fileURLToPath } from "url";
 import { extractZipArchive } from "../archive";
 import { parseFrontmatter } from "./loader";
 
+const REGISTRY_FETCH_TIMEOUT_MS = 15_000;
+
+export function fetchRegistryResource(
+  input: string | URL | Request,
+  init: RequestInit = {},
+  timeoutMs = REGISTRY_FETCH_TIMEOUT_MS
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init.signal ?? AbortSignal.timeout(Math.max(1, timeoutMs)),
+  });
+}
+
 /**
  * Registry provider interface
  * Implement this for each registry (ClawdHub, skills.sh, GitHub)
@@ -168,7 +181,7 @@ export class ClawdHubRegistry implements SkillRegistry {
 
     try {
       const url = `${this.baseUrl}/api/v1/search?q=${encodeURIComponent(query)}&limit=${limit}`;
-      const res = await fetch(url);
+      const res = await fetchRegistryResource(url);
       if (!res.ok) return [];
       const data = (await res.json()) as {
         results?: Array<{
@@ -200,7 +213,7 @@ export class ClawdHubRegistry implements SkillRegistry {
   async get(slug: string): Promise<RegistrySkillDetails | null> {
     try {
       const url = `${this.baseUrl}/api/v1/skills/${encodeURIComponent(slug)}`;
-      const res = await fetch(url);
+      const res = await fetchRegistryResource(url);
       if (!res.ok) return null;
       const data = (await res.json()) as {
         skill?: {
@@ -245,7 +258,7 @@ export class ClawdHubRegistry implements SkillRegistry {
   async download(slug: string): Promise<SkillDownload> {
     // ClawdHub returns a ZIP file with the skill content
     const url = `${this.baseUrl}/api/v1/download?slug=${encodeURIComponent(slug)}`;
-    const res = await fetch(url);
+    const res = await fetchRegistryResource(url);
     if (!res.ok) throw new Error(`Failed to download skill: ${slug}`);
 
     // Check if it's a ZIP file
@@ -334,7 +347,7 @@ export class ClawdHubRegistry implements SkillRegistry {
         searchParams.set("cursor", cursor);
       }
       const url = `${this.baseUrl}/api/v1/skills?${searchParams.toString()}`;
-      const res = await fetch(url);
+      const res = await fetchRegistryResource(url);
       if (!res.ok) return { items: [], nextCursor: null };
       const data = (await res.json()) as {
         items?: Array<{
@@ -417,7 +430,7 @@ export class SkillsShRegistry implements SkillRegistry {
 
     try {
       const url = `${this.baseUrl}/api/search?q=${encodeURIComponent(query)}`;
-      const res = await fetch(url);
+      const res = await fetchRegistryResource(url);
       if (!res.ok) return [];
       const data = (await res.json()) as {
         skills?: Array<{
@@ -477,7 +490,7 @@ export class SkillsShRegistry implements SkillRegistry {
       if (!tree) {
         for (const branch of ["main", "master"]) {
           const treeUrl = `https://api.github.com/repos/${source}/git/trees/${branch}?recursive=1`;
-          const treeRes = await fetch(treeUrl);
+          const treeRes = await fetchRegistryResource(treeUrl);
           if (treeRes.ok) {
             const treeData = (await treeRes.json()) as {
               tree?: Array<{ path: string; type: string }>;
@@ -503,7 +516,7 @@ export class SkillsShRegistry implements SkillRegistry {
         if (skillFile) {
           for (const branch of ["main", "master"]) {
             const contentUrl = `https://raw.githubusercontent.com/${source}/${branch}/${skillFile.path}`;
-            const contentRes = await fetch(contentUrl);
+            const contentRes = await fetchRegistryResource(contentUrl);
             if (contentRes.ok) {
               const content = await contentRes.text();
               return {
@@ -535,7 +548,7 @@ export class SkillsShRegistry implements SkillRegistry {
       for (const branch of ["main", "master"]) {
         const githubUrl = `https://raw.githubusercontent.com/${source}/${branch}/${path}`;
         try {
-          const res = await fetch(githubUrl);
+          const res = await fetchRegistryResource(githubUrl);
           if (res.ok) {
             const content = await res.text();
             if (content.includes("---") || content.includes("# ")) {
@@ -566,7 +579,7 @@ export class SkillsShRegistry implements SkillRegistry {
 
     try {
       const url = `${this.baseUrl}/api/skills`;
-      const res = await fetch(url);
+      const res = await fetchRegistryResource(url);
       if (!res.ok) {
         // If api/skills returns 404, we use the working search API as a fallback to list popular skills
         return await this.search("agent", { limit });
@@ -627,7 +640,7 @@ export class GitHubSkillsRegistry implements SkillRegistry {
   private async fetchSkillPaths(repo: string): Promise<{ branch: string; paths: string[] } | null> {
     for (const branch of ["main", "master"]) {
       try {
-        const res = await fetch(
+        const res = await fetchRegistryResource(
           `https://api.github.com/repos/${repo}/git/trees/${branch}?recursive=1`,
           { headers: { Accept: "application/vnd.github+json" } }
         );
@@ -662,7 +675,7 @@ export class GitHubSkillsRegistry implements SkillRegistry {
         let skillName = slug;
         let description = `${repo} · ${dir || "root"}`;
         try {
-          const raw = await fetch(
+          const raw = await fetchRegistryResource(
             `https://raw.githubusercontent.com/${repo}/${tree.branch}/${path}`
           );
           if (raw.ok) {
@@ -732,7 +745,7 @@ export class GitHubSkillsRegistry implements SkillRegistry {
     if (!loc) {
       throw new Error(`Cannot find skill "${slug}" in the GitHub registry`);
     }
-    const res = await fetch(
+    const res = await fetchRegistryResource(
       `https://raw.githubusercontent.com/${loc.repo}/${loc.branch}/${loc.path}`
     );
     if (!res.ok) {
@@ -982,6 +995,16 @@ export class SkillRegistryManager {
 
     if (!registry) {
       return { success: false, error: `Unknown registry: ${options.registry}` };
+    }
+
+    if (
+      slug.length === 0 ||
+      slug.length > 128 ||
+      slug === "." ||
+      slug === ".." ||
+      !/^[A-Za-z0-9._-]+$/.test(slug)
+    ) {
+      return { success: false, error: `Invalid skill slug: ${slug}` };
     }
 
     try {

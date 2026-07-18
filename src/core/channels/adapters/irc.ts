@@ -179,7 +179,9 @@ export class IrcAdapter implements ChannelAdapter {
 
     await logChannelMessage("irc", "incoming", text, { channelId, senderId: senderNick });
 
-    const access = evaluateChannelAccess(channelId, String(senderNick), "irc");
+    const access = evaluateChannelAccess(channelId, String(senderNick), "irc", {
+      isGroup: target.startsWith("#") || target.startsWith("&"),
+    });
     if (!access.permitted) {
       if (access.reply) await this.sendMessage(channelId, replyTarget, access.reply);
       return;

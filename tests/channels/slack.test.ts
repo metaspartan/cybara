@@ -152,6 +152,16 @@ async function invokeSlackReaction(
 }
 
 describe("Slack adapter mocked flows", () => {
+  test("requires a signing secret before starting", async () => {
+    const adapter = new SlackAdapter();
+    await expect(
+      adapter.start(makeChannelId("slack-secret"), {
+        bot_token: "xoxb-test",
+        app_token: "xapp-test",
+      })
+    ).rejects.toThrow("signing_secret is required");
+  });
+
   test("lists and resolves connected Slack channels across pages", async () => {
     const adapter = new SlackAdapter();
     const channelId = makeChannelId("slack-targets");
@@ -228,6 +238,34 @@ describe("Slack adapter mocked flows", () => {
     expect(sayCalls).toBe(0);
   });
 
+  test("ignores ordinary channel messages until the app is mentioned", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-channel-noise");
+    let handlerCalls = 0;
+    let sayCalls = 0;
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "should-not-run";
+    });
+    securityManager.setConfig(channelId, { group_policy: "open" });
+    await invokeSlackMessage(
+      adapter,
+      channelId,
+      {
+        type: "message",
+        text: "ambient channel conversation",
+        user: "U-USER",
+        channel: "C-GROUP",
+        ts: "1.050",
+      },
+      async () => {
+        sayCalls += 1;
+      }
+    );
+    expect(handlerCalls).toBe(0);
+    expect(sayCalls).toBe(0);
+  });
+
   test("creates pairing for new sender and sends security message", async () => {
     const adapter = new SlackAdapter();
     const channelId = makeChannelId("slack-pairing");
@@ -285,7 +323,7 @@ describe("Slack adapter mocked flows", () => {
         type: "message",
         text: "first",
         user: "U-ALLOWED",
-        channel: "C2",
+        channel: "D2",
         ts: "2.001",
       },
       async (text: string) => {
@@ -299,7 +337,7 @@ describe("Slack adapter mocked flows", () => {
         type: "message",
         text: "second",
         user: "U-ALLOWED",
-        channel: "C2",
+        channel: "D2",
         ts: "2.002",
       },
       async (text: string) => {
@@ -310,8 +348,8 @@ describe("Slack adapter mocked flows", () => {
     expect(handlerInputs).toHaveLength(2);
     expect(handlerInputs[0].message).toBe("first");
     expect(handlerInputs[1].message).toBe("second");
-    expect(handlerInputs[0].chatId).toBe("C2");
-    expect(handlerInputs[1].chatId).toBe("C2");
+    expect(handlerInputs[0].chatId).toBe("D2");
+    expect(handlerInputs[1].chatId).toBe("D2");
     expect(handlerInputs[0].sessionId).toBe(handlerInputs[1].sessionId);
     expect(sayMessages).toContain("echo:first");
     expect(sayMessages).toContain("echo:second");
@@ -359,7 +397,7 @@ describe("Slack adapter mocked flows", () => {
           type: "message",
           text: "",
           user: "U-ALLOWED",
-          channel: "C-FILE",
+          channel: "D-FILE",
           ts: "9.001",
           files: [
             {
@@ -508,7 +546,7 @@ describe("Slack adapter mocked flows", () => {
         type: "message",
         text: "/help",
         user: "U-COMMAND",
-        channel: "C5",
+        channel: "D5",
         ts: "5.001",
       },
       async (text: string) => {
@@ -540,7 +578,7 @@ describe("Slack adapter mocked flows", () => {
         type: "message",
         text: "/status",
         user: "U-COMMAND",
-        channel: "C6",
+        channel: "D6",
         ts: "6.001",
       },
       async (text: string) => {
@@ -576,7 +614,7 @@ describe("Slack adapter mocked flows", () => {
         type: "message",
         text: "/agents",
         user: "U-COMMAND",
-        channel: "C6A",
+        channel: "D6A",
         ts: "6.051",
       },
       async (text: string) => {
@@ -613,7 +651,7 @@ describe("Slack adapter mocked flows", () => {
         type: "message",
         text: "/providers",
         user: "U-COMMAND",
-        channel: "C6B",
+        channel: "D6B",
         ts: "6.061",
       },
       async (text: string) => {
@@ -630,7 +668,7 @@ describe("Slack adapter mocked flows", () => {
   test("routes /new command through adapter and rotates session id", async () => {
     const adapter = new SlackAdapter();
     const channelId = makeChannelId("slack-new-command");
-    const chatId = "C-NEW";
+    const chatId = "D-NEW";
     const sessionKey = `${channelId}:${chatId}`;
     const initialSessionId = "session-slack-initial";
     const sayMessages: string[] = [];
@@ -691,7 +729,7 @@ describe("Slack adapter mocked flows", () => {
         type: "message",
         text: "/model 2",
         user: "U-COMMAND",
-        channel: "C7",
+        channel: "D7",
         ts: "7.001",
       },
       async (text: string) => {
@@ -738,7 +776,7 @@ describe("Slack adapter mocked flows", () => {
         type: "message",
         text: `/agent ${secondAgentId}`,
         user: "U-COMMAND",
-        channel: "C8",
+        channel: "D8",
         ts: "8.001",
       },
       async (text: string) => {
@@ -778,7 +816,7 @@ describe("Slack adapter mocked flows", () => {
         type: "message",
         text: `/provider ${providerB}`,
         user: "U-COMMAND",
-        channel: "C9",
+        channel: "D9",
         ts: "9.001",
       },
       async (text: string) => {
@@ -826,7 +864,7 @@ describe("Slack adapter mocked flows", () => {
         type: "message",
         text: "/subagents spawn summarize backlog",
         user: "U-COMMAND",
-        channel: "C-SUBAGENT",
+        channel: "D-SUBAGENT",
         ts: "9.101",
       },
       async (text: string) => {
@@ -838,7 +876,7 @@ describe("Slack adapter mocked flows", () => {
     expect(spawnArgs).toHaveLength(1);
     expect(spawnArgs[0]?.task).toBe("summarize backlog");
     expect(spawnArgs[0]?.label).toBe("channel:slack");
-    const requesterSessionKey = slackSessions.get(`${channelId}:C-SUBAGENT`);
+    const requesterSessionKey = slackSessions.get(`${channelId}:D-SUBAGENT`);
     expect(requesterSessionKey).toBeDefined();
     expect(spawnArgs[0]?._requesterSessionKey).toBe(requesterSessionKey);
     expect(sayMessages).toHaveLength(1);

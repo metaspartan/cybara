@@ -157,7 +157,9 @@ describe("status stream websocket wiring", () => {
     expect(source).not.toContain("const sessionStillActive =");
     expect(source).not.toContain("if (!sessionStillActive) {");
     expect(source).toContain("refreshPendingMessages(sessionId)");
-    expect(source).toContain("mergePendingChatMessages(snapshot?.pendingMessages, current)");
+    expect(source).toContain("mergePendingChatMessages(snapshot?.pendingMessages, current, {");
+    expect(source).toContain("preserveAcknowledged: true");
+    expect(source).toContain("materializedPendingIds: transcriptPendingIds");
     expect(source).toContain("readCachedOptimisticPendingMessages(sessionId)");
     expect(source).toContain("writeCachedOptimisticPendingMessages(sessionId, pendingMessages)");
     expect(source).toContain("const resetChatSession = useCallback");
@@ -291,7 +293,8 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("consumeStatusStreamReplayEvents()");
     expect(source).toContain('socket.send("ping")');
     expect(source).toContain('if (String(event.data) === "pong") return;');
-    expect(source.match(/new WebSocket/g)?.length).toBe(1);
+    expect(source.match(/createAuthenticatedWebSocket/g)?.length).toBe(2);
+    expect(source).not.toContain("appendApiTokenParam");
   });
 
   test("chat consumes status events buffered while its route is unmounted", () => {

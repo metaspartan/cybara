@@ -104,7 +104,8 @@ export class ZulipAdapter implements ChannelAdapter {
       channelId,
       message.senderEmail,
       message.recipient,
-      message.text
+      message.text,
+      message.messageType === "stream" || message.messageType === "channel"
     );
     return { status: 200, body: reply ? { content: reply } : {} };
   }
@@ -113,7 +114,8 @@ export class ZulipAdapter implements ChannelAdapter {
     channelId: string,
     sender: string,
     recipient: string,
-    text: string
+    text: string,
+    isGroup: boolean
   ): Promise<string | null> {
     const sessionKey = `${channelId}:${recipient || sender}`;
     let sessionId = zulipSessions.get(sessionKey);
@@ -124,7 +126,7 @@ export class ZulipAdapter implements ChannelAdapter {
 
     await logChannelMessage("zulip", "incoming", text, { channelId, senderId: sender });
 
-    const access = evaluateChannelAccess(channelId, String(sender), "zulip");
+    const access = evaluateChannelAccess(channelId, String(sender), "zulip", { isGroup });
     if (!access.permitted) return access.reply ?? null;
 
     let response: string;

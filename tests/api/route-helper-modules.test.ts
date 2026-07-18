@@ -66,6 +66,7 @@ describe("route helper modules", () => {
     expect(buildCorsHeaders("http://127.0.0.1:4269")).toMatchObject({
       "Access-Control-Allow-Origin": "http://127.0.0.1:4269",
     });
+    expect(buildCorsHeaders("https://evil.example")["Access-Control-Allow-Origin"]).toBeUndefined();
     expect(securityHeaders["X-Content-Type-Options"]).toBe("nosniff");
     expect(securityHeaders["Permissions-Policy"]).toBe(
       "camera=(), microphone=(self), geolocation=()"

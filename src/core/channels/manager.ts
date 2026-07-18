@@ -109,35 +109,37 @@ export class ChannelManager {
 
   list(): (Channel & { info?: (typeof channels)[ChannelType] })[] {
     const all = tables.channels.all() as Channel[];
-    return all.map((c) => {
-      const rawConfig = parseChannelConfig(c.config);
-      const channelDef = channels[c.type as ChannelType];
+    return all.map((channel) => this.maskChannel(channel));
+  }
 
-      const maskedConfig: Record<string, unknown> = {};
-      if (channelDef?.fields) {
-        for (const field of channelDef.fields) {
-          const fieldName = field.name;
-          if (rawConfig[fieldName] !== undefined) {
-            if (field.type === "password") {
-              maskedConfig[fieldName] = CHANNEL_SECRET_MASK;
-            } else {
-              maskedConfig[fieldName] = rawConfig[fieldName];
-            }
+  private maskChannel(channel: Channel): Channel & { info?: (typeof channels)[ChannelType] } {
+    const rawConfig = parseChannelConfig(channel.config);
+    const channelDef = channels[channel.type as ChannelType];
+
+    const maskedConfig: Record<string, unknown> = {};
+    if (channelDef?.fields) {
+      for (const field of channelDef.fields) {
+        const fieldName = field.name;
+        if (rawConfig[fieldName] !== undefined) {
+          if (field.type === "password") {
+            maskedConfig[fieldName] = CHANNEL_SECRET_MASK;
+          } else {
+            maskedConfig[fieldName] = rawConfig[fieldName];
           }
         }
       }
-      const agentId = normalizeChannelAgentId(rawConfig[CHANNEL_AGENT_ID_KEY]);
-      if (agentId) maskedConfig[CHANNEL_AGENT_ID_KEY] = agentId;
-      if (rawConfig[CHANNEL_MODEL_ROUTER_KEY] === true) {
-        maskedConfig[CHANNEL_MODEL_ROUTER_KEY] = true;
-      }
+    }
+    const agentId = normalizeChannelAgentId(rawConfig[CHANNEL_AGENT_ID_KEY]);
+    if (agentId) maskedConfig[CHANNEL_AGENT_ID_KEY] = agentId;
+    if (rawConfig[CHANNEL_MODEL_ROUTER_KEY] === true) {
+      maskedConfig[CHANNEL_MODEL_ROUTER_KEY] = true;
+    }
 
-      return {
-        ...c,
-        config: maskedConfig,
-        info: channelDef,
-      };
-    });
+    return {
+      ...channel,
+      config: maskedConfig,
+      info: channelDef,
+    };
   }
 
   get(id: string): Channel | undefined {
@@ -183,7 +185,7 @@ export class ChannelManager {
       this.startAdapter(id, type, config);
     }
 
-    return { id, type, name, config, enabled: true };
+    return this.maskChannel({ id, type, name, config, enabled: true });
   }
 
   private async startAdapter(
@@ -238,7 +240,7 @@ export class ChannelManager {
       } else {
         log.debug("Telegram bot already running, skipping restart", { channelId: existing.id });
       }
-      return { ...existing, config };
+      return this.maskChannel({ ...existing, config });
     }
 
     const id = crypto.randomUUID();
@@ -249,7 +251,7 @@ export class ChannelManager {
     await this.startAdapter(id, "telegram", config);
 
     log.info("Created Telegram channel", { channelId: id });
-    return { id, type: "telegram", name: "Telegram Bot", config, enabled: true };
+    return this.maskChannel({ id, type: "telegram", name: "Telegram Bot", config, enabled: true });
   }
 
   update(id: string, updates: Partial<Pick<Channel, "name" | "config" | "enabled">>): boolean {

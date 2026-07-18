@@ -1425,16 +1425,18 @@ struct GatewayOAuthPollResponse: Decodable, Hashable {
 struct GatewayOAuthStartResponse: Decodable, Hashable {
     let authUrl: String
     let state: String
+    let pollToken: String
     let callbackPort: Int?
 
     private enum CodingKeys: String, CodingKey {
-        case auth_url, authUrl, state, callback_port, callbackPort
+        case auth_url, authUrl, state, poll_token, pollToken, callback_port, callbackPort
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         authUrl = try container.decodeFlexibleString(forKeys: [.auth_url, .authUrl]) ?? ""
         state = try container.decodeFlexibleString(forKeys: [.state]) ?? ""
+        pollToken = try container.decodeFlexibleString(forKeys: [.poll_token, .pollToken]) ?? ""
         callbackPort = try container.decodeFlexibleInt(forKeys: [.callback_port, .callbackPort])
     }
 }

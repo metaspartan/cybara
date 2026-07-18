@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 import { config } from "../../src/core/config";
 import {
   buildSandboxedShellPlan,
@@ -7,6 +10,7 @@ import {
   resolveSandboxRuntime,
 } from "../../src/core/sandbox";
 import { isWindows } from "../../src/core/platform";
+import { buildSubprocessEnvironment } from "../../src/core/subprocess-env";
 
 describe("sandbox runtime planning", () => {
   test("returns direct shell plan when sandbox is disabled", () => {
@@ -97,6 +101,41 @@ describe("sandbox runtime planning", () => {
       expect(plan.env.TMPDIR).toBe("/tmp");
       expect(plan.env.TMP).toBe("/tmp");
       expect(plan.env.TEMP).toBe("/tmp");
+      expect(plan.command.join(" ")).not.toContain("(allow file-read*)");
+      expect(plan.command[2]).toContain("(allow file-read-metadata)");
+      expect(plan.command.slice(-3, -1)).toEqual(["sh", "-c"]);
+      expect(plan.command[2]).toContain(`(literal \"${join(homedir(), ".gitconfig")}\")`);
+      expect(plan.command[2]).toContain(`(subpath \"${join(homedir(), ".bun")}\")`);
+
+      const profilePath = join(homedir(), ".profile");
+      if (existsSync(profilePath)) {
+        const profilePlan = buildSandboxedShellPlan({
+          command: `cat ${JSON.stringify(profilePath)} >/dev/null`,
+          workdir: process.cwd(),
+        });
+        const result = Bun.spawnSync(profilePlan.command, {
+          cwd: profilePlan.cwd,
+          env: buildSubprocessEnvironment(profilePlan.env),
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        expect(result.exitCode).toBe(0);
+      }
+
+      const apiKeyPath = join(homedir(), ".cybara", "api_key");
+      if (existsSync(apiKeyPath)) {
+        const sensitivePlan = buildSandboxedShellPlan({
+          command: `cat ${JSON.stringify(apiKeyPath)} >/dev/null`,
+          workdir: process.cwd(),
+        });
+        const result = Bun.spawnSync(sensitivePlan.command, {
+          cwd: sensitivePlan.cwd,
+          env: buildSubprocessEnvironment(sensitivePlan.env),
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        expect(result.exitCode).not.toBe(0);
+      }
     } finally {
       config.setSandboxRuntime(previous);
     }

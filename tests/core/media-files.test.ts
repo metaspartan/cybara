@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, rmSync, existsSync, symlinkSync } from "fs";
 import { join } from "path";
 import { resolveMediaFile } from "../../src/core/runtime/media-files";
 import { cybaraDir } from "../../src/core/paths";
@@ -53,6 +53,19 @@ describe("resolveMediaFile", () => {
   test("rejects non-allowlisted subdirs like the database", () => {
     expect(resolveMediaFile("data/platform.db").status).toBe(403);
     expect(resolveMediaFile("secure/wallet.json").status).toBe(403);
+  });
+
+  test("rejects symlinks from an allowed media directory to outside files", () => {
+    const outsidePath = join(cybaraDir, "test_media_files_private.png");
+    const linkPath = join(screenshotsDir, "test_media_files_link.png");
+    writeFileSync(outsidePath, pngBytes);
+    symlinkSync(outsidePath, linkPath);
+    try {
+      expect(resolveMediaFile(linkPath).status).toBe(403);
+    } finally {
+      rmSync(linkPath, { force: true });
+      rmSync(outsidePath, { force: true });
+    }
   });
 
   test("rejects unsupported extensions", () => {

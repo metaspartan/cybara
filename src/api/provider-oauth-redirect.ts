@@ -1,4 +1,5 @@
 import { resolveGeminiCliOAuthClientConfig } from "../core/gemini-cli-oauth";
+import { createHash } from "crypto";
 import {
   createPkcePair,
   parseOAuthTokenPayload,
@@ -6,14 +7,62 @@ import {
 } from "../core/provider-oauth";
 import { providers, resolveProviderType, type ProviderType } from "../core/providers";
 import { escapeHtml } from "./html-escape";
-import { consumeOAuthCallback, setOAuthCallback, type OAuthCallbackEntry } from "./oauth-callbacks";
+import {
+  consumeOAuthCallback,
+  deleteOAuthCallback,
+  OAUTH_CALLBACK_TTL_MS,
+  setOAuthCallback,
+  type OAuthCallbackEntry,
+} from "./oauth-callbacks";
+import type { RouteContext } from "./routes/_shared";
 
 interface OAuthStartBody {
   providerType: string;
 }
 
 interface OAuthStatusBody {
-  state: string;
+  state?: unknown;
+  poll_token?: unknown;
+}
+
+function oauthCallbackPrincipal(ctx?: RouteContext): string {
+  const mobileDeviceId = ctx?.auth?.mobileDevice?.id;
+  if (mobileDeviceId) return `mobile:${mobileDeviceId}`;
+  const credential =
+    ctx?.headers.authorization ||
+    ctx?.headers.Authorization ||
+    ctx?.headers["x-api-key"] ||
+    ctx?.headers["X-API-Key"];
+  if (credential) {
+    return `credential:${createHash("sha256").update(credential).digest("hex")}`;
+  }
+  const clientIp = ctx?.clientIp?.trim().toLowerCase();
+  if (
+    !clientIp ||
+    clientIp === "::1" ||
+    clientIp === "0:0:0:0:0:0:0:1" ||
+    clientIp.startsWith("127.") ||
+    clientIp === "::ffff:127.0.0.1"
+  ) {
+    return "local";
+  }
+  return `network:${clientIp}`;
+}
+
+export function oauthCallbackOwner(ctx: RouteContext | undefined, pollToken: string): string {
+  return createHash("sha256")
+    .update(oauthCallbackPrincipal(ctx))
+    .update("\0")
+    .update(pollToken)
+    .digest("hex");
+}
+
+export function resolveProviderOAuthCallbackHostname(value?: string): string {
+  const hostname = value?.trim().toLowerCase() || "localhost";
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return hostname;
+  }
+  throw new Error("Provider OAuth callback hostname must be loopback-only");
 }
 
 function resolveOAuthConfig(providerType: string): {
@@ -121,13 +170,18 @@ async function exchangeToken(
   };
 }
 
-export async function startProviderRedirectOAuth(body: unknown): Promise<Record<string, unknown>> {
+export async function startProviderRedirectOAuth(
+  body: unknown,
+  ctx?: RouteContext
+): Promise<Record<string, unknown>> {
   const { providerType } = body as OAuthStartBody;
   const { config } = resolveOAuthConfig(providerType);
+  const pollToken = crypto.randomUUID();
+  const owner = oauthCallbackOwner(ctx, pollToken);
   const { verifier, challenge } = await createPkcePair();
   const state = crypto.randomUUID();
   const callbackPath = config.callbackPath || "/callback";
-  const callbackHostname = config.callbackHostname || "localhost";
+  const callbackHostname = resolveProviderOAuthCallbackHostname(config.callbackHostname);
   let redirectUri = "";
   const server = Bun.serve({
     hostname: callbackHostname,
@@ -153,7 +207,7 @@ export async function startProviderRedirectOAuth(body: unknown): Promise<Record<
           };
         }
       }
-      setOAuthCallback(state, result);
+      setOAuthCallback(state, result, owner);
       server.stop();
       const success = result.status === "success";
       return new Response(
@@ -169,7 +223,8 @@ export async function startProviderRedirectOAuth(body: unknown): Promise<Record<
       );
     },
   });
-  redirectUri = `http://${callbackHostname}:${server.port}${callbackPath}`;
+  const redirectHostname = callbackHostname === "::1" ? "[::1]" : callbackHostname;
+  redirectUri = `http://${redirectHostname}:${server.port}${callbackPath}`;
   const authParams = new URLSearchParams({
     response_type: "code",
     redirect_uri: redirectUri,
@@ -186,16 +241,27 @@ export async function startProviderRedirectOAuth(body: unknown): Promise<Record<
   for (const [key, value] of Object.entries(config.authorizeParams || {})) {
     if (value) authParams.set(key, value);
   }
-  setOAuthCallback(state, { status: "pending" });
-  setTimeout(() => server.stop(), 600_000);
+  setOAuthCallback(state, { status: "pending" }, owner);
+  setTimeout(() => {
+    server.stop();
+    deleteOAuthCallback(state);
+  }, OAUTH_CALLBACK_TTL_MS);
   return {
     auth_url: `${config.authorizeUrl}?${authParams.toString()}`,
     state,
+    poll_token: pollToken,
     callback_port: server.port,
   };
 }
 
-export function pollProviderRedirectOAuth(body: unknown): OAuthCallbackEntry {
-  const { state } = body as OAuthStatusBody;
-  return consumeOAuthCallback(state) || { status: "not_found" };
+export function pollProviderRedirectOAuth(body: unknown, ctx?: RouteContext): OAuthCallbackEntry {
+  const { state, poll_token: pollToken } = body as OAuthStatusBody;
+  if (typeof state !== "string" || typeof pollToken !== "string" || !state || !pollToken) {
+    return { status: "not_found" };
+  }
+  return (
+    consumeOAuthCallback(state, oauthCallbackOwner(ctx, pollToken)) || {
+      status: "not_found",
+    }
+  );
 }

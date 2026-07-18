@@ -15,6 +15,7 @@ describe("DingTalk message parsing", () => {
       senderStaffId: "staff-1",
       senderNick: "Carsen",
       sessionWebhook: "https://oapi.dingtalk.com/robot/sendBySession?session=xyz",
+      conversationType: "1",
     };
     expect(parseDingTalkMessage(body)).toEqual({
       conversationId: "cidABC",
@@ -22,7 +23,20 @@ describe("DingTalk message parsing", () => {
       senderNick: "Carsen",
       text: "hello ding",
       sessionWebhook: "https://oapi.dingtalk.com/robot/sendBySession?session=xyz",
+      isGroup: false,
     });
+  });
+
+  test("classifies group conversations", () => {
+    const parsed = parseDingTalkMessage({
+      msgtype: "text",
+      text: { content: "hello group" },
+      conversationId: "group-1",
+      senderStaffId: "staff-2",
+      conversationType: "2",
+    });
+
+    expect(parsed?.isGroup).toBe(true);
   });
 
   test("ignores non-text and empty content", () => {

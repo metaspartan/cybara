@@ -1,32 +1,87 @@
-/**
- * Webhook channel adapter.
- *
- * Lets any external system (CI, monitoring, forms, IFTTT) trigger a cybara agent
- * via a signed HTTP POST. Inbound payloads are validated against an optional
- * HMAC-SHA256 signature (x-cybara-signature header, shared secret) and then
- * routed to the channel's bound agent as a message. Outbound sendMessage is a
- * no-op (webhook is inbound-only — replies go via other channels).
- */
 import { createHmac } from "crypto";
-import type { ChannelAdapter, ToolCallInfo } from "../types";
+import type {
+  ChannelAdapter,
+  MessageHandler,
+  ToolCallInfo,
+  WebhookPayload,
+  WebhookResult,
+} from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { constantTimeEqual } from "../constant-time";
+import { buildChannelSecurityConfig, securityManager } from "../security";
+import { evaluateChannelAccess } from "../access-gate";
+import { logChannelMessage } from "../../logging";
+
+interface WebhookConfig {
+  secret: string;
+}
+
+interface WebhookInput {
+  message: string;
+  senderId: string;
+  conversationId: string;
+}
+
+const webhookSessions = new Map<string, string>();
+
+function headerValue(headers: Record<string, string>, name: string): string {
+  const match = Object.entries(headers).find(([key]) => key.toLowerCase() === name.toLowerCase());
+  return match?.[1] || "";
+}
+
+function parseWebhookInput(payload: WebhookPayload): WebhookInput | null {
+  const body =
+    payload.body && typeof payload.body === "object"
+      ? (payload.body as Record<string, unknown>)
+      : {};
+  const messageValue = body.message ?? body.text ?? body.content;
+  if (typeof messageValue !== "string" || !messageValue.trim()) return null;
+  const senderValue =
+    body.sender_id ?? body.senderId ?? payload.query.sender_id ?? payload.query.sender;
+  const conversationValue =
+    body.conversation_id ??
+    body.conversationId ??
+    payload.query.conversation_id ??
+    payload.query.conversation;
+  return {
+    message: messageValue.trim(),
+    senderId:
+      typeof senderValue === "string" && senderValue.trim() ? senderValue.trim() : "webhook",
+    conversationId:
+      typeof conversationValue === "string" && conversationValue.trim()
+        ? conversationValue.trim()
+        : "default",
+  };
+}
 
 export class WebhookAdapter implements ChannelAdapter {
   type = "webhook" as const;
   name = "Webhook";
 
   private running = new Set<string>();
+  private configs = new Map<string, WebhookConfig>();
+  private messageHandler: MessageHandler = async () => "No handler configured";
 
-  async start(channelId: string, _config: Record<string, unknown>): Promise<void> {
+  setMessageHandler(handler: MessageHandler): void {
+    this.messageHandler = handler;
+  }
+
+  getMessageHandler(): MessageHandler {
+    return this.messageHandler;
+  }
+
+  async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    const secret = typeof config.secret === "string" ? config.secret.trim() : "";
+    if (!secret) throw new Error("Webhook: secret is required");
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
+    this.configs.set(channelId, { secret });
     this.running.add(channelId);
-    console.log(
-      `[Webhook] Adapter ready for channel ${channelId} (inbound via /api/channels/:id/webhook)`
-    );
+    console.log(`[Webhook] Adapter ready for channel ${channelId}`);
   }
 
   async stop(channelId: string): Promise<void> {
     this.running.delete(channelId);
+    this.configs.delete(channelId);
   }
 
   isRunning(channelId: string): boolean {
@@ -34,8 +89,47 @@ export class WebhookAdapter implements ChannelAdapter {
   }
 
   async sendMessage(): Promise<boolean> {
-    // Webhook is inbound-only; there is no chat to reply into.
     return true;
+  }
+
+  async handleWebhook(channelId: string, payload: WebhookPayload): Promise<WebhookResult> {
+    const config = this.configs.get(channelId);
+    if (!config) return { status: 404, body: { error: "channel is not running" } };
+    const signature = headerValue(payload.headers, "x-cybara-signature");
+    if (!verifyWebhookSignature(payload.rawBody, signature, config.secret)) {
+      return { status: 401, body: { error: "invalid signature" } };
+    }
+    const input = parseWebhookInput(payload);
+    if (!input) return { status: 400, body: { error: "message is required" } };
+    const access = evaluateChannelAccess(channelId, input.senderId, "webhook", { isGroup: false });
+    if (!access.permitted) {
+      return {
+        status: access.reply ? 403 : 204,
+        body: access.reply ? { error: access.reply } : {},
+      };
+    }
+    const sessionKey = `${channelId}:${input.conversationId}`;
+    let sessionId = webhookSessions.get(sessionKey);
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      webhookSessions.set(sessionKey, sessionId);
+    }
+    await logChannelMessage("webhook", "incoming", input.message, {
+      channelId,
+      senderId: input.senderId,
+    });
+    const response = await this.messageHandler(input.message, input.conversationId, sessionId, {
+      channelId,
+      hasFile: false,
+      filePath: "",
+      fileType: "",
+      placeholder: "",
+    });
+    await logChannelMessage("webhook", "outgoing", response, {
+      channelId,
+      senderId: input.senderId,
+    });
+    return { status: 200, body: { response, session_id: sessionId } };
   }
 
   formatResponse(content: string, toolCalls?: ToolCallInfo[], thinking?: string): string {
@@ -50,13 +144,12 @@ export class WebhookAdapter implements ChannelAdapter {
   }
 }
 
-/** Verify an inbound webhook signature: HMAC-SHA256 of the raw body with the shared secret. */
 export function verifyWebhookSignature(
   rawBody: string,
   signature: string | undefined,
   secret: string
 ): boolean {
-  if (!secret) return true; // No secret configured = unsigned webhooks allowed.
+  if (!secret) return false;
   if (!signature) return false;
   try {
     const expected = createHmac("sha256", secret).update(rawBody).digest("hex");

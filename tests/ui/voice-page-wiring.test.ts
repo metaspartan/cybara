@@ -7,7 +7,12 @@ const root = process.cwd();
 const voice = readFileSync(join(root, "ui", "src", "pages", "Voice.tsx"), "utf8");
 const chat =
   readFileSync(join(root, "ui", "src", "pages", "Chat.tsx"), "utf8") +
-  readFileSync(join(root, "ui", "src", "pages", "chat", "ChatMessageTimeline.tsx"), "utf8");
+  readFileSync(join(root, "ui", "src", "pages", "chat", "ChatMessageTimeline.tsx"), "utf8") +
+  readFileSync(join(root, "ui", "src", "pages", "chat", "useChatMessageActions.ts"), "utf8");
+const speechSettings = readFileSync(
+  join(root, "ui", "src", "pages", "settings", "SpeechSettingsSection.tsx"),
+  "utf8"
+);
 const app = readFileSync(join(root, "ui", "src", "App.tsx"), "utf8");
 
 describe("voice UI wiring", () => {
@@ -18,7 +23,11 @@ describe("voice UI wiring", () => {
     expect(voice).toContain("chatApi.dictate");
     expect(voice).toContain("chatApi.send");
     expect(voice).toContain("chatApi.synthesizeSpeech");
-    expect(voice).toContain("appendApiTokenParam");
+    expect(voice).toContain("loadAuthenticatedAudioSource");
+    expect(voice).not.toContain("appendApiTokenParam");
+    expect(chat).toContain("loadAuthenticatedAudioSource");
+    expect(speechSettings).toContain("loadAuthenticatedAudioSource");
+    expect(speechSettings).not.toContain("appendApiTokenParam");
   });
 
   test("voice page checks provider readiness and renders the reactive orb", () => {

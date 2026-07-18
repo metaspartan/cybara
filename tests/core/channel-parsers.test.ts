@@ -65,14 +65,27 @@ describe("mattermost event parsing", () => {
   test("extracts a posted message from another user", () => {
     const ev = JSON.stringify({
       event: "posted",
-      data: { post: JSON.stringify({ id: "p1", channel_id: "c1", user_id: "u1", message: "yo" }) },
+      data: {
+        channel_type: "O",
+        post: JSON.stringify({ id: "p1", channel_id: "c1", user_id: "u1", message: "yo" }),
+      },
     });
     expect(parseMattermostEvent(ev, SELF)).toEqual({
       channelId: "c1",
       userId: "u1",
       message: "yo",
       postId: "p1",
+      isGroup: true,
     });
+
+    const direct = JSON.stringify({
+      event: "posted",
+      data: {
+        channel_type: "D",
+        post: JSON.stringify({ id: "p2", channel_id: "d1", user_id: "u1", message: "dm" }),
+      },
+    });
+    expect(parseMattermostEvent(direct, SELF)?.isGroup).toBe(false);
   });
 
   test("ignores own posts and non-posted events", () => {

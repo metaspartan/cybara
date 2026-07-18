@@ -429,11 +429,11 @@ export function ProviderSettingsPanel({
     }
   };
 
-  const pollOAuthCallback = async (state: string) => {
+  const pollOAuthCallback = async (state: string, pollToken: string) => {
     const expiresAt = Date.now() + 600_000;
     while (Date.now() < expiresAt) {
       await new Promise((resolve) => setTimeout(resolve, 3000));
-      const status = await api.providerOAuthCallbackStatus(state);
+      const status = await api.providerOAuthCallbackStatus(state, pollToken);
       if (status.status === "success" && status.access_token) {
         setAccessToken(status.access_token);
         setRefreshToken(status.refresh_token || "");
@@ -503,7 +503,7 @@ export function ProviderSettingsPanel({
         const response = await api.startProviderOAuth(provider.provider);
         setOauthStatus("Complete sign-in in the browser window, then keep this screen open.");
         await openGatewayOrLocalUrl(response.auth_url);
-        await pollOAuthCallback(response.state);
+        await pollOAuthCallback(response.state, response.poll_token);
       }
     } catch (error) {
       Alert.alert("OAuth failed", error instanceof Error ? error.message : String(error));

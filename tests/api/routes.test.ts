@@ -1067,6 +1067,7 @@ describe("Providers OAuth API", () => {
   test("callback status should return not_found for unknown state", async () => {
     const { status, data } = await fixture.api("POST", "/api/providers/oauth/callback-status", {
       state: `missing-state-${Date.now()}`,
+      poll_token: "missing-poll-token",
     });
     expect(status).toBe(200);
     expect(data.status).toBe("not_found");
@@ -1296,6 +1297,8 @@ describe("Channels API", () => {
       config: { secret: "real-hmac-secret" },
     });
     expect(created.status).toBe(200);
+    expect(created.data.config.secret).toBe("••••••••");
+    expect(JSON.stringify(created.data)).not.toContain("real-hmac-secret");
     const channelId = created.data.id as string;
 
     const fetched = await fixture.api("GET", `/api/channels/${channelId}`);

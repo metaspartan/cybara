@@ -7,10 +7,19 @@ export interface MatrixInboundMessage {
 
 interface MatrixSyncResponse {
   next_batch?: string;
+  account_data?: {
+    events?: Array<{
+      type?: string;
+      content?: Record<string, string[]>;
+    }>;
+  };
   rooms?: {
     join?: Record<
       string,
       {
+        summary?: {
+          "m.joined_member_count"?: number;
+        };
         timeline?: {
           events?: Array<{
             type?: string;
@@ -29,16 +38,32 @@ export function parseSyncMessages(
   sync: unknown,
   selfUserId: string,
   options: { ignoreInitial?: boolean } = {}
-): { nextBatch: string | null; messages: MatrixInboundMessage[] } {
+): {
+  nextBatch: string | null;
+  messages: MatrixInboundMessage[];
+  directRoomIds: string[] | null;
+  roomMemberCounts: Record<string, number>;
+} {
   const data = (sync || {}) as MatrixSyncResponse;
   const nextBatch = typeof data.next_batch === "string" ? data.next_batch : null;
   const messages: MatrixInboundMessage[] = [];
-
-  if (options.ignoreInitial) {
-    return { nextBatch, messages };
+  const directEvent = data.account_data?.events?.find((event) => event.type === "m.direct");
+  const directRoomIds = directEvent?.content
+    ? [...new Set(Object.values(directEvent.content).flat())]
+    : null;
+  const roomMemberCounts: Record<string, number> = {};
+  const join = data.rooms?.join || {};
+  for (const [roomId, room] of Object.entries(join)) {
+    const joinedMemberCount = room.summary?.["m.joined_member_count"];
+    if (typeof joinedMemberCount === "number" && Number.isFinite(joinedMemberCount)) {
+      roomMemberCounts[roomId] = joinedMemberCount;
+    }
   }
 
-  const join = data.rooms?.join || {};
+  if (options.ignoreInitial) {
+    return { nextBatch, messages, directRoomIds, roomMemberCounts };
+  }
+
   for (const [roomId, room] of Object.entries(join)) {
     const events = room.timeline?.events || [];
     for (const event of events) {
@@ -53,7 +78,7 @@ export function parseSyncMessages(
     }
   }
 
-  return { nextBatch, messages };
+  return { nextBatch, messages, directRoomIds, roomMemberCounts };
 }
 
 export function buildLoginBody(user: string, password: string): Record<string, unknown> {
@@ -73,4 +98,12 @@ export function normalizeHomeserverUrl(raw: string): string {
   if (!trimmed) return "";
   if (!/^https?:\/\//i.test(trimmed)) return `https://${trimmed}`;
   return trimmed;
+}
+
+export function isMatrixGroupRoom(
+  roomId: string,
+  directRoomIds: ReadonlySet<string>,
+  roomMemberCounts: ReadonlyMap<string, number>
+): boolean {
+  return !directRoomIds.has(roomId) && roomMemberCounts.get(roomId) !== 2;
 }

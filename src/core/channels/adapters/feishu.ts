@@ -23,7 +23,7 @@ interface FeishuConfig {
   appId: string;
   appSecret: string;
   verificationToken: string;
-  encryptKey?: string;
+  encryptKey: string;
   domain: string;
 }
 
@@ -39,6 +39,7 @@ export class FeishuAdapter implements ChannelAdapter {
   private configs = new Map<string, FeishuConfig>();
   private tokens = new Map<string, CachedToken>();
   private running = new Set<string>();
+  private processedSignatures = new Map<string, number>();
   private messageHandler: MessageHandler = async () => "No handler configured";
 
   setMessageHandler(handler: MessageHandler) {
@@ -55,8 +56,10 @@ export class FeishuAdapter implements ChannelAdapter {
     const appSecret = typeof config.app_secret === "string" ? config.app_secret.trim() : "";
     const verificationToken =
       typeof config.verification_token === "string" ? config.verification_token.trim() : "";
+    const encryptKey = typeof config.encrypt_key === "string" ? config.encrypt_key.trim() : "";
     if (!appId || !appSecret) throw new Error("Feishu: app_id and app_secret are required");
     if (!verificationToken) throw new Error("Feishu: verification_token is required");
+    if (!encryptKey) throw new Error("Feishu: encrypt_key is required");
     const domain =
       typeof config.domain === "string" && config.domain.trim()
         ? config.domain.trim().replace(/\/+$/, "")
@@ -65,7 +68,7 @@ export class FeishuAdapter implements ChannelAdapter {
       appId,
       appSecret,
       verificationToken,
-      encryptKey: typeof config.encrypt_key === "string" ? config.encrypt_key.trim() : undefined,
+      encryptKey,
       domain,
     });
     this.running.add(channelId);
@@ -76,10 +79,23 @@ export class FeishuAdapter implements ChannelAdapter {
     this.running.delete(channelId);
     this.configs.delete(channelId);
     this.tokens.delete(channelId);
+    for (const signature of this.processedSignatures.keys()) {
+      if (signature.startsWith(`${channelId}:`)) this.processedSignatures.delete(signature);
+    }
   }
 
   isRunning(channelId: string): boolean {
     return this.running.has(channelId);
+  }
+
+  private claimSignature(key: string, now: number): boolean {
+    const replayCutoff = now - 5 * 60_000;
+    for (const [storedKey, seenAt] of this.processedSignatures) {
+      if (seenAt < replayCutoff) this.processedSignatures.delete(storedKey);
+    }
+    if (this.processedSignatures.has(key)) return false;
+    this.processedSignatures.set(key, now);
+    return true;
   }
 
   private async getTenantToken(channelId: string): Promise<string | null> {
@@ -133,19 +149,21 @@ export class FeishuAdapter implements ChannelAdapter {
     const cfg = this.configs.get(channelId);
     if (!cfg) return { status: 404 };
 
-    if (cfg.encryptKey) {
-      const timestamp = payload.headers["x-lark-request-timestamp"] || "";
-      const nonce = payload.headers["x-lark-request-nonce"] || "";
-      const signature = payload.headers["x-lark-signature"] || "";
-      if (!verifyFeishuSignature(timestamp, nonce, cfg.encryptKey, payload.rawBody, signature)) {
-        return { status: 401, body: { error: "invalid signature" } };
-      }
+    const timestamp = payload.headers["x-lark-request-timestamp"] || "";
+    const nonce = payload.headers["x-lark-request-nonce"] || "";
+    const signature = payload.headers["x-lark-signature"] || "";
+    const timestampMs = Number(timestamp) * 1000;
+    if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > 5 * 60_000) {
+      return { status: 401, body: { error: "stale request" } };
     }
+    if (!verifyFeishuSignature(timestamp, nonce, cfg.encryptKey, payload.rawBody, signature)) {
+      return { status: 401, body: { error: "invalid signature" } };
+    }
+    const replayKey = `${channelId}:${signature}`;
 
     let body: unknown = payload.body;
     const encrypted = (payload.body as { encrypt?: string })?.encrypt;
     if (typeof encrypted === "string") {
-      if (!cfg.encryptKey) return { status: 400, body: { error: "encrypt_key not configured" } };
       try {
         body = decryptFeishuEvent(encrypted, cfg.encryptKey);
       } catch {
@@ -154,7 +172,10 @@ export class FeishuAdapter implements ChannelAdapter {
     }
 
     const challenge = extractFeishuChallenge(body);
-    if (challenge) return { status: 200, body: { challenge } };
+    if (challenge) {
+      this.claimSignature(replayKey, Date.now());
+      return { status: 200, body: { challenge } };
+    }
 
     const token =
       (body as { token?: string; header?: { token?: string } })?.token ||
@@ -163,11 +184,12 @@ export class FeishuAdapter implements ChannelAdapter {
     if (!token || !constantTimeEqual(token, cfg.verificationToken)) {
       return { status: 401, body: { error: "invalid token" } };
     }
+    if (!this.claimSignature(replayKey, Date.now())) return { status: 200, body: {} };
 
     const message = parseFeishuMessage(body);
     if (!message) return { status: 200, body: {} };
 
-    void this.dispatch(channelId, message.chatId, message.senderId, message.text);
+    void this.dispatch(channelId, message.chatId, message.senderId, message.text, message.isGroup);
     return { status: 200, body: {} };
   }
 
@@ -175,7 +197,8 @@ export class FeishuAdapter implements ChannelAdapter {
     channelId: string,
     chatId: string,
     sender: string,
-    text: string
+    text: string,
+    isGroup: boolean
   ): Promise<void> {
     const sessionKey = `${channelId}:${chatId}`;
     let sessionId = feishuSessions.get(sessionKey);
@@ -186,7 +209,7 @@ export class FeishuAdapter implements ChannelAdapter {
 
     await logChannelMessage("feishu", "incoming", text, { channelId, senderId: sender });
 
-    const access = evaluateChannelAccess(channelId, String(sender), "feishu");
+    const access = evaluateChannelAccess(channelId, String(sender), "feishu", { isGroup });
     if (!access.permitted) {
       if (access.reply) await this.sendMessage(channelId, chatId, access.reply);
       return;

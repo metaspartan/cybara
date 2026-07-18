@@ -826,7 +826,11 @@ private struct ProviderEditorSheet: View {
     @MainActor
     private func startRedirectOAuth() async throws {
         let response = try await client.startProviderOAuth(providerType: providerType)
-        guard let url = URL(string: response.authUrl), !response.state.isEmpty else {
+        guard
+            let url = URL(string: response.authUrl),
+            !response.state.isEmpty,
+            !response.pollToken.isEmpty
+        else {
             throw GatewayClientError.invalidResponse
         }
         NSWorkspace.shared.open(url)
@@ -835,7 +839,10 @@ private struct ProviderEditorSheet: View {
         let deadline = Date().addingTimeInterval(600)
         while Date() < deadline, oauthState == .polling {
             try await Task.sleep(nanoseconds: 3_000_000_000)
-            let status = try await client.providerOAuthCallbackStatus(state: response.state)
+            let status = try await client.providerOAuthCallbackStatus(
+                state: response.state,
+                pollToken: response.pollToken
+            )
             if status.status == "success", let token = status.accessToken {
                 oauthToken = token
                 accessToken = token

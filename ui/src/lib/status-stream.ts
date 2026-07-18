@@ -1,4 +1,4 @@
-import { appendApiTokenParam } from "@/lib/auth";
+import { createAuthenticatedWebSocket, withGatewayBasePath } from "@/lib/auth";
 import {
   consumeStatusStreamReplayEvents,
   recordStatusStreamReplayEvent,
@@ -106,7 +106,7 @@ interface ConnectStatusStreamHandlers {
 
 function toWebSocketUrl(path: string): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}${appendApiTokenParam(path)}`;
+  return `${protocol}//${window.location.host}${withGatewayBasePath(path)}`;
 }
 
 export function connectStatusStream(handlers: ConnectStatusStreamHandlers): () => void {
@@ -184,7 +184,7 @@ function ensureStatusStreamConnected() {
 
   clearStatusStreamReconnect();
   statusStreamClosedByClient = false;
-  statusStreamSocket = new WebSocket(toWebSocketUrl("/api/ws/status"));
+  statusStreamSocket = createAuthenticatedWebSocket(toWebSocketUrl("/api/ws/status"));
 
   statusStreamSocket.onopen = () => {
     startStatusStreamHeartbeat();

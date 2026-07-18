@@ -23,6 +23,7 @@ describe("Feishu message parsing", () => {
       event: {
         message: {
           chat_id: "oc_abc",
+          chat_type: "group",
           message_type: "text",
           content: JSON.stringify({ text: "hello lark" }),
         },
@@ -34,7 +35,11 @@ describe("Feishu message parsing", () => {
       senderId: "ou_123",
       messageType: "text",
       text: "hello lark",
+      isGroup: true,
     });
+
+    body.event.message.chat_type = "p2p";
+    expect(parseFeishuMessage(body)?.isGroup).toBe(false);
   });
 
   test("ignores non-message events and empty text", () => {

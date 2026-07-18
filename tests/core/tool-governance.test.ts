@@ -7,6 +7,7 @@ import { PARALLEL_SAFE_TOOLS } from "../../src/core/llm/parallel-tools";
 import {
   getDangerousToolNames,
   getToolHandler,
+  checkToolPermissions,
   isDangerousTool,
   toolSchemas,
 } from "../../src/core/tools/index";
@@ -38,6 +39,12 @@ describe("tool governance invariants", () => {
       expect(isDangerousTool(name)).toBe(true);
       expect(toolSchemas[name]).toBeDefined();
     }
+  });
+
+  test("multi-capability tools require every declared permission", () => {
+    expect(checkToolPermissions(["exec:run", "env:read"], ["exec:run"])).toBe(false);
+    expect(checkToolPermissions(["exec:run", "env:read"], ["exec:run", "env:read"])).toBe(true);
+    expect(checkToolPermissions(["exec:run", "env:read"], ["*"])).toBe(true);
   });
 
   test("computer-use direct action aliases are advertised, executable, and dangerous", () => {
@@ -103,5 +110,11 @@ describe("tool governance invariants", () => {
     expect(toolSchemas.account_connector_write.input_schema.properties?.action?.enum).toContain(
       "notion_create_page"
     );
+  });
+
+  test("browser profiles do not expose executable or user data paths", () => {
+    const properties = toolSchemas.browser.input_schema.properties ?? {};
+    expect(properties.executablePath).toBeUndefined();
+    expect(properties.userDataDir).toBeUndefined();
   });
 });

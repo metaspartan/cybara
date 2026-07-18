@@ -294,3 +294,15 @@ export function latestSessionEventSequence(sessionId: string): number {
   flushBufferedAssistantDeltas(sessionId);
   return tables.sessionEvents.latestSequence(sessionId.trim());
 }
+
+export function clearSessionEventLedger(sessionId: string): void {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) return;
+  for (const [key, pending] of pendingAssistantDeltas.entries()) {
+    if (pending.sessionId !== normalizedSessionId) continue;
+    if (pending.timeout) clearTimeout(pending.timeout);
+    pendingAssistantDeltas.delete(key);
+  }
+  activeRunIds.delete(normalizedSessionId);
+  tables.sessionEvents.deleteBySession(normalizedSessionId);
+}

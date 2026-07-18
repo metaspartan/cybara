@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
-  appendApiTokenParam,
   clearApiAuthToken,
   clearGatewayAccessPassword,
   getApiAuthToken,
@@ -93,29 +92,6 @@ describe("getApiAuthToken", () => {
     expect(local.getItem("cybara_api_key")).toBeNull();
     clearApiAuthToken();
     expect(getApiAuthToken()).toBeNull();
-  });
-});
-
-describe("appendApiTokenParam", () => {
-  test("no token leaves path unchanged", () => {
-    expect(appendApiTokenParam("/api/x", null)).toBe("/api/x");
-  });
-
-  test("appends with ? when no existing query", () => {
-    expect(appendApiTokenParam("/api/x", "tok")).toBe("/api/x?token=tok");
-  });
-
-  test("appends with & when query already present", () => {
-    expect(appendApiTokenParam("/api/x?a=1", "tok")).toBe("/api/x?a=1&token=tok");
-  });
-
-  test("url-encodes the token", () => {
-    expect(appendApiTokenParam("/api/x", "a b/c")).toBe("/api/x?token=a%20b%2Fc");
-  });
-
-  test("uses query token only for URL-param compatibility fallback", () => {
-    setWindow("?token=fromwin", null);
-    expect(appendApiTokenParam("/api/x")).toBe("/api/x?token=fromwin");
   });
 });
 

@@ -2,6 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:te
 import { createRequire } from "module";
 import { tables } from "../../src/core/database";
 import { securityManager } from "../../src/core/channels/security";
+import { securityConfig } from "../../src/api/security";
 
 const require = createRequire(import.meta.url);
 
@@ -23,7 +24,11 @@ async function api(method: string, path: string, body?: unknown) {
   return await handleRequest({
     method,
     url: `http://localhost:4269${path}`,
-    headers: { host: "localhost:4269", "sec-fetch-site": "same-origin" },
+    headers: {
+      authorization: `Bearer ${securityConfig.apiKey}`,
+      host: "localhost:4269",
+      "sec-fetch-site": "same-origin",
+    },
     body,
     ip: "127.0.0.1",
   });

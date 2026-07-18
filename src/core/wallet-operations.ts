@@ -68,7 +68,7 @@ import {
   type WalletX402RequestInput,
   type WalletX402RequestResult,
 } from "./wallet-types";
-import { assertPublicHttpUrl } from "./wallet-url-guard";
+import { assertPublicHttpUrl, assertResolvedPublicHttpUrl } from "./wallet-url-guard";
 
 export abstract class WalletOperations extends WalletBase {
   async send(input: WalletSendInput): Promise<WalletSendResult> {
@@ -1061,6 +1061,7 @@ export abstract class WalletOperations extends WalletBase {
     }
     this.validateHttpUrl(urlInput, "x402 URL");
     assertPublicHttpUrl(urlInput, "x402 URL");
+    await assertResolvedPublicHttpUrl(urlInput, "x402 URL");
     const url = new URL(urlInput);
     const method = normalizeWalletHttpMethod(input.method);
     const timeoutMs =

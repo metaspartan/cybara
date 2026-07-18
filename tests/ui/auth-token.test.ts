@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
-  appendApiTokenParam,
   apiFetch,
   clearApiAuthToken,
   getApiAuthToken,
@@ -58,14 +57,13 @@ describe("UI auth token helpers", () => {
     expect(getApiAuthToken()).toBe("stored-token");
   });
 
-  test("query token is only used as a stream URL compatibility fallback", () => {
+  test("query tokens are not adopted for normal API auth", () => {
     (globalThis as unknown as { window: Window }).window = createWindow(
       "?api_key=query-key",
       {}
     ) as unknown as Window;
 
     expect(getApiAuthToken()).toBeNull();
-    expect(appendApiTokenParam("/api/sse/status")).toBe("/api/sse/status?token=query-key");
   });
 
   test("falls back to localStorage token keys", () => {
@@ -79,24 +77,6 @@ describe("UI auth token helpers", () => {
       CYBARA_API_KEY: "legacy-token",
     }) as unknown as Window;
     expect(getApiAuthToken()).toBe("preferred-token");
-  });
-
-  test("appendApiTokenParam preserves existing query and encodes token", () => {
-    (globalThis as unknown as { window: Window }).window = createWindow(
-      "?token=a%20b%2F%2B",
-      {}
-    ) as unknown as Window;
-
-    expect(appendApiTokenParam("/api/sse/status")).toBe("/api/sse/status?token=a%20b%2F%2B");
-    expect(appendApiTokenParam("/api/terminal/ws?session=abc")).toBe(
-      "/api/terminal/ws?session=abc&token=a%20b%2F%2B"
-    );
-  });
-
-  test("appendApiTokenParam returns original URL when no token is available", () => {
-    (globalThis as unknown as { window: Window }).window = createWindow("") as unknown as Window;
-    expect(getApiAuthToken()).toBeNull();
-    expect(appendApiTokenParam("/api/sse/status")).toBe("/api/sse/status");
   });
 
   test("getApiAuthToken returns null when window is unavailable", () => {

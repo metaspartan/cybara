@@ -8,10 +8,29 @@ export interface OAuthCallbackEntry {
 }
 
 export const MAX_OAUTH_CALLBACKS = 100;
+export const OAUTH_CALLBACK_TTL_MS = 10 * 60 * 1000;
 
-const store = new Map<string, OAuthCallbackEntry>();
+interface StoredOAuthCallback {
+  entry: OAuthCallbackEntry;
+  owner: string;
+  expiresAt: number;
+}
 
-export function setOAuthCallback(state: string, entry: OAuthCallbackEntry): void {
+const store = new Map<string, StoredOAuthCallback>();
+
+function pruneExpired(now = Date.now()): void {
+  for (const [state, callback] of store) {
+    if (callback.expiresAt <= now) store.delete(state);
+  }
+}
+
+export function setOAuthCallback(
+  state: string,
+  entry: OAuthCallbackEntry,
+  owner = "unbound",
+  ttlMs = OAUTH_CALLBACK_TTL_MS
+): void {
+  pruneExpired();
   if (!store.has(state)) {
     while (store.size >= MAX_OAUTH_CALLBACKS) {
       const oldest = store.keys().next().value;
@@ -19,22 +38,24 @@ export function setOAuthCallback(state: string, entry: OAuthCallbackEntry): void
       store.delete(oldest);
     }
   }
-  store.set(state, entry);
+  store.set(state, { entry, owner, expiresAt: Date.now() + Math.max(1, ttlMs) });
 }
 
 export function deleteOAuthCallback(state: string): void {
   store.delete(state);
 }
 
-export function consumeOAuthCallback(state: string): OAuthCallbackEntry | null {
-  const entry = store.get(state);
-  if (!entry) return null;
-  if (entry.status === "success" || entry.status === "error") {
+export function consumeOAuthCallback(state: string, owner = "unbound"): OAuthCallbackEntry | null {
+  pruneExpired();
+  const callback = store.get(state);
+  if (!callback || callback.owner !== owner) return null;
+  if (callback.entry.status === "success" || callback.entry.status === "error") {
     store.delete(state);
   }
-  return entry;
+  return callback.entry;
 }
 
 export function oauthCallbackCount(): number {
+  pruneExpired();
   return store.size;
 }

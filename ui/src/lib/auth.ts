@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { createWebSocketAuthProtocol } from "../../../shared/websocket-auth";
 import { isTauriDesktopRuntime } from "./desktopHost";
 
 declare global {
@@ -181,20 +182,12 @@ export function clearApiAuthToken(): void {
   if (volatile) delete volatile.token;
 }
 
-export function appendApiTokenParam(
-  urlOrPath: string,
-  token = getApiAuthToken() || getQueryToken()
-): string {
-  // Callers hand this root-relative API paths destined for fetch/WebSocket;
-  // apply the gateway base path here so they stay prefix-agnostic.
-  const prefixed = urlOrPath.startsWith("/") ? withGatewayBasePath(urlOrPath) : urlOrPath;
-  if (!token) {
-    return prefixed;
-  }
-
-  const hasQuery = prefixed.includes("?");
-  const separator = hasQuery ? "&" : "?";
-  return `${prefixed}${separator}token=${encodeURIComponent(token)}`;
+export function createAuthenticatedWebSocket(url: string): WebSocket {
+  const authProtocol = createWebSocketAuthProtocol({
+    token: getApiAuthToken() || getQueryToken() || undefined,
+    password: getGatewayAccessPassword() || undefined,
+  });
+  return authProtocol ? new WebSocket(url, authProtocol) : new WebSocket(url);
 }
 
 export function withApiAuthHeaders(headers?: HeadersInit, token = getApiAuthToken()): Headers {

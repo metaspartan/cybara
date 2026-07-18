@@ -27,6 +27,13 @@ const DOWNLOAD_POLICY_OPTIONS: Array<{ value: BrowserDownloadPolicy; label: stri
   { value: "deny", label: "Block downloads" },
 ];
 
+const HEALTH_CHECK_OPTIONS = [
+  { value: "15000", label: "Every 15 seconds" },
+  { value: "30000", label: "Every 30 seconds" },
+  { value: "60000", label: "Every minute" },
+  { value: "300000", label: "Every 5 minutes" },
+];
+
 export function BrowserSupervisionSettings() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [status, setStatus] = useState<BrowserSupervisionStatus | null>(null);
@@ -97,6 +104,13 @@ export function BrowserSupervisionSettings() {
           onChange={(value) =>
             setSettings({ ...settings, downloadPolicy: value as BrowserDownloadPolicy })
           }
+        />
+        <Select
+          label="Health check interval"
+          value={String(settings.healthCheckIntervalMs)}
+          options={HEALTH_CHECK_OPTIONS}
+          disabled={loading || saving}
+          onChange={(value) => setSettings({ ...settings, healthCheckIntervalMs: Number(value) })}
         />
         <Switch
           label="Remote browser routing"

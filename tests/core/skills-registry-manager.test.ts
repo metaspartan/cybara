@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   SkillRegistryManager,
+  fetchRegistryResource,
   type RegistrySkill,
   type RegistryListResult,
   type SkillRegistry,
@@ -64,6 +65,20 @@ function createIsolatedManager(
 }
 
 describe("SkillRegistryManager aggregation", () => {
+  test("registry requests abort when their deadline expires", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () => new Promise<Response>(() => undefined),
+    });
+    try {
+      await expect(
+        fetchRegistryResource(`http://127.0.0.1:${server.port}/hang`, {}, 10)
+      ).rejects.toThrow();
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("searchAll dedupes by slug using default-registry priority", async () => {
     const alpha = makeFakeRegistry({
       name: "alpha",
@@ -190,5 +205,16 @@ describe("SkillRegistryManager aggregation", () => {
 
     expect(allowed.success).toBe(true);
     expect(typeof allowed.path).toBe("string");
+  });
+
+  test("install rejects registry slugs that can escape the skill directory", async () => {
+    const manager = createIsolatedManager("clawhub", [makeFakeRegistry({ name: "clawhub" })]);
+
+    for (const slug of ["../escape", "nested/escape", "nested\\escape", ".", "..", ""] as const) {
+      const result = await manager.install(slug, { registry: "clawhub" });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Invalid skill slug");
+      expect(result.path).toBeUndefined();
+    }
   });
 });

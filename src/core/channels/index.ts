@@ -72,3 +72,4 @@ export { synologyAdapter, SynologyAdapter } from "./adapters/synology";
 export { nextcloudAdapter, NextcloudAdapter } from "./adapters/nextcloud";
 export { zaloAdapter, ZaloAdapter } from "./adapters/zalo";
 export { webAdapter, WebAdapter } from "./adapters/web";
+export { webhookAdapter, WebhookAdapter } from "./adapters/webhook";

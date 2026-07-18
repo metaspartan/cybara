@@ -10,6 +10,7 @@ import {
   stopActiveChatTurn,
 } from "./api/chat";
 import { getClientIp } from "./api/client-ip";
+import { classifyRequestBodyReadFailure, readRequestText } from "./api/request-body";
 import { setGatewayHostApplyHandler } from "./api/gateway-network";
 import { gatewayRequestIdleTimeoutSeconds } from "./api/gateway-request-timeout";
 import { handleRequest } from "./api/routes";
@@ -51,6 +52,7 @@ import {
   telegramSessions,
   twitchAdapter,
   wecomAdapter,
+  webhookAdapter,
   whatsappAdapter,
   zaloAdapter,
   zulipAdapter,
@@ -95,6 +97,7 @@ import {
   handleMemorySearch,
 } from "./core/tools/handlers/memory";
 import { toolSchemas } from "./core/tools/index";
+import { parseWebSocketAuthProtocol } from "../shared/websocket-auth";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -368,6 +371,30 @@ function withOptionalQueryToken(headers: Record<string, string>, url: URL): Reco
   return headers;
 }
 
+function resolveStreamAuth(
+  headers: Record<string, string>,
+  url: URL
+): { headers: Record<string, string>; protocol?: string } {
+  const parsed = parseWebSocketAuthProtocol(
+    headers["sec-websocket-protocol"] || headers["Sec-WebSocket-Protocol"]
+  );
+  let resolved = headers;
+  if (parsed?.token && !resolved.authorization && !resolved.Authorization) {
+    resolved = { ...resolved, authorization: `Bearer ${parsed.token}` };
+  }
+  if (
+    parsed?.password &&
+    !resolved["x-cybara-gateway-password"] &&
+    !resolved["X-Cybara-Gateway-Password"]
+  ) {
+    resolved = { ...resolved, "x-cybara-gateway-password": parsed.password };
+  }
+  return {
+    headers: withOptionalQueryToken(resolved, url),
+    protocol: parsed?.protocol,
+  };
+}
+
 function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsData>> {
   process.env.CYBARA_RUNTIME_HOST = hostname;
   return Bun.serve<WsData>({
@@ -405,8 +432,8 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
       const clientIp = getClientIp(requestHeaders, directIp);
 
       if (pathname.startsWith("/api/terminal")) {
-        const terminalHeaders = withOptionalQueryToken(requestHeaders, url);
-        const security = securityCheck(req.method, pathname, terminalHeaders, clientIp);
+        const terminalAuth = resolveStreamAuth(requestHeaders, url);
+        const security = securityCheck(req.method, pathname, terminalAuth.headers, clientIp);
         if (!security.passed) {
           return new Response(JSON.stringify({ error: security.error }), {
             status: security.statusCode || 403,
@@ -439,6 +466,9 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
           const sessionId = url.searchParams.get("session") || crypto.randomUUID();
           const success = server.upgrade(req, {
             data: { kind: "terminal", sessionId },
+            headers: terminalAuth.protocol
+              ? { "Sec-WebSocket-Protocol": terminalAuth.protocol }
+              : undefined,
           });
           if (success) return undefined;
           return new Response("WebSocket upgrade failed", {
@@ -462,8 +492,8 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
       }
 
       if (pathname === "/api/ws/status") {
-        const statusHeaders = withOptionalQueryToken(requestHeaders, url);
-        const security = securityCheck(req.method, pathname, statusHeaders, clientIp);
+        const statusAuth = resolveStreamAuth(requestHeaders, url);
+        const security = securityCheck(req.method, pathname, statusAuth.headers, clientIp);
         if (!security.passed) {
           return new Response(JSON.stringify({ error: security.error }), {
             status: security.statusCode || 403,
@@ -475,7 +505,12 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
           });
         }
 
-        const success = server.upgrade(req, { data: { kind: "status" } });
+        const success = server.upgrade(req, {
+          data: { kind: "status" },
+          headers: statusAuth.protocol
+            ? { "Sec-WebSocket-Protocol": statusAuth.protocol }
+            : undefined,
+        });
         if (success) return undefined;
         return new Response("WebSocket upgrade failed", {
           status: 400,
@@ -547,23 +582,6 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
       }
 
       if (pathname.startsWith("/api/")) {
-        const contentLength = Number(req.headers.get("content-length") || "0");
-        if (pathname.startsWith("/api/plugins/") && contentLength > 48 * 1024 * 1024) {
-          return new Response(
-            JSON.stringify({
-              error: "Plugin bundle upload is too large",
-              code: "PAYLOAD_TOO_LARGE",
-              path: pathname,
-            }),
-            {
-              status: 413,
-              headers: {
-                "Content-Type": "application/json",
-                ...commonSecurityHeaders,
-              },
-            }
-          );
-        }
         let body: unknown;
         let rawBody: string | undefined;
         let malformedBody = false;
@@ -571,19 +589,20 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
           const needsRaw = pathname.endsWith("/webhook") || pathname.includes("/webhooks/");
           let text = "";
           try {
-            text = await req.text();
-          } catch {
-            text = "";
-          }
-          if (pathname.startsWith("/api/plugins/") && text.length > 48 * 1024 * 1024) {
+            const maxBodyBytes = pathname.startsWith("/api/plugins/")
+              ? 48 * 1024 * 1024
+              : 64 * 1024 * 1024;
+            text = await readRequestText(req, maxBodyBytes);
+          } catch (error) {
+            const failure = classifyRequestBodyReadFailure(error);
             return new Response(
               JSON.stringify({
-                error: "Plugin bundle upload is too large",
-                code: "PAYLOAD_TOO_LARGE",
+                error: failure.message,
+                code: failure.code,
                 path: pathname,
               }),
               {
-                status: 413,
+                status: failure.status,
                 headers: {
                   "Content-Type": "application/json",
                   ...commonSecurityHeaders,
@@ -1071,6 +1090,7 @@ feishuAdapter.setMessageHandler(createChannelChatHandler("feishu"));
 dingtalkAdapter.setMessageHandler(createChannelChatHandler("dingtalk"));
 wecomAdapter.setMessageHandler(createChannelChatHandler("wecom"));
 homeAssistantAdapter.setMessageHandler(createChannelChatHandler("homeassistant"));
+webhookAdapter.setMessageHandler(createChannelChatHandler("webhook"));
 zulipAdapter.setMessageHandler(createChannelChatHandler("zulip"));
 synologyAdapter.setMessageHandler(createChannelChatHandler("synology"));
 nextcloudAdapter.setMessageHandler(createChannelChatHandler("nextcloud"));

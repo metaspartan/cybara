@@ -50,6 +50,7 @@ export function getClientIp(
 ): string {
   const forwarded = forwardedClientIp(headers);
   if (shouldTrustProxy(options) && forwarded) {
+    if (isLoopbackIp(forwarded) && !isLoopbackIp(directIp)) return directIp || "0.0.0.0";
     return forwarded;
   }
 

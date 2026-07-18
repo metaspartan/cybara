@@ -3,29 +3,42 @@ import * as security from "../../src/api/security";
 import { createMobileDevice, resetMobileDeviceStoreForTests } from "../../src/core/mobile-devices";
 
 let previousApiKey: string | undefined;
+let previousLocalhostBypass: string | undefined;
 
 describe("API security module", () => {
   beforeAll(() => {
     previousApiKey = process.env.CYBARA_API_KEY;
+    previousLocalhostBypass = process.env.CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS;
     process.env.CYBARA_API_KEY = "cybara_test_key_for_security_suite";
+    delete process.env.CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS;
   });
 
   afterAll(() => {
     if (previousApiKey === undefined) {
       delete process.env.CYBARA_API_KEY;
-      return;
+    } else {
+      process.env.CYBARA_API_KEY = previousApiKey;
     }
-    process.env.CYBARA_API_KEY = previousApiKey;
+    if (previousLocalhostBypass === undefined) {
+      delete process.env.CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS;
+    } else {
+      process.env.CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS = previousLocalhostBypass;
+    }
   });
 
   afterEach(() => {
     security.resetSecuritySettingsForTests();
     resetMobileDeviceStoreForTests();
+    delete process.env.CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS;
   });
 
-  test("authenticateRequest allows localhost bypass for same-origin browser requests in dev", () => {
-    // Browser fetch/SSE send Sec-Fetch-Site: same-origin — that legit UI path
-    // is bypassed in dev.
+  test("authenticateRequest requires auth for localhost by default", () => {
+    const result = security.authenticateRequest({ "sec-fetch-site": "same-origin" }, "127.0.0.1");
+    expect(result.authenticated).toBe(false);
+  });
+
+  test("authenticateRequest allows an explicit development localhost bypass", () => {
+    process.env.CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS = "1";
     const result = security.authenticateRequest({ "sec-fetch-site": "same-origin" }, "127.0.0.1");
     expect(result.authenticated).toBe(true);
   });
@@ -60,6 +73,7 @@ describe("API security module", () => {
   });
 
   test("authenticateRequest keeps the bypass for genuine local Host headers", () => {
+    process.env.CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS = "1";
     for (const host of ["localhost:4269", "127.0.0.1:4269", "[::1]:4269", "localhost"]) {
       const result = security.authenticateRequest(
         { "sec-fetch-site": "same-origin", host },

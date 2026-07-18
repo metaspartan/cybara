@@ -18,6 +18,7 @@ import { chatMarkdownImageSrc } from "@/lib/chatImages";
 import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
 import { cn } from "@/lib/utils";
 import { openExternal } from "@/utils/openExternal";
+import { ChatImagePreview } from "./ChatImagePreview";
 import { MermaidCodeBlock } from "./MermaidCodeBlock";
 import { routeChatLink, type ChatLinkOpenOptions } from "./chatLinkRouting";
 
@@ -386,24 +387,15 @@ function MessageContentComponent({
             const imageSource = chatMarkdownImageSrc(source);
             if (!imageSource) return null;
             return (
-              <button
-                type="button"
-                onClick={() => onOpenImage?.(imageSource, alt || "Image")}
-                data-chat-lightbox-src={imageSource}
-                data-chat-lightbox-alt={alt || "Image"}
-                className="block my-2 cursor-zoom-in"
-                aria-label={`Open ${alt || "image"} preview`}
-              >
-                <img
-                  src={imageSource}
-                  alt={alt || "image"}
-                  loading="lazy"
-                  decoding="async"
-                  width={640}
-                  height={400}
-                  className="aspect-[16/10] max-h-80 w-full max-w-[640px] rounded-lg border border-white/12 object-contain"
-                />
-              </button>
+              <ChatImagePreview
+                source={imageSource}
+                alt={alt || "Image"}
+                width={640}
+                height={400}
+                className="aspect-[16/10] max-h-80 w-full max-w-[640px] rounded-lg border border-white/12 object-contain"
+                containerClassName="block my-2 cursor-zoom-in"
+                onOpen={(src, imageAlt) => onOpenImage?.(src, imageAlt)}
+              />
             );
           },
           blockquote: ({ children }) => (

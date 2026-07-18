@@ -126,6 +126,7 @@
   },
   "overrides": {
     "@discordjs/rest": "2.6.1",
+    "adm-zip": "0.6.0",
     "axios": "1.18.1",
     "basic-ftp": "5.3.1",
     "bn.js": "5.2.4",

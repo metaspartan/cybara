@@ -2,16 +2,27 @@ import { describe, expect, test } from "bun:test";
 import {
   parseSyncMessages,
   buildLoginBody,
+  isMatrixGroupRoom,
   sendEventPath,
   normalizeHomeserverUrl,
 } from "../../src/core/channels/matrix-sync";
 
 const SELF = "@bot:example.org";
 
-function syncWith(events: unknown[]): unknown {
+function syncWith(events: unknown[], joinedMemberCount?: number): unknown {
   return {
     next_batch: "s2",
-    rooms: { join: { "!room:example.org": { timeline: { events } } } },
+    rooms: {
+      join: {
+        "!room:example.org": {
+          summary:
+            typeof joinedMemberCount === "number"
+              ? { "m.joined_member_count": joinedMemberCount }
+              : undefined,
+          timeline: { events },
+        },
+      },
+    },
   };
 }
 
@@ -63,9 +74,59 @@ describe("matrix sync parsing", () => {
     expect(r.messages).toEqual([]);
   });
 
+  test("extracts direct room ids from account data", () => {
+    const sync = {
+      account_data: {
+        events: [
+          {
+            type: "m.direct",
+            content: {
+              "@alice:example.org": ["!dm:example.org"],
+              "@bob:example.org": ["!other:example.org", "!dm:example.org"],
+            },
+          },
+        ],
+      },
+    };
+    expect(parseSyncMessages(sync, SELF).directRoomIds?.sort()).toEqual([
+      "!dm:example.org",
+      "!other:example.org",
+    ]);
+  });
+
+  test("extracts joined member counts for direct-room fallback", () => {
+    const direct = parseSyncMessages(syncWith([], 2), SELF);
+    const group = parseSyncMessages(syncWith([], 5), SELF);
+
+    expect(direct.roomMemberCounts).toEqual({ "!room:example.org": 2 });
+    expect(group.roomMemberCounts).toEqual({ "!room:example.org": 5 });
+  });
+
+  test("classifies direct metadata and two-member fallbacks as direct rooms", () => {
+    expect(
+      isMatrixGroupRoom("!direct:example.org", new Set(["!direct:example.org"]), new Map())
+    ).toBe(false);
+    expect(
+      isMatrixGroupRoom("!fallback:example.org", new Set(), new Map([["!fallback:example.org", 2]]))
+    ).toBe(false);
+    expect(
+      isMatrixGroupRoom("!group:example.org", new Set(), new Map([["!group:example.org", 3]]))
+    ).toBe(true);
+  });
+
   test("handles empty/garbage sync", () => {
-    expect(parseSyncMessages(null, SELF)).toEqual({ nextBatch: null, messages: [] });
-    expect(parseSyncMessages({}, SELF)).toEqual({ nextBatch: null, messages: [] });
+    expect(parseSyncMessages(null, SELF)).toEqual({
+      nextBatch: null,
+      messages: [],
+      directRoomIds: null,
+      roomMemberCounts: {},
+    });
+    expect(parseSyncMessages({}, SELF)).toEqual({
+      nextBatch: null,
+      messages: [],
+      directRoomIds: null,
+      roomMemberCounts: {},
+    });
   });
 
   test("login body shape", () => {

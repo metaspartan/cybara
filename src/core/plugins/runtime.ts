@@ -2,9 +2,11 @@ import { existsSync, readFileSync } from "fs";
 import { isAbsolute, resolve, sep } from "path";
 import { registerAgentHook, type AgentHookDecision, type AgentHookEvent } from "../agent-hooks";
 import { mcpManager } from "../mcp";
+import { validatePublicHttpUrlShape } from "../outbound-url-policy";
 import { redactSecrets } from "../redaction";
 import { toolSchemas, type Tool, type ToolContext } from "../tools";
 import { registerToolHandler, unregisterToolHandler } from "../tools/handlers";
+import { buildSubprocessEnvironment } from "../subprocess-env";
 import type { InstalledCybaraPlugin } from "./types";
 import {
   registerPluginProviderContribution,
@@ -114,7 +116,7 @@ async function runPluginCommand(
       stdin: new Blob([JSON.stringify(redactSecrets(input))]),
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, CYBARA_PLUGIN_ID: plugin.manifest.id },
+      env: buildSubprocessEnvironment({ CYBARA_PLUGIN_ID: plugin.manifest.id }),
     }
   );
   const stdoutPromise = new Response(proc.stdout).text();
@@ -272,6 +274,13 @@ function activateProviders(plugin: InstalledCybaraPlugin, runtime: ActivePluginR
     const api =
       record?.api === "anthropic-compatible" ? "anthropic-compatible" : "openai-compatible";
     if (!id || !name || !baseUrl) throw new Error("Plugin providers require id, name, and baseUrl");
+    const allowPrivateEndpoint = record?.allowPrivateEndpoint === true;
+    if (!allowPrivateEndpoint) {
+      const validation = validatePublicHttpUrlShape(baseUrl);
+      if (!validation.valid) {
+        throw new Error(`Plugin provider endpoint is not public: ${validation.error}`);
+      }
+    }
     const key = `${plugin.manifest.id}:${id}`;
     registerPluginProviderContribution(key, {
       pluginId: plugin.manifest.id,
@@ -281,6 +290,7 @@ function activateProviders(plugin: InstalledCybaraPlugin, runtime: ActivePluginR
       baseUrl,
       api,
       authType: record?.authType === "none" ? "none" : "api-key",
+      allowPrivateEndpoint,
       models: stringArray(record?.models),
     });
     runtime.unregister.push(() => unregisterPluginProviderContribution(key));

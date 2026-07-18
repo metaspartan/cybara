@@ -91,6 +91,15 @@ describe("Web tool URL allowlist policy", () => {
     ).rejects.toThrow("Request blocked");
   });
 
+  test("browser navigation blocks link-local metadata destinations", async () => {
+    await expect(
+      validateBrowserNavigationUrl("http://169.254.169.254/latest/meta-data")
+    ).rejects.toThrow("Navigation blocked");
+    await expect(validateBrowserNavigationUrl("http://[fe80::1]/status")).rejects.toThrow(
+      "Navigation blocked"
+    );
+  });
+
   test("allows web_fetch for allowlisted hosts", async () => {
     config.setWebToolUrlPolicy({
       enabled: true,

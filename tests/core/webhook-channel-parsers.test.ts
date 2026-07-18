@@ -6,18 +6,35 @@ describe("Google Chat event parsing", () => {
   test("extracts a MESSAGE event", () => {
     const body = {
       type: "MESSAGE",
-      message: { text: "hello", sender: { name: "users/1" }, space: { name: "spaces/AAA" } },
+      message: {
+        text: "hello",
+        sender: { name: "users/1" },
+        space: { name: "spaces/AAA", type: "SPACE" },
+      },
     };
     expect(parseGoogleChatEvent(body)).toEqual({
       space: "spaces/AAA",
       sender: "users/1",
       text: "hello",
+      isGroup: true,
     });
   });
 
   test("falls back to top-level space", () => {
     const body = { type: "MESSAGE", message: { text: "hi" }, space: { name: "spaces/B" } };
     expect(parseGoogleChatEvent(body)?.space).toBe("spaces/B");
+  });
+
+  test("identifies direct-message spaces", () => {
+    const body = {
+      type: "MESSAGE",
+      message: {
+        text: "hello",
+        sender: { name: "users/1" },
+        space: { name: "spaces/DM", spaceType: "DIRECT_MESSAGE" },
+      },
+    };
+    expect(parseGoogleChatEvent(body)?.isGroup).toBe(false);
   });
 
   test("ignores non-MESSAGE and empty text", () => {

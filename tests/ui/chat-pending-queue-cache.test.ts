@@ -5,7 +5,10 @@ import {
   readCachedOptimisticPendingMessages,
   writeCachedOptimisticPendingMessages,
 } from "../../ui/src/pages/chat/pendingQueueCache";
-import { mergePendingChatMessages } from "../../ui/src/pages/chat/pendingQueueState";
+import {
+  materializedPendingChatIds,
+  mergePendingChatMessages,
+} from "../../ui/src/pages/chat/pendingQueueState";
 import type { PendingChatMessage } from "../../ui/src/lib/status-stream";
 
 function makeOptimistic(
@@ -122,5 +125,31 @@ describe("web optimistic pending queue cache", () => {
     const merged = mergePendingChatMessages([], [optimistic], { preserveOptimistic: false });
 
     expect(merged).toEqual([]);
+  });
+
+  test("keeps an acknowledged queued message visible until its transcript turn is materialized", () => {
+    const sessionId = `web-pending-handoff-${Date.now()}`;
+    const acknowledged: PendingChatMessage = {
+      id: "pending-server-handoff",
+      sessionId,
+      clientPendingId: "optimistic-handoff",
+      content: "keep this visible during handoff",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      mode: "queued",
+      sequence: 1,
+    };
+
+    const duringHandoff = mergePendingChatMessages([], [acknowledged], {
+      preserveAcknowledged: true,
+      materializedPendingIds: materializedPendingChatIds([]),
+    });
+    expect(duringHandoff).toEqual([acknowledged]);
+
+    const afterMaterialization = mergePendingChatMessages([], duringHandoff, {
+      preserveAcknowledged: true,
+      materializedPendingIds: materializedPendingChatIds([{ pending_chat_id: acknowledged.id }]),
+    });
+    expect(afterMaterialization).toEqual([]);
   });
 });

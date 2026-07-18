@@ -128,10 +128,8 @@ function isLocalBrowserHostname(value: string): boolean {
     hostname.startsWith("127.") ||
     hostname.startsWith("10.") ||
     hostname.startsWith("192.168.") ||
-    hostname.startsWith("169.254.") ||
     hostname.startsWith("fc") ||
-    hostname.startsWith("fd") ||
-    hostname.startsWith("fe80:")
+    hostname.startsWith("fd")
   ) {
     return true;
   }
@@ -158,14 +156,16 @@ export async function validateBrowserNavigationUrl(
   action: "Navigation" | "Request" = "Navigation"
 ): Promise<string> {
   const normalizedUrl = normalizeBrowserNavigationUrl(url);
-  if (action === "Navigation") return normalizedUrl;
+  if (action === "Navigation" && isLocalBrowserHostname(new URL(normalizedUrl).hostname)) {
+    return normalizedUrl;
+  }
 
   const urlValidation = await validateUrl(normalizedUrl);
   if (!urlValidation.valid) {
     throw new Error(`Validation error: ${action} blocked: ${urlValidation.error}`);
   }
 
-  enforceWebFetchAllowlist(normalizedUrl);
+  if (action === "Request") enforceWebFetchAllowlist(normalizedUrl);
   return normalizedUrl;
 }
 
@@ -302,18 +302,12 @@ export async function handleBrowser(
     case "createProfile": {
       const name = args.name as string;
       const color = args.color as string;
-      const executablePath = args.executablePath as string;
-      const headless = args.headless as boolean;
-      const userDataDir = args.userDataDir as string;
 
       if (!name) throw new Error("Profile name required");
 
       const profile = await profileManager.createProfile({
         name,
         color,
-        executablePath,
-        headless,
-        userDataDir,
       });
 
       return {

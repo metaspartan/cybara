@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { createRoutesFixture } from "./routes.fixture";
+import { revertSessionToMessage } from "../../src/api/chat-session-api";
+import { chatTurnMutex } from "../../src/api/chat-runtime-state";
 
 const fixture = createRoutesFixture();
 
@@ -271,6 +273,7 @@ describe("Tools API", () => {
     const workspaceDir = mkdtempSync(join(fixture.testHome, "tool-workspace-"));
     const outsideDir = mkdtempSync(join(fixture.testHome, "tool-outside-"));
     try {
+      await fixture.api("PUT", "/api/config", { tool_approval_mode: "always_allow" });
       const inside = join(workspaceDir, "notes.txt");
       const outside = join(outsideDir, "escape.txt");
 
@@ -290,6 +293,7 @@ describe("Tools API", () => {
       expect(outsideWrite.status).toBe(400);
       expect(String(outsideWrite.data.error || "")).toContain("outside the configured workspace");
     } finally {
+      await fixture.api("PUT", "/api/config", { tool_approval_mode: "ask" });
       rmSync(workspaceDir, { recursive: true, force: true });
       rmSync(outsideDir, { recursive: true, force: true });
     }
@@ -299,6 +303,7 @@ describe("Tools API", () => {
     const workspaceDir = mkdtempSync(join(fixture.testHome, "tool-symlink-workspace-"));
     const outsideDir = mkdtempSync(join(fixture.testHome, "tool-symlink-outside-"));
     try {
+      await fixture.api("PUT", "/api/config", { tool_approval_mode: "always_allow" });
       const outsideFile = join(outsideDir, "target.txt");
       const outsideFileLink = join(workspaceDir, "linked-target.txt");
       const outsideSubdir = join(outsideDir, "subdir");
@@ -329,6 +334,7 @@ describe("Tools API", () => {
         "outside the configured workspace"
       );
     } finally {
+      await fixture.api("PUT", "/api/config", { tool_approval_mode: "ask" });
       rmSync(workspaceDir, { recursive: true, force: true });
       rmSync(outsideDir, { recursive: true, force: true });
     }
@@ -792,7 +798,7 @@ describe("Session API", () => {
     expect(
       ((compactAssistant?.process_activities as Array<Record<string, unknown>> | undefined) || [])
         .length
-    ).toBeLessThanOrEqual(240);
+    ).toBe(processActivities.length);
     const compactTool = (
       compactAssistant?.tool_calls as Array<Record<string, unknown>> | undefined
     )?.[0];
@@ -1013,6 +1019,30 @@ describe("Session API", () => {
       expect(reloaded.status).toBe(200);
       expect(reloaded.data.messagesList[0]?.content).toBe(longUserContent);
     } finally {
+      fixture.deleteRawSession(sessionId);
+    }
+  });
+
+  test("revert rejects while the session has an active turn", async () => {
+    const sessionId = `revert-active-${Date.now()}`;
+    const agentId = `revert-active-agent-${Date.now()}`;
+    fixture.insertRawSession(sessionId, agentId, [{ role: "user", content: "Keep this" }]);
+    let release: (() => void) | undefined;
+    const activeTurn = chatTurnMutex.run(
+      sessionId,
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        })
+    );
+    await Bun.sleep(0);
+    try {
+      await expect(revertSessionToMessage(sessionId, 0)).rejects.toThrow(
+        "while a chat turn is active"
+      );
+    } finally {
+      release?.();
+      await activeTurn;
       fixture.deleteRawSession(sessionId);
     }
   });

@@ -8,6 +8,7 @@ import { config } from "../config";
 
 const MEMORY_FILE = "MEMORY.md";
 const MEMORY_PATH = join(memoryDir, MEMORY_FILE);
+let durableSaveQueue: Promise<void> = Promise.resolve();
 
 export interface DurableMemoryEntry {
   category: "preference" | "decision" | "convention" | "goal" | "fact";
@@ -59,12 +60,13 @@ export function parseDurableMemory(): DurableMemoryEntry[] {
   return entries;
 }
 
-export async function saveDurableMemory(entry: Omit<DurableMemoryEntry, "timestamp">): Promise<{
+async function performDurableMemorySave(entry: Omit<DurableMemoryEntry, "timestamp">): Promise<{
   success: boolean;
   path: string;
   indexed: boolean;
 }> {
   initDurableMemory();
+  const previousContent = readFileSync(MEMORY_PATH, "utf-8");
 
   const timestamp = new Date().toISOString().replace("T", " ").split(".")[0];
   const sourceStr = entry.source ? ` from ${entry.source}` : "";
@@ -78,8 +80,20 @@ export async function saveDurableMemory(entry: Omit<DurableMemoryEntry, "timesta
   try {
     const vectorStore = getVectorStore();
     await vectorStore.ensureReady();
-    const fullContent = readFileSync(MEMORY_PATH, "utf-8");
-    const chunks = await vectorStore.indexFile(`memory/${MEMORY_FILE}`, fullContent, "memory");
+    const lineOffset = previousContent.match(/\n/g)?.length ?? 0;
+    const appended = await vectorStore.appendFileContent(
+      `memory/${MEMORY_FILE}`,
+      entryText,
+      lineOffset,
+      "memory"
+    );
+    const chunks =
+      appended ??
+      (await vectorStore.indexFile(
+        `memory/${MEMORY_FILE}`,
+        readFileSync(MEMORY_PATH, "utf-8"),
+        "memory"
+      ));
     indexed = chunks > 0;
   } catch (error) {
     console.warn("[Memory] Failed to index MEMORY.md:", error);
@@ -92,6 +106,19 @@ export async function saveDurableMemory(entry: Omit<DurableMemoryEntry, "timesta
     path: MEMORY_PATH,
     indexed,
   };
+}
+
+export function saveDurableMemory(entry: Omit<DurableMemoryEntry, "timestamp">): Promise<{
+  success: boolean;
+  path: string;
+  indexed: boolean;
+}> {
+  const save = durableSaveQueue.then(() => performDurableMemorySave(entry));
+  durableSaveQueue = save.then(
+    () => undefined,
+    () => undefined
+  );
+  return save;
 }
 
 async function mirrorToExternalProvider(

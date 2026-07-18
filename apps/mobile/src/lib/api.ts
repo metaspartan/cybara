@@ -1008,10 +1008,13 @@ export class CybaraMobileApi {
     });
   }
 
-  providerOAuthCallbackStatus(state: string): Promise<ProviderOAuthPollResponse> {
+  providerOAuthCallbackStatus(
+    state: string,
+    pollToken: string
+  ): Promise<ProviderOAuthPollResponse> {
     return this.request<ProviderOAuthPollResponse>("/api/providers/oauth/callback-status", {
       method: "POST",
-      body: JSON.stringify({ state }),
+      body: JSON.stringify({ state, poll_token: pollToken }),
     });
   }
 

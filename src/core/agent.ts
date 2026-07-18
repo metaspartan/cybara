@@ -1150,10 +1150,11 @@ class AgentManager extends AgentProviderRuntime {
   private buildToolExecutionContext(agent: Agent, options?: AgentExecutionOptions): ToolContext {
     const permissions = this.getAgentToolPermissions(agent);
     const toolPolicy = resolveAgentToolPolicy(agent, options?.allowedToolNames);
+    const workspaceDir = options?.workspaceDir?.trim() || config.getDefaultWorkspaceDir();
     return {
       agentId: agent.id,
       sessionId: options?.sessionId,
-      workspaceDir: options?.workspaceDir,
+      workspaceDir,
       channel: options?.channel,
       userId: options?.userId,
       permissions: permissions.permissions,
@@ -1166,8 +1167,7 @@ class AgentManager extends AgentProviderRuntime {
       allowedToolNames: toolPolicy.allowedToolNames,
       allowDynamicTools: toolPolicy.allowDynamicTools,
       abortSignal: options?.abortSignal,
-      confineToWorkspace:
-        typeof options?.workspaceDir === "string" && options.workspaceDir.trim().length > 0,
+      confineToWorkspace: true,
       consumeSteeringMessages: options?.consumeSteeringMessages,
       executionState: { toolCallsStarted: 0 },
     };

@@ -1,3 +1,5 @@
+import { validateUrl } from "../api/security";
+
 export interface McpRpcResult {
   result?: unknown;
   error?: { code?: number; message?: string };
@@ -59,6 +61,10 @@ export async function refreshMcpOAuthCredential(
   credential: McpOAuthCredential
 ): Promise<McpOAuthCredential> {
   if (!credential.refreshToken) throw new Error("MCP authorization has expired");
+  const validation = await validateUrl(credential.tokenEndpoint);
+  if (!validation.valid) {
+    throw new Error(`MCP authorization endpoint blocked: ${validation.error || "unsafe URL"}`);
+  }
   const response = await fetch(credential.tokenEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },

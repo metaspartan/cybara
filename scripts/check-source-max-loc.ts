@@ -17,9 +17,10 @@ const skippedDirectories = new Set([".build", ".git", "build", "dist", "node_mod
 
 async function collectSourceFiles(root: string): Promise<string[]> {
   const files: string[] = [];
-  for await (const path of sourceGlob.scan({ cwd: root, onlyFiles: true })) {
-    if (path.split("/").some((segment) => skippedDirectories.has(segment))) continue;
-    files.push(`${root}/${path}`);
+  for await (const scannedPath of sourceGlob.scan({ cwd: root, onlyFiles: true })) {
+    const normalizedPath = scannedPath.replaceAll("\\", "/");
+    if (normalizedPath.split("/").some((segment) => skippedDirectories.has(segment))) continue;
+    files.push(`${root}/${normalizedPath}`);
   }
   return files;
 }
@@ -33,11 +34,18 @@ async function countLines(path: string): Promise<number> {
 const maxLines = parseMaxArg(5000);
 const roots = ["src", "ui/src", "tests", "apps", "shared", "scripts", "site/src"];
 const LOC_EXCEPTIONS: ReadonlySet<string> = new Set<string>([]);
+const READ_BATCH_SIZE = 64;
 
 const files = (await Promise.all(roots.map(collectSourceFiles))).flat();
-const stats: FileStat[] = await Promise.all(
-  files.map(async (path): Promise<FileStat> => ({ path, lines: await countLines(path) }))
-);
+const stats: FileStat[] = [];
+for (let offset = 0; offset < files.length; offset += READ_BATCH_SIZE) {
+  const batch = files.slice(offset, offset + READ_BATCH_SIZE);
+  stats.push(
+    ...(await Promise.all(
+      batch.map(async (path): Promise<FileStat> => ({ path, lines: await countLines(path) }))
+    ))
+  );
+}
 const offenders = stats
   .filter((stat) => stat.lines > maxLines)
   .filter((stat) => !LOC_EXCEPTIONS.has(stat.path))

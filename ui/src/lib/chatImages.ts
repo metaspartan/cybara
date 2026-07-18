@@ -1,4 +1,9 @@
-import { withGatewayBasePath } from "@/lib/auth";
+import { apiFetch, withGatewayBasePath } from "@/lib/auth";
+import {
+  loadAuthenticatedMediaSource,
+  type LoadedAuthenticatedMediaSource,
+  requiresAuthenticatedMediaFetch,
+} from "@/lib/authenticatedMedia";
 import type { ChatImageAttachment } from "@/types";
 
 export const MAX_CHAT_IMAGES = 8;
@@ -49,6 +54,28 @@ export function chatMarkdownImageSrc(source: string): string | null {
   } catch {
     return null;
   }
+}
+
+export type LoadedChatImageSource = LoadedAuthenticatedMediaSource;
+
+export function requiresAuthenticatedImageFetch(source: string): boolean {
+  return requiresAuthenticatedMediaFetch(source);
+}
+
+export async function loadChatImageSource(
+  source: string,
+  fetcher: typeof apiFetch = apiFetch,
+  createObjectUrl: (blob: Blob) => string = URL.createObjectURL,
+  revokeObjectUrl: (url: string) => void = URL.revokeObjectURL
+): Promise<LoadedChatImageSource> {
+  return loadAuthenticatedMediaSource(
+    source,
+    "image/",
+    fetcher,
+    createObjectUrl,
+    revokeObjectUrl,
+    "Image"
+  );
 }
 
 export function chatMarkdownImageSources(content: string): string[] {

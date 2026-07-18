@@ -1,4 +1,4 @@
-import { existsSync, statSync, readFileSync } from "fs";
+import { existsSync, statSync, readFileSync, realpathSync } from "fs";
 import { resolve, sep, extname, isAbsolute } from "path";
 import { cybaraDir } from "../paths";
 
@@ -50,7 +50,15 @@ export function resolveMediaFile(relPath: string): MediaFileResult {
     return { status: 404, error: "not found" };
 
   try {
-    return { status: 200, contentType, bytes: readFileSync(target) };
+    const realTarget = realpathSync.native(target);
+    const realRoots = roots.map((root) =>
+      existsSync(root) ? realpathSync.native(root) : resolve(root)
+    );
+    const realContained = realRoots.some(
+      (root) => realTarget === root || realTarget.startsWith(root + sep)
+    );
+    if (!realContained) return { status: 403, error: "forbidden" };
+    return { status: 200, contentType, bytes: readFileSync(realTarget) };
   } catch {
     return { status: 500, error: "read error" };
   }

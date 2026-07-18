@@ -11,6 +11,7 @@ import { sanitizeAssistantContent } from "./llm/text-tool-calls";
 import { createLogger } from "./logger";
 import { providerManager, providers } from "./providers";
 import { capSessionMessageMetadata } from "./session-message-metadata";
+import { clearSessionEventLedger } from "./session-event-ledger";
 import { deriveSessionTitleFromMessages, normalizeSessionTitle } from "./session-title";
 
 const log = createLogger("Session");
@@ -43,6 +44,8 @@ type SessionMessageMetadata = Partial<
     | "agent_transfers"
     | "run_id"
     | "interrupted"
+    | "pending_chat_id"
+    | "client_pending_id"
   >
 >;
 
@@ -91,6 +94,12 @@ function serializeSessionMessageMetadata(
   }
   if (message.interrupted === true) {
     metadata.interrupted = true;
+  }
+  if (typeof message.pending_chat_id === "string" && message.pending_chat_id.trim()) {
+    metadata.pending_chat_id = message.pending_chat_id.trim();
+  }
+  if (typeof message.client_pending_id === "string" && message.client_pending_id.trim()) {
+    metadata.client_pending_id = message.client_pending_id.trim();
   }
   return Object.keys(metadata).length > 0
     ? capSessionMessageMetadata(JSON.stringify(metadata))
@@ -1232,6 +1241,8 @@ export async function setPersistedSessionPinned(
 
 export async function deletePersistedSession(sessionId: string): Promise<boolean> {
   try {
+    clearSessionEventLedger(sessionId);
+    db.prepare("DELETE FROM pending_chat_messages WHERE session_id = ?").run(sessionId);
     db.prepare("DELETE FROM session_messages WHERE session_id = ?").run(sessionId);
 
     db.prepare("DELETE FROM chat_sessions WHERE id = ?").run(sessionId);

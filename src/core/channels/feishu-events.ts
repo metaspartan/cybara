@@ -5,6 +5,7 @@ export interface FeishuInbound {
   senderId: string;
   messageType: string;
   text: string;
+  isGroup: boolean;
 }
 
 export function decryptFeishuEvent(encrypt: string, encryptKey: string): unknown {
@@ -45,7 +46,12 @@ export function parseFeishuMessage(body: unknown): FeishuInbound | null {
   const b = body as {
     header?: { event_type?: string };
     event?: {
-      message?: { chat_id?: string; message_type?: string; content?: string };
+      message?: {
+        chat_id?: string;
+        chat_type?: string;
+        message_type?: string;
+        content?: string;
+      };
       sender?: { sender_id?: { open_id?: string; user_id?: string; union_id?: string } };
     };
   };
@@ -65,5 +71,11 @@ export function parseFeishuMessage(body: unknown): FeishuInbound | null {
   if (!text) return null;
   const sid = b.event?.sender?.sender_id;
   const senderId = sid?.open_id || sid?.user_id || sid?.union_id || "";
-  return { chatId: message.chat_id || "", senderId, messageType, text };
+  return {
+    chatId: message.chat_id || "",
+    senderId,
+    messageType,
+    text,
+    isGroup: message.chat_type !== "p2p",
+  };
 }

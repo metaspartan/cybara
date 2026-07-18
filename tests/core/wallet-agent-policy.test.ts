@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { assertRecipientAllowed, assertAmountWithinCap } from "../../src/core/wallet-policy";
-
-// Pure unit tests for the agent fund-movement guards. These live in a dedicated
-// module so they are unit-testable in isolation and immune to the global
-// `mock.module` the wallet-tool-handler test installs.
+import {
+  assertAmountWithinCap,
+  assertRecipientAllowed,
+  assertSendWithinPolicy,
+} from "../../src/core/wallet-policy";
 
 const ALLOW = "0x1111111111111111111111111111111111111111";
 const OTHER = "0x9999999999999999999999999999999999999999";
@@ -30,10 +30,19 @@ describe("wallet-policy: recipient allowlist", () => {
     ).not.toThrow();
   });
 
-  test("empty allowlist means no recipient restriction", () => {
+  test("empty allowlist blocks external recipients", () => {
     expect(() =>
       assertRecipientAllowed(OTHER, { allowedSendRecipients: [], maxSendAmount: "" })
-    ).not.toThrow();
+    ).toThrow(/allowlist/i);
+  });
+
+  test("combined send policy blocks an empty recipient allowlist", () => {
+    expect(() =>
+      assertSendWithinPolicy(OTHER, "0.01", {
+        allowedSendRecipients: [],
+        maxSendAmount: "",
+      })
+    ).toThrow(/allowlist/i);
   });
 });
 

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { appendApiTokenParam } from "@/lib/auth";
+import { chatApi } from "@/lib/api";
 import type { ArtifactSummaryView } from "./chatModel";
 
 interface ArtifactViewerState {
@@ -11,12 +11,6 @@ interface ArtifactViewerState {
   rawView: boolean;
   setRawView: React.Dispatch<React.SetStateAction<boolean>>;
   target: ArtifactSummaryView | null;
-}
-
-interface ArtifactResponse {
-  artifact?: { path?: string };
-  content?: string;
-  error?: string;
 }
 
 export function useArtifactViewer(): ArtifactViewerState {
@@ -34,28 +28,22 @@ export function useArtifactViewer(): ArtifactViewerState {
     setRawView(false);
 
     try {
-      const url = appendApiTokenParam(
-        `/api/sessions/${encodeURIComponent(artifact.sessionId)}/artifacts/${encodeURIComponent(artifact.fileName)}`
-      );
-      const response = await fetch(url);
-      const payload = (await response.json()) as ArtifactResponse;
-
-      if (!response.ok) {
-        throw new Error(
-          typeof payload.error === "string"
-            ? payload.error
-            : `Failed to load artifact (${response.status})`
-        );
+      const response = await chatApi.readSessionArtifact(artifact.sessionId, artifact.fileName);
+      if (!response.success || !response.data) {
+        throw new Error(response.error || "Failed to load artifact");
       }
-      if (typeof payload.content !== "string") {
+      if (typeof response.data.content !== "string") {
         throw new Error("Artifact response did not include content");
       }
 
       setTarget((previous) => ({
         ...(previous ?? artifact),
-        path: typeof payload.artifact?.path === "string" ? payload.artifact.path : previous?.path,
+        path:
+          typeof response.data?.artifact.path === "string"
+            ? response.data.artifact.path
+            : previous?.path,
       }));
-      setContent(payload.content);
+      setContent(response.data.content);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load artifact");
       setContent("");

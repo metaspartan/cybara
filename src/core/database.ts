@@ -191,6 +191,19 @@ try {
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS pending_chat_messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    client_pending_id TEXT,
+    request_json TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    mode TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    materialized INTEGER NOT NULL DEFAULT 0
+  );
+
   -- Chat memory (TOON format - Tools, Objects, Operators, Narratives)
   CREATE TABLE IF NOT EXISTS chat_memory (
     id TEXT PRIMARY KEY,
@@ -367,6 +380,7 @@ try {
   CREATE INDEX IF NOT EXISTS idx_session_messages_created ON session_messages(created_at);
   CREATE INDEX IF NOT EXISTS idx_session_events_session_sequence ON session_events(session_id, sequence);
   CREATE INDEX IF NOT EXISTS idx_session_events_run_sequence ON session_events(run_id, sequence);
+  CREATE INDEX IF NOT EXISTS idx_pending_chat_messages_session_sequence ON pending_chat_messages(session_id, sequence);
   CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level);
   CREATE INDEX IF NOT EXISTS idx_system_logs_source ON system_logs(source);
   CREATE INDEX IF NOT EXISTS idx_system_logs_created ON system_logs(created_at);
@@ -618,6 +632,19 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS pending_chat_messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    client_pending_id TEXT,
+    request_json TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    mode TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    materialized INTEGER NOT NULL DEFAULT 0
+  );
+
   -- Chat memory (TOON format - Tools, Objects, Operators, Narratives)
   CREATE TABLE IF NOT EXISTS chat_memory (
     id TEXT PRIMARY KEY,
@@ -634,6 +661,7 @@ db.exec("DELETE FROM agent_eval_runs WHERE golden_id NOT IN (SELECT id FROM agen
 
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_chat_sessions_agent ON chat_sessions(agent_id);
+  CREATE INDEX IF NOT EXISTS idx_pending_chat_messages_session_sequence ON pending_chat_messages(session_id, sequence);
   CREATE INDEX IF NOT EXISTS idx_chat_memory_session ON chat_memory(session_id);
   CREATE INDEX IF NOT EXISTS idx_agent_trajectories_session ON agent_trajectories(session_id, turn_index);
   CREATE INDEX IF NOT EXISTS idx_agent_benchmark_runs_created ON agent_benchmark_runs(created_at DESC);

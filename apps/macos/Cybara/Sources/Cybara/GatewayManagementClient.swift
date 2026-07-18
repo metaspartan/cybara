@@ -146,8 +146,10 @@ extension GatewayClient {
         return try JSONDecoder().decode(GatewayOAuthStartResponse.self, from: data)
     }
 
-    func providerOAuthCallbackStatus(state: String) async throws -> GatewayOAuthPollResponse {
-        let body = try JSONSerialization.data(withJSONObject: ["state": state])
+    func providerOAuthCallbackStatus(state: String, pollToken: String) async throws -> GatewayOAuthPollResponse {
+        let body = try JSONSerialization.data(
+            withJSONObject: ["state": state, "poll_token": pollToken]
+        )
         let data = try await request("api/providers/oauth/callback-status", method: "POST", body: body)
         return try JSONDecoder().decode(GatewayOAuthPollResponse.self, from: data)
     }

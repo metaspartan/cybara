@@ -121,7 +121,6 @@ try {
   check("saveJobs/loadJobs round-trip count", reloaded.length === roundtrip.length);
   check("saveJobs/loadJobs round-trip ids", JSON.stringify(reloaded.map((x) => x.id).sort()) === JSON.stringify(roundtrip.map((x) => x.id).sort()));
 
-  // Corrupt JSON -> loadJobs returns [] not throw.
   const cronDir = join(homedir(), ".cybara", "cron");
   mkdirSync(cronDir, { recursive: true });
   writeFileSync(join(cronDir, "jobs.json"), "{ this is not valid json ][", "utf-8");
@@ -133,11 +132,11 @@ try {
     corruptThrew = true;
   }
   check("corrupt jobs.json does not throw", corruptThrew === false);
-  check("corrupt jobs.json returns []", Array.isArray(corruptResult) && corruptResult.length === 0);
+  check("corrupt jobs.json recovers backup", Array.isArray(corruptResult) && corruptResult.length === roundtrip.length);
 
   // jobs.json with missing jobs array -> [].
   writeFileSync(join(cronDir, "jobs.json"), JSON.stringify({ version: 1 }), "utf-8");
-  check("jobs.json missing jobs -> []", loadJobs().length === 0);
+  check("jobs.json missing jobs recovers backup", loadJobs().length === roundtrip.length);
 
   // Run logs save/load round-trip + filtering + cap.
   saveRunLogs([]);
@@ -149,12 +148,11 @@ try {
   check("getRunLogs filters by jobId", getRunLogs("A").length === 1 && getRunLogs("A")[0].runId === "r1");
   check("getRunLogs empty for unknown", getRunLogs("Z").length === 0);
 
-  // Corrupt runs.json -> [].
   writeFileSync(join(cronDir, "runs.json"), "not json", "utf-8");
   let runsCorruptThrew = false;
   try { loadRunLogs(); } catch { runsCorruptThrew = true; }
   check("corrupt runs.json does not throw", runsCorruptThrew === false);
-  check("corrupt runs.json returns []", loadRunLogs().length === 0);
+  check("corrupt runs.json recovers backup", loadRunLogs().length === 1);
 
   // MAX_RUN_LOGS cap = 100 (slice(-100) on save).
   const many = [];
@@ -165,7 +163,7 @@ try {
   check("run logs cap keeps most recent (tail)", capped[capped.length - 1].runId === "r249" && capped[0].runId === "r150");
 
   // ---- computeNextRun fuzz ----
-  const fuzz = { atMonotonic: true, everyStrictlyFuture: true, everyAlignedToAnchor: true, invalidEveryFallback: true, cronMonotonic: true, cronFallback: true, noCrash: true, crashDetail: null };
+  const fuzz = { atMonotonic: true, everyStrictlyFuture: true, everyAlignedToAnchor: true, invalidEveryRejected: true, cronMonotonic: true, invalidCronRejected: true, noUnexpectedResult: true, unexpectedDetail: null };
 
   // 'at' schedule: future returns exact, past/equal returns fromMs (documented behavior).
   for (let i = 0; i < 400; i++) {
@@ -184,20 +182,20 @@ try {
     const anchorMs = useAnchor ? from - randInt(10_000_000_000) : undefined;
     const sched = useAnchor ? { kind: "every", everyMs, anchorMs } : { kind: "every", everyMs };
     const next = computeNextRun(sched, from);
-    // Result must be >= from (never in the past).
-    if (next < from) fuzz.everyStrictlyFuture = false;
+    if (next <= from) fuzz.everyStrictlyFuture = false;
     // Result must be aligned to the anchor grid.
     const anchor = anchorMs ?? from;
     if ((next - anchor) % everyMs !== 0) fuzz.everyAlignedToAnchor = false;
   }
 
-  // Invalid / non-positive interval -> fromMs + 60000.
   for (const bad of [0, -1, -60000, -999999]) {
     const from = 1_700_000_000_000;
-    if (computeNextRun({ kind: "every", everyMs: bad }, from) !== from + 60000) fuzz.invalidEveryFallback = false;
+    try {
+      computeNextRun({ kind: "every", everyMs: bad }, from);
+      fuzz.invalidEveryRejected = false;
+    } catch {}
   }
 
-  // 'cron' schedule: valid expressions strictly future; invalid -> fallback +60000.
   const validExprs = ["* * * * *", "0 0 * * *", "*/5 * * * *", "0 9 * * mon-fri", "30 14 1 * *", "0 0 1 1 *", "15,45 * * * *"];
   for (let i = 0; i < 200; i++) {
     const from = 1_700_000_000_000 + randInt(2_000_000_000);
@@ -208,7 +206,10 @@ try {
   const invalidExprs = ["", "* * *", "not a cron", "99 * * * *", "* * * * * *", "a b c d e", "*/0 * * * *"];
   for (const expr of invalidExprs) {
     const from = 1_700_000_000_000;
-    if (computeNextRun({ kind: "cron", expr }, from) !== from + 60000) fuzz.cronFallback = false;
+    try {
+      computeNextRun({ kind: "cron", expr }, from);
+      fuzz.invalidCronRejected = false;
+    } catch {}
   }
 
   // Broad random-schedule crash resistance across all kinds and junk.
@@ -223,10 +224,12 @@ try {
     else sched = { kind: "bogus", junk: rand() };
     try {
       const r = computeNextRun(sched, from);
-      if (typeof r !== "number" || Number.isNaN(r)) { fuzz.noCrash = false; fuzz.crashDetail = "non-number for " + JSON.stringify(sched); }
+      if (typeof r !== "number" || !Number.isFinite(r)) { fuzz.noUnexpectedResult = false; fuzz.unexpectedDetail = "non-finite result for " + JSON.stringify(sched); }
     } catch (e) {
-      fuzz.noCrash = false;
-      fuzz.crashDetail = "threw for " + JSON.stringify(sched) + ": " + (e && e.message);
+      if (k === "at" || (k === "every" && sched.everyMs > 0) || (k === "cron" && validExprs.includes(sched.expr))) {
+        fuzz.noUnexpectedResult = false;
+        fuzz.unexpectedDetail = "unexpected throw for " + JSON.stringify(sched) + ": " + (e && e.message);
+      }
     }
   }
 
@@ -246,11 +249,11 @@ interface FuzzResult {
   atMonotonic: boolean;
   everyStrictlyFuture: boolean;
   everyAlignedToAnchor: boolean;
-  invalidEveryFallback: boolean;
+  invalidEveryRejected: boolean;
   cronMonotonic: boolean;
-  cronFallback: boolean;
-  noCrash: boolean;
-  crashDetail: string | null;
+  invalidCronRejected: boolean;
+  noUnexpectedResult: boolean;
+  unexpectedDetail: string | null;
 }
 interface WorkerResult {
   assertions: Assertion[];
@@ -311,17 +314,17 @@ describe("computeNextRun fuzz (pure)", () => {
   test("'every' schedule aligns to the anchor grid", () => {
     expect(result.fuzz.everyAlignedToAnchor).toBe(true);
   });
-  test("non-positive interval falls back to +60s", () => {
-    expect(result.fuzz.invalidEveryFallback).toBe(true);
+  test("non-positive interval is rejected", () => {
+    expect(result.fuzz.invalidEveryRejected).toBe(true);
   });
   test("valid cron expressions return a strictly future time", () => {
     expect(result.fuzz.cronMonotonic).toBe(true);
   });
-  test("invalid cron expressions fall back to +60s (no throw)", () => {
-    expect(result.fuzz.cronFallback).toBe(true);
+  test("invalid cron expressions are rejected", () => {
+    expect(result.fuzz.invalidCronRejected).toBe(true);
   });
-  test("no random schedule crashes computeNextRun", () => {
-    expect(result.fuzz.crashDetail).toBeNull();
-    expect(result.fuzz.noCrash).toBe(true);
+  test("random schedules either produce a finite result or reject invalid input", () => {
+    expect(result.fuzz.unexpectedDetail).toBeNull();
+    expect(result.fuzz.noUnexpectedResult).toBe(true);
   });
 });

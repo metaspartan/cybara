@@ -3,6 +3,7 @@ import { tables } from "../../src/core/database";
 import {
   appendBufferedAssistantDelta,
   appendSessionEvent,
+  clearSessionEventLedger,
   completeSessionRun,
   ensureSessionRunId,
   flushBufferedAssistantDeltas,
@@ -111,5 +112,18 @@ describe("session event ledger", () => {
     expect(listRunEvents(runId).filter((event) => event.type === "assistant_delta")).toHaveLength(
       1
     );
+  });
+
+  test("clears persisted and buffered events without allowing delayed resurrection", async () => {
+    const sessionId = createSession();
+    const runId = ensureSessionRunId(sessionId);
+    appendSessionEvent({ sessionId, runId, type: "run_started", payload: {} });
+    appendBufferedAssistantDelta({ sessionId, runId, delta: "pending", timestamp: 1000 });
+
+    clearSessionEventLedger(sessionId);
+    await Bun.sleep(300);
+
+    expect(listSessionEvents(sessionId)).toEqual([]);
+    expect(latestSessionEventSequence(sessionId)).toBe(0);
   });
 });

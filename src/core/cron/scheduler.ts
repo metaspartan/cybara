@@ -10,6 +10,7 @@ import {
 } from "./store";
 
 const jobTimers = new Map<string, NodeJS.Timeout>();
+const activeRuns = new Map<string, Promise<CronRunLog>>();
 
 type WakeHandler = (text: string) => Promise<void>;
 let wakeHandler: WakeHandler | null = null;
@@ -28,9 +29,13 @@ export function setAgentHandler(handler: AgentHandler): void {
 export function startScheduler(): void {
   console.log("[Cron] Starting scheduler...");
 
-  const jobs = listJobs(false); // Only enabled jobs
+  const jobs = listJobs(false);
   for (const job of jobs) {
-    scheduleJob(job);
+    try {
+      scheduleJob(job);
+    } catch (error) {
+      console.error(`[Cron] Unable to schedule job ${job.id}:`, error);
+    }
   }
 
   console.log(`[Cron] Scheduled ${jobs.length} jobs`);
@@ -74,7 +79,7 @@ export function scheduleJob(job: CronJob): void {
   jobTimers.set(job.id, timer);
 }
 
-export async function runJob(jobId: string): Promise<CronRunLog> {
+async function executeJob(jobId: string): Promise<CronRunLog> {
   const job = getJob(jobId);
   if (!job) {
     throw new Error(`Job not found: ${jobId}`);
@@ -90,7 +95,7 @@ export async function runJob(jobId: string): Promise<CronRunLog> {
     status: "running",
   };
 
-  job.state.runningAtMs = startedAtMs;
+  updateJobState(jobId, { runningAtMs: startedAtMs });
 
   try {
     if (job.payload.kind === "systemEvent") {
@@ -115,11 +120,6 @@ export async function runJob(jobId: string): Promise<CronRunLog> {
     runLog.status = "ok";
     runLog.durationMs = completedAtMs - startedAtMs;
 
-    job.state.lastRunAtMs = completedAtMs;
-    job.state.lastStatus = "ok";
-    job.state.lastDurationMs = runLog.durationMs;
-    job.state.runningAtMs = undefined;
-
     console.log(`[Cron] Job ${jobId} completed in ${runLog.durationMs}ms`);
   } catch (error) {
     const completedAtMs = Date.now();
@@ -128,16 +128,16 @@ export async function runJob(jobId: string): Promise<CronRunLog> {
     runLog.error = (error as Error).message;
     runLog.durationMs = completedAtMs - startedAtMs;
 
-    job.state.lastRunAtMs = completedAtMs;
-    job.state.lastStatus = "error";
-    job.state.lastError = runLog.error;
-    job.state.lastDurationMs = runLog.durationMs;
-    job.state.runningAtMs = undefined;
-
     console.error(`[Cron] Job ${jobId} failed:`, error);
   }
 
-  if (job.deleteAfterRun && job.schedule.kind === "at") {
+  const current = getJob(jobId);
+  if (!current) {
+    addRunLog(runLog);
+    return runLog;
+  }
+
+  if (current.deleteAfterRun && current.schedule.kind === "at") {
     const jobs = loadJobs();
     const index = jobs.findIndex((j) => j.id === jobId);
     if (index !== -1) {
@@ -147,23 +147,48 @@ export async function runJob(jobId: string): Promise<CronRunLog> {
     jobTimers.delete(jobId);
   } else {
     const now = Date.now();
-    job.state.nextRunAtMs = computeNextRun(job.schedule, now);
+    const state = {
+      lastRunAtMs: runLog.completedAtMs,
+      lastStatus: runLog.status,
+      lastError: runLog.error,
+      lastDurationMs: runLog.durationMs,
+      runningAtMs: undefined,
+      nextRunAtMs: computeNextRun(current.schedule, now),
+    };
+    updateJobState(jobId, state);
 
-    const jobs = loadJobs();
-    const index = jobs.findIndex((j) => j.id === jobId);
-    if (index !== -1) {
-      jobs[index] = job;
-      saveJobs(jobs);
-    }
-
-    if (job.schedule.kind !== "at" && job.enabled) {
-      scheduleJob(job);
+    const updated = getJob(jobId);
+    if (updated && updated.schedule.kind !== "at" && updated.enabled) {
+      scheduleJob(updated);
     }
   }
 
   addRunLog(runLog);
 
   return runLog;
+}
+
+function updateJobState(jobId: string, state: CronJob["state"]): void {
+  const jobs = loadJobs();
+  const index = jobs.findIndex((candidate) => candidate.id === jobId);
+  if (index === -1) return;
+  jobs[index] = {
+    ...jobs[index],
+    updatedAtMs: Date.now(),
+    state: { ...jobs[index].state, ...state },
+  };
+  saveJobs(jobs);
+}
+
+export function runJob(jobId: string): Promise<CronRunLog> {
+  const active = activeRuns.get(jobId);
+  if (active) return active;
+
+  const run = executeJob(jobId).finally(() => {
+    if (activeRuns.get(jobId) === run) activeRuns.delete(jobId);
+  });
+  activeRuns.set(jobId, run);
+  return run;
 }
 
 export async function sendWakeEvent(

@@ -1,5 +1,5 @@
-import { existsSync } from "fs";
-import { mkdir, readdir, readFile, rename, stat, writeFile } from "fs/promises";
+import { constants, existsSync } from "fs";
+import { lstat, mkdir, open, readdir, readFile, rename, stat, writeFile } from "fs/promises";
 import { basename, dirname, extname, join, relative } from "path";
 import { getGitStatus } from "./git-api";
 import { isIdeBinaryExtension as isBinaryExtension } from "./ide-file-policy";
@@ -414,19 +414,29 @@ export async function writeFileContent(inputPath: string, content: string): Prom
     };
   }
 
-  if (existsSync(targetPath)) {
-    const canonicalTargetPath = resolveCanonicalPath(targetPath);
-    if (!isWithinHome(canonicalTargetPath)) {
+  const canonicalTargetPath = join(canonicalParentDir, basename(targetPath));
+  try {
+    const targetStats = await lstat(canonicalTargetPath);
+    if (targetStats.isSymbolicLink()) {
       return {
         success: false,
         path: targetPath,
-        error: "Access denied: Path outside home directory",
+        error: "Access denied: Refusing to write through a symbolic link",
       };
     }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 
+  let handle: Awaited<ReturnType<typeof open>> | null = null;
   try {
-    await writeFile(targetPath, content, "utf-8");
+    const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+    handle = await open(
+      canonicalTargetPath,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | noFollow,
+      0o600
+    );
+    await handle.writeFile(content, "utf-8");
     return {
       success: true,
       path: targetPath,
@@ -437,6 +447,8 @@ export async function writeFileContent(inputPath: string, content: string): Prom
       path: targetPath,
       error: `Failed to write file: ${err instanceof Error ? err.message : String(err)}`,
     };
+  } finally {
+    await handle?.close();
   }
 }
 

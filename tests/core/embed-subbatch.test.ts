@@ -52,4 +52,14 @@ describe("embedInSubBatches", () => {
     await embedInSubBatches(texts, tracked, { batchSize: 50, concurrency: 3 });
     expect(peak).toBeLessThanOrEqual(3);
   });
+
+  test("rejects a provider response with the wrong number of vectors", async () => {
+    expect(
+      embedInSubBatches(["1", "2", "3"], async () => [[1], [2]], {
+        batchSize: 2,
+        concurrency: 2,
+      })
+    ).rejects.toThrow("vectors for");
+    expect(embedInSubBatches(["1", "2"], async () => [[1]])).rejects.toThrow("vectors for");
+  });
 });

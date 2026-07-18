@@ -1,6 +1,8 @@
 import { ChildProcess, spawn } from "child_process";
 import { EventEmitter } from "events";
 import { type MCPServer, tables } from "./database";
+import { buildSubprocessEnvironment } from "./subprocess-env";
+import { validateUrl } from "../api/security";
 import {
   decodeMcpOAuthEnvironment,
   isHttpMcpUrl,
@@ -238,16 +240,14 @@ class MCPServerManager extends EventEmitter {
       const cmd = cmdParts[0];
       const cmdArgs = [...cmdParts.slice(1), ...(args?.split(/\s+/) || [])].filter(Boolean);
 
-      const env: Record<string, string> = Object.fromEntries(
-        Object.entries(process.env).filter(
-          (pair): pair is [string, string] => pair[1] !== undefined
-        )
-      );
+      const env = buildSubprocessEnvironment();
       if (instance.server.env) {
         try {
           const envPairs = instance.server.env.split(",").map((s) => s.trim());
           for (const pair of envPairs) {
-            const [key, value] = pair.split("=");
+            const separator = pair.indexOf("=");
+            const key = separator >= 0 ? pair.slice(0, separator) : "";
+            const value = separator >= 0 ? pair.slice(separator + 1) : "";
             if (key && value) {
               env[key.trim()] = value.trim();
             }
@@ -368,6 +368,10 @@ class MCPServerManager extends EventEmitter {
     retryAuthorization = true
   ): Promise<unknown> {
     const url = instance.server.url as string;
+    const validation = await validateUrl(url);
+    if (!validation.valid) {
+      throw new Error(`Remote MCP URL blocked: ${validation.error || "unsafe URL"}`);
+    }
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",

@@ -41,6 +41,7 @@ import {
   removePersistedSessionIndex,
   type SessionListEntry,
   sortSessionListEntries,
+  chatTurnMutex,
   upsertPersistedSessionIndex,
 } from "./chat-runtime-state";
 import type { ChatMessage } from "./chat-types";
@@ -460,6 +461,20 @@ function extractPersistedMessageMetadata(
   message: ChatMessage
 ): Record<string, unknown> | undefined {
   const metadata: Record<string, unknown> = {};
+  for (const key of [
+    "provider",
+    "provider_id",
+    "provider_name",
+    "model",
+    "agent_id",
+    "agent_name",
+    "agent_type",
+    "run_id",
+  ] as const) {
+    const value = message[key];
+    if (typeof value === "string" && value.trim()) metadata[key] = value.trim();
+  }
+  if (message.interrupted === true) metadata.interrupted = true;
   if (typeof message.thinking === "string" && message.thinking.trim()) {
     metadata.thinking = message.thinking;
   }
@@ -556,6 +571,9 @@ export async function revertSessionToMessage(
   removedCount: number;
   removedFromIndex: number;
 }> {
+  if (chatTurnMutex.isLocked(sessionId)) {
+    throw new Error("Cannot revert a session while a chat turn is active");
+  }
   const session = await getSession(sessionId);
   if (!session) {
     throw new Error("Session not found");

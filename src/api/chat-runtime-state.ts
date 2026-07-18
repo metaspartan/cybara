@@ -183,6 +183,9 @@ export function getResidentChatSession(sessionId: string): InMemoryChatSession |
 export function deleteResidentChatSession(sessionId: string): boolean {
   residentChatSessionSizes.delete(sessionId);
   residentChatSessionAccess.delete(sessionId);
+  pendingChatQueues.delete(sessionId);
+  pendingChatDrainScheduled.delete(sessionId);
+  deferredSessionMessages.delete(sessionId);
   return chatSessions.delete(sessionId);
 }
 

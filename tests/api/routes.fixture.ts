@@ -390,6 +390,7 @@ function buildRoutesFixture() {
         HOME: testHome,
         USERPROFILE: testHome,
         CYBARA_HOME: "",
+        CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS: "1",
         CYBARA_MCP_REGISTRY_OFFLINE: "true",
         PORT: String(port),
       },

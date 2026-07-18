@@ -246,11 +246,12 @@ export class LSPManager {
         preinstalledCommand && runtime
           ? [preinstalledCommand, ...(serverConfig.args || [])]
           : serverConfig.args || [];
+      let client: LSPClient | null = null;
       try {
         console.log(
           `[LSP Manager] Starting ${configKey} language server (${configuredCommand})...`
         );
-        const client = new LSPClient(command, args, this.workspaceUri);
+        client = new LSPClient(command, args, this.workspaceUri);
 
         await client.start();
         await client.initialize();
@@ -265,6 +266,7 @@ export class LSPManager {
         console.log(`[LSP Manager] ${configKey} server ready (${configuredCommand})`);
         return client;
       } catch (err) {
+        client?.terminate(err instanceof Error ? err : new Error(String(err)));
         lastError = err;
       }
     }

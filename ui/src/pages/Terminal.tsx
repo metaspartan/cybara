@@ -4,7 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { SquareTerminal, Plus, Trash2, AlertTriangle, Loader2 } from "lucide-react";
 import { buildXtermTheme } from "./ide/xtermTheme";
-import { appendApiTokenParam } from "@/lib/auth";
+import { createAuthenticatedWebSocket, withGatewayBasePath } from "@/lib/auth";
 import { checkTerminalAccess, enableTerminalAccess } from "@/lib/terminal-access";
 import { fitAndNotifyTerminal, type TerminalDimensions } from "@/lib/terminal-runtime";
 
@@ -108,8 +108,8 @@ export function TerminalPage() {
     term.loadAddon(fitAddon);
 
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsPath = appendApiTokenParam(`/api/terminal/ws?session=${encodeURIComponent(id)}`);
-    const ws = new WebSocket(`${proto}//${window.location.host}${wsPath}`);
+    const wsPath = withGatewayBasePath(`/api/terminal/ws?session=${encodeURIComponent(id)}`);
+    const ws = createAuthenticatedWebSocket(`${proto}//${window.location.host}${wsPath}`);
     ws.binaryType = "arraybuffer";
 
     ws.onopen = () => {

@@ -9,7 +9,7 @@ import {
   audioBlobToLocalPcm,
   preferredRecordingMimeType,
 } from "@/lib/audioTranscription";
-import { appendApiTokenParam } from "@/lib/auth";
+import { loadAuthenticatedAudioSource } from "@/lib/authenticatedMedia";
 import { isTauriDesktopRuntime } from "@/lib/desktopHost";
 import {
   nativeAudioErrorMessage,
@@ -83,6 +83,7 @@ export function Voice() {
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRevokeRef = useRef<(() => void) | null>(null);
   const orbRef = useRef<HTMLButtonElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const levelFrameRef = useRef<number | null>(null);
@@ -203,6 +204,8 @@ export function Voice() {
   const stopAudio = () => {
     audioRef.current?.pause();
     audioRef.current = null;
+    audioRevokeRef.current?.();
+    audioRevokeRef.current = null;
     setStatus("idle");
   };
 
@@ -211,13 +214,18 @@ export function Voice() {
     if (!result.success || !result.data?.audioPath) {
       throw new Error(result.error || "Speech synthesis failed");
     }
-    const audio = new Audio(
-      appendApiTokenParam(`/api/media?path=${encodeURIComponent(result.data.audioPath)}`)
+    const loadedSource = await loadAuthenticatedAudioSource(
+      `/api/media?path=${encodeURIComponent(result.data.audioPath)}`
     );
+    const audio = new Audio(loadedSource.src);
     audioRef.current = audio;
+    audioRevokeRef.current = loadedSource.revoke ?? null;
     setStatus("speaking");
     const clear = () => {
-      if (audioRef.current === audio) audioRef.current = null;
+      if (audioRef.current !== audio) return;
+      audioRef.current = null;
+      audioRevokeRef.current?.();
+      audioRevokeRef.current = null;
       setStatus("idle");
       if (voiceModeRef.current === "hands-free") {
         window.setTimeout(() => void startRecordingRef.current(), 180);
@@ -402,6 +410,8 @@ export function Voice() {
   useEffect(
     () => () => {
       audioRef.current?.pause();
+      audioRevokeRef.current?.();
+      audioRevokeRef.current = null;
       if (recorderRef.current?.state !== "inactive") recorderRef.current?.stop();
       if (nativeRecorderActiveRef.current) void stopNativeAudioRecording().catch(() => undefined);
       recognitionRef.current?.stop();

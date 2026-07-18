@@ -10,6 +10,11 @@ import {
   persistSessionContextState,
   upsertPersistedSessionMessage,
 } from "../../src/core/session-context";
+import {
+  appendSessionEvent,
+  ensureSessionRunId,
+  listSessionEvents,
+} from "../../src/core/session-event-ledger";
 
 const sessionIds: string[] = [];
 
@@ -18,6 +23,17 @@ afterEach(async () => {
 });
 
 describe("persisted active session context", () => {
+  test("deleting a persisted session clears its event ledger", async () => {
+    const sessionId = `context-ledger-delete-${crypto.randomUUID()}`;
+    expect(await persistSession(sessionId, "context-agent", [])).toBe(true);
+    const runId = ensureSessionRunId(sessionId);
+    appendSessionEvent({ sessionId, runId, type: "run_started", payload: {} });
+    expect(listSessionEvents(sessionId)).toHaveLength(1);
+
+    expect(await deletePersistedSession(sessionId)).toBe(true);
+    expect(listSessionEvents(sessionId)).toEqual([]);
+  });
+
   test("restores compacted model context without replacing the canonical transcript", async () => {
     const sessionId = `context-state-${crypto.randomUUID()}`;
     sessionIds.push(sessionId);

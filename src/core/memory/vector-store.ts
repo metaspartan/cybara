@@ -44,6 +44,11 @@ export interface VectorSearchResult {
   source: "memory" | "sessions" | "workspace";
 }
 
+interface IndexOptions {
+  embeddingBatchSize?: number;
+  embeddingConcurrency?: number;
+}
+
 function hashContent(content: string): string {
   let hash = 0;
   for (let i = 0; i < content.length; i += 1) {
@@ -376,18 +381,61 @@ export class VectorStore {
     path: string,
     content: string,
     source: "memory" | "sessions" | "workspace" = "memory",
-    options: { embeddingBatchSize?: number; embeddingConcurrency?: number } = {}
+    options: IndexOptions = {}
   ): Promise<number> {
     await this.ensureReady();
+    const replacementChunks = await this.prepareChunks(path, content, source, 0, options);
+    const stmt = this.chunkUpsertStatement();
+    const replace = this.db.transaction((chunks: MemoryChunk[]) => {
+      this.db.run("DELETE FROM chunks WHERE path = ?", [path]);
+      for (const chunk of chunks) this.persistChunk(stmt, chunk);
+    });
+    replace(replacementChunks);
 
-    const oldChunks = Array.from(this.chunks.values()).filter((chunk) => chunk.path === path);
-    for (const chunk of oldChunks) {
-      this.chunks.delete(chunk.id);
-      this.db.run("DELETE FROM chunks WHERE id = ?", [chunk.id]);
+    for (const [id, chunk] of this.chunks) {
+      if (chunk.path === path) this.chunks.delete(id);
     }
+    for (const chunk of replacementChunks) this.chunks.set(chunk.id, chunk);
 
-    const textChunks = chunkMarkdown(content);
-    if (textChunks.length === 0) return 0;
+    console.log(`[VectorStore] Indexed ${replacementChunks.length} chunks for ${path}`);
+    return replacementChunks.length;
+  }
+
+  async appendFileContent(
+    path: string,
+    content: string,
+    lineOffset: number,
+    source: "memory" | "sessions" | "workspace" = "memory",
+    options: IndexOptions = {}
+  ): Promise<number | null> {
+    await this.ensureReady();
+    const existing = Array.from(this.chunks.values()).filter((chunk) => chunk.path === path);
+    if (existing.length === 0) return null;
+    const indexedEndLine = Math.max(...existing.map((chunk) => chunk.endLine));
+    if (indexedEndLine < lineOffset) return null;
+
+    const appendedChunks = await this.prepareChunks(path, content, source, lineOffset, options);
+    const stmt = this.chunkUpsertStatement();
+    const append = this.db.transaction((chunks: MemoryChunk[]) => {
+      for (const chunk of chunks) this.persistChunk(stmt, chunk);
+    });
+    append(appendedChunks);
+    for (const chunk of appendedChunks) this.chunks.set(chunk.id, chunk);
+    return appendedChunks.length;
+  }
+
+  private async prepareChunks(
+    path: string,
+    content: string,
+    source: "memory" | "sessions" | "workspace",
+    lineOffset: number,
+    options: IndexOptions
+  ): Promise<MemoryChunk[]> {
+    const textChunks = chunkMarkdown(content).map((chunk) => ({
+      ...chunk,
+      startLine: chunk.startLine + lineOffset,
+      endLine: chunk.endLine + lineOffset,
+    }));
 
     const provider = this.provider;
     const withEmbeddings = this.canEmbed() && provider;
@@ -402,19 +450,17 @@ export class VectorStore {
         )
       : textChunks.map(() => [] as number[]);
     const now = Date.now();
-    const stmt = this.db.prepare(
-      "INSERT OR REPLACE INTO chunks (id, path, start_line, end_line, content, embedding, source, created_at, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    );
-
-    let insertedCount = 0;
+    const chunks: MemoryChunk[] = [];
     for (let i = 0; i < textChunks.length; i += 1) {
       const chunk = textChunks[i];
-      const embedding = embeddings[i] || [];
-      if (withEmbeddings && embedding.length === 0) continue;
+      const embedding = embeddings[i] ?? [];
+      if (withEmbeddings && embedding.length === 0) {
+        throw new Error(`Embedding provider returned an empty vector for chunk ${i + 1}`);
+      }
 
       const hash = hashContent(chunk.text);
       const id = `${path}:${chunk.startLine}:${hash}`;
-      const memoryChunk: MemoryChunk = {
+      chunks.push({
         id,
         path,
         startLine: chunk.startLine,
@@ -424,25 +470,29 @@ export class VectorStore {
         source,
         createdAt: now,
         hash,
-      };
-
-      this.chunks.set(id, memoryChunk);
-      stmt.run(
-        id,
-        path,
-        chunk.startLine,
-        chunk.endLine,
-        chunk.text,
-        JSON.stringify(embedding),
-        source,
-        now,
-        hash
-      );
-      insertedCount += 1;
+      });
     }
+    return chunks;
+  }
 
-    console.log(`[VectorStore] Indexed ${insertedCount} chunks for ${path}`);
-    return insertedCount;
+  private chunkUpsertStatement(): ReturnType<Database["prepare"]> {
+    return this.db.prepare(
+      "INSERT OR REPLACE INTO chunks (id, path, start_line, end_line, content, embedding, source, created_at, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    );
+  }
+
+  private persistChunk(stmt: ReturnType<Database["prepare"]>, chunk: MemoryChunk): void {
+    stmt.run(
+      chunk.id,
+      chunk.path,
+      chunk.startLine,
+      chunk.endLine,
+      chunk.content,
+      JSON.stringify(chunk.embedding),
+      chunk.source,
+      chunk.createdAt,
+      chunk.hash
+    );
   }
 
   async search(

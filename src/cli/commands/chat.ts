@@ -723,7 +723,7 @@ async function pickInitialSession(
 
 async function printSessionHistory(sessionId: string): Promise<void> {
   const messages = await chatContext().fetchAPI<CliHistoryMessage[]>(
-    `/api/sessions/${encodeURIComponent(sessionId)}/messages`
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`
   );
   if (!messages?.length) {
     return;

@@ -49,6 +49,7 @@ export function readNativeSettingsSource(): string {
     "NativeNearbySettingsSection.swift",
     "NativeTelemetrySettingsScreen.swift",
     "NativeToolCapabilitySettingsScreen.swift",
+    "NativeBrowserSupervisionSettingsScreen.swift",
   ]);
 }
 

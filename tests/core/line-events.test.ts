@@ -26,11 +26,13 @@ describe("LINE event parsing", () => {
           type: "message",
           replyToken: "rt1",
           message: { type: "text", text: "hi" },
-          source: { userId: "u1" },
+          source: { type: "user", userId: "u1" },
         },
       ],
     };
-    expect(parseLineEvents(body)).toEqual([{ replyToken: "rt1", sourceId: "u1", text: "hi" }]);
+    expect(parseLineEvents(body)).toEqual([
+      { replyToken: "rt1", sourceId: "u1", text: "hi", isGroup: false },
+    ]);
   });
 
   test("prefers group/room id over user id", () => {
@@ -40,11 +42,12 @@ describe("LINE event parsing", () => {
           type: "message",
           replyToken: "r",
           message: { type: "text", text: "yo" },
-          source: { groupId: "g1", userId: "u1" },
+          source: { type: "group", groupId: "g1", userId: "u1" },
         },
       ],
     };
     expect(parseLineEvents(body)[0].sourceId).toBe("g1");
+    expect(parseLineEvents(body)[0].isGroup).toBe(true);
   });
 
   test("ignores non-text and non-message events", () => {

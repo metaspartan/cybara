@@ -10,6 +10,7 @@
  * Session state + allowlist, kept minimal: no LLM auto-approve (that's a
  * follow-up).
  */
+import { createHash } from "crypto";
 import { broadcastStatus } from "./status";
 import { config } from "./config";
 
@@ -46,12 +47,25 @@ const COMMAND_BEARING_ARG: Record<string, readonly string[]> = {
   shell: ["command"],
 };
 
+const FILE_MUTATION_ARG: Record<string, readonly string[]> = {
+  write: ["path", "content"],
+  edit: ["path", "oldText", "newText"],
+  apply_patch: ["path", "patch", "dryRun"],
+};
+
 /**
  * Build the allowlist key for a tool call. For command-bearing tools this binds
  * the approval to the specific command/arguments; for everything else the key is
  * just the tool name.
  */
 export function buildApprovalKey(toolName: string, args?: Record<string, unknown>): string {
+  const fileFields = FILE_MUTATION_ARG[toolName];
+  if (fileFields && args) {
+    const path = typeof args.path === "string" ? args.path.trim() : "";
+    const payload = fileFields.slice(1).map((field) => args[field] ?? null);
+    const digest = createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 24);
+    return `${toolName} ${path || "[path]"} sha256:${digest}`;
+  }
   const SP = String.fromCharCode(32);
   const fields = COMMAND_BEARING_ARG[toolName];
   if (!fields || !args) return toolName;
