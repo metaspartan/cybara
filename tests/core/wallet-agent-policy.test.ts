@@ -30,10 +30,10 @@ describe("wallet-policy: recipient allowlist", () => {
     ).not.toThrow();
   });
 
-  test("empty allowlist means no recipient restriction", () => {
+  test("empty allowlist blocks external recipients", () => {
     expect(() =>
       assertRecipientAllowed(OTHER, { allowedSendRecipients: [], maxSendAmount: "" })
-    ).not.toThrow();
+    ).toThrow(/allowlist/i);
   });
 });
 

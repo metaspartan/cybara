@@ -623,6 +623,7 @@ let handleRequest: (req: {
   headers: Record<string, string>;
   body?: unknown;
 }) => Promise<{ status: number; headers: Record<string, string>; body?: unknown }>;
+let apiKey = "";
 
 function resetState() {
   walletMockState.getStatusCalls = 0;
@@ -663,7 +664,11 @@ async function api(method: string, path: string, body?: unknown) {
   return await handleRequest({
     method,
     url: `http://localhost:4269${path}`,
-    headers: { host: "localhost:4269", "sec-fetch-site": "same-origin" },
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      host: "localhost:4269",
+      "sec-fetch-site": "same-origin",
+    },
     body,
   });
 }
@@ -673,7 +678,11 @@ describe("Wallet route contracts (mocked manager)", () => {
     const routes = require("../../src/api/routes") as {
       handleRequest: typeof handleRequest;
     };
+    const security = require("../../src/api/security") as {
+      securityConfig: { apiKey: string };
+    };
     handleRequest = routes.handleRequest;
+    apiKey = security.securityConfig.apiKey;
   });
 
   beforeEach(() => {

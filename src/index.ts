@@ -10,6 +10,7 @@ import {
   stopActiveChatTurn,
 } from "./api/chat";
 import { getClientIp } from "./api/client-ip";
+import { readRequestText, RequestBodyTooLargeError } from "./api/request-body";
 import { setGatewayHostApplyHandler } from "./api/gateway-network";
 import { gatewayRequestIdleTimeoutSeconds } from "./api/gateway-request-timeout";
 import { handleRequest } from "./api/routes";
@@ -547,23 +548,6 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
       }
 
       if (pathname.startsWith("/api/")) {
-        const contentLength = Number(req.headers.get("content-length") || "0");
-        if (pathname.startsWith("/api/plugins/") && contentLength > 48 * 1024 * 1024) {
-          return new Response(
-            JSON.stringify({
-              error: "Plugin bundle upload is too large",
-              code: "PAYLOAD_TOO_LARGE",
-              path: pathname,
-            }),
-            {
-              status: 413,
-              headers: {
-                "Content-Type": "application/json",
-                ...commonSecurityHeaders,
-              },
-            }
-          );
-        }
         let body: unknown;
         let rawBody: string | undefined;
         let malformedBody = false;
@@ -571,25 +555,28 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
           const needsRaw = pathname.endsWith("/webhook") || pathname.includes("/webhooks/");
           let text = "";
           try {
-            text = await req.text();
-          } catch {
+            const maxBodyBytes = pathname.startsWith("/api/plugins/")
+              ? 48 * 1024 * 1024
+              : 64 * 1024 * 1024;
+            text = await readRequestText(req, maxBodyBytes);
+          } catch (error) {
+            if (error instanceof RequestBodyTooLargeError) {
+              return new Response(
+                JSON.stringify({
+                  error: "Request body is too large",
+                  code: "PAYLOAD_TOO_LARGE",
+                  path: pathname,
+                }),
+                {
+                  status: 413,
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...commonSecurityHeaders,
+                  },
+                }
+              );
+            }
             text = "";
-          }
-          if (pathname.startsWith("/api/plugins/") && text.length > 48 * 1024 * 1024) {
-            return new Response(
-              JSON.stringify({
-                error: "Plugin bundle upload is too large",
-                code: "PAYLOAD_TOO_LARGE",
-                path: pathname,
-              }),
-              {
-                status: 413,
-                headers: {
-                  "Content-Type": "application/json",
-                  ...commonSecurityHeaders,
-                },
-              }
-            );
           }
           if (needsRaw) rawBody = text;
           if (text) {

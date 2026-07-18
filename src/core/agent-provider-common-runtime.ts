@@ -41,6 +41,7 @@ import {
   isContextOverflowError,
 } from "./llm/tool-transcript";
 import { getPluginProviderContribution } from "./plugins/provider-registry";
+import { validatePublicHttpUrl } from "./outbound-url-policy";
 import {
   parseProviderRetryAfterMs,
   providerExceptionRetryDelayMs,
@@ -509,6 +510,12 @@ export abstract class AgentProviderCommonRuntime {
       | { api?: string; headers?: Record<string, string>; authType?: string }
       | undefined;
     const pluginProviderDefinition = getPluginProviderContribution(providerConfig);
+    if (pluginProviderDefinition && !pluginProviderDefinition.allowPrivateEndpoint) {
+      const validation = await validatePublicHttpUrl(baseUrl);
+      if (!validation.valid) {
+        throw new Error(`Plugin provider endpoint is not public: ${validation.error}`);
+      }
+    }
     const providerDefinition =
       catalogProviderDefinition ||
       (pluginProviderDefinition

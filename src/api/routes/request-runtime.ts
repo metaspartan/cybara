@@ -24,6 +24,22 @@ const corsBaseHeaders: Record<string, string> = {
   "Access-Control-Max-Age": "86400",
 };
 
+function isAllowedDevelopmentOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    if (parsed.protocol === "tauri:" && parsed.hostname === "localhost") return true;
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    return (
+      parsed.hostname === "localhost" ||
+      parsed.hostname === "127.0.0.1" ||
+      parsed.hostname === "::1" ||
+      parsed.hostname === "tauri.localhost"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const securityHeaders: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
@@ -88,7 +104,7 @@ export function parseBoundedQueryNumber(
 
 export function buildCorsHeaders(origin?: string): Record<string, string> {
   const headers: Record<string, string> = { ...corsBaseHeaders };
-  if (!isProduction && origin) {
+  if (!isProduction && origin && isAllowedDevelopmentOrigin(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;
     headers["Vary"] = "Origin";
   }

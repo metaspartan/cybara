@@ -11,6 +11,7 @@ import { sanitizeAssistantContent } from "./llm/text-tool-calls";
 import { createLogger } from "./logger";
 import { providerManager, providers } from "./providers";
 import { capSessionMessageMetadata } from "./session-message-metadata";
+import { clearSessionEventLedger } from "./session-event-ledger";
 import { deriveSessionTitleFromMessages, normalizeSessionTitle } from "./session-title";
 
 const log = createLogger("Session");
@@ -1232,6 +1233,7 @@ export async function setPersistedSessionPinned(
 
 export async function deletePersistedSession(sessionId: string): Promise<boolean> {
   try {
+    clearSessionEventLedger(sessionId);
     db.prepare("DELETE FROM session_messages WHERE session_id = ?").run(sessionId);
 
     db.prepare("DELETE FROM chat_sessions WHERE id = ?").run(sessionId);

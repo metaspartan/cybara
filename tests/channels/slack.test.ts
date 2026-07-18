@@ -152,6 +152,16 @@ async function invokeSlackReaction(
 }
 
 describe("Slack adapter mocked flows", () => {
+  test("requires a signing secret before starting", async () => {
+    const adapter = new SlackAdapter();
+    await expect(
+      adapter.start(makeChannelId("slack-secret"), {
+        bot_token: "xoxb-test",
+        app_token: "xapp-test",
+      })
+    ).rejects.toThrow("signing_secret is required");
+  });
+
   test("lists and resolves connected Slack channels across pages", async () => {
     const adapter = new SlackAdapter();
     const channelId = makeChannelId("slack-targets");

@@ -56,7 +56,7 @@ export function verifyWebhookSignature(
   signature: string | undefined,
   secret: string
 ): boolean {
-  if (!secret) return true; // No secret configured = unsigned webhooks allowed.
+  if (!secret) return false;
   if (!signature) return false;
   try {
     const expected = createHmac("sha256", secret).update(rawBody).digest("hex");

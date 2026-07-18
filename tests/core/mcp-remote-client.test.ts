@@ -37,7 +37,7 @@ globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
 const { mcpManager } = await import("${join(ROOT_DIR, "src", "core", "mcp.ts").replace(/\\/g, "/")}");
 const server = mcpManager.create({
   name: "Remote Test",
-  url: "https://mcp.example.com/mcp",
+  url: "https://example.com/mcp",
   env: "Authorization=Bearer token-with-padding==",
 });
 const started = await mcpManager.start(server.id);

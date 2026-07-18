@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 
-const chatSourcePath = join(process.cwd(), "src", "api", "chat.ts");
+const chatSourcePath = join(process.cwd(), "src", "api", "chat-runtime.ts");
 const processActivitiesSourcePath = join(process.cwd(), "src", "api", "chat-process-activities.ts");
 
 describe("chat response persistence guards", () => {

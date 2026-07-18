@@ -6,6 +6,9 @@ describe("Dangerous tool classification", () => {
     expect(isDangerousTool("exec")).toBe(true);
     expect(isDangerousTool("wallet")).toBe(true);
     expect(isDangerousTool("browser")).toBe(true);
+    expect(isDangerousTool("write")).toBe(true);
+    expect(isDangerousTool("edit")).toBe(true);
+    expect(isDangerousTool("apply_patch")).toBe(true);
   });
 
   test("keeps read-only helpers outside dangerous set", () => {

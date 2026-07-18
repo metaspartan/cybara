@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { loadPluginFromRoot, validatePluginAtPath } from "../../src/core/plugins";
@@ -55,6 +55,7 @@ function createPlugin(): { root: string; pluginId: string } {
       baseUrl: "http://127.0.0.1:9900/v1",
       api: "openai-compatible",
       authType: "none",
+      allowPrivateEndpoint: true,
       models: ["test-model"],
     })
   );
@@ -138,5 +139,20 @@ describe("plugin contributions", () => {
     expect(validation.manifest?.contributions?.tools?.files).toEqual([]);
     expect(validation.warnings.join(" ")).toContain("outside plugin root");
     expect(validation.warnings.join(" ")).toContain("must be JSON");
+  });
+
+  test("requires an explicit opt-in for private provider endpoints", () => {
+    const { root } = createPlugin();
+    const providerPath = join(root, "providers.json");
+    const definition = JSON.parse(readFileSync(providerPath, "utf8")) as Record<string, unknown>;
+    delete definition.allowPrivateEndpoint;
+    writeFileSync(providerPath, JSON.stringify(definition));
+
+    const plugin = loadPluginFromRoot(root, "local");
+    expect(plugin).not.toBeNull();
+    if (!plugin) throw new Error("Plugin failed to load");
+    expect(() => activatePluginRuntime({ ...plugin, enabled: true })).toThrow(
+      "Plugin provider endpoint is not public"
+    );
   });
 });

@@ -12,7 +12,7 @@ describe("chat computer-use trajectory lifecycle", () => {
   });
 
   test("awaits trajectory finalization before draining queued follow-ups", () => {
-    const source = readFileSync(join(process.cwd(), "src/api/chat.ts"), "utf8");
+    const source = readFileSync(join(process.cwd(), "src/api/chat-runtime.ts"), "utf8");
 
     expect(source).toContain('response.interrupted ? "interrupted" : "completed"');
     expect(source).toContain('effectiveSessionId,\n        "error"');

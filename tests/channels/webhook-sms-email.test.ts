@@ -31,8 +31,8 @@ describe("new channel adapters", () => {
     expect(verifyWebhookSignature(body, undefined, "topsecret")).toBe(false);
   });
 
-  test("webhook signature: unsigned allowed when no secret configured", () => {
-    expect(verifyWebhookSignature("body", undefined, "")).toBe(true);
+  test("webhook signature: unsigned rejected when no secret configured", () => {
+    expect(verifyWebhookSignature("body", undefined, "")).toBe(false);
   });
 });
 

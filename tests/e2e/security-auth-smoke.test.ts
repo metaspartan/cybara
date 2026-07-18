@@ -245,7 +245,7 @@ describe("Security auth e2e", () => {
     }
   });
 
-  test("development localhost bypass requires a same-origin browser signal", async () => {
+  test("opt-in development localhost bypass requires a same-origin browser signal", async () => {
     const apiKey = `cybara_e2e_key_${Date.now()}`;
     const port = await getFreePort();
     const baseUrl = `http://127.0.0.1:${port}`;
@@ -255,6 +255,7 @@ describe("Security auth e2e", () => {
       proc = startServer(port, {
         NODE_ENV: "development",
         CYBARA_API_KEY: apiKey,
+        CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS: "1",
       });
       await waitForServerReady(baseUrl);
 

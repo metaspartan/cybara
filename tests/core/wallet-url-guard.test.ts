@@ -1,5 +1,13 @@
-import { describe, expect, test } from "bun:test";
-import { checkPublicHttpUrl, assertPublicHttpUrl } from "../../src/core/wallet-url-guard";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import {
+  assertPublicHttpUrl,
+  assertResolvedPublicHttpUrl,
+  checkPublicHttpUrl,
+} from "../../src/core/wallet-url-guard";
+
+afterEach(() => {
+  mock.restore();
+});
 
 describe("checkPublicHttpUrl", () => {
   test("allows public https RPC endpoints", () => {
@@ -80,5 +88,15 @@ describe("assertPublicHttpUrl", () => {
   test("throws with label on unsafe url", () => {
     expect(() => assertPublicHttpUrl("http://169.254.169.254", "RPC URL")).toThrow(/RPC URL/);
     expect(() => assertPublicHttpUrl("http://localhost")).toThrow(/Validation error/);
+  });
+
+  test("rejects public hostnames that resolve to private addresses", async () => {
+    spyOn(Bun.dns, "lookup").mockResolvedValue([
+      { address: "169.254.169.254", family: 4, ttl: 60 },
+    ]);
+
+    await expect(assertResolvedPublicHttpUrl("https://wallet.example", "RPC URL")).rejects.toThrow(
+      "Blocked resolved address"
+    );
   });
 });

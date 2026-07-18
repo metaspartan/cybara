@@ -20,4 +20,5 @@ src-tauri/tauri.release.conf.json
 .tmp/
 .agents/
 artifacts/
+output/
 .claude/

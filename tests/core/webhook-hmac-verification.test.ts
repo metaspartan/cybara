@@ -286,10 +286,10 @@ describe("feishu timestamp+nonce+key+body signature", () => {
   });
 });
 
-describe("webhook verifier: unsigned-when-no-secret contract", () => {
-  test("empty secret accepts anything (documented open-mode)", () => {
-    expect(verifyWebhookSignature("body", undefined, "")).toBe(true);
-    expect(verifyWebhookSignature("body", "garbage", "")).toBe(true);
+describe("webhook verifier: fail-closed secret contract", () => {
+  test("empty secret rejects unsigned and arbitrary signatures", () => {
+    expect(verifyWebhookSignature("body", undefined, "")).toBe(false);
+    expect(verifyWebhookSignature("body", "garbage", "")).toBe(false);
   });
 
   test("with a secret, missing signature is rejected", () => {

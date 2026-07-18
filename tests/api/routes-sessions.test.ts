@@ -271,6 +271,7 @@ describe("Tools API", () => {
     const workspaceDir = mkdtempSync(join(fixture.testHome, "tool-workspace-"));
     const outsideDir = mkdtempSync(join(fixture.testHome, "tool-outside-"));
     try {
+      await fixture.api("PUT", "/api/config", { tool_approval_mode: "always_allow" });
       const inside = join(workspaceDir, "notes.txt");
       const outside = join(outsideDir, "escape.txt");
 
@@ -290,6 +291,7 @@ describe("Tools API", () => {
       expect(outsideWrite.status).toBe(400);
       expect(String(outsideWrite.data.error || "")).toContain("outside the configured workspace");
     } finally {
+      await fixture.api("PUT", "/api/config", { tool_approval_mode: "ask" });
       rmSync(workspaceDir, { recursive: true, force: true });
       rmSync(outsideDir, { recursive: true, force: true });
     }
@@ -299,6 +301,7 @@ describe("Tools API", () => {
     const workspaceDir = mkdtempSync(join(fixture.testHome, "tool-symlink-workspace-"));
     const outsideDir = mkdtempSync(join(fixture.testHome, "tool-symlink-outside-"));
     try {
+      await fixture.api("PUT", "/api/config", { tool_approval_mode: "always_allow" });
       const outsideFile = join(outsideDir, "target.txt");
       const outsideFileLink = join(workspaceDir, "linked-target.txt");
       const outsideSubdir = join(outsideDir, "subdir");
@@ -329,6 +332,7 @@ describe("Tools API", () => {
         "outside the configured workspace"
       );
     } finally {
+      await fixture.api("PUT", "/api/config", { tool_approval_mode: "ask" });
       rmSync(workspaceDir, { recursive: true, force: true });
       rmSync(outsideDir, { recursive: true, force: true });
     }
@@ -792,7 +796,7 @@ describe("Session API", () => {
     expect(
       ((compactAssistant?.process_activities as Array<Record<string, unknown>> | undefined) || [])
         .length
-    ).toBeLessThanOrEqual(240);
+    ).toBe(processActivities.length);
     const compactTool = (
       compactAssistant?.tool_calls as Array<Record<string, unknown>> | undefined
     )?.[0];

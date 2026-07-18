@@ -47,6 +47,17 @@ function fetch(url) {
   });
 }
 
+function verifyChecksum(payload, sidecar, asset) {
+  const expected = (String(sidecar).trim().split(/\s+/)[0] || "").toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expected)) {
+    throw new Error(`invalid checksum sidecar for ${asset}`);
+  }
+  const actual = crypto.createHash("sha256").update(payload).digest("hex");
+  if (actual !== expected) {
+    throw new Error(`checksum mismatch for ${asset}`);
+  }
+}
+
 async function download(options) {
   const silent = options && options.silent;
   const slug = slugFor(process.platform, process.arch);
@@ -59,20 +70,8 @@ async function download(options) {
 
   const payload = await fetch(`${base}/${asset}`);
 
-  let expected = null;
-  try {
-    const sidecar = (await fetch(`${base}/${asset}.sha256`)).toString("utf8").trim();
-    const first = sidecar.split(/\s+/)[0];
-    if (first) expected = first.toLowerCase();
-  } catch {
-    expected = null;
-  }
-  if (expected) {
-    const actual = crypto.createHash("sha256").update(payload).digest("hex");
-    if (actual !== expected) {
-      throw new Error(`checksum mismatch for ${asset}`);
-    }
-  }
+  const sidecar = (await fetch(`${base}/${asset}.sha256`)).toString("utf8");
+  verifyChecksum(payload, sidecar, asset);
 
   const dest = binaryPath();
   fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -82,4 +81,4 @@ async function download(options) {
   return dest;
 }
 
-module.exports = { download, binaryPath };
+module.exports = { download, binaryPath, verifyChecksum };

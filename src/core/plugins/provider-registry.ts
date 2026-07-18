@@ -6,6 +6,7 @@ export interface PluginProviderContribution {
   baseUrl: string;
   api: "openai-compatible" | "anthropic-compatible";
   authType: "api-key" | "none";
+  allowPrivateEndpoint: boolean;
   models: string[];
 }
 

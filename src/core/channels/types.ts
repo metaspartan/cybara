@@ -132,12 +132,12 @@ export const channels = {
     fields: [
       { name: "bot_token", label: "Bot Token (xoxb-)", type: "password", required: true },
       { name: "app_token", label: "App Token (xapp-)", type: "password", required: true },
-      { name: "signing_secret", label: "Signing Secret", type: "password", required: false },
+      { name: "signing_secret", label: "Signing Secret", type: "password", required: true },
       {
         name: "dm_policy",
         label: "DM Policy",
         type: "select",
-        required: false,
+        required: true,
         options: ["pairing", "allowlist", "open", "disabled"],
         default: "pairing",
       },
@@ -483,7 +483,7 @@ export const channels = {
         type: "select",
         required: false,
         options: ["open", "allowlist", "disabled"],
-        default: "open",
+        default: "allowlist",
       },
     ],
   },

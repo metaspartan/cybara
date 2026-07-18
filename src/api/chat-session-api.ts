@@ -460,6 +460,20 @@ function extractPersistedMessageMetadata(
   message: ChatMessage
 ): Record<string, unknown> | undefined {
   const metadata: Record<string, unknown> = {};
+  for (const key of [
+    "provider",
+    "provider_id",
+    "provider_name",
+    "model",
+    "agent_id",
+    "agent_name",
+    "agent_type",
+    "run_id",
+  ] as const) {
+    const value = message[key];
+    if (typeof value === "string" && value.trim()) metadata[key] = value.trim();
+  }
+  if (message.interrupted === true) metadata.interrupted = true;
   if (typeof message.thinking === "string" && message.thinking.trim()) {
     metadata.thinking = message.thinking;
   }

@@ -11,6 +11,11 @@ import {
   normalizeMobileGatewayUrl,
 } from "../core/mobile-devices";
 import { cybaraDir } from "../core/paths";
+import {
+  isPrivateOrBlockedIp,
+  PUBLIC_HTTP_BLOCKED_CIDRS,
+  validatePublicHttpUrl,
+} from "../core/outbound-url-policy";
 import { isProductionRuntime } from "../core/runtime/runtime-mode";
 
 const log = createLogger("Security");
@@ -220,8 +225,8 @@ function getEffectiveApiKey(): string {
 function isLocalhostBypassAllowed(): boolean {
   if (process.env.CYBARA_REQUIRE_AUTH === "1") return false;
   if (isProductionRuntime()) return false;
-  if (readPersistedSecuritySettings().requireAuthForLocalhost === true) return false;
-  return true;
+  if (process.env.CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS === "1") return true;
+  return readPersistedSecuritySettings().requireAuthForLocalhost === false;
 }
 
 const config = {
@@ -243,16 +248,7 @@ const config = {
 
   maxMessageSize: 32 * 1024,
 
-  blockedIpRanges: [
-    "127.0.0.0/8", // localhost
-    "10.0.0.0/8", // private class A
-    "172.16.0.0/12", // private class B
-    "192.168.0.0/16", // private class C
-    "169.254.0.0/16", // link-local
-    "0.0.0.0/8", // current network
-    "224.0.0.0/4", // multicast
-    "255.255.255.255/32", // broadcast
-  ],
+  blockedIpRanges: [...PUBLIC_HTTP_BLOCKED_CIDRS],
 };
 
 interface RateLimitEntry {
@@ -1005,146 +1001,15 @@ function getBearerToken(headers: Record<string, string>): string | null {
 function usesRootApiKey(headers: Record<string, string>): boolean {
   const effectiveApiKey = config.apiKey;
   const token = getBearerToken(headers);
-  return Boolean(effectiveApiKey && token && token === effectiveApiKey);
-}
-
-function isPrivateIpv6(ip: string): boolean {
-  const normalized = ip
-    .toLowerCase()
-    .replace(/^\[|\]$/g, "")
-    .split("%")[0];
-  if (normalized === "::1" || normalized === "::") return true;
-
-  if (normalized.startsWith("::ffff:")) {
-    return isPrivateOrBlockedIP(normalized.slice(7));
-  }
-
-  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
-  if (/^fe[89ab]/.test(normalized)) return true;
-  return false;
-}
-
-function ipToInt(ip: string): number {
-  const parts = ip.split(".").map(Number);
-  return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
-}
-
-function isInCidr(ip: string, cidr: string): boolean {
-  const [range, bits] = cidr.split("/");
-  const mask = ~(2 ** (32 - parseInt(bits)) - 1) >>> 0;
-  const ipInt = ipToInt(ip);
-  const rangeInt = ipToInt(range);
-  return (ipInt & mask) === (rangeInt & mask);
+  return Boolean(effectiveApiKey && token && constantTimeEqual(token, effectiveApiKey));
 }
 
 export function isPrivateOrBlockedIP(ip: string): boolean {
-  const normalized = ip
-    .trim()
-    .toLowerCase()
-    .replace(/^\[|\]$/g, "");
-  if (!normalized) return true;
-
-  if (normalized.includes(":")) {
-    return isPrivateIpv6(normalized);
-  }
-
-  const blockedHostnames = ["localhost", "0.0.0.0", "metadata.google.internal"];
-  if (blockedHostnames.includes(normalized)) return true;
-
-  const ipVersion = isIP(normalized);
-  if (ipVersion === 6) {
-    return isPrivateIpv6(normalized);
-  }
-  if (ipVersion !== 4) {
-    return false;
-  }
-
-  const parts = normalized.split(".");
-  if (parts.length !== 4) return false;
-
-  const nums = parts.map(Number);
-  if (nums.some((n) => isNaN(n) || n < 0 || n > 255)) return false;
-
-  for (const cidr of config.blockedIpRanges) {
-    if (isInCidr(normalized, cidr)) {
-      return true;
-    }
-  }
-
-  return false;
+  return isPrivateOrBlockedIp(ip);
 }
 
 export async function validateUrl(url: string): Promise<{ valid: boolean; error?: string }> {
-  try {
-    const parsed = new URL(url);
-
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      return { valid: false, error: `Blocked protocol: ${parsed.protocol}` };
-    }
-
-    if (parsed.username || parsed.password) {
-      return {
-        valid: false,
-        error: "URLs with embedded credentials are not allowed",
-      };
-    }
-
-    const hostname = parsed.hostname.toLowerCase();
-
-    if (isPrivateOrBlockedIP(hostname)) {
-      return { valid: false, error: `Blocked hostname: ${hostname}` };
-    }
-
-    const blockedPatterns = [
-      /localhost/i,
-      /\.local$/i,
-      /\.internal$/i,
-      /^192\.168\./,
-      /^10\./,
-      /^172\.(1[6-9]|2[0-9]|3[01])\./,
-      /^127\./,
-    ];
-
-    for (const pattern of blockedPatterns) {
-      if (pattern.test(hostname)) {
-        return { valid: false, error: `Blocked hostname pattern: ${hostname}` };
-      }
-    }
-
-    const ipVersion = isIP(hostname);
-    if (ipVersion === 0) {
-      try {
-        const addresses = await resolveHostnameAddresses(hostname);
-        for (const address of addresses) {
-          if (isPrivateOrBlockedIP(address)) {
-            return {
-              valid: false,
-              error: `Blocked resolved address: ${address}`,
-            };
-          }
-        }
-      } catch (error) {
-        return {
-          valid: false,
-          error: `Unable to resolve hostname: ${errorMessage(error)}`,
-        };
-      }
-    }
-
-    return { valid: true };
-  } catch (error) {
-    return { valid: false, error: `Invalid URL: ${errorMessage(error)}` };
-  }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-async function resolveHostnameAddresses(hostname: string): Promise<string[]> {
-  const addresses = await Bun.dns.lookup(hostname, { family: 0, backend: "system" });
-  if (addresses.length === 0) throw new Error("hostname has no public addresses");
-  return addresses.map((address) => address.address);
+  return await validatePublicHttpUrl(url);
 }
 
 export function validateMessageSize(message: string): {
@@ -1290,6 +1155,17 @@ export function securityCheck(
       headers: {
         "WWW-Authenticate": 'Bearer realm="cybara"',
       },
+    };
+  }
+
+  const rootKeyRoute =
+    (method === "GET" && path === "/api/auth/key") ||
+    (method === "POST" && path === "/api/auth/rotate-key");
+  if (rootKeyRoute && !usesRootApiKey(headers)) {
+    return {
+      passed: false,
+      error: "Root API key required",
+      statusCode: 403,
     };
   }
 

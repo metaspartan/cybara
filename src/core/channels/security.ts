@@ -167,7 +167,7 @@ export class ChannelSecurityManager {
     const isGroup = options?.isGroup === true;
 
     const allowed = this.allowedSenders.get(channelId);
-    if (allowed?.has(senderId) || allowed?.has("*")) {
+    if (allowed?.has(senderId)) {
       return { permitted: true, reason: "allowed" };
     }
 
@@ -287,7 +287,7 @@ export class ChannelSecurityManager {
     channelPairings.push(pairing);
     this.pairings.set(channelId, channelPairings);
 
-    log.info(`Created pairing for ${platform}:${senderId}`, { channelId, code: pairing.code });
+    log.info(`Created pairing for ${platform}:${senderId}`, { channelId });
 
     return pairing;
   }

@@ -14,5 +14,7 @@ describe("source LOC gate", () => {
     for (const extension of ["css", "java", "kt", "kts", "py", "rs", "swift", "ts", "tsx"]) {
       expect(script).toContain(extension);
     }
+    expect(script).toContain("READ_BATCH_SIZE");
+    expect(script).toContain("files.slice(offset, offset + READ_BATCH_SIZE)");
   });
 });

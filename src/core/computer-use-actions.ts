@@ -19,6 +19,9 @@ const BLOCKED_TYPE_PATTERNS: readonly RegExp[] = [
   /:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;?\s*:/i, // fork bomb
   /\bmkfs\b/i, // filesystem format
   /\bdd\s+if=\/dev\//i, // raw disk overwrite
+  /\bpowershell(?:\.exe)?\b[^\r\n]*(?:-enc|-encodedcommand)\b/i,
+  /\b(?:irm|invoke-restmethod|iwr|invoke-webrequest)\b[^\r\n]*\|\s*(?:iex|invoke-expression)\b/i,
+  /\bcertutil\b[^\r\n]*-urlcache\b/i,
 ];
 
 export function isBlockedKeyCombo(keys: string): boolean {

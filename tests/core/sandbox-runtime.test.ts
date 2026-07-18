@@ -97,6 +97,7 @@ describe("sandbox runtime planning", () => {
       expect(plan.env.TMPDIR).toBe("/tmp");
       expect(plan.env.TMP).toBe("/tmp");
       expect(plan.env.TEMP).toBe("/tmp");
+      expect(plan.command.join(" ")).not.toContain("(allow file-read*)");
     } finally {
       config.setSandboxRuntime(previous);
     }

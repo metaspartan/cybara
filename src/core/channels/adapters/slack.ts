@@ -99,6 +99,10 @@ export class SlackAdapter implements ChannelAdapter {
       throw new Error("app_token (xapp-...) is required for Socket Mode");
     }
 
+    if (!signingSecret) {
+      throw new Error("signing_secret is required for Slack adapter");
+    }
+
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
 
     if (this.apps.has(channelId)) {

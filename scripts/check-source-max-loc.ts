@@ -33,11 +33,18 @@ async function countLines(path: string): Promise<number> {
 const maxLines = parseMaxArg(5000);
 const roots = ["src", "ui/src", "tests", "apps", "shared", "scripts", "site/src"];
 const LOC_EXCEPTIONS: ReadonlySet<string> = new Set<string>([]);
+const READ_BATCH_SIZE = 64;
 
 const files = (await Promise.all(roots.map(collectSourceFiles))).flat();
-const stats: FileStat[] = await Promise.all(
-  files.map(async (path): Promise<FileStat> => ({ path, lines: await countLines(path) }))
-);
+const stats: FileStat[] = [];
+for (let offset = 0; offset < files.length; offset += READ_BATCH_SIZE) {
+  const batch = files.slice(offset, offset + READ_BATCH_SIZE);
+  stats.push(
+    ...(await Promise.all(
+      batch.map(async (path): Promise<FileStat> => ({ path, lines: await countLines(path) }))
+    ))
+  );
+}
 const offenders = stats
   .filter((stat) => stat.lines > maxLines)
   .filter((stat) => !LOC_EXCEPTIONS.has(stat.path))

@@ -1,5 +1,5 @@
 import { homedir } from "os";
-import { isAbsolute, resolve } from "path";
+import { delimiter, isAbsolute, resolve } from "path";
 import {
   config,
   type SandboxNetworkMode,
@@ -231,12 +231,32 @@ function buildAppleSandboxPolicy(
 ): string {
   const escapedWorkdir = escapeSandboxPath(workdir);
   const networkRule = network === "allow" ? "(allow network*)" : "(deny network*)";
+  const readableRoots = new Set([
+    "/System",
+    "/Library",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/opt",
+    "/private/etc",
+    "/private/tmp",
+    "/tmp",
+    workdir,
+    ...String(process.env.PATH || "")
+      .split(delimiter)
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  ]);
+  const readRules = Array.from(
+    readableRoots,
+    (path) => `(allow file-read* (subpath "${escapeSandboxPath(resolve(path))}"))`
+  );
   return [
     "(version 1)",
     "(deny default)",
     '(import "system.sb")',
     "(allow process*)",
-    "(allow file-read*)",
+    ...readRules,
     `(allow file-write* (subpath "${escapedWorkdir}"))`,
     '(allow file-write* (subpath "/private/tmp"))',
     '(allow file-write* (subpath "/tmp"))',

@@ -14,6 +14,7 @@ import { spawn } from "child_process";
 import { existsSync, statSync } from "fs";
 import { registerAgentHook, type AgentHookEvent } from "./agent-hooks";
 import { config } from "./config";
+import { buildSubprocessEnvironment } from "./subprocess-env";
 
 export interface ShellHookConfig {
   /** Event types this hook fires on. "*" = all. */
@@ -110,7 +111,7 @@ function runShellHook(
 
     const child = spawn(resolved.cmd, args, {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, CYBARA_HOOK_EVENT: event.type },
+      env: buildSubprocessEnvironment({ CYBARA_HOOK_EVENT: event.type }),
     });
 
     const timer = setTimeout(() => {

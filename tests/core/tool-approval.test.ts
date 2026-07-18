@@ -176,6 +176,13 @@ describe("tool-approval per-command scoping (security)", () => {
     expect(isToolApproved("s1", dangerous)).toBe(false);
   });
 
+  test("file mutation approvals bind the target and payload", () => {
+    const original = buildApprovalKey("write", { path: "src/a.ts", content: "one" });
+    expect(buildApprovalKey("write", { path: "src/a.ts", content: "one" })).toBe(original);
+    expect(buildApprovalKey("write", { path: "src/a.ts", content: "two" })).not.toBe(original);
+    expect(buildApprovalKey("write", { path: "src/b.ts", content: "one" })).not.toBe(original);
+  });
+
   test("requestToolApproval fast-path is scoped to the exact command", async () => {
     // Pre-approve `exec ls` for the session.
     approveToolForSession("s1", buildApprovalKey("exec", { command: "ls" }));

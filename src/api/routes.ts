@@ -546,6 +546,10 @@ const routes: Record<string, RouteHandler> = {
           (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
         )
       : undefined;
+    const workspaceDir =
+      typeof data.context?.workspaceDir === "string" && data.context.workspaceDir.trim()
+        ? data.context.workspaceDir.trim()
+        : config.getDefaultWorkspaceDir();
     const context: ToolContext = {
       agentId:
         typeof data.context?.agentId === "string" && data.context.agentId.trim()
@@ -563,16 +567,11 @@ const routes: Record<string, RouteHandler> = {
         typeof data.context?.userId === "string" && data.context.userId.trim()
           ? data.context.userId
           : "user",
-      workspaceDir:
-        typeof data.context?.workspaceDir === "string" && data.context.workspaceDir.trim()
-          ? data.context.workspaceDir
-          : undefined,
+      workspaceDir,
       permissions: contextPermissions,
       enforcePermissions: data.context?.enforcePermissions === true,
       allowDangerousTools: false,
-      confineToWorkspace:
-        typeof data.context?.workspaceDir === "string" &&
-        data.context.workspaceDir.trim().length > 0,
+      confineToWorkspace: true,
     };
 
     return await executeTool(data.name, data.args, {

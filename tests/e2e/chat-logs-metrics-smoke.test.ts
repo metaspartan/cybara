@@ -11,6 +11,7 @@ let serverProc: ReturnType<typeof Bun.spawn> | null = null;
 let baseUrl = "";
 let homeDir = "";
 let agentId = "";
+let apiKey = "";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -64,6 +65,7 @@ async function waitFor(
 
 async function api(method: string, path: string, body?: unknown) {
   const headers: Record<string, string> = {
+    Authorization: `Bearer ${apiKey}`,
     "sec-fetch-site": "same-origin",
   };
   if (body !== undefined) {
@@ -92,6 +94,7 @@ describe("Chat + Logs + Metrics e2e smoke", () => {
     homeDir = mkdtempSync(join(tmpdir(), "cybara-chat-logs-metrics-home-"));
     const port = await getFreePort();
     baseUrl = `http://127.0.0.1:${port}`;
+    apiKey = `cybara_e2e_chat_${Date.now()}`;
 
     serverProc = Bun.spawn([process.execPath, "run", "src/index.ts"], {
       cwd: ROOT_DIR,
@@ -100,6 +103,7 @@ describe("Chat + Logs + Metrics e2e smoke", () => {
         HOME: homeDir,
         USERPROFILE: homeDir,
         PORT: String(port),
+        CYBARA_API_KEY: apiKey,
       },
       stdout: "ignore",
       stderr: "ignore",

@@ -21,13 +21,11 @@ export function assertRecipientAllowed(
 ): void {
   const target = String(recipient || "").trim();
   if (!target) return; // no explicit recipient → funds stay with the wallet
-  if (limits.allowedSendRecipients.length > 0) {
-    const allow = limits.allowedSendRecipients.map((a) => a.trim().toLowerCase());
-    if (!allow.includes(target.toLowerCase())) {
-      throw new Error(
-        "Validation error: Recipient is not in the agent send allowlist (wallet policy)"
-      );
-    }
+  const allow = limits.allowedSendRecipients.map((address) => address.trim().toLowerCase());
+  if (!allow.includes(target.toLowerCase())) {
+    throw new Error(
+      "Validation error: Recipient is not in the agent send allowlist (wallet policy)"
+    );
   }
 }
 

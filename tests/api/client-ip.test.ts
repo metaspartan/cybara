@@ -44,6 +44,12 @@ describe("client IP resolution", () => {
     expect(forwardedClientIp({ "x-real-ip": "198.51.100.8" })).toBe("198.51.100.8");
   });
 
+  test("trustProxy mode cannot manufacture loopback from a remote direct peer", () => {
+    expect(getClientIp({ "x-forwarded-for": "127.0.0.1" }, "10.0.0.8", { trustProxy: true })).toBe(
+      "10.0.0.8"
+    );
+  });
+
   test("ignores forwarded loopback spoofing from a local direct client", () => {
     expect(
       getClientIp({ "x-forwarded-for": "127.0.0.2" }, "127.0.0.1", { trustProxy: false })

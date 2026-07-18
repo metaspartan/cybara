@@ -232,8 +232,8 @@ describe("ChannelSecurityManager lifecycle (isolated temp CYBARA_HOME)", () => {
     expect(r.dmAllowlistAllowsListed).toBe(true);
   });
 
-  test("wildcard allowed sender grants access to anyone", () => {
-    expect(r.wildcardAllowsAnyone).toBe(true);
+  test("wildcard allowed sender does not bypass the allowlist", () => {
+    expect(r.wildcardAllowsAnyone).toBe(false);
   });
 
   test("rejectPairing on a missing id returns false", () => {

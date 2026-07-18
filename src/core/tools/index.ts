@@ -75,6 +75,9 @@ const dangerousToolNames = new Set([
   "account_connector_write",
   "execute_code",
   "sandbox_run",
+  "write",
+  "edit",
+  "apply_patch",
   // camera_snap / screen_record capture the user's camera and screen — gate
   // them behind the dangerous-tool approval flow (privacy-sensitive).
   "nodes",
@@ -300,7 +303,7 @@ export function checkToolPermissions(
 ): boolean {
   if (permissions.length === 0) return true;
   if (contextPermissions.includes("*")) return true;
-  return permissions.some((p) => contextPermissions.includes(p));
+  return permissions.every((permission) => contextPermissions.includes(permission));
 }
 
 export type ToolName = keyof typeof toolSchemas;
