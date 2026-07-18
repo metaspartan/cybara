@@ -336,7 +336,12 @@ describe("Agent provider Google and compatible routing", () => {
     globalThis.fetch = (async () => {
       calls += 1;
       return Response.json(
-        { error: { message: "weekly quota exceeded" } },
+        {
+          error: {
+            message:
+              "You've reached your usage limit for this period. Your quota will be refreshed in the next period.",
+          },
+        },
         { status: 429, headers: { "Retry-After": "0" } }
       );
     }) as typeof fetch;
@@ -363,7 +368,7 @@ describe("Agent provider Google and compatible routing", () => {
       { useTools: false, sessionId: "kimi-exhausted-session" }
     );
 
-    expect(result.content.toLowerCase()).toContain("quota");
+    expect(result.content.toLowerCase()).toContain("rolling usage window");
     expect(calls).toBe(1);
   });
 

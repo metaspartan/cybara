@@ -21,6 +21,34 @@ describe("classifyApiError", () => {
     expect(classifyApiError({ body: "billing" }).rotateCredential).toBe(true);
   });
 
+  test("classifies Kimi usage-window limits as non-retryable quota exhaustion", () => {
+    for (const body of [
+      "You've reached your usage limit for this period. Your quota will be refreshed in the next period.",
+      "You've reached kimi monthly usage limit for this billing cycle.",
+      "You've reached your usage limit for this billing cycle.",
+    ]) {
+      const classified = classifyApiError({ status: 429, body });
+      expect(classified.category).toBe("billing");
+      expect(classified.retryable).toBe(false);
+      expect(classified.rotateCredential).toBe(true);
+    }
+  });
+
+  test("keeps Kimi overload and concurrency limits retryable", () => {
+    const overloaded = classifyApiError({
+      status: 429,
+      body: "The engine is currently overloaded, please try again later",
+    });
+    const concurrent = classifyApiError({
+      status: 429,
+      body: "We're receiving too many requests at the moment. Please wait a moment and try again.",
+    });
+    expect(overloaded.category).toBe("overloaded");
+    expect(overloaded.retryable).toBe(true);
+    expect(concurrent.category).toBe("rate_limit");
+    expect(concurrent.retryable).toBe(true);
+  });
+
   test("classifies 429 as rate_limit (retryable + rotate)", () => {
     const c = classifyApiError({ status: 429 });
     expect(c.category).toBe("rate_limit");

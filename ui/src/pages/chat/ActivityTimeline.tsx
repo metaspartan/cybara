@@ -100,6 +100,7 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
         }
         const expanded = expandedGroups.has(entry.id);
         const GroupIcon = GROUP_ICONS[entry.kind];
+        const inFlight = entry.items.some((activity) => activity.phase === "start");
         return (
           <div key={entry.id}>
             <button
@@ -109,7 +110,11 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
               aria-expanded={expanded}
               title={expanded ? "Collapse" : "Show each call"}
             >
-              <GroupIcon className="w-3 h-3 text-current opacity-70 flex-shrink-0" />
+              {inFlight ? (
+                <Loader2 className="h-3 w-3 flex-shrink-0 animate-spin text-current opacity-70" />
+              ) : (
+                <GroupIcon className="w-3 h-3 text-current opacity-70 flex-shrink-0" />
+              )}
               <span className="min-w-0 truncate">{entry.label}</span>
               {expanded ? (
                 <ChevronDown className="w-3 h-3 text-gray-600 flex-shrink-0" />

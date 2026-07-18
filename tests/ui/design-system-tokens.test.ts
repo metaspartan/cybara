@@ -121,7 +121,9 @@ describe("index.css design-system utilities", () => {
 
   test("keeps assistant responses clear of the chat viewport edges", () => {
     const chat = read("../../ui/src/pages/Chat.tsx");
-    expect(chat).toContain("flex-1 overflow-y-auto px-5 py-4 sm:px-8");
+    const layout = read("../../ui/src/pages/chat/chatAppearanceLayout.ts");
+    expect(chat).toContain("chatHorizontalPaddingClassName(chatAppearance.horizontalPadding)");
+    expect(layout).toContain('default: "px-5 sm:px-8"');
     expect(chat).not.toContain("flex-1 overflow-y-auto px-3 py-4 sm:px-4");
   });
 

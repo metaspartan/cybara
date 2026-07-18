@@ -66,7 +66,12 @@ export function classifyApiError(input: {
     };
   }
   // Billing / quota
-  if (status === 402 || /billing|quota|insufficient|payment|exceeded.*limit|credit/.test(text)) {
+  if (
+    status === 402 ||
+    /billing|quota|insufficient|payment|exceeded.*limit|credit|reached.{0,40}(?:usage|monthly).{0,20}limit|usage limit.{0,40}(?:period|billing cycle)|monthly usage limit/.test(
+      text
+    )
+  ) {
     return {
       category: "billing",
       retryable: false,

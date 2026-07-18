@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { FolderOpen, GitBranch, GitCompare, Globe2, X } from "lucide-react";
+import { FolderOpen, GitBranch, GitCompare, Globe2 } from "lucide-react";
 import type { Subagent } from "@/hooks/useApi";
 import type { SessionContextUsage, SessionTokenUsage } from "@/types";
 import { formatWorkspaceLabel, type FileChangeSummary, type SessionPlanView } from "./chatModel";
@@ -75,7 +75,6 @@ export function ChatEnvironmentOverview({
   gitBranchLoading,
   gitBranches,
   isOpen,
-  onClose,
   onCreateGitBranch,
   onRefreshGitBranches,
   onSwitchGitBranch,
@@ -99,7 +98,6 @@ export function ChatEnvironmentOverview({
   gitBranchLoading: boolean;
   gitBranches: GitBranchOption[];
   isOpen: boolean;
-  onClose: () => void;
   onCreateGitBranch: (branch: string) => Promise<void> | void;
   onRefreshGitBranches: () => Promise<void> | void;
   onSwitchGitBranch: (branch: string) => Promise<void> | void;
@@ -135,19 +133,11 @@ export function ChatEnvironmentOverview({
         opacity: 1,
       }}
     >
-      <div className="mb-2.5 flex items-center justify-between gap-3">
+      <div className="mb-2.5">
         <div>
           <div className="text-[12px] font-semibold text-gray-200">Environment</div>
           <div className="text-[11px] text-gray-500">Session overview</div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-[#242733] hover:text-gray-200"
-          title="Close environment overview"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
       </div>
 
       <div className="space-y-3">
@@ -316,7 +306,6 @@ export function ChatEnvironmentOverview({
                 className="mb-1.5 flex w-full items-center gap-2 rounded-md border border-[rgba(var(--accent-primary),0.3)] bg-[rgba(var(--accent-primary),0.1)] px-2.5 py-2 text-left text-[12px] text-gray-200 hover:bg-[rgba(var(--accent-primary),0.16)]"
                 onClick={() => {
                   onOpenWorkspaceTab("browser");
-                  onClose();
                 }}
               >
                 <Globe2 className="h-3.5 w-3.5 shrink-0 text-[rgb(var(--accent-primary))]" />
@@ -333,7 +322,6 @@ export function ChatEnvironmentOverview({
                     className="rounded-md bg-white/[0.04] px-2 py-1.5 text-left text-[11px] text-gray-400 hover:bg-white/[0.08] hover:text-gray-200"
                     onClick={() => {
                       onOpenWorkspaceTab(tab);
-                      onClose();
                     }}
                   >
                     {chatWorkspaceTabLabel(tab)}

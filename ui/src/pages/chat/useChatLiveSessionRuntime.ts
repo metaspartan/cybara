@@ -93,7 +93,6 @@ interface UseChatLiveSessionRuntimeOptions {
     sessionId: string | null | undefined,
     identity: SessionEventIdentity
   ) => boolean;
-  setShowEnvironmentOverview: Dispatch<SetStateAction<boolean>>;
   loadFreshSession: (sessionId: string) => Promise<LoadedChatSession>;
   loadSession: (
     sessionId: string,
@@ -139,7 +138,6 @@ export function useChatLiveSessionRuntime({
   refreshSessionMessagesRef,
   isSessionStopSuppressed,
   acceptSessionEvent,
-  setShowEnvironmentOverview,
   loadFreshSession,
   loadSession,
 }: UseChatLiveSessionRuntimeOptions): {
@@ -640,10 +638,6 @@ export function useChatLiveSessionRuntime({
 
   useEffect(() => {
     activeSessionRef.current = sessionId;
-  }, [sessionId]);
-
-  useEffect(() => {
-    setShowEnvironmentOverview(false);
   }, [sessionId]);
 
   useEffect(() => {

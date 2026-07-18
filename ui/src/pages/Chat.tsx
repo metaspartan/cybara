@@ -44,6 +44,7 @@ import { ChatComposer, type ChatComposerProps } from "./chat/ChatComposer";
 import { ChatEmptyState } from "./chat/ChatEmptyState";
 import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFollowUpControls";
 import { ChatImageLightbox } from "./chat/ChatImageLightbox";
+import { chatHorizontalPaddingClassName } from "./chat/chatAppearanceLayout";
 import { type ChatLinkOpenOptions, routeChatLink } from "./chat/chatLinkRouting";
 import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
 import {
@@ -200,8 +201,9 @@ export function Chat() {
   const { data: nearbyStatus } = useNearbyStatus(Boolean(sessionId));
   const nearbySharingEnabled = canShareNearbySession(sessionId, nearbyStatus);
   const [reverting, setReverting] = useState(false);
-  const [showEnvironmentOverview, setShowEnvironmentOverview] = useState(false);
-  const closeEnvironmentOverview = useCallback(() => setShowEnvironmentOverview(false), []);
+  const chatAppearance = useUIStore((state) => state.chatAppearance);
+  const showEnvironmentOverview = useUIStore((state) => state.chatEnvironmentOpen);
+  const setShowEnvironmentOverview = useUIStore((state) => state.setChatEnvironmentOpen);
   const {
     activeKind: activeWorkspaceKind,
     activeTabId: activeWorkspaceTab,
@@ -216,7 +218,7 @@ export function Chat() {
     tabs: workspaceTabs,
     toggleTab: toggleWorkspaceTab,
     updateTabTitle: updateWorkspaceTabTitle,
-  } = useChatWorkspaceTabs({ onOpen: closeEnvironmentOverview, sessionId });
+  } = useChatWorkspaceTabs({ sessionId });
   const handleOpenChatLink = useCallback(
     (href: string, options: ChatLinkOpenOptions): boolean => {
       const route = routeChatLink(href, options);
@@ -940,7 +942,6 @@ export function Chat() {
     refreshSessionMessagesRef,
     isSessionStopSuppressed,
     acceptSessionEvent,
-    setShowEnvironmentOverview,
     loadFreshSession: loadSessionMutation.loadFresh,
     loadSession,
   });
@@ -1452,6 +1453,7 @@ export function Chat() {
     followUpBehaviorEnabled,
     imageDragActive,
     imageInputRef,
+    horizontalPadding: chatAppearance.horizontalPadding,
     input,
     inputRef,
     isLoading,
@@ -1530,7 +1532,6 @@ export function Chat() {
             gitBranchLoading: environmentGit.loading,
             gitBranches: environmentGit.branches,
             isOpen: showEnvironmentOverview,
-            onClose: () => setShowEnvironmentOverview(false),
             onCreateGitBranch: environmentGit.createAndCheckout,
             onRefreshGitBranches: environmentGit.refresh,
             onSwitchGitBranch: environmentGit.checkout,
@@ -1573,7 +1574,7 @@ export function Chat() {
           }}
           workspacePanelOpen={showWorkspacePanel}
           onOpenNearbyShare={() => setShowNearbyShare(true)}
-          onToggleEnvironment={() => setShowEnvironmentOverview((value) => !value)}
+          onToggleEnvironment={() => setShowEnvironmentOverview(!showEnvironmentOverview)}
           onToggleFileReview={() => toggleWorkspaceTab("review")}
           onToggleSubagents={() => toggleWorkspaceTab("subagents")}
           onToggleWorkspacePanel={() => setShowWorkspacePanel((value) => !value)}
@@ -1599,7 +1600,8 @@ export function Chat() {
                 ref={messagesContainerRef}
                 onScroll={refreshScrollToBottomVisibility}
                 className={cn(
-                  "flex-1 overflow-y-auto px-5 py-4 sm:px-8",
+                  "flex-1 overflow-y-auto py-4",
+                  chatHorizontalPaddingClassName(chatAppearance.horizontalPadding),
                   typedMessages.length === 0 ? "flex items-center justify-center" : "space-y-4"
                 )}
               >
@@ -1668,6 +1670,14 @@ export function Chat() {
             </>
           )}
         </div>
+
+        {showEnvironmentOverview && !showWorkspacePanel ? (
+          <div
+            aria-hidden="true"
+            className="hidden w-96 shrink-0 xl:block"
+            data-chat-environment-reserved="true"
+          />
+        ) : null}
 
         {!artifactViewerTarget && (
           <ChatWorkspaceDock

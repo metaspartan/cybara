@@ -48,6 +48,8 @@ describe("IDE chat parity", () => {
     expect(panel).toContain("<MessageContent");
     expect(panel).toContain("<ChatImageLightbox");
     expect(composer).toContain("<ChatComposer");
+    expect(composer).toContain("state.chatAppearance.horizontalPadding");
+    expect(composer).toContain("horizontalPadding={horizontalPadding}");
     expect(composer).toContain("useChatAttachments");
     expect(composer).toContain("useChatCapabilityPicker");
     expect(composer).toContain("useChatDictation");
