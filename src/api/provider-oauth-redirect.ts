@@ -21,10 +21,11 @@ interface OAuthStartBody {
 }
 
 interface OAuthStatusBody {
-  state: string;
+  state?: unknown;
+  poll_token?: unknown;
 }
 
-export function oauthCallbackOwner(ctx?: RouteContext): string {
+function oauthCallbackPrincipal(ctx?: RouteContext): string {
   const mobileDeviceId = ctx?.auth?.mobileDevice?.id;
   if (mobileDeviceId) return `mobile:${mobileDeviceId}`;
   const credential =
@@ -46,6 +47,14 @@ export function oauthCallbackOwner(ctx?: RouteContext): string {
     return "local";
   }
   return `network:${clientIp}`;
+}
+
+export function oauthCallbackOwner(ctx: RouteContext | undefined, pollToken: string): string {
+  return createHash("sha256")
+    .update(oauthCallbackPrincipal(ctx))
+    .update("\0")
+    .update(pollToken)
+    .digest("hex");
 }
 
 export function resolveProviderOAuthCallbackHostname(value?: string): string {
@@ -167,7 +176,8 @@ export async function startProviderRedirectOAuth(
 ): Promise<Record<string, unknown>> {
   const { providerType } = body as OAuthStartBody;
   const { config } = resolveOAuthConfig(providerType);
-  const owner = oauthCallbackOwner(ctx);
+  const pollToken = crypto.randomUUID();
+  const owner = oauthCallbackOwner(ctx, pollToken);
   const { verifier, challenge } = await createPkcePair();
   const state = crypto.randomUUID();
   const callbackPath = config.callbackPath || "/callback";
@@ -239,11 +249,19 @@ export async function startProviderRedirectOAuth(
   return {
     auth_url: `${config.authorizeUrl}?${authParams.toString()}`,
     state,
+    poll_token: pollToken,
     callback_port: server.port,
   };
 }
 
 export function pollProviderRedirectOAuth(body: unknown, ctx?: RouteContext): OAuthCallbackEntry {
-  const { state } = body as OAuthStatusBody;
-  return consumeOAuthCallback(state, oauthCallbackOwner(ctx)) || { status: "not_found" };
+  const { state, poll_token: pollToken } = body as OAuthStatusBody;
+  if (typeof state !== "string" || typeof pollToken !== "string" || !state || !pollToken) {
+    return { status: "not_found" };
+  }
+  return (
+    consumeOAuthCallback(state, oauthCallbackOwner(ctx, pollToken)) || {
+      status: "not_found",
+    }
+  );
 }

@@ -9,6 +9,7 @@ import {
 } from "../../src/api/oauth-callbacks";
 import {
   oauthCallbackOwner,
+  pollProviderRedirectOAuth,
   resolveProviderOAuthCallbackHostname,
 } from "../../src/api/provider-oauth-redirect";
 
@@ -75,12 +76,30 @@ describe("oauth-callbacks store", () => {
     expect(() => resolveProviderOAuthCallbackHostname("0.0.0.0")).toThrow("loopback-only");
   });
 
-  test("callback polling treats loopback address forms as the same local principal", () => {
-    expect(oauthCallbackOwner({ clientIp: "127.0.0.1", headers: {} })).toBe("local");
-    expect(oauthCallbackOwner({ clientIp: "::1", headers: {} })).toBe("local");
-    expect(oauthCallbackOwner({ clientIp: "::ffff:127.0.0.1", headers: {} })).toBe("local");
-    expect(oauthCallbackOwner({ clientIp: "192.168.1.8", headers: {} })).toBe(
-      "network:192.168.1.8"
+  test("callback polling binds each loopback flow to its private polling token", () => {
+    const first = oauthCallbackOwner({ clientIp: "127.0.0.1", headers: {} }, "poll-a");
+    expect(oauthCallbackOwner({ clientIp: "::1", headers: {} }, "poll-a")).toBe(first);
+    expect(oauthCallbackOwner({ clientIp: "::ffff:127.0.0.1", headers: {} }, "poll-a")).toBe(first);
+    expect(oauthCallbackOwner({ clientIp: "127.0.0.1", headers: {} }, "poll-b")).not.toBe(first);
+    expect(oauthCallbackOwner({ clientIp: "192.168.1.8", headers: {} }, "poll-a")).not.toBe(first);
+  });
+
+  test("a second loopback process cannot consume a callback with only the OAuth state", () => {
+    const ctx = { clientIp: "127.0.0.1", headers: {} };
+    setOAuthCallback(
+      "s-local-flow",
+      { status: "success", access_token: "private-token" },
+      oauthCallbackOwner(ctx, "private-poll-token")
     );
+
+    expect(pollProviderRedirectOAuth({ state: "s-local-flow" }, ctx).status).toBe("not_found");
+    expect(
+      pollProviderRedirectOAuth({ state: "s-local-flow", poll_token: "attacker-poll-token" }, ctx)
+        .status
+    ).toBe("not_found");
+    expect(
+      pollProviderRedirectOAuth({ state: "s-local-flow", poll_token: "private-poll-token" }, ctx)
+        .access_token
+    ).toBe("private-token");
   });
 });

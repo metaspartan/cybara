@@ -69,18 +69,21 @@ describe("CLI provider OAuth", () => {
   test("completes redirect authorization and tolerates callback throttling", async () => {
     let now = 1_000;
     let polls = 0;
+    const pollBodies: unknown[] = [];
     const credentials = await connectCliProviderOAuth({
       apiBase: "http://127.0.0.1:4269",
       providerType: "openai-codex",
       oauthFlow: "redirect",
       headers: () => ({ "Content-Type": "application/json" }),
-      fetchImpl: (async (input) => {
+      fetchImpl: (async (input, init) => {
         if (String(input).endsWith("/start")) {
           return jsonResponse({
             auth_url: "https://auth.openai.com/authorize",
             state: "oauth-state",
+            poll_token: "oauth-poll-token",
           });
         }
+        pollBodies.push(typeof init?.body === "string" ? JSON.parse(init.body) : undefined);
         polls += 1;
         return polls === 1
           ? jsonResponse({ error: "slow down" }, 429)
@@ -101,6 +104,10 @@ describe("CLI provider OAuth", () => {
       expiresAt: undefined,
     });
     expect(polls).toBe(2);
+    expect(pollBodies).toEqual([
+      { state: "oauth-state", poll_token: "oauth-poll-token" },
+      { state: "oauth-state", poll_token: "oauth-poll-token" },
+    ]);
   });
 
   test("rejects incomplete authorization responses", async () => {

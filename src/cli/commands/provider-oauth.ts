@@ -12,6 +12,7 @@ interface OAuthResponse {
   expires_at?: number;
   auth_url?: string;
   state?: string;
+  poll_token?: string;
   user_code?: string;
   verification_uri?: string;
   verification_uri_complete?: string;
@@ -115,7 +116,7 @@ async function connectRedirect(
     body: JSON.stringify({ providerType: options.providerType }),
   });
   const data = await responseData(response);
-  if (!data.auth_url || !data.state) {
+  if (!data.auth_url || !data.state || !data.poll_token) {
     throw new Error("Provider returned an incomplete authorization response");
   }
   options.onVerification({ url: data.auth_url });
@@ -128,7 +129,7 @@ async function connectRedirect(
     const pollResponse = await fetchImpl(`${options.apiBase}/api/providers/oauth/callback-status`, {
       method: "POST",
       headers: options.headers(),
-      body: JSON.stringify({ state: data.state }),
+      body: JSON.stringify({ state: data.state, poll_token: data.poll_token }),
     });
     if (pollResponse.status === 429) continue;
     const pollData = await responseData(pollResponse);

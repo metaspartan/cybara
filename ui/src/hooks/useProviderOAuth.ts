@@ -24,6 +24,7 @@ interface ProviderOAuthResponse {
   expires_at?: number;
   auth_url?: string;
   state?: string;
+  poll_token?: string;
   user_code?: string;
   verification_uri?: string;
   verification_uri_complete?: string;
@@ -138,7 +139,7 @@ export function useProviderOAuth(provider: AvailableProvider | null) {
       body: JSON.stringify({ providerType: provider.id }),
     });
     const data = await oauthResponse(response);
-    if (!data.auth_url || !data.state) {
+    if (!data.auth_url || !data.state || !data.poll_token) {
       throw new Error("Provider returned an incomplete authorization response");
     }
     await openExternal(data.auth_url);
@@ -150,7 +151,7 @@ export function useProviderOAuth(provider: AvailableProvider | null) {
       const pollResponse = await apiFetch("/api/providers/oauth/callback-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: data.state }),
+        body: JSON.stringify({ state: data.state, poll_token: data.poll_token }),
       });
       if (pollResponse.status === 429) continue;
       const pollData = (await pollResponse.json()) as ProviderOAuthResponse;

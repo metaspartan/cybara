@@ -294,6 +294,7 @@ describe("mobile API client", () => {
         return Response.json({
           auth_url: "https://auth.example/start",
           state: "oauth-state",
+          poll_token: "oauth-poll-token",
         });
       }
       if (parsedUrl.pathname === "/api/providers/oauth/callback-status") {
@@ -313,8 +314,11 @@ describe("mobile API client", () => {
       await expect(api.startProviderOAuth("openai-codex")).resolves.toEqual({
         auth_url: "https://auth.example/start",
         state: "oauth-state",
+        poll_token: "oauth-poll-token",
       });
-      await expect(api.providerOAuthCallbackStatus("oauth-state")).resolves.toEqual({
+      await expect(
+        api.providerOAuthCallbackStatus("oauth-state", "oauth-poll-token")
+      ).resolves.toEqual({
         status: "success",
         access_token: "oauth-token",
       });
@@ -330,7 +334,7 @@ describe("mobile API client", () => {
         {
           method: "POST",
           path: "/api/providers/oauth/callback-status",
-          body: { state: "oauth-state" },
+          body: { state: "oauth-state", poll_token: "oauth-poll-token" },
         },
         {
           method: "POST",

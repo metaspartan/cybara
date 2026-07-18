@@ -210,6 +210,7 @@ export interface ProviderUpdatePayload {
 export interface ProviderOAuthStartResponse {
   auth_url: string;
   state: string;
+  poll_token: string;
   callback_port?: number;
 }
 

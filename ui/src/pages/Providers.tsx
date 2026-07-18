@@ -828,6 +828,10 @@ function ProviderModal({
       setOauthState("polling");
 
       const oauthStateId = data.state;
+      const oauthPollToken = data.poll_token;
+      if (typeof oauthStateId !== "string" || typeof oauthPollToken !== "string") {
+        throw new Error("Provider returned an incomplete authorization response");
+      }
       let pollDelayMs = 3000;
       const expiresAt = Date.now() + 600_000; // 10 min timeout
       while (Date.now() < expiresAt && !abortRef.current) {
@@ -838,7 +842,7 @@ function ProviderModal({
           const pollRes = await apiFetch("/api/providers/oauth/callback-status", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ state: oauthStateId }),
+            body: JSON.stringify({ state: oauthStateId, poll_token: oauthPollToken }),
           });
           const pollData = await pollRes.json();
 

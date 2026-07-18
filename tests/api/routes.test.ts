@@ -1067,6 +1067,7 @@ describe("Providers OAuth API", () => {
   test("callback status should return not_found for unknown state", async () => {
     const { status, data } = await fixture.api("POST", "/api/providers/oauth/callback-status", {
       state: `missing-state-${Date.now()}`,
+      poll_token: "missing-poll-token",
     });
     expect(status).toBe(200);
     expect(data.status).toBe("not_found");
