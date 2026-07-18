@@ -10,7 +10,7 @@ import {
   stopActiveChatTurn,
 } from "./api/chat";
 import { getClientIp } from "./api/client-ip";
-import { readRequestText, RequestBodyTooLargeError } from "./api/request-body";
+import { classifyRequestBodyReadFailure, readRequestText } from "./api/request-body";
 import { setGatewayHostApplyHandler } from "./api/gateway-network";
 import { gatewayRequestIdleTimeoutSeconds } from "./api/gateway-request-timeout";
 import { handleRequest } from "./api/routes";
@@ -594,23 +594,21 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
               : 64 * 1024 * 1024;
             text = await readRequestText(req, maxBodyBytes);
           } catch (error) {
-            if (error instanceof RequestBodyTooLargeError) {
-              return new Response(
-                JSON.stringify({
-                  error: "Request body is too large",
-                  code: "PAYLOAD_TOO_LARGE",
-                  path: pathname,
-                }),
-                {
-                  status: 413,
-                  headers: {
-                    "Content-Type": "application/json",
-                    ...commonSecurityHeaders,
-                  },
-                }
-              );
-            }
-            text = "";
+            const failure = classifyRequestBodyReadFailure(error);
+            return new Response(
+              JSON.stringify({
+                error: failure.message,
+                code: failure.code,
+                path: pathname,
+              }),
+              {
+                status: failure.status,
+                headers: {
+                  "Content-Type": "application/json",
+                  ...commonSecurityHeaders,
+                },
+              }
+            );
           }
           if (needsRaw) rawBody = text;
           if (text) {

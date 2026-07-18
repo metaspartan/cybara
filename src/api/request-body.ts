@@ -5,6 +5,27 @@ export class RequestBodyTooLargeError extends Error {
   }
 }
 
+export interface RequestBodyReadFailure {
+  status: number;
+  code: "PAYLOAD_TOO_LARGE" | "REQUEST_BODY_READ_ERROR";
+  message: string;
+}
+
+export function classifyRequestBodyReadFailure(error: unknown): RequestBodyReadFailure {
+  if (error instanceof RequestBodyTooLargeError) {
+    return {
+      status: 413,
+      code: "PAYLOAD_TOO_LARGE",
+      message: "Request body is too large",
+    };
+  }
+  return {
+    status: 500,
+    code: "REQUEST_BODY_READ_ERROR",
+    message: "Unable to read request body",
+  };
+}
+
 export async function readRequestText(request: Request, maxBytes: number): Promise<string> {
   const declared = Number(request.headers.get("content-length") || "0");
   if (Number.isFinite(declared) && declared > maxBytes) {
