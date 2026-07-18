@@ -4,7 +4,10 @@ import {
   setSessionPendingChatMessages,
 } from "../core/status";
 import { hasImages } from "../core/llm/image-blocks";
-import { loadPersistedPendingChatItems } from "./chat-pending-store";
+import {
+  deletePersistedPendingChatItem,
+  loadPersistedPendingChatItems,
+} from "./chat-pending-store";
 import {
   type InMemoryChatSession,
   parseIsoTimestampMs,
@@ -60,6 +63,38 @@ export function findMaterializedPendingMessage(
       (message._pendingSteeringId === pendingMessageId ||
         message.pending_chat_id === pendingMessageId)
   );
+}
+
+export function hasAssistantResponseAfterPendingMessage(
+  session: InMemoryChatSession,
+  pendingMessageId: string
+): boolean {
+  const pendingIndex = session.messages.findIndex(
+    (message) =>
+      message.role === "user" &&
+      (message._pendingSteeringId === pendingMessageId ||
+        message.pending_chat_id === pendingMessageId)
+  );
+  if (pendingIndex < 0) return false;
+  for (let index = pendingIndex + 1; index < session.messages.length; index += 1) {
+    const role = session.messages[index]?.role;
+    if (role === "user") return false;
+    if (role === "assistant") return true;
+  }
+  return false;
+}
+
+export function removePendingChatQueueItem(
+  sessionId: string,
+  pendingMessageId: string
+): PendingChatMessageSnapshot[] {
+  const remaining = (pendingChatQueues.get(sessionId) || []).filter(
+    (item) => item.id !== pendingMessageId
+  );
+  if (remaining.length > 0) pendingChatQueues.set(sessionId, remaining);
+  else pendingChatQueues.delete(sessionId);
+  deletePersistedPendingChatItem(pendingMessageId);
+  return syncPendingChatStatus(sessionId);
 }
 
 export function preparePendingMessage(

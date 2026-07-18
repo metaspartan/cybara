@@ -82,12 +82,14 @@ import {
 } from "./chat-pending-store";
 import {
   findMaterializedPendingMessage,
+  hasAssistantResponseAfterPendingMessage,
   hasPendingChatMessages,
   materializePendingMessage,
   nextPendingChatSequence,
   pendingChatSnapshot,
   pendingChatSnapshots,
   preparePendingMessage,
+  removePendingChatQueueItem,
   restorePendingChatQueueState,
   syncPendingChatStatus,
 } from "./chat-pending-state";
@@ -565,6 +567,12 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
     return;
   }
 
+  if (next.materialized && hasAssistantResponseAfterPendingMessage(session, next.id)) {
+    removePendingChatQueueItem(sessionId, next.id);
+    schedulePendingChatDrain(sessionId);
+    return;
+  }
+
   const preparedMessage = preparePendingMessage(session, next);
   try {
     await upsertPersistedSessionMessage(session.id, session.agentId, preparedMessage, {
@@ -593,12 +601,7 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
   }
   persistActiveSessionContext(session);
 
-  const currentQueue = pendingChatQueues.get(sessionId) || [];
-  const remaining = currentQueue.filter((item) => item.id !== next.id);
-  if (remaining.length > 0) pendingChatQueues.set(sessionId, remaining);
-  else pendingChatQueues.delete(sessionId);
-  deletePersistedPendingChatItem(next.id);
-  syncPendingChatStatus(sessionId);
+  removePendingChatQueueItem(sessionId, next.id);
 
   try {
     broadcastStatus({
@@ -866,14 +869,7 @@ export function deletePendingChatMessage(
     };
   }
 
-  const nextQueue = queue.filter((item) => item.id !== pendingMessageId);
-  if (nextQueue.length > 0) {
-    pendingChatQueues.set(key, nextQueue);
-  } else {
-    pendingChatQueues.delete(key);
-  }
-  deletePersistedPendingChatItem(pendingMessageId);
-  const pendingMessages = syncPendingChatStatus(key);
+  const pendingMessages = removePendingChatQueueItem(key, pendingMessageId);
   rejectPendingChatCompletion(pendingMessageId, new Error("Pending chat message was deleted"));
   return { success: true, pendingMessages };
 }

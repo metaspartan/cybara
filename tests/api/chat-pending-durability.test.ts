@@ -4,10 +4,18 @@ import {
   getSessionMessages,
   handleChat,
   listPendingChatMessages,
+  restorePersistedPendingChatQueues,
 } from "../../src/api/chat";
 import { hasPendingChatMessages } from "../../src/api/chat-pending-state";
-import { loadPersistedPendingChatItems } from "../../src/api/chat-pending-store";
-import { pendingChatQueues, type PendingChatItem } from "../../src/api/chat-runtime-state";
+import {
+  loadPersistedPendingChatItems,
+  persistPendingChatItem,
+} from "../../src/api/chat-pending-store";
+import {
+  cacheChatSession,
+  pendingChatQueues,
+  type PendingChatItem,
+} from "../../src/api/chat-runtime-state";
 import { agentManager } from "../../src/core/agent";
 import db from "../../src/core/database";
 import { providerManager } from "../../src/core/providers";
@@ -60,6 +68,84 @@ describe("pending chat durability", () => {
 
     expect(hasPendingChatMessages(sessionId)).toBe(false);
     expect(listPendingChatMessages(sessionId)).toEqual([]);
+  });
+
+  test("restored materialized turns with assistant responses are not replayed", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Pending Replay Provider",
+      api_key: "sk-pending-replay",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Pending Replay Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-pending-replay",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+    const sessionId = `pending-replay-${crypto.randomUUID()}`;
+    const pendingId = `pending_${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const createdAt = Date.now();
+    cacheChatSession({
+      id: sessionId,
+      agentId: agent.id,
+      useModelRouter: false,
+      title: null,
+      messages: [
+        {
+          role: "user",
+          content: "queued once",
+          timestamp: new Date(createdAt).toISOString(),
+          pending_chat_id: pendingId,
+        },
+        {
+          role: "assistant",
+          content: "completed once",
+          timestamp: new Date(createdAt + 1).toISOString(),
+        },
+      ],
+      createdAt: new Date(createdAt).toISOString(),
+      updatedAt: new Date(createdAt + 1).toISOString(),
+      persisted: true,
+    });
+    const item: PendingChatItem = {
+      id: pendingId,
+      sessionId,
+      request: {
+        message: "queued once",
+        sessionId,
+        agentId: agent.id,
+        tools: false,
+      },
+      content: "queued once",
+      createdAt,
+      updatedAt: createdAt,
+      mode: "queued",
+      sequence: 1,
+      materialized: true,
+    };
+    persistPendingChatItem(item);
+    pendingChatQueues.delete(sessionId);
+    let providerCalls = 0;
+    globalThis.fetch = (async () => {
+      providerCalls += 1;
+      return Response.json({});
+    }) as typeof fetch;
+
+    restorePersistedPendingChatQueues();
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (loadPersistedPendingChatItems(sessionId).length === 0) break;
+      await Bun.sleep(10);
+    }
+    await Bun.sleep(25);
+
+    expect(providerCalls).toBe(0);
+    expect(pendingChatQueues.has(sessionId)).toBe(false);
+    expect(loadPersistedPendingChatItems(sessionId)).toEqual([]);
   });
 
   test("a failed session snapshot does not replay a durably materialized queued turn", async () => {
