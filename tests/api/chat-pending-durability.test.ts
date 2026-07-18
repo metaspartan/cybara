@@ -6,6 +6,7 @@ import {
   listPendingChatMessages,
   restorePersistedPendingChatQueues,
 } from "../../src/api/chat";
+import { settlePendingChatFailure } from "../../src/api/chat-pending-failure";
 import { hasPendingChatMessages } from "../../src/api/chat-pending-state";
 import {
   loadPersistedPendingChatItems,
@@ -146,6 +147,118 @@ describe("pending chat durability", () => {
     expect(providerCalls).toBe(0);
     expect(pendingChatQueues.has(sessionId)).toBe(false);
     expect(loadPersistedPendingChatItems(sessionId)).toEqual([]);
+  });
+
+  test("failed queued turns persist an assistant outcome before leaving the queue", async () => {
+    const sessionId = `pending-failure-${crypto.randomUUID()}`;
+    const pendingId = `pending_${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const createdAt = Date.now();
+    const session = {
+      id: sessionId,
+      agentId: "pending-failure-agent",
+      useModelRouter: false,
+      title: null,
+      messages: [
+        {
+          role: "user" as const,
+          content: "queued turn",
+          timestamp: new Date(createdAt).toISOString(),
+          pending_chat_id: pendingId,
+        },
+      ],
+      createdAt: new Date(createdAt).toISOString(),
+      updatedAt: new Date(createdAt).toISOString(),
+      persisted: true,
+    };
+    cacheChatSession(session);
+    const item: PendingChatItem = {
+      id: pendingId,
+      sessionId,
+      request: { message: "queued turn", sessionId },
+      content: "queued turn",
+      createdAt,
+      updatedAt: createdAt,
+      mode: "queued",
+      sequence: 1,
+      materialized: true,
+    };
+    pendingChatQueues.set(sessionId, [item]);
+    persistPendingChatItem(item);
+
+    const cleanupError = await settlePendingChatFailure(
+      session,
+      item,
+      new Error("forced queued turn failure")
+    );
+
+    expect(cleanupError).toBeUndefined();
+    expect(session.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+    expect(session.messages.at(-1)?.content).toContain("forced queued turn failure");
+    expect(listPendingChatMessages(sessionId)).toEqual([]);
+    expect(loadPersistedPendingChatItems(sessionId)).toEqual([]);
+    expect(
+      (await getSessionMessages(sessionId)).some(
+        (message) =>
+          message.role === "assistant" && message.content.includes("forced queued turn failure")
+      )
+    ).toBe(true);
+  });
+
+  test("failed outcome persistence keeps the queued turn recoverable", async () => {
+    const sessionId = `pending-failure-storage-${crypto.randomUUID()}`;
+    const pendingId = `pending_${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const createdAt = Date.now();
+    const session = {
+      id: sessionId,
+      agentId: "pending-failure-storage-agent",
+      useModelRouter: false,
+      title: null,
+      messages: [
+        {
+          role: "user" as const,
+          content: "queued turn",
+          timestamp: new Date(createdAt).toISOString(),
+          pending_chat_id: pendingId,
+        },
+      ],
+      createdAt: new Date(createdAt).toISOString(),
+      updatedAt: new Date(createdAt).toISOString(),
+      persisted: true,
+    };
+    cacheChatSession(session);
+    const item: PendingChatItem = {
+      id: pendingId,
+      sessionId,
+      request: { message: "queued turn", sessionId },
+      content: "queued turn",
+      createdAt,
+      updatedAt: createdAt,
+      mode: "queued",
+      sequence: 1,
+      materialized: true,
+    };
+    pendingChatQueues.set(sessionId, [item]);
+    persistPendingChatItem(item);
+    const trigger = `fail_pending_outcome_${crypto.randomUUID().replaceAll("-", "")}`;
+    createdTriggers.push(trigger);
+    db.exec(`
+      CREATE TRIGGER ${trigger}
+      BEFORE INSERT ON session_messages
+      WHEN NEW.session_id = '${sessionId}' AND NEW.role = 'assistant'
+      BEGIN
+        SELECT RAISE(FAIL, 'forced pending outcome failure');
+      END
+    `);
+
+    await expect(
+      settlePendingChatFailure(session, item, new Error("forced queued turn failure"))
+    ).rejects.toThrow("forced pending outcome failure");
+
+    expect(session.messages.map((message) => message.role)).toEqual(["user"]);
+    expect(pendingChatQueues.get(sessionId)).toHaveLength(1);
+    expect(loadPersistedPendingChatItems(sessionId)).toHaveLength(1);
   });
 
   test("a failed session snapshot does not replay a durably materialized queued turn", async () => {

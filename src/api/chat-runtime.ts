@@ -75,6 +75,7 @@ import {
 } from "./chat-agent-prompt";
 import { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
+import { settlePendingChatFailure } from "./chat-pending-failure";
 import {
   deletePersistedPendingChatItem,
   persistPendingChatItem,
@@ -82,7 +83,7 @@ import {
 } from "./chat-pending-store";
 import {
   findMaterializedPendingMessage,
-  hasAssistantResponseAfterPendingMessage,
+  findAssistantResponseAfterPendingMessage,
   hasPendingChatMessages,
   materializePendingMessage,
   nextPendingChatSequence,
@@ -567,8 +568,16 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
     return;
   }
 
-  if (next.materialized && hasAssistantResponseAfterPendingMessage(session, next.id)) {
-    removePendingChatQueueItem(sessionId, next.id);
+  const completedPendingResponse = next.materialized
+    ? findAssistantResponseAfterPendingMessage(session, next.id)
+    : undefined;
+  if (completedPendingResponse) {
+    try {
+      removePendingChatQueueItem(sessionId, next.id);
+    } catch (error) {
+      log.exception("Restored queued chat cleanup failed", error, { sessionId });
+    }
+    resolvePendingChatCompletion(next.id, { sessionId, message: completedPendingResponse });
     schedulePendingChatDrain(sessionId);
     return;
   }
@@ -601,8 +610,6 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
   }
   persistActiveSessionContext(session);
 
-  removePendingChatQueueItem(sessionId, next.id);
-
   try {
     broadcastStatus({
       status: "thinking",
@@ -621,11 +628,26 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
       },
       sessionId
     );
+    try {
+      removePendingChatQueueItem(sessionId, next.id);
+    } catch (error) {
+      log.exception("Completed queued chat cleanup failed", error, { sessionId });
+      schedulePendingChatDrain(sessionId, 1000);
+    }
     resolvePendingChatCompletion(next.id, response);
   } catch (error) {
-    rejectPendingChatCompletion(next.id, error);
     log.exception("Queued chat turn failed", error, { sessionId });
-    schedulePendingChatDrain(sessionId);
+    try {
+      const cleanupError = await settlePendingChatFailure(session, next, error);
+      if (cleanupError) {
+        log.exception("Failed queued chat cleanup failed", cleanupError, { sessionId });
+        schedulePendingChatDrain(sessionId, 1000);
+      }
+      rejectPendingChatCompletion(next.id, error);
+    } catch (persistenceError) {
+      log.exception("Queued chat failure could not be persisted", persistenceError, { sessionId });
+      rejectPendingChatCompletion(next.id, error);
+    }
   }
 }
 
@@ -663,8 +685,6 @@ function runChatTurnWithQueueDrain(
 }
 
 export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
-  // Rate limiting and input validation touch no shared session state, so they
-  // run outside the per-session lock.
   const rateLimit = checkRateLimit("chat", chatRateLimitConfig);
   if (!rateLimit.allowed) {
     return {
@@ -695,18 +715,11 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     };
   }
 
-  // Expand slash commands (e.g. /learn <url|prompt>) into a standards-guided
-  // prompt handed to the agent as a normal turn. Done here so every client
-  // (web, mobile, macOS, channels) gets the same commands with no extra wiring.
   const expandedCommand = expandPromptCommand(request.message);
   if (expandedCommand) {
     request = { ...request, message: expandedCommand };
   }
 
-  // Serialize the turn per session. A provided sessionId is the contended key;
-  // a new session gets a fresh id that is used as both the lock key and the
-  // session id so the whole turn (create → push user → execute → push assistant
-  // → persist) runs without interleaving.
   const sessionLocked = chatTurnMutex.isLocked(effectiveSessionId);
   const sessionHasPendingMessages = hasPendingChatMessages(effectiveSessionId);
   const sessionStatusActive =

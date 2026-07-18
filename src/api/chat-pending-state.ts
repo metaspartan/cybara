@@ -65,35 +65,35 @@ export function findMaterializedPendingMessage(
   );
 }
 
-export function hasAssistantResponseAfterPendingMessage(
+export function findAssistantResponseAfterPendingMessage(
   session: InMemoryChatSession,
   pendingMessageId: string
-): boolean {
+): ChatMessage | undefined {
   const pendingIndex = session.messages.findIndex(
     (message) =>
       message.role === "user" &&
       (message._pendingSteeringId === pendingMessageId ||
         message.pending_chat_id === pendingMessageId)
   );
-  if (pendingIndex < 0) return false;
+  if (pendingIndex < 0) return undefined;
   for (let index = pendingIndex + 1; index < session.messages.length; index += 1) {
-    const role = session.messages[index]?.role;
-    if (role === "user") return false;
-    if (role === "assistant") return true;
+    const message = session.messages[index];
+    if (message?.role === "user") return undefined;
+    if (message?.role === "assistant") return message;
   }
-  return false;
+  return undefined;
 }
 
 export function removePendingChatQueueItem(
   sessionId: string,
   pendingMessageId: string
 ): PendingChatMessageSnapshot[] {
+  deletePersistedPendingChatItem(pendingMessageId);
   const remaining = (pendingChatQueues.get(sessionId) || []).filter(
     (item) => item.id !== pendingMessageId
   );
   if (remaining.length > 0) pendingChatQueues.set(sessionId, remaining);
   else pendingChatQueues.delete(sessionId);
-  deletePersistedPendingChatItem(pendingMessageId);
   return syncPendingChatStatus(sessionId);
 }
 
