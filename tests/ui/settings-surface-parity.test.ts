@@ -5,6 +5,7 @@ import { readNativeConfigSource, readNativeSettingsSource } from "../shared/sour
 
 const root = join(import.meta.dir, "..", "..");
 const webSettings = readFileSync(join(root, "ui/src/pages/Settings.tsx"), "utf8");
+const webSettingsNavigation = readFileSync(join(root, "ui/src/lib/settingsNavigation.ts"), "utf8");
 const webApi = readFileSync(join(root, "ui/src/lib/api.ts"), "utf8");
 const webWalletApi = readFileSync(join(root, "ui/src/lib/api/wallet.ts"), "utf8");
 const webSafety = readFileSync(join(root, "ui/src/pages/settings/FeatureSettings.tsx"), "utf8");
@@ -52,8 +53,41 @@ const nativeLiquidGlass = readFileSync(
   join(root, "apps/macos/Cybara/Sources/Cybara/LiquidGlass.swift"),
   "utf8"
 );
+const mobileDashboard = readFileSync(join(root, "apps/mobile/src/lib/dashboard.ts"), "utf8");
 
 describe("settings surface parity", () => {
+  test("applicable settings categories stay aligned across web, native macOS, and mobile", () => {
+    const categories = [
+      ["general", "general", "general"],
+      ["accessibility", "accessibility", "accessibility"],
+      ["gateway", "gateway", "gateway"],
+      ["ai", "model", "ai"],
+      ["agents", "agents", "agents"],
+      ["providers", "providers", "providers"],
+      ["router", "router", "router"],
+      ["channels", "channels", "channels"],
+      ["plugins", "plugins", "plugins"],
+      ["mcp", "mcp", "mcp"],
+      ["skills", "skills", "skills"],
+      ["tools", "tools", "tools"],
+      ["memory", "memory", "memory"],
+      ["lab", "lab", "evals"],
+      ["voice", "speech", "voice"],
+      ["safety", "features", "safety"],
+      ["wallet", "wallet", "wallet"],
+      ["logs", "logs", "logs"],
+      ["migration", "migration", "migration"],
+      ["system", "advanced", "system"],
+    ] as const;
+    for (const [web, native, mobile] of categories) {
+      expect(webSettingsNavigation).toContain(`id: "${web}"`);
+      expect(nativeSettings).toContain(`case .${native}`);
+      expect(mobileDashboard).toContain(`value: "${mobile}"`);
+    }
+    expect(nativeSettings).toContain("case .mobile");
+    expect(nativeSettings).toContain("case .updates");
+  });
+
   test("web safety uses switches and exposes the web access policy", () => {
     expect(webSettings).toContain("<WebToolPolicySettings />");
     expect(webSafety).toContain("<Switch");
@@ -109,13 +143,16 @@ describe("settings surface parity", () => {
 
   test("native clients consume the shared chat appearance settings", () => {
     expect(mobileSettings).toContain('title="Readability"');
-    expect(mobileSettings).toContain("chat_appearance: { ...chatAppearance");
+    expect(mobileSettings).toContain("chat_appearance: { ...configuredChatAppearance");
+    expect(mobileSettings).toContain("useEffectiveChatAppearance(configuredChatAppearance)");
     expect(nativeSettings).toContain('case .accessibility: return "settings.accessibility"');
     expect(nativeSettings).toContain("NativeI18n.t(tab.titleKey)");
     expect(nativeSettings).toContain('["chat_appearance": chatAppearance.payload]');
     expect(nativeChatAppearance).toContain('config["chat_appearance"]');
     expect(nativeChatAppearance).toContain("var activityFontSize: CGFloat");
     expect(nativeLiquidGlass).toContain("chatAppearance.reduceTransparency");
+    expect(nativeLiquidGlass).toContain("systemReduceTransparency");
+    expect(nativeLiquidGlass).toContain("colorSchemeContrast == .increased");
     expect(mobileSessionDetail).toContain("opaque={chatAppearance.reduceTransparency}");
     expect(mobileSessionDetail).toContain(
       'animationType={chatAppearance.reduceMotion ? "none" : "fade"}'

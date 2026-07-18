@@ -119,6 +119,7 @@ export interface GoogleCandidate {
 export interface GoogleUsageMetadata {
   promptTokenCount?: number;
   candidatesTokenCount?: number;
+  thoughtsTokenCount?: number;
   totalTokenCount?: number;
   cachedContentTokenCount?: number;
 }

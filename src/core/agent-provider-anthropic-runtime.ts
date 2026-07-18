@@ -9,6 +9,7 @@ import {
   type AgentToolCallResult,
   ANTHROPIC_CONTEXT_1M_BETA,
   type AnthropicResponse,
+  type AnthropicUsage,
   summarizeProgressThought,
 } from "./agent-internals";
 import {
@@ -57,6 +58,7 @@ import {
   usesAnthropicAdaptiveThinking,
 } from "./llm/reasoning";
 import { withLlmRequestTimeout } from "./llm/request-timeout";
+import { normalizeProviderTokenUsage } from "./llm/token-usage-normalization";
 import {
   sanitizeAssistantContent,
   toAnthropicReplayContentWithNormalizedToolUses,
@@ -68,6 +70,16 @@ import { boundedPoolRetryDelayMs, providerExceptionRetryDelayMs } from "./provid
 import { providers as providerCatalog, type ProviderType } from "./providers";
 import { recordRateLimit } from "./rate-limit-tracker";
 import type { ToolContext } from "./tools/index";
+
+function normalizeAnthropicUsage(usage: AnthropicUsage) {
+  return normalizeProviderTokenUsage({
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    cachedInputTokens: usage.cache_read_input_tokens,
+    cacheWriteTokens: usage.cache_creation_input_tokens,
+    cacheTokenAccounting: "separate",
+  });
+}
 
 export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRuntime {
   protected async callAnthropicAPI(
@@ -297,15 +309,21 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
     const durationMs = Math.round(performance.now() - startTime);
 
     if (data.usage) {
-      const inputTokens = data.usage.input_tokens || 0;
-      const outputTokens = data.usage.output_tokens || 0;
-      trackTokenUsage(modelId, providerConfig, baseUrl, inputTokens, outputTokens, durationMs, {
-        sessionId: sessionIdForVisibleTokenUsage(toolContext),
-        cachedInputTokens: data.usage.cache_read_input_tokens || 0,
-        cacheWriteTokens: data.usage.cache_creation_input_tokens || 0,
-        firstTokenMs: durationMs,
-        routerRouteId: toolContext?.routerRouteId,
-      });
+      const usage = normalizeAnthropicUsage(data.usage);
+      trackTokenUsage(
+        modelId,
+        providerConfig,
+        baseUrl,
+        usage.inputTokens,
+        usage.outputTokens,
+        durationMs,
+        {
+          sessionId: sessionIdForVisibleTokenUsage(toolContext),
+          cachedInputTokens: usage.cachedInputTokens,
+          cacheWriteTokens: usage.cacheWriteTokens,
+          routerRouteId: toolContext?.routerRouteId,
+        }
+      );
     }
 
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
@@ -755,18 +773,18 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
 
       const responseData = (await loopResponse.json()) as AnthropicResponse;
       if (responseData.usage) {
+        const usage = normalizeAnthropicUsage(responseData.usage);
         trackTokenUsage(
           modelId,
           providerConfig,
           baseUrl,
-          responseData.usage.input_tokens || 0,
-          responseData.usage.output_tokens || 0,
+          usage.inputTokens,
+          usage.outputTokens,
           Math.round(performance.now() - loopRequestStartedAt),
           {
             sessionId: sessionIdForVisibleTokenUsage(toolContext),
-            cachedInputTokens: responseData.usage.cache_read_input_tokens || 0,
-            cacheWriteTokens: responseData.usage.cache_creation_input_tokens || 0,
-            firstTokenMs: Math.round(performance.now() - loopRequestStartedAt),
+            cachedInputTokens: usage.cachedInputTokens,
+            cacheWriteTokens: usage.cacheWriteTokens,
             routerRouteId: toolContext?.routerRouteId,
           }
         );
@@ -858,18 +876,18 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         if (closingResponse.ok) {
           const closingData = (await closingResponse.json()) as AnthropicResponse;
           if (closingData.usage) {
+            const usage = normalizeAnthropicUsage(closingData.usage);
             trackTokenUsage(
               modelId,
               providerConfig,
               baseUrl,
-              closingData.usage.input_tokens || 0,
-              closingData.usage.output_tokens || 0,
+              usage.inputTokens,
+              usage.outputTokens,
               Math.round(performance.now() - closingStartedAt),
               {
                 sessionId: sessionIdForVisibleTokenUsage(toolContext),
-                cachedInputTokens: closingData.usage.cache_read_input_tokens || 0,
-                cacheWriteTokens: closingData.usage.cache_creation_input_tokens || 0,
-                firstTokenMs: Math.round(performance.now() - closingStartedAt),
+                cachedInputTokens: usage.cachedInputTokens,
+                cacheWriteTokens: usage.cacheWriteTokens,
                 routerRouteId: toolContext?.routerRouteId,
               }
             );

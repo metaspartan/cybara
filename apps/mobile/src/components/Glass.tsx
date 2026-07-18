@@ -1,6 +1,7 @@
-import type { PropsWithChildren } from "react";
 import { BlurView } from "expo-blur";
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
+import type { PropsWithChildren } from "react";
+import { Pressable, type StyleProp, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import { useSystemAccessibility } from "../accessibility/SystemAccessibilityContext";
 import {
   colors,
   radius,
@@ -23,7 +24,16 @@ export function GlassPanel({
   elevated?: boolean;
 }>) {
   const { scheme } = useThemeControls();
+  const systemAccessibility = useSystemAccessibility();
   const GlassView = useNativeGlassView();
+
+  if (systemAccessibility.reduceTransparency) {
+    return (
+      <View style={[styles.panel, styles.reducedTransparency, style]}>
+        <View style={[styles.panelFill, contentStyle]}>{children}</View>
+      </View>
+    );
+  }
 
   // On iOS 26 use the genuine Liquid Glass material for every panel (this is the
   // app's primary surface, used ~20×). The real material supplies its own
@@ -141,6 +151,10 @@ const makeStyles = () =>
     elevated: {
       borderColor: colors.borderStrong,
       backgroundColor: colors.glassElevated,
+    },
+    reducedTransparency: {
+      backgroundColor: colors.surface,
+      borderColor: colors.borderStrong,
     },
     button: {
       minHeight: 52,

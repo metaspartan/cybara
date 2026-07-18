@@ -21,6 +21,7 @@ import { tables } from "./database";
 import { redactSecrets } from "./redaction";
 import {
   createProviderPlanEvaluationContext,
+  getLiveProviderPlanRouteConstraint,
   getProviderPlanRouteConstraint,
   hasProviderPlanRouteConstraints,
   type ProviderPlanEvaluationContext,
@@ -419,23 +420,33 @@ function isInCooldown(providerId: string): boolean {
 function resolvePrice(
   route: ProviderRouteConfig,
   providerId: string
-): { inputPerM: number; outputPerM: number } {
+): {
+  inputPerM: number;
+  outputPerM: number;
+  cacheReadPerM?: number;
+  cacheWritePerM?: number;
+} {
+  const builtIn = getPricing(providerId, route.model);
   if (route.priceInputPerM !== undefined && route.priceOutputPerM !== undefined) {
     return {
       inputPerM: route.priceInputPerM,
       outputPerM: route.priceOutputPerM,
+      cacheReadPerM: builtIn?.cacheReadPerM,
+      cacheWritePerM: builtIn?.cacheWritePerM,
     };
   }
-  const builtIn = getPricing(providerId, route.model);
   return {
     inputPerM: builtIn?.inputPerM ?? 0,
     outputPerM: builtIn?.outputPerM ?? 0,
+    cacheReadPerM: builtIn?.cacheReadPerM,
+    cacheWritePerM: builtIn?.cacheWritePerM,
   };
 }
 
 export function getProviderAvailability(
   providerId: string,
-  planContext?: ProviderPlanEvaluationContext
+  planContext?: ProviderPlanEvaluationContext,
+  planOverride?: ProviderPlanRouteConstraint
 ): ProviderAvailability {
   const poolId = parseProviderAccountPoolRouteId(providerId);
   const pool = poolId ? getProviderAccountPool(poolId) : undefined;
@@ -449,7 +460,7 @@ export function getProviderAvailability(
   const price = resolvePrice(route, providerType);
   const circuitOpen = isCircuitOpen(providerId);
   const inCooldown = isInCooldown(providerId);
-  const plan = getProviderPlanRouteConstraint(providerId, planContext);
+  const plan = planOverride ?? getProviderPlanRouteConstraint(providerId, planContext);
 
   let available = route.enabled !== false;
   let reason: string | undefined;
@@ -523,9 +534,17 @@ export function getProviderAvailability(
 
 // ─── Selection ──────────────────────────────────────────────────────────────
 
-export function selectProvider(preferredProviderId?: string): string | null {
-  const routerCfg = getRouterConfig();
-  if (!routerCfg.enabled) return preferredProviderId ?? null;
+interface RouterSelectionTargets {
+  routeIds: string[];
+  preferredRouteId?: string;
+  fallbackProviderIds: string[];
+  planRouteKeys: string[];
+}
+
+function resolveRouterSelectionTargets(
+  routerCfg: RouterConfig,
+  preferredProviderId?: string
+): RouterSelectionTargets {
   const routeIds = Object.keys(routerCfg.routes);
   const preferredProvider = preferredProviderId
     ? providerManager.getWithCredentials(preferredProviderId)
@@ -545,37 +564,18 @@ export function selectProvider(preferredProviderId?: string): string | null {
     ...routeIds,
     ...fallbackProviderIds.filter((id) => !routerCfg.routes[id]),
   ].filter((id): id is string => Boolean(id));
-  const planContext = hasProviderPlanRouteConstraints(planRouteKeys)
-    ? createProviderPlanEvaluationContext()
-    : undefined;
+  return { routeIds, preferredRouteId, fallbackProviderIds, planRouteKeys };
+}
 
-  // Preferred provider passthrough.
-  if (preferredRouteId && getProviderAvailability(preferredRouteId, planContext).available) {
-    return preferredRouteId;
-  }
-
-  // Build candidates from configured routes.
-  const candidates: Array<{ id: string; avail: ProviderAvailability }> = [];
-  for (const id of routeIds) {
-    const avail = getProviderAvailability(id, planContext);
-    if (avail.available) candidates.push({ id, avail });
-  }
-
-  // Fallback to any configured provider.
-  if (candidates.length === 0 && routerCfg.fallbackToAny) {
-    for (const providerId of fallbackProviderIds) {
-      if (!routerCfg.routes[providerId]) {
-        const avail = getProviderAvailability(providerId, planContext);
-        if (avail.available) candidates.push({ id: providerId, avail });
-      }
-    }
-  }
+function chooseProviderCandidate(
+  candidates: Array<{ id: string; avail: ProviderAvailability }>,
+  strategy: RouterStrategy
+): string | null {
   if (candidates.length === 0) return null;
   if (candidates.length === 1) return candidates[0].id;
 
-  switch (routerCfg.strategy) {
+  switch (strategy) {
     case "priority": {
-      // Sort by priority tier, then by weight within tier.
       candidates.sort(
         (a, b) => a.avail.priority - b.avail.priority || b.avail.weight - a.avail.weight
       );
@@ -587,9 +587,8 @@ export function selectProvider(preferredProviderId?: string): string | null {
       return selected.id;
     }
     case "lowest_cost": {
-      // Sort by total price ascending; exclude unpriced (price=0) unless all are unpriced.
       const priced = candidates.filter(
-        (c) => (c.avail.inputPerM ?? 0) + (c.avail.outputPerM ?? 0) > 0
+        (candidate) => (candidate.avail.inputPerM ?? 0) + (candidate.avail.outputPerM ?? 0) > 0
       );
       const pool = priced.length > 0 ? priced : candidates;
       pool.sort(
@@ -619,23 +618,87 @@ export function selectProvider(preferredProviderId?: string): string | null {
     }
     case "weighted":
     default: {
-      const planWeight = (c: { avail: ProviderAvailability }): number => {
-        const status = c.avail.plan?.status;
-        if (status === "warning") return c.avail.weight * 0.25;
-        return c.avail.weight;
-      };
-      const positiveWeight = candidates.filter((c) => planWeight(c) > 0);
+      const planWeight = (candidate: { avail: ProviderAvailability }): number =>
+        candidate.avail.plan?.status === "warning"
+          ? candidate.avail.weight * 0.25
+          : candidate.avail.weight;
+      const positiveWeight = candidates.filter((candidate) => planWeight(candidate) > 0);
       const pool = positiveWeight.length > 0 ? positiveWeight : candidates;
-      const totalWeight = pool.reduce((sum, c) => sum + planWeight(c), 0);
+      const totalWeight = pool.reduce((sum, candidate) => sum + planWeight(candidate), 0);
       if (totalWeight <= 0) return pool[0].id;
       let roll = Math.random() * totalWeight;
-      for (const c of pool) {
-        roll -= planWeight(c);
-        if (roll <= 0) return c.id;
+      for (const candidate of pool) {
+        roll -= planWeight(candidate);
+        if (roll <= 0) return candidate.id;
       }
       return pool[pool.length - 1].id;
     }
   }
+}
+
+function availableCandidates(
+  routeIds: string[],
+  fallbackProviderIds: string[],
+  routerCfg: RouterConfig,
+  availability: Map<string, ProviderAvailability>
+): Array<{ id: string; avail: ProviderAvailability }> {
+  const configured = routeIds.flatMap((id) => {
+    const avail = availability.get(id);
+    return avail?.available ? [{ id, avail }] : [];
+  });
+  if (configured.length > 0 || !routerCfg.fallbackToAny) return configured;
+  return fallbackProviderIds.flatMap((id) => {
+    if (routerCfg.routes[id]) return [];
+    const avail = availability.get(id);
+    return avail?.available ? [{ id, avail }] : [];
+  });
+}
+
+export function selectProvider(preferredProviderId?: string): string | null {
+  const routerCfg = getRouterConfig();
+  if (!routerCfg.enabled) return preferredProviderId ?? null;
+  const targets = resolveRouterSelectionTargets(routerCfg, preferredProviderId);
+  const planContext = hasProviderPlanRouteConstraints(targets.planRouteKeys)
+    ? createProviderPlanEvaluationContext()
+    : undefined;
+  const availability = new Map(
+    targets.planRouteKeys.map((id) => [id, getProviderAvailability(id, planContext)])
+  );
+  if (targets.preferredRouteId && availability.get(targets.preferredRouteId)?.available) {
+    return targets.preferredRouteId;
+  }
+  return chooseProviderCandidate(
+    availableCandidates(targets.routeIds, targets.fallbackProviderIds, routerCfg, availability),
+    routerCfg.strategy
+  );
+}
+
+export async function selectProviderWithLiveUsage(
+  preferredProviderId?: string
+): Promise<string | null> {
+  const routerCfg = getRouterConfig();
+  if (!routerCfg.enabled) return preferredProviderId ?? null;
+  const targets = resolveRouterSelectionTargets(routerCfg, preferredProviderId);
+  const planContext = createProviderPlanEvaluationContext();
+  const availability = new Map(
+    await Promise.all(
+      targets.planRouteKeys.map(async (id) => {
+        const localPlan = getProviderPlanRouteConstraint(id, planContext);
+        const livePlan = await Promise.race([
+          getLiveProviderPlanRouteConstraint(id, planContext),
+          Bun.sleep(750).then(() => localPlan),
+        ]);
+        return [id, getProviderAvailability(id, planContext, livePlan)] as const;
+      })
+    )
+  );
+  if (targets.preferredRouteId && availability.get(targets.preferredRouteId)?.available) {
+    return targets.preferredRouteId;
+  }
+  return chooseProviderCandidate(
+    availableCandidates(targets.routeIds, targets.fallbackProviderIds, routerCfg, availability),
+    routerCfg.strategy
+  );
 }
 
 export function getRouterRouteModel(providerId?: string): string | undefined {
@@ -647,35 +710,57 @@ export function getRouterRouteModel(providerId?: string): string | undefined {
 
 // ─── Usage recording (DB-persisted) ─────────────────────────────────────────
 
+function usageTokenCount(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
 export function recordUsage(
   providerId: string,
   inputTokens: number,
   outputTokens: number,
   success: boolean,
   model?: string,
-  providerType?: string
+  providerType?: string,
+  cache?: { readTokens?: number; writeTokens?: number }
 ): void {
   const routerCfg = getRouterConfig();
   const route = routerCfg.routes[providerId] ? normalizeRoute(routerCfg.routes[providerId]) : null;
   const pricingProviderId =
     providerType ?? providerAccountPoolRouteProvider(providerId) ?? providerId;
+  const builtInPrice = getPricing(pricingProviderId, model);
   const price = route
     ? resolvePrice(route, pricingProviderId)
     : {
-        inputPerM: getPricing(pricingProviderId, model)?.inputPerM ?? 0,
-        outputPerM: getPricing(pricingProviderId, model)?.outputPerM ?? 0,
+        inputPerM: builtInPrice?.inputPerM ?? 0,
+        outputPerM: builtInPrice?.outputPerM ?? 0,
+        cacheReadPerM: builtInPrice?.cacheReadPerM,
+        cacheWritePerM: builtInPrice?.cacheWritePerM,
       };
 
+  const normalizedInputTokens = usageTokenCount(inputTokens);
+  const normalizedOutputTokens = usageTokenCount(outputTokens);
+  const cacheReadTokens = Math.min(normalizedInputTokens, usageTokenCount(cache?.readTokens));
+  const cacheWriteTokens = Math.min(
+    normalizedInputTokens - cacheReadTokens,
+    usageTokenCount(cache?.writeTokens)
+  );
+  const regularInputTokens = Math.max(
+    0,
+    normalizedInputTokens - cacheReadTokens - cacheWriteTokens
+  );
+
   const estimatedCost =
-    (Math.max(0, inputTokens) / 1_000_000) * price.inputPerM +
-    (Math.max(0, outputTokens) / 1_000_000) * price.outputPerM;
+    (regularInputTokens / 1_000_000) * price.inputPerM +
+    (cacheReadTokens / 1_000_000) * (price.cacheReadPerM ?? price.inputPerM) +
+    (cacheWriteTokens / 1_000_000) * (price.cacheWritePerM ?? price.inputPerM) +
+    (normalizedOutputTokens / 1_000_000) * price.outputPerM;
 
   const record: RouterUsageRecord = {
     providerId,
     model,
     timestamp: Date.now(),
-    inputTokens: Math.max(0, inputTokens),
-    outputTokens: Math.max(0, outputTokens),
+    inputTokens: normalizedInputTokens,
+    outputTokens: normalizedOutputTokens,
     estimatedCost,
     success,
   };
@@ -689,7 +774,16 @@ export function recordUsage(
       type: "router_usage",
       key: providerId,
       value: estimatedCost,
-      metadata: JSON.stringify(redactSecrets({ inputTokens, outputTokens, success, model })),
+      metadata: JSON.stringify(
+        redactSecrets({
+          inputTokens: normalizedInputTokens,
+          outputTokens: normalizedOutputTokens,
+          cacheReadTokens,
+          cacheWriteTokens,
+          success,
+          model,
+        })
+      ),
     });
   } catch {
     /* DB persistence is best-effort */

@@ -25,6 +25,7 @@ import {
 import {
   getRouterRouteModel,
   selectProvider,
+  selectProviderWithLiveUsage,
   isModelRouterEnabled,
   isMixtureOfAgentsRoutingActive,
   getMixtureOfAgentsRoutingConfig,
@@ -180,10 +181,15 @@ interface ProviderExecutionTarget {
   routeId?: string;
 }
 
-interface AgentProviderResult {
+export interface AgentExecutionResult {
   content: string;
   thinking?: string;
   tool_calls?: AgentToolCallResult[];
+  provider?: string;
+  provider_id?: string;
+  provider_name?: string;
+  model?: string;
+  router_route_id?: string;
 }
 
 class AgentManager extends AgentProviderRuntime {
@@ -265,7 +271,7 @@ class AgentManager extends AgentProviderRuntime {
     messages: AgentMessage[],
     tools: ToolDefinition[],
     toolContext?: ToolContext
-  ): Promise<AgentProviderResult> {
+  ): Promise<AgentExecutionResult> {
     const candidates = await providerManager.getAccountPoolCandidates(primary.id, poolId);
     if (candidates.length === 0) {
       throw new Error(`All ${primary.provider} accounts are cooling down or unavailable.`);
@@ -277,7 +283,14 @@ class AgentManager extends AgentProviderRuntime {
       try {
         const result = await this.callLLM(candidate, model, messages, tools, toolContext);
         markProviderAccountHealthy(candidate.id);
-        return result;
+        return {
+          ...result,
+          provider: candidate.provider,
+          provider_id: candidate.id,
+          provider_name: candidate.name,
+          model,
+          router_route_id: toolContext?.routerRouteId,
+        };
       } catch (error) {
         lastError = error;
         let classified = classifyApiError({ error });
@@ -294,7 +307,14 @@ class AgentManager extends AgentProviderRuntime {
             try {
               const result = await this.callLLM(refreshed, model, messages, tools, toolContext);
               markProviderAccountHealthy(candidate.id);
-              return result;
+              return {
+                ...result,
+                provider: refreshed.provider,
+                provider_id: refreshed.id,
+                provider_name: refreshed.name,
+                model,
+                router_route_id: toolContext?.routerRouteId,
+              };
             } catch (refreshError) {
               lastError = refreshError;
               classified = classifyApiError({ error: refreshError });
@@ -369,6 +389,25 @@ class AgentManager extends AgentProviderRuntime {
     }
 
     return { provider: resolvedProvider };
+  }
+
+  private async resolveProviderExecutionTargetWithLiveUsage(
+    agent: Pick<Agent, "id" | "provider_id" | "config">
+  ): Promise<ProviderExecutionTarget | undefined> {
+    const poolId = this.agentProviderPoolId(agent);
+    if (poolId) {
+      const provider = providerManager.getAccountPoolPrimary(poolId);
+      if (provider) return { provider, poolId };
+    }
+    if (isModelRouterEnabled()) {
+      const routeId = await selectProviderWithLiveUsage(agent.provider_id);
+      const routed = routeId ? providerManager.resolveExecutionTarget(routeId) : undefined;
+      if (routed && routeId) return { ...routed, routeId };
+    }
+    return this.resolveProviderExecutionTarget(agent, {
+      useRouter: false,
+      persistIfResolved: false,
+    });
   }
 
   private resolveProviderForAgent(
@@ -844,10 +883,7 @@ class AgentManager extends AgentProviderRuntime {
   ): Promise<{ response: string; thinking?: string }> {
     const { agent, messages } = state;
 
-    const target = this.resolveProviderExecutionTarget(agent, {
-      useRouter: true,
-      persistIfResolved: true,
-    });
+    const target = await this.resolveProviderExecutionTargetWithLiveUsage(agent);
     if (!target) {
       return { response: this.generateFallbackResponse(messages) };
     }
@@ -996,20 +1032,19 @@ class AgentManager extends AgentProviderRuntime {
     agentId: string,
     messages: AgentMessage[],
     options?: AgentExecutionOptions
-  ): Promise<{
-    content: string;
-    thinking?: string;
-    tool_calls?: AgentToolCallResult[];
-  }> {
+  ): Promise<AgentExecutionResult> {
     const agent = this.get(agentId);
     if (!agent) {
       throw new Error("Agent not found");
     }
 
-    const target = this.resolveProviderExecutionTarget(agent, {
-      useRouter: options?.useModelRouter === true,
-      persistIfResolved: options?.useModelRouter !== true,
-    });
+    const target =
+      options?.useModelRouter === true
+        ? await this.resolveProviderExecutionTargetWithLiveUsage(agent)
+        : this.resolveProviderExecutionTarget(agent, {
+            useRouter: false,
+            persistIfResolved: true,
+          });
     if (!target) {
       return { content: this.generateFallbackResponse(messages) };
     }

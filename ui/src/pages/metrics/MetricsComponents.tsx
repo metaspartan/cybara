@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import type { SessionRuntimeMetrics } from "@/hooks/useApi";
-import { formatNumber } from "./metricsFormatting";
+import { cacheReadSharePct, formatNumber } from "./metricsFormatting";
 
 export function MetricAreaChart({
   rows,
@@ -172,11 +172,7 @@ export function SessionRuntimeTable({
 }) {
   const totals = metrics?.totals;
   const pagination = metrics?.pagination;
-  const totalPromptTokens = (totals?.inputTokens || 0) + (totals?.cachedInputTokens || 0);
-  const cacheShare =
-    totals && totalPromptTokens > 0
-      ? Math.min(100, (totals.cachedInputTokens / totalPromptTokens) * 100)
-      : 0;
+  const cacheShare = cacheReadSharePct(totals?.inputTokens || 0, totals?.cachedInputTokens || 0);
   return (
     <Card className="mb-8 overflow-hidden">
       <CardHeader className="border-b border-[var(--surface-border)]">
@@ -204,7 +200,7 @@ export function SessionRuntimeTable({
                   totals?.tokensPerSecond ? `${totals.tokensPerSecond} tok/s` : "--",
                 ],
                 ["Average TTFT", formatLatency(totals?.firstTokenMs ?? null)],
-                ["Input cache", `${cacheShare.toFixed(1)}%`],
+                ["Cache read", `${cacheShare.toFixed(1)}%`],
                 ["Compacted", formatNumber(totals?.compactedTokens || 0)],
               ].map(([label, value]) => (
                 <div key={label} className="bg-[var(--surface-panel)] px-5 py-4">
@@ -221,7 +217,7 @@ export function SessionRuntimeTable({
                     <th className="px-4 py-3 font-medium">Provider / model</th>
                     <th className="px-4 py-3 text-right font-medium">Input</th>
                     <th className="px-4 py-3 text-right font-medium">Output</th>
-                    <th className="px-4 py-3 text-right font-medium">Cache</th>
+                    <th className="px-4 py-3 text-right font-medium">Cache read / write</th>
                     <th className="px-4 py-3 text-right font-medium">Speed</th>
                     <th className="px-4 py-3 text-right font-medium">TTFT</th>
                     <th className="px-5 py-3 text-right font-medium">Compaction</th>
@@ -252,8 +248,9 @@ export function SessionRuntimeTable({
                       <td className="px-4 py-3 text-right tabular-nums text-gray-300">
                         {formatNumber(session.outputTokens)}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-cyan-300">
-                        {formatNumber(session.cachedInputTokens)}
+                      <td className="px-4 py-3 text-right tabular-nums text-[rgb(var(--accent-primary))]">
+                        {formatNumber(session.cachedInputTokens)} /{" "}
+                        {formatNumber(session.cacheWriteTokens)}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums text-gray-300">
                         {session.tokensPerSecond === null

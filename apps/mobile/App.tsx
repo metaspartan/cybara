@@ -1,21 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Linking, StatusBar, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { SystemAccessibilityProvider } from "./src/accessibility/SystemAccessibilityContext";
+import { MobileErrorBoundary } from "./src/components/MobileErrorBoundary";
 import { HapticsProvider } from "./src/haptics/HapticsContext";
 import { MobileI18nProvider } from "./src/i18n";
 import { CybaraMobileApi } from "./src/lib/api";
 import {
+  type GatewayProfile,
   resolveGatewayProfile,
   verifyGatewayProfile,
-  type GatewayProfile,
 } from "./src/lib/connection";
+import { DeepLinkAttemptTracker } from "./src/lib/deepLinkAttempts";
 import {
   configureMobileNotificationPresentation,
   registerMobilePushNotifications,
 } from "./src/lib/pushNotifications";
-import { DeepLinkAttemptTracker } from "./src/lib/deepLinkAttempts";
 import { clearActiveProfile, getActiveProfile, saveProfile } from "./src/lib/storage";
-import { MobileErrorBoundary } from "./src/components/MobileErrorBoundary";
 import { ConnectScreen } from "./src/screens/ConnectScreen";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
 import { type Palette, spacing } from "./src/theme/liquidGlass";
@@ -123,13 +124,15 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <HapticsProvider>
-          <MobileI18nProvider>
-            <MobileErrorBoundary>
-              <AppShell />
-            </MobileErrorBoundary>
-          </MobileI18nProvider>
-        </HapticsProvider>
+        <SystemAccessibilityProvider>
+          <HapticsProvider>
+            <MobileI18nProvider>
+              <MobileErrorBoundary>
+                <AppShell />
+              </MobileErrorBoundary>
+            </MobileI18nProvider>
+          </HapticsProvider>
+        </SystemAccessibilityProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

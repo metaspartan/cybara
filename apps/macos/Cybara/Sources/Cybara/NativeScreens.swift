@@ -266,35 +266,37 @@ struct DashboardScreen: View {
             VStack(alignment: .leading, spacing: 18) {
                 ScreenHeader(title: "Dashboard", subtitle: "Local gateway status and activity")
 
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 168), spacing: 14)],
-                    alignment: .leading,
-                    spacing: 14
-                ) {
-                    statTile(
-                        label: "Gateway",
-                        value: health?.status?.capitalized ?? "…",
-                        detail: sidecar.serverURL.absoluteString,
-                        systemImage: "server.rack"
-                    )
-                    statTile(
-                        label: "Version",
-                        value: health?.version.map { "v\($0)" } ?? "…",
-                        detail: uptimeLabel,
-                        systemImage: "shippingbox"
-                    )
-                    statTile(
-                        label: "Agents",
-                        value: "\(agents.count)",
-                        detail: "\(agents.filter(\.isRunning).count) running",
-                        systemImage: "cpu"
-                    )
-                    statTile(
-                        label: "Chats",
-                        value: "\(sessions.count)",
-                        detail: sessions.first?.displayTitle ?? "No recent chat",
-                        systemImage: "bubble.left.and.bubble.right"
-                    )
+                CybaraGlassGroup(spacing: 14) {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 168), spacing: 14)],
+                        alignment: .leading,
+                        spacing: 14
+                    ) {
+                        statTile(
+                            label: "Gateway",
+                            value: health?.status?.capitalized ?? "…",
+                            detail: sidecar.serverURL.absoluteString,
+                            systemImage: "server.rack"
+                        )
+                        statTile(
+                            label: "Version",
+                            value: health?.version.map { "v\($0)" } ?? "…",
+                            detail: uptimeLabel,
+                            systemImage: "shippingbox"
+                        )
+                        statTile(
+                            label: "Agents",
+                            value: "\(agents.count)",
+                            detail: "\(agents.filter(\.isRunning).count) running",
+                            systemImage: "cpu"
+                        )
+                        statTile(
+                            label: "Chats",
+                            value: "\(sessions.count)",
+                            detail: sessions.first?.displayTitle ?? "No recent chat",
+                            systemImage: "bubble.left.and.bubble.right"
+                        )
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -518,6 +520,7 @@ struct ChatScreen: View {
     var preferredWorkspaceDir: String? = nil
     var openCybaraIDEWorkspace: (String) -> Void = { _ in }
     @Environment(\.cybaraAccent) var accentTint
+    @Environment(\.accessibilityReduceMotion) var systemReduceMotion
 
     @State var sessions: [GatewaySession] = []
     @State var activeTasks: [GatewayTask] = []
@@ -667,7 +670,7 @@ struct ChatScreen: View {
         .onDisappear { statusStream.stop() }
         .nativeChatAppearance(chatAppearance)
         .transaction { transaction in
-            if chatAppearance.reduceMotion {
+            if chatAppearance.reduceMotion || systemReduceMotion {
                 transaction.animation = nil
             }
         }

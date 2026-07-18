@@ -127,6 +127,7 @@ export interface TokenCallSnapshot {
   model: string;
   provider: string;
   durationMs: number | null;
+  generationDurationMs: number | null;
   tokensPerSecond: number | null;
 }
 
@@ -481,6 +482,7 @@ export function buildTokenCallSnapshots(tokenUsageEntries: MetricsEntry[]): Toke
     const inputFromMetadata = toFiniteNumber(metadata?.inputTokens);
     const outputFromMetadata = toFiniteNumber(metadata?.outputTokens);
     const durationMs = toFiniteNumber(metadata?.durationMs);
+    const generationDurationMs = toFiniteNumber(metadata?.generationDurationMs);
     const model =
       toNonEmptyString(metadata?.model) ||
       toNonEmptyString(metadata?.modelId) ||
@@ -494,7 +496,9 @@ export function buildTokenCallSnapshots(tokenUsageEntries: MetricsEntry[]): Toke
       outputFromMetadata ?? toFiniteNumber(outputByTimestamp.get(entry.created_at)) ?? 0;
     const totalTokens = Number(entry.value || inputTokens + outputTokens);
     const tokensPerSecond =
-      durationMs && durationMs > 0 ? Number(((outputTokens / durationMs) * 1000).toFixed(2)) : null;
+      generationDurationMs && generationDurationMs > 0
+        ? Number(((outputTokens / generationDurationMs) * 1000).toFixed(2))
+        : null;
 
     snapshots.push({
       timestamp: entry.created_at,
@@ -505,6 +509,7 @@ export function buildTokenCallSnapshots(tokenUsageEntries: MetricsEntry[]): Toke
       model,
       provider,
       durationMs,
+      generationDurationMs,
       tokensPerSecond,
     });
   }

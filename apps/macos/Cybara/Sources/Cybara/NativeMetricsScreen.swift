@@ -17,6 +17,10 @@ struct NativeSessionRuntimePagination: Decodable, Sendable {
 
 struct NativeSessionRuntimeTotals: Decodable, Sendable {
     let sessions: Int
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let cachedInputTokens: Int?
+    let cacheWriteTokens: Int?
     let totalTokens: Int
     let callCount: Int
     let tokensPerSecond: Double?
@@ -32,6 +36,7 @@ struct NativeSessionRuntimeRow: Decodable, Identifiable, Sendable {
     let inputTokens: Int
     let outputTokens: Int
     let cachedInputTokens: Int
+    let cacheWriteTokens: Int?
     let totalTokens: Int
     let callCount: Int
     let tokensPerSecond: Double?
@@ -696,7 +701,7 @@ private struct NativeSessionRuntimeHeader: View {
             Text("Provider / model").frame(width: 190, alignment: .leading)
             Text("Input").frame(width: 72, alignment: .trailing)
             Text("Output").frame(width: 72, alignment: .trailing)
-            Text("Cache").frame(width: 72, alignment: .trailing)
+            Text("Cache R / W").frame(width: 108, alignment: .trailing)
             Text("Speed").frame(width: 88, alignment: .trailing)
             Text("TTFT").frame(width: 72, alignment: .trailing)
             Text("Compact").frame(width: 72, alignment: .trailing)
@@ -730,7 +735,10 @@ private struct NativeSessionRuntimeRowView: View {
             .frame(width: 190, alignment: .leading)
             metric(metricsFormatCount(session.inputTokens), width: 72)
             metric(metricsFormatCount(session.outputTokens), width: 72)
-            metric(metricsFormatCount(session.cachedInputTokens), width: 72)
+            metric(
+                "\(metricsFormatCount(session.cachedInputTokens)) / \(metricsFormatCount(session.cacheWriteTokens ?? 0))",
+                width: 108
+            )
             metric(session.tokensPerSecond.map { "\(metricsFormatDouble($0)) tok/s" } ?? "--", width: 88)
             metric(nativeMetricLatency(session.firstTokenMs), width: 72)
             metric(session.compactionCount > 0 ? "\(session.compactionCount)" : "--", width: 72)

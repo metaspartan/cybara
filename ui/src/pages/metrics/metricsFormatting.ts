@@ -10,3 +10,9 @@ export function formatBytes(value: number): string {
   if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${value} B`;
 }
+
+export function cacheReadSharePct(inputTokens: number, cachedInputTokens: number): number {
+  if (!Number.isFinite(inputTokens) || inputTokens <= 0) return 0;
+  if (!Number.isFinite(cachedInputTokens) || cachedInputTokens <= 0) return 0;
+  return Math.min(100, (cachedInputTokens / inputTokens) * 100);
+}

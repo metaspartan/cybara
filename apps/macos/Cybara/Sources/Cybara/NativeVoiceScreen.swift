@@ -266,6 +266,7 @@ struct NativeVoiceScreen: View {
     let openSettings: () -> Void
 
     @Environment(\.cybaraAccent) private var accent
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @StateObject private var recorder = NativeVoiceRecorder()
     @AppStorage("cybara.voice.agentID") private var selectedAgentID = ""
     @SceneStorage("cybara.voice.sessionID") private var sessionID = ""
@@ -418,7 +419,7 @@ struct NativeVoiceScreen: View {
                 .frame(width: 138, height: 138)
                 .scaleEffect(1 + min(0.08, audioLevel * 0.12))
                 .shadow(color: accent.opacity(activity == .idle ? 0.12 : 0.28), radius: 24)
-                .animation(.linear(duration: 0.08), value: audioLevel)
+                .animation(systemReduceMotion ? nil : .linear(duration: 0.08), value: audioLevel)
             }
             .buttonStyle(.plain)
             .disabled(activity == .thinking || loading)
@@ -458,7 +459,11 @@ struct NativeVoiceScreen: View {
                     .background(Color(nsColor: .textBackgroundColor).opacity(0.42), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .onChange(of: turns.count) { _, _ in
                         if let id = turns.last?.id {
-                            withAnimation { proxy.scrollTo(id, anchor: .bottom) }
+                            if systemReduceMotion {
+                                proxy.scrollTo(id, anchor: .bottom)
+                            } else {
+                                withAnimation { proxy.scrollTo(id, anchor: .bottom) }
+                            }
                         }
                     }
                 }

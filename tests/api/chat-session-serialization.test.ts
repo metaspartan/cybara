@@ -21,6 +21,7 @@ import { loadPersistedPendingChatItems } from "../../src/api/chat-pending-store"
 import { pendingChatQueues } from "../../src/api/chat-runtime-state";
 import { broadcastStatus, onStatusStream } from "../../src/core/status";
 import { config } from "../../src/core/config";
+import db from "../../src/core/database";
 import { listSessionEvents } from "../../src/core/session-event-ledger";
 import {
   loadPersistedSession,
@@ -45,6 +46,8 @@ async function waitForVisibleSessionMessages(sessionId: string, expectedCount: n
 
 afterEach(async () => {
   config.setFollowUpBehaviorEnabled(true);
+  config.set("router", null);
+  config.set("provider_plan_monitoring", null);
   globalThis.fetch = originalFetch;
   for (const sessionId of createdSessionIds.splice(0)) await deleteSession(sessionId);
   for (const agentId of createdAgentIds.splice(0)) agentManager.delete(agentId);
@@ -949,46 +952,49 @@ describe("handleChat per-session serialization", () => {
 
     globalThis.fetch = (async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
-      return new Response(
-        JSON.stringify({
-          id: "estimated-usage",
-          object: "chat.completion",
-          model: "gpt-estimated-usage",
-          choices: [
-            {
-              index: 0,
-              finish_reason: "stop",
-              message: {
-                role: "assistant",
-                content: "Estimated usage should still be recorded for this chat session.",
-              },
+      return Response.json({
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: "Estimated usage should still be recorded for this chat session.",
             },
-          ],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
+          },
+        ],
+      });
     }) as typeof fetch;
 
     const sessionId = `estimated-usage-${Date.now()}`;
     createdSessionIds.push(sessionId);
-
     const response = await handleChat({
       message: "record tokens without provider usage",
       agentId: agent.id,
       sessionId,
       tools: false,
     });
-
     expect(response.tokenUsage.inputTokens).toBeGreaterThan(0);
     expect(response.tokenUsage.outputTokens).toBeGreaterThan(0);
     expect(response.tokenUsage.totalTokens).toBeGreaterThan(0);
     expect(response.tokenUsage.callCount).toBe(1);
-    expect(response.tokenUsage.tokensPerSecond).toBeGreaterThan(0);
+    expect(response.tokenUsage.tokensPerSecond).toBeNull();
+    expect(response.tokenUsage.firstTokenMs).toBeNull();
+    const metric = db
+      .query(
+        "SELECT metadata FROM metrics WHERE type = 'token_usage_by_session' AND key = ? ORDER BY rowid DESC LIMIT 1"
+      )
+      .get(sessionId) as { metadata: string };
+    const metricMetadata = JSON.parse(metric.metadata) as Record<string, unknown>;
+    expect(metricMetadata.estimated).toBe(true);
+    expect("generationDurationMs" in metricMetadata).toBe(false);
+    expect("firstTokenMs" in metricMetadata).toBe(false);
 
     const updated = await updateSessionAgent(sessionId, agent.id);
     expect(updated.tokenUsage?.inputTokens).toBeGreaterThan(0);
     expect(updated.tokenUsage?.outputTokens).toBeGreaterThan(0);
-    expect(updated.tokenUsage?.tokensPerSecond).toBeGreaterThan(0);
+    expect(updated.tokenUsage?.tokensPerSecond).toBeNull();
+    expect(updated.tokenUsage?.firstTokenMs).toBeNull();
   });
 
   test("session token metrics exclude suppressed title generation usage", async () => {

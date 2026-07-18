@@ -1,6 +1,7 @@
-import type { PropsWithChildren } from "react";
 import { BlurView } from "expo-blur";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import type { PropsWithChildren } from "react";
+import { type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
+import { useSystemAccessibility } from "../accessibility/SystemAccessibilityContext";
 import { colors, subscribeColors } from "../theme/liquidGlass";
 import { useThemeControls } from "../theme/ThemeContext";
 import { useNativeGlassContainer, useNativeGlassView } from "./glassSupport";
@@ -44,9 +45,10 @@ export function LiquidGlass({
   opaque?: boolean;
 }>) {
   const { scheme } = useThemeControls();
+  const systemAccessibility = useSystemAccessibility();
   const GlassView = useNativeGlassView();
 
-  if (opaque) {
+  if (opaque || systemAccessibility.reduceTransparency) {
     return (
       <View style={[styles.base, styles.opaque, style]}>
         <View style={[styles.content, contentStyle]}>{children}</View>

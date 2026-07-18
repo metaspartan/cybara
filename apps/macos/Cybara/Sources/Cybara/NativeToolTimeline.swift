@@ -54,6 +54,7 @@ struct NativeToolTimelineView: View {
     let mediaBaseURL: URL
     let mediaToken: String?
     @Environment(\.nativeChatAppearance) private var appearance
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @State private var expanded = false
 
     private var orderedToolCalls: [GatewayToolCall] {
@@ -89,8 +90,12 @@ struct NativeToolTimelineView: View {
             VStack(alignment: .leading, spacing: 8) {
                 if hasWorkContent {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.16)) {
+                        if systemReduceMotion || appearance.reduceMotion {
                             expanded.toggle()
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                expanded.toggle()
+                            }
                         }
                     } label: {
                         HStack(spacing: 7) {

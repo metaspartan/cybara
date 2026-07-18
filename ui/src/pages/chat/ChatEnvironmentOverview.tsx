@@ -212,10 +212,12 @@ export function ChatEnvironmentOverview({
 
             <div className="grid grid-cols-3 gap-x-3 gap-y-2 border-t border-white/10 pt-2.5">
               <UsageStat
+                description="Effective prompt tokens processed, including cached input when reported; estimated when a provider omits usage"
                 label="Input"
                 value={hasTokenUsage ? formatCompactNumber(tokenUsage?.inputTokens || 0) : "—"}
               />
               <UsageStat
+                description="Generated tokens reported by the provider or estimated when usage is unavailable"
                 label="Output"
                 value={hasTokenUsage ? formatCompactNumber(tokenUsage?.outputTokens || 0) : "—"}
               />
@@ -225,7 +227,7 @@ export function ChatEnvironmentOverview({
                 value={hasTokenUsage ? formatCompactNumber(tokenUsage?.callCount || 0) : "—"}
               />
               <UsageStat
-                description="Average generated tokens per second"
+                description="Generated output tokens per second after the first streamed token"
                 label="Output speed"
                 value={
                   tokenUsage?.tokensPerSecond !== null && tokenUsage?.tokensPerSecond !== undefined
@@ -234,7 +236,7 @@ export function ChatEnvironmentOverview({
                 }
               />
               <UsageStat
-                description="Time to first token in the latest turn"
+                description="Measured time to first streamed token in the latest supported turn"
                 label="First token"
                 value={latestFirstTokenMs !== null ? formatLatency(latestFirstTokenMs) : "—"}
               />

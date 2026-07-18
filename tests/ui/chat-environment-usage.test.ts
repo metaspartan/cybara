@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 const environmentPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatEnvironmentOverview.tsx", import.meta.url)
 );
+const liveRuntimePath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/useChatLiveSessionRuntime.ts", import.meta.url)
+);
 
 describe("chat environment usage summary", () => {
   test("separates active context from cumulative session usage", () => {
@@ -30,5 +33,13 @@ describe("chat environment usage summary", () => {
 
     expect(source).toContain("bg-[rgb(var(--accent-primary))]");
     expect(source).toContain("contextPercent");
+  });
+
+  test("records live TTFT only from streamed output tokens", () => {
+    const source = readFileSync(liveRuntimePath, "utf8");
+
+    expect(source).toContain("markFirstTokenLatency(tokenSessionId)");
+    expect(source).not.toContain("markFirstTokenLatency(payloadSessionId)");
+    expect(source).not.toContain("markFirstTokenLatency();");
   });
 });

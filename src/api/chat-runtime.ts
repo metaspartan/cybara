@@ -1,4 +1,4 @@
-import { type AgentMessage, agentManager } from "../core/agent";
+import { type AgentExecutionResult, type AgentMessage, agentManager } from "../core/agent";
 import { recordCompletedTrajectory } from "../core/agent-eval";
 import { emitAgentHook } from "../core/agent-hooks";
 import { agentSupportsImages } from "../core/agent-image-capabilities";
@@ -41,6 +41,7 @@ import {
   normalizeSessionWorkspaceDir,
   persistSession,
   resolveSessionModelMetadata,
+  type SessionModelMetadata,
   setPersistedSessionAgent,
   shouldCompactContext,
   summarizeSessionTokenUsage,
@@ -157,6 +158,20 @@ export {
 } from "./chat-process-activities";
 
 const log = createLogger("Chat");
+
+function executionMetadataFromResult(result: AgentExecutionResult): SessionModelMetadata | null {
+  const metadata: SessionModelMetadata = {
+    provider: result.provider,
+    provider_id: result.provider_id,
+    provider_name: result.provider_name,
+    model: result.model,
+  };
+  return Object.values(metadata).some(
+    (value) => typeof value === "string" && value.trim().length > 0
+  )
+    ? metadata
+    : null;
+}
 
 export type {
   ChatMessage,
@@ -1422,6 +1437,7 @@ async function handleChatTurn(
   }
 
   let responseContent: string;
+  let executionModelMetadata: SessionModelMetadata | null = null;
   const thinkingContent: string = "";
   const allToolCalls: ToolCallInfo[] = [];
   const agentTransfers: AgentTransferEnvelope[] = [];
@@ -1479,6 +1495,7 @@ async function handleChatTurn(
         modelOverride: activeModelOverride,
         allowedToolNames,
       });
+      executionModelMetadata = executionMetadataFromResult(result);
       let toolResults = result.tool_calls || [];
       const maximumTransferDepth = 4;
 
@@ -1578,6 +1595,7 @@ async function handleChatTurn(
           useModelRouter,
           allowedToolNames,
         });
+        executionModelMetadata = executionMetadataFromResult(result);
         toolResults.push(...(result.tool_calls || []));
       }
       responseContent = result.content;
@@ -1635,6 +1653,7 @@ async function handleChatTurn(
             : forcedToolCalls.length > 0;
           if (forcedToolCalls.length > 0 && forcedHasRequiredTool) {
             result = forcedResult;
+            executionModelMetadata = executionMetadataFromResult(forcedResult);
             responseContent = forcedResult.content;
             toolResults = [...toolResults, ...forcedToolCalls];
           }
@@ -1791,7 +1810,10 @@ async function handleChatTurn(
           )
         : "Completed.";
 
-  const modelMetadata = resolveSessionModelMetadata(agent?.id ?? session.agentId);
+  const configuredModelMetadata = resolveSessionModelMetadata(agent?.id ?? session.agentId);
+  const modelMetadata = executionModelMetadata
+    ? { ...(configuredModelMetadata ?? {}), ...executionModelMetadata }
+    : configuredModelMetadata;
 
   const assistantMessage: ChatMessage = {
     role: "assistant",

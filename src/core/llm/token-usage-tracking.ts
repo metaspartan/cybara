@@ -7,6 +7,10 @@ function serializeMetricMetadata(metadata: Record<string, unknown>): string {
   return JSON.stringify(redactSecrets(metadata));
 }
 
+function metricCount(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+}
+
 export function trackTokenUsage(
   model: string,
   provider: string,
@@ -18,29 +22,45 @@ export function trackTokenUsage(
     sessionId?: string;
     cachedInputTokens?: number;
     cacheWriteTokens?: number;
+    estimated?: boolean;
     firstTokenMs?: number;
     routerRouteId?: string;
   }
 ): void {
+  const normalizedInputTokens = metricCount(inputTokens);
+  const normalizedOutputTokens = metricCount(outputTokens);
+  const normalizedDurationMs =
+    typeof durationMs === "number" && Number.isFinite(durationMs) && durationMs > 0
+      ? Math.round(durationMs)
+      : undefined;
   try {
     recordUsage(
       options?.routerRouteId ?? provider,
-      inputTokens,
-      outputTokens,
+      normalizedInputTokens,
+      normalizedOutputTokens,
       true,
       model,
-      provider
+      provider,
+      {
+        readTokens: metricCount(options?.cachedInputTokens),
+        writeTokens: metricCount(options?.cacheWriteTokens),
+      }
     );
-  } catch {
-    /* router tracking is best-effort */
-  }
+  } catch {}
   try {
-    const totalTokens = inputTokens + outputTokens;
-    const cachedInputTokens = Math.max(0, Math.round(options?.cachedInputTokens || 0));
-    const cacheWriteTokens = Math.max(0, Math.round(options?.cacheWriteTokens || 0));
+    const totalTokens = normalizedInputTokens + normalizedOutputTokens;
+    const cachedInputTokens = metricCount(options?.cachedInputTokens);
+    const cacheWriteTokens = metricCount(options?.cacheWriteTokens);
     const firstTokenMs =
       typeof options?.firstTokenMs === "number" && Number.isFinite(options.firstTokenMs)
         ? Math.max(0, Math.round(options.firstTokenMs))
+        : undefined;
+    const generationDurationMs =
+      normalizedDurationMs !== undefined &&
+      firstTokenMs !== undefined &&
+      firstTokenMs <= normalizedDurationMs &&
+      normalizedDurationMs - firstTokenMs > 0
+        ? normalizedDurationMs - firstTokenMs
         : undefined;
     const callId = crypto.randomUUID();
     const timestamp = Date.now();
@@ -49,13 +69,15 @@ export function trackTokenUsage(
       model,
       provider,
       providerUrl,
-      inputTokens,
-      outputTokens,
+      inputTokens: normalizedInputTokens,
+      outputTokens: normalizedOutputTokens,
       totalTokens,
-      durationMs: durationMs ?? null,
+      durationMs: normalizedDurationMs ?? null,
       cachedInputTokens,
       cacheWriteTokens,
-      firstTokenMs,
+      estimated: options?.estimated === true,
+      ...(generationDurationMs !== undefined ? { generationDurationMs } : {}),
+      ...(firstTokenMs !== undefined ? { firstTokenMs } : {}),
       routerRouteId: options?.routerRouteId,
       sessionId:
         typeof options?.sessionId === "string" && options.sessionId.trim()
@@ -104,14 +126,14 @@ export function trackTokenUsage(
       id: crypto.randomUUID(),
       type: "token_usage",
       key: "input",
-      value: inputTokens,
+      value: normalizedInputTokens,
       metadata: serializeMetricMetadata({ ...tokenMetadata, direction: "input" }),
     });
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "token_usage",
       key: "output",
-      value: outputTokens,
+      value: normalizedOutputTokens,
       metadata: serializeMetricMetadata({ ...tokenMetadata, direction: "output" }),
     });
     tables.metrics.add({
@@ -161,8 +183,8 @@ export function trackTokenUsage(
       value: timestamp,
     });
 
-    if (durationMs && durationMs > 0) {
-      const tps = Math.round((outputTokens / durationMs) * 1000);
+    if (generationDurationMs !== undefined) {
+      const tps = Number(((normalizedOutputTokens / generationDurationMs) * 1000).toFixed(2));
 
       tables.metrics.add({
         id: crypto.randomUUID(),
@@ -172,23 +194,25 @@ export function trackTokenUsage(
         metadata: serializeMetricMetadata(tokenMetadata),
       });
 
+      console.log(
+        `[Metrics] TPS: ${tps} tok/s (${normalizedOutputTokens} tokens in ${generationDurationMs}ms) for ${model}`
+      );
+    }
+
+    if (normalizedDurationMs !== undefined) {
       tables.metrics.add({
         id: crypto.randomUUID(),
         type: "model_latency",
         key: model,
-        value: durationMs,
+        value: normalizedDurationMs,
         metadata: serializeMetricMetadata({ ...tokenMetadata, provider }),
       });
-
-      console.log(
-        `[Metrics] TPS: ${tps} tok/s (${outputTokens} tokens in ${durationMs}ms) for ${model}`
-      );
     }
 
     broadcastStatus({ status: "thinking", timestamp: Date.now() });
 
     console.log(
-      `[Metrics] Tracked tokens: input=${inputTokens}, output=${outputTokens}, model=${model}, provider=${provider}`
+      `[Metrics] Tracked tokens: input=${normalizedInputTokens}, output=${normalizedOutputTokens}, model=${model}, provider=${provider}`
     );
   } catch (e) {
     console.error("[Metrics] Token tracking failed:", e);

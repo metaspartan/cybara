@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { mergeSystemAccessibilityPreferences } from "../../apps/mobile/src/lib/systemAccessibility";
+import { DEFAULT_CHAT_APPEARANCE_SETTINGS } from "../../shared/chat-appearance";
 
 const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
@@ -8,6 +10,44 @@ const readApp = (rel: string) =>
   readFileSync(fileURLToPath(new URL(`../../apps/mobile/${rel}`, import.meta.url)), "utf8");
 
 describe("mobile appearance + background", () => {
+  test("system accessibility preferences strengthen rather than replace saved preferences", () => {
+    expect(
+      mergeSystemAccessibilityPreferences(
+        { ...DEFAULT_CHAT_APPEARANCE_SETTINGS, underlineLinks: true },
+        { highContrast: true, reduceMotion: true, reduceTransparency: true }
+      )
+    ).toEqual({
+      ...DEFAULT_CHAT_APPEARANCE_SETTINGS,
+      highContrast: true,
+      reduceMotion: true,
+      reduceTransparency: true,
+      underlineLinks: true,
+    });
+    expect(
+      mergeSystemAccessibilityPreferences(DEFAULT_CHAT_APPEARANCE_SETTINGS, {
+        highContrast: false,
+        reduceMotion: false,
+        reduceTransparency: false,
+      })
+    ).toEqual(DEFAULT_CHAT_APPEARANCE_SETTINGS);
+  });
+
+  test("native glass surfaces inherit system transparency and motion preferences", () => {
+    const app = readApp("App.tsx");
+    const context = read("accessibility/SystemAccessibilityContext.tsx");
+    const liquidGlass = read("components/LiquidGlass.tsx");
+    const glassPanel = read("components/Glass.tsx");
+    expect(app).toContain("<SystemAccessibilityProvider>");
+    expect(context).toContain('"reduceMotionChanged"');
+    expect(context).toContain('"reduceTransparencyChanged"');
+    expect(context).toContain('"darkerSystemColorsChanged"');
+    expect(context).toContain("motionSubscription.remove()");
+    expect(context).toContain("transparencySubscription?.remove()");
+    expect(context).toContain("contrastSubscription.remove()");
+    expect(liquidGlass).toContain("opaque || systemAccessibility.reduceTransparency");
+    expect(glassPanel).toContain("if (systemAccessibility.reduceTransparency)");
+  });
+
   test("system appearance is enabled so light/dark follow the device", () => {
     const appJson = JSON.parse(readApp("app.json"));
     // Forcing "dark" made useColorScheme always report dark, so "System" and

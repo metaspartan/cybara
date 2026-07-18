@@ -126,11 +126,13 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(fork.fork?.messageCount, 3)
 
         let metricsData = Data(
-            #"{"totals":{"sessions":1,"totalTokens":300,"callCount":2,"tokensPerSecond":25.5,"firstTokenMs":420,"compactionCount":1},"sessions":[{"sessionId":"source-1","title":"Runtime test","provider":"minimax","model":"MiniMax-M3","inputTokens":200,"outputTokens":100,"cachedInputTokens":50,"totalTokens":300,"callCount":2,"tokensPerSecond":25.5,"firstTokenMs":420,"compactionCount":1}]}"#.utf8
+            #"{"totals":{"sessions":1,"inputTokens":200,"outputTokens":100,"cachedInputTokens":50,"cacheWriteTokens":20,"totalTokens":300,"callCount":2,"tokensPerSecond":25.5,"firstTokenMs":420,"compactionCount":1},"sessions":[{"sessionId":"source-1","title":"Runtime test","provider":"minimax","model":"MiniMax-M3","inputTokens":200,"outputTokens":100,"cachedInputTokens":50,"cacheWriteTokens":20,"totalTokens":300,"callCount":2,"tokensPerSecond":25.5,"firstTokenMs":420,"compactionCount":1}]}"#.utf8
         )
         let metrics = try JSONDecoder().decode(NativeSessionRuntimeMetrics.self, from: metricsData)
         XCTAssertEqual(metrics.totals.firstTokenMs, 420)
+        XCTAssertEqual(metrics.totals.cacheWriteTokens, 20)
         XCTAssertEqual(metrics.sessions.first?.cachedInputTokens, 50)
+        XCTAssertEqual(metrics.sessions.first?.cacheWriteTokens, 20)
         XCTAssertEqual(metrics.sessions.first?.model, "MiniMax-M3")
     }
 

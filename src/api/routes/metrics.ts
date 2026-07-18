@@ -702,6 +702,8 @@ function buildModelThoughtProfiles(tokenCalls: ReturnType<typeof buildTokenCallS
       calls: number;
       durationTotalMs: number;
       durationSamples: number;
+      generationDurationTotalMs: number;
+      generationOutputTokens: number;
     }
   >();
 
@@ -716,6 +718,8 @@ function buildModelThoughtProfiles(tokenCalls: ReturnType<typeof buildTokenCallS
       calls: 0,
       durationTotalMs: 0,
       durationSamples: 0,
+      generationDurationTotalMs: 0,
+      generationOutputTokens: 0,
     };
     current.inputTokens += entry.inputTokens;
     current.outputTokens += entry.outputTokens;
@@ -725,6 +729,10 @@ function buildModelThoughtProfiles(tokenCalls: ReturnType<typeof buildTokenCallS
     if (entry.durationMs !== null && entry.durationMs > 0) {
       current.durationTotalMs += entry.durationMs;
       current.durationSamples += 1;
+    }
+    if (entry.generationDurationMs !== null && entry.generationDurationMs > 0) {
+      current.generationDurationTotalMs += entry.generationDurationMs;
+      current.generationOutputTokens += entry.outputTokens;
     }
 
     modelBehaviorMap.set(key, current);
@@ -747,8 +755,10 @@ function buildModelThoughtProfiles(tokenCalls: ReturnType<typeof buildTokenCallS
           ? Number((entry.durationTotalMs / entry.durationSamples).toFixed(2))
           : 0;
       const avgTps =
-        entry.durationTotalMs > 0
-          ? Number(((entry.outputTokens / entry.durationTotalMs) * 1000).toFixed(2))
+        entry.generationDurationTotalMs > 0
+          ? Number(
+              ((entry.generationOutputTokens / entry.generationDurationTotalMs) * 1000).toFixed(2)
+            )
           : 0;
 
       return {

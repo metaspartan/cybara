@@ -12,6 +12,7 @@ import {
 import {
   getProviderAvailability,
   resetRouterForTests,
+  selectProviderWithLiveUsage,
   type RouterConfig,
 } from "../../src/core/router";
 
@@ -289,6 +290,42 @@ describe("provider plan monitoring", () => {
     );
     expect(status.summary.configured).toBeGreaterThanOrEqual(1);
     expect(status.summary.warnings).toBeGreaterThanOrEqual(1);
+  });
+
+  test("usage-aware routing selects the configured account with more live quota", async () => {
+    const exhaustedToken = "a".repeat(64);
+    const availableToken = "b".repeat(64);
+    const exhaustedProviderId = createProvider("openai-codex", exhaustedToken);
+    const availableProviderId = createProvider("openai-codex", availableToken);
+    globalThis.fetch = (async (_url, init) => {
+      const authorization = new Headers(init?.headers).get("Authorization");
+      const usedPercent = authorization === `Bearer ${exhaustedToken}` ? 96 : 18;
+      return Response.json({
+        plan_type: "pro",
+        rate_limit: {
+          primary_window: {
+            used_percent: 0,
+            limit_window_seconds: 18_000,
+          },
+          secondary_window: {
+            used_percent: usedPercent,
+            limit_window_seconds: 604_800,
+          },
+        },
+      });
+    }) as typeof fetch;
+    setProviderPlanMonitoringConfig({ enabled: true, routerEnforcement: true, providers: {} });
+    config.set("router", {
+      enabled: true,
+      strategy: "usage_aware",
+      fallbackToAny: false,
+      routes: {
+        [exhaustedProviderId]: { weight: 100, enabled: true },
+        [availableProviderId]: { weight: 1, enabled: true },
+      },
+    });
+
+    expect(await selectProviderWithLiveUsage()).toBe(availableProviderId);
   });
 
   test("marks provider-managed plans as automatic and read-only for manual caps", () => {

@@ -38,7 +38,11 @@ extension ChatScreen {
                 }
                 .onChange(of: messages) { _, newValue in
                     if let last = newValue.last {
-                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                        if chatAppearance.reduceMotion || systemReduceMotion {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        } else {
+                            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                        }
                     }
                 }
                 .onChange(of: liveActivities.count) { _, _ in

@@ -79,7 +79,12 @@ import {
   listPluginProviderContributions,
 } from "../core/plugins/runtime";
 import { providerManager } from "../core/providers";
-import { getAllPricing, getRouterStatus, type RouterConfig, selectProvider } from "../core/router";
+import {
+  getAllPricing,
+  getRouterStatus,
+  type RouterConfig,
+  selectProviderWithLiveUsage,
+} from "../core/router";
 import { openUrlInBrowser } from "../core/runtime/open-url";
 import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbox";
 import { taskScheduler } from "../core/scheduler";
@@ -650,9 +655,9 @@ const routes: Record<string, RouteHandler> = {
       fallbackToAny: true,
       routes: {},
     },
-  "POST /api/router/select": (body) => {
+  "POST /api/router/select": async (body) => {
     const { preferredProviderId } = body as { preferredProviderId?: string };
-    const selected = selectProvider(preferredProviderId);
+    const selected = await selectProviderWithLiveUsage(preferredProviderId);
     return { providerId: selected };
   },
 

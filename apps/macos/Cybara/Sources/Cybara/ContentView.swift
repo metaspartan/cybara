@@ -177,10 +177,6 @@ struct ContentView: View {
                 accent = CybaraAccent.color(for: key)
             }
         }
-        .background(
-            VisualEffectBackground()
-                .ignoresSafeArea()
-        )
         .onReceive(NotificationCenter.default.publisher(for: .cybaraRestartSidecar)) { _ in
             Task { await sidecar.restart() }
         }
