@@ -957,6 +957,22 @@ export function normalizeAgent(agent: unknown, index = 0): AgentSummary {
   const reasoningEffort =
     readString(record, ["reasoning_effort", "reasoningEffort"]) ??
     readString(modelParams, ["reasoning_effort", "reasoningEffort"]);
+  const reasoningModeValue = readString(record, ["reasoning_mode", "reasoningMode"]);
+  const reasoningMode =
+    reasoningModeValue === "adaptive" ||
+    reasoningModeValue === "binary" ||
+    reasoningModeValue === "effort"
+      ? reasoningModeValue
+      : undefined;
+  const rawReasoningEfforts = record.reasoning_efforts ?? record.reasoningEfforts;
+  const reasoningEfforts = Array.isArray(rawReasoningEfforts)
+    ? rawReasoningEfforts.flatMap((value) =>
+        typeof value === "string" &&
+        ["minimal", "low", "medium", "high", "xhigh", "max"].includes(value)
+          ? [value as NonNullable<AgentSummary["reasoning_efforts"]>[number]]
+          : []
+      )
+    : undefined;
   return {
     id,
     name: readString(record, ["name", "label", "id"]) || id,
@@ -972,6 +988,8 @@ export function normalizeAgent(agent: unknown, index = 0): AgentSummary {
     )
       ? (reasoningEffort as AgentSummary["reasoning_effort"])
       : null,
+    reasoning_mode: reasoningMode,
+    reasoning_efforts: reasoningEfforts,
     supports_images: readBoolean(record, ["supports_images", "supportsImages"]),
     config,
   };

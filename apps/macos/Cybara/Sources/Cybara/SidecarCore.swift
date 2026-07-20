@@ -13,6 +13,11 @@ public struct GatewayHealthProbe: Equatable {
     public let processID: Int?
 }
 
+public enum FallbackPortDecision: Equatable {
+    case attach(Int)
+    case launch(Int)
+}
+
 /// Pure, side-effect-free logic for the macOS sidecar shell. Kept separate from
 /// `SidecarManager` (which is @MainActor and owns Process/network/UI state) so it
 /// is straightforward to unit-test without spawning processes or hitting sockets.
@@ -32,6 +37,37 @@ public enum SidecarCore {
 
     public static func healthURLString(port: Int) -> String {
         "\(serverURLString(port: port))/api/health"
+    }
+
+    public static func fallbackPorts(after preferredPort: Int, count: Int = 20) -> [Int] {
+        guard count > 0 else { return [] }
+        let lowerBound = 1024
+        let upperBound = 65535
+        let rangeSize = upperBound - lowerBound + 1
+        let normalized = min(max(preferredPort, lowerBound), upperBound)
+        return (1...min(count, rangeSize - 1)).map { offset in
+            lowerBound + ((normalized - lowerBound + offset) % rangeSize)
+        }
+    }
+
+    public static func firstAvailableFallbackPort(
+        after preferredPort: Int,
+        count: Int = 20,
+        isAvailable: (Int) -> Bool
+    ) -> Int? {
+        fallbackPorts(after: preferredPort, count: count).first(where: isAvailable)
+    }
+
+    public static func fallbackPortDecision(
+        candidates: [Int], compatiblePorts: Set<Int>, availablePorts: Set<Int>
+    ) -> FallbackPortDecision? {
+        if let compatible = candidates.first(where: compatiblePorts.contains) {
+            return .attach(compatible)
+        }
+        if let available = candidates.first(where: availablePorts.contains) {
+            return .launch(available)
+        }
+        return nil
     }
 
     public static func isHealthyResponse(statusCode: Int, body: String) -> Bool {

@@ -17,6 +17,7 @@ import {
 import { tmpdir } from "os";
 import { basename, dirname, join } from "path";
 import { buildSidecar } from "./build-sidecar";
+import { smokeSidecarUi } from "./smoke-tauri-sidecar-ui";
 
 const ROOT = join(import.meta.dirname, "..");
 const SWIFT_PRODUCT_NAME = "Cybara";
@@ -531,6 +532,8 @@ export async function packageNativeMacOSApp(): Promise<NativeMacOSPackageResult>
 
   console.log("⚡ Building sidecar...");
   await buildSidecar();
+  console.log("🩺 Verifying sidecar version...");
+  await smokeSidecarUi(SIDEcar_RELEASE_PATH, version);
 
   console.log("🧱 Building SwiftUI shell...");
   await $`cd ${ROOT} && swift build --package-path ${APP_PACKAGE_PATH} -c release`.quiet();

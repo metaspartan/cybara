@@ -120,7 +120,7 @@ async function respond(request: Request): Promise<Response> {
               "*native-macos*.zip",
               "*.apk",
             ],
-            estimation: "installer-assets-minus-release-automation-baseline",
+            estimation: "installer-assets-minus-companion-metadata-downloads",
             updatedAt: new Date(downloadCache.at).toISOString(),
           };
     return Response.json(body, {

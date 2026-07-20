@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   formatDownloadTotal,
   isCountedDownloadAsset,
-  releaseAutomationBaseline,
   sumReleaseDownloads,
 } from "../../site/downloadStats";
 
@@ -40,8 +39,56 @@ describe("site release download totals", () => {
         { name: "cybara-windows.exe", download_count: 80 },
       ],
     };
-    expect(releaseAutomationBaseline(release)).toBe(100);
     expect(sumReleaseDownloads([release])).toBe(20);
+  });
+
+  test("does not erase installer downloads with unrelated CLI checksum traffic", () => {
+    const release = {
+      assets: [
+        { name: "cybara-v1.0.1798-linux-x64-cli.sha256", download_count: 14 },
+        { name: "Cybara_1.0.1798_x64_en-US.msi", download_count: 2 },
+        { name: "Cybara_1.0.1798_x64_en-US.msi.sig", download_count: 1 },
+        { name: "Cybara_1.0.1798_x64-setup.exe", download_count: 3 },
+        { name: "Cybara_1.0.1798_x64-setup.exe.sig", download_count: 1 },
+        { name: "cybara-v1.0.1798-android.apk", download_count: 1 },
+        { name: "checksums.txt", download_count: 0 },
+      ],
+    };
+    expect(sumReleaseDownloads([release])).toBe(4);
+  });
+
+  test("subtracts matching metadata traffic without counting updater checks", () => {
+    const release = {
+      assets: [
+        { name: "latest.json", download_count: 2_242 },
+        { name: "Cybara_1.0.1798_aarch64.dmg", download_count: 3 },
+        { name: "Cybara_aarch64.app.tar.gz.sig", download_count: 1 },
+        { name: "CybaraNative-v1.0.1798-arm64.zip", download_count: 2 },
+        { name: "CybaraNative-v1.0.1798-arm64.sha256", download_count: 1 },
+      ],
+    };
+    expect(sumReleaseDownloads([release])).toBe(3);
+  });
+
+  test("uses the checksum manifest for installer assets without companion metadata", () => {
+    const release = {
+      assets: [
+        { name: "checksums.txt", download_count: 57 },
+        { name: "cybara-v1.0.593-android.apk", download_count: 56 },
+      ],
+    };
+    expect(sumReleaseDownloads([release])).toBe(0);
+  });
+
+  test("prefers a present zero-count companion over unrelated manifest traffic", () => {
+    const release = {
+      assets: [
+        { name: "checksums.txt", download_count: 57 },
+        { name: "Cybara_1.0.1798_x64_en-US.msi", download_count: 2 },
+        { name: "Cybara_1.0.1798_x64_en-US.msi.sig", download_count: 0 },
+      ],
+    };
+    expect(sumReleaseDownloads([release])).toBe(2);
   });
 
   test("ignores malformed and negative counts", () => {

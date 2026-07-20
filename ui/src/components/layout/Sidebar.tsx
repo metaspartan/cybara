@@ -40,6 +40,7 @@ import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { SessionsPanel } from "@/pages/chat/SessionSidebar";
 import { buildFreshChatPath } from "@/pages/chat/chatRoute";
+import { buildMultiChatPath, isMultiChatSearch } from "@/pages/chat/multiChatLayout";
 import type { TranslationKey } from "../../../../shared/i18n/catalog";
 import {
   clampMainSidebarChatHeight,
@@ -293,6 +294,7 @@ export function Sidebar() {
   }, [location.pathname, setMobileOpen]);
 
   const currentSessionId = onChatPage ? new URLSearchParams(location.search).get("session") : null;
+  const multiChatActive = onChatPage && isMultiChatSearch(location.search);
   const activeSettingsSection =
     resolveSettingsSectionId(new URLSearchParams(location.search).get("section")) ?? "general";
 
@@ -515,6 +517,20 @@ export function Sidebar() {
                 {!collapsed && (
                   <div className="flex min-w-0 flex-1 items-center gap-2">
                     <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-white">Cybara</h1>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(buildMultiChatPath(currentSessionId ? [currentSessionId] : []))
+                      }
+                      className={cn(
+                        "theme-muted-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                        multiChatActive && "bg-[var(--surface-hover)] text-[var(--text-primary)]"
+                      )}
+                      aria-label="Open multi-chat"
+                      title="Open multi-chat"
+                    >
+                      <MessagesSquare className="h-4 w-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => setSessionSearchOpen(true)}

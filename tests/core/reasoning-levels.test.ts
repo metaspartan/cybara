@@ -112,11 +112,55 @@ describe("reasoning level support matrix", () => {
     expect(supportedReasoningEfforts("minimax-portal", "minimax-m3")).toEqual([]);
   });
 
-  test("Kimi K3 uses the current max-only reasoning contract", () => {
-    expect(supportedReasoningEfforts("kimi-code", "k3")).toEqual(["max"]);
-    expect(supportedReasoningEfforts("kimi-code-oauth", "k3")).toEqual(["max"]);
-    expect(supportedReasoningEfforts("kimi-code-subscription", "k3")).toEqual(["max"]);
-    expect(coerceReasoningEffort("high", "kimi-code-oauth", "k3")).toBe("max");
+  test("Kimi K3 uses its current low, high, and max reasoning contract", () => {
+    expect(supportedReasoningEfforts("kimi-code", "k3")).toEqual(["low", "high", "max"]);
+    expect(supportedReasoningEfforts("kimi-code-oauth", "kimi-code/k3")).toEqual([
+      "low",
+      "high",
+      "max",
+    ]);
+    expect(supportedReasoningEfforts("kimi-code-subscription", "k3")).toEqual([
+      "low",
+      "high",
+      "max",
+    ]);
+    expect(coerceReasoningEffort("medium", "kimi-code-oauth", "k3")).toBe("high");
+    expect(coerceReasoningEffort("xhigh", "kimi-code-oauth", "k3")).toBe("max");
+  });
+
+  test("Gemini 3 Flash exposes the current four-level thinking ladder", () => {
+    expect(supportedReasoningEfforts("google", "gemini-3.5-flash")).toEqual([
+      "minimal",
+      "low",
+      "medium",
+      "high",
+    ]);
+    expect(supportedReasoningEfforts("google-gemini-cli", "gemini-3.5-flash")).toEqual([
+      "minimal",
+      "low",
+      "medium",
+      "high",
+    ]);
+    expect(supportedReasoningEfforts("antigravity", "gemini-3.1-pro-preview")).toEqual([
+      "low",
+      "high",
+    ]);
+  });
+
+  test("keeps OAuth provider capabilities aligned with API-key providers", () => {
+    expect(supportedReasoningEfforts("anthropic-oauth", "claude-opus-4-8")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+    expect(supportedReasoningEfforts("claude-oauth", "claude-sonnet-4-6")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "max",
+    ]);
   });
 
   test("unknown openai model gets low/medium/high", () => {

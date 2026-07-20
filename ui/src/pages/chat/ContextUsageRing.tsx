@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ProviderPlanSnapshot, SessionContextUsage } from "@/types";
 import {
   providerPlanUsageClasses,
@@ -137,6 +138,13 @@ export function ContextUsageRing({
   providerPlan?: ProviderPlanSnapshot | null;
 }) {
   const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{
+    left: number;
+    placement: "above" | "below";
+    top: number;
+  } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const tooltipId = useId();
   const percent = usage ? Math.min(100, Math.max(0, usage.usedPercent)) : 0;
   const color =
     percent >= 90
@@ -146,54 +154,98 @@ export function ContextUsageRing({
         : "var(--context-ring-ok)";
   const tooltip = contextUsageTooltip(usage, providerPlan);
   const label = contextUsageLabel(usage);
-  const tooltipClassName = [
-    "context-usage-tooltip pointer-events-none absolute bottom-full left-1/2 z-50 mb-3 w-max max-w-[280px] -translate-x-1/2 rounded-lg border px-3 py-2 text-center text-[12px] leading-5",
-    open ? "block" : "hidden",
-  ].join(" ");
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-expanded={open}
-      className="relative h-5 w-5 shrink-0 appearance-none rounded-full border-0 bg-transparent p-0 outline-none"
-      onBlur={() => setOpen(false)}
-      onClick={() => setOpen(true)}
-      onFocus={() => setOpen(true)}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      tabIndex={0}
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return;
+    }
+    const updatePosition = (): void => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const tooltipWidth = Math.min(280, window.innerWidth - 16);
+      const halfWidth = tooltipWidth / 2;
+      const placement = rect.top >= 180 ? "above" : "below";
+      setPosition({
+        left: Math.min(
+          window.innerWidth - halfWidth - 8,
+          Math.max(halfWidth + 8, rect.left + rect.width / 2)
+        ),
+        placement,
+        top: placement === "above" ? rect.top - 10 : rect.bottom + 10,
+      });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
+
+  const tooltipContent = position ? (
+    <div
+      id={tooltipId}
+      role="tooltip"
+      className="context-usage-tooltip pointer-events-none fixed z-[200] w-max max-w-[min(280px,calc(100vw-16px))] rounded-lg border px-3 py-2 text-center text-[12px] leading-5"
+      style={{
+        left: position.left,
+        top: position.top,
+        transform: position.placement === "above" ? "translate(-50%, -100%)" : "translateX(-50%)",
+      }}
     >
-      <div
-        className="absolute inset-[3px] rounded-full p-[1.5px]"
-        style={{
-          background: `conic-gradient(${color} ${percent * 3.6}deg, var(--context-ring-track) 0deg)`,
-        }}
+      <div className="context-usage-tooltip-title">{tooltip.title}</div>
+      <div className="context-usage-tooltip-body font-medium">{tooltip.body}</div>
+      <div className="context-usage-tooltip-detail">{tooltip.detail}</div>
+      {tooltip.detailRows.length > 0 && (
+        <div className="mt-1 space-y-0.5 text-left text-[11px] leading-4">
+          {tooltip.detailRows.map((row) => (
+            <div key={row} className="context-usage-tooltip-detail">
+              {row}
+            </div>
+          ))}
+        </div>
+      )}
+      {tooltip.planRows.length > 0 && (
+        <div className="context-usage-tooltip-plan mt-2 space-y-1.5 border-t pt-2 text-left">
+          <div className="text-[11px] font-medium">Plan usage</div>
+          {tooltip.planRows.map(({ label, usage }) => (
+            <ProviderPlanTooltipBar key={label} label={label} usage={usage} />
+          ))}
+          {tooltip.planDetail && <div className="sr-only">Plan usage: {tooltip.planDetail}</div>}
+        </div>
+      )}
+    </div>
+  ) : null;
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label={label}
+        aria-describedby={open ? tooltipId : undefined}
+        aria-expanded={open}
+        className="relative h-5 w-5 shrink-0 appearance-none rounded-full border-0 bg-transparent p-0 outline-none"
+        onBlur={() => setOpen(false)}
+        onClick={() => setOpen((current) => !current)}
+        onFocus={() => setOpen(true)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        tabIndex={0}
       >
-        <div className="context-usage-ring-fill h-full w-full rounded-full" />
-      </div>
-      <div role="tooltip" className={tooltipClassName}>
-        <div className="context-usage-tooltip-title">{tooltip.title}</div>
-        <div className="context-usage-tooltip-body font-medium">{tooltip.body}</div>
-        <div className="context-usage-tooltip-detail">{tooltip.detail}</div>
-        {tooltip.detailRows.length > 0 && (
-          <div className="mt-1 space-y-0.5 text-left text-[11px] leading-4">
-            {tooltip.detailRows.map((row) => (
-              <div key={row} className="context-usage-tooltip-detail">
-                {row}
-              </div>
-            ))}
-          </div>
-        )}
-        {tooltip.planRows.length > 0 && (
-          <div className="context-usage-tooltip-plan mt-2 space-y-1.5 border-t pt-2 text-left">
-            <div className="text-[11px] font-medium">Plan usage</div>
-            {tooltip.planRows.map(({ label, usage }) => (
-              <ProviderPlanTooltipBar key={label} label={label} usage={usage} />
-            ))}
-            {tooltip.planDetail && <div className="sr-only">Plan usage: {tooltip.planDetail}</div>}
-          </div>
-        )}
-      </div>
-    </button>
+        <div
+          className="absolute inset-[3px] rounded-full p-[1.5px]"
+          style={{
+            background: `conic-gradient(${color} ${percent * 3.6}deg, var(--context-ring-track) 0deg)`,
+          }}
+        >
+          <div className="context-usage-ring-fill h-full w-full rounded-full" />
+        </div>
+      </button>
+      {tooltipContent && typeof document !== "undefined"
+        ? createPortal(tooltipContent, document.body)
+        : null}
+    </>
   );
 }

@@ -38,6 +38,21 @@ describe("resolveUiPath", () => {
   test("uses Tauri macOS resource path when present", () => {
     const execPath = "/Applications/Cybara.app/Contents/MacOS/cybara";
     const execDir = dirname(execPath);
+    const tauriMacUi = join(execDir, "..", "Resources", "ui", "dist");
+
+    const result = resolveUiPath({
+      isCompiledBinary: true,
+      execPath,
+      moduleDir: "/virtual/bundle",
+      existsSyncFn: existsFrom([tauriMacUi]),
+    });
+
+    expect(result).toBe(tauriMacUi);
+  });
+
+  test("supports the legacy Tauri macOS resource path", () => {
+    const execPath = "/Applications/Cybara.app/Contents/MacOS/cybara";
+    const execDir = dirname(execPath);
     const tauriMacUi = join(execDir, "..", "Resources", "_up_", "ui", "dist");
 
     const result = resolveUiPath({

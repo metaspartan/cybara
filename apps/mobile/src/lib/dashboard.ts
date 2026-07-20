@@ -1,3 +1,9 @@
+import {
+  supportedReasoningEfforts,
+  supportsXHighReasoning,
+  usesBinaryReasoning,
+  usesProviderAdaptiveReasoning,
+} from "cybara-shared/reasoning-capabilities";
 import type {
   FeatureEndpointKey,
   FeatureSummary,
@@ -205,127 +211,34 @@ const MOBILE_EFFORT_LABELS: Record<string, string> = {
   max: "Max",
 };
 
-const MOBILE_BINARY_THINKING_PROVIDERS = new Set([
-  "z.ai",
-  "z.ai-coding",
-  "zai",
-  "z-ai",
-  "qwen-portal",
-  "alibaba",
-  "alibaba-coding-plan",
-  "qwen-token-plan",
-  "qwen-token-plan-cn",
-]);
-const MOBILE_ADAPTIVE_THINKING_PROVIDERS = new Set([
-  "minimax",
-  "minimax-cn",
-  "minimax-portal",
-  "minimax-portal-cn",
-]);
-
-const MOBILE_GPT_5_EFFORTS = ["minimal", "low", "medium", "high"] as const;
-const MOBILE_GPT_51_EFFORTS = ["low", "medium", "high"] as const;
-const MOBILE_GPT_52_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
-const MOBILE_GPT_56_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
-const MOBILE_GPT_CODEX_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
-const MOBILE_GPT_CODEX_MINI_EFFORTS = ["medium"] as const;
-const MOBILE_GPT_CODEX_MAX_EFFORTS = ["medium", "high", "xhigh"] as const;
-const MOBILE_GPT_PRO_EFFORTS = ["medium", "high", "xhigh"] as const;
-const MOBILE_GPT_5_PRO_EFFORTS = ["high"] as const;
-const MOBILE_GENERIC_OPENAI_EFFORTS = ["low", "medium", "high"] as const;
-const MOBILE_ANTHROPIC_LEGACY_EFFORTS = ["minimal", "low", "medium", "high"] as const;
-const MOBILE_ANTHROPIC_46_EFFORTS = ["low", "medium", "high", "max"] as const;
-const MOBILE_ANTHROPIC_MODERN_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
-const MOBILE_GOOGLE_EFFORTS = ["low", "medium", "high"] as const;
-const MOBILE_GOOGLE_PRO_EFFORTS = ["low", "high"] as const;
-
-function mobileNormalizeModelId(id: string | null | undefined): string {
-  return (id ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/^(?:openai\/|anthropic\/|google\/)?/, "")
-    .replace(/-\d{4}-\d{2}-\d{2}$/, "");
-}
-
-function mobileResolveOpenAIModelEfforts(modelId: string): readonly string[] {
-  if (/^gpt-5\.6(?:-|$)/.test(modelId)) return MOBILE_GPT_56_EFFORTS;
-  if (modelId === "gpt-5.1-codex-mini") return MOBILE_GPT_CODEX_MINI_EFFORTS;
-  if (modelId === "gpt-5.1-codex-max") return MOBILE_GPT_CODEX_MAX_EFFORTS;
-  if (/^gpt-5(?:\.\d+)?-codex(?:-|$)/.test(modelId)) return MOBILE_GPT_CODEX_EFFORTS;
-  if (modelId === "gpt-5-pro") return MOBILE_GPT_5_PRO_EFFORTS;
-  if (/^gpt-5\.[2-9](?:\.\d+)?-pro(?:-|$)/.test(modelId)) return MOBILE_GPT_PRO_EFFORTS;
-  if (/^gpt-5\.[2-9](?:\.\d+)?(?:-|$)/.test(modelId)) return MOBILE_GPT_52_EFFORTS;
-  if (/^gpt-5\.1(?:-|$)/.test(modelId)) return MOBILE_GPT_51_EFFORTS;
-  if (/^gpt-5(?:-|$)/.test(modelId)) return MOBILE_GPT_5_EFFORTS;
-  return MOBILE_GENERIC_OPENAI_EFFORTS;
-}
-
-function mobileResolveAnthropicEfforts(modelId: string): readonly string[] {
-  if (!modelId.includes("claude")) return MOBILE_ANTHROPIC_LEGACY_EFFORTS;
-  if (/claude-(?:opus|sonnet)-4[-.]6(?:-|$)/.test(modelId)) {
-    return MOBILE_ANTHROPIC_46_EFFORTS;
-  }
-  if (/claude-(?:3|opus-4[-.][0-5]|sonnet-4[-.][0-5]|haiku-4[-.]5)(?:-|$)/.test(modelId)) {
-    return MOBILE_ANTHROPIC_LEGACY_EFFORTS;
-  }
-  return MOBILE_ANTHROPIC_MODERN_EFFORTS;
-}
-
-function mobileSupportedEfforts(
-  provider?: string | null,
-  model?: string | null
-): readonly string[] {
-  const providerId = (provider ?? "").trim().toLowerCase();
-  if (MOBILE_BINARY_THINKING_PROVIDERS.has(providerId)) {
-    return ["medium"];
-  }
-  const modelId = mobileNormalizeModelId(model);
-  if (providerId === "anthropic" || providerId === "anthropic_vertex") {
-    return mobileResolveAnthropicEfforts(modelId);
-  }
-  if (providerId === "google" || providerId === "google_vertex") {
-    if (/^gemini-3(?:\.1)?-.*pro/.test(modelId)) return MOBILE_GOOGLE_PRO_EFFORTS;
-    return MOBILE_GOOGLE_EFFORTS;
-  }
-  if (
-    providerId === "openai" ||
-    providerId === "openai-codex" ||
-    providerId === "openai-codex-responses" ||
-    providerId === "azure-openai" ||
-    !modelId
-  ) {
-    return mobileResolveOpenAIModelEfforts(modelId);
-  }
-  return MOBILE_GENERIC_OPENAI_EFFORTS;
-}
-
 export function mobileSupportsXHighReasoning(
   provider?: string | null,
   model?: string | null
 ): boolean {
-  return mobileSupportedEfforts(provider, model).includes("xhigh");
+  return supportsXHighReasoning(provider, model);
 }
 
 export function mobileSupportedReasoningEfforts(
   provider?: string | null,
-  model?: string | null
+  model?: string | null,
+  mode?: "adaptive" | "binary" | "effort",
+  supportedEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh" | "max">
 ): readonly { label: string; value: MobileReasoningEffort }[] {
-  const providerId = (provider ?? "").trim().toLowerCase();
-  if (
-    MOBILE_ADAPTIVE_THINKING_PROVIDERS.has(providerId) &&
-    /(?:^|\/)minimax-m3(?:[.-]|$)/i.test(model ?? "")
-  ) {
+  if (mode === "adaptive" || (!mode && usesProviderAdaptiveReasoning(provider, model))) {
     return [{ label: "Adaptive", value: "" }];
   }
-  if (MOBILE_BINARY_THINKING_PROVIDERS.has(providerId)) {
+  if (mode === "binary" || (!mode && usesBinaryReasoning(provider))) {
     return [
       { label: "Default", value: "" },
       { label: "Thinking", value: "medium" },
     ];
   }
+  const efforts = supportedEfforts?.length
+    ? supportedEfforts
+    : supportedReasoningEfforts(provider, model);
   return [
     { label: "Default", value: "" },
-    ...mobileSupportedEfforts(provider, model).map((level) => ({
+    ...efforts.map((level) => ({
       label: MOBILE_EFFORT_LABELS[level] ?? level,
       value: level as MobileReasoningEffort,
     })),
@@ -335,9 +248,11 @@ export function mobileSupportedReasoningEfforts(
 export function mobileReasoningLabel(
   effort: string | null | undefined,
   provider?: string | null,
-  model?: string | null
+  model?: string | null,
+  mode?: "adaptive" | "binary" | "effort",
+  supportedEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh" | "max">
 ): string {
-  const options = mobileSupportedReasoningEfforts(provider, model);
+  const options = mobileSupportedReasoningEfforts(provider, model, mode, supportedEfforts);
   return options.find((option) => option.value === (effort ?? ""))?.label ?? "Default";
 }
 

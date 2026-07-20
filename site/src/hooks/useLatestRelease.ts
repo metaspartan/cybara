@@ -134,7 +134,7 @@ export function shortSha(sha256?: string): string {
 
 const DOWNLOAD_TOTAL_API = "/api/downloads";
 const ALL_RELEASES_API = "https://api.github.com/repos/metaspartan/cybara/releases?per_page=100";
-const DOWNLOAD_TOTAL_CACHE_KEY = "cybara.site.downloadTotal.v5";
+const DOWNLOAD_TOTAL_CACHE_KEY = "cybara.site.downloadTotal.v6";
 const DOWNLOAD_TOTAL_CACHE_TTL_MS = 30 * 60 * 1000;
 
 interface DownloadTotalResponse {

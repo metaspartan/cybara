@@ -69,6 +69,7 @@ import {
   shouldShowSessionPlanInComposer,
 } from "./chat/chatModel";
 import { ChatPageHeader } from "./chat/ChatPageHeader";
+import { buildMultiChatPath } from "./chat/multiChatLayout";
 import { parseInitialChatRoute } from "./chat/chatRoute";
 import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
@@ -1573,6 +1574,7 @@ export function Chat() {
             onOpenCybaraIde: handleOpenWorkspaceInCybaraIde,
           }}
           workspacePanelOpen={showWorkspacePanel}
+          onOpenMultiChat={() => navigate(buildMultiChatPath([sessionId]))}
           onOpenNearbyShare={() => setShowNearbyShare(true)}
           onToggleEnvironment={() => setShowEnvironmentOverview(!showEnvironmentOverview)}
           onToggleFileReview={() => toggleWorkspaceTab("review")}
@@ -1600,7 +1602,7 @@ export function Chat() {
                 ref={messagesContainerRef}
                 onScroll={refreshScrollToBottomVisibility}
                 className={cn(
-                  "flex-1 overflow-y-auto py-4",
+                  "chat-scroll-region flex-1 overflow-y-auto py-4",
                   chatHorizontalPaddingClassName(chatAppearance.horizontalPadding),
                   typedMessages.length === 0 ? "flex items-center justify-center" : "space-y-4"
                 )}

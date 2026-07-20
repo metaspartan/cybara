@@ -15,6 +15,8 @@ export interface AgentSummary {
   providerId?: string;
   status?: string;
   reasoning_effort?: string | null;
+  reasoning_mode?: "adaptive" | "binary" | "effort";
+  reasoning_efforts?: string[];
   tool_profile?: string;
   config?: unknown;
 }

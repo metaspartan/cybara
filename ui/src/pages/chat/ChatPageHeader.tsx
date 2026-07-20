@@ -1,4 +1,4 @@
-import { FileText, PanelRightOpen, Share2, SlidersHorizontal } from "lucide-react";
+import { FileText, LayoutGrid, PanelRightOpen, Share2, SlidersHorizontal } from "lucide-react";
 import type { ComponentProps, ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import { ChatEnvironmentOverview } from "./ChatEnvironmentOverview";
@@ -16,6 +16,7 @@ interface ChatPageHeaderProps {
   workspacePanelOpen: boolean;
   subagentsActive: boolean;
   onOpenNearbyShare: () => void;
+  onOpenMultiChat: () => void;
   onToggleEnvironment: () => void;
   onToggleFileReview: () => void;
   onToggleSubagents: () => void;
@@ -32,6 +33,7 @@ export function ChatPageHeader({
   workspacePanelOpen,
   subagentsActive,
   onOpenNearbyShare,
+  onOpenMultiChat,
   onToggleEnvironment,
   onToggleFileReview,
   onToggleSubagents,
@@ -44,6 +46,15 @@ export function ChatPageHeader({
       </div>
       <div className="flex items-center gap-1 sm:gap-2">
         <WorkspaceOpenMenu {...workspaceMenu} />
+        <button
+          type="button"
+          aria-label="Open multi-chat"
+          onClick={onOpenMultiChat}
+          className="theme-muted-icon-button relative cursor-pointer rounded-lg p-1.5 transition-colors sm:p-2"
+          title="Open multi-chat"
+        >
+          <LayoutGrid className="h-4 w-4" />
+        </button>
         {nearbyEnabled ? (
           <button
             type="button"

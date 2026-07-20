@@ -23,6 +23,7 @@ import { readSetupComplete, resolveSetupGate, writeSetupComplete } from "@/lib/s
 import { isPetWindow } from "@/lib/tauriPet";
 import { cn } from "@/lib/utils";
 import { PetOverlay } from "@/pages/PetOverlay";
+import { isMultiChatSearch } from "@/pages/chat/multiChatLayout";
 import {
   readCustomThemeCollectionFromConfig,
   readThemeAccentFromConfig,
@@ -42,6 +43,11 @@ const Settings = lazy(() =>
   import("@/pages/Settings").then((module) => ({ default: module.Settings }))
 );
 const Chat = lazy(() => import("@/pages/Chat").then((module) => ({ default: module.Chat })));
+const MultiChatWorkspace = lazy(() =>
+  import("@/pages/chat/MultiChatWorkspace").then((module) => ({
+    default: module.MultiChatWorkspace,
+  }))
+);
 const Sessions = lazy(() =>
   import("@/pages/Sessions").then((module) => ({ default: module.Sessions }))
 );
@@ -74,6 +80,9 @@ function PageLoader() {
 
 function ChatRoute() {
   const location = useLocation();
+  if (isMultiChatSearch(location.search)) {
+    return <MultiChatWorkspace key="multi-chat" />;
+  }
   return <Chat key={location.search} />;
 }
 

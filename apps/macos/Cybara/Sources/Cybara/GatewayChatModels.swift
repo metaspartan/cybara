@@ -39,6 +39,8 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
     let provider_type: String?
     let system_prompt: String?
     let reasoning_effort: String?
+    let reasoning_mode: String?
+    let reasoning_efforts: [String]?
     let supports_images: Bool?
     let created_at: String?
     let config: [String: JSONValue]?
@@ -46,7 +48,9 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case id, name, label, type, model, status, state, provider, provider_id, providerId
         case provider_type, providerType
-        case system_prompt, systemPrompt, reasoning_effort, reasoningEffort, supports_images, supportsImages
+        case system_prompt, systemPrompt, reasoning_effort, reasoningEffort
+        case reasoning_mode, reasoningMode, reasoning_efforts, reasoningEfforts
+        case supports_images, supportsImages
         case created_at, createdAt, config
     }
 
@@ -63,6 +67,9 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
         provider_type = try container.decodeFlexibleString(forKeys: [.provider_type, .providerType])
         system_prompt = try container.decodeFlexibleString(forKeys: [.system_prompt, .systemPrompt])
         reasoning_effort = try container.decodeFlexibleString(forKeys: [.reasoning_effort, .reasoningEffort])
+        reasoning_mode = try container.decodeFlexibleString(forKeys: [.reasoning_mode, .reasoningMode])
+        reasoning_efforts = try container.decodeIfPresent([String].self, forKey: .reasoning_efforts)
+            ?? container.decodeIfPresent([String].self, forKey: .reasoningEfforts)
         supports_images = try container.decodeIfPresent(Bool.self, forKey: .supports_images)
             ?? container.decodeIfPresent(Bool.self, forKey: .supportsImages)
         created_at = try container.decodeFlexibleString(forKeys: [.created_at, .createdAt])

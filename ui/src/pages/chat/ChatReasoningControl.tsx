@@ -1,13 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Brain, HelpCircle, Loader2 } from "lucide-react";
 import type { AgentReasoningEffort } from "@/types";
-import { supportedReasoningOptions } from "@/lib/reasoning";
 import { cn } from "@/lib/utils";
-
-interface ReasoningOption {
-  value: AgentReasoningEffort | null;
-  label: string;
-}
+import { resolveChatReasoningOptions } from "./chatReasoningOptions";
 
 const LEVEL_HINTS: Record<string, string> = {
   default: "Follows the provider's own setting",
@@ -25,6 +20,8 @@ export function ChatReasoningControl({
   effort,
   provider,
   model,
+  mode,
+  supportedEfforts,
   disabled,
   updating,
   onChange,
@@ -32,6 +29,8 @@ export function ChatReasoningControl({
   effort?: AgentReasoningEffort | null;
   provider?: string | null;
   model?: string | null;
+  mode?: "adaptive" | "binary" | "effort";
+  supportedEfforts?: AgentReasoningEffort[];
   disabled?: boolean;
   updating?: boolean;
   onChange: (effort: AgentReasoningEffort | null) => void;
@@ -43,13 +42,9 @@ export function ChatReasoningControl({
   const rootRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
-  const options = useMemo<ReasoningOption[]>(
-    () =>
-      supportedReasoningOptions(provider, model).map((option) => ({
-        value: option.value === "" ? null : option.value,
-        label: option.label,
-      })),
-    [provider, model]
+  const options = useMemo(
+    () => resolveChatReasoningOptions(provider, model, mode, supportedEfforts),
+    [mode, model, provider, supportedEfforts]
   );
   const currentIndex = useMemo(() => {
     const index = options.findIndex((option) => option.value === (effort ?? null));

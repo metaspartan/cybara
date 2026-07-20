@@ -13,6 +13,7 @@ export function ChatAgentControls({
   providerPlan,
   onSelectAgent,
   updating,
+  controlId = "chat-agent-selector",
 }: {
   agents: AgentSummary[];
   selectedAgentId?: string;
@@ -22,6 +23,7 @@ export function ChatAgentControls({
   providerPlan?: ProviderPlanSnapshot | null;
   onSelectAgent: (agentId?: string) => void;
   updating?: boolean;
+  controlId?: string;
 }) {
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
   const routeLabel = useModelRouter
@@ -35,12 +37,12 @@ export function ChatAgentControls({
   return (
     <div className="chat-agent-controls flex min-w-0 items-center gap-0.5">
       <ContextUsageRing usage={contextUsage} providerPlan={providerPlan} />
-      <label className="sr-only" htmlFor="chat-agent-selector">
+      <label className="sr-only" htmlFor={controlId}>
         Chat agent
       </label>
       <div className="chat-agent-selector-shell relative min-w-0">
         <select
-          id="chat-agent-selector"
+          id={controlId}
           value={useModelRouter ? MODEL_ROUTER_SELECTOR_VALUE : selectedAgentId || ""}
           disabled={updating}
           onChange={(event) => onSelectAgent(event.target.value || undefined)}

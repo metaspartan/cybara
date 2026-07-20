@@ -243,6 +243,8 @@ jobs:
         env:
           CYBARA_SIDECAR_BUN_TARGET: ${{ matrix.bun_target }}
         run: bun run scripts/build-sidecar.ts
+      - name: Smoke Tauri sidecar embedded UI
+        run: bun run scripts/smoke-tauri-sidecar-ui.ts "${{ matrix.sidecar }}"
       - name: Prepare updater config
         env:
           CYBARA_TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}

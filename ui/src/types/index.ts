@@ -38,6 +38,8 @@ export interface AgentSummary {
   status?: Agent["status"];
   created_at?: string;
   reasoning_effort?: AgentReasoningEffort | null;
+  reasoning_mode?: "adaptive" | "binary" | "effort";
+  reasoning_efforts?: AgentReasoningEffort[];
   tool_profile?: string;
   supports_images?: boolean;
 }

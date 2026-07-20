@@ -1,23 +1,7 @@
-import {
-  AlertTriangle,
-  CheckCircle2,
-  FileText,
-  Loader2,
-  Mic,
-  MicOff,
-  Paperclip,
-  X,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Mic, MicOff, Paperclip } from "lucide-react";
 import type { ClipboardEvent, DragEvent, RefObject } from "react";
 import type { ChatHorizontalPadding } from "../../../../shared/chat-appearance";
 import type { ChatFileAttachment } from "@/lib/chatImages";
-import {
-  chatImageSrc,
-  formatBytes,
-  imageAttachmentBytes,
-  MAX_CHAT_IMAGES,
-  mediaSummaryLabel,
-} from "@/lib/chatImages";
 import type { PendingChatMessage } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import type {
@@ -28,6 +12,7 @@ import type {
   SessionContextUsage,
 } from "@/types";
 import { ChatAgentControls } from "./ChatAgentControls";
+import { ChatComposerAttachments } from "./ChatComposerAttachments";
 import { ChatCapabilityMenu } from "./ChatCapabilityMenu";
 import { ChatComposerActionButton } from "./ChatComposerActionButton";
 import {
@@ -230,81 +215,13 @@ export function ChatComposer({
         onDragLeave={() => onDragActiveChange(false)}
         onDrop={onDrop}
       >
-        {pendingImages.length > 0 || pendingFiles.length > 0 ? (
-          <div className="mb-2">
-            <div className="mb-1 flex items-center gap-1.5 text-[11px] text-gray-400">
-              <Paperclip className="h-3 w-3 shrink-0" />
-              <span>{mediaSummaryLabel(pendingImages, pendingFiles)}</span>
-              {pendingImages.length >= MAX_CHAT_IMAGES ? (
-                <span className="text-amber-300/80">· max {MAX_CHAT_IMAGES} images</span>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {pendingImages.map((image, index) => (
-                <div
-                  key={`pending-image-${index}`}
-                  className="group relative h-16 w-16 overflow-hidden rounded-lg border border-white/12"
-                  title={`${image.name || "image"}${
-                    imageAttachmentBytes(image)
-                      ? ` · ${formatBytes(imageAttachmentBytes(image))}`
-                      : ""
-                  }`}
-                >
-                  <img
-                    src={chatImageSrc(image)}
-                    alt={image.name || "Attachment preview"}
-                    className="h-full w-full object-cover"
-                  />
-                  {imageAttachmentBytes(image) > 0 ? (
-                    <span className="absolute bottom-0 left-0 right-0 bg-black/55 px-1 py-px text-[9px] leading-tight text-white/90">
-                      {formatBytes(imageAttachmentBytes(image))}
-                    </span>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => onRemovePendingImage(index)}
-                    className="absolute right-0.5 top-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
-                    aria-label="Remove image"
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </div>
-              ))}
-              {pendingFiles.map((file, index) => (
-                <div
-                  key={`pending-file-${index}`}
-                  className="flex items-center gap-1.5 rounded-lg border border-white/12 bg-white/[0.04] px-2 py-1 text-xs text-gray-200"
-                >
-                  <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                  <span className="flex min-w-0 flex-col leading-tight">
-                    <span className="max-w-[160px] truncate">{file.name}</span>
-                    {formatBytes(file.size) ? (
-                      <span className="text-[10px] text-gray-500">{formatBytes(file.size)}</span>
-                    ) : null}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onRemovePendingFile(index)}
-                    className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
-                    aria-label="Remove file"
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/gif,image/webp,text/*,.md,.markdown,.json,.jsonc,.csv,.tsv,.xml,.yaml,.yml,.toml,.ini,.log,.html,.css,.scss,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.h,.cpp,.hpp,.cc,.cs,.php,.sh,.bash,.zsh,.sql,.env,.vue,.svelte"
-          multiple
-          className="hidden"
-          onChange={(event) => {
-            if (event.target.files) void onAddAttachmentFiles(event.target.files);
-            event.target.value = "";
-          }}
+        <ChatComposerAttachments
+          imageInputRef={imageInputRef}
+          pendingFiles={pendingFiles}
+          pendingImages={pendingImages}
+          onAddAttachmentFiles={onAddAttachmentFiles}
+          onRemovePendingFile={onRemovePendingFile}
+          onRemovePendingImage={onRemovePendingImage}
         />
         <textarea
           ref={inputRef}
@@ -350,6 +267,8 @@ export function ChatComposer({
               activeAgent?.provider_type ?? activeAgent?.provider ?? activeAgent?.provider_id
             }
             model={activeAgent?.model}
+            mode={activeAgent?.reasoning_mode}
+            supportedEfforts={activeAgent?.reasoning_efforts}
             disabled={useModelRouter || !activeAgent}
             updating={reasoningUpdating}
             onChange={onReasoningChange}

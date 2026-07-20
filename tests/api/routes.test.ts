@@ -463,6 +463,8 @@ describe("Agents API", () => {
       expect(first.config).toBeUndefined();
       expect(first.tools).toBeUndefined();
       expect(typeof first.tool_profile).toBe("string");
+      expect(["adaptive", "binary", "effort"]).toContain(first.reasoning_mode);
+      expect(Array.isArray(first.reasoning_efforts)).toBe(true);
     }
   });
 
@@ -565,7 +567,12 @@ describe("Agents API", () => {
     const update = await fixture.api("PUT", `/api/agents/${agentId}/reasoning`, {
       reasoning_effort: "high",
     });
-    expect(update.data).toEqual({ success: true, reasoning_effort: "high" });
+    expect(update.data).toEqual({
+      success: true,
+      reasoning_effort: "high",
+      reasoning_mode: "effort",
+      reasoning_efforts: ["low", "medium", "high"],
+    });
 
     const fetched = await fixture.api("GET", `/api/agents/${agentId}`);
     const fetchedConfig =
@@ -587,7 +594,12 @@ describe("Agents API", () => {
     const reset = await fixture.api("PUT", `/api/agents/${agentId}/reasoning`, {
       reasoning_effort: null,
     });
-    expect(reset.data).toEqual({ success: true, reasoning_effort: null });
+    expect(reset.data).toEqual({
+      success: true,
+      reasoning_effort: null,
+      reasoning_mode: "effort",
+      reasoning_efforts: ["low", "medium", "high"],
+    });
 
     const invalid = await fixture.api("PUT", `/api/agents/${agentId}/reasoning`, {
       reasoning_effort: "extreme",
@@ -598,6 +610,41 @@ describe("Agents API", () => {
     });
 
     await fixture.api("DELETE", `/api/agents/${agentId}`);
+  });
+
+  test("PUT /api/agents/:id/reasoning stores the provider-supported effective effort", async () => {
+    const provider = await fixture.api("POST", "/api/providers", {
+      provider: "kimi-code",
+      name: `reasoning-kimi-${Date.now()}`,
+      api_key: `kimi-test-${Date.now()}`,
+    });
+    expect(provider.status).toBe(200);
+    const created = await fixture.api("POST", "/api/agents", {
+      name: `reasoning-kimi-agent-${Date.now()}`,
+      type: "main",
+      model: "kimi-code/k3",
+      provider_id: provider.data.id,
+    });
+
+    const update = await fixture.api("PUT", `/api/agents/${created.data.id}/reasoning`, {
+      reasoning_effort: "medium",
+    });
+    expect(update.data).toEqual({
+      success: true,
+      reasoning_effort: "high",
+      reasoning_mode: "effort",
+      reasoning_efforts: ["low", "high", "max"],
+    });
+
+    const summary = await fixture.api("GET", "/api/agents/summary");
+    const agent = (summary.data as Array<Record<string, unknown>>).find(
+      (entry) => entry.id === created.data.id
+    );
+    expect(agent?.reasoning_effort).toBe("high");
+    expect(agent?.reasoning_efforts).toEqual(["low", "high", "max"]);
+
+    await fixture.api("DELETE", `/api/agents/${created.data.id}`);
+    await fixture.api("DELETE", `/api/providers/${provider.data.id}`);
   });
 
   test("POST /api/agents/:id/start tolerates malformed persisted config JSON", async () => {

@@ -25,8 +25,11 @@ export function resolveUiPath(options: ResolveUiPathOptions): string {
     const releaseUi = join(execDir, "ui", "dist");
     if (existsSyncFn(releaseUi)) return releaseUi;
 
-    const tauriMacUi = join(execDir, "..", "Resources", "_up_", "ui", "dist");
+    const tauriMacUi = join(execDir, "..", "Resources", "ui", "dist");
     if (existsSyncFn(tauriMacUi)) return tauriMacUi;
+
+    const legacyTauriMacUi = join(execDir, "..", "Resources", "_up_", "ui", "dist");
+    if (existsSyncFn(legacyTauriMacUi)) return legacyTauriMacUi;
 
     const tauriLinuxLib = join(execDir, "..", "lib", appName, "ui", "dist");
     if (existsSyncFn(tauriLinuxLib)) return tauriLinuxLib;

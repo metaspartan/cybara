@@ -79,7 +79,7 @@ final class SidecarManager: ObservableObject {
     @Published private(set) var logs: [String] = ["Cybara initialized."]
     @Published private(set) var gatewayMode: GatewayMode = .idle
 
-    let port: Int
+    @Published private(set) var port: Int
     var serverURL: URL {
         URL(string: "http://127.0.0.1:\(port)")!
     }
@@ -119,6 +119,7 @@ final class SidecarManager: ObservableObject {
     private var process: Process?
     private var outputHandle: FileHandle?
     private var readinessTask: Task<Void, Never>?
+    private let allowsAutomaticPortFallback: Bool
     /// Set when the user explicitly stops/restarts, so an expected exit isn't
     /// treated as a crash by the auto-restart logic.
     private var userInitiatedStop = false
@@ -126,7 +127,10 @@ final class SidecarManager: ObservableObject {
     private var restartAttempts = 0
 
     init() {
-        port = SidecarCore.port(fromEnv: ProcessInfo.processInfo.environment["CYBARA_NATIVE_PORT"])
+        let configuredPort = ProcessInfo.processInfo.environment["CYBARA_NATIVE_PORT"]
+        port = SidecarCore.port(fromEnv: configuredPort)
+        allowsAutomaticPortFallback =
+            configuredPort?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
     }
 
     deinit {
@@ -326,10 +330,6 @@ final class SidecarManager: ObservableObject {
         }
     }
 
-    private var healthURL: URL {
-        serverURL.appending(path: "api/health")
-    }
-
     private var minimumGatewayVersion: String? {
         let environmentVersion = ProcessInfo.processInfo.environment["CYBARA_NATIVE_APP_VERSION"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -337,9 +337,17 @@ final class SidecarManager: ObservableObject {
         return SidecarCore.bundleVersion(infoDictionary: Bundle.main.infoDictionary)
     }
 
-    private func gatewayProbe() async -> GatewayHealthProbe? {
+    private var healthURL: URL {
+        serverURL.appending(path: "api/health")
+    }
+
+    private func gatewayProbe(port candidatePort: Int? = nil, timeoutInterval: TimeInterval = 2) async -> GatewayHealthProbe? {
+        let targetPort = candidatePort ?? port
+        guard let url = URL(string: SidecarCore.healthURLString(port: targetPort)) else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = timeoutInterval
         do {
-            let (data, response) = try await URLSession.shared.data(from: healthURL)
+            let (data, response) = try await URLSession.shared.data(for: request)
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             return SidecarCore.gatewayHealthProbe(
                 statusCode: code, body: String(data: data, encoding: .utf8) ?? "")
@@ -375,6 +383,46 @@ final class SidecarManager: ObservableObject {
             return .launch
         }
 
+        let occupiedURL = serverURL
+        if allowsAutomaticPortFallback {
+            let candidates = SidecarCore.fallbackPorts(after: port)
+            var compatiblePorts = Set<Int>()
+            var availablePorts = Set<Int>()
+            for candidate in candidates {
+                if let candidateProbe = await gatewayProbe(port: candidate, timeoutInterval: 0.25),
+                   SidecarCore.isGatewayVersionCompatible(
+                    gatewayVersion: candidateProbe.version,
+                    minimumVersion: minimumGatewayVersion
+                   )
+                {
+                    compatiblePorts.insert(candidate)
+                } else if isPortAvailable(candidate) {
+                    availablePorts.insert(candidate)
+                }
+            }
+            switch SidecarCore.fallbackPortDecision(
+                candidates: candidates,
+                compatiblePorts: compatiblePorts,
+                availablePorts: availablePorts
+            ) {
+            case .attach(let fallbackPort):
+                port = fallbackPort
+                gatewayMode = .attached
+                status = .ready
+                appendLog("Attached to compatible Cybara gateway at \(serverURL.absoluteString)")
+                return .attached
+            case .launch(let fallbackPort):
+                port = fallbackPort
+                gatewayMode = .idle
+                appendLog(
+                    "Gateway at \(occupiedURL.absoluteString) is incompatible; launching the bundled gateway at \(serverURL.absoluteString)."
+                )
+                return .launch
+            case nil:
+                break
+            }
+        }
+
         let runningVersion = probe.version.map { "v\($0)" } ?? "an unknown version"
         let requiredVersion = minimumGatewayVersion.map { "v\($0) or newer" } ?? "this app version"
         status = .failed(
@@ -382,6 +430,28 @@ final class SidecarManager: ObservableObject {
         )
         appendLog("Refused incompatible gateway \(runningVersion) at \(serverURL.absoluteString)")
         return .blocked
+    }
+
+    private func isPortAvailable(_ candidate: Int) -> Bool {
+        let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { return false }
+        defer { Darwin.close(descriptor) }
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(candidate).bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+
+        return withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { socketAddress in
+                Darwin.bind(
+                    descriptor,
+                    socketAddress,
+                    socklen_t(MemoryLayout<sockaddr_in>.size)
+                ) == 0
+            }
+        }
     }
 
     private func terminateStaleNativeGateway(_ probe: GatewayHealthProbe) async -> Bool {

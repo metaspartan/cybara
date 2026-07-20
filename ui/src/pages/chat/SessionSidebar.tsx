@@ -45,6 +45,7 @@ import { cn } from "@/lib/utils";
 import type { SessionContextUsage, SessionTokenUsage, Task } from "@/types";
 import type { ChatMessage } from "./chatModel";
 import { sessionDisplayTitle, sessionPreviewText, sessionRouteLabel } from "./chatModel";
+import { MULTI_CHAT_DRAG_TYPE } from "./multiChatLayout";
 import {
   type ChatSidebarSession,
   type ChatSidebarSessionGroup,
@@ -820,6 +821,13 @@ export function SessionsPanel({
                           <>
                             <button
                               type="button"
+                              draggable
+                              onDragStart={(event) => {
+                                setHoveredSessionTooltip(null);
+                                event.dataTransfer.effectAllowed = "copyMove";
+                                event.dataTransfer.setData(MULTI_CHAT_DRAG_TYPE, session.id);
+                                event.dataTransfer.setData("text/plain", session.id);
+                              }}
                               className="flex h-full min-w-0 w-full cursor-pointer items-center text-left outline-none focus-visible:bg-[var(--surface-hover)]"
                               aria-label={tooltip}
                               aria-busy={isRowLoading}
