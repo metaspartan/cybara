@@ -40,6 +40,7 @@ interface VisibleMessageEntry {
 }
 
 interface ChatMessageTimelineProps {
+  compact?: boolean;
   copiedMessageIndex: number | null;
   entries: VisibleMessageEntry[];
   forkingMessageIndex: number | null;
@@ -65,6 +66,7 @@ interface ChatMessageTimelineProps {
 }
 
 export function ChatMessageTimeline({
+  compact = false,
   copiedMessageIndex,
   entries,
   forkingMessageIndex,
@@ -232,7 +234,7 @@ export function ChatMessageTimeline({
                     <Copy className="h-3 w-3" />
                   )}
                 </button>
-                {message.role === "assistant" && message.content.trim() && (
+                {!compact && message.role === "assistant" && message.content.trim() && (
                   <button
                     type="button"
                     onClick={() => onReadAloud(originalIndex, message.content)}
@@ -251,7 +253,7 @@ export function ChatMessageTimeline({
                     )}
                   </button>
                 )}
-                {sessionId && (
+                {!compact && sessionId && (
                   <button
                     type="button"
                     onClick={() => onForkSession(originalIndex)}
@@ -267,7 +269,7 @@ export function ChatMessageTimeline({
                     )}
                   </button>
                 )}
-                {message.role === "assistant" && sessionId && goldenTurnsEnabled && (
+                {!compact && message.role === "assistant" && sessionId && goldenTurnsEnabled && (
                   <button
                     type="button"
                     onClick={() => onSaveGolden(originalIndex)}
@@ -283,7 +285,7 @@ export function ChatMessageTimeline({
                     )}
                   </button>
                 )}
-                {message.role === "user" && sessionId && (
+                {!compact && message.role === "user" && sessionId && (
                   <button
                     type="button"
                     onClick={() =>

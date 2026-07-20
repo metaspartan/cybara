@@ -21,10 +21,21 @@ const LEVEL_HINTS: Record<string, string> = {
   max: "Maximum thinking depth, slowest",
 };
 
+const EFFORT_LABELS: Record<AgentReasoningEffort, string> = {
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra High",
+  max: "Max",
+};
+
 export function ChatReasoningControl({
   effort,
   provider,
   model,
+  mode,
+  supportedEfforts,
   disabled,
   updating,
   onChange,
@@ -32,6 +43,8 @@ export function ChatReasoningControl({
   effort?: AgentReasoningEffort | null;
   provider?: string | null;
   model?: string | null;
+  mode?: "adaptive" | "binary" | "effort";
+  supportedEfforts?: AgentReasoningEffort[];
   disabled?: boolean;
   updating?: boolean;
   onChange: (effort: AgentReasoningEffort | null) => void;
@@ -43,14 +56,26 @@ export function ChatReasoningControl({
   const rootRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
-  const options = useMemo<ReasoningOption[]>(
-    () =>
-      supportedReasoningOptions(provider, model).map((option) => ({
-        value: option.value === "" ? null : option.value,
-        label: option.label,
-      })),
-    [provider, model]
-  );
+  const options = useMemo<ReasoningOption[]>(() => {
+    const resolved =
+      mode === "adaptive"
+        ? [{ value: "" as const, label: "Adaptive" }]
+        : mode === "binary"
+          ? [
+              { value: "" as const, label: "Default" },
+              { value: "medium" as const, label: "Thinking" },
+            ]
+          : supportedEfforts
+            ? [
+                { value: "" as const, label: "Default" },
+                ...supportedEfforts.map((value) => ({ value, label: EFFORT_LABELS[value] })),
+              ]
+            : supportedReasoningOptions(provider, model);
+    return resolved.map((option) => ({
+      value: option.value === "" ? null : option.value,
+      label: option.label,
+    }));
+  }, [mode, model, provider, supportedEfforts]);
   const currentIndex = useMemo(() => {
     const index = options.findIndex((option) => option.value === (effort ?? null));
     return index >= 0 ? index : 0;

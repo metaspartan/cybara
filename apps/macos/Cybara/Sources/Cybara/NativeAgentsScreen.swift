@@ -26,6 +26,15 @@ private let nativeBinaryThinkingProviders: Set<String> = [
 private let nativeAdaptiveThinkingProviders: Set<String> = [
     "minimax", "minimax-cn", "minimax-portal", "minimax-portal-cn",
 ]
+private let nativeKimiCodeProviders: Set<String> = [
+    "kimi-code", "kimi-code-oauth", "kimi-coding", "kimi-oauth", "kimi-code-subscription",
+]
+private let nativeAnthropicProviders: Set<String> = [
+    "anthropic", "anthropic-oauth", "anthropic_vertex", "claude-oauth",
+]
+private let nativeGoogleProviders: Set<String> = [
+    "antigravity", "gemini-cli", "google", "google-antigravity", "google-gemini-cli", "google_vertex",
+]
 
 private let nativeEffortLabels: [String: String] = [
     "minimal": "Minimal",
@@ -50,7 +59,9 @@ private let nativeAnthropicLegacyEfforts = ["minimal", "low", "medium", "high"]
 private let nativeAnthropic46Efforts = ["low", "medium", "high", "max"]
 private let nativeAnthropicModernEfforts = ["low", "medium", "high", "xhigh", "max"]
 private let nativeGoogleEfforts = ["low", "medium", "high"]
+private let nativeGoogleFlashEfforts = ["minimal", "low", "medium", "high"]
 private let nativeGoogleProEfforts = ["low", "high"]
+private let nativeKimiK3Efforts = ["low", "high", "max"]
 
 private func nativeNormalizeModelId(_ id: String?) -> String {
     var model = (id ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -108,12 +119,19 @@ private func nativeSupportedEfforts(provider: String?, model: String?) -> [Strin
         return ["medium"]
     }
     let modelId = nativeNormalizeModelId(model)
-    if providerId == "anthropic" || providerId == "anthropic_vertex" {
+    if nativeKimiCodeProviders.contains(providerId),
+       modelId.range(of: #"(?:^|/)k3$"#, options: .regularExpression) != nil {
+        return nativeKimiK3Efforts
+    }
+    if nativeAnthropicProviders.contains(providerId) {
         return nativeResolveAnthropicEfforts(modelId)
     }
-    if providerId == "google" || providerId == "google_vertex" {
-        if modelId.range(of: #"^gemini-3(?:\.1)?-.*pro"#, options: .regularExpression) != nil {
+    if nativeGoogleProviders.contains(providerId) {
+        if modelId.range(of: #"^gemini-3(?:\.\d+)?-.*pro"#, options: .regularExpression) != nil {
             return nativeGoogleProEfforts
+        }
+        if modelId.range(of: #"^gemini-3(?:\.\d+)?-.*flash"#, options: .regularExpression) != nil {
+            return nativeGoogleFlashEfforts
         }
         return nativeGoogleEfforts
     }
@@ -132,7 +150,7 @@ func nativeSupportedReasoningEfforts(provider: String?, model: String?) -> [(val
     let providerId = (provider ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     let modelId = nativeNormalizeModelId(model)
     if nativeAdaptiveThinkingProviders.contains(providerId),
-       modelId.range(of: #"^minimax-m3(?:[.-]|$)"#, options: .regularExpression) != nil {
+       modelId.range(of: #"(?:^|/)minimax-m3(?:[.-]|$)"#, options: .regularExpression) != nil {
         return [("", "Adaptive")]
     }
     if nativeBinaryThinkingProviders.contains(providerId) {
@@ -145,7 +163,27 @@ func nativeSupportedReasoningEfforts(provider: String?, model: String?) -> [(val
     return levels
 }
 
+func nativeSupportedReasoningEfforts(agent: GatewayAgent) -> [(value: String, label: String)] {
+    if agent.reasoning_mode == "adaptive" { return [("", "Adaptive")] }
+    if agent.reasoning_mode == "binary" { return [("", "Default"), ("medium", "Thinking")] }
+    if let efforts = agent.reasoning_efforts {
+        return [("", "Default")] + efforts.map { ($0, nativeEffortLabels[$0] ?? $0.capitalized) }
+    }
+    return nativeSupportedReasoningEfforts(
+        provider: agent.providerType ?? agent.providerID,
+        model: agent.model
+    )
+}
+
 func nativeCoerceReasoningEffort(_ effort: String, provider: String?, model: String?) -> String {
+    let providerID = (provider ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let modelID = nativeNormalizeModelId(model)
+    if nativeKimiCodeProviders.contains(providerID),
+       modelID.range(of: #"(?:^|/)k3$"#, options: .regularExpression) != nil {
+        if effort == "minimal" || effort == "low" { return "low" }
+        if effort == "medium" || effort == "high" { return "high" }
+        return "max"
+    }
     let supported = nativeSupportedReasoningEfforts(provider: provider, model: model)
     if supported.contains(where: { $0.value == effort }) { return effort }
     let supportedValues = supported.map(\.value).filter { !$0.isEmpty }

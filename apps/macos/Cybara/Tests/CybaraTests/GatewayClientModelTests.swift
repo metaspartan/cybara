@@ -172,6 +172,22 @@ final class GatewayClientModelTests: XCTestCase {
             nativeSupportedReasoningEfforts(provider: "minimax", model: "MiniMax-M3").map(\.label),
             ["Adaptive"]
         )
+        XCTAssertEqual(
+            nativeSupportedReasoningEfforts(provider: "kimi-code-oauth", model: "kimi-code/k3").map(\.value),
+            ["", "low", "high", "max"]
+        )
+        XCTAssertEqual(
+            nativeSupportedReasoningEfforts(provider: "google", model: "gemini-3.5-flash").map(\.value),
+            ["", "minimal", "low", "medium", "high"]
+        )
+        XCTAssertEqual(
+            nativeSupportedReasoningEfforts(provider: "google-gemini-cli", model: "gemini-3.5-flash").map(\.value),
+            ["", "minimal", "low", "medium", "high"]
+        )
+        XCTAssertEqual(
+            nativeSupportedReasoningEfforts(provider: "anthropic-oauth", model: "claude-opus-4-8").map(\.value),
+            ["", "low", "medium", "high", "xhigh", "max"]
+        )
     }
 
     func testSessionDisplayTitleTrimsGatewayTitle() throws {
@@ -589,6 +605,8 @@ final class GatewayClientModelTests: XCTestCase {
                   "status": "running",
                   "provider_id": "provider-1",
                   "system_prompt": "Be useful.",
+                  "reasoning_mode": "effort",
+                  "reasoning_efforts": ["low", "medium", "high"],
                   "config": {
                     "autostart": true,
                     "model_params": {
@@ -604,6 +622,8 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(agent.providerID, "provider-1")
         XCTAssertTrue(agent.autostart)
         XCTAssertEqual(agent.reasoningEffort, "high")
+        XCTAssertEqual(agent.reasoning_mode, "effort")
+        XCTAssertEqual(agent.reasoning_efforts, ["low", "medium", "high"])
     }
 
     func testAgentDecodesGatewayListRowWithPersistedJsonConfigString() throws {

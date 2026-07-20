@@ -98,6 +98,10 @@ describe("thinking budgets", () => {
       includeThoughts: true,
       thinkingLevel: "low",
     });
+    expect(googleThinkingConfig("minimal", "gemini-3.5-flash")).toEqual({
+      includeThoughts: true,
+      thinkingLevel: "minimal",
+    });
     expect(googleThinkingConfig("high", "gemini-2.5-pro")).toEqual({ includeThoughts: true });
   });
 

@@ -221,4 +221,13 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain("aria-label={`Rename ${displayTitle}`}");
     expect(source.match(/type="button"/g)?.length ?? 0).toBeGreaterThan(10);
   });
+
+  test("exposes chat rows as multi-chat drag sources", () => {
+    const source = sessionSidebarSource();
+
+    expect(source).toContain("MULTI_CHAT_DRAG_TYPE");
+    expect(source).toContain('event.dataTransfer.effectAllowed = "copyMove"');
+    expect(source).toContain("event.dataTransfer.setData(MULTI_CHAT_DRAG_TYPE, session.id)");
+    expect(source).toContain("draggable");
+  });
 });

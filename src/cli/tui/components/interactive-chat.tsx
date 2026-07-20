@@ -827,7 +827,13 @@ export function InteractiveChatTUI({
           return true;
         }
         await loadControlPlane();
-        setNotice(`Reasoning effort set to ${value}.`);
+        const savedEffort =
+          isRecord(response) && typeof response.reasoning_effort === "string"
+            ? response.reasoning_effort
+            : isRecord(response) && response.reasoning_effort === null
+              ? "default"
+              : value;
+        setNotice(`Reasoning effort set to ${savedEffort}.`);
         return true;
       }
       if (normalizedCommand === "title" || normalizedCommand === "rename") {

@@ -75,10 +75,8 @@ extension ChatScreen {
     }
 
     var composerReasoningEfforts: [(value: String, label: String)] {
-        nativeSupportedReasoningEfforts(
-            provider: selectedChatAgent?.providerType ?? selectedChatAgent?.providerID,
-            model: selectedChatAgent?.model
-        )
+        guard let selectedChatAgent else { return nativeReasoningEfforts }
+        return nativeSupportedReasoningEfforts(agent: selectedChatAgent)
     }
 
     var agentSelectionBinding: Binding<String> {

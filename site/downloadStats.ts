@@ -25,8 +25,12 @@ function assetDownloadCount(asset: GithubDownloadAsset): number {
   return Number.isFinite(asset.download_count) ? Math.max(0, asset.download_count ?? 0) : 0;
 }
 
+function normalizedAssetName(asset: GithubDownloadAsset): string {
+  return asset.name?.trim().toLowerCase() ?? "";
+}
+
 export function isDownloadMetadataAsset(asset: GithubDownloadAsset): boolean {
-  const name = asset.name?.trim().toLowerCase();
+  const name = normalizedAssetName(asset);
   return (
     !!name &&
     (EXCLUDED_DOWNLOAD_ASSETS.has(name) ||
@@ -36,7 +40,7 @@ export function isDownloadMetadataAsset(asset: GithubDownloadAsset): boolean {
 }
 
 export function isCountedDownloadAsset(asset: GithubDownloadAsset): boolean {
-  const name = asset.name?.trim().toLowerCase();
+  const name = normalizedAssetName(asset);
   return (
     !!name &&
     !isDownloadMetadataAsset(asset) &&
@@ -44,25 +48,47 @@ export function isCountedDownloadAsset(asset: GithubDownloadAsset): boolean {
   );
 }
 
-export function releaseAutomationBaseline(release: GithubDownloadRelease): number {
-  return (release.assets ?? []).reduce((baseline, asset) => {
-    const name = asset.name?.trim().toLowerCase();
-    if (!name || name === "latest.json" || !isDownloadMetadataAsset(asset)) return baseline;
-    return Math.max(baseline, assetDownloadCount(asset));
+function companionMetadataNames(name: string): Set<string> {
+  const names = new Set([`${name}.sig`, `${name}.sha256`, `${name}.sha512`, `${name}.md5`]);
+  if (name.endsWith(".zip")) names.add(name.replace(/\.zip$/i, ".sha256"));
+  if (/_aarch64\.dmg$/i.test(name)) names.add("cybara_aarch64.app.tar.gz.sig");
+  if (/_x64\.dmg$/i.test(name)) names.add("cybara_x64.app.tar.gz.sig");
+  return names;
+}
+
+function releaseChecksumManifestCount(assets: GithubDownloadAsset[]): number {
+  return assets.reduce((count, asset) => {
+    const name = normalizedAssetName(asset);
+    return CHECKSUM_MANIFEST_PATTERN.test(name) ? Math.max(count, assetDownloadCount(asset)) : count;
   }, 0);
+}
+
+function installerAutomationBaseline(
+  asset: GithubDownloadAsset,
+  assets: GithubDownloadAsset[]
+): number {
+  const companionNames = companionMetadataNames(normalizedAssetName(asset));
+  let companionCount = 0;
+  let hasCompanion = false;
+  for (const candidate of assets) {
+    if (!companionNames.has(normalizedAssetName(candidate))) continue;
+    hasCompanion = true;
+    companionCount = Math.max(companionCount, assetDownloadCount(candidate));
+  }
+  return hasCompanion ? companionCount : releaseChecksumManifestCount(assets);
 }
 
 export function sumReleaseDownloads(releases: GithubDownloadRelease[]): number {
   return releases.reduce(
     (releaseTotal, release) => {
-      const baseline = releaseAutomationBaseline(release);
+      const assets = release.assets ?? [];
       return (
         releaseTotal +
-        (release.assets ?? []).reduce(
+        assets.reduce(
           (assetTotal, asset) =>
             assetTotal +
             (isCountedDownloadAsset(asset)
-              ? Math.max(0, assetDownloadCount(asset) - baseline)
+              ? Math.max(0, assetDownloadCount(asset) - installerAutomationBaseline(asset, assets))
               : 0),
           0
         )

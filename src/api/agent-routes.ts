@@ -8,12 +8,26 @@ import {
   readAgentReasoningSetting,
   withAgentReasoningSetting,
 } from "../core/agent-reasoning";
+import {
+  coerceReasoningEffort,
+  reasoningMode,
+  supportedReasoningEfforts,
+} from "../../shared/reasoning-capabilities";
 import { type RouteHandler } from "./routes/_shared";
 
 function agentId(params: Record<string, string> | undefined): string {
   const value = params?.id?.trim();
   if (!value) throw new Error("Validation error: Agent id is required");
   return value;
+}
+
+function effectiveReasoningEffort(
+  effort: ReturnType<typeof readAgentReasoningSetting>,
+  provider: string | undefined,
+  model: string | undefined
+): ReturnType<typeof readAgentReasoningSetting> {
+  if (!effort || reasoningMode(provider, model) === "adaptive") return null;
+  return coerceReasoningEffort(effort, provider, model);
 }
 
 export const agentRoutes: Record<string, RouteHandler> = {
@@ -23,6 +37,8 @@ export const agentRoutes: Record<string, RouteHandler> = {
     const imageSupport = agentImageSupportById(agents);
     return agents.map((agent) => {
       const toolProfile = parseAgentConfig(agent.config).tool_profile;
+      const provider = agent.provider_type;
+      const mode = reasoningMode(provider, agent.model);
       return {
         id: agent.id,
         name: agent.name,
@@ -36,7 +52,13 @@ export const agentRoutes: Record<string, RouteHandler> = {
         fallback_provider_id: agent.fallback_provider_id,
         status: agent.status,
         created_at: agent.created_at,
-        reasoning_effort: readAgentReasoningSetting(agent.config),
+        reasoning_effort: effectiveReasoningEffort(
+          readAgentReasoningSetting(agent.config),
+          provider,
+          agent.model
+        ),
+        reasoning_mode: mode,
+        reasoning_efforts: supportedReasoningEfforts(provider, agent.model),
         tool_profile: typeof toolProfile === "string" ? toolProfile : "full",
         supports_images: imageSupport.get(agent.id) ?? false,
       };
@@ -69,13 +91,24 @@ export const agentRoutes: Record<string, RouteHandler> = {
       (body as { reasoning_effort?: unknown } | undefined)?.reasoning_effort
     );
     if (!parsed.valid) return { success: false, error: "Invalid reasoning effort" };
+    const mode = reasoningMode(agent.provider_type, agent.model);
+    const effort =
+      parsed.effort && mode !== "adaptive"
+        ? coerceReasoningEffort(parsed.effort, agent.provider_type, agent.model)
+        : null;
     const updated = agentManager.update(id, {
-      config: withAgentReasoningSetting(agent.config, parsed.effort),
+      config: withAgentReasoningSetting(agent.config, effort),
     });
     if (!updated) return { success: false, error: "Agent not found" };
     return {
       success: true,
-      reasoning_effort: readAgentReasoningSetting(updated.config),
+      reasoning_effort: effectiveReasoningEffort(
+        readAgentReasoningSetting(updated.config),
+        agent.provider_type,
+        agent.model
+      ),
+      reasoning_mode: mode,
+      reasoning_efforts: supportedReasoningEfforts(agent.provider_type, agent.model),
     };
   },
   "POST /api/agents/:id/start": async (_body, params) => ({

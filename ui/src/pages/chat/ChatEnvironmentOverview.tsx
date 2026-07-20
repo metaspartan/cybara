@@ -120,7 +120,7 @@ export function ChatEnvironmentOverview({
 
   const panel = (
     <div
-      className="chat-environment-panel fixed right-3 top-[52px] z-[2147483000] max-h-[calc(100vh-68px)] w-[360px] max-w-[calc(100vw-24px)] overflow-y-auto rounded-xl border p-3 text-sm shadow-[0_28px_90px_rgba(0,0,0,0.92)]"
+      className="chat-environment-panel fixed right-3 top-[52px] z-[2147483000] max-h-[calc(100vh-68px)] w-[360px] max-w-[calc(100vw-24px)] overflow-y-auto rounded-xl border p-3 text-sm"
       data-session-id={sessionId || "new-chat"}
       data-testid="chat-environment-overview"
       style={{

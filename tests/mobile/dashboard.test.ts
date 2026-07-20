@@ -902,9 +902,24 @@ describe("mobile provider-aware reasoning gating", () => {
     expect(mobileReasoningLabel(null, "minimax-portal", "MiniMax-M3")).toBe("Adaptive");
   });
 
+  test("Kimi K3 uses the shared low, high, and max matrix", () => {
+    expect(mobileSupportedReasoningEfforts("kimi-code-oauth", "kimi-code/k3")).toEqual([
+      { label: "Default", value: "" },
+      { label: "Low", value: "low" },
+      { label: "High", value: "high" },
+      { label: "Max", value: "max" },
+    ]);
+  });
+
   test("google yields documented model effort levels plus default", () => {
     const options = mobileSupportedReasoningEfforts("google", "gemini-2.5-pro");
     expect(options.map((o) => o.value)).toEqual(["", "low", "medium", "high"]);
+  });
+
+  test("Gemini 3 Flash includes Minimal through High", () => {
+    expect(
+      mobileSupportedReasoningEfforts("google", "gemini-3.5-flash").map((o) => o.value)
+    ).toEqual(["", "minimal", "low", "medium", "high"]);
   });
 
   test("codex models exclude Minimal and add Max", () => {

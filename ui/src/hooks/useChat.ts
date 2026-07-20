@@ -1,7 +1,12 @@
 import { useState, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { chatApi, agentsApi, extractApiError } from "@/lib/api";
-import type { ChatMessage, ChatImageAttachment } from "@/types";
+import type {
+  ChatImageAttachment,
+  ChatMessage,
+  SessionContextUsage,
+  SessionTokenUsage,
+} from "@/types";
 import { enrichReloadedMessages, readCachedSessionMessages } from "@/pages/chat/messageCache";
 
 interface ChatState {
@@ -35,8 +40,8 @@ export interface LoadedChatSession {
   created_at: string;
   updated_at: string;
   workspace_dir?: string | null;
-  contextUsage?: unknown;
-  tokenUsage?: unknown;
+  contextUsage?: SessionContextUsage | null;
+  tokenUsage?: SessionTokenUsage | null;
   plan?: unknown;
   messagesList: ChatMessage[];
 }
@@ -44,6 +49,29 @@ export interface LoadedChatSession {
 function sessionDetailQueryKey(sessionId: string) {
   return [SESSION_DETAIL_QUERY_KEY, sessionId, "compact"] as const;
 }
+
+const loadSessionDetail = async (
+  sessionId: string,
+  querySignal?: AbortSignal
+): Promise<LoadedChatSession> => {
+  const controller = new AbortController();
+  const abortFromQuery = () => controller.abort(querySignal?.reason);
+  querySignal?.addEventListener("abort", abortFromQuery, { once: true });
+  const timeoutId = globalThis.setTimeout(
+    () => controller.abort(new DOMException("Session load timed out", "TimeoutError")),
+    SESSION_DETAIL_TIMEOUT_MS
+  );
+  try {
+    const response = await chatApi.getSession(sessionId, { signal: controller.signal });
+    if (response.success && response.data) {
+      return response.data as LoadedChatSession;
+    }
+    throw new Error(response.error || "Failed to load session");
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+    querySignal?.removeEventListener("abort", abortFromQuery);
+  }
+};
 
 function invalidateSessionDetail(queryClient: QueryClient, sessionId?: string | null) {
   return queryClient.invalidateQueries({
@@ -384,6 +412,17 @@ export function useSessions(options?: { limit?: number }) {
   });
 }
 
+export function useSessionDetail(sessionId: string, enabled = true) {
+  return useQuery({
+    queryKey: sessionDetailQueryKey(sessionId),
+    queryFn: ({ signal }) => loadSessionDetail(sessionId, signal),
+    enabled: enabled && !!sessionId,
+    staleTime: SESSION_DETAIL_STALE_MS,
+    gcTime: SESSION_DETAIL_GC_MS,
+    refetchOnWindowFocus: false,
+  });
+}
+
 export function useDeleteSession() {
   const queryClient = useQueryClient();
 
@@ -466,28 +505,6 @@ export function useUpdateSessionAgent() {
 
 export function useLoadSession() {
   const queryClient = useQueryClient();
-  const loadSessionDetail = useCallback(
-    async (sessionId: string, querySignal?: AbortSignal): Promise<LoadedChatSession> => {
-      const controller = new AbortController();
-      const abortFromQuery = () => controller.abort(querySignal?.reason);
-      querySignal?.addEventListener("abort", abortFromQuery, { once: true });
-      const timeoutId = globalThis.setTimeout(
-        () => controller.abort(new DOMException("Session load timed out", "TimeoutError")),
-        SESSION_DETAIL_TIMEOUT_MS
-      );
-      try {
-        const response = await chatApi.getSession(sessionId, { signal: controller.signal });
-        if (response.success && response.data) {
-          return response.data as LoadedChatSession;
-        }
-        throw new Error(response.error || "Failed to load session");
-      } finally {
-        globalThis.clearTimeout(timeoutId);
-        querySignal?.removeEventListener("abort", abortFromQuery);
-      }
-    },
-    []
-  );
   const loadFresh = useCallback(
     (sessionId: string): Promise<LoadedChatSession> =>
       queryClient.fetchQuery({
@@ -496,7 +513,7 @@ export function useLoadSession() {
         gcTime: SESSION_DETAIL_GC_MS,
         queryFn: ({ signal }) => loadSessionDetail(sessionId, signal),
       }),
-    [loadSessionDetail, queryClient]
+    [queryClient]
   );
 
   const mutation = useMutation({

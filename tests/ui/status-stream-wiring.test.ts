@@ -98,8 +98,9 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("context-usage-tooltip");
     expect(source).toContain("context-usage-tooltip-title");
     expect(contextUsageRingSource).toContain("aria-expanded={open}");
-    expect(contextUsageRingSource).toContain("onClick={() => setOpen(true)}");
-    expect(contextUsageRingSource).not.toContain("onClick={() => setOpen((value) => !value)}");
+    expect(contextUsageRingSource).toContain("onClick={() => setOpen((current) => !current)}");
+    expect(contextUsageRingSource).toContain("createPortal(tooltipContent, document.body)");
+    expect(contextUsageRingSource).toContain("fixed z-[200]");
     expect(source).not.toContain("bg-[#2b2b2f]");
     expect(source).not.toContain("bg-[#171820]");
     expect(source).not.toContain("rgba(255,255,255,0.18)");
@@ -124,7 +125,8 @@ describe("status stream websocket wiring", () => {
     expect(source).toMatch(
       /settingsApi\.updateConfig\(\{\s*tool_approval_mode:\s*nextMode,?\s*\}\)/
     );
-    expect(source).toContain('id="chat-agent-selector"');
+    expect(source).toContain('controlId = "chat-agent-selector"');
+    expect(source).toContain("id={controlId}");
     expect(source).toContain("chat-composer-responsive");
     expect(source).toContain("chat-approval-toggle");
     expect(source).toContain("chat-agent-selector-compact-label");

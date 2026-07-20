@@ -63,7 +63,7 @@ describe("supportedReasoningOptions per-model matrix", () => {
     expect(reasoningEffortLabel(null, "minimax-portal", "MiniMax-M3")).toBe("Adaptive");
   });
 
-  test("Kimi K3 exposes its max-only coding-plan reasoning contract", () => {
+  test("Kimi K3 exposes its current coding-plan reasoning contract", () => {
     for (const provider of [
       "kimi-code",
       "kimi-code-oauth",
@@ -73,11 +73,23 @@ describe("supportedReasoningOptions per-model matrix", () => {
     ]) {
       expect(supportedReasoningOptions(provider, "k3")).toEqual([
         { value: "", label: "Default" },
+        { value: "low", label: "Low" },
+        { value: "high", label: "High" },
         { value: "max", label: "Max" },
       ]);
     }
     expect(supportsXHighReasoning("kimi-code-oauth", "k3")).toBe(false);
     expect(reasoningEffortLabel("max", "kimi-code-oauth", "k3")).toBe("Max");
+  });
+
+  test("Gemini 3 Flash exposes Minimal through High", () => {
+    expect(supportedReasoningOptions("google", "gemini-3.5-flash").map((o) => o.value)).toEqual([
+      "",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+    ]);
   });
 
   test("codex models expose Low..Max and exclude Minimal", () => {
