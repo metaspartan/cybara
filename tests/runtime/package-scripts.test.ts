@@ -9,6 +9,7 @@ const CI_INSTALL_SCRIPT = join(ROOT_DIR, "scripts", "ci-install.sh");
 const PACKAGE_SCRIPT = join(ROOT_DIR, "scripts", "package.ts");
 const REACT_DOCTOR_SCRIPT = join(ROOT_DIR, "scripts", "react-doctor.ts");
 const SMOKE_TEST_SCRIPT = join(ROOT_DIR, "scripts", "run-smoke-tests.ts");
+const TAURI_SIDECAR_SMOKE_SCRIPT = join(ROOT_DIR, "scripts", "smoke-tauri-sidecar-ui.ts");
 const KNIP_CONFIG = join(ROOT_DIR, "knip.json");
 
 describe("package.json script wiring", () => {
@@ -105,7 +106,14 @@ describe("package.json script wiring", () => {
     expect((pkg as Record<string, unknown>)["build"]).toBeUndefined();
     expect((pkg as Record<string, unknown>)["build:cli"]).toBeUndefined();
     expect((pkg as Record<string, unknown>)["build:main"]).toBeUndefined();
-    expect(readFileSync(SIDECAR_SCRIPT, "utf8")).toContain("--external @aws-sdk/client-s3");
+    const sidecarScript = readFileSync(SIDECAR_SCRIPT, "utf8");
+    expect(sidecarScript).toContain("buildStandaloneCli");
+    expect(sidecarScript).toContain('entryModule: "src/index.ts"');
+    expect(sidecarScript).toContain('externalPackages: ["playwright", "playwright-core"]');
+    const sidecarSmokeScript = readFileSync(TAURI_SIDECAR_SMOKE_SCRIPT, "utf8");
+    expect(sidecarSmokeScript).toContain("delete environment.CYBARA_RESOURCE_DIR");
+    expect(sidecarSmokeScript).toContain('html.includes("UI not built")');
+    expect(sidecarSmokeScript).toContain("firstAssetPath(html)");
     const packageScript = readFileSync(PACKAGE_SCRIPT, "utf8");
     expect(packageScript).toContain("--external tiny-secp256k1");
     expect(packageScript).toContain("--external @aws-sdk/client-s3");

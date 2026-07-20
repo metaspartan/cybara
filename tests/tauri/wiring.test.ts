@@ -64,6 +64,17 @@ describe("Tauri wiring", () => {
     }
   });
 
+  test("release workflow verifies the sidecar without adjacent UI resources", () => {
+    const releaseWorkflow = readFileSync(
+      join(ROOT_DIR, ".github", "workflows", "release.yml"),
+      "utf8"
+    );
+    expect(releaseWorkflow).toContain("Smoke Tauri sidecar embedded UI");
+    expect(releaseWorkflow).toContain(
+      'bun run scripts/smoke-tauri-sidecar-ui.ts "${{ matrix.sidecar }}"'
+    );
+  });
+
   test("main.rs starts and stops the cybara sidecar process", () => {
     const mainRsPath = join(ROOT_DIR, "src-tauri", "src", "main.rs");
     const mainRs = readFileSync(mainRsPath, "utf8");

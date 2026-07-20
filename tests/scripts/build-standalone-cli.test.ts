@@ -44,6 +44,13 @@ describe("standalone CLI build", () => {
       expect(source).toContain('"/assets/app.js"');
       expect(source).toContain("__CYBARA_EMBEDDED_UI__");
       expect(source).toContain('await import("./src/main.ts")');
+
+      const sidecarSource = createStandaloneEntrySource({
+        cwd: directory,
+        uiDir,
+        entryModule: "src/index.ts",
+      });
+      expect(sidecarSource).toContain('await import("./src/index.ts")');
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

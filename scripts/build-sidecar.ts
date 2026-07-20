@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { $ } from "bun";
 import {
   cpSync,
   existsSync,
@@ -18,6 +17,7 @@ import {
   getCuaDriverTarget,
   installCuaDriverAt,
 } from "../src/core/cua-driver-runtime";
+import { buildStandaloneCli } from "./build-standalone-cli";
 
 const TAURI_BIN_DIR = join(import.meta.dirname, "..", "src-tauri", "bin");
 const RELEASE_DIR = join(import.meta.dirname, "..", "release");
@@ -626,8 +626,6 @@ export async function buildSidecar(): Promise<void> {
     process.env.GITHUB_SHA?.trim() ||
     (await readGitCommit(join(import.meta.dirname, "..")));
   if (buildCommit) process.env.CYBARA_BUILD_COMMIT = buildCommit;
-  const buildEnvironment = "--env=CYBARA_BUILD_*";
-
   console.log(`\n⚡ Building Cybara sidecar for ${target.tauriSuffix}\n`);
 
   for (const dir of [RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]) {
@@ -705,7 +703,12 @@ export default instance.exports;
   }
 
   try {
-    await $`bun build src/index.ts --compile ${buildEnvironment} --target=${target.bunTarget} --outfile ${releasePath} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers --external kokoro-js --external playwright --external playwright-core`;
+    await buildStandaloneCli({
+      target: target.bunTarget,
+      outfile: releasePath,
+      entryModule: "src/index.ts",
+      externalPackages: ["playwright", "playwright-core"],
+    });
   } finally {
     // Restore original wasm_loader.js
     if (originalWasmLoader) {

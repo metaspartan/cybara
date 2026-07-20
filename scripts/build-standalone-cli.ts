@@ -7,11 +7,14 @@ export interface StandaloneCliBuildOptions {
   outfile: string;
   cwd?: string;
   uiDir?: string;
+  entryModule?: string;
+  externalPackages?: readonly string[];
 }
 
 export interface StandaloneEntryOptions {
   cwd: string;
   uiDir: string;
+  entryModule?: string;
 }
 
 const EXTERNAL_PACKAGES = [
@@ -46,6 +49,10 @@ export function createStandaloneEntrySource(options: StandaloneEntryOptions): st
   const indexPath = resolve(options.uiDir, "index.html");
   const index = files.indexOf(indexPath);
   if (index < 0) throw new Error(`Standalone UI index not found at ${indexPath}`);
+  const entryModule = importPath(
+    options.cwd,
+    resolve(options.cwd, options.entryModule ?? "src/main.ts")
+  );
 
   const imports = files.map(
     (path, position) =>
@@ -75,14 +82,15 @@ ${assets.join("\n")}
   },
 };
 
-await import("./src/main.ts");
+await import(${JSON.stringify(entryModule)});
 `;
 }
 
 export function standaloneCliBuildArgs(
   target: string,
   outfile: string,
-  entrypoint = "src/main.ts"
+  entrypoint = "src/main.ts",
+  externalPackages: readonly string[] = EXTERNAL_PACKAGES
 ): string[] {
   return [
     process.execPath,
@@ -92,7 +100,10 @@ export function standaloneCliBuildArgs(
     "--env=CYBARA_BUILD_*",
     `--target=${target}`,
     `--outfile=${outfile}`,
-    ...EXTERNAL_PACKAGES.flatMap((packageName) => ["--external", packageName]),
+    ...[...new Set([...EXTERNAL_PACKAGES, ...externalPackages])].flatMap((packageName) => [
+      "--external",
+      packageName,
+    ]),
   ];
 }
 
@@ -105,9 +116,12 @@ export async function buildStandaloneCli(options: StandaloneCliBuildOptions): Pr
   const entrypoint = resolve(cwd, `.cybara-standalone-${process.pid}-${randomUUID()}.ts`);
 
   try {
-    await Bun.write(entrypoint, createStandaloneEntrySource({ cwd, uiDir }));
+    await Bun.write(
+      entrypoint,
+      createStandaloneEntrySource({ cwd, uiDir, entryModule: options.entryModule })
+    );
     const processHandle = Bun.spawn(
-      standaloneCliBuildArgs(options.target, options.outfile, entrypoint),
+      standaloneCliBuildArgs(options.target, options.outfile, entrypoint, options.externalPackages),
       {
         cwd,
         env: process.env,
