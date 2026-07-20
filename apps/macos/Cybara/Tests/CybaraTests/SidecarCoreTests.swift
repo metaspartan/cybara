@@ -81,6 +81,35 @@ final class SidecarCoreTests: XCTestCase {
         )
     }
 
+    func testFallbackPortDecisionPrefersCompatibleGatewayOverEarlierFreePort() {
+        XCTAssertEqual(
+            SidecarCore.fallbackPortDecision(
+                candidates: [4270, 4271, 4272],
+                compatiblePorts: [4272],
+                availablePorts: [4270, 4271]
+            ),
+            .attach(4272)
+        )
+    }
+
+    func testFallbackPortDecisionUsesFirstFreePortWhenNoGatewayIsCompatible() {
+        XCTAssertEqual(
+            SidecarCore.fallbackPortDecision(
+                candidates: [4270, 4271, 4272],
+                compatiblePorts: [],
+                availablePorts: [4271, 4272]
+            ),
+            .launch(4271)
+        )
+        XCTAssertNil(
+            SidecarCore.fallbackPortDecision(
+                candidates: [4270],
+                compatiblePorts: [],
+                availablePorts: []
+            )
+        )
+    }
+
     // MARK: - isHealthyResponse
 
     func testHealthyResponseAccepts200WithStatus() {
