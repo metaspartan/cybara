@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -62,6 +62,14 @@ describe("native macOS packaging helpers", () => {
     );
     expect(layout.uiDistDir).toBe("/bundle/Cybara.app/Contents/Resources/sidecar/ui/dist");
     expect(layout.wasmPath).toBe("/bundle/Cybara.app/Contents/Resources/sidecar/secp256k1.wasm");
+  });
+
+  test("verifies the bundled gateway version before packaging", () => {
+    const source = readFileSync(
+      join(import.meta.dirname, "..", "..", "scripts", "package-native-macos.ts"),
+      "utf8"
+    );
+    expect(source).toContain("await smokeSidecarUi(SIDEcar_RELEASE_PATH, version)");
   });
 
   test("detects extensionless Mach-O helper executables for nested signing", () => {

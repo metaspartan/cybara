@@ -79,7 +79,7 @@ final class SidecarManager: ObservableObject {
     @Published private(set) var logs: [String] = ["Cybara initialized."]
     @Published private(set) var gatewayMode: GatewayMode = .idle
 
-    let port: Int
+    @Published private(set) var port: Int
     var serverURL: URL {
         URL(string: "http://127.0.0.1:\(port)")!
     }
@@ -119,6 +119,7 @@ final class SidecarManager: ObservableObject {
     private var process: Process?
     private var outputHandle: FileHandle?
     private var readinessTask: Task<Void, Never>?
+    private let allowsAutomaticPortFallback: Bool
     /// Set when the user explicitly stops/restarts, so an expected exit isn't
     /// treated as a crash by the auto-restart logic.
     private var userInitiatedStop = false
@@ -126,7 +127,10 @@ final class SidecarManager: ObservableObject {
     private var restartAttempts = 0
 
     init() {
-        port = SidecarCore.port(fromEnv: ProcessInfo.processInfo.environment["CYBARA_NATIVE_PORT"])
+        let configuredPort = ProcessInfo.processInfo.environment["CYBARA_NATIVE_PORT"]
+        port = SidecarCore.port(fromEnv: configuredPort)
+        allowsAutomaticPortFallback =
+            configuredPort?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
     }
 
     deinit {
@@ -375,6 +379,21 @@ final class SidecarManager: ObservableObject {
             return .launch
         }
 
+        let occupiedURL = serverURL
+        if allowsAutomaticPortFallback,
+           let fallbackPort = SidecarCore.firstAvailableFallbackPort(
+            after: port,
+            isAvailable: isPortAvailable
+           )
+        {
+            port = fallbackPort
+            gatewayMode = .idle
+            appendLog(
+                "Gateway at \(occupiedURL.absoluteString) is incompatible; launching the bundled gateway at \(serverURL.absoluteString)."
+            )
+            return .launch
+        }
+
         let runningVersion = probe.version.map { "v\($0)" } ?? "an unknown version"
         let requiredVersion = minimumGatewayVersion.map { "v\($0) or newer" } ?? "this app version"
         status = .failed(
@@ -382,6 +401,28 @@ final class SidecarManager: ObservableObject {
         )
         appendLog("Refused incompatible gateway \(runningVersion) at \(serverURL.absoluteString)")
         return .blocked
+    }
+
+    private func isPortAvailable(_ candidate: Int) -> Bool {
+        let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { return false }
+        defer { Darwin.close(descriptor) }
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(candidate).bigEndian
+        address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+
+        return withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { socketAddress in
+                Darwin.bind(
+                    descriptor,
+                    socketAddress,
+                    socklen_t(MemoryLayout<sockaddr_in>.size)
+                ) == 0
+            }
+        }
     }
 
     private func terminateStaleNativeGateway(_ probe: GatewayHealthProbe) async -> Bool {

@@ -34,6 +34,25 @@ public enum SidecarCore {
         "\(serverURLString(port: port))/api/health"
     }
 
+    public static func fallbackPorts(after preferredPort: Int, count: Int = 20) -> [Int] {
+        guard count > 0 else { return [] }
+        let lowerBound = 1024
+        let upperBound = 65535
+        let rangeSize = upperBound - lowerBound + 1
+        let normalized = min(max(preferredPort, lowerBound), upperBound)
+        return (1...min(count, rangeSize - 1)).map { offset in
+            lowerBound + ((normalized - lowerBound + offset) % rangeSize)
+        }
+    }
+
+    public static func firstAvailableFallbackPort(
+        after preferredPort: Int,
+        count: Int = 20,
+        isAvailable: (Int) -> Bool
+    ) -> Int? {
+        fallbackPorts(after: preferredPort, count: count).first(where: isAvailable)
+    }
+
     public static func isHealthyResponse(statusCode: Int, body: String) -> Bool {
         gatewayHealthProbe(statusCode: statusCode, body: body) != nil
     }

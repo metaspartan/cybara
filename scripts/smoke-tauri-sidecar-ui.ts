@@ -30,7 +30,26 @@ function firstAssetPath(html: string): string {
   return match[1];
 }
 
-export async function smokeTauriSidecarUi(sourceBinary: string): Promise<void> {
+function readHealthVersion(value: unknown): string | null {
+  if (!value || typeof value !== "object" || !("version" in value)) return null;
+  const version = (value as { version?: unknown }).version;
+  return typeof version === "string" && version.trim() ? version.trim() : null;
+}
+
+export function assertSidecarVersion(value: unknown, expectedVersion?: string): void {
+  if (!expectedVersion) return;
+  const version = readHealthVersion(value);
+  if (version !== expectedVersion) {
+    throw new Error(
+      `Bundled gateway version ${version ?? "unknown"} does not match app version ${expectedVersion}`
+    );
+  }
+}
+
+export async function smokeSidecarUi(
+  sourceBinary: string,
+  expectedVersion?: string
+): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), "cybara-tauri-sidecar-ui-"));
   const binary = join(directory, basename(sourceBinary));
   const home = join(directory, "home");
@@ -64,6 +83,8 @@ export async function smokeTauriSidecarUi(sourceBinary: string): Promise<void> {
     const assetPath = firstAssetPath(html);
     const asset = await fetch(`http://127.0.0.1:${port}${assetPath}`);
     if (!asset.ok) throw new Error(`Embedded UI asset returned HTTP ${asset.status}: ${assetPath}`);
+    const health = await waitForResponse(`http://127.0.0.1:${port}/api/health`);
+    assertSidecarVersion(await health.json(), expectedVersion);
   } catch (error) {
     failure = error;
   } finally {
@@ -81,6 +102,6 @@ export async function smokeTauriSidecarUi(sourceBinary: string): Promise<void> {
 if (import.meta.main) {
   const sourceBinary = process.argv[2]?.trim();
   if (!sourceBinary) throw new Error("Usage: bun run scripts/smoke-tauri-sidecar-ui.ts <binary>");
-  await smokeTauriSidecarUi(resolve(sourceBinary));
-  console.log("Tauri sidecar embedded UI smoke passed");
+  await smokeSidecarUi(resolve(sourceBinary), process.argv[3]?.trim() || undefined);
+  console.log("Sidecar embedded UI smoke passed");
 }

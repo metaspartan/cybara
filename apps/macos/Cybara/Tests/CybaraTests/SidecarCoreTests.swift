@@ -47,6 +47,40 @@ final class SidecarCoreTests: XCTestCase {
         XCTAssertEqual(SidecarCore.healthURLString(port: 4269), "http://127.0.0.1:4269/api/health")
     }
 
+    func testFallbackPortsFollowPreferredPort() {
+        XCTAssertEqual(
+            SidecarCore.fallbackPorts(after: 4269, count: 4),
+            [4270, 4271, 4272, 4273]
+        )
+        XCTAssertEqual(SidecarCore.fallbackPorts(after: 4269, count: 0), [])
+    }
+
+    func testFallbackPortsWrapWithinUnprivilegedRange() {
+        XCTAssertEqual(
+            SidecarCore.fallbackPorts(after: 65535, count: 3),
+            [1024, 1025, 1026]
+        )
+    }
+
+    func testFirstAvailableFallbackPortSkipsOccupiedPorts() {
+        let occupied = Set([4270, 4271, 4272])
+        XCTAssertEqual(
+            SidecarCore.firstAvailableFallbackPort(
+                after: 4269,
+                count: 5,
+                isAvailable: { !occupied.contains($0) }
+            ),
+            4273
+        )
+        XCTAssertNil(
+            SidecarCore.firstAvailableFallbackPort(
+                after: 4269,
+                count: 3,
+                isAvailable: { !occupied.contains($0) }
+            )
+        )
+    }
+
     // MARK: - isHealthyResponse
 
     func testHealthyResponseAccepts200WithStatus() {
