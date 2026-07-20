@@ -3,11 +3,21 @@ import { readFileSync } from "node:fs";
 import type { FeatureSummary } from "../../apps/mobile/src/lib/api";
 import type { GatewayProfile } from "../../apps/mobile/src/lib/connection";
 import {
-  MOBILE_FEATURE_SECTIONS,
+  boundedMobileComposerHeight,
+  buildGatewayPanelMeta,
+  buildMobileChatSettingsLines,
+  buildMobileHeaderCopy,
+  compactLastUpdatedLabel,
+  createMobileSessionId,
+  formatMobileValue,
+  formatUptime,
+  isMobileSettingsDetailFieldVisible,
+  lastUpdatedLabel,
   MOBILE_ACCENT_KEYS,
+  MOBILE_CHAT_CHROME,
   MOBILE_CHAT_COMPOSER,
   MOBILE_CHAT_DETAIL_CHROME,
-  MOBILE_CHAT_CHROME,
+  MOBILE_FEATURE_SECTIONS,
   MOBILE_GATEWAY_PANEL_CHROME,
   MOBILE_HOME_CHROME,
   MOBILE_LOGS_CHROME,
@@ -15,46 +25,36 @@ import {
   MOBILE_METRICS_CHROME,
   MOBILE_NAV_CHROME,
   MOBILE_NEW_CHAT_CHROME,
-  MOBILE_RECENT_ACTIVITY_CHROME,
+  MOBILE_PLATFORM_SETTING_KEYS,
   MOBILE_REASONING_EFFORT_OPTIONS,
+  MOBILE_RECENT_ACTIVITY_CHROME,
   MOBILE_ROUTER_STRATEGY_OPTIONS,
   MOBILE_SETTINGS_DETAIL_CHROME,
   MOBILE_SETTINGS_ROOT_CHROME,
   MOBILE_SETTINGS_SURFACES,
   MOBILE_SETTINGS_TABS,
-  MOBILE_PLATFORM_SETTING_KEYS,
-  MOBILE_SYSTEM_PROMPT_FEATURE_KEYS,
   MOBILE_SURFACES,
+  MOBILE_SYSTEM_PROMPT_FEATURE_KEYS,
   MOBILE_TABS,
-  boundedMobileComposerHeight,
-  buildGatewayPanelMeta,
-  buildMobileChatSettingsLines,
-  buildMobileHeaderCopy,
-  compactLastUpdatedLabel,
-  createMobileSessionId,
-  sessionProviderModelLabel,
-  formatMobileValue,
-  formatUptime,
-  isMobileSettingsDetailFieldVisible,
-  lastUpdatedLabel,
-  mobileComposerHeightForDraft,
   mobileBackRouteForDetail,
+  mobileComposerHeightForDraft,
   mobileFirstNonEmptyString,
   mobileGatewayAuthStatus,
   mobileProviderAuthMode,
+  mobileReasoningLabel,
   mobileSessionTitle,
+  mobileSupportedReasoningEfforts,
+  mobileSupportsXHighReasoning,
   mobileThemeConfigPayload,
-  recentSessionStateLabel,
+  readMobileAccent,
   readMobileDangerousToolPolicy,
   readMobileFollowUpBehaviorEnabled,
   readMobileReasoningEffort,
   readMobileRouterStrategy,
   readMobileSandboxRuntime,
-  readMobileAccent,
   readMobileToolApprovalMode,
-  mobileSupportsXHighReasoning,
-  mobileSupportedReasoningEfforts,
-  mobileReasoningLabel,
+  recentSessionStateLabel,
+  sessionProviderModelLabel,
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
 import { readMobileTokenOptimizationSettings } from "../../apps/mobile/src/screens/dashboardHelpers";
@@ -968,6 +968,29 @@ describe("mobile provider-aware reasoning gating", () => {
     expect(mobileReasoningLabel("high", "google", "gemini-2.5-pro")).toBe("High");
     expect(mobileReasoningLabel("xhigh", "openai", "gpt-5.2")).toBe("Extra High");
     expect(mobileReasoningLabel("medium", "z.ai", "glm-5.2")).toBe("Thinking");
+  });
+
+  test("gateway reasoning capabilities override provider inference", () => {
+    expect(mobileSupportedReasoningEfforts("custom", "custom", "adaptive", [])).toEqual([
+      { label: "Adaptive", value: "" },
+    ]);
+    expect(
+      mobileSupportedReasoningEfforts("z.ai", "glm-5.2", "effort", ["low", "high", "max"])
+    ).toEqual([
+      { label: "Default", value: "" },
+      { label: "Low", value: "low" },
+      { label: "High", value: "high" },
+      { label: "Max", value: "max" },
+    ]);
+    expect(mobileReasoningLabel(null, "custom", "custom", "adaptive", [])).toBe("Adaptive");
+  });
+
+  test("empty gateway effort lists retain provider fallback", () => {
+    expect(
+      mobileSupportedReasoningEfforts("openai", "gpt-5.3-codex", "effort", []).map(
+        (option) => option.value
+      )
+    ).toEqual(["", "low", "medium", "high", "xhigh"]);
   });
 });
 

@@ -754,12 +754,20 @@ export function SessionDetailPanel({
     () =>
       mobileSupportedReasoningEfforts(
         selectedAgent?.provider_type ?? selectedAgent?.provider_id ?? selectedAgent?.provider,
-        selectedAgent?.model
+        selectedAgent?.model,
+        selectedAgent?.reasoning_mode,
+        selectedAgent?.reasoning_efforts
       ).map((option) => ({
         value: option.value === "" ? null : option.value,
         label: option.label,
       })),
-    [selectedAgent?.provider_id, selectedAgent?.provider, selectedAgent?.model]
+    [
+      selectedAgent?.provider_id,
+      selectedAgent?.provider,
+      selectedAgent?.model,
+      selectedAgent?.reasoning_mode,
+      selectedAgent?.reasoning_efforts,
+    ]
   );
   const reasoningLabel =
     reasoningOptions.find((option) => option.value === reasoningEffort)?.label ?? "Default";

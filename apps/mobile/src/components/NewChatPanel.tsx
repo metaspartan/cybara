@@ -1,3 +1,4 @@
+import { Brain, ChevronRight, CircleHelp, Send, ShieldAlert } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
   ActionSheetIOS,
@@ -11,13 +12,11 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Brain, ChevronRight, CircleHelp, Send, ShieldAlert } from "lucide-react-native";
-import { GlassPanel } from "./Glass";
-import { CybaraMobileApi, type AgentSummary } from "../lib/api";
+import { type AgentSummary, CybaraMobileApi } from "../lib/api";
 import {
-  MOBILE_CHAT_COMPOSER,
   boundedMobileComposerHeight,
   createMobileSessionId,
+  MOBILE_CHAT_COMPOSER,
   mobileComposerHeightForDraft,
   mobileReasoningLabel,
   mobileSupportedReasoningEfforts,
@@ -26,6 +25,7 @@ import { haptics } from "../lib/haptics";
 import { liveAssistantMessage, writeCachedMobileLiveAssistant } from "../screens/dashboardLiveChat";
 import { writeCachedMobileOptimisticTranscriptMessage } from "../screens/dashboardOptimisticTranscript";
 import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
+import { GlassPanel } from "./Glass";
 
 function normalizeApprovalMode(value?: string): "always_allow" | "ask" {
   return value === "ask" ? "ask" : "always_allow";
@@ -115,7 +115,9 @@ export function NewChatPanel({
       : (selectedAgent?.reasoning_effort ?? null);
   const reasoningOptions = mobileSupportedReasoningEfforts(
     selectedAgent?.provider_type ?? selectedAgent?.provider_id ?? selectedAgent?.provider,
-    selectedAgent?.model
+    selectedAgent?.model,
+    selectedAgent?.reasoning_mode,
+    selectedAgent?.reasoning_efforts
   ).map((option) => ({
     label: option.label,
     value: option.value === "" ? null : option.value,
@@ -123,7 +125,9 @@ export function NewChatPanel({
   const reasoningLabel = mobileReasoningLabel(
     reasoningEffort,
     selectedAgent?.provider_type ?? selectedAgent?.provider_id ?? selectedAgent?.provider,
-    selectedAgent?.model
+    selectedAgent?.model,
+    selectedAgent?.reasoning_mode,
+    selectedAgent?.reasoning_efforts
   );
 
   const saveReasoningEffort = async (effort: AgentSummary["reasoning_effort"]) => {

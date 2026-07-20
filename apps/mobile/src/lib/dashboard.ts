@@ -1,3 +1,9 @@
+import {
+  supportedReasoningEfforts,
+  supportsXHighReasoning,
+  usesBinaryReasoning,
+  usesProviderAdaptiveReasoning,
+} from "cybara-shared/reasoning-capabilities";
 import type {
   FeatureEndpointKey,
   FeatureSummary,
@@ -6,12 +12,6 @@ import type {
   SessionSummary,
 } from "./api";
 import type { GatewayProfile } from "./connection";
-import {
-  supportedReasoningEfforts,
-  supportsXHighReasoning,
-  usesBinaryReasoning,
-  usesProviderAdaptiveReasoning,
-} from "cybara-shared/reasoning-capabilities";
 
 export type MobileTabKey = "overview" | "sessions" | "metrics" | "usage" | "tasks" | "settings";
 export type MobileSettingsTab =
@@ -220,20 +220,25 @@ export function mobileSupportsXHighReasoning(
 
 export function mobileSupportedReasoningEfforts(
   provider?: string | null,
-  model?: string | null
+  model?: string | null,
+  mode?: "adaptive" | "binary" | "effort",
+  supportedEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh" | "max">
 ): readonly { label: string; value: MobileReasoningEffort }[] {
-  if (usesProviderAdaptiveReasoning(provider, model)) {
+  if (mode === "adaptive" || (!mode && usesProviderAdaptiveReasoning(provider, model))) {
     return [{ label: "Adaptive", value: "" }];
   }
-  if (usesBinaryReasoning(provider)) {
+  if (mode === "binary" || (!mode && usesBinaryReasoning(provider))) {
     return [
       { label: "Default", value: "" },
       { label: "Thinking", value: "medium" },
     ];
   }
+  const efforts = supportedEfforts?.length
+    ? supportedEfforts
+    : supportedReasoningEfforts(provider, model);
   return [
     { label: "Default", value: "" },
-    ...supportedReasoningEfforts(provider, model).map((level) => ({
+    ...efforts.map((level) => ({
       label: MOBILE_EFFORT_LABELS[level] ?? level,
       value: level as MobileReasoningEffort,
     })),
@@ -243,9 +248,11 @@ export function mobileSupportedReasoningEfforts(
 export function mobileReasoningLabel(
   effort: string | null | undefined,
   provider?: string | null,
-  model?: string | null
+  model?: string | null,
+  mode?: "adaptive" | "binary" | "effort",
+  supportedEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh" | "max">
 ): string {
-  const options = mobileSupportedReasoningEfforts(provider, model);
+  const options = mobileSupportedReasoningEfforts(provider, model, mode, supportedEfforts);
   return options.find((option) => option.value === (effort ?? ""))?.label ?? "Default";
 }
 

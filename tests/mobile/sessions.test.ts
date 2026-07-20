@@ -189,10 +189,14 @@ describe("mobile: chat management", () => {
     expect(newChat).toContain(".routerConfig()");
     expect(newChat).toContain("useModelRouter");
     expect(newChat).toContain("mobileSupportedReasoningEfforts(");
+    expect(newChat).toContain("selectedAgent?.reasoning_mode");
+    expect(newChat).toContain("selectedAgent?.reasoning_efforts");
     expect(newChat).toContain("api.updateAgentReasoning(selectedAgent.id, effort)");
     expect(newChat).toContain("Reasoning effort:");
     expect(newChat).toContain("ActionSheetIOS.showActionSheetWithOptions(");
     expect(screen).toContain("const changeSessionAgent");
+    expect(screen).toContain("selectedAgent?.reasoning_mode");
+    expect(screen).toContain("selectedAgent?.reasoning_efforts");
     expect(screen).toContain("const openAgentSelector");
     expect(screen).toContain("MOBILE_MODEL_ROUTER_SELECTOR_VALUE");
     expect(screen).toContain("setUseModelRouter(true)");
