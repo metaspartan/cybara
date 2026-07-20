@@ -762,7 +762,7 @@ function MultiChatPane({
               disabled={
                 (!draft.trim() && pendingImages.length === 0 && pendingFiles.length === 0) ||
                 sending ||
-                responsePending
+                (!isActive && responsePending)
               }
               className="accent-bg flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white transition-opacity disabled:opacity-35"
               title={isActive ? "Queue follow-up" : "Send message"}

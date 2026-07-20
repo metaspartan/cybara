@@ -67,11 +67,8 @@ extension ChatScreen {
     }
 
     var activeReasoningEffortLabel: String {
-        nativeReasoningLabel(
-            effort: activeReasoningEffort,
-            provider: selectedChatAgent?.providerType ?? selectedChatAgent?.providerID,
-            model: selectedChatAgent?.model
-        )
+        guard let selectedChatAgent else { return "Default" }
+        return nativeReasoningLabel(effort: activeReasoningEffort, agent: selectedChatAgent)
     }
 
     var composerReasoningEfforts: [(value: String, label: String)] {

@@ -166,7 +166,7 @@ func nativeSupportedReasoningEfforts(provider: String?, model: String?) -> [(val
 func nativeSupportedReasoningEfforts(agent: GatewayAgent) -> [(value: String, label: String)] {
     if agent.reasoning_mode == "adaptive" { return [("", "Adaptive")] }
     if agent.reasoning_mode == "binary" { return [("", "Default"), ("medium", "Thinking")] }
-    if let efforts = agent.reasoning_efforts {
+    if let efforts = agent.reasoning_efforts, !efforts.isEmpty {
         return [("", "Default")] + efforts.map { ($0, nativeEffortLabels[$0] ?? $0.capitalized) }
     }
     return nativeSupportedReasoningEfforts(
@@ -196,6 +196,13 @@ func nativeCoerceReasoningEffort(_ effort: String, provider: String?, model: Str
 func nativeReasoningLabel(effort: String, provider: String?, model: String?) -> String {
     let options = nativeSupportedReasoningEfforts(provider: provider, model: model)
     return options.first { $0.value == effort }?.label ?? "Default"
+}
+
+func nativeReasoningLabel(effort: String, agent: GatewayAgent) -> String {
+    let options = nativeSupportedReasoningEfforts(agent: agent)
+    return options.first { $0.value == effort }?.label
+        ?? options.first { $0.value.isEmpty }?.label
+        ?? "Default"
 }
 
 struct AgentsScreen: View {
@@ -342,7 +349,7 @@ struct AgentsScreen: View {
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text("Reasoning · \(nativeReasoningLabel(effort: agent.reasoningEffort, provider: agent.providerType ?? agent.providerID, model: agent.model))")
+                Text("Reasoning · \(nativeReasoningLabel(effort: agent.reasoningEffort, agent: agent))")
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.tertiary)
             }

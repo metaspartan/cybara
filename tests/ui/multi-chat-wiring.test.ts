@@ -54,6 +54,7 @@ describe("multi-chat workspace wiring", () => {
     expect(workspace).toContain("MULTI_CHAT_RENDERED_MESSAGE_LIMIT = 80");
     expect(workspace).toContain("MULTI_CHAT_REFRESH_THROTTLE_MS = 750");
     expect(workspace).toContain('queueMode: isActive ? "queue" : undefined');
+    expect(workspace).toContain("(!isActive && responsePending)");
     expect(workspace).toContain("useSessionDetail(sessionId, !isDraft)");
     expect(workspace).toContain("if (existing) return");
     expect(workspace).toContain(

@@ -190,6 +190,32 @@ final class GatewayClientModelTests: XCTestCase {
         )
     }
 
+    func testNativeReasoningOptionsPreferNonEmptyGatewayCapabilities() throws {
+        let adaptive = try decodeAgent(
+            #"{"id":"adaptive","name":"Adaptive","provider_type":"custom","reasoning_mode":"adaptive","reasoning_efforts":[],"reasoning_effort":null}"#
+        )
+        let explicit = try decodeAgent(
+            #"{"id":"explicit","name":"Explicit","provider_type":"custom","reasoning_mode":"effort","reasoning_efforts":["low","max"],"reasoning_effort":"max"}"#
+        )
+
+        XCTAssertEqual(nativeSupportedReasoningEfforts(agent: adaptive).map(\.label), ["Adaptive"])
+        XCTAssertEqual(nativeReasoningLabel(effort: adaptive.reasoningEffort, agent: adaptive), "Adaptive")
+        XCTAssertEqual(nativeSupportedReasoningEfforts(agent: explicit).map(\.value), ["", "low", "max"])
+        XCTAssertEqual(nativeReasoningLabel(effort: explicit.reasoningEffort, agent: explicit), "Max")
+    }
+
+    func testNativeReasoningOptionsFallBackWhenGatewayEffortsAreEmpty() throws {
+        let agent = try decodeAgent(
+            #"{"id":"fallback","name":"Fallback","model":"gpt-5.6-sol","provider_type":"openai-codex","reasoning_mode":"effort","reasoning_efforts":[],"reasoning_effort":"xhigh"}"#
+        )
+
+        XCTAssertEqual(
+            nativeSupportedReasoningEfforts(agent: agent).map(\.value),
+            ["", "low", "medium", "high", "xhigh", "max"]
+        )
+        XCTAssertEqual(nativeReasoningLabel(effort: agent.reasoningEffort, agent: agent), "Extra High")
+    }
+
     func testSessionDisplayTitleTrimsGatewayTitle() throws {
         let session = try decodeSession(#"{"id":"session-123456789","title":"  Release planning  "}"#)
 
