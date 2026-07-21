@@ -206,6 +206,7 @@ final class UpdateCoreTests: XCTestCase {
         let asset = ReleaseAsset(name: "native.zip", downloadURL: "https://github.com/x", size: 200)
         checker.recordDownloadProgress(asset: asset, receivedBytes: 50, totalBytes: 0)
         XCTAssertEqual(checker.progressValue, 0.25)
+        XCTAssertTrue(checker.showsMenuBarUpdateIndicator)
         XCTAssertTrue(checker.statusText.contains("25%"))
     }
 }

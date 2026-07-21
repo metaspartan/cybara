@@ -99,7 +99,8 @@ describe("native macOS shell wiring", () => {
     expect(app).toContain("MenuBarExtra");
     expect(app).toContain("applicationShouldTerminateAfterLastWindowClosed");
     expect(app).toContain("-> Bool {\n        false");
-    expect(menu).toContain("CybaraBrand.menuBarTemplateImage()");
+    expect(menu).toContain("CybaraBrand.menuBarTemplateImage(");
+    expect(menu).toContain("showsUpdateIndicator: updateChecker.showsMenuBarUpdateIndicator");
     expect(menu).toContain(".frame(width: 16, height: 16)");
     expect(menu).toContain('Button("Show Cybara")');
     expect(menu).toContain('Button("New Chat")');

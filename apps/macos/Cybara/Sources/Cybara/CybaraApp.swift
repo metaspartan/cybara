@@ -115,7 +115,7 @@ struct CybaraApp: App {
             CybaraMenuBarContent(model: menuBarModel, updateChecker: updateChecker)
                 .environmentObject(sidecar)
         } label: {
-            CybaraMenuBarLabel()
+            CybaraMenuBarLabel(updateChecker: updateChecker)
         }
         .menuBarExtraStyle(.menu)
     }

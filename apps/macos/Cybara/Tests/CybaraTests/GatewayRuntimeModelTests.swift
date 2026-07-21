@@ -663,6 +663,27 @@ final class GatewayRuntimeModelTests: XCTestCase {
         XCTAssertGreaterThan(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.alphaComponent ?? 0, 0.85)
     }
 
+    func testCybaraMenuBarUpdateTemplateUsesArrowAndTransparentOutline() throws {
+        let regular = try XCTUnwrap(CybaraBrand.menuBarTemplateImage())
+        let update = try XCTUnwrap(CybaraBrand.menuBarTemplateImage(showsUpdateIndicator: true))
+        let regularBitmap = try XCTUnwrap(regular.representations.first as? NSBitmapImageRep)
+        let updateBitmap = try XCTUnwrap(update.representations.first as? NSBitmapImageRep)
+        var clearedPixels = 0
+        var addedPixels = 0
+        for y in 0 ..< updateBitmap.pixelsHigh {
+            for x in 0 ..< updateBitmap.pixelsWide {
+                let regularAlpha = regularBitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0
+                let updateAlpha = updateBitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0
+                if regularAlpha > 0.5, updateAlpha < 0.05 { clearedPixels += 1 }
+                if regularAlpha < 0.5, updateAlpha > 0.95 { addedPixels += 1 }
+            }
+        }
+        XCTAssertTrue(CybaraBrand.menuBarUpdateArrowPixel(x: 23, y: 17, pixelSize: 32))
+        XCTAssertTrue(CybaraBrand.menuBarUpdateArrowPixel(x: 23, y: 27, pixelSize: 32))
+        XCTAssertGreaterThan(clearedPixels, 0)
+        XCTAssertGreaterThan(addedPixels, 0)
+    }
+
     func testCybaraMenuBarTemplateMatchesTheDesktopLuminanceMask() {
         XCTAssertEqual(
             CybaraBrand.menuBarTemplateAlpha(red: 0, green: 0, blue: 0, alpha: 255),

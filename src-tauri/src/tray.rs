@@ -30,16 +30,63 @@ fn macos_template_icon(source: &tauri::image::Image) -> tauri::image::Image<'sta
     tauri::image::Image::new_owned(rgba, source.width(), source.height())
 }
 
+fn update_arrow_pixel(x: i64, y: i64, width: i64, height: i64) -> bool {
+    let size = width.min(height) as f64;
+    let center_x = width as f64 * 0.73;
+    let tip_y = height as f64 * 0.48;
+    let shoulder_y = height as f64 * 0.68;
+    let bottom_y = height as f64 * 0.88;
+    let x = x as f64;
+    let y = y as f64;
+    if y >= tip_y && y <= shoulder_y {
+        let half_width = ((y - tip_y) / (shoulder_y - tip_y)) * size * 0.14;
+        return (x - center_x).abs() <= half_width;
+    }
+    y > shoulder_y && y <= bottom_y && (x - center_x).abs() <= size * 0.045
+}
+
+fn macos_update_template_icon(source: &tauri::image::Image) -> tauri::image::Image<'static> {
+    let mut rgba = source.rgba().to_vec();
+    let width = source.width() as i64;
+    let height = source.height() as i64;
+    let outline_radius = ((width.min(height) as f64) * 0.055).ceil() as i64;
+    for y in 0..height {
+        for x in 0..width {
+            let arrow = update_arrow_pixel(x, y, width, height);
+            let outline = !arrow
+                && (-outline_radius..=outline_radius).any(|offset_y| {
+                    (-outline_radius..=outline_radius).any(|offset_x| {
+                        offset_x * offset_x + offset_y * offset_y <= outline_radius * outline_radius
+                            && update_arrow_pixel(x + offset_x, y + offset_y, width, height)
+                    })
+                });
+            let index = ((y * width + x) * 4) as usize;
+            if arrow {
+                rgba[index] = 0;
+                rgba[index + 1] = 0;
+                rgba[index + 2] = 0;
+                rgba[index + 3] = 255;
+            } else if outline {
+                rgba[index + 3] = 0;
+            }
+        }
+    }
+    tauri::image::Image::new_owned(rgba, source.width(), source.height())
+}
+
 fn tray_image(source: &tauri::image::Image, badged: bool) -> tauri::image::Image<'static> {
-    let base = if badged {
+    if cfg!(target_os = "macos") {
+        let base = macos_template_icon(source);
+        return if badged {
+            macos_update_template_icon(&base)
+        } else {
+            base
+        };
+    }
+    if badged {
         crate::badge_icon(source)
     } else {
         tauri::image::Image::new_owned(source.rgba().to_vec(), source.width(), source.height())
-    };
-    if cfg!(target_os = "macos") {
-        macos_template_icon(&base)
-    } else {
-        base
     }
 }
 
@@ -470,8 +517,8 @@ pub fn setup(app: &App) -> tauri::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderUsagePlan, ProviderUsageWindow, macos_template_icon, truncate_label,
-        update_menu_text, usage_reset_text, usage_window_text,
+        ProviderUsagePlan, ProviderUsageWindow, macos_template_icon, macos_update_template_icon,
+        truncate_label, update_arrow_pixel, update_menu_text, usage_reset_text, usage_window_text,
     };
     use crate::desktop_update::DesktopUpdateSnapshot;
 
@@ -535,6 +582,17 @@ mod tests {
         assert_eq!(template.rgba()[3], 255);
         assert_eq!(template.rgba()[7], 0);
         assert_eq!(template.rgba()[11], 0);
+    }
+
+    #[test]
+    fn macos_update_icon_uses_an_up_arrow_with_a_transparent_outline() {
+        let source = tauri::image::Image::new_owned(vec![255; 32 * 32 * 4], 32, 32);
+        let update = macos_update_template_icon(&source);
+        assert!(update_arrow_pixel(23, 17, 32, 32));
+        assert!(update_arrow_pixel(23, 27, 32, 32));
+        assert!(!update_arrow_pixel(15, 17, 32, 32));
+        assert!(update.rgba().chunks_exact(4).any(|pixel| pixel[3] == 0));
+        assert!(update.rgba().chunks_exact(4).any(|pixel| pixel[3] == 255));
     }
 
     #[test]

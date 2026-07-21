@@ -12,7 +12,10 @@ enum CybaraBrand {
         return NSImage(contentsOf: url)
     }()
 
-    static func menuBarTemplateImage(size: CGFloat = 16) -> NSImage? {
+    static func menuBarTemplateImage(
+        size: CGFloat = 16,
+        showsUpdateIndicator: Bool = false
+    ) -> NSImage? {
         guard let source = logoImage,
               let sourceImage = source.cgImage(forProposedRect: nil, context: nil, hints: nil)
         else {
@@ -46,6 +49,9 @@ enum CybaraBrand {
             raw[offset + 2] = 0
             raw[offset + 3] = templateAlpha
         }
+        if showsUpdateIndicator {
+            applyMenuBarUpdateIndicator(raw: raw, pixelSize: pixelSize)
+        }
 
         guard let processed = context.makeImage() else { return nil }
         let bitmap = NSBitmapImageRep(cgImage: processed)
@@ -54,6 +60,52 @@ enum CybaraBrand {
         image.addRepresentation(bitmap)
         image.isTemplate = true
         return image
+    }
+
+    private static func applyMenuBarUpdateIndicator(
+        raw: UnsafeMutablePointer<UInt8>,
+        pixelSize: Int
+    ) {
+        let outlineRadius = max(1, Int((CGFloat(pixelSize) * 0.055).rounded(.up)))
+        for y in 0 ..< pixelSize {
+            for x in 0 ..< pixelSize {
+                let arrow = menuBarUpdateArrowPixel(x: x, y: y, pixelSize: pixelSize)
+                let outline = !arrow && (-outlineRadius ... outlineRadius).contains { offsetY in
+                    (-outlineRadius ... outlineRadius).contains { offsetX in
+                        offsetX * offsetX + offsetY * offsetY <= outlineRadius * outlineRadius &&
+                            menuBarUpdateArrowPixel(
+                                x: x + offsetX,
+                                y: y + offsetY,
+                                pixelSize: pixelSize
+                            )
+                    }
+                }
+                let offset = (y * pixelSize + x) * 4
+                if arrow {
+                    raw[offset] = 0
+                    raw[offset + 1] = 0
+                    raw[offset + 2] = 0
+                    raw[offset + 3] = 255
+                } else if outline {
+                    raw[offset + 3] = 0
+                }
+            }
+        }
+    }
+
+    static func menuBarUpdateArrowPixel(x: Int, y: Int, pixelSize: Int) -> Bool {
+        let size = CGFloat(pixelSize)
+        let centerX = size * 0.73
+        let tipY = size * 0.48
+        let shoulderY = size * 0.68
+        let bottomY = size * 0.88
+        let x = CGFloat(x)
+        let y = CGFloat(y)
+        if y >= tipY, y <= shoulderY {
+            let halfWidth = ((y - tipY) / (shoulderY - tipY)) * size * 0.14
+            return abs(x - centerX) <= halfWidth
+        }
+        return y > shoulderY && y <= bottomY && abs(x - centerX) <= size * 0.045
     }
 
     static func menuBarTemplateAlpha(

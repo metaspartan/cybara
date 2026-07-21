@@ -98,8 +98,12 @@ struct CybaraMenuBarContent: View {
 }
 
 struct CybaraMenuBarLabel: View {
+    @ObservedObject var updateChecker: UpdateChecker
+
     var body: some View {
-        if let image = CybaraBrand.menuBarTemplateImage() {
+        if let image = CybaraBrand.menuBarTemplateImage(
+            showsUpdateIndicator: updateChecker.showsMenuBarUpdateIndicator
+        ) {
             Image(nsImage: image)
                 .renderingMode(.template)
                 .resizable()
