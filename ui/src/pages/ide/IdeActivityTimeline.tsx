@@ -9,6 +9,7 @@ import {
   getLatestIdeInFlightStep,
 } from "./ideActivityHelpers";
 import type { IdeProcessActivity } from "./ideTypes";
+import { LiveStatusIndicator } from "../chat/LiveStatusIndicator";
 
 export function IdeActivityText({ text }: { text: string }) {
   const shouldHighlightCounters = /^(Edited|Created|Updated|Deleted)\b/i.test(text);
@@ -118,10 +119,10 @@ export function IdeLiveActivityTimeline({
     <div className="space-y-1">
       {visibleActivities.length > 0 && <IdeProcessActivityList activities={visibleActivities} />}
       {displayCurrentStep ? (
-        <div className="flex items-start gap-2 text-[12px] px-0.5 text-gray-300">
-          <Loader2 className="w-3 h-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
-          <span className="whitespace-pre-wrap break-words">{displayCurrentStep}</span>
-        </div>
+        <LiveStatusIndicator
+          text={displayCurrentStep}
+          className="px-0.5 text-[12px] text-gray-300"
+        />
       ) : visibleActivities.length === 0 ? (
         <div className="flex gap-1 px-1">
           <span

@@ -32,6 +32,7 @@ import {
 } from "@/lib/chatActivities";
 import { SubagentIcon } from "./SubagentIcon";
 import { formatWorkedDuration } from "./assistantMetaModel";
+import { LiveStatusIndicator } from "./LiveStatusIndicator";
 
 const GROUP_ICONS: Record<ActivityGroupKind, LucideIcon> = {
   read: FileText,
@@ -237,12 +238,10 @@ export function LiveActivityTimeline({
       <LiveWorkedDuration startedAtMs={startedAtMs} />
       {visibleActivities.length > 0 && <GroupedActivityRows activities={visibleActivities} />}
       {displayCurrentStep ? (
-        <div className="chat-activity-text flex items-start gap-2 px-0.5 text-gray-300">
-          <span className="flex h-[1.5em] shrink-0 items-center">
-            <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" />
-          </span>
-          <ActivityText text={displayCurrentStep} />
-        </div>
+        <LiveStatusIndicator
+          text={displayCurrentStep}
+          className="chat-activity-text px-0.5 text-gray-300"
+        />
       ) : visibleActivities.length === 0 ? (
         <div className="flex gap-1 px-1">
           <span

@@ -26,6 +26,7 @@
         "remark-gfm": "4.0.1",
         "remark-math": "6.0.0",
         "tailwind-merge": "3.6.0",
+        "thinking-orbs": "0.1.1",
         "zustand": "5.0.14",
       },
       "devDependencies": {
@@ -901,6 +902,8 @@
     "tailwindcss": ["tailwindcss@4.3.2", "", {}, "sha512-WtctNNSH8A9jlMIqxzuYumOHU5uGZyRv0Q5svQl+oEPy5w84YpBxdb7MdqyiSPQge5jTJ6zFQLq0PFygdccSBA=="],
 
     "tapable": ["tapable@2.3.3", "", {}, "sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A=="],
+
+    "thinking-orbs": ["thinking-orbs@0.1.1", "", { "peerDependencies": { "react": ">=18.0.0", "react-dom": ">=18.0.0" } }, "sha512-nLvLTGJtk74K13MmP7XiRdzFiQx7UsoZAIyBZNgXyl7Q3h2mdz0r3eKn9LCsuzb3DGOVjwDvMhtnAkIqJJRVQA=="],
 
     "tinyexec": ["tinyexec@1.2.4", "", {}, "sha512-SHf/r48b7vOrjve9PxJo3MN5v5yuyjHvdUcrQffT3WXMUfnGmHDVbC4k3sHJaJTgZCwpUplIaAo5ANtMyp3YHg=="],
 
