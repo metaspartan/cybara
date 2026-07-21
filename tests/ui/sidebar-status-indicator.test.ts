@@ -7,6 +7,9 @@ import { readUiStylesSource } from "../shared/source-bundles";
 const sidebarPath = fileURLToPath(
   new URL("../../ui/src/components/layout/Sidebar.tsx", import.meta.url)
 );
+const activeSessionTrackerPath = fileURLToPath(
+  new URL("../../ui/src/components/layout/activeSessionTracker.ts", import.meta.url)
+);
 const logoPath = fileURLToPath(new URL("../../ui/public/cybara.png", import.meta.url));
 const thinkingLogoPath = fileURLToPath(
   new URL("../../ui/public/cybara-thinking.png", import.meta.url)
@@ -32,18 +35,24 @@ describe("Sidebar status indicator behavior", () => {
 
   test("treats every in-turn status event as activity so the indicator never flickers", () => {
     const source = readSidebarSource();
+    const tracker = readFileSync(activeSessionTrackerPath, "utf8");
 
-    for (const status of ["thinking", "generating", "tool_executing", "compacting"]) {
-      expect(source).toContain(`"${status}"`);
+    for (const status of [
+      "thinking",
+      "generating",
+      "tool_executing",
+      "tool_completed",
+      "compacting",
+    ]) {
+      expect(tracker).toContain(`"${status}"`);
     }
-    expect(source).not.toContain('"tool_completed",');
-    expect(source).toContain('statusValue === "tool_completed"');
+    expect(source).toContain("SIDEBAR_ACTIVE_STATUSES.has(statusValue)");
     expect(source).toContain('data.type === "task_completed"');
     expect(source).toMatch(
       /setStatus\(globalActive \|\| hasActiveSessions \? ["']active["'] : ["']idle["']\)/
     );
-    expect(source).toContain("ACTIVE_WINDOW_MS = 60_000");
-    expect(source).toContain("activeSessions.length === 0");
+    expect(tracker).toContain("SIDEBAR_ACTIVE_SESSION_WINDOW_MS = 60_000");
+    expect(source).toContain('statusValue === "idle" || statusValue === "error"');
     expect(source).toContain("globalLastSeenRef.current = 0");
   });
 

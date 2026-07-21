@@ -48,18 +48,20 @@ describe("multi-chat workspace wiring", () => {
 
   test("shares status streaming, bounds rendering, and queues active follow-ups", () => {
     const workspace = readSource("ui/src/pages/chat/MultiChatWorkspace.tsx");
+    const liveStatuses = readSource("ui/src/pages/chat/useMultiChatLiveStatuses.ts");
 
-    expect(workspace).toContain("const disconnect = connectStatusStream");
-    expect(workspace.match(/connectStatusStream\(/g)).toHaveLength(1);
+    expect(workspace).toContain("useMultiChatLiveStatuses");
+    expect(liveStatuses).toContain("const response = await chatApi.getSessionStatus()");
+    expect(liveStatuses).toContain("replayBufferedSessionEvents: true");
+    expect(liveStatuses).toContain("projectMultiChatSnapshot");
+    expect(liveStatuses).toContain("projectMultiChatStatusEvent");
     expect(workspace).toContain("MULTI_CHAT_RENDERED_MESSAGE_LIMIT = 80");
     expect(workspace).toContain("MULTI_CHAT_REFRESH_THROTTLE_MS = 750");
     expect(workspace).toContain('queueMode: isActive ? "queue" : undefined');
     expect(workspace).toContain("(!isActive && responsePending)");
     expect(workspace).toContain("useSessionDetail(sessionId, !isDraft)");
-    expect(workspace).toContain("if (existing) return");
-    expect(workspace).toContain(
-      "existing?.status === next.status && existing.detail === next.detail"
-    );
+    expect(workspace).toContain("liveActivities={status?.activities || []}");
+    expect(workspace).toContain("showWorkingTimeline={isActive}");
   });
 
   test("uses true desktop quadrants and stacked responsive panes", () => {
