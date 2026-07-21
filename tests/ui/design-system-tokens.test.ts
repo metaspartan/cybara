@@ -143,6 +143,8 @@ describe("index.css design-system utilities", () => {
     expect(select).toContain("themed-form-control");
     expect(select).not.toContain("bg-[#0f0f16]");
     expect(searchableSelect).toContain("themed-select-popover");
+    expect(searchableSelect).toContain("selectedOption?.badge");
+    expect(searchableSelect).toContain("option.badge");
     expect(searchableSelect).not.toContain("bg-[#13141c]");
   });
 });

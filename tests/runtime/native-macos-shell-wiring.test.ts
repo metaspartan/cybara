@@ -506,6 +506,8 @@ describe("native macOS shell wiring", () => {
     expect(settings).toContain("case .migration: migrationTab");
     expect(settings).toContain('Text("OpenClaw").tag("openclaw")');
     expect(settings).toContain('Text("Hermes").tag("hermes")');
+    expect(settings).toContain('Text("Codex").tag("codex")');
+    expect(settings).toContain('Text("Claude Code").tag("claude-code")');
     expect(settings).toContain("migrationImportSecrets");
     expect(settings).toContain("migrationOverwrite");
     expect(settings).toContain("client.previewMigration(body: body)");

@@ -3,13 +3,62 @@ export const MULTI_CHAT_MIN_SLOTS = 2;
 export const MULTI_CHAT_STORAGE_KEY = "cybara.chat.multiChatSessionIds";
 export const MULTI_CHAT_DRAG_TYPE = "application/x-cybara-chat-session";
 
-export function resolveActiveMultiChatDropIndex(
-  currentIndex: number | null,
-  targetIndex: number,
-  active: boolean
+export interface MultiChatDropRect {
+  bottom: number;
+  index: number;
+  left: number;
+  right: number;
+  top: number;
+}
+
+export function acceptsMultiChatDrag(types: readonly string[]): boolean {
+  return Array.from(types).some((type) => type.toLowerCase() === MULTI_CHAT_DRAG_TYPE);
+}
+
+export function readMultiChatDragSessionId(dataTransfer: {
+  getData: (type: string) => string;
+  types: readonly string[];
+}): string {
+  if (!acceptsMultiChatDrag(dataTransfer.types)) return "";
+  return (
+    dataTransfer.getData(MULTI_CHAT_DRAG_TYPE).trim() || dataTransfer.getData("text/plain").trim()
+  );
+}
+
+export function resolveMultiChatDropIndex(
+  clientX: number,
+  clientY: number,
+  rects: readonly MultiChatDropRect[]
 ): number | null {
-  if (active) return targetIndex;
-  return currentIndex === targetIndex ? null : currentIndex;
+  let nearestIndex: number | null = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const rect of rects) {
+    if (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    ) {
+      return rect.index;
+    }
+    const horizontalDistance = Math.max(rect.left - clientX, 0, clientX - rect.right);
+    const verticalDistance = Math.max(rect.top - clientY, 0, clientY - rect.bottom);
+    const distance = Math.hypot(horizontalDistance, verticalDistance);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = rect.index;
+    }
+  }
+  return nearestIndex;
+}
+
+export function resolveMultiChatSlotCount(
+  sessionCount: number,
+  dragPreviewActive: boolean
+): number {
+  return sessionCount >= 3 || (sessionCount === 2 && dragPreviewActive)
+    ? MULTI_CHAT_MAX_PANES
+    : MULTI_CHAT_MIN_SLOTS;
 }
 
 function normalizeSessionId(value: unknown): string | null {

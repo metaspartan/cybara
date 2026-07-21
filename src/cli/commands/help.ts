@@ -55,6 +55,7 @@ export function rawHelp(version: string, apiBase: string): void {
   );
   console.log("  migrate     Import supported legacy agent data");
   console.log("    migrate sources                         Detect import sources");
+  console.log("    migrate codex|claude-code               Preview a detected source");
   console.log("    migrate --apply --preset full           Apply import");
   console.log("    migrate --migrate-secrets --overwrite   Opt into API key import/conflicts");
   console.log("  provider    Provider management commands");

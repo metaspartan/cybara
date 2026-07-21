@@ -252,10 +252,12 @@ export function MigrationSettingsPanel({
           options={[
             { label: "OpenClaw", value: "openclaw" },
             { label: "Hermes", value: "hermes" },
+            { label: "Codex", value: "codex" },
+            { label: "Claude Code", value: "claude-code" },
           ]}
           selected={sourceKind}
           tone={accentColor}
-          variant="segmented"
+          variant="menu"
         />
         <SettingsTextField
           label="Source directory"

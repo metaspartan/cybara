@@ -59,14 +59,13 @@ import {
   buildMultiChatPath,
   MULTI_CHAT_DRAG_TYPE,
   MULTI_CHAT_MAX_PANES,
-  MULTI_CHAT_MIN_SLOTS,
   normalizeMultiChatSessionIds,
   parseMultiChatSessionIds,
   persistMultiChatSessionIds,
   readPersistedMultiChatSessionIds,
   reorderMultiChatSessions,
   replaceMultiChatSession,
-  resolveActiveMultiChatDropIndex,
+  resolveMultiChatSlotCount,
 } from "./multiChatLayout";
 import { useMultiChatDropTarget } from "./useMultiChatDropTarget";
 import { useChatAttachments } from "./useChatAttachments";
@@ -88,6 +87,7 @@ interface MultiChatPickerProps {
 
 interface MultiChatPaneProps {
   dropActive: boolean;
+  dropPreview: boolean;
   agents: AgentSummary[];
   approvalMode: ToolApprovalMode;
   approvalUpdating: boolean;
@@ -97,8 +97,6 @@ interface MultiChatPaneProps {
   sessionId: string;
   summary?: ChatSidebarSession;
   status?: MultiChatLiveState;
-  onDropSession: (sessionId: string, index: number) => void;
-  onDropTargetChange: (index: number, active: boolean) => void;
   onApprovalChange: (mode: ToolApprovalMode) => void;
   onOpenPicker: (index: number) => void;
   onOpenImage: (src: string, alt: string) => void;
@@ -241,6 +239,7 @@ function MultiChatPane({
   approvalMode,
   approvalUpdating,
   dropActive,
+  dropPreview,
   environmentOpen,
   index,
   modelRouterEnabled,
@@ -248,8 +247,6 @@ function MultiChatPane({
   summary,
   status,
   onApprovalChange,
-  onDropSession,
-  onDropTargetChange,
   onOpenPicker,
   onOpenImage,
   onRemove,
@@ -299,12 +296,6 @@ function MultiChatPane({
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const dropTarget = useMultiChatDropTarget({
-    active: dropActive,
-    index,
-    onDropSession,
-    onTargetChange: onDropTargetChange,
-  });
   const isActive = !!status && MULTI_CHAT_ACTIVE_STATUSES.has(status.status);
   const selectedAgent = agents.find((agent) => agent.id === (selectedAgentId || detail?.agent_id));
 
@@ -442,24 +433,33 @@ function MultiChatPane({
     <section
       className={cn(
         "group/pane relative flex min-h-[24rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-[var(--surface-panel)] transition-[border-color,background-color] duration-150 lg:min-h-0",
-        dropTarget.active
+        dropActive
           ? "border-[rgb(var(--accent-primary))] bg-[rgba(var(--accent-primary),0.06)]"
-          : "border-[var(--surface-border)]"
+          : dropPreview
+            ? "border-dashed border-[rgba(var(--accent-primary),0.42)] bg-[rgba(var(--accent-primary),0.025)]"
+            : "border-[var(--surface-border)]"
       )}
       data-testid="multi-chat-pane"
       data-session-id={sessionId}
-      data-drop-active={dropTarget.active}
-      onDragEnter={dropTarget.onDragEnter}
-      onDragLeave={dropTarget.onDragLeave}
-      onDragOver={dropTarget.onDragOver}
-      onDrop={dropTarget.onDrop}
+      data-multi-chat-drop-index={index}
+      data-drop-active={dropActive}
+      data-drop-preview={dropPreview}
     >
-      {dropTarget.active ? (
-        <div className="pointer-events-none absolute inset-1 z-40 flex items-center justify-center rounded-md border border-dashed border-[rgb(var(--accent-primary))] bg-[rgba(var(--surface-panel-rgb),0.9)]">
-          <span className="flex items-center gap-2 rounded-md bg-[rgb(var(--accent-primary))] px-3 py-2 text-xs font-semibold text-white">
-            <MessageSquarePlus className="h-4 w-4" />
-            Drop chat here
-          </span>
+      {dropPreview ? (
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-1 z-40 flex items-center justify-center rounded-md border border-dashed transition-colors",
+            dropActive
+              ? "border-[rgb(var(--accent-primary))] bg-[rgba(var(--surface-panel-rgb),0.9)]"
+              : "border-[rgba(var(--accent-primary),0.34)] bg-[rgba(var(--surface-panel-rgb),0.3)]"
+          )}
+        >
+          {dropActive ? (
+            <span className="flex items-center gap-2 rounded-md bg-[rgb(var(--accent-primary))] px-3 py-2 text-xs font-semibold text-white">
+              <MessageSquarePlus className="h-4 w-4" />
+              Drop chat here
+            </span>
+          ) : null}
         </div>
       ) : null}
       <header
@@ -762,39 +762,31 @@ function MultiChatPane({
 
 function EmptyMultiChatPane({
   dropActive,
+  dropPreview,
   index,
   onCreateDraft,
-  onDropSession,
-  onDropTargetChange,
   onOpenPicker,
 }: {
   dropActive: boolean;
+  dropPreview: boolean;
   index: number;
   onCreateDraft: (index: number) => void;
-  onDropSession: (sessionId: string, index: number) => void;
-  onDropTargetChange: (index: number, active: boolean) => void;
   onOpenPicker: (index: number) => void;
 }) {
-  const dropTarget = useMultiChatDropTarget({
-    active: dropActive,
-    index,
-    onDropSession,
-    onTargetChange: onDropTargetChange,
-  });
   return (
     <section
-      onDragEnter={dropTarget.onDragEnter}
-      onDragOver={dropTarget.onDragOver}
-      onDragLeave={dropTarget.onDragLeave}
-      onDrop={dropTarget.onDrop}
       className={cn(
         "theme-text-muted flex min-h-[24rem] min-w-0 flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-[var(--surface-panel)] p-6 text-center transition-colors lg:min-h-0",
-        dropTarget.active
+        dropActive
           ? "border-[rgb(var(--accent-primary))] bg-[rgba(var(--accent-primary),0.08)]"
-          : "border-[var(--surface-border)]"
+          : dropPreview
+            ? "border-[rgba(var(--accent-primary),0.42)] bg-[rgba(var(--accent-primary),0.025)]"
+            : "border-[var(--surface-border)]"
       )}
       data-testid="multi-chat-empty-pane"
-      data-drop-active={dropTarget.active}
+      data-multi-chat-drop-index={index}
+      data-drop-active={dropActive}
+      data-drop-preview={dropPreview}
     >
       <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-raised)]">
         <MessageSquarePlus className="h-5 w-5" />
@@ -885,22 +877,6 @@ export function MultiChatWorkspace() {
     [savingToolApprovalMode, toolApprovalMode]
   );
 
-  const updateDropTarget = useCallback((index: number, active: boolean): void => {
-    setActiveDropIndex((current) => resolveActiveMultiChatDropIndex(current, index, active));
-  }, []);
-
-  useEffect(() => {
-    const clearDropTarget = (): void => setActiveDropIndex(null);
-    window.addEventListener("dragend", clearDropTarget, true);
-    window.addEventListener("drop", clearDropTarget, true);
-    window.addEventListener("blur", clearDropTarget);
-    return () => {
-      window.removeEventListener("dragend", clearDropTarget, true);
-      window.removeEventListener("drop", clearDropTarget, true);
-      window.removeEventListener("blur", clearDropTarget);
-    };
-  }, []);
-
   const syncSessionIds = useCallback(
     (nextValues: readonly string[], replace = true) => {
       const next = normalizeMultiChatSessionIds(nextValues);
@@ -962,8 +938,6 @@ export function MultiChatWorkspace() {
   const modelRouterEnabled = routerConfig?.success === true && routerConfig.data?.enabled === true;
   const allEnvironmentsOpen =
     sessionIds.length > 0 && sessionIds.every((sessionId) => openEnvironmentIds.has(sessionId));
-  const slotCount = sessionIds.length >= 3 ? 4 : MULTI_CHAT_MIN_SLOTS;
-
   const addOrMoveSession = useCallback(
     (sessionId: string, targetIndex: number) => {
       const sourceIndex = sessionIds.indexOf(sessionId);
@@ -980,6 +954,22 @@ export function MultiChatWorkspace() {
     },
     [sessionIds, syncSessionIds]
   );
+
+  const dropTarget = useMultiChatDropTarget({
+    onDropSession: addOrMoveSession,
+    onTargetChange: setActiveDropIndex,
+  });
+  const slotCount = resolveMultiChatSlotCount(sessionIds.length, dropTarget.active);
+
+  useEffect(() => {
+    const clearDropTarget = (): void => dropTarget.clear();
+    window.addEventListener("dragend", clearDropTarget, true);
+    window.addEventListener("blur", clearDropTarget);
+    return () => {
+      window.removeEventListener("dragend", clearDropTarget, true);
+      window.removeEventListener("blur", clearDropTarget);
+    };
+  }, [dropTarget.clear]);
 
   const selectFromPicker = (sessionId: string) => {
     const targetIndex = pickerTargetIndex ?? sessionIds.length;
@@ -1101,6 +1091,11 @@ export function MultiChatWorkspace() {
             ? "grid-cols-1 lg:grid-cols-2"
             : "grid-cols-1 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)]"
         )}
+        data-drop-preview={dropTarget.active}
+        onDragEnter={dropTarget.onDragEnter}
+        onDragLeave={dropTarget.onDragLeave}
+        onDragOver={dropTarget.onDragOver}
+        onDrop={dropTarget.onDrop}
       >
         {Array.from({ length: slotCount }, (_, index) => {
           const sessionId = sessionIds[index];
@@ -1111,6 +1106,7 @@ export function MultiChatWorkspace() {
               approvalMode={toolApprovalMode}
               approvalUpdating={savingToolApprovalMode}
               dropActive={activeDropIndex === index}
+              dropPreview={dropTarget.active}
               environmentOpen={openEnvironmentIds.has(sessionId)}
               index={index}
               modelRouterEnabled={modelRouterEnabled}
@@ -1118,8 +1114,6 @@ export function MultiChatWorkspace() {
               summary={sessionById.get(sessionId)}
               status={statuses[sessionId]}
               onApprovalChange={(mode) => void updateToolApprovalMode(mode)}
-              onDropSession={addOrMoveSession}
-              onDropTargetChange={updateDropTarget}
               onOpenPicker={setPickerTargetIndex}
               onOpenImage={(src, alt) => setLightboxImage({ src, alt })}
               onRemove={(removedId) =>
@@ -1133,10 +1127,9 @@ export function MultiChatWorkspace() {
             <EmptyMultiChatPane
               key={`empty-${index}`}
               dropActive={activeDropIndex === index}
+              dropPreview={dropTarget.active}
               index={index}
               onCreateDraft={createDraftAt}
-              onDropSession={addOrMoveSession}
-              onDropTargetChange={updateDropTarget}
               onOpenPicker={setPickerTargetIndex}
             />
           );

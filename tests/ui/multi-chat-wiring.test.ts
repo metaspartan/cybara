@@ -33,13 +33,15 @@ describe("multi-chat workspace wiring", () => {
 
     expect(workspace).toContain('aria-label="Search chats to add"');
     expect(workspace).toContain('data-testid="multi-chat-picker"');
-    expect(workspace).toContain("onTargetChange: onDropTargetChange");
+    expect(workspace).toContain("onTargetChange: setActiveDropIndex");
     expect(workspace).toContain("Drop chat here");
-    expect(workspace).toContain("data-drop-active={dropTarget.active}");
+    expect(workspace).toContain("data-drop-preview={dropTarget.active}");
+    expect(workspace).toContain("data-multi-chat-drop-index={index}");
     expect(workspace).toContain("activeDropIndex === index");
     expect(workspace).toContain('window.addEventListener("dragend", clearDropTarget, true)');
-    expect(dropTarget).toContain("event.dataTransfer.getData(MULTI_CHAT_DRAG_TYPE)");
-    expect(dropTarget).toContain("onTargetChange(index, true)");
+    expect(workspace).not.toContain('window.addEventListener("drop", clearDropTarget, true)');
+    expect(dropTarget).toContain("readMultiChatDragSessionId(event.dataTransfer)");
+    expect(dropTarget).toContain("targetIndexForEvent(event)");
     expect(dropTarget).toContain("event.currentTarget.contains(nextTarget)");
     expect(dropTarget).toContain('event.dataTransfer.dropEffect = "move"');
     expect(sidebar).toContain("event.dataTransfer.setData(MULTI_CHAT_DRAG_TYPE, session.id)");
@@ -69,6 +71,8 @@ describe("multi-chat workspace wiring", () => {
 
     expect(workspace).toContain("grid-cols-1 lg:grid-cols-2");
     expect(workspace).toContain("lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)]");
+    expect(workspace).toContain("resolveMultiChatSlotCount(sessionIds.length, dropTarget.active)");
+    expect(workspace).toContain("dropPreview={dropTarget.active}");
     expect(workspace).toContain("lg:min-h-0");
     expect(workspace).toContain("lg:overflow-hidden");
   });

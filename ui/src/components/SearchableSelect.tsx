@@ -6,6 +6,7 @@ export interface SearchableSelectOption {
   value: string;
   label: string;
   icon?: ReactNode;
+  badge?: ReactNode;
 }
 
 export interface SearchableSelectProps {
@@ -152,6 +153,7 @@ export function SearchableSelect({
           >
             {selectedOption?.label ?? placeholder}
           </span>
+          {selectedOption?.badge ? <span className="shrink-0">{selectedOption.badge}</span> : null}
           <ChevronDown className="themed-select-icon h-4 w-4 shrink-0" />
         </button>
         {open ? (
@@ -195,6 +197,7 @@ export function SearchableSelect({
                       <span className="h-5 w-5 shrink-0" />
                     )}
                     <span className="flex-1 truncate">{option.label}</span>
+                    {option.badge ? <span className="shrink-0">{option.badge}</span> : null}
                     {option.value === selectedValue ? (
                       <Check className="h-4 w-4 shrink-0 text-[rgb(var(--accent-primary))]" />
                     ) : null}

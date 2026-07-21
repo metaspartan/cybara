@@ -13,12 +13,14 @@ describe("CLI migration wiring", () => {
     expect(cli).toContain("./core/source-migration");
     expect(cli).toContain("runSourceMigration");
     expect(cli).toContain("detectMigrationSources");
+    expect(cli).toContain("normalizeMigrationSourceKind");
     expect(cli).toContain('case "migrate":');
     expect(cli).toContain('case "migration":');
     expect(cli).toContain('hasFlag(args, "--apply", "--execute", "--yes", "-y")');
     expect(cli).toContain('hasFlag(args, "--migrate-secrets")');
     expect(help).toContain("migrate     Import supported legacy agent data");
     expect(help).toContain("migrate sources");
+    expect(help).toContain("migrate codex|claude-code");
     expect(help).toContain("migrate --migrate-secrets --overwrite");
   });
 });
