@@ -1,5 +1,5 @@
 import { fetchApi } from "@/lib/api-client";
-import type { PendingChatMessage } from "@/lib/status-stream";
+import type { PendingChatMessage, StatusSessionSnapshot } from "@/lib/status-stream";
 import type {
   Agent,
   AgentSummary,
@@ -1485,36 +1485,10 @@ export const chatApi = {
     }),
   getSessionStatus: (sessionId?: string) =>
     fetchApi<{
-      activeSessions?: Array<{
-        sessionId: string;
-        status: string;
-        timestamp: number;
-        detail?: string;
-        agentId?: string;
-        activities: Array<{
-          id: string;
-          phase: "start" | "result" | "error" | "blocked";
-          text: string;
-          timestamp: number;
-          toolName?: string;
-        }>;
-      }>;
+      activeSessions?: StatusSessionSnapshot[];
       activeSessionIds: string[];
       count?: number;
-      session?: {
-        sessionId: string;
-        status: string;
-        timestamp: number;
-        detail?: string;
-        agentId?: string;
-        activities: Array<{
-          id: string;
-          phase: "start" | "result" | "error" | "blocked";
-          text: string;
-          timestamp: number;
-          toolName?: string;
-        }>;
-      } | null;
+      session?: StatusSessionSnapshot | null;
       active?: boolean;
       sessionId?: string;
     }>("/status/sessions" + (sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "")),

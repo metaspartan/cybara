@@ -8,11 +8,6 @@ import {
   SESSION_DETAIL_QUERY_KEY,
 } from "@/hooks/useChat";
 import { chatApi, routerApi, settingsApi } from "@/lib/api";
-import {
-  connectStatusStream,
-  type StatusStreamEvent,
-  type StreamAgentStatus,
-} from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
 import { openExternal } from "@/utils/openExternal";
@@ -76,24 +71,13 @@ import {
 import { useMultiChatDropTarget } from "./useMultiChatDropTarget";
 import { useChatAttachments } from "./useChatAttachments";
 import { useChatDictation } from "./useChatDictation";
+import { MULTI_CHAT_ACTIVE_STATUSES, type MultiChatLiveState } from "./multiChatLiveStatus";
+import { useMultiChatLiveStatuses } from "./useMultiChatLiveStatuses";
 import type { AgentSummary } from "@/types";
 import type { ChatSidebarSession } from "./sessionGrouping";
 
 const MULTI_CHAT_RENDERED_MESSAGE_LIMIT = 80;
 const MULTI_CHAT_REFRESH_THROTTLE_MS = 750;
-const ACTIVE_STATUSES = new Set<StreamAgentStatus>([
-  "thinking",
-  "generating",
-  "tool_executing",
-  "compacting",
-]);
-
-interface MultiChatPaneStatus {
-  status: StreamAgentStatus;
-  detail?: string;
-  timestamp: number;
-}
-
 interface MultiChatPickerProps {
   isOpen: boolean;
   sessions: ChatSidebarSession[];
@@ -112,7 +96,7 @@ interface MultiChatPaneProps {
   modelRouterEnabled: boolean;
   sessionId: string;
   summary?: ChatSidebarSession;
-  status?: MultiChatPaneStatus;
+  status?: MultiChatLiveState;
   onDropSession: (sessionId: string, index: number) => void;
   onDropTargetChange: (index: number, active: boolean) => void;
   onApprovalChange: (mode: ToolApprovalMode) => void;
@@ -134,8 +118,8 @@ function arraysEqual(left: readonly string[], right: readonly string[]): boolean
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function multiChatStatusLabel(status?: MultiChatPaneStatus): string {
-  if (!status || !ACTIVE_STATUSES.has(status.status)) return "Ready";
+function multiChatStatusLabel(status?: MultiChatLiveState): string {
+  if (!status || !MULTI_CHAT_ACTIVE_STATUSES.has(status.status)) return "Ready";
   if (status.status === "tool_executing") return status.detail || "Using tools";
   if (status.status === "compacting") return "Compacting context";
   if (status.status === "generating") return "Responding";
@@ -321,7 +305,7 @@ function MultiChatPane({
     onDropSession,
     onTargetChange: onDropTargetChange,
   });
-  const isActive = !!status && ACTIVE_STATUSES.has(status.status);
+  const isActive = !!status && MULTI_CHAT_ACTIVE_STATUSES.has(status.status);
   const selectedAgent = agents.find((agent) => agent.id === (selectedAgentId || detail?.agent_id));
 
   useEffect(() => {
@@ -589,13 +573,14 @@ function MultiChatPane({
               entries={visibleEntries}
               forkingMessageIndex={null}
               goldenTurnsEnabled={false}
-              liveActivities={[]}
-              liveCurrentStep={null}
-              liveStatus="idle"
+              liveActivities={status?.activities || []}
+              liveCurrentStep={status?.currentStep || null}
+              liveStatus={status?.liveStatus || "idle"}
+              liveStartedAtMs={status?.startedAtMs}
               messageProcessMap={{}}
               savingGoldenMessageIndex={null}
               sessionId={sessionId}
-              showWorkingTimeline={false}
+              showWorkingTimeline={isActive}
               speakingMessageIndex={null}
               workspaceDir={detail?.workspace_dir || null}
               onCopyMessage={(messageIndex, content) => {
@@ -615,12 +600,6 @@ function MultiChatPane({
               onRevert={() => undefined}
               onSaveGolden={() => undefined}
             />
-            {isActive ? (
-              <div className="theme-text-muted flex items-center gap-2 py-1 text-xs">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span className="truncate">{multiChatStatusLabel(status)}</span>
-              </div>
-            ) : null}
             <div ref={endRef} />
           </div>
         )}
@@ -866,7 +845,6 @@ export function MultiChatWorkspace() {
   const [sessionIds, setSessionIds] = useState(() =>
     initialRouteIds.length ? initialRouteIds : readPersistedMultiChatSessionIds(window.localStorage)
   );
-  const [statuses, setStatuses] = useState<Record<string, MultiChatPaneStatus>>({});
   const [activeDropIndex, setActiveDropIndex] = useState<number | null>(null);
   const [pickerTargetIndex, setPickerTargetIndex] = useState<number | null>(null);
   const [openEnvironmentIds, setOpenEnvironmentIds] = useState<Set<string>>(() => new Set());
@@ -967,74 +945,7 @@ export function MultiChatWorkspace() {
     [queryClient]
   );
 
-  const sessionIdSet = useMemo(() => new Set(sessionIds), [sessionIds]);
-
-  useEffect(() => {
-    const updateStatus = (sessionId: string, next?: MultiChatPaneStatus) => {
-      if (!sessionIdSet.has(sessionId)) return;
-      setStatuses((current) => {
-        if (!next) {
-          if (!current[sessionId]) return current;
-          const copy = { ...current };
-          delete copy[sessionId];
-          return copy;
-        }
-        const existing = current[sessionId];
-        if (existing?.status === next.status && existing.detail === next.detail) return current;
-        return { ...current, [sessionId]: next };
-      });
-    };
-
-    const handleEvent = (event: StatusStreamEvent) => {
-      if (event.type === "snapshot") {
-        const next: Record<string, MultiChatPaneStatus> = {};
-        for (const snapshot of event.activeSessions) {
-          if (!sessionIdSet.has(snapshot.sessionId) || !ACTIVE_STATUSES.has(snapshot.status)) {
-            continue;
-          }
-          next[snapshot.sessionId] = {
-            status: snapshot.status,
-            detail: snapshot.detail,
-            timestamp: snapshot.timestamp,
-          };
-          refreshSession(snapshot.sessionId);
-        }
-        setStatuses(next);
-        return;
-      }
-      if (event.type === "task_completed") {
-        if (event.sessionId) {
-          updateStatus(event.sessionId);
-          refreshSession(event.sessionId);
-        }
-        return;
-      }
-      if (event.type === "assistant_token") {
-        updateStatus(event.sessionId, {
-          status: "generating",
-          timestamp: event.timestamp,
-        });
-        refreshSession(event.sessionId);
-        return;
-      }
-      const sessionId = event.sessionId;
-      if (!sessionId) return;
-      if (ACTIVE_STATUSES.has(event.status)) {
-        updateStatus(sessionId, {
-          status: event.status,
-          detail: event.detail,
-          timestamp: event.timestamp,
-        });
-        refreshSession(sessionId);
-      } else if (event.status === "idle" || event.status === "error") {
-        updateStatus(sessionId);
-        refreshSession(sessionId);
-      }
-    };
-
-    const disconnect = connectStatusStream({ onEvent: handleEvent });
-    return () => disconnect();
-  }, [refreshSession, sessionIdSet]);
+  const statuses = useMultiChatLiveStatuses({ sessionIds, onRefresh: refreshSession });
 
   useEffect(
     () => () => {

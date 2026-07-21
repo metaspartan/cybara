@@ -61,6 +61,12 @@ import {
   usesAvailableMainSidebarChatHeight,
 } from "./sidebarSizing";
 import { UpdateButton } from "./UpdateButton";
+import {
+  pruneInactiveSessions,
+  reconcileActiveSessionSnapshot,
+  SIDEBAR_ACTIVE_SESSION_WINDOW_MS,
+  SIDEBAR_ACTIVE_STATUSES,
+} from "./activeSessionTracker";
 
 interface SidebarContextType {
   collapsed: boolean;
@@ -125,18 +131,16 @@ function useAgentStatus() {
   const globalLastSeenRef = useRef<number>(0);
 
   useEffect(() => {
-    const ACTIVE_WINDOW_MS = 60_000;
-    const ACTIVE_STATUSES = new Set(["thinking", "generating", "tool_executing", "compacting"]);
-
     const refreshDerivedStatus = () => {
       const now = Date.now();
-      for (const [sessionId, lastSeen] of activeSessionLastSeenRef.current.entries()) {
-        if (now - lastSeen > ACTIVE_WINDOW_MS) {
-          activeSessionLastSeenRef.current.delete(sessionId);
-        }
-      }
+      activeSessionLastSeenRef.current = pruneInactiveSessions(
+        activeSessionLastSeenRef.current,
+        now,
+        SIDEBAR_ACTIVE_SESSION_WINDOW_MS
+      );
       const globalActive =
-        globalLastSeenRef.current > 0 && now - globalLastSeenRef.current <= ACTIVE_WINDOW_MS;
+        globalLastSeenRef.current > 0 &&
+        now - globalLastSeenRef.current <= SIDEBAR_ACTIVE_SESSION_WINDOW_MS;
       const hasActiveSessions = activeSessionLastSeenRef.current.size > 0;
       setStatus(globalActive || hasActiveSessions ? "active" : "idle");
       setActiveSessionIds([...activeSessionLastSeenRef.current.keys()]);
@@ -152,22 +156,12 @@ function useAgentStatus() {
         const now = Date.now();
 
         if (data.type === "snapshot") {
-          activeSessionLastSeenRef.current.clear();
           const activeSessions = Array.isArray(data.activeSessions) ? data.activeSessions : [];
-          if (activeSessions.length === 0) {
-            globalLastSeenRef.current = 0;
-          }
-          for (const snapshot of activeSessions) {
-            const sessionId =
-              typeof snapshot?.sessionId === "string" ? snapshot.sessionId.trim() : "";
-            const snapshotStatus = typeof snapshot?.status === "string" ? snapshot.status : "";
-            if (!sessionId || !ACTIVE_STATUSES.has(snapshotStatus)) continue;
-            const lastSeen =
-              typeof snapshot.timestamp === "number" && Number.isFinite(snapshot.timestamp)
-                ? snapshot.timestamp
-                : now;
-            activeSessionLastSeenRef.current.set(sessionId, lastSeen);
-          }
+          activeSessionLastSeenRef.current = reconcileActiveSessionSnapshot(
+            activeSessionLastSeenRef.current,
+            activeSessions,
+            now
+          );
           refreshDerivedStatus();
           return;
         }
@@ -186,29 +180,20 @@ function useAgentStatus() {
 
         if (data.type !== "status") return;
 
-        const statusValue = typeof data.status === "string" ? data.status : "";
+        const statusValue = data.status;
         const sessionId = typeof data.sessionId === "string" ? data.sessionId.trim() : "";
-        if (!statusValue) return;
-        const isActiveStatus = ACTIVE_STATUSES.has(statusValue);
+        const isActiveStatus = SIDEBAR_ACTIVE_STATUSES.has(statusValue);
 
         if (sessionId) {
           if (isActiveStatus) {
             activeSessionLastSeenRef.current.set(sessionId, now);
-          } else if (
-            statusValue === "idle" ||
-            statusValue === "error" ||
-            statusValue === "tool_completed"
-          ) {
+          } else if (statusValue === "idle" || statusValue === "error") {
             activeSessionLastSeenRef.current.delete(sessionId);
           }
         } else {
           if (isActiveStatus) {
             globalLastSeenRef.current = now;
-          } else if (
-            statusValue === "idle" ||
-            statusValue === "error" ||
-            statusValue === "tool_completed"
-          ) {
+          } else if (statusValue === "idle" || statusValue === "error") {
             globalLastSeenRef.current = 0;
           }
         }
