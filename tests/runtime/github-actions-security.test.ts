@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const WORKFLOWS_DIR = join(ROOT_DIR, ".github", "workflows");
 const SHA_REF = /^[0-9a-f]{40}$/i;
+const CHECKOUT_V7_SHA = "3d3c42e5aac5ba805825da76410c181273ba90b1";
 
 function read(rel: string): string {
   return readFileSync(join(ROOT_DIR, rel), "utf8");
@@ -37,6 +38,16 @@ describe("GitHub Actions security posture", () => {
     }
 
     expect(unpinned).toEqual([]);
+  });
+
+  test("workflows use the Node 24 checkout action", () => {
+    const checkoutRefs = workflowFiles().flatMap((file) => {
+      const text = readFileSync(file, "utf8");
+      return [...text.matchAll(/uses:\s*actions\/checkout@([^\s]+)/g)].map((match) => match[1]);
+    });
+
+    expect(checkoutRefs.length).toBeGreaterThan(0);
+    expect(new Set(checkoutRefs)).toEqual(new Set([CHECKOUT_V7_SHA]));
   });
 
   test("OSV scanner publishes a durable lockfile vulnerability signal", () => {
