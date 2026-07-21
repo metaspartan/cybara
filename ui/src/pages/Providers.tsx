@@ -760,6 +760,11 @@ function ProviderModal({
   }));
   const selectedProviderInfo = availableProviders.find((p) => p.id === selectedProvider);
   const authType = selectedProviderInfo?.authType || "api_key";
+  const apiConsoleUrl = selectedProviderInfo?.apiConsoleUrl;
+
+  const openApiConsole = () => {
+    if (apiConsoleUrl) void openExternal(apiConsoleUrl);
+  };
 
   const startDeviceCodeFlow = async () => {
     setOauthState("connecting");
@@ -968,6 +973,16 @@ function ProviderModal({
                   : "Your API key from the provider's dashboard"
               }
             />
+            {apiConsoleUrl && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-[rgb(var(--accent-primary))] hover:text-[var(--text-primary)]"
+                onClick={openApiConsole}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open {selectedProviderInfo?.name || "provider"} API console
+              </button>
+            )}
             {selectedProvider === "devin" && (
               <Input
                 name="organization_id"
@@ -983,6 +998,32 @@ function ProviderModal({
             )}
           </div>
         )}
+
+        {authType !== "api_key" &&
+          authType !== "oauth" &&
+          authType !== "aws-sdk" &&
+          authType !== "none" && (
+            <div className="space-y-3">
+              <Input
+                name="access_token"
+                label="Access Token"
+                type="password"
+                placeholder="Paste your token here..."
+                defaultValue={provider?.config?.access_token as string}
+                helperText="Your access token from the provider's console"
+              />
+              {apiConsoleUrl && (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[rgb(var(--accent-primary))] hover:text-[var(--text-primary)]"
+                  onClick={openApiConsole}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open {selectedProviderInfo?.name || "provider"} API console
+                </button>
+              )}
+            </div>
+          )}
 
         {authType === "oauth" && (
           <div className="space-y-3">

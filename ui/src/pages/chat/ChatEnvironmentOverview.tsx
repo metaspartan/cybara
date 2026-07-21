@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { FolderOpen, GitBranch, GitCompare, Globe2 } from "lucide-react";
-import type { Subagent } from "@/hooks/useApi";
+import { FolderOpen, GitBranch, GitCompare, Globe2, Zap } from "lucide-react";
+import { type Subagent, useWorkspaceLSPStatus } from "@/hooks/useApi";
 import type { SessionContextUsage, SessionTokenUsage } from "@/types";
 import { formatWorkspaceLabel, type FileChangeSummary, type SessionPlanView } from "./chatModel";
 import { GitBranchSelector, type GitBranchOption } from "./GitBranchSelector";
@@ -112,6 +112,7 @@ export function ChatEnvironmentOverview({
   toolNames: string[];
   workspaceDir: string | null;
 }) {
+  const workspaceLsp = useWorkspaceLSPStatus(workspaceDir, isOpen);
   if (!isOpen) return null;
 
   const contextPercent = Math.max(0, Math.min(100, contextUsage?.usedPercent || 0));
@@ -171,6 +172,20 @@ export function ChatEnvironmentOverview({
                 onCreate={onCreateGitBranch}
                 onRefresh={onRefreshGitBranches}
               />
+            </EnvironmentRow>
+          )}
+          {workspaceDir && (
+            <EnvironmentRow icon={<Zap className="h-3.5 w-3.5" />} label="LSP">
+              <span
+                className="block truncate text-[11px] text-gray-300"
+                title={workspaceLsp.data?.active.map((server) => server.name).join(", ")}
+              >
+                {workspaceLsp.isLoading
+                  ? "Checking..."
+                  : workspaceLsp.data?.active.length
+                    ? workspaceLsp.data.active.map((server) => server.name).join(", ")
+                    : "No active servers"}
+              </span>
             </EnvironmentRow>
           )}
         </div>

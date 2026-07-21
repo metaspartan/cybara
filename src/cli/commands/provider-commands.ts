@@ -23,6 +23,7 @@ export interface AvailableProviderInfo {
   authType: string;
   oauthFlow?: "device_code" | "redirect" | null;
   hasOAuthConfig?: boolean;
+  apiConsoleUrl?: string | null;
   models: { id: string; name: string; context: number }[];
 }
 

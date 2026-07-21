@@ -1160,6 +1160,32 @@ textarea[data-chat-composer-input="true"]::placeholder {
   font-size: var(--chat-code-font-size, 12px);
 }
 
+.chat-empty-state-logo {
+  position: relative;
+  isolation: isolate;
+  opacity: 0.62;
+}
+
+.chat-empty-state-logo img {
+  filter: saturate(0.58) contrast(1.06);
+}
+
+.chat-empty-state-logo::after {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, rgb(var(--accent-primary)) 58%, var(--text-muted));
+  content: "";
+  mask: url("/cybara.png") center / contain no-repeat;
+  -webkit-mask: url("/cybara.png") center / contain no-repeat;
+  mix-blend-mode: color;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+html[data-high-contrast="true"] .chat-empty-state-logo {
+  opacity: 0.9;
+}
+
 html[data-reduce-motion="true"] *,
 html[data-reduce-motion="true"] *::before,
 html[data-reduce-motion="true"] *::after {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { createRoutesFixture } from "./routes.fixture";
 import { revertSessionToMessage } from "../../src/api/chat-session-api";
@@ -446,6 +446,19 @@ describe("LSP API", () => {
     expect(installStatusRes.status).toBe(200);
     expect(Array.isArray(installStatusRes.data.status)).toBe(true);
     expect(installStatusRes.data.status.length).toBeGreaterThan(0);
+
+    const workspaceStatusRes = await fixture.api(
+      "GET",
+      `/api/lsp/workspace-status?path=${encodeURIComponent(fixture.testHome)}`
+    );
+    expect(workspaceStatusRes.status).toBe(200);
+    expect(workspaceStatusRes.data.success).toBe(true);
+    expect(workspaceStatusRes.data.workspace).toBe(realpathSync(fixture.testHome));
+    expect(Array.isArray(workspaceStatusRes.data.active)).toBe(true);
+
+    const missingWorkspaceStatusRes = await fixture.api("GET", "/api/lsp/workspace-status");
+    expect(missingWorkspaceStatusRes.status).toBe(200);
+    expect(missingWorkspaceStatusRes.data.success).toBe(false);
 
     const lspMetricsAfter = fixture.countMetrics("lsp_operation");
     expect(lspMetricsAfter).toBeGreaterThan(lspMetricsBefore);

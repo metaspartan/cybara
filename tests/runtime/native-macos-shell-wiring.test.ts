@@ -201,6 +201,7 @@ describe("native macOS shell wiring", () => {
     for (const gatewayRoute of [
       '"api/mcp"',
       '"api/lsp/status"',
+      '"api/lsp/workspace-status"',
       '"api/ide/index/status"',
       '"api/ide/browse"',
       '"api/ide/read"',

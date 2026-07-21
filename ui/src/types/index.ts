@@ -436,6 +436,7 @@ export interface AvailableProvider {
   oauthFlow?: "device_code" | "redirect" | null;
   hasOAuthConfig?: boolean;
   oauthLoginUrl?: string | null;
+  apiConsoleUrl?: string | null;
 }
 
 export interface AvailableChannel {

@@ -9,8 +9,10 @@ import {
   MessageSquare,
   Replace,
   Route,
+  Zap,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { useWorkspaceLSPStatus } from "@/hooks/useApi";
 
 function compactNumber(value?: number): string {
   if (!value) return "0";
@@ -106,6 +108,8 @@ export function MultiChatPaneEnvironment({
   const modelLabel = agent?.model || detail?.model || "Automatic";
   const providerLabel = detail?.provider_name || detail?.provider || agent?.provider || "Automatic";
   const workspace = detail?.workspace_dir || "No workspace";
+  const workspaceDir = detail?.workspace_dir?.trim() || null;
+  const workspaceLsp = useWorkspaceLSPStatus(workspaceDir);
   const contextPercent = contextUsage ? Math.min(100, Math.max(0, contextUsage.usedPercent)) : 0;
 
   return (
@@ -147,6 +151,19 @@ export function MultiChatPaneEnvironment({
         >
           {workspace}
         </EnvironmentRow>
+        {workspaceDir ? (
+          <EnvironmentRow
+            icon={<Zap className="h-3.5 w-3.5" />}
+            label="LSP"
+            title={workspaceLsp.data?.active.map((server) => server.name).join(", ")}
+          >
+            {workspaceLsp.isLoading
+              ? "Checking..."
+              : workspaceLsp.data?.active.length
+                ? workspaceLsp.data.active.map((server) => server.name).join(", ")
+                : "No active servers"}
+          </EnvironmentRow>
+        ) : null}
         <EnvironmentRow icon={<Activity className="h-3.5 w-3.5" />} label="Status">
           {draft ? "Draft" : statusLabel}
         </EnvironmentRow>

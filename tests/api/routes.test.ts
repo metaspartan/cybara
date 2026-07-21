@@ -1042,12 +1042,21 @@ describe("Providers API", () => {
     expect(typeof data[0].name).toBe("string");
     expect(Array.isArray(data[0].models)).toBe(true);
 
+    const openai = (
+      data as Array<{
+        id: string;
+        authType: string;
+        apiConsoleUrl: string | null;
+      }>
+    ).find((provider) => provider.id === "openai");
+
     const geminiCli = (
       data as Array<{
         id: string;
         authType: string;
         oauthFlow: string | null;
         hasOAuthConfig: boolean;
+        apiConsoleUrl: string | null;
       }>
     ).find((provider) => provider.id === "google-gemini-cli");
     const openaiCodex = (
@@ -1056,9 +1065,12 @@ describe("Providers API", () => {
         authType: string;
         oauthFlow: string | null;
         hasOAuthConfig: boolean;
+        apiConsoleUrl: string | null;
       }>
     ).find((provider) => provider.id === "openai-codex");
     expect(geminiCli).toBeDefined();
+    expect(openai?.authType).toBe("api_key");
+    expect(openai?.apiConsoleUrl).toBe("https://platform.openai.com/api-keys");
     expect(geminiCli?.authType).toBe("oauth");
     expect(geminiCli?.oauthFlow).toBe("redirect");
     expect(geminiCli?.hasOAuthConfig).toBe(true);
@@ -1066,6 +1078,7 @@ describe("Providers API", () => {
     expect(openaiCodex?.authType).toBe("oauth");
     expect(openaiCodex?.oauthFlow).toBe("redirect");
     expect(openaiCodex?.hasOAuthConfig).toBe(true);
+    expect(openaiCodex?.apiConsoleUrl).toBeNull();
   });
 
   test("GET /api/providers/health should return provider configuration", async () => {

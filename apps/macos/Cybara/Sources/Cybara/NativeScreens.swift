@@ -568,6 +568,7 @@ struct ChatScreen: View {
     @State var reasoningDraftIndex = 0.0
     @State var reasoningSaving = false
     @State var showEnvironmentPopover = false
+    @State var environmentLSPStatus: NativeLSPStatus?
     @State var showNearbyShare = false
     @State var nearbyStatus: NativeNearbyStatus?
     @State var nearbyShareBusy = false

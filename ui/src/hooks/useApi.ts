@@ -952,11 +952,39 @@ export interface LSPStatus {
   diagnosticsCount: number;
 }
 
+export interface WorkspaceLSPServer {
+  id: string;
+  name: string;
+  command: string;
+  initialized: boolean;
+}
+
+export interface WorkspaceLSPStatus {
+  success: boolean;
+  workspace: string;
+  active: WorkspaceLSPServer[];
+  diagnosticsCount: number;
+  error?: string;
+}
+
 export function useLSPStatus() {
   return useQuery({
     queryKey: ["lsp", "status"],
     queryFn: () => fetchApi<LSPStatus>("/lsp/status"),
     refetchInterval: 5000,
+  });
+}
+
+export function useWorkspaceLSPStatus(workspacePath: string | null, enabled = true) {
+  const normalizedWorkspace = workspacePath?.trim() || null;
+  return useQuery({
+    queryKey: ["lsp", "workspace-status", normalizedWorkspace],
+    queryFn: () =>
+      fetchApi<WorkspaceLSPStatus>(
+        `/lsp/workspace-status?path=${encodeURIComponent(normalizedWorkspace || "")}`
+      ),
+    enabled: enabled && normalizedWorkspace !== null,
+    refetchInterval: enabled ? 5000 : false,
   });
 }
 

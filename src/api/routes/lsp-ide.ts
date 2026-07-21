@@ -59,6 +59,27 @@ export function getOrInitLspManager(workspacePath?: string) {
   }
 }
 
+export function getWorkspaceLspStatus(workspacePath: string): {
+  workspace: string;
+  active: ReturnType<ReturnType<typeof getLSPManager>["getRunningServers"]>;
+  diagnosticsCount: number;
+} {
+  const resolvedWorkspace = resolveWorkspacePath(workspacePath);
+  try {
+    const existing = getLSPManager();
+    if (resolve(existing.getWorkspacePath()) !== resolve(resolvedWorkspace)) {
+      return { workspace: resolvedWorkspace, active: [], diagnosticsCount: 0 };
+    }
+    return {
+      workspace: resolvedWorkspace,
+      active: existing.getRunningServers(),
+      diagnosticsCount: existing.getAllDiagnostics().size,
+    };
+  } catch {
+    return { workspace: resolvedWorkspace, active: [], diagnosticsCount: 0 };
+  }
+}
+
 export function trackLspOperation(
   operation: string,
   metadata?: Record<string, unknown>,

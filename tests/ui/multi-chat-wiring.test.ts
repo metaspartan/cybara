@@ -114,6 +114,8 @@ describe("multi-chat workspace wiring", () => {
     expect(paneEnvironment).toContain('label="Provider"');
     expect(paneEnvironment).toContain('label="TTFT"');
     expect(paneEnvironment).toContain('label="Speed"');
+    expect(paneEnvironment).toContain("useWorkspaceLSPStatus(workspaceDir)");
+    expect(paneEnvironment).toContain('label="LSP"');
     expect(paneEnvironment).toContain("multiline");
     expect(environment).not.toContain("shadow-[0_28px_90px");
   });
