@@ -1198,14 +1198,18 @@ export const tables = {
         s.enabled ? 1 : 0
       ),
     update: (id: string, s: Partial<MCPServer>) => {
-      const existing = openMcpServerRow(stmts.mcpServers.get.get(id));
+      const stored = stmts.mcpServers.get.get(id) as StoredRow | undefined;
+      const existing = openMcpServerRow(stored);
       if (!existing) return undefined;
       const updated = { ...existing, ...s };
+      const storedEnv = storedString(stored?.env);
+      const sealedEnv =
+        s.env === undefined ? storedEnv : s.env ? sealSecret(s.env, `mcp:${id}:env`) : null;
       return stmts.mcpServers.update.run(
         updated.name,
         updated.command,
         updated.args || null,
-        updated.env ? sealSecret(updated.env, `mcp:${id}:env`) : null,
+        sealedEnv,
         updated.url || null,
         updated.enabled ? 1 : 0,
         id

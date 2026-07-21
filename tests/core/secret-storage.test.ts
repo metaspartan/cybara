@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -95,6 +95,55 @@ describe("credential storage", () => {
       config: JSON.stringify({ bot_token: "channel-secret" }),
     });
     expect(result.openedMcp).toMatchObject({ env: "AUTHORIZATION=Bearer mcp-secret" });
+  });
+
+  test("preserves sealed MCP env when a partial update cannot decrypt it", async () => {
+    const home = temporaryHome();
+    const created = await run(
+      home,
+      `
+        const { tables } = await import("./src/core/database.ts");
+        const { Database } = await import("bun:sqlite");
+        tables.mcpServers.create({ id: "m1", name: "Original", command: "bunx", env: "TOKEN=secret", enabled: true });
+        const db = new Database(process.env.CYBARA_HOME + "/data/platform.db");
+        const row = db.query("SELECT env FROM mcp_servers WHERE id='m1'").get();
+        db.close();
+        console.log("RESULT=" + JSON.stringify(row));
+      `
+    );
+    const originalMarker = created
+      .trim()
+      .split("\n")
+      .find((line) => line.startsWith("RESULT="));
+    const original = JSON.parse(originalMarker?.slice("RESULT=".length) ?? "{}") as {
+      env?: string;
+    };
+    writeFileSync(join(home, "secure", "storage.key"), crypto.getRandomValues(new Uint8Array(32)));
+
+    const updated = await run(
+      home,
+      `
+        const { tables } = await import("./src/core/database.ts");
+        const { Database } = await import("bun:sqlite");
+        tables.mcpServers.update("m1", { name: "Renamed" });
+        const db = new Database(process.env.CYBARA_HOME + "/data/platform.db");
+        const row = db.query("SELECT name, env FROM mcp_servers WHERE id='m1'").get();
+        db.close();
+        console.log("RESULT=" + JSON.stringify(row));
+      `
+    );
+    const updatedMarker = updated
+      .trim()
+      .split("\n")
+      .find((line) => line.startsWith("RESULT="));
+    const result = JSON.parse(updatedMarker?.slice("RESULT=".length) ?? "{}") as {
+      name?: string;
+      env?: string;
+    };
+
+    expect(original.env).toStartWith("cybara-secret:v1:");
+    expect(result.name).toBe("Renamed");
+    expect(result.env).toBe(original.env);
   });
 
   test("encrypts memory-provider and sandbox credentials in the config table", async () => {

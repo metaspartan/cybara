@@ -38,8 +38,8 @@ final class CybaraAppDelegate: NSObject, NSApplicationDelegate {
         guard !terminationPending else { return .terminateLater }
         terminationPending = true
         Task {
+            defer { sender.reply(toApplicationShouldTerminate: true) }
             await sidecar.stopAndWait()
-            sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
     }

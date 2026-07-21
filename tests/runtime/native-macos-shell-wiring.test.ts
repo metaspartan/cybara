@@ -63,7 +63,7 @@ describe("native macOS shell wiring", () => {
     expect(sidecarManager).not.toContain("Thread.sleep(forTimeInterval:");
     expect(app).toContain("func applicationShouldTerminate");
     expect(app).toContain("await sidecar.stopAndWait()");
-    expect(app).toContain("sender.reply(toApplicationShouldTerminate: true)");
+    expect(app).toContain("defer { sender.reply(toApplicationShouldTerminate: true) }");
     expect(app).toContain("return .terminateLater");
   });
 
