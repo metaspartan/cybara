@@ -461,19 +461,12 @@ fn main() {
                 return Ok(());
             }
 
-            let Some(endpoint) = gateway::select_launch_endpoint(
-                CYBARA_DEFAULT_PORT,
-                CYBARA_FALLBACK_PORT_COUNT,
-            ) else {
-                let message = "No available loopback port was found for the packaged Cybara gateway.";
-                log::error!("{message}");
-                set_gateway_startup_status(app.handle(), GatewayStartupStatus::failed(message));
-                return Ok(());
-            };
-            set_gateway_endpoint(app.handle(), endpoint.clone());
-
             println!("[Cybara] Starting sidecar...");
-            log::info!("Starting Cybara gateway sidecar on port {}", endpoint.port);
+            log::info!(
+                "Starting Cybara gateway sidecar on ports {}-{}",
+                CYBARA_DEFAULT_PORT,
+                CYBARA_DEFAULT_PORT + CYBARA_FALLBACK_PORT_COUNT
+            );
             let Ok(mut sidecar) = app.shell().sidecar("cybara") else {
                 let message = "The packaged Cybara gateway could not be located.";
                 log::error!("{message}");
@@ -491,7 +484,14 @@ fn main() {
                     .unwrap_or(resource_dir);
                 sidecar = sidecar.env("CYBARA_RESOURCE_DIR", resource_dir);
             }
-            sidecar = sidecar.env("PORT", endpoint.port.to_string());
+            sidecar = sidecar
+                .env("PORT", CYBARA_DEFAULT_PORT.to_string())
+                .env(
+                    "CYBARA_PORT_FALLBACK_COUNT",
+                    CYBARA_FALLBACK_PORT_COUNT.to_string(),
+                )
+                .env("CYBARA_GATEWAY_PORT_SIGNAL", "stdout");
+            let (port_sender, port_receiver) = std::sync::mpsc::sync_channel(1);
             let (mut rx, child) = match sidecar.args(["start"]).spawn() {
                 Ok(result) => result,
                 Err(error) => {
@@ -509,10 +509,16 @@ fn main() {
             let output_app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 use tauri_plugin_shell::process::CommandEvent;
+                let mut port_sender = Some(port_sender);
                 while let Some(event) = rx.recv().await {
                     match event {
                         CommandEvent::Stdout(line) => {
                             let output = String::from_utf8_lossy(&line);
+                            if let Some(port) = gateway::parse_gateway_port_signal(&output)
+                                && let Some(sender) = port_sender.take()
+                            {
+                                let _ = sender.send(port);
+                            }
                             let output = bounded_sidecar_output(&output);
                             if !output.is_empty() {
                                 if is_browser_diagnostic_line(&output) {
@@ -562,7 +568,19 @@ fn main() {
             }
 
             let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
+            std::thread::spawn(move || {
+                let Ok(port) = port_receiver.recv_timeout(Duration::from_secs(10)) else {
+                    let message = "The Cybara gateway did not report its listening port within 10 seconds. Review the desktop logs for the underlying sidecar error.";
+                    log::error!("{message}");
+                    set_gateway_startup_status(
+                        &app_handle,
+                        GatewayStartupStatus::failed(message),
+                    );
+                    return;
+                };
+                let endpoint = gateway::GatewayEndpoint::loopback(port);
+                set_gateway_endpoint(&app_handle, endpoint.clone());
+                log::info!("Cybara gateway sidecar is listening on port {port}");
                 if wait_for_server_ready(
                     &endpoint,
                     env!("CARGO_PKG_VERSION"),

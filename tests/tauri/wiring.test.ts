@@ -123,7 +123,11 @@ describe("Tauri wiring", () => {
     expect(gatewayRs).toContain('http_get(addr, "/api/health")');
     expect(gatewayRs).toContain('normalized.contains("/assets/")');
     expect(gatewayRs).toContain('!normalized.contains("ui not built")');
-    expect(gatewayRs).toContain("select_launch_endpoint");
+    expect(gatewayRs).toContain("parse_gateway_port_signal");
+    expect(mainRs).toContain('"CYBARA_PORT_FALLBACK_COUNT"');
+    expect(mainRs).toContain('.env("CYBARA_GATEWAY_PORT_SIGNAL", "stdout")');
+    expect(mainRs).toContain("port_receiver.recv_timeout(Duration::from_secs(10))");
+    expect(mainRs).not.toContain("select_launch_endpoint");
     expect(mainRs).toContain("SidecarState(std::sync::Mutex::new(None))");
     expect(mainRs).toContain("*guard = Some(child)");
     expect(mainRs).toContain("Duration::from_secs(25)");
@@ -152,6 +156,10 @@ describe("Tauri wiring", () => {
     expect(trayRs).toContain("!window.unlimited");
     expect(trayRs).toContain('!description.eq_ignore_ascii_case("No limit")');
     expect(trayRs).toContain('show_route(app, "/usage")');
+    const usageRefresh = trayRs.slice(trayRs.indexOf("fn start_usage_refresh"));
+    expect(usageRefresh.indexOf("loop {")).toBeLessThan(
+      usageRefresh.indexOf("crate::gateway_endpoint(&app_handle)")
+    );
   });
 
   test("desktop capability narrows webview origins and shell permissions", () => {

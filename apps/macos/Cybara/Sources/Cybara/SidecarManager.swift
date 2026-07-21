@@ -209,28 +209,19 @@ final class SidecarManager: ObservableObject {
     }
 
     func stop() {
-        userInitiatedStop = true
-        restartAttempts = 0
-        readinessTask?.cancel()
-        readinessTask = nil
-        outputHandle?.readabilityHandler = nil
-        outputHandle = nil
-        let managedProcess = gatewayMode == .managed ? process : nil
-        process = nil
-        terminateManagedProcess(managedProcess, timeout: 3)
-        status = .stopped
-        if gatewayMode == .managed {
-            gatewayMode = .idle
+        let managedProcess = managedProcessForStop()
+        Task {
+            await terminateManagedProcess(managedProcess, timeout: 3)
         }
     }
 
     func stopForUpdate() async {
-        stop()
+        await terminateManagedProcess(managedProcessForStop(), timeout: 3)
     }
 
     func restart() async {
         if gatewayMode == .managed {
-            stop()
+            await terminateManagedProcess(managedProcessForStop(), timeout: 3)
             await start()
             return
         }
@@ -245,6 +236,22 @@ final class SidecarManager: ObservableObject {
 
         gatewayMode = .idle
         await start()
+    }
+
+    private func managedProcessForStop() -> Process? {
+        userInitiatedStop = true
+        restartAttempts = 0
+        readinessTask?.cancel()
+        readinessTask = nil
+        outputHandle?.readabilityHandler = nil
+        outputHandle = nil
+        let managedProcess = gatewayMode == .managed ? process : nil
+        process = nil
+        status = .stopped
+        if gatewayMode == .managed {
+            gatewayMode = .idle
+        }
+        return managedProcess
     }
 
     func waitForAttachedGatewayRestart() async {
@@ -465,19 +472,19 @@ final class SidecarManager: ObservableObject {
         return await gatewayProbe() == nil
     }
 
-    private func terminateManagedProcess(_ runningProcess: Process?, timeout: TimeInterval) {
+    private func terminateManagedProcess(_ runningProcess: Process?, timeout: TimeInterval) async {
         guard let runningProcess, runningProcess.isRunning else { return }
         let processID = runningProcess.processIdentifier
         runningProcess.terminate()
         let deadline = Date().addingTimeInterval(timeout)
         while runningProcess.isRunning && Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.05)
+            try? await Task.sleep(for: .milliseconds(50))
         }
         if runningProcess.isRunning {
             Darwin.kill(processID, SIGKILL)
             let forceDeadline = Date().addingTimeInterval(1)
             while runningProcess.isRunning && Date() < forceDeadline {
-                Thread.sleep(forTimeInterval: 0.05)
+                try? await Task.sleep(for: .milliseconds(50))
             }
         }
     }

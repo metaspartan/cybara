@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpStream;
 use std::time::Duration;
 
 const PROBE_TIMEOUT: Duration = Duration::from_millis(900);
@@ -9,7 +9,6 @@ const PROBE_TIMEOUT: Duration = Duration::from_millis(900);
 pub struct GatewayEndpoint {
     pub addr: String,
     pub url: String,
-    pub port: u16,
 }
 
 struct HttpResponse {
@@ -23,7 +22,6 @@ impl GatewayEndpoint {
         Self {
             addr: format!("127.0.0.1:{port}"),
             url: format!("http://127.0.0.1:{port}"),
-            port,
         }
     }
 }
@@ -96,18 +94,16 @@ pub fn is_compatible_gateway_at(addr: &str, expected_version: &str) -> bool {
         && !normalized.contains("ui not built")
 }
 
-pub fn select_launch_endpoint(preferred_port: u16, fallback_count: u16) -> Option<GatewayEndpoint> {
-    (0..=fallback_count).find_map(|offset| {
-        let port = preferred_port.checked_add(offset)?;
-        let endpoint = GatewayEndpoint::loopback(port);
-        TcpListener::bind(&endpoint.addr).ok()?;
-        Some(endpoint)
+pub fn parse_gateway_port_signal(value: &str) -> Option<u16> {
+    value.lines().find_map(|line| {
+        let port = line.trim().strip_prefix("CYBARA_GATEWAY_PORT=")?;
+        port.parse::<u16>().ok().filter(|value| *value > 0)
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{GatewayEndpoint, is_compatible_gateway_at, select_launch_endpoint};
+    use super::{GatewayEndpoint, is_compatible_gateway_at, parse_gateway_port_signal};
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::thread;
@@ -163,10 +159,20 @@ mod tests {
     }
 
     #[test]
-    fn selects_a_free_fallback_when_preferred_port_is_occupied() {
-        let occupied = TcpListener::bind("127.0.0.1:0").expect("bind occupied port");
-        let port = occupied.local_addr().expect("read occupied port").port();
-        let selected = select_launch_endpoint(port, 4).expect("find fallback port");
-        assert_ne!(selected.port, port);
+    fn parses_only_valid_gateway_port_signals() {
+        assert_eq!(
+            parse_gateway_port_signal("CYBARA_GATEWAY_PORT=4271\n"),
+            Some(4271)
+        );
+        assert_eq!(
+            parse_gateway_port_signal("log line\nCYBARA_GATEWAY_PORT=4269\nnext"),
+            Some(4269)
+        );
+        assert_eq!(parse_gateway_port_signal("CYBARA_GATEWAY_PORT=0"), None);
+        assert_eq!(
+            parse_gateway_port_signal("CYBARA_GATEWAY_PORT=invalid"),
+            None
+        );
+        assert_eq!(parse_gateway_port_signal("PORT=4269"), None);
     }
 }
