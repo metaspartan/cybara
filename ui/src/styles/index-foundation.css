@@ -607,6 +607,54 @@ html[data-runtime="tauri"][data-platform="linux"] .shimmer {
   }
 }
 
+.live-status-orb {
+  height: 20px;
+  width: 20px;
+  opacity: 0.82;
+}
+
+.live-status-shine {
+  --live-status-highlight: color-mix(in srgb, var(--text-primary) 72%, white 28%);
+
+  color: var(--text-muted);
+  background-image: linear-gradient(
+    100deg,
+    var(--text-muted) 18%,
+    var(--live-status-highlight) 46%,
+    var(--text-muted) 74%
+  );
+  background-position: 130% 0;
+  background-size: 240% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: live-status-text-shine 2.4s ease-in-out infinite;
+}
+
+html.light .live-status-shine {
+  --live-status-highlight: color-mix(in srgb, var(--text-primary) 84%, black 16%);
+}
+
+@keyframes live-status-text-shine {
+  0%,
+  18% {
+    background-position: 130% 0;
+  }
+
+  82%,
+  100% {
+    background-position: -30% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-status-shine {
+    background: none;
+    color: var(--text-muted);
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
 /* ==================== UTILITIES ==================== */
 
 .text-glow {
@@ -1110,6 +1158,32 @@ textarea[data-chat-composer-input="true"]::placeholder {
 .chat-code-block pre,
 .chat-code-block .font-mono {
   font-size: var(--chat-code-font-size, 12px);
+}
+
+.chat-empty-state-logo {
+  position: relative;
+  isolation: isolate;
+  opacity: 0.62;
+}
+
+.chat-empty-state-logo img {
+  filter: saturate(0.58) contrast(1.06);
+}
+
+.chat-empty-state-logo::after {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, rgb(var(--accent-primary)) 58%, var(--text-muted));
+  content: "";
+  mask: url("/cybara.png") center / contain no-repeat;
+  -webkit-mask: url("/cybara.png") center / contain no-repeat;
+  mix-blend-mode: color;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+html[data-high-contrast="true"] .chat-empty-state-logo {
+  opacity: 0.9;
 }
 
 html[data-reduce-motion="true"] *,

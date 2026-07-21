@@ -438,7 +438,7 @@ export interface GatewayRestartResponse {
   message: string;
 }
 
-export type MigrationSourceKind = "openclaw" | "hermes";
+export type MigrationSourceKind = "openclaw" | "hermes" | "codex" | "claude-code";
 export type MigrationPreset = "user-data" | "full";
 export type MigrationSkillConflictMode = "skip" | "overwrite" | "rename";
 export type MigrationItemStatus =

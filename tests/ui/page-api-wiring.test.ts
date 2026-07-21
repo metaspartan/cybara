@@ -121,6 +121,8 @@ describe("UI page API wiring", () => {
     expect(source).toContain("migrationApi.preview(payload())");
     expect(source).toContain("migrationApi.run(payload())");
     expect(source).toContain('useState<MigrationSourceKind>("openclaw")');
+    expect(source).toContain('{ value: "codex", label: "Codex" }');
+    expect(source).toContain('{ value: "claude-code", label: "Claude Code" }');
     expect(source).toContain("openDesktopFileDialog");
     expect(source).toContain("openDesktopDirectoryDialog");
     expect(source).toContain("Custom driver");
@@ -212,6 +214,9 @@ describe("UI page API wiring", () => {
     expect(source).toMatch(/authType === ["']oauth["']/);
     expect(source).toMatch(/authType === ["']aws-sdk["']/);
     expect(source).toMatch(/authType === ["']none["']/);
+    expect(source).toContain('providerInfo.authType === "oauth"');
+    expect(source).toMatch(/providerInfo\.authType === ["']oauth["'][\s\S]*OAuth/);
+    expect(source).toContain("options={providerOptions}");
   });
 
   test("IDE page routes file and git operations through encoded API paths", () => {

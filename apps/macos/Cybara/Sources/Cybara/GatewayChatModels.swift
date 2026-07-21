@@ -201,6 +201,7 @@ struct GatewayAvailableProvider: Decodable, Identifiable, Hashable {
     let oauthFlow: String?
     let hasOAuthConfig: Bool?
     let oauthLoginUrl: String?
+    let apiConsoleUrl: String?
     let models: [GatewayAvailableProviderModel]
 }
 

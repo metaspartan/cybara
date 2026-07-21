@@ -1,14 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import {
+  acceptsMultiChatDrag,
   addMultiChatSession,
   buildMultiChatPath,
   isMultiChatSearch,
+  MULTI_CHAT_DRAG_TYPE,
   normalizeMultiChatSessionIds,
   parseMultiChatSessionIds,
+  readMultiChatDragSessionId,
   readPersistedMultiChatSessionIds,
   reorderMultiChatSessions,
   replaceMultiChatSession,
-  resolveActiveMultiChatDropIndex,
+  resolveMultiChatDropIndex,
+  resolveMultiChatSlotCount,
 } from "../../ui/src/pages/chat/multiChatLayout";
 
 describe("multi-chat layout", () => {
@@ -42,10 +46,50 @@ describe("multi-chat layout", () => {
     expect(readPersistedMultiChatSessionIds(storage)).toEqual([]);
   });
 
-  test("keeps only the newest drag target active across delayed leave events", () => {
-    expect(resolveActiveMultiChatDropIndex(null, 2, true)).toBe(2);
-    expect(resolveActiveMultiChatDropIndex(2, 3, true)).toBe(3);
-    expect(resolveActiveMultiChatDropIndex(3, 2, false)).toBe(3);
-    expect(resolveActiveMultiChatDropIndex(3, 3, false)).toBeNull();
+  test("expands two panes into four destinations only while dragging a chat", () => {
+    expect(resolveMultiChatSlotCount(1, false)).toBe(2);
+    expect(resolveMultiChatSlotCount(2, false)).toBe(2);
+    expect(resolveMultiChatSlotCount(2, true)).toBe(4);
+    expect(resolveMultiChatSlotCount(3, false)).toBe(4);
+  });
+
+  test("accepts only the Cybara chat drag payload", () => {
+    expect(acceptsMultiChatDrag(["text/plain", MULTI_CHAT_DRAG_TYPE])).toBe(true);
+    expect(acceptsMultiChatDrag([MULTI_CHAT_DRAG_TYPE.toUpperCase()])).toBe(true);
+    expect(acceptsMultiChatDrag(["text/plain", "Files"])).toBe(false);
+  });
+
+  test("reads the plain-text fallback only for a marked Cybara chat drag", () => {
+    const values = new Map([
+      [MULTI_CHAT_DRAG_TYPE, ""],
+      ["text/plain", "session-3"],
+    ]);
+    expect(
+      readMultiChatDragSessionId({
+        getData: (type) => values.get(type) ?? "",
+        types: [MULTI_CHAT_DRAG_TYPE, "text/plain"],
+      })
+    ).toBe("session-3");
+    expect(
+      readMultiChatDragSessionId({
+        getData: (type) => values.get(type) ?? "",
+        types: ["text/plain"],
+      })
+    ).toBe("");
+  });
+
+  test("resolves all four quadrants and maps grid gaps to the nearest pane", () => {
+    const rects = [
+      { index: 0, left: 0, right: 95, top: 0, bottom: 95 },
+      { index: 1, left: 105, right: 200, top: 0, bottom: 95 },
+      { index: 2, left: 0, right: 95, top: 105, bottom: 200 },
+      { index: 3, left: 105, right: 200, top: 105, bottom: 200 },
+    ];
+    expect(resolveMultiChatDropIndex(25, 25, rects)).toBe(0);
+    expect(resolveMultiChatDropIndex(175, 25, rects)).toBe(1);
+    expect(resolveMultiChatDropIndex(25, 175, rects)).toBe(2);
+    expect(resolveMultiChatDropIndex(175, 175, rects)).toBe(3);
+    expect(resolveMultiChatDropIndex(102, 150, rects)).toBe(3);
+    expect(resolveMultiChatDropIndex(0, 0, [])).toBeNull();
   });
 });

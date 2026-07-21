@@ -1,12 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
 describe("chat empty state", () => {
-  test("uses the transparent monochrome Cybara mark", async () => {
+  test("uses the transparent theme-tinted Cybara mark", async () => {
     const source = await Bun.file("ui/src/pages/chat/ChatEmptyState.tsx").text();
+    const styles = await Bun.file("ui/src/styles/index-foundation.css").text();
 
     expect(source).toContain('src="/cybara.png"');
     expect(source).toContain('aria-hidden="true"');
-    expect(source).toContain("grayscale brightness-[1.7] contrast-150");
+    expect(source).toContain("chat-empty-state-logo");
+    expect(source).not.toContain("grayscale");
+    expect(styles).toContain(".chat-empty-state-logo::after");
+    expect(styles).toContain("rgb(var(--accent-primary))");
+    expect(styles).toContain("var(--text-muted)");
+    expect(styles).toContain('mask: url("/cybara.png")');
     expect(source).not.toContain('<Sparkles className="mx-auto mb-3');
   });
 

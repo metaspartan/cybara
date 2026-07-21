@@ -70,6 +70,12 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(source).toContain("No bundled models listed");
     expect(source).toContain("provider.models.length > 0");
     expect(source).toContain("selectedProviderInfo.models.length > 0");
+    expect(source).toContain("openCreateProviderModal(provider.id)");
+    expect(source).toContain("initialProvider={createProviderType}");
+    expect(source).toContain("aria-label={`Add ${provider.name} provider`}");
+    expect(source).toContain("value={selectedProvider}");
+    expect(source).toContain("selectedProviderInfo?.apiConsoleUrl");
+    expect(source).toContain('Open {selectedProviderInfo?.name || "provider"} API console');
     expect(source).toContain("function isProviderDefault");
     expect(source).toContain("defaultChecked={isProviderDefault(provider)}");
     expect(source).toContain("ProviderPlanUsagePill");

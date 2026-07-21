@@ -183,7 +183,7 @@ configureChatCli({
 });
 
 async function rawMigrate(args: string[]): Promise<void> {
-  const { detectMigrationSources, runSourceMigration } =
+  const { detectMigrationSources, normalizeMigrationSourceKind, runSourceMigration } =
     await import("../core/source-migration");
   const json = hasFlag(args, "--json", "-j");
   const subcommand = args.find((arg) => !arg.startsWith("--"));
@@ -198,7 +198,7 @@ async function rawMigrate(args: string[]): Promise<void> {
     for (const source of sources) {
       const status = source.exists ? "found" : "missing";
       console.log(
-        `${status.padEnd(7)} ${source.kind.padEnd(8)} ${source.path}`,
+        `${status.padEnd(7)} ${source.kind.padEnd(12)} ${source.path}`,
       );
       if (source.exists) {
         console.log(
@@ -209,10 +209,9 @@ async function rawMigrate(args: string[]): Promise<void> {
     return;
   }
 
-  const sourceKind = (getFlagValue(args, "--from") ||
-    (subcommand === "openclaw" || subcommand === "hermes"
-      ? subcommand
-      : undefined)) as "openclaw" | "hermes" | undefined;
+  const sourceKind = normalizeMigrationSourceKind(
+    getFlagValue(args, "--from") || subcommand,
+  );
   const presetFlag = getFlagValue(args, "--preset");
   const skillConflictFlag = getFlagValue(args, "--skill-conflict");
   const apply = hasFlag(args, "--apply", "--execute", "--yes", "-y");

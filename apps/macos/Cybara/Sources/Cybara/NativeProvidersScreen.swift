@@ -515,6 +515,11 @@ private struct ProviderEditorSheet: View {
         firstNonEmptyGatewayString(selectedProvider?.oauthLoginUrl, provider?.oauthLoginUrl)
     }
 
+    private var selectedApiConsoleUrl: URL? {
+        guard let value = firstNonEmptyGatewayString(selectedProvider?.apiConsoleUrl) else { return nil }
+        return URL(string: value)
+    }
+
     private var selectedProviderName: String {
         selectedProvider?.name ?? provider?.displayName ?? "Provider"
     }
@@ -640,6 +645,7 @@ private struct ProviderEditorSheet: View {
             Text("Paste the provider API key. Leave blank while editing to keep the saved key.")
                 .font(.system(size: 11, design: .rounded))
                 .foregroundStyle(.secondary)
+            apiConsoleLink
         case "oauth":
             oauthSection
         case "aws-sdk":
@@ -659,6 +665,17 @@ private struct ProviderEditorSheet: View {
             Text("Paste a bearer token for this provider. Leave blank while editing to keep the saved token.")
                 .font(.system(size: 11, design: .rounded))
                 .foregroundStyle(.secondary)
+            apiConsoleLink
+        }
+    }
+
+    @ViewBuilder
+    private var apiConsoleLink: some View {
+        if let selectedApiConsoleUrl {
+            Link(destination: selectedApiConsoleUrl) {
+                Label("Open \(selectedProviderName) API console", systemImage: "arrow.up.right.square")
+            }
+            .font(.system(size: 11, weight: .medium, design: .rounded))
         }
     }
 

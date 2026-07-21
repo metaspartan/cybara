@@ -26,6 +26,9 @@ describe("chat environment usage summary", () => {
     expect(source).toContain("tokenUsage?.firstTokenMs ?? timeToFirstTokenMs");
     expect(source).toContain('label="Compaction"');
     expect(source).not.toContain('label="Compact"');
+    expect(source).toContain("useWorkspaceLSPStatus(workspaceDir, isOpen)");
+    expect(source).toContain('label="LSP"');
+    expect(source).toContain("No active servers");
   });
 
   test("uses the active theme accent for context pressure", () => {

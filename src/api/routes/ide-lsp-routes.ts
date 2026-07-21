@@ -30,6 +30,7 @@ import {
 import { resolveAllowedIdePath } from "../ide-path-policy";
 import {
   getOrInitLspManager,
+  getWorkspaceLspStatus,
   normalizeDefinitionLocation,
   normalizeLspSymbol,
   resolveWorkspacePath,
@@ -151,6 +152,29 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
         error: String(error),
       });
       return { success: false, error: String(error), servers: [] };
+    }
+  },
+  "GET /api/lsp/workspace-status": (_body, params) => {
+    const workspacePath = typeof params?.path === "string" ? params.path.trim() : "";
+    if (!workspacePath) {
+      trackLspOperation("workspace_status", { success: false, reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter", active: [] };
+    }
+    try {
+      const status = getWorkspaceLspStatus(workspacePath);
+      trackLspOperation("workspace_status", {
+        workspace: status.workspace,
+        activeCount: status.active.length,
+        success: true,
+      });
+      return { success: true, ...status };
+    } catch (error) {
+      trackLspOperation("workspace_status", {
+        workspace: workspacePath,
+        success: false,
+        error: String(error),
+      });
+      return { success: false, error: String(error), active: [] };
     }
   },
   "GET /api/lsp/diagnostics": () => {

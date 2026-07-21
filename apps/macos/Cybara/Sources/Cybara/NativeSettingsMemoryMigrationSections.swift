@@ -333,6 +333,8 @@ extension NativeSettingsScreen {
                         Picker("Source", selection: $migrationSourceKind) {
                             Text("OpenClaw").tag("openclaw")
                             Text("Hermes").tag("hermes")
+                            Text("Codex").tag("codex")
+                            Text("Claude Code").tag("claude-code")
                         }
                         .pickerStyle(.segmented)
 

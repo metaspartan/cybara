@@ -155,6 +155,14 @@ extension GatewayClient {
         try await nativeGet("api/lsp/status", as: NativeLSPStatus.self)
     }
 
+    func workspaceLSPStatus(path: String) async throws -> NativeLSPStatus {
+        try await nativeGet(
+            "api/lsp/workspace-status",
+            as: NativeLSPStatus.self,
+            queryItems: [URLQueryItem(name: "path", value: path)]
+        )
+    }
+
     func lspLanguages() async throws -> [NativeLSPLanguage] {
         try await nativeList("api/lsp/languages", keys: ["languages"])
     }

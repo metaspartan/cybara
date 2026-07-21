@@ -39,12 +39,9 @@ export function ChatEmptyState({
       className="mx-auto flex w-full max-w-[42rem] -translate-y-[3vh] flex-col items-center px-1"
     >
       <div className="text-center text-gray-500">
-        <img
-          src="/cybara.png"
-          alt=""
-          aria-hidden="true"
-          className="mx-auto mb-4 h-16 w-16 object-contain opacity-40 grayscale brightness-[1.7] contrast-150"
-        />
+        <span className="chat-empty-state-logo mx-auto mb-4 block h-16 w-16" aria-hidden="true">
+          <img src="/cybara.png" alt="" className="h-full w-full object-contain" />
+        </span>
         <p className="text-sm font-medium">Start a conversation</p>
         <p className="mt-1 text-[12px] text-gray-600">
           Ask questions, get help with code, or chat with your agents

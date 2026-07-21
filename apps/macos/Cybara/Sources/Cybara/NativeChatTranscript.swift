@@ -314,7 +314,10 @@ extension ChatScreen {
 
             Button {
                 showEnvironmentPopover.toggle()
-                Task { await loadSubagents() }
+                Task {
+                    await loadSubagents()
+                    await loadEnvironmentLSPStatus()
+                }
             } label: {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: "list.bullet.rectangle")

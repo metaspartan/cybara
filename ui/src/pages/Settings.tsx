@@ -287,6 +287,8 @@ function MigrationSettingsSection() {
               options={[
                 { value: "openclaw", label: "OpenClaw" },
                 { value: "hermes", label: "Hermes" },
+                { value: "codex", label: "Codex" },
+                { value: "claude-code", label: "Claude Code" },
               ]}
               onChange={(value) => setSourceKind(value as MigrationSourceKind)}
             />

@@ -23,6 +23,7 @@ import {
   setProviderPlanMonitoringConfig,
 } from "../core/provider-plans";
 import { normalizeProviderSettings } from "../core/provider-settings";
+import { providerApiConsoleUrl } from "../core/providers/api-console-links";
 import {
   providerManager,
   providers,
@@ -133,6 +134,7 @@ export const providerRoutes: Record<string, RouteHandler> = {
       oauthFlow: (value as Record<string, unknown>).oauthFlow || null,
       hasOAuthConfig: !!(value as Record<string, unknown>).oauthConfig,
       oauthLoginUrl: (value as Record<string, unknown>).oauthLoginUrl || null,
+      apiConsoleUrl: providerApiConsoleUrl(key),
       models: value.models.map((m) => ({
         id: m.id,
         name: m.name,
@@ -151,6 +153,7 @@ export const providerRoutes: Record<string, RouteHandler> = {
       oauthFlow: null,
       hasOAuthConfig: false,
       oauthLoginUrl: null,
+      apiConsoleUrl: null,
       models: provider.models.map((model) => ({
         id: model,
         name: model,

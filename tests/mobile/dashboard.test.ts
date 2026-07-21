@@ -753,6 +753,8 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain("api.migrationSources()");
     expect(dashboardScreenSource).toContain("api.previewMigration(payload())");
     expect(dashboardScreenSource).toContain("api.runMigration(payload())");
+    expect(dashboardScreenSource).toContain('{ label: "Codex", value: "codex" }');
+    expect(dashboardScreenSource).toContain('{ label: "Claude Code", value: "claude-code" }');
     expect(dashboardScreenSource).toContain('label="Skill conflicts"');
     expect(dashboardScreenSource).toContain('label="Import provider keys"');
     expect(dashboardScreenSource).toContain('title="System"');

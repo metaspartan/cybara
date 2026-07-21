@@ -59,6 +59,17 @@ extension ChatScreen {
                             gitBranchPicker
                         }
                     }
+                    if activeWorkspaceDir != nil {
+                        NativeEnvironmentRow(icon: "bolt.horizontal.circle", label: "LSP") {
+                            if let active = environmentLSPStatus?.active, !active.isEmpty {
+                                Text(active.map(\.name).joined(separator: ", "))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            } else {
+                                Text("No active servers").foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
 
                 NativeEnvironmentSection(title: "Context and usage") {
@@ -168,6 +179,15 @@ extension ChatScreen {
         }
         .frame(width: 370, alignment: .leading)
         .frame(maxHeight: 620)
+    }
+
+    @MainActor
+    func loadEnvironmentLSPStatus() async {
+        guard let activeWorkspaceDir else {
+            environmentLSPStatus = nil
+            return
+        }
+        environmentLSPStatus = try? await client.workspaceLSPStatus(path: activeWorkspaceDir)
     }
 
     var subagentsPopover: some View {

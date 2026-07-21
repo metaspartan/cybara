@@ -17,7 +17,7 @@ import { cybaraDir, userSkillsDir } from "./paths";
 import { providerManager, providers, type ProviderType } from "./providers";
 import { clearSkillsCache } from "./skills/index";
 
-export type MigrationSourceKind = "openclaw" | "hermes";
+export type MigrationSourceKind = "openclaw" | "hermes" | "codex" | "claude-code";
 export type MigrationPreset = "user-data" | "full";
 export type MigrationSkillConflictMode = "skip" | "overwrite" | "rename";
 export type MigrationItemStatus =
@@ -141,11 +141,6 @@ const SECRET_TARGETS: Array<{
   { keys: ["MISTRAL_API_KEY"], provider: "mistral", field: "api_key", label: "Mistral" },
 ];
 
-const SOURCE_DEFAULTS: Record<MigrationSourceKind, string[]> = {
-  openclaw: ["~/.openclaw", "~/.clawdbot", "~/.moltbot"],
-  hermes: ["~/.hermes"],
-};
-
 function expandUserPath(path: string): string {
   if (path === "~") return homedir();
   if (path.startsWith("~/")) return join(homedir(), path.slice(2));
@@ -161,12 +156,41 @@ function asRecord(value: unknown): ConfigRecord {
 }
 
 function sourceLabel(kind: MigrationSourceKind): string {
-  return kind === "openclaw" ? "OpenClaw" : "Hermes";
+  const labels: Record<MigrationSourceKind, string> = {
+    openclaw: "OpenClaw",
+    hermes: "Hermes",
+    codex: "Codex",
+    "claude-code": "Claude Code",
+  };
+  return labels[kind];
+}
+
+export function normalizeMigrationSourceKind(value: unknown): MigrationSourceKind | undefined {
+  if (value === "openclaw" || value === "hermes" || value === "codex") return value;
+  if (value === "claude" || value === "claude-code") return "claude-code";
+  return undefined;
+}
+
+function sourceDefaultPaths(): Record<MigrationSourceKind, string[]> {
+  const codexHome = process.env.CODEX_HOME?.trim();
+  const claudeConfigDir = process.env.CLAUDE_CONFIG_DIR?.trim();
+  return {
+    openclaw: ["~/.openclaw", "~/.clawdbot", "~/.moltbot"],
+    hermes: ["~/.hermes"],
+    codex: [...(codexHome ? [codexHome] : []), "~/.codex"],
+    "claude-code": [...(claudeConfigDir ? [claudeConfigDir] : []), "~/.claude"],
+  };
 }
 
 function sourceDefaults(): Array<{ kind: MigrationSourceKind; path: string }> {
-  return Object.entries(SOURCE_DEFAULTS).flatMap(([kind, paths]) =>
-    paths.map((path) => ({ kind: kind as MigrationSourceKind, path }))
+  const seen = new Set<string>();
+  return Object.entries(sourceDefaultPaths()).flatMap(([kind, paths]) =>
+    paths.flatMap((path) => {
+      const key = `${kind}:${normalizedPath(path)}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ kind: kind as MigrationSourceKind, path }];
+    })
   );
 }
 
@@ -213,6 +237,16 @@ function listMarkdownFiles(dir: string): string[] {
         return false;
       }
     });
+}
+
+function listProjectMemoryFiles(root: string): string[] {
+  const projectsRoot = normalizedPath(join(root, "projects"));
+  if (!dirExists(projectsRoot)) return [];
+  const files: string[] = [];
+  for (const entry of readdirSync(projectsRoot).slice(0, 1000)) {
+    files.push(...listMarkdownFiles(join(projectsRoot, entry, "memory")));
+  }
+  return files;
 }
 
 function parseScalar(raw: string): unknown {
@@ -262,7 +296,14 @@ function parseSimpleYaml(raw: string): ConfigRecord {
   return root;
 }
 
-function parseConfigContent(raw: string): ConfigRecord {
+function parseConfigContent(raw: string, path: string): ConfigRecord {
+  if (path.toLowerCase().endsWith(".toml")) {
+    try {
+      return asRecord(Bun.TOML.parse(raw));
+    } catch {
+      return {};
+    }
+  }
   try {
     return asRecord(JSON.parse(raw));
   } catch {
@@ -297,7 +338,24 @@ function configFilesFor(kind: MigrationSourceKind, root: string): string[] {
       ...common,
     ];
   }
-  return [join(root, "config.yaml"), join(root, "config.yml"), ...common];
+  if (kind === "hermes") {
+    return [
+      join(root, "config.yaml"),
+      join(root, "config.yml"),
+      join(root, "hermes.toml"),
+      ...common,
+    ];
+  }
+  if (kind === "codex") {
+    return [join(root, "config.toml"), join(root, "auth.json"), ...common];
+  }
+  const rootState = basename(root) === ".claude" ? join(dirname(root), ".claude.json") : "";
+  return [
+    join(root, "settings.json"),
+    join(root, "settings.local.json"),
+    ...common,
+    rootState,
+  ].filter(Boolean);
 }
 
 function parseSourceConfig(
@@ -318,7 +376,7 @@ function parseSourceConfig(
       envFiles.push(path);
       records.push(parseEnv(raw));
     } else {
-      records.push(parseConfigContent(raw));
+      records.push(parseConfigContent(raw, path));
     }
   }
   return { records, configFiles, envFiles };
@@ -339,17 +397,20 @@ function collectStringValues(record: unknown, key: string, values: string[] = []
   return values;
 }
 
-function collectSecrets(records: ConfigRecord[]): SecretMatch[] {
+function collectSecrets(records: ConfigRecord[], kind: MigrationSourceKind): SecretMatch[] {
   const matches: SecretMatch[] = [];
   const seen = new Set<string>();
+  const append = (match: SecretMatch): void => {
+    const dedupeKey = `${match.provider}:${match.field}:${createHash("sha256").update(match.value).digest("hex")}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    matches.push(match);
+  };
   for (const target of SECRET_TARGETS) {
     for (const key of target.keys) {
       for (const record of records) {
         for (const value of collectStringValues(record, key)) {
-          const dedupeKey = `${target.provider}:${target.field}:${createHash("sha256").update(value).digest("hex")}`;
-          if (seen.has(dedupeKey)) continue;
-          seen.add(dedupeKey);
-          matches.push({
+          append({
             key,
             provider: target.provider,
             field: target.field,
@@ -360,11 +421,42 @@ function collectSecrets(records: ConfigRecord[]): SecretMatch[] {
       }
     }
   }
+  if (kind === "codex") {
+    for (const record of records) {
+      const tokens = asRecord(record.tokens);
+      for (const [key, field] of [
+        ["access_token", "access_token"],
+        ["refresh_token", "refresh_token"],
+      ] as const) {
+        const value = tokens[key];
+        if (typeof value !== "string" || !value.trim()) continue;
+        append({
+          key,
+          provider: "openai-codex",
+          field,
+          label: "OpenAI Codex",
+          value: value.trim(),
+        });
+      }
+    }
+  }
   return matches;
 }
 
 function inferSourceKind(root: string, requested?: MigrationSourceKind): MigrationSourceKind {
   if (requested) return requested;
+  if (
+    basename(root) === ".codex" ||
+    fileExists(join(root, "config.toml")) ||
+    fileExists(join(root, "auth.json"))
+  )
+    return "codex";
+  if (
+    basename(root) === ".claude" ||
+    fileExists(join(root, "settings.json")) ||
+    fileExists(join(root, "CLAUDE.md"))
+  )
+    return "claude-code";
   if (fileExists(join(root, "config.yaml")) || fileExists(join(root, "config.yml")))
     return "hermes";
   if (fileExists(join(root, "hermes.toml"))) return "hermes";
@@ -372,35 +464,48 @@ function inferSourceKind(root: string, requested?: MigrationSourceKind): Migrati
 }
 
 function personaFilesFor(kind: MigrationSourceKind, root: string): string[] {
-  const candidates =
-    kind === "openclaw"
-      ? [join(root, "SOUL.md"), join(root, "workspace", "SOUL.md")]
-      : [join(root, "SOUL.md"), join(root, "persona.md")];
-  return listExistingFiles(candidates);
+  const candidates: Record<MigrationSourceKind, string[]> = {
+    openclaw: [join(root, "SOUL.md"), join(root, "workspace", "SOUL.md")],
+    hermes: [join(root, "SOUL.md"), join(root, "persona.md")],
+    codex: [join(root, "AGENTS.md")],
+    "claude-code": [join(root, "CLAUDE.md")],
+  };
+  return listExistingFiles(candidates[kind]);
 }
 
 function memoryFilesFor(kind: MigrationSourceKind, root: string): string[] {
-  const candidates =
-    kind === "openclaw"
-      ? [
-          join(root, "MEMORY.md"),
-          join(root, "USER.md"),
-          join(root, "workspace", "MEMORY.md"),
-          join(root, "workspace", "USER.md"),
-          ...listMarkdownFiles(join(root, "memory")),
-          ...listMarkdownFiles(join(root, "workspace", "memory")),
-        ]
-      : [
-          join(root, "MEMORY.md"),
-          join(root, "USER.md"),
-          join(root, "memories", "MEMORY.md"),
-          join(root, "memories", "USER.md"),
-          join(root, "memory", "MEMORY.md"),
-          join(root, "memory", "USER.md"),
-          ...listMarkdownFiles(join(root, "memories")),
-          ...listMarkdownFiles(join(root, "memory")),
-        ];
-  return [...new Set(listExistingFiles(candidates))];
+  const candidates: Record<MigrationSourceKind, string[]> = {
+    openclaw: [
+      join(root, "MEMORY.md"),
+      join(root, "USER.md"),
+      join(root, "workspace", "MEMORY.md"),
+      join(root, "workspace", "USER.md"),
+      ...listMarkdownFiles(join(root, "memory")),
+      ...listMarkdownFiles(join(root, "workspace", "memory")),
+    ],
+    hermes: [
+      join(root, "MEMORY.md"),
+      join(root, "USER.md"),
+      join(root, "memories", "MEMORY.md"),
+      join(root, "memories", "USER.md"),
+      join(root, "memory", "MEMORY.md"),
+      join(root, "memory", "USER.md"),
+      ...listMarkdownFiles(join(root, "memories")),
+      ...listMarkdownFiles(join(root, "memory")),
+    ],
+    codex: [
+      join(root, "memories", "MEMORY.md"),
+      join(root, "memories", "memory_summary.md"),
+      join(root, "memories", "raw_memories.md"),
+      ...listMarkdownFiles(join(root, "memories")),
+    ],
+    "claude-code": [
+      join(root, "memory", "MEMORY.md"),
+      ...listMarkdownFiles(join(root, "memory")),
+      ...listProjectMemoryFiles(root),
+    ],
+  };
+  return [...new Set(listExistingFiles(candidates[kind]))];
 }
 
 function skillSourcesFor(kind: MigrationSourceKind, root: string): string[] {
@@ -410,6 +515,10 @@ function skillSourcesFor(kind: MigrationSourceKind, root: string): string[] {
     join(root, ".agents", "skills"),
   ];
   if (kind === "hermes") roots.push(join(root, "optional-skills"));
+  if (kind === "codex" && basename(root) === ".codex") {
+    roots.push(join(dirname(root), ".agents", "skills"));
+  }
+  if (kind === "claude-code") roots.push(join(root, "commands"));
   const skills: string[] = [];
   for (const skillsRoot of roots.map(normalizedPath)) {
     if (!dirExists(skillsRoot)) continue;
@@ -431,7 +540,8 @@ function skillSourcesFor(kind: MigrationSourceKind, root: string): string[] {
   return [...new Set(skills)];
 }
 
-function workspaceInstructionFilesFor(root: string): string[] {
+function workspaceInstructionFilesFor(kind: MigrationSourceKind, root: string): string[] {
+  if (kind === "claude-code") return listExistingFiles([join(root, "CLAUDE.md")]);
   return listExistingFiles([join(root, "AGENTS.md"), join(root, "workspace", "AGENTS.md")]);
 }
 
@@ -947,6 +1057,14 @@ function archivedSettings(
       "allowlist",
       "tools",
       "tts_assets",
+      "mcp_servers",
+      "mcpServers",
+      "permissions",
+      "hooks",
+      "sandbox_mode",
+      "approval_policy",
+      "enabledPlugins",
+      "plugins",
     ]) {
       if (collectStringValues(record, key).length > 0 || key in record) keys.add(key);
     }
@@ -966,8 +1084,9 @@ function archivedSettings(
 
 function resolveSourcePath(kind: MigrationSourceKind, sourcePath?: string): string {
   if (sourcePath?.trim()) return normalizedPath(sourcePath);
-  const candidate = SOURCE_DEFAULTS[kind].map(normalizedPath).find(dirExists);
-  return candidate || normalizedPath(SOURCE_DEFAULTS[kind][0]);
+  const defaults = sourceDefaultPaths()[kind];
+  const candidate = defaults.map(normalizedPath).find(dirExists);
+  return candidate || normalizedPath(defaults[0]);
 }
 
 function reportNextSteps(report: Omit<SourceMigrationReport, "nextSteps">): string[] {
@@ -1045,8 +1164,8 @@ export async function runSourceMigration(
     const personaFiles = personaFilesFor(sourceKind, sourceRoot);
     const memoryFiles = memoryFilesFor(sourceKind, sourceRoot);
     const skills = skillSourcesFor(sourceKind, sourceRoot);
-    const workspaceInstructions = workspaceInstructionFilesFor(sourceRoot);
-    const secrets = collectSecrets(parsed.records);
+    const workspaceInstructions = workspaceInstructionFilesFor(sourceKind, sourceRoot);
+    const secrets = collectSecrets(parsed.records, sourceKind);
 
     items.push(...importPersona(personaFiles, sourceKind, dryRun, overwrite));
     items.push(...writeMemoryImport(memoryFiles, targetRoot, sourceKind, dryRun));

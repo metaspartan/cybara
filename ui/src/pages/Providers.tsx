@@ -70,6 +70,7 @@ function providerSettingsFromForm(
 export function Providers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [createProviderType, setCreateProviderType] = useState("");
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [deletingProvider, setDeletingProvider] = useState<Provider | null>(null);
   const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
@@ -281,7 +282,7 @@ export function Providers() {
         is_default: formData.get("is_default") === "on",
       });
       addToast("success", "Provider added successfully");
-      setIsCreateModalOpen(false);
+      closeCreateProviderModal();
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to add provider");
     }
@@ -348,6 +349,16 @@ export function Providers() {
     }
   };
 
+  const openCreateProviderModal = (providerType: string = "") => {
+    setCreateProviderType(providerType);
+    setIsCreateModalOpen(true);
+  };
+
+  const closeCreateProviderModal = () => {
+    setIsCreateModalOpen(false);
+    setCreateProviderType("");
+  };
+
   return (
     <PageLayout
       title="Providers"
@@ -362,10 +373,7 @@ export function Providers() {
           >
             Discover Ollama
           </Button>
-          <Button
-            leftIcon={<Plus className="w-4 h-4" />}
-            onClick={() => setIsCreateModalOpen(true)}
-          >
+          <Button leftIcon={<Plus className="w-4 h-4" />} onClick={() => openCreateProviderModal()}>
             Add Provider
           </Button>
         </div>
@@ -405,7 +413,7 @@ export function Providers() {
               <Cloud className="w-12 h-12 text-gray-600 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-white mb-2">No providers found</h3>
               <p className="text-gray-400 mb-4">Add your first AI provider to get started</p>
-              <Button onClick={() => setIsCreateModalOpen(true)}>Add Provider</Button>
+              <Button onClick={() => openCreateProviderModal()}>Add Provider</Button>
             </CardContent>
           </Card>
         ) : (
@@ -484,15 +492,28 @@ export function Providers() {
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {availableProviders?.map((provider) => (
-                <div key={provider.id} className="p-4 rounded-xl bg-white/5 border border-white/10">
-                  <h4 className="font-medium text-white mb-1">{provider.name}</h4>
-                  <p className="text-sm text-gray-400">{provider.description}</p>
-                  <p className="text-xs text-gray-500 mt-2">
+                <button
+                  key={provider.id}
+                  type="button"
+                  aria-label={`Add ${provider.name} provider`}
+                  onClick={() => openCreateProviderModal(provider.id)}
+                  className="group w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4 text-left transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgb(var(--accent-primary))]"
+                >
+                  <span className="mb-1 flex items-center justify-between gap-3">
+                    <span className="truncate font-medium text-[var(--text-primary)]">
+                      {provider.name}
+                    </span>
+                    <Plus className="h-4 w-4 shrink-0 text-[var(--text-muted)] transition-colors group-hover:text-[rgb(var(--accent-primary))]" />
+                  </span>
+                  <span className="block text-sm text-[var(--text-secondary)]">
+                    {provider.description}
+                  </span>
+                  <span className="mt-2 block text-xs text-[var(--text-muted)]">
                     {provider.models.length > 0
                       ? `${provider.models.length} model${provider.models.length === 1 ? "" : "s"} available`
                       : "No bundled models listed"}
-                  </p>
-                </div>
+                  </span>
+                </button>
               ))}
             </div>
           </CardContent>
@@ -500,9 +521,10 @@ export function Providers() {
 
         <ProviderModal
           isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
+          onClose={closeCreateProviderModal}
           onSubmit={handleCreate}
           title="Add Provider"
+          initialProvider={createProviderType}
           availableProviders={availableProviders || []}
           isLoading={createProvider.isPending}
         />
@@ -598,6 +620,7 @@ interface ProviderModalProps {
   onSubmit: (formData: FormData) => void;
   title: string;
   provider?: Provider | null;
+  initialProvider?: string;
   availableProviders: AvailableProvider[];
   isLoading: boolean;
   isEdit?: boolean;
@@ -614,6 +637,7 @@ function ProviderModal({
   onSubmit,
   title,
   provider,
+  initialProvider,
   availableProviders,
   isLoading,
   isEdit,
@@ -649,7 +673,7 @@ function ProviderModal({
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedProvider(provider?.provider || availableProviders[0]?.id || "");
+      setSelectedProvider(provider?.provider || initialProvider || availableProviders[0]?.id || "");
       setOauthState("idle");
       setDeviceCode(null);
       setOauthToken("");
@@ -663,7 +687,7 @@ function ProviderModal({
     return () => {
       abortRef.current = true;
     };
-  }, [isOpen, provider, availableProviders]);
+  }, [isOpen, provider, initialProvider, availableProviders]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -716,9 +740,31 @@ function ProviderModal({
     onSubmit(formData);
   };
 
-  const providerOptions = availableProviders.map((p) => ({ value: p.id, label: p.name }));
+  const providerOptions = availableProviders.map((providerInfo) => ({
+    value: providerInfo.id,
+    label: providerInfo.name,
+    icon: hasProviderIcon(providerInfo.id) ? (
+      <ProviderIcon provider={providerInfo.id} size={18} />
+    ) : (
+      <Cloud className="h-4 w-4 text-[var(--text-muted)]" />
+    ),
+    badge:
+      providerInfo.authType === "oauth" ? (
+        <Badge
+          size="sm"
+          className="border-[rgba(var(--accent-primary),0.42)] bg-[rgba(var(--accent-primary),0.16)] px-2 py-0 text-[11px] leading-5 text-[var(--text-primary)] hover:bg-[rgba(var(--accent-primary),0.22)]"
+        >
+          OAuth
+        </Badge>
+      ) : undefined,
+  }));
   const selectedProviderInfo = availableProviders.find((p) => p.id === selectedProvider);
   const authType = selectedProviderInfo?.authType || "api_key";
+  const apiConsoleUrl = selectedProviderInfo?.apiConsoleUrl;
+
+  const openApiConsole = () => {
+    if (apiConsoleUrl) void openExternal(apiConsoleUrl);
+  };
 
   const startDeviceCodeFlow = async () => {
     setOauthState("connecting");
@@ -894,16 +940,8 @@ function ProviderModal({
           <SearchableSelect
             name="provider"
             label="Provider Type"
-            options={providerOptions.map((option) => ({
-              value: option.value,
-              label: option.label,
-              icon: hasProviderIcon(option.value) ? (
-                <ProviderIcon provider={option.value} size={18} />
-              ) : (
-                <Cloud className="h-4 w-4 text-gray-400" />
-              ),
-            }))}
-            defaultValue={provider?.provider}
+            options={providerOptions}
+            value={selectedProvider}
             placeholder="Search 50+ providers..."
             searchPlaceholder="Search providers..."
             onChange={setSelectedProvider}
@@ -935,6 +973,16 @@ function ProviderModal({
                   : "Your API key from the provider's dashboard"
               }
             />
+            {apiConsoleUrl && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-[rgb(var(--accent-primary))] hover:text-[var(--text-primary)]"
+                onClick={openApiConsole}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Open {selectedProviderInfo?.name || "provider"} API console
+              </button>
+            )}
             {selectedProvider === "devin" && (
               <Input
                 name="organization_id"
@@ -950,6 +998,32 @@ function ProviderModal({
             )}
           </div>
         )}
+
+        {authType !== "api_key" &&
+          authType !== "oauth" &&
+          authType !== "aws-sdk" &&
+          authType !== "none" && (
+            <div className="space-y-3">
+              <Input
+                name="access_token"
+                label="Access Token"
+                type="password"
+                placeholder="Paste your token here..."
+                defaultValue={provider?.config?.access_token as string}
+                helperText="Your access token from the provider's console"
+              />
+              {apiConsoleUrl && (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[rgb(var(--accent-primary))] hover:text-[var(--text-primary)]"
+                  onClick={openApiConsole}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open {selectedProviderInfo?.name || "provider"} API console
+                </button>
+              )}
+            </div>
+          )}
 
         {authType === "oauth" && (
           <div className="space-y-3">
