@@ -4,6 +4,7 @@ use std::net::TcpStream;
 use std::time::Duration;
 
 const PROBE_TIMEOUT: Duration = Duration::from_millis(900);
+const GATEWAY_PORT_SIGNAL_PREFIX: &str = "CYBARA_GATEWAY_PORT=";
 
 #[derive(Clone)]
 pub struct GatewayEndpoint {
@@ -95,15 +96,41 @@ pub fn is_compatible_gateway_at(addr: &str, expected_version: &str) -> bool {
 }
 
 pub fn parse_gateway_port_signal(value: &str) -> Option<u16> {
-    value.lines().find_map(|line| {
-        let port = line.trim().strip_prefix("CYBARA_GATEWAY_PORT=")?;
-        port.parse::<u16>().ok().filter(|value| *value > 0)
-    })
+    value
+        .split(GATEWAY_PORT_SIGNAL_PREFIX)
+        .skip(1)
+        .find_map(|suffix| {
+            let (port, _) = suffix.split_once(';')?;
+            port.parse::<u16>().ok().filter(|value| *value > 0)
+        })
+}
+
+#[derive(Default)]
+pub struct GatewayPortSignalParser {
+    buffer: String,
+}
+
+impl GatewayPortSignalParser {
+    pub fn push(&mut self, value: &str) -> Option<u16> {
+        self.buffer.push_str(value);
+        if let Some(port) = parse_gateway_port_signal(&self.buffer) {
+            self.buffer.clear();
+            return Some(port);
+        }
+        if self.buffer.len() > 4096 {
+            let suffix = self.buffer.chars().rev().take(256).collect::<String>();
+            self.buffer = suffix.chars().rev().collect();
+        }
+        None
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{GatewayEndpoint, is_compatible_gateway_at, parse_gateway_port_signal};
+    use super::{
+        GatewayEndpoint, GatewayPortSignalParser, is_compatible_gateway_at,
+        parse_gateway_port_signal,
+    };
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::thread;
@@ -161,18 +188,26 @@ mod tests {
     #[test]
     fn parses_only_valid_gateway_port_signals() {
         assert_eq!(
-            parse_gateway_port_signal("CYBARA_GATEWAY_PORT=4271\n"),
+            parse_gateway_port_signal("CYBARA_GATEWAY_PORT=4271;\n"),
             Some(4271)
         );
         assert_eq!(
-            parse_gateway_port_signal("log line\nCYBARA_GATEWAY_PORT=4269\nnext"),
+            parse_gateway_port_signal("log line\nCYBARA_GATEWAY_PORT=4269;\nnext"),
             Some(4269)
         );
-        assert_eq!(parse_gateway_port_signal("CYBARA_GATEWAY_PORT=0"), None);
+        assert_eq!(parse_gateway_port_signal("CYBARA_GATEWAY_PORT=0;"), None);
         assert_eq!(
-            parse_gateway_port_signal("CYBARA_GATEWAY_PORT=invalid"),
+            parse_gateway_port_signal("CYBARA_GATEWAY_PORT=invalid;"),
             None
         );
         assert_eq!(parse_gateway_port_signal("PORT=4269"), None);
+    }
+
+    #[test]
+    fn parses_fragmented_gateway_port_signals() {
+        let mut parser = GatewayPortSignalParser::default();
+        assert_eq!(parser.push("startup\nCYBARA_GATEWAY_"), None);
+        assert_eq!(parser.push("PORT=42"), None);
+        assert_eq!(parser.push("71;\n"), Some(4271));
     }
 }

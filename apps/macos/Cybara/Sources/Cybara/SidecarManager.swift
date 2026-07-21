@@ -208,15 +208,12 @@ final class SidecarManager: ObservableObject {
         }
     }
 
-    func stop() {
-        let managedProcess = managedProcessForStop()
-        Task {
-            await terminateManagedProcess(managedProcess, timeout: 3)
-        }
+    func stopAndWait() async {
+        await terminateManagedProcess(managedProcessForStop(), timeout: 3)
     }
 
     func stopForUpdate() async {
-        await terminateManagedProcess(managedProcessForStop(), timeout: 3)
+        await stopAndWait()
     }
 
     func restart() async {

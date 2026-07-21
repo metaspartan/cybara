@@ -492,6 +492,7 @@ fn main() {
                 )
                 .env("CYBARA_GATEWAY_PORT_SIGNAL", "stdout");
             let (port_sender, port_receiver) = std::sync::mpsc::sync_channel(1);
+            let startup_aborted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             let (mut rx, child) = match sidecar.args(["start"]).spawn() {
                 Ok(result) => result,
                 Err(error) => {
@@ -507,14 +508,16 @@ fn main() {
 
             let log_sidecar_output = should_log_sidecar_output();
             let output_app_handle = app.handle().clone();
+            let output_startup_aborted = startup_aborted.clone();
             tauri::async_runtime::spawn(async move {
                 use tauri_plugin_shell::process::CommandEvent;
                 let mut port_sender = Some(port_sender);
+                let mut port_parser = gateway::GatewayPortSignalParser::default();
                 while let Some(event) = rx.recv().await {
                     match event {
                         CommandEvent::Stdout(line) => {
                             let output = String::from_utf8_lossy(&line);
-                            if let Some(port) = gateway::parse_gateway_port_signal(&output)
+                            if let Some(port) = port_parser.push(&output)
                                 && let Some(sender) = port_sender.take()
                             {
                                 let _ = sender.send(port);
@@ -545,15 +548,17 @@ fn main() {
                                 "Cybara gateway sidecar terminated with code {:?}",
                                 payload.code
                             );
-                            set_gateway_startup_status(
-                                &output_app_handle,
-                                GatewayStartupStatus::failed(match payload.code {
-                                    Some(code) => {
-                                        format!("The Cybara gateway exited with code {code}.")
-                                    }
-                                    None => "The Cybara gateway exited unexpectedly.".into(),
-                                }),
-                            );
+                            if !output_startup_aborted.load(std::sync::atomic::Ordering::Acquire) {
+                                set_gateway_startup_status(
+                                    &output_app_handle,
+                                    GatewayStartupStatus::failed(match payload.code {
+                                        Some(code) => {
+                                            format!("The Cybara gateway exited with code {code}.")
+                                        }
+                                        None => "The Cybara gateway exited unexpectedly.".into(),
+                                    }),
+                                );
+                            }
                             break;
                         }
                         _ => {}
@@ -569,14 +574,23 @@ fn main() {
 
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
-                let Ok(port) = port_receiver.recv_timeout(Duration::from_secs(10)) else {
-                    let message = "The Cybara gateway did not report its listening port within 10 seconds. Review the desktop logs for the underlying sidecar error.";
-                    log::error!("{message}");
-                    set_gateway_startup_status(
-                        &app_handle,
-                        GatewayStartupStatus::failed(message),
-                    );
-                    return;
+                let port = match port_receiver.recv_timeout(Duration::from_secs(10)) {
+                    Ok(port) => port,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        stop_sidecar(&app_handle);
+                        return;
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        let message = "The Cybara gateway did not report its listening port within 10 seconds. Review the desktop logs for the underlying sidecar error.";
+                        log::error!("{message}");
+                        startup_aborted.store(true, std::sync::atomic::Ordering::Release);
+                        stop_sidecar(&app_handle);
+                        set_gateway_startup_status(
+                            &app_handle,
+                            GatewayStartupStatus::failed(message),
+                        );
+                        return;
+                    }
                 };
                 let endpoint = gateway::GatewayEndpoint::loopback(port);
                 set_gateway_endpoint(&app_handle, endpoint.clone());
@@ -591,6 +605,8 @@ fn main() {
                 } else {
                     eprintln!("[Cybara] Sidecar did not become ready within timeout");
                     log::error!("Cybara gateway sidecar did not become ready within timeout");
+                    startup_aborted.store(true, std::sync::atomic::Ordering::Release);
+                    stop_sidecar(&app_handle);
                     set_gateway_startup_status(
                         &app_handle,
                         GatewayStartupStatus::failed(

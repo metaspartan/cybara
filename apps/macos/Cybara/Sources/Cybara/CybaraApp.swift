@@ -16,6 +16,7 @@ extension Notification.Name {
 @MainActor
 final class CybaraAppDelegate: NSObject, NSApplicationDelegate {
     var sidecar: SidecarManager?
+    private var terminationPending = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -32,8 +33,15 @@ final class CybaraAppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
-        sidecar?.stop()
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let sidecar else { return .terminateNow }
+        guard !terminationPending else { return .terminateLater }
+        terminationPending = true
+        Task {
+            await sidecar.stopAndWait()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     @objc private func showMainWindow() {

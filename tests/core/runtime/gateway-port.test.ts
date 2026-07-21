@@ -20,6 +20,6 @@ describe("gateway port selection", () => {
   });
 
   test("formats the desktop startup signal", () => {
-    expect(gatewayPortSignal(4271)).toBe("CYBARA_GATEWAY_PORT=4271");
+    expect(gatewayPortSignal(4271)).toBe("CYBARA_GATEWAY_PORT=4271;");
   });
 });

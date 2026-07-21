@@ -50,16 +50,21 @@ describe("native macOS shell wiring", () => {
     expect(sidecarManager).toContain("gatewayMode = .attached");
   });
 
-  test("sidecar shutdown suspends while waiting for managed processes", () => {
+  test("sidecar shutdown suspends while waiting for managed processes and app termination", () => {
     const sidecarManager = readFileSync(join(MACOS_APP_DIR, "SidecarManager.swift"), "utf8");
+    const app = readFileSync(join(MACOS_APP_DIR, "CybaraApp.swift"), "utf8");
 
     expect(sidecarManager).toContain("func stopForUpdate() async");
-    expect(sidecarManager).toContain("Task {");
+    expect(sidecarManager).toContain("func stopAndWait() async");
     expect(sidecarManager).toContain(
       "terminateManagedProcess(managedProcessForStop(), timeout: 3)"
     );
     expect(sidecarManager).toContain("try? await Task.sleep(for: .milliseconds(50))");
     expect(sidecarManager).not.toContain("Thread.sleep(forTimeInterval:");
+    expect(app).toContain("func applicationShouldTerminate");
+    expect(app).toContain("await sidecar.stopAndWait()");
+    expect(app).toContain("sender.reply(toApplicationShouldTerminate: true)");
+    expect(app).toContain("return .terminateLater");
   });
 
   test("native shell does not embed the web UI as a detail pane", () => {

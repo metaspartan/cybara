@@ -31,7 +31,7 @@ export function NewChatWorkspaceBar({
   onRefreshBranches: () => Promise<void> | void;
   onSelectWorkspace: () => void;
   onSwitchBranch: (branch: string) => Promise<void> | void;
-  workspaceDir: string;
+  workspaceDir: string | null;
   workspaceSaving: boolean;
 }): ReactElement {
   return (

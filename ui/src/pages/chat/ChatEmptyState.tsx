@@ -6,7 +6,7 @@ interface ChatEmptyStateProps {
   children: ReactNode;
   onClearWorkspace: () => void;
   onSelectWorkspace: () => void;
-  workspaceDir: string;
+  workspaceDir: string | null;
   workspaceSaving: boolean;
   gitBranches: GitBranchOption[];
   gitBranch: string | null;

@@ -17,5 +17,5 @@ export function gatewayPortFallbackCount(value: string | undefined): number {
 }
 
 export function gatewayPortSignal(port: number): string {
-  return `CYBARA_GATEWAY_PORT=${port}`;
+  return `CYBARA_GATEWAY_PORT=${port};`;
 }

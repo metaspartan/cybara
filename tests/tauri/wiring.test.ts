@@ -126,6 +126,7 @@ describe("Tauri wiring", () => {
     expect(gatewayRs).toContain("parse_gateway_port_signal");
     expect(mainRs).toContain('"CYBARA_PORT_FALLBACK_COUNT"');
     expect(mainRs).toContain('.env("CYBARA_GATEWAY_PORT_SIGNAL", "stdout")');
+    expect(mainRs).toContain("GatewayPortSignalParser::default()");
     expect(mainRs).toContain("port_receiver.recv_timeout(Duration::from_secs(10))");
     expect(mainRs).not.toContain("select_launch_endpoint");
     expect(mainRs).toContain("SidecarState(std::sync::Mutex::new(None))");
@@ -137,6 +138,7 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("window.hide()");
     expect(mainRs).toContain("if let Some(state) = app.try_state::<SidecarState>()");
     expect(mainRs).toContain("if let Some(child) = guard.take()");
+    expect(mainRs.match(/stop_sidecar\(&app_handle\)/g)).toHaveLength(3);
   });
 
   test("desktop shells expose a cross-platform tray with live provider usage", () => {
