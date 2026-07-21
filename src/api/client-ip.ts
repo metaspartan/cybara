@@ -55,9 +55,6 @@ export function getClientIp(
   }
 
   if (directIp) {
-    if (isLoopbackIp(directIp) && forwarded && !isLoopbackIp(forwarded)) {
-      return forwarded;
-    }
     return directIp;
   }
 

@@ -68,6 +68,35 @@ describe("new channel adapters", () => {
     });
     await adapter.stop(channelId);
   });
+
+  test("webhook access uses the principal bound to its secret", async () => {
+    const adapter = new WebhookAdapter();
+    const channelId = `webhook-principal-${crypto.randomUUID()}`;
+    const rawBody = JSON.stringify({
+      message: "deployment complete",
+      sender_id: "forged-sender",
+      conversation_id: "release-43",
+    });
+    securityManager.setConfig(channelId, { dm_policy: "allowlist" });
+    securityManager.addAllowedSender(channelId, "trusted-ci");
+    adapter.setMessageHandler(async () => "accepted");
+    await adapter.start(channelId, {
+      secret: "topsecret",
+      principal_id: "trusted-ci",
+      dm_policy: "allowlist",
+    });
+
+    const accepted = await adapter.handleWebhook(channelId, {
+      body: JSON.parse(rawBody),
+      rawBody,
+      headers: { "x-cybara-signature": sign(rawBody, "topsecret") },
+      query: {},
+    });
+
+    expect(accepted).toMatchObject({ status: 200, body: { response: "accepted" } });
+    securityManager.removeAllowedSender(channelId, "trusted-ci");
+    await adapter.stop(channelId);
+  });
 });
 
 describe("sms + email adapter wiring", () => {

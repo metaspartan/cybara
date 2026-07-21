@@ -1,7 +1,23 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { randomUUID } from "crypto";
-import { tables } from "../../src/core/database";
+import db, { tables } from "../../src/core/database";
 import { searchAllLogs, getRecentActivity } from "../../src/core/logging";
+
+const sessionIds: string[] = [];
+
+function createSession(label: string): string {
+  const id = `${label}_${randomUUID()}`;
+  sessionIds.push(id);
+  tables.chatSessions.ensure(id, "test-agent");
+  return id;
+}
+
+afterEach(() => {
+  for (const sessionId of sessionIds.splice(0)) {
+    db.query("DELETE FROM session_messages WHERE session_id = ?").run(sessionId);
+    tables.chatSessions.delete(sessionId);
+  }
+});
 
 describe("searchAllLogs (SQL-level filtering)", () => {
   test("finds matching rows across all four sources by query", async () => {
@@ -20,9 +36,10 @@ describe("searchAllLogs (SQL-level filtering)", () => {
       direction: "incoming",
       content: `channel ${token} msg`,
     });
+    const sessionId = createSession("search");
     tables.sessionMessages.add({
       id: randomUUID(),
-      session_id: "s1",
+      session_id: sessionId,
       role: "user",
       content: `session ${token} text`,
     });
@@ -52,17 +69,19 @@ describe("getRecentActivity (windowed by created_at)", () => {
   test("excludes rows older than the window and includes recent ones", async () => {
     const token = `rec_${randomUUID().slice(0, 8)}`;
     const oldTs = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const oldSessionId = createSession("old");
+    const newSessionId = createSession("new");
 
     tables.sessionMessages.add({
       id: randomUUID(),
-      session_id: `old_${token}`,
+      session_id: oldSessionId,
       role: "user",
       content: `old ${token}`,
       created_at: oldTs,
     });
     tables.sessionMessages.add({
       id: randomUUID(),
-      session_id: `new_${token}`,
+      session_id: newSessionId,
       role: "user",
       content: `new ${token}`,
     });

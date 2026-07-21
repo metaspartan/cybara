@@ -23,7 +23,7 @@ describe("client IP resolution", () => {
     expect(isLoopbackIp("::ffff:127.0.0.1")).toBe(true);
   });
 
-  test("does not let same-host reverse proxy traffic inherit localhost auth bypass", () => {
+  test("does not trust forwarded addresses without explicit proxy trust", () => {
     const headers = {
       host: "cybara.example",
       "sec-fetch-site": "same-origin",
@@ -31,8 +31,14 @@ describe("client IP resolution", () => {
     };
     const clientIp = getClientIp(headers, "127.0.0.1", { trustProxy: false });
 
-    expect(clientIp).toBe("203.0.113.42");
+    expect(clientIp).toBe("127.0.0.1");
     expect(security.authenticateRequest(headers, clientIp).authenticated).toBe(false);
+  });
+
+  test("uses forwarded addresses from explicitly trusted same-host proxies", () => {
+    expect(
+      getClientIp({ "x-forwarded-for": "203.0.113.42" }, "127.0.0.1", { trustProxy: true })
+    ).toBe("203.0.113.42");
   });
 
   test("trustProxy mode honors the first forwarded address", () => {

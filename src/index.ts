@@ -19,6 +19,7 @@ import {
   getGatewayBasePath,
   revealGatewayApiKey,
   securityCheck,
+  validateMessageSize,
 } from "./api/security";
 import {
   createTerminalSession,
@@ -591,6 +592,28 @@ function createGatewayServer(
       }
 
       if (pathname.startsWith("/api/")) {
+        const preflightSecurity =
+          req.method === "OPTIONS"
+            ? undefined
+            : securityCheck(req.method, pathname, requestHeaders, clientIp);
+        if (preflightSecurity && !preflightSecurity.passed) {
+          const response = await handleRequest({
+            method: req.method,
+            url: basePath ? `${url.origin}${pathname}${url.search}` : req.url,
+            headers: requestHeaders,
+            ip: clientIp,
+            security: preflightSecurity,
+          });
+          return new Response(JSON.stringify(response.body), {
+            status: response.status,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-store",
+              ...commonSecurityHeaders,
+              ...response.headers,
+            },
+          });
+        }
         let body: unknown;
         let rawBody: string | undefined;
         let malformedBody = false;
@@ -653,6 +676,7 @@ function createGatewayServer(
           body,
           rawBody,
           ip: clientIp,
+          security: preflightSecurity,
         });
         return new Response(
           response.raw ? String(response.body ?? "") : JSON.stringify(response.body),
@@ -1053,6 +1077,8 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
     );
 
     const fullMessage = buildChannelMessageWithFileContext(message, fileInfo);
+    const validation = validateMessageSize(fullMessage || message);
+    if (!validation.valid) return validation.error || "Message is too large";
     const images = buildChannelImages(fileInfo);
     const routing = resolveChannelAgentRouting(channelId, agentManager.list());
 
@@ -1089,6 +1115,8 @@ const createChannelChatHandler =
     });
     if (commandResponse !== null) return commandResponse;
     const fullMessage = buildChannelMessageWithFileContext(message, fileInfo);
+    const validation = validateMessageSize(fullMessage || message);
+    if (!validation.valid) return validation.error || "Message is too large";
     const images = buildChannelImages(fileInfo);
     const routing = resolveChannelAgentRouting(fileInfo.channelId, agentManager.list());
     const response = await handleChat({

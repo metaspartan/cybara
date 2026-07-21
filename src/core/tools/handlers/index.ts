@@ -41,6 +41,7 @@ import {
   handleVideoFrames,
   handleWeather,
 } from "./skill";
+import { validateToolArguments } from "../../tool-argument-validation";
 import { handleHomeAssistant } from "./home-assistant";
 import { handleMixtureOfAgents } from "./mixture-of-agents";
 import { handleTodo } from "./todo";
@@ -510,6 +511,10 @@ export async function executeTool(
   const missing = getMissingRequiredToolArguments(name, args);
   if (missing.length > 0) {
     throw new Error(formatMissingRequiredToolArgumentsError(name, missing));
+  }
+  const validationErrors = validateToolArguments(args, toolSchemaRegistry[name]?.input_schema);
+  if (validationErrors.length > 0) {
+    throw new Error(`Validation error: ${validationErrors.slice(0, 3).join("; ")}`);
   }
 
   const requiredPermissions = getToolRequiredPermissions(name);

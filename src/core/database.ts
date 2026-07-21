@@ -41,6 +41,7 @@ restrictPermissions();
 const db = new Database(dbPath);
 console.error("[Database] Database instance created");
 restrictPermissions();
+db.exec("PRAGMA foreign_keys = ON");
 db.exec("PRAGMA journal_mode = WAL");
 // NORMAL is safe under WAL and much faster than FULL for our write-heavy
 // telemetry; busy_timeout avoids "database is locked" under concurrent access.
@@ -727,7 +728,7 @@ const stmts = {
       "INSERT INTO mcp_servers (id, name, command, args, env, url, enabled) VALUES (?, ?, ?, ?, ?, ?, ?)"
     ),
     update: prepare(
-      "UPDATE mcp_servers SET name=?, command=?, args=?, env=?, url=COALESCE(?, url), enabled=? WHERE id=?"
+      "UPDATE mcp_servers SET name=?, command=?, args=?, env=?, url=?, enabled=? WHERE id=?"
     ),
     delete: prepare("DELETE FROM mcp_servers WHERE id = ?"),
     migrateEnv: prepare("UPDATE mcp_servers SET env=? WHERE id=?"),
@@ -791,6 +792,11 @@ const stmts = {
   },
   chatSessions: {
     get: prepare("SELECT * FROM chat_sessions WHERE id = ?"),
+    ensure: prepare(
+      `INSERT INTO chat_sessions (id, agent_id, messages, created_at, updated_at)
+       VALUES (?, ?, '[]', COALESCE(?, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP)
+       ON CONFLICT(id) DO NOTHING`
+    ),
     upsert: prepare(
       `INSERT INTO chat_sessions (id, agent_id, title, messages, workspace_dir, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -1191,16 +1197,20 @@ export const tables = {
         s.url || null,
         s.enabled ? 1 : 0
       ),
-    update: (id: string, s: Partial<MCPServer>) =>
-      stmts.mcpServers.update.run(
-        s.name || null,
-        s.command ?? "",
-        s.args || null,
-        s.env ? sealSecret(s.env, `mcp:${id}:env`) : null,
-        s.url ?? null,
-        s.enabled ? 1 : 0,
+    update: (id: string, s: Partial<MCPServer>) => {
+      const existing = openMcpServerRow(stmts.mcpServers.get.get(id));
+      if (!existing) return undefined;
+      const updated = { ...existing, ...s };
+      return stmts.mcpServers.update.run(
+        updated.name,
+        updated.command,
+        updated.args || null,
+        updated.env ? sealSecret(updated.env, `mcp:${id}:env`) : null,
+        updated.url || null,
+        updated.enabled ? 1 : 0,
         id
-      ),
+      );
+    },
     delete: (id: string) => stmts.mcpServers.delete.run(id),
   },
   agents: {
@@ -1330,6 +1340,8 @@ export const tables = {
   },
   chatSessions: {
     get: (id: string) => stmts.chatSessions?.get.get(id),
+    ensure: (id: string, agentId = "", createdAt?: string) =>
+      stmts.chatSessions?.ensure.run(id, agentId, createdAt || null),
     upsert: (session: ChatSessionDB) =>
       stmts.chatSessions?.upsert.run(
         session.id,

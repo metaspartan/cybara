@@ -120,7 +120,7 @@ export class HomeAssistantAdapter implements ChannelAdapter {
 
     await logChannelMessage("homeassistant", "incoming", text, { channelId, senderId: sender });
 
-    const access = evaluateChannelAccess(channelId, String(sender), "homeassistant", {
+    const access = evaluateChannelAccess(channelId, "homeassistant", "homeassistant", {
       isGroup: false,
     });
     if (!access.permitted) return access.reply ?? null;

@@ -26,6 +26,19 @@ describe("chat process activities", () => {
     ).toBe("Ran bun test bun run typecheck");
   });
 
+  test("formats complete command activity without shortening it", () => {
+    const command =
+      "printf 'complete command activity remains fully visible across every client surface' >/dev/null";
+    expect(
+      formatProcessActivityFromToolCall({
+        id: "complete-command-call",
+        name: "exec",
+        args: { command },
+        status: "completed",
+      })
+    ).toBe(`Ran ${command}`);
+  });
+
   test("replaces a start activity with its later completion", () => {
     const activities: ProcessActivityInfo[] = [
       {

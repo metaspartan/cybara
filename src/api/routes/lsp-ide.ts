@@ -2,6 +2,7 @@ import { existsSync, statSync } from "fs";
 import { dirname, isAbsolute, parse, resolve } from "path";
 import { getLSPManager, initLSPManager } from "../../core/lsp";
 import { trackMetric } from "../../core/metrics";
+import { resolveAllowedIdePath } from "../ide-path-policy";
 import type { LspLocationLike, LspSymbolLike, NormalizedLspSymbol } from "./_shared";
 
 export function resolveWorkspacePath(filePath?: string): string {
@@ -12,7 +13,11 @@ export function resolveWorkspacePath(filePath?: string): string {
   const trimmed = filePath.trim();
   if (!trimmed) return process.cwd();
 
-  const absolute = isAbsolute(trimmed) ? resolve(trimmed) : resolve(process.cwd(), trimmed);
+  const requested = isAbsolute(trimmed) ? resolve(trimmed) : resolve(process.cwd(), trimmed);
+  const absolute = resolveAllowedIdePath(requested);
+  if (!absolute) {
+    throw new Error("Validation error: LSP path is outside the allowed IDE scope");
+  }
   let current = absolute;
   try {
     if (!statSync(absolute).isDirectory()) current = dirname(absolute);

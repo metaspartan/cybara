@@ -112,6 +112,7 @@ export async function upsertPersistedSessionMessage(
   message: ChatMessage,
   options?: { stableKey?: string; createdAtOffsetMs?: number; metadata?: Record<string, unknown> }
 ): Promise<void> {
+  tables.chatSessions.ensure(sessionId, agentId);
   const id = sessionMessageStableId([
     sessionId,
     message.role,

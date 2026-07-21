@@ -48,6 +48,7 @@ export {
   TelegramBotManager,
   type TelegramUpdate,
   processTelegramWebhook,
+  processTelegramWebhookResult,
 } from "./adapters/telegram";
 
 export { discordAdapter, DiscordAdapter } from "./adapters/discord";

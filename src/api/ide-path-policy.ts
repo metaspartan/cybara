@@ -47,7 +47,7 @@ export function isWithinIdeHome(resolvedPath: string): boolean {
 }
 
 export function isIdePathAllowed(targetPath: string): boolean {
-  return isWithinIdeHome(canonicalizeForCheck(targetPath));
+  return resolveAllowedIdePath(targetPath) !== null;
 }
 
 export function normalizeIdeInputPath(inputPath: string): string {
@@ -55,4 +55,9 @@ export function normalizeIdeInputPath(inputPath: string): string {
     return join(IDE_HOME_DIR, inputPath.slice(1));
   }
   return inputPath;
+}
+
+export function resolveAllowedIdePath(inputPath: string): string | null {
+  const resolvedPath = canonicalizeForCheck(normalizeIdeInputPath(inputPath));
+  return isWithinIdeHome(resolvedPath) ? resolvedPath : null;
 }

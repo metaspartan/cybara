@@ -1,6 +1,7 @@
 import { sanitizeAssistantContent } from "../core/llm/text-tool-calls";
 import { upsertPersistedSessionMessage } from "../core/session-context";
 import {
+  appendSessionEvent,
   getActiveSessionRunId,
   listAllRunEvents,
   listIncompleteSessionRuns,
@@ -197,6 +198,12 @@ export async function recoverInterruptedSessionMessages(
     await upsertPersistedSessionMessage(sessionId, agentId, durableMarker, {
       stableKey: `interrupted-run:${run.runId}`,
       metadata: { source: "gateway_crash_recovery" },
+    });
+    appendSessionEvent({
+      sessionId,
+      runId: run.runId,
+      type: "run_completed",
+      payload: { interrupted: true, source: "gateway_crash_recovery", timestamp: Date.now() },
     });
     hydrated.push(recovered);
     representedRunIds.add(run.runId);

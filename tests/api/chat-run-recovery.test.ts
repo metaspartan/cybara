@@ -7,7 +7,12 @@ import {
   loadPersistedSession,
   upsertPersistedSessionMessage,
 } from "../../src/core/session-context";
-import { getActiveSessionRunId } from "../../src/core/session-event-ledger";
+import {
+  completeSessionRun,
+  getActiveSessionRunId,
+  listAllRunEvents,
+  listIncompleteSessionRuns,
+} from "../../src/core/session-event-ledger";
 import { broadcastStatus } from "../../src/core/status";
 
 const sessionIds: string[] = [];
@@ -118,5 +123,21 @@ describe("chat run recovery", () => {
       text: "Read file 599",
       toolCallId: "read-599",
     });
+  });
+
+  test("closes a recovered run so later restarts do not keep it active", async () => {
+    const { sessionId, agentId } = createSession("closed-recovery-run");
+    const timestamp = Date.now();
+    broadcastTool(sessionId, 0, timestamp);
+    broadcastTool(sessionId, 1, timestamp + 10);
+    const runId = getActiveSessionRunId(sessionId);
+    expect(runId).toBeString();
+    completeSessionRun(sessionId);
+
+    const recovered = await recoverInterruptedSessionMessages(sessionId, agentId, []);
+
+    expect(recovered.some((message) => message.run_id === runId && message.interrupted)).toBe(true);
+    expect(listIncompleteSessionRuns(sessionId)).toEqual([]);
+    expect(listAllRunEvents(runId || "").at(-1)?.type).toBe("run_completed");
   });
 });

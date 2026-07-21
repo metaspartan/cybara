@@ -1452,13 +1452,23 @@ describe("Channels API", () => {
 });
 
 describe("Webhooks API", () => {
-  test("POST /api/webhooks/telegram/:channelId should return ok=false for unknown channel", async () => {
+  test("POST /api/webhooks/telegram/:channelId returns a failing HTTP status for unknown channels", async () => {
     const { status, data } = await fixture.api(
       "POST",
       `/api/webhooks/telegram/missing-${Date.now()}`,
       {}
     );
-    expect(status).toBe(200);
+    expect(status).toBe(404);
     expect(data.ok).toBe(false);
+  });
+
+  test("POST /api/channels/:channelId/webhook preserves route failures", async () => {
+    const { status, data } = await fixture.api(
+      "POST",
+      `/api/channels/missing-${Date.now()}/webhook`,
+      { message: "hello" }
+    );
+    expect(status).toBe(404);
+    expect(data.error).toBe("channel not found");
   });
 });

@@ -26,6 +26,7 @@ import { getRateLimitStatus } from "../core/tools/index";
 import { applyActiveAgentToSession } from "./chat-agent-prompt";
 import { recoverInterruptedSessionMessages } from "./chat-run-recovery";
 import {
+  activeChatTurnAbortControllers,
   buildLastMessagePreview,
   buildMemorySessionListEntries,
   type ChatSessionAgentUpdate,
@@ -33,11 +34,14 @@ import {
   chatSessions,
   countVisibleSessionMessages,
   deleteResidentChatSession,
+  deletingChatSessionIds,
   getResidentChatSession,
   hydratePersistedSessionIndex,
   persistActiveSessionContext,
   persistedSessionIndex,
   persistedSessionToIndexEntry,
+  pendingChatCompletions,
+  pendingChatQueues,
   removePersistedSessionIndex,
   type SessionListEntry,
   sortSessionListEntries,
@@ -422,14 +426,30 @@ export async function listSessionPage(options?: { limit?: number; offset?: numbe
 }
 
 export async function deleteSession(sessionId: string): Promise<boolean> {
-  const memoryDeleted = deleteResidentChatSession(sessionId);
-
-  const persistedDeleted = await deletePersistedSession(sessionId);
-  if (memoryDeleted || persistedDeleted) {
-    removePersistedSessionIndex(sessionId);
+  const key = sessionId.trim();
+  if (!key) return false;
+  deletingChatSessionIds.add(key);
+  const controller = activeChatTurnAbortControllers.get(key);
+  if (controller && !controller.signal.aborted) {
+    controller.abort(new DOMException("Chat session deleted", "AbortError"));
   }
-
-  return memoryDeleted || persistedDeleted;
+  for (const item of pendingChatQueues.get(key) || []) {
+    const completion = pendingChatCompletions.get(item.id);
+    if (!completion) continue;
+    pendingChatCompletions.delete(item.id);
+    completion.reject(new Error("Chat session deleted"));
+  }
+  try {
+    await chatTurnMutex.waitForIdle(key);
+    const memoryDeleted = deleteResidentChatSession(key);
+    const persistedDeleted = await deletePersistedSession(key);
+    if (memoryDeleted || persistedDeleted) {
+      removePersistedSessionIndex(key);
+    }
+    return memoryDeleted || persistedDeleted;
+  } finally {
+    deletingChatSessionIds.delete(key);
+  }
 }
 
 /**

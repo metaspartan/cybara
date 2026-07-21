@@ -1115,6 +1115,7 @@ export async function handleBrowser(
         case "evaluate": {
           const fn = (request.fn as string) || (args.fn as string);
           if (!fn) throw new Error("fn required for evaluate action");
+          pwManager.assertSafeBrowserEvaluationScript(fn);
           const result = await page.evaluate(fn);
           return { success: true, kind: "evaluate", result };
         }
