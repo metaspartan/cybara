@@ -55,6 +55,17 @@ describe("GitHub Actions security posture", () => {
     expect(workflow).toContain("--lockfile=src-tauri/Cargo.lock");
   });
 
+  test("OSV-scanned package roots pin the patched DOMPurify release", () => {
+    expect(read("package.json")).toContain('"dompurify": "3.4.12"');
+    expect(read("ui/package.json")).toContain('"dompurify": "3.4.12"');
+
+    for (const lockfile of ["bun.lock", "ui/bun.lock"]) {
+      const contents = read(lockfile);
+      expect(contents).toContain("dompurify@3.4.12");
+      expect(contents).not.toContain("dompurify@3.4.11");
+    }
+  });
+
   test("pull request CI covers the native macOS SwiftPM package", () => {
     const workflow = read(".github/workflows/ci.yml");
 
