@@ -16,7 +16,10 @@ interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, helperText, options = [], className, id, onChange, ...props }, ref) => {
+  (
+    { label, error, helperText, options = [], children, className, id, onChange, ...props },
+    ref
+  ) => {
     const generatedId = useId();
     const selectId = id || generatedId;
     return (
@@ -39,11 +42,12 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             onChange={(e) => onChange?.(e.target.value)}
             {...props}
           >
-            {options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
+            {children ??
+              options.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
           </select>
           <ChevronDown className="themed-select-icon pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2" />
         </div>

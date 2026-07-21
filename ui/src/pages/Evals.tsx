@@ -30,7 +30,21 @@ import {
   XCircle,
 } from "lucide-react";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+
+type LabView = "data" | "computer-use" | "benchmarks" | "leaderboard" | "evals";
+
+const labViews: ReadonlyArray<{ key: LabView; label: string; icon: typeof Database }> = [
+  { key: "data", label: "Data", icon: Database },
+  { key: "computer-use", label: "Computer Use", icon: MousePointer2 },
+  { key: "benchmarks", label: "Benchmark", icon: Gauge },
+  { key: "leaderboard", label: "Leaderboard", icon: Trophy },
+  { key: "evals", label: "Evals", icon: FlaskConical },
+];
+
+function isLabView(value: string | null): value is LabView {
+  return labViews.some((view) => view.key === value);
+}
 
 function EvalsExplainer() {
   const [dismissed, setDismissed] = useState(() => localStorage.getItem("evals-explainer") === "1");
@@ -257,13 +271,19 @@ function GoldenRow({
 
 export function Evals() {
   const queryClient = useQueryClient();
-  const [labView, setLabView] = useState<
-    "data" | "computer-use" | "benchmarks" | "leaderboard" | "evals"
-  >("data");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedView = searchParams.get("view");
+  const labView: LabView = isLabView(requestedView) ? requestedView : "data";
   const [busyGoldenId, setBusyGoldenId] = useState<string | null>(null);
   const [sanitizeExport, setSanitizeExport] = useState(true);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const setLabView = (view: LabView): void => {
+    const next = new URLSearchParams(searchParams);
+    if (view === "data") next.delete("view");
+    else next.set("view", view);
+    setSearchParams(next, { replace: true });
+  };
   const configQuery = useQuery({
     queryKey: ["config", "lab"],
     queryFn: async () => {
@@ -472,7 +492,7 @@ export function Evals() {
             type="button"
             onClick={() => runSuite.mutate()}
             disabled={goldens.length === 0 || runSuite.isPending}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-indigo-400/25 bg-indigo-400/10 px-3 text-[12px] font-medium text-indigo-100 hover:bg-indigo-400/15 disabled:opacity-50"
+            className="accent-button inline-flex h-9 items-center gap-2 rounded-md px-3 text-[12px] font-medium disabled:opacity-50"
           >
             {runSuite.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -484,23 +504,17 @@ export function Evals() {
         ) : null
       }
     >
-      <div className="mb-4 inline-flex rounded-lg border border-white/10 bg-white/[0.025] p-1">
-        {(
-          [
-            { key: "data", label: "Data", icon: Database },
-            { key: "computer-use", label: "Computer Use", icon: MousePointer2 },
-            { key: "benchmarks", label: "Benchmark", icon: Gauge },
-            { key: "leaderboard", label: "Leaderboard", icon: Trophy },
-            { key: "evals", label: "Evals", icon: FlaskConical },
-          ] as const
-        ).map((tab) => (
+      <div className="mb-4 inline-flex max-w-full overflow-x-auto rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-1">
+        {labViews.map((tab) => (
           <button
             key={tab.key}
             type="button"
             onClick={() => setLabView(tab.key)}
             className={cn(
               "inline-flex h-8 items-center gap-2 rounded-md px-3 text-[12px] transition-colors",
-              labView === tab.key ? "bg-white/10 text-white" : "text-gray-500 hover:text-gray-200"
+              labView === tab.key
+                ? "bg-[var(--surface-hover)] text-[var(--text-primary)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             )}
           >
             <tab.icon className="h-3.5 w-3.5" />

@@ -1,5 +1,6 @@
 import { Switch } from "@/components/ui/Switch";
 import { type ResearchExportFormat, type ResearchTraceSummary, researchApi } from "@/lib/api";
+import { labExportFormatDescription, labExportFormats } from "@/lib/labFormats";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -16,43 +17,6 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-
-const exportFormats: Array<{
-  value: ResearchExportFormat;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "cybara_trace",
-    label: "Full trajectories",
-    description: "Prompts, responses, observable reasoning, and complete tool I/O",
-  },
-  {
-    value: "distillation_sft",
-    label: "Sequence distillation SFT",
-    description: "Teacher responses, provenance, observable reasoning, tool turns, and schemas",
-  },
-  {
-    value: "trl_sft",
-    label: "Hugging Face / TRL SFT",
-    description: "Messages and reconstructed tool turns for supervised fine-tuning",
-  },
-  {
-    value: "hf_session_trace",
-    label: "Hugging Face session trace",
-    description: "Viewer-compatible message and tool events from one selected chat",
-  },
-  {
-    value: "long_context",
-    label: "Long-context QA",
-    description: "Prompt, tool observations, and final completion",
-  },
-  {
-    value: "prompt_completion",
-    label: "Prompt / completion",
-    description: "Minimal pairs for analysis and general training pipelines",
-  },
-];
 
 function download(content: string, filename: string, mimeType: string): void {
   const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
@@ -291,14 +255,14 @@ export function TraceDatasetPanel({
               onChange={(event) => setFormat(event.target.value as ResearchExportFormat)}
               className="themed-form-control mt-1 h-9 w-full rounded-md border px-2.5 text-[12px]"
             >
-              {exportFormats.map((item) => (
+              {labExportFormats.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
                 </option>
               ))}
             </select>
             <p className="themed-form-help mt-1 text-[10px]">
-              {exportFormats.find((item) => item.value === format)?.description}
+              {labExportFormatDescription(format)}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 xl:self-start xl:pt-[27px]">

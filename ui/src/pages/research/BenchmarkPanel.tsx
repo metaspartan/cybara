@@ -1,3 +1,4 @@
+import { Select } from "@/components/ui/Input";
 import { agentsApi, benchmarksApi, type IntelligenceBenchmarkRun } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -155,59 +156,79 @@ export function BenchmarkPanel() {
     }
     return [...groups.entries()];
   }, [latest]);
+  const agentOptions = useMemo(() => {
+    if (agentsQuery.isLoading) return [{ value: "", label: "Loading agents…" }];
+    if (agentsQuery.isError) return [{ value: "", label: "Agents unavailable" }];
+    if (!agentsQuery.data?.length) return [{ value: "", label: "No agents configured" }];
+    return [
+      { value: "", label: "Choose an agent" },
+      ...agentsQuery.data.map((agent) => ({
+        value: agent.id,
+        label: agent.model ? `${agent.name} · ${agent.model}` : agent.name,
+      })),
+    ];
+  }, [agentsQuery.data, agentsQuery.isError, agentsQuery.isLoading]);
+  const agentSelectHelp = agentsQuery.isError
+    ? agentsQuery.error instanceof Error
+      ? agentsQuery.error.message
+      : "Failed to load agents"
+    : agentsQuery.data?.length === 0
+      ? "Create an agent in Settings before running a benchmark."
+      : undefined;
 
   return (
     <div className="space-y-4">
-      <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.025]">
+      <div className="overflow-hidden rounded-xl border border-[var(--surface-border)] bg-[var(--surface-panel)]">
         <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div className="p-4">
             <div className="flex items-center gap-2">
-              <BrainCircuit className="h-4 w-4 text-indigo-300" />
-              <h2 className="text-sm font-semibold text-white">
+              <BrainCircuit className="h-4 w-4 text-[rgb(var(--accent-primary))]" />
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">
                 {suite?.name ?? "Cybara Capability Smoke Score"}
               </h2>
-              <span className="rounded border border-white/10 bg-black/20 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-gray-500">
+              <span className="rounded border border-[var(--surface-border)] bg-[var(--surface-hover)] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-[var(--text-muted)]">
                 {suite?.id ?? "v1"}
               </span>
             </div>
-            <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-gray-400">
+            <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-[var(--text-secondary)]">
               {suite?.description ??
                 "A reproducible, judge-free capability smoke score computed from objectively graded tasks."}
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-gray-500">
-              <span className="inline-flex items-center gap-1 rounded border border-white/10 px-1.5 py-0.5">
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-[var(--text-muted)]">
+              <span className="inline-flex items-center gap-1 rounded border border-[var(--surface-border)] px-1.5 py-0.5">
                 <BadgeCheck className="h-3 w-3" /> No judge model
               </span>
-              <span className="inline-flex items-center gap-1 rounded border border-white/10 px-1.5 py-0.5">
+              <span className="inline-flex items-center gap-1 rounded border border-[var(--surface-border)] px-1.5 py-0.5">
                 <Coins className="h-3 w-3" /> ≈2k tokens per full run
               </span>
-              <span className="rounded border border-white/10 px-1.5 py-0.5">
+              <span className="rounded border border-[var(--surface-border)] px-1.5 py-0.5">
                 {taskCount} tasks · {formatRating(suite?.minRating ?? 0)}–
                 {formatRating(suite?.maxRating ?? 0)} internal points
               </span>
-              <span className="rounded border border-white/10 px-1.5 py-0.5">
+              <span className="rounded border border-[var(--surface-border)] px-1.5 py-0.5">
                 Versioned suite score · not externally calibrated
               </span>
             </div>
             <div className="mt-4 flex min-w-0 flex-col gap-2 sm:flex-row">
-              <select
+              <Select
                 value={agentId}
-                onChange={(event) => setAgentId(event.target.value)}
+                onChange={setAgentId}
                 aria-label="Benchmark agent"
-                className="h-9 min-w-0 flex-1 rounded-md border border-white/10 bg-black/20 px-2.5 text-[12px] text-white outline-none focus:border-indigo-400"
-              >
-                <option value="">Choose an agent</option>
-                {(agentsQuery.data ?? []).map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name} · {agent.model}
-                  </option>
-                ))}
-              </select>
+                options={agentOptions}
+                helperText={agentSelectHelp}
+                disabled={
+                  agentsQuery.isLoading ||
+                  agentsQuery.isError ||
+                  !agentsQuery.data?.length ||
+                  !!activeRun
+                }
+                className="h-9 min-w-0 rounded-md px-2.5 py-0 text-[12px]"
+              />
               <button
                 type="button"
                 onClick={() => run.mutate()}
                 disabled={!agentId || run.isPending || !!activeRun}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-indigo-500 px-3 text-[12px] font-medium text-white hover:bg-indigo-400 disabled:opacity-40"
+                className="accent-button inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-[12px] font-medium disabled:opacity-40"
               >
                 {run.isPending || activeRun ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -256,14 +277,14 @@ export function BenchmarkPanel() {
               </div>
             )}
           </div>
-          <div className="flex flex-col items-center justify-center gap-2 border-t border-white/10 bg-black/20 p-5 lg:border-l lg:border-t-0">
-            <p className="text-[10px] uppercase tracking-[0.14em] text-gray-500">
+          <div className="flex flex-col items-center justify-center gap-2 border-t border-[var(--surface-border)] bg-[var(--surface-hover)] p-5 lg:border-l lg:border-t-0">
+            <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]">
               {latest?.status === "running" ? "Live suite score" : "Latest suite score"}
             </p>
             <p
               className={cn(
                 "text-5xl font-semibold tabular-nums tracking-tight",
-                latestTier?.tone ?? "text-white"
+                latestTier?.tone ?? "text-[var(--text-primary)]"
               )}
             >
               {latest ? (latestRated ? formatRating(latest.score) : `${latest.score}%`) : "—"}
@@ -278,7 +299,7 @@ export function BenchmarkPanel() {
                 {latestTier.label}
               </span>
             )}
-            <p className="max-w-full truncate text-[11px] text-gray-500">
+            <p className="max-w-full truncate text-[11px] text-[var(--text-muted)]">
               {latest ? latest.model || latest.agentId : "No runs yet"}
             </p>
             {latestRated && (
