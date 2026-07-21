@@ -39,7 +39,9 @@ describe("Tauri native microphone recording", () => {
     expect(main).toContain('file_name.starts_with("recording-")');
     expect(main).toContain("MAX_NATIVE_RECORDING_BYTES");
     expect(main).toContain("std::fs::remove_file(&recording)");
-    expect(main).toContain('const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269"');
+    expect(main).toContain("fn gateway_endpoint(app: &tauri::AppHandle)");
+    expect(main).toContain("gateway::GatewayEndpoint::loopback(CYBARA_DEFAULT_PORT)");
+    expect(main).not.toContain('const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269"');
     expect(info).toContain("NSMicrophoneUsageDescription");
     expect(entitlements).toContain("com.apple.security.device.audio-input");
     expect(releaseWorkflow).toContain("libasound2-dev");

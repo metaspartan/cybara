@@ -114,6 +114,7 @@ export function Chat() {
   const [modelRouterEnabled, setModelRouterEnabled] = useState(false);
   const [useModelRouter, setUseModelRouter] = useState(false);
   const [lastWorkspaceDir, setLastWorkspaceDir] = useState<string | null>(null);
+  const [workspaceFallbackSuppressed, setWorkspaceFallbackSuppressed] = useState(false);
   const chatAgentId = useModelRouter
     ? selectedAgentId || sessionAgentId || undefined
     : selectedAgentId;
@@ -311,7 +312,9 @@ export function Chat() {
       ? info.homeDir.trim()
       : null;
   const fallbackWorkspaceDir =
-    !sessionId && (lastWorkspaceDir || configuredWorkspaceDir || homeWorkspaceDir)
+    !sessionId &&
+    !workspaceFallbackSuppressed &&
+    (lastWorkspaceDir || configuredWorkspaceDir || homeWorkspaceDir)
       ? lastWorkspaceDir || configuredWorkspaceDir || homeWorkspaceDir
       : null;
   const effectiveWorkspaceDir = workspaceDir || fallbackWorkspaceDir || null;
@@ -537,6 +540,7 @@ export function Chat() {
 
   useEffect(() => {
     if (!workspaceDir) return;
+    setWorkspaceFallbackSuppressed(false);
     persistWorkspaceDir(workspaceDir);
     setLastWorkspaceDir(workspaceDir);
   }, [workspaceDir]);
@@ -1089,7 +1093,7 @@ export function Chat() {
     }
     try {
       const response = await sendMessage(message, {
-        workspaceDir: effectiveWorkspaceDir || undefined,
+        workspaceDir: effectiveWorkspaceDir,
         queueMode,
         sessionId: requestSessionId || undefined,
         clientPendingId: optimisticPendingMessageId || undefined,
@@ -1219,6 +1223,10 @@ export function Chat() {
     openWorkspaceFile,
     sessionFileChanges,
   });
+  const handleClearWorkspace = useCallback(() => {
+    setWorkspaceFallbackSuppressed(true);
+    void applySessionWorkspace(null);
+  }, [applySessionWorkspace]);
 
   const handleViewSubagentSession = useCallback(
     async (sessionKey: string): Promise<void> => {
@@ -1620,6 +1628,7 @@ export function Chat() {
                       workspaceDir={effectiveWorkspaceDir}
                       workspaceSaving={workspaceSaving}
                       onCreateGitBranch={environmentGit.createAndCheckout}
+                      onClearWorkspace={handleClearWorkspace}
                       onRefreshGitBranches={environmentGit.refresh}
                       onSelectWorkspace={() => void handleSelectWorkspace()}
                       onSwitchGitBranch={environmentGit.checkout}

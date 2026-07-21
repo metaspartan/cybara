@@ -6,8 +6,8 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{App, AppHandle, Manager};
 
+use crate::cybara_api_key;
 use crate::desktop_update::DesktopUpdateSnapshot;
-use crate::{CYBARA_SERVER_ADDR, CYBARA_SERVER_URL, cybara_api_key};
 
 pub struct UpdateMenu(pub std::sync::Mutex<MenuItem<tauri::Wry>>);
 
@@ -171,15 +171,19 @@ fn show_main_window(app: &AppHandle) {
 
 fn show_route(app: &AppHandle, route: &str) {
     if let Some(window) = app.get_webview_window("main") {
-        if let Ok(url) = format!("{CYBARA_SERVER_URL}{route}").parse() {
+        let endpoint = crate::gateway_endpoint(app);
+        if let Ok(url) = format!("{}{route}", endpoint.url).parse() {
             let _ = window.navigate(url);
         }
     }
     show_main_window(app);
 }
 
-fn read_http_body(path: &str) -> Result<String, String> {
-    let mut stream = TcpStream::connect(CYBARA_SERVER_ADDR).map_err(|error| error.to_string())?;
+fn read_http_body(
+    endpoint: &crate::gateway::GatewayEndpoint,
+    path: &str,
+) -> Result<String, String> {
+    let mut stream = TcpStream::connect(&endpoint.addr).map_err(|error| error.to_string())?;
     let _ = stream.set_read_timeout(Some(USAGE_REQUEST_TIMEOUT));
     let _ = stream.set_write_timeout(Some(USAGE_REQUEST_TIMEOUT));
     let authorization = cybara_api_key()
@@ -188,7 +192,8 @@ fn read_http_body(path: &str) -> Result<String, String> {
         .map(|key| format!("Authorization: Bearer {key}\r\n"))
         .unwrap_or_default();
     let request = format!(
-        "GET {path} HTTP/1.1\r\nHost: {CYBARA_SERVER_ADDR}\r\nAccept: application/json\r\n{authorization}Connection: close\r\n\r\n"
+        "GET {path} HTTP/1.1\r\nHost: {}\r\nAccept: application/json\r\n{authorization}Connection: close\r\n\r\n",
+        endpoint.addr
     );
     stream
         .write_all(request.as_bytes())
@@ -259,8 +264,8 @@ fn truncate_label(value: &str, limit: usize) -> String {
     }
 }
 
-fn provider_usage_rows() -> Result<Vec<String>, String> {
-    let body = read_http_body("/api/provider-plans/status")?;
+fn provider_usage_rows(endpoint: &crate::gateway::GatewayEndpoint) -> Result<Vec<String>, String> {
+    let body = read_http_body(endpoint, "/api/provider-plans/status")?;
     let response: ProviderUsageResponse =
         serde_json::from_str(&body).map_err(|error| error.to_string())?;
     let mut plans: Vec<_> = response
@@ -345,7 +350,8 @@ fn start_usage_refresh(app: &AppHandle, usage_menu: Submenu<tauri::Wry>) {
     let app_handle = app.clone();
     std::thread::spawn(move || {
         loop {
-            let rows = provider_usage_rows();
+            let endpoint = crate::gateway_endpoint(&app_handle);
+            let rows = provider_usage_rows(&endpoint);
             let delay = if rows.is_ok() {
                 USAGE_REFRESH_INTERVAL
             } else {
@@ -441,7 +447,11 @@ pub fn setup(app: &App) -> tauri::Result<()> {
     let app_handle = app.handle().clone();
     std::thread::spawn(move || {
         loop {
-            let label = if crate::is_server_running() {
+            let endpoint = crate::gateway_endpoint(&app_handle);
+            let label = if crate::gateway::is_compatible_gateway_at(
+                &endpoint.addr,
+                env!("CARGO_PKG_VERSION"),
+            ) {
                 "Gateway · Connected"
             } else {
                 "Gateway · Offline"

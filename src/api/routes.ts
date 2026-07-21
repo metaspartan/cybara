@@ -730,7 +730,7 @@ const routes: Record<string, RouteHandler> = {
       model?: string;
       modelOverride?: string;
       clientPendingId?: string;
-      workspaceDir?: string;
+      workspaceDir?: string | null;
       stream?: boolean;
       tools?: boolean;
       images?: Array<{ data?: string; url?: string; mimeType?: string }>;

@@ -185,7 +185,7 @@ export const agentRoutes: Record<string, RouteHandler> = {
       message: string;
       sessionId?: string;
       clientPendingId?: string;
-      workspaceDir?: string;
+      workspaceDir?: string | null;
       queueMode?: "queue" | "steer";
       useModelRouter?: boolean;
       images?: Array<{ data?: string; url?: string; mimeType?: string }>;

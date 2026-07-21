@@ -215,10 +215,9 @@ final class SidecarManager: ObservableObject {
         readinessTask = nil
         outputHandle?.readabilityHandler = nil
         outputHandle = nil
-        if gatewayMode == .managed {
-            process?.terminate()
-        }
+        let managedProcess = gatewayMode == .managed ? process : nil
         process = nil
+        terminateManagedProcess(managedProcess, timeout: 3)
         status = .stopped
         if gatewayMode == .managed {
             gatewayMode = .idle
@@ -226,16 +225,7 @@ final class SidecarManager: ObservableObject {
     }
 
     func stopForUpdate() async {
-        let runningProcess = gatewayMode == .managed ? process : nil
         stop()
-        guard let runningProcess else { return }
-        let deadline = Date().addingTimeInterval(5)
-        while runningProcess.isRunning && Date() < deadline {
-            try? await Task.sleep(for: .milliseconds(100))
-        }
-        if runningProcess.isRunning {
-            runningProcess.terminate()
-        }
     }
 
     func restart() async {
@@ -466,7 +456,30 @@ final class SidecarManager: ObservableObject {
             if await gatewayProbe() == nil { return true }
             try? await Task.sleep(for: .milliseconds(150))
         }
-        return false
+        guard Darwin.kill(pid_t(processID), SIGKILL) == 0 else { return false }
+        let forceDeadline = Date().addingTimeInterval(2)
+        while Date() < forceDeadline {
+            if await gatewayProbe() == nil { return true }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return await gatewayProbe() == nil
+    }
+
+    private func terminateManagedProcess(_ runningProcess: Process?, timeout: TimeInterval) {
+        guard let runningProcess, runningProcess.isRunning else { return }
+        let processID = runningProcess.processIdentifier
+        runningProcess.terminate()
+        let deadline = Date().addingTimeInterval(timeout)
+        while runningProcess.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        if runningProcess.isRunning {
+            Darwin.kill(processID, SIGKILL)
+            let forceDeadline = Date().addingTimeInterval(1)
+            while runningProcess.isRunning && Date() < forceDeadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
     }
 
     private func processCommand(processID: Int) -> String? {

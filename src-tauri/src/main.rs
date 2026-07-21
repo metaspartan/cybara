@@ -2,8 +2,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use base64::Engine;
-use std::io::{Read, Write};
-use std::net::TcpStream;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -12,11 +10,11 @@ use tauri_plugin_audio_recorder::{AudioFormat, AudioQuality, AudioRecorderExt, R
 use tauri_plugin_shell::ShellExt;
 
 mod desktop_update;
+mod gateway;
 mod tray;
 
-const CYBARA_SERVER_ADDR: &str = "127.0.0.1:4269";
-const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269";
-const HEALTH_PROBE_TIMEOUT: Duration = Duration::from_millis(750);
+const CYBARA_DEFAULT_PORT: u16 = 4269;
+const CYBARA_FALLBACK_PORT_COUNT: u16 = 10;
 const MAX_NATIVE_RECORDING_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone, serde::Serialize)]
@@ -227,51 +225,14 @@ fn is_browser_diagnostic_line(value: &str) -> bool {
         || value.contains("[Browser]")
 }
 
-fn is_server_running_at(addr: &str) -> bool {
-    let Ok(mut stream) = TcpStream::connect(addr) else {
-        return false;
-    };
-
-    let _ = stream.set_read_timeout(Some(HEALTH_PROBE_TIMEOUT));
-    let _ = stream.set_write_timeout(Some(HEALTH_PROBE_TIMEOUT));
-
-    let request = format!(
-        "GET /api/health HTTP/1.1\r\nHost: {}\r\nAccept: application/json\r\nConnection: close\r\n\r\n",
-        addr
-    );
-    if stream.write_all(request.as_bytes()).is_err() {
-        return false;
-    }
-
-    let mut response = String::new();
-    if stream.read_to_string(&mut response).is_err() {
-        return false;
-    }
-
-    let Some((headers, body)) = response.split_once("\r\n\r\n") else {
-        return false;
-    };
-
-    if !headers.starts_with("HTTP/1.1 200") && !headers.starts_with("HTTP/1.0 200") {
-        return false;
-    }
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
-        return false;
-    };
-    matches!(
-        value.get("status").and_then(serde_json::Value::as_str),
-        Some("healthy" | "warning" | "critical")
-    )
-}
-
-fn is_server_running() -> bool {
-    is_server_running_at(CYBARA_SERVER_ADDR)
-}
-
-fn wait_for_server_ready(timeout: Duration) -> bool {
+fn wait_for_server_ready(
+    endpoint: &gateway::GatewayEndpoint,
+    expected_version: &str,
+    timeout: Duration,
+) -> bool {
     let started = Instant::now();
     while started.elapsed() < timeout {
-        if is_server_running() {
+        if gateway::is_compatible_gateway_at(&endpoint.addr, expected_version) {
             return true;
         }
         std::thread::sleep(Duration::from_millis(150));
@@ -369,8 +330,27 @@ fn file_path_from_args(args: &[String]) -> Option<String> {
     None
 }
 
-fn ide_url_for_path(path: &str) -> Option<tauri::Url> {
-    let mut url = tauri::Url::parse(CYBARA_SERVER_URL).ok()?;
+fn gateway_endpoint(app: &tauri::AppHandle) -> gateway::GatewayEndpoint {
+    app.try_state::<GatewayRuntimeState>()
+        .and_then(|state| state.0.lock().ok().map(|guard| guard.clone()))
+        .unwrap_or_else(|| gateway::GatewayEndpoint::loopback(CYBARA_DEFAULT_PORT))
+}
+
+fn set_gateway_endpoint(app: &tauri::AppHandle, endpoint: gateway::GatewayEndpoint) {
+    if let Some(state) = app.try_state::<GatewayRuntimeState>()
+        && let Ok(mut guard) = state.0.lock()
+    {
+        *guard = endpoint;
+    }
+}
+
+#[tauri::command]
+fn get_gateway_url(app: tauri::AppHandle) -> String {
+    gateway_endpoint(&app).url
+}
+
+fn ide_url_for_path(base_url: &str, path: &str) -> Option<tauri::Url> {
+    let mut url = tauri::Url::parse(base_url).ok()?;
     url.set_path("/ide");
     url.query_pairs_mut().append_pair("path", path);
     Some(url)
@@ -390,12 +370,13 @@ fn take_pending_open(app: &tauri::AppHandle) -> Option<String> {
 }
 
 fn open_path_in_ide(app: &tauri::AppHandle, path: &str) {
-    if !is_server_running() {
+    let endpoint = gateway_endpoint(app);
+    if !gateway::is_compatible_gateway_at(&endpoint.addr, env!("CARGO_PKG_VERSION")) {
         set_pending_open(app, path.to_string());
         return;
     }
     if let Some(window) = app.get_webview_window("main") {
-        if let Some(url) = ide_url_for_path(path) {
+        if let Some(url) = ide_url_for_path(&endpoint.url, path) {
             let _ = window.navigate(url);
         }
         let _ = window.show();
@@ -405,11 +386,12 @@ fn open_path_in_ide(app: &tauri::AppHandle, path: &str) {
 
 fn navigate_after_ready(app: &tauri::AppHandle) {
     let pending = take_pending_open(app);
+    let endpoint = gateway_endpoint(app);
     if let Some(window) = app.get_webview_window("main") {
         let url = pending
             .as_deref()
-            .and_then(ide_url_for_path)
-            .unwrap_or_else(|| CYBARA_SERVER_URL.parse().unwrap());
+            .and_then(|path| ide_url_for_path(&endpoint.url, path))
+            .unwrap_or_else(|| endpoint.url.parse().unwrap());
         let _ = window.navigate(url);
     }
 }
@@ -445,6 +427,7 @@ fn main() {
         .plugin(tauri_plugin_audio_recorder::init())
         .invoke_handler(tauri::generate_handler![
             read_cybara_api_key,
+            get_gateway_url,
             get_gateway_startup_status,
             start_native_recording,
             stop_native_recording,
@@ -459,6 +442,9 @@ fn main() {
             app.manage(GatewayStartupState(std::sync::Mutex::new(
                 GatewayStartupStatus::starting(),
             )));
+            app.manage(GatewayRuntimeState(std::sync::Mutex::new(
+                gateway::GatewayEndpoint::loopback(CYBARA_DEFAULT_PORT),
+            )));
             app.manage(desktop_update::DesktopUpdateManager::default());
             tray::setup(app)?;
 
@@ -466,18 +452,28 @@ fn main() {
                 set_pending_open(app.handle(), path);
             }
 
-            if is_server_running() {
-                println!("[Cybara] Server already running on port 4269");
-                log::info!("Attached to existing Cybara gateway on port 4269");
+            let preferred = gateway::GatewayEndpoint::loopback(CYBARA_DEFAULT_PORT);
+            if gateway::is_compatible_gateway_at(&preferred.addr, env!("CARGO_PKG_VERSION")) {
+                println!("[Cybara] Compatible server already running on port 4269");
+                log::info!("Attached to compatible Cybara gateway on port 4269");
                 set_gateway_startup_status(app.handle(), GatewayStartupStatus::ready());
-
                 navigate_after_ready(app.handle());
-
                 return Ok(());
             }
 
+            let Some(endpoint) = gateway::select_launch_endpoint(
+                CYBARA_DEFAULT_PORT,
+                CYBARA_FALLBACK_PORT_COUNT,
+            ) else {
+                let message = "No available loopback port was found for the packaged Cybara gateway.";
+                log::error!("{message}");
+                set_gateway_startup_status(app.handle(), GatewayStartupStatus::failed(message));
+                return Ok(());
+            };
+            set_gateway_endpoint(app.handle(), endpoint.clone());
+
             println!("[Cybara] Starting sidecar...");
-            log::info!("Starting Cybara gateway sidecar");
+            log::info!("Starting Cybara gateway sidecar on port {}", endpoint.port);
             let Ok(mut sidecar) = app.shell().sidecar("cybara") else {
                 let message = "The packaged Cybara gateway could not be located.";
                 log::error!("{message}");
@@ -495,6 +491,7 @@ fn main() {
                     .unwrap_or(resource_dir);
                 sidecar = sidecar.env("CYBARA_RESOURCE_DIR", resource_dir);
             }
+            sidecar = sidecar.env("PORT", endpoint.port.to_string());
             let (mut rx, child) = match sidecar.args(["start"]).spawn() {
                 Ok(result) => result,
                 Err(error) => {
@@ -566,7 +563,11 @@ fn main() {
 
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if wait_for_server_ready(Duration::from_secs(25)) {
+                if wait_for_server_ready(
+                    &endpoint,
+                    env!("CARGO_PKG_VERSION"),
+                    Duration::from_secs(25),
+                ) {
                     set_gateway_startup_status(&app_handle, GatewayStartupStatus::ready());
                     navigate_after_ready(&app_handle);
                 } else {
@@ -617,83 +618,11 @@ struct PendingOpen(std::sync::Mutex<Option<String>>);
 
 struct GatewayStartupState(std::sync::Mutex<GatewayStartupStatus>);
 
+struct GatewayRuntimeState(std::sync::Mutex<gateway::GatewayEndpoint>);
+
 #[cfg(test)]
 mod tests {
-    use super::{is_server_running_at, write_theme_file};
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-    use std::thread;
-
-    #[test]
-    fn server_check_is_false_for_closed_port() {
-        assert!(!is_server_running_at("127.0.0.1:65534"));
-    }
-
-    #[test]
-    fn server_check_is_false_when_listener_is_not_cybara() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
-        let addr = listener.local_addr().expect("read local addr");
-        let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().expect("accept test connection");
-            let mut buffer = [0; 512];
-            let _ = stream.read(&mut buffer);
-            let body = "{\"ok\":true}";
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                body.len(),
-                body
-            );
-            let _ = stream.write_all(response.as_bytes());
-        });
-
-        assert!(!is_server_running_at(&addr.to_string()));
-        handle.join().expect("join test server");
-    }
-
-    #[test]
-    fn server_check_is_true_for_cybara_health_response() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
-        let addr = listener.local_addr().expect("read local addr");
-        let handle = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().expect("accept test connection");
-            let mut buffer = [0; 512];
-            let _ = stream.read(&mut buffer);
-            let body = "{\"status\":\"healthy\"}";
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                body.len(),
-                body
-            );
-            let _ = stream.write_all(response.as_bytes());
-        });
-
-        assert!(is_server_running_at(&addr.to_string()));
-        handle.join().expect("join test server");
-    }
-
-    #[test]
-    fn server_check_accepts_resource_pressure_statuses() {
-        for status in ["warning", "critical"] {
-            let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
-            let addr = listener.local_addr().expect("read local addr");
-            let status = status.to_string();
-            let handle = thread::spawn(move || {
-                let (mut stream, _) = listener.accept().expect("accept test connection");
-                let mut buffer = [0; 512];
-                let _ = stream.read(&mut buffer);
-                let body = format!("{{\"status\":\"{}\"}}", status);
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    body.len(),
-                    body
-                );
-                let _ = stream.write_all(response.as_bytes());
-            });
-
-            assert!(is_server_running_at(&addr.to_string()));
-            handle.join().expect("join test server");
-        }
-    }
+    use super::write_theme_file;
 
     #[test]
     fn theme_export_writes_valid_json_to_theme_file() {

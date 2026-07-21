@@ -42,7 +42,7 @@ export interface ChatRequest {
   sessionId?: string;
   modelOverride?: string;
   clientPendingId?: string;
-  workspaceDir?: string;
+  workspaceDir?: string | null;
   stream?: boolean;
   tools?: boolean;
   channel?: string;

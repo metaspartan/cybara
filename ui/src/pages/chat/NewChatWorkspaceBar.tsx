@@ -1,4 +1,4 @@
-import { Folder, Loader2 } from "lucide-react";
+import { CircleX, Folder, Loader2 } from "lucide-react";
 import type { ReactElement } from "react";
 import { GitBranchSelector, type GitBranchOption } from "./GitBranchSelector";
 
@@ -14,6 +14,7 @@ export function NewChatWorkspaceBar({
   error,
   loading,
   onCreateBranch,
+  onClearWorkspace,
   onRefreshBranches,
   onSelectWorkspace,
   onSwitchBranch,
@@ -26,6 +27,7 @@ export function NewChatWorkspaceBar({
   error: string | null;
   loading: boolean;
   onCreateBranch: (branch: string) => Promise<void> | void;
+  onClearWorkspace: () => void;
   onRefreshBranches: () => Promise<void> | void;
   onSelectWorkspace: () => void;
   onSwitchBranch: (branch: string) => Promise<void> | void;
@@ -51,17 +53,29 @@ export function NewChatWorkspaceBar({
         </span>
       </button>
       {workspaceDir ? (
-        <GitBranchSelector
-          appearance="inline"
-          branches={branches}
-          changingBranch={changingBranch}
-          currentBranch={currentBranch}
-          error={error}
-          loading={loading}
-          onCheckout={onSwitchBranch}
-          onCreate={onCreateBranch}
-          onRefresh={onRefreshBranches}
-        />
+        <>
+          <button
+            type="button"
+            onClick={onClearWorkspace}
+            disabled={workspaceSaving}
+            className="flex h-6 w-6 shrink-0 items-center justify-center text-[var(--icon-muted)] transition-colors hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+            title="Clear workspace"
+            aria-label="Clear workspace"
+          >
+            <CircleX className="h-3.5 w-3.5" />
+          </button>
+          <GitBranchSelector
+            appearance="inline"
+            branches={branches}
+            changingBranch={changingBranch}
+            currentBranch={currentBranch}
+            error={error}
+            loading={loading}
+            onCheckout={onSwitchBranch}
+            onCreate={onCreateBranch}
+            onRefresh={onRefreshBranches}
+          />
+        </>
       ) : null}
     </div>
   );

@@ -82,8 +82,8 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain('sidecar("cybara")');
     expect(mainRs).toContain('.args(["start"])');
     expect(mainRs).not.toContain('.args(["start", "--enable-terminal"])');
-    expect(mainRs).toContain('const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269"');
-    expect(mainRs).toContain("unwrap_or_else(|| CYBARA_SERVER_URL.parse().unwrap())");
+    expect(mainRs).toContain("const CYBARA_DEFAULT_PORT: u16 = 4269");
+    expect(mainRs).toContain("gateway_endpoint(app)");
     expect(mainRs).not.toContain('.env("CYBARA_HOST", "127.0.0.1")');
     expect(mainRs).toContain("child.kill()");
     expect(mainRs).toContain("get_gateway_startup_status");
@@ -117,14 +117,16 @@ describe("Tauri wiring", () => {
   test("main.rs preserves sidecar lifecycle and verifies existing server identity", () => {
     const mainRsPath = join(ROOT_DIR, "src-tauri", "src", "main.rs");
     const mainRs = readFileSync(mainRsPath, "utf8");
+    const gatewayRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "gateway.rs"), "utf8");
 
-    expect(mainRs).toContain("if is_server_running()");
-    expect(mainRs).toContain("GET /api/health HTTP/1.1");
-    expect(mainRs).toContain('\\"status\\":\\"healthy\\"');
-    expect(mainRs).toContain("Server already running on port 4269");
+    expect(mainRs).toContain("gateway::is_compatible_gateway_at");
+    expect(gatewayRs).toContain('http_get(addr, "/api/health")');
+    expect(gatewayRs).toContain('normalized.contains("/assets/")');
+    expect(gatewayRs).toContain('!normalized.contains("ui not built")');
+    expect(gatewayRs).toContain("select_launch_endpoint");
     expect(mainRs).toContain("SidecarState(std::sync::Mutex::new(None))");
     expect(mainRs).toContain("*guard = Some(child)");
-    expect(mainRs).toContain("wait_for_server_ready(Duration::from_secs(25))");
+    expect(mainRs).toContain("Duration::from_secs(25)");
     expect(mainRs).toContain("GatewayStartupStatus::failed");
     expect(mainRs).toContain("tauri::WindowEvent::CloseRequested { api, .. }");
     expect(mainRs).toContain("api.prevent_close()");
@@ -145,7 +147,7 @@ describe("Tauri wiring", () => {
     expect(trayRs).toContain('"Show Cybara"');
     expect(trayRs).toContain('"New Chat"');
     expect(trayRs).toContain('"Quit Cybara"');
-    expect(trayRs).toContain('read_http_body("/api/provider-plans/status")');
+    expect(trayRs).toContain('read_http_body(endpoint, "/api/provider-plans/status")');
     expect(trayRs).toContain("window.usage_known");
     expect(trayRs).toContain("!window.unlimited");
     expect(trayRs).toContain('!description.eq_ignore_ascii_case("No limit")');
@@ -161,6 +163,7 @@ describe("Tauri wiring", () => {
     const tauriConfig = readFileSync(join(ROOT_DIR, "src-tauri", "tauri.conf.json"), "utf8");
 
     expect(capability.remote?.urls).toContain("http://127.0.0.1:4269/*");
+    expect(capability.remote?.urls).toContain("http://127.0.0.1:4279/*");
     expect(capability.remote?.urls).toContain("http://localhost:5173/*");
     expect(capability.remote?.urls).not.toContain("http://localhost:*");
     expect(capability.permissions).not.toContain("shell:allow-spawn");
@@ -190,6 +193,7 @@ describe("Tauri wiring", () => {
     );
 
     expect(gatewayPermission).toContain('"read_cybara_api_key"');
+    expect(gatewayPermission).toContain('"get_gateway_url"');
     expect(gatewayPermission).toContain('"get_gateway_startup_status"');
     expect(updaterPermission).toContain('"get_desktop_update_state"');
     expect(updaterPermission).toContain('"check_desktop_update"');
