@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   formatDownloadTotal,
+  githubLastPage,
   isCountedDownloadAsset,
   sumReleaseDownloads,
 } from "../../site/downloadStats";
+import { createDownloadTotalCache } from "../../site/downloadTotalCache";
 
 describe("site release download totals", () => {
   test("excludes updater metadata while retaining downloadable release assets", () => {
@@ -110,5 +112,49 @@ describe("site release download totals", () => {
     expect(formatDownloadTotal(1_250)).toBe("1.3k");
     expect(formatDownloadTotal(15_200)).toBe("15k");
     expect(formatDownloadTotal(1_250_000)).toBe("1.3M");
+  });
+
+  test("parses paginated release links with bounded fallbacks", () => {
+    expect(
+      githubLastPage(
+        '<https://api.github.com/repositories/1/releases?per_page=100&page=2>; rel="next", <https://api.github.com/repositories/1/releases?per_page=100&page=4>; rel="last"'
+      )
+    ).toBe(4);
+    expect(githubLastPage(null)).toBe(1);
+    expect(githubLastPage("invalid")).toBe(1);
+    expect(githubLastPage('<https://example.com?page=1000>; rel="last"')).toBe(50);
+  });
+
+  test("refreshes cached totals after the ttl and coalesces concurrent refreshes", async () => {
+    let calls = 0;
+    let resolveRefresh: ((value: number) => void) | null = null;
+    const cache = createDownloadTotalCache(async () => {
+      calls += 1;
+      if (calls === 1) return 67;
+      return new Promise<number>((resolve) => {
+        resolveRefresh = resolve;
+      });
+    }, 600_000);
+
+    expect(await cache.get(1_000)).toEqual({ total: 67, at: 1_000 });
+    expect(await cache.get(601_000)).toEqual({ total: 67, at: 1_000 });
+    const first = cache.get(601_001);
+    const second = cache.get(601_001);
+    expect(calls).toBe(2);
+    resolveRefresh?.(71);
+    expect(await first).toEqual({ total: 71, at: 601_001 });
+    expect(await second).toEqual({ total: 71, at: 601_001 });
+  });
+
+  test("serves the last known total when a refresh fails", async () => {
+    let fail = false;
+    const cache = createDownloadTotalCache(async () => {
+      if (fail) throw new Error("offline");
+      return 71;
+    }, 10);
+
+    expect(await cache.get(100)).toEqual({ total: 71, at: 100 });
+    fail = true;
+    expect(await cache.get(111)).toEqual({ total: 71, at: 100 });
   });
 });
