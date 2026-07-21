@@ -413,6 +413,7 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
     let role: String
     let content: String
     let timestamp: String?
+    let worked_duration_ms: Double?
     let thinking: String?
     let tool_calls: [GatewayToolCall]?
     let process_activities: [GatewayProcessActivity]?
@@ -423,7 +424,7 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
     var id = UUID()
 
     private enum CodingKeys: String, CodingKey {
-        case role, content, timestamp, thinking, tool_calls, process_activities, agent_transfers
+        case role, content, timestamp, worked_duration_ms, thinking, tool_calls, process_activities, agent_transfers
         case _tool_calls_total_count, _tool_calls_hidden_count
     }
 
@@ -431,6 +432,7 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
         role: String,
         content: String,
         timestamp: String?,
+        worked_duration_ms: Double? = nil,
         thinking: String? = nil,
         tool_calls: [GatewayToolCall]? = nil,
         process_activities: [GatewayProcessActivity]? = nil,
@@ -443,6 +445,7 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
         self.role = role
         self.content = normalized.content
         self.timestamp = timestamp
+        self.worked_duration_ms = worked_duration_ms
         self.thinking = normalized.thinking
         self.tool_calls = tool_calls
         self.process_activities = process_activities
@@ -467,6 +470,7 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
         self.role = role
         self.content = normalized.content
         timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
+        worked_duration_ms = try container.decodeIfPresent(Double.self, forKey: .worked_duration_ms)
         self.thinking = normalized.thinking
         tool_calls = try container.decodeIfPresent([GatewayToolCall].self, forKey: .tool_calls)
         process_activities = try container.decodeIfPresent([GatewayProcessActivity].self, forKey: .process_activities)

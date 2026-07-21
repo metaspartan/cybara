@@ -102,6 +102,7 @@ export function AssistantMetaInline({
   const workedDurationMs = resolveWorkedDurationMs(processActivities, message.tool_calls, {
     assistantTimestamp: message.timestamp,
     turnStartedAtMs,
+    workedDurationMs: message.worked_duration_ms,
   });
   const normalizedProcessActivities =
     processActivities && processActivities.length > 0

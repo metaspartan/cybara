@@ -270,7 +270,7 @@ function timestampMs(value: unknown): number | undefined {
 export function formatTUIWorkedDuration(
   activities: TUIActivityItem[],
   tools: TUIToolCallItem[],
-  options: { assistantTimestamp?: number; turnStartedAt?: number } = {}
+  options: { assistantTimestamp?: number; turnStartedAt?: number; workedDurationMs?: number } = {}
 ): string {
   const timestamps = [
     ...activities.map((activity) => timestampMs(activity.timestamp)),
@@ -291,7 +291,11 @@ export function formatTUIWorkedDuration(
   );
   const totalSeconds = Math.max(
     0,
-    Math.floor(Math.max(toolDuration, ...durationCandidates.filter(Number.isFinite)) / 1000)
+    Math.floor(
+      (typeof options.workedDurationMs === "number" && Number.isFinite(options.workedDurationMs)
+        ? options.workedDurationMs
+        : Math.max(toolDuration, ...durationCandidates.filter(Number.isFinite))) / 1000
+    )
   );
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);

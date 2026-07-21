@@ -43,6 +43,7 @@ interface StoredIncompleteSessionRun {
 }
 
 const activeRunIds = new Map<string, string>();
+const activeRunStartedAtMs = new Map<string, number>();
 const pendingAssistantDeltas = new Map<
   string,
   {
@@ -195,11 +196,16 @@ export function beginSessionRun(sessionId: string, requestedRunId?: string): str
   if (existing) return existing;
   const runId = requestedRunId?.trim() || crypto.randomUUID();
   activeRunIds.set(key, runId);
+  activeRunStartedAtMs.set(key, Date.now());
   return runId;
 }
 
 export function getActiveSessionRunId(sessionId: string): string | undefined {
   return activeRunIds.get(sessionId.trim());
+}
+
+export function getActiveSessionRunStartedAtMs(sessionId: string): number | undefined {
+  return activeRunStartedAtMs.get(sessionId.trim());
 }
 
 export function completeSessionRun(sessionId: string): string | undefined {
@@ -211,6 +217,7 @@ export function completeSessionRun(sessionId: string): string | undefined {
     void 0;
   }
   activeRunIds.delete(key);
+  activeRunStartedAtMs.delete(key);
   return runId;
 }
 
@@ -304,5 +311,6 @@ export function clearSessionEventLedger(sessionId: string): void {
     pendingAssistantDeltas.delete(key);
   }
   activeRunIds.delete(normalizedSessionId);
+  activeRunStartedAtMs.delete(normalizedSessionId);
   tables.sessionEvents.deleteBySession(normalizedSessionId);
 }

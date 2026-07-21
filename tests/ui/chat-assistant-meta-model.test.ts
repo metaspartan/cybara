@@ -90,6 +90,19 @@ describe("chat assistant metadata", () => {
     expect(resolveWorkedDurationMs(undefined, undefined)).toBeUndefined();
   });
 
+  test("prefers the persisted run duration over partial tool timing", () => {
+    expect(
+      resolveWorkedDurationMs(
+        [
+          { id: "tool-start", phase: "start", text: "Running", timestamp: 20_000 },
+          { id: "tool-result", phase: "result", text: "Ran", timestamp: 25_000 },
+        ],
+        undefined,
+        { workedDurationMs: 26_000 }
+      )
+    ).toBe(26_000);
+  });
+
   test("ignores stale activity timestamps from an earlier steered run", () => {
     const turnStartedAtMs = 7_200_000;
     expect(

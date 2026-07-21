@@ -7,6 +7,7 @@ import {
   completeSessionRun,
   ensureSessionRunId,
   flushBufferedAssistantDeltas,
+  getActiveSessionRunStartedAtMs,
   latestSessionEventSequence,
   listRunEvents,
   listSessionEvents,
@@ -35,6 +36,18 @@ afterEach(() => {
 });
 
 describe("session event ledger", () => {
+  test("tracks the active run wall-clock start until completion", () => {
+    const sessionId = createSession();
+    const before = Date.now();
+    ensureSessionRunId(sessionId);
+    const startedAt = getActiveSessionRunStartedAtMs(sessionId);
+
+    expect(startedAt).toBeGreaterThanOrEqual(before);
+    expect(startedAt).toBeLessThanOrEqual(Date.now());
+    completeSessionRun(sessionId);
+    expect(getActiveSessionRunStartedAtMs(sessionId)).toBeUndefined();
+  });
+
   test("assigns monotonic sequence numbers and replays by session or run", () => {
     const sessionId = createSession();
     const runId = ensureSessionRunId(sessionId);

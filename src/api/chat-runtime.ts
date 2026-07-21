@@ -47,7 +47,10 @@ import {
   summarizeSessionTokenUsage,
   upsertPersistedSessionMessage,
 } from "../core/session-context";
-import { getActiveSessionRunId } from "../core/session-event-ledger";
+import {
+  getActiveSessionRunId,
+  getActiveSessionRunStartedAtMs,
+} from "../core/session-event-ledger";
 import { handleSessionGoalCommand } from "../core/session-goals";
 import { extractLatestSessionPlan } from "../core/session-plan";
 import {
@@ -1831,6 +1834,10 @@ async function handleChatTurn(
     process_activities: visibleProcessActivities,
     agent_transfers: agentTransfers.length > 0 ? agentTransfers : undefined,
     run_id: getActiveSessionRunId(session.id),
+    worked_duration_ms: Math.max(
+      0,
+      assistantTimestampMs - (getActiveSessionRunStartedAtMs(session.id) ?? assistantTimestampMs)
+    ),
   };
   appendAssistantMessage(session, assistantMessage);
   if (!session.title || shouldRegenerateSessionTitle(session.title)) {
@@ -1847,6 +1854,7 @@ async function handleChatTurn(
       process_activities: assistantMessage.process_activities,
       agent_transfers: assistantMessage.agent_transfers,
       run_id: assistantMessage.run_id,
+      worked_duration_ms: assistantMessage.worked_duration_ms,
     },
   });
   persistActiveSessionContext(session);

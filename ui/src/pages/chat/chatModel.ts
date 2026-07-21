@@ -43,6 +43,7 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp?: string;
+  worked_duration_ms?: number;
   tool_calls?: ToolCall[];
   agent_transfers?: AgentTransferInfo[];
   process_activities?: Array<{

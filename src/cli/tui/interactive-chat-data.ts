@@ -200,6 +200,8 @@ export function messagesFromResponse(value: unknown): ChatMessage[] {
         content,
         timestamp,
         turnStartedAt: role === "assistant" ? latestUserTimestamp : undefined,
+        workedDurationMs:
+          typeof item.worked_duration_ms === "number" ? item.worked_duration_ms : undefined,
         process_activities: processActivities,
         tool_calls: toolCalls,
         agent_transfers: agentTransfers,
