@@ -118,8 +118,10 @@ export interface PendingChatCompletion {
 export const pendingChatQueues = new Map<string, PendingChatItem[]>();
 export const pendingChatCompletions = new Map<string, PendingChatCompletion>();
 export const pendingChatDrainScheduled = new Set<string>();
+export const pendingChatDrainTimers = new Map<string, ReturnType<typeof setTimeout>>();
 export const deferredSessionMessages = new Map<string, ChatMessage[]>();
 export const activeChatTurnAbortControllers = new Map<string, AbortController>();
+export const deletingChatSessionIds = new Set<string>();
 export const interruptedChatTurnSteeringIds = new WeakMap<AbortController, string>();
 export const stoppedChatTurnControllers = new WeakSet<AbortController>();
 const residentChatSessionSizes = new Map<string, number>();
@@ -181,6 +183,9 @@ export function getResidentChatSession(sessionId: string): InMemoryChatSession |
 }
 
 export function deleteResidentChatSession(sessionId: string): boolean {
+  const drainTimer = pendingChatDrainTimers.get(sessionId);
+  if (drainTimer) clearTimeout(drainTimer);
+  pendingChatDrainTimers.delete(sessionId);
   residentChatSessionSizes.delete(sessionId);
   residentChatSessionAccess.delete(sessionId);
   pendingChatQueues.delete(sessionId);

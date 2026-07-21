@@ -1,5 +1,9 @@
 type JsonObject = Record<string, unknown>;
 
+const toolArgumentAliases: Record<string, Record<string, string[]>> = {
+  read: { path: ["file"] },
+};
+
 function isJsonObject(value: unknown): value is JsonObject {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -84,7 +88,7 @@ function coerceValue(value: unknown, schema: JsonObject): unknown {
 }
 
 export function coerceToolArguments(
-  _toolName: string,
+  toolName: string,
   args: Record<string, unknown>,
   inputSchema?: Record<string, unknown>
 ): Record<string, unknown> {
@@ -93,6 +97,13 @@ export function coerceToolArguments(
   if (!isJsonObject(properties)) return args;
 
   let next: Record<string, unknown> | undefined;
+  for (const [key, aliases] of Object.entries(toolArgumentAliases[toolName] || {})) {
+    if (args[key] !== undefined) continue;
+    const alias = aliases.find((candidate) => args[candidate] !== undefined);
+    if (!alias) continue;
+    next ??= { ...args };
+    next[key] = args[alias];
+  }
   for (const [key, value] of Object.entries(args)) {
     const propertySchema = properties[key];
     if (!isJsonObject(propertySchema)) continue;

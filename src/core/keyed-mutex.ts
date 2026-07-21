@@ -40,4 +40,13 @@ export class KeyedMutex {
   isLocked(key: string): boolean {
     return this.tails.has(key);
   }
+
+  async waitForIdle(key: string): Promise<void> {
+    while (true) {
+      const tail = this.tails.get(key);
+      if (!tail) return;
+      await tail;
+      if (this.tails.get(key) === tail) return;
+    }
+  }
 }

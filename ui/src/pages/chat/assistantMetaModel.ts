@@ -108,6 +108,7 @@ export function inferThoughtActivitiesFromThinking(
 interface WorkedDurationOptions {
   assistantTimestamp?: string;
   turnStartedAtMs?: number;
+  workedDurationMs?: number;
 }
 
 export function resolveWorkedDurationMs(
@@ -115,6 +116,13 @@ export function resolveWorkedDurationMs(
   toolCalls?: ToolCall[],
   options?: WorkedDurationOptions
 ): number | undefined {
+  if (
+    typeof options?.workedDurationMs === "number" &&
+    Number.isFinite(options.workedDurationMs) &&
+    options.workedDurationMs >= 0
+  ) {
+    return options.workedDurationMs;
+  }
   const assistantTimestampMs = parseTimestampMs(options?.assistantTimestamp);
   const turnStartedAtMs = options?.turnStartedAtMs;
   const withinTurnBounds = (timestamp: number): boolean => {

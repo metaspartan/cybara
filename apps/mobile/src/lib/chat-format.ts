@@ -464,11 +464,13 @@ export function buildMobileWorkTimeline(
   const firstTimestamp = timestamps.length > 0 ? Math.min(...timestamps) : undefined;
   const workedMs = Math.max(
     0,
-    hasActiveWork && firstTimestamp && firstTimestamp > 0
-      ? nowMs - firstTimestamp
-      : timestampDuration && timestampDuration > 0
-        ? timestampDuration
-        : toolDuration
+    typeof message.workedDurationMs === "number" && Number.isFinite(message.workedDurationMs)
+      ? message.workedDurationMs
+      : hasActiveWork && firstTimestamp && firstTimestamp > 0
+        ? nowMs - firstTimestamp
+        : timestampDuration && timestampDuration > 0
+          ? timestampDuration
+          : toolDuration
   );
 
   return {

@@ -52,6 +52,15 @@ final class UpdateChecker: ObservableObject {
         }
     }
 
+    var showsMenuBarUpdateIndicator: Bool {
+        switch state {
+        case .updateAvailable, .downloading, .verifying, .installing, .relaunching:
+            return true
+        default:
+            return false
+        }
+    }
+
     var statusText: String {
         switch state {
         case .idle:

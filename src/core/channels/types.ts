@@ -485,6 +485,14 @@ export const channels = {
           "Shared secret for HMAC-SHA256 signature verification (x-cybara-signature header).",
       },
       {
+        name: "principal_id",
+        label: "Authenticated Principal",
+        type: "string",
+        required: false,
+        default: "webhook",
+        description: "Fixed sender identity bound to this webhook secret.",
+      },
+      {
         name: "dm_policy",
         label: "Sender Policy",
         type: "select",

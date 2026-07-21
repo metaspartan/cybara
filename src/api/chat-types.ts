@@ -27,6 +27,7 @@ export interface ChatMessage {
   process_activities?: ProcessActivityInfo[];
   agent_transfers?: AgentTransferEnvelope[];
   run_id?: string;
+  worked_duration_ms?: number;
   interrupted?: boolean;
   pending_chat_id?: string;
   client_pending_id?: string;
@@ -42,7 +43,7 @@ export interface ChatRequest {
   sessionId?: string;
   modelOverride?: string;
   clientPendingId?: string;
-  workspaceDir?: string;
+  workspaceDir?: string | null;
   stream?: boolean;
   tools?: boolean;
   channel?: string;

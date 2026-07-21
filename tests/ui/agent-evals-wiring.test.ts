@@ -11,6 +11,7 @@ describe("agent eval UI wiring", () => {
     const sidebar = read("ui/src/components/layout/Sidebar.tsx");
     const page = read("ui/src/pages/Evals.tsx");
     const research = read("ui/src/pages/research/TraceDatasetPanel.tsx");
+    const formats = read("ui/src/lib/labFormats.ts");
     const computerUse = read("ui/src/pages/research/ComputerUseDatasetPanel.tsx");
     const benchmarks = read("ui/src/pages/research/BenchmarkPanel.tsx");
     const chat = read("ui/src/pages/Chat.tsx") + read("ui/src/pages/chat/ChatMessageTimeline.tsx");
@@ -24,8 +25,8 @@ describe("agent eval UI wiring", () => {
     expect(page).toContain("Import suite");
     expect(page).toContain("Redact JSONL");
     expect(page).toContain("All checks passed");
-    expect(research).toContain("Hugging Face / TRL SFT");
-    expect(research).toContain("Long-context QA");
+    expect(formats).toContain("Hugging Face / TRL SFT");
+    expect(formats).toContain("Long-context QA");
     expect(research).toContain("Hidden reasoning is never");
     expect(research).toContain("experiments are reproducible");
     expect(research).toContain("accent-button");
@@ -44,6 +45,9 @@ describe("agent eval UI wiring", () => {
     expect(benchmarks).toContain("Cancel run");
     expect(benchmarks).toContain("Delete run");
     expect(benchmarks).toContain("cancelled");
+    expect(benchmarks).toContain("Loading agents…");
+    expect(benchmarks).toContain("Agents unavailable");
+    expect(benchmarks).toContain("No agents configured");
     const leaderboard = read("ui/src/pages/research/LeaderboardPanel.tsx");
     expect(leaderboard).toContain("Model leaderboard");
     expect(leaderboard).toContain("bestRating");
@@ -52,6 +56,7 @@ describe("agent eval UI wiring", () => {
     expect(research).toContain("Has reasoning");
     expect(page).toContain("ComputerUseDatasetPanel");
     expect(page).toContain('key: "computer-use", label: "Computer Use"');
+    expect(page).toContain("useSearchParams");
     expect(page).toContain("Verify behavior and results");
     expect(computerUse).toContain("Computer-use trajectories");
     expect(computerUse).toContain("Capture future runs");

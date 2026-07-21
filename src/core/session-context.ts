@@ -43,6 +43,7 @@ type SessionMessageMetadata = Partial<
     | "process_activities"
     | "agent_transfers"
     | "run_id"
+    | "worked_duration_ms"
     | "interrupted"
     | "pending_chat_id"
     | "client_pending_id"
@@ -92,6 +93,9 @@ function serializeSessionMessageMetadata(
   if (typeof message.run_id === "string" && message.run_id.trim()) {
     metadata.run_id = message.run_id.trim();
   }
+  if (typeof message.worked_duration_ms === "number" && message.worked_duration_ms >= 0) {
+    metadata.worked_duration_ms = message.worked_duration_ms;
+  }
   if (message.interrupted === true) {
     metadata.interrupted = true;
   }
@@ -112,6 +116,7 @@ export async function upsertPersistedSessionMessage(
   message: ChatMessage,
   options?: { stableKey?: string; createdAtOffsetMs?: number; metadata?: Record<string, unknown> }
 ): Promise<void> {
+  tables.chatSessions.ensure(sessionId, agentId);
   const id = sessionMessageStableId([
     sessionId,
     message.role,

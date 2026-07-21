@@ -3,7 +3,6 @@ import { agentManager } from "../../src/core/agent";
 import { providerManager } from "../../src/core/providers";
 import {
   deleteSession,
-  formatProcessActivityFromToolCall,
   handleChat,
   waitForPendingChatCompletion,
   getSessionMessages,
@@ -413,19 +412,6 @@ describe("handleChat per-session serialization", () => {
     );
     expect(persistedStopped?.process_activities).toEqual(stoppedActivities);
     expect((await stopActiveChatTurn(sessionId)).stopped).toBe(false);
-  });
-
-  test("formats complete command activity without shortening it", () => {
-    const command =
-      "printf 'complete command activity remains fully visible across every client surface' >/dev/null";
-    expect(
-      formatProcessActivityFromToolCall({
-        id: "complete-command-call",
-        name: "exec",
-        args: { command },
-        status: "completed",
-      })
-    ).toBe(`Ran ${command}`);
   });
 
   test("rejects concurrent follow-ups when queue and steer behavior is disabled", async () => {
@@ -858,7 +844,11 @@ describe("handleChat per-session serialization", () => {
                 },
               },
             ],
-            usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
+            usage: {
+              prompt_tokens: 12,
+              completion_tokens: 4,
+              total_tokens: 16,
+            },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
@@ -884,7 +874,13 @@ describe("handleChat per-session serialization", () => {
           id: `transfer-${model}`,
           object: "chat.completion",
           model,
-          choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content } }],
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content },
+            },
+          ],
           usage: { prompt_tokens: 8, completion_tokens: 5, total_tokens: 13 },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
@@ -926,7 +922,11 @@ describe("handleChat per-session serialization", () => {
 
     requestedModels.length = 0;
     transferRequested = false;
-    const nextTurn = await handleChat({ message: "Continue", sessionId, tools: false });
+    const nextTurn = await handleChat({
+      message: "Continue",
+      sessionId,
+      tools: false,
+    });
     expect(nextTurn.agent?.id).toBe(secondAgent.id);
     expect(nextTurn.message.content).toBe("Transfer ownership context persisted.");
     expect(requestedModels).toEqual(["gpt-transfer-b"]);

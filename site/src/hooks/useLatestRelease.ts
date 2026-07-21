@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { RELEASES_URL } from "../content";
 import {
   formatDownloadTotal,
+  githubLastPage,
   sumReleaseDownloads,
   type GithubDownloadRelease,
 } from "../../downloadStats";
@@ -133,9 +134,9 @@ export function shortSha(sha256?: string): string {
 }
 
 const DOWNLOAD_TOTAL_API = "/api/downloads";
-const ALL_RELEASES_API = "https://api.github.com/repos/metaspartan/cybara/releases?per_page=100";
-const DOWNLOAD_TOTAL_CACHE_KEY = "cybara.site.downloadTotal.v6";
-const DOWNLOAD_TOTAL_CACHE_TTL_MS = 30 * 60 * 1000;
+const ALL_RELEASES_API = "https://api.github.com/repos/metaspartan/cybara/releases";
+const DOWNLOAD_TOTAL_CACHE_KEY = "cybara.site.downloadTotal.v7";
+const DOWNLOAD_TOTAL_CACHE_TTL_MS = 10 * 60 * 1000;
 
 interface DownloadTotalResponse {
   total?: number;
@@ -145,6 +146,7 @@ async function fetchDownloadTotal(signal: AbortSignal): Promise<number> {
   try {
     const response = await fetch(DOWNLOAD_TOTAL_API, {
       headers: { Accept: "application/json" },
+      cache: "no-cache",
       signal,
     });
     if (!response.ok) throw new Error(`Download API returned ${response.status}`);
@@ -153,13 +155,26 @@ async function fetchDownloadTotal(signal: AbortSignal): Promise<number> {
   } catch (error) {
     if (signal.aborted) throw error;
   }
-  const response = await fetch(ALL_RELEASES_API, {
-    headers: { Accept: "application/vnd.github+json" },
-    signal,
-  });
-  if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
-  const releases = (await response.json()) as GithubDownloadRelease[];
-  return sumReleaseDownloads(Array.isArray(releases) ? releases : []);
+  const fetchPage = async (
+    page: number
+  ): Promise<{ releases: GithubDownloadRelease[]; link: string | null }> => {
+    const response = await fetch(`${ALL_RELEASES_API}?per_page=100&page=${page}`, {
+      headers: { Accept: "application/vnd.github+json" },
+      signal,
+    });
+    if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
+    const releases = (await response.json()) as GithubDownloadRelease[];
+    if (!Array.isArray(releases)) throw new Error("GitHub API returned an invalid release list");
+    return { releases, link: response.headers.get("link") };
+  };
+  const first = await fetchPage(1);
+  const remaining = await Promise.all(
+    Array.from({ length: githubLastPage(first.link) - 1 }, (_, index) => fetchPage(index + 2))
+  );
+  return sumReleaseDownloads([
+    ...first.releases,
+    ...remaining.flatMap((page) => page.releases),
+  ]);
 }
 
 function readCachedDownloadTotal(): number | null {
@@ -178,7 +193,6 @@ export function useDownloadTotal(): number | null {
   const [total, setTotal] = useState<number | null>(() => readCachedDownloadTotal());
 
   useEffect(() => {
-    if (total !== null) return;
     let active = true;
     const controller = new AbortController();
 
@@ -203,7 +217,7 @@ export function useDownloadTotal(): number | null {
       active = false;
       controller.abort();
     };
-  }, [total]);
+  }, []);
 
   return total;
 }

@@ -102,6 +102,7 @@ export async function logSessionMessage(
   };
 
   try {
+    tables.chatSessions.ensure(sessionId, options?.agentId, message.created_at);
     await tables.sessionMessages.add(message);
     appendSessionEvent({
       sessionId,

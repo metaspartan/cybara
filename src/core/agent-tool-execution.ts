@@ -7,6 +7,7 @@ import {
 } from "./agent-loop-runtime";
 import type { AgentStatus, StatusPayload } from "./status";
 import { coerceToolArguments } from "./tool-argument-coercion";
+import { validateToolArguments } from "./tool-argument-validation";
 import { isToolPolicyBlockedMessage, sanitizeToolErrorMessage } from "./tool-result-classification";
 import {
   executeTool,
@@ -82,6 +83,18 @@ async function executeAgentToolInternal(
   const missingArgs = getMissingRequiredToolArguments(toolName, args);
   if (missingArgs.length > 0) {
     const reason = formatMissingRequiredToolArgumentsError(toolName, missingArgs);
+    await emitAgentHook({
+      type: "tool_blocked",
+      context: hookContext,
+      toolName,
+      args,
+      reason,
+    });
+    return { skipped: false, result: { error: reason } };
+  }
+  const validationErrors = validateToolArguments(args, toolSchemas[toolName]?.input_schema);
+  if (validationErrors.length > 0) {
+    const reason = `Validation error: ${validationErrors.slice(0, 3).join("; ")}`;
     await emitAgentHook({
       type: "tool_blocked",
       context: hookContext,

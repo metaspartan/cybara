@@ -14,6 +14,7 @@ import { logChannelMessage } from "../../logging";
 
 interface WebhookConfig {
   secret: string;
+  principalId: string;
 }
 
 interface WebhookInput {
@@ -29,15 +30,13 @@ function headerValue(headers: Record<string, string>, name: string): string {
   return match?.[1] || "";
 }
 
-function parseWebhookInput(payload: WebhookPayload): WebhookInput | null {
+function parseWebhookInput(payload: WebhookPayload, principalId: string): WebhookInput | null {
   const body =
     payload.body && typeof payload.body === "object"
       ? (payload.body as Record<string, unknown>)
       : {};
   const messageValue = body.message ?? body.text ?? body.content;
   if (typeof messageValue !== "string" || !messageValue.trim()) return null;
-  const senderValue =
-    body.sender_id ?? body.senderId ?? payload.query.sender_id ?? payload.query.sender;
   const conversationValue =
     body.conversation_id ??
     body.conversationId ??
@@ -45,8 +44,7 @@ function parseWebhookInput(payload: WebhookPayload): WebhookInput | null {
     payload.query.conversation;
   return {
     message: messageValue.trim(),
-    senderId:
-      typeof senderValue === "string" && senderValue.trim() ? senderValue.trim() : "webhook",
+    senderId: principalId,
     conversationId:
       typeof conversationValue === "string" && conversationValue.trim()
         ? conversationValue.trim()
@@ -73,8 +71,12 @@ export class WebhookAdapter implements ChannelAdapter {
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
     const secret = typeof config.secret === "string" ? config.secret.trim() : "";
     if (!secret) throw new Error("Webhook: secret is required");
+    const principalId =
+      typeof config.principal_id === "string" && config.principal_id.trim()
+        ? config.principal_id.trim()
+        : "webhook";
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
-    this.configs.set(channelId, { secret });
+    this.configs.set(channelId, { secret, principalId });
     this.running.add(channelId);
     console.log(`[Webhook] Adapter ready for channel ${channelId}`);
   }
@@ -99,7 +101,7 @@ export class WebhookAdapter implements ChannelAdapter {
     if (!verifyWebhookSignature(payload.rawBody, signature, config.secret)) {
       return { status: 401, body: { error: "invalid signature" } };
     }
-    const input = parseWebhookInput(payload);
+    const input = parseWebhookInput(payload, config.principalId);
     if (!input) return { status: 400, body: { error: "message is required" } };
     const access = evaluateChannelAccess(channelId, input.senderId, "webhook", { isGroup: false });
     if (!access.permitted) {

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parsePetEnabled, readPetEnabled } from "../../ui/src/lib/petPreferences";
-import { PET_WINDOW_URL } from "../../ui/src/lib/tauriPet";
 import { readNativeSettingsSource, readUiStylesSource } from "../shared/source-bundles";
 
 const nativeSettingsSource = readNativeSettingsSource();
@@ -16,6 +15,10 @@ const webPetSource = readFileSync(
 );
 const overlaySource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/PetOverlay.tsx", import.meta.url)),
+  "utf8"
+);
+const tauriPetSource = readFileSync(
+  fileURLToPath(new URL("../../ui/src/lib/tauriPet.ts", import.meta.url)),
   "utf8"
 );
 const cssSource = readUiStylesSource();
@@ -60,7 +63,9 @@ describe("pet preferences", () => {
     expect(htmlSource).toContain("html.pet-window body");
     expect(htmlSource).toContain("html.pet-window body::before");
     expect(htmlSource).toContain("content: none !important");
-    expect(PET_WINDOW_URL).toBe("http://127.0.0.1:4269/?pet=1");
+    expect(tauriPetSource).toContain('invoke<string>("get_gateway_url")');
+    expect(tauriPetSource).toContain("url: `${gatewayUrl}/?pet=1`");
+    expect(tauriPetSource).not.toContain("http://127.0.0.1:4269/?pet=1");
     expect(overlaySource).not.toContain("bg-[#12121a] cursor-grab");
   });
 });

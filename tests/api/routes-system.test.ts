@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
-import { join } from "path";
+import { parse, join } from "path";
+import { homedir } from "os";
 import { createRoutesFixture } from "./routes.fixture";
 
 const fixture = createRoutesFixture();
@@ -993,9 +994,11 @@ describe("IDE & Git API", () => {
   });
 
   test("Git status/branch routes return shaped responses and diff validates params", async () => {
+    const repoDir = mkdtempSync(join(fixture.testHome, "git-status-route-"));
+    fixture.git(["init", "-q", "-b", "main"], repoDir);
     const statusRes = await fixture.api(
       "GET",
-      `/api/git/status?path=${encodeURIComponent(fixture.ROOT_DIR)}`
+      `/api/git/status?path=${encodeURIComponent(repoDir)}`
     );
     expect(statusRes.status).toBe(200);
     expect(typeof statusRes.data.isRepo).toBe("boolean");
@@ -1005,7 +1008,7 @@ describe("IDE & Git API", () => {
 
     const branchRes = await fixture.api(
       "GET",
-      `/api/git/branch?path=${encodeURIComponent(fixture.ROOT_DIR)}`
+      `/api/git/branch?path=${encodeURIComponent(repoDir)}`
     );
     expect(branchRes.status).toBe(200);
     expect("branch" in branchRes.data).toBe(true);
@@ -1014,6 +1017,29 @@ describe("IDE & Git API", () => {
     expect(missingDiffPathRes.status).toBe(200);
     expect(missingDiffPathRes.data.success).toBe(false);
     expect(typeof missingDiffPathRes.data.error).toBe("string");
+  });
+
+  test("Git routes reject paths outside the IDE home boundary", async () => {
+    const outsidePath = parse(homedir()).root;
+    const statusRes = await fixture.api(
+      "GET",
+      `/api/git/status?path=${encodeURIComponent(outsidePath)}`
+    );
+    const diffRes = await fixture.api(
+      "GET",
+      `/api/git/diff?path=${encodeURIComponent(outsidePath)}`
+    );
+    const branchRes = await fixture.api("POST", "/api/git/branch", {
+      path: outsidePath,
+      branch: "main",
+    });
+
+    expect(statusRes.status).toBe(400);
+    expect(diffRes.status).toBe(400);
+    expect(branchRes.status).toBe(400);
+    expect(String(statusRes.data.message || statusRes.data.error)).toContain(
+      "outside the allowed IDE scope"
+    );
   });
 
   test("Git branch routes list, checkout, and create branches in a workspace repo", async () => {

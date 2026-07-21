@@ -27,6 +27,7 @@ import {
   searchWorkspace,
   writeFileContent,
 } from "../ide-api";
+import { resolveAllowedIdePath } from "../ide-path-policy";
 import {
   getOrInitLspManager,
   normalizeDefinitionLocation,
@@ -38,6 +39,14 @@ import {
   truncateInlineContext,
 } from "./lsp-ide";
 import type { LspDiagnosticLike, NormalizedLspSymbol, RouteHandler } from "./_shared";
+
+function resolveGitRoutePath(value: unknown, fallback?: string): string {
+  const input = typeof value === "string" && value.trim() ? value.trim() : fallback;
+  if (!input) throw new Error("Validation error: Git path is required");
+  const resolved = resolveAllowedIdePath(input);
+  if (!resolved) throw new Error("Validation error: Git path is outside the allowed IDE scope");
+  return resolved;
+}
 
 export const ideLspRoutes: Record<string, RouteHandler> = {
   "GET /api/lsp/status": async () => {
@@ -1463,18 +1472,18 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
   },
 
   "GET /api/git/status": async (_body, params) => {
-    const path = (params?.path as string | undefined) || "~";
+    const path = resolveGitRoutePath(params?.path, "~");
     return await getGitStatus(path);
   },
 
   "GET /api/git/branch": async (_body, params) => {
-    const path = (params?.path as string | undefined) || "~";
+    const path = resolveGitRoutePath(params?.path, "~");
     const branch = await getGitBranch(path);
     return { branch };
   },
 
   "GET /api/git/branches": async (_body, params) => {
-    const path = (params?.path as string | undefined) || "~";
+    const path = resolveGitRoutePath(params?.path, "~");
     return await getGitBranches(path);
   },
 
@@ -1484,21 +1493,18 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
       branch?: string;
       create?: boolean;
     };
-    if (!path || typeof path !== "string") {
-      return { success: false, error: "Missing 'path' parameter" };
-    }
     if (!branch || typeof branch !== "string") {
       return { success: false, error: "Missing 'branch' parameter" };
     }
-    return await checkoutGitBranch(path, branch, { create: create === true });
+    return await checkoutGitBranch(resolveGitRoutePath(path), branch, { create: create === true });
   },
 
   "GET /api/git/diff": async (_body, params) => {
-    const path = params?.path as string | undefined;
     const staged = params?.staged === "true";
-    if (!path) {
+    if (!params?.path) {
       return { success: false, error: "Missing 'path' parameter" };
     }
+    const path = resolveGitRoutePath(params.path);
     return await getGitDiff(path, staged);
   },
 };

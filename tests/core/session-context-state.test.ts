@@ -23,6 +23,22 @@ afterEach(async () => {
 });
 
 describe("persisted active session context", () => {
+  test("restores the authoritative worked duration", async () => {
+    const sessionId = `context-duration-${crypto.randomUUID()}`;
+    sessionIds.push(sessionId);
+    const message: ChatMessage = {
+      role: "assistant",
+      content: "Done",
+      worked_duration_ms: 26_000,
+    };
+
+    await upsertPersistedSessionMessage(sessionId, "context-agent", message, {
+      stableKey: "duration-assistant",
+    });
+
+    expect((await loadPersistedSession(sessionId))?.messages[0]?.worked_duration_ms).toBe(26_000);
+  });
+
   test("deleting a persisted session clears its event ledger", async () => {
     const sessionId = `context-ledger-delete-${crypto.randomUUID()}`;
     expect(await persistSession(sessionId, "context-agent", [])).toBe(true);

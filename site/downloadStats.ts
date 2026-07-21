@@ -7,6 +7,12 @@ export interface GithubDownloadRelease {
   assets?: GithubDownloadAsset[];
 }
 
+export function githubLastPage(link: string | null, maximum = 50): number {
+  const match = link?.match(/[?&]page=(\d+)>; rel="last"/);
+  const parsed = Number(match?.[1] ?? 1);
+  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(1, parsed)) : 1;
+}
+
 const EXCLUDED_DOWNLOAD_ASSETS = new Set(["latest.json"]);
 const EXCLUDED_DOWNLOAD_SUFFIXES = [".sig", ".sha256", ".sha512", ".md5"];
 const CHECKSUM_MANIFEST_PATTERN = /^checksums?\.(?:txt|json)$/i;

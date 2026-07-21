@@ -4,8 +4,9 @@ import { NewChatWorkspaceBar } from "./NewChatWorkspaceBar";
 
 interface ChatEmptyStateProps {
   children: ReactNode;
+  onClearWorkspace: () => void;
   onSelectWorkspace: () => void;
-  workspaceDir: string;
+  workspaceDir: string | null;
   workspaceSaving: boolean;
   gitBranches: GitBranchOption[];
   gitBranch: string | null;
@@ -19,6 +20,7 @@ interface ChatEmptyStateProps {
 
 export function ChatEmptyState({
   children,
+  onClearWorkspace,
   onSelectWorkspace,
   workspaceDir,
   workspaceSaving,
@@ -56,6 +58,7 @@ export function ChatEmptyState({
           error={gitBranchError}
           loading={gitBranchLoading}
           onCreateBranch={onCreateGitBranch}
+          onClearWorkspace={onClearWorkspace}
           onRefreshBranches={onRefreshGitBranches}
           onSelectWorkspace={onSelectWorkspace}
           onSwitchBranch={onSwitchGitBranch}

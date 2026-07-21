@@ -824,6 +824,7 @@ export interface SessionMessageSummary {
   role: string;
   content: string;
   timestamp?: string;
+  workedDurationMs?: number;
   thinking?: string;
   toolCalls?: SessionToolCallSummary[];
   processActivities?: SessionProcessActivitySummary[];

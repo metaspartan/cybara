@@ -233,6 +233,13 @@ describe("Security auth e2e", () => {
       expect(wrongAuth.status).toBe(401);
       expect(wrongAuth.data.error).toContain("Invalid API key");
 
+      const malformedUnauthorized = await fetch(`${baseUrl}/api/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{",
+      });
+      expect(malformedUnauthorized.status).toBe(401);
+
       const bearerAuth = await request(baseUrl, "/api/info", {
         Authorization: `Bearer ${apiKey}`,
       });
@@ -641,6 +648,9 @@ describe("Security auth e2e", () => {
     let proc: ReturnType<typeof Bun.spawn> | null = null;
 
     try {
+      const repoDir = mkdtempSync(join(homeDir, "git-auth-route-"));
+      const init = Bun.spawnSync(["git", "init", "-q", "-b", "main"], { cwd: repoDir });
+      expect(init.exitCode).toBe(0);
       proc = startServer(port, {
         NODE_ENV: "production",
         CYBARA_API_KEY: apiKey,
@@ -649,14 +659,14 @@ describe("Security auth e2e", () => {
 
       const missingStatus = await request(
         baseUrl,
-        `/api/git/status?path=${encodeURIComponent(ROOT_DIR)}`
+        `/api/git/status?path=${encodeURIComponent(repoDir)}`
       );
       expect(missingStatus.status).toBe(401);
       expect(missingStatus.data.error).toContain("Missing Authorization");
 
       const authStatus = await request(
         baseUrl,
-        `/api/git/status?path=${encodeURIComponent(ROOT_DIR)}`,
+        `/api/git/status?path=${encodeURIComponent(repoDir)}`,
         {
           Authorization: `Bearer ${apiKey}`,
         }
@@ -670,7 +680,7 @@ describe("Security auth e2e", () => {
 
       const authBranch = await request(
         baseUrl,
-        `/api/git/branch?path=${encodeURIComponent(ROOT_DIR)}`,
+        `/api/git/branch?path=${encodeURIComponent(repoDir)}`,
         {
           Authorization: `Bearer ${apiKey}`,
         }

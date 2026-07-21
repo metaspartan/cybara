@@ -861,7 +861,7 @@ func nativeWorkedDurationLabel(for message: GatewaySessionMessage) -> String {
     let toolDuration = (message.tool_calls ?? []).reduce(0) { partial, toolCall in
         partial + max(0, toolCall.duration ?? 0)
     }
-    let duration = max(timestampDuration ?? 0, toolDuration)
+    let duration = message.worked_duration_ms ?? max(timestampDuration ?? 0, toolDuration)
     return nativeFormatWorkedDuration(duration)
 }
 

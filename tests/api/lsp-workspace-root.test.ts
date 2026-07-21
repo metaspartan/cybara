@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
+import { homedir } from "os";
+import { join, parse } from "path";
 import { resolveWorkspacePath } from "../../src/api/routes/lsp-ide";
 
 describe("LSP workspace root resolution", () => {
   test("keeps nested files in one project manager", () => {
-    const root = mkdtempSync(join(tmpdir(), "cybara-lsp-root-"));
+    const root = mkdtempSync(join(homedir(), ".cybara-lsp-root-"));
     try {
       const nested = join(root, "src", "features");
       mkdirSync(nested, { recursive: true });
@@ -22,11 +22,17 @@ describe("LSP workspace root resolution", () => {
   });
 
   test("preserves explicit directory roots", () => {
-    const root = mkdtempSync(join(tmpdir(), "cybara-lsp-directory-"));
+    const root = mkdtempSync(join(homedir(), ".cybara-lsp-directory-"));
     try {
       expect(resolveWorkspacePath(root)).toBe(root);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test("rejects paths outside the IDE home boundary", () => {
+    expect(() => resolveWorkspacePath(parse(homedir()).root)).toThrow(
+      "LSP path is outside the allowed IDE scope"
+    );
   });
 });

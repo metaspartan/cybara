@@ -27,6 +27,13 @@ describe("chat empty state", () => {
     expect(emptyState).toContain("<NewChatWorkspaceBar");
     expect(workspaceBar).toContain('appearance="inline"');
     expect(workspaceBar).toContain("workspaceName(workspaceDir)");
+    expect(workspaceBar).toContain('<X className="h-2.5 w-2.5"');
+    expect(workspaceBar).toContain('aria-label="Clear workspace"');
+    expect(workspaceBar).toContain("rounded-full bg-[var(--icon-muted)]");
+    expect(workspaceBar).not.toContain("pb-1");
+    expect(emptyState).toContain("onClearWorkspace={onClearWorkspace}");
+    expect(chat).toContain("setWorkspaceFallbackSuppressed(true)");
+    expect(chat).toContain("workspaceDir: effectiveWorkspaceDir");
     expect(workspaceBar).not.toContain("Local");
     expect(composer).toContain('layout?: "default" | "new-chat"');
     expect(composer).toContain("data-layout={layout}");

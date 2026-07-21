@@ -12,6 +12,7 @@ function source(path: string): string {
 describe("Lab settings parity", () => {
   test("web settings govern Lab navigation, capture actions, and training exports", () => {
     const settings = source("ui/src/pages/settings/LabSettings.tsx");
+    const formats = source("ui/src/lib/labFormats.ts");
     const lab = source("ui/src/pages/Evals.tsx");
     const sidebar = source("ui/src/components/layout/Sidebar.tsx");
     const timeline = source("ui/src/pages/chat/ChatMessageTimeline.tsx");
@@ -20,6 +21,10 @@ describe("Lab settings parity", () => {
     expect(settings).toContain('label="Show golden turn actions"');
     expect(settings).toContain('label="Capture completed turns"');
     expect(settings).toContain('label="Redact exports by default"');
+    expect(settings).toContain("options={[...labExportFormats]}");
+    expect(settings).toContain("Lab settings unavailable");
+    expect(formats).toContain('value: "distillation_sft"');
+    expect(formats).toContain('value: "hf_session_trace"');
     expect(lab).toContain("Lab settings unavailable");
     expect(lab).toContain("defaultFormat={labSettings.defaultExportFormat}");
     expect(sidebar).toContain('.filter((item) => item !== "lab" || labEnabled)');

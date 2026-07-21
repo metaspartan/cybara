@@ -1,4 +1,4 @@
-import { Folder, Loader2 } from "lucide-react";
+import { Folder, Loader2, X } from "lucide-react";
 import type { ReactElement } from "react";
 import { GitBranchSelector, type GitBranchOption } from "./GitBranchSelector";
 
@@ -14,6 +14,7 @@ export function NewChatWorkspaceBar({
   error,
   loading,
   onCreateBranch,
+  onClearWorkspace,
   onRefreshBranches,
   onSelectWorkspace,
   onSwitchBranch,
@@ -26,19 +27,32 @@ export function NewChatWorkspaceBar({
   error: string | null;
   loading: boolean;
   onCreateBranch: (branch: string) => Promise<void> | void;
+  onClearWorkspace: () => void;
   onRefreshBranches: () => Promise<void> | void;
   onSelectWorkspace: () => void;
   onSwitchBranch: (branch: string) => Promise<void> | void;
-  workspaceDir: string;
+  workspaceDir: string | null;
   workspaceSaving: boolean;
 }): ReactElement {
   return (
-    <div className="new-chat-workspace-bar mx-4 flex h-10 min-w-0 items-center gap-2 rounded-t-[18px] border border-b-0 px-3 pb-1 text-[12px]">
+    <div className="new-chat-workspace-bar mx-4 flex h-9 min-w-0 items-center gap-1 rounded-t-[18px] border border-b-0 px-3 text-[12px]">
+      {workspaceDir ? (
+        <button
+          type="button"
+          onClick={onClearWorkspace}
+          disabled={workspaceSaving}
+          className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--icon-muted)] text-[var(--surface-panel)] transition-colors hover:bg-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+          title="Clear workspace"
+          aria-label="Clear workspace"
+        >
+          <X className="h-2.5 w-2.5" strokeWidth={2.5} />
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={onSelectWorkspace}
         disabled={workspaceSaving}
-        className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-[12px] leading-4 text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60"
+        className={`flex min-w-0 items-center gap-1.5 rounded-md py-1 text-[12px] leading-4 text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-60 ${workspaceDir ? "pl-0.5 pr-1.5" : "px-1.5"}`}
         title={workspaceDir || "Select workspace"}
       >
         {workspaceSaving ? (

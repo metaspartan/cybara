@@ -195,6 +195,25 @@ describe("mobile chat formatting", () => {
     });
   });
 
+  test("prefers the persisted run duration for completed mobile work", () => {
+    const timeline = buildMobileWorkTimeline({
+      id: "assistant-persisted-duration",
+      role: "assistant",
+      content: "Done",
+      workedDurationMs: 26_000,
+      processActivities: [
+        {
+          id: "short-tool",
+          phase: "result",
+          text: "Ran command",
+          timestamp: 25_000,
+        },
+      ],
+    });
+
+    expect(timeline.workedDuration).toBe("0h 00m 26s");
+  });
+
   test("hides persisted provider recovery status from mobile work", () => {
     const timeline = buildMobileWorkTimeline({
       id: "assistant-provider-recovery",

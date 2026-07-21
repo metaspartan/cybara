@@ -1,4 +1,4 @@
-import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { isIP } from "net";
 import { join } from "path";
@@ -399,9 +399,8 @@ export function hasLocalhostBypass(headers: Record<string, string>, ip: string):
 }
 
 function constantTimeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
+  const bufA = createHash("sha256").update(a).digest();
+  const bufB = createHash("sha256").update(b).digest();
   return timingSafeEqual(bufA, bufB);
 }
 
@@ -723,7 +722,7 @@ export function getGatewayAuthSettings(): GatewayAuthSettings {
   const requireForced = process.env.CYBARA_REQUIRE_AUTH === "1" || isProductionRuntime();
   return {
     apiKeyConfigured: Boolean(key),
-    apiKeyPreview: key ? `${key.slice(0, 12)}…${key.slice(-4)}` : null,
+    apiKeyPreview: key ? `••••${key.slice(-4)}` : null,
     apiKeySource: envKey ? "env" : key ? "file" : "none",
     apiKeyPath: API_KEY_FILE,
     gatewayPasswordEnabled: Boolean(readPersistedSecuritySettings().gatewayPassword),
@@ -1084,7 +1083,7 @@ export function securityCheck(
   const publicPaths = ["/api/health", "/api/health/ready", "/api/health/live"];
   if (path === "/api/mcp/oauth/callback") return { passed: true };
   if (path === "/api/connectors/oauth/callback") return { passed: true };
-  if (publicPaths.some((p) => path.startsWith(p))) {
+  if (publicPaths.includes(path)) {
     return { passed: true };
   }
 

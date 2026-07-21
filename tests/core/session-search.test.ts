@@ -38,6 +38,12 @@ describe("session search (FTS5)", () => {
       "Zebra migration plan",
       "[]"
     );
+    db.query("INSERT INTO chat_sessions (id, agent_id, title, messages) VALUES (?, ?, ?, ?)").run(
+      otherSessionId,
+      "agent-test",
+      "Giraffe discussion",
+      "[]"
+    );
     insertMessage(
       `m-${crypto.randomUUID()}`,
       sessionId,

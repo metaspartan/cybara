@@ -482,6 +482,7 @@ describe("Telegram webhook mocked flows", () => {
     } finally {
       config.set("default_agent_id", "");
       tables.agents.delete(agentId);
+      tables.providerModels.deleteByProvider(providerId);
       tables.providers.delete(providerId);
     }
   });
@@ -810,6 +811,8 @@ describe("Telegram webhook mocked flows", () => {
     } finally {
       config.set("default_agent_id", "");
       tables.agents.delete(agentId);
+      tables.providerModels.deleteByProvider(providerA);
+      tables.providerModels.deleteByProvider(providerB);
       tables.providers.delete(providerA);
       tables.providers.delete(providerB);
     }

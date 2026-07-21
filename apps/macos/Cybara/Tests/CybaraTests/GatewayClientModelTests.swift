@@ -977,6 +977,17 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(nativeWorkedDurationLabel(for: message), "0h 00m 01s")
     }
 
+    func testNativeWorkedDurationUsesPersistedRunDuration() throws {
+        let message = try JSONDecoder().decode(
+            GatewaySessionMessage.self,
+            from: Data(
+                #"{"role":"assistant","content":"Done","worked_duration_ms":26000,"tool_calls":[{"id":"tool","name":"exec","duration":5000}]}"#.utf8
+            )
+        )
+
+        XCTAssertEqual(nativeWorkedDurationLabel(for: message), "0h 00m 26s")
+    }
+
     func testNativeGroupActivitiesKeepsThoughtsBetweenCommandGroups() {
         let entries = nativeGroupActivities([
             NativeToolActivity(

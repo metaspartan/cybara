@@ -1780,18 +1780,27 @@ export class TelegramBotManager implements ChannelAdapter {
     update: Record<string, unknown>,
     secretToken?: string
   ): Promise<boolean> {
+    const result = await this.processWebhookResult(channelId, update, secretToken);
+    return result.status === 200;
+  }
+
+  async processWebhookResult(
+    channelId: string,
+    update: Record<string, unknown>,
+    secretToken?: string
+  ): Promise<{ status: number; body: { ok: boolean } }> {
     try {
       const channel = tables.channels.get(channelId) as { type?: string; config?: unknown } | null;
       if (!channel || channel.type !== "telegram") {
         console.error(`[Telegram Webhook] Channel ${channelId} not found or not telegram type`);
-        return false;
+        return { status: 404, body: { ok: false } };
       }
 
       const config = parseStoredTelegramConfig(channel.config, channelId);
       const botToken = typeof config.bot_token === "string" ? config.bot_token : "";
       if (!botToken) {
         console.error(`[Telegram Webhook] No bot token for channel ${channelId}`);
-        return false;
+        return { status: 503, body: { ok: false } };
       }
 
       const expectedSecret =
@@ -1802,13 +1811,13 @@ export class TelegramBotManager implements ChannelAdapter {
         console.error(
           `[Telegram Webhook] Rejected update for channel ${channelId}: secret token mismatch`
         );
-        return false;
+        return { status: 401, body: { ok: false } };
       }
       await this.processTelegramUpdate(update as unknown as TelegramUpdate, channelId, botToken);
-      return true;
+      return { status: 200, body: { ok: true } };
     } catch (error) {
       console.error("[Telegram Webhook] Error processing update:", error);
-      return false;
+      return { status: 500, body: { ok: false } };
     }
   }
 }
@@ -1821,4 +1830,12 @@ export async function processTelegramWebhook(
   secretToken?: string
 ): Promise<boolean> {
   return telegramBot.processWebhook(channelId, update, secretToken);
+}
+
+export async function processTelegramWebhookResult(
+  channelId: string,
+  update: Record<string, unknown>,
+  secretToken?: string
+): Promise<{ status: number; body: { ok: boolean } }> {
+  return telegramBot.processWebhookResult(channelId, update, secretToken);
 }

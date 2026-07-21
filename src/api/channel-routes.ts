@@ -1,7 +1,7 @@
 import {
   channelManager,
   channels,
-  processTelegramWebhook,
+  processTelegramWebhookResult,
   securityManager,
   whatsappAdapter,
 } from "../core/channels";
@@ -13,21 +13,24 @@ import {
   type RouteHandler,
 } from "./routes/_shared";
 
+function jsonWebhookResponse(status: number, body: unknown): unknown {
+  return makeRawHttpResponse(JSON.stringify(body), "application/json; charset=utf-8", status);
+}
+
 async function dispatchChannelWebhook(
   body: unknown,
   params: Record<string, string> | undefined,
   ctx?: { headers?: Record<string, string>; rawBody?: string }
 ): Promise<unknown> {
   const { channelId, ...query } = params || {};
-  if (!channelId) return { status: 400, body: { error: "channelId required" } };
+  if (!channelId) return jsonWebhookResponse(400, { error: "channelId required" });
   const channel = channelManager.get(channelId);
-  if (!channel) return { status: 404, body: { error: "channel not found" } };
+  if (!channel) return jsonWebhookResponse(404, { error: "channel not found" });
   const adapter = channelManager.getAdapter(channel.type);
   if (!adapter?.handleWebhook) {
-    return {
-      status: 400,
-      body: { error: `channel ${channel.type} does not accept webhooks` },
-    };
+    return jsonWebhookResponse(400, {
+      error: `channel ${channel.type} does not accept webhooks`,
+    });
   }
   const result = await adapter.handleWebhook(channelId, {
     body,
@@ -41,6 +44,12 @@ async function dispatchChannelWebhook(
       result.contentType || "text/plain",
       result.status || 200
     );
+  }
+  if (result?.body !== undefined && result.status !== undefined) {
+    if (result.contentType && result.contentType !== "application/json; charset=utf-8") {
+      return makeRawHttpResponse(JSON.stringify(result.body), result.contentType, result.status);
+    }
+    return jsonWebhookResponse(result.status, result.body);
   }
   return result?.body !== undefined ? result.body : { ok: true };
 }
@@ -323,12 +332,16 @@ export const channelRoutes: Record<string, RouteHandler> = {
     const headers = ctx?.headers ?? {};
     const secretToken =
       headers["x-telegram-bot-api-secret-token"] || headers["X-Telegram-Bot-Api-Secret-Token"];
-    const success = await processTelegramWebhook(
+    const result = await processTelegramWebhookResult(
       channelId,
       body as Record<string, unknown>,
       secretToken
     );
-    return { ok: success };
+    return makeRawHttpResponse(
+      JSON.stringify(result.body),
+      "application/json; charset=utf-8",
+      result.status
+    );
   },
 
   "POST /api/channels/:channelId/webhook": async (body, params, ctx) => {

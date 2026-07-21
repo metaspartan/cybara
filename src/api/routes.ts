@@ -200,6 +200,7 @@ import {
   setGatewayPassword,
   setGatewayRemoteAccessSettings,
   setRequireAuthForLocalhost,
+  type SecurityCheckResult,
   validateUrl,
 } from "./security";
 import { serializeSubagentDetail, serializeSubagentSummary } from "./subagents";
@@ -730,7 +731,7 @@ const routes: Record<string, RouteHandler> = {
       model?: string;
       modelOverride?: string;
       clientPendingId?: string;
-      workspaceDir?: string;
+      workspaceDir?: string | null;
       stream?: boolean;
       tools?: boolean;
       images?: Array<{ data?: string; url?: string; mimeType?: string }>;
@@ -1720,6 +1721,7 @@ export async function handleRequest(req: {
   body?: unknown;
   rawBody?: string;
   ip?: string;
+  security?: SecurityCheckResult;
 }): Promise<{
   status: number;
   headers: Record<string, string>;
@@ -1742,7 +1744,7 @@ export async function handleRequest(req: {
 
   const clientIp = getClientIp(req.headers, req.ip);
 
-  const security = securityCheck(method, path, req.headers, clientIp);
+  const security = req.security ?? securityCheck(method, path, req.headers, clientIp);
   if (!security.passed) {
     const duration = Date.now() - startTime;
     log.warn(`Security check failed: ${security.error}`, {

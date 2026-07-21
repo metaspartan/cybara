@@ -114,6 +114,15 @@ describe("UI API client wiring", () => {
     });
   });
 
+  test("chat clients preserve an explicitly cleared workspace", async () => {
+    await agentsApi.chat("agent-1", "hello", undefined, null);
+    await chatApi.send("hello", "agent-1", undefined, null);
+
+    expect(calls).toHaveLength(2);
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({ workspaceDir: null });
+    expect(JSON.parse(String(calls[1].init?.body))).toMatchObject({ workspaceDir: null });
+  });
+
   test("agentsApi.summaries uses the lightweight agent summary endpoint", async () => {
     await agentsApi.summaries();
 

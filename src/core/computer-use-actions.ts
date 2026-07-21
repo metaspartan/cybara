@@ -1,16 +1,5 @@
 // --- Safety: un-overridable hard blocks ---
 
-/** Key combos that would log out / lock / shut down — never forwarded to the driver. */
-const BLOCKED_KEY_COMBOS: readonly RegExp[] = [
-  /^cmd\+shift\+q$/i, // macOS logout
-  /^ctrl\+shift\+q$/i, // Linux logout
-  /^cmd\+ctrl\+q$/i, // macOS lock screen
-  /^win\+l$/i, // Windows lock
-  /^super\+l$/i, // Linux lock
-  /^cmd\+option\+(esc|power|eject)$/i, // force-quit / power
-  /^alt\+f4$/i, // close (often app-kill)
-];
-
 /** Typed text patterns that are too dangerous to inject (shell pipe-to-bash, rm -rf, fork bombs). */
 const BLOCKED_TYPE_PATTERNS: readonly RegExp[] = [
   /(\||;|&&|\|\|)\s*(bash|sh|zsh)\b/i, // curl ... | bash
@@ -25,8 +14,35 @@ const BLOCKED_TYPE_PATTERNS: readonly RegExp[] = [
 ];
 
 export function isBlockedKeyCombo(keys: string): boolean {
-  const normalized = keys.trim().toLowerCase();
-  return BLOCKED_KEY_COMBOS.some((re) => re.test(normalized));
+  const parts = new Set(
+    keys
+      .trim()
+      .toLowerCase()
+      .split("+")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        if (part === "command") return "cmd";
+        if (part === "control") return "ctrl";
+        if (part === "windows") return "win";
+        if (part === "opt") return "option";
+        return part;
+      })
+  );
+  const has = (part: string): boolean => parts.has(part);
+  const cmd = has("cmd") || has("meta");
+  const win = has("win") || has("super") || has("meta");
+  if (
+    has("q") &&
+    ((cmd && has("shift")) || (has("ctrl") && has("shift")) || (cmd && has("ctrl")))
+  ) {
+    return true;
+  }
+  if (has("l") && win) return true;
+  if (cmd && (has("option") || has("alt")) && (has("esc") || has("power") || has("eject"))) {
+    return true;
+  }
+  return has("alt") && has("f4");
 }
 
 export function isBlockedTypeText(text: string): boolean {
@@ -216,7 +232,8 @@ export function assertActionAllowed(action: ComputerUseAction, args: ComputerUse
   if (action === "key" && args.keys && isBlockedKeyCombo(args.keys)) {
     throw new Error(`Refused: the key combo "${args.keys}" is blocked (logout/lock/power).`);
   }
-  if (action === "type" && args.text && isBlockedTypeText(args.text)) {
+  const enteredText = action === "type" ? args.text : action === "set_value" ? args.value : "";
+  if (enteredText && isBlockedTypeText(enteredText)) {
     throw new Error(
       "Refused: the typed text matched a blocked pattern (shell pipe-to-bash / rm -rf / fork bomb)."
     );

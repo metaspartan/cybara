@@ -19,6 +19,7 @@ import {
   getGatewayBasePath,
   revealGatewayApiKey,
   securityCheck,
+  validateMessageSize,
 } from "./api/security";
 import {
   createTerminalSession,
@@ -76,6 +77,11 @@ import { listInstalledPlugins } from "./core/plugins";
 import { activateInstalledPluginRuntimes } from "./core/plugins/runtime";
 import { providerManager } from "./core/providers";
 import { getEmbeddedUiBundle, readEmbeddedUiIndex } from "./core/runtime/embedded-ui";
+import {
+  gatewayPortCandidates,
+  gatewayPortFallbackCount,
+  gatewayPortSignal,
+} from "./core/runtime/gateway-port";
 import { installGatewayLogCapture } from "./core/runtime/gateway-log-file";
 import { resolveMediaFile } from "./core/runtime/media-files";
 import { isCompiledRuntime } from "./core/runtime/runtime-mode";
@@ -235,29 +241,30 @@ function parsePortFlag(argv: string[]): number | undefined {
   return Number.isInteger(value) && value > 0 && value < 65536 ? value : undefined;
 }
 
-const PORT = parsePortFlag(process.argv) || Number(process.env.PORT) || platformConfig.port || 4269;
+let PORT = parsePortFlag(process.argv) || Number(process.env.PORT) || platformConfig.port || 4269;
 process.env.CYBARA_RUNTIME_PORT = String(PORT);
 
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' data: https://fonts.gstatic.com",
-  "img-src 'self' data: blob: https:",
-  `connect-src 'self' http://127.0.0.1:${PORT} http://localhost:${PORT} ws://127.0.0.1:${PORT} ws://localhost:${PORT}`,
-  "media-src 'self' data: blob:",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-].join("; ");
-
-const htmlHeaders = {
-  "Content-Type": "text/html; charset=utf-8",
-  "Cache-Control": "no-cache",
-  "Content-Security-Policy": contentSecurityPolicy,
-  ...commonSecurityHeaders,
-};
+function htmlHeaders(): Record<string, string> {
+  const contentSecurityPolicy = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https:",
+    `connect-src 'self' http://127.0.0.1:${PORT} http://localhost:${PORT} ws://127.0.0.1:${PORT} ws://localhost:${PORT}`,
+    "media-src 'self' data: blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+  ].join("; ");
+  return {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-cache",
+    "Content-Security-Policy": contentSecurityPolicy,
+    ...commonSecurityHeaders,
+  };
+}
 
 function isFileLikePath(pathname: string): boolean {
   return /\.[^/]+$/.test(pathname);
@@ -395,10 +402,13 @@ function resolveStreamAuth(
   };
 }
 
-function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsData>> {
+function createGatewayServer(
+  hostname: string,
+  port: number = PORT
+): ReturnType<typeof Bun.serve<WsData>> {
   process.env.CYBARA_RUNTIME_HOST = hostname;
   return Bun.serve<WsData>({
-    port: PORT,
+    port,
     hostname,
     idleTimeout: 255,
     fetch: async (req, server) => {
@@ -582,6 +592,28 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
       }
 
       if (pathname.startsWith("/api/")) {
+        const preflightSecurity =
+          req.method === "OPTIONS"
+            ? undefined
+            : securityCheck(req.method, pathname, requestHeaders, clientIp);
+        if (preflightSecurity && !preflightSecurity.passed) {
+          const response = await handleRequest({
+            method: req.method,
+            url: basePath ? `${url.origin}${pathname}${url.search}` : req.url,
+            headers: requestHeaders,
+            ip: clientIp,
+            security: preflightSecurity,
+          });
+          return new Response(JSON.stringify(response.body), {
+            status: response.status,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-store",
+              ...commonSecurityHeaders,
+              ...response.headers,
+            },
+          });
+        }
         let body: unknown;
         let rawBody: string | undefined;
         let malformedBody = false;
@@ -644,6 +676,7 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
           body,
           rawBody,
           ip: clientIp,
+          security: preflightSecurity,
         });
         return new Response(
           response.raw ? String(response.body ?? "") : JSON.stringify(response.body),
@@ -663,7 +696,7 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
 
       if (!uiExists) {
         if (pathname === "/" || pathname === "/index.html" || !fileLikePath) {
-          return new Response(readUiIndex(), { headers: htmlHeaders });
+          return new Response(readUiIndex(), { headers: htmlHeaders() });
         }
         return new Response("Static asset not found", {
           status: 404,
@@ -675,7 +708,7 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
       }
 
       if (pathname === "/" || pathname === "/index.html" || !fileLikePath) {
-        return new Response(readUiIndex(), { headers: htmlHeaders });
+        return new Response(readUiIndex(), { headers: htmlHeaders() });
       }
 
       if (!externalUiExists) {
@@ -756,7 +789,7 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
         });
       }
 
-      return new Response(uiContent, { headers: htmlHeaders });
+      return new Response(uiContent, { headers: htmlHeaders() });
     },
     websocket: {
       open(ws) {
@@ -838,7 +871,29 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
   });
 }
 
-let gatewayServer = createGatewayServer(runtimeHost);
+function createInitialGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsData>> {
+  const candidates = gatewayPortCandidates(
+    PORT,
+    gatewayPortFallbackCount(process.env.CYBARA_PORT_FALLBACK_COUNT)
+  );
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      const server = createGatewayServer(hostname, candidate);
+      PORT = server.port ?? candidate;
+      process.env.CYBARA_RUNTIME_PORT = String(PORT);
+      return server;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("No gateway port is available");
+}
+
+let gatewayServer = createInitialGatewayServer(runtimeHost);
+if (process.env.CYBARA_GATEWAY_PORT_SIGNAL === "stdout") {
+  console.log(gatewayPortSignal(PORT));
+}
 startGatewayTelemetryMaintenance();
 
 nearbyService.initialize().catch((error) => {
@@ -1022,6 +1077,8 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
     );
 
     const fullMessage = buildChannelMessageWithFileContext(message, fileInfo);
+    const validation = validateMessageSize(fullMessage || message);
+    if (!validation.valid) return validation.error || "Message is too large";
     const images = buildChannelImages(fileInfo);
     const routing = resolveChannelAgentRouting(channelId, agentManager.list());
 
@@ -1058,6 +1115,8 @@ const createChannelChatHandler =
     });
     if (commandResponse !== null) return commandResponse;
     const fullMessage = buildChannelMessageWithFileContext(message, fileInfo);
+    const validation = validateMessageSize(fullMessage || message);
+    if (!validation.valid) return validation.error || "Message is too large";
     const images = buildChannelImages(fileInfo);
     const routing = resolveChannelAgentRouting(fileInfo.channelId, agentManager.list());
     const response = await handleChat({

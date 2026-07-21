@@ -1,4 +1,4 @@
-import { type AgentExecutionResult, type AgentMessage, agentManager } from "../core/agent";
+import { type AgentMessage, agentManager } from "../core/agent";
 import { recordCompletedTrajectory } from "../core/agent-eval";
 import { emitAgentHook } from "../core/agent-hooks";
 import { agentSupportsImages } from "../core/agent-image-capabilities";
@@ -47,7 +47,10 @@ import {
   summarizeSessionTokenUsage,
   upsertPersistedSessionMessage,
 } from "../core/session-context";
-import { getActiveSessionRunId } from "../core/session-event-ledger";
+import {
+  getActiveSessionRunId,
+  getActiveSessionRunStartedAtMs,
+} from "../core/session-event-ledger";
 import { handleSessionGoalCommand } from "../core/session-goals";
 import { extractLatestSessionPlan } from "../core/session-plan";
 import {
@@ -74,6 +77,7 @@ import {
   refreshSessionAgentSystemPromptIfNeeded,
 } from "./chat-agent-prompt";
 import { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
+import { executionMetadataFromResult } from "./chat-execution-metadata";
 import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
 import { appendToolImageReferences, maybeSaveAutomaticMemory } from "./chat-response-enrichment";
 import { settlePendingChatFailure } from "./chat-pending-failure";
@@ -111,6 +115,7 @@ import {
   cleanGeneratedSessionTitle,
   countVisibleSessionMessages,
   deferredSessionMessages,
+  deletingChatSessionIds,
   generateSessionTitleViaModel,
   getResidentChatSession,
   type InMemoryChatSession,
@@ -120,6 +125,7 @@ import {
   parseIsoTimestampMs,
   pendingChatCompletions,
   pendingChatDrainScheduled,
+  pendingChatDrainTimers,
   pendingChatQueues,
   persistActiveSessionContext,
   persistChatSessionSnapshot,
@@ -159,20 +165,6 @@ export {
 
 const log = createLogger("Chat");
 
-function executionMetadataFromResult(result: AgentExecutionResult): SessionModelMetadata | null {
-  const metadata: SessionModelMetadata = {
-    provider: result.provider,
-    provider_id: result.provider_id,
-    provider_name: result.provider_name,
-    model: result.model,
-  };
-  return Object.values(metadata).some(
-    (value) => typeof value === "string" && value.trim().length > 0
-  )
-    ? metadata
-    : null;
-}
-
 export type {
   ChatMessage,
   ChatRequest,
@@ -198,11 +190,17 @@ function createPendingChatCompletion(id: string): void {
 }
 
 function resolvePendingChatCompletion(id: string, response: ChatResponse): void {
-  pendingChatCompletions.get(id)?.resolve(response);
+  const completion = pendingChatCompletions.get(id);
+  if (!completion) return;
+  pendingChatCompletions.delete(id);
+  completion.resolve(response);
 }
 
 function rejectPendingChatCompletion(id: string, error: unknown): void {
-  pendingChatCompletions.get(id)?.reject(error);
+  const completion = pendingChatCompletions.get(id);
+  if (!completion) return;
+  pendingChatCompletions.delete(id);
+  completion.reject(error);
 }
 
 export async function waitForPendingChatCompletion(id: string): Promise<ChatResponse> {
@@ -464,10 +462,13 @@ function consumeSteeringMessages(session: InMemoryChatSession): Array<{
 function schedulePendingChatDrain(sessionId: string, delayMs = 0): void {
   if (pendingChatDrainScheduled.has(sessionId)) return;
   pendingChatDrainScheduled.add(sessionId);
-  setTimeout(() => {
+  const timer = setTimeout(() => {
     pendingChatDrainScheduled.delete(sessionId);
+    pendingChatDrainTimers.delete(sessionId);
     void drainPendingChatQueue(sessionId);
   }, delayMs);
+  pendingChatDrainTimers.set(sessionId, timer);
+  timer.unref?.();
 }
 
 function finalizeStoppedProcessActivity(activity: ProcessActivityInfo): ProcessActivityInfo {
@@ -578,8 +579,13 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
   const session =
     getResidentChatSession(sessionId) || (await restorePersistedChatSessionForChat(sessionId));
   if (!session) {
-    log.error("Queued chat session could not be restored", { sessionId, pendingId: next.id });
-    schedulePendingChatDrain(sessionId, 1000);
+    log.error("Queued chat session could not be restored", {
+      sessionId,
+      pendingId: next.id,
+    });
+    removePendingChatQueueItem(sessionId, next.id);
+    rejectPendingChatCompletion(next.id, new Error("Queued chat session no longer exists"));
+    schedulePendingChatDrain(sessionId);
     return;
   }
 
@@ -590,9 +596,14 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
     try {
       removePendingChatQueueItem(sessionId, next.id);
     } catch (error) {
-      log.exception("Restored queued chat cleanup failed", error, { sessionId });
+      log.exception("Restored queued chat cleanup failed", error, {
+        sessionId,
+      });
     }
-    resolvePendingChatCompletion(next.id, { sessionId, message: completedPendingResponse });
+    resolvePendingChatCompletion(next.id, {
+      sessionId,
+      message: completedPendingResponse,
+    });
     schedulePendingChatDrain(sessionId);
     return;
   }
@@ -646,7 +657,9 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
     try {
       removePendingChatQueueItem(sessionId, next.id);
     } catch (error) {
-      log.exception("Completed queued chat cleanup failed", error, { sessionId });
+      log.exception("Completed queued chat cleanup failed", error, {
+        sessionId,
+      });
       schedulePendingChatDrain(sessionId, 1000);
     }
     resolvePendingChatCompletion(next.id, response);
@@ -655,7 +668,9 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
     try {
       const cleanupError = await settlePendingChatFailure(session, next, error);
       if (cleanupError) {
-        log.exception("Failed queued chat cleanup failed", cleanupError, { sessionId });
+        log.exception("Failed queued chat cleanup failed", cleanupError, {
+          sessionId,
+        });
         schedulePendingChatDrain(sessionId, 1000);
       }
       rejectPendingChatCompletion(next.id, error);
@@ -717,6 +732,9 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   }
 
   const effectiveSessionId = request.sessionId || crypto.randomUUID();
+  if (deletingChatSessionIds.has(effectiveSessionId)) {
+    throw new Error("Chat session is being deleted");
+  }
 
   const goalCommand = handleSessionGoalCommand(effectiveSessionId, request.message);
   if (goalCommand.handled) {
@@ -1039,20 +1057,11 @@ async function handleChatTurn(
 
   let session = getResidentChatSession(effectiveSessionId);
   if (!session) {
-    // A miss for a previously-persisted id (gateway restart, memory eviction)
-    // must restore history from the database — creating a fresh session here
-    // silently clobbers the conversation on the next persist.
     session = await restorePersistedChatSessionForChat(effectiveSessionId);
   }
   const isNewSession = !session;
 
   if (!session) {
-    // Resolve the agent for a brand-new session. Honor the explicit agentId if
-    // provided; otherwise fall back to the user-configured default agent
-    // (default_agent_id) before the arbitrary first agent. Channel handlers
-    // (Discord/Slack/etc.) call handleChat WITHOUT an agentId, so without this
-    // they'd silently land on agentManager.list()[0] — which may be an agent
-    // whose provider token is expired (the source of spurious 401s in chat).
     const agents = agentManager.list();
     const resolvedDefaultId = resolveChannelAgentId(undefined, agents);
     const agent = agentId
@@ -1825,6 +1834,10 @@ async function handleChatTurn(
     process_activities: visibleProcessActivities,
     agent_transfers: agentTransfers.length > 0 ? agentTransfers : undefined,
     run_id: getActiveSessionRunId(session.id),
+    worked_duration_ms: Math.max(
+      0,
+      assistantTimestampMs - (getActiveSessionRunStartedAtMs(session.id) ?? assistantTimestampMs)
+    ),
   };
   appendAssistantMessage(session, assistantMessage);
   if (!session.title || shouldRegenerateSessionTitle(session.title)) {
@@ -1841,12 +1854,11 @@ async function handleChatTurn(
       process_activities: assistantMessage.process_activities,
       agent_transfers: assistantMessage.agent_transfers,
       run_id: assistantMessage.run_id,
+      worked_duration_ms: assistantMessage.worked_duration_ms,
     },
   });
   persistActiveSessionContext(session);
 
-  // Only mark the session persisted when the write actually succeeded, so a
-  // failed write is retried on the next turn instead of being silently lost.
   session.persisted = await persistChatSessionSnapshot(session, assistantMessage);
   const labSettings = config.getLabSettings();
   if (session.persisted && labSettings.enabled && labSettings.trajectoryCaptureEnabled) {

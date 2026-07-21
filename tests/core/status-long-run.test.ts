@@ -12,6 +12,7 @@ const sessionIds: string[] = [];
 function createSessionId(label: string): string {
   const sessionId = `${label}-${crypto.randomUUID()}`;
   sessionIds.push(sessionId);
+  tables.chatSessions.ensure(sessionId, "status-test-agent");
   return sessionId;
 }
 
@@ -41,6 +42,7 @@ afterEach(() => {
   for (const sessionId of sessionIds.splice(0)) {
     broadcastStatus({ status: "idle", timestamp: Date.now(), sessionId });
     tables.sessionEvents.deleteBySession(sessionId);
+    tables.chatSessions.delete(sessionId);
   }
 });
 

@@ -50,6 +50,23 @@ describe("native macOS shell wiring", () => {
     expect(sidecarManager).toContain("gatewayMode = .attached");
   });
 
+  test("sidecar shutdown suspends while waiting for managed processes and app termination", () => {
+    const sidecarManager = readFileSync(join(MACOS_APP_DIR, "SidecarManager.swift"), "utf8");
+    const app = readFileSync(join(MACOS_APP_DIR, "CybaraApp.swift"), "utf8");
+
+    expect(sidecarManager).toContain("func stopForUpdate() async");
+    expect(sidecarManager).toContain("func stopAndWait() async");
+    expect(sidecarManager).toContain(
+      "terminateManagedProcess(managedProcessForStop(), timeout: 3)"
+    );
+    expect(sidecarManager).toContain("try? await Task.sleep(for: .milliseconds(50))");
+    expect(sidecarManager).not.toContain("Thread.sleep(forTimeInterval:");
+    expect(app).toContain("func applicationShouldTerminate");
+    expect(app).toContain("await sidecar.stopAndWait()");
+    expect(app).toContain("defer { sender.reply(toApplicationShouldTerminate: true) }");
+    expect(app).toContain("return .terminateLater");
+  });
+
   test("native shell does not embed the web UI as a detail pane", () => {
     const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
     const app = readFileSync(join(MACOS_APP_DIR, "CybaraApp.swift"), "utf8");
@@ -82,7 +99,8 @@ describe("native macOS shell wiring", () => {
     expect(app).toContain("MenuBarExtra");
     expect(app).toContain("applicationShouldTerminateAfterLastWindowClosed");
     expect(app).toContain("-> Bool {\n        false");
-    expect(menu).toContain("CybaraBrand.menuBarTemplateImage()");
+    expect(menu).toContain("CybaraBrand.menuBarTemplateImage(");
+    expect(menu).toContain("showsUpdateIndicator: updateChecker.showsMenuBarUpdateIndicator");
     expect(menu).toContain(".frame(width: 16, height: 16)");
     expect(menu).toContain('Button("Show Cybara")');
     expect(menu).toContain('Button("New Chat")');

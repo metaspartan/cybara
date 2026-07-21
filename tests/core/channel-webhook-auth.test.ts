@@ -192,6 +192,42 @@ describe("channel webhook authentication", () => {
     await adapter.stop("ha-auth-event");
   });
 
+  test("Home Assistant applies allowlists to the webhook sender identity", async () => {
+    const adapter = new HomeAssistantAdapter();
+    await adapter.start("ha-sender-access", {
+      verify_token: "expected",
+      dm_policy: "allowlist",
+      allowed_senders: ["trusted-user"],
+    });
+    let calls = 0;
+    adapter.setMessageHandler(async () => {
+      calls += 1;
+      return "accepted";
+    });
+    const trusted = await adapter.handleWebhook("ha-sender-access", {
+      ...payload({
+        text: "turn on the lights",
+        user: "trusted-user",
+        conversation_id: "trusted-conversation",
+      }),
+      headers: { authorization: "Bearer expected" },
+    });
+    const unknown = await adapter.handleWebhook("ha-sender-access", {
+      ...payload({
+        text: "turn off the lights",
+        user: "unknown-user",
+        conversation_id: "unknown-conversation",
+      }),
+      headers: { authorization: "Bearer expected" },
+    });
+
+    expect(trusted).toEqual({ status: 200, body: { response: "accepted" } });
+    expect(unknown.status).toBe(200);
+    expect(unknown.body).toEqual({ response: "You are not authorized to message this bot" });
+    expect(calls).toBe(1);
+    await adapter.stop("ha-sender-access");
+  });
+
   test("Zalo refuses to start without webhook authentication", async () => {
     const adapter = new ZaloAdapter();
     await expect(adapter.start("zalo-auth", { access_token: "token" })).rejects.toThrow(

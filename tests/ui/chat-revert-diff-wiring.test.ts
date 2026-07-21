@@ -259,15 +259,15 @@ describe("Chat revert and diff wiring", () => {
     expect(workspaceBarSource).toContain("workspaceName(workspaceDir)");
     expect(source).toContain("info?.defaultWorkspaceDir");
     expect(source).toContain("lastWorkspaceDir || configuredWorkspaceDir || homeWorkspaceDir");
-    // Workspace chips are clickable-to-change (header + empty state), with no separate clear button.
     expect(source).toContain("void handleSelectWorkspace()");
     expect(source).toContain("LocalFolderPickerModal");
     expect(source).toContain("openDesktopDirectoryDialog({");
-    expect(source).not.toContain('title="Clear session workspace"');
+    expect(workspaceBarSource).toContain('title="Clear workspace"');
+    expect(source).toContain("setWorkspaceFallbackSuppressed(true)");
     expect(source).not.toContain('title="Clear Chat"');
     expect(source).toContain("cybara:lastWorkspaceDir");
     expect(source).toContain("setShowWorkspacePicker(true);");
-    expect(source).toContain("workspaceDir: effectiveWorkspaceDir || undefined");
+    expect(source).toContain("workspaceDir: effectiveWorkspaceDir");
   });
 
   test("shows session activity spinner wiring in the sessions panel", () => {

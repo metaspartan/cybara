@@ -1,4 +1,5 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, statSync } from "fs";
+import { createHash } from "crypto";
 import { basename, dirname, join } from "path";
 import { pathToFileURL } from "url";
 import { resolveCybaraHome } from "../cybara-home";
@@ -218,7 +219,8 @@ function normalizeSelection(selection?: EmbeddingSelection): {
 }
 
 function getCacheKey(provider: string, model: string, text: string): string {
-  return `${provider}:${model}:${text.trim().toLowerCase().slice(0, 500)}`;
+  const digest = createHash("sha256").update(text.trim().toLowerCase()).digest("hex");
+  return `${provider}:${model}:${digest}`;
 }
 
 function getFromCache(key: string): number[] | null {
@@ -230,6 +232,9 @@ function getFromCache(key: string): number[] | null {
 }
 
 function setCache(key: string, embedding: number[]): void {
+  if (embedding.length === 0 || embedding.some((value) => !Number.isFinite(value))) {
+    throw new Error("Embedding provider returned an invalid vector");
+  }
   embeddingCache.set(key, { embedding, timestamp: Date.now() });
   if (embeddingCache.size > CACHE_LIMIT) {
     const entries = Array.from(embeddingCache.entries())
@@ -1928,7 +1933,9 @@ export async function stopEmbeddingRuntime(
 
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length === 0 || b.length === 0) return 0;
-  if (a.length !== b.length) return 0;
+  if (a.length !== b.length) {
+    throw new Error(`Embedding dimension mismatch: ${a.length} != ${b.length}`);
+  }
 
   let dotProduct = 0;
   let normA = 0;

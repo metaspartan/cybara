@@ -2,12 +2,17 @@ import { afterEach, describe, expect, test } from "bun:test";
 import db, { tables } from "../../src/core/database";
 
 const createdAgentIds = new Set<string>();
+const createdMcpIds = new Set<string>();
 
 afterEach(() => {
   for (const id of createdAgentIds) {
     db.query("DELETE FROM agents WHERE id = ?").run(id);
   }
   createdAgentIds.clear();
+  for (const id of createdMcpIds) {
+    tables.mcpServers.delete(id);
+  }
+  createdMcpIds.clear();
 });
 
 describe("database JSON serialization", () => {
@@ -61,5 +66,56 @@ describe("database JSON serialization", () => {
     expect(after?.config).toBe(before?.config);
     expect(after?.tools.startsWith('"')).toBe(false);
     expect(after?.config.startsWith('"')).toBe(false);
+  });
+});
+
+describe("database integrity", () => {
+  test("enforces session event sequence uniqueness and cascading deletion", () => {
+    const foreignKeys = db.query("PRAGMA foreign_keys").get() as { foreign_keys: number };
+    expect(foreignKeys.foreign_keys).toBe(1);
+    const sessionId = `integrity-${crypto.randomUUID()}`;
+    db.query(
+      "INSERT INTO chat_sessions (id, agent_id, messages, created_at) VALUES (?, ?, '[]', CURRENT_TIMESTAMP)"
+    ).run(sessionId, "integrity-agent");
+    db.query(
+      "INSERT INTO session_events (id, session_id, run_id, sequence, event_type, payload) VALUES (?, ?, ?, 1, 'run_started', '{}')"
+    ).run(crypto.randomUUID(), sessionId, "run-one");
+
+    expect(() =>
+      db
+        .query(
+          "INSERT INTO session_events (id, session_id, run_id, sequence, event_type, payload) VALUES (?, ?, ?, 1, 'status', '{}')"
+        )
+        .run(crypto.randomUUID(), sessionId, "run-one")
+    ).toThrow();
+
+    db.query("DELETE FROM chat_sessions WHERE id = ?").run(sessionId);
+    const remaining = db
+      .query("SELECT COUNT(*) AS count FROM session_events WHERE session_id = ?")
+      .get(sessionId) as { count: number };
+    expect(remaining.count).toBe(0);
+  });
+
+  test("preserves omitted MCP fields during partial updates", () => {
+    const id = `mcp-${crypto.randomUUID()}`;
+    createdMcpIds.add(id);
+    tables.mcpServers.create({
+      id,
+      name: "Original MCP",
+      command: "bunx",
+      args: "server.ts",
+      env: '{"TOKEN":"secret"}',
+      enabled: true,
+    });
+
+    tables.mcpServers.update(id, { name: "Renamed MCP" });
+
+    expect(tables.mcpServers.get(id)).toMatchObject({
+      name: "Renamed MCP",
+      command: "bunx",
+      args: "server.ts",
+      env: '{"TOKEN":"secret"}',
+      enabled: 1,
+    });
   });
 });

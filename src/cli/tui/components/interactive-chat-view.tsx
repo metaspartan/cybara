@@ -28,6 +28,7 @@ export interface ChatMessage {
   content: string;
   timestamp?: number;
   turnStartedAt?: number;
+  workedDurationMs?: number;
   process_activities?: TUIActivityItem[];
   tool_calls?: TUIToolCallItem[];
   agent_transfers?: AgentTransferItem[];
@@ -87,6 +88,7 @@ export function ActivitySummary({
   const workedDuration = formatTUIWorkedDuration(workActivities, message.tool_calls || [], {
     assistantTimestamp: message.timestamp,
     turnStartedAt: message.turnStartedAt,
+    workedDurationMs: message.workedDurationMs,
   });
   return (
     <Box

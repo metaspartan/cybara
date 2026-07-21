@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "desktop-gateway"
 description = "Allows the Cybara interface to read local desktop gateway startup and authentication state."
-commands.allow = ["read_cybara_api_key", "get_gateway_startup_status"]
+commands.allow = ["read_cybara_api_key", "get_gateway_url", "get_gateway_startup_status"]

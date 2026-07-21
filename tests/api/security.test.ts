@@ -278,6 +278,19 @@ describe("API security module", () => {
     expect(lookalike.statusCode).toBe(401);
   });
 
+  test("health endpoints are public only at exact paths", () => {
+    expect(security.securityCheck("GET", "/api/health", {}, "203.0.113.10").passed).toBe(true);
+    const lookalike = security.securityCheck("GET", "/api/health/private-data", {}, "203.0.113.10");
+    expect(lookalike.passed).toBe(false);
+    expect(lookalike.statusCode).toBe(401);
+  });
+
+  test("auth settings expose only a short API key suffix", () => {
+    const settings = security.getGatewayAuthSettings();
+    expect(settings.apiKeyPreview).toMatch(/^••••.{4}$/u);
+    expect(settings.apiKeyPreview).not.toContain("cybara_test_key");
+  });
+
   test("plugin discovery is readable while plugin changes require management access", () => {
     expect(security.routeRequiredScope("GET", "/api/plugins")).toBe("read");
     expect(security.routeRequiredScope("GET", "/api/plugins/catalog")).toBe("read");

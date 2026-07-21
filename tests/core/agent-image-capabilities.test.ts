@@ -73,15 +73,15 @@ describe("agent image capabilities", () => {
     expect(tables.providerModels.byProvider(provider.id)).toHaveLength(0);
   });
 
-  test("prunes cached models whose provider no longer exists", () => {
+  test("rejects cached models whose provider does not exist", () => {
     const providerId = crypto.randomUUID();
-    tables.providerModels.upsert({
-      id: crypto.randomUUID(),
-      provider_id: providerId,
-      model_id: "orphan-model",
-    });
-    expect(tables.providerModels.byProvider(providerId)).toHaveLength(1);
-    tables.providerModels.deleteOrphans();
+    expect(() =>
+      tables.providerModels.upsert({
+        id: crypto.randomUUID(),
+        provider_id: providerId,
+        model_id: "orphan-model",
+      })
+    ).toThrow();
     expect(tables.providerModels.byProvider(providerId)).toHaveLength(0);
   });
 });
