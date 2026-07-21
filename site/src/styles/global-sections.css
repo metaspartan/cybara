@@ -949,11 +949,110 @@
   margin: 6px auto 0;
 }
 
+.download-experience-nav {
+  max-width: 920px;
+  margin: 0 auto 42px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-block: 1px solid var(--glass-border);
+}
+
+.download-experience-link {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  padding: 20px 22px;
+  color: var(--text);
+  transition: background 0.2s ease;
+}
+
+.download-experience-link + .download-experience-link {
+  border-left: 1px solid var(--glass-border);
+}
+
+.download-experience-link:hover {
+  background: var(--glass-surface);
+}
+
+.download-experience-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: var(--accent-b);
+  background: var(--accent-soft);
+}
+
+.download-experience-icon-svg {
+  width: 20px;
+  height: 20px;
+}
+
+.download-experience-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.download-experience-copy strong {
+  font-size: 0.96rem;
+}
+
+.download-experience-copy span {
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.download-experience-arrow {
+  width: 16px;
+  height: 16px;
+  color: var(--text-faint);
+}
+
+.download-track-heading {
+  max-width: 720px;
+  margin: 0 auto 26px;
+  text-align: center;
+  scroll-margin-top: 96px;
+}
+
+.download-track-heading--cli {
+  margin-top: 8px;
+  margin-bottom: 34px;
+}
+
+.download-track-kicker {
+  color: var(--accent-b);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.download-track-heading h2 {
+  margin: 8px 0 6px;
+  color: var(--text);
+  font-size: 1.55rem;
+}
+
+.download-track-heading > p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
 .download-quickinstall {
   max-width: 760px;
-  margin: 0 auto 34px;
+  margin: 20px auto 0;
   padding: 16px 18px;
   border-radius: var(--radius);
+  text-align: left;
 }
 
 .download-quickinstall-body {
@@ -990,6 +1089,10 @@
   gap: 40px;
 }
 
+.download-section--command-line {
+  margin-top: 16px;
+}
+
 .download-section-badge {
   margin-left: 10px;
   padding: 3px 10px;
@@ -1000,6 +1103,21 @@
   text-transform: uppercase;
   color: #fff;
   background: var(--accent-gradient);
+}
+
+@media (max-width: 680px) {
+  .download-experience-nav {
+    grid-template-columns: 1fr;
+  }
+
+  .download-experience-link + .download-experience-link {
+    border-left: 0;
+    border-top: 1px solid var(--glass-border);
+  }
+
+  .download-experience-link {
+    padding-inline: 14px;
+  }
 }
 
 /* Sub-pages (features / providers / channels) */

@@ -6,7 +6,7 @@ import { DownloadCard } from "./DownloadCard";
 import { Icon, type IconName } from "./Icon";
 import { useDocumentHead } from "../lib/head";
 import { clientMatchesOS, osLabel, useDetectedOS, type DetectedOS } from "../lib/os";
-import { DOWNLOAD_GROUPS, type DownloadClient } from "../content";
+import { DOWNLOAD_EXPERIENCES, DOWNLOAD_GROUPS, type DownloadClient } from "../content";
 import { InstallTabs } from "./InstallTabs";
 import { formatDownloadTotal, useDownloadTotal, useLatestRelease } from "../hooks/useLatestRelease";
 import { PAGE_HEADS } from "../pageMeta";
@@ -21,12 +21,12 @@ interface DownloadSection {
 }
 
 const SECTION_META: Array<{ key: SectionKey; label: string; icon: IconName }> = [
-  { key: "mac", label: "macOS", icon: "apple" },
-  { key: "windows", label: "Windows", icon: "windows" },
-  { key: "linux", label: "Linux", icon: "linux" },
-  { key: "mobile", label: "Mobile", icon: "mobile" },
+  { key: "mac", label: "macOS desktop GUI", icon: "apple" },
+  { key: "windows", label: "Windows desktop GUI", icon: "windows" },
+  { key: "linux", label: "Linux desktop GUI", icon: "linux" },
+  { key: "mobile", label: "Mobile apps", icon: "mobile" },
   { key: "packages", label: "Package managers", icon: "package" },
-  { key: "cli", label: "Command line", icon: "terminal" },
+  { key: "cli", label: "CLI + TUI downloads", icon: "terminal" },
 ];
 
 function sectionForClient(client: DownloadClient): SectionKey {
@@ -94,8 +94,8 @@ export function DownloadPage(): React.ReactElement {
           <div className="download-page-head">
             <h1 className="download-page-title">Download Cybara</h1>
             <p className="download-page-subtitle">
-              One self-hosted stack, every platform. Pick your OS below — {osLabel(os)} is at the
-              top. Every download links to the newest signed asset on GitHub Releases.
+              Choose the graphical desktop app or the terminal-based CLI + TUI. {osLabel(os)} is
+              prioritized below, and every download resolves to the newest signed GitHub release.
             </p>
             {release && release.version ? (
               <div className="release-badge">
@@ -110,42 +110,97 @@ export function DownloadPage(): React.ReactElement {
             ) : null}
           </div>
 
-          <div className="download-quickinstall glass">
-            <div className="download-quickinstall-body">
-              <Icon name={"terminal" as IconName} className="download-quickinstall-icon" />
-              <div className="download-quickinstall-widget">
-                <p className="download-quickinstall-label">One-line install</p>
-                <InstallTabs showHint />
-              </div>
-            </div>
+          <nav className="download-experience-nav" aria-label="Choose a Cybara experience">
+            <a className="download-experience-link" href="#desktop-gui">
+              <span className="download-experience-icon">
+                <Icon name="desktop" className="download-experience-icon-svg" />
+              </span>
+              <span className="download-experience-copy">
+                <strong>{DOWNLOAD_EXPERIENCES.desktop.title}</strong>
+                <span>{DOWNLOAD_EXPERIENCES.desktop.description}</span>
+              </span>
+              <Icon name="arrow" className="download-experience-arrow" />
+            </a>
+            <a className="download-experience-link" href="#cli-tui">
+              <span className="download-experience-icon">
+                <Icon name="terminal" className="download-experience-icon-svg" />
+              </span>
+              <span className="download-experience-copy">
+                <strong>{DOWNLOAD_EXPERIENCES.cli.title}</strong>
+                <span>{DOWNLOAD_EXPERIENCES.cli.description}</span>
+              </span>
+              <Icon name="arrow" className="download-experience-arrow" />
+            </a>
+          </nav>
+
+          <div className="download-track-heading" id="desktop-gui">
+            <span className="download-track-kicker">Graphical application</span>
+            <h2>{DOWNLOAD_EXPERIENCES.desktop.title}</h2>
+            <p>Choose an installer for the complete windowed Cybara experience.</p>
           </div>
 
           <div className="download-sections">
-            {ordered.map((section) => (
-              <div className="download-section" key={section.key}>
-                <div className="download-group-head">
-                  <span className="download-group-icon">
-                    <Icon name={section.icon} className="download-group-icon-svg" />
-                  </span>
-                  <h2 className="download-group-label">{section.label}</h2>
-                  {section.key === recommendedKey ? (
-                    <span className="download-section-badge">Your platform</span>
+            {ordered.map((section) => {
+              const commandLineSection = section.key === "cli";
+              return (
+                <div
+                  className={
+                    commandLineSection
+                      ? "download-section download-section--command-line"
+                      : "download-section"
+                  }
+                  id={`download-${section.key}`}
+                  key={section.key}
+                >
+                  {commandLineSection ? (
+                    <div
+                      className="download-track-heading download-track-heading--cli"
+                      id="cli-tui"
+                    >
+                      <span className="download-track-kicker">Terminal experience</span>
+                      <h2>{DOWNLOAD_EXPERIENCES.cli.title}</h2>
+                      <p>
+                        The curl, PowerShell, npm, and Bun commands install the terminal app. They
+                        do not install the desktop GUI.
+                      </p>
+                      <div className="download-quickinstall glass">
+                        <div className="download-quickinstall-body">
+                          <Icon
+                            name={"terminal" as IconName}
+                            className="download-quickinstall-icon"
+                          />
+                          <div className="download-quickinstall-widget">
+                            <p className="download-quickinstall-label">CLI + TUI quick install</p>
+                            <InstallTabs showHint />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   ) : null}
+                  <div className="download-group-head">
+                    <span className="download-group-icon">
+                      <Icon name={section.icon} className="download-group-icon-svg" />
+                    </span>
+                    <h2 className="download-group-label">{section.label}</h2>
+                    {section.key === recommendedKey ? (
+                      <span className="download-section-badge">Your platform</span>
+                    ) : null}
+                  </div>
+                  <div className="download-grid">
+                    {section.clients.map((client) => (
+                      <DownloadCard
+                        client={client}
+                        release={release}
+                        recommended={
+                          section.key === recommendedKey && clientMatchesOS(client, os)
+                        }
+                        key={`${client.name}-${client.platform}`}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="download-grid">
-                  {section.clients.map((client) => (
-                    <DownloadCard
-                      client={client}
-                      release={release}
-                      recommended={
-                        section.key === recommendedKey && clientMatchesOS(client, os)
-                      }
-                      key={`${client.name}-${client.platform}`}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="glass update-note">

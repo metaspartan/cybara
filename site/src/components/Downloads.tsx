@@ -2,7 +2,7 @@ import { Icon, type IconName } from "./Icon";
 import { SectionHeading } from "./SectionHeading";
 import { DownloadCard } from "./DownloadCard";
 import { A } from "../lib/router";
-import { DOWNLOAD_GROUPS } from "../content";
+import { DOWNLOAD_EXPERIENCES, DOWNLOAD_GROUPS } from "../content";
 import { formatDownloadTotal, useDownloadTotal, useLatestRelease } from "../hooks/useLatestRelease";
 import { clientMatchesOS, osLabel, useDetectedOS } from "../lib/os";
 import { useSiteI18n } from "../i18n";
@@ -13,16 +13,16 @@ export function Downloads(): React.ReactElement {
   const os = useDetectedOS();
   const { t } = useSiteI18n();
 
-  const allClients = DOWNLOAD_GROUPS.flatMap((group) => group.clients);
+  const desktopClients = DOWNLOAD_GROUPS.find((group) => group.label === "Desktop")?.clients ?? [];
   const recommended =
-    os === "unknown" ? [] : allClients.filter((client) => clientMatchesOS(client, os));
+    os === "unknown" ? [] : desktopClients.filter((client) => clientMatchesOS(client, os));
 
   return (
     <section className="section" id="download">
       <SectionHeading
         eyebrow={t("site.download.eyebrow")}
         title={t("site.download.title")}
-        description="Install in minutes on any machine you own. Cybara ships native desktop apps for macOS, Windows, and Linux, mobile apps for iOS and Android, and a single-binary CLI — every build signed, checksummed, and resolved straight from GitHub Releases, with in-place auto-updates after that."
+        description="Choose the full desktop GUI for macOS, Windows, or Linux. Prefer a terminal? The separate CLI + TUI installers provide commands and a full-screen text interface without installing the desktop app."
       />
       {release && release.version ? (
         <div className="release-badge">
@@ -39,8 +39,8 @@ export function Downloads(): React.ReactElement {
       {recommended.length > 0 ? (
         <div className="download-recommended-block">
           <p className="download-recommended-lead">
-            Detected <strong>{osLabel(os)}</strong> — grab the build for your machine, or see every
-            option below.
+            Detected <strong>{osLabel(os)}</strong> — download the graphical desktop app for your
+            machine.
           </p>
           <div className="download-grid download-grid--recommended">
             {recommended.slice(0, 3).map((client, index) => (
@@ -58,10 +58,11 @@ export function Downloads(): React.ReactElement {
       <div className="download-all-cta">
         <A className="btn btn--primary download-all-btn" href="/download">
           <Icon name={"download" as IconName} className="btn-icon" />
-          <span>All platforms &amp; options</span>
+          <span>Desktop GUI &amp; CLI downloads</span>
         </A>
         <p className="download-all-note">
-          macOS, Windows, Linux, iOS, Android, and CLI — with checksums for every asset.
+          {DOWNLOAD_EXPERIENCES.desktop.title} installers and {DOWNLOAD_EXPERIENCES.cli.title}
+          commands are clearly separated by experience.
         </p>
       </div>
     </section>

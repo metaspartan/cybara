@@ -568,8 +568,74 @@ img {
   color: var(--text-faint);
 }
 
-.hero-actions--install {
-  align-items: flex-start;
+.hero-install-options {
+  width: min(620px, 100%);
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.hero-install-path {
+  min-width: 0;
+}
+
+.hero-install-path--desktop {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.hero-install-path--cli {
+  padding-top: 18px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.install-path-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.install-path-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  color: var(--accent-b);
+  background: var(--accent-soft);
+  flex: 0 0 auto;
+}
+
+.install-path-icon-svg {
+  width: 18px;
+  height: 18px;
+}
+
+.install-path-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.install-path-copy strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.install-path-copy span {
+  color: var(--text-faint);
+  font-size: 0.78rem;
+}
+
+.hero-desktop-btn {
+  white-space: nowrap;
 }
 
 .download-quickinstall-widget {
@@ -579,6 +645,32 @@ img {
 
 .download-quickinstall-widget .install-tabs {
   margin-top: 8px;
+}
+
+@media (max-width: 560px) {
+  .hero-install-path--desktop {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .hero-desktop-btn {
+    grid-column: 1 / -1;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .install-tabs-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .install-tabs-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .install-tab {
+    flex: 0 0 auto;
+  }
 }
 
 .code-copy-state {
