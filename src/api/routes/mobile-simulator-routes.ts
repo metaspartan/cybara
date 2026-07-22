@@ -57,6 +57,8 @@ export const mobileSimulatorRoutes: Record<string, RouteHandler> = {
         device: frame.device,
         height: frame.height,
         revision: frame.revision,
+        sourceHeight: frame.sourceHeight,
+        sourceWidth: frame.sourceWidth,
         unchanged: frame.unchanged,
         width: frame.width,
       },

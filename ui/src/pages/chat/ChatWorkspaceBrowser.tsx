@@ -26,7 +26,7 @@ import {
   type PreviewSize,
 } from "./previewGeometry";
 import { routeChatLink } from "./chatLinkRouting";
-import { browserPreviewPollDelay } from "./browserPreviewTiming";
+import { browserPreviewPollDelay, browserPreviewViewport } from "./browserPreviewTiming";
 
 interface BrowserPage {
   id: string;
@@ -234,6 +234,7 @@ export function ChatWorkspaceBrowser({
   const addressRef = useRef<HTMLInputElement>(null);
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
   const requestInFlightRef = useRef(false);
+  const queuedFreshPageRef = useRef<BrowserPage | null>(null);
   const stateRequestInFlightRef = useRef(false);
   const pendingPageRef = useRef<PendingBrowserPage | null>(null);
   const lastInteractionAtRef = useRef(Date.now());
@@ -278,8 +279,11 @@ export function ChatWorkspaceBrowser({
   }, [browserSessionId, syncPage]);
 
   const loadPreview = useCallback(
-    async (targetPage: BrowserPage) => {
-      if (requestInFlightRef.current) return;
+    async function loadBrowserPreview(targetPage: BrowserPage, fresh = false): Promise<void> {
+      if (requestInFlightRef.current) {
+        if (fresh) queuedFreshPageRef.current = targetPage;
+        return;
+      }
       requestInFlightRef.current = true;
       try {
         const query = new URLSearchParams({
@@ -289,12 +293,15 @@ export function ChatWorkspaceBrowser({
           viewportWidth: String(browserViewport.width),
           viewportHeight: String(browserViewport.height),
         });
+        if (fresh) query.set("fresh", "true");
+        if (!fresh && previewRevisionRef.current) query.set("includePage", "false");
         if (previewRevisionRef.current) query.set("revision", previewRevisionRef.current);
         const response = await apiFetch(
           `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/screenshot?${query}`,
           { signal: AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS) }
         );
         if (response.status === 404) {
+          queuedFreshPageRef.current = null;
           const replacement = await createSessionPage(browserSessionId);
           setPreview(null);
           previewRevisionRef.current = "";
@@ -346,6 +353,9 @@ export function ChatWorkspaceBrowser({
         setError(reason instanceof Error ? reason.message : "Failed to load browser preview");
       } finally {
         requestInFlightRef.current = false;
+        const queuedPage = queuedFreshPageRef.current;
+        queuedFreshPageRef.current = null;
+        if (queuedPage) queueMicrotask(() => void loadBrowserPreview(queuedPage, true));
       }
     },
     [browserSessionId, browserViewport.height, browserViewport.width, syncPage]
@@ -405,8 +415,7 @@ export function ChatWorkspaceBrowser({
       timer = window.setTimeout(() => {
         const bounds = surface.getBoundingClientRect();
         setPreviewSurfaceSize({ width: bounds.width, height: bounds.height });
-        const width = Math.min(2560, Math.max(320, Math.round(bounds.width)));
-        const height = Math.min(1600, Math.max(320, Math.round(bounds.height)));
+        const { width, height } = browserPreviewViewport(bounds.width, bounds.height);
         setBrowserViewport((current) =>
           current.width === width && current.height === height ? current : { width, height }
         );
@@ -495,7 +504,7 @@ export function ChatWorkspaceBrowser({
         }
         lastInteractionAtRef.current = Date.now();
         if (event.status === "tool_completed" || event.toolPhase === "result") {
-          void loadPreview(page);
+          void loadPreview(page, true);
         }
       },
     });
@@ -516,7 +525,7 @@ export function ChatWorkspaceBrowser({
         data && typeof data === "object" ? (data as { data?: unknown }).data : null
       );
       if (nextPage) syncPage({ ...nextPage, id: page.id });
-      await loadPreview(nextPage ? { ...nextPage, id: page.id } : page);
+      await loadPreview(nextPage ? { ...nextPage, id: page.id } : page, true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : `Browser ${action} failed`);
     } finally {
@@ -551,7 +560,7 @@ export function ChatWorkspaceBrowser({
         const resolvedPage = nextPage ? { ...nextPage, id: activePage.id } : activePage;
         previewRevisionRef.current = "";
         syncPage(resolvedPage);
-        await loadPreview(resolvedPage);
+        await loadPreview(resolvedPage, true);
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "Navigation failed");
       } finally {
@@ -590,7 +599,7 @@ export function ChatWorkspaceBrowser({
         );
         if (!response.ok) throw await responseError(response, "Browser interaction failed");
         await loadBrowserState(page);
-        window.setTimeout(() => void loadPreview(page), 120);
+        window.setTimeout(() => void loadPreview(page, true), 80);
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "Browser interaction failed");
       }

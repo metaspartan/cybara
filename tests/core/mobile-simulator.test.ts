@@ -57,18 +57,22 @@ describe("mobile simulator discovery", () => {
     const preview = encodeAndroidRawPreview(raw);
     expect(preview?.width).toBe(2);
     expect(preview?.height).toBe(2);
+    expect(preview?.sourceWidth).toBe(2);
+    expect(preview?.sourceHeight).toBe(2);
     expect(preview?.bytes.subarray(0, 8)).toEqual(
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
     );
     expect(encodeAndroidRawPreview(Buffer.alloc(8))).toBeNull();
   });
 
-  test("downsamples Android emulator PNG fallbacks while retaining native dimensions", () => {
+  test("downsamples Android emulator PNG fallbacks with explicit native dimensions", () => {
     const source = new PNG({ width: 1080, height: 2400 });
     source.data.fill(255);
     const preview = encodeAndroidPngPreview(PNG.sync.write(source));
-    expect(preview?.width).toBe(1080);
-    expect(preview?.height).toBe(2400);
+    expect(preview?.width).toBe(720);
+    expect(preview?.height).toBe(1600);
+    expect(preview?.sourceWidth).toBe(1080);
+    expect(preview?.sourceHeight).toBe(2400);
     const encoded = preview ? PNG.sync.read(preview.bytes) : null;
     expect(encoded?.width).toBe(720);
     expect(encoded?.height).toBe(1600);

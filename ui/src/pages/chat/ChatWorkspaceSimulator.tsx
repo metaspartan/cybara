@@ -12,7 +12,7 @@ import {
 import { apiFetch } from "@/lib/auth";
 import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
-import { containerPointToPreview } from "./previewGeometry";
+import { containerPointToSource } from "./previewGeometry";
 import { simulatorPreviewPollDelay } from "./simulatorPreviewTiming";
 
 type SimulatorPlatform = "ios" | "android";
@@ -39,6 +39,8 @@ interface SimulatorFrame {
   contentType: string;
   width: number;
   height: number;
+  sourceWidth: number;
+  sourceHeight: number;
   revision: string;
   device: SimulatorDevice;
 }
@@ -161,6 +163,14 @@ export function ChatWorkspaceSimulator({
             contentType: String(payload.contentType || current?.contentType || "image/png"),
             width: payload.width as number,
             height: payload.height as number,
+            sourceWidth:
+              typeof payload.sourceWidth === "number"
+                ? payload.sourceWidth
+                : (payload.width as number),
+            sourceHeight:
+              typeof payload.sourceHeight === "number"
+                ? payload.sourceHeight
+                : (payload.height as number),
             revision,
             device,
           };
@@ -295,9 +305,10 @@ export function ChatWorkspaceSimulator({
   const handleClick = (event: MouseEvent<HTMLDivElement>): void => {
     if (!frame || !selectedDevice?.interactive) return;
     const bounds = event.currentTarget.getBoundingClientRect();
-    const point = containerPointToPreview(
+    const point = containerPointToSource(
       { width: bounds.width, height: bounds.height },
       { width: frame.width, height: frame.height },
+      { width: frame.sourceWidth, height: frame.sourceHeight },
       { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
     );
     if (!point) return;
@@ -308,9 +319,9 @@ export function ChatWorkspaceSimulator({
   const handleWheel = (event: WheelEvent<HTMLDivElement>): void => {
     if (!frame || !selectedDevice?.interactive) return;
     event.preventDefault();
-    const centerX = frame.width / 2;
-    const centerY = frame.height / 2;
-    const distance = Math.min(frame.height * 0.3, Math.max(120, Math.abs(event.deltaY) * 2));
+    const centerX = frame.sourceWidth / 2;
+    const centerY = frame.sourceHeight / 2;
+    const distance = Math.min(frame.sourceHeight * 0.3, Math.max(120, Math.abs(event.deltaY) * 2));
     const direction = event.deltaY >= 0 ? -1 : 1;
     void runAction({
       action: "swipe",

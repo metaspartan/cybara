@@ -70,6 +70,8 @@ export interface MobileSimulatorFrame {
   device: MobileSimulatorDevice;
   height: number;
   revision: string;
+  sourceHeight: number;
+  sourceWidth: number;
   unchanged: boolean;
   width: number;
 }
@@ -98,6 +100,16 @@ interface CachedFrame {
   device: MobileSimulatorDevice;
   height: number;
   revision: string;
+  sourceHeight: number;
+  sourceWidth: number;
+  width: number;
+}
+
+export interface EncodedPreviewFrame {
+  bytes: Buffer;
+  height: number;
+  sourceHeight: number;
+  sourceWidth: number;
   width: number;
 }
 
@@ -522,6 +534,7 @@ async function captureIos(device: MobileSimulatorDevice, preview = false): Promi
     const dimensions = jpegDimensions(original);
     if (!dimensions) throw new Error("iOS Simulator returned an invalid screenshot");
     let bytes = original;
+    let encodedDimensions = dimensions;
     const sips = preview ? Bun.which("sips") : null;
     if (sips && dimensions.height > IOS_PREVIEW_MAX_HEIGHT) {
       await runChecked(sips, [
@@ -538,15 +551,21 @@ async function captureIos(device: MobileSimulatorDevice, preview = false): Promi
         previewPath,
       ]);
       const resized = readFileSync(previewPath);
-      if (jpegDimensions(resized)) bytes = resized;
+      const resizedDimensions = jpegDimensions(resized);
+      if (resizedDimensions) {
+        bytes = resized;
+        encodedDimensions = resizedDimensions;
+      }
     }
     return {
       bytes,
       capturedAt: Date.now(),
       contentType: "image/jpeg",
       device,
-      ...dimensions,
+      ...encodedDimensions,
       revision: createHash("sha256").update(bytes).digest("base64url").slice(0, 16),
+      sourceHeight: dimensions.height,
+      sourceWidth: dimensions.width,
     };
   } finally {
     try {
@@ -571,6 +590,8 @@ async function captureAndroid(device: MobileSimulatorDevice): Promise<CachedFram
     device,
     ...dimensions,
     revision: createHash("sha256").update(result.stdout).digest("base64url").slice(0, 16),
+    sourceHeight: dimensions.height,
+    sourceWidth: dimensions.width,
   };
 }
 
@@ -579,11 +600,7 @@ function encodeRgbaPreview(
   width: number,
   height: number,
   opaque: boolean
-): {
-  bytes: Buffer;
-  height: number;
-  width: number;
-} {
+): EncodedPreviewFrame {
   const scale = Math.min(1, ANDROID_PREVIEW_MAX_WIDTH / width, ANDROID_PREVIEW_MAX_HEIGHT / height);
   const previewWidth = Math.max(1, Math.round(width * scale));
   const previewHeight = Math.max(1, Math.round(height * scale));
@@ -602,16 +619,14 @@ function encodeRgbaPreview(
   }
   return {
     bytes: PNG.sync.write(png),
-    height,
-    width,
+    height: previewHeight,
+    sourceHeight: height,
+    sourceWidth: width,
+    width: previewWidth,
   };
 }
 
-export function encodeAndroidRawPreview(raw: Buffer): {
-  bytes: Buffer;
-  height: number;
-  width: number;
-} | null {
+export function encodeAndroidRawPreview(raw: Buffer): EncodedPreviewFrame | null {
   if (raw.length < 16) return null;
   const width = raw.readUInt32LE(0);
   const height = raw.readUInt32LE(4);
@@ -622,11 +637,7 @@ export function encodeAndroidRawPreview(raw: Buffer): {
   return encodeRgbaPreview(raw.subarray(16, expectedLength), width, height, format === 2);
 }
 
-export function encodeAndroidPngPreview(bytes: Buffer): {
-  bytes: Buffer;
-  height: number;
-  width: number;
-} | null {
+export function encodeAndroidPngPreview(bytes: Buffer): EncodedPreviewFrame | null {
   try {
     const png = PNG.sync.read(bytes);
     if (png.width < 1 || png.height < 1) return null;
@@ -679,6 +690,8 @@ async function captureAndroidPreview(device: MobileSimulatorDevice): Promise<Cac
     device,
     height: preview.height,
     revision: createHash("sha256").update(preview.bytes).digest("base64url").slice(0, 16),
+    sourceHeight: preview.sourceHeight,
+    sourceWidth: preview.sourceWidth,
     width: preview.width,
   };
 }
@@ -725,6 +738,8 @@ export async function captureMobileSimulator(
     device: frame.device,
     height: frame.height,
     revision: frame.revision,
+    sourceHeight: frame.sourceHeight,
+    sourceWidth: frame.sourceWidth,
     unchanged,
     width: frame.width,
   };
