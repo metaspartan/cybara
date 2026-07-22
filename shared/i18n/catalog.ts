@@ -141,6 +141,8 @@ export type TranslationKey =
   | "chat.tabs.review"
   | "chat.tabs.terminal"
   | "chat.tabs.browser"
+  | "chat.tabs.ios"
+  | "chat.tabs.android"
   | "chat.tabs.computer"
   | "chat.tabs.files"
   | "chat.tabs.subagents";
@@ -312,6 +314,8 @@ const englishTranslations: TranslationCatalog = {
   "chat.tabs.review": "Review",
   "chat.tabs.terminal": "Terminal",
   "chat.tabs.browser": "Browser",
+  "chat.tabs.ios": "iOS Simulator",
+  "chat.tabs.android": "Android Emulator",
   "chat.tabs.computer": "Desktop",
   "chat.tabs.files": "Files",
   "chat.tabs.subagents": "Side task",

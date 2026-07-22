@@ -25,6 +25,7 @@ import {
   type PreviewSize,
 } from "./previewGeometry";
 import { routeChatLink } from "./chatLinkRouting";
+import { browserPreviewPollDelay } from "./browserPreviewTiming";
 
 interface BrowserPage {
   id: string;
@@ -57,9 +58,7 @@ interface BrowserPreview {
 const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = { width: 960, height: 640 };
 const BROWSER_START_TIMEOUT_MS = 90_000;
 const BROWSER_REQUEST_TIMEOUT_MS = 12_000;
-const BROWSER_PREVIEW_POLL_MS = 750;
-const BROWSER_STATE_POLL_MS = 200;
-const BROWSER_PREVIEW_QUALITY = 62;
+const BROWSER_PREVIEW_QUALITY = 58;
 
 interface BrowserLaunchStatus {
   phase: "idle" | "starting" | "running" | "failed";
@@ -230,6 +229,7 @@ export function ChatWorkspaceBrowser({
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
   const requestInFlightRef = useRef(false);
   const stateRequestInFlightRef = useRef(false);
+  const lastInteractionAtRef = useRef(Date.now());
   const previewRevisionRef = useRef("");
   const lastNavigationRequestRef = useRef(0);
   const onTitleChangeRef = useRef(onTitleChange);
@@ -448,32 +448,26 @@ export function ChatWorkspaceBrowser({
     let timer: number | null = null;
     const poll = async () => {
       if (document.visibilityState === "visible") await loadPreview(page);
-      if (!cancelled) timer = window.setTimeout(() => void poll(), BROWSER_PREVIEW_POLL_MS);
+      if (!cancelled) {
+        timer = window.setTimeout(
+          () => void poll(),
+          browserPreviewPollDelay(Date.now(), lastInteractionAtRef.current, loading)
+        );
+      }
     };
-    timer = window.setTimeout(() => void poll(), BROWSER_PREVIEW_POLL_MS);
+    timer = window.setTimeout(
+      () => void poll(),
+      browserPreviewPollDelay(Date.now(), lastInteractionAtRef.current, loading)
+    );
     return () => {
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [loadPreview, page, visible]);
-
-  useEffect(() => {
-    if (!visible || !page) return;
-    let cancelled = false;
-    let timer: number | null = null;
-    const poll = async () => {
-      if (document.visibilityState === "visible") await loadBrowserState(page);
-      if (!cancelled) timer = window.setTimeout(() => void poll(), BROWSER_STATE_POLL_MS);
-    };
-    timer = window.setTimeout(() => void poll(), BROWSER_STATE_POLL_MS);
-    return () => {
-      cancelled = true;
-      if (timer !== null) window.clearTimeout(timer);
-    };
-  }, [loadBrowserState, page, visible]);
+  }, [loadPreview, loading, page, visible]);
 
   const runPageAction = async (action: "back" | "forward" | "reload") => {
     if (!page || loading) return;
+    lastInteractionAtRef.current = Date.now();
     setLoading(true);
     try {
       const response = await apiFetch(
@@ -496,6 +490,7 @@ export function ChatWorkspaceBrowser({
 
   const navigateTo = useCallback(
     async (target: string): Promise<void> => {
+      lastInteractionAtRef.current = Date.now();
       setLoading(true);
       try {
         const activePage = page ?? (await ensurePage());
@@ -547,6 +542,7 @@ export function ChatWorkspaceBrowser({
   const sendPageInput = useCallback(
     async (action: "pointer/click" | "scroll" | "keyboard", body: Record<string, unknown>) => {
       if (!page) return;
+      lastInteractionAtRef.current = Date.now();
       try {
         const response = await apiFetch(
           `/api/browser/tabs/${encodeURIComponent(page.id)}/${action}`,

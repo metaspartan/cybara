@@ -37,6 +37,7 @@ import {
   handleSessionSearch,
 } from "./handlers/memory";
 import { handleWorkspaceIndexSearch } from "./handlers/workspace-index";
+import { handleMobileSimulator } from "./handlers/mobile-simulator";
 import { toolSchemas } from "./schemas";
 import type { Tool, ToolContext, ToolHandler } from "./types";
 
@@ -72,6 +73,7 @@ const dangerousToolNames = new Set([
   "env",
   "http",
   "computer_use",
+  "mobile_simulator",
   "account_connector_write",
   "execute_code",
   "sandbox_run",
@@ -337,6 +339,7 @@ _toolHandlers.set("lsp_hover", handleLSPHover);
 _toolHandlers.set("lsp_languages", handleLSPLanguages);
 _toolHandlers.set("canvas", handleCanvas);
 _toolHandlers.set("computer_use", handleComputerUse);
+_toolHandlers.set("mobile_simulator", handleMobileSimulator);
 for (const action of COMPUTER_USE_ACTION_TOOL_ALIASES) {
   _toolHandlers.set(action, async (args, context) =>
     handleComputerUse(normalizeComputerUseActionArgs(action, args), context)

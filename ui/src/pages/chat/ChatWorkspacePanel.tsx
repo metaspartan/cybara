@@ -6,6 +6,7 @@ import {
   Monitor,
   PanelRightClose,
   Plus,
+  Smartphone,
   SquareTerminal,
   X,
 } from "lucide-react";
@@ -17,6 +18,8 @@ export type ChatWorkspaceTab =
   | "review"
   | "terminal"
   | "browser"
+  | "ios"
+  | "android"
   | "computer"
   | "files"
   | "subagents";
@@ -35,6 +38,8 @@ export const WORKSPACE_SINGLETON_KINDS: ReadonlySet<ChatWorkspaceTab> = new Set(
   "computer",
   "files",
   "subagents",
+  "ios",
+  "android",
 ]);
 
 const TAB_DETAILS: Record<
@@ -52,6 +57,8 @@ const TAB_DETAILS: Record<
     icon: SquareTerminal,
   },
   browser: { label: "Browser", labelKey: "chat.tabs.browser", icon: Globe2 },
+  ios: { label: "iOS Simulator", labelKey: "chat.tabs.ios", icon: Smartphone },
+  android: { label: "Android Emulator", labelKey: "chat.tabs.android", icon: Smartphone },
   computer: { label: "Desktop", labelKey: "chat.tabs.computer", icon: Monitor },
   files: { label: "Files", labelKey: "chat.tabs.files", icon: FolderTree },
   subagents: {

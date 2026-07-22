@@ -23,6 +23,7 @@ export const CORE_TOOL_SUMMARIES: Record<string, string> = {
   web_search: "Search the web",
   web_fetch: "Fetch and extract readable content from a URL",
   browser: "Control web browser for automation",
+  mobile_simulator: "Inspect and control iOS Simulator or Android Emulator",
   canvas: "Present/eval/snapshot the Canvas",
   nodes: "List/describe/notify/camera/screen on paired nodes",
   cron: "Manage cron jobs and wake events (use for reminders; write systemEvent text that reads like a reminder when it fires)",
@@ -385,6 +386,7 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
     "web_search",
     "web_fetch",
     "browser",
+    "mobile_simulator",
     "canvas",
     "nodes",
     "cron",
@@ -483,6 +485,16 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
         "- Treat 403, 404, robots, and anti-bot responses as unavailable sources; use a different authoritative source instead of retrying archive variants",
         "- Use web_search for discovery and web_fetch for readable primary sources; do not use exec or curl as a web-search fallback",
         "- Keep the embedded browser open on the final page so the user can inspect it; close it only when explicitly requested",
+        ""
+      );
+    }
+
+    if (availableTools.has("mobile_simulator")) {
+      lines.push(
+        "### Mobile Simulator",
+        "Use mobile_simulator status before mobile app testing, then start a device when needed.",
+        "Inspect screenshots or accessibility output before coordinates, act, and capture another screenshot to verify the result.",
+        "Use iOS only when the macOS host reports it as supported; Android can run wherever its SDK and an AVD are installed.",
         ""
       );
     }

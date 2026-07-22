@@ -1201,6 +1201,58 @@ ACTIONS:
     },
     permissions: [],
   },
+  mobile_simulator: {
+    name: "mobile_simulator",
+    description:
+      "Inspect and control iOS Simulator on macOS or Android Emulator on macOS, Windows, and Linux. Use status first, start a device when needed, then screenshot or describe before tapping. Android uses the installed SDK and ADB. iOS uses Xcode simctl for lifecycle, apps, URLs, and screenshots; direct touch and text input require IDB.",
+    category: "media",
+    input_schema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: [
+            "status",
+            "list",
+            "start",
+            "stop",
+            "screenshot",
+            "preview",
+            "tap",
+            "swipe",
+            "text",
+            "key",
+            "open_url",
+            "install",
+            "launch",
+            "describe",
+          ],
+          description: "Simulator operation to perform.",
+        },
+        platform: {
+          type: "string",
+          enum: ["ios", "android"],
+          description: "Target simulator platform. Required except for status/list.",
+        },
+        deviceId: {
+          type: "string",
+          description: "Optional simulator UDID, Android emulator serial, or AVD name.",
+        },
+        x: { type: "number", description: "Tap or swipe starting X coordinate from screenshot." },
+        y: { type: "number", description: "Tap or swipe starting Y coordinate from screenshot." },
+        endX: { type: "number", description: "Swipe ending X coordinate from screenshot." },
+        endY: { type: "number", description: "Swipe ending Y coordinate from screenshot." },
+        durationMs: { type: "number", description: "Swipe duration in milliseconds." },
+        text: { type: "string", description: "Text to enter into the focused field." },
+        key: { type: "string", description: "Platform button or Android keycode." },
+        url: { type: "string", description: "HTTP or HTTPS URL to open in the simulator." },
+        path: { type: "string", description: "Local .app, .ipa, or .apk package to install." },
+        appId: { type: "string", description: "Bundle ID or Android package ID to launch." },
+      },
+      required: ["action"],
+    },
+    permissions: [],
+  },
   kanban_show: {
     name: "kanban_show",
     description:

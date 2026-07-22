@@ -99,8 +99,9 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("viewportWidth");
     expect(browserSource).toContain("ResizeObserver");
     expect(browserSource).not.toContain("refreshSessionPreview");
-    expect(browserSource).toContain("const BROWSER_PREVIEW_POLL_MS = 750");
-    expect(browserSource).toContain("const BROWSER_STATE_POLL_MS = 200");
+    expect(browserSource).toContain("browserPreviewPollDelay");
+    expect(browserSource).toContain("const BROWSER_PREVIEW_QUALITY = 58");
+    expect(browserSource).not.toContain("BROWSER_STATE_POLL_MS");
     expect(browserSource).toContain('format: "jpeg"');
     expect(browserSource).toContain('document.visibilityState === "visible"');
     expect(browserSource).toContain("onTitleChangeRef.current");

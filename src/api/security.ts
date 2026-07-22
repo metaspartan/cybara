@@ -860,6 +860,9 @@ export function routeRequiredScope(method: string, path: string): MobileScope | 
   if (path.startsWith("/api/computer-use")) {
     return "terminal";
   }
+  if (path.startsWith("/api/simulators")) {
+    return "terminal";
+  }
   if (path.startsWith("/api/browser") || path === "/api/open-url") {
     return "terminal";
   }
