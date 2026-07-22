@@ -6,7 +6,7 @@ Cybara plugins are trusted extension bundles and connected capabilities that exp
 
 The Plugins surfaces in web, Tauri, native macOS, mobile, CLI, and TUI organize:
 
-- installed bundles that contribute reusable skills
+- installed bundles that contribute skills, tools, commands, hooks, MCP servers, providers, and webhook channels
 - a searchable catalog of curated built-in workflow bundles
 - OAuth account apps backed by encrypted credentials
 - remote and local MCP services with explicit lifecycle controls
@@ -27,10 +27,20 @@ Installable bundles use `cybara-plugin.json`.
   "contributions": {
     "skills": {
       "dirs": ["skills"]
-    }
+    },
+    "tools": { "files": ["contributions/tools.json"] },
+    "commands": { "files": ["contributions/commands.json"] },
+    "hooks": { "files": ["contributions/hooks.json"] },
+    "mcpServers": { "files": ["contributions/mcp.json"] },
+    "providers": { "files": ["contributions/providers.json"] },
+    "channels": { "files": ["contributions/channels.json"] }
   }
 }
 ```
+
+Contribution files are loaded only while the plugin is enabled. Runtime contributions are removed
+when it is disabled, so tools, commands, hooks, MCP services, providers, and channels do not require a
+gateway restart to activate or deactivate.
 
 ## Discovery order
 
@@ -76,7 +86,8 @@ DELETE /api/plugins/:id
 
 - skill contribution paths must stay inside the plugin root
 - absolute contribution paths are ignored
-- only existing skill directories are loaded
+- only existing skill directories and contribution files are loaded
+- contribution files must remain inside the plugin root; absolute paths and symlink escapes are rejected
 - built-in workflow bundles are installed and enabled by default
 - enablement is persisted locally and changes take effect without restarting the gateway
 - local plugin installation accepts a folder, manifest, or ZIP bundle

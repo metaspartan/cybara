@@ -1,5 +1,5 @@
-import { isLikelyGoogleApiKey } from "./_shared";
 import { validatePublicHttpUrlShape } from "../../core/outbound-url-policy";
+import { isLikelyGoogleApiKey } from "./_shared";
 
 export function validateProviderCredentialShape(
   providerType: string,
@@ -40,6 +40,19 @@ export function validateProviderBaseUrlShape(baseUrl: string): void {
 
   if (parsed.username || parsed.password) {
     throw new Error("Validation error: Provider base URL cannot include embedded credentials.");
+  }
+}
+
+export function validateCustomProviderConfiguration(
+  baseUrl: string | undefined,
+  apiKey: string | undefined
+): void {
+  if (!baseUrl) {
+    throw new Error("Validation error: Custom provider API base URL is required.");
+  }
+  validateProviderBaseUrlShape(baseUrl);
+  if (!apiKey) {
+    throw new Error("Validation error: Custom provider API key is required.");
   }
 }
 

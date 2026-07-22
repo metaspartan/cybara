@@ -934,6 +934,46 @@ describe("Providers API", () => {
     await fixture.api("DELETE", `/api/providers/${providerId}`);
   });
 
+  test("POST /api/providers validates and persists custom providers", async () => {
+    const missingUrl = await fixture.api("POST", "/api/providers", {
+      provider: "custom",
+      name: `custom-missing-url-${Date.now()}`,
+      api_key: "custom-secret",
+    });
+    expect(missingUrl.status).toBe(400);
+    expect(String(missingUrl.data.error)).toContain("API base URL is required");
+
+    const missingKey = await fixture.api("POST", "/api/providers", {
+      provider: "custom",
+      name: `custom-missing-key-${Date.now()}`,
+      base_url: "http://127.0.0.1:8765/api/",
+    });
+    expect(missingKey.status).toBe(400);
+    expect(String(missingKey.data.error)).toContain("API key is required");
+
+    const created = await fixture.api("POST", "/api/providers", {
+      provider: "custom",
+      name: `custom-provider-${Date.now()}`,
+      api_key: "custom-secret",
+      base_url: "http://127.0.0.1:8765/api/",
+    });
+    expect(created.status).toBe(200);
+    const providerId = created.data.id as string;
+    const row = fixture.getRawProviderRecord(providerId);
+    expect(row?.provider).toBe("custom");
+    expect(row?.base_url).toBe("http://127.0.0.1:8765/api");
+    expect(fixture.openRawProviderApiKey(providerId, row?.api_key || "")).toBe("custom-secret");
+
+    const updated = await fixture.api("PUT", `/api/providers/${providerId}`, {
+      base_url: "http://127.0.0.1:8766/openai/",
+      api_key: "custom-secret",
+    });
+    expect(updated.status).toBe(200);
+    expect(fixture.getRawProviderRecord(providerId)?.base_url).toBe("http://127.0.0.1:8766/openai");
+
+    await fixture.api("DELETE", `/api/providers/${providerId}`);
+  });
+
   test("PUT /api/providers/:id preserves existing credentials when api_key is blank", async () => {
     const provider = await fixture.api("POST", "/api/providers", {
       provider: "openai",
@@ -1041,6 +1081,22 @@ describe("Providers API", () => {
     expect(typeof data[0].id).toBe("string");
     expect(typeof data[0].name).toBe("string");
     expect(Array.isArray(data[0].models)).toBe(true);
+
+    const custom = (
+      data as Array<{ id: string; authType: string; baseUrl: string; models: unknown[] }>
+    ).find((provider) => provider.id === "custom");
+    expect(custom).toEqual({
+      id: "custom",
+      authType: "api_key",
+      baseUrl: "",
+      models: [],
+      name: "Custom Provider",
+      description: "Use Custom Provider models",
+      oauthFlow: null,
+      hasOAuthConfig: false,
+      oauthLoginUrl: null,
+      apiConsoleUrl: null,
+    });
 
     const openai = (
       data as Array<{

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { coalescePendingWork } from "../coalesced-work";
 import * as pwManager from "./pw-manager";
 
 export interface BrowserPreviewFrame {
@@ -87,9 +88,7 @@ export async function captureBrowserPreview(
   const key = `${pageId}:${generation}:${width}:${height}:${format}:${quality}:${fullPage}`;
   const cached = previewCache.get(key);
   if (cached && Date.now() - cached.capturedAt <= PREVIEW_CACHE_MS) return cached;
-  const pending = pendingCaptures.get(key);
-  if (pending) return await pending;
-  const capture = (async (): Promise<CachedBrowserPreview> => {
+  return await coalescePendingWork(pendingCaptures, key, async () => {
     await pwManager.resize(pageId, width, height);
     const bytes = await pwManager.screenshot(pageId, {
       fullPage,
@@ -105,7 +104,5 @@ export async function captureBrowserPreview(
     };
     if (captureGeneration(pageId) === generation) cacheFrame(key, frame);
     return frame;
-  })().finally(() => pendingCaptures.delete(key));
-  pendingCaptures.set(key, capture);
-  return await capture;
+  });
 }

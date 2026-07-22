@@ -10,7 +10,9 @@ describe("provider API console links", () => {
     const missing = Object.entries(providers)
       .filter(
         ([id, provider]) =>
-          (provider.authType === "api_key" || provider.authType === "token") && id !== "litellm"
+          (provider.authType === "api_key" || provider.authType === "token") &&
+          id !== "litellm" &&
+          id !== "custom"
       )
       .filter(([id]) => providerApiConsoleUrl(id) === null)
       .map(([id]) => id);
@@ -28,6 +30,7 @@ describe("provider API console links", () => {
 
   test("does not invent a console for self-hosted or unknown providers", () => {
     expect(providerApiConsoleUrl("litellm")).toBeNull();
+    expect(providerApiConsoleUrl("custom")).toBeNull();
     expect(providerApiConsoleUrl("plugin-provider")).toBeNull();
   });
 });

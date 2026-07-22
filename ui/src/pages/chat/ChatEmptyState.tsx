@@ -36,7 +36,7 @@ export function ChatEmptyState({
   return (
     <div
       data-chat-empty-state="true"
-      className="mx-auto flex w-full max-w-[42rem] -translate-y-[3vh] flex-col items-center px-1"
+      className="mx-auto flex w-[min(100%,40rem)] -translate-y-[3vh] flex-col items-center"
     >
       <div className="text-center text-gray-500">
         <span className="chat-empty-state-logo mx-auto mb-4 block h-16 w-16" aria-hidden="true">
@@ -47,7 +47,7 @@ export function ChatEmptyState({
           Ask questions, get help with code, or chat with your agents
         </p>
       </div>
-      <div className="mt-4 w-full text-left">
+      <div className="mx-auto mt-4 w-full text-left">
         <NewChatWorkspaceBar
           branches={gitBranches}
           changingBranch={gitBranchChanging}

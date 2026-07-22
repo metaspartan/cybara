@@ -32,7 +32,7 @@ import {
 } from "@/lib/chatActivities";
 import { SubagentIcon } from "./SubagentIcon";
 import { formatWorkedDuration } from "./assistantMetaModel";
-import { LiveStatusIndicator } from "./LiveStatusIndicator";
+import { LiveStatusIndicator, LiveStatusOrb } from "./LiveStatusIndicator";
 
 const GROUP_ICONS: Record<ActivityGroupKind, LucideIcon> = {
   read: FileText,
@@ -58,7 +58,7 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
         {activity.toolName === "sessions_transfer" || activity.toolName === "__steering" ? (
           <ArrowRightLeft className="h-3 w-3 text-current opacity-70" />
         ) : activity.phase === "start" ? (
-          <Loader2 className="h-3 w-3 animate-spin text-current opacity-70" />
+          <LiveStatusOrb state="solving" size={20} className="opacity-70" />
         ) : activity.phase === "result" ? (
           <CheckCircle2 className="h-3 w-3 text-current opacity-70" />
         ) : (
@@ -112,7 +112,7 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
               title={expanded ? "Collapse" : "Show each call"}
             >
               {inFlight ? (
-                <Loader2 className="h-3 w-3 flex-shrink-0 animate-spin text-current opacity-70" />
+                <LiveStatusOrb state="solving" size={20} className="opacity-70" />
               ) : (
                 <GroupIcon className="w-3 h-3 text-current opacity-70 flex-shrink-0" />
               )}
@@ -353,7 +353,7 @@ export function ActivityStepCard({
 
   const phaseIcon =
     activity.phase === "start" ? (
-      <Loader2 className="w-3.5 h-3.5 animate-spin text-current opacity-70" />
+      <LiveStatusOrb state="solving" size={20} className="opacity-70" />
     ) : activity.phase === "result" ? (
       <CheckCircle2 className="w-3.5 h-3.5 text-current opacity-70" />
     ) : (

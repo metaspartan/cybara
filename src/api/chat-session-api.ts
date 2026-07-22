@@ -590,6 +590,7 @@ export async function revertSessionToMessage(
   keptCount: number;
   removedCount: number;
   removedFromIndex: number;
+  revertedMessage: ChatMessage;
 }> {
   if (chatTurnMutex.isLocked(sessionId)) {
     throw new Error("Cannot revert a session while a chat turn is active");
@@ -615,7 +616,7 @@ export async function revertSessionToMessage(
     throw new Error("Can only revert to a user message");
   }
 
-  const keptMessages = session.messages.slice(0, targetIndex + 1);
+  const keptMessages = session.messages.slice(0, targetIndex);
   const visibleMessageCount = session.messages.filter(
     (message) => message.role !== "system"
   ).length;
@@ -688,6 +689,7 @@ export async function revertSessionToMessage(
     keptCount,
     removedCount,
     removedFromIndex: keptCount,
+    revertedMessage: targetMessage,
   };
 }
 

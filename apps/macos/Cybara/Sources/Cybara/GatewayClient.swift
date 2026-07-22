@@ -1034,7 +1034,7 @@ struct GatewayClient: Sendable {
         _ id: String,
         messageContent: String?,
         messageTimestamp: String?
-    ) async throws -> Data {
+    ) async throws -> GatewayRevertResponse {
         var payload: [String: Any] = ["messageRole": "user"]
         if let messageContent, !messageContent.isEmpty {
             payload["messageContent"] = messageContent
@@ -1043,7 +1043,8 @@ struct GatewayClient: Sendable {
             payload["messageTimestamp"] = messageTimestamp
         }
         let body = try JSONSerialization.data(withJSONObject: payload)
-        return try await request("api/sessions/\(id)/revert", method: "POST", body: body)
+        let data = try await request("api/sessions/\(id)/revert", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewayRevertResponse.self, from: data)
     }
 
     func forkSession(_ id: String, throughMessageIndex: Int?) async throws -> GatewaySessionForkResponse {

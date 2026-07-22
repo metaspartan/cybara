@@ -70,6 +70,21 @@ describe("session runtime metrics", () => {
     );
     db.prepare(
       `INSERT INTO metrics (id, type, key, value, metadata)
+       VALUES (?, 'token_usage_by_session', ?, 10, ?)`
+    ).run(
+      crypto.randomUUID(),
+      sessionId,
+      JSON.stringify({
+        model: "model-b",
+        provider: "provider-a",
+        inputTokens: 0,
+        outputTokens: 10,
+        durationMs: 1000,
+        generationDurationMs: 1,
+      })
+    );
+    db.prepare(
+      `INSERT INTO metrics (id, type, key, value, metadata)
        VALUES (?, 'token_usage_by_session', ?, 999, '{}')`
     ).run(crypto.randomUUID(), "agent:subagent:ignored");
 
@@ -80,12 +95,12 @@ describe("session runtime metrics", () => {
       model: "model-b",
       provider: "provider-a",
       inputTokens: 300,
-      outputTokens: 200,
+      outputTokens: 210,
       cachedInputTokens: 75,
       cacheWriteTokens: 15,
-      totalTokens: 500,
-      callCount: 3,
-      durationMs: 4000,
+      totalTokens: 510,
+      callCount: 4,
+      durationMs: 5000,
       tokensPerSecond: 100,
       firstTokenMs: 400,
       latencyCallCount: 2,
@@ -94,8 +109,8 @@ describe("session runtime metrics", () => {
     });
     expect(result.totals).toMatchObject({
       sessions: 1,
-      totalTokens: 500,
-      callCount: 3,
+      totalTokens: 510,
+      callCount: 4,
       tokensPerSecond: 100,
       firstTokenMs: 400,
     });

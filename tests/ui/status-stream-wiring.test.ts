@@ -309,7 +309,8 @@ describe("status stream websocket wiring", () => {
     const source = readChatUiSource();
     const idleBranch = source.slice(source.indexOf('if (status === "idle")'));
     expect(idleBranch).toContain("void refreshSessionMessagesRef.current(sessionToRefresh)");
-    expect(idleBranch).toContain("if (!loadingRef.current) {");
+    expect(idleBranch).toContain("if (loadingRef.current) {");
+    expect(idleBranch).toContain('setLiveCurrentStep("Finalizing response...")');
     expect(idleBranch).not.toContain("hasPendingCaptureForVisibleSession");
   });
 

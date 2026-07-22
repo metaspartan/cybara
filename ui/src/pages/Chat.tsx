@@ -1267,12 +1267,12 @@ export function Chat() {
     if (!revertTarget) return;
     try {
       setReverting(true);
-      await revertToMessage({
+      const result = await revertToMessage({
         index: revertTarget.index,
         content: revertTarget.content,
         timestamp: revertTarget.timestamp,
       });
-      setInput(revertTarget.content);
+      setInput(result.revertedMessage?.content ?? revertTarget.content);
       setLiveActivities([]);
       setMessageProcessMap({});
       pendingProcessCaptureRef.current = null;
@@ -1744,10 +1744,11 @@ export function Chat() {
         >
           <div className="space-y-4">
             <p className="text-sm text-gray-300">
-              Are you sure you want to revert here? This will keep this message, remove{" "}
-              {revertFollowingCount} later message
-              {revertFollowingCount === 1 ? "" : "s"} from this session, then place this text back
-              in the input box for resend.
+              Are you sure you want to revert here? This will remove this message
+              {revertFollowingCount > 0
+                ? ` and ${revertFollowingCount} later message${revertFollowingCount === 1 ? "" : "s"}`
+                : ""}{" "}
+              from this session, then place this text back in the input box for resend.
             </p>
             {revertTarget && (
               <div className="rounded-lg border border-white/10 bg-black/30 p-3">

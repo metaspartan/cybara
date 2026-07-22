@@ -121,6 +121,14 @@ describe("Onboarding provider and agent setup", () => {
     expect(setup).not.toContain("selectedProvider?.models || []");
   });
 
+  test("collects the custom provider endpoint before creating its account", () => {
+    expect(setup).toContain('selectedProvider.id === "custom"');
+    expect(setup).toContain('base_url: providerId === "custom"');
+    expect(setup).toContain("!customProviderUrl.trim()");
+    expect(cli).toContain('step === "baseurl"');
+    expect(cli).toContain('base_url: providerId === "custom"');
+  });
+
   test("relies on setup status instead of polling full resource lists", () => {
     expect(setup).not.toContain("useProviders()");
     expect(setup).not.toContain("useAgents()");

@@ -153,7 +153,21 @@ curl -s http://localhost:4269/api/providers/available | jq 'length'
 cybara provider models <provider-id>
 ```
 
-### Credential Pools (multi-key rotation)
+### Provider Account Pools
+
+Settings -> Providers can group multiple configured accounts of the same provider into a named pool.
+Pools use tracked remaining usage by default and can be given an explicit priority override. Agents
+and router routes may target the pool instead of one provider account.
+
+```bash
+cybara provider pool list
+cybara provider pool create --name "Coding accounts" --provider kimi-code --account <id-a> --account <id-b>
+```
+
+API: `GET|POST /api/provider-account-pools` and
+`PUT|DELETE /api/provider-account-pools/:id`.
+
+### Per-Account Key Rotation
 
 For any provider, set multiple API keys via environment variables (`<PROVIDER>_API_KEY`,
 `<PROVIDER>_API_KEY_2`, `<PROVIDER>_API_KEY_3`, …, or comma-separated lists). Cybara rotates
@@ -162,8 +176,9 @@ instead of failing the request. See `.env.example` and `src/core/credential-pool
 
 ### Anthropic Prompt Caching
 
-Anthropic requests automatically get `cache_control` breakpoints on the stable system prompt +
-recent turns, giving ~75% input-token savings on multi-turn sessions. No configuration required.
+Anthropic requests automatically receive `cache_control` breakpoints on stable prompt content and
+recent turns. Provider-reported cache reads and writes are included in usage metrics. No separate
+cache configuration is required.
 
 ## Provider Plan Monitoring
 

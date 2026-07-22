@@ -730,7 +730,7 @@ function buildModelThoughtProfiles(tokenCalls: ReturnType<typeof buildTokenCallS
       current.durationTotalMs += entry.durationMs;
       current.durationSamples += 1;
     }
-    if (entry.generationDurationMs !== null && entry.generationDurationMs > 0) {
+    if (entry.generationDurationMs !== null && entry.generationDurationMs >= 100) {
       current.generationDurationTotalMs += entry.generationDurationMs;
       current.generationOutputTokens += entry.outputTokens;
     }

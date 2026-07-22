@@ -1,17 +1,13 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Shield,
-  Lock,
   Unlock,
   KeyRound,
-  ArrowUpRight,
-  ArrowDownLeft,
   Send,
   Loader2,
   Eye,
   EyeOff,
   Copy,
-  History,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -34,6 +30,7 @@ import {
   type WalletTokenChain,
 } from "@/lib/api";
 import { useUIStore } from "@/stores/uiStore";
+import { WalletOverview, type WalletSection } from "@/pages/wallet/WalletOverview";
 
 const CHAIN_OPTIONS: Array<{ value: WalletChain; label: string; symbol: string }> = [
   { value: "eth", label: "Ethereum", symbol: "ETH" },
@@ -44,14 +41,6 @@ const CHAIN_OPTIONS: Array<{ value: WalletChain; label: string; symbol: string }
 const TOKEN_CHAIN_OPTIONS: Array<{ value: WalletTokenChain; label: string; symbol: string }> = [
   { value: "eth", label: "Ethereum", symbol: "ERC-20" },
   { value: "sol", label: "Solana", symbol: "SPL" },
-];
-
-type WalletTab = "receive" | "send" | "history";
-
-const WALLET_TABS: Array<{ id: WalletTab; label: string; icon: ReactNode }> = [
-  { id: "receive", label: "Receive", icon: <ArrowDownLeft className="h-4 w-4" /> },
-  { id: "send", label: "Send", icon: <ArrowUpRight className="h-4 w-4" /> },
-  { id: "history", label: "History", icon: <History className="h-4 w-4" /> },
 ];
 
 type ChainPrice = {
@@ -142,7 +131,7 @@ export function Wallet() {
   const [sendTokenAddress, setSendTokenAddress] = useState("");
   const [sendTokenDecimals, setSendTokenDecimals] = useState("");
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<WalletTab>("receive");
+  const [activeTab, setActiveTab] = useState<WalletSection>("receive");
 
   const [tokenChain, setTokenChain] = useState<WalletTokenChain>("eth");
   const [tokenIndexInput, setTokenIndexInput] = useState("0");
@@ -223,7 +212,7 @@ export function Wallet() {
             }
           }
         } catch {
-          // Prices are best-effort; balances render without USD values.
+          return null;
         }
         return null;
       })
@@ -311,9 +300,6 @@ export function Wallet() {
     void refreshAll();
   }, []);
 
-  // Live updates without manual refresh: poll lock status frequently (cheap
-  // local read) and market data/balances on a slower cadence. Paused while
-  // the tab is hidden to stay light on RPC providers.
   useEffect(() => {
     const tick = (fn: () => void) => () => {
       if (!document.hidden) fn();
@@ -591,8 +577,6 @@ export function Wallet() {
       return;
     }
 
-    // Sending is irreversible — require an explicit review/confirm step rather
-    // than moving funds straight from the form.
     setSendConfirmOpen(true);
   }
 
@@ -670,67 +654,46 @@ export function Wallet() {
       subtitle="Encrypted local multi-chain wallet for ETH, BTC, and SOL"
       actions={
         <div className="flex items-center gap-2">
-          {(loading || busy) && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
+          {(loading || busy) && (
+            <Loader2 className="h-4 w-4 animate-spin text-[var(--text-muted)]" />
+          )}
           <Button
             variant="ghost"
             leftIcon={<SettingsIcon className="w-4 h-4" />}
             onClick={() => navigate("/settings?section=wallet")}
           >
-            Wallet Settings
+            Settings
           </Button>
         </div>
       }
     >
-      <div className="space-y-6">
-        <Card className="overflow-hidden border border-[rgba(var(--accent-primary),0.25)] bg-gradient-to-br from-[rgba(var(--accent-primary),0.18)] via-[#0f1220] to-[#090c16]">
-          <CardContent className="p-6 sm:p-8">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[rgba(var(--accent-primary),0.85)]">
-                  Cybara Secure Vault
-                </p>
-                <h2 className="mt-2 text-3xl font-semibold text-white">
-                  {status?.unlocked && portfolio.hasAnyPrice
-                    ? formatUsd(portfolio.totalUsd)
-                    : "One seed. Multiple chains."}
-                </h2>
-                <p className="mt-2 text-sm text-gray-300 max-w-2xl">
-                  {status?.unlocked && portfolio.hasAnyPrice
-                    ? "Estimated portfolio value."
-                    : "Wallet secrets stay encrypted on this device. Agent access is opt-in and disabled by default."}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Badge variant={status?.exists ? "success" : "warning"}>
-                    {status?.exists ? "Wallet Created" : "No Wallet"}
-                  </Badge>
-                  <Badge variant={status?.unlocked ? "info" : "default"}>
-                    {status?.unlocked ? "Unlocked" : "Locked"}
-                  </Badge>
-                  <Badge variant={status?.agentAccessEnabled ? "warning" : "default"}>
-                    Agent Access: {status?.agentAccessEnabled ? "On" : "Off"}
-                  </Badge>
+      <div className="mx-auto w-full max-w-7xl space-y-4">
+        {!status?.unlocked && (
+          <Card className="overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]">
+            <CardContent className="p-5 sm:p-6">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-muted)]">Local wallet</p>
+                  <h2 className="mt-1 text-2xl font-semibold text-[var(--text-primary)]">
+                    {status?.exists ? "Unlock your wallet" : "Create your wallet"}
+                  </h2>
+                  <p className="mt-1 max-w-2xl text-sm text-[var(--text-muted)]">
+                    One encrypted recovery phrase for Ethereum, Bitcoin, and Solana. Agent access is
+                    explicitly controlled.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge variant={status?.exists ? "success" : "warning"}>
+                      {status?.exists ? "Wallet Created" : "No Wallet"}
+                    </Badge>
+                    {status?.exists ? <Badge variant="default">Locked</Badge> : null}
+                    <Badge variant={status?.agentAccessEnabled ? "warning" : "default"}>
+                      Agent Access: {status?.agentAccessEnabled ? "On" : "Off"}
+                    </Badge>
+                  </div>
                 </div>
-              </div>
 
-              {status?.exists && (
-                <div className="w-full max-w-sm">
-                  {status.unlocked ? (
-                    <div className="flex flex-col items-start gap-2 lg:items-end">
-                      <Button
-                        variant="secondary"
-                        leftIcon={<Lock className="w-4 h-4" />}
-                        onClick={() => void handleLock()}
-                        disabled={busy}
-                      >
-                        Lock Wallet
-                      </Button>
-                      {status.unlockExpiresAt && (
-                        <p className="text-xs text-gray-400">
-                          Auto-locks {formatTimestamp(status.unlockExpiresAt)}
-                        </p>
-                      )}
-                    </div>
-                  ) : (
+                {status?.exists && (
+                  <div className="w-full max-w-sm">
                     <form
                       className="space-y-2"
                       onSubmit={(e) => {
@@ -747,34 +710,37 @@ export function Wallet() {
                       />
                       <Button
                         type="submit"
-                        leftIcon={<Unlock className="w-4 h-4" />}
+                        leftIcon={<Unlock className="h-4 w-4" />}
                         disabled={busy}
                         className="w-full"
                       >
                         Unlock Wallet
                       </Button>
                     </form>
-                  )}
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {loading ? (
-          <Card>
-            <CardContent className="p-8 text-center text-gray-400">
+          <Card className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]">
+            <CardContent className="p-8 text-center text-[var(--text-muted)]">
               Loading wallet state...
             </CardContent>
           </Card>
         ) : !status?.exists ? (
-          <Card variant="liquid">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Card
+            glass={false}
+            className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]"
+          >
+            <CardHeader className="border-[var(--surface-border)]">
+              <CardTitle className="flex items-center gap-2 text-[var(--text-primary)]">
                 <KeyRound className="w-5 h-5 text-[rgba(var(--accent-primary),1)]" />
                 Create or Import Wallet
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-[var(--text-muted)]">
                 Uses BIP39 24-word phrase encrypted with your local password (AES-256-GCM)
               </CardDescription>
             </CardHeader>
@@ -826,7 +792,7 @@ export function Wallet() {
               </Button>
 
               {generatedMnemonic && (
-                <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4">
+                <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-medium text-amber-200">
                       Backup this seed phrase now
@@ -847,21 +813,10 @@ export function Wallet() {
               )}
             </CardContent>
           </Card>
-        ) : !status.unlocked ? (
-          <Card variant="liquid">
-            <CardContent className="p-8 text-center">
-              <Lock className="w-10 h-10 text-gray-500 mx-auto mb-3" />
-              <p className="text-white font-medium">Wallet is locked</p>
-              <p className="mt-1 text-sm text-gray-400">
-                Unlock above to view balances, send, and browse history. RPC endpoints and agent
-                permissions live in Wallet Settings.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
+        ) : !status.unlocked ? null : (
           <>
             {generatedMnemonic && (
-              <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 p-4">
+              <div className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-4">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm text-amber-100">24-word seed phrase backup reminder</p>
                   <div className="flex gap-2">
@@ -893,84 +848,33 @@ export function Wallet() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {portfolio.chains.map((chain) => (
-                <Card key={chain.value} variant="liquid">
-                  <CardContent className="p-5">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-gray-300">{chain.label}</p>
-                      <Badge variant="info">{chain.symbol}</Badge>
-                    </div>
-                    <p className="mt-3 text-2xl font-semibold text-white">
-                      {chain.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}{" "}
-                      <span className="text-sm font-normal text-gray-400">{chain.symbol}</span>
-                    </p>
-                    <div className="mt-1 flex items-center justify-between gap-2">
-                      <p className="text-sm text-emerald-300">
-                        {chain.usdValue !== null ? formatUsd(chain.usdValue) : "Price unavailable"}
-                      </p>
-                      {chain.price && (
-                        <p
-                          className="text-[11px] text-gray-500"
-                          title={
-                            chain.price.publishTime
-                              ? `Updated ${formatTimestamp(chain.price.publishTime)}`
-                              : undefined
-                          }
-                        >
-                          {formatUsd(chain.price.price)} ·{" "}
-                          {PRICE_SOURCE_LABELS[chain.price.source] || chain.price.source}
-                        </p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            <Card variant="liquid">
-              <CardContent className="p-3">
-                <div role="tablist" aria-label="Wallet sections" className="grid grid-cols-3 gap-2">
-                  {WALLET_TABS.map((tab) => {
-                    const isActive = activeTab === tab.id;
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        role="tab"
-                        id={`wallet-tab-button-${tab.id}`}
-                        aria-controls={`wallet-tab-${tab.id}`}
-                        aria-selected={isActive}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={[
-                          "flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm transition-all",
-                          isActive
-                            ? "border-[rgba(var(--accent-primary),0.8)] bg-[rgba(var(--accent-primary),0.2)] text-white"
-                            : "border-white/10 bg-black/20 text-gray-300 hover:border-white/25 hover:text-white",
-                        ].join(" ")}
-                      >
-                        {tab.icon}
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+            <WalletOverview
+              status={status}
+              totalLabel={portfolio.hasAnyPrice ? formatUsd(portfolio.totalUsd) : "Portfolio"}
+              chains={portfolio.chains}
+              activeSection={activeTab}
+              busy={busy}
+              formatUsd={formatUsd}
+              formatTimestamp={formatTimestamp}
+              priceSourceLabel={(source) => PRICE_SOURCE_LABELS[source] || source}
+              onSectionChange={setActiveTab}
+              onLock={() => void handleLock()}
+              onSettings={() => navigate("/settings?section=wallet")}
+            />
 
             {activeTab === "receive" && (
               <Card
-                variant="liquid"
+                glass={false}
+                className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]"
                 role="tabpanel"
                 id="wallet-tab-receive"
                 aria-labelledby="wallet-tab-button-receive"
               >
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ArrowDownLeft className="w-5 h-5" />
-                    Receive Addresses & Balances
-                  </CardTitle>
-                  <CardDescription>Derived accounts from your seed phrase</CardDescription>
+                <CardHeader className="border-[var(--surface-border)]">
+                  <CardTitle className="text-base text-[var(--text-primary)]">Accounts</CardTitle>
+                  <CardDescription className="text-[var(--text-muted)]">
+                    Receive addresses and derived balances
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -997,55 +901,68 @@ export function Wallet() {
                     {CHAIN_OPTIONS.map((chain) => (
                       <div
                         key={chain.value}
-                        className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3"
+                        className="overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)]"
                       >
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm text-gray-300">{chain.label}</p>
-                          <Badge variant="info">{chain.symbol}</Badge>
+                        <div className="flex items-center justify-between border-b border-[var(--surface-border)] px-3 py-2.5">
+                          <p className="text-sm font-medium text-[var(--text-primary)]">
+                            {chain.label}
+                          </p>
+                          <span className="text-xs text-[var(--text-muted)]">{chain.symbol}</span>
                         </div>
 
                         {(groupedBalances[chain.value] || []).length === 0 ? (
-                          <p className="text-xs text-gray-500">No derived balances loaded</p>
+                          <p className="px-3 py-5 text-center text-xs text-[var(--text-muted)]">
+                            No derived balances loaded
+                          </p>
                         ) : (
-                          (groupedBalances[chain.value] || []).map((balance) => (
-                            <div
-                              key={`${chain.value}-${balance.index}`}
-                              className="rounded-lg border border-white/5 bg-white/[0.02] p-3"
-                            >
-                              <div className="flex items-center justify-between text-xs text-gray-400">
-                                <span>Index {balance.index}</span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  leftIcon={<Copy className="w-3 h-3" />}
-                                  onClick={() =>
-                                    void copyToClipboard(`${chain.label} address`, balance.address)
-                                  }
-                                >
-                                  Copy
-                                </Button>
+                          <div className="divide-y divide-[var(--surface-border)]">
+                            {(groupedBalances[chain.value] || []).map((balance) => (
+                              <div key={`${chain.value}-${balance.index}`} className="p-3">
+                                <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+                                  <span>Index {balance.index}</span>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    leftIcon={<Copy className="w-3 h-3" />}
+                                    onClick={() =>
+                                      void copyToClipboard(
+                                        `${chain.label} address`,
+                                        balance.address
+                                      )
+                                    }
+                                  >
+                                    Copy
+                                  </Button>
+                                </div>
+                                <p className="mt-1 break-all text-sm text-[var(--text-primary)]">
+                                  {balance.address}
+                                </p>
+                                <p className="mt-2 text-sm font-semibold text-[var(--text-primary)]">
+                                  {balance.amount} {balance.symbol}
+                                  {prices[chain.value] &&
+                                  Number.isFinite(Number(balance.amount)) ? (
+                                    <span className="ml-2 text-xs font-normal text-[var(--text-muted)]">
+                                      {formatUsd(
+                                        Number(balance.amount) * (prices[chain.value]?.price ?? 0)
+                                      )}
+                                    </span>
+                                  ) : null}
+                                </p>
                               </div>
-                              <p className="mt-1 text-sm text-white break-all">{balance.address}</p>
-                              <p className="mt-2 text-sm font-semibold text-emerald-300">
-                                {balance.amount} {balance.symbol}
-                                {prices[chain.value] && Number.isFinite(Number(balance.amount)) ? (
-                                  <span className="ml-2 text-xs font-normal text-gray-400">
-                                    {formatUsd(Number(balance.amount) * prices[chain.value]!.price)}
-                                  </span>
-                                ) : null}
-                              </p>
-                            </div>
-                          ))
+                            ))}
+                          </div>
                         )}
                       </div>
                     ))}
                   </div>
 
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-4">
+                  <div className="space-y-4 border-t border-[var(--surface-border)] pt-5">
                     <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                       <div>
-                        <p className="text-sm font-medium text-white">Token Balances</p>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-sm font-medium text-[var(--text-primary)]">
+                          Token balances
+                        </p>
+                        <p className="text-xs text-[var(--text-muted)]">
                           ERC-20 and SPL token balances for a single derivation index.
                         </p>
                       </div>
@@ -1064,7 +981,7 @@ export function Wallet() {
                           value={tokenIndexInput}
                           onChange={(e) => setTokenIndexInput(e.target.value)}
                         />
-                        <div className="flex items-center gap-2 text-sm text-gray-300 md:mb-3">
+                        <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] md:mb-3">
                           <Switch checked={tokenIncludeZero} onChange={setTokenIncludeZero} />
                           Include zero balances
                         </div>
@@ -1073,30 +990,34 @@ export function Wallet() {
 
                     <div className="space-y-2 max-h-[320px] overflow-auto">
                       {tokenBalances.length === 0 ? (
-                        <p className="text-xs text-gray-500">No token balances found.</p>
+                        <p className="py-6 text-center text-xs text-[var(--text-muted)]">
+                          No token balances found.
+                        </p>
                       ) : (
                         tokenBalances.map((token) => (
                           <div
                             key={`${token.chain}-${token.index}-${token.tokenAddress}`}
-                            className="rounded-lg border border-white/5 bg-white/[0.02] p-3"
+                            className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3"
                           >
                             <div className="flex items-center justify-between gap-2">
                               <div>
-                                <p className="text-sm text-white font-medium">{token.symbol}</p>
-                                <p className="text-xs text-gray-400">
+                                <p className="text-sm font-medium text-[var(--text-primary)]">
+                                  {token.symbol}
+                                </p>
+                                <p className="text-xs text-[var(--text-muted)]">
                                   {token.name || token.tokenAddress}
                                 </p>
                               </div>
                               <Badge variant="info">{token.chain.toUpperCase()}</Badge>
                             </div>
-                            <p className="mt-2 text-sm font-semibold text-emerald-300">
+                            <p className="mt-2 text-sm font-semibold text-[var(--text-primary)]">
                               {token.amount}
                             </p>
-                            <p className="mt-1 text-xs text-gray-500 break-all">
+                            <p className="mt-1 break-all text-xs text-[var(--text-muted)]">
                               Token: {token.tokenAddress}
                             </p>
                             {token.tokenAccount ? (
-                              <p className="mt-1 text-xs text-gray-500 break-all">
+                              <p className="mt-1 break-all text-xs text-[var(--text-muted)]">
                                 Account: {token.tokenAccount}
                               </p>
                             ) : null}
@@ -1111,17 +1032,17 @@ export function Wallet() {
 
             {activeTab === "send" && (
               <Card
-                variant="liquid"
+                glass={false}
+                className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]"
                 role="tabpanel"
                 id="wallet-tab-send"
                 aria-labelledby="wallet-tab-button-send"
               >
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ArrowUpRight className="w-5 h-5" />
-                    Send Transaction
-                  </CardTitle>
-                  <CardDescription>Send native assets from a derived address</CardDescription>
+                <CardHeader className="border-[var(--surface-border)]">
+                  <CardTitle className="text-base text-[var(--text-primary)]">Send</CardTitle>
+                  <CardDescription className="text-[var(--text-muted)]">
+                    Review every transfer before it is submitted
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1159,9 +1080,9 @@ export function Wallet() {
                     </Button>
                   </div>
 
-                  <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-gray-300">
-                    From address:{" "}
-                    <span className="text-white font-medium">
+                  <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-2.5 text-sm text-[var(--text-muted)]">
+                    From{" "}
+                    <span className="font-medium text-[var(--text-primary)]">
                       {selectedReceiveAccount?.address || "Select a loaded account index"}
                     </span>
                   </div>
@@ -1250,14 +1171,17 @@ export function Wallet() {
 
             {activeTab === "history" && (
               <Card
-                variant="liquid"
+                glass={false}
+                className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]"
                 role="tabpanel"
                 id="wallet-tab-history"
                 aria-labelledby="wallet-tab-button-history"
               >
-                <CardHeader>
-                  <CardTitle>Transaction History</CardTitle>
-                  <CardDescription>Recent activity for a selected chain/index</CardDescription>
+                <CardHeader className="border-[var(--surface-border)]">
+                  <CardTitle className="text-base text-[var(--text-primary)]">Activity</CardTitle>
+                  <CardDescription className="text-[var(--text-muted)]">
+                    Native and token transfers by account
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex flex-wrap gap-2">
@@ -1303,14 +1227,14 @@ export function Wallet() {
 
                       <div className="space-y-2 max-h-[460px] overflow-auto">
                         {transactions.length === 0 ? (
-                          <p className="text-sm text-gray-500">
+                          <p className="py-6 text-center text-sm text-[var(--text-muted)]">
                             No transactions found for this derivation.
                           </p>
                         ) : (
                           transactions.map((tx) => (
                             <div
                               key={tx.txid}
-                              className="rounded-xl border border-white/10 bg-black/20 p-3"
+                              className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3"
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <Badge
@@ -1333,16 +1257,16 @@ export function Wallet() {
                                   Open Explorer
                                 </a>
                               </div>
-                              <p className="mt-2 font-mono text-xs text-gray-300 break-all">
+                              <p className="mt-2 break-all font-mono text-xs text-[var(--text-secondary)]">
                                 {tx.txid}
                               </p>
-                              <div className="mt-2 text-xs text-gray-400 grid grid-cols-2 gap-2">
+                              <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-[var(--text-muted)]">
                                 <span>Amount: {tx.amount || "N/A"}</span>
                                 <span>Fee: {tx.fee || "N/A"}</span>
                                 <span>From: {tx.from ? shortenAddress(tx.from) : "N/A"}</span>
                                 <span>To: {tx.to ? shortenAddress(tx.to) : "N/A"}</span>
                               </div>
-                              <p className="mt-2 text-xs text-gray-500">
+                              <p className="mt-2 text-xs text-[var(--text-muted)]">
                                 {formatTimestamp(tx.timestamp)}
                               </p>
                             </div>
@@ -1382,14 +1306,14 @@ export function Wallet() {
 
                       <div className="space-y-2 max-h-[460px] overflow-auto">
                         {tokenTransactions.length === 0 ? (
-                          <p className="text-sm text-gray-500">
+                          <p className="py-6 text-center text-sm text-[var(--text-muted)]">
                             No token transfers found for this derivation.
                           </p>
                         ) : (
                           tokenTransactions.map((tx) => (
                             <div
                               key={`${tx.txid}-${tx.tokenAddress}-${tx.raw}`}
-                              className="rounded-xl border border-white/10 bg-black/20 p-3"
+                              className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3"
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
@@ -1425,16 +1349,16 @@ export function Wallet() {
                                   Open Explorer
                                 </a>
                               </div>
-                              <p className="mt-2 text-sm text-white">
+                              <p className="mt-2 text-sm text-[var(--text-primary)]">
                                 {tx.amount} {tx.symbol}
                               </p>
-                              <p className="mt-1 font-mono text-xs text-gray-400 break-all">
+                              <p className="mt-1 break-all font-mono text-xs text-[var(--text-secondary)]">
                                 {tx.txid}
                               </p>
-                              <p className="mt-1 text-xs text-gray-500 break-all">
+                              <p className="mt-1 break-all text-xs text-[var(--text-muted)]">
                                 Token: {tx.tokenAddress}
                               </p>
-                              <p className="mt-1 text-xs text-gray-500">
+                              <p className="mt-1 text-xs text-[var(--text-muted)]">
                                 {formatTimestamp(tx.timestamp)}
                               </p>
                             </div>
@@ -1447,7 +1371,7 @@ export function Wallet() {
               </Card>
             )}
 
-            <p className="flex items-center gap-2 text-xs text-gray-500">
+            <p className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
               <Shield className="w-3.5 h-3.5" />
               RPC endpoints, agent permissions, and wallet deletion live in{" "}
               <button

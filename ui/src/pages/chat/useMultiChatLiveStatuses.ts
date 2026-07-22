@@ -20,11 +20,12 @@ import {
   multiChatStateFromCache,
   projectMultiChatSnapshot,
   projectMultiChatStatusEvent,
+  projectMultiChatToken,
 } from "./multiChatLiveStatus";
 
 interface UseMultiChatLiveStatusesOptions {
   sessionIds: string[];
-  onRefresh: (sessionId: string) => void;
+  onRefresh: (sessionId: string, includeSessionList?: boolean) => void;
 }
 
 function snapshotIdentity(snapshot: StatusSessionSnapshot): {
@@ -95,7 +96,7 @@ export function useMultiChatLiveStatuses({
       status: state.liveStatus,
       activities: state.activities,
       currentStep: state.currentStep,
-      streamingContent: null,
+      streamingContent: state.streamingContent,
       runId: state.runId,
       sequence: state.sequence,
       startedAtMs: state.startedAtMs,
@@ -115,7 +116,7 @@ export function useMultiChatLiveStatuses({
           status: next.liveStatus,
           activities: next.activities,
           currentStep: next.currentStep,
-          streamingContent: null,
+          streamingContent: next.streamingContent,
           runId: next.runId,
           sequence: next.sequence,
           startedAtMs: next.startedAtMs,
@@ -176,7 +177,7 @@ export function useMultiChatLiveStatuses({
         const sessionId = event.sessionId?.trim();
         if (!sessionId || !sessionIdSetRef.current.has(sessionId)) return;
         storeStatus(sessionId, null);
-        onRefresh(sessionId);
+        onRefresh(sessionId, true);
         return;
       }
       const sessionId = event.sessionId?.trim();
@@ -185,23 +186,12 @@ export function useMultiChatLiveStatuses({
       if (event.type === "assistant_token") {
         setStatuses((current) => {
           const previous = current[sessionId];
-          const observedAt = Date.now();
-          const next: MultiChatLiveState = {
-            status: "generating",
-            liveStatus: "generating",
-            timestamp: event.timestamp,
-            observedAt,
-            startedAtMs: previous?.startedAtMs || event.timestamp || observedAt,
-            activities: previous?.activities || [],
-            currentStep: previous?.currentStep || "Generating response...",
-            runId: event.runId?.trim() || previous?.runId || null,
-            sequence: event.sequence || previous?.sequence || 0,
-          };
+          const next = projectMultiChatToken(previous, event);
           writeCachedLiveSessionState(sessionId, {
             status: next.liveStatus,
             activities: next.activities,
             currentStep: next.currentStep,
-            streamingContent: null,
+            streamingContent: next.streamingContent,
             runId: next.runId,
             sequence: next.sequence,
             startedAtMs: next.startedAtMs,
@@ -209,7 +199,6 @@ export function useMultiChatLiveStatuses({
           });
           return { ...current, [sessionId]: next };
         });
-        onRefresh(sessionId);
         return;
       }
       setStatuses((current) => {
@@ -225,7 +214,7 @@ export function useMultiChatLiveStatuses({
           status: next.liveStatus,
           activities: next.activities,
           currentStep: next.currentStep,
-          streamingContent: null,
+          streamingContent: next.streamingContent,
           runId: next.runId,
           sequence: next.sequence,
           startedAtMs: next.startedAtMs,
@@ -233,7 +222,11 @@ export function useMultiChatLiveStatuses({
         });
         return { ...current, [sessionId]: next };
       });
-      onRefresh(sessionId);
+      const terminal =
+        event.status === "error" ||
+        (event.status === "idle" &&
+          event.detail?.trim().toLowerCase() !== "steering to follow-up...");
+      onRefresh(sessionId, terminal);
     };
 
     return connectStatusStream({

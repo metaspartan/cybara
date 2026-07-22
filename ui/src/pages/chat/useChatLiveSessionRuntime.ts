@@ -491,7 +491,22 @@ export function useChatLiveSessionRuntime({
           snapshot && !snapshotFresh
             ? visibleActiveIds.filter((candidateId) => candidateId !== resolvedSessionId)
             : visibleActiveIds;
-        setActiveSessionIds(nextActiveIds);
+        const bufferedBeforeHydrate = readCachedLiveSessionState(resolvedSessionId);
+        const hasBufferedBeforeHydrate =
+          !!bufferedBeforeHydrate &&
+          (bufferedBeforeHydrate.activities.length > 0 ||
+            bufferedBeforeHydrate.status !== "idle" ||
+            !!bufferedBeforeHydrate.streamingContent);
+        const preserveVisibleCompletion =
+          !serverReportsActive &&
+          !loadingRef.current &&
+          activeSessionRef.current === resolvedSessionId &&
+          hasBufferedBeforeHydrate;
+        setActiveSessionIds(
+          preserveVisibleCompletion && !nextActiveIds.includes(resolvedSessionId)
+            ? [...nextActiveIds, resolvedSessionId]
+            : nextActiveIds
+        );
         if (stopSuppressed) {
           if (activeSessionRef.current === resolvedSessionId) {
             setLiveStatus("idle");
@@ -532,7 +547,7 @@ export function useChatLiveSessionRuntime({
         }
 
         if (!isActive || !snapshot) {
-          const bufferedLive = readCachedLiveSessionState(resolvedSessionId);
+          const bufferedLive = bufferedBeforeHydrate;
           const hasBufferedLive =
             !!bufferedLive &&
             (bufferedLive.activities.length > 0 ||
@@ -550,7 +565,15 @@ export function useChatLiveSessionRuntime({
             !loadingRef.current &&
             activeSessionRef.current === resolvedSessionId
           ) {
-            await refreshSessionMessagesRef.current(resolvedSessionId);
+            const refreshed = await refreshSessionMessagesRef.current(resolvedSessionId);
+            if (!refreshed) {
+              setActiveSessionIds((previous) =>
+                previous.includes(resolvedSessionId) ? previous : [...previous, resolvedSessionId]
+              );
+              setLiveStatus("generating");
+              setLiveCurrentStep("Finalizing response...");
+              return;
+            }
           }
           if (
             !loadingRef.current &&
@@ -889,7 +912,14 @@ export function useChatLiveSessionRuntime({
               previous.includes(payloadSessionId) ? previous : [...previous, payloadSessionId]
             );
           }
-          if ((status === "idle" && !isSteeringHandoff) || status === "error") {
+          const visibleCompletion =
+            status === "idle" &&
+            !isSteeringHandoff &&
+            payloadSessionId === activeSessionRef.current;
+          if (
+            ((status === "idle" && !isSteeringHandoff) || status === "error") &&
+            !visibleCompletion
+          ) {
             setActiveSessionIds((previous) => previous.filter((id) => id !== payloadSessionId));
             runStartSyncedSessionsRef.current.delete(payloadSessionId);
           }
@@ -979,23 +1009,53 @@ export function useChatLiveSessionRuntime({
             setLiveCurrentStep(statusDetail);
             return;
           }
-          setLiveStatus("idle");
-          setLiveCurrentStep(null);
-          if (!loadingRef.current) {
-            const sessionToRefresh = payloadSessionId || activeSession;
-            const finalizeLiveState = () => {
-              setStreamingContent(null);
-              liveRunStartedAtMsRef.current = null;
-              setLiveRunStartedAtMs(null);
-              setLiveActivities([]);
-              runActivityBufferRef.current = [];
-              clearCachedLiveSessionState(sessionToRefresh);
-            };
-            if (sessionToRefresh && sessionToRefresh === activeSessionRef.current) {
-              void refreshSessionMessagesRef.current(sessionToRefresh).finally(finalizeLiveState);
-            } else {
-              finalizeLiveState();
+          const sessionToRefresh = payloadSessionId || activeSession;
+          const finalizeLiveState = () => {
+            if (sessionToRefresh) {
+              setActiveSessionIds((previous) => previous.filter((id) => id !== sessionToRefresh));
+              runStartSyncedSessionsRef.current.delete(sessionToRefresh);
             }
+            setLiveStatus("idle");
+            setLiveCurrentStep(null);
+            setStreamingContent(null);
+            liveRunStartedAtMsRef.current = null;
+            setLiveRunStartedAtMs(null);
+            setLiveActivities([]);
+            runActivityBufferRef.current = [];
+            clearCachedLiveSessionState(sessionToRefresh);
+          };
+          if (loadingRef.current) {
+            finalizeLiveState();
+            return;
+          }
+          if (sessionToRefresh && sessionToRefresh === activeSessionRef.current) {
+            setLiveCurrentStep("Finalizing response...");
+            void refreshSessionMessagesRef.current(sessionToRefresh).then((refreshed) => {
+              if (refreshed) {
+                finalizeLiveState();
+                return;
+              }
+              if (activeSessionRef.current !== sessionToRefresh) return;
+              setLiveStatus("generating");
+              setLiveCurrentStep("Finalizing response...");
+              writeCachedLiveSessionState(sessionToRefresh, {
+                status: "generating",
+                activities: runActivityBufferRef.current,
+                currentStep: "Finalizing response...",
+                streamingContent,
+                runId: latestRunIdBySessionRef.current[sessionToRefresh] ?? null,
+                sequence: eventCursorBySessionRef.current[sessionToRefresh]?.sequence,
+                startedAtMs: liveRunStartedAtMsRef.current,
+              });
+              window.setTimeout(() => {
+                if (activeSessionRef.current !== sessionToRefresh) return;
+                void refreshSessionMessagesRef.current(sessionToRefresh).then((retryRefreshed) => {
+                  if (retryRefreshed) finalizeLiveState();
+                });
+              }, 1_000);
+            });
+          } else {
+            finalizeLiveState();
           }
           return;
         }

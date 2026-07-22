@@ -133,6 +133,21 @@ When enabled:
 
 Paired mobile devices require the `terminal` scope before terminal entrypoints are usable.
 
+## Nearby Cybara
+
+Nearby is disabled by default. When enabled, it discovers other Cybara installations on private LAN
+addresses and supports manual address entry when multicast discovery is unavailable.
+
+- Pairing requires explicit verification before a peer is trusted.
+- Session bundles are encrypted for the paired peer and rejected when tampered with or expired.
+- Imported payloads are validated before persistence.
+- Transfer sanitization removes workspace paths and redacts secret-bearing fields before sharing.
+- Automatic import is optional; incoming transfers can remain pending for operator acceptance.
+- A paired peer can be removed at any time, and disabling Nearby stops discovery and sharing.
+
+Nearby transfers conversations, not workspace files. A recipient can map an imported conversation to
+an appropriate local workspace after import.
+
 ## Plugins
 
 Cybara plugins are trusted local code, not a sandbox boundary.

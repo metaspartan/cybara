@@ -44,4 +44,19 @@ describe("chat completion refresh", () => {
 
     expect(result).toBeNull();
   });
+
+  test("retries transient session load failures", async () => {
+    let calls = 0;
+    const result = await loadPersistedCompletion(
+      async () => {
+        calls += 1;
+        if (calls < 3) throw new Error("temporary load failure");
+        return { messagesList: [{ role: "user" }, { role: "assistant" }] };
+      },
+      { delaysMs: [0, 0, 0], sleep: async () => {} }
+    );
+
+    expect(calls).toBe(3);
+    expect(result?.messagesList?.at(-1)?.role).toBe("assistant");
+  });
 });

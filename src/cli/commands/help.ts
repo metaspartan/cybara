@@ -61,7 +61,7 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  provider    Provider management commands");
   console.log("    provider list         List configured providers");
   console.log("    provider available    Show available types");
-  console.log("    provider add <type>   Add provider (--name, --key, --token, --default)");
+  console.log("    provider add <type>   Add provider (--name, --key, --token, --url, --default)");
   console.log("    provider update <id>  Update provider credentials and defaults");
   console.log("    provider pool         Manage named same-provider account pools");
   console.log("    provider delete <id>  Delete provider");
@@ -186,6 +186,7 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  -y, --yes         Skip confirmation prompts");
   console.log("  -j, --json        JSON output where supported");
   console.log("  -n/-k/-t/-d/-o    provider add: name/key/token/default/oauth");
+  console.log("  --url URL          Custom provider API base URL");
   console.log("");
   console.log(`Version: ${version}`);
   console.log(`Environment: CYBARA_API=${apiBase}`);

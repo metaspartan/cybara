@@ -1,18 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
 describe("chat empty state", () => {
-  test("uses the transparent theme-tinted Cybara mark", async () => {
+  test("uses a translucent monochrome Cybara mark", async () => {
     const source = await Bun.file("ui/src/pages/chat/ChatEmptyState.tsx").text();
     const styles = await Bun.file("ui/src/styles/index-foundation.css").text();
 
     expect(source).toContain('src="/cybara.png"');
     expect(source).toContain('aria-hidden="true"');
     expect(source).toContain("chat-empty-state-logo");
-    expect(source).not.toContain("grayscale");
-    expect(styles).toContain(".chat-empty-state-logo::after");
-    expect(styles).toContain("rgb(var(--accent-primary))");
-    expect(styles).toContain("var(--text-muted)");
-    expect(styles).toContain('mask: url("/cybara.png")');
+    expect(styles).toContain("filter: grayscale(1) contrast(1.12)");
+    expect(styles).not.toContain(".chat-empty-state-logo::after");
     expect(source).not.toContain('<Sparkles className="mx-auto mb-3');
   });
 
@@ -27,9 +24,9 @@ describe("chat empty state", () => {
     expect(chat).toContain("<ChatEmptyState");
     expect(chat).toContain('layout="new-chat"');
     expect(chat).toContain("typedMessages.length > 0 ? <ChatComposer");
-    expect(emptyState).toContain("max-w-[42rem]");
+    expect(emptyState).toContain("w-[min(100%,40rem)]");
     expect(emptyState).toContain('data-chat-empty-state="true"');
-    expect(emptyState).toContain("mt-4 w-full");
+    expect(emptyState).toContain("mx-auto mt-4 w-full");
     expect(emptyState).toContain("<NewChatWorkspaceBar");
     expect(workspaceBar).toContain('appearance="inline"');
     expect(workspaceBar).toContain("workspaceName(workspaceDir)");

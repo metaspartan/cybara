@@ -627,8 +627,8 @@ export function SessionDetailPanel({
 
   const confirmRevertToMessage = (message: SessionDetailSummary["messages"][number]) => {
     Alert.alert(
-      "Revert to this message?",
-      "The conversation will be rolled back to this point. Messages after it are removed from the session.",
+      "Revert to before this message?",
+      "This message and every message after it will be removed from the session and its text returned to the composer.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -646,7 +646,7 @@ export function SessionDetailPanel({
                   throw new Error(result.error || "Failed to revert session");
                 }
                 clearCachedMobileOptimisticTranscript(sessionId);
-                setComposerDraft(message.content || "");
+                setComposerDraft(result.revertedMessage?.content ?? message.content ?? "");
                 return loadSession(false);
               })
               .then(() => refreshSummary())

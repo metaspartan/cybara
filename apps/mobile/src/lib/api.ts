@@ -827,12 +827,14 @@ export class CybaraMobileApi {
     success: boolean;
     keptCount?: number;
     removedCount?: number;
+    revertedMessage?: { content?: string };
     error?: string;
   }> {
     return this.request<{
       success: boolean;
       keptCount?: number;
       removedCount?: number;
+      revertedMessage?: { content?: string };
       error?: string;
     }>(`/api/sessions/${encodeURIComponent(id)}/revert`, {
       method: "POST",

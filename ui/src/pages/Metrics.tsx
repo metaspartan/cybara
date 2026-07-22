@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
   FileText,
@@ -12,6 +13,8 @@ import {
   MessageSquare,
   Gauge,
   Clock,
+  RefreshCw,
+  Wrench,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { PageLayout } from "@/components/layout";
@@ -89,9 +92,16 @@ interface ProviderPlanMetricCard {
 }
 
 export function Metrics() {
-  const { data: overview, isLoading: loadingOverview } = useMetricsOverview();
+  const queryClient = useQueryClient();
+  const {
+    data: overview,
+    dataUpdatedAt,
+    isFetching: refreshingOverview,
+    isLoading: loadingOverview,
+  } = useMetricsOverview();
   const [detailMetricsEnabled, setDetailMetricsEnabled] = useState(false);
   const [sessionPage, setSessionPage] = useState(1);
+  const [refreshingMetrics, setRefreshingMetrics] = useState(false);
   const sessionPageSize = 20;
   const detailQueryOptions = useMemo(
     () => ({ enabled: detailMetricsEnabled }),
@@ -113,10 +123,22 @@ export function Metrics() {
     detailQueryOptions
   );
   const { data: storage, isLoading: loadingStorage } = useMetricsStorage(detailQueryOptions);
-  const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
-    null
-  );
-  const [loadingProviderPlans, setLoadingProviderPlans] = useState(false);
+  const { data: providerPlanStatus, isLoading: loadingProviderPlans } =
+    useQuery<ProviderPlanStatusResponse>({
+      queryKey: ["provider-plan-status"],
+      queryFn: async () => {
+        const response = await providerPlansApi.status();
+        if (!response.success || !response.data) {
+          throw new Error(response.error || "Failed to load provider usage");
+        }
+        return response.data;
+      },
+      enabled: detailMetricsEnabled,
+      staleTime: 15_000,
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
+    });
 
   const isLoading = loadingOverview;
   const insightsData = insights as MetricsInsights | undefined;
@@ -145,26 +167,6 @@ export function Metrics() {
     return () => window.clearTimeout(timeout);
   }, [loadingOverview]);
 
-  useEffect(() => {
-    if (!detailMetricsEnabled) return;
-    let mounted = true;
-    setLoadingProviderPlans(true);
-    providerPlansApi
-      .status()
-      .then((response) => {
-        if (mounted && response.success) setProviderPlanStatus(response.data ?? null);
-      })
-      .catch(() => {
-        if (mounted) setProviderPlanStatus(null);
-      })
-      .finally(() => {
-        if (mounted) setLoadingProviderPlans(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [detailMetricsEnabled]);
-
   const tokensPending = !tokens && (!detailMetricsEnabled || loadingTokens);
   const filesPending = !files && (!detailMetricsEnabled || loadingFiles);
   const toolsPending = !tools && (!detailMetricsEnabled || loadingTools);
@@ -188,15 +190,16 @@ export function Metrics() {
         ? ((overview.apiCalls.successfulCalls / overview.apiCalls.totalCalls) * 100).toFixed(1)
         : "0";
 
-    const totalFiles =
+    const totalFileOperations =
       overview.fileOperations.filesRead +
       overview.fileOperations.filesWritten +
-      overview.fileOperations.filesEdited;
+      overview.fileOperations.filesEdited +
+      overview.fileOperations.filesSearched;
 
     return {
       totalTokens,
       successRate,
-      totalFiles,
+      totalFileOperations,
       avgTokensPerMessage:
         overview.agentActivity.totalMessages > 0
           ? Math.round(totalTokens / overview.agentActivity.totalMessages)
@@ -428,6 +431,23 @@ export function Metrics() {
     [providerPlanStatus?.providers]
   );
 
+  const refreshAllMetrics = async (): Promise<void> => {
+    setRefreshingMetrics(true);
+    try {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["metrics"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["provider-plan-status"], type: "active" }),
+      ]);
+    } finally {
+      setRefreshingMetrics(false);
+    }
+  };
+
+  const refreshPending = refreshingMetrics || refreshingOverview;
+  const updatedLabel = dataUpdatedAt
+    ? new Date(dataUpdatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    : "Not updated";
+
   if (isLoading) {
     return (
       <PageLayout title="Metrics" subtitle="Loading metrics...">
@@ -446,8 +466,26 @@ export function Metrics() {
   }
 
   return (
-    <PageLayout title="Metrics" subtitle="Track token usage, file operations, and system activity">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+    <PageLayout
+      title="Metrics"
+      subtitle="Track token usage, file operations, and system activity"
+      actions={
+        <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+          <span className="tabular-nums">Updated {updatedLabel}</span>
+          <button
+            type="button"
+            onClick={() => void refreshAllMetrics()}
+            disabled={refreshPending}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--icon-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:cursor-wait disabled:opacity-60"
+            aria-label="Refresh metrics"
+            title="Refresh metrics"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshPending ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+      }
+    >
+      <div className="grid grid-cols-2 gap-4 mb-8 md:grid-cols-3 xl:grid-cols-6">
         <StatCard
           icon={<Cpu className="w-5 h-5" />}
           label="Total Tokens"
@@ -464,10 +502,17 @@ export function Metrics() {
         />
         <StatCard
           icon={<FileText className="w-5 h-5" />}
-          label="Total Files"
-          value={formatNumber(stats?.totalFiles || 0)}
+          label="File Ops"
+          value={formatNumber(stats?.totalFileOperations || 0)}
           color="text-orange-400"
           bgColor="bg-orange-500/20"
+        />
+        <StatCard
+          icon={<Wrench className="w-5 h-5" />}
+          label="Tool Calls"
+          value={formatNumber(overview?.toolCalls.totalCalls || 0)}
+          color="text-amber-300"
+          bgColor="bg-amber-500/20"
         />
         <StatCard
           icon={<MessageSquare className="w-5 h-5" />}

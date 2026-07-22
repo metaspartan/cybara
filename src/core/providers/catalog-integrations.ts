@@ -1,4 +1,11 @@
 export const integrationProviderCatalog = {
+  custom: {
+    name: "Custom Provider",
+    baseUrl: "",
+    api: "openai-completions",
+    authType: "api_key",
+    models: [],
+  },
   together: {
     name: "Together AI",
     baseUrl: "https://api.together.xyz/v1",

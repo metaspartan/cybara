@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
+  createStandaloneAssetsSource,
   createStandaloneEntrySource,
   standaloneCliBuildArgs,
 } from "../../scripts/build-standalone-cli";
@@ -39,18 +40,38 @@ describe("standalone CLI build", () => {
     writeFileSync(join(uiDir, "assets", "app.js"), "console.log('cybara')");
 
     try {
-      const source = createStandaloneEntrySource({ cwd: directory, uiDir });
-      expect(source).toContain('with { type: "file" }');
-      expect(source).toContain('"/assets/app.js"');
-      expect(source).toContain("__CYBARA_EMBEDDED_UI__");
-      expect(source).toContain('await import("./src/main.ts")');
-
-      const sidecarSource = createStandaloneEntrySource({
+      const assetsModule = join(directory, ".cybara-assets.ts");
+      const runtimeEntry = join(directory, ".cybara-runtime.js");
+      const transformersWorker = join(directory, ".cybara-transformers-worker.mjs");
+      const assetsSource = createStandaloneAssetsSource({
         cwd: directory,
         uiDir,
-        entryModule: "src/index.ts",
+        runtimeEntry,
+        transformersWorker,
       });
-      expect(sidecarSource).toContain('await import("./src/index.ts")');
+      expect(assetsSource).toContain('with { type: "file" }');
+      expect(assetsSource).toContain('"/assets/app.js"');
+      expect(assetsSource).toContain("__CYBARA_EMBEDDED_UI__");
+      expect(assetsSource).toContain("__CYBARA_RUNTIME_ASSETS__");
+      expect(assetsSource).toContain('import embeddedRuntimeEntry from "./.cybara-runtime.js"');
+      expect(assetsSource).toContain("await import(embeddedRuntimeEntry)");
+
+      const source = createStandaloneEntrySource({
+        cwd: directory,
+        assetsModule,
+        version: "1.2.3",
+      });
+      expect(source).toContain('command === "--version"');
+      expect(source).toContain('"1.2.3"');
+      expect(source).toContain('await import("./.cybara-assets.ts")');
+      expect(source).not.toContain('with { type: "file" }');
+
+      const sidecarAssetsSource = createStandaloneAssetsSource({
+        cwd: directory,
+        uiDir,
+        runtimeEntry: join(directory, "src", "index.js"),
+      });
+      expect(sidecarAssetsSource).toContain('from "./src/index.js"');
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

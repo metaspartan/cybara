@@ -76,7 +76,7 @@ describe("Chat revert and diff wiring", () => {
     const source = readChatSource();
     // Icon-only actions live BELOW the message box, not inside it.
     expect(source).not.toContain("Revert to here");
-    expect(source).toContain('aria-label="Revert session to this message"');
+    expect(source).toContain('aria-label="Revert to before this message"');
     expect(source).toContain('aria-label="Copy message"');
     expect(source).toContain(
       "onCopyMessage={(index, content) => void handleCopyMessage(index, content)}"
@@ -88,7 +88,7 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("Confirm Revert");
     expect(source).toContain("Are you sure you want to revert here?");
     expect(source).toContain("handleConfirmRevert");
-    expect(source).toContain("setInput(revertTarget.content)");
+    expect(source).toContain("setInput(result.revertedMessage?.content ?? revertTarget.content)");
   });
 
   test("renders file-change summary and diff blocks from tool calls", () => {

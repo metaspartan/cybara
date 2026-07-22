@@ -1,6 +1,6 @@
 # Cybara Documentation
 
-Welcome to Cybara — a self-hosted AI agent platform with modular skills, fal.ai/OpenAI media generation, optional mactop hardware monitoring, browser automation, multi-channel messaging, desktop/mobile shells, provider-plan-aware routing, source migration, speech controls, and a React web UI.
+Cybara is a self-hosted agent workspace built around one Bun gateway. Persistent sessions, live tool activity, plans, artifacts, approvals, provider routing, and usage metrics stay available across Web/Tauri, native macOS, CLI/TUI, mobile, ACP, and messaging channels. Agents can work through repositories, terminals, browsers, desktops, and mobile simulators; gain capabilities from plugins, skills, MCP servers, and encrypted account apps; and produce replayable evaluations or training data in the Lab.
 
 ## Quick Start
 
@@ -100,6 +100,7 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | [Agent Runtime](./agent-runtime.md) | Prompt composition, tool policy, memory, planning, and subagents |
 | [CLI Reference](./cli.md) | Command-line interface |
 | [Plugins](./plugins.md) | Installable plugin runtime and manifests |
+| [Lab](./lab.md) | Trajectories, golden replays, benchmarks, and training-data exports |
 | [Tools Reference](./tools.md) | Built-in tools, compatibility aliases, and execution contracts |
 | [Skills Guide](./skills.md) | Creating and managing skills |
 | [Channels](./channels.md) | Multi-platform messaging |
@@ -126,13 +127,25 @@ AI entities with configurable personalities, prompts, and tool access. Types:
 - **worker** — Task-specific agent
 
 ### Sessions
-Conversation contexts with message history, token tracking, and adaptive context compaction.
+Persistent conversation contexts with message history, grouped live activity, queueing, steering, stopping, forking, reverting, multi-chat panes, token tracking, and adaptive context compaction.
+
+### Providers and Pools
+Hosted, OAuth, gateway, proxy, and local providers can expose dynamically discovered models. Named account pools group multiple configured accounts for usage-balanced or priority routing, and agents or model-router routes can target those pools directly.
 
 ### Skills
 Modular capabilities loaded from SKILL.md files with eligibility gating (OS, env, binaries).
 
 ### Tools
-Built-in tools cover file I/O, browser automation, process execution, web research, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and channels. Compatibility aliases normalize common calling conventions. The model receives the effective policy-filtered subset rather than the full catalog on every turn.
+Built-in tools cover file I/O, browser and desktop automation, iOS/Android simulators, process execution, web research, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and channels. Compatibility aliases normalize common calling conventions. Stable tool profiles, toolsets, explicit allowlists, and inherited policy determine the effective subset offered to a model.
+
+### Plugins and Account Apps
+Plugins can contribute skills, commands, hooks, MCP servers, providers, channels, and encrypted account apps. Account apps default to read-only access where supported, while write operations still pass through normal approval policy.
+
+### Lab
+The Lab captures replayable agent and computer-use trajectories, promotes selected runs to golden regression cases, executes objective benchmark suites, and exports curated data for analysis, supervised fine-tuning, sequence distillation, and multimodal workflows.
+
+### Nearby
+Nearby is an opt-in LAN transfer surface for pairing Cybara installations and moving sanitized sessions between them without exposing the gateway publicly.
 
 ### Channels
 Communication interfaces include Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, Web, Webhook, SMS, and Email.

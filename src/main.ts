@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { spawn } from "bun";
-import { existsSync, readFileSync, writeFileSync, unlinkSync, appendFileSync, mkdirSync } from "fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
+import { getAppVersion } from "./core/build-info";
 import { resolveCybaraHome } from "./core/cybara-home";
 import { installGatewayLogCapture } from "./core/runtime/gateway-log-file";
 
@@ -242,7 +243,9 @@ Files:
 }
 
 async function main() {
-  if (isStop) {
+  if (command === "version") {
+    console.log(`cybara v${getAppVersion()}`);
+  } else if (isStop) {
     await stopDaemon();
   } else if (isDaemonLogs) {
     await showDaemonLogs();

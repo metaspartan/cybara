@@ -1,7 +1,7 @@
-import { tables, type ProviderModel } from "./database";
-import { discoverModelsDev, PROVIDER_TO_MODELS_DEV, type ModelsDevModel } from "./models-dev";
+import { type ProviderModel, tables } from "./database";
+import { discoverModelsDev, type ModelsDevModel, PROVIDER_TO_MODELS_DEV } from "./models-dev";
 import { discoverOpenAICodexModels } from "./openai-codex-models";
-import { providerManager, providers, resolveProviderType, type ProviderType } from "./providers";
+import { type ProviderType, providerManager, providers, resolveProviderType } from "./providers";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DISCOVERY_CACHE_TTL_MS = 60_000;
@@ -208,8 +208,9 @@ async function runProviderDiscovery(
     }
   }
 
-  const baseUrl = (provider.base_url || "").replace(/\/$/, "");
-  if (!baseUrl || !baseUrl.includes("/v1") || (!auth && !allowsAnonymousDiscovery)) {
+  const baseUrl = (provider.base_url || "").replace(/\/+$/, "");
+  const supportsEndpointDiscovery = providerType === "custom" || baseUrl.includes("/v1");
+  if (!baseUrl || !supportsEndpointDiscovery || (!auth && !allowsAnonymousDiscovery)) {
     return discoverViaModelsDev(providerId, providerType, discoverCatalog);
   }
 

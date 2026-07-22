@@ -242,6 +242,29 @@ describe("consumeOpenAIChatStream onTextDelta", () => {
     expect(deltas).toEqual(["Hel", "lo"]);
     expect(assembled.choices[0]?.message.content).toBe("Hello");
     expect(assembled.first_token_ms).toBeGreaterThanOrEqual(20);
+    expect(assembled.generation_duration_ms).toBeUndefined();
+  });
+
+  test("measures generation duration across distinct output events", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(contentDelta("Hel")));
+        setTimeout(() => {
+          controller.enqueue(encoder.encode(contentDelta("lo")));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        }, 25);
+      },
+    });
+    const assembled = await consumeOpenAIChatStream(
+      stream,
+      undefined,
+      undefined,
+      performance.now()
+    );
+    expect(assembled.choices[0]?.message.content).toBe("Hello");
+    expect(assembled.generation_duration_ms).toBeGreaterThanOrEqual(15);
   });
 });
 

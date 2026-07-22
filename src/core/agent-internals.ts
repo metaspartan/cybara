@@ -38,6 +38,7 @@ export interface OpenAIResponse {
   choices: OpenAIChoice[];
   usage?: OpenAIUsage;
   first_token_ms?: number;
+  generation_duration_ms?: number;
 }
 
 export interface OpenAICodexToolCall {

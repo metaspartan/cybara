@@ -139,7 +139,8 @@ describeOrSkip("CLI auth e2e", () => {
     removeApiKeyFile();
     const metrics = await runCli(["metrics"]);
     expect(metrics.exitCode).toBe(1);
-    expect(metrics.stderr).toContain("Unauthorized API request (401)");
+    expect(metrics.stderr).toContain("Unauthorized (401)");
+    expect(metrics.stderr).toContain("Refresh the local API key or CYBARA_API_KEY");
   });
 
   test("CLI config set also fails without auth key", async () => {
@@ -168,7 +169,8 @@ describeOrSkip("CLI auth e2e", () => {
     writeApiKeyFile(apiKey);
     const metrics = await runCli(["metrics"], { CYBARA_API_KEY: "invalid_key" });
     expect(metrics.exitCode).toBe(1);
-    expect(metrics.stderr).toContain("Unauthorized API request (401)");
+    expect(metrics.stderr).toContain("Unauthorized (401)");
+    expect(metrics.stderr).toContain("Refresh the local API key or CYBARA_API_KEY");
   });
 
   test("CLI trims whitespace from ~/.cybara/api_key", async () => {

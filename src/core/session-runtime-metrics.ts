@@ -177,12 +177,12 @@ function loadSessionRuntimeTotals(): SessionRuntimeMetricsTotals {
              ELSE 0
            END) AS durationMs,
            SUM(CASE
-             WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) > 0
+             WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) >= 100
              THEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL)
              ELSE 0
            END) AS generationDurationMs,
            SUM(CASE
-             WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) > 0
+             WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) >= 100
              THEN CAST(json_extract(metadata, '$.outputTokens') AS REAL)
              ELSE 0
            END) AS throughputOutputTokens,
@@ -260,12 +260,12 @@ export function listSessionRuntimeMetrics(page = 1, pageSize = 25): SessionRunti
              ELSE 0
            END) AS durationMs,
            SUM(CASE
-             WHEN CAST(json_extract(metrics.metadata, '$.generationDurationMs') AS REAL) > 0
+             WHEN CAST(json_extract(metrics.metadata, '$.generationDurationMs') AS REAL) >= 100
              THEN CAST(json_extract(metrics.metadata, '$.generationDurationMs') AS REAL)
              ELSE 0
            END) AS generationDurationMs,
            SUM(CASE
-             WHEN CAST(json_extract(metrics.metadata, '$.generationDurationMs') AS REAL) > 0
+             WHEN CAST(json_extract(metrics.metadata, '$.generationDurationMs') AS REAL) >= 100
              THEN CAST(json_extract(metrics.metadata, '$.outputTokens') AS REAL)
              ELSE 0
            END) AS throughputOutputTokens,

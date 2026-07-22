@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   MULTI_CHAT_ACTIVE_STATUSES,
+  multiChatStateFromCache,
   projectMultiChatSnapshot,
   projectMultiChatStatusEvent,
+  projectMultiChatToken,
 } from "../../ui/src/pages/chat/multiChatLiveStatus";
 
 describe("multi-chat live status", () => {
@@ -45,6 +47,72 @@ describe("multi-chat live status", () => {
     expect(state.currentStep).toBe("Searching for configuration");
     expect(state.liveStatus).toBe("thinking");
     expect(state.startedAtMs).toBe(1_000);
+    expect(state.streamingContent).toBeNull();
+  });
+
+  test("accumulates streamed response text without refetching persisted messages", () => {
+    const first = projectMultiChatToken(undefined, {
+      delta: "Hello",
+      runId: "run-1",
+      sequence: 1,
+      timestamp: 1_000,
+    });
+    const second = projectMultiChatToken(first, {
+      delta: " world",
+      runId: "run-1",
+      sequence: 2,
+      timestamp: 1_010,
+    });
+
+    expect(second.streamingContent).toBe("Hello world");
+    expect(second.liveStatus).toBe("generating");
+    expect(second.startedAtMs).toBe(1_000);
+  });
+
+  test("starts a clean stream when a new run begins and clears it before tools", () => {
+    const previous = projectMultiChatToken(undefined, {
+      delta: "Old response",
+      runId: "run-1",
+      sequence: 1,
+      timestamp: 1_000,
+    });
+    const nextRun = projectMultiChatToken(previous, {
+      delta: "New response",
+      runId: "run-2",
+      sequence: 1,
+      timestamp: 2_000,
+    });
+    const tool = projectMultiChatStatusEvent(nextRun, {
+      type: "status",
+      sessionId: "session-1",
+      runId: "run-2",
+      sequence: 2,
+      status: "tool_executing",
+      timestamp: 2_100,
+      toolName: "read",
+      toolCallId: "call-2",
+      detail: "Reading a file",
+    });
+
+    expect(nextRun.streamingContent).toBe("New response");
+    expect(nextRun.activities).toEqual([]);
+    expect(tool?.streamingContent).toBeNull();
+  });
+
+  test("restores streamed text when an active chat moves into multi-chat", () => {
+    const state = multiChatStateFromCache({
+      status: "generating",
+      activities: [],
+      currentStep: "Generating response...",
+      streamingContent: "A response already in progress",
+      runId: "run-1",
+      sequence: 12,
+      startedAtMs: 1_000,
+      updatedAt: 1_200,
+    });
+
+    expect(state.streamingContent).toBe("A response already in progress");
+    expect(state.status).toBe("generating");
   });
 
   test("keeps a session active between a tool result and the next model step", () => {

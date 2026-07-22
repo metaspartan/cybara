@@ -30,15 +30,35 @@ curl -X POST http://localhost:4269/api/providers \
   -d '{"provider":"openai","name":"My OpenAI","api_key":"sk-..."}'
 ```
 
-## Credential Pools + Prompt Caching
+## Provider Account Pools
 
-- **Multi-key credential pools**: for any provider, set multiple keys via env (`ANTHROPIC_API_KEY`,
-  `ANTHROPIC_API_KEY_2`, `ANTHROPIC_API_KEY_3`, … — comma-separated lists are also accepted). Cybara
-  rotates round-robin and cools down a key on rate-limit/auth failures, so a 429 on one key triggers
-  rotation instead of failing the request. See `src/core/credential-pool.ts`.
-- **Anthropic prompt caching**: every Anthropic request gets `cache_control` breakpoints placed on
-  the stable system prompt + recent turns (~75% input-token savings on multi-turn sessions). Applied
-  automatically; no config needed. See `src/core/prompt-cache.ts`.
+Named provider account pools group multiple configured accounts of the same provider. A pool can use
+tracked remaining usage to select an available account or apply an explicit priority override. Agents
+and model-router routes can target a pool directly, so failover does not require duplicating agent
+definitions.
+
+Manage pools in Settings -> Providers or with:
+
+```bash
+cybara provider pool list
+cybara provider pool create --name "Coding accounts" --provider kimi-code --account <id-a> --account <id-b>
+cybara provider pool update <pool-id> --account <id-a>:10 --account <id-b>:20
+cybara provider pool delete <pool-id>
+```
+
+The API contract is available at `GET|POST /api/provider-account-pools` and
+`PUT|DELETE /api/provider-account-pools/:id`. Omit account priorities for usage-balanced selection;
+add `:<priority>` to CLI account entries only when an explicit priority override is required.
+
+## Per-Account Key Rotation + Prompt Caching
+
+- **Environment key rotation**: for any provider account, set multiple keys via env
+  (`ANTHROPIC_API_KEY`, `ANTHROPIC_API_KEY_2`, `ANTHROPIC_API_KEY_3`, … — comma-separated lists are
+  also accepted). Cybara rotates round-robin and cools down a key on rate-limit/auth failures. See
+  `src/core/credential-pool.ts`.
+- **Anthropic prompt caching**: Anthropic requests receive `cache_control` breakpoints on stable
+  prompt content and recent turns. Provider-reported cache reads and writes flow into usage metrics.
+  No separate cache configuration is required. See `src/core/prompt-cache.ts`.
 
 ## Provider Plan Monitoring + Router Enforcement
 

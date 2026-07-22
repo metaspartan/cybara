@@ -1410,6 +1410,7 @@ export const chatApi = {
       keptCount: number;
       removedCount: number;
       removedFromIndex: number;
+      revertedMessage: ChatMessage;
       contextUsage?: SessionContextUsage;
       tokenUsage?: SessionTokenUsage;
       messagesList: ChatMessage[];

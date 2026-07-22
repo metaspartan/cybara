@@ -577,6 +577,30 @@ Actions: `capture` | `click` | `double_click` | `right_click` | `middle_click` |
   cua-driver/SOM path so agents can still capture a window and then click/type by element.
 - Results carry a `screenshot` (base64) + `screenshotMime` so vision models receive a real image block; the driver auto-reconnects once on a closed session.
 
+### mobile_simulator
+
+Inspect and control iOS Simulator on macOS or Android Emulator on macOS, Windows, and Linux. Start
+with `status`, choose or start a device, then capture or describe its current state before sending
+input. The embedded chat panel exposes matching lifecycle, navigation, screenshot, and interaction
+controls while keeping agent taps visible.
+
+```json
+{"name": "mobile_simulator", "args": { "action": "status" }}
+{"name": "mobile_simulator", "args": { "action": "start", "platform": "ios", "deviceId": "<udid>" }}
+{"name": "mobile_simulator", "args": { "action": "screenshot", "platform": "android", "deviceId": "<serial>" }}
+{"name": "mobile_simulator", "args": { "action": "tap", "platform": "android", "x": 420, "y": 780 }}
+{"name": "mobile_simulator", "args": { "action": "launch", "platform": "ios", "appId": "com.example.app" }}
+```
+
+Actions: `status` | `list` | `start` | `stop` | `screenshot` | `preview` | `tap` | `swipe` |
+`text` | `key` | `open_url` | `install` | `launch` | `describe`.
+
+- Android uses the installed SDK and ADB.
+- iOS lifecycle, URLs, app installation, launch, and screenshots use Xcode `simctl`; touch and text
+  input require IDB.
+- When Lab trajectory capture is enabled, actions can retain native coordinates and post-action
+  frames for replay and multimodal exports.
+
 
 ## Kanban (Multi-Agent Orchestration)
 

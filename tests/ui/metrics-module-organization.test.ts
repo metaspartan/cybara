@@ -15,6 +15,11 @@ describe("metrics module organization", () => {
     expect(components.split("\n").length).toBeLessThanOrEqual(1000);
     expect(page).toContain('from "./metrics/MetricsComponents"');
     expect(page).toContain("<SessionRuntimeTable");
+    expect(page).toContain('queryKey: ["provider-plan-status"]');
+    expect(page).toContain("queryClient.refetchQueries");
+    expect(page).toContain('aria-label="Refresh metrics"');
+    expect(page).toContain("overview.fileOperations.filesSearched");
+    expect(page).toContain('label="Tool Calls"');
     expect(components).toContain("export function SessionRuntimeTable");
     expect(formatting).toContain("export function formatNumber");
   });

@@ -10,12 +10,14 @@ describe("session token usage", () => {
       cachedInputTokens: 40,
       cacheWriteTokens: 10,
       firstTokenMs: 1000,
+      generationDurationMs: 1000,
     });
     trackTokenUsage("model-a", "provider-a", "https://provider.test", 80, 30, 1000, {
       sessionId,
       cachedInputTokens: 20,
       cacheWriteTokens: 5,
       firstTokenMs: 500,
+      generationDurationMs: 500,
     });
 
     expect(summarizeSessionTokenUsage(sessionId)).toEqual({

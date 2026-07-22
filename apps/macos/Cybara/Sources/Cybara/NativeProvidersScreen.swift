@@ -525,7 +525,14 @@ private struct ProviderEditorSheet: View {
     }
 
     private var saveDisabled: Bool {
-        saving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let missingCustomURL = providerType == "custom"
+            && baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let missingCustomKey = providerType == "custom" && provider == nil
+            && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return saving
+            || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || missingCustomURL
+            || missingCustomKey
     }
 
     var body: some View {

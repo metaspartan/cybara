@@ -392,12 +392,12 @@ export function summarizeSessionTokenUsage(sessionId: string): SessionTokenUsage
            ELSE 0
          END), 0) as durationMs,
          COALESCE(SUM(CASE
-           WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) > 0
+           WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) >= 100
            THEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL)
            ELSE 0
          END), 0) as generationDurationMs,
          COALESCE(SUM(CASE
-           WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) > 0
+           WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) >= 100
            THEN CAST(json_extract(metadata, '$.outputTokens') AS REAL)
            ELSE 0
          END), 0) as throughputOutputTokens,
