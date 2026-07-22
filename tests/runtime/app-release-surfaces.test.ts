@@ -68,6 +68,8 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain(
       "cd apps/mobile && bunx expo prebuild --platform android --no-install"
     );
+    expect(workflow).toContain("Verify Android LAN pairing transport");
+    expect(workflow).toContain('android:usesCleartextTraffic="true"');
     expect(workflow).toContain("name: Tune Android Gradle memory");
     expect(workflow).toContain("MaxMetaspaceSize=1536m");
     expect(workflow).toContain("kotlin.daemon.jvmargs");
@@ -261,7 +263,8 @@ describe("app release surface wiring", () => {
             NSAppTransportSecurity?: { NSAllowsLocalNetworking?: boolean };
           };
         };
-        android?: { package?: string; versionCode?: number; usesCleartextTraffic?: boolean };
+        android?: { package?: string; versionCode?: number };
+        plugins?: Array<string | [string, Record<string, unknown>]>;
         extra?: { gatewayContract?: string };
       };
     };
@@ -293,7 +296,10 @@ describe("app release surface wiring", () => {
     );
     expect(appJson.expo?.android?.package).toBe("com.ck.cybara");
     expect(appJson.expo?.android?.versionCode).toBe(expectedVersionCode);
-    expect(appJson.expo?.android?.usesCleartextTraffic).toBe(true);
+    expect(appJson.expo?.plugins).toContain("./plugins/with-android-lan-cleartext");
+    expect(read("apps/mobile/plugins/with-android-lan-cleartext.js")).toContain(
+      'application.$["android:usesCleartextTraffic"] = "true"'
+    );
     expect(appJson.expo?.extra?.gatewayContract).toBe("cybara-mobile-connect-v1");
 
     expect(mobilePkg.scripts?.ios).toBe("bunx expo start --ios");

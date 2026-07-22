@@ -997,6 +997,20 @@ describe("native macOS shell wiring", () => {
     expect(toolTimeline).toContain("Image(systemName: nativeGroupIcon(items))");
   });
 
+  test("native live response status centers its spinner with the status text", () => {
+    const toolTimeline = readFileSync(join(MACOS_APP_DIR, "NativeToolTimeline.swift"), "utf8");
+    const liveTimeline = toolTimeline.slice(
+      toolTimeline.indexOf("struct NativeLiveToolTimelineView"),
+      toolTimeline.indexOf("private struct NativeToolActivityRow")
+    );
+
+    expect(liveTimeline).toContain("HStack(alignment: .center, spacing: 7)");
+    expect(liveTimeline).toContain("HStack(alignment: .center, spacing: 5)");
+    expect(liveTimeline).toContain("NativeLiveStatusSpinner()");
+    expect(liveTimeline).toContain(".offset(y: 1)");
+    expect(liveTimeline).not.toContain("HStack(alignment: .top, spacing: 7)");
+  });
+
   test("native chat strips assistant reasoning markup without altering user messages", () => {
     const gatewayModels = readGatewayModelsSource();
     const markdown = readFileSync(join(MACOS_APP_DIR, "NativeMarkdown.swift"), "utf8");

@@ -145,6 +145,7 @@ describe("mobile gateway connection verification", () => {
     await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow(
       "Windows Firewall"
     );
+    await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow("phone's browser");
     await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow("Remote Access");
   });
 

@@ -622,6 +622,8 @@ jobs:
         run: bun run version:sync
       - name: Prebuild Android project
         run: cd apps/mobile && bunx expo prebuild --platform android --no-install
+      - name: Verify Android LAN pairing transport
+        run: grep -q 'android:usesCleartextTraffic="true"' apps/mobile/android/app/src/main/AndroidManifest.xml
       - name: Tune Android Gradle memory
         run: |
           set -euo pipefail
