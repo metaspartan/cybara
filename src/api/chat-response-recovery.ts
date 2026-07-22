@@ -15,7 +15,7 @@ export interface AssistantResponseRecoveryParams {
   executionMessages: AgentMessage[];
   requiredToolName?: string;
   responseContent: string;
-  shouldForceToolExecution: boolean;
+  shouldRequireToolUse: boolean;
   toolResults: AgentToolCallResult[];
   toolsEnabled?: boolean;
   userMessage: string;
@@ -57,7 +57,7 @@ export async function recoverAssistantResponse(
     params.toolResults.length
   );
   const shouldRetryToolExecution =
-    params.shouldForceToolExecution && (params.toolResults.length === 0 || !hasRequiredToolCall);
+    params.shouldRequireToolUse && (params.toolResults.length === 0 || !hasRequiredToolCall);
   if (!shouldRetryToolExecution && !shouldRecoverCompletion) {
     return {
       responseContent: params.responseContent,

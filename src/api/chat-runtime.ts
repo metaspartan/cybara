@@ -146,7 +146,6 @@ import {
   buildToolExecutionFallbackMessage,
   classifyToolCallResult,
   requiredDirectToolForMessage,
-  shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
   suppressRecoveredWebFailureActivities,
 } from "./chat-tool-summary";
@@ -1490,14 +1489,17 @@ async function handleChatTurn(
       let requiredToolName = shouldPreferArtifacts
         ? "artifacts"
         : requiredDirectToolName || (selectedSkill ? "skill_load" : undefined);
+      let shouldRequireToolUse = Boolean(
+        tools &&
+          (shouldPreferArtifacts ||
+            requiredDirectToolName ||
+            selectedSkill ||
+            capabilityMentions.mentions.some((mention) => mention.kind === "mcp"))
+      );
       let result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
         sessionId: session.id,
-        requireToolUse:
-          shouldPreferArtifacts ||
-          Boolean(requiredDirectToolName) ||
-          selectedSkill ||
-          capabilityMentions.mentions.some((mention) => mention.kind === "mcp"),
+        requireToolUse: shouldRequireToolUse,
         requiredToolName,
         workspaceDir: session.workspaceDir || undefined,
         abortSignal: turnAbortController.signal,
@@ -1575,6 +1577,13 @@ async function handleChatTurn(
         requiredToolName = shouldPreferArtifacts
           ? "artifacts"
           : requiredDirectToolName || (selectedSkill ? "skill_load" : undefined);
+        shouldRequireToolUse = Boolean(
+          tools &&
+            (shouldPreferArtifacts ||
+              requiredDirectToolName ||
+              selectedSkill ||
+              capabilityMentions.mentions.some((mention) => mention.kind === "mcp"))
+        );
         executionMessages = buildAgentTransferMessages(
           applyChatCapabilityInstruction(
             buildChatExecutionMessagesForAgent(session.messages, {
@@ -1594,11 +1603,7 @@ async function handleChatTurn(
         result = await agentManager.execute(targetAgent.id, executionMessages, {
           useTools: tools,
           sessionId: session.id,
-          requireToolUse:
-            shouldPreferArtifacts ||
-            Boolean(requiredDirectToolName) ||
-            selectedSkill ||
-            capabilityMentions.mentions.some((mention) => mention.kind === "mcp"),
+          requireToolUse: shouldRequireToolUse,
           requiredToolName,
           workspaceDir: session.workspaceDir || undefined,
           abortSignal: turnAbortController.signal,
@@ -1611,11 +1616,6 @@ async function handleChatTurn(
       }
       responseContent = result.content;
 
-      const shouldForceToolExecution =
-        tools &&
-        (shouldEnforceToolUseForMessage(message) ||
-          shouldPreferArtifacts ||
-          Boolean(requiredDirectToolName));
       const recoveredResponse = await recoverAssistantResponse({
         agentId: agent.id,
         executeOptions: {
@@ -1630,7 +1630,7 @@ async function handleChatTurn(
         executionMessages,
         requiredToolName,
         responseContent,
-        shouldForceToolExecution: Boolean(shouldForceToolExecution),
+        shouldRequireToolUse,
         toolResults,
         toolsEnabled: tools,
         userMessage: message,

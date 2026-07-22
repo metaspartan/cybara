@@ -5,7 +5,6 @@ import {
   classifyToolCallResult,
   isNonSubstantiveAssistantCompletion,
   requiredDirectToolForMessage,
-  shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
   shouldRecoverNonSubstantiveAssistantCompletion,
   suppressRecoveredWebFailureActivities,
@@ -35,40 +34,6 @@ describe("chat tool summary utilities", () => {
     expect(message).toContain("- `exec`:");
     expect(message).toContain("- `read`: Read /tmp/a.ts (3 lines)");
     expect(message).not.toContain("Tool: exec");
-  });
-
-  test("marks actionable engineering prompts for forced tool retry", () => {
-    expect(
-      shouldEnforceToolUseForMessage("continue fixing tests in this repo and update the files")
-    ).toBe(true);
-    expect(shouldEnforceToolUseForMessage("scan the project and run lint to fix issues")).toBe(
-      true
-    );
-    expect(
-      shouldEnforceToolUseForMessage(
-        "Can you make me a small webpage for tracking reading goals in this folder?"
-      )
-    ).toBe(true);
-    expect(shouldEnforceToolUseForMessage("Build a todo app in this workspace")).toBe(true);
-    expect(
-      shouldEnforceToolUseForMessage(
-        "Also update the README with the final behavior and verification command, then rerun everything."
-      )
-    ).toBe(true);
-    expect(shouldEnforceToolUseForMessage("Update the changelog and rerun everything")).toBe(true);
-    expect(
-      shouldEnforceToolUseForMessage(
-        "paste in then import and it shows up as an empty item, please stop going in circles"
-      )
-    ).toBe(true);
-  });
-
-  test("does not force tools for greetings or capability questions", () => {
-    expect(shouldEnforceToolUseForMessage("hello what can you do")).toBe(false);
-    expect(shouldEnforceToolUseForMessage("thanks")).toBe(false);
-    expect(shouldEnforceToolUseForMessage("How would I build an app in this workspace?")).toBe(
-      false
-    );
   });
 
   test("recovers empty and bare success claims without overriding literal response requests", () => {

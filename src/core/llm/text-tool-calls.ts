@@ -38,6 +38,9 @@ export interface NormalizedOpenAIToolCall {
 export interface AnthropicCompatContentBlock {
   type?: string;
   text?: string;
+  thinking?: string;
+  signature?: string;
+  data?: string;
   id?: string;
   name?: string;
   input?: Record<string, unknown>;

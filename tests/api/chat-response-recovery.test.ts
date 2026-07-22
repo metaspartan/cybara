@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 describe("chat response recovery", () => {
-  test("retries a bare completion for a corrective follow-up and requires concrete tool work", async () => {
+  test("retries a bare completion without classifying the user's prompt", async () => {
     const agentId = createTestAgent("Bare Completion Recovery Agent");
     const sessionId = `bare-completion-${crypto.randomUUID()}`;
     createdSessionIds.push(sessionId);
@@ -70,13 +70,13 @@ describe("chat response recovery", () => {
 
     expect(callCount).toBe(2);
     expect(executionOptions[0]?.requireToolUse).toBe(false);
-    expect(executionOptions[1]?.requireToolUse).toBe(true);
+    expect(executionOptions[1]?.requireToolUse).toBe(false);
     expect(executionMessages[1]?.at(-2)).toEqual({
       role: "assistant",
       content: "Completed",
       images: undefined,
     });
-    expect(executionMessages[1]?.at(-1)?.content).toContain("did not execute the request");
+    expect(executionMessages[1]?.at(-1)?.content).toContain("empty or only claimed completion");
     expect(result.message.content).toContain("verified that the item now contains 4 fields");
     expect(result.message.tool_calls).toHaveLength(1);
   });
