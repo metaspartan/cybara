@@ -119,12 +119,14 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain("activities: runActivities.map((activity) => ({ ...activity }))");
   });
 
-  test("does not clear live activities on idle while a request is still loading", () => {
+  test("does not clear live activities before completion reconciliation", () => {
     const source = readChatUiSource();
     expect(source).toContain("!loadingRef.current &&");
     expect(source).toContain("activeSessionRef.current === resolvedSessionId &&");
     expect(source).toContain("!nextActiveIds.includes(resolvedSessionId)");
-    expect(source).toContain("if (!loadingRef.current) {");
+    expect(source).toContain("if (loadingRef.current) {");
+    expect(source).toContain("if (refreshed) {");
+    expect(source).toContain('setLiveCurrentStep("Finalizing response...")');
     expect(source).toContain("setLiveActivities([]);");
     expect(source).toContain("runActivityBufferRef.current = [];");
   });
@@ -320,9 +322,9 @@ describe("Chat live activity persistence", () => {
     const source = readChatUiSource();
     expect(source).toContain("if (!streamingContent || isLoading) return;");
     expect(source).toContain('if (latestMessage?.role === "assistant") {');
-    // Clearing now happens via finalizeLiveState AFTER the persisted reply is
-    // fetched (see chat-finish-handoff.test.ts), never inline before it.
-    expect(source).toMatch(/const finalizeLiveState = \(\) => \{\s*setStreamingContent\(null\);/);
+    expect(source).toMatch(
+      /const finalizeLiveState = \(\) => \{[\s\S]*?setStreamingContent\(null\);/
+    );
   });
 
   test("persists message process map across reloads", () => {

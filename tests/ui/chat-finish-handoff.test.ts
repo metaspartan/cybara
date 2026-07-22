@@ -16,8 +16,12 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
     const source = readChatUiSource();
     expect(source).toContain("refreshSessionMessagesRef");
     expect(source).toContain("const finalizeLiveState = () => {");
-    expect(source).toContain(
-      "void refreshSessionMessagesRef.current(sessionToRefresh).finally(finalizeLiveState);"
+    expect(source).toContain("if (refreshed) {");
+    expect(source).toContain('setLiveCurrentStep("Finalizing response...")');
+    expect(source).toContain("runStartSyncedSessionsRef.current.delete(sessionToRefresh)");
+    expect(source).toContain("if (retryRefreshed) finalizeLiveState();");
+    expect(source).not.toContain(
+      "refreshSessionMessagesRef.current(sessionToRefresh).finally(finalizeLiveState)"
     );
     expect(source).toContain("loadPersistedCompletion");
     expect(source).toContain("loadFreshSession(sid)");

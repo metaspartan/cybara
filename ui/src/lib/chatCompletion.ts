@@ -11,7 +11,7 @@ export interface CompletionLoadOptions {
   sleep?: (delayMs: number) => Promise<void>;
 }
 
-const defaultDelaysMs = [0, 75, 150, 300, 600];
+const defaultDelaysMs = [0, 75, 150, 300, 600, 1_000, 2_000, 4_000];
 
 function delay(delayMs: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, delayMs));
@@ -38,13 +38,15 @@ export async function loadPersistedCompletion<T extends CompletionSnapshot>(
 
   for (const delayMs of delaysMs) {
     if (delayMs > 0) await sleep(delayMs);
-    const snapshot = await load();
-    if (
-      Array.isArray(snapshot.messagesList) &&
-      hasAssistantAfterLatestUser(snapshot.messagesList)
-    ) {
-      return snapshot;
-    }
+    try {
+      const snapshot = await load();
+      if (
+        Array.isArray(snapshot.messagesList) &&
+        hasAssistantAfterLatestUser(snapshot.messagesList)
+      ) {
+        return snapshot;
+      }
+    } catch {}
   }
 
   return null;
