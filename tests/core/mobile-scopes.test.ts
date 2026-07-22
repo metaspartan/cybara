@@ -295,6 +295,7 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("GET", "/api/memory")).toBe("read");
     expect(routeRequiredScope("GET", "/api/ws/status")).toBe("read");
     expect(routeRequiredScope("POST", "/api/browser/tabs/tab-1/navigate")).toBe("terminal");
+    expect(routeRequiredScope("POST", "/api/simulators/android/action")).toBe("terminal");
   });
 
   test("unclassified and sensitive routes fail closed for scoped principals", () => {

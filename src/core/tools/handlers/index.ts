@@ -82,6 +82,7 @@ import { handleArtifacts } from "./artifacts";
 import { handlePhoneCall, handleVoiceCall } from "./phone";
 import { handleWallet } from "./wallet";
 import { handleWorkspaceIndexSearch } from "./workspace-index";
+import { handleMobileSimulator } from "./mobile-simulator";
 import {
   collectMacSystemFallback,
   hasMactopBinary,
@@ -273,6 +274,7 @@ const toolHandlers: Record<
   music_generate: handleMusicGenerate,
 
   computer_use: handleComputerUse,
+  mobile_simulator: handleMobileSimulator,
 
   kanban_show: handleKanbanShow,
   kanban_list: handleKanbanList,

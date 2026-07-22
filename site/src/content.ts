@@ -51,6 +51,17 @@ export const INSTALL_COMMAND_WINDOWS =
 export const INSTALL_COMMAND_NPM = "npx cybara";
 export const INSTALL_COMMAND_BUN = "bunx cybara";
 
+export const DOWNLOAD_EXPERIENCES = {
+  desktop: {
+    title: "Desktop GUI",
+    description: "The full graphical app for macOS, Windows, and Linux.",
+  },
+  cli: {
+    title: "CLI + TUI",
+    description: "The terminal app with commands and a full-screen text interface.",
+  },
+} as const;
+
 export interface InstallTab {
   key: "shell" | "windows" | "npm" | "bun";
   label: string;
@@ -65,28 +76,28 @@ export const INSTALL_TABS: readonly InstallTab[] = [
     label: "macOS / Linux",
     prompt: "$",
     command: INSTALL_COMMAND,
-    hint: "SHA256-verified binary install for macOS and Linux (x64 & arm64).",
+    hint: "Installs the CLI + TUI for macOS and Linux (x64 & arm64), not the desktop GUI.",
   },
   {
     key: "windows",
     label: "Windows",
     prompt: ">",
     command: INSTALL_COMMAND_WINDOWS,
-    hint: "PowerShell installer for Windows x64 & arm64, added to your PATH.",
+    hint: "Installs the CLI + TUI for Windows x64 & arm64, not the desktop GUI.",
   },
   {
     key: "npm",
     label: "npm",
     prompt: "$",
     command: INSTALL_COMMAND_NPM,
-    hint: "Runs instantly with npx — any OS with Node.js installed.",
+    hint: "Runs the CLI + TUI with npx on any OS with Node.js installed.",
   },
   {
     key: "bun",
     label: "Bun",
     prompt: "$",
     command: INSTALL_COMMAND_BUN,
-    hint: "Runs instantly with bunx — the same runtime Cybara is built on.",
+    hint: "Runs the CLI + TUI with bunx, the same runtime Cybara is built on.",
   },
 ];
 

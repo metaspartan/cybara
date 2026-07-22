@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { agentManager } from "../../core/agent";
+import { captureBrowserPreview, invalidateBrowserPreview } from "../../core/browser/preview-cache";
 import * as pwManager from "../../core/browser/pw-manager";
 import {
   getSandboxBrowserStatus,
@@ -48,16 +48,6 @@ function quoteCmd(value: string): string {
 
 function browserSessionId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-
-function browserViewportDimension(value: unknown, fallback: number, maximum: number): number {
-  const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : NaN;
-  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(320, Math.round(parsed))) : fallback;
-}
-
-function browserScreenshotQuality(value: unknown): number {
-  const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : NaN;
-  return Number.isFinite(parsed) ? Math.min(90, Math.max(40, Math.round(parsed))) : 72;
 }
 
 function buildRestartCommand(argv: string[], cwd: string): string[] {
@@ -222,6 +212,7 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     const closePage = pwManager.closePage;
     const closed = await closePage(params!.id);
     if (!closed) return { error: "Page not found" };
+    invalidateBrowserPreview(params!.id);
     releaseBrowserPage(params!.id);
     return { success: true, message: "Page closed" };
   },
@@ -234,20 +225,24 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     if (!url) return { error: "URL is required" };
     const navigationUrl = await validateBrowserNavigationUrl(url);
     const result = await navigate(params!.id, navigationUrl, { waitUntil });
+    invalidateBrowserPreview(params!.id);
     return { success: true, data: result };
   },
-  "POST /api/browser/tabs/:id/back": async (_body, params) => ({
-    success: true,
-    data: await pwManager.goBack(params!.id),
-  }),
-  "POST /api/browser/tabs/:id/forward": async (_body, params) => ({
-    success: true,
-    data: await pwManager.goForward(params!.id),
-  }),
-  "POST /api/browser/tabs/:id/reload": async (_body, params) => ({
-    success: true,
-    data: await pwManager.reload(params!.id),
-  }),
+  "POST /api/browser/tabs/:id/back": async (_body, params) => {
+    const data = await pwManager.goBack(params!.id);
+    invalidateBrowserPreview(params!.id);
+    return { success: true, data };
+  },
+  "POST /api/browser/tabs/:id/forward": async (_body, params) => {
+    const data = await pwManager.goForward(params!.id);
+    invalidateBrowserPreview(params!.id);
+    return { success: true, data };
+  },
+  "POST /api/browser/tabs/:id/reload": async (_body, params) => {
+    const data = await pwManager.reload(params!.id);
+    invalidateBrowserPreview(params!.id);
+    return { success: true, data };
+  },
   "GET /api/browser/tabs/:id/snapshot": async (_body, params) => {
     const getSnapshot = pwManager.getSnapshot;
     const result = await getSnapshot(params!.id);
@@ -265,25 +260,16 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     };
   },
   "GET /api/browser/tabs/:id/screenshot": async (_body, params) => {
-    const screenshot = pwManager.screenshot;
-    const width = browserViewportDimension(params?.viewportWidth, 1280, 2560);
-    const height = browserViewportDimension(params?.viewportHeight, 800, 1600);
-    const format = params?.format === "jpeg" ? "jpeg" : "png";
-    await pwManager.resize(params!.id, width, height);
-    const screenshotBuffer = await screenshot(params!.id, {
-      fullPage: params?.fullPage !== "false",
-      type: format,
-      ...(format === "jpeg" ? { quality: browserScreenshotQuality(params?.quality) } : {}),
-    });
-    const revision = createHash("sha256").update(screenshotBuffer).digest("base64url").slice(0, 16);
-    const unchanged = params?.revision === revision;
-    const page = await pwManager.getPageSummary(params!.id);
+    const frame = await captureBrowserPreview(params!.id, params ?? {});
+    const unchanged = params?.revision === frame.revision;
+    const page =
+      params?.includePage === "false" ? null : await pwManager.getPageSummary(params!.id);
     return {
       success: true,
       data: {
-        ...(unchanged ? { unchanged: true } : { screenshot: screenshotBuffer.toString("base64") }),
-        revision,
-        contentType: format === "jpeg" ? "image/jpeg" : "image/png",
+        ...(unchanged ? { unchanged: true } : { screenshot: frame.bytes.toString("base64") }),
+        revision: frame.revision,
+        contentType: frame.contentType,
         viewport: pwManager.getViewportSize(params!.id),
         cursor: pwManager.getPointerState(params!.id),
         page,
@@ -299,6 +285,7 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     };
     if (!selector) return { error: "Selector is required" };
     await click(params!.id, selector, { button, doubleClick });
+    invalidateBrowserPreview(params!.id);
     return { success: true, message: "Clicked element" };
   },
   "POST /api/browser/tabs/:id/pointer/click": async (body, params) => {
@@ -307,6 +294,7 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
       return { error: "Finite pointer coordinates are required" };
     }
     await pwManager.clickAt(params!.id, x, y);
+    invalidateBrowserPreview(params!.id);
     return { success: true, message: "Clicked page" };
   },
   "POST /api/browser/tabs/:id/scroll": async (body, params) => {
@@ -317,6 +305,7 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     const boundedX = Math.min(4000, Math.max(-4000, deltaX));
     const boundedY = Math.min(4000, Math.max(-4000, deltaY));
     await pwManager.scrollPage(params!.id, boundedX, boundedY);
+    invalidateBrowserPreview(params!.id);
     return { success: true, message: "Scrolled page" };
   },
   "POST /api/browser/tabs/:id/keyboard": async (body, params) => {
@@ -325,6 +314,7 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
       return { error: "A valid key is required" };
     }
     await pwManager.sendKey(params!.id, key);
+    invalidateBrowserPreview(params!.id);
     return { success: true, message: "Sent key" };
   },
   "POST /api/browser/tabs/:id/type": async (body, params) => {
@@ -337,11 +327,13 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     };
     if (!selector || typeof text !== "string") return { error: "Selector and text are required" };
     await type(params!.id, selector, text, { submit, clear });
+    invalidateBrowserPreview(params!.id);
     return { success: true, message: "Typed text" };
   },
   "POST /api/browser/close": async () => {
     const closeAll = pwManager.closeAll;
     await closeAll();
+    invalidateBrowserPreview();
     return { success: true, message: "Browser closed" };
   },
 

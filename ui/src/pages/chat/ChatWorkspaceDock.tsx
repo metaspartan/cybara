@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { ChatWorkspaceBrowser } from "./ChatWorkspaceBrowser";
 import { ChatWorkspaceComputer } from "./ChatWorkspaceComputer";
 import { ChatWorkspaceFiles } from "./ChatWorkspaceFiles";
+import { ChatWorkspaceSimulator } from "./ChatWorkspaceSimulator";
 import {
   ChatWorkspacePanel,
   type ChatWorkspaceTab,
@@ -139,6 +140,17 @@ export function ChatWorkspaceDock({
                 workspaceDir={workspaceDir}
                 initialPath={instance.pageKey}
                 onOpenFullIde={onOpenFullIde}
+              />
+            </div>
+          );
+        }
+        if (instance.kind === "ios" || instance.kind === "android") {
+          return (
+            <div key={instance.id} className={hiddenClass}>
+              <ChatWorkspaceSimulator
+                platform={instance.kind}
+                sessionId={sessionId}
+                visible={isOpen && active}
               />
             </div>
           );

@@ -151,6 +151,7 @@ const directToolNames = new Set([
   "git",
   "browser",
   "computer_use",
+  "mobile_simulator",
   "web_fetch",
   "web_search",
   "memory_search",

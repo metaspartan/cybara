@@ -142,6 +142,7 @@ import { getCybaraDataDirConfigInfo, getCybaraDataDirInfo } from "./data-dir-inf
 import { gatewayAuthSettingsResponse, updateGatewayHostSetting } from "./gateway-network";
 import { buildJourney } from "./journey";
 import { mobileRoutes } from "./mobile";
+import { mobileSimulatorRoutes } from "./routes/mobile-simulator-routes";
 import { discoverMarketplacePlugins, installMarketplacePlugin } from "./plugin-marketplace";
 import { pollProviderDeviceCodeOAuth, startProviderDeviceCodeOAuth } from "./provider-oauth-device";
 import { pollProviderRedirectOAuth, startProviderRedirectOAuth } from "./provider-oauth-redirect";
@@ -231,6 +232,7 @@ function pluginSummary(plugin: ReturnType<typeof listInstalledPlugins>[number]) 
 const routes: Record<string, RouteHandler> = {
   ...walletRoutes,
   ...mobileRoutes,
+  ...mobileSimulatorRoutes,
   ...metricsRoutes,
   ...evalRoutes,
   ...speechRoutes,

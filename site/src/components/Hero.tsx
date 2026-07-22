@@ -1,6 +1,6 @@
 import { Icon } from "./Icon";
 import { InstallTabs } from "./InstallTabs";
-import { STATS } from "../content";
+import { DOWNLOAD_EXPERIENCES, STATS } from "../content";
 import { useSiteI18n } from "../i18n";
 import { A } from "../lib/router";
 
@@ -22,12 +22,32 @@ export function Hero(): React.ReactElement {
 
         <p className="hero-sub">{t("site.hero.subtitle")}</p>
 
-        <div className="hero-actions hero-actions--install">
-          <A className="btn btn--primary" href="/download">
-            <span>{t("site.hero.primary")}</span>
-            <Icon name="arrow" className="btn-icon" />
-          </A>
-          <InstallTabs />
+        <div className="hero-install-options">
+          <div className="hero-install-path hero-install-path--desktop">
+            <span className="install-path-icon">
+              <Icon name="desktop" className="install-path-icon-svg" />
+            </span>
+            <div className="install-path-copy">
+              <strong>{DOWNLOAD_EXPERIENCES.desktop.title}</strong>
+              <span>{DOWNLOAD_EXPERIENCES.desktop.description}</span>
+            </div>
+            <A className="btn btn--primary hero-desktop-btn" href="/download#desktop-gui">
+              <span>{t("site.hero.primary")}</span>
+              <Icon name="arrow" className="btn-icon" />
+            </A>
+          </div>
+          <div className="hero-install-path hero-install-path--cli">
+            <div className="install-path-heading">
+              <span className="install-path-icon">
+                <Icon name="terminal" className="install-path-icon-svg" />
+              </span>
+              <div className="install-path-copy">
+                <strong>{DOWNLOAD_EXPERIENCES.cli.title}</strong>
+                <span>{DOWNLOAD_EXPERIENCES.cli.description}</span>
+              </div>
+            </div>
+            <InstallTabs showHint />
+          </div>
         </div>
 
         <dl className="hero-stats">

@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   containedPreviewRect,
+  containerPointToSource,
   containerPointToPreview,
   previewPointToContainer,
+  sourcePointToContainer,
 } from "../../ui/src/pages/chat/previewGeometry";
 
 describe("contained chat preview geometry", () => {
@@ -42,6 +44,28 @@ describe("contained chat preview geometry", () => {
         { x: 250, y: 40 }
       )
     ).toBeNull();
+  });
+
+  test("maps resized simulator previews into native input coordinates", () => {
+    expect(
+      containerPointToSource(
+        { width: 360, height: 800 },
+        { width: 720, height: 1600 },
+        { width: 1080, height: 2400 },
+        { x: 180, y: 400 }
+      )
+    ).toEqual({ x: 540, y: 1200 });
+  });
+
+  test("maps native simulator agent taps into the resized preview", () => {
+    expect(
+      sourcePointToContainer(
+        { width: 360, height: 800 },
+        { width: 720, height: 1600 },
+        { width: 1080, height: 2400 },
+        { x: 540, y: 1200 }
+      )
+    ).toEqual({ x: 180, y: 400 });
   });
 
   test("clamps out-of-range driver coordinates to the visible image", () => {

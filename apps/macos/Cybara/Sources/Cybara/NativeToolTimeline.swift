@@ -213,12 +213,8 @@ struct NativeLiveToolTimelineView: View {
             }
 
             if let displayCurrentStep {
-                HStack(alignment: .top, spacing: 7) {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .tint(.secondary)
-                        .frame(width: 13, height: 13)
-                        .padding(.top, 1)
+                HStack(alignment: .center, spacing: 7) {
+                    NativeLiveStatusSpinner()
                     nativeActivityMarkdownText(displayCurrentStep)
                         .font(.system(size: 11.8, design: .rounded))
                         .foregroundStyle(.secondary)
@@ -226,16 +222,24 @@ struct NativeLiveToolTimelineView: View {
                         .textSelection(.enabled)
                 }
             } else if visibleActivities.isEmpty {
-                HStack(spacing: 5) {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .tint(.secondary)
+                HStack(alignment: .center, spacing: 5) {
+                    NativeLiveStatusSpinner()
                     Text("Thinking...")
                         .font(.system(size: 11.8, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
             }
         }
+    }
+}
+
+private struct NativeLiveStatusSpinner: View {
+    var body: some View {
+        ProgressView()
+            .controlSize(.mini)
+            .tint(.secondary)
+            .frame(width: 13, height: 13)
+            .offset(y: 1)
     }
 }
 

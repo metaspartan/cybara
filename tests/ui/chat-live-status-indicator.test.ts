@@ -25,6 +25,8 @@ describe("live chat status indicator", () => {
     expect(indicator).toContain('role="presentation"');
     expect(indicator).toContain('aria-hidden="true"');
     expect(indicator).toContain("live-status-shine");
+    expect(indicator).toContain("items-center");
+    expect(indicator).not.toContain("items-start");
   });
 
   test("shares the indicator across main, multi-chat, and IDE timelines", () => {

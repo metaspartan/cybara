@@ -15,7 +15,7 @@ export function LiveStatusIndicator({ className, text }: LiveStatusIndicatorProp
   const orbState = resolveLiveStatusOrbState(text);
 
   return (
-    <div className={cn("live-status-indicator flex min-w-0 items-start gap-1.5", className)}>
+    <div className={cn("live-status-indicator flex min-w-0 items-center gap-1.5", className)}>
       <ThinkingOrb
         state={orbState}
         size={20}

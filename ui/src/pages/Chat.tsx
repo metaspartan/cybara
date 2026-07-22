@@ -1549,7 +1549,14 @@ export function Chat() {
               new Set(
                 workspaceTabs
                   .map((instance) => instance.kind)
-                  .filter((kind) => kind === "browser" || kind === "terminal" || kind === "files")
+                  .filter(
+                    (kind) =>
+                      kind === "browser" ||
+                      kind === "terminal" ||
+                      kind === "files" ||
+                      kind === "ios" ||
+                      kind === "android"
+                  )
               )
             ),
             agentUsingBrowser,

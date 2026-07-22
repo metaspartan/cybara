@@ -27,7 +27,6 @@
     },
     "android": {
       "package": "com.ck.cybara",
-      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/cybara.png",
         "backgroundColor": "#071016"
@@ -48,7 +47,8 @@
         }
       ],
       "expo-notifications",
-      "expo-secure-store"
+      "expo-secure-store",
+      "./plugins/with-android-lan-cleartext"
     ],
     "extra": {
       "gatewayContract": "cybara-mobile-connect-v1"

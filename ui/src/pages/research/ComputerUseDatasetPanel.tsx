@@ -46,6 +46,18 @@ function statusTone(status: ComputerUseTrajectorySummary["status"]): string {
   return "border-white/10 bg-white/[0.04] text-gray-300";
 }
 
+function trajectoryLabel(surface: ComputerUseTrajectorySummary["surface"]): string {
+  if (surface === "ios_simulator") return "iOS Simulator run";
+  if (surface === "android_emulator") return "Android Emulator run";
+  return "Computer-use run";
+}
+
+function trajectoryTarget(surface: ComputerUseTrajectorySummary["surface"]): string {
+  if (surface === "ios_simulator") return "iOS Simulator";
+  if (surface === "android_emulator") return "Android Emulator";
+  return "desktop";
+}
+
 function TurnTimeline({ trajectory }: { trajectory: ComputerUseTrajectoryDetail }) {
   return (
     <div className="border-t border-white/10 bg-black/15 px-4 py-3">
@@ -134,7 +146,9 @@ function TrajectoryRow({
               to={`/chat?session=${encodeURIComponent(trajectory.sessionId)}`}
               className="max-w-md truncate text-[13px] font-medium text-gray-100 hover:text-indigo-300"
             >
-              {trajectory.sessionId.startsWith("replay:") ? "Replay" : "Computer-use run"}
+              {trajectory.sessionId.startsWith("replay:")
+                ? `Replay · ${trajectoryLabel(trajectory.surface)}`
+                : trajectoryLabel(trajectory.surface)}
             </Link>
             <span
               className={cn(
@@ -188,7 +202,8 @@ function TrajectoryRow({
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-amber-400/15 bg-amber-400/[0.06] px-4 py-2.5">
           <p className="flex items-center gap-2 text-[11px] text-amber-100/90">
             <ShieldAlert className="h-3.5 w-3.5" />
-            Replay repeats the recorded clicks and keystrokes on your current desktop.
+            Replay repeats the recorded actions on the current{" "}
+            {trajectoryTarget(trajectory.surface)}.
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -276,7 +291,7 @@ export function ComputerUseDatasetPanel() {
       download(response.data.content, response.data.filename, response.data.mimeType);
       return response.data.count;
     },
-    onSuccess: (count) => setMessage(`Exported ${count} computer-use run${count === 1 ? "" : "s"}`),
+    onSuccess: (count) => setMessage(`Exported ${count} interaction run${count === 1 ? "" : "s"}`),
     onError: (error) => setMessage(error instanceof Error ? error.message : "Export failed"),
   });
   const trajectories = query.data?.trajectories ?? [];
@@ -297,11 +312,11 @@ export function ComputerUseDatasetPanel() {
         <div className="max-w-2xl">
           <div className="flex items-center gap-2">
             <MonitorUp className="h-4 w-4 text-indigo-300" />
-            <h2 className="text-sm font-semibold text-gray-100">Computer-use trajectories</h2>
+            <h2 className="text-sm font-semibold text-gray-100">Interaction trajectories</h2>
           </div>
           <p className="mt-1 text-[12px] leading-5 text-gray-500">
-            Capture action-level desktop runs with UI state, screenshots, click coordinates, and
-            optional video for replay, debugging, and multimodal datasets.
+            Capture desktop, iOS Simulator, and Android Emulator actions with screenshots and click
+            coordinates for replay, debugging, and multimodal datasets.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -309,7 +324,7 @@ export function ComputerUseDatasetPanel() {
             <Switch
               checked={settings?.trajectoryCaptureEnabled ?? false}
               onChange={(enabled) => configure.mutate({ trajectoryCaptureEnabled: enabled })}
-              ariaLabel="Capture computer-use trajectories"
+              ariaLabel="Capture interaction trajectories"
             />
             Capture future runs
           </label>
@@ -340,7 +355,7 @@ export function ComputerUseDatasetPanel() {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-3 py-2.5">
         <p className="text-[11px] text-gray-600">
           {settings?.trajectoryCaptureEnabled
-            ? "New computer-use runs are being captured."
+            ? "New interaction runs are being captured."
             : "Capture is disabled until you enable it above."}{" "}
           Redaction removes recognized credentials from exported text; screenshots may still contain
           sensitive content.
@@ -386,9 +401,9 @@ export function ComputerUseDatasetPanel() {
       ) : trajectories.length === 0 ? (
         <div className="px-4 py-10 text-center">
           <MousePointer2 className="mx-auto h-7 w-7 text-gray-700" />
-          <p className="mt-3 text-[13px] font-medium text-gray-300">No captured desktop runs</p>
+          <p className="mt-3 text-[13px] font-medium text-gray-300">No captured interaction runs</p>
           <p className="mt-1 text-[11px] text-gray-600">
-            Enable capture, then let an agent use computer controls in a chat.
+            Enable capture, then let an agent use desktop or simulator controls in a chat.
           </p>
         </div>
       ) : (

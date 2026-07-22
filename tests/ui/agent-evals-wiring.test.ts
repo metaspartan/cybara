@@ -58,9 +58,9 @@ describe("agent eval UI wiring", () => {
     expect(page).toContain('key: "computer-use", label: "Computer Use"');
     expect(page).toContain("useSearchParams");
     expect(page).toContain("Verify behavior and results");
-    expect(computerUse).toContain("Computer-use trajectories");
+    expect(computerUse).toContain("Interaction trajectories");
     expect(computerUse).toContain("Capture future runs");
-    expect(computerUse).toContain("Replay repeats the recorded clicks and keystrokes");
+    expect(computerUse).toContain("Replay repeats the recorded actions");
     expect(computerUse).toContain("Include media");
     expect(chat).toContain('invalidateQueries({ queryKey: ["agent-evals"] })');
     expect(chat).toContain("Fork chat from this message");

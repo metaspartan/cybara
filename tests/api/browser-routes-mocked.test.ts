@@ -349,13 +349,49 @@ describe("Browser route contracts (mocked manager)", () => {
     const revision = (res.body as { data: { revision: string } }).data.revision;
     const unchanged = await api(
       "GET",
-      `/api/browser/tabs/tab-1/screenshot?revision=${encodeURIComponent(revision)}`
+      `/api/browser/tabs/tab-1/screenshot?includePage=false&revision=${encodeURIComponent(revision)}`
     );
     expect((unchanged.body as { data: Record<string, unknown> }).data).toMatchObject({
       unchanged: true,
       revision,
     });
     expect((unchanged.body as { data: Record<string, unknown> }).data.screenshot).toBeUndefined();
+    expect((unchanged.body as { data: Record<string, unknown> }).data.page).toBeNull();
+    expect(browserMockState.screenshotCalls).toHaveLength(1);
+    expect(browserMockState.pageSummaryCalls).toBe(1);
+
+    const refreshed = await api(
+      "GET",
+      `/api/browser/tabs/tab-1/screenshot?fresh=true&revision=${encodeURIComponent(revision)}`
+    );
+    expect(refreshed.status).toBe(200);
+    expect(browserMockState.screenshotCalls).toHaveLength(2);
+    expect(browserMockState.pageSummaryCalls).toBe(2);
+  });
+
+  test("GET /api/browser/tabs/:id/screenshot coalesces concurrent captures", async () => {
+    const [first, second] = await Promise.all([
+      api("GET", "/api/browser/tabs/tab-concurrent/screenshot?format=jpeg"),
+      api("GET", "/api/browser/tabs/tab-concurrent/screenshot?format=jpeg"),
+    ]);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(browserMockState.screenshotCalls).toEqual([
+      { id: "tab-concurrent", options: { fullPage: true, type: "jpeg", quality: 72 } },
+    ]);
+    expect(browserMockState.resizeCalls).toEqual([
+      { id: "tab-concurrent", width: 1280, height: 800 },
+    ]);
+  });
+
+  test("browser interactions invalidate a cached preview", async () => {
+    await api("GET", "/api/browser/tabs/tab-interactive/screenshot");
+    await api("GET", "/api/browser/tabs/tab-interactive/screenshot");
+    expect(browserMockState.screenshotCalls).toHaveLength(1);
+
+    await api("POST", "/api/browser/tabs/tab-interactive/pointer/click", { x: 40, y: 80 });
+    await api("GET", "/api/browser/tabs/tab-interactive/screenshot");
+    expect(browserMockState.screenshotCalls).toHaveLength(2);
   });
 
   test("GET /api/browser/tabs/:id/screenshot supports bounded JPEG previews", async () => {
