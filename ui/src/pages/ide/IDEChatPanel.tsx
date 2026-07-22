@@ -1082,7 +1082,7 @@ export function IDEChatPanel({
         setFileDiffDecision({});
         setResolvedPendingDiffs({});
         setExpandedDiffs({});
-        setInput(target.content);
+        setInput(response.data.revertedMessage?.content ?? target.content);
       } catch (revertError) {
         setError(String(revertError));
       } finally {

@@ -983,6 +983,10 @@ describe("Session API", () => {
       expect(reverted.data.keptCount).toBe(expectedKeptCount);
       expect(reverted.data.removedCount).toBe(expectedRemovedCount);
       expect(reverted.data.removedFromIndex).toBe(revertIndex);
+      expect(reverted.data.revertedMessage).toMatchObject({
+        role: "user",
+        content: revertMessage.content,
+      });
       expect(reverted.data.messagesList).toHaveLength(expectedKeptCount);
       expect(reverted.data.messagesList).not.toContainEqual(
         expect.objectContaining({ role: "user", content: revertMessage.content })
@@ -1051,6 +1055,10 @@ describe("Session API", () => {
       expect(reverted.data.keptCount).toBe(0);
       expect(reverted.data.removedCount).toBe(2);
       expect(reverted.data.removedFromIndex).toBe(0);
+      expect(reverted.data.revertedMessage).toMatchObject({
+        role: "user",
+        content: "Remove this initial request",
+      });
       expect(reverted.data.messagesList).toEqual([]);
 
       const reloaded = await fixture.api("GET", `/api/sessions/${sessionId}`);

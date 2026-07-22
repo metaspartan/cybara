@@ -11,13 +11,17 @@ export interface StandaloneCliBuildOptions {
   externalPackages?: readonly string[];
 }
 
-export interface StandaloneEntryOptions {
+interface StandaloneAssetsSourceOptions {
   cwd: string;
   uiDir: string;
-  assetsModule?: string;
-  version?: string;
   runtimeEntry?: string;
   transformersWorker?: string;
+}
+
+interface StandaloneEntrySourceOptions {
+  cwd: string;
+  assetsModule?: string;
+  version?: string;
 }
 
 interface StandaloneRuntimeBundle {
@@ -52,7 +56,7 @@ function assetPath(uiDir: string, path: string): string {
   return `/${relative(uiDir, path).split(sep).join("/")}`;
 }
 
-export function createStandaloneAssetsSource(options: StandaloneEntryOptions): string {
+export function createStandaloneAssetsSource(options: StandaloneAssetsSourceOptions): string {
   const files = listFiles(options.uiDir);
   const indexPath = resolve(options.uiDir, "index.html");
   const index = files.indexOf(indexPath);
@@ -100,7 +104,7 @@ ${options.runtimeEntry ? "await import(embeddedRuntimeEntry);" : ""}
 `;
 }
 
-export function createStandaloneEntrySource(options: StandaloneEntryOptions): string {
+export function createStandaloneEntrySource(options: StandaloneEntrySourceOptions): string {
   const assetsModule = importPath(
     options.cwd,
     resolve(options.cwd, options.assetsModule ?? ".cybara-standalone-assets.ts")
@@ -228,7 +232,6 @@ export async function buildStandaloneCli(options: StandaloneCliBuildOptions): Pr
       entrypoint,
       createStandaloneEntrySource({
         cwd,
-        uiDir,
         assetsModule,
         version: readStandaloneVersion(cwd),
       })

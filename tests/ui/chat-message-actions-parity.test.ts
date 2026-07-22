@@ -50,11 +50,20 @@ describe("chat message actions parity (copy + confirmed revert on all clients)",
     expect(screen).toContain('messageRole: "user"');
     expect(screen).toContain("messageContent: message.content");
     expect(screen).toContain("messageTimestamp: message.timestamp");
+    expect(screen).toContain(
+      'setComposerDraft(result.revertedMessage?.content ?? message.content ?? "")'
+    );
   });
 
   test("IDE revert fallback removes the selected user message", () => {
     const panel = read("ui/src/pages/ide/IDEChatPanel.tsx");
     expect(panel).toContain("messages.slice(0, messageIndex)");
+    expect(panel).toContain("response.data.revertedMessage?.content ?? target.content");
     expect(panel).not.toContain("messages.slice(0, messageIndex + 1)");
+  });
+
+  test("macos restores the authoritative reverted prompt", () => {
+    const screens = readNativeChatSource();
+    expect(screens).toContain("draft = response.revertedMessage?.content ?? message.content");
   });
 });

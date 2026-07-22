@@ -1486,6 +1486,7 @@ const routes: Record<string, RouteHandler> = {
         ...m,
         timestamp: normalizeTimestamp(m.timestamp),
       }));
+      const sanitizedRevertedMessage = sanitizeSessionMessages([reverted.revertedMessage])[0];
 
       return {
         success: true,
@@ -1493,6 +1494,10 @@ const routes: Record<string, RouteHandler> = {
         keptCount: reverted.keptCount,
         removedCount: reverted.removedCount,
         removedFromIndex: reverted.removedFromIndex,
+        revertedMessage: {
+          ...sanitizedRevertedMessage,
+          timestamp: normalizeTimestamp(sanitizedRevertedMessage?.timestamp),
+        },
         messagesList: sanitizedMessages,
       };
     } catch (error) {

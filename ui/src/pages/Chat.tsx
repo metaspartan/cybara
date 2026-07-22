@@ -1267,12 +1267,12 @@ export function Chat() {
     if (!revertTarget) return;
     try {
       setReverting(true);
-      await revertToMessage({
+      const result = await revertToMessage({
         index: revertTarget.index,
         content: revertTarget.content,
         timestamp: revertTarget.timestamp,
       });
-      setInput(revertTarget.content);
+      setInput(result.revertedMessage?.content ?? revertTarget.content);
       setLiveActivities([]);
       setMessageProcessMap({});
       pendingProcessCaptureRef.current = null;

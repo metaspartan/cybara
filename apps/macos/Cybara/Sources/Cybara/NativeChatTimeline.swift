@@ -339,11 +339,12 @@ extension ChatScreen {
         guard let sessionID = selectedSessionID else { return }
         Task {
             do {
-                _ = try await client.revertSession(
+                let response = try await client.revertSession(
                     sessionID,
                     messageContent: message.content,
                     messageTimestamp: message.timestamp
                 )
+                draft = response.revertedMessage?.content ?? message.content
                 await loadMessages(sessionID)
             } catch {
                 self.error = "Failed to revert: \(error.localizedDescription)"

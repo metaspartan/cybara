@@ -646,7 +646,7 @@ export function SessionDetailPanel({
                   throw new Error(result.error || "Failed to revert session");
                 }
                 clearCachedMobileOptimisticTranscript(sessionId);
-                setComposerDraft(message.content || "");
+                setComposerDraft(result.revertedMessage?.content ?? message.content ?? "");
                 return loadSession(false);
               })
               .then(() => refreshSummary())

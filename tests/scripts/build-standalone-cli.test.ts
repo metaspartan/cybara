@@ -58,7 +58,6 @@ describe("standalone CLI build", () => {
 
       const source = createStandaloneEntrySource({
         cwd: directory,
-        uiDir,
         assetsModule,
         version: "1.2.3",
       });

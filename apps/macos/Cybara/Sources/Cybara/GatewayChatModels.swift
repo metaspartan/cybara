@@ -704,6 +704,11 @@ struct GatewaySessionTokenUsage: Decodable, Hashable {
     }
 }
 
+struct GatewayRevertResponse: Decodable {
+    let success: Bool
+    let revertedMessage: GatewaySessionMessage?
+}
+
 struct GatewaySession: Decodable, Identifiable, Hashable {
     let id: String
     let title: String?

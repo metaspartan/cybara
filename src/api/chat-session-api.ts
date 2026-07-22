@@ -590,6 +590,7 @@ export async function revertSessionToMessage(
   keptCount: number;
   removedCount: number;
   removedFromIndex: number;
+  revertedMessage: ChatMessage;
 }> {
   if (chatTurnMutex.isLocked(sessionId)) {
     throw new Error("Cannot revert a session while a chat turn is active");
@@ -688,6 +689,7 @@ export async function revertSessionToMessage(
     keptCount,
     removedCount,
     removedFromIndex: keptCount,
+    revertedMessage: targetMessage,
   };
 }
 
