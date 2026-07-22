@@ -19,12 +19,13 @@ import { runSubagentCommand } from "./commands/subagents";
 import { printArtifacts, printJourney } from "./commands/resource-commands";
 import { getFlagValue, hasFlag } from "./commands/args";
 import { rawUpdate } from "./commands/update";
+import { rawDoctor } from "./commands/doctor";
 import { runEvalCommand } from "./commands/evals";
 import { runSystemBackupCommand } from "./commands/system-backup";
 import { runTelemetryCommand } from "./commands/telemetry";
 import { runPermissionsCommand } from "./commands/permissions";
 import { type MetricsResponse } from "./commands/status-contract";
-import { rawDoctor, rawStatus } from "./commands/status";
+import { rawStatus } from "./commands/status";
 import {
   configureWalletCli,
   rawWalletAccounts,
@@ -1165,7 +1166,7 @@ async function main() {
       await runNearbyCommand(args.slice(1), fetchAPI);
       break;
     case "doctor":
-      await rawDoctor();
+      await rawDoctor(args.slice(1));
       break;
     case "computer-use":
     case "computeruse":

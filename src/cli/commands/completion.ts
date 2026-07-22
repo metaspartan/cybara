@@ -50,6 +50,7 @@ const TOP_LEVEL_COMMANDS = [
 ];
 
 const SUBCOMMANDS: Record<string, string[]> = {
+  doctor: ["--deep", "--json", "--export"],
   gateway: ["status", "health", "logs", "restart", "start", "run"],
   provider: ["list", "available", "add", "update", "delete", "models", "discover"],
   providers: ["list", "available", "add", "update", "delete", "models", "discover"],
