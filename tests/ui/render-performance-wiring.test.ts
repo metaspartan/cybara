@@ -30,7 +30,7 @@ describe("UI render performance wiring", () => {
     expect(metricsSource).toContain("const detailQueryOptions = useMemo");
     expect(metricsSource).toContain("useMetricsTokenAnalysis(detailQueryOptions)");
     expect(metricsSource).toContain("useMetricsModels(detailQueryOptions)");
-    expect(metricsSource).toContain("if (!detailMetricsEnabled) return;");
+    expect(metricsSource).toContain("enabled: detailMetricsEnabled");
     expect(hooksSource).toContain("type MetricsQueryControlOptions");
     expect(hooksSource).toContain(
       "useMetricsTokenAnalysis(options: MetricsQueryControlOptions = {})"
