@@ -57,6 +57,8 @@ describe("multi-chat workspace wiring", () => {
     expect(liveStatuses).toContain("replayBufferedSessionEvents: true");
     expect(liveStatuses).toContain("projectMultiChatSnapshot");
     expect(liveStatuses).toContain("projectMultiChatStatusEvent");
+    expect(liveStatuses).toContain("projectMultiChatToken");
+    expect(workspace).toContain("status?.streamingContent");
     expect(workspace).toContain("MULTI_CHAT_RENDERED_MESSAGE_LIMIT = 80");
     expect(workspace).toContain("MULTI_CHAT_REFRESH_THROTTLE_MS = 750");
     expect(workspace).toContain('queueMode: isActive ? "queue" : undefined');

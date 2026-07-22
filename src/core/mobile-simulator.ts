@@ -11,6 +11,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { PNG } from "pngjs";
+import { coalescePendingWork } from "./coalesced-work";
 import {
   ensureIosSimulatorAutomation,
   getIosSimulatorAutomationStatus,
@@ -154,12 +155,18 @@ const screenshotDir = join(
   "screenshots"
 );
 const frameCache = new Map<string, CachedFrame>();
+const pendingFrameCaptures = new Map<string, Promise<CachedFrame>>();
+const frameGenerations = new Map<string, number>();
 const deviceCache = new Map<MobileSimulatorPlatform, CachedDevices>();
 const iosScaleCache = new Map<string, number>();
 const interactionCache = new Map<string, MobileSimulatorInteraction>();
 
 function simulatorStateKey(platform: MobileSimulatorPlatform, deviceId: string): string {
   return `${platform}:${deviceId}`;
+}
+
+function frameGeneration(platform: MobileSimulatorPlatform, deviceId: string): number {
+  return frameGenerations.get(simulatorStateKey(platform, deviceId)) ?? 0;
 }
 
 function optionalCoordinate(value: unknown): number | undefined {
@@ -766,8 +773,10 @@ function cacheFrame(key: string, frame: CachedFrame): void {
 }
 
 function clearDeviceFrames(platform: MobileSimulatorPlatform, deviceId: string): void {
+  const stateKey = simulatorStateKey(platform, deviceId);
+  frameGenerations.set(stateKey, frameGeneration(platform, deviceId) + 1);
   for (const key of frameCache.keys()) {
-    if (key.startsWith(`${platform}:${deviceId}:`)) frameCache.delete(key);
+    if (key.startsWith(`${stateKey}:`)) frameCache.delete(key);
   }
 }
 
@@ -779,16 +788,20 @@ export async function captureMobileSimulator(
 ): Promise<MobileSimulatorFrame> {
   const devices = await listMobileSimulatorDevices(platform);
   const device = selectDevice(devices, deviceId, true);
-  const key = `${platform}:${device.id}:${mode}`;
+  const generation = frameGeneration(platform, device.id);
+  const key = `${simulatorStateKey(platform, device.id)}:${mode}:${generation}`;
   let frame = frameCache.get(key);
   if (!frame || Date.now() - frame.capturedAt > FRAME_CACHE_MS) {
-    frame =
-      platform === "ios"
-        ? await captureIos(device, mode === "preview")
-        : mode === "preview"
-          ? await captureAndroidPreview(device)
-          : await captureAndroid(device);
-    cacheFrame(key, frame);
+    frame = await coalescePendingWork(pendingFrameCaptures, key, async () => {
+      const captured =
+        platform === "ios"
+          ? await captureIos(device, mode === "preview")
+          : mode === "preview"
+            ? await captureAndroidPreview(device)
+            : await captureAndroid(device);
+      if (frameGeneration(platform, device.id) === generation) cacheFrame(key, captured);
+      return captured;
+    });
   }
   const unchanged = revision === frame.revision;
   return {

@@ -318,20 +318,35 @@ function MultiChatPane({
     () => (liveMessages.length > 0 ? liveMessages : detail?.messagesList || []),
     [detail?.messagesList, liveMessages]
   );
-  const firstRenderedIndex = Math.max(0, messages.length - MULTI_CHAT_RENDERED_MESSAGE_LIMIT);
+  const displayMessages = useMemo(() => {
+    const content = status?.streamingContent;
+    if (!content) return messages;
+    return [
+      ...messages,
+      {
+        role: "assistant" as const,
+        content,
+        timestamp: new Date(status.startedAtMs).toISOString(),
+      },
+    ];
+  }, [messages, status?.startedAtMs, status?.streamingContent]);
+  const firstRenderedIndex = Math.max(
+    0,
+    displayMessages.length - MULTI_CHAT_RENDERED_MESSAGE_LIMIT
+  );
   const visibleEntries = useMemo(
     () =>
-      messages.slice(firstRenderedIndex).map((message, offset) => ({
+      displayMessages.slice(firstRenderedIndex).map((message, offset) => ({
         message: message as ChatMessage,
         originalIndex: firstRenderedIndex + offset,
       })),
-    [firstRenderedIndex, messages]
+    [displayMessages, firstRenderedIndex]
   );
 
   useEffect(() => {
     if (!autoFollow) return;
     requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: "end" }));
-  }, [autoFollow, messages.length, status?.detail, status?.status]);
+  }, [autoFollow, displayMessages.length, status?.detail, status?.streamingContent]);
 
   const titleRecord = (detail || summary || { id: sessionId }) as unknown as Record<
     string,
@@ -844,7 +859,9 @@ export function MultiChatWorkspace() {
   const [toolApprovalMode, setToolApprovalMode] = useState<ToolApprovalMode>("ask");
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const initializedRef = useRef(false);
-  const refreshTimersRef = useRef<Map<string, number>>(new Map());
+  const refreshTimersRef = useRef<Map<string, { includeSessionList: boolean; timer: number }>>(
+    new Map()
+  );
 
   useEffect(() => {
     if (!chatConfig?.success) return;
@@ -908,15 +925,21 @@ export function MultiChatWorkspace() {
   }, [location.search, navigate, sessionIds]);
 
   const refreshSession = useCallback(
-    (sessionId: string) => {
+    (sessionId: string, includeSessionList = false) => {
       const existing = refreshTimersRef.current.get(sessionId);
-      if (existing) return;
+      if (existing) {
+        if (includeSessionList) existing.includeSessionList = true;
+        return;
+      }
       const timer = window.setTimeout(() => {
+        const pending = refreshTimersRef.current.get(sessionId);
         refreshTimersRef.current.delete(sessionId);
         void queryClient.invalidateQueries({ queryKey: [SESSION_DETAIL_QUERY_KEY, sessionId] });
-        void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+        if (pending?.includeSessionList) {
+          void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+        }
       }, MULTI_CHAT_REFRESH_THROTTLE_MS);
-      refreshTimersRef.current.set(sessionId, timer);
+      refreshTimersRef.current.set(sessionId, { includeSessionList, timer });
     },
     [queryClient]
   );
@@ -925,7 +948,9 @@ export function MultiChatWorkspace() {
 
   useEffect(
     () => () => {
-      for (const timer of refreshTimersRef.current.values()) window.clearTimeout(timer);
+      for (const pending of refreshTimersRef.current.values()) {
+        window.clearTimeout(pending.timer);
+      }
       refreshTimersRef.current.clear();
     },
     []

@@ -27,6 +27,7 @@ export interface MultiChatLiveState {
   startedAtMs: number;
   activities: LiveActivityItem[];
   currentStep: string | null;
+  streamingContent: string | null;
   runId: string | null;
   sequence: number;
 }
@@ -90,6 +91,7 @@ export function projectMultiChatSnapshot(
     startedAtMs: previous?.startedAtMs || timestamp,
     activities,
     currentStep,
+    streamingContent: liveStatus === "generating" ? (previous?.streamingContent ?? null) : null,
     runId: snapshot.runId?.trim() || previous?.runId || null,
     sequence: snapshot.sequence || previous?.sequence || 0,
   };
@@ -110,6 +112,7 @@ export function projectMultiChatStatusEvent(
   let liveStatus = normalizeSessionStatus(event.status);
   let activities = previous?.activities || [];
   let currentStep = previous?.currentStep || null;
+  let streamingContent = previous?.streamingContent || null;
 
   if (steeringHandoff) {
     status = "thinking";
@@ -126,6 +129,9 @@ export function projectMultiChatStatusEvent(
     event.status === "generating" ||
     event.status === "compacting"
   ) {
+    if (event.status !== "generating" || previous?.status !== "generating") {
+      streamingContent = null;
+    }
     if (!event.toolName && isMeaningfulThoughtDetail(detail)) {
       activities = applyLiveActivityEvent(activities, {
         phase: "result",
@@ -136,6 +142,7 @@ export function projectMultiChatStatusEvent(
     }
     currentStep = defaultCurrentStep(liveStatus, detail, activities);
   } else if (event.status === "tool_executing" || event.status === "tool_completed") {
+    streamingContent = null;
     const phase = event.toolPhase || (event.status === "tool_executing" ? "start" : "result");
     const toolName = event.toolName || "tool";
     const text = formatToolIntent(toolName, {}, phase, event.detail);
@@ -165,7 +172,30 @@ export function projectMultiChatStatusEvent(
     startedAtMs: previous?.startedAtMs || timestamp,
     activities,
     currentStep,
+    streamingContent,
     runId: event.runId?.trim() || previous?.runId || null,
+    sequence: event.sequence || previous?.sequence || 0,
+  };
+}
+
+export function projectMultiChatToken(
+  previous: MultiChatLiveState | undefined,
+  event: { delta: string; runId?: string; sequence?: number; timestamp: number },
+  observedAt = Date.now()
+): MultiChatLiveState {
+  const runId = event.runId?.trim() || previous?.runId || null;
+  const sameRun = !previous?.runId || !runId || previous.runId === runId;
+  const streamingContent = `${sameRun ? previous?.streamingContent || "" : ""}${event.delta}`;
+  return {
+    status: "generating",
+    liveStatus: "generating",
+    timestamp: event.timestamp,
+    observedAt,
+    startedAtMs: sameRun ? previous?.startedAtMs || event.timestamp : event.timestamp,
+    activities: sameRun ? previous?.activities || [] : [],
+    currentStep: "Generating response...",
+    streamingContent,
+    runId,
     sequence: event.sequence || previous?.sequence || 0,
   };
 }
@@ -175,6 +205,7 @@ export function multiChatStateFromCache(
     status: MultiChatLiveStatusValue;
     activities: LiveActivityItem[];
     currentStep: string | null;
+    streamingContent: string | null;
     runId: string | null;
     sequence: number;
     startedAtMs: number | null;
@@ -191,6 +222,7 @@ export function multiChatStateFromCache(
     startedAtMs: cached.startedAtMs || cached.updatedAt,
     activities: cached.activities,
     currentStep: cached.currentStep,
+    streamingContent: cached.streamingContent,
     runId: cached.runId,
     sequence: cached.sequence,
   };
