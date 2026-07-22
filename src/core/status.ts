@@ -1,4 +1,5 @@
 import { stripReasoningTagTokens } from "./agent-internals";
+import { isMidLoopContextCompactionDetail } from "./llm/context-pressure";
 import { createLogger } from "./logger";
 import { notifyMobilePushForStatus, notifyMobilePushForTask } from "./mobile-push";
 import { redactSecrets, redactSecretText } from "./redaction";
@@ -190,6 +191,7 @@ function sanitizeActivityText(detail?: string): string {
 function isMeaningfulThoughtDetail(detail: string): boolean {
   const normalized = detail.trim().toLowerCase();
   if (!normalized) return false;
+  if (isMidLoopContextCompactionDetail(detail)) return false;
   if (
     normalized === "thinking..." ||
     normalized === "thinking" ||

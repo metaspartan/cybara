@@ -1,14 +1,19 @@
 import { trackContextCompaction } from "../metrics";
-import { broadcastStatus } from "../status";
 import type { ToolContext } from "../tools";
 
 const CHARS_PER_TOKEN = 4;
+const MID_LOOP_CONTEXT_DETAIL_PATTERN =
+  /^Reduced earlier tool output by [\d,.]+ tokens? to preserve context\.$/i;
 
 export interface ContextCompactionMeasurement {
   beforeTokens: number;
   afterTokens: number;
   reducedTokens: number;
   reducedPercent: number;
+}
+
+export function isMidLoopContextCompactionDetail(value: string): boolean {
+  return MID_LOOP_CONTEXT_DETAIL_PATTERN.test(value.trim());
 }
 
 export function measureContextCompaction(
@@ -48,16 +53,6 @@ export function recordMidLoopContextCompaction(input: {
       tokensBefore: measurement.beforeTokens,
       tokensAfter: measurement.afterTokens,
       model: input.model,
-    });
-  }
-
-  if (!input.toolContext?.suppressStreaming) {
-    broadcastStatus({
-      status: "thinking",
-      timestamp: Date.now(),
-      detail: `Reduced earlier tool output by ${measurement.reducedTokens.toLocaleString()} tokens to preserve context.`,
-      sessionId,
-      agentId: input.toolContext?.agentId,
     });
   }
 

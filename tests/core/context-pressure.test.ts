@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { measureContextCompaction } from "../../src/core/llm/context-pressure";
+import {
+  isMidLoopContextCompactionDetail,
+  measureContextCompaction,
+  recordMidLoopContextCompaction,
+} from "../../src/core/llm/context-pressure";
+import { onStatus, reduceSessionStatusSnapshot } from "../../src/core/status";
 
 describe("mid-loop context pressure", () => {
   test("measures the token reduction from compacted transcript characters", () => {
@@ -24,5 +29,34 @@ describe("mid-loop context pressure", () => {
       reducedTokens: 3,
       reducedPercent: 100,
     });
+  });
+
+  test("keeps tool-output trimming internal while filtering historical status events", () => {
+    const statuses: string[] = [];
+    const unsubscribe = onStatus((status) => {
+      if (status.detail) statuses.push(status.detail);
+    });
+    try {
+      expect(
+        recordMidLoopContextCompaction({
+          beforeChars: 4_000,
+          afterChars: 644,
+          messageCount: 12,
+        })?.reducedTokens
+      ).toBe(839);
+    } finally {
+      unsubscribe();
+    }
+    expect(statuses).toEqual([]);
+
+    const detail = "Reduced earlier tool output by 839 tokens to preserve context.";
+    expect(isMidLoopContextCompactionDetail(detail)).toBe(true);
+    const snapshot = reduceSessionStatusSnapshot(undefined, {
+      status: "thinking",
+      timestamp: 1,
+      detail,
+      sessionId: "historical-context-pressure",
+    });
+    expect(snapshot?.activities).toEqual([]);
   });
 });

@@ -1,4 +1,5 @@
 import { hasTextToolCallMarkup, stripTextToolCallMarkup } from "../core/llm/text-tool-calls";
+import { isMidLoopContextCompactionDetail } from "../core/llm/context-pressure";
 
 export interface StripThinkingTagsResult {
   content: string;
@@ -122,7 +123,14 @@ export function stripThinkingTags(content: string): StripThinkingTagsResult {
 
 export function sanitizeProcessThoughtText(content: string): string {
   const trimmed = content.trim();
-  return hasTextToolCallMarkup(trimmed) ? stripTextToolCallMarkup(trimmed).trim() : trimmed;
+  const withoutToolMarkup = hasTextToolCallMarkup(trimmed)
+    ? stripTextToolCallMarkup(trimmed).trim()
+    : trimmed;
+  return withoutToolMarkup
+    .split(/\r?\n/)
+    .filter((line) => !isMidLoopContextCompactionDetail(line))
+    .join("\n")
+    .trim();
 }
 
 function stripDanglingAssistantMarkup(content: string): string {

@@ -67,6 +67,11 @@ describe("chat response formatting", () => {
     expect(sanitizeProcessThoughtText("Inspecting the repository structure.")).toBe(
       "Inspecting the repository structure."
     );
+    expect(
+      sanitizeProcessThoughtText(
+        "Inspecting the repository structure.\nReduced earlier tool output by 839 tokens to preserve context.\nChecking the build."
+      )
+    ).toBe("Inspecting the repository structure.\nChecking the build.");
   });
 
   test("sanitizes stored assistant text tool-call envelopes on session reads", () => {
@@ -98,6 +103,13 @@ describe("chat response formatting", () => {
             phase: "result",
             text: "Inspecting the repository structure.",
             timestamp: 2,
+            toolName: "__thought",
+          },
+          {
+            id: "internal-context-pressure",
+            phase: "result",
+            text: "Reduced earlier tool output by 839 tokens to preserve context.",
+            timestamp: 3,
             toolName: "__thought",
           },
         ],
