@@ -1,18 +1,53 @@
 import { useEffect, useRef, useState } from "react";
 import type { BarcodeScanningResult } from "expo-camera";
-import { Alert, Image, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Alert,
+  Image,
+  PermissionsAndroid,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type Permission,
+} from "react-native";
 import { GlassButton, GlassPanel } from "../components/Glass";
 import {
   buildMobileConnectPayload,
+  DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS,
   profileFromPayload,
   resolveGatewayProfile,
   verifyGatewayProfile,
   type GatewayProfile,
 } from "../lib/connection";
+import {
+  ensureAndroidLanAccess,
+  type AndroidLanAccessRuntime,
+  type AndroidLanPermissionName,
+} from "../lib/androidLanAccess";
 import { Camera, CameraView } from "../lib/expoNativeModules";
 import { useMobileI18n } from "../i18n";
 import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 import cybaraLogo from "../../assets/cybara.png";
+
+const androidLanAccessRuntime: AndroidLanAccessRuntime = {
+  os: Platform.OS,
+  apiLevel: Number(Platform.Version),
+  grantedStatus: PermissionsAndroid.RESULTS.GRANTED,
+  check: (permission: AndroidLanPermissionName) =>
+    PermissionsAndroid.check(permission as Permission),
+  request: (permission: AndroidLanPermissionName) =>
+    PermissionsAndroid.request(permission as Permission, {
+      title: "Local network access",
+      message: "Cybara needs local network access to connect to your gateway.",
+      buttonPositive: "Allow",
+      buttonNegative: "Not now",
+    }),
+};
+
+function ensureGatewayNetworkAccess(baseUrl: string): Promise<void> {
+  return ensureAndroidLanAccess(baseUrl, androidLanAccessRuntime);
+}
 
 function scannedPayloadText(result: BarcodeScanningResult): string {
   if (!result || typeof result.data !== "string") {
@@ -64,6 +99,7 @@ export function ConnectScreen({
 
   const finishConnect = async (profile: GatewayProfile) => {
     setStatusIfMounted(t("connect.checking"));
+    await ensureGatewayNetworkAccess(profile.baseUrl);
     await verifyGatewayProfile(profile);
     setStatusIfMounted(t("connect.saving"));
     await onConnect(profile);
@@ -89,7 +125,15 @@ export function ConnectScreen({
     setConnectError("");
     try {
       setConnectStatus(t("action.connecting"));
-      await finishConnect(await resolveGatewayProfile(payload));
+      await finishConnect(
+        await resolveGatewayProfile(
+          payload,
+          new Date(),
+          fetch,
+          DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS,
+          ensureGatewayNetworkAccess
+        )
+      );
     } catch (error) {
       showConnectError(error);
     } finally {
@@ -134,7 +178,15 @@ export function ConnectScreen({
     setPayload(nextPayload);
     try {
       setStatusIfMounted(t("action.connecting"));
-      await finishConnect(await resolveGatewayProfile(nextPayload));
+      await finishConnect(
+        await resolveGatewayProfile(
+          nextPayload,
+          new Date(),
+          fetch,
+          DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS,
+          ensureGatewayNetworkAccess
+        )
+      );
     } catch (error) {
       showConnectError(error);
     } finally {
