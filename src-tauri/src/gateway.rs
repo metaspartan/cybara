@@ -70,17 +70,7 @@ pub fn is_compatible_gateway_at(addr: &str, expected_version: &str) -> bool {
     let Some(health) = http_get(addr, "/api/health") else {
         return false;
     };
-    if health.status != 200 {
-        return false;
-    }
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&health.body) else {
-        return false;
-    };
-    if !matches!(
-        value.get("status").and_then(serde_json::Value::as_str),
-        Some("healthy" | "warning" | "critical")
-    ) || value.get("version").and_then(serde_json::Value::as_str) != Some(expected_version)
-    {
+    if !is_matching_health_response(&health, expected_version) {
         return false;
     }
     let Some(ui) = ui_response(addr) else {
@@ -93,6 +83,25 @@ pub fn is_compatible_gateway_at(addr: &str, expected_version: &str) -> bool {
     normalized.contains("<!doctype html")
         && normalized.contains("/assets/")
         && !normalized.contains("ui not built")
+}
+
+pub fn is_gateway_healthy_at(addr: &str, expected_version: &str) -> bool {
+    http_get(addr, "/api/health")
+        .as_ref()
+        .is_some_and(|response| is_matching_health_response(response, expected_version))
+}
+
+fn is_matching_health_response(response: &HttpResponse, expected_version: &str) -> bool {
+    if response.status != 200 {
+        return false;
+    }
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&response.body) else {
+        return false;
+    };
+    matches!(
+        value.get("status").and_then(serde_json::Value::as_str),
+        Some("healthy" | "warning" | "critical")
+    ) && value.get("version").and_then(serde_json::Value::as_str) == Some(expected_version)
 }
 
 pub fn parse_gateway_port_signal(value: &str) -> Option<u16> {
@@ -128,12 +137,13 @@ impl GatewayPortSignalParser {
 #[cfg(test)]
 mod tests {
     use super::{
-        GatewayEndpoint, GatewayPortSignalParser, is_compatible_gateway_at,
+        GatewayEndpoint, GatewayPortSignalParser, is_compatible_gateway_at, is_gateway_healthy_at,
         parse_gateway_port_signal,
     };
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::thread;
+    use std::time::Duration;
 
     fn serve(responses: Vec<String>) -> (GatewayEndpoint, thread::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind test gateway");
@@ -183,6 +193,30 @@ mod tests {
             serve(vec![r#"{"status":"healthy","version":"1.2.2"}"#.into()]);
         assert!(!is_compatible_gateway_at(&wrong_version.addr, "1.2.3"));
         version_handle.join().expect("join wrong version gateway");
+    }
+
+    #[test]
+    fn health_probe_does_not_require_a_second_ui_request() {
+        let (endpoint, handle) = serve(vec![r#"{"status":"warning","version":"1.2.3"}"#.into()]);
+        assert!(is_gateway_healthy_at(&endpoint.addr, "1.2.3"));
+        handle.join().expect("join health gateway");
+    }
+
+    #[test]
+    fn stalled_gateway_probe_fails_within_timeout() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind stalled gateway");
+        let port = listener.local_addr().expect("read stalled address").port();
+        let handle = thread::spawn(move || {
+            let _ = listener.accept().expect("accept stalled request");
+            thread::sleep(Duration::from_secs(2));
+        });
+        let started = std::time::Instant::now();
+        assert!(!is_gateway_healthy_at(
+            &format!("127.0.0.1:{port}"),
+            "1.2.3"
+        ));
+        assert!(started.elapsed() < Duration::from_millis(1_500));
+        handle.join().expect("join stalled gateway");
     }
 
     #[test]

@@ -18,7 +18,12 @@ import {
   storePendingChatHotkey,
   type AppHotkeyActionId,
 } from "@/lib/appHotkeys";
-import { readGatewayStartupStatus } from "@/lib/desktopGatewayStartup";
+import {
+  gatewayStartupPollInterval,
+  isGatewayRecovering,
+  readGatewayStartupStatus,
+} from "@/lib/desktopGatewayStartup";
+import { isTauriDesktopRuntime } from "@/lib/desktopHost";
 import { readSetupComplete, resolveSetupGate, writeSetupComplete } from "@/lib/setupGate";
 import { isPetWindow } from "@/lib/tauriPet";
 import { cn } from "@/lib/utils";
@@ -106,7 +111,7 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
   const gatewayStartupQuery = useQuery({
     queryKey: ["desktop", "gateway-startup"],
     queryFn: readGatewayStartupStatus,
-    refetchInterval: (query) => (query.state.data?.phase === "ready" ? false : 500),
+    refetchInterval: gatewayStartupPollInterval(isTauriDesktopRuntime()),
     staleTime: 0,
   });
   const gatewayStartup = gatewayStartupQuery.data;
@@ -127,6 +132,17 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
       <GatewayStartupFailure
         message={gatewayStartup.message || "The packaged gateway exited before it was ready."}
       />
+    );
+  }
+
+  if (isGatewayRecovering(gatewayStartup)) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-[var(--surface-backdrop)]">
+        <Loader2 className="h-8 w-8 animate-spin text-[rgb(var(--accent-primary))]" />
+        <p className="max-w-md text-center text-sm text-[var(--text-secondary)]">
+          {gatewayStartup?.message}
+        </p>
+      </div>
     );
   }
 

@@ -1,10 +1,21 @@
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { restartDesktopGateway } from "@/lib/desktopGatewayStartup";
 
 export interface GatewayStartupFailureProps {
   message: string;
 }
 
 export function GatewayStartupFailure({ message }: GatewayStartupFailureProps) {
+  const [retrying, setRetrying] = useState(false);
+
+  async function retry(): Promise<void> {
+    setRetrying(true);
+    if (!(await restartDesktopGateway())) {
+      window.location.reload();
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background p-6">
       <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 text-card-foreground shadow-xl">
@@ -17,11 +28,12 @@ export function GatewayStartupFailure({ message }: GatewayStartupFailureProps) {
         </div>
         <button
           type="button"
-          onClick={() => window.location.reload()}
+          onClick={() => void retry()}
+          disabled={retrying}
           className="mt-5 inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <RefreshCw className="h-4 w-4" />
-          Retry
+          {retrying ? "Restarting…" : "Retry"}
         </button>
       </div>
     </div>
