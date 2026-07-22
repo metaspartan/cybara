@@ -1,5 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmdirSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { PNG } from "pngjs";
@@ -41,6 +49,21 @@ export interface MobileSimulatorStatus {
   android: MobileSimulatorPlatformStatus;
 }
 
+export interface MobileSimulatorPlatformSummary {
+  platform: MobileSimulatorPlatform;
+  supported: boolean;
+  installed: boolean;
+  interactive: boolean;
+  reason?: string;
+  runningDevices: MobileSimulatorDevice[];
+  availableDeviceCount: number;
+}
+
+export interface MobileSimulatorStatusSummary {
+  ios: MobileSimulatorPlatformSummary;
+  android: MobileSimulatorPlatformSummary;
+}
+
 export interface MobileSimulatorFrame {
   bytes?: Buffer;
   contentType: "image/jpeg" | "image/png";
@@ -78,18 +101,26 @@ interface CachedFrame {
   width: number;
 }
 
+interface CachedDevices {
+  capturedAt: number;
+  devices: MobileSimulatorDevice[];
+}
+
 const COMMAND_TIMEOUT_MS = 20_000;
 const BOOT_TIMEOUT_MS = 120_000;
 const FRAME_CACHE_MS = 450;
+const DEVICE_CACHE_MS = 2_000;
 const MAX_CACHED_FRAMES = 8;
 const ANDROID_PREVIEW_MAX_WIDTH = 720;
 const ANDROID_PREVIEW_MAX_HEIGHT = 1_600;
+const IOS_PREVIEW_MAX_HEIGHT = 1_600;
 const screenshotDir = join(
   process.env.HOME || process.env.USERPROFILE || homedir(),
   ".cybara",
   "screenshots"
 );
 const frameCache = new Map<string, CachedFrame>();
+const deviceCache = new Map<MobileSimulatorPlatform, CachedDevices>();
 const iosScaleCache = new Map<string, number>();
 
 function firstExisting(paths: Array<string | null | undefined>): string | null {
@@ -292,14 +323,31 @@ async function listAndroidDevices(): Promise<MobileSimulatorDevice[]> {
   });
 }
 
+async function listMobileSimulatorDevices(
+  platform: MobileSimulatorPlatform,
+  force = false
+): Promise<MobileSimulatorDevice[]> {
+  const cached = deviceCache.get(platform);
+  if (!force && cached && Date.now() - cached.capturedAt <= DEVICE_CACHE_MS) {
+    return cached.devices;
+  }
+  const devices = platform === "ios" ? await listIosDevices() : await listAndroidDevices();
+  deviceCache.set(platform, { capturedAt: Date.now(), devices });
+  return devices;
+}
+
+function clearDeviceCache(platform: MobileSimulatorPlatform): void {
+  deviceCache.delete(platform);
+}
+
 export async function getMobileSimulatorStatus(): Promise<MobileSimulatorStatus> {
   const xcrun = resolveXcrun();
   const idb = resolveIdb();
   const adb = resolveAndroidSdkExecutable("adb");
   const emulator = resolveAndroidSdkExecutable("emulator");
   const [iosDevices, androidDevices] = await Promise.all([
-    xcrun ? listIosDevices().catch(() => []) : Promise.resolve([]),
-    adb || emulator ? listAndroidDevices().catch(() => []) : Promise.resolve([]),
+    xcrun ? listMobileSimulatorDevices("ios").catch(() => []) : Promise.resolve([]),
+    adb || emulator ? listMobileSimulatorDevices("android").catch(() => []) : Promise.resolve([]),
   ]);
   return {
     ios: {
@@ -331,6 +379,21 @@ export async function getMobileSimulatorStatus(): Promise<MobileSimulatorStatus>
   };
 }
 
+export function summarizeMobileSimulatorStatus(
+  status: MobileSimulatorStatus
+): MobileSimulatorStatusSummary {
+  const summarize = (platform: MobileSimulatorPlatformStatus): MobileSimulatorPlatformSummary => ({
+    platform: platform.platform,
+    supported: platform.supported,
+    installed: platform.installed,
+    interactive: platform.interactive,
+    ...(platform.reason ? { reason: platform.reason } : {}),
+    runningDevices: platform.devices.filter((device) => device.state === "booted"),
+    availableDeviceCount: platform.devices.length,
+  });
+  return { ios: summarize(status.ios), android: summarize(status.android) };
+}
+
 function selectDevice(
   devices: MobileSimulatorDevice[],
   deviceId?: string,
@@ -350,7 +413,7 @@ function selectDevice(
 async function waitForAndroidBoot(adb: string, serial?: string): Promise<MobileSimulatorDevice> {
   const deadline = Date.now() + BOOT_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const devices = await listAndroidDevices();
+    const devices = await listMobileSimulatorDevices("android", true);
     const device = devices.find(
       (candidate) =>
         candidate.state === "booted" &&
@@ -378,21 +441,23 @@ export async function startMobileSimulator(
   if (platform === "ios") {
     const xcrun = resolveXcrun();
     if (!xcrun) throw new Error("iOS Simulator requires macOS and Xcode");
-    const device = selectDevice(await listIosDevices(), deviceId);
+    const device = selectDevice(await listMobileSimulatorDevices("ios", true), deviceId);
     if (device.state !== "booted") {
       await runChecked(xcrun, ["simctl", "boot", device.id], { timeoutMs: BOOT_TIMEOUT_MS });
       await runChecked(xcrun, ["simctl", "bootstatus", device.id, "-b"], {
         timeoutMs: BOOT_TIMEOUT_MS,
       });
     }
-    return selectDevice(await listIosDevices(), device.id, true);
+    clearDeviceCache("ios");
+    return selectDevice(await listMobileSimulatorDevices("ios", true), device.id, true);
   }
   const adb = resolveAndroidSdkExecutable("adb");
   const emulator = resolveAndroidSdkExecutable("emulator");
   if (!adb || !emulator) throw new Error("Android SDK Platform Tools and Emulator are required");
-  const devices = await listAndroidDevices();
+  const devices = await listMobileSimulatorDevices("android", true);
   const selected = selectDevice(devices, deviceId);
   if (selected.state === "booted") return selected;
+  clearDeviceCache("android");
   const child = Bun.spawn(
     [emulator, "-avd", selected.name, "-no-window", "-no-boot-anim", "-gpu", "auto"],
     { stdin: "ignore", stdout: "ignore", stderr: "ignore" }
@@ -408,16 +473,18 @@ export async function stopMobileSimulator(
   if (platform === "ios") {
     const xcrun = resolveXcrun();
     if (!xcrun) throw new Error("iOS Simulator requires macOS and Xcode");
-    const device = selectDevice(await listIosDevices(), deviceId, true);
+    const device = selectDevice(await listMobileSimulatorDevices("ios", true), deviceId, true);
     await runChecked(xcrun, ["simctl", "shutdown", device.id]);
     clearDeviceFrames("ios", device.id);
+    clearDeviceCache("ios");
     return;
   }
   const adb = resolveAndroidSdkExecutable("adb");
   if (!adb) throw new Error("Android SDK Platform Tools are required");
-  const device = selectDevice(await listAndroidDevices(), deviceId, true);
+  const device = selectDevice(await listMobileSimulatorDevices("android", true), deviceId, true);
   await runChecked(adb, ["-s", device.id, "emu", "kill"]);
   clearDeviceFrames("android", device.id);
+  clearDeviceCache("android");
 }
 
 function pngDimensions(bytes: Buffer): { width: number; height: number } | null {
@@ -444,15 +511,35 @@ function jpegDimensions(bytes: Buffer): { width: number; height: number } | null
   return null;
 }
 
-async function captureIos(device: MobileSimulatorDevice): Promise<CachedFrame> {
+async function captureIos(device: MobileSimulatorDevice, preview = false): Promise<CachedFrame> {
   const xcrun = resolveXcrun();
   if (!xcrun) throw new Error("iOS Simulator requires macOS and Xcode");
   const filePath = join(tmpdir(), `cybara-ios-${device.id}-${randomUUID()}.jpg`);
+  const previewPath = join(tmpdir(), `cybara-ios-preview-${device.id}-${randomUUID()}.jpg`);
   try {
     await runChecked(xcrun, ["simctl", "io", device.id, "screenshot", "--type=jpeg", filePath]);
-    const bytes = readFileSync(filePath);
-    const dimensions = jpegDimensions(bytes);
+    const original = readFileSync(filePath);
+    const dimensions = jpegDimensions(original);
     if (!dimensions) throw new Error("iOS Simulator returned an invalid screenshot");
+    let bytes = original;
+    const sips = preview ? Bun.which("sips") : null;
+    if (sips && dimensions.height > IOS_PREVIEW_MAX_HEIGHT) {
+      await runChecked(sips, [
+        "-Z",
+        String(IOS_PREVIEW_MAX_HEIGHT),
+        "-s",
+        "format",
+        "jpeg",
+        "-s",
+        "formatOptions",
+        "58",
+        filePath,
+        "--out",
+        previewPath,
+      ]);
+      const resized = readFileSync(previewPath);
+      if (jpegDimensions(resized)) bytes = resized;
+    }
     return {
       bytes,
       capturedAt: Date.now(),
@@ -464,6 +551,9 @@ async function captureIos(device: MobileSimulatorDevice): Promise<CachedFrame> {
   } finally {
     try {
       unlinkSync(filePath);
+    } catch {}
+    try {
+      unlinkSync(previewPath);
     } catch {}
   }
 }
@@ -484,6 +574,39 @@ async function captureAndroid(device: MobileSimulatorDevice): Promise<CachedFram
   };
 }
 
+function encodeRgbaPreview(
+  pixels: Buffer,
+  width: number,
+  height: number,
+  opaque: boolean
+): {
+  bytes: Buffer;
+  height: number;
+  width: number;
+} {
+  const scale = Math.min(1, ANDROID_PREVIEW_MAX_WIDTH / width, ANDROID_PREVIEW_MAX_HEIGHT / height);
+  const previewWidth = Math.max(1, Math.round(width * scale));
+  const previewHeight = Math.max(1, Math.round(height * scale));
+  const png = new PNG({ width: previewWidth, height: previewHeight });
+  for (let y = 0; y < previewHeight; y += 1) {
+    const sourceY = Math.min(height - 1, Math.floor(y / scale));
+    for (let x = 0; x < previewWidth; x += 1) {
+      const sourceX = Math.min(width - 1, Math.floor(x / scale));
+      const sourceOffset = (sourceY * width + sourceX) * 4;
+      const targetOffset = (y * previewWidth + x) * 4;
+      png.data[targetOffset] = pixels[sourceOffset] ?? 0;
+      png.data[targetOffset + 1] = pixels[sourceOffset + 1] ?? 0;
+      png.data[targetOffset + 2] = pixels[sourceOffset + 2] ?? 0;
+      png.data[targetOffset + 3] = opaque ? 255 : (pixels[sourceOffset + 3] ?? 255);
+    }
+  }
+  return {
+    bytes: PNG.sync.write(png),
+    height,
+    width,
+  };
+}
+
 export function encodeAndroidRawPreview(raw: Buffer): {
   bytes: Buffer;
   height: number;
@@ -496,35 +619,58 @@ export function encodeAndroidRawPreview(raw: Buffer): {
   if (width < 1 || height < 1 || (format !== 1 && format !== 2)) return null;
   const expectedLength = 16 + width * height * 4;
   if (raw.length < expectedLength) return null;
-  const scale = Math.min(1, ANDROID_PREVIEW_MAX_WIDTH / width, ANDROID_PREVIEW_MAX_HEIGHT / height);
-  const previewWidth = Math.max(1, Math.round(width * scale));
-  const previewHeight = Math.max(1, Math.round(height * scale));
-  const png = new PNG({ width: previewWidth, height: previewHeight });
-  const pixels = raw.subarray(16, expectedLength);
-  for (let y = 0; y < previewHeight; y += 1) {
-    const sourceY = Math.min(height - 1, Math.floor(y / scale));
-    for (let x = 0; x < previewWidth; x += 1) {
-      const sourceX = Math.min(width - 1, Math.floor(x / scale));
-      const sourceOffset = (sourceY * width + sourceX) * 4;
-      const targetOffset = (y * previewWidth + x) * 4;
-      png.data[targetOffset] = pixels[sourceOffset] ?? 0;
-      png.data[targetOffset + 1] = pixels[sourceOffset + 1] ?? 0;
-      png.data[targetOffset + 2] = pixels[sourceOffset + 2] ?? 0;
-      png.data[targetOffset + 3] = format === 2 ? 255 : (pixels[sourceOffset + 3] ?? 255);
-    }
+  return encodeRgbaPreview(raw.subarray(16, expectedLength), width, height, format === 2);
+}
+
+export function encodeAndroidPngPreview(bytes: Buffer): {
+  bytes: Buffer;
+  height: number;
+  width: number;
+} | null {
+  try {
+    const png = PNG.sync.read(bytes);
+    if (png.width < 1 || png.height < 1) return null;
+    return encodeRgbaPreview(png.data, png.width, png.height, false);
+  } catch {
+    return null;
   }
-  return {
-    bytes: PNG.sync.write(png),
-    height,
-    width,
-  };
+}
+
+async function captureAndroidEmulatorPreview(
+  adb: string,
+  device: MobileSimulatorDevice
+): Promise<ReturnType<typeof encodeAndroidPngPreview>> {
+  const directory = join(tmpdir(), `cybara-android-${device.id}-${randomUUID()}`);
+  mkdirSync(directory, { recursive: true });
+  try {
+    await runChecked(adb, ["-s", device.id, "emu", "screenrecord", "screenshot", directory]);
+    const fileName = readdirSync(directory).find((entry) => entry.toLowerCase().endsWith(".png"));
+    return fileName ? encodeAndroidPngPreview(readFileSync(join(directory, fileName))) : null;
+  } finally {
+    try {
+      for (const entry of readdirSync(directory)) {
+        try {
+          unlinkSync(join(directory, entry));
+        } catch {}
+      }
+    } catch {}
+    try {
+      rmdirSync(directory);
+    } catch {}
+  }
 }
 
 async function captureAndroidPreview(device: MobileSimulatorDevice): Promise<CachedFrame> {
   const adb = resolveAndroidSdkExecutable("adb");
   if (!adb) throw new Error("Android SDK Platform Tools are required");
-  const result = await runChecked(adb, ["-s", device.id, "exec-out", "screencap"]);
-  const preview = encodeAndroidRawPreview(result.stdout);
+  let preview: ReturnType<typeof encodeAndroidRawPreview> = null;
+  try {
+    preview = await captureAndroidEmulatorPreview(adb, device);
+  } catch {}
+  if (!preview) {
+    const result = await runChecked(adb, ["-s", device.id, "exec-out", "screencap"]);
+    preview = encodeAndroidRawPreview(result.stdout);
+  }
   if (!preview) return await captureAndroid(device);
   return {
     bytes: preview.bytes,
@@ -559,14 +705,14 @@ export async function captureMobileSimulator(
   revision?: string,
   mode: "full" | "preview" = "full"
 ): Promise<MobileSimulatorFrame> {
-  const devices = platform === "ios" ? await listIosDevices() : await listAndroidDevices();
+  const devices = await listMobileSimulatorDevices(platform);
   const device = selectDevice(devices, deviceId, true);
   const key = `${platform}:${device.id}:${mode}`;
   let frame = frameCache.get(key);
   if (!frame || Date.now() - frame.capturedAt > FRAME_CACHE_MS) {
     frame =
       platform === "ios"
-        ? await captureIos(device)
+        ? await captureIos(device, mode === "preview")
         : mode === "preview"
           ? await captureAndroidPreview(device)
           : await captureAndroid(device);
@@ -850,7 +996,7 @@ export async function runMobileSimulatorAction(
   deviceId: string | undefined,
   input: MobileSimulatorAction
 ): Promise<Record<string, unknown>> {
-  const devices = platform === "ios" ? await listIosDevices() : await listAndroidDevices();
+  const devices = await listMobileSimulatorDevices(platform);
   const device = selectDevice(devices, deviceId, true);
   const result =
     platform === "ios" ? await runIosAction(device, input) : await runAndroidAction(device, input);

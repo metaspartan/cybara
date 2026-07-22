@@ -2,6 +2,7 @@ import {
   captureMobileSimulator,
   getMobileSimulatorStatus,
   isMobileSimulatorAction,
+  summarizeMobileSimulatorStatus,
   type MobileSimulatorPlatform,
   runMobileSimulatorAction,
   saveMobileSimulatorScreenshot,
@@ -20,7 +21,10 @@ function optionalDeviceId(value: unknown): string | undefined {
 
 export async function handleMobileSimulator(args: Record<string, unknown>): Promise<unknown> {
   const action = typeof args.action === "string" ? args.action : "status";
-  if (action === "status" || action === "list") return await getMobileSimulatorStatus();
+  if (action === "status") {
+    return summarizeMobileSimulatorStatus(await getMobileSimulatorStatus());
+  }
+  if (action === "list") return await getMobileSimulatorStatus();
   const platform = simulatorPlatform(args.platform);
   const deviceId = optionalDeviceId(args.deviceId);
   if (action === "start") {

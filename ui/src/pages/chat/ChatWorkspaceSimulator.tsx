@@ -10,8 +10,10 @@ import {
   useState,
 } from "react";
 import { apiFetch } from "@/lib/auth";
+import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { containerPointToPreview } from "./previewGeometry";
+import { simulatorPreviewPollDelay } from "./simulatorPreviewTiming";
 
 type SimulatorPlatform = "ios" | "android";
 
@@ -42,8 +44,6 @@ interface SimulatorFrame {
 }
 
 const REQUEST_TIMEOUT_MS = 25_000;
-const FRAME_POLL_MS = 400;
-
 async function responseError(response: Response, fallback: string): Promise<Error> {
   const value: unknown = await response.json().catch(() => null);
   if (value && typeof value === "object") {
@@ -92,9 +92,11 @@ function parsePlatformStatus(value: unknown): SimulatorPlatformStatus | null {
 
 export function ChatWorkspaceSimulator({
   platform,
+  sessionId,
   visible,
 }: {
   platform: SimulatorPlatform;
+  sessionId?: string | null;
   visible: boolean;
 }): ReactElement {
   const [status, setStatus] = useState<SimulatorPlatformStatus | null>(null);
@@ -104,6 +106,7 @@ export function ChatWorkspaceSimulator({
   const [error, setError] = useState<string | null>(null);
   const revisionRef = useRef("");
   const frameRequestRef = useRef(false);
+  const lastInteractionAtRef = useRef(0);
   const surfaceRef = useRef<HTMLDivElement>(null);
 
   const loadStatus = useCallback(async (): Promise<SimulatorPlatformStatus> => {
@@ -195,7 +198,12 @@ export function ChatWorkspaceSimulator({
     let timer: number | null = null;
     const poll = async (): Promise<void> => {
       if (document.visibilityState === "visible") await loadFrame();
-      if (!cancelled) timer = window.setTimeout(() => void poll(), FRAME_POLL_MS);
+      if (!cancelled) {
+        timer = window.setTimeout(
+          () => void poll(),
+          simulatorPreviewPollDelay(Date.now(), lastInteractionAtRef.current)
+        );
+      }
     };
     void poll();
     return () => {
@@ -204,8 +212,29 @@ export function ChatWorkspaceSimulator({
     };
   }, [loadFrame, selectedDevice?.state, visible]);
 
+  useEffect(() => {
+    const activeSessionId = sessionId?.trim();
+    if (!visible || !activeSessionId) return;
+    return connectStatusStream({
+      onEvent: (event) => {
+        if (
+          event.type !== "status" ||
+          event.sessionId !== activeSessionId ||
+          event.toolName !== "mobile_simulator"
+        ) {
+          return;
+        }
+        lastInteractionAtRef.current = Date.now();
+        if (event.status === "tool_completed" || event.toolPhase === "result") {
+          void loadStatus().then(() => loadFrame());
+        }
+      },
+    });
+  }, [loadFrame, loadStatus, sessionId, visible]);
+
   const runLifecycle = async (action: "start" | "stop"): Promise<void> => {
     if (!selectedId || busy) return;
+    lastInteractionAtRef.current = Date.now();
     setBusy(true);
     setError(null);
     try {
@@ -228,6 +257,7 @@ export function ChatWorkspaceSimulator({
 
   const refresh = async (): Promise<void> => {
     if (busy) return;
+    lastInteractionAtRef.current = Date.now();
     setBusy(true);
     try {
       await loadStatus();
@@ -243,6 +273,7 @@ export function ChatWorkspaceSimulator({
   const runAction = useCallback(
     async (action: Record<string, unknown>): Promise<void> => {
       if (!selectedId || busy) return;
+      lastInteractionAtRef.current = Date.now();
       try {
         const response = await apiFetch(`/api/simulators/${platform}/action`, {
           method: "POST",

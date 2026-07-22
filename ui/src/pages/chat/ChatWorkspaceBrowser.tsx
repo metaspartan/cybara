@@ -17,6 +17,7 @@ import {
   type WheelEvent,
 } from "react";
 import { apiFetch } from "@/lib/auth";
+import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { openExternal } from "@/utils/openExternal";
 import {
@@ -53,6 +54,11 @@ interface BrowserPreview {
   cursor: BrowserCursor | null;
   viewport: BrowserViewport | null;
   page: BrowserPage | null;
+}
+
+interface PendingBrowserPage {
+  sessionId: string;
+  promise: Promise<BrowserPage>;
 }
 
 const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = { width: 960, height: 640 };
@@ -229,6 +235,7 @@ export function ChatWorkspaceBrowser({
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
   const requestInFlightRef = useRef(false);
   const stateRequestInFlightRef = useRef(false);
+  const pendingPageRef = useRef<PendingBrowserPage | null>(null);
   const lastInteractionAtRef = useRef(Date.now());
   const previewRevisionRef = useRef("");
   const lastNavigationRequestRef = useRef(0);
@@ -254,11 +261,20 @@ export function ChatWorkspaceBrowser({
     onTitleChangeRef.current?.(nextPage?.title?.trim() || "Browser");
   }, []);
 
-  const ensurePage = useCallback(async (): Promise<BrowserPage> => {
-    const existing = await readSessionPage(browserSessionId);
-    const nextPage = existing ?? (await createSessionPage(browserSessionId));
-    syncPage(nextPage);
-    return nextPage;
+  const ensurePage = useCallback((): Promise<BrowserPage> => {
+    const pending = pendingPageRef.current;
+    if (pending?.sessionId === browserSessionId) return pending.promise;
+    const promise = readSessionPage(browserSessionId)
+      .then(async (existing) => existing ?? (await createSessionPage(browserSessionId)))
+      .then((nextPage) => {
+        syncPage(nextPage);
+        return nextPage;
+      })
+      .finally(() => {
+        if (pendingPageRef.current?.promise === promise) pendingPageRef.current = null;
+      });
+    pendingPageRef.current = { sessionId: browserSessionId, promise };
+    return promise;
   }, [browserSessionId, syncPage]);
 
   const loadPreview = useCallback(
@@ -465,6 +481,26 @@ export function ChatWorkspaceBrowser({
     };
   }, [loadPreview, loading, page, visible]);
 
+  useEffect(() => {
+    const activeSessionId = sessionId?.trim();
+    if (!visible || !page || !activeSessionId) return;
+    return connectStatusStream({
+      onEvent: (event) => {
+        if (
+          event.type !== "status" ||
+          event.sessionId !== activeSessionId ||
+          event.toolName !== "browser"
+        ) {
+          return;
+        }
+        lastInteractionAtRef.current = Date.now();
+        if (event.status === "tool_completed" || event.toolPhase === "result") {
+          void loadPreview(page);
+        }
+      },
+    });
+  }, [loadPreview, page, sessionId, visible]);
+
   const runPageAction = async (action: "back" | "forward" | "reload") => {
     if (!page || loading) return;
     lastInteractionAtRef.current = Date.now();
@@ -527,7 +563,7 @@ export function ChatWorkspaceBrowser({
 
   const navigate = (): void => {
     const target = address.trim();
-    if (!target || loading) return;
+    if (!target) return;
     void navigateTo(target);
   };
 

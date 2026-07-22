@@ -1227,7 +1227,8 @@ ACTIONS:
             "launch",
             "describe",
           ],
-          description: "Simulator operation to perform.",
+          description:
+            "Simulator operation. status returns capabilities and running devices; list returns the full installed device inventory.",
         },
         platform: {
           type: "string",

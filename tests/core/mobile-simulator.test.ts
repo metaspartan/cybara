@@ -2,13 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PNG } from "pngjs";
 import {
-  getMobileSimulatorStatus,
+  encodeAndroidPngPreview,
   encodeAndroidRawPreview,
+  getMobileSimulatorStatus,
   isMobileSimulatorAction,
   parseAdbDevices,
   parseSimctlDevices,
   resolveAndroidSdkExecutable,
+  summarizeMobileSimulatorStatus,
 } from "../../src/core/mobile-simulator";
 import { handleMobileSimulator } from "../../src/core/tools/handlers/mobile-simulator";
 
@@ -60,6 +63,55 @@ describe("mobile simulator discovery", () => {
     expect(encodeAndroidRawPreview(Buffer.alloc(8))).toBeNull();
   });
 
+  test("downsamples Android emulator PNGs while retaining native dimensions", () => {
+    const source = new PNG({ width: 1080, height: 2400 });
+    source.data.fill(255);
+    const preview = encodeAndroidPngPreview(PNG.sync.write(source));
+    expect(preview?.width).toBe(1080);
+    expect(preview?.height).toBe(2400);
+    const encoded = preview ? PNG.sync.read(preview.bytes) : null;
+    expect(encoded?.width).toBe(720);
+    expect(encoded?.height).toBe(1600);
+  });
+
+  test("summarizes running devices without sending the full inventory to agents", () => {
+    const summary = summarizeMobileSimulatorStatus({
+      ios: {
+        platform: "ios",
+        supported: true,
+        installed: true,
+        interactive: false,
+        devices: [
+          {
+            id: "running",
+            name: "iPhone Pro",
+            platform: "ios",
+            state: "booted",
+            interactive: false,
+          },
+          {
+            id: "stopped",
+            name: "iPhone Air",
+            platform: "ios",
+            state: "shutdown",
+            interactive: false,
+          },
+        ],
+      },
+      android: {
+        platform: "android",
+        supported: true,
+        installed: false,
+        interactive: false,
+        reason: "SDK missing",
+        devices: [],
+      },
+    });
+    expect(summary.ios.availableDeviceCount).toBe(2);
+    expect(summary.ios.runningDevices.map((device) => device.id)).toEqual(["running"]);
+    expect(summary.android.reason).toBe("SDK missing");
+  });
+
   test("rejects unsupported actions at tool and API boundaries", () => {
     expect(isMobileSimulatorAction("tap")).toBe(true);
     expect(isMobileSimulatorAction("erase")).toBe(false);
@@ -98,5 +150,13 @@ describe("mobile simulator discovery", () => {
     expect(status.android.platform).toBe("android");
     expect(Array.isArray(status.ios.devices)).toBe(true);
     expect(Array.isArray(status.android.devices)).toBe(true);
+  });
+
+  test("returns concise status and reserves full inventory for list", async () => {
+    const status = await handleMobileSimulator({ action: "status" });
+    const list = await handleMobileSimulator({ action: "list" });
+    expect(status).toHaveProperty("ios.availableDeviceCount");
+    expect(status).not.toHaveProperty("ios.devices");
+    expect(list).toHaveProperty("ios.devices");
   });
 });

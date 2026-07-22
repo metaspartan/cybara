@@ -147,7 +147,11 @@ export function ChatWorkspaceDock({
         if (instance.kind === "ios" || instance.kind === "android") {
           return (
             <div key={instance.id} className={hiddenClass}>
-              <ChatWorkspaceSimulator platform={instance.kind} visible={isOpen && active} />
+              <ChatWorkspaceSimulator
+                platform={instance.kind}
+                sessionId={sessionId}
+                visible={isOpen && active}
+              />
             </div>
           );
         }

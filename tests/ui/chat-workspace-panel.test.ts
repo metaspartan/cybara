@@ -63,6 +63,7 @@ describe("chat workspace panel", () => {
     expect(chatSource).toContain("EmbeddedTerminalPanel");
     expect(chatSource).toContain("ChatWorkspaceBrowser");
     expect(chatSource).toContain("ChatWorkspaceComputer");
+    expect(chatSource).toContain("ChatWorkspaceSimulator");
     expect(chatSource).toContain("ChatWorkspaceFiles");
     expect(chatSource).toContain("onOpenDiffInWorkspace");
     expect(chatSource).toContain("openWorkspaceFile");
@@ -100,6 +101,12 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("ResizeObserver");
     expect(browserSource).not.toContain("refreshSessionPreview");
     expect(browserSource).toContain("browserPreviewPollDelay");
+    expect(browserSource).toContain("connectStatusStream");
+    expect(browserSource).toContain('event.toolName !== "browser"');
+    expect(browserSource).toContain("pendingPageRef");
+    expect(browserSource).toContain("pending?.sessionId === browserSessionId");
+    expect(browserSource).toContain("if (!target) return;");
+    expect(browserSource).not.toContain("if (!target || loading) return;");
     expect(browserSource).toContain("const BROWSER_PREVIEW_QUALITY = 58");
     expect(browserSource).not.toContain("BROWSER_STATE_POLL_MS");
     expect(browserSource).toContain('format: "jpeg"');
@@ -144,6 +151,18 @@ describe("chat workspace panel", () => {
     expect(nativeBrowserSource).toContain(".scaledToFit()");
     expect(nativeBrowserSource).not.toContain(".scaledToFill()");
     expect(styleSource).toContain("animation: browser-agent-click-pulse 420ms ease-out forwards");
+  });
+
+  test("simulator preview follows agent activity without aggressive idle polling", () => {
+    expect(chatSource).toContain("sessionId={sessionId}");
+    const simulatorSource = readFileSync(
+      fileURLToPath(new URL("../../ui/src/pages/chat/ChatWorkspaceSimulator.tsx", import.meta.url)),
+      "utf8"
+    );
+    expect(simulatorSource).toContain("connectStatusStream");
+    expect(simulatorSource).toContain('event.toolName !== "mobile_simulator"');
+    expect(simulatorSource).toContain("simulatorPreviewPollDelay");
+    expect(simulatorSource).not.toContain("FRAME_POLL_MS");
   });
 
   test("computer use has a session-scoped visual preview with agent cursor telemetry", () => {
