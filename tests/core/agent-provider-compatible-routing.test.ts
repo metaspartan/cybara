@@ -982,6 +982,58 @@ describe("Agent provider Google and compatible routing", () => {
     expect(requestBody.max_tokens).toBe(8192);
   });
 
+  test("routes custom providers through their configured OpenAI-compatible endpoint", async () => {
+    let requestUrl = "";
+    let requestBody: Record<string, unknown> = {};
+    let requestHeaders = new Headers();
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestUrl = String(input);
+      requestHeaders = new Headers(init?.headers);
+      requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      return Response.json({
+        id: "custom-response",
+        object: "chat.completion",
+        model: "private-model",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "custom-ok" },
+          },
+        ],
+        usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "custom",
+      name: "Custom Routing Provider",
+      api_key: "custom-routing-key",
+      base_url: "https://custom.example/api",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Custom Routing Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "private-model",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "hello custom provider" }],
+      { useTools: false, sessionId: "custom-provider-route-session" }
+    );
+
+    expect(result.content).toBe("custom-ok");
+    expect(requestUrl).toBe("https://custom.example/api/chat/completions");
+    expect(requestHeaders.get("Authorization")).toBe("Bearer custom-routing-key");
+    expect(requestBody.model).toBe("private-model");
+  });
+
   test("executes text-form tool calls from OpenAI-compatible providers without leaking markup", async () => {
     const requestBodies: Array<Record<string, unknown>> = [];
 

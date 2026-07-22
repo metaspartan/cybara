@@ -1,5 +1,5 @@
 import React from "react";
-import { Loader2, AlertTriangle, AlertCircle, CheckCircle2, Info } from "lucide-react";
+import { AlertTriangle, AlertCircle, CheckCircle2, Info } from "lucide-react";
 import { normalizeActivityTextForPhase, type LiveActivityItem } from "@/lib/chatActivities";
 import { cn } from "@/lib/utils";
 import {
@@ -9,7 +9,7 @@ import {
   getLatestIdeInFlightStep,
 } from "./ideActivityHelpers";
 import type { IdeProcessActivity } from "./ideTypes";
-import { LiveStatusIndicator } from "../chat/LiveStatusIndicator";
+import { LiveStatusIndicator, LiveStatusOrb } from "../chat/LiveStatusIndicator";
 
 export function IdeActivityText({ text }: { text: string }) {
   const shouldHighlightCounters = /^(Edited|Created|Updated|Deleted)\b/i.test(text);
@@ -64,7 +64,7 @@ export function IdeProcessActivityList({ activities }: { activities: LiveActivit
             className="flex items-start gap-1.5 text-[12px] px-0.5 text-gray-400"
           >
             {activity.phase === "start" ? (
-              <Loader2 className="h-3 w-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
+              <LiveStatusOrb state="solving" size={20} className="opacity-80" />
             ) : activity.phase === "result" ? (
               <CheckCircle2 className="h-3 w-3 text-emerald-400 mt-0.5 flex-shrink-0" />
             ) : activity.phase === "blocked" ? (

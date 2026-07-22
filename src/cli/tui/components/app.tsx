@@ -890,7 +890,7 @@ const SetupWizard = () => {
   const { exit } = useApp();
   const layout = useTerminalLayout();
   const [step, setStep] = React.useState<
-    "welcome" | "provider" | "apikey" | "oauth" | "permissions" | "complete"
+    "welcome" | "provider" | "baseurl" | "apikey" | "oauth" | "permissions" | "complete"
   >("welcome");
   const [providerOptions, setProviderOptions] = React.useState<
     ProviderOption[]
@@ -900,6 +900,7 @@ const SetupWizard = () => {
   const [providerSearchOpen, setProviderSearchOpen] = React.useState(false);
   const [chosenProvider, setChosenProvider] = React.useState<ProviderOption | null>(null);
   const [apiKey, setApiKey] = React.useState("");
+  const [customProviderUrl, setCustomProviderUrl] = React.useState("");
   const [oauthVerification, setOAuthVerification] = React.useState<{
     code?: string;
     url: string;
@@ -993,10 +994,14 @@ const SetupWizard = () => {
         const provider = providerMatches[selectedProvider];
         if (!provider) return;
         setChosenProvider(provider);
+        setApiKey("");
+        setCustomProviderUrl("");
         setProviderSearchOpen(false);
         if (provider.authType === "oauth") {
           setStep("oauth");
           void createOAuthProvider(provider);
+        } else if (provider.id === "custom") {
+          setStep("baseurl");
         } else if (provider.requiresApiKey) {
           setStep("apikey");
         } else {
@@ -1023,6 +1028,16 @@ const SetupWizard = () => {
       } else if (input === "q") {
         exit();
       }
+    } else if (step === "baseurl") {
+      if (key.return && customProviderUrl.trim()) {
+        setStep("apikey");
+      } else if (key.escape) {
+        setStep("provider");
+      } else if (key.backspace || key.delete) {
+        setCustomProviderUrl((url) => url.slice(0, -1));
+      } else if (input && !key.ctrl && !key.meta) {
+        setCustomProviderUrl((url) => url + input);
+      }
     } else if (step === "apikey") {
       if (key.return) {
         if (apiKey.length > 0) {
@@ -1031,9 +1046,11 @@ const SetupWizard = () => {
             createProvider(provider.id, apiKey);
           }
         }
+      } else if (key.escape) {
+        setStep(chosenProvider?.id === "custom" ? "baseurl" : "provider");
       } else if (key.backspace || key.delete) {
         setApiKey((k) => k.slice(0, -1));
-      } else if (input && input.length === 1 && !key.ctrl && !key.meta) {
+      } else if (input && !key.ctrl && !key.meta) {
         setApiKey((k) => k + input);
       } else if (input === "") {
         exit();
@@ -1119,6 +1136,7 @@ const SetupWizard = () => {
             providerOptions.find((p) => p.id === providerId)?.name ||
             providerId,
           api_key: key || undefined,
+          base_url: providerId === "custom" ? customProviderUrl.trim() || undefined : undefined,
           access_token: credentials?.accessToken,
           refresh_token: credentials?.refreshToken,
           expires_at: credentials?.expiresAt,
@@ -1268,6 +1286,19 @@ const SetupWizard = () => {
             </Box>
             <Box marginTop={1}>
               <Text color="gray">Press ENTER when done</Text>
+            </Box>
+          </>
+        )}
+
+        {step === "baseurl" && (
+          <>
+            <Text bold>Enter OpenAI-compatible API Base URL</Text>
+            <Box marginTop={1}>
+              <Text color="gray">URL: </Text>
+              <Text>{customProviderUrl || "https://api.example.com/v1"}</Text>
+            </Box>
+            <Box marginTop={1}>
+              <Text color="gray">Enter continue · Esc back</Text>
             </Box>
           </>
         )}

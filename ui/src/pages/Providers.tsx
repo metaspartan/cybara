@@ -277,6 +277,7 @@ export function Providers() {
         api_key: (formData.get("api_key") as string) || undefined,
         access_token: (formData.get("access_token") as string) || undefined,
         refresh_token: (formData.get("refresh_token") as string) || undefined,
+        base_url: (formData.get("base_url") as string) || undefined,
         settings: providerSettingsFromForm(providerType, formData),
         expires_at: Number(formData.get("expires_at")) || undefined,
         is_default: formData.get("is_default") === "on",
@@ -298,6 +299,7 @@ export function Providers() {
           api_key: (formData.get("api_key") as string) || undefined,
           access_token: (formData.get("access_token") as string) || undefined,
           refresh_token: (formData.get("refresh_token") as string) || undefined,
+          base_url: (formData.get("base_url") as string) || undefined,
           settings: providerSettingsFromForm(editingProvider.provider, formData),
           expires_at: Number(formData.get("expires_at")) || undefined,
           is_default: formData.get("is_default") === "on",
@@ -959,6 +961,18 @@ function ProviderModal({
           required
         />
 
+        {selectedProvider === "custom" && (
+          <Input
+            name="base_url"
+            label="API Base URL"
+            type="url"
+            placeholder="https://api.example.com/v1"
+            defaultValue={provider?.base_url || provider?.baseUrl || ""}
+            helperText="OpenAI-compatible API base. Local and private network endpoints are supported."
+            required
+          />
+        )}
+
         {authType === "api_key" && (
           <div className="space-y-3">
             <Input
@@ -970,8 +984,11 @@ function ProviderModal({
               helperText={
                 selectedProvider === "devin"
                   ? "Create a service user in your Devin organization"
-                  : "Your API key from the provider's dashboard"
+                  : selectedProvider === "custom"
+                    ? "API key sent to the custom endpoint as a bearer token"
+                    : "Your API key from the provider's dashboard"
               }
+              required={selectedProvider === "custom" && !isEdit}
             />
             {apiConsoleUrl && (
               <button

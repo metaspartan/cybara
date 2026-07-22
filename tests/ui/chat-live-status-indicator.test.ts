@@ -13,15 +13,15 @@ describe("live chat status indicator", () => {
     expect(indicator).toContain('text === "Generating response..." ? "solving" : "composing"');
     expect(indicator).toContain("const orbState = resolveLiveStatusOrbState(text)");
     expect(indicator).toContain("state={orbState}");
-    expect(indicator).toContain("data-orb-state={orbState}");
+    expect(indicator).toContain("data-orb-state={state}");
   });
 
   test("renders the orb as a decorative fixed-size canvas", () => {
     const indicator = source("ui/src/pages/chat/LiveStatusIndicator.tsx");
 
     expect(indicator).toContain("size={20}");
-    expect(indicator).toContain("width={20}");
-    expect(indicator).toContain("height={20}");
+    expect(indicator).toContain("width={size}");
+    expect(indicator).toContain("height={size}");
     expect(indicator).toContain('role="presentation"');
     expect(indicator).toContain('aria-hidden="true"');
     expect(indicator).toContain("live-status-shine");

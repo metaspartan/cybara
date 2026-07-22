@@ -23,13 +23,13 @@ import {
   setProviderPlanMonitoringConfig,
 } from "../core/provider-plans";
 import { normalizeProviderSettings } from "../core/provider-settings";
-import { providerApiConsoleUrl } from "../core/providers/api-console-links";
 import {
+  type ProviderType,
   providerManager,
   providers,
-  type ProviderType,
   resolveProviderType,
 } from "../core/providers";
+import { providerApiConsoleUrl } from "../core/providers/api-console-links";
 import { invalidateCachedRoute } from "./route-cache";
 import {
   buildGoogleAuthHeaders,
@@ -39,9 +39,10 @@ import {
   type RouteHandler,
 } from "./routes/_shared";
 import {
+  validateCustomProviderConfiguration,
+  validatePluginProviderBaseUrl,
   validateProviderBaseUrlShape,
   validateProviderCredentialShape,
-  validatePluginProviderBaseUrl,
 } from "./routes/provider-validation";
 
 function providerAccountPoolResponse(pool: ProviderAccountPool): Record<string, unknown> {
@@ -214,14 +215,14 @@ export const providerRoutes: Record<string, RouteHandler> = {
       }
     }
 
-    if (provider.provider === "openai") {
+    if (provider.provider === "openai" || provider.provider === "custom") {
       const apiKey = provider.api_key || provider.access_token;
       const baseUrl = provider.base_url || providerInfo.baseUrl || "https://api.openai.com/v1";
       if (!apiKey) {
         return {
           success: false,
           provider: provider.provider,
-          message: "OpenAI API key is missing",
+          message: "Provider API key is missing",
         };
       }
 
@@ -238,20 +239,20 @@ export const providerRoutes: Record<string, RouteHandler> = {
           return {
             success: false,
             provider: provider.provider,
-            message: `OpenAI auth/model check failed: HTTP ${response.status}${safeText ? ` - ${safeText}` : ""}`,
+            message: `Provider auth/model check failed: HTTP ${response.status}${safeText ? ` - ${safeText}` : ""}`,
           };
         }
 
         return {
           success: true,
           provider: provider.provider,
-          message: "OpenAI credentials verified",
+          message: "Provider credentials verified",
         };
       } catch (error) {
         return {
           success: false,
           provider: provider.provider,
-          message: `OpenAI test failed: ${(error as Error).message}`,
+          message: `Provider test failed: ${(error as Error).message}`,
         };
       }
     }
@@ -408,6 +409,9 @@ export const providerRoutes: Record<string, RouteHandler> = {
         apiKey,
         accessToken,
       });
+      if (resolvedProviderType === "custom") {
+        validateCustomProviderConfiguration(normalizedBaseUrl, apiKey);
+      }
     } else if (pluginProvider?.authType !== "none" && !apiKey && !accessToken) {
       throw new Error("Validation error: plugin provider API key is required");
     }
@@ -449,7 +453,10 @@ export const providerRoutes: Record<string, RouteHandler> = {
       refresh_token: refreshToken,
       settings: providerSettings,
       expires_at: typeof data.expires_at === "number" ? data.expires_at : undefined,
-      base_url: normalizedBaseUrl,
+      base_url:
+        resolvedProviderType === "custom"
+          ? normalizedBaseUrl?.replace(/\/+$/, "")
+          : normalizedBaseUrl,
       is_default: data.is_default,
     });
     invalidateCachedRoute("GET /api/provider-plans/status");
@@ -484,7 +491,10 @@ export const providerRoutes: Record<string, RouteHandler> = {
         } else {
           validateProviderBaseUrlShape(normalizedBaseUrl);
         }
-        updates.base_url = normalizedBaseUrl;
+        updates.base_url =
+          existing.provider === "custom"
+            ? normalizedBaseUrl.replace(/\/+$/, "")
+            : normalizedBaseUrl;
       }
     }
 

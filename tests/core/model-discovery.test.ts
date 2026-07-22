@@ -88,6 +88,32 @@ describe("provider model discovery", () => {
     expect(discovered?.cost_output).toBe(1.5);
   });
 
+  test("discovers models from custom provider API paths without a v1 segment", async () => {
+    const provider = providerManager.create({
+      provider: "custom",
+      name: "Custom Endpoint Discovery Test",
+      api_key: "custom-discovery-key",
+      base_url: "http://127.0.0.1:8765/api",
+    });
+    createdProviderIds.push(provider.id);
+    let requestedUrl = "";
+    let requestedHeaders = new Headers();
+
+    const result = await discoverProviderModels(provider.id, {
+      request: async (input, init) => {
+        requestedUrl = String(input);
+        requestedHeaders = new Headers(init?.headers);
+        return Response.json({ data: [{ id: "private-model" }] });
+      },
+      discoverCatalog: async () => [],
+    });
+
+    expect(result.source).toBe("endpoint");
+    expect(requestedUrl).toBe("http://127.0.0.1:8765/api/models");
+    expect(requestedHeaders.get("Authorization")).toBe("Bearer custom-discovery-key");
+    expect(providerManager.getModels(provider.id)[0]?.model_id).toBe("private-model");
+  });
+
   test("uses the authenticated Codex picker list as the authoritative account catalog", async () => {
     const provider = providerManager.create({
       provider: "openai-codex",

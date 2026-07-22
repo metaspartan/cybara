@@ -1303,6 +1303,7 @@ async function main() {
             flags.token,
             flags.isDefault,
             flags.oauth,
+            flags.baseUrl,
           );
           break;
         }
@@ -1314,6 +1315,7 @@ async function main() {
             uFlags.key,
             uFlags.token,
             uFlags.isDefault,
+            uFlags.baseUrl,
           );
           break;
         }
@@ -1362,6 +1364,7 @@ async function main() {
           console.log("    --name NAME   Display name");
           console.log("    --key KEY     API key");
           console.log("    --token TOK   Access token");
+          console.log("    --url URL     Custom API base URL");
           console.log("    --oauth       Connect via OAuth device code flow");
           console.log("    --default     Set as default");
           console.log("  cybara provider update <id>   - Update provider");

@@ -31,6 +31,7 @@ export interface ProviderFlags {
   name?: string;
   key?: string;
   token?: string;
+  baseUrl?: string;
   isDefault: boolean;
   oauth: boolean;
 }
@@ -58,7 +59,8 @@ interface CliProviderCommands {
     apiKey?: string,
     accessToken?: string,
     isDefault?: boolean,
-    useOAuth?: boolean
+    useOAuth?: boolean,
+    baseUrl?: string
   ) => Promise<void>;
   available: () => Promise<void>;
   delete: (id: string) => Promise<void>;
@@ -76,7 +78,8 @@ interface CliProviderCommands {
     name?: string,
     apiKey?: string,
     accessToken?: string,
-    isDefault?: boolean
+    isDefault?: boolean,
+    baseUrl?: string
   ) => Promise<void>;
 }
 
@@ -131,8 +134,9 @@ export function createCliProviderCommands(
     console.log("");
     for (const provider of data) {
       const auth = provider.authType === "none" ? "(no auth)" : `(${provider.authType})`;
+      const endpoint = provider.baseUrl || "set when adding";
       console.log(`  ${provider.id.padEnd(18)} ${provider.name} ${auth}`);
-      console.log(`${"".padEnd(20)} ${provider.models.length} models | ${provider.baseUrl}`);
+      console.log(`${"".padEnd(20)} ${provider.models.length} models | ${endpoint}`);
     }
   };
 
@@ -142,12 +146,13 @@ export function createCliProviderCommands(
     apiKey?: string,
     accessToken?: string,
     isDefault?: boolean,
-    useOAuth?: boolean
+    useOAuth?: boolean,
+    baseUrl?: string
   ): Promise<void> => {
     if (!type) {
       console.error("ERROR: Please specify a provider type");
       console.log(
-        "Usage: cybara provider add <type> [--name NAME] [--key KEY] [--token TOKEN] [--oauth] [--default]"
+        "Usage: cybara provider add <type> [--name NAME] [--key KEY] [--token TOKEN] [--url URL] [--oauth] [--default]"
       );
       console.log("");
       console.log("Run 'cybara provider available' to see available types");
@@ -192,6 +197,7 @@ export function createCliProviderCommands(
     if (accessToken) body.access_token = accessToken;
     if (refreshToken) body.refresh_token = refreshToken;
     if (expiresAt) body.expires_at = expiresAt;
+    if (baseUrl) body.base_url = baseUrl;
     if (isDefault) body.is_default = true;
     try {
       const response = await fetch(`${apiBase}/api/providers`, {
@@ -215,12 +221,13 @@ export function createCliProviderCommands(
     name?: string,
     apiKey?: string,
     accessToken?: string,
-    isDefault?: boolean
+    isDefault?: boolean,
+    baseUrl?: string
   ): Promise<void> => {
     if (!id) {
       console.error("ERROR: Please specify a provider ID");
       console.log(
-        "Usage: cybara provider update <id> [--name NAME] [--key KEY] [--token TOKEN] [--default]"
+        "Usage: cybara provider update <id> [--name NAME] [--key KEY] [--token TOKEN] [--url URL] [--default]"
       );
       process.exit(1);
     }
@@ -228,6 +235,7 @@ export function createCliProviderCommands(
     if (name) body.name = name;
     if (apiKey) body.api_key = apiKey;
     if (accessToken) body.access_token = accessToken;
+    if (baseUrl) body.base_url = baseUrl;
     if (isDefault !== undefined) body.is_default = isDefault;
     try {
       const response = await fetch(`${apiBase}/api/providers/${id}`, {
@@ -309,6 +317,7 @@ export function createCliProviderCommands(
     let name: string | undefined;
     let key: string | undefined;
     let token: string | undefined;
+    let baseUrl: string | undefined;
     let isDefault = false;
     let oauth = false;
     for (let index = 0; index < args.length; index += 1) {
@@ -325,6 +334,10 @@ export function createCliProviderCommands(
         case "-t":
           token = args[++index];
           break;
+        case "--url":
+        case "--base-url":
+          baseUrl = args[++index];
+          break;
         case "--default":
         case "-d":
           isDefault = true;
@@ -335,7 +348,7 @@ export function createCliProviderCommands(
           break;
       }
     }
-    return { name, key, token, isDefault, oauth };
+    return { name, key, token, baseUrl, isDefault, oauth };
   };
 
   const parsePoolFlags = (args: string[]): ProviderPoolFlags => {

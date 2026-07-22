@@ -70,6 +70,7 @@ export function Setup() {
   const [providerSearch, setProviderSearch] = useState("");
   const [toolApprovalMode, setToolApprovalMode] = useState<"always_allow" | "ask">("always_allow");
   const [apiKey, setApiKey] = useState("");
+  const [customProviderUrl, setCustomProviderUrl] = useState("");
   const [configuredProvider, setConfiguredProvider] = useState<Provider | null>(null);
   const [agentName, setAgentName] = useState("My Agent");
   const [agentModel, setAgentModel] = useState("");
@@ -118,6 +119,7 @@ export function Setup() {
   const handleProviderSelect = (provider: AvailableProvider) => {
     setSelectedProvider(provider);
     setAgentModel("");
+    setCustomProviderUrl("");
     setError(null);
 
     const authFlow = getAuthFlow(provider);
@@ -144,6 +146,7 @@ export function Setup() {
         name:
           availableProviders?.find((provider) => provider.id === providerId)?.name || providerId,
         api_key: key || undefined,
+        base_url: providerId === "custom" ? customProviderUrl.trim() || undefined : undefined,
         access_token: oauthCredentials?.access_token,
         refresh_token: oauthCredentials?.refresh_token,
         expires_at: oauthCredentials?.expires_at,
@@ -403,6 +406,17 @@ export function Setup() {
                 </div>
 
                 <div className="space-y-4">
+                  {selectedProvider.id === "custom" && (
+                    <Input
+                      label="API Base URL"
+                      type="url"
+                      placeholder="https://api.example.com/v1"
+                      value={customProviderUrl}
+                      onChange={(event) => setCustomProviderUrl(event.target.value)}
+                      helperText="OpenAI-compatible API base. Local and private network endpoints are supported."
+                      required
+                    />
+                  )}
                   <Input
                     type="password"
                     placeholder={selectedCredentialCopy?.placeholder}
@@ -419,7 +433,11 @@ export function Setup() {
                     </Button>
                     <Button
                       onClick={() => handleCreateProvider(selectedProvider.id, apiKey)}
-                      disabled={!apiKey.trim() || isLoading}
+                      disabled={
+                        !apiKey.trim() ||
+                        (selectedProvider.id === "custom" && !customProviderUrl.trim()) ||
+                        isLoading
+                      }
                       isLoading={isLoading}
                       className="flex-1"
                     >
