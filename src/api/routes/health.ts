@@ -3,6 +3,7 @@ import { getAppVersion } from "../../core/build-info";
 import { tables } from "../../core/database";
 import { type ProviderType, providerManager, providers } from "../../core/providers";
 import { getSystemMonitorSnapshot } from "../../core/system-monitor";
+import { createLivenessPayload } from "../health-probe";
 import {
   isGatewayReady,
   resolveGatewayHealthStatus,
@@ -122,9 +123,6 @@ function providerConfigurationResponse(): unknown {
 export const healthRoutes: Record<string, RouteHandler> = {
   "GET /api/health": healthResponse,
   "GET /api/health/ready": readinessResponse,
-  "GET /api/health/live": () => ({
-    live: true,
-    timestamp: new Date().toISOString(),
-  }),
+  "GET /api/health/live": () => createLivenessPayload(),
   "GET /api/providers/health": providerConfigurationResponse,
 };

@@ -1,16 +1,16 @@
-import workerPath from "./transformers-embedding-worker.mjs" with { type: "file" };
 import { join } from "node:path";
 import { ensureBunRuntime, findBunRuntime } from "../bun-runtime";
-import {
-  ensureManagedTransformersRuntime,
-  isManagedTransformersRuntimeInstalled,
-  managedTransformersRuntimeDir,
-} from "./transformers-package-runtime";
+import workerPath from "./transformers-embedding-worker.mjs" with { type: "file" };
 import {
   isTransformersEmbeddingWorkerResponse,
   type TransformersEmbeddingWorkerRequest,
   type TransformersEmbeddingWorkerResponse,
 } from "./transformers-embedding-worker-protocol";
+import {
+  ensureManagedTransformersRuntime,
+  isManagedTransformersRuntimeInstalled,
+  managedTransformersRuntimeDir,
+} from "./transformers-package-runtime";
 
 interface PendingWorkerRequest {
   resolve: (response: TransformersEmbeddingWorkerResponse) => void;
@@ -33,6 +33,15 @@ let workerStart: Promise<ReturnType<typeof Bun.spawn>> | null = null;
 let workerCacheDir = "";
 let exitHookInstalled = false;
 const pendingRequests = new Map<string, PendingWorkerRequest>();
+
+function resolveTransformersWorkerPath(): string {
+  const runtime = globalThis as typeof globalThis & {
+    __CYBARA_RUNTIME_ASSETS__?: {
+      transformersEmbeddingWorker?: string;
+    };
+  };
+  return runtime.__CYBARA_RUNTIME_ASSETS__?.transformersEmbeddingWorker || workerPath;
+}
 
 function failPendingRequests(message: string): void {
   for (const pending of pendingRequests.values()) {
@@ -62,7 +71,7 @@ async function startWorker(cacheDir: string): Promise<ReturnType<typeof Bun.spaw
   const runtimeDir = await ensureManagedTransformersRuntime();
   const runtimePath = findBunRuntime() || (await ensureBunRuntime());
   const materializedWorkerPath = join(runtimeDir, "transformers-embedding-worker.mjs");
-  await Bun.write(materializedWorkerPath, Bun.file(workerPath));
+  await Bun.write(materializedWorkerPath, Bun.file(resolveTransformersWorkerPath()));
   let stderr = "";
   let stderrFinished = Promise.resolve();
   const started = Bun.spawn([runtimePath, materializedWorkerPath], {

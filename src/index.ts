@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "fs";
 import { dirname, join, resolve, sep } from "path";
 import { fileURLToPath } from "url";
+import { parseWebSocketAuthProtocol } from "../shared/websocket-auth";
 import {
   handleChat,
   listPendingChatMessages,
@@ -10,9 +11,10 @@ import {
   stopActiveChatTurn,
 } from "./api/chat";
 import { getClientIp } from "./api/client-ip";
-import { classifyRequestBodyReadFailure, readRequestText } from "./api/request-body";
 import { setGatewayHostApplyHandler } from "./api/gateway-network";
 import { gatewayRequestIdleTimeoutSeconds } from "./api/gateway-request-timeout";
+import { createLivenessPayload, isLivenessProbe } from "./api/health-probe";
+import { classifyRequestBodyReadFailure, readRequestText } from "./api/request-body";
 import { handleRequest } from "./api/routes";
 import {
   getGatewayAuthSettings,
@@ -52,8 +54,8 @@ import {
   telegramBot,
   telegramSessions,
   twitchAdapter,
-  wecomAdapter,
   webhookAdapter,
+  wecomAdapter,
   whatsappAdapter,
   zaloAdapter,
   zulipAdapter,
@@ -77,12 +79,12 @@ import { listInstalledPlugins } from "./core/plugins";
 import { activateInstalledPluginRuntimes } from "./core/plugins/runtime";
 import { providerManager } from "./core/providers";
 import { getEmbeddedUiBundle, readEmbeddedUiIndex } from "./core/runtime/embedded-ui";
+import { installGatewayLogCapture } from "./core/runtime/gateway-log-file";
 import {
   gatewayPortCandidates,
   gatewayPortFallbackCount,
   gatewayPortSignal,
 } from "./core/runtime/gateway-port";
-import { installGatewayLogCapture } from "./core/runtime/gateway-log-file";
 import { resolveMediaFile } from "./core/runtime/media-files";
 import { isCompiledRuntime } from "./core/runtime/runtime-mode";
 import { readUiIndexContent } from "./core/runtime/ui-index";
@@ -103,7 +105,6 @@ import {
   handleMemorySearch,
 } from "./core/tools/handlers/memory";
 import { toolSchemas } from "./core/tools/index";
-import { parseWebSocketAuthProtocol } from "../shared/websocket-auth";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -430,6 +431,16 @@ function createGatewayServer(
             headers: { "Content-Type": "application/json" },
           });
         }
+      }
+
+      if (isLivenessProbe(req.method, pathname)) {
+        return new Response(JSON.stringify(createLivenessPayload()), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store",
+            ...commonSecurityHeaders,
+          },
+        });
       }
 
       const requestIdleTimeout = gatewayRequestIdleTimeoutSeconds(req.method, pathname);

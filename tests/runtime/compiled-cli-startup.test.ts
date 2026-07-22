@@ -76,6 +76,9 @@ describe("compiled CLI startup", () => {
       expect(help.stdout.toString()).toContain("CYBARA CLI");
       expect(help.stderr.toString()).not.toContain("Cannot find module");
 
+      const status = Bun.spawnSync([binary, "status"], { cwd: directory, env: environment });
+      expect(status.stderr.toString()).not.toContain("Cannot find module");
+
       processHandle = Bun.spawn([binary, "start", "--port", String(port)], {
         cwd: directory,
         env: environment,
