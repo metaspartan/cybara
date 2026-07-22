@@ -8,6 +8,10 @@ import {
   startMobileSimulator,
   stopMobileSimulator,
 } from "../../core/mobile-simulator";
+import {
+  ensureIosSimulatorAutomation,
+  getIosSimulatorAutomationStatus,
+} from "../../core/mobile-simulator-idb";
 import { recordMobileSimulatorTrajectoryTurn } from "../../core/mobile-simulator-trajectory";
 import type { RouteHandler } from "./_shared";
 
@@ -29,6 +33,10 @@ export const mobileSimulatorRoutes: Record<string, RouteHandler> = {
     success: true,
     data: await getMobileSimulatorStatus(),
   }),
+  "POST /api/simulators/ios/automation/install": async () => {
+    await ensureIosSimulatorAutomation();
+    return { success: true, data: getIosSimulatorAutomationStatus() };
+  },
   "POST /api/simulators/:platform/start": async (body, params) => {
     const input = inputRecord(body);
     const platform = platformFromParams(params?.platform);

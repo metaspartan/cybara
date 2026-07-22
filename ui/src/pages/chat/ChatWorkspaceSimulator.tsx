@@ -47,6 +47,12 @@ interface SimulatorDevice {
 }
 
 interface SimulatorPlatformStatus {
+  automation?: {
+    installable: boolean;
+    installed: boolean;
+    installing: boolean;
+    reason?: string;
+  };
   supported: boolean;
   installed: boolean;
   interactive: boolean;
@@ -114,7 +120,19 @@ function parsePlatformStatus(value: unknown): SimulatorPlatformStatus | null {
   const devices = Array.isArray(record.devices)
     ? record.devices.map(parseDevice).filter((device): device is SimulatorDevice => device !== null)
     : [];
+  const automationRecord =
+    record.automation && typeof record.automation === "object"
+      ? (record.automation as Record<string, unknown>)
+      : null;
   return {
+    automation: automationRecord
+      ? {
+          installable: automationRecord.installable === true,
+          installed: automationRecord.installed === true,
+          installing: automationRecord.installing === true,
+          reason: typeof automationRecord.reason === "string" ? automationRecord.reason : undefined,
+        }
+      : undefined,
     supported: record.supported === true,
     installed: record.installed === true,
     interactive: record.interactive === true,
@@ -193,12 +211,14 @@ export function ChatWorkspaceSimulator({
   const [selectedId, setSelectedId] = useState("");
   const [frame, setFrame] = useState<SimulatorFrame | null>(null);
   const [busy, setBusy] = useState(false);
+  const [installingAutomation, setInstallingAutomation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [previewSurfaceSize, setPreviewSurfaceSize] = useState<PreviewSize | null>(null);
   const revisionRef = useRef("");
   const frameRequestRef = useRef(false);
   const lastInteractionAtRef = useRef(0);
+  const automationAttemptRef = useRef(false);
   const surfaceRef = useRef<HTMLDivElement>(null);
 
   const loadStatus = useCallback(async (): Promise<SimulatorPlatformStatus> => {
@@ -276,15 +296,47 @@ export function ChatWorkspaceSimulator({
     }
   }, [platform, selectedId]);
 
+  const installIosAutomation = useCallback(async (): Promise<void> => {
+    if (automationAttemptRef.current) return;
+    automationAttemptRef.current = true;
+    setInstallingAutomation(true);
+    setNotice("Installing direct iOS controls");
+    setError(null);
+    try {
+      const response = await apiFetch("/api/simulators/ios/automation/install", {
+        method: "POST",
+        signal: AbortSignal.timeout(20 * 60 * 1000),
+      });
+      if (!response.ok) throw await responseError(response, "iOS control installation failed");
+      await loadStatus();
+      revisionRef.current = "";
+      setNotice("Direct iOS controls ready");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "iOS control installation failed");
+    } finally {
+      setInstallingAutomation(false);
+    }
+  }, [loadStatus]);
+
   useEffect(() => {
     if (!visible) return;
     setBusy(true);
     void loadStatus()
+      .then((next) => {
+        if (
+          platform === "ios" &&
+          next.installed &&
+          !next.interactive &&
+          next.automation?.installable
+        ) {
+          void installIosAutomation();
+        }
+      })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : "Simulator status is unavailable");
       })
       .finally(() => setBusy(false));
-  }, [loadStatus, visible]);
+  }, [installIosAutomation, loadStatus, platform, visible]);
 
   useEffect(() => {
     revisionRef.current = "";
@@ -293,6 +345,7 @@ export function ChatWorkspaceSimulator({
   }, [selectedId]);
 
   const selectedDevice = status?.devices.find((device) => device.id === selectedId) ?? null;
+  const hasFrame = frame !== null;
 
   useEffect(() => {
     if (!visible || selectedDevice?.state !== "booted") return;
@@ -325,7 +378,7 @@ export function ChatWorkspaceSimulator({
     observer.observe(surface);
     update();
     return () => observer.disconnect();
-  }, [frame !== null]);
+  }, [hasFrame]);
 
   useEffect(() => {
     const activeSessionId = sessionId?.trim();
@@ -374,8 +427,17 @@ export function ChatWorkspaceSimulator({
     if (busy) return;
     lastInteractionAtRef.current = Date.now();
     setBusy(true);
+    if (platform === "ios" && !status?.interactive) automationAttemptRef.current = false;
     try {
-      await loadStatus();
+      const next = await loadStatus();
+      if (
+        platform === "ios" &&
+        next.installed &&
+        !next.interactive &&
+        next.automation?.installable
+      ) {
+        await installIosAutomation();
+      }
       await loadFrame();
       setError(null);
     } catch (reason) {
@@ -513,7 +575,7 @@ export function ChatWorkspaceSimulator({
         <select
           aria-label={`${label} device`}
           className="h-7 min-w-0 flex-1 truncate rounded-md border border-white/10 bg-white/[0.04] px-2 text-[11px] text-gray-300 outline-none"
-          disabled={busy || !status?.devices.length}
+          disabled={busy || installingAutomation || !status?.devices.length}
           onChange={(event) => setSelectedId(event.target.value)}
           value={selectedId}
         >
@@ -530,7 +592,7 @@ export function ChatWorkspaceSimulator({
             type="button"
             aria-label={`Stop ${label}`}
             className="rounded-md p-1.5 text-gray-500 hover:bg-white/[0.06] hover:text-gray-200"
-            disabled={busy}
+            disabled={busy || installingAutomation}
             onClick={() => void runLifecycle("stop")}
           >
             <CircleStop className="h-3.5 w-3.5" />
@@ -540,7 +602,7 @@ export function ChatWorkspaceSimulator({
             type="button"
             aria-label={`Start ${label}`}
             className="rounded-md p-1.5 text-gray-500 hover:bg-white/[0.06] hover:text-gray-200"
-            disabled={busy || !selectedDevice}
+            disabled={busy || installingAutomation || !selectedDevice}
             onClick={() => void runLifecycle("start")}
           >
             <Play className="h-3.5 w-3.5" />
@@ -550,7 +612,7 @@ export function ChatWorkspaceSimulator({
           type="button"
           aria-label={`Refresh ${label}`}
           className="rounded-md p-1.5 text-gray-500 hover:bg-white/[0.06] hover:text-gray-200"
-          disabled={busy}
+          disabled={busy || installingAutomation}
           onClick={() => void refresh()}
         >
           <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} />
@@ -597,7 +659,7 @@ export function ChatWorkspaceSimulator({
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-            {busy ? (
+            {busy || installingAutomation ? (
               <Loader2 className="h-5 w-5 animate-spin text-gray-500" />
             ) : selectedDevice?.state === "booted" ? (
               <RotateCcw className="h-5 w-5 text-gray-600" />
@@ -628,7 +690,7 @@ export function ChatWorkspaceSimulator({
         <div className="flex shrink-0 items-center gap-0.5">
           {platform === "android" ? (
             <SimulatorControl
-              disabled={!selectedDevice?.interactive || busy}
+              disabled={!selectedDevice?.interactive || busy || installingAutomation}
               label="Back"
               onClick={() => void runAction({ action: "key", key: "BACK" })}
             >
@@ -636,7 +698,7 @@ export function ChatWorkspaceSimulator({
             </SimulatorControl>
           ) : null}
           <SimulatorControl
-            disabled={!selectedDevice?.interactive || busy}
+            disabled={!selectedDevice?.interactive || busy || installingAutomation}
             label="Home"
             onClick={() => void runAction({ action: "key", key: "HOME" })}
           >
@@ -645,21 +707,21 @@ export function ChatWorkspaceSimulator({
           {platform === "android" ? (
             <>
               <SimulatorControl
-                disabled={!selectedDevice?.interactive || busy}
+                disabled={!selectedDevice?.interactive || busy || installingAutomation}
                 label="Recent apps"
                 onClick={() => void runAction({ action: "key", key: "RECENTS" })}
               >
                 <Layers3 className="h-3.5 w-3.5" />
               </SimulatorControl>
               <SimulatorControl
-                disabled={!selectedDevice?.interactive || busy}
+                disabled={!selectedDevice?.interactive || busy || installingAutomation}
                 label="Volume down"
                 onClick={() => void runAction({ action: "key", key: "VOLUME_DOWN" })}
               >
                 <Volume1 className="h-3.5 w-3.5" />
               </SimulatorControl>
               <SimulatorControl
-                disabled={!selectedDevice?.interactive || busy}
+                disabled={!selectedDevice?.interactive || busy || installingAutomation}
                 label="Volume up"
                 onClick={() => void runAction({ action: "key", key: "VOLUME_UP" })}
               >
@@ -668,7 +730,7 @@ export function ChatWorkspaceSimulator({
             </>
           ) : null}
           <SimulatorControl
-            disabled={!selectedDevice?.interactive || busy}
+            disabled={!selectedDevice?.interactive || busy || installingAutomation}
             label={platform === "ios" ? "Side button" : "Power"}
             onClick={() =>
               void runAction({
@@ -680,7 +742,7 @@ export function ChatWorkspaceSimulator({
             <Power className="h-3.5 w-3.5" />
           </SimulatorControl>
           <SimulatorControl
-            disabled={selectedDevice?.state !== "booted" || busy}
+            disabled={selectedDevice?.state !== "booted" || busy || installingAutomation}
             label="Save screenshot"
             onClick={() => void saveScreenshot()}
           >

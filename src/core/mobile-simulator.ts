@@ -11,6 +11,12 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { PNG } from "pngjs";
+import {
+  ensureIosSimulatorAutomation,
+  getIosSimulatorAutomationStatus,
+  iosSimulatorAutomationEnv,
+  type IosSimulatorAutomationStatus,
+} from "./mobile-simulator-idb";
 
 export type MobileSimulatorPlatform = "ios" | "android";
 export type MobileSimulatorState = "booted" | "shutdown" | "offline";
@@ -36,6 +42,7 @@ export interface MobileSimulatorDevice {
 }
 
 export interface MobileSimulatorPlatformStatus {
+  automation?: IosSimulatorAutomationStatus;
   platform: MobileSimulatorPlatform;
   supported: boolean;
   installed: boolean;
@@ -219,16 +226,13 @@ function resolveXcrun(): string | null {
   return process.platform === "darwin" ? Bun.which("xcrun") : null;
 }
 
-function resolveIdb(): string | null {
-  return process.platform === "darwin" ? Bun.which("idb") : null;
-}
-
 async function runCommand(
   command: string,
   args: string[],
-  options: { timeoutMs?: number } = {}
+  options: { env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}
 ): Promise<CommandResult> {
   const processHandle = Bun.spawn([command, ...args], {
+    env: options.env,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
@@ -262,7 +266,7 @@ async function runCommand(
 async function runChecked(
   command: string,
   args: string[],
-  options: { timeoutMs?: number } = {}
+  options: { env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}
 ): Promise<CommandResult> {
   const result = await runCommand(command, args, options);
   if (result.exitCode !== 0) {
@@ -331,7 +335,7 @@ async function listIosDevices(): Promise<MobileSimulatorDevice[]> {
   } catch {
     return [];
   }
-  return parseSimctlDevices(parsed, resolveIdb() !== null);
+  return parseSimctlDevices(parsed, getIosSimulatorAutomationStatus().installed);
 }
 
 async function androidAvdName(adb: string, serial: string): Promise<string> {
@@ -404,7 +408,7 @@ function clearDeviceCache(platform: MobileSimulatorPlatform): void {
 
 export async function getMobileSimulatorStatus(): Promise<MobileSimulatorStatus> {
   const xcrun = resolveXcrun();
-  const idb = resolveIdb();
+  const iosAutomation = getIosSimulatorAutomationStatus();
   const adb = resolveAndroidSdkExecutable("adb");
   const emulator = resolveAndroidSdkExecutable("emulator");
   const [iosDevices, androidDevices] = await Promise.all([
@@ -413,19 +417,24 @@ export async function getMobileSimulatorStatus(): Promise<MobileSimulatorStatus>
   ]);
   return {
     ios: {
+      automation: iosAutomation,
       platform: "ios",
       supported: process.platform === "darwin",
       installed: xcrun !== null,
-      interactive: idb !== null,
+      interactive: iosAutomation.installed,
       reason:
         process.platform !== "darwin"
           ? "iOS Simulator requires macOS and Xcode."
           : !xcrun
             ? "Install Xcode to use iOS Simulator."
-            : !idb
-              ? "Preview, app launch, and screenshots are ready. Install IDB for direct taps and text input."
+            : !iosAutomation.installed
+              ? iosAutomation.installing
+                ? "Installing direct iOS simulator controls."
+                : iosAutomation.installable
+                  ? "Preview is ready. Direct controls install automatically when needed."
+                  : iosAutomation.reason
               : undefined,
-      devices: iosDevices,
+      devices: iosDevices.map((device) => ({ ...device, interactive: iosAutomation.installed })),
     },
     android: {
       platform: "android",
@@ -898,32 +907,24 @@ async function runIosAction(
     const result = await runChecked(xcrun, ["simctl", "launch", device.id, appId]);
     return { success: true, appId, output: result.stdout.toString("utf8").trim() };
   }
-  const idb = resolveIdb();
-  if (!idb)
-    throw new Error(
-      "Direct iOS interaction requires IDB; preview and app actions remain available"
-    );
+  const automation = await ensureIosSimulatorAutomation();
+  const idb = automation.client;
+  if (!idb) throw new Error("Direct iOS simulator controls are unavailable");
+  const idbOptions = { env: iosSimulatorAutomationEnv(automation) };
   if (input.action === "describe") {
-    const result = await runChecked(idb, [
-      "ui",
-      "describe-all",
-      "--udid",
-      device.id,
-      "--json",
-      "--nested",
-    ]);
+    const result = await runChecked(
+      idb,
+      ["ui", "describe-all", "--udid", device.id, "--json", "--nested"],
+      idbOptions
+    );
     return { success: true, hierarchy: result.stdout.toString("utf8") };
   }
   if (input.action === "text") {
-    await runChecked(idb, [
-      "ui",
-      "text",
-      "--udid",
-      device.id,
-      "--json",
-      "--",
-      safeText(input.text),
-    ]);
+    await runChecked(
+      idb,
+      ["ui", "text", "--udid", device.id, "--json", "--", safeText(input.text)],
+      idbOptions
+    );
     return { success: true };
   }
   if (input.action === "key") {
@@ -931,32 +932,40 @@ async function runIosAction(
     if (!["APPLE_PAY", "HOME", "LOCK", "SIDE_BUTTON", "SIRI"].includes(key)) {
       throw new Error("Unsupported iOS simulator button");
     }
-    await runChecked(idb, ["ui", "button", "--udid", device.id, "--json", "--", key]);
+    await runChecked(idb, ["ui", "button", "--udid", device.id, "--json", "--", key], idbOptions);
     return { success: true };
   }
   const scale = await iosScale(device.id);
   const x = Math.round(finiteCoordinate(input.x) / scale);
   const y = Math.round(finiteCoordinate(input.y) / scale);
   if (input.action === "tap") {
-    await runChecked(idb, ["ui", "tap", "--udid", device.id, "--json", "--", String(x), String(y)]);
+    await runChecked(
+      idb,
+      ["ui", "tap", "--udid", device.id, "--json", "--", String(x), String(y)],
+      idbOptions
+    );
     return { success: true, x, y, scale };
   }
   const endX = Math.round(finiteCoordinate(input.endX) / scale);
   const endY = Math.round(finiteCoordinate(input.endY) / scale);
-  await runChecked(idb, [
-    "ui",
-    "swipe",
-    "--udid",
-    device.id,
-    "--duration",
-    String(safeDuration(input.durationMs) / 1000),
-    "--json",
-    "--",
-    String(x),
-    String(y),
-    String(endX),
-    String(endY),
-  ]);
+  await runChecked(
+    idb,
+    [
+      "ui",
+      "swipe",
+      "--udid",
+      device.id,
+      "--duration",
+      String(safeDuration(input.durationMs) / 1000),
+      "--json",
+      "--",
+      String(x),
+      String(y),
+      String(endX),
+      String(endY),
+    ],
+    idbOptions
+  );
   return { success: true, x, y, endX, endY, scale };
 }
 

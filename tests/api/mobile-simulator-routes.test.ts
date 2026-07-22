@@ -17,6 +17,7 @@ describe("mobile simulator routes", () => {
 
   test("exposes a dedicated screenshot save route", () => {
     expect(mobileSimulatorRoutes["POST /api/simulators/:platform/screenshot"]).toBeFunction();
+    expect(mobileSimulatorRoutes["POST /api/simulators/ios/automation/install"]).toBeFunction();
   });
 
   test("rejects invalid action and platform values before execution", async () => {

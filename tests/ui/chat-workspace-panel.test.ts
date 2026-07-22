@@ -168,6 +168,8 @@ describe("chat workspace panel", () => {
     expect(simulatorSource).toContain('label="Save screenshot"');
     expect(simulatorSource).toContain('key: "RECENTS"');
     expect(simulatorSource).toContain("deviceId: selectedId, sessionId");
+    expect(simulatorSource).toContain('apiFetch("/api/simulators/ios/automation/install"');
+    expect(simulatorSource).toContain("Installing direct iOS controls");
     expect(simulatorSource).not.toContain("FRAME_POLL_MS");
   });
 
