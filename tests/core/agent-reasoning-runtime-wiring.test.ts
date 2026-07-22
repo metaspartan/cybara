@@ -12,14 +12,8 @@ describe("agent reasoning runtime wiring", () => {
     );
   });
 
-  test("uses adaptive thinking for modern Anthropic models", () => {
-    expect(providerRuntimeSource).toContain("usesAnthropicAdaptiveThinking(modelId)");
-    expect(providerRuntimeSource).toContain(
-      'requestBody.thinking = { type: "adaptive", display: "summarized" }'
-    );
-    expect(providerRuntimeSource).toContain(
-      "requestBody.output_config = { effort: resolvedEffort }"
-    );
+  test("applies Anthropic reasoning options on every request path", () => {
+    expect(providerRuntimeSource.match(/applyAnthropicReasoningOptions\(/g)).toHaveLength(3);
   });
 
   test("uses model-aware Gemini thinking configuration", () => {

@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildNoUsableAssistantResponseMessage,
   buildToolExecutionFallbackMessage,
   classifyToolCallResult,
+  isNonSubstantiveAssistantCompletion,
   requiredDirectToolForMessage,
-  shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
+  shouldRecoverNonSubstantiveAssistantCompletion,
   suppressRecoveredWebFailureActivities,
 } from "../../src/api/chat-tool-summary";
 
@@ -34,33 +36,28 @@ describe("chat tool summary utilities", () => {
     expect(message).not.toContain("Tool: exec");
   });
 
-  test("marks actionable engineering prompts for forced tool retry", () => {
-    expect(
-      shouldEnforceToolUseForMessage("continue fixing tests in this repo and update the files")
-    ).toBe(true);
-    expect(shouldEnforceToolUseForMessage("scan the project and run lint to fix issues")).toBe(
+  test("recovers empty and bare success claims without overriding literal response requests", () => {
+    expect(isNonSubstantiveAssistantCompletion("")).toBe(true);
+    expect(isNonSubstantiveAssistantCompletion("Completed.")).toBe(true);
+    expect(isNonSubstantiveAssistantCompletion("Task done!")).toBe(true);
+    expect(isNonSubstantiveAssistantCompletion("Completed the import and verified 4 rows.")).toBe(
+      false
+    );
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("fix the import", "Completed", 0)).toBe(
       true
     );
     expect(
-      shouldEnforceToolUseForMessage(
-        "Can you make me a small webpage for tracking reading goals in this folder?"
+      shouldRecoverNonSubstantiveAssistantCompletion(
+        "Respond with exactly Completed.",
+        "Completed.",
+        0
       )
-    ).toBe(true);
-    expect(shouldEnforceToolUseForMessage("Build a todo app in this workspace")).toBe(true);
-    expect(
-      shouldEnforceToolUseForMessage(
-        "Also update the README with the final behavior and verification command, then rerun everything."
-      )
-    ).toBe(true);
-    expect(shouldEnforceToolUseForMessage("Update the changelog and rerun everything")).toBe(true);
-  });
-
-  test("does not force tools for greetings or capability questions", () => {
-    expect(shouldEnforceToolUseForMessage("hello what can you do")).toBe(false);
-    expect(shouldEnforceToolUseForMessage("thanks")).toBe(false);
-    expect(shouldEnforceToolUseForMessage("How would I build an app in this workspace?")).toBe(
+    ).toBe(false);
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("fix the import", "Completed", 1)).toBe(
       false
     );
+    expect(buildNoUsableAssistantResponseMessage()).toContain("no usable response");
+    expect(buildNoUsableAssistantResponseMessage()).toContain("no tool actions");
   });
 
   test("binds explicit desktop actions to computer use without forcing capability questions", () => {

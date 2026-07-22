@@ -24,6 +24,102 @@ afterEach(() => {
 });
 
 describe("Agent provider Google and compatible routing", () => {
+  test("keeps MiniMax M3 thinking and tool choice valid through a complete tool loop", async () => {
+    config.set("tool_approval_mode", "always_allow");
+    const requestBodies: Record<string, unknown>[] = [];
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const requestBody = init?.body
+        ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+        : {};
+      requestBodies.push(requestBody);
+      if (requestBodies.length === 1) {
+        return Response.json({
+          id: "minimax-tool-response",
+          type: "message",
+          role: "assistant",
+          model: "MiniMax-M3",
+          content: [
+            {
+              type: "thinking",
+              thinking: "I should calculate this with the provided tool.",
+              signature: "minimax-thinking-signature",
+            },
+            {
+              type: "tool_use",
+              id: "minimax-calc-call",
+              name: "calc",
+              input: { expression: "6*7" },
+            },
+          ],
+          usage: { input_tokens: 12, output_tokens: 8 },
+        });
+      }
+      return Response.json({
+        id: "minimax-final-response",
+        type: "message",
+        role: "assistant",
+        model: "MiniMax-M3",
+        content: [
+          { type: "thinking", thinking: "The calculation returned 42." },
+          { type: "text", text: "The verified result is 42." },
+        ],
+        usage: { input_tokens: 22, output_tokens: 6 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "minimax",
+      name: "MiniMax M3 Loop Provider",
+      api_key: "minimax-loop-key",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "MiniMax M3 Loop Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "MiniMax-M3",
+      tools: ["calc"],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate 6*7 with the tool." }],
+      {
+        useTools: true,
+        requireToolUse: true,
+        requiredToolName: "calc",
+        sessionId: "minimax-m3-tool-loop-session",
+      }
+    );
+
+    expect(result.content).toBe("The verified result is 42.");
+    expect(result.thinking).toContain("calculate this with the provided tool");
+    expect(result.thinking).toContain("calculation returned 42");
+    expect(result.tool_calls?.[0]?.name).toBe("calc");
+    expect(requestBodies).toHaveLength(2);
+    expect(requestBodies[0]?.thinking).toEqual({ type: "adaptive" });
+    expect(requestBodies[0]?.tool_choice).toEqual({ type: "tool", name: "calc" });
+    expect(requestBodies[1]?.thinking).toEqual({ type: "adaptive" });
+    expect(requestBodies[1]?.tool_choice).toEqual({ type: "auto" });
+
+    const loopMessages = requestBodies[1]?.messages as Array<Record<string, unknown>>;
+    const replayedAssistant = loopMessages.find((message) => message.role === "assistant");
+    const replayedContent = replayedAssistant?.content as Array<Record<string, unknown>>;
+    expect(replayedContent[0]).toEqual({
+      type: "thinking",
+      thinking: "I should calculate this with the provided tool.",
+      signature: "minimax-thinking-signature",
+    });
+    expect(replayedContent[1]).toMatchObject({
+      type: "tool_use",
+      id: "minimax-calc-call",
+      name: "calc",
+      input: { expression: "6*7" },
+    });
+  });
+
   test("routes google providers through generateContent with x-goog-api-key and model normalization", async () => {
     let requestUrl = "";
     let requestBody: Record<string, unknown> = {};

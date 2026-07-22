@@ -1,5 +1,3 @@
-import { isCodeMutationRequest } from "../core/message-action";
-
 export interface ToolCallResultLike {
   name: string;
   result?: unknown;
@@ -120,84 +118,29 @@ export function buildToolExecutionFallbackMessage(toolCalls: ToolCallResultLike[
   return `${heading}\n${bulletLines.join("\n")}`;
 }
 
-const ACTION_VERBS = new Set([
-  "add",
-  "analyze",
-  "audit",
-  "build",
-  "check",
-  "continue",
-  "create",
-  "debug",
-  "edit",
-  "execute",
-  "explore",
-  "fix",
-  "implement",
-  "inspect",
-  "install",
-  "patch",
-  "refactor",
-  "research",
-  "review",
-  "run",
-  "scan",
-  "search",
-  "test",
-  "update",
-  "write",
-]);
+const NON_SUBSTANTIVE_COMPLETION_PATTERN =
+  /^\s*(?:task\s+)?(?:complete|completed|done|finished|fixed|implemented|resolved)\s*[.!]*\s*$/i;
+const LITERAL_COMPLETION_REQUEST_PATTERN =
+  /\b(?:answer|output|reply|respond|return|say)\s+(?:with\s+)?(?:(?:only|exactly|just|verbatim)\s+)?["'`]*(?:complete|completed|done|finished)["'`]*[.!]?\s*$/i;
 
-const WORK_CONTEXT_TERMS = new Set([
-  "agent",
-  "api",
-  "bug",
-  "channel",
-  "chat",
-  "code",
-  "config",
-  "documentation",
-  "detector",
-  "discord",
-  "docs",
-  "file",
-  "folder",
-  "lint",
-  "model",
-  "provider",
-  "readme",
-  "repo",
-  "session",
-  "skill",
-  "test",
-  "ui",
-  "wallet",
-  "changelog",
-]);
+export function isNonSubstantiveAssistantCompletion(content: string): boolean {
+  const trimmed = content.trim();
+  return trimmed.length === 0 || NON_SUBSTANTIVE_COMPLETION_PATTERN.test(trimmed);
+}
 
-const NON_ACTIONABLE_PATTERNS = [
-  /^\s*(hi|hello|hey|yo)\b/i,
-  /^\s*(thanks|thank you)\b/i,
-  /^\s*(what can you do|who are you)\b/i,
-];
-
-export function shouldEnforceToolUseForMessage(message: string): boolean {
-  const trimmed = message.trim();
-  if (trimmed.length < 8) return false;
-  if (NON_ACTIONABLE_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+export function shouldRecoverNonSubstantiveAssistantCompletion(
+  userMessage: string,
+  assistantContent: string,
+  toolCallCount: number
+): boolean {
+  if (toolCallCount > 0 || LITERAL_COMPLETION_REQUEST_PATTERN.test(userMessage.trim())) {
     return false;
   }
-  if (isCodeMutationRequest(trimmed)) return true;
+  return isNonSubstantiveAssistantCompletion(assistantContent);
+}
 
-  const lower = trimmed.toLowerCase();
-  const tokens = lower.split(/[^a-z0-9_.:/-]+/).filter(Boolean);
-  const hasActionVerb = tokens.some((token) => ACTION_VERBS.has(token));
-  const hasWorkContext =
-    tokens.some((token) => WORK_CONTEXT_TERMS.has(token)) ||
-    /[./][a-z0-9_-]/i.test(trimmed) ||
-    /\bhttps?:\/\//i.test(trimmed);
-
-  return hasActionVerb && hasWorkContext;
+export function buildNoUsableAssistantResponseMessage(): string {
+  return "The model returned no usable response for this turn, and no tool actions were executed.";
 }
 
 export function requiredDirectToolForMessage(message: string): string | undefined {

@@ -1,4 +1,4 @@
-import { type AgentMessage, agentManager } from "../core/agent";
+import { agentManager } from "../core/agent";
 import { recordCompletedTrajectory } from "../core/agent-eval";
 import { emitAgentHook } from "../core/agent-hooks";
 import { agentSupportsImages } from "../core/agent-image-capabilities";
@@ -80,6 +80,7 @@ import { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 import { executionMetadataFromResult } from "./chat-execution-metadata";
 import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
 import { appendToolImageReferences, maybeSaveAutomaticMemory } from "./chat-response-enrichment";
+import { recoverAssistantResponse } from "./chat-response-recovery";
 import { settlePendingChatFailure } from "./chat-pending-failure";
 import {
   deletePersistedPendingChatItem,
@@ -141,10 +142,10 @@ import {
 } from "./chat-steering-activities";
 import { constrainToolsForMessage } from "./chat-tool-constraints";
 import {
+  buildNoUsableAssistantResponseMessage,
   buildToolExecutionFallbackMessage,
   classifyToolCallResult,
   requiredDirectToolForMessage,
-  shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
   suppressRecoveredWebFailureActivities,
 } from "./chat-tool-summary";
@@ -1488,14 +1489,17 @@ async function handleChatTurn(
       let requiredToolName = shouldPreferArtifacts
         ? "artifacts"
         : requiredDirectToolName || (selectedSkill ? "skill_load" : undefined);
+      let shouldRequireToolUse = Boolean(
+        tools &&
+          (shouldPreferArtifacts ||
+            requiredDirectToolName ||
+            selectedSkill ||
+            capabilityMentions.mentions.some((mention) => mention.kind === "mcp"))
+      );
       let result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
         sessionId: session.id,
-        requireToolUse:
-          shouldPreferArtifacts ||
-          Boolean(requiredDirectToolName) ||
-          selectedSkill ||
-          capabilityMentions.mentions.some((mention) => mention.kind === "mcp"),
+        requireToolUse: shouldRequireToolUse,
         requiredToolName,
         workspaceDir: session.workspaceDir || undefined,
         abortSignal: turnAbortController.signal,
@@ -1573,6 +1577,13 @@ async function handleChatTurn(
         requiredToolName = shouldPreferArtifacts
           ? "artifacts"
           : requiredDirectToolName || (selectedSkill ? "skill_load" : undefined);
+        shouldRequireToolUse = Boolean(
+          tools &&
+            (shouldPreferArtifacts ||
+              requiredDirectToolName ||
+              selectedSkill ||
+              capabilityMentions.mentions.some((mention) => mention.kind === "mcp"))
+        );
         executionMessages = buildAgentTransferMessages(
           applyChatCapabilityInstruction(
             buildChatExecutionMessagesForAgent(session.messages, {
@@ -1592,11 +1603,7 @@ async function handleChatTurn(
         result = await agentManager.execute(targetAgent.id, executionMessages, {
           useTools: tools,
           sessionId: session.id,
-          requireToolUse:
-            shouldPreferArtifacts ||
-            Boolean(requiredDirectToolName) ||
-            selectedSkill ||
-            capabilityMentions.mentions.some((mention) => mention.kind === "mcp"),
+          requireToolUse: shouldRequireToolUse,
           requiredToolName,
           workspaceDir: session.workspaceDir || undefined,
           abortSignal: turnAbortController.signal,
@@ -1608,6 +1615,38 @@ async function handleChatTurn(
         toolResults.push(...(result.tool_calls || []));
       }
       responseContent = result.content;
+
+      const recoveredResponse = await recoverAssistantResponse({
+        agentId: agent.id,
+        executeOptions: {
+          sessionId: session.id,
+          workspaceDir: session.workspaceDir || undefined,
+          abortSignal: turnAbortController.signal,
+          consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
+          useModelRouter,
+          modelOverride: activeModelOverride,
+          allowedToolNames,
+        },
+        executionMessages,
+        requiredToolName,
+        responseContent,
+        shouldRequireToolUse,
+        toolResults,
+        toolsEnabled: tools,
+        userMessage: message,
+      });
+      if (recoveredResponse.error) {
+        log.warn("Assistant response recovery retry failed", {
+          sessionId: session.id,
+          error: recoveredResponse.error,
+        });
+      }
+      if (recoveredResponse.result) {
+        result = recoveredResponse.result;
+        executionModelMetadata = executionMetadataFromResult(recoveredResponse.result);
+      }
+      responseContent = recoveredResponse.responseContent;
+      toolResults = recoveredResponse.toolResults;
 
       const memorySettings = config.getMemoryBehaviorSettings();
       void maybeRunBackgroundReview(
@@ -1623,56 +1662,6 @@ async function handleChatTurn(
           timeoutSeconds: memorySettings.backgroundReviewTimeoutSeconds,
         }
       ).catch(() => undefined);
-
-      const shouldForceToolExecution =
-        tools &&
-        (shouldEnforceToolUseForMessage(message) ||
-          shouldPreferArtifacts ||
-          Boolean(requiredDirectToolName));
-      const hasRequiredToolCall = requiredToolName
-        ? toolResults.some((toolCall) => toolCall.name === requiredToolName)
-        : toolResults.length > 0;
-      if (shouldForceToolExecution && (toolResults.length === 0 || !hasRequiredToolCall)) {
-        try {
-          const forcedInstruction = requiredToolName
-            ? `Use the \`${requiredToolName}\` tool now to execute the request before responding. Perform concrete tool calls first, then summarize outcomes.`
-            : "Execute the request now using available tools. Do not provide only a plan or intent. Perform concrete tool calls and then summarize the results.";
-          const forcedMessages: AgentMessage[] = [
-            ...executionMessages,
-            {
-              role: "user",
-              content: forcedInstruction,
-            },
-          ];
-          const forcedResult = await agentManager.execute(agent.id, forcedMessages, {
-            useTools: true,
-            sessionId: session.id,
-            requireToolUse: true,
-            requiredToolName,
-            workspaceDir: session.workspaceDir || undefined,
-            abortSignal: turnAbortController.signal,
-            consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
-            useModelRouter,
-            modelOverride: activeModelOverride,
-            allowedToolNames,
-          });
-          const forcedToolCalls = forcedResult.tool_calls || [];
-          const forcedHasRequiredTool = requiredToolName
-            ? forcedToolCalls.some((toolCall) => toolCall.name === requiredToolName)
-            : forcedToolCalls.length > 0;
-          if (forcedToolCalls.length > 0 && forcedHasRequiredTool) {
-            result = forcedResult;
-            executionModelMetadata = executionMetadataFromResult(forcedResult);
-            responseContent = forcedResult.content;
-            toolResults = [...toolResults, ...forcedToolCalls];
-          }
-        } catch (toolRetryError) {
-          log.warn("Forced tool-execution retry failed", {
-            sessionId: session.id,
-            error: (toolRetryError as Error).message,
-          });
-        }
-      }
 
       if (toolResults.length > 0) {
         const toonStructuredDataEnabled =
@@ -1817,7 +1806,7 @@ async function handleChatTurn(
               result: toolCall.result ?? null,
             }))
           )
-        : "Completed.";
+        : buildNoUsableAssistantResponseMessage();
 
   const configuredModelMetadata = resolveSessionModelMetadata(agent?.id ?? session.agentId);
   const modelMetadata = executionModelMetadata

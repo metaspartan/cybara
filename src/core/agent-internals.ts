@@ -64,8 +64,11 @@ export interface OpenAICodexTurnResult {
 }
 
 export interface AnthropicContentBlock {
-  type: "text" | "tool_use";
+  type: "text" | "tool_use" | "thinking" | "redacted_thinking";
   text?: string;
+  thinking?: string;
+  signature?: string;
+  data?: string;
   id?: string;
   name?: string;
   input?: Record<string, unknown>;

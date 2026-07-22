@@ -52,11 +52,10 @@ import { hasImages, toAnthropicImageBlock } from "./llm/image-blocks";
 import { normalizeAnthropicModelToolUses } from "./llm/model-dialect";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
 import {
-  anthropicThinkingBudget,
-  coerceReasoningEffort,
-  normalizeReasoningEffort,
-  usesAnthropicAdaptiveThinking,
-} from "./llm/reasoning";
+  applyAnthropicReasoningOptions,
+  collectAnthropicThinkingText,
+  resolveAnthropicToolChoice,
+} from "./llm/anthropic-request-options";
 import { withLlmRequestTimeout } from "./llm/request-timeout";
 import { normalizeProviderTokenUsage } from "./llm/token-usage-normalization";
 import {
@@ -129,20 +128,13 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
       requestBody.system = systemMessage.content;
     }
 
-    const anthropicEffort = normalizeReasoningEffort(modelParams?.reasoning_effort);
-    if (anthropicEffort) {
-      const resolvedEffort = coerceReasoningEffort(anthropicEffort, providerConfig, modelId);
-      if (usesAnthropicAdaptiveThinking(modelId)) {
-        requestBody.thinking = { type: "adaptive", display: "summarized" };
-        requestBody.output_config = { effort: resolvedEffort };
-      } else {
-        requestBody.thinking = {
-          type: "enabled",
-          budget_tokens: anthropicThinkingBudget(resolvedEffort, maxOutputTokens),
-        };
-      }
-      delete requestBody.temperature;
-    }
+    applyAnthropicReasoningOptions(
+      requestBody,
+      providerConfig,
+      modelId,
+      maxOutputTokens,
+      modelParams
+    );
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
       requestBody.tools = tools.map((t) => ({
@@ -150,7 +142,10 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         description: t.description || "",
         input_schema: t.input_schema || { type: "object", properties: {} },
       }));
-      requestBody.tool_choice = { type: "auto" };
+      requestBody.tool_choice = resolveAnthropicToolChoice(
+        tools.map((tool) => tool.name),
+        toolContext
+      );
     }
 
     const oauth = providerCatalog[providerConfig as ProviderType]?.authType === "oauth";
@@ -347,8 +342,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
     let finalContent = currentData.content?.find((c) => c.type === "text")?.text || "";
     let lastProgressThought = "";
     let webResearchToolCalls = 0;
-    const thinking =
-      currentData.content?.find((c) => c.type === ("thinking" as string))?.text || undefined;
+    const thinkingParts = collectAnthropicThinkingText(currentData.content);
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
     const loopState: AgenticLoopState = {
       previousFingerprint: undefined,
@@ -593,6 +587,14 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         vertex
       );
 
+      applyAnthropicReasoningOptions(
+        loopRequestBody,
+        providerConfig,
+        modelId,
+        maxOutputTokens,
+        modelParams
+      );
+
       if (systemMessage) {
         loopRequestBody.system = systemMessage.content;
       }
@@ -603,6 +605,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
           description: t.description || "",
           input_schema: t.input_schema || { type: "object", properties: {} },
         }));
+        loopRequestBody.tool_choice = resolveAnthropicToolChoice(tools.map((tool) => tool.name));
       }
 
       const loopCached = applyAnthropicCacheControl(
@@ -772,6 +775,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
       }
 
       const responseData = (await loopResponse.json()) as AnthropicResponse;
+      thinkingParts.push(...collectAnthropicThinkingText(responseData.content));
       if (responseData.usage) {
         const usage = normalizeAnthropicUsage(responseData.usage);
         trackTokenUsage(
@@ -807,6 +811,13 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
           currentMessages,
           maxOutputTokens,
           vertex
+        );
+        applyAnthropicReasoningOptions(
+          closingBody,
+          providerConfig,
+          modelId,
+          maxOutputTokens,
+          modelParams
         );
         if (systemMessage) {
           closingBody.system = systemMessage.content;
@@ -875,6 +886,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         }
         if (closingResponse.ok) {
           const closingData = (await closingResponse.json()) as AnthropicResponse;
+          thinkingParts.push(...collectAnthropicThinkingText(closingData.content));
           if (closingData.usage) {
             const usage = normalizeAnthropicUsage(closingData.usage);
             trackTokenUsage(
@@ -917,7 +929,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
 
     return {
       content: sanitizeAssistantContent(finalContent),
-      thinking,
+      thinking: thinkingParts.length > 0 ? thinkingParts.join("\n\n") : undefined,
       tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
     };
   }
