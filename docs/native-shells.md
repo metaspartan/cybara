@@ -1,6 +1,7 @@
 # Native Shells
 
-Cybara now has a clearer native-shell strategy instead of treating every client as a Tauri-only concern.
+Cybara uses native shells where platform integration benefits from native controls while preserving
+one gateway API contract across clients.
 
 ## macOS
 
@@ -8,21 +9,19 @@ The new SwiftUI shell lives in [apps/macos/Cybara/README.md](../apps/macos/Cybar
 
 Design:
 
-- native SwiftUI chrome with glass-style UI
-- `WKWebView` rendering the existing Cybara web surface
-- targets the same local Cybara gateway contract used by Tauri: `http://127.0.0.1:4269`
-- attaches to an existing local gateway if one is already running
-- otherwise launches the same local Cybara binary / sidecar flow used by Tauri
-- waits on `http://127.0.0.1:4269/api/health`
-- injects `window.__CYBARA_NATIVE__` so the React app can distinguish the native macOS host from plain web
-- supports native notification permission / delivery, external-link handling, and workspace folder picking through that bridge
-- exposes native SwiftUI management screens for dashboard summaries, chats/sessions, agents, providers, router and coding-plan limits, metrics, tasks, memory, wallet, mobile pairing, source migration, speech settings, gateway logs, and gateway restart
-- can be bundled as a release-ready `CybaraNative.app` under `release/native-macos/<arch>/` (named distinctly from the Tauri `Cybara.app` so both can coexist), including the compiled sidecar, web UI, `secp256k1.wasm`, sidecar `node_modules`, and local Transformers.js/ONNX runtime assets
-- can be optionally codesigned and notarized during packaging when Apple signing credentials are configured
-- auto-restarts the managed sidecar on an unexpected crash (capped exponential backoff, then surfaces a failure)
-- handles `cybara://` deep links — `cybara://` / `cybara://open` (focus), `cybara://restart` (restart gateway), `cybara://browser` (open web UI)
-- persists window position/size across launches (frame autosave)
-- checks GitHub Releases for newer versions on launch and via **App ▸ Check for Updates…** (no auto-install — opens the release page)
+- native SwiftUI navigation, chat, management, settings, terminal, wallet, Lab, and environment surfaces
+- the same loopback gateway contract used by Tauri, accessed through the typed native `GatewayClient`
+- attachment to a compatible healthy local gateway or managed startup of the bundled sidecar
+- native notifications, external-link handling, workspace folder selection, deep links, and persisted window position and size
+- release-ready `CybaraNative.app` packaging with the compiled sidecar, bundled UI resources for gateway access, `secp256k1.wasm`, sidecar packages, and local Transformers.js/ONNX assets
+- optional codesigning and notarization when Apple release credentials are configured
+- bounded sidecar crash recovery with a visible failure state when restart attempts are exhausted
+- `cybara://` deep links for focus, gateway restart, and opening the gateway UI in a browser
+- GitHub Releases update checks with progress, SHA256 verification, `codesign` validation, staged replacement, and automatic relaunch
+
+The native app does not embed the React web UI as its main detail surface. Native screens consume the
+same REST and streaming contracts, which keeps runtime behavior aligned without duplicating the agent
+engine.
 
 This keeps CLI, Tauri, and native macOS aligned on one runtime instead of fragmenting behavior.
 
@@ -58,7 +57,7 @@ Locally, packaging signs when `CYBARA_MACOS_SIGN_IDENTITY` is set and notarizes 
 
 The mobile companion now lives in [apps/mobile/README.md](../apps/mobile/README.md). It is a React Native / Expo app for iOS and Android with a dark Liquid Glass-inspired interface.
 
-Recommended near-term path:
+The mobile companion:
 
 - connect to a remote or local Cybara gateway over the existing HTTP/WebSocket API contract
 - pair by scanning or pasting the QR payload from `cybara mobile connect`, or from the Web UI/Tauri

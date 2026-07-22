@@ -1052,7 +1052,7 @@ export function IDEChatPanel({
       const target = messages[messageIndex];
       if (!target || target.role !== "user") return;
       const confirmed = window.confirm(
-        "Revert this IDE chat session to this message? Later messages will be removed."
+        "Revert this IDE chat session to before this message? This message and later messages will be removed."
       );
       if (!confirmed) return;
       setIsReverting(true);
@@ -1076,7 +1076,7 @@ export function IDEChatPanel({
         if (revertedMessages.length > 0) {
           setMessages(revertedMessages);
         } else {
-          setMessages(messages.slice(0, messageIndex + 1));
+          setMessages(messages.slice(0, messageIndex));
         }
         setSessionContextUsage(response.data.contextUsage ?? null);
         setFileDiffDecision({});
@@ -1449,7 +1449,7 @@ export function IDEChatPanel({
                           disabled={isReverting || isSending || isApplyingDiffAction}
                           onClick={() => void handleRevertToHere(index)}
                           className="inline-flex items-center rounded border border-amber-500/30 bg-amber-500/10 p-1 text-amber-200 hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Revert this IDE chat session to this message"
+                          title="Revert this IDE chat session to before this message"
                           aria-label="Revert to here"
                         >
                           <RotateCcw className="w-3 h-3" />

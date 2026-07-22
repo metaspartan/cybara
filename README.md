@@ -5,14 +5,17 @@
 <h1 align="center">Cybara</h1>
 
 <p align="center">
-  <strong>Self-hosted AI agent platform for real work: code, channels, browser automation, and on-chain execution.</strong>
+  <strong>A self-hosted agent workspace for coding, research, automation, and operations across desktop, terminal, mobile, and messaging.</strong>
 </p>
 
 <p align="center">
-  Cybara combines a Bun-based agent runtime with a web UI, CLI, desktop shells, mobile companion,
-  encrypted local wallet controls, channel adapters, MCP support, and a broad tool layer. Run agents
-  that can code, automate browsers, manage messaging workflows, and execute wallet operations while
-  keeping operator control in the loop.
+  Cybara runs persistent, tool-using agents through one Bun gateway and keeps sessions, live activity,
+  plans, artifacts, and controls consistent across Web/Tauri, native macOS, CLI/TUI, mobile, ACP, and
+  messaging channels. Connect hosted, OAuth, or local models; route across usage-aware account pools;
+  work through the IDE, terminal, browser, desktop, and mobile simulators; extend agents with plugins,
+  skills, MCP servers, and encrypted account apps; and turn real runs into replayable evaluations or
+  training data in the Lab. Queue, steer, fork, compare, transfer over Nearby, or talk hands-free while
+  approval, sandbox, wallet, and gateway policies remain under operator control.
 </p>
 
 <p align="center">
@@ -77,13 +80,14 @@ The installer selects the correct release for the current platform and verifies 
 
 ## What Cybara Is
 
-Cybara is an agent operating system for developers and operators who want one stack for:
+Cybara is one operator-controlled runtime for:
 
-- AI chat and multi-agent orchestration
-- local and remote tool execution
-- browser and API automation
-- secure messaging channels across platforms including Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, Web, Webhook, SMS, and Email
-- encrypted wallet operations across ETH/BTC/SOL with policy controls
+- persistent conversations with streaming activity, queueing, steering, stopping, forking, reverting, and multi-chat workspaces
+- repository work through the integrated IDE, LSP, terminal, file diffs, browser preview, desktop control, and iOS/Android simulators
+- hosted, OAuth, gateway, proxy, and local models with dynamic discovery, usage-aware account pools, plan monitoring, and configurable routing
+- plugins, skills, MCP servers, account apps, channels, memory, scheduled tasks, subagents, and agent-to-agent transfers
+- replayable trajectories, golden runs, objective benchmarks, computer-use datasets, and training-data exports in the Lab
+- voice conversations, encrypted Nearby session transfer, and policy-controlled wallet operations across ETH, BTC, and SOL
 
 If you need an agent platform that can plan, execute, verify, and report with strong operator control, Cybara is built for that.
 
@@ -91,28 +95,14 @@ If you need an agent platform that can plan, execute, verify, and report with st
 
 ## Capability Snapshot
 
-- A broad built-in tool library with compatibility aliases and intent-aware exposure, so agents receive only the relevant allowed subset for a turn
-- A broad provider catalog with dynamic model discovery (`src/core/providers.ts`), including Azure OpenAI, Azure AI Foundry, Anthropic on Vertex AI, and Google Gemini on Vertex AI
-- Channel adapters for the major messaging platforms (`src/core/channels/adapters`)
-- Model provider router with weighted / round-robin / lowest-cost / priority / mixture-of-agents strategies, circuit breaker, rate limits, spend caps, and coding-plan limit awareness
-- Mixture of Agents (MoA): fan a turn out to several proposer agents and synthesize one answer — available both as a `mixture_of_agents` tool and as a router strategy
-- Self-improving skills: agents can codify a verified multi-step procedure with `skill_save`, and the loader picks it up for future sessions
-- ACP (Agent Client Protocol) v1 server for connecting compatible editors to a workspace-confined Cybara agent over stdio (`cybara acp`)
-- A web UI with dashboard, chat, IDE, terminal, tools, MCP, mobile pairing, wallet, and settings surfaces
-- Bundled skills (`skills/`), including fal.ai media guidance and mactop hardware monitoring when available on macOS
-- Anthropic prompt caching, multi-key credential pools + rate-limit rotation, and a centralized LLM error taxonomy
-- Smart context compaction (token-aware chunking + structured summaries with identifier preservation)
-- Project instruction and context loading for `AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`, and `TOOLS.md` at the selected workspace root
-- Interactive tool approval with per-session/persistent allowlists, filesystem checkpoint/snapshot+rollback, and transform hooks (tool_result/llm_output/terminal_output)
-- Token streaming to the UI (real-time assistant text deltas via WebSocket)
-- MCP host mode (expose cybara's tools to other MCP clients) + MCP client (consume external servers)
-- A unified plugin hub for reusable skill bundles, MCP services, and encrypted account apps with read-only defaults and approval-gated writes
-- Local workspace indexing with lexical search plus optional local Transformers.js embeddings; packaged desktop sidecars bundle Transformers.js, ONNX Runtime native binaries when available, and ONNX Web/WASM fallback assets
-- Source migration from supported legacy agent installations with dry-run previews, conflict handling, skill/memory import, and opt-in secret import
-- Shared speech settings for local Kokoro, operating-system, and cloud speech plus managed or full-duplex hands-free conversation
-- Gateway operator controls for localhost auth policy, API-key reveal/rotation, gateway restart, and log viewing
-- Media generation (image/video/music) via swappable provider registry, dynamic tool discovery, killable host code execution for trusted automation, isolated sandbox execution for untrusted work, desktop control with safety hardening, and multi-agent orchestration
-- Tauri desktop app + native SwiftUI macOS app + React Native mobile companion + Bun server/CLI runtime
+- **Persistent agent workspace**: streamed and persisted messages, grouped live activity, plans, artifacts, file diffs, queue/steer/stop controls, forks, reverts, and multi-chat panes
+- **Provider choice and routing**: dynamic model discovery, named usage-aware account pools, coding-plan monitoring, fallback policies, spend controls, and mixture-of-agents synthesis
+- **Coding and automation**: workspace instructions, IDE, LSP, Git, terminal, browser preview, computer use, and iOS/Android simulator control
+- **Extensible capabilities**: stable tool profiles and toolsets, MCP host/client support, plugins, skills, dynamic tool discovery, encrypted account apps, and messaging channels
+- **Memory and orchestration**: context compaction, workspace indexing, durable memory, scheduled tasks, subagents, agent transfers, and dependency-aware work boards
+- **Research and reliability**: replayable trajectories, golden regression runs, objective benchmark suites, training-data exports, and computer-use datasets in the Lab
+- **Operator control**: scoped approvals, persistent allowlists, filesystem checkpoints, sandboxing, hooks, gateway authentication, logs, telemetry, and encrypted wallet policy
+- **Everywhere access**: Web/Tauri, native SwiftUI macOS, React Native mobile, CLI/TUI, ACP, external channels, Nearby LAN transfer, and voice conversations over one gateway contract
 
 ---
 
@@ -257,7 +247,7 @@ See full reference: [docs/tools.md](docs/tools.md)
 
 ### Channels + Pairing Security
 
-Adapters (26):
+Available adapters include:
 
 - Telegram, Discord, Slack, WhatsApp (`whatsapp-web.js`), Signal (`signal-cli`), iMessage (BlueBubbles)
 - Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant
@@ -291,7 +281,7 @@ Cybara supports popular providers including OpenAI, Anthropic, Google Gemini, xA
 
 Provider plan monitoring tracks local usage against manual limits or provider-specific coding-plan presets. The router can enforce rolling 5-hour, rolling-week, and monthly windows for flat coding plans, while pay-as-you-go routes can use token pricing and monthly budgets for spend-aware routing.
 
-Multi-key **credential pools** (`ANTHROPIC_API_KEY`, `_2`, `_3`, …) rotate automatically on rate-limit/auth errors, and **Anthropic prompt caching** (`cache_control`) is applied to every Claude request for ~75% input-token savings on multi-turn sessions.
+Named **provider account pools** group multiple configured accounts for usage-balanced routing or an explicit priority override. Agents and model-router routes can target a pool directly, while per-account environment key rotation (`ANTHROPIC_API_KEY`, `_2`, `_3`, …) remains available for API-key failover. Anthropic prompt caching is applied automatically to stable prompt content and recent turns, with provider-reported cache reads and writes included in usage metrics.
 
 See provider details: [docs/providers.md](docs/providers.md)
 
@@ -425,7 +415,7 @@ Full CLI reference: [docs/cli.md](docs/cli.md)
 Cybara builds each model request from the effective runtime state rather than one static prompt:
 
 - the selected agent, provider/model, workspace, channel, sandbox, and approval mode
-- only tools that survive agent selection, intent routing, permission checks, and runtime availability
+- only tools that survive the selected tool profile, enabled toolsets, explicit allowlists, inherited policy, permission checks, and runtime availability
 - eligible skill descriptions with on-demand `SKILL.md` loading
 - bounded memory recall and workspace instruction files
 - session plans, subagent context, token budgets, and context-compaction state
@@ -447,7 +437,9 @@ implemented contract.
 | [Channels](docs/channels.md) | Channel setup and in-channel commands |
 | [Configuration](docs/configuration.md) | Runtime config and environment |
 | [Desktop](docs/desktop.md) | Tauri desktop app and native macOS release paths |
+| [Lab](docs/lab.md) | Trajectories, golden replays, benchmarks, and training-data exports |
 | [Native Shells](docs/native-shells.md) | SwiftUI macOS and mobile-shell strategy |
+| [Plugins](docs/plugins.md) | Skills, MCP services, and encrypted account apps |
 | [Mobile App](apps/mobile/README.md) | React Native iOS/Android companion |
 | [Production](docs/production.md) | Release installs, updates, signing, and operator guidance |
 | [Providers](docs/providers.md) | Provider setup and models |

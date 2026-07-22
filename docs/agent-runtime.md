@@ -8,8 +8,8 @@ and operating guidance; it never grants filesystem, network, wallet, or process 
 Cybara builds each model request from current runtime state:
 
 1. Resolve the active agent, provider/model, workspace, channel, and session options.
-2. Select built-in tools from the agent configuration and turn intent.
-3. Apply tool enablement, permission, approval, URL/path, sandbox, and provider constraints.
+2. Resolve the agent's stable tool profile, enabled or disabled toolsets, explicit allowlist, and inherited policy.
+3. Apply runtime availability, permission, approval, URL/path, sandbox, and provider constraints.
 4. Load eligible skill descriptions; the model reads one selected `SKILL.md` on demand.
 5. Load bounded memory recall and root workspace context files.
 6. Add session/subagent state, token budgets, and model-aware reasoning configuration.
@@ -36,7 +36,7 @@ stable prompt cannot grow without limit.
 
 | Area | Current behavior |
 |------|------------------|
-| Tool exposure | Intent-aware built-in selection, per-agent allowlists and permissions, dynamic tool discovery, MCP tools, and execution-time approval checks |
+| Tool exposure | Stable profiles and toolsets, per-agent allowlists and permissions, inherited policy, dynamic tool discovery, MCP tools, and execution-time approval checks |
 | Skills | Eligibility-gated catalog, on-demand loading, registry installation, and optional agent-authored reusable procedures |
 | Memory | Durable and daily files, hybrid retrieval, optional external providers, and per-agent recall |
 | Planning | Session task lists, durable plan artifacts, plan UI, tasks, and environment surfaces |

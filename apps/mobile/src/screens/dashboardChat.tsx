@@ -369,7 +369,7 @@ function MessageActionsRow({
       ) : null}
       {onRevert ? (
         <Pressable
-          accessibilityLabel="Revert session to this message"
+          accessibilityLabel="Revert to before this message"
           accessibilityRole="button"
           hitSlop={8}
           onPress={onRevert}

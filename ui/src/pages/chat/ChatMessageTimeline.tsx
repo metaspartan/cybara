@@ -296,8 +296,8 @@ export function ChatMessageTimeline({
                       })
                     }
                     className="chat-message-action cursor-pointer rounded-md p-1"
-                    title="Revert session to this message"
-                    aria-label="Revert session to this message"
+                    title="Revert to before this message"
+                    aria-label="Revert to before this message"
                   >
                     <RotateCcw className="h-3 w-3" />
                   </button>

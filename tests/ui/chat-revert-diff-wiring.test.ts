@@ -76,7 +76,7 @@ describe("Chat revert and diff wiring", () => {
     const source = readChatSource();
     // Icon-only actions live BELOW the message box, not inside it.
     expect(source).not.toContain("Revert to here");
-    expect(source).toContain('aria-label="Revert session to this message"');
+    expect(source).toContain('aria-label="Revert to before this message"');
     expect(source).toContain('aria-label="Copy message"');
     expect(source).toContain(
       "onCopyMessage={(index, content) => void handleCopyMessage(index, content)}"

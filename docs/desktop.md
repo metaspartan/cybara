@@ -12,6 +12,7 @@ This document covers the production desktop release paths for both the Tauri des
 - **Offline Capable**: Local model support via Ollama and packaged local indexing support through Transformers.js/ONNX assets
 - **Cross-Platform**: official Tauri release builds cover macOS Apple Silicon/Intel, Windows x64, and Linux x64; the sidecar builder also maps Linux arm64 and Windows arm64 for custom/source packaging
 - **Bundled UI + Runtime Assets**: UI, sidecar, `secp256k1.wasm`, Playwright, the platform computer-use driver, and local embedding runtime assets are embedded in release bundles
+- **Integrated Automation**: session-bound browser preview, visible desktop control, and iOS/Android simulator panels keep agent actions inspectable from chat
 - **Shared Gateway Controls**: Web/Tauri and native macOS settings expose API-key reveal/rotation, gateway restart, gateway logs, source migration, speech settings, memory providers, and provider plan limits over the same API contract
 
 ## Installation
@@ -55,9 +56,28 @@ Official release builds include a signed updater channel backed by GitHub Releas
 - click `Check Now`
 - click `Install And Restart` when a newer version is available
 
-The updater consumes the `latest.json` artifact uploaded by the release workflow and relaunches the app after install.
+The Tauri updater consumes the signed `latest.json` artifact uploaded by the release workflow and
+relaunches the app after installation.
 
-The native SwiftUI macOS bundles do not use the Tauri updater. Update those by downloading the latest bundle zip from GitHub Releases.
+The native SwiftUI macOS app uses its own GitHub Releases updater from **App -> Check for
+Updates...**. It displays download progress, verifies the published SHA256 sidecar, validates the
+extracted app with `codesign`, stages the replacement, and relaunches Cybara. It does not consume the
+Tauri updater manifest.
+
+## Browser, Desktop, and Simulator Automation
+
+- Browser preview is attached to the active session so navigation, screenshots, and agent cursor
+  activity remain visible beside the conversation.
+- `computer_use` provides capture, element-aware click, typing, scrolling, dragging, native value
+  setting, and app focus through the bundled platform driver. macOS requires Screen Recording and
+  Accessibility permission; Windows requires the target app to be visible in the active desktop.
+- `mobile_simulator` manages iOS Simulator on macOS and Android Emulator on macOS, Windows, and
+  Linux. It supports device discovery and lifecycle, screenshots and previews, taps, swipes, text,
+  keys, URLs, app installation, and launch actions.
+- iOS lifecycle and screenshots use Xcode `simctl`; direct touch and text input require IDB. Android
+  uses the installed SDK and ADB.
+- When Lab trajectory capture is enabled, desktop and simulator interactions can be retained with
+  screenshots and coordinates for replay, debugging, and multimodal data export.
 
 ### From Source
 
@@ -158,12 +178,12 @@ Cybara.app/
 ```
 
 On launch:
-1. The shell attaches to an existing local Cybara gateway on `127.0.0.1:4269` when one is already healthy
-2. Otherwise it starts the sidecar binary with `cybara start`; terminal access remains off until explicitly enabled in settings or by a dev command
-3. The sidecar starts the HTTP server on port 4269
-4. The shell webview navigates to `http://localhost:4269`
-5. Tauri release builds can consume `latest.json` for in-app signed updates
-6. Native SwiftUI macOS bundles are updated manually from GitHub Releases
+1. Each desktop shell attaches to a compatible healthy local gateway when one is already available.
+2. Otherwise it starts its bundled sidecar with a loopback-only gateway; terminal access remains off until explicitly enabled.
+3. Tauri renders the bundled React UI through its webview and uses the gateway's REST and streaming contracts.
+4. The native macOS app renders native SwiftUI screens backed by `GatewayClient`; it does not embed the React UI as its primary detail surface.
+5. Tauri release builds consume the signed `latest.json` updater channel.
+6. Native SwiftUI releases use the checksum-verified native zip updater and relaunch flow.
 
 ## Sidecar Build Script
 

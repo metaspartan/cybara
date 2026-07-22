@@ -965,7 +965,7 @@ describe("Session API", () => {
       );
       expect(userIndexes.length).toBeGreaterThanOrEqual(2);
       const revertIndex = userIndexes[1] ?? userIndexes[0] ?? 0;
-      const expectedKeptCount = revertIndex + 1;
+      const expectedKeptCount = revertIndex;
       const expectedRemovedCount = before.data.messagesList.length - expectedKeptCount;
       const revertMessage = before.data.messagesList[revertIndex];
       const shiftedIndex =
@@ -982,24 +982,18 @@ describe("Session API", () => {
       expect(reverted.data.sessionId).toBe(sessionId);
       expect(reverted.data.keptCount).toBe(expectedKeptCount);
       expect(reverted.data.removedCount).toBe(expectedRemovedCount);
-      expect(reverted.data.removedFromIndex).toBe(revertIndex + 1);
+      expect(reverted.data.removedFromIndex).toBe(revertIndex);
       expect(reverted.data.messagesList).toHaveLength(expectedKeptCount);
-      if (expectedKeptCount > 0) {
-        expect(reverted.data.messagesList[expectedKeptCount - 1]).toMatchObject({
-          role: "user",
-          content: revertMessage.content,
-        });
-      }
+      expect(reverted.data.messagesList).not.toContainEqual(
+        expect.objectContaining({ role: "user", content: revertMessage.content })
+      );
 
       const after = await fixture.api("GET", `/api/sessions/${sessionId}`);
       expect(after.status).toBe(200);
       expect(after.data.messagesList).toHaveLength(expectedKeptCount);
-      if (expectedKeptCount > 0) {
-        expect(after.data.messagesList[expectedKeptCount - 1]).toMatchObject({
-          role: "user",
-          content: revertMessage.content,
-        });
-      }
+      expect(after.data.messagesList).not.toContainEqual(
+        expect.objectContaining({ role: "user", content: revertMessage.content })
+      );
     } finally {
       if (typeof first.data?.sessionId === "string") {
         fixture.deleteRawSession(first.data.sessionId);
@@ -1008,7 +1002,7 @@ describe("Session API", () => {
     }
   });
 
-  test("POST /api/sessions/:sessionId/revert preserves retained message content", async () => {
+  test("POST /api/sessions/:sessionId/revert preserves earlier full message content", async () => {
     const sessionId = `revert-full-content-${Date.now()}`;
     const agentId = `revert-full-content-agent-${Date.now()}`;
     const longUserContent = `Complete retained request\n${"evidence ".repeat(1800)}`;
@@ -1020,17 +1014,48 @@ describe("Session API", () => {
 
     try {
       const reverted = await fixture.api("POST", `/api/sessions/${sessionId}/revert`, {
-        messageIndex: 0,
+        messageIndex: 2,
       });
       expect(reverted.status).toBe(200);
       expect(reverted.data.success).toBe(true);
-      expect(reverted.data.messagesList).toHaveLength(1);
+      expect(reverted.data.messagesList).toHaveLength(2);
       expect(reverted.data.messagesList[0]?.content).toBe(longUserContent);
       expect(reverted.data.messagesList[0]?.content).not.toContain("[content truncated");
+      expect(reverted.data.messagesList).not.toContainEqual(
+        expect.objectContaining({ content: "Follow-up that should be removed" })
+      );
 
       const reloaded = await fixture.api("GET", `/api/sessions/${sessionId}`);
       expect(reloaded.status).toBe(200);
       expect(reloaded.data.messagesList[0]?.content).toBe(longUserContent);
+      expect(reloaded.data.messagesList).toHaveLength(2);
+    } finally {
+      fixture.deleteRawSession(sessionId);
+    }
+  });
+
+  test("POST /api/sessions/:sessionId/revert removes the first user message", async () => {
+    const sessionId = `revert-first-message-${Date.now()}`;
+    const agentId = `revert-first-message-agent-${Date.now()}`;
+    fixture.insertRawSession(sessionId, agentId, [
+      { role: "user", content: "Remove this initial request" },
+      { role: "assistant", content: "Remove this response too" },
+    ]);
+
+    try {
+      const reverted = await fixture.api("POST", `/api/sessions/${sessionId}/revert`, {
+        messageIndex: 0,
+      });
+      expect(reverted.status).toBe(200);
+      expect(reverted.data.success).toBe(true);
+      expect(reverted.data.keptCount).toBe(0);
+      expect(reverted.data.removedCount).toBe(2);
+      expect(reverted.data.removedFromIndex).toBe(0);
+      expect(reverted.data.messagesList).toEqual([]);
+
+      const reloaded = await fixture.api("GET", `/api/sessions/${sessionId}`);
+      expect(reloaded.status).toBe(200);
+      expect(reloaded.data.messagesList).toEqual([]);
     } finally {
       fixture.deleteRawSession(sessionId);
     }

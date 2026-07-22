@@ -14,12 +14,12 @@ This is the native SwiftUI macOS app for Cybara. It launches the same local serv
 - attaches to an existing local Cybara gateway on `http://127.0.0.1:4269` when one is already running
 - otherwise starts `cybara start` with `PORT=4269` and `CYBARA_HOST=127.0.0.1`; web terminal access stays off until explicitly enabled
 - waits for `http://127.0.0.1:4269/api/health`
-- renders the Cybara web UI in a native `WKWebView`
-- keeps the Bun sidecar as the shared runtime instead of forking app-specific logic
-- injects a `window.__CYBARA_NATIVE__` bridge so the web UI can recognize the native macOS host
-- supports native external-link handling, notification permission / delivery, and workspace folder picking via the bridge
-- provides native SwiftUI screens for dashboard summaries, chats/sessions, agents, providers, router and provider plan limits, metrics, tasks, memory providers, wallet, LAN/remote-gated mobile pairing, speech settings, source migration, gateway logs, and gateway restart
+- renders native SwiftUI navigation, chat, management, settings, terminal, wallet, Lab, and environment surfaces backed by the typed `GatewayClient`
+- keeps the Bun sidecar as the shared runtime instead of forking app-specific agent logic
+- supports native external-link handling, notification permission and delivery, workspace folder picking, deep links, and persisted window geometry
+- provides native screens for dashboard summaries, chats/sessions, agents, providers and account pools, router and provider plan limits, metrics, tasks, memory providers, wallet, LAN/remote-gated mobile pairing, speech settings, plugins, tools, skills, LSP, source migration, gateway logs, and gateway restart
 - can rotate the gateway API key without restarting the sidecar and can restart the gateway when a full sidecar reload is needed
+- checks GitHub Releases, downloads the matching native bundle with progress, verifies its SHA256 sidecar and code signature, replaces the app, and relaunches
 
 ## Build
 
@@ -56,6 +56,7 @@ bun run native:macos:run
 - The target local gateway contract is the same one Tauri uses: `127.0.0.1:4269`.
 - Web/Tauri, mobile, and native macOS share the same API routes for provider plans, memory providers, source migration, speech settings, gateway logs, and gateway restart.
 - Tagged desktop releases can now publish zipped native macOS app bundles alongside the Tauri installers.
+- The native shell does not embed the React UI as its primary detail surface; bundled UI assets remain available to the shared gateway and external browser access.
 - Local Transformers.js workspace embeddings use the bundled ONNX native binding when available for the host architecture, with ONNX Web/WASM assets bundled as fallback.
 - If `CYBARA_MACOS_SIGN_IDENTITY` is set, the bundle is codesigned during packaging.
 - If `CYBARA_MACOS_NOTARY_KEYCHAIN_PROFILE` is also set, the package script submits the zip for notarization, staples the `.app`, and then writes the final release zip.

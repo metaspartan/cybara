@@ -17,6 +17,12 @@ Current platform shape in this repo:
 - Channel adapters for the major messaging platforms (`src/core/channels/adapters/`)
 - Tool handler modules (`src/core/tools/handlers/`)
 - Provider-plan-aware model routing (`src/core/router.ts`, `src/core/provider-plans.ts`)
+- Named provider account pools for usage-balanced or priority routing (`src/core/provider-account-pool.ts`)
+- Stable tool profiles and toolsets (`src/core/toolsets.ts`)
+- Plugin, skill, MCP, and encrypted account-app contributions (`src/core/plugins/`)
+- Replayable agent and computer-use trajectories, golden runs, benchmarks, and data exports (`src/core/agent-eval/`)
+- Browser, desktop, and mobile-simulator automation (`src/core/browser/`, `src/core/computer-use.ts`, `src/core/tools/handlers/mobile-simulator.ts`)
+- Opt-in encrypted LAN session transfer (`src/core/nearby/`)
 - Source migration from supported legacy agent installations (`src/core/source-migration.ts`)
 
 ## Runtime Topology
@@ -32,10 +38,12 @@ React UI / Tauri Desktop / Native macOS / Mobile / External Channels
               Agent Core
       (session + prompt + tool loop)
                   |
-      +-----------+------------+
-      |           |            |
-      v           v            v
-    Tools      Providers     Channels
+      +-----------+------------+-------------+
+      |           |            |             |
+      v           v            v             v
+    Tools      Providers     Channels    Persistence
+      |                                      |
+      +-------- Plugins / MCP / Skills -------+
 ```
 
 Transport model:
@@ -96,13 +104,20 @@ Transport model:
 - `src/core/status.ts`
   - Live status fanout (thinking/generating/tool states) to SSE clients.
 - `src/core/router.ts`
-  - Provider/model routing strategies, fallback, cost/rate constraints, and provider-plan enforcement.
+  - Provider/model/pool routing strategies, fallback, cost/rate constraints, and provider-plan enforcement.
+- `src/core/provider-account-pool.ts`
+  - Same-provider account selection using tracked remaining usage or explicit priorities.
 - `src/core/provider-plans.ts`
   - Local usage windows, coding-plan presets, and provider plan status snapshots.
+- `src/core/toolsets.ts`
+  - Stable full, coding, research, and safe profiles composed from named toolsets and agent policy.
+- `src/core/agent-eval/`
+  - Trajectory recording, golden replay, structural comparison, benchmark runs, and research exports.
 
-Prompt text describes capabilities but does not grant them. Tool schemas are filtered before the
-model request, and execution still passes through agent permissions, approval policy, path policy,
-URL policy, hooks, and sandbox enforcement. See [Agent Runtime and Prompt Architecture](./agent-runtime.md).
+Prompt text describes capabilities but does not grant them. Stable profiles, toolsets, explicit
+allowlists, inherited policy, and runtime availability filter tool schemas before the model request.
+Execution still passes through agent permissions, approval policy, path policy, URL policy, hooks,
+and sandbox enforcement. See [Agent Runtime and Prompt Architecture](./agent-runtime.md).
 - `src/core/source-migration.ts`
   - Legacy import previews and apply runs for persona, memories, skills, providers, speech settings, and workspace instructions.
 

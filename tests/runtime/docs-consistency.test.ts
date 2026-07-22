@@ -10,11 +10,16 @@ const DOC_FILES = [
   "CONTRIBUTING.md",
   "docs/README.md",
   "docs/agent-runtime.md",
+  "docs/architecture.md",
   "docs/configuration.md",
   "docs/desktop.md",
+  "docs/lab.md",
   "docs/native-shells.md",
+  "docs/providers.md",
   "docs/production.md",
+  "docs/security.md",
   "docs/testing.md",
+  "docs/tools.md",
   "apps/macos/Cybara/README.md",
   "apps/mobile/README.md",
 ];
@@ -56,6 +61,28 @@ describe("documentation consistency", () => {
     expect(publicMetadata).not.toMatch(/\b\d+\s+provider definitions?\b/i);
     expect(publicMetadata).not.toMatch(/\b\d+\s+runtime schemas?\b/i);
     expect(publicMetadata).not.toMatch(/\b\d+\s+channels?\b/i);
+  });
+
+  test("runtime documentation describes stable tool policy", () => {
+    const docs = [read("README.md"), read("docs/README.md"), read("docs/agent-runtime.md")].join(
+      "\n"
+    );
+
+    expect(docs).toContain("tool profiles");
+    expect(docs).toContain("toolsets");
+    expect(docs).not.toMatch(/intent-aware|turn intent|intent routing/i);
+  });
+
+  test("native macOS documentation matches the SwiftUI client and updater", () => {
+    const docs = [
+      read("docs/desktop.md"),
+      read("docs/native-shells.md"),
+      read("apps/macos/Cybara/README.md"),
+    ].join("\n");
+
+    expect(docs).toContain("SHA256");
+    expect(docs).toContain("relaunch");
+    expect(docs).not.toMatch(/WKWebView|__CYBARA_NATIVE__|updated manually|no auto-install/i);
   });
 
   test("release docs use the current signing secret contract", () => {

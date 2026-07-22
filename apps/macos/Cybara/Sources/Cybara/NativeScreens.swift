@@ -137,7 +137,7 @@ struct NativeMessageActions: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("Revert session to this message")
+                .help("Revert to before this message")
             }
             if let onFork {
                 Button(action: onFork) {
@@ -675,7 +675,7 @@ struct ChatScreen: View {
                 transaction.animation = nil
             }
         }
-        .alert("Revert to this message?", isPresented: $showRevertConfirm) {
+        .alert("Revert to before this message?", isPresented: $showRevertConfirm) {
             Button("Revert", role: .destructive) {
                 if let candidate = revertCandidate {
                     performRevert(candidate)
@@ -684,7 +684,7 @@ struct ChatScreen: View {
             }
             Button("Cancel", role: .cancel) { revertCandidate = nil }
         } message: {
-            Text("The conversation rolls back to this point. Messages after it are removed from the session.")
+            Text("This message and every message after it will be removed from the session.")
         }
         .sheet(item: $editingPendingMessage) { message in
             VStack(alignment: .leading, spacing: 14) {
