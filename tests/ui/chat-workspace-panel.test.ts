@@ -105,6 +105,7 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain('event.toolName !== "browser"');
     expect(browserSource).toContain("pendingPageRef");
     expect(browserSource).toContain("pending?.sessionId === browserSessionId");
+    expect(browserSource).toContain("if (queuedFreshPageRef.current) return;");
     expect(browserSource).toContain("if (!target) return;");
     expect(browserSource).not.toContain("if (!target || loading) return;");
     expect(browserSource).toContain("const BROWSER_PREVIEW_QUALITY = 58");

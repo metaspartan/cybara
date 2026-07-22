@@ -314,6 +314,7 @@ export function ChatWorkspaceBrowser({
           data && typeof data === "object"
             ? (data as { data?: Record<string, unknown> }).data
             : null;
+        if (queuedFreshPageRef.current) return;
         const screenshot = payload?.screenshot;
         const unchanged = payload?.unchanged === true;
         if (!unchanged && typeof screenshot !== "string") {
