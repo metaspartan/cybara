@@ -63,7 +63,7 @@ describe("mobile simulator discovery", () => {
     expect(encodeAndroidRawPreview(Buffer.alloc(8))).toBeNull();
   });
 
-  test("downsamples Android emulator PNGs while retaining native dimensions", () => {
+  test("downsamples Android emulator PNG fallbacks while retaining native dimensions", () => {
     const source = new PNG({ width: 1080, height: 2400 });
     source.data.fill(255);
     const preview = encodeAndroidPngPreview(PNG.sync.write(source));

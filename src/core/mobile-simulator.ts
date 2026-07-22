@@ -668,8 +668,8 @@ async function captureAndroidPreview(device: MobileSimulatorDevice): Promise<Cac
     preview = await captureAndroidEmulatorPreview(adb, device);
   } catch {}
   if (!preview) {
-    const result = await runChecked(adb, ["-s", device.id, "exec-out", "screencap"]);
-    preview = encodeAndroidRawPreview(result.stdout);
+    const result = await runChecked(adb, ["-s", device.id, "exec-out", "screencap", "-p"]);
+    preview = encodeAndroidPngPreview(result.stdout);
   }
   if (!preview) return await captureAndroid(device);
   return {
