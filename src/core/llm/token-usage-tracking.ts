@@ -24,6 +24,7 @@ export function trackTokenUsage(
     cacheWriteTokens?: number;
     estimated?: boolean;
     firstTokenMs?: number;
+    generationDurationMs?: number;
     routerRouteId?: string;
   }
 ): void {
@@ -56,11 +57,12 @@ export function trackTokenUsage(
         ? Math.max(0, Math.round(options.firstTokenMs))
         : undefined;
     const generationDurationMs =
+      typeof options?.generationDurationMs === "number" &&
+      Number.isFinite(options.generationDurationMs) &&
       normalizedDurationMs !== undefined &&
-      firstTokenMs !== undefined &&
-      firstTokenMs <= normalizedDurationMs &&
-      normalizedDurationMs - firstTokenMs > 0
-        ? normalizedDurationMs - firstTokenMs
+      options.generationDurationMs >= 100 &&
+      options.generationDurationMs <= normalizedDurationMs
+        ? Math.round(options.generationDurationMs)
         : undefined;
     const callId = crypto.randomUUID();
     const timestamp = Date.now();

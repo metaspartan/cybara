@@ -12,6 +12,7 @@ describe("OpenAI-compatible response usage", () => {
         model: "model-a",
         choices: [],
         first_token_ms: 200,
+        generation_duration_ms: 800,
         usage: {
           prompt_tokens: 100,
           completion_tokens: 20,
@@ -36,6 +37,37 @@ describe("OpenAI-compatible response usage", () => {
       totalTokens: 120,
       tokensPerSecond: 25,
       firstTokenMs: 200,
+    });
+  });
+
+  test("does not infer generation speed from first-token latency alone", () => {
+    const sessionId = `openai-burst-usage-${crypto.randomUUID()}`;
+    trackOpenAIResponseUsage(
+      {
+        id: "response-burst",
+        object: "chat.completion",
+        model: "model-burst",
+        choices: [],
+        first_token_ms: 999,
+        generation_duration_ms: 1,
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 100,
+          total_tokens: 110,
+        },
+      },
+      {
+        model: "model-burst",
+        provider: "openai",
+        providerUrl: "https://provider.test",
+        durationMs: 1000,
+        sessionId,
+      }
+    );
+
+    expect(summarizeSessionTokenUsage(sessionId)).toMatchObject({
+      tokensPerSecond: null,
+      firstTokenMs: 999,
     });
   });
 

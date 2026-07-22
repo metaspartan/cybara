@@ -39,6 +39,7 @@ export function trackOpenAIResponseUsage(
       cachedInputTokens: usage.cachedInputTokens,
       cacheWriteTokens: usage.cacheWriteTokens,
       firstTokenMs: response.first_token_ms,
+      generationDurationMs: response.generation_duration_ms,
       routerRouteId: context.routerRouteId,
     }
   );

@@ -482,7 +482,11 @@ export function buildTokenCallSnapshots(tokenUsageEntries: MetricsEntry[]): Toke
     const inputFromMetadata = toFiniteNumber(metadata?.inputTokens);
     const outputFromMetadata = toFiniteNumber(metadata?.outputTokens);
     const durationMs = toFiniteNumber(metadata?.durationMs);
-    const generationDurationMs = toFiniteNumber(metadata?.generationDurationMs);
+    const rawGenerationDurationMs = toFiniteNumber(metadata?.generationDurationMs);
+    const generationDurationMs =
+      rawGenerationDurationMs !== null && rawGenerationDurationMs >= 100
+        ? rawGenerationDurationMs
+        : null;
     const model =
       toNonEmptyString(metadata?.model) ||
       toNonEmptyString(metadata?.modelId) ||

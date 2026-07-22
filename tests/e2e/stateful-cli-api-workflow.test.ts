@@ -366,7 +366,7 @@ describeOrSkip("Stateful CLI + API e2e", () => {
       "--dry-run",
     ]);
     expect(x402DryRun.exitCode).toBe(1);
-    expect(x402DryRun.stderr).toContain("private address");
+    expect(x402DryRun.stderr).toContain("Blocked hostname: 127.0.0.1");
 
     const x402Api = await api("POST", "/api/wallet/x402", {
       url: localX402Url,

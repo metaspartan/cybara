@@ -556,7 +556,7 @@ function getModelTokenCallMetrics(): TokenCallModelRow[] {
       SUM(value) as totalTokens,
       SUM(COALESCE(CAST(json_extract(metadata, '$.outputTokens') AS REAL), 0)) as outputTokens,
       SUM(CASE
-        WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) > 0
+        WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) >= 100
         THEN COALESCE(CAST(json_extract(metadata, '$.outputTokens') AS REAL), 0)
         ELSE 0
       END) as throughputOutputTokens,
@@ -566,7 +566,7 @@ function getModelTokenCallMetrics(): TokenCallModelRow[] {
         ELSE 0
       END) as durationTotalMs,
       SUM(CASE
-        WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) > 0
+        WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) >= 100
         THEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL)
         ELSE 0
       END) as generationDurationTotalMs,
@@ -576,13 +576,13 @@ function getModelTokenCallMetrics(): TokenCallModelRow[] {
         ELSE NULL
       END) as avgLatencyMs,
       MAX(CASE
-        WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) > 0
+        WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) >= 100
         THEN (COALESCE(CAST(json_extract(metadata, '$.outputTokens') AS REAL), 0) /
           CAST(json_extract(metadata, '$.generationDurationMs') AS REAL)) * 1000
         ELSE NULL
       END) as maxTps,
       MIN(CASE
-        WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) > 0
+        WHEN CAST(json_extract(metadata, '$.generationDurationMs') AS REAL) >= 100
         THEN (COALESCE(CAST(json_extract(metadata, '$.outputTokens') AS REAL), 0) /
           CAST(json_extract(metadata, '$.generationDurationMs') AS REAL)) * 1000
         ELSE NULL
