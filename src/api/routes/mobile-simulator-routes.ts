@@ -4,9 +4,11 @@ import {
   isMobileSimulatorAction,
   type MobileSimulatorPlatform,
   runMobileSimulatorAction,
+  saveMobileSimulatorScreenshot,
   startMobileSimulator,
   stopMobileSimulator,
 } from "../../core/mobile-simulator";
+import { recordMobileSimulatorTrajectoryTurn } from "../../core/mobile-simulator-trajectory";
 import type { RouteHandler } from "./_shared";
 
 function platformFromParams(value: unknown): MobileSimulatorPlatform {
@@ -56,6 +58,7 @@ export const mobileSimulatorRoutes: Record<string, RouteHandler> = {
         contentType: frame.contentType,
         device: frame.device,
         height: frame.height,
+        interaction: frame.interaction,
         revision: frame.revision,
         sourceHeight: frame.sourceHeight,
         sourceWidth: frame.sourceWidth,
@@ -64,26 +67,43 @@ export const mobileSimulatorRoutes: Record<string, RouteHandler> = {
       },
     };
   },
+  "POST /api/simulators/:platform/screenshot": async (body, params) => {
+    const input = inputRecord(body);
+    const platform = platformFromParams(params?.platform);
+    return {
+      success: true,
+      data: await saveMobileSimulatorScreenshot(platform, optionalString(input.deviceId)),
+    };
+  },
   "POST /api/simulators/:platform/action": async (body, params) => {
     const input = inputRecord(body);
     const platform = platformFromParams(params?.platform);
     const action = optionalString(input.action);
     if (!isMobileSimulatorAction(action)) throw new Error("Invalid simulator action");
-    return {
-      success: true,
-      data: await runMobileSimulatorAction(platform, optionalString(input.deviceId), {
-        action,
-        x: input.x,
-        y: input.y,
-        endX: input.endX,
-        endY: input.endY,
-        durationMs: input.durationMs,
-        text: input.text,
-        key: input.key,
-        url: input.url,
-        path: input.path,
-        appId: input.appId,
-      }),
+    const deviceId = optionalString(input.deviceId);
+    const actionInput = {
+      action,
+      x: input.x,
+      y: input.y,
+      endX: input.endX,
+      endY: input.endY,
+      durationMs: input.durationMs,
+      text: input.text,
+      key: input.key,
+      url: input.url,
+      path: input.path,
+      appId: input.appId,
     };
+    const result = await runMobileSimulatorAction(platform, deviceId, actionInput, {
+      source: "user",
+    });
+    await recordMobileSimulatorTrajectoryTurn({
+      action: actionInput,
+      deviceId,
+      platform,
+      result,
+      sessionId: optionalString(input.sessionId),
+    }).catch(() => undefined);
+    return { success: true, data: result };
   },
 };

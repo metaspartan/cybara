@@ -1,8 +1,24 @@
-import { CircleStop, Loader2, Play, RefreshCw, RotateCcw, Smartphone } from "lucide-react";
+import {
+  ArrowLeft,
+  Camera,
+  CircleStop,
+  House,
+  Layers3,
+  Loader2,
+  MousePointer2,
+  Play,
+  Power,
+  RefreshCw,
+  RotateCcw,
+  Smartphone,
+  Volume1,
+  Volume2,
+} from "lucide-react";
 import {
   type KeyboardEvent,
   type MouseEvent,
   type ReactElement,
+  type ReactNode,
   type WheelEvent,
   useCallback,
   useEffect,
@@ -12,7 +28,11 @@ import {
 import { apiFetch } from "@/lib/auth";
 import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
-import { containerPointToSource } from "./previewGeometry";
+import {
+  containerPointToSource,
+  sourcePointToContainer,
+  type PreviewSize,
+} from "./previewGeometry";
 import { simulatorPreviewPollDelay } from "./simulatorPreviewTiming";
 
 type SimulatorPlatform = "ios" | "android";
@@ -43,6 +63,17 @@ interface SimulatorFrame {
   sourceHeight: number;
   revision: string;
   device: SimulatorDevice;
+  interaction?: SimulatorInteraction;
+}
+
+interface SimulatorInteraction {
+  action: "tap" | "swipe" | "text" | "key" | "open_url" | "install" | "launch" | "describe";
+  endX?: number;
+  endY?: number;
+  source: "agent" | "user";
+  updatedAt: number;
+  x?: number;
+  y?: number;
 }
 
 const REQUEST_TIMEOUT_MS = 25_000;
@@ -92,6 +123,63 @@ function parsePlatformStatus(value: unknown): SimulatorPlatformStatus | null {
   };
 }
 
+function parseInteraction(value: unknown): SimulatorInteraction | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const actions = new Set([
+    "tap",
+    "swipe",
+    "text",
+    "key",
+    "open_url",
+    "install",
+    "launch",
+    "describe",
+  ]);
+  if (
+    typeof record.action !== "string" ||
+    !actions.has(record.action) ||
+    (record.source !== "agent" && record.source !== "user") ||
+    typeof record.updatedAt !== "number"
+  ) {
+    return undefined;
+  }
+  return {
+    action: record.action as SimulatorInteraction["action"],
+    endX: typeof record.endX === "number" ? record.endX : undefined,
+    endY: typeof record.endY === "number" ? record.endY : undefined,
+    source: record.source,
+    updatedAt: record.updatedAt,
+    x: typeof record.x === "number" ? record.x : undefined,
+    y: typeof record.y === "number" ? record.y : undefined,
+  };
+}
+
+function SimulatorControl({
+  children,
+  disabled,
+  label,
+  onClick,
+}: {
+  children: ReactNode;
+  disabled?: boolean;
+  label: string;
+  onClick: () => void;
+}): ReactElement {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      className="theme-muted-icon-button flex h-7 w-7 shrink-0 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-35"
+      disabled={disabled}
+      onClick={onClick}
+      title={label}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function ChatWorkspaceSimulator({
   platform,
   sessionId,
@@ -106,6 +194,8 @@ export function ChatWorkspaceSimulator({
   const [frame, setFrame] = useState<SimulatorFrame | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [previewSurfaceSize, setPreviewSurfaceSize] = useState<PreviewSize | null>(null);
   const revisionRef = useRef("");
   const frameRequestRef = useRef(false);
   const lastInteractionAtRef = useRef(0);
@@ -173,6 +263,7 @@ export function ChatWorkspaceSimulator({
                 : (payload.height as number),
             revision,
             device,
+            interaction: parseInteraction(payload.interaction),
           };
         });
         revisionRef.current = revision;
@@ -198,6 +289,7 @@ export function ChatWorkspaceSimulator({
   useEffect(() => {
     revisionRef.current = "";
     setFrame(null);
+    setNotice(null);
   }, [selectedId]);
 
   const selectedDevice = status?.devices.find((device) => device.id === selectedId) ?? null;
@@ -221,6 +313,19 @@ export function ChatWorkspaceSimulator({
       if (timer !== null) window.clearTimeout(timer);
     };
   }, [loadFrame, selectedDevice?.state, visible]);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface || typeof ResizeObserver === "undefined") return;
+    const update = (): void => {
+      const bounds = surface.getBoundingClientRect();
+      setPreviewSurfaceSize({ width: bounds.width, height: bounds.height });
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(surface);
+    update();
+    return () => observer.disconnect();
+  }, [frame !== null]);
 
   useEffect(() => {
     const activeSessionId = sessionId?.trim();
@@ -284,11 +389,12 @@ export function ChatWorkspaceSimulator({
     async (action: Record<string, unknown>): Promise<void> => {
       if (!selectedId || busy) return;
       lastInteractionAtRef.current = Date.now();
+      setNotice(null);
       try {
         const response = await apiFetch(`/api/simulators/${platform}/action`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...action, deviceId: selectedId }),
+          body: JSON.stringify({ ...action, deviceId: selectedId, sessionId }),
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
         if (!response.ok) throw await responseError(response, "Simulator interaction failed");
@@ -299,8 +405,35 @@ export function ChatWorkspaceSimulator({
         setError(reason instanceof Error ? reason.message : "Simulator interaction failed");
       }
     },
-    [busy, loadFrame, platform, selectedId]
+    [busy, loadFrame, platform, selectedId, sessionId]
   );
+
+  const saveScreenshot = async (): Promise<void> => {
+    if (!selectedId || busy) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const response = await apiFetch(`/api/simulators/${platform}/screenshot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId: selectedId }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (!response.ok) throw await responseError(response, "Simulator screenshot failed");
+      const value: unknown = await response.json();
+      const payload =
+        value && typeof value === "object"
+          ? (value as { data?: Record<string, unknown> }).data
+          : undefined;
+      const filePath = typeof payload?.filePath === "string" ? payload.filePath : "";
+      setNotice(filePath ? `Saved ${filePath}` : "Screenshot saved");
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Simulator screenshot failed");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleClick = (event: MouseEvent<HTMLDivElement>): void => {
     if (!frame || !selectedDevice?.interactive) return;
@@ -341,7 +474,7 @@ export function ChatWorkspaceSimulator({
       Escape: "ESCAPE",
       Tab: "TAB",
     };
-    if (named[event.key]) {
+    if (platform === "android" && named[event.key]) {
       event.preventDefault();
       void runAction({ action: "key", key: named[event.key] });
     } else if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key.length === 1) {
@@ -351,6 +484,27 @@ export function ChatWorkspaceSimulator({
   };
 
   const label = platform === "ios" ? "iOS Simulator" : "Android Emulator";
+  const interaction = frame?.interaction;
+  const interactionX =
+    interaction?.action === "swipe" ? (interaction.endX ?? interaction.x) : interaction?.x;
+  const interactionY =
+    interaction?.action === "swipe" ? (interaction.endY ?? interaction.y) : interaction?.y;
+  const interactionPoint =
+    interaction?.source === "agent" &&
+    typeof interactionX === "number" &&
+    typeof interactionY === "number" &&
+    frame &&
+    previewSurfaceSize
+      ? sourcePointToContainer(
+          previewSurfaceSize,
+          { width: frame.width, height: frame.height },
+          { width: frame.sourceWidth, height: frame.sourceHeight },
+          { x: interactionX, y: interactionY }
+        )
+      : null;
+  const interactionStyle = interactionPoint
+    ? { left: `${interactionPoint.x}px`, top: `${interactionPoint.y}px` }
+    : undefined;
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--chat-environment-panel-bg)]">
@@ -410,7 +564,7 @@ export function ChatWorkspaceSimulator({
             role="application"
             aria-label={`${label} preview`}
             className={cn(
-              "flex h-full w-full items-center justify-center overflow-hidden outline-none",
+              "relative flex h-full w-full items-center justify-center overflow-hidden outline-none",
               selectedDevice?.interactive && "cursor-crosshair"
             )}
             onClick={handleClick}
@@ -424,6 +578,22 @@ export function ChatWorkspaceSimulator({
               draggable={false}
               src={frame.screenshot}
             />
+            {interactionStyle ? (
+              <div
+                className="pointer-events-none absolute z-20 -translate-x-[2px] -translate-y-[1px] transition-[left,top] duration-150 ease-out"
+                data-testid="simulator-agent-cursor"
+                style={interactionStyle}
+              >
+                {interaction?.action === "tap" ? (
+                  <span
+                    key={interaction.updatedAt}
+                    className="browser-agent-click-pulse absolute -left-2 -top-2 h-5 w-5 rounded-full border border-[rgba(var(--accent-primary),0.8)]"
+                    data-testid="simulator-agent-tap"
+                  />
+                ) : null}
+                <MousePointer2 className="relative h-4 w-4 fill-black stroke-[2.5] text-white drop-shadow-[0_0_5px_rgba(var(--accent-primary),0.95)]" />
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
@@ -451,9 +621,79 @@ export function ChatWorkspaceSimulator({
         )}
       </div>
 
-      <footer className="flex h-8 shrink-0 items-center justify-between border-t border-white/10 px-3 text-[10px] text-gray-500">
-        <span>{selectedDevice?.state === "booted" ? "Running" : "Stopped"}</span>
-        <span>{selectedDevice?.interactive ? "Direct input enabled" : "Preview mode"}</span>
+      <footer className="flex h-10 shrink-0 items-center gap-2 border-t border-white/10 px-2 text-[10px] text-gray-500">
+        <span className="min-w-0 flex-1 truncate" title={notice ?? undefined}>
+          {notice || (selectedDevice?.state === "booted" ? "Running" : "Stopped")}
+        </span>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {platform === "android" ? (
+            <SimulatorControl
+              disabled={!selectedDevice?.interactive || busy}
+              label="Back"
+              onClick={() => void runAction({ action: "key", key: "BACK" })}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+            </SimulatorControl>
+          ) : null}
+          <SimulatorControl
+            disabled={!selectedDevice?.interactive || busy}
+            label="Home"
+            onClick={() => void runAction({ action: "key", key: "HOME" })}
+          >
+            <House className="h-3.5 w-3.5" />
+          </SimulatorControl>
+          {platform === "android" ? (
+            <>
+              <SimulatorControl
+                disabled={!selectedDevice?.interactive || busy}
+                label="Recent apps"
+                onClick={() => void runAction({ action: "key", key: "RECENTS" })}
+              >
+                <Layers3 className="h-3.5 w-3.5" />
+              </SimulatorControl>
+              <SimulatorControl
+                disabled={!selectedDevice?.interactive || busy}
+                label="Volume down"
+                onClick={() => void runAction({ action: "key", key: "VOLUME_DOWN" })}
+              >
+                <Volume1 className="h-3.5 w-3.5" />
+              </SimulatorControl>
+              <SimulatorControl
+                disabled={!selectedDevice?.interactive || busy}
+                label="Volume up"
+                onClick={() => void runAction({ action: "key", key: "VOLUME_UP" })}
+              >
+                <Volume2 className="h-3.5 w-3.5" />
+              </SimulatorControl>
+            </>
+          ) : null}
+          <SimulatorControl
+            disabled={!selectedDevice?.interactive || busy}
+            label={platform === "ios" ? "Side button" : "Power"}
+            onClick={() =>
+              void runAction({
+                action: "key",
+                key: platform === "ios" ? "SIDE_BUTTON" : "POWER",
+              })
+            }
+          >
+            <Power className="h-3.5 w-3.5" />
+          </SimulatorControl>
+          <SimulatorControl
+            disabled={selectedDevice?.state !== "booted" || busy}
+            label="Save screenshot"
+            onClick={() => void saveScreenshot()}
+          >
+            <Camera className="h-3.5 w-3.5" />
+          </SimulatorControl>
+        </div>
+        <span className="hidden min-w-0 flex-1 truncate text-right min-[520px]:block">
+          {interaction?.source === "agent"
+            ? `Agent ${interaction.action.replace(/_/g, " ")}`
+            : selectedDevice?.interactive
+              ? "Direct input enabled"
+              : "Preview mode"}
+        </span>
       </footer>
     </section>
   );

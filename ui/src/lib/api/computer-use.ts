@@ -32,6 +32,7 @@ export interface ComputerUseTrajectorySummary {
   completedAt?: string;
   error?: string;
   replayOf?: string;
+  surface: "desktop" | "ios_simulator" | "android_emulator";
   turnCount: number;
   screenshotCount: number;
   clickCount: number;

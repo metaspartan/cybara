@@ -69,11 +69,26 @@ export interface MobileSimulatorFrame {
   contentType: "image/jpeg" | "image/png";
   device: MobileSimulatorDevice;
   height: number;
+  interaction?: MobileSimulatorInteraction;
   revision: string;
   sourceHeight: number;
   sourceWidth: number;
   unchanged: boolean;
   width: number;
+}
+
+export interface MobileSimulatorInteraction {
+  action: MobileSimulatorActionName;
+  endX?: number;
+  endY?: number;
+  source: "agent" | "user";
+  updatedAt: number;
+  x?: number;
+  y?: number;
+}
+
+export interface MobileSimulatorActionOptions {
+  source?: MobileSimulatorInteraction["source"];
 }
 
 interface CommandResult {
@@ -134,6 +149,41 @@ const screenshotDir = join(
 const frameCache = new Map<string, CachedFrame>();
 const deviceCache = new Map<MobileSimulatorPlatform, CachedDevices>();
 const iosScaleCache = new Map<string, number>();
+const interactionCache = new Map<string, MobileSimulatorInteraction>();
+
+function simulatorStateKey(platform: MobileSimulatorPlatform, deviceId: string): string {
+  return `${platform}:${deviceId}`;
+}
+
+function optionalCoordinate(value: unknown): number | undefined {
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) ? coordinate : undefined;
+}
+
+export function recordMobileSimulatorInteraction(
+  platform: MobileSimulatorPlatform,
+  deviceId: string,
+  input: MobileSimulatorAction,
+  source: MobileSimulatorInteraction["source"]
+): void {
+  interactionCache.set(simulatorStateKey(platform, deviceId), {
+    action: input.action,
+    endX: optionalCoordinate(input.endX),
+    endY: optionalCoordinate(input.endY),
+    source,
+    updatedAt: Date.now(),
+    x: optionalCoordinate(input.x),
+    y: optionalCoordinate(input.y),
+  });
+}
+
+export function getMobileSimulatorInteraction(
+  platform: MobileSimulatorPlatform,
+  deviceId: string
+): MobileSimulatorInteraction | undefined {
+  const interaction = interactionCache.get(simulatorStateKey(platform, deviceId));
+  return interaction ? { ...interaction } : undefined;
+}
 
 function firstExisting(paths: Array<string | null | undefined>): string | null {
   for (const path of paths) {
@@ -737,6 +787,7 @@ export async function captureMobileSimulator(
     contentType: frame.contentType,
     device: frame.device,
     height: frame.height,
+    interaction: getMobileSimulatorInteraction(platform, device.id),
     revision: frame.revision,
     sourceHeight: frame.sourceHeight,
     sourceWidth: frame.sourceWidth,
@@ -917,6 +968,7 @@ const androidKeys: Record<string, string> = {
   TAB: "61",
   ESCAPE: "111",
   POWER: "26",
+  RECENTS: "187",
   VOLUME_UP: "24",
   VOLUME_DOWN: "25",
 };
@@ -1009,12 +1061,14 @@ async function runAndroidAction(
 export async function runMobileSimulatorAction(
   platform: MobileSimulatorPlatform,
   deviceId: string | undefined,
-  input: MobileSimulatorAction
+  input: MobileSimulatorAction,
+  options: MobileSimulatorActionOptions = {}
 ): Promise<Record<string, unknown>> {
   const devices = await listMobileSimulatorDevices(platform);
   const device = selectDevice(devices, deviceId, true);
   const result =
     platform === "ios" ? await runIosAction(device, input) : await runAndroidAction(device, input);
+  recordMobileSimulatorInteraction(platform, device.id, input, options.source ?? "user");
   clearDeviceFrames(platform, device.id);
   return { ...result, device };
 }

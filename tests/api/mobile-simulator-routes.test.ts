@@ -15,6 +15,10 @@ describe("mobile simulator routes", () => {
     });
   });
 
+  test("exposes a dedicated screenshot save route", () => {
+    expect(mobileSimulatorRoutes["POST /api/simulators/:platform/screenshot"]).toBeFunction();
+  });
+
   test("rejects invalid action and platform values before execution", async () => {
     const action = mobileSimulatorRoutes["POST /api/simulators/:platform/action"];
     expect(action).toBeFunction();

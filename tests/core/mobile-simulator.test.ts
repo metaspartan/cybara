@@ -7,9 +7,11 @@ import {
   encodeAndroidPngPreview,
   encodeAndroidRawPreview,
   getMobileSimulatorStatus,
+  getMobileSimulatorInteraction,
   isMobileSimulatorAction,
   parseAdbDevices,
   parseSimctlDevices,
+  recordMobileSimulatorInteraction,
   resolveAndroidSdkExecutable,
   summarizeMobileSimulatorStatus,
 } from "../../src/core/mobile-simulator";
@@ -120,6 +122,33 @@ describe("mobile simulator discovery", () => {
     expect(isMobileSimulatorAction("tap")).toBe(true);
     expect(isMobileSimulatorAction("erase")).toBe(false);
     expect(isMobileSimulatorAction(null)).toBe(false);
+  });
+
+  test("tracks agent taps and swipes in native simulator coordinates", () => {
+    recordMobileSimulatorInteraction(
+      "android",
+      "emulator-test",
+      { action: "tap", x: 120, y: 240 },
+      "agent"
+    );
+    expect(getMobileSimulatorInteraction("android", "emulator-test")).toMatchObject({
+      action: "tap",
+      source: "agent",
+      x: 120,
+      y: 240,
+    });
+    recordMobileSimulatorInteraction(
+      "android",
+      "emulator-test",
+      { action: "swipe", x: 120, y: 240, endX: 120, endY: 80 },
+      "user"
+    );
+    expect(getMobileSimulatorInteraction("android", "emulator-test")).toMatchObject({
+      action: "swipe",
+      source: "user",
+      endX: 120,
+      endY: 80,
+    });
   });
 
   test("rejects an unsupported agent tool action before running a device command", async () => {

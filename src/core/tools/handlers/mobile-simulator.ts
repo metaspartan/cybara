@@ -9,6 +9,8 @@ import {
   startMobileSimulator,
   stopMobileSimulator,
 } from "../../mobile-simulator";
+import { recordMobileSimulatorTrajectoryTurn } from "../../mobile-simulator-trajectory";
+import type { ToolContext } from "../types";
 
 function simulatorPlatform(value: unknown): MobileSimulatorPlatform {
   if (value === "ios" || value === "android") return value;
@@ -19,7 +21,10 @@ function optionalDeviceId(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-export async function handleMobileSimulator(args: Record<string, unknown>): Promise<unknown> {
+export async function handleMobileSimulator(
+  args: Record<string, unknown>,
+  context?: ToolContext
+): Promise<unknown> {
   const action = typeof args.action === "string" ? args.action : "status";
   if (action === "status") {
     return summarizeMobileSimulatorStatus(await getMobileSimulatorStatus());
@@ -53,7 +58,7 @@ export async function handleMobileSimulator(args: Record<string, unknown>): Prom
     };
   }
   if (!isMobileSimulatorAction(action)) throw new Error("Invalid simulator action");
-  return await runMobileSimulatorAction(platform, deviceId, {
+  const actionInput = {
     action,
     x: args.x,
     y: args.y,
@@ -65,5 +70,20 @@ export async function handleMobileSimulator(args: Record<string, unknown>): Prom
     url: args.url,
     path: args.path,
     appId: args.appId,
+  };
+  const result = await runMobileSimulatorAction(platform, deviceId, actionInput, {
+    source: "agent",
   });
+  await recordMobileSimulatorTrajectoryTurn({
+    action: actionInput,
+    deviceId,
+    platform,
+    result,
+    sessionId: context?.sessionId,
+  }).catch((error: unknown) => {
+    console.warn(
+      `[mobile_simulator] trajectory capture failed: ${error instanceof Error ? error.message : String(error)}`
+    );
+  });
+  return result;
 }

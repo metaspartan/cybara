@@ -13,6 +13,7 @@ import { cybaraDir } from "./paths";
 import { redactSecrets } from "./redaction";
 
 export type ComputerUseTrajectoryStatus = "recording" | "completed" | "interrupted" | "error";
+export type ComputerUseTrajectorySurface = "desktop" | "ios_simulator" | "android_emulator";
 
 export interface ComputerUseTrajectoryMetadata {
   id: string;
@@ -24,6 +25,7 @@ export interface ComputerUseTrajectoryMetadata {
   completedAt?: string;
   error?: string;
   replayOf?: string;
+  surface: ComputerUseTrajectorySurface;
 }
 
 export interface ComputerUseTrajectoryTurn {
@@ -134,6 +136,10 @@ function readMetadata(id: string): ComputerUseTrajectoryMetadata | null {
     completedAt: typeof record.completedAt === "string" ? record.completedAt : undefined,
     error: typeof record.error === "string" ? record.error : undefined,
     replayOf: typeof record.replayOf === "string" ? record.replayOf : undefined,
+    surface:
+      record.surface === "ios_simulator" || record.surface === "android_emulator"
+        ? record.surface
+        : "desktop",
   };
 }
 
@@ -228,13 +234,19 @@ function trajectoryTurnDir(id: string, index: number): string | null {
   return null;
 }
 
-function latestSessionMetadata(sessionId: string): ComputerUseTrajectoryMetadata | null {
+function latestSessionMetadata(
+  sessionId: string,
+  surface?: ComputerUseTrajectorySurface
+): ComputerUseTrajectoryMetadata | null {
   ensureRoot();
   return (
     readdirSync(rootDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => readMetadata(entry.name))
-      .filter((entry): entry is ComputerUseTrajectoryMetadata => entry?.sessionId === sessionId)
+      .filter(
+        (entry): entry is ComputerUseTrajectoryMetadata =>
+          entry?.sessionId === sessionId && (!surface || entry.surface === surface)
+      )
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null
   );
 }
@@ -244,7 +256,7 @@ export function getPersistedComputerUsePreview(
 ): PersistedComputerUsePreview | null {
   const sessionId = sessionIdValue.trim();
   if (!sessionId) return null;
-  const metadata = latestSessionMetadata(sessionId);
+  const metadata = latestSessionMetadata(sessionId, "desktop");
   if (!metadata) return null;
   const turns = turnsFor(metadata.id);
   const screenshotTurn = [...turns].reverse().find((turn) => turn.hasScreenshot);
@@ -378,6 +390,7 @@ export function createComputerUseTrajectory(input: {
   sessionId: string;
   recordVideo: boolean;
   replayOf?: string;
+  surface?: ComputerUseTrajectorySurface;
 }): { metadata: ComputerUseTrajectoryMetadata; dir: string } {
   ensureRoot();
   const now = new Date().toISOString();
@@ -390,6 +403,7 @@ export function createComputerUseTrajectory(input: {
     createdAt: now,
     updatedAt: now,
     replayOf: input.replayOf,
+    surface: input.surface ?? "desktop",
   };
   writeMetadata(metadata);
   return { metadata, dir: trajectoryDir(id) };

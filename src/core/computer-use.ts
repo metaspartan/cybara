@@ -20,6 +20,7 @@ import {
   getComputerUseTrajectoryDir,
   getPersistedComputerUsePreview,
   type ComputerUseTrajectoryDetail,
+  type ComputerUseTrajectorySurface,
   touchComputerUseTrajectory,
 } from "./computer-use-trajectories";
 import {
@@ -29,6 +30,13 @@ import {
   type ComputerUseAction,
   type ComputerUseArgs,
 } from "./computer-use-actions";
+import {
+  captureMobileSimulator,
+  isMobileSimulatorAction,
+  type MobileSimulatorAction,
+  type MobileSimulatorPlatform,
+  runMobileSimulatorAction,
+} from "./mobile-simulator";
 
 export {
   COMPUTER_USE_ACTION_TOOL_ALIASES,
@@ -78,6 +86,7 @@ const declaredDriverSessions = new Set<string>();
 interface ActiveComputerUseTrajectory {
   id: string;
   sessionId: string;
+  surface: ComputerUseTrajectorySurface;
   driverRecording: boolean;
   idleTimer: NodeJS.Timeout;
 }
@@ -927,12 +936,16 @@ function scheduleComputerUseTrajectoryStop(): void {
 
 async function ensureComputerUseTrajectoryRecording(
   sessionId: string,
-  driverReady: boolean
+  driverReady: boolean,
+  surface: ComputerUseTrajectorySurface = "desktop"
 ): Promise<void> {
   const settings = config.getComputerUseSettings();
   if (!settings.trajectoryCaptureEnabled) return;
   await queueTrajectoryLifecycle(async () => {
-    if (activeComputerUseTrajectory?.sessionId === sessionId) {
+    if (
+      activeComputerUseTrajectory?.sessionId === sessionId &&
+      activeComputerUseTrajectory.surface === surface
+    ) {
       touchComputerUseTrajectory(activeComputerUseTrajectory.id);
       scheduleComputerUseTrajectoryStop();
       return;
@@ -942,14 +955,15 @@ async function ensureComputerUseTrajectoryRecording(
     }
     const created = createComputerUseTrajectory({
       sessionId,
-      recordVideo: settings.trajectoryVideoEnabled,
+      recordVideo: surface === "desktop" && settings.trajectoryVideoEnabled,
+      surface,
     });
     let driverRecording = false;
     if (driverReady && driverHasTool("start_recording")) {
       try {
         await callDriverTool("start_recording", {
           output_dir: created.dir,
-          record_video: settings.trajectoryVideoEnabled,
+          record_video: created.metadata.recordVideo,
         });
         driverRecording = true;
       } catch {}
@@ -958,6 +972,7 @@ async function ensureComputerUseTrajectoryRecording(
       activeComputerUseTrajectory = {
         id: created.metadata.id,
         sessionId,
+        surface,
         driverRecording,
         idleTimer: setTimeout(() => undefined, COMPUTER_USE_TRAJECTORY_IDLE_MS),
       };
@@ -998,6 +1013,33 @@ function appendActiveComputerUseTurn(
     clickPoint: typedArgs.action.includes("click") ? observedCursor : undefined,
   });
   scheduleComputerUseTrajectoryStop();
+}
+
+export async function recordVisualInteractionTrajectoryTurn(input: {
+  arguments: Record<string, unknown>;
+  captureAfter?: () => Promise<{ screenshot?: string; screenshotMime?: string }>;
+  clickPoint?: { x: number; y: number };
+  result: unknown;
+  sessionId?: string;
+  surface: ComputerUseTrajectorySurface;
+  tool: string;
+}): Promise<boolean> {
+  const sessionId = input.sessionId?.trim();
+  if (!sessionId || !config.getComputerUseSettings().trajectoryCaptureEnabled) return false;
+  await ensureComputerUseTrajectoryRecording(sessionId, false, input.surface);
+  const media = await input.captureAfter?.().catch(() => undefined);
+  const active = activeComputerUseTrajectory;
+  if (!active || active.sessionId !== sessionId || active.surface !== input.surface) return false;
+  appendComputerUseTrajectoryTurn(active.id, {
+    tool: input.tool,
+    arguments: input.arguments,
+    result: input.result,
+    screenshot: media?.screenshot,
+    screenshotMime: media?.screenshotMime,
+    clickPoint: input.clickPoint,
+  });
+  scheduleComputerUseTrajectoryStop();
+  return true;
 }
 
 async function ensureDriverSession(sessionId: string): Promise<void> {
@@ -1075,6 +1117,97 @@ export async function stopComputerUseTrajectoryCapture(): Promise<void> {
   await queueTrajectoryLifecycle(() => stopActiveComputerUseTrajectory("completed"));
 }
 
+function platformForTrajectorySurface(
+  surface: ComputerUseTrajectorySurface
+): MobileSimulatorPlatform | null {
+  if (surface === "ios_simulator") return "ios";
+  if (surface === "android_emulator") return "android";
+  return null;
+}
+
+function mobileActionFromTurn(argumentsValue: Record<string, unknown>): MobileSimulatorAction {
+  const action = argumentsValue.action;
+  if (!isMobileSimulatorAction(action)) throw new Error("Invalid recorded simulator action");
+  return {
+    action,
+    x: argumentsValue.x,
+    y: argumentsValue.y,
+    endX: argumentsValue.endX,
+    endY: argumentsValue.endY,
+    durationMs: argumentsValue.durationMs,
+    text: argumentsValue.text,
+    key: argumentsValue.key,
+    url: argumentsValue.url,
+    path: argumentsValue.path,
+    appId: argumentsValue.appId,
+  };
+}
+
+async function replayMobileSimulatorTrajectory(
+  source: ComputerUseTrajectoryDetail,
+  platform: MobileSimulatorPlatform,
+  options: { delayMs?: number; stopOnError?: boolean }
+): Promise<{
+  source: ComputerUseTrajectoryDetail;
+  replay: ComputerUseTrajectoryDetail | null;
+  result: string;
+}> {
+  const created = createComputerUseTrajectory({
+    sessionId: `replay:${source.sessionId}`,
+    recordVideo: false,
+    replayOf: source.id,
+    surface: source.surface,
+  });
+  const delayMs = Math.min(10_000, Math.max(0, options.delayMs ?? 500));
+  try {
+    for (const turn of source.turns) {
+      const action = mobileActionFromTurn(turn.arguments);
+      const deviceId =
+        typeof turn.arguments.deviceId === "string" ? turn.arguments.deviceId : undefined;
+      try {
+        const result = await runMobileSimulatorAction(platform, deviceId, action, {
+          source: "agent",
+        });
+        const frame = await captureMobileSimulator(platform, deviceId, undefined, "preview");
+        appendComputerUseTrajectoryTurn(created.metadata.id, {
+          tool: "mobile_simulator",
+          arguments: turn.arguments,
+          result,
+          screenshot: frame.bytes?.toString("base64"),
+          screenshotMime: frame.contentType,
+          clickPoint:
+            action.action === "tap" &&
+            Number.isFinite(Number(action.x)) &&
+            Number.isFinite(Number(action.y))
+              ? { x: Number(action.x), y: Number(action.y) }
+              : undefined,
+        });
+      } catch (error) {
+        if (options.stopOnError !== false) throw error;
+        appendComputerUseTrajectoryTurn(created.metadata.id, {
+          tool: "mobile_simulator",
+          arguments: turn.arguments,
+          result: { error: error instanceof Error ? error.message : String(error) },
+        });
+      }
+      if (delayMs > 0) await Bun.sleep(delayMs);
+    }
+    finishComputerUseTrajectory(created.metadata.id, "completed");
+    return {
+      source,
+      replay: getComputerUseTrajectory(created.metadata.id),
+      result: "Simulator trajectory replay completed.",
+    };
+  } catch (error) {
+    finishComputerUseTrajectory(
+      created.metadata.id,
+      "error",
+      error instanceof Error ? error.message : String(error)
+    );
+    throw error;
+  }
+}
+
 export async function replayComputerUseTrajectory(
   id: string,
   options: { delayMs?: number; stopOnError?: boolean } = {}
@@ -1083,14 +1216,17 @@ export async function replayComputerUseTrajectory(
   replay: ComputerUseTrajectoryDetail | null;
   result: string;
 }> {
-  await ensureDriver();
   const source = getComputerUseTrajectory(id, activeComputerUseTrajectory?.id);
   if (!source) throw new Error("Computer-use trajectory not found");
   await stopComputerUseTrajectoryCapture();
+  const mobilePlatform = platformForTrajectorySurface(source.surface);
+  if (mobilePlatform) return replayMobileSimulatorTrajectory(source, mobilePlatform, options);
+  await ensureDriver();
   const created = createComputerUseTrajectory({
     sessionId: `replay:${source.sessionId}`,
     recordVideo: false,
     replayOf: source.id,
+    surface: "desktop",
   });
   try {
     await callDriverTool("start_recording", {

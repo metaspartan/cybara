@@ -12,6 +12,10 @@ import {
   listComputerUseTrajectories,
 } from "../../src/core/computer-use-trajectories";
 import { config } from "../../src/core/config";
+import {
+  recordVisualInteractionTrajectoryTurn,
+  stopComputerUseTrajectoryCapture,
+} from "../../src/core/computer-use";
 
 describe("computer-use trajectory research data", () => {
   test("preserves trajectory capture settings when only the driver path changes", () => {
@@ -166,6 +170,81 @@ describe("computer-use trajectory research data", () => {
     });
 
     expect(deleteComputerUseTrajectory(created.metadata.id)).toBe(true);
+  });
+
+  test("records simulator actions with media without replacing desktop previews", async () => {
+    const sessionId = `simulator-trajectory-${crypto.randomUUID()}`;
+    const previous = config.getComputerUseSettings();
+    const desktop = createComputerUseTrajectory({
+      sessionId,
+      recordVideo: false,
+      surface: "desktop",
+    });
+    appendComputerUseTrajectoryTurn(desktop.metadata.id, {
+      tool: "capture",
+      arguments: { action: "capture", app: "desktop" },
+      result: { ok: true, viewport: { width: 800, height: 600 } },
+      screenshot: Buffer.from("desktop-frame").toString("base64"),
+      screenshotMime: "image/png",
+    });
+    finishComputerUseTrajectory(desktop.metadata.id, "completed");
+    try {
+      config.setComputerUseSettings({
+        trajectoryCaptureEnabled: true,
+        trajectoryVideoEnabled: false,
+      });
+      expect(
+        await recordVisualInteractionTrajectoryTurn({
+          arguments: {
+            action: "tap",
+            deviceId: "ios-test-device",
+            platform: "ios",
+            x: 120,
+            y: 240,
+          },
+          captureAfter: async () => ({
+            screenshot: Buffer.from("simulator-frame").toString("base64"),
+            screenshotMime: "image/png",
+          }),
+          clickPoint: { x: 120, y: 240 },
+          result: { success: true },
+          sessionId,
+          surface: "ios_simulator",
+          tool: "mobile_simulator",
+        })
+      ).toBe(true);
+      await stopComputerUseTrajectoryCapture();
+      const simulator = listComputerUseTrajectories().find(
+        (item) => item.sessionId === sessionId && item.surface === "ios_simulator"
+      );
+      expect(simulator).toMatchObject({
+        status: "completed",
+        turnCount: 1,
+        screenshotCount: 1,
+        clickCount: 1,
+      });
+      expect(
+        getComputerUseTrajectory(simulator?.id ?? "missing-trajectory")?.turns[0]
+      ).toMatchObject({
+        tool: "mobile_simulator",
+        clickPoint: { x: 120, y: 240 },
+        hasScreenshot: true,
+      });
+      expect(
+        exportComputerUseTrajectories([simulator?.id ?? "missing-trajectory"], {
+          includeMedia: false,
+          redact: true,
+        }).content
+      ).toContain('"surface":"ios_simulator"');
+      expect(getPersistedComputerUsePreview(sessionId)?.screenshot).toBe(
+        Buffer.from("desktop-frame").toString("base64")
+      );
+      if (simulator) expect(deleteComputerUseTrajectory(simulator.id)).toBe(true);
+    } finally {
+      await stopComputerUseTrajectoryCapture();
+      config.setComputerUseSettings(previous);
+      deleteComputerUseTrajectory(desktop.metadata.id);
+    }
   });
 
   test("rejects trajectory path traversal", () => {

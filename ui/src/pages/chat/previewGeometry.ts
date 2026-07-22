@@ -81,3 +81,16 @@ export function containerPointToSource(
     y: (previewPoint.y / content.height) * source.height,
   };
 }
+
+export function sourcePointToContainer(
+  container: PreviewSize,
+  content: PreviewSize,
+  source: PreviewSize,
+  point: PreviewPoint
+): PreviewPoint | null {
+  if (!validSize(source)) return null;
+  return previewPointToContainer(container, content, {
+    x: (point.x / source.width) * content.width,
+    y: (point.y / source.height) * content.height,
+  });
+}

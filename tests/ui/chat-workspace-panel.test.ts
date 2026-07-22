@@ -163,6 +163,11 @@ describe("chat workspace panel", () => {
     expect(simulatorSource).toContain("connectStatusStream");
     expect(simulatorSource).toContain('event.toolName !== "mobile_simulator"');
     expect(simulatorSource).toContain("simulatorPreviewPollDelay");
+    expect(simulatorSource).toContain('data-testid="simulator-agent-cursor"');
+    expect(simulatorSource).toContain('label="Home"');
+    expect(simulatorSource).toContain('label="Save screenshot"');
+    expect(simulatorSource).toContain('key: "RECENTS"');
+    expect(simulatorSource).toContain("deviceId: selectedId, sessionId");
     expect(simulatorSource).not.toContain("FRAME_POLL_MS");
   });
 
