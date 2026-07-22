@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildNoUsableAssistantResponseMessage,
   buildToolExecutionFallbackMessage,
   classifyToolCallResult,
+  isNonSubstantiveAssistantCompletion,
   requiredDirectToolForMessage,
   shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
+  shouldRecoverNonSubstantiveAssistantCompletion,
   suppressRecoveredWebFailureActivities,
 } from "../../src/api/chat-tool-summary";
 
@@ -53,6 +56,11 @@ describe("chat tool summary utilities", () => {
       )
     ).toBe(true);
     expect(shouldEnforceToolUseForMessage("Update the changelog and rerun everything")).toBe(true);
+    expect(
+      shouldEnforceToolUseForMessage(
+        "paste in then import and it shows up as an empty item, please stop going in circles"
+      )
+    ).toBe(true);
   });
 
   test("does not force tools for greetings or capability questions", () => {
@@ -61,6 +69,30 @@ describe("chat tool summary utilities", () => {
     expect(shouldEnforceToolUseForMessage("How would I build an app in this workspace?")).toBe(
       false
     );
+  });
+
+  test("recovers empty and bare success claims without overriding literal response requests", () => {
+    expect(isNonSubstantiveAssistantCompletion("")).toBe(true);
+    expect(isNonSubstantiveAssistantCompletion("Completed.")).toBe(true);
+    expect(isNonSubstantiveAssistantCompletion("Task done!")).toBe(true);
+    expect(isNonSubstantiveAssistantCompletion("Completed the import and verified 4 rows.")).toBe(
+      false
+    );
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("fix the import", "Completed", 0)).toBe(
+      true
+    );
+    expect(
+      shouldRecoverNonSubstantiveAssistantCompletion(
+        "Respond with exactly Completed.",
+        "Completed.",
+        0
+      )
+    ).toBe(false);
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("fix the import", "Completed", 1)).toBe(
+      false
+    );
+    expect(buildNoUsableAssistantResponseMessage()).toContain("no usable response");
+    expect(buildNoUsableAssistantResponseMessage()).toContain("no tool actions");
   });
 
   test("binds explicit desktop actions to computer use without forcing capability questions", () => {

@@ -181,6 +181,15 @@ const NON_ACTIONABLE_PATTERNS = [
   /^\s*(what can you do|who are you)\b/i,
 ];
 
+const CORRECTIVE_FAILURE_PATTERN =
+  /\b(?:again|blank|broken|empty|error|failed|failing|missing|stuck|still|wrong)\b|\b(?:does|did|is|was|will|would)n['’]?t\b|\bnot working\b/i;
+const CORRECTIVE_ACTION_PATTERN =
+  /\b(?:continue|fix|import|paste|redo|retry|rerun|re-run|submit|try)\b|\bstop going in circles\b/i;
+const NON_SUBSTANTIVE_COMPLETION_PATTERN =
+  /^\s*(?:task\s+)?(?:complete|completed|done|finished|fixed|implemented|resolved)\s*[.!]*\s*$/i;
+const LITERAL_COMPLETION_REQUEST_PATTERN =
+  /\b(?:answer|output|reply|respond|return|say)\s+(?:with\s+)?(?:(?:only|exactly|just|verbatim)\s+)?["'`]*(?:complete|completed|done|finished)["'`]*[.!]?\s*$/i;
+
 export function shouldEnforceToolUseForMessage(message: string): boolean {
   const trimmed = message.trim();
   if (trimmed.length < 8) return false;
@@ -188,6 +197,10 @@ export function shouldEnforceToolUseForMessage(message: string): boolean {
     return false;
   }
   if (isCodeMutationRequest(trimmed)) return true;
+
+  if (CORRECTIVE_FAILURE_PATTERN.test(trimmed) && CORRECTIVE_ACTION_PATTERN.test(trimmed)) {
+    return true;
+  }
 
   const lower = trimmed.toLowerCase();
   const tokens = lower.split(/[^a-z0-9_.:/-]+/).filter(Boolean);
@@ -198,6 +211,26 @@ export function shouldEnforceToolUseForMessage(message: string): boolean {
     /\bhttps?:\/\//i.test(trimmed);
 
   return hasActionVerb && hasWorkContext;
+}
+
+export function isNonSubstantiveAssistantCompletion(content: string): boolean {
+  const trimmed = content.trim();
+  return trimmed.length === 0 || NON_SUBSTANTIVE_COMPLETION_PATTERN.test(trimmed);
+}
+
+export function shouldRecoverNonSubstantiveAssistantCompletion(
+  userMessage: string,
+  assistantContent: string,
+  toolCallCount: number
+): boolean {
+  if (toolCallCount > 0 || LITERAL_COMPLETION_REQUEST_PATTERN.test(userMessage.trim())) {
+    return false;
+  }
+  return isNonSubstantiveAssistantCompletion(assistantContent);
+}
+
+export function buildNoUsableAssistantResponseMessage(): string {
+  return "The model returned no usable response for this turn, and no tool actions were executed.";
 }
 
 export function requiredDirectToolForMessage(message: string): string | undefined {

@@ -24,7 +24,7 @@ describe("chat response persistence guards", () => {
     const source = readFileSync(chatSourcePath, "utf8");
     expect(source).toContain("const assistantContent =");
     expect(source).toContain("buildToolExecutionFallbackMessage(");
-    expect(source).toContain(': "Completed."');
+    expect(source).toContain(": buildNoUsableAssistantResponseMessage()");
     expect(source).toContain("content: assistantContent");
   });
 });
