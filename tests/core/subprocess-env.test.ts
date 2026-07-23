@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, dirname, join } from "node:path";
 import {
   baseSubprocessEnvironment,
   buildContainerRuntimeEnvironment,
+  buildHostSubprocessEnvironment,
   buildSubprocessEnvironment,
   sanitizeSubprocessEnvironment,
 } from "../../src/core/subprocess-env";
@@ -68,5 +72,32 @@ describe("subprocess environment", () => {
       DOCKER_CONTEXT: "workspace",
       CONTAINER_HOST: "unix:///run/user/1000/podman.sock",
     });
+  });
+
+  test("adds packaged and user runtimes to a restricted desktop PATH", () => {
+    const resourceDir = mkdtempSync(join(tmpdir(), "cybara-runtime-path-"));
+    const bundledRuntimeDir = join(resourceDir, "runtime");
+    mkdirSync(bundledRuntimeDir);
+    try {
+      const environment = buildHostSubprocessEnvironment(
+        {},
+        {
+          PATH: process.platform === "win32" ? "C:\\Windows\\System32" : "/usr/bin:/bin",
+          HOME: process.env.HOME,
+          USERPROFILE: process.env.USERPROFILE,
+          CYBARA_RESOURCE_DIR: resourceDir,
+        }
+      );
+      const pathKey = Object.keys(environment).find((name) => name.toUpperCase() === "PATH");
+      const entries = (pathKey ? environment[pathKey] : "").split(delimiter);
+
+      expect(entries).toContain(dirname(process.execPath));
+      expect(entries).toContain(bundledRuntimeDir);
+      if (process.platform === "darwin" && existsSync("/opt/homebrew/bin")) {
+        expect(entries).toContain("/opt/homebrew/bin");
+      }
+    } finally {
+      rmSync(resourceDir, { recursive: true, force: true });
+    }
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { config } from "../../src/core/config";
 import {
   activeAgentSystemPrompt,
   refreshSessionAgentSystemPromptIfNeeded,
@@ -179,6 +180,38 @@ describe("chat agent prompt tool mode", () => {
       expect(session.messages[0]?.content).toContain("## Reply Tags");
       expect(session.updatedAt).not.toBe("stable");
     } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
+  test("refreshes stale sandbox guidance after sandboxing is disabled", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "cybara-chat-prompt-"));
+    const previous = config.getSandboxRuntime();
+    try {
+      config.setSandboxRuntime({
+        enabled: true,
+        provider: "remote",
+        network: "deny",
+        remoteUrl: "https://sandbox.example.com",
+      });
+      const content = await activeAgentSystemPrompt(explicitToolAgent, workspace);
+      expect(content).toContain("## Sandbox");
+      expect(content).toContain("sandbox=enabled");
+      const session = {
+        agentId: explicitToolAgent.id,
+        messages: [{ role: "system" as const, content, timestamp: "stale" }],
+        updatedAt: "stale",
+        workspaceDir: workspace,
+      };
+
+      config.setSandboxRuntime({ enabled: false, provider: "remote", network: "deny" });
+      await refreshSessionAgentSystemPromptIfNeeded(session, explicitToolAgent);
+
+      expect(session.messages[0]?.content).not.toContain("## Sandbox");
+      expect(session.messages[0]?.content).toContain("sandbox=disabled");
+      expect(session.updatedAt).not.toBe("stale");
+    } finally {
+      config.setSandboxRuntime(previous);
       rmSync(workspace, { recursive: true, force: true });
     }
   });

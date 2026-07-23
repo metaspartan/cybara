@@ -6,6 +6,7 @@ import { createEligibilityContext, filterEligibleSkills, loadAllSkills } from ".
 import {
   buildSystemPrompt,
   AGENT_TYPE_PROMPTS,
+  systemPromptSandboxMarker,
   systemPromptToolMarker,
 } from "../core/system-prompt";
 import { resolveAgentToolPolicy } from "../core/toolsets";
@@ -62,6 +63,11 @@ function promptMatchesRuntimeChannel(prompt: string, runtimeChannel?: string): b
   const channelMatch = runtimeLine.match(/(?:^| \| )channel=([^|]+)/);
   const promptChannel = channelMatch?.[1]?.trim();
   return runtimeChannel ? promptChannel === runtimeChannel : promptChannel === undefined;
+}
+
+function promptMatchesSandboxState(prompt: string, enabled: boolean): boolean {
+  const runtimeLine = prompt.split("\n").find((line) => line.startsWith("Runtime: ")) || "";
+  return runtimeLine.split(" | ").includes(systemPromptSandboxMarker(enabled));
 }
 
 export async function activeAgentSystemPrompt(
@@ -143,9 +149,11 @@ export async function refreshSessionAgentSystemPromptIfNeeded(
     return;
   }
   const toolNames = chatAgentToolNames(agent, messages || session.messages, options);
+  const sandboxInfo = getSandboxPromptInfo(session.workspaceDir || config.getDefaultWorkspaceDir());
   if (
     !firstMessage.content.split("\n").includes(systemPromptToolMarker(toolNames)) ||
-    !promptMatchesRuntimeChannel(firstMessage.content, options.runtimeChannel)
+    !promptMatchesRuntimeChannel(firstMessage.content, options.runtimeChannel) ||
+    !promptMatchesSandboxState(firstMessage.content, sandboxInfo.enabled)
   ) {
     await applyActiveAgentToSession(session, agent, messages, options);
   }
