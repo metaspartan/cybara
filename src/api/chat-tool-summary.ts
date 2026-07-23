@@ -17,6 +17,7 @@ export interface ToolCallOutcome {
 
 export type AssistantEvidenceIssue =
   | "missing_clarification"
+  | "missing_action_evidence"
   | "plan_only"
   | "unfinished_execution"
   | "unsupported_completion"
@@ -24,6 +25,7 @@ export type AssistantEvidenceIssue =
 
 export interface AssistantEvidenceContext {
   allowPlanOnly?: boolean;
+  requireActionEvidence?: boolean;
   userMessage?: string;
 }
 
@@ -284,9 +286,38 @@ const PLAN_ONLY_RESPONSE_PATTERN =
   /\b(?:next\s+(?:phase\s+)?plan|implementation plan|action plan|proposed plan|roadmap|next steps?)\b/i;
 const PLANNED_ACTION_PATTERN =
   /\b(?:add|build|configure|create|deploy|generate|implement|integrate|set\s*up|support|update|use)\b/gi;
+const REQUEST_CLAUSE_BOUNDARY = String.raw`(?:^|[.!?;,\n]\s*)`;
+const REQUEST_COURTESY_PREFIX = String.raw`(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?`;
+const ACTION_EXECUTION_REQUEST_PATTERN = new RegExp(
+  `${REQUEST_CLAUSE_BOUNDARY}${REQUEST_COURTESY_PREFIX}(?:let'?s\s+)?(?:continue|proceed|go\\s+ahead|do\\s+it|keep\\s+going|finish|implement|build|create|add|fix|update|improve|integrate|deploy|set\\s*up|configure|change|refactor|install|remove|delete|move|copy|import|paste|push|publish)\\b`,
+  "i"
+);
+const EVIDENCE_REQUEST_PATTERN = new RegExp(
+  `${REQUEST_CLAUSE_BOUNDARY}${REQUEST_COURTESY_PREFIX}(?:let'?s\s+)?(?:review|audit|inspect|investigate|diagnose|test|verify|run|research|search|look\\s+into|analyze|check|compare)\\b`,
+  "i"
+);
+const EVIDENCE_REQUEST_TARGET_PATTERN =
+  /\b(?:app|application|build|chat|cli|code|codebase|file|gateway|implementation|project|provider|repo|repository|session|site|system|test|tool|tui|ui|workspace)\b|https?:\/\//i;
 
 function successfulToolCalls(toolCalls: ToolCallResultLike[]): ToolCallResultLike[] {
   return toolCalls.filter(isSuccessfulToolCall);
+}
+
+export function isEvidenceToolCall(toolCall: ToolCallResultLike): boolean {
+  return !NON_EVIDENCE_TOOLS.has(toolCall.name);
+}
+
+export function requiresToolEvidenceForMessage(message: string): boolean {
+  const request = message.trim();
+  if (!request || LITERAL_COMPLETION_REQUEST_PATTERN.test(request)) return false;
+  if (
+    EXPLICIT_PLANNING_REQUEST_PATTERN.test(request) &&
+    !PLANNING_FOLLOW_THROUGH_PATTERN.test(request)
+  ) {
+    return false;
+  }
+  if (ACTION_EXECUTION_REQUEST_PATTERN.test(request)) return true;
+  return EVIDENCE_REQUEST_PATTERN.test(request) && EVIDENCE_REQUEST_TARGET_PATTERN.test(request);
 }
 
 function hasPattern(content: string, patterns: RegExp[]): boolean {
@@ -332,7 +363,11 @@ function isPlanOnlyImplementationResponse(
   ) {
     return false;
   }
-  if (hasSuccessfulCompletionEvidence(assistantContent, toolCalls)) return false;
+  if (
+    successfulToolCalls(toolCalls).some((toolCall) => MUTATION_EVIDENCE_TOOLS.has(toolCall.name))
+  ) {
+    return false;
+  }
   const actions = assistantContent.match(PLANNED_ACTION_PATTERN)?.length || 0;
   return PLAN_ONLY_RESPONSE_PATTERN.test(assistantContent) && actions >= 2;
 }
@@ -359,6 +394,13 @@ export function findAssistantEvidenceIssue(
     isPlanOnlyImplementationResponse(context.userMessage, visibleContent, toolCalls)
   ) {
     return "plan_only";
+  }
+  if (
+    context.requireActionEvidence === true &&
+    !toolCalls.some(isEvidenceToolCall) &&
+    !visibleContent.includes("?")
+  ) {
+    return "missing_action_evidence";
   }
   if (
     hasPattern(visibleContent, COMPLETION_CLAIM_PATTERNS) &&
@@ -414,6 +456,9 @@ export function buildUnsupportedAssistantClaimMessage(issue: AssistantEvidenceIs
   }
   if (issue === "unsupported_completion") {
     return "The model claimed the work was completed, but Cybara did not record a successful tool action that supports that claim. Treat this turn as incomplete.";
+  }
+  if (issue === "missing_action_evidence") {
+    return "The model returned an answer for an actionable request, but Cybara did not record a tool attempt that supports the response. Treat this turn as incomplete.";
   }
   if (issue === "plan_only") {
     return "The model returned a plan instead of performing the requested work. No implementation action was completed for this turn.";

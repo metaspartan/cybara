@@ -217,13 +217,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
 
   if (!isMinimal && hasTools) {
     lines.push(...buildAgenticBehaviorSection());
-    lines.push(
-      ...buildExecutionContractSection(
-        params.executionMode || "execute",
-        params.modelDisplay,
-        params.providerType
-      )
-    );
+    lines.push(...buildExecutionContractSection(params.executionMode || "execute"));
     lines.push(...buildGroundingSection());
   }
 
@@ -647,11 +641,7 @@ function buildAgenticBehaviorSection(): string[] {
   ];
 }
 
-function buildExecutionContractSection(
-  mode: SystemPromptExecutionMode,
-  modelDisplay: string,
-  providerType?: string
-): string[] {
+function buildExecutionContractSection(mode: SystemPromptExecutionMode): string[] {
   if (mode === "plan") {
     return [
       "## Planning Mode",
@@ -669,20 +659,10 @@ function buildExecutionContractSection(
     "Return a text-only response without tool calls only for a direct informational answer, a necessary safety clarification, a concrete blocker, or the final summary of work already evidenced by tools.",
   ];
 
-  const normalizedModel = modelDisplay.trim().toLowerCase();
-  const normalizedProvider = providerType?.trim().toLowerCase() || "";
-  const usesKimiToolDiscipline =
-    normalizedProvider.includes("kimi") ||
-    normalizedModel.includes("kimi") ||
-    normalizedModel === "k3" ||
-    normalizedModel.startsWith("k3-");
-
-  if (usesKimiToolDiscipline) {
-    lines.push(
-      "For non-trivial workspace, coding, or system tasks, default to using tools.",
-      "Requests to create, modify, run, test, or inspect code and files require tool calls before the final response."
-    );
-  }
+  lines.push(
+    "For non-trivial workspace, coding, research, or system tasks, default to using tools regardless of the active model or provider.",
+    "Requests to create, modify, inspect, run, test, verify, or research concrete work require tool calls before the final response. Do not infer details beyond the exact tool results."
+  );
 
   lines.push("");
   return lines;

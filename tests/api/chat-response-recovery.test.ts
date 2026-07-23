@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 describe("chat response recovery", () => {
-  test("retries a bare completion without classifying the user's prompt", async () => {
+  test("retries a bare completion under the action evidence contract", async () => {
     const agentId = createTestAgent("Bare Completion Recovery Agent");
     const sessionId = `bare-completion-${crypto.randomUUID()}`;
     createdSessionIds.push(sessionId);
@@ -70,13 +70,13 @@ describe("chat response recovery", () => {
 
     expect(callCount).toBe(2);
     expect(executionOptions[0]?.requireToolUse).toBe(false);
-    expect(executionOptions[1]?.requireToolUse).toBe(false);
+    expect(executionOptions[1]?.requireToolUse).toBe(true);
     expect(executionMessages[1]?.at(-2)).toEqual({
       role: "assistant",
       content: "Completed",
       images: undefined,
     });
-    expect(executionMessages[1]?.at(-1)?.content).toContain("empty or only claimed completion");
+    expect(executionMessages[1]?.at(-1)?.content).toContain("without using the available tools");
     expect(result.message.content).toContain("verified that the item now contains 4 fields");
     expect(result.message.tool_calls).toHaveLength(1);
   });
@@ -167,6 +167,84 @@ describe("chat response recovery", () => {
     expect(executionOptions[1]?.requireToolUse).toBe(true);
     expect(result.message.content).toContain("verified 4 focused tests pass");
     expect(result.message.tool_calls).toHaveLength(2);
+  });
+
+  test("retries a substantive audit answer that has no tool evidence", async () => {
+    const agentId = createTestAgent("Audit Evidence Recovery Agent");
+    const sessionId = `audit-evidence-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const executionOptions: Array<Parameters<typeof agentManager.execute>[2]> = [];
+    let callCount = 0;
+
+    agentManager.execute = (async (_agentId, _messages, options) => {
+      callCount += 1;
+      executionOptions.push(options);
+      if (callCount === 1) {
+        return {
+          content:
+            "The architecture is production ready. The provider layer is modular and the tests cover every critical path.",
+        };
+      }
+      return {
+        content: "I inspected the provider runtime and found one untested fallback branch.",
+        tool_calls: [
+          {
+            name: "read",
+            args: { path: "/tmp/provider-runtime.ts" },
+            result: { path: "/tmp/provider-runtime.ts", content: "export function fallback() {}" },
+          },
+        ],
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Review and audit this codebase.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(2);
+    expect(executionOptions[0]?.requireToolUse).toBe(false);
+    expect(executionOptions[1]?.requireToolUse).toBe(true);
+    expect(result.message.content).toContain("found one untested fallback branch");
+    expect(result.message.tool_calls).toHaveLength(1);
+  });
+
+  test("fails closed and preserves retry tools when no evidence tool is used", async () => {
+    const agentId = createTestAgent("No Evidence Recovery Agent");
+    const sessionId = `no-evidence-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    let callCount = 0;
+
+    agentManager.execute = (async () => {
+      callCount += 1;
+      return {
+        content: "The audit is complete and the project is production ready.",
+        tool_calls:
+          callCount === 1
+            ? []
+            : [
+                {
+                  name: "todo",
+                  args: { items: [{ step: "Audit", status: "completed" }] },
+                  result: { items: [{ step: "Audit", status: "completed" }] },
+                },
+              ],
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Review and audit this codebase.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(2);
+    expect(result.message.content).toContain("did not record a tool attempt");
+    expect(result.message.tool_calls).toHaveLength(1);
+    expect(result.message.tool_calls?.[0]?.name).toBe("todo");
   });
 
   test("continues when a model stops after promising to execute its plan", async () => {
