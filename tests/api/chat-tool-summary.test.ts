@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildNoUsableAssistantResponseMessage,
+  buildUnsupportedAssistantClaimMessage,
   buildToolExecutionFallbackMessage,
   classifyToolCallResult,
+  extractVisibleClarification,
+  findAssistantEvidenceIssue,
   isNonSubstantiveAssistantCompletion,
   requiredDirectToolForMessage,
   shouldPreferArtifactsForMessage,
@@ -18,6 +21,18 @@ describe("chat tool summary utilities", () => {
     expect(classifyToolCallResult({ error: "Text not found in file" })).toEqual({
       status: "failed",
       error: "Text not found in file",
+    });
+    expect(classifyToolCallResult({ output: "2 failures", exitCode: 1 })).toEqual({
+      status: "failed",
+      error: "2 failures",
+    });
+    expect(classifyToolCallResult({ success: false, message: "write rejected" })).toEqual({
+      status: "failed",
+      error: "write rejected",
+    });
+    expect(classifyToolCallResult({ status: "blocked" })).toEqual({
+      status: "failed",
+      error: "Tool finished with status blocked",
     });
   });
 
@@ -58,6 +73,74 @@ describe("chat tool summary utilities", () => {
     );
     expect(buildNoUsableAssistantResponseMessage()).toContain("no usable response");
     expect(buildNoUsableAssistantResponseMessage()).toContain("no tool actions");
+  });
+
+  test("detects unsupported work and verification claims from actual tool outcomes", () => {
+    expect(findAssistantEvidenceIssue("Done. I implemented the importer.", [])).toBe(
+      "unsupported_completion"
+    );
+    expect(
+      findAssistantEvidenceIssue("I have fixed the importer.", [
+        { name: "read", result: { path: "/tmp/import.ts", content: "source" } },
+      ])
+    ).toBe("unsupported_completion");
+    expect(
+      findAssistantEvidenceIssue("I have fixed the importer.", [
+        { name: "edit", status: "failed", result: { filePath: "/tmp/import.ts" } },
+      ])
+    ).toBe("unsupported_completion");
+    expect(
+      findAssistantEvidenceIssue("I have fixed the importer.", [
+        { name: "edit", result: { filePath: "/tmp/import.ts" } },
+      ])
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue("I have created a task plan.", [
+        { name: "todo", result: { items: [{ step: "Inspect", status: "in_progress" }] } },
+      ])
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue("All tests passed and the build is green.", [
+        { name: "exec", result: { output: "3 failed", exitCode: 1 } },
+      ])
+    ).toBe("unsupported_verification");
+    expect(
+      findAssistantEvidenceIssue("All tests passed and the build is green.", [
+        { name: "read", result: { path: "/tmp/test.log", content: "18 pass" } },
+      ])
+    ).toBe("unsupported_verification");
+    expect(
+      findAssistantEvidenceIssue("All tests passed and the build is green.", [
+        { name: "exec", result: { output: "18 pass", exitCode: 0 } },
+      ])
+    ).toBeUndefined();
+    expect(findAssistantEvidenceIssue("I asked. Waiting for your answer.", [])).toBe(
+      "missing_clarification"
+    );
+    expect(buildUnsupportedAssistantClaimMessage("unsupported_completion")).toContain(
+      "did not record a successful tool action"
+    );
+  });
+
+  test("turns a structured clarification result into a visible question", () => {
+    expect(
+      extractVisibleClarification([
+        {
+          name: "clarify",
+          result: {
+            awaiting: "user",
+            header: "Data source",
+            question: "Which source should be authoritative?",
+            options: [
+              { label: "API", description: "Use the official endpoint" },
+              { label: "Files", description: "Use the checked-in data" },
+            ],
+          },
+        },
+      ])
+    ).toBe(
+      "**Data source**\n\nWhich source should be authoritative?\n\n1. **API** — Use the official endpoint\n2. **Files** — Use the checked-in data"
+    );
   });
 
   test("binds explicit desktop actions to computer use without forcing capability questions", () => {

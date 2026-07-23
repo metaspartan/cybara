@@ -4,6 +4,9 @@ import { sanitizeAssistantContent } from "../core/llm/text-tool-calls";
 import { stripThinkingTags } from "./chat-formatting";
 import {
   buildNoUsableAssistantResponseMessage,
+  buildUnsupportedAssistantClaimMessage,
+  findAssistantEvidenceIssue,
+  isSuccessfulToolCall,
   shouldRecoverNonSubstantiveAssistantCompletion,
 } from "./chat-tool-summary";
 
@@ -34,8 +37,18 @@ function visibleAssistantContent(content: string): string {
 
 function buildRetryInstruction(
   shouldRetryToolExecution: boolean,
-  requiredToolName: string | undefined
+  requiredToolName: string | undefined,
+  evidenceIssue: ReturnType<typeof findAssistantEvidenceIssue>
 ): string {
+  if (evidenceIssue === "missing_clarification") {
+    return "Your previous response said a question was asked, but no question was visible. Ask the actual concise question directly now, or use the clarify tool with the complete question and options. Do not say that you asked without including the question.";
+  }
+  if (evidenceIssue === "unsupported_completion") {
+    return "Your previous response claimed work was completed without a successful tool action supporting that claim. Perform the requested work with the available tools now, verify the concrete result, and report only what the tool results establish.";
+  }
+  if (evidenceIssue === "unsupported_verification") {
+    return "Your previous response claimed verification passed without a successful verification action supporting it. Run the relevant checks now and report their actual results. If verification cannot run, say that explicitly.";
+  }
   if (!shouldRetryToolExecution) {
     return "Your previous response was empty or only claimed completion without evidence. Re-read the conversation and answer the user's actual request with concrete results. Use available tools when the request requires action. Do not reply with only a completion claim.";
   }
@@ -48,17 +61,26 @@ function buildRetryInstruction(
 export async function recoverAssistantResponse(
   params: AssistantResponseRecoveryParams
 ): Promise<AssistantResponseRecoveryResult> {
+  const successfulToolResults = params.toolResults.filter(isSuccessfulToolCall);
   const hasRequiredToolCall = params.requiredToolName
-    ? params.toolResults.some((toolCall) => toolCall.name === params.requiredToolName)
-    : params.toolResults.length > 0;
+    ? successfulToolResults.some((toolCall) => toolCall.name === params.requiredToolName)
+    : successfulToolResults.length > 0;
   const shouldRecoverCompletion = shouldRecoverNonSubstantiveAssistantCompletion(
     params.userMessage,
     visibleAssistantContent(params.responseContent),
-    params.toolResults.length
+    successfulToolResults.length
   );
+  const evidenceIssue = shouldRecoverCompletion
+    ? undefined
+    : findAssistantEvidenceIssue(
+        visibleAssistantContent(params.responseContent),
+        params.toolResults
+      );
   const shouldRetryToolExecution =
-    params.shouldRequireToolUse && (params.toolResults.length === 0 || !hasRequiredToolCall);
-  if (!shouldRetryToolExecution && !shouldRecoverCompletion) {
+    (params.shouldRequireToolUse && (params.toolResults.length === 0 || !hasRequiredToolCall)) ||
+    (params.toolsEnabled === true &&
+      (evidenceIssue === "unsupported_completion" || evidenceIssue === "unsupported_verification"));
+  if (!shouldRetryToolExecution && !shouldRecoverCompletion && !evidenceIssue) {
     return {
       responseContent: params.responseContent,
       toolResults: params.toolResults,
@@ -71,7 +93,11 @@ export async function recoverAssistantResponse(
   }
   retryMessages.push({
     role: "user",
-    content: buildRetryInstruction(shouldRetryToolExecution, params.requiredToolName),
+    content: buildRetryInstruction(
+      shouldRetryToolExecution,
+      params.requiredToolName,
+      evidenceIssue
+    ),
   });
 
   try {
@@ -82,22 +108,39 @@ export async function recoverAssistantResponse(
       requiredToolName: shouldRetryToolExecution ? params.requiredToolName : undefined,
     });
     const retryToolCalls = retryResult.tool_calls || [];
+    const combinedToolCalls = [...params.toolResults, ...retryToolCalls];
+    const successfulCombinedToolCalls = combinedToolCalls.filter(isSuccessfulToolCall);
+    const retryHasRequiredToolCall = params.requiredToolName
+      ? successfulCombinedToolCalls.some((toolCall) => toolCall.name === params.requiredToolName)
+      : successfulCombinedToolCalls.length > 0;
     const retryIsSubstantive = !shouldRecoverNonSubstantiveAssistantCompletion(
       params.userMessage,
       visibleAssistantContent(retryResult.content),
-      retryToolCalls.length
+      successfulCombinedToolCalls.length
     );
-    if (retryToolCalls.length > 0 || (!shouldRetryToolExecution && retryIsSubstantive)) {
+    const retryEvidenceIssue = findAssistantEvidenceIssue(
+      visibleAssistantContent(retryResult.content),
+      combinedToolCalls
+    );
+    if (
+      !retryEvidenceIssue &&
+      ((shouldRetryToolExecution && retryHasRequiredToolCall) ||
+        (!shouldRetryToolExecution && retryIsSubstantive))
+    ) {
       return {
         result: retryResult,
         responseContent: retryResult.content,
-        toolResults: [...params.toolResults, ...retryToolCalls],
+        toolResults: combinedToolCalls,
       };
     }
     return {
-      responseContent: shouldRecoverCompletion
-        ? buildNoUsableAssistantResponseMessage()
-        : params.responseContent,
+      responseContent: retryEvidenceIssue
+        ? buildUnsupportedAssistantClaimMessage(retryEvidenceIssue)
+        : shouldRecoverCompletion
+          ? buildNoUsableAssistantResponseMessage()
+          : evidenceIssue
+            ? buildUnsupportedAssistantClaimMessage(evidenceIssue)
+            : params.responseContent,
       toolResults: params.toolResults,
     };
   } catch (error) {
@@ -105,7 +148,9 @@ export async function recoverAssistantResponse(
       error: error instanceof Error ? error.message : String(error),
       responseContent: shouldRecoverCompletion
         ? buildNoUsableAssistantResponseMessage()
-        : params.responseContent,
+        : evidenceIssue
+          ? buildUnsupportedAssistantClaimMessage(evidenceIssue)
+          : params.responseContent,
       toolResults: params.toolResults,
     };
   }

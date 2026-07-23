@@ -145,6 +145,7 @@ import {
   buildNoUsableAssistantResponseMessage,
   buildToolExecutionFallbackMessage,
   classifyToolCallResult,
+  extractVisibleClarification,
   requiredDirectToolForMessage,
   shouldPreferArtifactsForMessage,
   suppressRecoveredWebFailureActivities,
@@ -1615,6 +1616,7 @@ async function handleChatTurn(
         toolResults.push(...(result.tool_calls || []));
       }
       responseContent = result.content;
+      responseContent = extractVisibleClarification(toolResults) || responseContent;
 
       const recoveredResponse = await recoverAssistantResponse({
         agentId: agent.id,
