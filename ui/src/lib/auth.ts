@@ -190,6 +190,14 @@ export function createAuthenticatedWebSocket(url: string): WebSocket {
   return authProtocol ? new WebSocket(url, authProtocol) : new WebSocket(url);
 }
 
+export async function createHydratedAuthenticatedWebSocket(
+  url: string,
+  refreshToken = false
+): Promise<WebSocket> {
+  if (refreshToken || !getApiAuthToken()) await hydrateTauriDesktopToken(refreshToken);
+  return createAuthenticatedWebSocket(url);
+}
+
 export function withApiAuthHeaders(headers?: HeadersInit, token = getApiAuthToken()): Headers {
   const resolved = new Headers(headers);
   if (token && !resolved.has("Authorization")) {

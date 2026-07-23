@@ -1,5 +1,5 @@
 import { type MutableRefObject, useEffect, useRef } from "react";
-import { createAuthenticatedWebSocket, withGatewayBasePath } from "@/lib/auth";
+import { createHydratedAuthenticatedWebSocket, withGatewayBasePath } from "@/lib/auth";
 import {
   type BrowserPreviewStreamSender,
   LatestBrowserFrameDecoder,
@@ -108,9 +108,19 @@ export function BrowserPreviewImage({
   }, [fallbackSource]);
 
   useEffect(() => {
+    let active = true;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let heartbeatTimer: number | null = null;
+    let fallbackTimer: number | null = null;
+    let reconnectAttempt = 0;
+    let hasStreamFrame = false;
+    let streamFrameVersion = 0;
     const clearStreamFrame = (): void => {
       const canvas = canvasRef.current;
       const context = canvasContextRef.current;
+      if (canvas) canvas.style.visibility = "hidden";
+      hasStreamFrame = false;
       if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
       canvasContextRef.current = null;
       if (canvas) {
@@ -134,6 +144,13 @@ export function BrowserPreviewImage({
       canvasContextRef.current = context;
       try {
         context?.drawImage(frame.source, 0, 0, frame.width, frame.height);
+        hasStreamFrame = Boolean(context);
+        if (context) {
+          streamFrameVersion += 1;
+          if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+          canvas.style.visibility = "visible";
+        }
         framePresentedRef.current(Boolean(context));
       } finally {
         frame.release();
@@ -154,17 +171,12 @@ export function BrowserPreviewImage({
       connectionChangeRef.current(false);
       return;
     }
-    let active = true;
-    let socket: WebSocket | null = null;
-    let reconnectTimer: number | null = null;
-    let heartbeatTimer: number | null = null;
-    let reconnectAttempt = 0;
     const decoder = new LatestBrowserFrameDecoder<DecodedBrowserFrame>(
       decodeBrowserFrame,
       presentStreamFrame,
       (frame) => frame.release()
     );
-    const connect = (): void => {
+    const connect = async (): Promise<void> => {
       if (!active) return;
       const query = new URLSearchParams({
         quality: String(quality),
@@ -172,11 +184,17 @@ export function BrowserPreviewImage({
         maxHeight: String(maxHeight),
         everyNthFrame: "1",
       });
-      socket = createAuthenticatedWebSocket(
+      const nextSocket = await createHydratedAuthenticatedWebSocket(
         browserStreamUrl(
           `/api/browser/tabs/${encodeURIComponent(pageId)}/stream?${query.toString()}`
-        )
+        ),
+        reconnectAttempt > 0
       );
+      if (!active) {
+        nextSocket.close();
+        return;
+      }
+      socket = nextSocket;
       socket.binaryType = "blob";
       socket.onopen = () => {
         reconnectAttempt = 0;
@@ -200,7 +218,8 @@ export function BrowserPreviewImage({
             if (
               value &&
               typeof value === "object" &&
-              (value as { type?: unknown }).type === "input_error" &&
+              ((value as { type?: unknown }).type === "input_error" ||
+                (value as { type?: unknown }).type === "error") &&
               typeof (value as { error?: unknown }).error === "string"
             ) {
               streamErrorRef.current((value as { error: string }).error);
@@ -220,14 +239,23 @@ export function BrowserPreviewImage({
         if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
         heartbeatTimer = null;
         if (!active) return;
-        clearStreamFrame();
-        presentFallback();
+        if (!hasStreamFrame) {
+          presentFallback();
+        } else if (fallbackTimer === null) {
+          const frameVersionAtClose = streamFrameVersion;
+          fallbackTimer = window.setTimeout(() => {
+            fallbackTimer = null;
+            if (!active || streamFrameVersion !== frameVersionAtClose) return;
+            clearStreamFrame();
+            presentFallback();
+          }, 750);
+        }
         const delay = Math.min(5_000, 250 * 2 ** reconnectAttempt);
         reconnectAttempt += 1;
-        reconnectTimer = window.setTimeout(connect, delay);
+        reconnectTimer = window.setTimeout(() => void connect(), delay);
       };
     };
-    connect();
+    void connect();
     return () => {
       active = false;
       decoder.dispose();
@@ -236,6 +264,7 @@ export function BrowserPreviewImage({
       connectionChangeRef.current(false);
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
+      if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
       socket?.close();
       clearStreamFrame();
       presentFallback();

@@ -14,7 +14,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type WheelEvent,
 } from "react";
 import { apiFetch } from "@/lib/auth";
 import { connectStatusStream } from "@/lib/status-stream";
@@ -450,7 +449,7 @@ export function ChatWorkspaceBrowser({
   const schedulePreviewRefresh = useCallback(
     (targetPage: BrowserPage, immediate = false): void => {
       previewRefreshPageRef.current = targetPage;
-      if (immediate && previewRefreshTimerRef.current !== null) {
+      if (previewRefreshTimerRef.current !== null && (immediate || !streamConnectedRef.current)) {
         window.clearTimeout(previewRefreshTimerRef.current);
         previewRefreshTimerRef.current = null;
       }
@@ -726,19 +725,30 @@ export function ChatWorkspaceBrowser({
     void sendPageInput(page, { type: "pointer_click", x: point.x, y: point.y });
   };
 
-  const handlePreviewWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!page) return;
-    event.preventDefault();
-    lastInteractionAtRef.current = Date.now();
-    scrollBatcherRef.current?.enqueue(
-      normalizeBrowserWheelDelta(
-        event.deltaX,
-        event.deltaY,
-        event.deltaMode,
-        preview?.viewport?.height ?? browserViewport.height
-      )
-    );
-  };
+  const handlePreviewWheel = useCallback(
+    (event: globalThis.WheelEvent): void => {
+      event.stopPropagation();
+      event.preventDefault();
+      if (!page) return;
+      lastInteractionAtRef.current = Date.now();
+      scrollBatcherRef.current?.enqueue(
+        normalizeBrowserWheelDelta(
+          event.deltaX,
+          event.deltaY,
+          event.deltaMode,
+          preview?.viewport?.height ?? browserViewport.height
+        )
+      );
+    },
+    [browserViewport.height, page, preview?.viewport?.height]
+  );
+
+  useEffect(() => {
+    const surface = previewSurfaceRef.current;
+    if (!surface) return;
+    surface.addEventListener("wheel", handlePreviewWheel, { passive: false });
+    return () => surface.removeEventListener("wheel", handlePreviewWheel);
+  }, [handlePreviewWheel]);
 
   const handlePreviewKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!page) return;
@@ -839,10 +849,9 @@ export function ChatWorkspaceBrowser({
       </div>
       <div
         ref={previewSurfaceRef}
-        className="relative min-h-0 flex-1 cursor-default overflow-hidden bg-[#111216] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-400/35"
+        className="relative min-h-0 flex-1 touch-none cursor-default overflow-hidden overscroll-contain bg-[#111216] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-400/35"
         onClick={handlePreviewClick}
         onKeyDown={handlePreviewKeyDown}
-        onWheel={handlePreviewWheel}
         role="application"
         tabIndex={0}
         aria-label="Interactive browser preview"

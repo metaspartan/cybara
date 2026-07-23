@@ -131,7 +131,7 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("schedulePreviewRefresh");
     expect(browserSource).toContain("normalizeBrowserWheelDelta");
     expect(browserImageSource).toContain('decoding="async"');
-    expect(browserImageSource).toContain("createAuthenticatedWebSocket");
+    expect(browserImageSource).toContain("createHydratedAuthenticatedWebSocket");
     expect(browserImageSource).toContain("LatestBrowserFrameDecoder");
     expect(browserImageSource).toContain("image.src = source");
     expect(browserImageSource).toContain("window.createImageBitmap(frame)");
@@ -155,6 +155,14 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain('cursor.source !== "agent"');
     expect(browserSource).toContain("browser-agent-click");
     expect(browserSource).toContain('aria-label="Interactive browser preview"');
+    expect(browserSource).toContain(
+      'addEventListener("wheel", handlePreviewWheel, { passive: false })'
+    );
+    expect(browserSource).toContain("event.stopPropagation()");
+    expect(browserSource).not.toContain("onWheel={handlePreviewWheel}");
+    expect(browserSource).toContain("overscroll-contain");
+    expect(browserImageSource).toContain('canvas.style.visibility = "hidden"');
+    expect(browserImageSource).toContain("if (!hasStreamFrame)");
     expect(browserSource).toContain("const BROWSER_START_TIMEOUT_MS = 90_000");
     expect(browserSource).toContain('apiFetch("/api/browser/status"');
     expect(browserSource).toContain("browserStartupLabel(status)");
