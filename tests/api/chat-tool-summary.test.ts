@@ -7,6 +7,7 @@ import {
   extractVisibleClarification,
   findAssistantEvidenceIssue,
   isNonSubstantiveAssistantCompletion,
+  requiresToolEvidenceForMessage,
   requiredDirectToolForMessage,
   shouldPreferArtifactsForMessage,
   shouldRecoverNonSubstantiveAssistantCompletion,
@@ -120,6 +121,89 @@ describe("chat tool summary utilities", () => {
     expect(buildUnsupportedAssistantClaimMessage("unsupported_completion")).toContain(
       "did not record a successful tool action"
     );
+  });
+
+  test("distinguishes plan-only implementation replies from requested planning", () => {
+    const plan = [
+      "VibeMail - Next Phase Plan",
+      "1. Backend: Add billing routes and subscription storage.",
+      "2. Frontend: Build the pricing and account management screens.",
+      "3. Deployment: Configure the production service.",
+    ].join("\n");
+
+    expect(
+      findAssistantEvidenceIssue(plan, [], {
+        userMessage: "Continue improving the email platform and add paid plans.",
+      })
+    ).toBe("plan_only");
+    expect(
+      findAssistantEvidenceIssue(plan, [], {
+        userMessage: "Create an implementation plan for paid subscriptions.",
+      })
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue(plan, [], {
+        allowPlanOnly: true,
+        userMessage: "Continue improving the email platform and add paid plans.",
+      })
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue(
+        plan,
+        [{ name: "edit", result: { filePath: "/tmp/billing.ts" } }],
+        { userMessage: "Continue improving the email platform and add paid plans." }
+      )
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue(
+        plan,
+        [{ name: "todo", result: { items: [{ step: "Add billing", status: "pending" }] } }],
+        { userMessage: "Continue improving the email platform and add paid plans." }
+      )
+    ).toBe("plan_only");
+  });
+
+  test("requires provider-neutral evidence for actionable work but not ordinary answers", () => {
+    expect(requiresToolEvidenceForMessage("Fix the importer and test it.")).toBe(true);
+    expect(requiresToolEvidenceForMessage("Could you please fix the importer?")).toBe(true);
+    expect(requiresToolEvidenceForMessage("The importer is broken, please fix it.")).toBe(true);
+    expect(requiresToolEvidenceForMessage("The build failed; investigate this project.")).toBe(
+      true
+    );
+    expect(requiresToolEvidenceForMessage("Here is the context.\nPlease continue the work.")).toBe(
+      true
+    );
+    expect(requiresToolEvidenceForMessage("Continue")).toBe(true);
+    expect(requiresToolEvidenceForMessage("Review and audit this codebase.")).toBe(true);
+    expect(requiresToolEvidenceForMessage("Look into the gateway crash.")).toBe(true);
+    expect(requiresToolEvidenceForMessage("Create an implementation plan for the importer.")).toBe(
+      false
+    );
+    expect(requiresToolEvidenceForMessage("What is dependency injection?")).toBe(false);
+    expect(requiresToolEvidenceForMessage("Respond with exactly Completed.")).toBe(false);
+  });
+
+  test("detects actionable answers backed only by non-evidence tools", () => {
+    expect(
+      findAssistantEvidenceIssue(
+        "The codebase is production ready and the architecture is sound.",
+        [{ name: "todo", result: { items: [{ step: "Review", status: "completed" }] } }],
+        {
+          requireActionEvidence: true,
+          userMessage: "Review and audit this codebase.",
+        }
+      )
+    ).toBe("missing_action_evidence");
+    expect(
+      findAssistantEvidenceIssue(
+        "The codebase uses a modular API boundary.",
+        [{ name: "read", result: { path: "/tmp/api.ts", content: "export {}" } }],
+        {
+          requireActionEvidence: true,
+          userMessage: "Review and audit this codebase.",
+        }
+      )
+    ).toBeUndefined();
   });
 
   test("turns a structured clarification result into a visible question", () => {

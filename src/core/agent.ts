@@ -336,6 +336,26 @@ class AgentManager extends AgentProviderRuntime {
     throw lastError ?? new Error(`All ${primary.provider} accounts are unavailable.`);
   }
 
+  private failedExecutionResult(
+    error: unknown,
+    toolContext: ToolContext,
+    provider: ResolvedProvider,
+    model: string | undefined
+  ): AgentExecutionResult {
+    const toolCalls = [...(toolContext.executionState?.toolCalls || [])]
+      .sort((left, right) => left.order - right.order)
+      .map(({ name, args, result }) => ({ name, args, result }));
+    return {
+      content: formatLlmFailure(error),
+      tool_calls: toolCalls.length > 0 ? [...toolCalls] : undefined,
+      provider: provider.provider,
+      provider_id: provider.id,
+      provider_name: provider.name,
+      model,
+      router_route_id: toolContext.routerRouteId,
+    };
+  }
+
   private agentProviderPoolId(agent: Pick<Agent, "config">): string | undefined {
     const value = parseAgentConfig(agent.config).provider_account_pool_id;
     return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -577,6 +597,7 @@ class AgentManager extends AgentProviderRuntime {
       config: {},
       modelDisplay: definition.model || typeConfig?.defaultModel || "MiniMax-M2.5",
       tools: (definition.tools ?? getBuiltinTools()).map((t) => t.name),
+      executionMode: definition.type === "planner" ? "plan" : "execute",
       skills: eligibleSkills,
       contextFiles: getBootstrapContextFiles(homeDir),
       sandboxInfo: getSandboxPromptInfo(homeDir),
@@ -678,6 +699,7 @@ class AgentManager extends AgentProviderRuntime {
       config: {},
       modelDisplay: agent.model || "MiniMax-M2.5",
       tools: this.getAgentTools(agent).map((t) => t.name),
+      executionMode: agent.type === "planner" ? "plan" : "execute",
       skills: eligibleSkills,
       contextFiles: getBootstrapContextFiles(homeDir),
       sandboxInfo: getSandboxPromptInfo(homeDir),
@@ -910,6 +932,7 @@ class AgentManager extends AgentProviderRuntime {
     const activeProvider = resolvedExecution.provider;
     const activeModel = resolvedExecution.model;
     const activePoolId = activeProvider.provider === provider.provider ? target.poolId : undefined;
+    const toolCallsBeforePrimary = toolContext.executionState?.toolCalls.length ?? 0;
 
     try {
       const result = await this.callLLMWithAccountPool(
@@ -924,7 +947,13 @@ class AgentManager extends AgentProviderRuntime {
     } catch (error) {
       console.error("[Agent] LLM call failed:", error);
 
-      if (agent.fallback_provider_id && activeProvider.id !== agent.fallback_provider_id) {
+      const primaryExecutedTools =
+        (toolContext.executionState?.toolCalls.length ?? 0) > toolCallsBeforePrimary;
+      if (
+        !primaryExecutedTools &&
+        agent.fallback_provider_id &&
+        activeProvider.id !== agent.fallback_provider_id
+      ) {
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
           try {
@@ -1109,6 +1138,7 @@ class AgentManager extends AgentProviderRuntime {
     const activeProvider = resolvedExecution.provider;
     const activeModel = resolvedExecution.model;
     const activePoolId = activeProvider.provider === provider.provider ? target.poolId : undefined;
+    const toolCallsBeforePrimary = toolContext.executionState?.toolCalls.length ?? 0;
 
     try {
       const result = await this.callLLMWithAccountPool(
@@ -1125,7 +1155,13 @@ class AgentManager extends AgentProviderRuntime {
       if (options?.abortSignal?.aborted) throw error;
       console.error("[Agent] LLM call failed:", error);
 
-      if (agent.fallback_provider_id && activeProvider.id !== agent.fallback_provider_id) {
+      const primaryExecutedTools =
+        (toolContext.executionState?.toolCalls.length ?? 0) > toolCallsBeforePrimary;
+      if (
+        !primaryExecutedTools &&
+        agent.fallback_provider_id &&
+        activeProvider.id !== agent.fallback_provider_id
+      ) {
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
           try {
@@ -1142,12 +1178,17 @@ class AgentManager extends AgentProviderRuntime {
           } catch (fallbackError) {
             if (options?.abortSignal?.aborted) throw fallbackError;
             console.error("[Agent] Fallback LLM call also failed:", fallbackError);
-            return { content: formatLlmFailure(fallbackError) };
+            return this.failedExecutionResult(
+              fallbackError,
+              toolContext,
+              fallbackProvider,
+              activeModel
+            );
           }
         }
       }
 
-      return { content: formatLlmFailure(error) };
+      return this.failedExecutionResult(error, toolContext, activeProvider, activeModel);
     }
   }
 
@@ -1204,7 +1245,7 @@ class AgentManager extends AgentProviderRuntime {
       abortSignal: options?.abortSignal,
       confineToWorkspace: true,
       consumeSteeringMessages: options?.consumeSteeringMessages,
-      executionState: { toolCallsStarted: 0 },
+      executionState: { nextToolCallOrder: 0, toolCallsStarted: 0, toolCalls: [] },
     };
   }
 

@@ -8,7 +8,10 @@ import { createEligibilityContext, filterEligibleSkills, loadAllSkills } from ".
 import { buildSystemPrompt, AGENT_TYPE_PROMPTS } from "../core/system-prompt";
 import { resolveAgentToolPolicy } from "../core/toolsets";
 
-type AgentPromptData = Pick<Agent, "id" | "name" | "model" | "tools" | "config" | "system_prompt">;
+type AgentPromptData = Pick<
+  Agent,
+  "id" | "name" | "type" | "model" | "provider_id" | "tools" | "config" | "system_prompt"
+>;
 
 interface ChatAgentPromptMessage {
   role: "user" | "assistant" | "system";
@@ -76,6 +79,7 @@ export async function activeAgentSystemPrompt(
     config: {},
     modelDisplay: agent.model || "MiniMax-M2.5",
     tools: chatAgentToolNames(agent, messages, options),
+    executionMode: agent.type === "planner" ? "plan" : "execute",
     skills,
     contextFiles: getBootstrapContextFiles(homeDir),
     sandboxInfo: getSandboxPromptInfo(homeDir),

@@ -1635,6 +1635,7 @@ async function handleChatTurn(
 
       const recoveredResponse = await recoverAssistantResponse({
         agentId: agent.id,
+        allowPlanOnly: agent.type === "planner",
         executeOptions: {
           sessionId: session.id,
           workspaceDir: session.workspaceDir || undefined,

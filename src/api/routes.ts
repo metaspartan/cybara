@@ -1686,6 +1686,7 @@ const routes: Record<string, RouteHandler> = {
         : ["read", "write", "exec", "browser", "memory_search", "message"],
       workspaceDir: homeDir,
       agentData: agent ? { name: agent.name } : undefined,
+      executionMode: agent?.type === "planner" ? "plan" : "execute",
     });
     return { preview };
   },

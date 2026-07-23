@@ -25,7 +25,7 @@ describe("agent tool execution", () => {
 
   test("executes allowed tools with stable status and accounting", async () => {
     const statuses: AgentStatus[] = [];
-    const executionState = { toolCallsStarted: 0 };
+    const executionState = { nextToolCallOrder: 0, toolCallsStarted: 0, toolCalls: [] };
     const result = await executeAgentTool({
       toolName: "calc",
       args: { expression: "6 * 7" },
@@ -37,6 +37,14 @@ describe("agent tool execution", () => {
 
     expect(result.result).toEqual({ result: 42, expression: "6 * 7" });
     expect(executionState.toolCallsStarted).toBe(1);
+    expect(executionState.toolCalls).toEqual([
+      {
+        order: 0,
+        name: "calc",
+        args: { expression: "6 * 7" },
+        result: { result: 42, expression: "6 * 7" },
+      },
+    ]);
     expect(statuses).toEqual(["tool_executing", "tool_completed"]);
   });
 });

@@ -248,6 +248,7 @@ describe("Agent provider API-family routing", () => {
       name: "Side Effect Pool Agent",
       type: "main",
       provider_id: primary.id,
+      fallback_provider_id: backup.id,
       provider_pool_id: pool.id,
       model: "gpt-5.2",
       tools: [
@@ -274,6 +275,13 @@ describe("Agent provider API-family routing", () => {
     );
 
     expect(result.content).not.toContain("backup-replayed-the-turn");
+    expect(result.tool_calls).toEqual([
+      {
+        name: "calc",
+        args: { expression: "6*7" },
+        result: { result: 42, expression: "6*7" },
+      },
+    ]);
     expect(primaryCalls).toBe(2);
     expect(authorizationHeaders).toEqual([
       "Bearer primary-side-effect-key",

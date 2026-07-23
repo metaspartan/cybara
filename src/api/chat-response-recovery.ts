@@ -6,7 +6,9 @@ import {
   buildNoUsableAssistantResponseMessage,
   buildUnsupportedAssistantClaimMessage,
   findAssistantEvidenceIssue,
+  isEvidenceToolCall,
   isSuccessfulToolCall,
+  requiresToolEvidenceForMessage,
   shouldRecoverNonSubstantiveAssistantCompletion,
 } from "./chat-tool-summary";
 
@@ -14,6 +16,7 @@ type AgentExecuteOptions = NonNullable<Parameters<typeof agentManager.execute>[2
 
 export interface AssistantResponseRecoveryParams {
   agentId: string;
+  allowPlanOnly?: boolean;
   executeOptions: Omit<AgentExecuteOptions, "requireToolUse" | "requiredToolName" | "useTools">;
   executionMessages: AgentMessage[];
   requiredToolName?: string;
@@ -46,6 +49,12 @@ function buildRetryInstruction(
   if (evidenceIssue === "unfinished_execution") {
     return "Your previous response stopped after describing work you said you were executing now. Continue immediately, use the available tools to finish and verify the request, and return only after the work is complete or a concrete blocker prevents further progress.";
   }
+  if (evidenceIssue === "missing_action_evidence") {
+    return "Your previous response answered an actionable request without using the available tools. Use the tools now to inspect or perform the work, base every claim on the observed results, and return a concrete answer only after a real tool attempt.";
+  }
+  if (evidenceIssue === "plan_only") {
+    return "Your previous response only proposed a plan for work the user asked you to perform. Continue immediately, use the available tools to implement and verify concrete progress, and report the actual result instead of another plan.";
+  }
   if (evidenceIssue === "unsupported_completion") {
     return "Your previous response claimed work was completed without a successful tool action supporting that claim. Perform the requested work with the available tools now, verify the concrete result, and report only what the tool results establish.";
   }
@@ -65,24 +74,35 @@ export async function recoverAssistantResponse(
   params: AssistantResponseRecoveryParams
 ): Promise<AssistantResponseRecoveryResult> {
   const successfulToolResults = params.toolResults.filter(isSuccessfulToolCall);
+  const requireActionEvidence =
+    params.toolsEnabled === true &&
+    params.allowPlanOnly !== true &&
+    requiresToolEvidenceForMessage(params.userMessage);
   const hasRequiredToolCall = params.requiredToolName
     ? successfulToolResults.some((toolCall) => toolCall.name === params.requiredToolName)
-    : successfulToolResults.length > 0;
+    : requireActionEvidence
+      ? params.toolResults.some(isEvidenceToolCall)
+      : successfulToolResults.length > 0;
   const shouldRecoverCompletion = shouldRecoverNonSubstantiveAssistantCompletion(
     params.userMessage,
     visibleAssistantContent(params.responseContent),
     successfulToolResults.length
   );
-  const evidenceIssue = shouldRecoverCompletion
-    ? undefined
-    : findAssistantEvidenceIssue(
-        visibleAssistantContent(params.responseContent),
-        params.toolResults
-      );
+  const evidenceIssue = findAssistantEvidenceIssue(
+    visibleAssistantContent(params.responseContent),
+    params.toolResults,
+    {
+      allowPlanOnly: params.allowPlanOnly,
+      requireActionEvidence,
+      userMessage: params.userMessage,
+    }
+  );
   const shouldRetryToolExecution =
     (params.shouldRequireToolUse && (params.toolResults.length === 0 || !hasRequiredToolCall)) ||
     (params.toolsEnabled === true &&
       (evidenceIssue === "unfinished_execution" ||
+        evidenceIssue === "missing_action_evidence" ||
+        evidenceIssue === "plan_only" ||
         evidenceIssue === "unsupported_completion" ||
         evidenceIssue === "unsupported_verification"));
   if (!shouldRetryToolExecution && !shouldRecoverCompletion && !evidenceIssue) {
@@ -117,7 +137,9 @@ export async function recoverAssistantResponse(
     const successfulCombinedToolCalls = combinedToolCalls.filter(isSuccessfulToolCall);
     const retryHasRequiredToolCall = params.requiredToolName
       ? successfulCombinedToolCalls.some((toolCall) => toolCall.name === params.requiredToolName)
-      : successfulCombinedToolCalls.length > 0;
+      : requireActionEvidence
+        ? combinedToolCalls.some(isEvidenceToolCall)
+        : successfulCombinedToolCalls.length > 0;
     const retryIsSubstantive = !shouldRecoverNonSubstantiveAssistantCompletion(
       params.userMessage,
       visibleAssistantContent(retryResult.content),
@@ -125,7 +147,12 @@ export async function recoverAssistantResponse(
     );
     const retryEvidenceIssue = findAssistantEvidenceIssue(
       visibleAssistantContent(retryResult.content),
-      combinedToolCalls
+      combinedToolCalls,
+      {
+        allowPlanOnly: params.allowPlanOnly,
+        requireActionEvidence,
+        userMessage: params.userMessage,
+      }
     );
     if (
       !retryEvidenceIssue &&
@@ -146,7 +173,7 @@ export async function recoverAssistantResponse(
           : evidenceIssue
             ? buildUnsupportedAssistantClaimMessage(evidenceIssue)
             : params.responseContent,
-      toolResults: params.toolResults,
+      toolResults: combinedToolCalls,
     };
   } catch (error) {
     return {

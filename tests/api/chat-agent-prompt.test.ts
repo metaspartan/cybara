@@ -41,6 +41,43 @@ describe("chat agent prompt tool mode", () => {
     expect(prompt).toContain("### Browser Tool");
   });
 
+  test("gives every execution agent a tool-forward completion contract", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "cybara-chat-prompt-"));
+    const prompt = await activeAgentSystemPrompt(
+      {
+        ...explicitToolAgent,
+        id: "agent-kimi-execute",
+        model: "custom-model",
+        type: "coder",
+      },
+      workspace
+    );
+    rmSync(workspace, { recursive: true, force: true });
+
+    expect(prompt).toContain("## Execution Mode");
+    expect(prompt).toContain("Plans, checklists, and todos are working state");
+    expect(prompt).toContain("regardless of the active model or provider");
+    expect(prompt).toContain("Do not infer details beyond the exact tool results");
+  });
+
+  test("allows planner agents to finish with a grounded plan", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "cybara-chat-prompt-"));
+    const prompt = await activeAgentSystemPrompt(
+      {
+        ...explicitToolAgent,
+        id: "agent-planner",
+        model: "kimi-for-coding/kimi-k3",
+        type: "planner",
+      },
+      workspace
+    );
+    rmSync(workspace, { recursive: true, force: true });
+
+    expect(prompt).toContain("## Planning Mode");
+    expect(prompt).toContain("A plan is a valid final response in this mode");
+    expect(prompt).not.toContain("regardless of the active model or provider");
+  });
+
   test("loads workspace instructions into active chat prompts", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "cybara-chat-prompt-"));
     try {
