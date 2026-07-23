@@ -472,8 +472,7 @@ export function summarizeProgressThought(value: unknown): string | undefined {
     .replace(/\s{2,}/g, " ")
     .trim();
   if (!compact) return undefined;
-  if (compact.length <= 220) return compact;
-  return `${compact.slice(0, 217)}...`;
+  return compact;
 }
 
 export function toDisplayPath(path: string): string {

@@ -23,6 +23,16 @@ describe("reasoning tag tokens never leak into visible chat state", () => {
     expect(summarizeProgressThought("<thinking>plan</thinking> run tests")).toBe("plan run tests");
   });
 
+  test("gateway: summarizeProgressThought preserves complete long thoughts", () => {
+    const thought = Array.from(
+      { length: 40 },
+      (_, index) => `Reasoning step ${index + 1} verifies the next tool call.`
+    ).join(" ");
+
+    expect(thought.length).toBeGreaterThan(500);
+    expect(summarizeProgressThought(thought)).toBe(thought);
+  });
+
   test("gateway: stripReasoningTagTokens handles every tag family", () => {
     for (const token of [
       "</think>",
@@ -116,5 +126,15 @@ describe("reasoning tag tokens never leak into visible chat state", () => {
     // macOS: the thinking bubble shows the timeline only, no streamed body.
     const macScreens = read("apps/macos/Cybara/Sources/Cybara/NativeScreens.swift");
     expect(macScreens).not.toContain("NativeMarkdownView(content: visibleStreamingContent");
+  });
+
+  test("mobile and native timelines leave thought rows unbounded", () => {
+    const mobileChat = read("apps/mobile/src/screens/dashboardChat.tsx");
+    const macTimeline = read("apps/macos/Cybara/Sources/Cybara/NativeToolTimeline.swift");
+
+    expect(mobileChat).toContain(
+      'numberOfLines={activity.toolName === "__thought" ? 0 : 2}'
+    );
+    expect(macTimeline).toContain('.lineLimit(activity.toolName == "__thought" ? nil : 3)');
   });
 });

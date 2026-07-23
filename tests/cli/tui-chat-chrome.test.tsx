@@ -165,4 +165,31 @@ describe("CLI TUI chat chrome", () => {
     expect(output).not.toContain("Inspection thought 0");
     expect(output).toContain("Inspection thought 7");
   });
+
+  test("wraps complete live thoughts in narrow terminals", () => {
+    const thought =
+      "Inspecting the provider response before the next tool call and retaining every detail.";
+    const output = renderToString(
+      <LiveRunView
+        activities={[
+          {
+            id: "long-thought",
+            phase: "result",
+            text: thought,
+            timestamp: 1,
+            toolName: "__thought",
+          },
+        ]}
+        content=""
+        detail={thought}
+        maxColumns={32}
+        colorScheme="dark"
+        palette={tuiChatPalette("dark")}
+      />,
+      { columns: 40 },
+    );
+
+    expect(output.replace(/\s+/g, " ")).toContain(thought);
+    expect(output).not.toContain("…");
+  });
 });

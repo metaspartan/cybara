@@ -111,7 +111,7 @@ export function ActivitySummary({
             <Box key={`${row.id}-${rowIndex}`} flexDirection="column">
               {row.thought ? (
                 live ? (
-                  <Text color={palette.detail} wrap="truncate-end">
+                  <Text color={palette.detail} wrap="wrap">
                     {row.label}
                   </Text>
                 ) : (
@@ -244,6 +244,10 @@ export function LiveRunView({
   colorScheme: TuiColorScheme;
   palette: TuiSurfacePalette;
 }): React.ReactElement {
+  const normalizedDetail = detail.trim();
+  const detailAlreadyVisible = activities.some(
+    (activity) => activity.text.trim() === normalizedDetail
+  );
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text bold color={palette.heading}>
@@ -268,10 +272,10 @@ export function LiveRunView({
             colorScheme={colorScheme}
           />
         </Box>
-      ) : detail ? (
+      ) : normalizedDetail && !detailAlreadyVisible ? (
         <Text color={palette.muted} wrap="truncate-end">
           {" "}
-          {detail}
+          {normalizedDetail}
         </Text>
       ) : null}
     </Box>
