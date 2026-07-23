@@ -43,7 +43,9 @@ export function readCachedMobileLiveAssistant(
   return {
     message: {
       ...cached.message,
-      processActivities: cached.message.processActivities?.map((activity) => ({ ...activity })),
+      processActivities: cached.message.processActivities?.map((activity) => ({
+        ...activity,
+      })),
       toolCalls: cached.message.toolCalls?.map((toolCall) => ({ ...toolCall })),
     },
     nowMs: cached.nowMs,
@@ -65,7 +67,9 @@ export function writeCachedMobileLiveAssistant(
   mobileLiveAssistantCache.set(key, {
     message: {
       ...message,
-      processActivities: message.processActivities?.map((activity) => ({ ...activity })),
+      processActivities: message.processActivities?.map((activity) => ({
+        ...activity,
+      })),
       toolCalls: message.toolCalls?.map((toolCall) => ({ ...toolCall })),
     },
     nowMs,
@@ -331,7 +335,7 @@ export function liveAssistantMessage(
       timestamp: new Date(timestampMs).toISOString(),
       processActivities: [
         {
-          id: `live-thinking-${timestampMs}`,
+          id: "live-agent-status",
           phase: "start",
           text: "Thinking...",
           timestamp: timestampMs,
@@ -354,7 +358,7 @@ export function liveAssistantFromStatusSnapshot(
       !(
         activity.toolName === "__thought" &&
         activity.text.trim().toLowerCase() === "thinking..." &&
-        activity.id.startsWith("live-thinking-")
+        (activity.id === "live-agent-status" || activity.id.startsWith("live-thinking-"))
       )
   );
   const snapshotActivity = liveActivityFromStatusEvent({

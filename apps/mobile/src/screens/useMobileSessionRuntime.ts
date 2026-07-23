@@ -73,6 +73,7 @@ interface MobileSessionRuntimeOptions {
   setPinned: Dispatch<SetStateAction<boolean>>;
   setPendingSessionAgentId: Dispatch<SetStateAction<string | null>>;
   scrollRef: RefObject<ScrollView | null>;
+  onSessionUpdated: (detail: SessionDetailSummary) => void;
 }
 
 interface MobileSessionRuntimeController {
@@ -106,6 +107,7 @@ export function useMobileSessionRuntime({
   setPinned,
   setPendingSessionAgentId,
   scrollRef,
+  onSessionUpdated,
 }: MobileSessionRuntimeOptions): MobileSessionRuntimeController {
   const [detail, setDetail] = useState<SessionDetailSummary | null>(() =>
     optimisticMobileSessionDetail(sessionId, sessionSummary)
@@ -116,9 +118,13 @@ export function useMobileSessionRuntime({
   const [sessionActive, setSessionActive] = useState(false);
   const [statusStreamConnected, setStatusStreamConnected] = useState(false);
   const currentSessionIdRef = useRef(sessionId);
+  const onSessionUpdatedRef = useRef(onSessionUpdated);
   useEffect(() => {
     currentSessionIdRef.current = sessionId;
   }, [sessionId]);
+  useEffect(() => {
+    onSessionUpdatedRef.current = onSessionUpdated;
+  }, [onSessionUpdated]);
   const sessionRefreshInFlight = useRef<{
     sessionId: string;
     token: symbol;
@@ -182,6 +188,7 @@ export function useMobileSessionRuntime({
         messages: mergeCachedMobileOptimisticTranscript(sessionId, nextDetail.messages),
       };
       setDetail(reconciledDetail);
+      onSessionUpdatedRef.current(reconciledDetail);
       commitLiveAssistant((current) =>
         prunePersistedMobileLiveAssistant(current, reconciledDetail.messages)
       );

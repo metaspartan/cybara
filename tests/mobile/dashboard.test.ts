@@ -482,6 +482,12 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_METRICS_CHROME.liveRefreshMs).toBeLessThan(
       MOBILE_METRICS_CHROME.backgroundRefreshMs
     );
+    expect(MOBILE_METRICS_CHROME.detailRefreshMs).toBeGreaterThan(
+      MOBILE_METRICS_CHROME.liveRefreshMs
+    );
+    expect(dashboardScreenSource).toContain("api.metricsOverview()");
+    expect(dashboardScreenSource).toContain("requestAnimationFrame");
+    expect(dashboardScreenSource).toContain("cancelAnimationFrame(frame)");
     expect(dashboardScreenSource).toContain("mobileProviderPlanWindowDisplay(plan, kind)");
     expect(dashboardScreenSource).toContain("mobilePlanUsageTone(progress, window.unlimited)");
     expect(dashboardScreenSource).toContain("window.progress");
@@ -497,15 +503,12 @@ describe("mobile dashboard model", () => {
   });
 
   test("does not fetch all metrics on initial dashboard load before metrics opens", () => {
-    expect(dashboardScreenSource).toContain("const hasLoadedMetrics = metrics !== null;");
     expect(dashboardScreenSource).toContain("const shouldRefreshMetrics =");
-    expect(dashboardScreenSource).toContain('activeTab === "metrics" ||');
-    expect(dashboardScreenSource).toContain('activeTab === "usage" ||');
-    expect(dashboardScreenSource).toContain(
-      "shouldRefreshMetrics ? refreshMetrics({ force: true }) : Promise.resolve()"
-    );
-    expect(dashboardScreenSource).toContain('activeTab !== "metrics" &&');
-    expect(dashboardScreenSource).toContain('activeTab !== "usage" &&');
+    expect(dashboardScreenSource).toContain('activeTab === "metrics";');
+    expect(dashboardScreenSource).not.toContain('activeTab === "usage" ||');
+    expect(dashboardScreenSource).toContain("refreshMetrics({ force: true })");
+    expect(dashboardScreenSource).toContain('activeTab !== "metrics" ||');
+    expect(dashboardScreenSource).toContain("providerPlanStatus={providerPlanStatus}");
   });
 
   test("shows a native metrics skeleton while the metrics snapshot loads", () => {
@@ -513,6 +516,10 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain("!metrics && !metricsError");
     expect(dashboardScreenSource).toContain('accessibilityLabel="Loading metrics"');
     expect(dashboardScreenSource).toContain("metricSkeletonBlock");
+    expect(dashboardScreenSource).toContain("Loading detailed metrics");
+    expect(dashboardScreenSource).toContain(
+      'metrics?.storage ? formatMetricBytes(metrics.storage.totalBytes) : "--"'
+    );
     expect(dashboardScreenSource).toContain("Live signals are still available from Logs.");
   });
 
@@ -692,7 +699,11 @@ describe("mobile dashboard model", () => {
     ).toEqual({ enabled: true, mode: "block" });
     expect(
       readMobileSandboxRuntime({
-        sandbox_runtime: { enabled: true, provider: "podman", network: "allow" },
+        sandbox_runtime: {
+          enabled: true,
+          provider: "podman",
+          network: "allow",
+        },
       })
     ).toEqual({ enabled: true, provider: "podman", network: "allow" });
     expect(readMobileToolApprovalMode({ tool_approval_mode: "ask" })).toBe("ask");
@@ -962,7 +973,10 @@ describe("mobile provider-aware reasoning gating", () => {
     expect(mobileSupportsXHighReasoning("openai", "gpt-5.1")).toBe(false);
     expect(mobileSupportsXHighReasoning("google", "gemini-2.5-pro")).toBe(false);
     const openai = mobileSupportedReasoningEfforts("openai", "gpt-5.4");
-    expect(openai[openai.length - 1]).toEqual({ label: "Extra High", value: "xhigh" });
+    expect(openai[openai.length - 1]).toEqual({
+      label: "Extra High",
+      value: "xhigh",
+    });
   });
 
   test("mobileReasoningLabel maps efforts to labels", () => {

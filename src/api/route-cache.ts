@@ -95,7 +95,8 @@ export function createCachedRouteHandler(
   };
 }
 
-const cachedMetricsRouteTtls: Record<string, number> = {
+export const METRICS_ROUTE_CACHE_TTLS: Readonly<Record<string, number>> = {
+  "GET /api/metrics/snapshot": 15_000,
   "GET /api/metrics/overview": 30_000,
   "GET /api/metrics/tokens": 30_000,
   "GET /api/metrics/token-analysis": 60_000,
@@ -121,7 +122,7 @@ export function invalidateCachedRoute(routeKey: string): void {
 
 export function cacheMetricsRoutes(routes: Record<string, CacheableRouteHandler>): void {
   if (isTestEnv) return;
-  for (const [routeKey, ttlMs] of Object.entries(cachedMetricsRouteTtls)) {
+  for (const [routeKey, ttlMs] of Object.entries(METRICS_ROUTE_CACHE_TTLS)) {
     const handler = routes[routeKey];
     if (handler) {
       routes[routeKey] = createCachedRouteHandler(routeKey, ttlMs, handler);
@@ -131,7 +132,9 @@ export function cacheMetricsRoutes(routes: Record<string, CacheableRouteHandler>
 
 export function prewarmMetricsRoutes(routes: Record<string, CacheableRouteHandler>): void {
   if (isTestEnv) return;
-  const routeKeys = Object.keys(cachedMetricsRouteTtls).filter((key) => routes[key]);
+  const routeKeys = Object.keys(METRICS_ROUTE_CACHE_TTLS).filter(
+    (key) => key !== "GET /api/metrics/snapshot" && routes[key]
+  );
   let index = 0;
   const runNext = () => {
     if (index >= routeKeys.length) return;

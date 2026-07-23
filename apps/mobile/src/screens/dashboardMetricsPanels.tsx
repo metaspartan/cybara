@@ -29,6 +29,7 @@ import {
 import {
   formatMetricBytes,
   formatMetricNumber,
+  hasDetailedMetrics,
   metricSuccessRate,
   modelTokenShareRows,
   providerTokenShareRows,
@@ -96,7 +97,9 @@ function sortPlanRows(
     return [...rows].sort(
       (a, b) =>
         statusRank(a.status) - statusRank(b.status) ||
-        a.providerName.localeCompare(b.providerName, undefined, { sensitivity: "base" })
+        a.providerName.localeCompare(b.providerName, undefined, {
+          sensitivity: "base",
+        })
     );
   }
   const rank = new Map(customOrder.map((id, index) => [id, index]));
@@ -108,12 +111,106 @@ function sortPlanRows(
   });
 }
 
+function MetricsOverviewSection({
+  accentColor,
+  metrics,
+  metricsError,
+  metricsRefreshing,
+  metricsUpdatedAt,
+  summary,
+}: {
+  accentColor: string;
+  metrics: MetricsSnapshot | null;
+  metricsError: string | null;
+  metricsRefreshing: boolean;
+  metricsUpdatedAt: number | null;
+  summary: FeatureSummary | null;
+}) {
+  const health = summary?.health;
+  const healthy = health?.status === "healthy";
+  const overview = metrics?.overview ?? null;
+  const availableMetrics = metrics
+    ? Object.values(metrics.availability).filter((endpoint) => endpoint.ok).length
+    : 0;
+  const metricFeedCount = metrics ? Object.keys(metrics.availability).length : 0;
+  const tokenBars = tokenFlowBars(overview);
+  const freshness = metricsUpdatedAt
+    ? `Updated ${relativeTimestamp(new Date(metricsUpdatedAt).toISOString())}`
+    : "Loading";
+
+  return (
+    <>
+      <View style={styles.summaryGrid}>
+        <SummaryTile
+          Icon={HeartPulse}
+          label="Health"
+          value={healthy ? "Healthy" : health ? "Check" : "Loading"}
+          detail={endpointStatusLabel(summary?.availability.health)}
+          tone={healthy ? colors.green : colors.amber}
+        />
+        <SummaryTile
+          Icon={Cpu}
+          label="Tokens"
+          value={formatMetricNumber(overview?.tokenUsage.total)}
+          detail={`${formatMetricNumber(overview?.agentActivity.totalMessages)} messages`}
+          tone={accentColor}
+        />
+        <SummaryTile
+          Icon={Zap}
+          label="API"
+          value={metricSuccessRate(overview)}
+          detail={`${formatMetricNumber(overview?.apiCalls.totalCalls)} calls`}
+          tone={colors.blueText}
+        />
+        <SummaryTile
+          Icon={Database}
+          label="Storage"
+          value={metrics?.storage ? formatMetricBytes(metrics.storage.totalBytes) : "--"}
+          detail={`${availableMetrics}/${metricFeedCount} feeds`}
+          tone={colors.green}
+        />
+      </View>
+
+      {metricsError ? <EmptyState label="Metrics unavailable" detail={metricsError} /> : null}
+
+      <View style={styles.subsectionHeader}>
+        <Text style={styles.subsectionTitle}>Token flow</Text>
+        <View style={styles.inlineButtonRow}>
+          {metricsRefreshing ? <ActivityIndicator color={accentColor} size="small" /> : null}
+          <Text style={styles.counterText}>{metricsRefreshing ? "Updating" : freshness}</Text>
+        </View>
+      </View>
+      <MetricBreakdown data={tokenBars} tone={accentColor} />
+    </>
+  );
+}
+
+function MetricsDetailSkeleton() {
+  return (
+    <View style={styles.metricSkeletonGrid} accessibilityLabel="Loading detailed metrics">
+      {["Activity", "Runtime", "Providers"].map((label) => (
+        <View key={label} style={styles.metricSkeletonBlock}>
+          <View style={styles.metricSkeletonHeader}>
+            <View style={styles.metricSkeletonTitle} />
+            <ActivityIndicator color={colors.textDim} size="small" />
+          </View>
+          <View style={styles.metricSkeletonTrack} />
+          <View style={styles.metricSkeletonTrackShort} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export function MetricsPanel({
   accentColor,
   api,
   counts,
   metrics,
   metricsError,
+  metricsRefreshing,
+  metricsUpdatedAt,
+  providerPlanStatus,
   summary,
   openSurface,
 }: {
@@ -122,6 +219,9 @@ export function MetricsPanel({
   counts: FeatureCounts;
   metrics: MetricsSnapshot | null;
   metricsError: string | null;
+  metricsRefreshing: boolean;
+  metricsUpdatedAt: number | null;
+  providerPlanStatus: ProviderPlanStatusResponse | null;
   summary: FeatureSummary | null;
   openSurface: (surface: MobileSurfaceKey) => void;
 }) {
@@ -157,7 +257,6 @@ export function MetricsPanel({
   }
 
   const health = summary?.health;
-  const healthy = health?.status === "healthy";
   const checks = Object.entries(health?.checks || {});
   const recentLogs = summary?.logs.slice(0, 3) ?? [];
   const overview = metrics?.overview ?? null;
@@ -175,55 +274,42 @@ export function MetricsPanel({
     "activity",
     "messages",
   ]);
-  const tokenBars = tokenFlowBars(overview);
   const velocityRows = tokenVelocityAreaRows(tokenAnalysis);
   const providerRows = providerTokenShareRows(metrics);
   const modelRows = modelTokenShareRows(metrics);
   const storageRows = storageCategoryEntries(metrics?.storage ?? null).slice(0, 8);
-  const providerPlanRows = mobileProviderPlanRows(metrics).slice(0, 8);
+  const providerPlanRows = mobileProviderPlanRows(
+    providerPlanStatus ?? metrics?.providerPlans ?? null
+  ).slice(0, 8);
   const sessionMetrics = sessionRuntime ?? metrics?.sessions;
   const sessionPagination = sessionMetrics?.pagination;
 
+  if (!hasDetailedMetrics(metrics)) {
+    return (
+      <StableDetailPanel>
+        <MetricsOverviewSection
+          accentColor={accentColor}
+          metrics={metrics}
+          metricsError={metricsError}
+          metricsRefreshing={metricsRefreshing}
+          metricsUpdatedAt={metricsUpdatedAt}
+          summary={summary}
+        />
+        <MetricsDetailSkeleton />
+      </StableDetailPanel>
+    );
+  }
+
   return (
     <StableDetailPanel>
-      <View style={styles.summaryGrid}>
-        <SummaryTile
-          Icon={HeartPulse}
-          label="Health"
-          value={healthy ? "Healthy" : health ? "Check" : "Loading"}
-          detail={endpointStatusLabel(summary?.availability.health)}
-          tone={healthy ? colors.green : colors.amber}
-        />
-        <SummaryTile
-          Icon={Cpu}
-          label="Tokens"
-          value={formatMetricNumber(overview?.tokenUsage.total)}
-          detail={`${formatMetricNumber(overview?.agentActivity.totalMessages)} messages`}
-          tone={accentColor}
-        />
-        <SummaryTile
-          Icon={Zap}
-          label="API"
-          value={metricSuccessRate(overview)}
-          detail={`${formatMetricNumber(overview?.apiCalls.totalCalls)} calls`}
-          tone={colors.blueText}
-        />
-        <SummaryTile
-          Icon={Database}
-          label="Storage"
-          value={formatMetricBytes(metrics?.storage?.totalBytes)}
-          detail={`${availableMetrics}/${metricFeedCount} feeds`}
-          tone={colors.green}
-        />
-      </View>
-
-      {metricsError ? <EmptyState label="Metrics unavailable" detail={metricsError} /> : null}
-
-      <View style={styles.subsectionHeader}>
-        <Text style={styles.subsectionTitle}>Token flow</Text>
-        <Text style={styles.counterText}>Live</Text>
-      </View>
-      <MetricBreakdown data={tokenBars} tone={accentColor} />
+      <MetricsOverviewSection
+        accentColor={accentColor}
+        metrics={metrics}
+        metricsError={metricsError}
+        metricsRefreshing={metricsRefreshing}
+        metricsUpdatedAt={metricsUpdatedAt}
+        summary={summary}
+      />
 
       <MetricSection
         title="Activity trend"
@@ -302,8 +388,8 @@ export function MetricsPanel({
 
       <MetricSection
         title="Provider plans"
-        detail={`${metrics?.providerPlans?.summary?.configured ?? 0} configured - ${
-          metrics?.providerPlans?.summary?.warnings ?? 0
+        detail={`${providerPlanStatus?.summary?.configured ?? metrics?.providerPlans?.summary?.configured ?? 0} configured - ${
+          providerPlanStatus?.summary?.warnings ?? metrics?.providerPlans?.summary?.warnings ?? 0
         } warnings`}
       >
         <ProviderPlanMetricsGrid plans={providerPlanRows} />
@@ -550,12 +636,12 @@ export function MetricsPanel({
 
 export function UsagePanel({
   accentColor,
-  metrics,
-  metricsError,
+  providerPlanError,
+  providerPlanStatus,
 }: {
   accentColor: string;
-  metrics: MetricsSnapshot | null;
-  metricsError: string | null;
+  providerPlanError: string | null;
+  providerPlanStatus: ProviderPlanStatusResponse | null;
 }) {
   const [customOrder, setCustomOrder] = useState<string[]>([]);
 
@@ -566,7 +652,7 @@ export function UsagePanel({
   const movePlan = useCallback(
     (providerId: string, direction: -1 | 1) => {
       setCustomOrder((prevOrder) => {
-        const baseRows = mobileProviderPlanRows(metrics);
+        const baseRows = mobileProviderPlanRows(providerPlanStatus);
         const ids = sortPlanRows(baseRows, prevOrder).map((row) => row.id);
         const currentIndex = ids.indexOf(providerId);
         const targetIndex = currentIndex + direction;
@@ -579,15 +665,15 @@ export function UsagePanel({
         return next;
       });
     },
-    [metrics]
+    [providerPlanStatus]
   );
 
   const providerPlanRows = useMemo(
-    () => sortPlanRows(mobileProviderPlanRows(metrics), customOrder),
-    [metrics, customOrder]
+    () => sortPlanRows(mobileProviderPlanRows(providerPlanStatus), customOrder),
+    [providerPlanStatus, customOrder]
   );
 
-  if (!metrics && !metricsError) {
+  if (!providerPlanStatus && !providerPlanError) {
     return (
       <StableDetailPanel>
         <LoadingState label="Loading usage" detail="Checking provider plan windows." />
@@ -608,27 +694,29 @@ export function UsagePanel({
         <SummaryTile
           Icon={CheckCircle2}
           label="Configured"
-          value={formatMetricNumber(metrics?.providerPlans?.summary?.configured)}
+          value={formatMetricNumber(providerPlanStatus?.summary?.configured)}
           detail="Ready providers"
           tone={colors.green}
         />
         <SummaryTile
           Icon={AlertTriangle}
           label="Warnings"
-          value={formatMetricNumber(metrics?.providerPlans?.summary?.warnings)}
+          value={formatMetricNumber(providerPlanStatus?.summary?.warnings)}
           detail="Near limits"
           tone={colors.amber}
         />
         <SummaryTile
           Icon={ShieldAlert}
           label="Exhausted"
-          value={formatMetricNumber(metrics?.providerPlans?.summary?.exhausted)}
+          value={formatMetricNumber(providerPlanStatus?.summary?.exhausted)}
           detail="Hard stops"
           tone={colors.red}
         />
       </View>
 
-      {metricsError ? <EmptyState label="Usage unavailable" detail={metricsError} /> : null}
+      {providerPlanError ? (
+        <EmptyState label="Usage unavailable" detail={providerPlanError} />
+      ) : null}
 
       <MetricSection title="Provider usage" detail="5-hour and weekly coding-plan windows">
         <ProviderPlanMetricsGrid
@@ -655,9 +743,11 @@ type MobileProviderPlanRow = {
   }>;
 };
 
-function mobileProviderPlanRows(metrics: MetricsSnapshot | null): MobileProviderPlanRow[] {
+function mobileProviderPlanRows(
+  providerPlanStatus: ProviderPlanStatusResponse | null
+): MobileProviderPlanRow[] {
   return (
-    metrics?.providerPlans?.providers
+    providerPlanStatus?.providers
       .filter(
         (plan) =>
           plan.managedAutomatically &&
@@ -921,7 +1011,12 @@ export function mobileProviderPlanDetail(
 function mobileProviderPlanWindowDisplay(
   plan: ProviderPlanStatusResponse["providers"][number] | null | undefined,
   kind: "rolling_5h" | "rolling_week"
-): { value: string; progress: number; tone: string; reset: string | null } | null {
+): {
+  value: string;
+  progress: number;
+  tone: string;
+  reset: string | null;
+} | null {
   if (!plan?.managedAutomatically) return null;
   const window = plan.windows.find(
     (entry) =>

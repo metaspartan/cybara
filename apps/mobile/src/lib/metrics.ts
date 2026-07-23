@@ -62,7 +62,11 @@ export interface MetricsOverview {
 export interface TokenMetrics {
   topModels: Array<{ model: string; tokens: number }>;
   topProviders: Array<{ provider: string; tokens: number }>;
-  recentUsage: Array<{ timestamp?: string; tokens: number; metadata?: Record<string, unknown> }>;
+  recentUsage: Array<{
+    timestamp?: string;
+    tokens: number;
+    metadata?: Record<string, unknown>;
+  }>;
   totalTokens: number;
   estimatedCost?: number;
 }
@@ -173,7 +177,12 @@ export interface TokenAnalysisMetrics {
     days: Array<{
       date: string;
       dayLabel: string;
-      hours: Array<{ hour: number; tokens: number; calls: number; intensity: number }>;
+      hours: Array<{
+        hour: number;
+        tokens: number;
+        calls: number;
+        intensity: number;
+      }>;
     }>;
     hottestHour?: {
       date: string;
@@ -297,6 +306,52 @@ export function emptyMetricsAvailability(): MetricsAvailability {
   };
 }
 
+export function metricsOverviewSnapshot(overview: MetricsOverview): MetricsSnapshot {
+  return {
+    overview,
+    tokens: null,
+    files: null,
+    tools: null,
+    providers: null,
+    timeSeries: null,
+    models: null,
+    insights: null,
+    tokenAnalysis: null,
+    storage: null,
+    providerPlans: null,
+    sessions: null,
+    availability: {
+      ...emptyMetricsAvailability(),
+      overview: { ok: true },
+    },
+  };
+}
+
+export function mergeMetricsOverview(
+  snapshot: MetricsSnapshot | null,
+  overview: MetricsOverview
+): MetricsSnapshot {
+  if (!snapshot) return metricsOverviewSnapshot(overview);
+  return {
+    ...snapshot,
+    overview,
+    availability: {
+      ...snapshot.availability,
+      overview: { ok: true },
+    },
+  };
+}
+
+export function hasDetailedMetrics(snapshot: MetricsSnapshot | null): boolean {
+  if (!snapshot) return false;
+  return (
+    snapshot.availability.timeSeries.ok ||
+    snapshot.availability.tokenAnalysis.ok ||
+    snapshot.availability.sessions.ok ||
+    snapshot.availability.storage.ok
+  );
+}
+
 export function formatMetricNumber(value: number | undefined): string {
   const num = Number.isFinite(value) ? Number(value) : 0;
   if (Math.abs(num) >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
@@ -340,13 +395,21 @@ export function storageCategoryEntries(
   if (!storage) return [];
   const components = storage.components || {};
   return [
-    { label: "Data", bytes: components.data?.bytes || 0, path: components.data?.path || "" },
+    {
+      label: "Data",
+      bytes: components.data?.bytes || 0,
+      path: components.data?.path || "",
+    },
     {
       label: "Sessions",
       bytes: components.sessions?.bytes || 0,
       path: components.sessions?.path || "",
     },
-    { label: "Media", bytes: components.media?.bytes || 0, path: components.media?.path || "" },
+    {
+      label: "Media",
+      bytes: components.media?.bytes || 0,
+      path: components.media?.path || "",
+    },
     {
       label: "Channels",
       bytes: components.channels?.bytes || 0,
@@ -357,10 +420,26 @@ export function storageCategoryEntries(
       bytes: components.artifacts?.bytes || 0,
       path: components.artifacts?.path || "",
     },
-    { label: "Logs", bytes: components.logs?.bytes || 0, path: components.logs?.path || "" },
-    { label: "Memory", bytes: components.memory?.bytes || 0, path: components.memory?.path || "" },
-    { label: "Skills", bytes: components.skills?.bytes || 0, path: components.skills?.path || "" },
-    { label: "Secure", bytes: components.secure?.bytes || 0, path: components.secure?.path || "" },
+    {
+      label: "Logs",
+      bytes: components.logs?.bytes || 0,
+      path: components.logs?.path || "",
+    },
+    {
+      label: "Memory",
+      bytes: components.memory?.bytes || 0,
+      path: components.memory?.path || "",
+    },
+    {
+      label: "Skills",
+      bytes: components.skills?.bytes || 0,
+      path: components.skills?.path || "",
+    },
+    {
+      label: "Secure",
+      bytes: components.secure?.bytes || 0,
+      path: components.secure?.path || "",
+    },
     {
       label: "Other",
       bytes: components.other?.bytes || storage.uncategorizedBytes || 0,
@@ -402,7 +481,11 @@ export function tokenVelocityAreaRows(
     tokenAnalysis?.tokenVelocity?.hours ??
     ((
       tokenAnalysis as {
-        hourlyVelocity24h?: Array<{ hour: string; tokens: number; calls: number }>;
+        hourlyVelocity24h?: Array<{
+          hour: string;
+          tokens: number;
+          calls: number;
+        }>;
       }
     )?.hourlyVelocity24h ||
       []);

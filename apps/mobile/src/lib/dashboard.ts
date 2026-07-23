@@ -9,6 +9,7 @@ import type {
   FeatureSummary,
   HealthResponse,
   ProviderSummary,
+  SessionDetailSummary,
   SessionSummary,
 } from "./api";
 import type { GatewayProfile } from "./connection";
@@ -67,6 +68,29 @@ export interface FeatureCounts {
   logs: number;
 }
 
+export function mergeSessionDetailIntoSummary(
+  summary: FeatureSummary | null,
+  detail: SessionDetailSummary
+): FeatureSummary | null {
+  if (!summary) return summary;
+  const sessionIndex = summary.sessions.findIndex((session) => session.id === detail.id);
+  if (sessionIndex < 0) return summary;
+  const current = summary.sessions[sessionIndex];
+  const lastMessage = detail.messages.at(-1);
+  const nextSession = {
+    ...current,
+    title: detail.title ?? current.title,
+    message_count: detail.messages.length,
+    updated_at: detail.updatedAt ?? current.updated_at,
+    last_message: lastMessage
+      ? { role: lastMessage.role, content: lastMessage.content }
+      : current.last_message,
+  };
+  const sessions = [...summary.sessions];
+  sessions[sessionIndex] = nextSession;
+  return { ...summary, sessions };
+}
+
 export interface MobileHeaderCopy {
   title: string;
   detail: string;
@@ -81,7 +105,10 @@ export const MOBILE_TABS: MobileTabDefinition[] = [
   { key: "settings", label: "Settings", showsGatewayPanel: false },
 ];
 
-export const MOBILE_SETTINGS_TABS: Array<{ label: string; value: MobileSettingsTab }> = [
+export const MOBILE_SETTINGS_TABS: Array<{
+  label: string;
+  value: MobileSettingsTab;
+}> = [
   { label: "General", value: "general" },
   { label: "Accessibility", value: "accessibility" },
   { label: "Gateway", value: "gateway" },
@@ -425,11 +452,12 @@ export function mobileComposerHeightForDraft(
 }
 
 export const MOBILE_METRICS_CHROME = {
-  backgroundRefreshMs: 60000,
+  backgroundRefreshMs: 120000,
+  detailRefreshMs: 60000,
   headerRefreshButton: false,
   lazyLoadUntilOpened: true,
   liveRefreshMs: 15000,
-  minRefreshMs: 15000,
+  minRefreshMs: 60000,
   pullToRefresh: true,
 } as const;
 

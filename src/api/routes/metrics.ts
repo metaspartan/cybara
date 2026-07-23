@@ -216,7 +216,10 @@ function metadataUrl(metadata: string | null): string {
 
 function providerMetricKeys(): Set<string> {
   const keys = new Set<string>(Object.keys(providers));
-  for (const provider of tables.providers.all() as Array<{ id: string; provider: string }>) {
+  for (const provider of tables.providers.all() as Array<{
+    id: string;
+    provider: string;
+  }>) {
     keys.add(provider.id);
     keys.add(provider.provider);
   }
@@ -886,7 +889,7 @@ function buildMetricsTokenAnalysis() {
   };
 }
 
-async function buildMetricsSnapshot() {
+async function buildMetricsSnapshot(compact: boolean) {
   const availability = emptyMetricsAvailability();
   const modelMetricsTask = metricsSnapshotValue(availability, "models", [], getModelMetrics);
   const [
@@ -904,7 +907,9 @@ async function buildMetricsSnapshot() {
     sessions,
   ] = await Promise.all([
     metricsSnapshotValue(availability, "overview", null, buildMetricsOverview),
-    metricsSnapshotValue(availability, "tokens", null, buildMetricsTokens),
+    compact
+      ? metricsSnapshotValue(availability, "tokens", null, () => null)
+      : metricsSnapshotValue(availability, "tokens", null, buildMetricsTokens),
     metricsSnapshotValue(availability, "files", null, buildMetricsFiles),
     metricsSnapshotValue(availability, "tools", null, buildMetricsTools),
     metricsSnapshotValue(availability, "providers", null, buildMetricsProviders),
@@ -915,9 +920,11 @@ async function buildMetricsSnapshot() {
     ),
     metricsSnapshotValue(availability, "tokenAnalysis", null, buildMetricsTokenAnalysis),
     metricsSnapshotValue(availability, "storage", null, buildStorageMetrics),
-    metricsSnapshotValue(availability, "providerPlans", null, () =>
-      enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus())
-    ),
+    compact
+      ? metricsSnapshotValue(availability, "providerPlans", null, () => null)
+      : metricsSnapshotValue(availability, "providerPlans", null, () =>
+          enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus())
+        ),
     metricsSnapshotValue(availability, "sessions", null, () => listSessionRuntimeMetrics(1, 10)),
   ]);
 
@@ -938,36 +945,8 @@ async function buildMetricsSnapshot() {
   };
 }
 
-type MetricsSnapshot = Awaited<ReturnType<typeof buildMetricsSnapshot>>;
-
-const METRICS_SNAPSHOT_CACHE_MS = 5_000;
-let metricsSnapshotCache: { value: MetricsSnapshot; expiresAt: number } | null = null;
-let metricsSnapshotInFlight: Promise<MetricsSnapshot> | null = null;
-
-function getMetricsSnapshot(): Promise<MetricsSnapshot> {
-  const now = Date.now();
-  if (metricsSnapshotCache && metricsSnapshotCache.expiresAt > now) {
-    return Promise.resolve(metricsSnapshotCache.value);
-  }
-  if (metricsSnapshotInFlight) return metricsSnapshotInFlight;
-
-  const task = buildMetricsSnapshot()
-    .then((value) => {
-      metricsSnapshotCache = {
-        value,
-        expiresAt: Date.now() + METRICS_SNAPSHOT_CACHE_MS,
-      };
-      return value;
-    })
-    .finally(() => {
-      if (metricsSnapshotInFlight === task) metricsSnapshotInFlight = null;
-    });
-  metricsSnapshotInFlight = task;
-  return task;
-}
-
 export const metricsRoutes: Record<string, RouteHandler> = {
-  "GET /api/metrics/snapshot": () => getMetricsSnapshot(),
+  "GET /api/metrics/snapshot": (_body, params) => buildMetricsSnapshot(params?.compact === "1"),
   "GET /api/metrics/overview": () => buildMetricsOverview(),
   "GET /api/metrics/storage": () => buildStorageMetrics(),
   "GET /api/metrics/tokens": () => buildMetricsTokens(),

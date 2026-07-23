@@ -45,6 +45,25 @@ describe("mobile live chat cache", () => {
     });
   });
 
+  test("replaces the optimistic thinking row with the authoritative status", () => {
+    const sessionId = `mobile-status-${Date.now()}`;
+    const initial = liveAssistantMessage(sessionId, null, 100);
+    const generating = liveActivityFromStatusEvent({
+      type: "status",
+      status: "generating",
+      timestamp: 200,
+    });
+    if (!generating) throw new Error("expected generating activity");
+
+    const activities = mergeLiveActivity(initial.processActivities || [], generating);
+    expect(activities).toHaveLength(1);
+    expect(activities[0]).toMatchObject({
+      id: "live-agent-status",
+      text: "Generating response...",
+      toolName: "__thought",
+    });
+  });
+
   test("keeps authoritative quiet long-running sessions active", () => {
     const now = 1_783_700_000_000;
     const oldTimestamp = now - 30 * 60_000;

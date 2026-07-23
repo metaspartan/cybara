@@ -1485,10 +1485,13 @@ describe("mobile API client", () => {
 
   test("uses the gateway metrics snapshot endpoint when available", async () => {
     const paths: string[] = [];
+    const searches: string[] = [];
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (url) => {
-      const path = new URL(String(url)).pathname;
+      const parsedUrl = new URL(String(url));
+      const path = parsedUrl.pathname;
       paths.push(path);
+      searches.push(parsedUrl.search);
       if (path === "/api/metrics/snapshot") {
         return Response.json({
           overview: {
@@ -1533,6 +1536,49 @@ describe("mobile API client", () => {
       expect(snapshot.providerPlans?.enabled).toBe(true);
       expect(snapshot.availability.overview.ok).toBe(true);
       expect(snapshot.availability.tokens.ok).toBe(false);
+      expect(paths).toEqual(["/api/metrics/snapshot"]);
+      expect(searches).toEqual(["?compact=1"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("loads the lightweight metrics overview independently", async () => {
+    const paths: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+      const path = new URL(String(url)).pathname;
+      paths.push(path);
+      return Response.json({
+        tokenUsage: { total: 10, input: 4, output: 6, cache: 0 },
+        fileOperations: { filesRead: 1, filesWritten: 2, filesEdited: 3 },
+        toolCalls: { totalCalls: 5 },
+        apiCalls: { totalCalls: 5, successfulCalls: 4, failedCalls: 1 },
+        agentActivity: { totalExecutions: 2, totalMessages: 3 },
+      });
+    }) as typeof fetch;
+
+    try {
+      const overview = await new CybaraMobileApi(profile).metricsOverview();
+      expect(overview.tokenUsage.total).toBe(10);
+      expect(paths).toEqual(["/api/metrics/overview"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("does not fan out legacy metrics requests after authorization failures", async () => {
+    const paths: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+      paths.push(new URL(String(url)).pathname);
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }) as typeof fetch;
+
+    try {
+      await expect(new CybaraMobileApi(profile).metricsSnapshot()).rejects.toMatchObject({
+        status: 401,
+      });
       expect(paths).toEqual(["/api/metrics/snapshot"]);
     } finally {
       globalThis.fetch = originalFetch;

@@ -88,9 +88,8 @@ describe("mobile: chat management", () => {
     const optimisticTranscript = read("screens/dashboardOptimisticTranscript.ts");
 
     expect(screen).toContain("writeCachedMobileOptimisticTranscriptMessage(sessionId, optimistic)");
-    expect(screen).toContain(
-      "mergeCachedMobileOptimisticTranscript(sessionId, nextDetail.messages)"
-    );
+    expect(screen).toContain("mergeCachedMobileOptimisticTranscript(");
+    expect(screen).toContain("nextDetail.messages");
     expect(screen).toContain("const existing = sessionRefreshInFlight.current");
     expect(screen).toContain("return existing.promise");
     expect(liveCache).toContain("mergeMobileLiveActivities(currentActivities, incomingActivities)");
@@ -259,16 +258,29 @@ describe("mobile: chat management", () => {
     expect(newChat).toContain("sessionId,");
     expect(dashboard).toContain("onSettled={refreshSummary}");
     expect(detail).toContain("optimisticMobileSessionDetail(sessionId, sessionSummary)");
-    expect(detail).toContain("current?.id === sessionId ? current");
+    expect(detail).toContain("current?.id === sessionId");
     expect(detail).toContain("setLoadError(null)");
   });
 
   test("stopping a response reloads persisted activity before clearing the live overlay", () => {
     const detail = read("screens/dashboardSessionDetail.tsx");
     const reloadIndex = detail.indexOf("await loadSession(false);", detail.indexOf("stopResponse"));
+    const refreshIndex = detail.indexOf("refreshSummary();", reloadIndex);
     const clearIndex = detail.indexOf("commitLiveAssistant(() => null);", reloadIndex);
     expect(reloadIndex).toBeGreaterThan(0);
+    expect(refreshIndex).toBeGreaterThan(reloadIndex);
     expect(clearIndex).toBeGreaterThan(reloadIndex);
+  });
+
+  test("completed turns refresh the shared session summary", () => {
+    const detail = read("screens/dashboardSessionDetail.tsx");
+    const runtime = read("screens/useMobileSessionRuntime.ts");
+    const dashboard = read("screens/DashboardScreen.tsx");
+
+    expect(detail).toContain("onSessionUpdated,");
+    expect(detail).toContain("await loadSession(false);\n      refreshSummary();");
+    expect(runtime).toContain("onSessionUpdatedRef.current(reconciledDetail)");
+    expect(dashboard).toContain("mergeSessionDetailIntoSummary(current, detail)");
   });
 
   test("uses authoritative active state for queueing and live timing", () => {
@@ -276,9 +288,8 @@ describe("mobile: chat management", () => {
     expect(detail).toContain(
       "const chatBusy = sending || sessionActive || pendingMessages.length > 0;"
     );
-    expect(detail).toContain(
-      "nowMs={message.id === liveAssistant?.id && sessionActive ? liveNowMs : undefined}"
-    );
+    expect(detail).toContain("message.id === liveAssistant?.id && sessionActive");
+    expect(detail).toContain("? liveNowMs");
     expect(detail).not.toContain(
       "const chatBusy = sending || !!liveAssistant || pendingMessages.length > 0;"
     );

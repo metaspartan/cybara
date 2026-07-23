@@ -716,7 +716,10 @@ export class CybaraMobileApi {
   }> {
     const response = await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}/agent`, {
       method: "PUT",
-      body: JSON.stringify({ agentId, ...(useModelRouter ? { useModelRouter: true } : {}) }),
+      body: JSON.stringify({
+        agentId,
+        ...(useModelRouter ? { useModelRouter: true } : {}),
+      }),
     });
     const record = asRecord(response);
     return {
@@ -1579,7 +1582,7 @@ export class CybaraMobileApi {
 
   async metricsSnapshot(): Promise<MetricsSnapshot> {
     try {
-      const snapshot = await this.request<MetricsSnapshot>("/api/metrics/snapshot");
+      const snapshot = await this.request<MetricsSnapshot>("/api/metrics/snapshot?compact=1");
       return {
         ...snapshot,
         availability: {
@@ -1587,7 +1590,9 @@ export class CybaraMobileApi {
           ...(snapshot.availability ?? {}),
         },
       };
-    } catch {}
+    } catch (error) {
+      if (!(error instanceof CybaraApiError) || error.status !== 404) throw error;
+    }
 
     const availability = emptyMetricsAvailability();
     const safe = async <T>(
@@ -1664,6 +1669,10 @@ export class CybaraMobileApi {
       sessions,
       availability,
     };
+  }
+
+  metricsOverview(): Promise<NonNullable<MetricsSnapshot["overview"]>> {
+    return this.request("/api/metrics/overview");
   }
 
   async metricsSessions(
