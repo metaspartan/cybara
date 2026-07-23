@@ -392,6 +392,11 @@ extension ChatScreen {
         let status = event.status?.lowercased() ?? ""
         guard !status.isEmpty else { return }
 
+        let queuedTurnHandoff = event.pendingChatId != nil || firstNonEmptyGatewayString(event.detail)?.lowercased() == "starting queued follow-up"
+        if queuedTurnHandoff, let id = selectedSessionID {
+            Task { await loadMessages(id) }
+        }
+
         if status == "idle" {
             if firstNonEmptyGatewayString(event.detail)?.lowercased() == "steering to follow-up..." {
                 liveStatus = "thinking"

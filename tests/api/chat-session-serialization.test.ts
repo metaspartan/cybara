@@ -1164,24 +1164,20 @@ describe("handleChat per-session serialization", () => {
     const sessionId = `serialize-${Date.now()}`;
     createdSessionIds.push(sessionId);
     const statusDetails: string[] = [];
+    let queuedTurnHandoff: [string | undefined, string | undefined] | undefined;
     const queueHandoffVisibility: Array<Promise<boolean>> = [];
-    let observeQueueHandoff = false;
     const unsubscribe = onStatusStream((event) => {
       if (event.type === "status" && typeof event.detail === "string") {
         statusDetails.push(event.detail);
-      }
-      if (observeQueueHandoff && event.type === "snapshot") {
-        const pending = event.activeSessions
-          .find((snapshot) => snapshot.sessionId === sessionId)
-          ?.pendingMessages?.some((message) => message.content === "second");
-        if (!pending) {
+        if (event.detail === "Starting queued follow-up") {
+          queuedTurnHandoff = [event.pendingChatId, event.clientPendingId];
           queueHandoffVisibility.push(
             loadPersistedSession(sessionId).then((session) =>
               (session?.messages || []).some(
                 (message) =>
                   message.role === "user" &&
                   message.content === "second" &&
-                  typeof message.pending_chat_id === "string"
+                  message.pending_chat_id === event.pendingChatId
               )
             )
           );
@@ -1203,7 +1199,6 @@ describe("handleChat per-session serialization", () => {
       clientPendingId: "optimistic-second",
       tools: false,
     });
-    observeQueueHandoff = true;
     expect(loadPersistedPendingChatItems(sessionId).map((item) => item.content)).toEqual([
       "second",
     ]);
@@ -1217,6 +1212,7 @@ describe("handleChat per-session serialization", () => {
     expect(statusDetails).not.toContain("Queued follow-up");
 
     const messages = await waitForVisibleSessionMessages(sessionId, 4);
+    expect(queuedTurnHandoff).toEqual([secondResponse.pendingMessage?.id, "optimistic-second"]);
     const roles = messages.map((m) => m.role);
 
     const userIdxs = roles.flatMap((r, i) => (r === "user" ? [i] : []));

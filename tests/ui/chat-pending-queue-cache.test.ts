@@ -8,6 +8,8 @@ import {
 import {
   materializedPendingChatIds,
   mergePendingChatMessages,
+  pendingChatIdsAwaitingTranscript,
+  removeHandedOffPendingChatMessage,
 } from "../../ui/src/pages/chat/pendingQueueState";
 import type { PendingChatMessage } from "../../ui/src/lib/status-stream";
 
@@ -151,5 +153,54 @@ describe("web optimistic pending queue cache", () => {
       materializedPendingIds: materializedPendingChatIds([{ pending_chat_id: acknowledged.id }]),
     });
     expect(afterMaterialization).toEqual([]);
+  });
+
+  test("identifies acknowledged queue rows that require transcript reconciliation", () => {
+    const sessionId = `web-pending-reconcile-${Date.now()}`;
+    const acknowledged: PendingChatMessage = {
+      id: "pending-server-reconcile",
+      sessionId,
+      clientPendingId: "optimistic-reconcile",
+      content: "move this into the transcript",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      mode: "queued",
+      sequence: 1,
+    };
+    const optimistic = makeOptimistic(sessionId, "other", "still waiting for acknowledgement");
+
+    expect([
+      ...pendingChatIdsAwaitingTranscript([], [acknowledged, optimistic], new Set()),
+    ]).toEqual([acknowledged.id]);
+    expect(pendingChatIdsAwaitingTranscript([acknowledged], [acknowledged], new Set()).size).toBe(
+      0
+    );
+    expect(
+      pendingChatIdsAwaitingTranscript([], [acknowledged], new Set([acknowledged.id])).size
+    ).toBe(0);
+  });
+
+  test("removes the handed-off server and optimistic queue rows after transcript refresh", () => {
+    const sessionId = `web-pending-live-handoff-${Date.now()}`;
+    const optimistic = makeOptimistic(sessionId, "handoff", "queued follow-up");
+    const acknowledged: PendingChatMessage = {
+      id: "pending-server-live-handoff",
+      sessionId,
+      clientPendingId: optimistic.id,
+      content: optimistic.content,
+      createdAt: optimistic.createdAt,
+      updatedAt: optimistic.updatedAt,
+      mode: "queued",
+      sequence: 1,
+    };
+    const unrelated = makeOptimistic(sessionId, "unrelated", "another follow-up");
+
+    expect(
+      removeHandedOffPendingChatMessage(
+        [optimistic, acknowledged, unrelated],
+        acknowledged.id,
+        optimistic.id
+      )
+    ).toEqual([unrelated]);
   });
 });

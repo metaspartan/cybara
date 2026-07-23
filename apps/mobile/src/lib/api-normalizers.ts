@@ -890,6 +890,8 @@ export function normalizeMobileStatusStreamEvent(value: unknown): MobileStatusSt
       | "error"
       | undefined,
     durationMs: readNumber(record, ["durationMs", "duration_ms"]),
+    pendingChatId: readString(record, ["pendingChatId", "pending_chat_id"]),
+    clientPendingId: readString(record, ["clientPendingId", "client_pending_id"]),
   };
 }
 

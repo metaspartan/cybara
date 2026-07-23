@@ -66,3 +66,41 @@ export function materializedPendingChatIds(
       .filter(Boolean)
   );
 }
+
+export function pendingChatIdsAwaitingTranscript(
+  serverMessages: PendingChatMessage[] | undefined,
+  currentMessages: PendingChatMessage[],
+  transcriptPendingIds: ReadonlySet<string>
+): ReadonlySet<string> {
+  const serverIds = new Set(
+    normalizePendingChatMessages(serverMessages).map((message) => message.id)
+  );
+  return new Set(
+    currentMessages
+      .filter(
+        (message) =>
+          !message.id.startsWith("optimistic-") &&
+          !serverIds.has(message.id) &&
+          !transcriptPendingIds.has(message.id)
+      )
+      .map((message) => message.id)
+  );
+}
+
+export function removeHandedOffPendingChatMessage(
+  messages: PendingChatMessage[],
+  pendingChatId?: string,
+  clientPendingId?: string
+): PendingChatMessage[] {
+  const normalizedPendingChatId = pendingChatId?.trim() || "";
+  const normalizedClientPendingId = clientPendingId?.trim() || "";
+  if (!normalizedPendingChatId && !normalizedClientPendingId) return messages;
+  return messages.filter((message) => {
+    const messageClientPendingId = message.clientPendingId?.trim() || "";
+    return (
+      message.id !== normalizedPendingChatId &&
+      message.id !== normalizedClientPendingId &&
+      messageClientPendingId !== normalizedClientPendingId
+    );
+  });
+}

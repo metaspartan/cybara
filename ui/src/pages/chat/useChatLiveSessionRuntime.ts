@@ -48,7 +48,12 @@ import {
   readCachedOptimisticPendingMessages,
   writeCachedOptimisticPendingMessages,
 } from "./pendingQueueCache";
-import { materializedPendingChatIds, mergePendingChatMessages } from "./pendingQueueState";
+import {
+  materializedPendingChatIds,
+  mergePendingChatMessages,
+  pendingChatIdsAwaitingTranscript,
+  removeHandedOffPendingChatMessage,
+} from "./pendingQueueState";
 
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
 type LiveStatus = "thinking" | "generating" | "compacting" | "idle";
@@ -145,12 +150,46 @@ export function useChatLiveSessionRuntime({
   hydrateSessionStatus: (targetSessionId?: string | null) => Promise<void>;
 } {
   const typedMessagesRef = useRef(typedMessages);
+  const pendingMessagesRef = useRef(pendingMessages);
   const currentSessionIsWorkingRef = useRef(currentSessionIsWorking);
 
   useEffect(() => {
     typedMessagesRef.current = typedMessages;
+    pendingMessagesRef.current = pendingMessages;
     currentSessionIsWorkingRef.current = currentSessionIsWorking;
-  }, [currentSessionIsWorking, typedMessages]);
+  }, [currentSessionIsWorking, pendingMessages, typedMessages]);
+
+  const reconcilePendingMessages = useCallback(
+    async (
+      resolvedSessionId: string,
+      serverMessages: PendingChatMessage[] | undefined,
+      preserveOptimistic: boolean
+    ) => {
+      if (activeSessionRef.current !== resolvedSessionId) return;
+      const transcriptPendingIds = materializedPendingChatIds(typedMessagesRef.current);
+      const handoffIds = pendingChatIdsAwaitingTranscript(
+        serverMessages,
+        pendingMessagesRef.current,
+        transcriptPendingIds
+      );
+      let resolvedPendingIds = transcriptPendingIds;
+      if (handoffIds.size > 0) {
+        const refreshed = await refreshSessionMessagesRef.current(resolvedSessionId);
+        if (activeSessionRef.current !== resolvedSessionId) return;
+        if (refreshed) {
+          resolvedPendingIds = new Set([...transcriptPendingIds, ...handoffIds]);
+        }
+      }
+      setPendingMessages((current) =>
+        mergePendingChatMessages(serverMessages, current, {
+          preserveOptimistic,
+          preserveAcknowledged: true,
+          materializedPendingIds: resolvedPendingIds,
+        })
+      );
+    },
+    [activeSessionRef, refreshSessionMessagesRef, setPendingMessages]
+  );
 
   const markFirstTokenLatency = useCallback((forSessionId?: string | null) => {
     if (ttftStartRef.current === null) return;
@@ -536,12 +575,10 @@ export function useChatLiveSessionRuntime({
             snapshot.status === "compacting" ||
             snapshot.status === "tool_executing" ||
             snapshot.status === "tool_completed");
-        const transcriptPendingIds = materializedPendingChatIds(typedMessagesRef.current);
-        setPendingMessages((current) =>
-          mergePendingChatMessages(snapshot?.pendingMessages, current, {
-            preserveAcknowledged: true,
-            materializedPendingIds: transcriptPendingIds,
-          })
+        await reconcilePendingMessages(
+          resolvedSessionId,
+          snapshot?.pendingMessages,
+          currentSessionIsWorkingRef.current
         );
         if (snapshot && snapshotFresh) {
           const snapshotAccepted = cacheLiveStatusSnapshot(snapshot);
@@ -637,36 +674,33 @@ export function useChatLiveSessionRuntime({
     [
       cacheLiveStatusSnapshot,
       isSessionStopSuppressed,
+      reconcilePendingMessages,
       resolveSnapshotLiveState,
       snapshotLatestTimestamp,
     ]
   );
 
-  const refreshPendingMessages = useCallback(async (targetSessionId?: string | null) => {
-    const resolvedSessionId =
-      typeof targetSessionId === "string" && targetSessionId.trim().length > 0
-        ? targetSessionId.trim()
-        : null;
-    if (!resolvedSessionId) return;
-    try {
-      const response = await chatApi.getPendingMessages(resolvedSessionId);
-      if (!response.success || !response.data) return;
-      if (activeSessionRef.current !== resolvedSessionId) return;
-      const serverMessages = response.data?.pendingMessages;
-      const transcriptPendingIds = materializedPendingChatIds(typedMessagesRef.current);
-      const preservePending = currentSessionIsWorkingRef.current;
-      setPendingMessages((current) =>
-        mergePendingChatMessages(serverMessages, current, {
-          preserveOptimistic: preservePending,
-          preserveAcknowledged: true,
-          materializedPendingIds: transcriptPendingIds,
-        })
-      );
-      if (Array.isArray(serverMessages) && serverMessages.length === 0 && !preservePending) {
-        clearCachedOptimisticPendingMessages(resolvedSessionId);
-      }
-    } catch {}
-  }, []);
+  const refreshPendingMessages = useCallback(
+    async (targetSessionId?: string | null) => {
+      const resolvedSessionId =
+        typeof targetSessionId === "string" && targetSessionId.trim().length > 0
+          ? targetSessionId.trim()
+          : null;
+      if (!resolvedSessionId) return;
+      try {
+        const response = await chatApi.getPendingMessages(resolvedSessionId);
+        if (!response.success || !response.data) return;
+        if (activeSessionRef.current !== resolvedSessionId) return;
+        const serverMessages = response.data?.pendingMessages;
+        const preservePending = currentSessionIsWorkingRef.current;
+        await reconcilePendingMessages(resolvedSessionId, serverMessages, preservePending);
+        if (Array.isArray(serverMessages) && serverMessages.length === 0 && !preservePending) {
+          clearCachedOptimisticPendingMessages(resolvedSessionId);
+        }
+      } catch {}
+    },
+    [reconcilePendingMessages]
+  );
 
   useEffect(() => {
     activeSessionRef.current = sessionId;
@@ -873,6 +907,9 @@ export function useChatLiveSessionRuntime({
         const status = typeof payload.status === "string" ? payload.status : "";
         if (!status) return;
         const statusDetail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+        const isQueuedTurnHandoff =
+          typeof payload.pendingChatId === "string" ||
+          statusDetail.toLowerCase() === "starting queued follow-up";
         const isSteeringHandoff =
           status === "idle" && statusDetail.toLowerCase() === "steering to follow-up...";
         const payloadSessionId =
@@ -937,6 +974,18 @@ export function useChatLiveSessionRuntime({
         const activeSession = activeSessionRef.current;
         const isEventForVisibleSession =
           !!activeSession && !!payloadSessionId && payloadSessionId === activeSession;
+        if (isQueuedTurnHandoff && payloadSessionId && isEventForVisibleSession) {
+          void refreshSessionMessagesRef.current(payloadSessionId).then((refreshed) => {
+            if (!refreshed || activeSessionRef.current !== payloadSessionId) return;
+            setPendingMessages((current) =>
+              removeHandedOffPendingChatMessage(
+                current,
+                payload.pendingChatId,
+                payload.clientPendingId
+              )
+            );
+          });
+        }
         if (
           !loadingRef.current &&
           Date.now() > acceptEventsUntilRef.current &&

@@ -63,6 +63,43 @@ describe("handleExec", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  test("finds Bun from a restricted desktop PATH when sandboxing is disabled", async () => {
+    const previous = config.getSandboxRuntime();
+    try {
+      config.setSandboxRuntime({ enabled: false, provider: "auto", network: "deny" });
+      const result = await handleExec({
+        command: "bun --version",
+        env: {
+          PATH: process.platform === "win32" ? "C:\\Windows\\System32" : "/usr/bin:/bin",
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.output.trim()).toMatch(/^\d+\.\d+\.\d+/);
+      expect(result.sandboxProvider).toBeUndefined();
+    } finally {
+      config.setSandboxRuntime(previous);
+    }
+  });
+
+  test("finds Homebrew Node from a restricted desktop PATH on macOS", async () => {
+    if (process.platform !== "darwin" || !existsSync("/opt/homebrew/bin/node")) return;
+    const previous = config.getSandboxRuntime();
+    try {
+      config.setSandboxRuntime({ enabled: false, provider: "auto", network: "deny" });
+      const result = await handleExec({
+        command: "node --version",
+        env: { PATH: "/usr/bin:/bin" },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.output.trim()).toMatch(/^v\d+\.\d+\.\d+/);
+      expect(result.sandboxProvider).toBeUndefined();
+    } finally {
+      config.setSandboxRuntime(previous);
+    }
+  });
+
   test("filters unsafe environment overrides", async () => {
     const result = await handleExec({
       command:

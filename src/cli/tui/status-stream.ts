@@ -26,6 +26,8 @@ export interface TUIStreamStatusEvent {
   toolName?: string;
   toolCallId?: string;
   toolPhase?: "start" | "result" | "error" | "blocked";
+  pendingChatId?: string;
+  clientPendingId?: string;
 }
 
 export interface TUIStreamTokenEvent {
@@ -166,6 +168,8 @@ export function parseTUIStatusEvent(value: string): TUIStatusStreamEvent | null 
         toolName: optionalString(parsed.toolName),
         toolCallId: optionalString(parsed.toolCallId),
         toolPhase: phase,
+        pendingChatId: optionalString(parsed.pendingChatId),
+        clientPendingId: optionalString(parsed.clientPendingId),
       };
     }
     if (parsed.type === "snapshot") {

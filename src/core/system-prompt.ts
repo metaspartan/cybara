@@ -266,7 +266,13 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
 
   lines.push(...buildTimeSection(params.userTimezone, params.tools.includes("session_status")));
 
-  lines.push(...buildRuntimeSection(params.modelDisplay, params.runtimeInfo));
+  lines.push(
+    ...buildRuntimeSection(
+      params.modelDisplay,
+      params.runtimeInfo,
+      params.sandboxInfo?.enabled === true
+    )
+  );
 
   if (!isMinimal && hasTools) {
     lines.push(...buildSafetySection());
@@ -390,6 +396,10 @@ function orderedToolNames(tools: string[]): string[] {
 export function systemPromptToolMarker(tools: string[]): string {
   const names = orderedToolNames(tools);
   return names.length > 0 ? `Available tools: ${names.join(", ")}` : "Available tools: none";
+}
+
+export function systemPromptSandboxMarker(enabled: boolean): string {
+  return `sandbox=${enabled ? "enabled" : "disabled"}`;
 }
 
 function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
@@ -699,7 +709,8 @@ function buildWorkspaceSection(workspaceDir?: string): string[] {
 
 function buildRuntimeSection(
   modelDisplay: string,
-  runtimeInfo?: SystemPromptParams["runtimeInfo"]
+  runtimeInfo?: SystemPromptParams["runtimeInfo"],
+  sandboxEnabled = false
 ): string[] {
   const parts: string[] = [];
 
@@ -719,6 +730,7 @@ function buildRuntimeSection(
     runtimeInfo?.arch ||
     (typeof process !== "undefined" && process.arch ? process.arch : "unknown");
   parts.push(`os=${os} (${arch})`);
+  parts.push(systemPromptSandboxMarker(sandboxEnabled));
 
   const model = runtimeInfo?.model || modelDisplay;
   parts.push(`model=${model}`);

@@ -1004,6 +1004,8 @@ export interface MobileStatusStreamStatusEvent {
   toolCallId?: string;
   toolPhase?: "start" | "result" | "error" | "blocked";
   durationMs?: number;
+  pendingChatId?: string;
+  clientPendingId?: string;
 }
 
 export interface MobileStatusStreamSnapshotEvent {

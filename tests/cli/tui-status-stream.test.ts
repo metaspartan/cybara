@@ -24,6 +24,8 @@ describe("CLI TUI status stream", () => {
           toolName: "read",
           toolCallId: "call-1",
           toolPhase: "start",
+          pendingChatId: "pending-1",
+          clientPendingId: "optimistic-1",
         })
       )
     ).toEqual({
@@ -36,6 +38,8 @@ describe("CLI TUI status stream", () => {
       toolName: "read",
       toolCallId: "call-1",
       toolPhase: "start",
+      pendingChatId: "pending-1",
+      clientPendingId: "optimistic-1",
     });
     expect(
       parseTUIStatusEvent(

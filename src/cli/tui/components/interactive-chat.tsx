@@ -197,6 +197,7 @@ export function InteractiveChatTUI({
     streamDetail,
     streamingText,
     streamStatus,
+    queuedTurnHandoff,
   } = useInteractiveChatStatus({ apiBase, apiKey, gatewayPassword, sessionIdRef });
 
   const activeCapabilityMention = React.useMemo(
@@ -371,6 +372,11 @@ export function InteractiveChatTUI({
   React.useEffect(() => {
     void loadMessages();
   }, [loadMessages]);
+
+  React.useEffect(() => {
+    if (!queuedTurnHandoff || queuedTurnHandoff.sessionId !== localSessionId) return;
+    void loadMessagesForSession(queuedTurnHandoff.sessionId);
+  }, [loadMessagesForSession, localSessionId, queuedTurnHandoff]);
 
   React.useEffect(() => {
     void loadControlPlane().catch((cause) => {

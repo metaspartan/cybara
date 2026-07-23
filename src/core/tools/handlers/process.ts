@@ -9,7 +9,7 @@ import { getPathSeparator, isWindows, shellEscapeArg } from "../../platform";
 import { persistToolOutputForRecovery } from "../../tool-output-recovery";
 import {
   buildContainerRuntimeEnvironment,
-  buildSubprocessEnvironment,
+  buildHostSubprocessEnvironment,
   sanitizeSubprocessEnvironment,
 } from "../../subprocess-env";
 import type { ToolContext } from "../index";
@@ -304,7 +304,7 @@ export async function handleExec(
   }
 
   try {
-    const fullEnv = buildSubprocessEnvironment(env);
+    const fullEnv = buildHostSubprocessEnvironment(env);
     if (!isWindows() && !fullEnv.PATH?.split(getPathSeparator()).includes("/usr/sbin")) {
       fullEnv.PATH = ["/usr/sbin", fullEnv.PATH].filter(Boolean).join(getPathSeparator());
     }
@@ -339,7 +339,7 @@ export async function handleExec(
     const spawnEnv =
       plan.provider === "docker" || plan.provider === "podman"
         ? buildContainerRuntimeEnvironment(plan.env, { ...process.env, ...fullEnv })
-        : buildSubprocessEnvironment(plan.env, fullEnv);
+        : buildHostSubprocessEnvironment(plan.env, fullEnv);
     if (args.background === true) {
       const proc = Bun.spawn(plan.command, {
         cwd: plan.cwd,
@@ -460,7 +460,7 @@ export async function handleExecAsync(
   const spawnEnv =
     plan.provider === "docker" || plan.provider === "podman"
       ? buildContainerRuntimeEnvironment(plan.env)
-      : buildSubprocessEnvironment(plan.env);
+      : buildHostSubprocessEnvironment(plan.env);
   const captured = await runCapturedProcess({
     command: plan.command,
     displayCommand: command,
@@ -646,7 +646,7 @@ export async function handleGit(
     sandboxProvider: plan.provider || "host",
   });
 
-  const baseEnv = buildSubprocessEnvironment();
+  const baseEnv = buildHostSubprocessEnvironment();
   const captured = await runCapturedProcess({
     command: plan.command,
     displayCommand: gitCommand,

@@ -357,6 +357,8 @@ struct GatewayStatusEvent: Decodable, Hashable {
     let sandboxProvider: String?
     let toolPhase: String?
     let durationMs: Double?
+    let pendingChatId: String?
+    let clientPendingId: String?
     let delta: String?
     let activeSessions: [GatewaySessionStatusSnapshot]
     let activeSessionIds: [String]
@@ -367,6 +369,7 @@ struct GatewayStatusEvent: Decodable, Hashable {
         case type, runId, run_id, sequence, status, detail, timestamp, sessionId, session_id, agentId, agent_id
         case toolName, tool_name, toolCallId, tool_call_id, sandboxProvider, sandbox_provider
         case toolPhase, tool_phase, durationMs, duration_ms, delta
+        case pendingChatId, pending_chat_id, clientPendingId, client_pending_id
         case activeSessions, active_sessions, activeSessionIds, active_session_ids
         case session, active
     }
@@ -386,6 +389,8 @@ struct GatewayStatusEvent: Decodable, Hashable {
         sandboxProvider = try container.decodeFlexibleString(forKeys: [.sandboxProvider, .sandbox_provider])
         toolPhase = try container.decodeFlexibleString(forKeys: [.toolPhase, .tool_phase])
         durationMs = try container.decodeFlexibleDouble(forKeys: [.durationMs, .duration_ms])
+        pendingChatId = try container.decodeFlexibleString(forKeys: [.pendingChatId, .pending_chat_id])
+        clientPendingId = try container.decodeFlexibleString(forKeys: [.clientPendingId, .client_pending_id])
         delta = try container.decodeFlexibleString(forKeys: [.delta])
         activeSessions = (try? container.decodeIfPresent([GatewaySessionStatusSnapshot].self, forKey: .activeSessions))
             ?? ((try? container.decodeIfPresent([GatewaySessionStatusSnapshot].self, forKey: .active_sessions)) ?? [])

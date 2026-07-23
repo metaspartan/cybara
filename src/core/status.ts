@@ -35,6 +35,8 @@ export interface StatusPayload {
   sandboxProvider?: string;
   toolPhase?: ToolStatusPhase;
   durationMs?: number;
+  pendingChatId?: string;
+  clientPendingId?: string;
   runId?: string;
   sequence?: number;
 }
