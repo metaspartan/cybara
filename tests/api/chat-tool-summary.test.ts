@@ -72,8 +72,8 @@ describe("chat tool summary utilities", () => {
     expect(shouldRecoverNonSubstantiveAssistantCompletion("fix the import", "Completed", 1)).toBe(
       false
     );
-    expect(buildNoUsableAssistantResponseMessage()).toContain("no usable response");
-    expect(buildNoUsableAssistantResponseMessage()).toContain("no tool actions");
+    expect(buildNoUsableAssistantResponseMessage()).toContain("couldn't produce a usable response");
+    expect(buildNoUsableAssistantResponseMessage()).not.toContain("The model returned");
   });
 
   test("detects unsupported work and verification claims from actual tool outcomes", () => {
@@ -119,7 +119,10 @@ describe("chat tool summary utilities", () => {
       "missing_clarification"
     );
     expect(buildUnsupportedAssistantClaimMessage("unsupported_completion")).toContain(
-      "did not record a successful tool action"
+      "couldn't complete and verify"
+    );
+    expect(buildUnsupportedAssistantClaimMessage("missing_action_evidence")).not.toContain(
+      "Cybara did not record"
     );
   });
 

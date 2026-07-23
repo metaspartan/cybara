@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   clearCachedMobileLiveAssistant,
   isMobileSessionSnapshotCurrent,
+  liveActivityFromStatusEvent,
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
-  liveActivityFromStatusEvent,
   mergeLiveActivity,
   mobileAgentUsingBrowser,
+  mobileLiveStatusIndicatorState,
   mobilePreSteerProcessActivities,
   prunePersistedMobileLiveAssistant,
   readCachedMobileLiveAssistant,
@@ -15,6 +16,54 @@ import {
 } from "../../apps/mobile/src/screens/dashboardLiveChat";
 
 describe("mobile live chat cache", () => {
+  test("maps generic live statuses to native activity indicators", () => {
+    expect(mobileLiveStatusIndicatorState("Thinking...")).toBe("composing");
+    expect(mobileLiveStatusIndicatorState("Generating response...")).toBe("solving");
+    expect(mobileLiveStatusIndicatorState("Compacting earlier context...")).toBe("solving");
+    expect(mobileLiveStatusIndicatorState("Inspecting package.json")).toBeNull();
+  });
+
+  test("updates one generic live status row instead of appending duplicates", () => {
+    const thinking = liveActivityFromStatusEvent({
+      type: "status",
+      status: "thinking",
+      timestamp: 100,
+    });
+    const generating = liveActivityFromStatusEvent({
+      type: "status",
+      status: "generating",
+      timestamp: 200,
+    });
+    if (!thinking || !generating) throw new Error("expected live activities");
+
+    const activities = mergeLiveActivity([thinking], generating);
+    expect(activities).toHaveLength(1);
+    expect(activities[0]).toMatchObject({
+      id: "live-agent-status",
+      text: "Generating response...",
+      toolName: "__thought",
+    });
+  });
+
+  test("replaces the optimistic thinking row with the authoritative status", () => {
+    const sessionId = `mobile-status-${Date.now()}`;
+    const initial = liveAssistantMessage(sessionId, null, 100);
+    const generating = liveActivityFromStatusEvent({
+      type: "status",
+      status: "generating",
+      timestamp: 200,
+    });
+    if (!generating) throw new Error("expected generating activity");
+
+    const activities = mergeLiveActivity(initial.processActivities || [], generating);
+    expect(activities).toHaveLength(1);
+    expect(activities[0]).toMatchObject({
+      id: "live-agent-status",
+      text: "Generating response...",
+      toolName: "__thought",
+    });
+  });
+
   test("keeps authoritative quiet long-running sessions active", () => {
     const now = 1_783_700_000_000;
     const oldTimestamp = now - 30 * 60_000;
@@ -153,6 +202,109 @@ describe("mobile live chat cache", () => {
       text: "Exploring package.json",
       toolCallId: "read-1",
     });
+  });
+
+  test("hydrates the current generic activity from a reconnect snapshot", () => {
+    const sessionId = `mobile-generating-snapshot-${Date.now()}`;
+    const live = liveAssistantFromStatusSnapshot(sessionId, null, {
+      sessionId,
+      status: "generating",
+      timestamp: 1783015200500,
+      activities: [],
+    });
+
+    expect(live.processActivities).toEqual([
+      expect.objectContaining({
+        id: "live-agent-status",
+        text: "Generating response...",
+        toolName: "__thought",
+      }),
+    ]);
+  });
+
+  test("replaces a generic live status when a snapshot advances to compaction", () => {
+    const sessionId = `mobile-compacting-snapshot-${Date.now()}`;
+    const current = {
+      ...liveAssistantMessage(sessionId, null, 1783015200000),
+      processActivities: [
+        {
+          id: "live-agent-status",
+          phase: "start" as const,
+          text: "Generating response...",
+          timestamp: 1783015200000,
+          toolName: "__thought",
+        },
+      ],
+    };
+
+    const live = liveAssistantFromStatusSnapshot(sessionId, current, {
+      sessionId,
+      status: "compacting",
+      timestamp: 1783015200500,
+      activities: [],
+    });
+
+    expect(live.processActivities).toEqual([
+      expect.objectContaining({
+        id: "live-context-compaction",
+        text: "Compacting earlier context...",
+      }),
+    ]);
+  });
+
+  test("replaces a generic live status when an incremental tool event arrives", () => {
+    const current = [
+      {
+        id: "live-agent-status",
+        phase: "start" as const,
+        text: "Thinking...",
+        timestamp: 1783015200000,
+        toolName: "__thought",
+      },
+    ];
+
+    const merged = mergeLiveActivity(current, {
+      id: "tool-1",
+      phase: "start",
+      text: "Running tests",
+      timestamp: 1783015200500,
+      toolName: "exec",
+      toolCallId: "tool-1",
+    });
+
+    expect(merged).toEqual([
+      expect.objectContaining({
+        id: "tool-1",
+        text: "Running tests",
+      }),
+    ]);
+  });
+
+  test("preserves meaningful thought activity when an incremental tool event arrives", () => {
+    const merged = mergeLiveActivity(
+      [
+        {
+          id: "live-thinking-1783015200000",
+          phase: "start",
+          text: "Checking the workspace before editing",
+          timestamp: 1783015200000,
+          toolName: "__thought",
+        },
+      ],
+      {
+        id: "tool-1",
+        phase: "start",
+        text: "Reading package.json",
+        timestamp: 1783015200500,
+        toolName: "read",
+        toolCallId: "tool-1",
+      }
+    );
+
+    expect(merged.map((activity) => activity.text)).toEqual([
+      "Checking the workspace before editing",
+      "Reading package.json",
+    ]);
   });
 
   test("keeps mobile live rows when queue snapshots have no activity rows", () => {

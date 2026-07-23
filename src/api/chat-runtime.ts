@@ -1069,6 +1069,7 @@ async function handleChatTurn(
       : undefined;
   const requestedWorkspaceDir =
     workspaceDir !== undefined ? normalizeSessionWorkspaceDir(workspaceDir) : undefined;
+  const agentPromptOptions = { useTools: tools, runtimeChannel: channel };
 
   let session = getResidentChatSession(effectiveSessionId);
   if (!session) {
@@ -1110,9 +1111,7 @@ async function handleChatTurn(
             agent,
             requestedWorkspaceDir,
             [{ role: "user", content: message }],
-            {
-              useTools: tools,
-            }
+            agentPromptOptions
           ),
           timestamp: nowIso,
         },
@@ -1157,9 +1156,7 @@ async function handleChatTurn(
       session,
       requestedAgent,
       [...session.messages, { role: "user", content: message }],
-      {
-        useTools: tools,
-      }
+      agentPromptOptions
     );
     await setPersistedSessionAgent(session.id, requestedAgent.id);
   }
@@ -1170,9 +1167,7 @@ async function handleChatTurn(
       session,
       agent,
       [...session.messages, { role: "user", content: message }],
-      {
-        useTools: tools,
-      }
+      agentPromptOptions
     );
   }
   const hookContext = {

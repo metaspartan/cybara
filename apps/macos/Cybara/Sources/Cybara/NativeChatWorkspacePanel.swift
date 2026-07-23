@@ -94,7 +94,8 @@ private struct NativeBrowserCreateEnvelope: Decodable {
 }
 
 private struct NativeBrowserScreenshotData: Decodable {
-    let screenshot: String
+    let screenshot: String?
+    let revision: String
     let cursor: NativeBrowserCursor?
     let viewport: NativeBrowserViewport?
     let page: NativeBrowserTab?
@@ -103,6 +104,17 @@ private struct NativeBrowserScreenshotData: Decodable {
 private struct NativeBrowserScreenshotEnvelope: Decodable {
     let success: Bool?
     let data: NativeBrowserScreenshotData
+}
+
+private struct NativeBrowserStateData: Decodable {
+    let cursor: NativeBrowserCursor?
+    let viewport: NativeBrowserViewport?
+    let page: NativeBrowserTab?
+}
+
+private struct NativeBrowserStateEnvelope: Decodable {
+    let success: Bool?
+    let data: NativeBrowserStateData
 }
 
 private struct NativeBrowserCursor: Decodable {
@@ -120,6 +132,7 @@ private struct NativeBrowserViewport: Decodable {
 
 private struct NativeBrowserPreview {
     let image: NSImage?
+    let revision: String
     let cursor: NativeBrowserCursor?
     let viewport: NativeBrowserViewport?
     let page: NativeBrowserTab?
@@ -159,20 +172,30 @@ extension GatewayClient {
         )
     }
 
-    fileprivate func chatBrowserScreenshot(_ id: String) async throws -> NativeBrowserPreview {
+    fileprivate func chatBrowserScreenshot(
+        _ id: String,
+        revision: String
+    ) async throws -> NativeBrowserPreview {
+        var queryItems = [
+            URLQueryItem(name: "fullPage", value: "false"),
+            URLQueryItem(name: "format", value: "jpeg"),
+            URLQueryItem(name: "quality", value: "58"),
+            URLQueryItem(name: "viewportWidth", value: "960"),
+            URLQueryItem(name: "viewportHeight", value: "640"),
+        ]
+        if !revision.isEmpty {
+            queryItems.append(URLQueryItem(name: "revision", value: revision))
+        }
         let data = try await request(
             "api/browser/tabs/\(nativeChatPathSegment(id))/screenshot",
-            queryItems: [
-                URLQueryItem(name: "fullPage", value: "false"),
-                URLQueryItem(name: "format", value: "jpeg"),
-                URLQueryItem(name: "quality", value: "62"),
-            ]
+            queryItems: queryItems
         )
         let payload = try JSONDecoder().decode(NativeBrowserScreenshotEnvelope.self, from: data).data
-        let encoded = payload.screenshot
-        guard let imageData = Data(base64Encoded: encoded) else {
+        guard let encoded = payload.screenshot,
+              let imageData = Data(base64Encoded: encoded) else {
             return NativeBrowserPreview(
                 image: nil,
+                revision: payload.revision,
                 cursor: payload.cursor,
                 viewport: payload.viewport,
                 page: payload.page
@@ -180,6 +203,19 @@ extension GatewayClient {
         }
         return NativeBrowserPreview(
             image: NSImage(data: imageData),
+            revision: payload.revision,
+            cursor: payload.cursor,
+            viewport: payload.viewport,
+            page: payload.page
+        )
+    }
+
+    fileprivate func chatBrowserState(_ id: String) async throws -> NativeBrowserPreview {
+        let data = try await request("api/browser/tabs/\(nativeChatPathSegment(id))/state")
+        let payload = try JSONDecoder().decode(NativeBrowserStateEnvelope.self, from: data).data
+        return NativeBrowserPreview(
+            image: nil,
+            revision: "",
             cursor: payload.cursor,
             viewport: payload.viewport,
             page: payload.page
@@ -192,9 +228,11 @@ struct NativeChatBrowserPanel: View {
     let sessionID: String?
     let isActive: Bool
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @StateObject private var stream = NativeBrowserStreamConnection()
     @State private var page: NativeBrowserTab?
     @State private var address = ""
     @State private var image: NSImage?
+    @State private var revision = ""
     @State private var cursor: NativeBrowserCursor?
     @State private var viewport: NativeBrowserViewport?
     @State private var loading = false
@@ -246,9 +284,9 @@ struct NativeChatBrowserPanel: View {
             Divider()
 
             ZStack {
-                if let image {
+                if let presentedImage = stream.image ?? image {
                     GeometryReader { proxy in
-                        Image(nsImage: image)
+                        Image(nsImage: presentedImage)
                             .resizable()
                             .scaledToFit()
                             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -289,13 +327,28 @@ struct NativeChatBrowserPanel: View {
             }
         }
         .task(id: "\(browserSessionID):\(isActive)") {
-            guard isActive else { return }
+            guard isActive else {
+                stream.disconnect()
+                return
+            }
             await loadPage()
             while !Task.isCancelled {
-                await refreshPreview()
-                try? await Task.sleep(for: .milliseconds(750))
+                guard let page else {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    continue
+                }
+                if !stream.connected {
+                    stream.connect(client: client, pageID: page.id)
+                }
+                if stream.image == nil {
+                    await refreshPreview()
+                } else {
+                    await refreshState()
+                }
+                try? await Task.sleep(for: .milliseconds(stream.connected ? 1_250 : 750))
             }
         }
+        .onDisappear { stream.disconnect() }
     }
 
     private func loadPage() async {
@@ -306,6 +359,9 @@ struct NativeChatBrowserPanel: View {
             } else {
                 let id = try await client.createChatBrowserTab(sessionID: browserSessionID)
                 page = NativeBrowserTab(id: id, title: nil, url: nil)
+            }
+            if let page {
+                stream.connect(client: client, pageID: page.id)
             }
             address = page?.url ?? ""
             error = nil
@@ -318,7 +374,7 @@ struct NativeChatBrowserPanel: View {
         guard let page else { return }
         do {
             try await client.runChatBrowserAction(page.id, action: action)
-            await refreshPreview()
+            await refreshState()
         } catch {
             self.error = error.localizedDescription
         }
@@ -330,7 +386,7 @@ struct NativeChatBrowserPanel: View {
         guard !target.isEmpty else { return }
         do {
             try await client.navigateChatBrowserTab(page.id, url: target)
-            await refreshPreview()
+            await refreshState()
         } catch {
             self.error = error.localizedDescription
         }
@@ -341,19 +397,39 @@ struct NativeChatBrowserPanel: View {
         loading = true
         defer { loading = false }
         do {
-            let preview = try await client.chatBrowserScreenshot(page.id)
-            image = preview.image
-            cursor = preview.cursor
-            viewport = preview.viewport
-            if let updatedPage = preview.page {
-                self.page = updatedPage
-                if !addressFocused {
-                    address = updatedPage.url ?? address
-                }
+            let preview = try await client.chatBrowserScreenshot(page.id, revision: revision)
+            if let nextImage = preview.image {
+                image = nextImage
             }
+            revision = preview.revision
+            applyPreviewMetadata(preview)
             error = nil
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    private func refreshState() async {
+        guard let page, !loading else { return }
+        loading = true
+        defer { loading = false }
+        do {
+            let preview = try await client.chatBrowserState(page.id)
+            applyPreviewMetadata(preview)
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func applyPreviewMetadata(_ preview: NativeBrowserPreview) {
+        cursor = preview.cursor
+        viewport = preview.viewport
+        if let updatedPage = preview.page {
+            page = updatedPage
+            if !addressFocused {
+                address = updatedPage.url ?? address
+            }
         }
     }
 }

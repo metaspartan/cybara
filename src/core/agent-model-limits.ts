@@ -19,7 +19,16 @@ function modelIdsMatch(entry: { model_id?: string | null; model_name?: string | 
 
 export function shouldPreferMaxCompletionTokens(providerConfig?: string): boolean {
   const provider = (providerConfig || "").trim().toLowerCase();
-  return provider === "z.ai" || provider === "zai" || provider === "z.ai-coding";
+  return (
+    provider === "z.ai" ||
+    provider === "zai" ||
+    provider === "z.ai-coding" ||
+    provider === "kimi-code" ||
+    provider === "kimi-code-oauth" ||
+    provider === "kimi-coding" ||
+    provider === "kimi-oauth" ||
+    provider === "kimi-code-subscription"
+  );
 }
 
 export function resolveModelMaxOutputTokens(

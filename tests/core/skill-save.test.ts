@@ -21,7 +21,7 @@ describe("self-improving skills (skill_save)", () => {
   });
 
   test("system prompt nudges codifying recurring procedures", () => {
-    expect(prompt).toContain("Self-improvement");
+    expect(prompt).toContain("After a verified, reusable workflow");
     expect(prompt).toContain("skill_save");
   });
 });

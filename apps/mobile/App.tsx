@@ -8,6 +8,7 @@ import { MobileI18nProvider } from "./src/i18n";
 import { CybaraMobileApi } from "./src/lib/api";
 import {
   type GatewayProfile,
+  isMobileConnectDeepLink,
   resolveGatewayProfile,
   verifyGatewayProfile,
 } from "./src/lib/connection";
@@ -50,7 +51,7 @@ function AppShell() {
     let active = true;
     const attempts = new DeepLinkAttemptTracker();
     const openConnection = async (url: string | null): Promise<void> => {
-      if (!url || !attempts.begin(url)) return;
+      if (!isMobileConnectDeepLink(url) || !attempts.begin(url)) return;
       try {
         const nextProfile = await resolveGatewayProfile(url);
         await verifyGatewayProfile(nextProfile);

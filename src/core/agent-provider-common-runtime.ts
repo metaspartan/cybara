@@ -734,6 +734,30 @@ export abstract class AgentProviderCommonRuntime {
     return nextBody;
   }
 
+  protected hasReasoningRequestControls(requestBody: Record<string, unknown>): boolean {
+    return ["reasoning_effort", "reasoning", "thinking", "reasoning_split", "enable_thinking"].some(
+      (key) => requestBody[key] !== undefined
+    );
+  }
+
+  protected toForcedToolChoiceWithoutReasoningRequestBody(
+    requestBody: Record<string, unknown>
+  ): Record<string, unknown> {
+    const nextBody: Record<string, unknown> = { ...requestBody };
+    delete nextBody.reasoning_effort;
+    delete nextBody.reasoning;
+    delete nextBody.thinking;
+    delete nextBody.reasoning_split;
+    delete nextBody.enable_thinking;
+    const chatTemplate = nextBody.chat_template_kwargs;
+    if (chatTemplate && typeof chatTemplate === "object" && !Array.isArray(chatTemplate)) {
+      const nextTemplate = { ...(chatTemplate as Record<string, unknown>) };
+      delete nextTemplate.enable_thinking;
+      nextBody.chat_template_kwargs = nextTemplate;
+    }
+    return nextBody;
+  }
+
   protected toMaxCompletionTokensRequestBody(
     requestBody: Record<string, unknown>
   ): Record<string, unknown> {
@@ -1011,6 +1035,7 @@ export abstract class AgentProviderCommonRuntime {
 
     let currentBody: Record<string, unknown> = { ...requestBody };
     let attemptedMaxCompletionRetry = false;
+    let attemptedForcedToolChoiceReasoningRetry = false;
     let attemptedToolChoiceCompatibilityRetry = false;
     let contextRetryCount = 0;
     let attemptedOAuthRefresh = false;
@@ -1077,6 +1102,19 @@ export abstract class AgentProviderCommonRuntime {
         attemptedMaxCompletionRetry = true;
         console.log("[Agent] Retrying OpenAI request with max_completion_tokens");
         currentBody = this.toMaxCompletionTokensRequestBody(currentBody);
+        continue;
+      }
+
+      if (
+        !attemptedForcedToolChoiceReasoningRetry &&
+        this.hasReasoningRequestControls(currentBody) &&
+        this.shouldRetryWithAutoToolChoice(response.status, errorText, currentBody)
+      ) {
+        attemptedForcedToolChoiceReasoningRetry = true;
+        console.log(
+          "[Agent] Retrying forced tool choice without reasoning due to provider incompatibility"
+        );
+        currentBody = this.toForcedToolChoiceWithoutReasoningRequestBody(currentBody);
         continue;
       }
 

@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createCachedRouteHandler, invalidateCachedRoute } from "../../src/api/route-cache";
+import {
+  createCachedRouteHandler,
+  invalidateCachedRoute,
+  METRICS_ROUTE_CACHE_TTLS,
+} from "../../src/api/route-cache";
 
 const routeKeys = new Set<string>();
 
@@ -19,6 +23,10 @@ afterEach(() => {
 });
 
 describe("route response cache", () => {
+  test("keeps the expensive aggregate snapshot behind stale-while-revalidate caching", () => {
+    expect(METRICS_ROUTE_CACHE_TTLS["GET /api/metrics/snapshot"]).toBe(15_000);
+  });
+
   test("deduplicates concurrent cold requests", async () => {
     let calls = 0;
     const { run } = cachedHandler(1_000, async () => {
@@ -77,11 +85,23 @@ describe("route response cache", () => {
       page: params?.page,
     }));
 
-    expect(await run(undefined, { pageSize: "20", page: "1" })).toEqual({ call: 1, page: "1" });
-    expect(await run(undefined, { page: "1", pageSize: "20" })).toEqual({ call: 1, page: "1" });
-    expect(await run(undefined, { page: "2", pageSize: "20" })).toEqual({ call: 2, page: "2" });
+    expect(await run(undefined, { pageSize: "20", page: "1" })).toEqual({
+      call: 1,
+      page: "1",
+    });
+    expect(await run(undefined, { page: "1", pageSize: "20" })).toEqual({
+      call: 1,
+      page: "1",
+    });
+    expect(await run(undefined, { page: "2", pageSize: "20" })).toEqual({
+      call: 2,
+      page: "2",
+    });
     invalidateCachedRoute(key);
-    expect(await run(undefined, { page: "2", pageSize: "20" })).toEqual({ call: 3, page: "2" });
+    expect(await run(undefined, { page: "2", pageSize: "20" })).toEqual({
+      call: 3,
+      page: "2",
+    });
   });
 
   test("does not restore an invalidated in-flight response", async () => {

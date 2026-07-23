@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { parseWebSocketAuthProtocol } from "../../shared/websocket-auth";
 import {
   apiFetch,
   clearApiAuthToken,
+  createHydratedAuthenticatedWebSocket,
   getApiAuthToken,
   setApiAuthToken,
   withApiAuthHeaders,
@@ -34,6 +36,7 @@ function createWindow(search: string, initialStorage: Record<string, string> = {
 
 const originalWindow = (globalThis as { window?: Window }).window;
 const originalFetch = globalThis.fetch;
+const originalWebSocket = globalThis.WebSocket;
 
 describe("UI auth token helpers", () => {
   beforeEach(() => {
@@ -47,6 +50,7 @@ describe("UI auth token helpers", () => {
       (globalThis as { window?: Window }).window = originalWindow;
     }
     globalThis.fetch = originalFetch;
+    globalThis.WebSocket = originalWebSocket;
   });
 
   test("normal API auth ignores query tokens and prefers stored tokens", () => {
@@ -218,5 +222,57 @@ describe("UI auth token helpers", () => {
     expect(authorizations).toEqual(["Bearer stale-desktop-token", "Bearer fresh-desktop-token"]);
     clearApiAuthToken();
     expect(getApiAuthToken()).toBeNull();
+  });
+
+  test("hydrates the Tauri token before opening an authenticated WebSocket", async () => {
+    const win = createWindow("") as ReturnType<typeof createWindow> & {
+      __TAURI_INTERNALS__: {
+        invoke: (command: string) => Promise<string | null>;
+      };
+    };
+    win.__TAURI_INTERNALS__ = {
+      invoke: async (command: string) => {
+        expect(command).toBe("read_cybara_api_key");
+        return "desktop-stream-token";
+      },
+    };
+    (globalThis as unknown as { window: Window }).window = win as unknown as Window;
+    const protocols: Array<string | string[] | undefined> = [];
+    class CapturedWebSocket {
+      constructor(_url: string | URL, protocolsOrProtocol?: string | string[]) {
+        protocols.push(protocolsOrProtocol);
+      }
+    }
+    globalThis.WebSocket = CapturedWebSocket as unknown as typeof WebSocket;
+    clearApiAuthToken();
+
+    await createHydratedAuthenticatedWebSocket("ws://127.0.0.1/stream");
+
+    expect(protocols).toHaveLength(1);
+    expect(String(protocols[0])).toStartWith("cybara.auth.");
+  });
+
+  test("refreshes a stale Tauri token before reconnecting a WebSocket", async () => {
+    const win = createWindow("") as ReturnType<typeof createWindow> & {
+      __TAURI_INTERNALS__: {
+        invoke: () => Promise<string>;
+      };
+    };
+    win.__TAURI_INTERNALS__ = {
+      invoke: async () => "fresh-stream-token",
+    };
+    (globalThis as unknown as { window: Window }).window = win as unknown as Window;
+    const protocols: string[] = [];
+    class CapturedWebSocket {
+      constructor(_url: string | URL, protocolsOrProtocol?: string | string[]) {
+        if (typeof protocolsOrProtocol === "string") protocols.push(protocolsOrProtocol);
+      }
+    }
+    globalThis.WebSocket = CapturedWebSocket as unknown as typeof WebSocket;
+    setApiAuthToken("stale-stream-token");
+
+    await createHydratedAuthenticatedWebSocket("ws://127.0.0.1/stream", true);
+
+    expect(parseWebSocketAuthProtocol(protocols[0])?.token).toBe("fresh-stream-token");
   });
 });

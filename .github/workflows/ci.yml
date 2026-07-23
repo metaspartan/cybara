@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch: {}
   push:
     branches:
       - main
@@ -13,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -88,7 +89,7 @@ jobs:
 
   darwin-x64-cli-build:
     name: Build CLI darwin-x64
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -114,7 +115,7 @@ jobs:
           bun run scripts/build-standalone-cli.ts bun-darwin-x64 cybara-darwin-x64
 
       - name: Upload Darwin x64 CLI
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ci-cybara-darwin-x64
           path: cybara-darwin-x64
@@ -122,7 +123,7 @@ jobs:
 
   darwin-x64-cli-smoke:
     name: Smoke CLI darwin-x64
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: darwin-x64-cli-build
     runs-on: macos-26
     timeout-minutes: 10
@@ -131,7 +132,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download Darwin x64 CLI
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ci-cybara-darwin-x64
 

@@ -452,25 +452,25 @@ export function extractVisibleClarification(toolCalls: ToolCallResultLike[]): st
 
 export function buildUnsupportedAssistantClaimMessage(issue: AssistantEvidenceIssue): string {
   if (issue === "missing_clarification") {
-    return "The model said it asked a question, but no question was returned. No action was taken for this turn.";
+    return "I couldn't produce the clarification needed to continue. Retry this turn or switch agents.";
   }
   if (issue === "unsupported_completion") {
-    return "The model claimed the work was completed, but Cybara did not record a successful tool action that supports that claim. Treat this turn as incomplete.";
+    return "I couldn't complete and verify the requested work in this turn. Retry this turn or switch agents.";
   }
   if (issue === "missing_action_evidence") {
-    return "The model returned an answer for an actionable request, but Cybara did not record a tool attempt that supports the response. Treat this turn as incomplete.";
+    return "I couldn't complete the requested action in this turn. Retry this turn or switch agents.";
   }
   if (issue === "plan_only") {
-    return "The model returned a plan instead of performing the requested work. No implementation action was completed for this turn.";
+    return "I couldn't move beyond planning to complete the requested work. Retry this turn or switch agents.";
   }
   if (issue === "unfinished_execution") {
-    return "The model stopped after describing unfinished work instead of completing it. Treat this turn as incomplete.";
+    return "I couldn't finish the requested work in this turn. Retry this turn or switch agents.";
   }
-  return "The model claimed verification succeeded, but Cybara did not record a successful verification action. Treat this result as unverified.";
+  return "I couldn't verify the requested result in this turn. Retry this turn or switch agents.";
 }
 
 export function buildNoUsableAssistantResponseMessage(): string {
-  return "The model returned no usable response for this turn, and no tool actions were executed.";
+  return "I couldn't produce a usable response for this turn. Retry this turn or switch agents.";
 }
 
 export function requiredDirectToolForMessage(message: string): string | undefined {

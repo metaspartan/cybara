@@ -36,6 +36,11 @@ import {
 import type { ToolDefinition } from "./database";
 import { applyProviderApiKey } from "./llm/auth-headers";
 import { hasImages, toOpenAIImageBlock } from "./llm/image-blocks";
+import {
+  isKimiCodeProvider,
+  normalizeKimiAssistantToolMessage,
+  normalizeKimiToolSchema,
+} from "./llm/kimi-wire";
 import { normalizeModelToolCalls } from "./llm/model-dialect";
 import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
 import {
@@ -51,6 +56,67 @@ import {
 import { isContextOverflowError } from "./llm/tool-transcript";
 import { providers as providerCatalog, type ProviderType } from "./providers";
 import type { ToolContext } from "./tools/index";
+
+function toOpenAICompatMessage(
+  message: AgentMessage,
+  providerConfig: string | undefined
+): Record<string, unknown> {
+  if (message.role === "user" && hasImages(message.images)) {
+    return {
+      role: message.role,
+      content: [
+        ...(message.content ? [{ type: "text", text: message.content }] : []),
+        ...message.images.map(toOpenAIImageBlock),
+      ],
+    };
+  }
+  if (message.role === "assistant" && message.tool_calls?.length) {
+    const converted = {
+      role: message.role,
+      content: message.content || null,
+      tool_calls: message.tool_calls.map((toolCall) => ({
+        id: toolCall.id,
+        type: "function",
+        function: {
+          name: toolCall.name,
+          arguments: JSON.stringify(toolCall.arguments),
+        },
+      })),
+    };
+    return isKimiCodeProvider(providerConfig)
+      ? normalizeKimiAssistantToolMessage(converted)
+      : converted;
+  }
+  if (message.role === "tool" && message.tool_call_id) {
+    return { role: message.role, content: message.content, tool_call_id: message.tool_call_id };
+  }
+  return { role: message.role, content: message.content };
+}
+
+function toOpenAICompatTool(
+  tool: ToolDefinition,
+  providerConfig: string | undefined
+): Record<string, unknown> {
+  const schema = tool.input_schema || { type: "object", properties: {} };
+  return {
+    type: "function",
+    function: {
+      name: tool.name,
+      description: tool.description || "",
+      parameters: isKimiCodeProvider(providerConfig) ? normalizeKimiToolSchema(schema) : schema,
+    },
+  };
+}
+
+function openAIReasoningContent(message: OpenAIMessage): string {
+  const candidates = [message.reasoning_content, message.reasoning, message.thinking];
+  return (
+    candidates.find(
+      (candidate): candidate is string =>
+        typeof candidate === "string" && candidate.trim().length > 0
+    ) ?? ""
+  );
+}
 
 export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderCommonRuntime {
   protected async callOpenAICompatAPI(
@@ -89,49 +155,24 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     );
     const requestBody: Record<string, unknown> = {
       model: modelId,
-      messages: messages.map((m) => {
-        if (m.role === "user" && hasImages(m.images)) {
-          return {
-            role: m.role,
-            content: [
-              ...(m.content ? [{ type: "text", text: m.content }] : []),
-              ...m.images.map(toOpenAIImageBlock),
-            ],
-          };
-        }
-        if (m.role === "assistant" && m.tool_calls?.length) {
-          return {
-            role: m.role,
-            content: m.content || null,
-            tool_calls: m.tool_calls.map((toolCall) => ({
-              id: toolCall.id,
-              type: "function",
-              function: {
-                name: toolCall.name,
-                arguments: JSON.stringify(toolCall.arguments),
-              },
-            })),
-          };
-        }
-        if (m.role === "tool" && m.tool_call_id) {
-          return { role: m.role, content: m.content, tool_call_id: m.tool_call_id };
-        }
-        return { role: m.role, content: m.content };
-      }),
+      messages: messages.map((message) => toOpenAICompatMessage(message, providerConfig)),
     };
 
     const openaiEffort = normalizeReasoningEffort(
       this.resolveModelParams(toolContext).reasoning_effort
     );
-    if (openaiEffort) {
-      Object.assign(
-        requestBody,
-        openAICompatReasoningParams(
+    const reasoningParams = openaiEffort
+      ? openAICompatReasoningParams(
           providerConfig || "",
           coerceReasoningEffort(openaiEffort, providerConfig, modelId),
           modelId
         )
-      );
+      : {};
+    if (openaiEffort) {
+      Object.assign(requestBody, reasoningParams);
+    }
+    if (isKimiCodeProvider(providerConfig) && toolContext?.sessionId) {
+      requestBody.prompt_cache_key = toolContext.sessionId;
     }
 
     if (shouldUseMiniMaxReasoningSplit(providerConfig, modelId)) {
@@ -139,14 +180,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     }
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
-      requestBody.tools = tools.map((t) => ({
-        type: "function",
-        function: {
-          name: t.name,
-          description: t.description || "",
-          parameters: t.input_schema || { type: "object", properties: {} },
-        },
-      }));
+      requestBody.tools = tools.map((tool) => toOpenAICompatTool(tool, providerConfig));
       if (toolContext?.requireToolUse === true) {
         const requiredToolName = toolContext.requiredToolName?.trim();
         const hasRequiredTool =
@@ -255,6 +289,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     }));
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const allToolCalls: AgentToolCallResult[] = [];
+    const thinkingParts: string[] = [];
     let finalContent = "";
     let lastProgressThought = "";
     let webResearchToolCalls = 0;
@@ -267,6 +302,10 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     let limitReason: "maxIterations" | "runtime" | undefined;
 
     while (true) {
+      const reasoningContent = openAIReasoningContent(message);
+      if (reasoningContent && thinkingParts.at(-1) !== reasoningContent) {
+        thinkingParts.push(reasoningContent);
+      }
       const nextIteration = iterations + 1;
       const normalizedToolCalls = normalizeModelToolCalls({
         provider: providerConfig || "openai-compatible",
@@ -285,7 +324,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       }
       iterations = nextIteration;
 
-      const progressThought = summarizeProgressThought(message.content);
+      const progressThought = summarizeProgressThought(reasoningContent || message.content);
       if (progressThought && progressThought !== lastProgressThought) {
         this.broadcastAgentStatus("thinking", toolContext, progressThought);
         lastProgressThought = progressThought;
@@ -411,8 +450,14 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         lastToolResult.content = appendAgentBudgetWarning(lastToolResult.content, budgetWarning);
       }
 
+      const replayMessage = toOpenAIReplayMessageWithNormalizedToolCalls(
+        message,
+        normalizedToolCalls
+      );
       currentMessages.push(
-        toOpenAIReplayMessageWithNormalizedToolCalls(message, normalizedToolCalls)
+        isKimiCodeProvider(providerConfig)
+          ? normalizeKimiAssistantToolMessage(replayMessage)
+          : replayMessage
       );
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
@@ -435,20 +480,17 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
         messages: currentMessages,
+        ...reasoningParams,
       };
+      if (isKimiCodeProvider(providerConfig) && toolContext?.sessionId) {
+        loopRequestBody.prompt_cache_key = toolContext.sessionId;
+      }
       if (shouldUseMiniMaxReasoningSplit(providerConfig, modelId)) {
         loopRequestBody.reasoning_split = true;
       }
 
       if (!forceResearchSynthesis && tools && Array.isArray(tools) && tools.length > 0) {
-        loopRequestBody.tools = tools.map((t) => ({
-          type: "function",
-          function: {
-            name: t.name,
-            description: t.description || "",
-            parameters: t.input_schema || { type: "object", properties: {} },
-          },
-        }));
+        loopRequestBody.tools = tools.map((tool) => toOpenAICompatTool(tool, providerConfig));
         loopRequestBody.tool_choice = "auto";
       }
 
@@ -543,7 +585,11 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         const nudgeBody: Record<string, unknown> = {
           model: modelId,
           messages: currentMessages,
+          ...reasoningParams,
         };
+        if (isKimiCodeProvider(providerConfig) && toolContext?.sessionId) {
+          nudgeBody.prompt_cache_key = toolContext.sessionId;
+        }
         this.compactOpenAIRequestMessagesForContext(nudgeBody, contextWindowTokens);
         const limit = this.resolveOpenAIRequestTokenLimit(
           nudgeBody,
@@ -587,6 +633,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
 
     return {
       content: sanitizeAssistantContent(finalContent),
+      thinking: thinkingParts.length > 0 ? thinkingParts.join("\n\n") : undefined,
       tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
     };
   }

@@ -9,7 +9,6 @@ describe("system prompt identity", () => {
       tools: ["read", "write"],
       workspaceDir: "/tmp",
     });
-    // The agent name is an internal label; it must not become "You are <name>".
     expect(prompt).not.toContain("You are ZZUniqueAgentLabel");
   });
 
@@ -39,7 +38,7 @@ describe("system prompt identity", () => {
     });
     expect(prompt).toContain("Use the session-bound embedded browser");
     expect(prompt).toContain("Do not use openVisual, visual:true, or headless:false");
-    expect(prompt).toContain("close it only when explicitly requested");
+    expect(prompt).toContain("Keep the embedded browser on the final useful page");
     expect(prompt).not.toContain("ALWAYS close the browser");
   });
 });

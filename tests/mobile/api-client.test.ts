@@ -317,7 +317,7 @@ describe("mobile API client", () => {
       {
         onEvent: (event) => events.push(event),
       },
-      { WebSocketImpl: FakeWebSocket as never }
+      { closeGraceMs: 0, WebSocketImpl: FakeWebSocket as never }
     );
 
     expect(FakeWebSocket.instances[0]?.url).toBe(

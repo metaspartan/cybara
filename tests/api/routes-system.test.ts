@@ -51,6 +51,16 @@ describe("Metrics API", () => {
     expect(snapshot.data.availability.providerPlans.ok).toBe(true);
   });
 
+  test("GET /api/metrics/snapshot supports a compact mobile aggregate", async () => {
+    const snapshot = await fixture.api("GET", "/api/metrics/snapshot?compact=1");
+    expect(snapshot.status).toBe(200);
+    expect(typeof snapshot.data.overview?.tokenUsage?.total).toBe("number");
+    expect(snapshot.data.tokens).toBeNull();
+    expect(snapshot.data.providerPlans).toBeNull();
+    expect(snapshot.data.availability.tokens.ok).toBe(true);
+    expect(snapshot.data.availability.providerPlans.ok).toBe(true);
+  });
+
   test("metrics detail endpoints tolerate malformed metadata rows", async () => {
     const suffix = Date.now().toString();
     const malformedProvider = `prov_bad_${suffix}`;

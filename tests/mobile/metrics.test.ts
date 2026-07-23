@@ -3,7 +3,10 @@ import {
   formatMetricBytes,
   formatMetricNumber,
   formatStorageBytes,
+  hasDetailedMetrics,
+  mergeMetricsOverview,
   metricSuccessRate,
+  metricsOverviewSnapshot,
   modelTokenShareRows,
   providerTokenShareRows,
   storageCategoryEntries,
@@ -47,6 +50,32 @@ describe("mobile metrics helpers", () => {
     ]);
   });
 
+  test("builds and refreshes a lightweight overview without losing detailed metrics", () => {
+    const preview = metricsOverviewSnapshot(overview);
+    expect(preview.overview).toEqual(overview);
+    expect(preview.availability.overview.ok).toBe(true);
+    expect(hasDetailedMetrics(preview)).toBe(false);
+
+    const detailed = {
+      ...preview,
+      storage,
+      availability: {
+        ...preview.availability,
+        storage: { ok: true },
+      },
+    } satisfies MetricsSnapshot;
+    const refreshedOverview = {
+      ...overview,
+      tokenUsage: { ...overview.tokenUsage, total: 2400 },
+    };
+    const refreshed = mergeMetricsOverview(detailed, refreshedOverview);
+
+    expect(refreshed.overview?.tokenUsage.total).toBe(2400);
+    expect(refreshed.storage).toBe(storage);
+    expect(refreshed.availability.storage.ok).toBe(true);
+    expect(hasDetailedMetrics(refreshed)).toBe(true);
+  });
+
   test("builds storage and time-series chart rows deterministically", () => {
     expect(storageCategoryEntries(storage).map((entry) => entry.label)).toEqual([
       "Sessions",
@@ -75,7 +104,14 @@ describe("mobile metrics helpers", () => {
       files: null,
       tools: null,
       providers: {
-        providers: [{ provider: "openai", url: "https://api.openai.com", hits: 3, tokens: 700 }],
+        providers: [
+          {
+            provider: "openai",
+            url: "https://api.openai.com",
+            hits: 3,
+            tokens: 700,
+          },
+        ],
       },
       timeSeries: null,
       models: {

@@ -8,7 +8,7 @@ import {
 } from "../../src/core/artifacts";
 
 describe("Date and time formatting", () => {
-  test("system prompt includes local and UTC timestamps", () => {
+  test("system prompt includes a cache-stable local date", () => {
     const prompt = buildSystemPrompt({
       modelDisplay: "TestModel",
       tools: ["session_status"],
@@ -16,19 +16,14 @@ describe("Date and time formatting", () => {
       userTimezone: "America/Los_Angeles",
     });
 
-    expect(prompt).toContain("## Current Date & Time");
-    expect(prompt).toContain("Time zone: America/Los_Angeles");
-    expect(prompt).toContain("Local (America/Los_Angeles):");
-    expect(prompt).toContain("UTC:");
-    expect(prompt).toContain("run `session_status`");
+    expect(prompt).toContain("## Current Date");
+    expect(prompt).toContain("(America/Los_Angeles)");
+    expect(prompt).toContain("Use `session_status`");
+    expect(prompt).not.toContain("UTC:");
 
-    const localLine = prompt
-      .split("\n")
-      .find((line) => line.startsWith("Local (America/Los_Angeles):"));
+    const localLine = prompt.split("\n").find((line) => line.startsWith("Current date:"));
     expect(localLine).toBeDefined();
-    expect(localLine).toMatch(
-      /Local \(America\/Los_Angeles\): [A-Za-z]+, \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/
-    );
+    expect(localLine).toMatch(/Current date: [A-Za-z]+, \d{4}-\d{2}-\d{2}/);
   });
 
   test("artifact templates include local and UTC updated timestamps", () => {

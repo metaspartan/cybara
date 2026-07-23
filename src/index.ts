@@ -32,6 +32,12 @@ import {
   writeToTerminal,
 } from "./api/terminal";
 import { agentManager } from "./core/agent";
+import { subscribeBrowserPreviewStream } from "./core/browser/preview-stream";
+import {
+  BrowserPreviewInputQueue,
+  executeBrowserPreviewInput,
+  parseBrowserPreviewInput,
+} from "./core/browser/preview-stream-input";
 import {
   channelManager,
   dingtalkAdapter,
@@ -356,7 +362,42 @@ type WsData =
   | {
       kind: "status";
       unsubscribe?: () => void;
+    }
+  | {
+      kind: "browser";
+      pageId: string;
+      quality: number;
+      maxWidth: number;
+      maxHeight: number;
+      everyNthFrame: number;
+      unsubscribe?: () => Promise<void>;
+      closed?: boolean;
+      inputQueue?: BrowserPreviewInputQueue;
     };
+
+function browserStreamPageId(pathname: string): string | null {
+  const match = /^\/api\/browser\/tabs\/([^/]+)\/stream$/.exec(pathname);
+  if (!match?.[1]) return null;
+  try {
+    const pageId = decodeURIComponent(match[1]).trim();
+    return pageId && pageId.length <= 256 ? pageId : null;
+  } catch {
+    return null;
+  }
+}
+
+function boundedStreamParameter(
+  url: URL,
+  name: string,
+  fallback: number,
+  minimum: number,
+  maximum: number
+): number {
+  const parsed = Number(url.searchParams.get(name));
+  return Number.isFinite(parsed)
+    ? Math.min(maximum, Math.max(minimum, Math.round(parsed)))
+    : fallback;
+}
 
 function withOptionalQueryToken(headers: Record<string, string>, url: URL): Record<string, string> {
   // Query-token auth exists only for browser WebSocket/EventSource clients,
@@ -510,6 +551,44 @@ function createGatewayServer(
             },
           });
         }
+      }
+
+      const browserStreamId = browserStreamPageId(pathname);
+      if (browserStreamId) {
+        const streamAuth = resolveStreamAuth(requestHeaders, url);
+        const security = securityCheck(req.method, pathname, streamAuth.headers, clientIp);
+        if (!security.passed) {
+          return new Response(JSON.stringify({ error: security.error }), {
+            status: security.statusCode || 403,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-store",
+              ...commonSecurityHeaders,
+              ...security.headers,
+            },
+          });
+        }
+        const success = server.upgrade(req, {
+          data: {
+            kind: "browser",
+            pageId: browserStreamId,
+            quality: boundedStreamParameter(url, "quality", 58, 40, 85),
+            maxWidth: boundedStreamParameter(url, "maxWidth", 1280, 320, 2560),
+            maxHeight: boundedStreamParameter(url, "maxHeight", 900, 320, 1600),
+            everyNthFrame: boundedStreamParameter(url, "everyNthFrame", 1, 1, 4),
+          },
+          headers: streamAuth.protocol
+            ? { "Sec-WebSocket-Protocol": streamAuth.protocol }
+            : undefined,
+        });
+        if (success) return undefined;
+        return new Response("WebSocket upgrade failed", {
+          status: 400,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            ...commonSecurityHeaders,
+          },
+        });
       }
 
       if (pathname === "/api/ws/status") {
@@ -827,6 +906,64 @@ function createGatewayServer(
           return;
         }
 
+        if (data.kind === "browser") {
+          data.inputQueue = new BrowserPreviewInputQueue(
+            async (input) => await executeBrowserPreviewInput(data.pageId, input),
+            (error) => {
+              if (data.closed) return;
+              try {
+                ws.send(
+                  JSON.stringify({
+                    type: "input_error",
+                    error: error instanceof Error ? error.message : "Browser input failed",
+                  })
+                );
+              } catch {
+                return;
+              }
+            }
+          );
+          void subscribeBrowserPreviewStream(
+            data.pageId,
+            {
+              quality: data.quality,
+              maxWidth: data.maxWidth,
+              maxHeight: data.maxHeight,
+              everyNthFrame: data.everyNthFrame,
+            },
+            (frame) => {
+              if (data.closed || ws.getBufferedAmount() > 1_048_576) return;
+              try {
+                ws.send(frame);
+              } catch {
+                return;
+              }
+            }
+          ).then(
+            async (unsubscribe) => {
+              if (data.closed) {
+                await unsubscribe();
+                return;
+              }
+              data.unsubscribe = unsubscribe;
+            },
+            (error: unknown) => {
+              try {
+                ws.send(
+                  JSON.stringify({
+                    type: "error",
+                    error: error instanceof Error ? error.message : "Browser stream failed",
+                  })
+                );
+                ws.close(1011, "Browser stream failed");
+              } catch {
+                return;
+              }
+            }
+          );
+          return;
+        }
+
         const { sessionId } = data;
         const session = getTerminalSession(sessionId) || createTerminalSession(sessionId);
 
@@ -863,6 +1000,29 @@ function createGatewayServer(
           return;
         }
 
+        if (data.kind === "browser") {
+          const text = typeof message === "string" ? message : Buffer.from(message).toString();
+          if (text === "ping") {
+            try {
+              ws.send("pong");
+            } catch {
+              return;
+            }
+            return;
+          }
+          if (Buffer.byteLength(text) > 2_048) return;
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            return;
+          }
+          const input = parseBrowserPreviewInput(parsed);
+          if (!input) return;
+          data.inputQueue?.enqueue(input);
+          return;
+        }
+
         const session = getTerminalSession(data.sessionId);
         if (session) {
           session.lastActivity = Date.now();
@@ -874,6 +1034,12 @@ function createGatewayServer(
         const data = ws.data as WsData;
         if (data.kind === "status") {
           data.unsubscribe?.();
+          return;
+        }
+        if (data.kind === "browser") {
+          data.closed = true;
+          data.inputQueue?.dispose();
+          void data.unsubscribe?.();
           return;
         }
         destroyTerminalSession(data.sessionId);

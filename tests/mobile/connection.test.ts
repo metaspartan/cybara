@@ -4,6 +4,7 @@ import {
   MOBILE_PAIRING_PROTOCOL,
   buildMobileConnectPayload,
   encodeMobileConnectPayload,
+  isMobileConnectDeepLink,
   isLoopbackGatewayUrl,
   isLocalNetworkGatewayUrl,
   isGatewaySessionListResponse,
@@ -16,6 +17,14 @@ import {
 } from "../../apps/mobile/src/lib/connection";
 
 describe("mobile gateway connection payloads", () => {
+  test("accepts only Cybara connection deep links from the operating system", () => {
+    expect(isMobileConnectDeepLink("cybara://connect?payload=test")).toBe(true);
+    expect(isMobileConnectDeepLink("cybara://connect.evil.example?payload=test")).toBe(false);
+    expect(isMobileConnectDeepLink("cybara://settings")).toBe(false);
+    expect(isMobileConnectDeepLink("exp://192.168.1.155:8088")).toBe(false);
+    expect(isMobileConnectDeepLink(null)).toBe(false);
+  });
+
   test("normalizes gateway URLs for LAN and localhost entries", () => {
     expect(normalizeGatewayUrl("192.168.1.10:4269/")).toBe("http://192.168.1.10:4269");
     expect(normalizeGatewayUrl("https://cybara.example.com/api?x=1")).toBe(

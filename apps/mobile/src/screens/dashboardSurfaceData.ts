@@ -56,11 +56,20 @@ export type DetailRoute =
   | { kind: "migration" }
   | { kind: "journey" }
   | { kind: "surface"; surface: MobileSurfaceKey }
-  | { kind: "item"; surface: MobileSurfaceKey; item: RemoteItemSummary | ActivitySummary };
+  | {
+      kind: "item";
+      surface: MobileSurfaceKey;
+      item: RemoteItemSummary | ActivitySummary;
+    };
 
 export const surfaceMeta: Record<
   MobileSurfaceKey,
-  { title: string; Icon: IconGlyph; tone: string; endpoint?: FeatureEndpointKey }
+  {
+    title: string;
+    Icon: IconGlyph;
+    tone: string;
+    endpoint?: FeatureEndpointKey;
+  }
 > = {
   agents: {
     title: "Agents",
@@ -351,10 +360,16 @@ export function routeHeader(
     return { title: "New chat", detail: "Start a gateway-backed session" };
   }
   if (route.kind === "newTask") {
-    return { title: "New task", detail: "Schedule an agent to run automatically" };
+    return {
+      title: "New task",
+      detail: "Schedule an agent to run automatically",
+    };
   }
   if (route.kind === "systemPrompt") {
-    return { title: "System Prompt", detail: "Assistant identity and behavior" };
+    return {
+      title: "System Prompt",
+      detail: "Assistant identity and behavior",
+    };
   }
   if (route.kind === "modelRouter") {
     return { title: "Model Router", detail: "Provider routing and fallback" };
@@ -363,13 +378,19 @@ export function routeHeader(
     return { title: "Voice & Speech", detail: "Text-to-speech and dictation" };
   }
   if (route.kind === "memory") {
-    return { title: "Memory", detail: "Memory provider, learning, and indexing" };
+    return {
+      title: "Memory",
+      detail: "Memory provider, learning, and indexing",
+    };
   }
   if (route.kind === "migration") {
     return { title: "Migration", detail: "Import legacy agent data" };
   }
   if (route.kind === "journey") {
-    return { title: "Journey", detail: "Skills and memories learned over time" };
+    return {
+      title: "Journey",
+      detail: "Skills and memories learned over time",
+    };
   }
   if (route.kind === "surface") {
     const meta = surfaceMeta[route.surface];

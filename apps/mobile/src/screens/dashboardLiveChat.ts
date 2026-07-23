@@ -1,11 +1,11 @@
+import { isProviderRecoveryStatusLabel } from "cybara-shared/chat-status";
+import type { SessionEventIdentity } from "cybara-shared/session-event-order";
 import type {
   MobileStatusSessionSnapshot,
   MobileStatusStreamEvent,
   SessionDetailSummary,
   SessionProcessActivitySummary,
 } from "../lib/api";
-import { isProviderRecoveryStatusLabel } from "cybara-shared/chat-status";
-import type { SessionEventIdentity } from "cybara-shared/session-event-order";
 
 type StatusEvent = Extract<MobileStatusStreamEvent, { type: "status" }>;
 
@@ -43,7 +43,9 @@ export function readCachedMobileLiveAssistant(
   return {
     message: {
       ...cached.message,
-      processActivities: cached.message.processActivities?.map((activity) => ({ ...activity })),
+      processActivities: cached.message.processActivities?.map((activity) => ({
+        ...activity,
+      })),
       toolCalls: cached.message.toolCalls?.map((toolCall) => ({ ...toolCall })),
     },
     nowMs: cached.nowMs,
@@ -65,7 +67,9 @@ export function writeCachedMobileLiveAssistant(
   mobileLiveAssistantCache.set(key, {
     message: {
       ...message,
-      processActivities: message.processActivities?.map((activity) => ({ ...activity })),
+      processActivities: message.processActivities?.map((activity) => ({
+        ...activity,
+      })),
       toolCalls: message.toolCalls?.map((toolCall) => ({ ...toolCall })),
     },
     nowMs,
@@ -239,10 +243,13 @@ export function liveActivityFromStatusEvent(
                 ? `${event.toolName} running...`
                 : "Working...";
   const text = isMeaningfulLiveDetail(event.detail) ? event.detail.trim() : fallbackText;
+  const genericLiveStatus =
+    toolName === "__thought" && !compactionActivity && !isMeaningfulLiveDetail(event.detail);
   return {
     id: compactionActivity
       ? "live-context-compaction"
-      : event.toolCallId || `live-${event.status}-${timestamp}`,
+      : event.toolCallId ||
+        (genericLiveStatus ? "live-agent-status" : `live-${event.status}-${timestamp}`),
     phase,
     text,
     timestamp,
@@ -251,11 +258,42 @@ export function liveActivityFromStatusEvent(
   };
 }
 
+export function mobileLiveStatusIndicatorState(text: string): "composing" | "solving" | null {
+  const normalized = text.trim().toLowerCase();
+  if (normalized === "thinking" || normalized === "thinking...") return "composing";
+  if (
+    normalized === "generating response" ||
+    normalized === "generating response..." ||
+    normalized === "compacting earlier context" ||
+    normalized === "compacting earlier context..."
+  ) {
+    return "solving";
+  }
+  return null;
+}
+
 export function mergeLiveActivity(
   current: SessionProcessActivitySummary[],
   incoming: SessionProcessActivitySummary
 ): SessionProcessActivitySummary[] {
-  return mergeMobileLiveActivities(current, [incoming]);
+  const retained = isGenericMobileLiveStatusActivity(incoming)
+    ? current
+    : withoutMobileGenericLiveStatus(current);
+  return mergeMobileLiveActivities(retained, [incoming]);
+}
+
+function isGenericMobileLiveStatusActivity(activity: SessionProcessActivitySummary): boolean {
+  if (activity.toolName !== "__thought") return false;
+  if (activity.id === "live-agent-status") return true;
+  return (
+    activity.id.startsWith("live-thinking-") && activity.text.trim().toLowerCase() === "thinking..."
+  );
+}
+
+export function withoutMobileGenericLiveStatus(
+  activities: SessionProcessActivitySummary[]
+): SessionProcessActivitySummary[] {
+  return activities.filter((activity) => !isGenericMobileLiveStatusActivity(activity));
 }
 
 export function mergeMobileLiveActivities(
@@ -314,7 +352,7 @@ export function liveAssistantMessage(
       timestamp: new Date(timestampMs).toISOString(),
       processActivities: [
         {
-          id: `live-thinking-${timestampMs}`,
+          id: "live-agent-status",
           phase: "start",
           text: "Thinking...",
           timestamp: timestampMs,
@@ -332,19 +370,33 @@ export function liveAssistantFromStatusSnapshot(
 ): SessionDetailSummary["messages"][number] {
   const timestamp = typeof snapshot.timestamp === "number" ? snapshot.timestamp : Date.now();
   const base = liveAssistantMessage(sessionId, current, timestamp);
-  const currentActivities = (base.processActivities || []).filter(
-    (activity) =>
-      !(
-        activity.toolName === "__thought" &&
-        activity.text.trim().toLowerCase() === "thinking..." &&
-        activity.id.startsWith("live-thinking-")
-      )
-  );
+  const currentActivities = withoutMobileGenericLiveStatus(base.processActivities || []);
+  const snapshotActivity = liveActivityFromStatusEvent({
+    type: "status",
+    runId: snapshot.runId,
+    sequence: snapshot.sequence,
+    status: snapshot.status,
+    timestamp,
+    detail: snapshot.detail,
+    sessionId,
+    agentId: snapshot.agentId,
+  });
+  const shouldAddSnapshotActivity =
+    !current ||
+    (base.processActivities || []).some(
+      (activity) => activity.id === "live-agent-status" || activity.id.startsWith("live-thinking-")
+    );
+  const incomingActivities =
+    snapshot.activities.length > 0
+      ? snapshot.activities
+      : snapshotActivity && shouldAddSnapshotActivity
+        ? [snapshotActivity]
+        : [];
   return {
     ...base,
     processActivities:
-      snapshot.activities.length > 0
-        ? mergeMobileLiveActivities(currentActivities, snapshot.activities)
+      incomingActivities.length > 0
+        ? mergeMobileLiveActivities(currentActivities, incomingActivities)
         : base.processActivities,
   };
 }

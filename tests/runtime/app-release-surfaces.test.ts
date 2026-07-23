@@ -13,8 +13,12 @@ describe("app release surface wiring", () => {
   test("CI gates every pull request, merge queue, and release branch", () => {
     const ciWorkflow = read(".github/workflows/ci.yml");
 
+    expect(ciWorkflow).toContain("workflow_dispatch: {}");
     expect(ciWorkflow).toContain("pull_request: {}");
     expect(ciWorkflow).toContain("merge_group: {}");
+    expect(ciWorkflow).toContain(
+      "group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}"
+    );
     expect(ciWorkflow).toMatch(/branches:\s+\- main\s+\- master\s+\- dev/);
     expect(ciWorkflow).toContain("bun run check:ci");
     expect(ciWorkflow).toContain("bun run audit:ci");
@@ -22,6 +26,21 @@ describe("app release surface wiring", () => {
     expect(ciWorkflow).toContain("cd site && bun run build");
     expect(ciWorkflow).toContain("bunx expo export --platform ios");
     expect(ciWorkflow).toContain("bunx expo export --platform android");
+  });
+
+  test("artifact workflows use pinned Node 24 action releases", () => {
+    const workflows = `${read(".github/workflows/ci.yml")}\n${read(".github/workflows/release.yml")}`;
+
+    expect(workflows).toContain("actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a");
+    expect(workflows).toContain(
+      "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+    );
+    expect(workflows).not.toContain(
+      "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+    );
+    expect(workflows).not.toContain(
+      "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+    );
   });
 
   test("CI quality gates sync mobile release metadata before checks", () => {
@@ -224,8 +243,11 @@ describe("app release surface wiring", () => {
 
   test("dev CI cross-compiles and smoke-tests the Darwin x64 CLI artifact", () => {
     const workflow = read(".github/workflows/ci.yml");
+    const recoveryCondition =
+      "github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')";
 
     expect(workflow).toContain("darwin-x64-cli-build:");
+    expect(workflow.split(recoveryCondition)).toHaveLength(3);
     expect(workflow).toContain("cd ui && bash ../scripts/ci-install.sh && bun run build");
     expect(workflow).toContain(
       "bun run scripts/build-standalone-cli.ts bun-darwin-x64 cybara-darwin-x64"

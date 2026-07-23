@@ -73,6 +73,7 @@ interface MobileSessionRuntimeOptions {
   setPinned: Dispatch<SetStateAction<boolean>>;
   setPendingSessionAgentId: Dispatch<SetStateAction<string | null>>;
   scrollRef: RefObject<ScrollView | null>;
+  onSessionUpdated: (detail: SessionDetailSummary) => void;
 }
 
 interface MobileSessionRuntimeController {
@@ -106,6 +107,7 @@ export function useMobileSessionRuntime({
   setPinned,
   setPendingSessionAgentId,
   scrollRef,
+  onSessionUpdated,
 }: MobileSessionRuntimeOptions): MobileSessionRuntimeController {
   const [detail, setDetail] = useState<SessionDetailSummary | null>(() =>
     optimisticMobileSessionDetail(sessionId, sessionSummary)
@@ -114,10 +116,15 @@ export function useMobileSessionRuntime({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingMessages, setPendingMessages] = useState<MobilePendingChatMessage[]>([]);
   const [sessionActive, setSessionActive] = useState(false);
+  const [statusStreamConnected, setStatusStreamConnected] = useState(false);
   const currentSessionIdRef = useRef(sessionId);
+  const onSessionUpdatedRef = useRef(onSessionUpdated);
   useEffect(() => {
     currentSessionIdRef.current = sessionId;
   }, [sessionId]);
+  useEffect(() => {
+    onSessionUpdatedRef.current = onSessionUpdated;
+  }, [onSessionUpdated]);
   const sessionRefreshInFlight = useRef<{
     sessionId: string;
     token: symbol;
@@ -181,6 +188,7 @@ export function useMobileSessionRuntime({
         messages: mergeCachedMobileOptimisticTranscript(sessionId, nextDetail.messages),
       };
       setDetail(reconciledDetail);
+      onSessionUpdatedRef.current(reconciledDetail);
       commitLiveAssistant((current) =>
         prunePersistedMobileLiveAssistant(current, reconciledDetail.messages)
       );
@@ -329,6 +337,7 @@ export function useMobileSessionRuntime({
   useEffect(() => {
     setPendingSessionAgentId(null);
     setSessionActive(false);
+    setStatusStreamConnected(false);
     responseHapticActiveRef.current = false;
   }, [sessionId]);
 
@@ -380,108 +389,122 @@ export function useMobileSessionRuntime({
   }, [loadSession, sessionId, sessionSummary]);
 
   useEffect(() => {
-    const disconnect = api.connectStatusStream({
-      onEvent: (event) => {
-        if (event.type === "assistant_token") {
-          if (event.sessionId !== sessionId) return;
+    const disconnect = api.connectStatusStream(
+      {
+        onOpen: () => {
+          setStatusStreamConnected(true);
+          void hydrateLiveAssistant();
+        },
+        onClose: () => {
+          setStatusStreamConnected(false);
+          void hydrateLiveAssistant();
+        },
+        onError: () => {
+          setStatusStreamConnected(false);
+        },
+        onEvent: (event) => {
+          if (event.type === "assistant_token") {
+            if (event.sessionId !== sessionId) return;
+            if (!acceptLiveEvent(event)) return;
+            if (!responseHapticActiveRef.current) {
+              responseHapticActiveRef.current = true;
+              haptics.agentStarted();
+            }
+            haptics.agentProgress();
+            commitLiveAssistant((current) => {
+              const base = liveAssistantMessage(sessionId, current, event.timestamp);
+              return {
+                ...base,
+                content: `${base.content || ""}${event.delta}`,
+              };
+            }, event.timestamp);
+            return;
+          }
+
+          if (event.type === "snapshot") {
+            const snapshot = event.activeSessions.find((entry) => entry.sessionId === sessionId);
+            if (!snapshot) {
+              setSessionActive(false);
+              const preserveOptimisticPending = shouldPreserveOptimisticPending();
+              if (!preserveOptimisticPending) {
+                clearCachedMobileOptimisticPendingMessages(sessionId);
+              }
+              setPendingMessages((current) =>
+                mergeMobilePendingMessages([], current, {
+                  preserveOptimistic: preserveOptimisticPending,
+                })
+              );
+              return;
+            }
+            const snapshotAccepted = acceptLiveEvent(snapshot);
+            if (
+              !snapshotAccepted &&
+              snapshot.runId &&
+              liveEventCursorRef.current?.runId &&
+              snapshot.runId !== liveEventCursorRef.current.runId
+            ) {
+              return;
+            }
+            setSessionActive(true);
+            const pendingMessages = snapshot.pendingMessages ?? [];
+            const preserveOptimisticPending = shouldPreserveOptimisticPending();
+            if (!preserveOptimisticPending && pendingMessages.length === 0) {
+              clearCachedMobileOptimisticPendingMessages(sessionId);
+            }
+            setPendingMessages((current) =>
+              mergeMobilePendingMessages(pendingMessages, current, {
+                preserveOptimistic: preserveOptimisticPending,
+              })
+            );
+            commitLiveAssistant(
+              (current) => liveAssistantFromStatusSnapshot(sessionId, current, snapshot),
+              snapshot.timestamp
+            );
+            return;
+          }
+
+          if (event.type !== "status" || event.sessionId !== sessionId) return;
           if (!acceptLiveEvent(event)) return;
+          if (event.status === "idle") {
+            const steeringHandoff =
+              (event.detail || "").trim().toLowerCase() === "steering to follow-up...";
+            if (steeringHandoff) {
+              setSessionActive(true);
+              void loadSession(false);
+              return;
+            }
+            setSessionActive(false);
+            if (responseHapticActiveRef.current) {
+              responseHapticActiveRef.current = false;
+              haptics.agentCompleted();
+            }
+            if (!sendingRef.current) {
+              void loadSession(false).finally(() => {
+                void hydrateLiveAssistant();
+              });
+            }
+            return;
+          }
+          setSessionActive(event.status !== "error");
+          const activity = liveActivityFromStatusEvent(event);
+          if (!activity) return;
           if (!responseHapticActiveRef.current) {
             responseHapticActiveRef.current = true;
             haptics.agentStarted();
+          } else {
+            haptics.agentProgress();
           }
-          haptics.agentProgress();
           commitLiveAssistant((current) => {
             const base = liveAssistantMessage(sessionId, current, event.timestamp);
             return {
               ...base,
-              content: `${base.content || ""}${event.delta}`,
+              processActivities: mergeLiveActivity(base.processActivities || [], activity),
             };
           }, event.timestamp);
-          return;
-        }
-
-        if (event.type === "snapshot") {
-          const snapshot = event.activeSessions.find((entry) => entry.sessionId === sessionId);
-          if (!snapshot) {
-            setSessionActive(false);
-            const preserveOptimisticPending = shouldPreserveOptimisticPending();
-            if (!preserveOptimisticPending) {
-              clearCachedMobileOptimisticPendingMessages(sessionId);
-            }
-            setPendingMessages((current) =>
-              mergeMobilePendingMessages([], current, {
-                preserveOptimistic: preserveOptimisticPending,
-              })
-            );
-            return;
-          }
-          const snapshotAccepted = acceptLiveEvent(snapshot);
-          if (
-            !snapshotAccepted &&
-            snapshot.runId &&
-            liveEventCursorRef.current?.runId &&
-            snapshot.runId !== liveEventCursorRef.current.runId
-          ) {
-            return;
-          }
-          setSessionActive(true);
-          const pendingMessages = snapshot.pendingMessages ?? [];
-          const preserveOptimisticPending = shouldPreserveOptimisticPending();
-          if (!preserveOptimisticPending && pendingMessages.length === 0) {
-            clearCachedMobileOptimisticPendingMessages(sessionId);
-          }
-          setPendingMessages((current) =>
-            mergeMobilePendingMessages(pendingMessages, current, {
-              preserveOptimistic: preserveOptimisticPending,
-            })
-          );
-          commitLiveAssistant(
-            (current) => liveAssistantFromStatusSnapshot(sessionId, current, snapshot),
-            snapshot.timestamp
-          );
-          return;
-        }
-
-        if (event.type !== "status" || event.sessionId !== sessionId) return;
-        if (!acceptLiveEvent(event)) return;
-        if (event.status === "idle") {
-          const steeringHandoff =
-            (event.detail || "").trim().toLowerCase() === "steering to follow-up...";
-          if (steeringHandoff) {
-            setSessionActive(true);
-            void loadSession(false);
-            return;
-          }
-          setSessionActive(false);
-          if (responseHapticActiveRef.current) {
-            responseHapticActiveRef.current = false;
-            haptics.agentCompleted();
-          }
-          if (!sendingRef.current) {
-            void loadSession(false).finally(() => {
-              void hydrateLiveAssistant();
-            });
-          }
-          return;
-        }
-        setSessionActive(event.status !== "error");
-        const activity = liveActivityFromStatusEvent(event);
-        if (!activity) return;
-        if (!responseHapticActiveRef.current) {
-          responseHapticActiveRef.current = true;
-          haptics.agentStarted();
-        } else {
-          haptics.agentProgress();
-        }
-        commitLiveAssistant((current) => {
-          const base = liveAssistantMessage(sessionId, current, event.timestamp);
-          return {
-            ...base,
-            processActivities: mergeLiveActivity(base.processActivities || [], activity),
-          };
-        }, event.timestamp);
+        },
       },
-    });
+      { replayBufferedEvents: true }
+    );
     return disconnect;
   }, [
     acceptLiveEvent,
@@ -494,14 +517,30 @@ export function useMobileSessionRuntime({
   ]);
 
   useEffect(() => {
-    const interval = setInterval(
-      () => {
-        void loadSession(false);
-      },
-      sending || liveAssistant ? 1800 : 3500
-    );
+    if (statusStreamConnected && (sending || sessionActive || liveAssistant)) return;
+    const delay =
+      !statusStreamConnected && (sending || sessionActive || liveAssistant) ? 1200 : 5000;
+    const interval = setInterval(() => {
+      void loadSession(false);
+      if (!statusStreamConnected) void hydrateLiveAssistant();
+    }, delay);
     return () => clearInterval(interval);
-  }, [loadSession, liveAssistant, sending]);
+  }, [
+    hydrateLiveAssistant,
+    loadSession,
+    liveAssistant,
+    sending,
+    sessionActive,
+    statusStreamConnected,
+  ]);
+
+  useEffect(() => {
+    if (!statusStreamConnected || (!sending && !sessionActive && !liveAssistant)) return;
+    const interval = setInterval(() => {
+      void hydrateLiveAssistant();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [hydrateLiveAssistant, liveAssistant, sending, sessionActive, statusStreamConnected]);
 
   useEffect(() => {
     if (!liveAssistant) return;

@@ -71,6 +71,60 @@ export interface AutomationKeyboard {
   press(key: string, options?: { delay?: number }): Promise<void>;
 }
 
+export interface AutomationScreencastOptions {
+  quality: number;
+  maxWidth: number;
+  maxHeight: number;
+  everyNthFrame: number;
+}
+
+export interface AutomationScreencastFrame {
+  data: string;
+  sessionId: number;
+}
+
+interface AutomationCdpSession {
+  on(event: "Page.screencastFrame", listener: (frame: AutomationScreencastFrame) => void): void;
+  off(event: "Page.screencastFrame", listener: (frame: AutomationScreencastFrame) => void): void;
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>;
+  detach(): Promise<void>;
+}
+
+async function startCdpScreencast(
+  createSession: () => Promise<unknown>,
+  options: AutomationScreencastOptions,
+  listener: (frame: AutomationScreencastFrame) => void
+): Promise<() => Promise<void>> {
+  const session = (await createSession()) as AutomationCdpSession;
+  let active = true;
+  const handleFrame = (frame: AutomationScreencastFrame): void => {
+    void session
+      .send("Page.screencastFrameAck", { sessionId: frame.sessionId })
+      .catch(() => undefined);
+    listener(frame);
+  };
+  session.on("Page.screencastFrame", handleFrame);
+  try {
+    await session.send("Page.startScreencast", {
+      format: "jpeg",
+      quality: options.quality,
+      maxWidth: options.maxWidth,
+      maxHeight: options.maxHeight,
+      everyNthFrame: options.everyNthFrame,
+    });
+  } catch (error) {
+    session.off("Page.screencastFrame", handleFrame);
+    await session.detach().catch(() => undefined);
+    throw error;
+  }
+  return async (): Promise<void> => {
+    if (!active) return;
+    active = false;
+    session.off("Page.screencastFrame", handleFrame);
+    await Promise.allSettled([session.send("Page.stopScreencast"), session.detach()]);
+  };
+}
+
 export interface AutomationPage {
   url(): string;
   title(): Promise<string>;
@@ -116,6 +170,10 @@ export interface AutomationPage {
   ): Promise<void>;
   viewportSize(): { width: number; height: number } | null;
   setViewportSize(viewport: { width: number; height: number }): Promise<void>;
+  startScreencast(
+    options: AutomationScreencastOptions,
+    listener: (frame: AutomationScreencastFrame) => void
+  ): Promise<() => Promise<void>>;
   mouse: AutomationMouse;
   keyboard: AutomationKeyboard;
 }
@@ -421,6 +479,17 @@ class PlaywrightPageAdapter implements AutomationPage {
 
   setViewportSize(viewport: { width: number; height: number }): Promise<void> {
     return this.page.setViewportSize(viewport);
+  }
+
+  startScreencast(
+    options: AutomationScreencastOptions,
+    listener: (frame: AutomationScreencastFrame) => void
+  ): Promise<() => Promise<void>> {
+    return startCdpScreencast(
+      async () => await this.page.context().newCDPSession(this.page),
+      options,
+      listener
+    );
   }
 }
 
@@ -829,6 +898,13 @@ class PuppeteerPageAdapter implements AutomationPage {
 
   async setViewportSize(viewport: { width: number; height: number }): Promise<void> {
     await this.page.setViewport(viewport);
+  }
+
+  startScreencast(
+    options: AutomationScreencastOptions,
+    listener: (frame: AutomationScreencastFrame) => void
+  ): Promise<() => Promise<void>> {
+    return startCdpScreencast(async () => await this.page.createCDPSession(), options, listener);
   }
 }
 

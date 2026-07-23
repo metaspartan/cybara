@@ -12,30 +12,23 @@ describe("system prompt reliability guidance", () => {
     workspaceDir: "/tmp",
   });
 
-  test("includes grounding + verification guidance", () => {
-    expect(prompt).toContain("Grounding & Accuracy");
-    expect(prompt).toContain("Never answer these from memory");
-    expect(prompt).toContain("Before finalizing");
-  });
-
-  test("includes act-now (no promises) rule", () => {
-    expect(prompt).toContain("Keep working until the user's request is completely resolved");
-    expect(prompt).toContain("End only when you are confident the problem is solved");
-    expect(prompt).toContain("Do not guess or invent an answer");
-    expect(prompt).toContain("Act, don't promise");
-    expect(prompt).toContain("Match claims to evidence");
-    expect(prompt).toContain("A failed or blocked tool is not evidence of success");
-    expect(prompt).toContain("Verify the rendered product");
-    expect(prompt).toContain("inspect the rendered state and browser errors");
-    expect(prompt).toContain("Make questions visible");
-    expect(prompt).toContain("Fix root causes");
-    expect(prompt).toContain("Begin validation with the most focused check");
+  test("includes a concise evidence-backed execution contract", () => {
+    expect(prompt).toContain("Treat actionable requests as work to perform");
+    expect(prompt).toContain("Do not invent files, state, results, or tool output");
+    expect(prompt).toContain("Match every completion and verification claim");
+    expect(prompt).toContain("fix the root cause within scope");
+    expect(prompt).toContain("Validate the changed behavior with the narrowest useful check");
+    expect(prompt).toContain("inspect and exercise the rendered result");
+    expect(prompt).toContain("Finish with the result and concise verification");
+    expect(prompt).not.toContain("## Agentic Behavior");
+    expect(prompt).not.toContain("## Grounding & Accuracy");
+    expect(prompt.length).toBeLessThan(6_000);
   });
 
   test("includes parallel tool-call guidance", () => {
-    expect(prompt).toContain("Parallel tool calls");
-    expect(prompt).toContain("one concise update before the first tool batch");
-    expect(prompt).toContain("Do not narrate every tool call");
+    expect(prompt).toContain("Batch independent tool calls");
+    expect(prompt).toContain("Do not narrate routine calls");
+    expect(prompt).toContain("brief updates at the start and meaningful milestones");
   });
 
   test("describes effective access instead of claiming unrestricted workspace access", () => {
@@ -93,15 +86,12 @@ describe("system prompt reliability guidance", () => {
       workspaceDir: "/tmp",
     });
 
-    expect(walletPrompt).toContain("Use read-only wallet actions");
-    expect(walletPrompt).toContain("Redact full wallet addresses");
-    expect(walletPrompt).toContain("autonomous trading");
-    expect(walletPrompt).toContain("do not promise profit");
-    expect(walletPrompt).toContain("execute only when wallet agent access");
-    expect(walletPrompt).toContain("wallet policy allow the exact action");
-    expect(walletPrompt).toContain("dry-run quotes");
-    expect(walletPrompt).toContain("explicit user intent");
-    expect(walletPrompt).toContain("wallet policy/approvals allow execution");
+    expect(walletPrompt).toContain("Use read-only status, balances, history, prices, quotes");
+    expect(walletPrompt).toContain("Redact full addresses");
+    expect(walletPrompt).toContain("Never promise profit");
+    expect(walletPrompt).toContain("require explicit intent");
+    expect(walletPrompt).toContain("Dry-run or read first");
+    expect(walletPrompt).toContain("Wallet policy and approval results are authoritative");
   });
 });
 

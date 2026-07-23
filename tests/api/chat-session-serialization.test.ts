@@ -680,7 +680,7 @@ describe("handleChat per-session serialization", () => {
 
     expect(response.message.content).toBe("fresh prompt used");
     expect(sentSystemPrompt).toContain("## Tooling");
-    expect(sentSystemPrompt).toContain("- read:");
+    expect(sentSystemPrompt).toContain("Available tools: read");
     expect(sentSystemPrompt).not.toContain("stale shell-only snapshot");
   });
 

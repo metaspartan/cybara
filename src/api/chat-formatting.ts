@@ -126,11 +126,18 @@ export function sanitizeProcessThoughtText(content: string): string {
   const withoutToolMarkup = hasTextToolCallMarkup(trimmed)
     ? stripTextToolCallMarkup(trimmed).trim()
     : trimmed;
-  return withoutToolMarkup
-    .split(/\r?\n/)
-    .filter((line) => !isMidLoopContextCompactionDetail(line))
-    .join("\n")
-    .trim();
+  const lines = withoutToolMarkup.split(/\r?\n|\u2028|\u2029/);
+  const result: string[] = [];
+  let previousText = "";
+  for (const line of lines) {
+    if (isMidLoopContextCompactionDetail(line)) continue;
+    const normalized = line.replace(/\s+/g, " ").trim().toLowerCase();
+    if (normalized && normalized === previousText) continue;
+    if (normalized) previousText = normalized;
+    if (!normalized && result.at(-1)?.trim() === "") continue;
+    result.push(line);
+  }
+  return result.join("\n").trim();
 }
 
 function stripDanglingAssistantMarkup(content: string): string {

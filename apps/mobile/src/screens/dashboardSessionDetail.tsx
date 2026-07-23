@@ -129,6 +129,7 @@ export interface ChatHeaderAction {
 }
 
 const MOBILE_MODEL_ROUTER_SELECTOR_VALUE = "__model_router__";
+const ignoreSessionDetail = (_detail: SessionDetailSummary): void => {};
 
 function pendingMessagesFromResponse(result: {
   pendingMessage?: MobilePendingChatMessage;
@@ -146,6 +147,7 @@ export function SessionDetailPanel({
   openSession,
   config,
   providerPlanStatus,
+  onSessionUpdated,
   refreshSummary,
   sessionSummary,
   sessionId,
@@ -158,6 +160,7 @@ export function SessionDetailPanel({
   openSession?: (sessionId: string) => void;
   config?: Record<string, unknown>;
   providerPlanStatus?: ProviderPlanStatusResponse | null;
+  onSessionUpdated?: (detail: SessionDetailSummary) => void;
   refreshSummary: () => void;
   sessionSummary?: SessionSummary | null;
   sessionId: string;
@@ -240,6 +243,7 @@ export function SessionDetailPanel({
     setPinned,
     setPendingSessionAgentId,
     scrollRef,
+    onSessionUpdated: onSessionUpdated ?? ignoreSessionDetail,
   });
 
   useEffect(() => {
@@ -410,6 +414,7 @@ export function SessionDetailPanel({
           );
         }
         await loadSession(false);
+        refreshSummary();
         commitLiveAssistant(() => null);
         return;
       }
@@ -433,6 +438,7 @@ export function SessionDetailPanel({
           : current
       );
       await loadSession(false);
+      refreshSummary();
       commitLiveAssistant(() => null);
       if (responseHapticActiveRef.current) {
         responseHapticActiveRef.current = false;
@@ -493,6 +499,7 @@ export function SessionDetailPanel({
       setSending(false);
       responseHapticActiveRef.current = false;
       await loadSession(false);
+      refreshSummary();
       commitLiveAssistant(() => null);
     } catch (error) {
       Alert.alert("Unable to stop", error instanceof Error ? error.message : "Request failed.");

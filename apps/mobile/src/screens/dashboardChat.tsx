@@ -46,6 +46,8 @@ import {
 import type { SessionDetailSummary, SessionMessageSummary, SessionPlanSnapshot } from "../lib/api";
 import { Clipboard } from "../lib/expoNativeModules";
 import { openAllowedExternalUrl } from "../lib/externalUrl";
+import { MobileLiveStatusText, MobileThinkingOrb } from "../components/MobileThinkingOrb";
+import { mobileLiveStatusIndicatorState } from "./dashboardLiveChat";
 import {
   getChatCodeFontSizePixels,
   getChatFontSizePixels,
@@ -697,7 +699,18 @@ function MobileAgentTransferTimeline({
   );
 }
 
-export function WorkActivityIcon({ phase, toolName }: { phase: string; toolName?: string }) {
+export function WorkActivityIcon({
+  phase,
+  statusState,
+  toolName,
+}: {
+  phase: string;
+  statusState?: "composing" | "solving" | null;
+  toolName?: string;
+}) {
+  if (statusState) {
+    return <MobileThinkingOrb state={statusState} />;
+  }
   if (toolName === "__thought") {
     return <View style={styles.messageActivityDot} />;
   }
@@ -705,7 +718,7 @@ export function WorkActivityIcon({ phase, toolName }: { phase: string; toolName?
     return <ArrowRightLeft color={colors.textMuted} size={13} strokeWidth={2.2} />;
   }
   if (phase === "start") {
-    return <Loader2 color={colors.textMuted} size={13} strokeWidth={2.2} />;
+    return <MobileThinkingOrb state="solving" />;
   }
   if (phase === "error") {
     return <AlertTriangle color={colors.textMuted} size={13} strokeWidth={2.2} />;
@@ -724,26 +737,36 @@ function MobileActivityRow({
   appearance: ChatAppearanceSettings;
 }) {
   const fontSize = Math.max(11, getChatFontSizePixels(appearance.fontSize) * 0.84);
+  const statusState = mobileLiveStatusIndicatorState(activity.text);
+  const textStyle = [
+    styles.messageActivityText,
+    activity.toolName === "__thought" && styles.messageThoughtText,
+    {
+      color: appearance.highContrast ? colors.text : colors.textMuted,
+      fontSize,
+      lineHeight: Math.round(fontSize * getChatLineHeight(appearance.lineSpacing)),
+    },
+  ];
   return (
     <View style={styles.messageActivityRow}>
       <View style={styles.messageActivityIcon}>
-        <WorkActivityIcon phase={activity.phase} toolName={activity.toolName} />
+        <WorkActivityIcon
+          phase={activity.phase}
+          statusState={statusState}
+          toolName={activity.toolName}
+        />
       </View>
-      <Text
-        numberOfLines={activity.toolName === "__thought" ? 0 : 2}
-        selectable
-        style={[
-          styles.messageActivityText,
-          activity.toolName === "__thought" && styles.messageThoughtText,
-          {
-            color: appearance.highContrast ? colors.text : colors.textMuted,
-            fontSize,
-            lineHeight: Math.round(fontSize * getChatLineHeight(appearance.lineSpacing)),
-          },
-        ]}
-      >
-        <InlineMarkdown appearance={appearance} tokens={parseInlineMarkdown(activity.text)} />
-      </Text>
+      {statusState ? (
+        <MobileLiveStatusText style={textStyle}>{activity.text}</MobileLiveStatusText>
+      ) : (
+        <Text
+          numberOfLines={activity.toolName === "__thought" ? 0 : 2}
+          selectable
+          style={textStyle}
+        >
+          <InlineMarkdown appearance={appearance} tokens={parseInlineMarkdown(activity.text)} />
+        </Text>
+      )}
     </View>
   );
 }

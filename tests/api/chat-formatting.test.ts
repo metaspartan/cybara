@@ -72,6 +72,11 @@ describe("chat response formatting", () => {
         "Inspecting the repository structure.\nReduced earlier tool output by 839 tokens to preserve context.\nChecking the build."
       )
     ).toBe("Inspecting the repository structure.\nChecking the build.");
+    expect(
+      sanitizeProcessThoughtText(
+        "Actually, let me try using a different tool.\u2028\u2028Actually, let me try using a different tool.\nActually, let me try using a different tool.\nChecking the result."
+      )
+    ).toBe("Actually, let me try using a different tool.\n\nChecking the result.");
   });
 
   test("sanitizes stored assistant text tool-call envelopes on session reads", () => {

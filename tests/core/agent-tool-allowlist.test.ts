@@ -578,6 +578,91 @@ describe("Agent tool allowlist guardrails", () => {
     expect(requestBodies[1].tool_choice).toBe("auto");
   });
 
+  test("preserves forced tool choice by disabling optional reasoning first", async () => {
+    const provider = providerManager.create({
+      provider: "openrouter",
+      name: "Reasoning Tool Choice Compatibility Provider",
+      api_key: "sk-test-reasoning-tool-choice",
+      base_url: "https://openrouter.ai/api/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Reasoning Tool Choice Compatibility Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "moonshotai/kimi-k2.5",
+      tools: [
+        {
+          name: "artifacts",
+          description: "Manage session artifacts",
+          input_schema: {
+            type: "object",
+            properties: { action: { type: "string" } },
+            required: ["action"],
+          },
+        },
+      ],
+      memory_enabled: false,
+      config: { model_params: { reasoning_effort: "high" } },
+    });
+    createdAgentIds.push(agent.id);
+
+    const requestBodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      requestBodies.push(body as Record<string, unknown>);
+      if (requestBodies.length === 1) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "tool_choice 'required' is incompatible with thinking enabled",
+              type: "invalid_request_error",
+            },
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          id: "resp-reasoning-tool-choice-compat",
+          object: "chat.completion",
+          model: "moonshotai/kimi-k2.5",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "forced-tool-choice-preserved" },
+            },
+          ],
+          usage: { prompt_tokens: 9, completion_tokens: 2, total_tokens: 11 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "create an artifact report" }],
+      {
+        useTools: true,
+        sessionId: "reasoning-tool-choice-compat-session",
+        requireToolUse: true,
+        requiredToolName: "artifacts",
+      }
+    );
+
+    expect(result.content).toBe("forced-tool-choice-preserved");
+    expect(requestBodies).toHaveLength(2);
+    expect(requestBodies[0].tool_choice).toEqual({
+      type: "function",
+      function: { name: "artifacts" },
+    });
+    expect(requestBodies[0].reasoning).toEqual({ effort: "high" });
+    expect(requestBodies[1].tool_choice).toEqual(requestBodies[0].tool_choice);
+    expect("reasoning" in requestBodies[1]).toBe(false);
+  });
+
   test("retries openai-compatible loop calls with a reduced token cap on context overflow", async () => {
     const provider = providerManager.create({
       provider: "kimi-code",
@@ -693,8 +778,12 @@ describe("Agent tool allowlist guardrails", () => {
     expect(failedLoopBody).toBeDefined();
     expect(retriedLoopBody).toBeDefined();
 
-    const failedLimit = Number(failedLoopBody?.max_tokens || 0);
-    const retriedLimit = Number(retriedLoopBody?.max_tokens || 0);
+    const failedLimit = Number(
+      failedLoopBody?.max_completion_tokens ?? failedLoopBody?.max_tokens ?? 0
+    );
+    const retriedLimit = Number(
+      retriedLoopBody?.max_completion_tokens ?? retriedLoopBody?.max_tokens ?? 0
+    );
     expect(failedLimit).toBeGreaterThan(0);
     expect(retriedLimit).toBeGreaterThan(0);
     expect(retriedLimit).toBeLessThan(failedLimit);

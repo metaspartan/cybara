@@ -179,6 +179,7 @@ import {
   mobileFirstNonEmptyString,
   mobileGatewayAuthStatus,
   mobileProviderAuthMode,
+  mergeSessionDetailIntoSummary,
   mobileSessionTitle,
   mobileThemeConfigPayload,
   recentSessionStateLabel,
@@ -195,7 +196,12 @@ import {
   type MobileSurfaceKey,
   type MobileTabKey,
 } from "../lib/dashboard";
-import { formatMetricBytes, formatStorageBytes, type MetricsSnapshot } from "../lib/metrics";
+import {
+  formatMetricBytes,
+  formatStorageBytes,
+  mergeMetricsOverview,
+  type MetricsSnapshot,
+} from "../lib/metrics";
 import { accentPalette, colors, spacing, type AccentKey } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
 import { Clipboard, ImagePicker } from "../lib/expoNativeModules";
@@ -297,9 +303,12 @@ export function DashboardScreen({
   const insets = useSafeAreaInsets();
   const [summary, setSummary] = useState<FeatureSummary | null>(null);
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
+  const [metricsRefreshing, setMetricsRefreshing] = useState(false);
+  const [metricsUpdatedAt, setMetricsUpdatedAt] = useState<number | null>(null);
   const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
     null
   );
+  const [providerPlanError, setProviderPlanError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<MobileTabKey>("overview");
   const [detailRoute, setDetailRoute] = useState<DetailRoute | null>(null);
@@ -321,12 +330,13 @@ export function DashboardScreen({
   const [logPageError, setLogPageError] = useState<string | null>(null);
   const refreshInFlight = useRef(false);
   const metricsRefreshInFlight = useRef(false);
+  const metricsOverviewRefreshInFlight = useRef(false);
   const metricsLastLoadedAtRef = useRef(0);
+  const metricsOverviewLastLoadedAtRef = useRef(0);
   const logPageInFlight = useRef(false);
   const appStateRef = useRef(AppState.currentState);
   const activeSurface =
     detailRoute?.kind === "surface" || detailRoute?.kind === "item" ? detailRoute.surface : null;
-  const hasLoadedMetrics = metrics !== null;
 
   const closeDetailRoute = () => {
     setChatHeaderAction(null);
@@ -341,6 +351,10 @@ export function DashboardScreen({
     void persistLastOpenedSessionId(id);
   };
 
+  const syncSessionSummary = useCallback((detail: SessionDetailSummary) => {
+    setSummary((current) => mergeSessionDetailIntoSummary(current, detail));
+  }, []);
+
   const refresh = async (showRefreshing = true) => {
     if (refreshInFlight.current) return;
     refreshInFlight.current = true;
@@ -349,15 +363,49 @@ export function DashboardScreen({
     try {
       const [nextSummary, nextProviderPlans] = await Promise.all([
         api.featureSummary(),
-        api.providerPlanStatus().catch(() => null),
+        api
+          .providerPlanStatus()
+          .then((data) => ({ data, error: null }))
+          .catch((providerError: unknown) => ({
+            data: null,
+            error: providerError instanceof Error ? providerError.message : String(providerError),
+          })),
       ]);
       setSummary(nextSummary);
-      setProviderPlanStatus(nextProviderPlans);
+      if (nextProviderPlans.data) setProviderPlanStatus(nextProviderPlans.data);
+      setProviderPlanError(nextProviderPlans.error);
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
     } finally {
       refreshInFlight.current = false;
       if (showRefreshing) setRefreshing(false);
+    }
+  };
+
+  const refreshMetricsOverview = async (options: { force?: boolean } = {}) => {
+    if (metricsOverviewRefreshInFlight.current) return;
+    const now = Date.now();
+    if (
+      !options.force &&
+      now - metricsOverviewLastLoadedAtRef.current < MOBILE_METRICS_CHROME.liveRefreshMs
+    ) {
+      return;
+    }
+    metricsOverviewRefreshInFlight.current = true;
+    try {
+      const overview = await api.metricsOverview();
+      setMetrics((current) => mergeMetricsOverview(current, overview));
+      metricsOverviewLastLoadedAtRef.current = Date.now();
+      setMetricsUpdatedAt(Date.now());
+    } catch (refreshError) {
+      if (!metrics) {
+        setMetricsError(
+          refreshError instanceof Error ? refreshError.message : String(refreshError)
+        );
+      }
+      metricsOverviewLastLoadedAtRef.current = Date.now();
+    } finally {
+      metricsOverviewRefreshInFlight.current = false;
     }
   };
 
@@ -371,15 +419,19 @@ export function DashboardScreen({
       return;
     }
     metricsRefreshInFlight.current = true;
+    setMetricsRefreshing(true);
     setMetricsError(null);
     try {
       setMetrics(await api.metricsSnapshot());
       metricsLastLoadedAtRef.current = Date.now();
+      metricsOverviewLastLoadedAtRef.current = Date.now();
+      setMetricsUpdatedAt(Date.now());
     } catch (refreshError) {
       setMetricsError(refreshError instanceof Error ? refreshError.message : String(refreshError));
       metricsLastLoadedAtRef.current = Date.now();
     } finally {
       metricsRefreshInFlight.current = false;
+      setMetricsRefreshing(false);
     }
   };
 
@@ -427,10 +479,7 @@ export function DashboardScreen({
   const refreshAll = async (showRefreshing = true) => {
     if (showRefreshing) setRefreshing(true);
     const shouldRefreshMetrics =
-      !MOBILE_METRICS_CHROME.lazyLoadUntilOpened ||
-      activeTab === "metrics" ||
-      activeTab === "usage" ||
-      hasLoadedMetrics;
+      !MOBILE_METRICS_CHROME.lazyLoadUntilOpened || activeTab === "metrics";
     await Promise.all([
       refresh(false),
       shouldRefreshMetrics ? refreshMetrics({ force: true }) : Promise.resolve(),
@@ -474,30 +523,40 @@ export function DashboardScreen({
   }, []);
 
   useEffect(() => {
+    if (detailRoute?.kind === "session") return;
     const interval = setInterval(() => {
       if (appStateRef.current === "active") void refresh(false);
     }, 12000);
     return () => clearInterval(interval);
-  }, [profile.id]);
+  }, [detailRoute?.kind, profile.id]);
 
   useEffect(() => {
     if (
       MOBILE_METRICS_CHROME.lazyLoadUntilOpened &&
-      activeTab !== "metrics" &&
-      activeTab !== "usage" &&
-      !hasLoadedMetrics
+      (activeTab !== "metrics" || Boolean(detailRoute))
     ) {
       return;
     }
-    const refreshMs =
-      activeTab === "metrics" && !detailRoute
-        ? MOBILE_METRICS_CHROME.liveRefreshMs
-        : MOBILE_METRICS_CHROME.backgroundRefreshMs;
+    const frame = requestAnimationFrame(() => {
+      void refreshMetrics();
+    });
     const interval = setInterval(() => {
       if (appStateRef.current === "active") void refreshMetrics();
-    }, refreshMs);
+    }, MOBILE_METRICS_CHROME.detailRefreshMs);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearInterval(interval);
+    };
+  }, [profile.id, activeTab, detailRoute]);
+
+  useEffect(() => {
+    if (activeTab !== "metrics" || detailRoute) return;
+    void refreshMetricsOverview();
+    const interval = setInterval(() => {
+      if (appStateRef.current === "active") void refreshMetricsOverview();
+    }, MOBILE_METRICS_CHROME.liveRefreshMs);
     return () => clearInterval(interval);
-  }, [profile.id, activeTab, detailRoute, hasLoadedMetrics]);
+  }, [profile.id, activeTab, detailRoute]);
 
   const sessions = summary?.sessions ?? [];
   const orderedSessions = useMemo(() => sortSessionSummaries(sessions), [sessions]);
@@ -534,7 +593,7 @@ export function DashboardScreen({
     setDetailRoute(null);
     setActiveTab(tab);
     if (tab === "metrics") {
-      void refreshMetrics({ force: metrics === null });
+      void refreshMetricsOverview({ force: metrics?.overview === null });
     }
   };
 
@@ -723,6 +782,7 @@ export function DashboardScreen({
           closeDetail={closeDetailRoute}
           openSession={openSessionRoute}
           providerPlanStatus={providerPlanStatus}
+          onSessionUpdated={syncSessionSummary}
           refreshSummary={() => refresh(false)}
           sessionSummary={
             summary?.sessions.find((session) => session.id === detailRoute.id) ?? null
@@ -802,12 +862,19 @@ export function DashboardScreen({
               counts={counts}
               metrics={metrics}
               metricsError={metricsError}
+              metricsRefreshing={metricsRefreshing}
+              metricsUpdatedAt={metricsUpdatedAt}
+              providerPlanStatus={providerPlanStatus}
               summary={summary}
               openSurface={openSurface}
             />
           ) : null}
           {!detailRoute && activeTab === "usage" ? (
-            <UsagePanel metrics={metrics} metricsError={metricsError} accentColor={accentColor} />
+            <UsagePanel
+              accentColor={accentColor}
+              providerPlanStatus={providerPlanStatus}
+              providerPlanError={providerPlanError}
+            />
           ) : null}
           {!detailRoute && activeTab === "tasks" ? (
             <TasksPanel
@@ -1104,7 +1171,11 @@ function SessionsPanel({
     } else {
       Alert.alert(`Delete “${title}”?`, "This removes the chat from the gateway.", [
         { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => void runDelete(session) },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => void runDelete(session),
+        },
       ]);
     }
   };
@@ -1140,7 +1211,10 @@ function SessionsPanel({
           accessibilityRole="button"
           style={({ pressed }) => [
             styles.newChatButton,
-            { borderColor: `${accentColor}70`, backgroundColor: `${accentColor}18` },
+            {
+              borderColor: `${accentColor}70`,
+              backgroundColor: `${accentColor}18`,
+            },
             pressed && styles.newChatButtonPressed,
           ]}
           onPress={createChat}
