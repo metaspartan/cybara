@@ -34,6 +34,7 @@ import {
 import { agentManager } from "./core/agent";
 import { subscribeBrowserPreviewStream } from "./core/browser/preview-stream";
 import {
+  BrowserPreviewInputQueue,
   executeBrowserPreviewInput,
   parseBrowserPreviewInput,
 } from "./core/browser/preview-stream-input";
@@ -371,7 +372,7 @@ type WsData =
       everyNthFrame: number;
       unsubscribe?: () => Promise<void>;
       closed?: boolean;
-      inputChain: Promise<void>;
+      inputQueue?: BrowserPreviewInputQueue;
     };
 
 function browserStreamPageId(pathname: string): string | null {
@@ -575,7 +576,6 @@ function createGatewayServer(
             maxWidth: boundedStreamParameter(url, "maxWidth", 1280, 320, 2560),
             maxHeight: boundedStreamParameter(url, "maxHeight", 900, 320, 1600),
             everyNthFrame: boundedStreamParameter(url, "everyNthFrame", 1, 1, 4),
-            inputChain: Promise.resolve(),
           },
           headers: streamAuth.protocol
             ? { "Sec-WebSocket-Protocol": streamAuth.protocol }
@@ -907,6 +907,22 @@ function createGatewayServer(
         }
 
         if (data.kind === "browser") {
+          data.inputQueue = new BrowserPreviewInputQueue(
+            async (input) => await executeBrowserPreviewInput(data.pageId, input),
+            (error) => {
+              if (data.closed) return;
+              try {
+                ws.send(
+                  JSON.stringify({
+                    type: "input_error",
+                    error: error instanceof Error ? error.message : "Browser input failed",
+                  })
+                );
+              } catch {
+                return;
+              }
+            }
+          );
           void subscribeBrowserPreviewStream(
             data.pageId,
             {
@@ -1003,21 +1019,7 @@ function createGatewayServer(
           }
           const input = parseBrowserPreviewInput(parsed);
           if (!input) return;
-          data.inputChain = data.inputChain
-            .then(async () => await executeBrowserPreviewInput(data.pageId, input))
-            .catch((error: unknown) => {
-              if (data.closed) return;
-              try {
-                ws.send(
-                  JSON.stringify({
-                    type: "input_error",
-                    error: error instanceof Error ? error.message : "Browser input failed",
-                  })
-                );
-              } catch {
-                return;
-              }
-            });
+          data.inputQueue?.enqueue(input);
           return;
         }
 
@@ -1036,6 +1038,7 @@ function createGatewayServer(
         }
         if (data.kind === "browser") {
           data.closed = true;
+          data.inputQueue?.dispose();
           void data.unsubscribe?.();
           return;
         }

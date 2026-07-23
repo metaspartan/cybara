@@ -529,7 +529,6 @@ describe("Agent provider Google and compatible routing", () => {
     ).toBe(false);
     expect(requestMessages).toContainEqual({
       role: "assistant",
-      content: null,
       tool_calls: [
         {
           id: "call-1",
@@ -543,6 +542,117 @@ describe("Agent provider Google and compatible routing", () => {
       content: "read result",
       tool_call_id: "call-1",
     });
+  });
+
+  test("keeps the current Kimi wire contract through a complete tool loop", async () => {
+    const requestBodies: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      requestBodies.push(body);
+      if (requestBodies.length === 1) {
+        return Response.json({
+          id: "kimi-tool-response",
+          object: "chat.completion",
+          model: "k3",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "tool_calls",
+              message: {
+                role: "assistant",
+                content: null,
+                reasoning_content: "I should verify this with the calculator.",
+                tool_calls: [
+                  {
+                    id: "kimi-calc-call",
+                    type: "function",
+                    function: { name: "calc", arguments: '{"expression":"6 * 7"}' },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+        });
+      }
+      return Response.json({
+        id: "kimi-final-response",
+        object: "chat.completion",
+        model: "k3",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: "The verified result is 42.",
+              reasoning_content: "The calculator returned 42.",
+            },
+          },
+        ],
+        usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Wire Provider",
+      access_token: "kimi-wire-token",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Kimi Wire Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "k3",
+      config: { model_params: { reasoning_effort: "max" } },
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate a mathematical expression",
+          input_schema: {
+            type: "object",
+            properties: { expression: { enum: ["6 * 7"] } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("tool_approval_mode", "always_allow");
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate six times seven with the tool." }],
+      {
+        useTools: true,
+        requireToolUse: true,
+        requiredToolName: "calc",
+        sessionId: "kimi-current-wire-session",
+      }
+    );
+
+    expect(result.content).toBe("The verified result is 42.");
+    expect(result.thinking).toContain("verify this with the calculator");
+    expect(result.thinking).toContain("calculator returned 42");
+    expect(result.tool_calls?.[0]?.name).toBe("calc");
+    expect(requestBodies).toHaveLength(2);
+    for (const body of requestBodies) {
+      expect(body.thinking).toEqual({ type: "enabled", effort: "max" });
+      expect(body.max_completion_tokens).toBe(32_768);
+      expect(body.max_tokens).toBeUndefined();
+      expect(body.prompt_cache_key).toBe("kimi-current-wire-session");
+    }
+    const tools = requestBodies[0]?.tools as Array<Record<string, unknown>>;
+    const toolFunction = tools[0]?.function as Record<string, unknown>;
+    const parameters = toolFunction.parameters as Record<string, unknown>;
+    const properties = parameters.properties as Record<string, Record<string, unknown>>;
+    expect(properties.expression?.type).toBe("string");
+    const loopMessages = requestBodies[1]?.messages as Array<Record<string, unknown>>;
+    const replayedAssistant = loopMessages.find((message) => message.role === "assistant");
+    expect(replayedAssistant?.content).toBeUndefined();
+    expect(replayedAssistant?.reasoning_content).toBe("I should verify this with the calculator.");
   });
 
   test("refreshes Kimi OAuth in place when a long tool loop crosses token expiry", async () => {

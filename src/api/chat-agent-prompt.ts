@@ -1,11 +1,13 @@
 import type { Agent } from "../core/database";
 import { config } from "../core/config";
-import { resolveAgentToolSelection } from "../core/agent-tool-selection";
-import { isLegacyBuiltinSnapshot } from "../core/agent-tool-normalization";
 import { getBootstrapContextFiles } from "../core/bootstrap-files";
 import { getSandboxPromptInfo } from "../core/sandbox";
 import { createEligibilityContext, filterEligibleSkills, loadAllSkills } from "../core/skills";
-import { buildSystemPrompt, AGENT_TYPE_PROMPTS } from "../core/system-prompt";
+import {
+  buildSystemPrompt,
+  AGENT_TYPE_PROMPTS,
+  systemPromptToolMarker,
+} from "../core/system-prompt";
 import { resolveAgentToolPolicy } from "../core/toolsets";
 
 type AgentPromptData = Pick<
@@ -28,6 +30,7 @@ interface ChatAgentPromptSession {
 
 interface ChatAgentPromptOptions {
   useTools?: boolean;
+  runtimeChannel?: string;
 }
 
 function isGeneratedAgentPrompt(prompt: string): boolean {
@@ -40,6 +43,7 @@ function isGeneratedAgentPrompt(prompt: string): boolean {
     trimmed.includes("## Tooling") ||
     trimmed.includes("Tool availability (filtered by policy):") ||
     trimmed.includes("### Wallet Tool") ||
+    trimmed.includes("## Tool Use\nUse available tools when they improve accuracy") ||
     trimmed.includes("TOOLS - USE THEM!")
   );
 }
@@ -51,6 +55,13 @@ function chatAgentToolNames(
 ): string[] {
   if (options.useTools === false) return [];
   return resolveAgentToolPolicy(agent).offeredTools.map((tool) => tool.name);
+}
+
+function promptMatchesRuntimeChannel(prompt: string, runtimeChannel?: string): boolean {
+  const runtimeLine = prompt.split("\n").find((line) => line.startsWith("Runtime: ")) || "";
+  const channelMatch = runtimeLine.match(/(?:^| \| )channel=([^|]+)/);
+  const promptChannel = channelMatch?.[1]?.trim();
+  return runtimeChannel ? promptChannel === runtimeChannel : promptChannel === undefined;
 }
 
 export async function activeAgentSystemPrompt(
@@ -83,6 +94,11 @@ export async function activeAgentSystemPrompt(
     skills,
     contextFiles: getBootstrapContextFiles(homeDir),
     sandboxInfo: getSandboxPromptInfo(homeDir),
+    runtimeInfo: {
+      agentId: agent.id,
+      model: agent.model,
+      channel: options.runtimeChannel,
+    },
     extraSystemPrompt:
       storedPrompt && !isGeneratedAgentPrompt(storedPrompt) ? storedPrompt : undefined,
   });
@@ -127,17 +143,9 @@ export async function refreshSessionAgentSystemPromptIfNeeded(
     return;
   }
   const toolNames = chatAgentToolNames(agent, messages || session.messages, options);
-  const expectsWallet = toolNames.includes("wallet");
-  const hasWalletPrompt = firstMessage.content.includes("### Wallet Tool");
-  const selection = resolveAgentToolSelection(agent.tools);
-  const isProfileSelection =
-    selection.kind === "builtins" ||
-    (selection.kind === "explicit" && isLegacyBuiltinSnapshot(selection.tools));
   if (
-    isProfileSelection ||
-    options.useTools === false ||
-    !firstMessage.content.includes("## Tooling") ||
-    expectsWallet !== hasWalletPrompt
+    !firstMessage.content.split("\n").includes(systemPromptToolMarker(toolNames)) ||
+    !promptMatchesRuntimeChannel(firstMessage.content, options.runtimeChannel)
   ) {
     await applyActiveAgentToSession(session, agent, messages, options);
   }

@@ -54,4 +54,46 @@ describe("browser preview stream", () => {
     expect(starts).toBe(2);
     await unsubscribe();
   });
+
+  test("does not publish a paced frame after stream startup fails", async () => {
+    let emit: ((frame: string) => void) | null = null;
+    const frames: string[] = [];
+    const broker = new BrowserPreviewStreamBroker(async (_pageId, _options, listener) => {
+      emit = listener;
+      listener(Buffer.from("frame-1").toString("base64"));
+      listener(Buffer.from("frame-2").toString("base64"));
+      throw new Error("startup failed");
+    }, 20);
+    const options = { quality: 58, maxWidth: 960, maxHeight: 640, everyNthFrame: 1 };
+
+    await expect(
+      broker.subscribe("page-1", options, (frame) => frames.push(frame.toString()))
+    ).rejects.toThrow("startup failed");
+    emit?.(Buffer.from("frame-3").toString("base64"));
+    await Bun.sleep(30);
+
+    expect(frames).toEqual(["frame-1"]);
+    expect(broker.activeStreamCount()).toBe(0);
+  });
+
+  test("paces frame delivery and publishes only the newest pending frame", async () => {
+    let emit: ((frame: string) => void) | null = null;
+    const broker = new BrowserPreviewStreamBroker(async (_pageId, _options, listener) => {
+      emit = listener;
+      return async () => undefined;
+    }, 20);
+    const options = { quality: 58, maxWidth: 960, maxHeight: 640, everyNthFrame: 1 };
+    const frames: string[] = [];
+    const unsubscribe = await broker.subscribe("page-1", options, (frame) => {
+      frames.push(frame.toString());
+    });
+
+    emit?.(Buffer.from("frame-1").toString("base64"));
+    emit?.(Buffer.from("frame-2").toString("base64"));
+    emit?.(Buffer.from("frame-3").toString("base64"));
+    expect(frames).toEqual(["frame-1"]);
+    await Bun.sleep(30);
+    expect(frames).toEqual(["frame-1", "frame-3"]);
+    await unsubscribe();
+  });
 });

@@ -5,15 +5,15 @@ export type BrowserPreviewStreamInput =
 
 export type BrowserPreviewStreamSender = (input: BrowserPreviewStreamInput) => boolean;
 
-export class LatestBrowserFrameDecoder {
+export class LatestBrowserFrameDecoder<DecodedFrame> {
   private queued: Blob | null = null;
   private decoding = false;
   private disposed = false;
 
   constructor(
-    private readonly decode: (frame: Blob) => Promise<string>,
-    private readonly present: (source: string) => void,
-    private readonly discard: (source: string) => void
+    private readonly decode: (frame: Blob) => Promise<DecodedFrame>,
+    private readonly present: (frame: DecodedFrame) => void,
+    private readonly discard: (frame: DecodedFrame) => void
   ) {}
 
   enqueue(frame: Blob): void {

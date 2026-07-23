@@ -10,51 +10,6 @@ export const SILENT_REPLY_TOKEN = "[SILENT]";
 export type PromptMode = "full" | "minimal" | "none";
 export type SystemPromptExecutionMode = "execute" | "plan";
 
-export const CORE_TOOL_SUMMARIES: Record<string, string> = {
-  read: "Read file contents",
-  write: "Create or overwrite files",
-  edit: "Make precise edits to files",
-  apply_patch: "Apply multi-file patches",
-  grep: "Search file contents for patterns",
-  workspace_index_search: "Search workspace files by path/name via index (with fallback)",
-  find: "Find files by glob pattern",
-  ls: "List directory contents",
-  exec: "Run shell commands (pty available for TTY-required CLIs)",
-  process: "Manage background exec sessions",
-  web_search: "Search the web",
-  web_fetch: "Fetch and extract readable content from a URL",
-  browser: "Control web browser for automation",
-  mobile_simulator: "Inspect and control iOS Simulator or Android Emulator",
-  canvas: "Present/eval/snapshot the Canvas",
-  nodes: "List/describe/notify/camera/screen on paired nodes",
-  cron: "Manage cron jobs and wake events (use for reminders; write systemEvent text that reads like a reminder when it fires)",
-  message: "Send messages and channel actions",
-  wallet:
-    "Read wallet status/balances/history and query prices/quotes; guarded sends, signing, contract/program calls, x402 requests, and swap execution require explicit user intent, wallet agent access, and policy approval",
-  gateway: "Restart, apply config, or run updates on the running process",
-  agents_list: "List agent ids allowed for sessions_spawn",
-  sessions_list: "List other sessions (incl. sub-agents) with filters",
-  sessions_history: "Fetch history for another session/sub-agent",
-  sessions_send: "Send a message to another session/sub-agent",
-  sessions_spawn: "Spawn a sub-agent session for background work",
-  session_status: "Show status card (usage + time + Reasoning/Elevated)",
-  artifacts:
-    "Create and manage session-scoped .md.resolved artifacts for checklists, implementation plans, and walkthroughs",
-  image: "Analyze an image with the configured image model",
-  memory_search: "Semantic search through memory files",
-  memory_get: "Get specific lines from a memory file",
-  memory_save: "Save content to memory",
-  tts: "Text-to-speech generation",
-  lsp_diagnostics:
-    "Get code errors/warnings after editing files (TypeScript bundled, others need install)",
-  lsp_definition: "Go to symbol definition across files",
-  lsp_references: "Find all references to a symbol",
-  lsp_hover: "Get type info and documentation for a symbol",
-  lsp_languages: "List available LSP languages and their install status",
-  todo: "Create/update a session task list (max one in_progress); use for multi-step work",
-  clarify: "Ask the user a clarifying question with optional multiple-choice options",
-};
-
 export interface SystemPromptParams {
   workspaceDir?: string;
   agentData?: { name: string; config?: string };
@@ -211,17 +166,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   lines.push(...buildToolingSection(params.tools, isMinimal));
 
   if (!isMinimal && hasTools) {
-    lines.push(...buildToolCallStyleSection());
-  }
-
-  if (!isMinimal && hasTools) {
-    lines.push(...buildAgenticBehaviorSection());
-    lines.push(...buildExecutionContractSection(params.executionMode || "execute"));
-    lines.push(...buildGroundingSection());
-  }
-
-  if (!isMinimal && hasTools) {
-    lines.push(...buildCLIReferenceSection());
+    lines.push(...buildWorkingAgreementSection(params.executionMode || "execute"));
   }
 
   const features = systemPromptConfig?.features as Record<string, boolean> | undefined;
@@ -250,11 +195,21 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
     lines.push(...buildUserIdentitySection(params.ownerNumbers));
   }
 
-  if (features?.replyTagsEnabled !== false && !isMinimal && hasTools) {
+  if (
+    features?.replyTagsEnabled !== false &&
+    !isMinimal &&
+    hasTools &&
+    params.runtimeInfo?.channel
+  ) {
     lines.push(...buildReplyTagsSection());
   }
 
-  if (features?.messagingEnabled !== false && !isMinimal && hasTools) {
+  if (
+    features?.messagingEnabled !== false &&
+    !isMinimal &&
+    hasTools &&
+    (params.runtimeInfo?.channel || params.tools.includes("message"))
+  ) {
     lines.push(
       ...buildMessagingSection({
         isMinimal,
@@ -301,7 +256,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
     lines.push(...buildContextFilesSection(params.contextFiles));
   }
 
-  if (!isMinimal && hasTools) {
+  if (!isMinimal && hasTools && params.runtimeInfo?.channel) {
     lines.push(...buildSilentRepliesSection());
   }
 
@@ -372,7 +327,7 @@ function buildIdentitySection(
   return parts;
 }
 
-function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
+function orderedToolNames(tools: string[]): string[] {
   const toolOrder = [
     "read",
     "write",
@@ -415,18 +370,36 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
     "lsp_languages",
   ];
 
-  const availableTools = new Set(tools.map((t) => t.toLowerCase()));
-  const enabledTools = toolOrder.filter((t) => availableTools.has(t));
-  const extraTools = tools.filter((t) => !toolOrder.includes(t.toLowerCase()));
+  const availableTools = new Map<string, string>();
+  for (const tool of tools) {
+    const name = tool.trim();
+    if (name && !availableTools.has(name.toLowerCase())) {
+      availableTools.set(name.toLowerCase(), name);
+    }
+  }
+  const enabledTools = toolOrder
+    .filter((tool) => availableTools.has(tool))
+    .map((tool) => availableTools.get(tool) ?? tool);
+  const extraTools = [...availableTools.entries()]
+    .filter(([tool]) => !toolOrder.includes(tool))
+    .map(([, name]) => name)
+    .sort((left, right) => left.localeCompare(right));
+  return [...enabledTools, ...extraTools];
+}
 
-  const toolLines = [...enabledTools, ...extraTools].map((tool) => {
-    const summary = CORE_TOOL_SUMMARIES[tool.toLowerCase()];
-    return summary ? `- ${tool}: ${summary}` : `- ${tool}`;
-  });
+export function systemPromptToolMarker(tools: string[]): string {
+  const names = orderedToolNames(tools);
+  return names.length > 0 ? `Available tools: ${names.join(", ")}` : "Available tools: none";
+}
 
-  if (toolLines.length === 0) {
+function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
+  const orderedTools = orderedToolNames(tools);
+  const availableTools = new Set(orderedTools.map((tool) => tool.toLowerCase()));
+
+  if (orderedTools.length === 0) {
     return [
       "## Tooling",
+      systemPromptToolMarker([]),
       "No platform tools are enabled for this turn. Answer directly unless the user asks for work that requires tools.",
       "",
     ];
@@ -434,9 +407,8 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
 
   const lines = [
     "## Tooling",
-    "Tool availability (filtered by policy):",
-    "Tool names are case-sensitive. Call tools exactly as listed.",
-    toolLines.join("\n"),
+    systemPromptToolMarker(orderedTools),
+    "Tool schemas define the authoritative arguments and behavior. Use only the tools listed above.",
     "",
   ];
 
@@ -448,14 +420,6 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
       );
     }
 
-    lines.push(
-      "### Execution Style",
-      "- Complete tasks FULLY in one response - don't stop to ask if it's okay",
-      "- Chain tool calls: open → snapshot → extract data → respond with answer",
-      "- Only ask questions if the request is genuinely ambiguous",
-      ""
-    );
-
     if (availableTools.has("exec")) {
       lines.push(
         "For development servers and other long-running commands, call exec with background:true and a workdir. Do not append shell '&'. Use process to list or stop background processes.",
@@ -465,29 +429,12 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
 
     if (availableTools.has("browser")) {
       lines.push(
-        "### Browser Tool (for web data)",
+        "### Browser Tool",
         "Use the session-bound embedded browser for normal browsing, screenshots, and UI automation so the user can follow the work in chat.",
         "Do not use openVisual, visual:true, or headless:false unless the user explicitly requests a separate browser window.",
-        "Use browser for JavaScript-rendered or dynamic websites (React, Next.js, SPAs).",
-        "",
-        "**WORKFLOW for extracting data:**",
-        "1. browser({action:'open', url:'...'}) - open the page",
-        "2. browser({action:'snapshot'}) - get page text, extract data from it",
-        "3. browser({action:'scroll'}) - scroll to reveal more content",
-        "4. browser({action:'snapshot'}) - get new content, add to your list",
-        "5. Repeat steps 3-4 until you have enough items",
-        "6. Present ALL accumulated data in organized format",
-        "",
-        "**KEY PRINCIPLES:**",
-        "- Read the snapshot text carefully - it contains the actual page content",
-        "- Scroll and snapshot multiple times to get complete lists/feeds",
-        "- Accumulate data across snapshots - don't forget earlier items",
-        "- Extract and present the data, don't just describe what you did",
-        "- For factual research, stop once 2-4 authoritative sources support the answer; do not chase exhaustive coverage",
-        "- Fetch only URLs returned by web_search, supplied by the user, or already observed in browser output; never guess product-page or documentation URLs",
-        "- Treat 403, 404, robots, and anti-bot responses as unavailable sources; use a different authoritative source instead of retrying archive variants",
-        "- Use web_search for discovery and web_fetch for readable primary sources; do not use exec or curl as a web-search fallback",
-        "- Keep the embedded browser open on the final page so the user can inspect it; close it only when explicitly requested",
+        "For dynamic pages, open the page, inspect a snapshot, act using observed refs, and inspect again to verify. Accumulate results across snapshots.",
+        "For research, prefer authoritative sources returned by search or already observed. Treat blocked or missing pages as unavailable instead of repeatedly retrying guessed URLs.",
+        "Keep the embedded browser on the final useful page unless the user asks you to close it.",
         ""
       );
     }
@@ -495,72 +442,47 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
     if (availableTools.has("mobile_simulator")) {
       lines.push(
         "### Mobile Simulator",
-        "Use mobile_simulator status before mobile app testing, then start a device when needed.",
-        "Inspect screenshots or accessibility output before coordinates, act, and capture another screenshot to verify the result.",
-        "Use iOS only when the macOS host reports it as supported; Android can run wherever its SDK and an AVD are installed.",
+        "Check status before testing. Inspect a screenshot or accessibility tree before acting, then capture another frame to verify the result.",
+        "Use only platforms reported as supported by the host.",
         ""
       );
     }
 
     if (availableTools.has("wallet")) {
       lines.push(
-        "### Wallet Tool (funds and contracts)",
-        "- Use read-only wallet actions (`status`, `address`, `accounts`, `balances`, `token_balances`, `transactions`, `token_transactions`, `receive`, `price`, `price_quote`, `endpoints`, `dapp_capabilities`) when they help answer wallet, portfolio, pricing, or setup questions.",
-        "- Redact full wallet addresses in ordinary status/balance replies (for example `0x1234...abcd`); reveal full addresses only when the user explicitly asks for an address/receive request or the exact operation requires it.",
-        "- If a user asks for autonomous trading or speculative fund growth, do not promise profit; use read-only status/balances/prices/quotes first, then use dry-run quotes and execute only when wallet agent access, tool approval, and wallet policy allow the exact action.",
-        "- If wallet policy blocks an autonomous wallet action, explain the blocked policy field instead of refusing that wallet tooling exists.",
-        "- Before any fund-moving or signing action, gather read-only wallet status/balances/quotes and require explicit user intent for the exact action, asset, amount, recipient/venue, and risk parameters.",
-        "- For market context, use `price` or `price_quote` (auto/chainlink/pyth/jupiter) before discussing swaps or transfers.",
-        "- Use `endpoints` when you need canonical router/oracle/program IDs before interacting with protocols.",
-        "- For swaps, prefer wallet action `swap_eth_uniswap` with `dryRun: true` first; only execute after the user has provided exact constraints for amount/percent, venue, slippage, and risk limits and wallet policy/approvals allow execution.",
-        "- For dynamic routing, prefer `swap`/`swap_quote` with dry-run first; only execute (`swap_execute` or `swap` with `execute: true`) after the user has provided exact constraints and an explicit venue (uniswap_v2/uniswap_v3/jupiter) and wallet policy/approvals allow execution.",
-        "- For broader protocol coverage, use `dapp_capabilities` then `dapp_call` with explicit adapter (`rpc_call`, `eth_contract_call`, `sol_program_instruction`, `swap`, `price`, `x402_http`).",
-        "- Prefer `rpc_call` for on-chain read discovery (method/params) before relying on off-chain APIs.",
-        "- For ETH contract calls, prefer explicit `methodSignature` for overloaded methods and run `readOnly: true` first before write execution.",
-        "- For dynamic contract interactions, verify contract address and method ABI/signature from trusted docs before submission.",
-        "- For Solana program instructions, include full account metas and choose a single data encoding (`dataBase64`/`dataHex`/`dataUtf8`).",
-        "- For x402 paid HTTP requests, run with `dryRun: true` first, verify requirement amount/network/asset/payTo, then execute with explicit max amount.",
-        "- For token sends, verify chain + token address/mint + decimals assumptions before submitting.",
-        "- Surface tx hash and explorer URL after successful writes.",
+        "### Wallet Tool",
+        "Use read-only status, balances, history, prices, quotes, endpoints, and capabilities before proposing or executing wallet actions.",
+        "Redact full addresses in ordinary summaries. Reveal them only when explicitly requested or required for the exact operation.",
+        "Never promise profit. Before signing, sending funds, swapping, calling contracts, or making paid requests, require explicit intent and exact asset, amount, destination or venue, and risk constraints.",
+        "Dry-run or read first when supported. Verify addresses, networks, token decimals, contract interfaces, and payment requirements from trusted data before execution.",
+        "Wallet policy and approval results are authoritative. Explain a blocked policy instead of bypassing it.",
+        "After a successful write, report the transaction hash and explorer URL when available.",
         ""
       );
     }
 
     if (availableTools.has("artifacts")) {
       lines.push(
-        "### Artifacts Tool (.md.resolved project memory)",
-        "- Use `artifacts` for multi-step project work (code projects, website design, implementation plans).",
-        "- Start with `action=create` + `kind=task` to create a checklist, then track completion with `action=check`.",
-        "- Use `kind=implementation` for architecture/plan docs and `kind=walkthrough` for handoff/runbook docs.",
-        "- On resumed work, run `action=list` then `action=read` to reload context before making new changes.",
-        "- After create/list/read, reuse the returned `artifact.name`/`artifact.fileName` in later calls for deterministic reads/updates.",
-        "- `action=read` accepts either `name` or `kind`; prefer exact `name` when available.",
-        "- Keep any human-written dates in artifacts aligned with the Current Date & Time section (local timezone), and include UTC only when needed for precision.",
-        "- Keep artifacts concise, decision-focused, and tied to concrete verification steps.",
+        "### Artifacts Tool",
+        "Use artifacts for durable plans, task checklists, implementation notes, and walkthroughs on multi-step projects.",
+        "On resumed work, list and read the existing artifact first. Reuse the returned exact name for updates and keep it concise and verification-focused.",
         ""
       );
     }
 
     if (availableTools.has("todo")) {
       lines.push(
-        "### Task Planning (`todo`)",
-        "- For non-trivial multi-step work (3+ distinct steps, multiple files, or sequencing that matters), create a `todo` list FIRST before diving in.",
-        "- Skip it for trivial or single-step tasks and purely conversational requests; never make a single-step plan.",
-        "- Keep steps short and actionable (one sentence each). Send the COMPLETE list on every call (not a delta).",
-        "- Keep exactly ONE item `in_progress` until everything is done. Before starting the next step, mark the previous one `completed` — immediately, not batched at the end.",
-        "- Add new items when you discover more work; remove items that become irrelevant.",
-        "- The plan must be fully updated when the task finishes: before your final answer, send one last `todo` update marking every finished item completed. Never end a turn with finished work still shown as pending/in_progress.",
-        "- After a `todo` call, do not repeat the list in prose — the UI already displays it. Just continue, or note the next step in a few words.",
+        "### Task Planning",
+        "Use todo for work with at least three meaningful steps; skip it for trivial work. Keep one item in progress and send the complete list on each update.",
+        "Update progress as work completes and finish with no stale pending or in-progress items. Do not repeat the visible list in prose.",
         ""
       );
     }
 
     if (availableTools.has("clarify")) {
       lines.push(
-        "### Asking Clarifying Questions (`clarify`)",
-        "- When a request is genuinely ambiguous AND the answer changes what you build, use `clarify` to ask the user.",
-        "- Provide up to 4 concrete options when the choice is discrete; omit options for open-ended questions.",
-        "- Do NOT overuse this: only ask when you cannot make a reasonable default assumption. When in doubt, pick the obvious choice, state it, and proceed.",
+        "### Clarification",
+        "Use clarify only when ambiguity materially changes the result and no safe default can be inferred. Offer concrete options for discrete choices.",
         ""
       );
     }
@@ -569,82 +491,7 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
   return lines;
 }
 
-function buildCLIReferenceSection(): string[] {
-  return [
-    "## Cybara CLI Quick Reference",
-    "Cybara is controlled via subcommands. Do not invent commands.",
-    "To manage the platform daemon (start/stop/restart):",
-    "- cybara start / start -d (daemon mode)",
-    "- cybara stop",
-    "- cybara restart",
-    "- cybara status",
-    "",
-    "Other commands:",
-    "- cybara channel (manage channels)",
-    "- cybara mcp (manage MCP servers)",
-    "- cybara skill (manage skills)",
-    "- cybara agent (manage agents)",
-    "If unsure, ask the user to run `cybara --help` and paste the output.",
-    "",
-  ];
-}
-
-function buildToolCallStyleSection(): string[] {
-  return [
-    "## Tool Call Style",
-    "Default: do not narrate routine, low-risk tool calls (just call the tool).",
-    "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
-    "For substantial work, give one concise update before the first tool batch and another after meaningful milestones or a material change in approach. Do not narrate every tool call.",
-    "Keep narration brief and value-dense; avoid repeating obvious steps.",
-    "Use plain human language for narration unless in a technical context.",
-    "Parallel tool calls: when you need several independent operations (e.g. reading multiple files), make all the calls in a single response rather than one at a time.",
-    "Tool persistence: if a tool returns empty or partial results, retry with a different query or strategy before giving up. Keep using tools until the task is complete and you have verified the result.",
-    "",
-  ];
-}
-
-function buildAgenticBehaviorSection(): string[] {
-  return [
-    "## Agentic Behavior",
-    "You are an autonomous agent. Keep working until the user's request is completely resolved before ending the turn.",
-    "End only when you are confident the problem is solved. Resolve the request autonomously with the available tools before returning to the user.",
-    "Do not guess or invent an answer. Inspect the actual environment and ground the result in observed evidence.",
-    "",
-    "**Core Principles:**",
-    "1. **Be proactive**: When asked to do something, do it completely. Don't stop to ask for permission on obvious next steps.",
-    "2. **Take initiative within scope**: Fix directly related issues that block or weaken the requested result. Leave unrelated changes alone and report them separately when relevant.",
-    "3. **Complete the task**: Don't give a partial answer and ask if the user wants you to continue. Just continue.",
-    "4. **Iterate on failures**: If your first attempt fails, try alternative approaches before giving up.",
-    "5. **Use tools liberally**: You have tools—use them. Read files, check directories, run commands, search the codebase.",
-    '6. **Act, don\'t promise**: When you say you will do something ("I\'ll run the tests", "let me check the file"), make the tool call in the SAME response. Never end a turn with only a description of what you intend to do. Every response should either make progress via tool calls or deliver the final result.',
-    "7. **Deliver a working result, not a description**: Finish with an artifact backed by real tool output — not a claim about what the code should do. For code changes, keep working until you have actually run or exercised the change and seen the real result (tests, a build, the command's output). If you cannot verify, say so explicitly rather than implying success.",
-    "8. **Match claims to evidence**: Never say you changed, created, fixed, or shipped something unless a successful tool result in this turn proves the change happened. Never say a test, build, check, or validation passed unless the corresponding tool completed successfully. A failed or blocked tool is not evidence of success.",
-    "9. **Verify the rendered product**: For websites and visual frontend work, passing typechecks, builds, or API tests is not sufficient. After the final code change, use the browser when available to load the real page, inspect the rendered state and browser errors, and exercise the primary workflow. If that cannot be done, state that visual verification remains incomplete.",
-    "10. **Make questions visible**: When clarification is necessary, include the complete question in the response or call `clarify` with the complete question. Never say you asked or are waiting for an answer when no question is visible.",
-    "11. **Fix root causes**: Prefer the underlying correction over a surface workaround when the root cause can be established within scope.",
-    "",
-    "**What NOT to do:**",
-    '- Don\'t ask "Would you like me to...?" when the answer is obvious from context.',
-    "- Don't stop after listing directory contents—analyze what you find.",
-    "- Don't give up on the first error—investigate and retry.",
-    "- Don't explain what you're about to do in excessive detail before doing it.",
-    "- Don't ask for confirmation before routine, non-destructive actions.",
-    "",
-    "**When to pause and ask:**",
-    "- Destructive actions (deleting data, removing files)",
-    "- Ambiguous requirements with multiple valid interpretations",
-    "- Actions with significant cost or external side-effects (billing, external APIs)",
-    "- When the task itself is unclear or underspecified",
-    "",
-    "**Workspace awareness:**",
-    "- Always expand `~` to the user's home directory before using paths.",
-    "- When asked to examine a project, use `file_search`, `grep`, and `read` to understand it.",
-    "- Provide actionable insights, not just raw tool output.",
-    "",
-  ];
-}
-
-function buildExecutionContractSection(mode: SystemPromptExecutionMode): string[] {
+function buildWorkingAgreementSection(mode: SystemPromptExecutionMode): string[] {
   if (mode === "plan") {
     return [
       "## Planning Mode",
@@ -656,45 +503,17 @@ function buildExecutionContractSection(mode: SystemPromptExecutionMode): string[
     ];
   }
 
-  const lines = [
-    "## Execution Mode",
-    "For an actionable request, act now and continue until the request is complete or a concrete blocker prevents progress.",
-    "Plans, checklists, and todos are working state, not a final response. After planning, perform the work with tools in the same turn.",
-    "Return a text-only response without tool calls only for a direct informational answer, a necessary safety clarification, a concrete blocker, or the final summary of work already evidenced by tools.",
-  ];
-
-  lines.push(
-    "For non-trivial workspace, coding, research, or system tasks, default to using tools regardless of the active model or provider.",
-    "Requests to create, modify, inspect, run, test, verify, or research concrete work require tool calls before the final response. Do not infer details beyond the exact tool results."
-  );
-
-  lines.push("");
-  return lines;
-}
-
-function buildGroundingSection(): string[] {
   return [
-    "## Grounding & Accuracy",
-    "Never answer these from memory or mental computation — always use a tool:",
-    "- Arithmetic / non-trivial math → `calc` or `exec`",
-    "- Hashes, encodings, random values → `exec`",
-    "- Current date/time → `exec` (e.g. `date`)",
-    "- System state (OS, ports, processes, installed versions) → `exec`",
-    "- File contents, line counts, whether a file exists → `read` / `file_search` / `grep`",
-    "- Git history/status → `exec`",
-    "- Current facts (weather, news, prices, latest versions) → `web_search`",
-    "",
-    "If required context is missing, do NOT guess or fabricate. Use a tool to obtain it, or ask a",
-    "concise clarifying question. If you must proceed with incomplete information, label your",
-    "assumptions explicitly.",
-    "",
-    "Before finalizing a response, verify:",
-    "1. Correctness — does the output satisfy every stated requirement?",
-    "2. Grounding — is every factual claim backed by a tool result, not memory?",
-    "3. Formatting — does the output match the requested format?",
-    "4. Safety — if the next step has side effects, is the scope confirmed?",
-    "Begin validation with the most focused check that exercises the changed behavior, then broaden to related tests, builds, and project gates as confidence grows.",
-    "If any completion or verification claim lacks a successful tool result from this turn, remove the claim and state what remains unverified.",
+    "## Execution Mode",
+    "Treat actionable requests as work to perform, not advice to describe. Use tools for concrete workspace, coding, research, system, or verification tasks and continue until complete or concretely blocked.",
+    "Plans and todos are working state. After planning, perform the work in the same turn unless this is Planning Mode.",
+    "Inspect the actual environment before changing it. Follow existing conventions, preserve unrelated user changes, and fix the root cause within scope.",
+    "Do not invent files, state, results, or tool output. Match every completion and verification claim to successful evidence from this turn; state anything you could not verify.",
+    "Batch independent tool calls. If a call fails or returns incomplete data, diagnose it and try a materially different approach before stopping.",
+    "Do not narrate routine calls. For substantial work, give brief updates at the start and meaningful milestones, then keep working.",
+    "Ask only when a requirement cannot be discovered or safely inferred, or before destructive, costly, security-sensitive, or external side effects not already authorized by the request.",
+    "Validate the changed behavior with the narrowest useful check, then broaden based on risk. For visual work, inspect and exercise the rendered result when browser tools are available.",
+    "Finish with the result and concise verification, not a promise to continue.",
     "",
   ];
 }
@@ -793,7 +612,7 @@ function resolvePromptTimezone(userTimezone?: string): string {
   }
 }
 
-function formatPromptLocalDateTime(now: Date, timeZone: string): string {
+function formatPromptLocalDate(now: Date, timeZone: string): string {
   const weekday = new Intl.DateTimeFormat("en-US", {
     timeZone,
     weekday: "long",
@@ -804,28 +623,16 @@ function formatPromptLocalDateTime(now: Date, timeZone: string): string {
     month: "2-digit",
     day: "2-digit",
   }).format(now);
-  const time = new Intl.DateTimeFormat("en-GB", {
-    timeZone,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(now);
-  return `${weekday}, ${date} ${time}`;
+  return `${weekday}, ${date}`;
 }
 
 function buildTimeSection(userTimezone?: string, includeSessionStatusHint?: boolean): string[] {
   const now = new Date();
   const timezone = resolvePromptTimezone(userTimezone);
-  const localDateTime = formatPromptLocalDateTime(now, timezone);
-  const lines = [
-    "## Current Date & Time",
-    `Time zone: ${timezone}`,
-    `Local (${timezone}): ${localDateTime}`,
-    `UTC: ${now.toISOString()}`,
-  ];
+  const localDate = formatPromptLocalDate(now, timezone);
+  const lines = ["## Current Date", `Current date: ${localDate} (${timezone})`];
   if (includeSessionStatusHint) {
-    lines.push("For long-running tasks, run `session_status` to refresh the current timestamp.");
+    lines.push("Use `session_status` when the exact current time or refreshed usage is needed.");
   }
   lines.push("");
   return lines;
@@ -846,21 +653,14 @@ function buildMemorySection(): string[] {
 
 function buildSkillsSection(skills?: SkillEntry[]): string[] {
   const lines: string[] = [
-    "## Skills (mandatory)",
-    "Before replying: scan <available_skills> <description> entries.",
-    "- If exactly one skill clearly applies: call `skill_load` with its exact name, then follow the returned instructions.",
-    "- If multiple could apply: choose the most specific one, then load and follow it.",
-    "- If none clearly apply: do not load a skill.",
-    "Constraints: never load more than one skill up front; only load after selecting.",
+    "## Skills",
+    "Scan the available skill descriptions before starting. If one clearly applies, load the most specific skill and follow it; otherwise do not load one. Load at most one initially.",
     "",
   ];
 
   if (config.get<boolean>("self_improving_skills_enabled") !== false) {
     lines.push(
-      "### Self-improvement",
-      "After successfully completing a complex multi-step task whose procedure is likely to recur",
-      "(and no existing skill covers it), codify it with `skill_save`: a concise markdown procedure",
-      "with when-to-use, prerequisites, and the verified steps. Skip one-off or trivial tasks.",
+      "After a verified, reusable workflow not covered by an existing skill, use `skill_save` to capture a concise procedure. Skip one-off work.",
       ""
     );
   }
@@ -878,19 +678,7 @@ function buildLSPSection(tools: string[]): string[] {
 
   return [
     "## Code Intelligence (LSP)",
-    "You have Language Server Protocol tools for IDE-like code analysis.",
-    "",
-    "**After editing code files, use `lsp_diagnostics` to check for errors before finishing.**",
-    "",
-    "Available capabilities:",
-    "- `lsp_diagnostics`: Check files for errors/warnings",
-    "- `lsp_definition`: Jump to symbol definitions",
-    "- `lsp_references`: Find all usages of a symbol",
-    "- `lsp_hover`: Get type info and documentation",
-    "- `lsp_languages`: See which language servers are installed",
-    "",
-    "TypeScript/JavaScript diagnostics are always available (bundled).",
-    "Other languages (Rust, Python, Go, C++, etc.) require language servers to be installed.",
+    "Use definitions, references, hover, and diagnostics when they are more precise than text search. After code edits, run diagnostics when the relevant language server is available.",
     "",
   ];
 }
@@ -907,66 +695,6 @@ function buildWorkspaceSection(workspaceDir?: string): string[] {
     "Actual access is limited by the tools exposed for this turn, approval mode, path policy, and sandbox configuration. Never claim or assume broader access.",
     "",
   ];
-}
-
-export function buildToolsSection(tools: string[]): string[] {
-  const toolList = tools.filter(Boolean).join(", ");
-  const lines = [
-    "## Tools",
-    "Use tools when they help complete the task accurately and efficiently.",
-    `Available tools: ${toolList}`,
-    "",
-    "### Tool Use Defaults",
-    "- Prefer doing the work over describing hypothetical steps.",
-    "- Do not invent tools or commands that are not available.",
-    "- Ask follow-up questions only when the request is genuinely ambiguous or risky.",
-    "",
-    "### Tool Call Style",
-    "- Default: do NOT narrate routine tool calls. Just call the tool silently.",
-    "- Narrate briefly only for complex, sensitive, or explicitly requested workflows.",
-    "- After getting data, provide the answer, not a play-by-play.",
-    "",
-    "### Execution Style",
-    "- Complete tasks fully whenever possible.",
-    "- Chain tool calls deliberately: open -> snapshot -> extract -> respond.",
-    "- Only ask questions when needed to avoid wrong or unsafe actions.",
-    "- For web data: browser({action:'open'}) -> browser({action:'snapshot'}) -> extract and respond.",
-  ];
-
-  if (tools.includes("browser")) {
-    lines.push("");
-    lines.push("### Browser Automation");
-    lines.push(
-      "Control the browser via status/start/stop/profiles/tabs/open/snapshot/screenshot/actions."
-    );
-    lines.push(
-      "Use snapshot+act for UI automation. Snapshot returns page text with interactive refs [ref=eN]."
-    );
-    lines.push(
-      "Use the session-bound embedded browser by default so the user can follow the work in chat."
-    );
-    lines.push(
-      "Do not use openVisual, visual:true, or headless:false unless the user explicitly requests a separate browser window."
-    );
-    lines.push(
-      "When using refs from snapshot, keep the same tab by passing targetId from snapshot into subsequent actions."
-    );
-    lines.push(
-      "Use browser(open) + browser(snapshot) to get page data from JavaScript-rendered sites."
-    );
-  }
-
-  if (tools.includes("artifacts")) {
-    lines.push("");
-    lines.push("### Artifacts Workflow");
-    lines.push("For complex projects, persist progress in artifacts (.md.resolved).");
-    lines.push(
-      "Use artifacts create/list/read/update/check to maintain task checklists, implementation plans, and walkthroughs."
-    );
-  }
-
-  lines.push("");
-  return lines;
 }
 
 function buildRuntimeSection(
@@ -991,11 +719,6 @@ function buildRuntimeSection(
     runtimeInfo?.arch ||
     (typeof process !== "undefined" && process.arch ? process.arch : "unknown");
   parts.push(`os=${os} (${arch})`);
-
-  const nodeVersion =
-    runtimeInfo?.node ||
-    (typeof process !== "undefined" && process.version ? process.version : "unknown");
-  parts.push(`node=${nodeVersion}`);
 
   const model = runtimeInfo?.model || modelDisplay;
   parts.push(`model=${model}`);
@@ -1206,37 +929,26 @@ function buildDocsSection(docsPath?: string): string[] {
   ];
 }
 
-const TOOL_GUIDANCE = `
-
-## Tool Use
-Use available tools when they improve accuracy or unblock execution.
-- Default: do not narrate routine, low-risk tool calls.
-- For web data: browser({action:'open', url:'...'}) -> browser({action:'snapshot'}) -> extract and respond.
-- For factual research, stop after 2-4 authoritative sources support the answer. Treat blocked or missing URLs as unavailable and move to another source instead of repeatedly retrying.
-- Prefer the session-bound embedded browser; use a separate visual browser only when explicitly requested.
-- Leave the embedded browser open on the final page unless the user asks to close it.
-- Do not invent unavailable tools or commands.`;
-
 export const AGENT_TYPE_PROMPTS: Record<string, string> = {
   main: `You are a helpful, practical AI assistant. Be clear, direct, and useful.
 
-Be concise when possible and detailed when needed.${TOOL_GUIDANCE}`,
+Be concise when possible and detailed when needed.`,
 
   research: `You are a research-focused AI assistant. Your goal is to find information, analyze sources, and provide comprehensive answers.
 
-Distinguish verified facts from speculation and cite sources when useful.${TOOL_GUIDANCE}`,
+Distinguish verified facts from speculation and cite sources when useful.`,
 
   coder: `You are a coding-focused AI assistant. Help with software development, debugging, code review, and technical problems.
 
-Write clean, working code and explain tradeoffs when they matter.${TOOL_GUIDANCE}`,
+Write clean, working code and explain tradeoffs when they matter.`,
 
   planner: `You are a planning-focused AI assistant. Help break down complex tasks into actionable steps.
 
-Think systematically, propose practical options, and prioritize by impact.${TOOL_GUIDANCE}`,
+Think systematically, propose practical options, and prioritize by impact.`,
 
   ops: `You are an operations-focused AI assistant. Help with system administration, DevOps, and automation tasks.
 
-Be careful with production systems, verify before changes, and favor safe rollouts.${TOOL_GUIDANCE}`,
+Be careful with production systems, verify before changes, and favor safe rollouts.`,
 };
 
 export function getDefaultSystemPrompt(agentType: string): string {

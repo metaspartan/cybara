@@ -34,6 +34,7 @@ describe("agent helper modules", () => {
   test("keeps provider-specific token parameter preference outside AgentManager", () => {
     expect(shouldPreferMaxCompletionTokens("z.ai")).toBe(true);
     expect(shouldPreferMaxCompletionTokens("zai")).toBe(true);
+    expect(shouldPreferMaxCompletionTokens("kimi-code-oauth")).toBe(true);
     expect(shouldPreferMaxCompletionTokens("openai")).toBe(false);
   });
 

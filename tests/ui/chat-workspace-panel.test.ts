@@ -134,6 +134,11 @@ describe("chat workspace panel", () => {
     expect(browserImageSource).toContain("createAuthenticatedWebSocket");
     expect(browserImageSource).toContain("LatestBrowserFrameDecoder");
     expect(browserImageSource).toContain("image.src = source");
+    expect(browserImageSource).toContain("window.createImageBitmap(frame)");
+    expect(browserImageSource).toContain(
+      'canvas.getContext("2d", { alpha: false, desynchronized: true })'
+    );
+    expect(browserImageSource).toContain("context?.drawImage");
     expect(browserImageSource).not.toContain("setStreamSource");
     expect(browserImageSource).toContain("framePresentedRef.current(false)");
     expect(browserStreamClientSource).toContain("class LatestBrowserFrameDecoder");

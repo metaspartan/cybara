@@ -1,6 +1,5 @@
 import { type MutableRefObject, useEffect, useRef } from "react";
 import { createAuthenticatedWebSocket, withGatewayBasePath } from "@/lib/auth";
-import { decodeBrowserPreviewImage } from "./browserPreviewInteraction";
 import {
   type BrowserPreviewStreamSender,
   LatestBrowserFrameDecoder,
@@ -30,6 +29,47 @@ function frameBlob(value: unknown): Blob | null {
   return null;
 }
 
+interface DecodedBrowserFrame {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+  release: () => void;
+}
+
+async function decodeBrowserFrame(frame: Blob): Promise<DecodedBrowserFrame> {
+  if (typeof window.createImageBitmap === "function") {
+    const bitmap = await window.createImageBitmap(frame);
+    return {
+      source: bitmap,
+      width: bitmap.width,
+      height: bitmap.height,
+      release: () => bitmap.close(),
+    };
+  }
+  const source = URL.createObjectURL(frame);
+  const image = new Image();
+  image.decoding = "async";
+  image.src = source;
+  try {
+    if (typeof image.decode === "function") await image.decode();
+    else {
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("Browser preview frame could not be decoded"));
+      });
+    }
+    return {
+      source: image,
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      release: () => URL.revokeObjectURL(source),
+    };
+  } catch (error) {
+    URL.revokeObjectURL(source);
+    throw error;
+  }
+}
+
 export function BrowserPreviewImage({
   pageId,
   visible,
@@ -43,7 +83,8 @@ export function BrowserPreviewImage({
   onStreamError,
 }: BrowserPreviewImageProps) {
   const imageRef = useRef<HTMLImageElement>(null);
-  const streamSourceRef = useRef<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
   const fallbackSourceRef = useRef(fallbackSource);
   const connectedRef = useRef(false);
   const connectionChangeRef = useRef(onConnectionChange);
@@ -61,33 +102,51 @@ export function BrowserPreviewImage({
     if (connectedRef.current) return;
     const image = imageRef.current;
     if (!image) return;
-    const previous = streamSourceRef.current;
-    streamSourceRef.current = null;
     if (fallbackSource) image.src = fallbackSource;
     else image.removeAttribute("src");
-    if (previous?.startsWith("blob:")) URL.revokeObjectURL(previous);
     framePresentedRef.current(Boolean(fallbackSource));
   }, [fallbackSource]);
 
   useEffect(() => {
-    const releaseStreamSource = (): void => {
-      const source = streamSourceRef.current;
-      streamSourceRef.current = null;
-      if (source?.startsWith("blob:")) URL.revokeObjectURL(source);
+    const clearStreamFrame = (): void => {
+      const canvas = canvasRef.current;
+      const context = canvasContextRef.current;
+      if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
+      canvasContextRef.current = null;
+      if (canvas) {
+        canvas.width = 1;
+        canvas.height = 1;
+      }
     };
-    const presentStreamSource = (source: string): void => {
-      const image = imageRef.current;
-      if (!image) {
-        URL.revokeObjectURL(source);
+    const presentStreamFrame = (frame: DecodedBrowserFrame): void => {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        frame.release();
         return;
       }
-      const previous = streamSourceRef.current;
-      streamSourceRef.current = source;
-      image.src = source;
-      if (previous?.startsWith("blob:") && previous !== source) URL.revokeObjectURL(previous);
-      framePresentedRef.current(true);
+      if (canvas.width !== frame.width || canvas.height !== frame.height) {
+        canvas.width = frame.width;
+        canvas.height = frame.height;
+        canvasContextRef.current = null;
+      }
+      const context =
+        canvasContextRef.current ?? canvas.getContext("2d", { alpha: false, desynchronized: true });
+      canvasContextRef.current = context;
+      try {
+        context?.drawImage(frame.source, 0, 0, frame.width, frame.height);
+        framePresentedRef.current(Boolean(context));
+      } finally {
+        frame.release();
+      }
     };
-    releaseStreamSource();
+    const presentFallback = (): void => {
+      const image = imageRef.current;
+      const fallback = fallbackSourceRef.current;
+      if (image && fallback) image.src = fallback;
+      else image?.removeAttribute("src");
+      framePresentedRef.current(Boolean(fallback));
+    };
+    clearStreamFrame();
     framePresentedRef.current(false);
     if (!visible || !pageId) {
       inputSenderRef.current = null;
@@ -100,19 +159,10 @@ export function BrowserPreviewImage({
     let reconnectTimer: number | null = null;
     let heartbeatTimer: number | null = null;
     let reconnectAttempt = 0;
-    const decoder = new LatestBrowserFrameDecoder(
-      async (frame) => {
-        const source = URL.createObjectURL(frame);
-        try {
-          await decodeBrowserPreviewImage(source);
-          return source;
-        } catch (error) {
-          URL.revokeObjectURL(source);
-          throw error;
-        }
-      },
-      presentStreamSource,
-      (source) => URL.revokeObjectURL(source)
+    const decoder = new LatestBrowserFrameDecoder<DecodedBrowserFrame>(
+      decodeBrowserFrame,
+      presentStreamFrame,
+      (frame) => frame.release()
     );
     const connect = (): void => {
       if (!active) return;
@@ -170,6 +220,8 @@ export function BrowserPreviewImage({
         if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
         heartbeatTimer = null;
         if (!active) return;
+        clearStreamFrame();
+        presentFallback();
         const delay = Math.min(5_000, 250 * 2 ** reconnectAttempt);
         reconnectAttempt += 1;
         reconnectTimer = window.setTimeout(connect, delay);
@@ -185,21 +237,25 @@ export function BrowserPreviewImage({
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
       socket?.close();
-      releaseStreamSource();
-      const image = imageRef.current;
-      const fallback = fallbackSourceRef.current;
-      if (image && fallback) image.src = fallback;
-      else image?.removeAttribute("src");
+      clearStreamFrame();
+      presentFallback();
     };
   }, [inputSenderRef, maxHeight, maxWidth, pageId, quality, visible]);
 
   return (
-    <img
-      ref={imageRef}
-      alt="Browser preview"
-      className="absolute inset-0 h-full w-full select-none object-contain"
-      decoding="async"
-      draggable={false}
-    />
+    <>
+      <img
+        ref={imageRef}
+        alt="Browser preview"
+        className="absolute inset-0 h-full w-full select-none object-contain"
+        decoding="async"
+        draggable={false}
+      />
+      <canvas
+        ref={canvasRef}
+        className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain"
+        aria-hidden="true"
+      />
+    </>
   );
 }

@@ -8,6 +8,7 @@ import {
   usesProviderAdaptiveReasoning,
   type ReasoningEffort,
 } from "../../../shared/reasoning-capabilities";
+import { isKimiCodeProvider, kimiThinkingParams } from "./kimi-wire";
 
 export {
   coerceReasoningEffort,
@@ -40,6 +41,7 @@ export function openAICompatReasoningParams(
   effort: ReasoningEffort,
   model?: string | null
 ): Record<string, unknown> {
+  if (isKimiCodeProvider(providerId)) return kimiThinkingParams(effort);
   if (usesProviderAdaptiveReasoning(providerId, model)) return {};
   const format = PROVIDER_THINKING_FORMAT[providerId] || "openai";
   switch (format) {
