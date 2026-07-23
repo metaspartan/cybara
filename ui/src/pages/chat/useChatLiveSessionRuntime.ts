@@ -52,6 +52,7 @@ import {
   materializedPendingChatIds,
   mergePendingChatMessages,
   pendingChatIdsAwaitingTranscript,
+  removeHandedOffPendingChatMessage,
 } from "./pendingQueueState";
 
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
@@ -974,7 +975,16 @@ export function useChatLiveSessionRuntime({
         const isEventForVisibleSession =
           !!activeSession && !!payloadSessionId && payloadSessionId === activeSession;
         if (isQueuedTurnHandoff && payloadSessionId && isEventForVisibleSession) {
-          void refreshPendingMessages(payloadSessionId);
+          void refreshSessionMessagesRef.current(payloadSessionId).then((refreshed) => {
+            if (!refreshed || activeSessionRef.current !== payloadSessionId) return;
+            setPendingMessages((current) =>
+              removeHandedOffPendingChatMessage(
+                current,
+                payload.pendingChatId,
+                payload.clientPendingId
+              )
+            );
+          });
         }
         if (
           !loadingRef.current &&

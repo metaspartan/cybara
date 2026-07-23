@@ -9,6 +9,7 @@ import {
   materializedPendingChatIds,
   mergePendingChatMessages,
   pendingChatIdsAwaitingTranscript,
+  removeHandedOffPendingChatMessage,
 } from "../../ui/src/pages/chat/pendingQueueState";
 import type { PendingChatMessage } from "../../ui/src/lib/status-stream";
 
@@ -177,5 +178,29 @@ describe("web optimistic pending queue cache", () => {
     expect(
       pendingChatIdsAwaitingTranscript([], [acknowledged], new Set([acknowledged.id])).size
     ).toBe(0);
+  });
+
+  test("removes the handed-off server and optimistic queue rows after transcript refresh", () => {
+    const sessionId = `web-pending-live-handoff-${Date.now()}`;
+    const optimistic = makeOptimistic(sessionId, "handoff", "queued follow-up");
+    const acknowledged: PendingChatMessage = {
+      id: "pending-server-live-handoff",
+      sessionId,
+      clientPendingId: optimistic.id,
+      content: optimistic.content,
+      createdAt: optimistic.createdAt,
+      updatedAt: optimistic.updatedAt,
+      mode: "queued",
+      sequence: 1,
+    };
+    const unrelated = makeOptimistic(sessionId, "unrelated", "another follow-up");
+
+    expect(
+      removeHandedOffPendingChatMessage(
+        [optimistic, acknowledged, unrelated],
+        acknowledged.id,
+        optimistic.id
+      )
+    ).toEqual([unrelated]);
   });
 });

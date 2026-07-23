@@ -86,3 +86,21 @@ export function pendingChatIdsAwaitingTranscript(
       .map((message) => message.id)
   );
 }
+
+export function removeHandedOffPendingChatMessage(
+  messages: PendingChatMessage[],
+  pendingChatId?: string,
+  clientPendingId?: string
+): PendingChatMessage[] {
+  const normalizedPendingChatId = pendingChatId?.trim() || "";
+  const normalizedClientPendingId = clientPendingId?.trim() || "";
+  if (!normalizedPendingChatId && !normalizedClientPendingId) return messages;
+  return messages.filter((message) => {
+    const messageClientPendingId = message.clientPendingId?.trim() || "";
+    return (
+      message.id !== normalizedPendingChatId &&
+      message.id !== normalizedClientPendingId &&
+      messageClientPendingId !== normalizedClientPendingId
+    );
+  });
+}
