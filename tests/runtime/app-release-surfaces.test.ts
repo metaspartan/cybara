@@ -16,6 +16,9 @@ describe("app release surface wiring", () => {
     expect(ciWorkflow).toContain("workflow_dispatch: {}");
     expect(ciWorkflow).toContain("pull_request: {}");
     expect(ciWorkflow).toContain("merge_group: {}");
+    expect(ciWorkflow).toContain(
+      "group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}"
+    );
     expect(ciWorkflow).toMatch(/branches:\s+\- main\s+\- master\s+\- dev/);
     expect(ciWorkflow).toContain("bun run check:ci");
     expect(ciWorkflow).toContain("bun run audit:ci");
