@@ -280,6 +280,33 @@ describe("mobile live chat cache", () => {
     ]);
   });
 
+  test("preserves meaningful thought activity when an incremental tool event arrives", () => {
+    const merged = mergeLiveActivity(
+      [
+        {
+          id: "live-thinking-1783015200000",
+          phase: "start",
+          text: "Checking the workspace before editing",
+          timestamp: 1783015200000,
+          toolName: "__thought",
+        },
+      ],
+      {
+        id: "tool-1",
+        phase: "start",
+        text: "Reading package.json",
+        timestamp: 1783015200500,
+        toolName: "read",
+        toolCallId: "tool-1",
+      }
+    );
+
+    expect(merged.map((activity) => activity.text)).toEqual([
+      "Checking the workspace before editing",
+      "Reading package.json",
+    ]);
+  });
+
   test("keeps mobile live rows when queue snapshots have no activity rows", () => {
     const sessionId = `mobile-queue-snapshot-${Date.now()}`;
     const current = {

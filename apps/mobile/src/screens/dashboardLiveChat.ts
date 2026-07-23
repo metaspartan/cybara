@@ -283,9 +283,10 @@ export function mergeLiveActivity(
 }
 
 function isGenericMobileLiveStatusActivity(activity: SessionProcessActivitySummary): boolean {
+  if (activity.toolName !== "__thought") return false;
+  if (activity.id === "live-agent-status") return true;
   return (
-    activity.toolName === "__thought" &&
-    (activity.id === "live-agent-status" || activity.id.startsWith("live-thinking-"))
+    activity.id.startsWith("live-thinking-") && activity.text.trim().toLowerCase() === "thinking..."
   );
 }
 
