@@ -13,6 +13,7 @@ describe("app release surface wiring", () => {
   test("CI gates every pull request, merge queue, and release branch", () => {
     const ciWorkflow = read(".github/workflows/ci.yml");
 
+    expect(ciWorkflow).toContain("workflow_dispatch: {}");
     expect(ciWorkflow).toContain("pull_request: {}");
     expect(ciWorkflow).toContain("merge_group: {}");
     expect(ciWorkflow).toMatch(/branches:\s+\- main\s+\- master\s+\- dev/);
