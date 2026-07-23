@@ -66,3 +66,23 @@ export function materializedPendingChatIds(
       .filter(Boolean)
   );
 }
+
+export function pendingChatIdsAwaitingTranscript(
+  serverMessages: PendingChatMessage[] | undefined,
+  currentMessages: PendingChatMessage[],
+  transcriptPendingIds: ReadonlySet<string>
+): ReadonlySet<string> {
+  const serverIds = new Set(
+    normalizePendingChatMessages(serverMessages).map((message) => message.id)
+  );
+  return new Set(
+    currentMessages
+      .filter(
+        (message) =>
+          !message.id.startsWith("optimistic-") &&
+          !serverIds.has(message.id) &&
+          !transcriptPendingIds.has(message.id)
+      )
+      .map((message) => message.id)
+  );
+}

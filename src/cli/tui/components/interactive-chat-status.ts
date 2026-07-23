@@ -24,6 +24,7 @@ interface InteractiveChatStatusState {
   streamDetail: string;
   streamingText: string;
   streamStatus: TUIStreamStatus;
+  queuedTurnHandoff: { sessionId: string; pendingChatId: string; timestamp: number } | null;
 }
 
 export function useInteractiveChatStatus({
@@ -36,6 +37,11 @@ export function useInteractiveChatStatus({
   const [streamDetail, setStreamDetail] = React.useState("");
   const [streamingText, setStreamingText] = React.useState("");
   const [liveActivities, setLiveActivities] = React.useState<TUIStreamActivity[]>([]);
+  const [queuedTurnHandoff, setQueuedTurnHandoff] = React.useState<{
+    sessionId: string;
+    pendingChatId: string;
+    timestamp: number;
+  } | null>(null);
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -63,6 +69,16 @@ export function useInteractiveChatStatus({
       if (event.type === "assistant_token") {
         setStreamingText((current) => current + event.delta);
         return;
+      }
+      if (
+        event.pendingChatId ||
+        event.detail?.trim().toLowerCase() === "starting queued follow-up"
+      ) {
+        setQueuedTurnHandoff({
+          sessionId: activeSessionId,
+          pendingChatId: event.pendingChatId || `${activeSessionId}-${event.timestamp}`,
+          timestamp: event.timestamp,
+        });
       }
       setStreamStatus(event.status);
       setStreamDetail(
@@ -111,5 +127,6 @@ export function useInteractiveChatStatus({
     streamDetail,
     streamingText,
     streamStatus,
+    queuedTurnHandoff,
   };
 }

@@ -465,6 +465,15 @@ export function useMobileSessionRuntime({
 
           if (event.type !== "status" || event.sessionId !== sessionId) return;
           if (!acceptLiveEvent(event)) return;
+          const queuedTurnHandoff =
+            typeof event.pendingChatId === "string" ||
+            (event.detail || "").trim().toLowerCase() === "starting queued follow-up";
+          if (queuedTurnHandoff) {
+            setSessionActive(true);
+            void loadSession(false).finally(() => {
+              void hydratePendingMessages();
+            });
+          }
           if (event.status === "idle") {
             const steeringHandoff =
               (event.detail || "").trim().toLowerCase() === "steering to follow-up...";
@@ -511,6 +520,7 @@ export function useMobileSessionRuntime({
     api,
     commitLiveAssistant,
     hydrateLiveAssistant,
+    hydratePendingMessages,
     loadSession,
     sessionId,
     shouldPreserveOptimisticPending,

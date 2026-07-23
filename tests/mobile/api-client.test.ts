@@ -246,6 +246,21 @@ describe("mobile API client", () => {
         },
       ],
     });
+    expect(
+      normalizeMobileStatusStreamEvent({
+        type: "status",
+        status: "thinking",
+        timestamp: 1001,
+        sessionId: "s1",
+        detail: "Starting queued follow-up",
+        pendingChatId: "pending-1",
+        clientPendingId: "optimistic-1",
+      })
+    ).toMatchObject({
+      type: "status",
+      pendingChatId: "pending-1",
+      clientPendingId: "optimistic-1",
+    });
   });
 
   test("normalizes scoped session status snapshots for chat hydration", () => {

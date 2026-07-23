@@ -49,7 +49,9 @@ final class GatewayRuntimeModelTests: XCTestCase {
               "detail": "Running bun test",
               "toolName": "exec_command",
               "toolCallId": "tool-1",
-              "sandboxProvider": "host"
+              "sandboxProvider": "host",
+              "pendingChatId": "pending-1",
+              "clientPendingId": "optimistic-1"
             }
             """#
         )
@@ -100,6 +102,8 @@ final class GatewayRuntimeModelTests: XCTestCase {
         XCTAssertEqual(status.sequence, 3)
         XCTAssertEqual(status.toolCallId, "tool-1")
         XCTAssertEqual(status.sandboxProvider, "host")
+        XCTAssertEqual(status.pendingChatId, "pending-1")
+        XCTAssertEqual(status.clientPendingId, "optimistic-1")
         let liveActivity = try XCTUnwrap(nativeLiveActivity(from: status))
         XCTAssertEqual(liveActivity.phase, .start)
         XCTAssertEqual(liveActivity.text, "Running bun test")

@@ -641,7 +641,6 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
   const materializedMessage = materializePendingMessage(session, next);
   next.materialized = true;
   persistPendingChatItem(next);
-  syncPendingChatStatus(sessionId);
   const materializedPersisted = await persistChatSessionSnapshot(session, materializedMessage);
   if (!materializedPersisted) {
     log.warn("Queued user turn session metadata could not be persisted", {
@@ -658,7 +657,10 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
       detail: "Starting queued follow-up",
       sessionId,
       agentId: next.request.agentId,
+      pendingChatId: next.id,
+      clientPendingId: next.clientPendingId,
     });
+    syncPendingChatStatus(sessionId);
     const response = await runChatTurnWithQueueDrain(
       {
         ...next.request,
