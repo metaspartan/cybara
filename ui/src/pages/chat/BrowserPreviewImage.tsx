@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { type MutableRefObject, useEffect, useRef } from "react";
 import { createAuthenticatedWebSocket, withGatewayBasePath } from "@/lib/auth";
 import { decodeBrowserPreviewImage } from "./browserPreviewInteraction";
-import { LatestBrowserFrameDecoder } from "./browserPreviewStreamClient";
+import {
+  type BrowserPreviewStreamSender,
+  LatestBrowserFrameDecoder,
+} from "./browserPreviewStreamClient";
 
 interface BrowserPreviewImageProps {
   pageId: string | null;
@@ -10,8 +13,10 @@ interface BrowserPreviewImageProps {
   quality: number;
   maxWidth: number;
   maxHeight: number;
+  inputSenderRef: MutableRefObject<BrowserPreviewStreamSender | null>;
   onConnectionChange: (connected: boolean) => void;
   onFramePresented: (presented: boolean) => void;
+  onStreamError: (message: string) => void;
 }
 
 function browserStreamUrl(path: string): string {
@@ -32,28 +37,61 @@ export function BrowserPreviewImage({
   quality,
   maxWidth,
   maxHeight,
+  inputSenderRef,
   onConnectionChange,
   onFramePresented,
+  onStreamError,
 }: BrowserPreviewImageProps) {
-  const [streamSource, setStreamSource] = useState<string | null>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const streamSourceRef = useRef<string | null>(null);
+  const fallbackSourceRef = useRef(fallbackSource);
+  const connectedRef = useRef(false);
   const connectionChangeRef = useRef(onConnectionChange);
   const framePresentedRef = useRef(onFramePresented);
+  const streamErrorRef = useRef(onStreamError);
 
   useEffect(() => {
     connectionChangeRef.current = onConnectionChange;
     framePresentedRef.current = onFramePresented;
-  }, [onConnectionChange, onFramePresented]);
+    streamErrorRef.current = onStreamError;
+  }, [onConnectionChange, onFramePresented, onStreamError]);
 
   useEffect(() => {
-    return () => {
-      if (streamSource?.startsWith("blob:")) URL.revokeObjectURL(streamSource);
+    fallbackSourceRef.current = fallbackSource;
+    if (connectedRef.current) return;
+    const image = imageRef.current;
+    if (!image) return;
+    const previous = streamSourceRef.current;
+    streamSourceRef.current = null;
+    if (fallbackSource) image.src = fallbackSource;
+    else image.removeAttribute("src");
+    if (previous?.startsWith("blob:")) URL.revokeObjectURL(previous);
+    framePresentedRef.current(Boolean(fallbackSource));
+  }, [fallbackSource]);
+
+  useEffect(() => {
+    const releaseStreamSource = (): void => {
+      const source = streamSourceRef.current;
+      streamSourceRef.current = null;
+      if (source?.startsWith("blob:")) URL.revokeObjectURL(source);
     };
-  }, [streamSource]);
-
-  useEffect(() => {
-    setStreamSource(null);
+    const presentStreamSource = (source: string): void => {
+      const image = imageRef.current;
+      if (!image) {
+        URL.revokeObjectURL(source);
+        return;
+      }
+      const previous = streamSourceRef.current;
+      streamSourceRef.current = source;
+      image.src = source;
+      if (previous?.startsWith("blob:") && previous !== source) URL.revokeObjectURL(previous);
+      framePresentedRef.current(true);
+    };
+    releaseStreamSource();
     framePresentedRef.current(false);
     if (!visible || !pageId) {
+      inputSenderRef.current = null;
+      connectedRef.current = false;
       connectionChangeRef.current(false);
       return;
     }
@@ -73,10 +111,7 @@ export function BrowserPreviewImage({
           throw error;
         }
       },
-      (source) => {
-        setStreamSource(source);
-        framePresentedRef.current(true);
-      },
+      presentStreamSource,
       (source) => URL.revokeObjectURL(source)
     );
     const connect = (): void => {
@@ -95,20 +130,43 @@ export function BrowserPreviewImage({
       socket.binaryType = "blob";
       socket.onopen = () => {
         reconnectAttempt = 0;
+        connectedRef.current = true;
         connectionChangeRef.current(true);
+        const sender: BrowserPreviewStreamSender = (input) => {
+          if (socket?.readyState !== WebSocket.OPEN || socket.bufferedAmount > 512_000)
+            return false;
+          socket.send(JSON.stringify(input));
+          return true;
+        };
+        inputSenderRef.current = sender;
         heartbeatTimer = window.setInterval(() => {
           if (socket?.readyState === WebSocket.OPEN) socket.send("ping");
         }, 15_000);
       };
       socket.onmessage = (event) => {
-        if (typeof event.data === "string") return;
+        if (typeof event.data === "string") {
+          try {
+            const value: unknown = JSON.parse(event.data);
+            if (
+              value &&
+              typeof value === "object" &&
+              (value as { type?: unknown }).type === "input_error" &&
+              typeof (value as { error?: unknown }).error === "string"
+            ) {
+              streamErrorRef.current((value as { error: string }).error);
+            }
+          } catch {
+            return;
+          }
+          return;
+        }
         const frame = frameBlob(event.data);
         if (frame) decoder.enqueue(frame);
       };
       socket.onclose = () => {
+        connectedRef.current = false;
+        inputSenderRef.current = null;
         connectionChangeRef.current(false);
-        setStreamSource(null);
-        framePresentedRef.current(false);
         if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
         heartbeatTimer = null;
         if (!active) return;
@@ -121,21 +179,27 @@ export function BrowserPreviewImage({
     return () => {
       active = false;
       decoder.dispose();
+      connectedRef.current = false;
+      inputSenderRef.current = null;
       connectionChangeRef.current(false);
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
       socket?.close();
+      releaseStreamSource();
+      const image = imageRef.current;
+      const fallback = fallbackSourceRef.current;
+      if (image && fallback) image.src = fallback;
+      else image?.removeAttribute("src");
     };
-  }, [maxHeight, maxWidth, pageId, quality, visible]);
+  }, [inputSenderRef, maxHeight, maxWidth, pageId, quality, visible]);
 
-  const source = streamSource ?? fallbackSource;
-  return source ? (
+  return (
     <img
-      src={source}
+      ref={imageRef}
       alt="Browser preview"
       className="absolute inset-0 h-full w-full select-none object-contain"
       decoding="async"
       draggable={false}
     />
-  ) : null;
+  );
 }

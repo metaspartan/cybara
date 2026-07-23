@@ -35,6 +35,10 @@ import {
 } from "./browserPreviewInteraction";
 import { browserPreviewPollDelay, browserPreviewViewport } from "./browserPreviewTiming";
 import { BrowserPreviewImage } from "./BrowserPreviewImage";
+import {
+  type BrowserPreviewStreamInput,
+  type BrowserPreviewStreamSender,
+} from "./browserPreviewStreamClient";
 
 interface BrowserPage {
   id: string;
@@ -252,6 +256,7 @@ export function ChatWorkspaceBrowser({
   const previewRefreshPageRef = useRef<BrowserPage | null>(null);
   const scrollBatcherRef = useRef<BrowserScrollBatcher | null>(null);
   const streamConnectedRef = useRef(false);
+  const streamInputRef = useRef<BrowserPreviewStreamSender | null>(null);
   const framePresenterRef = useRef<BrowserFramePresenter<BrowserPreview> | null>(null);
   const previewRevisionRef = useRef("");
   const lastNavigationRequestRef = useRef(0);
@@ -660,14 +665,17 @@ export function ChatWorkspaceBrowser({
   }, [navigateTo, navigationRequest, navigationUrl, visible]);
 
   const sendPageInput = useCallback(
-    async (
-      targetPage: BrowserPage,
-      action: "pointer/click" | "scroll" | "keyboard",
-      body: object,
-      immediateFrame = true
-    ) => {
+    async (targetPage: BrowserPage, input: BrowserPreviewStreamInput, immediateFrame = true) => {
       lastInteractionAtRef.current = Date.now();
+      if (streamConnectedRef.current && streamInputRef.current?.(input)) return;
       try {
+        const action = input.type === "pointer_click" ? "pointer/click" : input.type;
+        const body =
+          input.type === "pointer_click"
+            ? { x: input.x, y: input.y }
+            : input.type === "scroll"
+              ? { deltaX: input.deltaX, deltaY: input.deltaY }
+              : { key: input.key };
         const response = await apiFetch(
           `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/${action}`,
           {
@@ -696,7 +704,7 @@ export function ChatWorkspaceBrowser({
       return;
     }
     const batcher = new BrowserScrollBatcher(async (delta) => {
-      await sendPageInput(page, "scroll", delta, false);
+      await sendPageInput(page, { type: "scroll", ...delta }, false);
     });
     scrollBatcherRef.current = batcher;
     return () => {
@@ -715,7 +723,7 @@ export function ChatWorkspaceBrowser({
     );
     if (!point) return;
     event.currentTarget.focus();
-    void sendPageInput(page, "pointer/click", { x: point.x, y: point.y });
+    void sendPageInput(page, { type: "pointer_click", x: point.x, y: point.y });
   };
 
   const handlePreviewWheel = (event: WheelEvent<HTMLDivElement>) => {
@@ -753,7 +761,7 @@ export function ChatWorkspaceBrowser({
     ]);
     if (!modifier && event.key.length !== 1 && !supportedNamedKeys.has(event.key)) return;
     event.preventDefault();
-    void sendPageInput(page, "keyboard", { key });
+    void sendPageInput(page, { type: "keyboard", key });
   };
 
   const cursorStyle = (() => {
@@ -846,11 +854,13 @@ export function ChatWorkspaceBrowser({
           quality={BROWSER_PREVIEW_QUALITY}
           maxWidth={browserViewport.width}
           maxHeight={browserViewport.height}
+          inputSenderRef={streamInputRef}
           onConnectionChange={(connected) => {
             streamConnectedRef.current = connected;
             if (!connected && page) schedulePreviewRefresh(page, true);
           }}
           onFramePresented={setStreamFrameVisible}
+          onStreamError={setError}
         />
         {!displayedPreview?.screenshot && !streamFrameVisible ? (
           <div className="flex h-full items-center justify-center p-8 text-center">

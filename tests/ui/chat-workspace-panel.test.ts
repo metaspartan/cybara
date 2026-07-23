@@ -133,11 +133,13 @@ describe("chat workspace panel", () => {
     expect(browserImageSource).toContain('decoding="async"');
     expect(browserImageSource).toContain("createAuthenticatedWebSocket");
     expect(browserImageSource).toContain("LatestBrowserFrameDecoder");
-    expect(browserImageSource).toContain("setStreamSource(null)");
+    expect(browserImageSource).toContain("image.src = source");
+    expect(browserImageSource).not.toContain("setStreamSource");
     expect(browserImageSource).toContain("framePresentedRef.current(false)");
     expect(browserStreamClientSource).toContain("class LatestBrowserFrameDecoder");
     expect(browserImageSource).toContain("everyNthFrame");
     expect(browserSource).toContain("streamConnectedRef.current");
+    expect(browserSource).toContain("streamInputRef.current?.(input)");
     expect(browserSource).toContain("loadBrowserState");
     expect(browserSource).toContain('query.set("revision", previewRevisionRef.current)');
     expect(browserSource).toContain('aria-label="Open in system browser"');
@@ -151,9 +153,9 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("const BROWSER_START_TIMEOUT_MS = 90_000");
     expect(browserSource).toContain('apiFetch("/api/browser/status"');
     expect(browserSource).toContain("browserStartupLabel(status)");
-    expect(browserSource).toContain('sendPageInput(page, "pointer/click"');
-    expect(browserSource).toContain('sendPageInput(page, "scroll"');
-    expect(browserSource).toContain('sendPageInput(page, "keyboard"');
+    expect(browserSource).toContain('sendPageInput(page, { type: "pointer_click"');
+    expect(browserSource).toContain('sendPageInput(page, { type: "scroll"');
+    expect(browserSource).toContain('sendPageInput(page, { type: "keyboard"');
     expect(browserSource).toContain("transition-[left,top] duration-150");
     expect(browserSource).not.toContain(">\n              Agent\n");
     expect(browserImageSource).toContain("absolute inset-0 h-full w-full");

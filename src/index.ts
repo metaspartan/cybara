@@ -34,6 +34,10 @@ import {
 import { agentManager } from "./core/agent";
 import { subscribeBrowserPreviewStream } from "./core/browser/preview-stream";
 import {
+  executeBrowserPreviewInput,
+  parseBrowserPreviewInput,
+} from "./core/browser/preview-stream-input";
+import {
   channelManager,
   dingtalkAdapter,
   discordAdapter,
@@ -367,6 +371,7 @@ type WsData =
       everyNthFrame: number;
       unsubscribe?: () => Promise<void>;
       closed?: boolean;
+      inputChain: Promise<void>;
     };
 
 function browserStreamPageId(pathname: string): string | null {
@@ -570,6 +575,7 @@ function createGatewayServer(
             maxWidth: boundedStreamParameter(url, "maxWidth", 1280, 320, 2560),
             maxHeight: boundedStreamParameter(url, "maxHeight", 900, 320, 1600),
             everyNthFrame: boundedStreamParameter(url, "everyNthFrame", 1, 1, 4),
+            inputChain: Promise.resolve(),
           },
           headers: streamAuth.protocol
             ? { "Sec-WebSocket-Protocol": streamAuth.protocol }
@@ -986,7 +992,32 @@ function createGatewayServer(
             } catch {
               return;
             }
+            return;
           }
+          if (Buffer.byteLength(text) > 2_048) return;
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            return;
+          }
+          const input = parseBrowserPreviewInput(parsed);
+          if (!input) return;
+          data.inputChain = data.inputChain
+            .then(async () => await executeBrowserPreviewInput(data.pageId, input))
+            .catch((error: unknown) => {
+              if (data.closed) return;
+              try {
+                ws.send(
+                  JSON.stringify({
+                    type: "input_error",
+                    error: error instanceof Error ? error.message : "Browser input failed",
+                  })
+                );
+              } catch {
+                return;
+              }
+            });
           return;
         }
 

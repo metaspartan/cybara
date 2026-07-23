@@ -219,9 +219,12 @@ export function dedupeProcessActivities(activities: ProcessActivityInfo[]): Proc
       typeof activity.toolCallId === "string" && activity.toolCallId.trim()
         ? activity.toolCallId.trim().toLowerCase()
         : "";
-    const key = toolCallIdKey
-      ? `${activity.phase}:${toolCallIdKey}`
-      : `${activity.phase}:${(activity.toolName || "").toLowerCase()}:${normalizedText.toLowerCase()}:${Math.floor(activity.timestamp / 1000)}`;
+    const key =
+      activity.toolName === "__thought"
+        ? `thought:${normalizedText.toLowerCase()}`
+        : toolCallIdKey
+          ? `${activity.phase}:${toolCallIdKey}`
+          : `${activity.phase}:${(activity.toolName || "").toLowerCase()}:${normalizedText.toLowerCase()}:${Math.floor(activity.timestamp / 1000)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push({ ...activity, text: normalizedText });

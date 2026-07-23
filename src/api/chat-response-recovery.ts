@@ -14,6 +14,9 @@ import {
 
 type AgentExecuteOptions = NonNullable<Parameters<typeof agentManager.execute>[2]>;
 
+const MAX_RESPONSE_RECOVERY_ATTEMPTS = 2;
+const EMPTY_RECOVERY_ASSISTANT_CONTENT = "I could not complete the previous attempt.";
+
 export interface AssistantResponseRecoveryParams {
   agentId: string;
   allowPlanOnly?: boolean;
@@ -70,6 +73,23 @@ function buildRetryInstruction(
   return "Your previous response did not execute the request. Re-read the conversation, perform concrete tool calls now, verify the result, and then give a user-facing summary. Do not reply with only a completion claim.";
 }
 
+function appendRecoveryPrompt(
+  messages: AgentMessage[],
+  assistantContent: string,
+  instruction: string
+): void {
+  const lastRole = messages.at(-1)?.role;
+  if (lastRole === "user") {
+    messages.push({
+      role: "assistant",
+      content: assistantContent.trim() || EMPTY_RECOVERY_ASSISTANT_CONTENT,
+    });
+  } else if (lastRole !== "assistant" && assistantContent.trim()) {
+    messages.push({ role: "assistant", content: assistantContent });
+  }
+  messages.push({ role: "user", content: instruction });
+}
+
 export async function recoverAssistantResponse(
   params: AssistantResponseRecoveryParams
 ): Promise<AssistantResponseRecoveryResult> {
@@ -113,77 +133,73 @@ export async function recoverAssistantResponse(
   }
 
   const retryMessages = [...params.executionMessages];
-  if (params.responseContent.trim()) {
-    retryMessages.push({ role: "assistant", content: params.responseContent });
-  }
-  retryMessages.push({
-    role: "user",
-    content: buildRetryInstruction(
-      shouldRetryToolExecution,
-      params.requiredToolName,
-      evidenceIssue
-    ),
-  });
+  let latestContent = params.responseContent;
+  let latestEvidenceIssue = evidenceIssue;
+  let combinedToolCalls = [...params.toolResults];
+  let lastError: string | undefined;
 
-  try {
-    const retryResult = await agentManager.execute(params.agentId, retryMessages, {
-      ...params.executeOptions,
-      useTools: params.toolsEnabled,
-      requireToolUse: shouldRetryToolExecution,
-      requiredToolName: shouldRetryToolExecution ? params.requiredToolName : undefined,
-    });
-    const retryToolCalls = retryResult.tool_calls || [];
-    const combinedToolCalls = [...params.toolResults, ...retryToolCalls];
-    const successfulCombinedToolCalls = combinedToolCalls.filter(isSuccessfulToolCall);
-    const retryHasRequiredToolCall = params.requiredToolName
-      ? successfulCombinedToolCalls.some((toolCall) => toolCall.name === params.requiredToolName)
-      : requireActionEvidence
-        ? combinedToolCalls.some(isEvidenceToolCall)
-        : successfulCombinedToolCalls.length > 0;
-    const retryIsSubstantive = !shouldRecoverNonSubstantiveAssistantCompletion(
-      params.userMessage,
-      visibleAssistantContent(retryResult.content),
-      successfulCombinedToolCalls.length
+  for (let attempt = 0; attempt < MAX_RESPONSE_RECOVERY_ATTEMPTS; attempt += 1) {
+    appendRecoveryPrompt(
+      retryMessages,
+      latestContent,
+      buildRetryInstruction(shouldRetryToolExecution, params.requiredToolName, latestEvidenceIssue)
     );
-    const retryEvidenceIssue = findAssistantEvidenceIssue(
-      visibleAssistantContent(retryResult.content),
-      combinedToolCalls,
-      {
-        allowPlanOnly: params.allowPlanOnly,
-        requireActionEvidence,
-        userMessage: params.userMessage,
+
+    try {
+      const retryResult = await agentManager.execute(params.agentId, retryMessages, {
+        ...params.executeOptions,
+        useTools: params.toolsEnabled,
+        requireToolUse: shouldRetryToolExecution,
+        requiredToolName: shouldRetryToolExecution ? params.requiredToolName : undefined,
+      });
+      latestContent = retryResult.content;
+      combinedToolCalls = [...combinedToolCalls, ...(retryResult.tool_calls || [])];
+      const successfulCombinedToolCalls = combinedToolCalls.filter(isSuccessfulToolCall);
+      const retryHasRequiredToolCall = params.requiredToolName
+        ? successfulCombinedToolCalls.some((toolCall) => toolCall.name === params.requiredToolName)
+        : requireActionEvidence
+          ? combinedToolCalls.some(isEvidenceToolCall)
+          : successfulCombinedToolCalls.length > 0;
+      const retryIsSubstantive = !shouldRecoverNonSubstantiveAssistantCompletion(
+        params.userMessage,
+        visibleAssistantContent(latestContent),
+        successfulCombinedToolCalls.length
+      );
+      latestEvidenceIssue = findAssistantEvidenceIssue(
+        visibleAssistantContent(latestContent),
+        combinedToolCalls,
+        {
+          allowPlanOnly: params.allowPlanOnly,
+          requireActionEvidence,
+          userMessage: params.userMessage,
+        }
+      );
+      if (
+        !latestEvidenceIssue &&
+        ((shouldRetryToolExecution && retryHasRequiredToolCall) ||
+          (!shouldRetryToolExecution && retryIsSubstantive))
+      ) {
+        return {
+          result: retryResult,
+          responseContent: latestContent,
+          toolResults: combinedToolCalls,
+        };
       }
-    );
-    if (
-      !retryEvidenceIssue &&
-      ((shouldRetryToolExecution && retryHasRequiredToolCall) ||
-        (!shouldRetryToolExecution && retryIsSubstantive))
-    ) {
-      return {
-        result: retryResult,
-        responseContent: retryResult.content,
-        toolResults: combinedToolCalls,
-      };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      break;
     }
-    return {
-      responseContent: retryEvidenceIssue
-        ? buildUnsupportedAssistantClaimMessage(retryEvidenceIssue)
-        : shouldRecoverCompletion
-          ? buildNoUsableAssistantResponseMessage()
-          : evidenceIssue
-            ? buildUnsupportedAssistantClaimMessage(evidenceIssue)
-            : params.responseContent,
-      toolResults: combinedToolCalls,
-    };
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : String(error),
-      responseContent: shouldRecoverCompletion
+  }
+
+  return {
+    error: lastError,
+    responseContent: latestEvidenceIssue
+      ? buildUnsupportedAssistantClaimMessage(latestEvidenceIssue)
+      : shouldRecoverCompletion
         ? buildNoUsableAssistantResponseMessage()
         : evidenceIssue
           ? buildUnsupportedAssistantClaimMessage(evidenceIssue)
-          : params.responseContent,
-      toolResults: params.toolResults,
-    };
-  }
+          : latestContent,
+    toolResults: combinedToolCalls,
+  };
 }

@@ -103,14 +103,18 @@ describe("chat response recovery", () => {
     expect(result.message.content).toBe("Completed.");
   });
 
-  test("reports an honest failure after a second empty response", async () => {
+  test("reports an honest failure after bounded empty-response recovery", async () => {
     const agentId = createTestAgent("Empty Completion Agent");
     const sessionId = `empty-completion-${crypto.randomUUID()}`;
     createdSessionIds.push(sessionId);
+    const executionMessages: Array<Array<{ role: string; content: string }>> = [];
     let callCount = 0;
 
-    agentManager.execute = (async () => {
+    agentManager.execute = (async (_agentId, messages) => {
       callCount += 1;
+      executionMessages.push(
+        messages.map((entry) => ({ role: entry.role, content: entry.content }))
+      );
       return { content: "" };
     }) as typeof agentManager.execute;
 
@@ -121,9 +125,14 @@ describe("chat response recovery", () => {
       tools: false,
     });
 
-    expect(callCount).toBe(2);
-    expect(result.message.content).toContain("no usable response");
-    expect(result.message.content).toContain("no tool actions were executed");
+    expect(callCount).toBe(3);
+    for (const messages of executionMessages.slice(1)) {
+      expect(messages.at(-2)?.role).toBe("assistant");
+      expect(messages.at(-2)?.content.trim().length).toBeGreaterThan(0);
+      expect(messages.at(-1)?.role).toBe("user");
+    }
+    expect(result.message.content).toContain("couldn't produce a usable response");
+    expect(result.message.content).not.toContain("The model returned");
   });
 
   test("forces a tool-backed retry for unsupported implementation claims", async () => {
@@ -241,10 +250,64 @@ describe("chat response recovery", () => {
       tools: true,
     });
 
-    expect(callCount).toBe(2);
-    expect(result.message.content).toContain("did not record a tool attempt");
-    expect(result.message.tool_calls).toHaveLength(1);
+    expect(callCount).toBe(3);
+    expect(result.message.content).toContain("couldn't complete the requested action");
+    expect(result.message.content).not.toContain("Cybara did not record");
+    expect(result.message.tool_calls).toHaveLength(2);
     expect(result.message.tool_calls?.[0]?.name).toBe("todo");
+  });
+
+  test("recovers a Kimi-shaped continuation on the final bounded attempt", async () => {
+    const agentId = createTestAgent("Kimi Continuation Recovery Agent");
+    const sessionId = `kimi-continuation-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const executionMessages: Array<Array<{ role: string; content: string }>> = [];
+    let callCount = 0;
+
+    agentManager.execute = (async (_agentId, messages) => {
+      callCount += 1;
+      executionMessages.push(
+        messages.map((entry) => ({ role: entry.role, content: entry.content }))
+      );
+      if (callCount === 1) {
+        return { content: "I'll continue the deployment now." };
+      }
+      if (callCount === 2) {
+        return { content: "Actually, let me try using a different tool." };
+      }
+      return {
+        content: "Inspected the deployment configuration and found the service unit is missing.",
+        tool_calls: [
+          {
+            name: "read",
+            args: { path: "/tmp/vibemail.service" },
+            result: { error: "File not found" },
+          },
+          {
+            name: "exec",
+            args: { command: "ls /tmp" },
+            result: { output: "vibemail", exitCode: 0 },
+          },
+        ],
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Continue please",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(3);
+    expect(executionMessages[2]?.slice(-3).map((entry) => entry.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+    ]);
+    expect(result.message.content).toContain("service unit is missing");
+    expect(result.message.content).not.toContain("Actually, let me try");
+    expect(result.message.tool_calls).toHaveLength(2);
   });
 
   test("continues when a model stops after promising to execute its plan", async () => {
@@ -417,8 +480,9 @@ describe("chat response recovery", () => {
       tools: true,
     });
 
-    expect(callCount).toBe(2);
-    expect(result.message.content).toContain("did not record a successful verification action");
+    expect(callCount).toBe(3);
+    expect(result.message.content).toContain("couldn't verify the requested result");
+    expect(result.message.content).not.toContain("Cybara did not record");
     expect(result.message.tool_calls?.[0]?.status).toBe("failed");
   });
 

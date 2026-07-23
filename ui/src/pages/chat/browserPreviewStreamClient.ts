@@ -1,3 +1,10 @@
+export type BrowserPreviewStreamInput =
+  | { type: "scroll"; deltaX: number; deltaY: number }
+  | { type: "pointer_click"; x: number; y: number }
+  | { type: "keyboard"; key: string };
+
+export type BrowserPreviewStreamSender = (input: BrowserPreviewStreamInput) => boolean;
+
 export class LatestBrowserFrameDecoder {
   private queued: Blob | null = null;
   private decoding = false;

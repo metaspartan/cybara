@@ -90,6 +90,34 @@ describe("chat process activities", () => {
     ]);
   });
 
+  test("collapses repeated progress thoughts across nested recovery attempts", () => {
+    const activities: ProcessActivityInfo[] = [
+      {
+        id: "thought-1",
+        phase: "result",
+        text: "Actually, let me try using a different tool.",
+        timestamp: 10,
+        toolName: "__thought",
+      },
+      {
+        id: "thought-2",
+        phase: "result",
+        text: "Actually, let me try using a different tool.",
+        timestamp: 20_000,
+        toolName: "__thought",
+      },
+      {
+        id: "thought-3",
+        phase: "result",
+        text: "Checking the deployment result.",
+        timestamp: 21_000,
+        toolName: "__thought",
+      },
+    ];
+
+    expect(dedupeProcessActivities(activities)).toEqual([activities[0], activities[2]]);
+  });
+
   test("builds ordered fallbacks with sandbox provenance and meaningful thoughts", () => {
     expect(
       buildFallbackProcessActivities(
