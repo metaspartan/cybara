@@ -17,6 +17,7 @@ export interface ToolCallOutcome {
 
 export type AssistantEvidenceIssue =
   | "missing_clarification"
+  | "unfinished_execution"
   | "unsupported_completion"
   | "unsupported_verification";
 
@@ -262,6 +263,11 @@ const HIDDEN_CLARIFICATION_PATTERNS = [
   /^\s*(?:waiting|wait)\s+for\s+(?:your\s+)?(?:answer|response)\b[^?]*$/i,
 ];
 
+const UNFINISHED_EXECUTION_PATTERNS = [
+  /\bnext\s+(?:concrete\s+)?(?:plan|steps?)\b[\s\S]{0,1600}\b(?:executing|fixing|continuing|working)\s+now\b/i,
+  /\bI (?:have not|haven't) yet\b[\s\S]{0,1600}\b(?:executing|fixing|continuing|working)\s+now\b/i,
+];
+
 function successfulToolCalls(toolCalls: ToolCallResultLike[]): ToolCallResultLike[] {
   return toolCalls.filter(isSuccessfulToolCall);
 }
@@ -308,6 +314,9 @@ export function findAssistantEvidenceIssue(
     !hasSuccessfulClarification(toolCalls)
   ) {
     return "missing_clarification";
+  }
+  if (hasPattern(visibleContent, UNFINISHED_EXECUTION_PATTERNS)) {
+    return "unfinished_execution";
   }
   if (
     hasPattern(visibleContent, COMPLETION_CLAIM_PATTERNS) &&
@@ -363,6 +372,9 @@ export function buildUnsupportedAssistantClaimMessage(issue: AssistantEvidenceIs
   }
   if (issue === "unsupported_completion") {
     return "The model claimed the work was completed, but Cybara did not record a successful tool action that supports that claim. Treat this turn as incomplete.";
+  }
+  if (issue === "unfinished_execution") {
+    return "The model stopped after describing unfinished work instead of completing it. Treat this turn as incomplete.";
   }
   return "The model claimed verification succeeded, but Cybara did not record a successful verification action. Treat this result as unverified.";
 }

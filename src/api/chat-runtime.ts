@@ -369,6 +369,19 @@ async function finishInterruptedChatTurn(
   };
 }
 
+async function finishAbortedChatTurn(
+  session: InMemoryChatSession,
+  agent: { id: string; name: string },
+  controller: AbortController,
+  consumedSteeringCompletionIds: Set<string>
+): Promise<ChatResponse> {
+  const response = isStoppedChatTurn(controller)
+    ? await finishStoppedChatTurn(session, agent, controller)
+    : await finishInterruptedChatTurn(session, agent, controller);
+  for (const id of consumedSteeringCompletionIds) resolvePendingChatCompletion(id, response);
+  return response;
+}
+
 function enqueuePendingChatMessage(
   request: ChatRequest,
   sessionId: string,
@@ -1738,18 +1751,7 @@ async function handleChatTurn(
       });
     } catch (error) {
       if (isChatTurnInterrupted(error, turnAbortController.signal)) {
-        if (isStoppedChatTurn(turnAbortController)) {
-          const response = await finishStoppedChatTurn(session, agent, turnAbortController);
-          for (const id of consumedSteeringCompletionIds) {
-            resolvePendingChatCompletion(id, response);
-          }
-          return response;
-        }
-        const response = await finishInterruptedChatTurn(session, agent, turnAbortController);
-        for (const id of consumedSteeringCompletionIds) {
-          resolvePendingChatCompletion(id, response);
-        }
-        return response;
+        return await finishAbortedChatTurn(session, agent, turnAbortController, consumedSteeringCompletionIds);
       }
       if (provider) recordCircuitFailure(`llm:${provider.id}`);
       log.error("LLM API error", {
@@ -1763,6 +1765,10 @@ async function handleChatTurn(
   } else {
     responseContent =
       "No AI provider configured. Please add a provider (like MiniMax, OpenAI, or Ollama) to enable AI responses.";
+  }
+
+  if (turnAbortController.signal.aborted && agent) {
+    return await finishAbortedChatTurn(session, agent, turnAbortController, consumedSteeringCompletionIds);
   }
 
   responseContent = appendToolImageReferences(responseContent, allToolCalls);

@@ -433,7 +433,11 @@ function truncateForTitlePrompt(value: string, maxChars: number): string {
 
 export function parseIsoTimestampMs(value?: string): number | undefined {
   if (typeof value !== "string") return undefined;
-  const parsed = Date.parse(value);
+  const trimmed = value.trim();
+  const normalized = /(?:z|[+-]\d{2}:?\d{2})$/i.test(trimmed)
+    ? trimmed
+    : `${trimmed.replace(" ", "T")}Z`;
+  const parsed = Date.parse(normalized);
   if (!Number.isFinite(parsed)) return undefined;
   return parsed;
 }

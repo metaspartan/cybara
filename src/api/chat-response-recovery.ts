@@ -43,6 +43,9 @@ function buildRetryInstruction(
   if (evidenceIssue === "missing_clarification") {
     return "Your previous response said a question was asked, but no question was visible. Ask the actual concise question directly now, or use the clarify tool with the complete question and options. Do not say that you asked without including the question.";
   }
+  if (evidenceIssue === "unfinished_execution") {
+    return "Your previous response stopped after describing work you said you were executing now. Continue immediately, use the available tools to finish and verify the request, and return only after the work is complete or a concrete blocker prevents further progress.";
+  }
   if (evidenceIssue === "unsupported_completion") {
     return "Your previous response claimed work was completed without a successful tool action supporting that claim. Perform the requested work with the available tools now, verify the concrete result, and report only what the tool results establish.";
   }
@@ -79,7 +82,9 @@ export async function recoverAssistantResponse(
   const shouldRetryToolExecution =
     (params.shouldRequireToolUse && (params.toolResults.length === 0 || !hasRequiredToolCall)) ||
     (params.toolsEnabled === true &&
-      (evidenceIssue === "unsupported_completion" || evidenceIssue === "unsupported_verification"));
+      (evidenceIssue === "unfinished_execution" ||
+        evidenceIssue === "unsupported_completion" ||
+        evidenceIssue === "unsupported_verification"));
   if (!shouldRetryToolExecution && !shouldRecoverCompletion && !evidenceIssue) {
     return {
       responseContent: params.responseContent,

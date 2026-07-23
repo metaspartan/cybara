@@ -39,6 +39,7 @@ import {
 import {
   clearCachedLiveSessionState,
   readCachedLiveSessionState,
+  resolveLiveSessionStartedAtMs,
   writeCachedLiveSessionState,
 } from "./liveSessionState";
 import { writeCachedSessionMessages } from "./messageCache";
@@ -267,6 +268,7 @@ export function useChatLiveSessionRuntime({
       const cached = readCachedLiveSessionState(snapshotSessionId);
       const localActivities = cached?.activities || [];
       const next = resolveSnapshotLiveState(snapshot, localActivities);
+      const startedAtMs = cached?.startedAtMs ?? resolveLiveSessionStartedAtMs(snapshot);
       if (latestTimestamp > 0) {
         const previousTimestamp = latestStatusTimestampBySessionRef.current[snapshotSessionId] || 0;
         if (latestTimestamp > previousTimestamp) {
@@ -281,8 +283,15 @@ export function useChatLiveSessionRuntime({
         runId: eventCursorBySessionRef.current[snapshotSessionId]?.runId ?? null,
         sequence:
           eventCursorBySessionRef.current[snapshotSessionId]?.sequence ?? cached?.sequence ?? 0,
-        startedAtMs: cached?.startedAtMs ?? (latestTimestamp || Date.now()),
+        startedAtMs,
       });
+      if (
+        activeSessionRef.current === snapshotSessionId &&
+        (liveRunStartedAtMsRef.current === null || startedAtMs < liveRunStartedAtMsRef.current)
+      ) {
+        liveRunStartedAtMsRef.current = startedAtMs;
+        setLiveRunStartedAtMs(startedAtMs);
+      }
       return true;
     },
     [acceptSessionEvent, isSessionStopSuppressed, resolveSnapshotLiveState, snapshotLatestTimestamp]

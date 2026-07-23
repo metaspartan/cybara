@@ -19,6 +19,47 @@ describe("session status snapshots", () => {
     expect(isSessionStatusActive("idle")).toBe(false);
   });
 
+  test("preserves a run start across status updates and resets it for a new run", () => {
+    const sessionId = `status-start-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const startedAt = Date.now();
+
+    broadcastStatus({
+      status: "thinking",
+      timestamp: startedAt,
+      sessionId,
+      runId: "run-1",
+    });
+    broadcastStatus({
+      status: "tool_executing",
+      timestamp: startedAt + 50,
+      sessionId,
+      runId: "run-1",
+      toolName: "read",
+    });
+    expect(getSessionStatusSnapshot(sessionId)?.startedAt).toBe(startedAt);
+
+    broadcastStatus({
+      status: "idle",
+      timestamp: startedAt + 99,
+      sessionId,
+      runId: "run-1",
+    });
+    broadcastStatus({
+      status: "thinking",
+      timestamp: startedAt + 100,
+      sessionId,
+      runId: "run-2",
+    });
+    expect(getSessionStatusSnapshot(sessionId)?.startedAt).toBe(startedAt + 100);
+
+    broadcastStatus({
+      status: "idle",
+      timestamp: startedAt + 101,
+      sessionId,
+      runId: "run-2",
+    });
+  });
+
   test("persists meaningful thought details and excludes generic generating text", () => {
     const sessionId = `status-thought-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 

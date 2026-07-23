@@ -39,6 +39,7 @@ export interface StatusSessionSnapshot {
   runId?: string;
   sequence?: number;
   status: StreamAgentStatus;
+  startedAt?: number;
   timestamp: number;
   detail?: string;
   agentId?: string;

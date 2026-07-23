@@ -7,7 +7,7 @@ import {
   restorePersistedPendingChatQueues,
 } from "../../src/api/chat";
 import { settlePendingChatFailure } from "../../src/api/chat-pending-failure";
-import { hasPendingChatMessages } from "../../src/api/chat-pending-state";
+import { hasPendingChatMessages, preparePendingMessage } from "../../src/api/chat-pending-state";
 import {
   loadPersistedPendingChatItems,
   persistPendingChatItem,
@@ -50,6 +50,40 @@ afterEach(async () => {
 });
 
 describe("pending chat durability", () => {
+  test("does not propagate a future restored timestamp into a queued message", () => {
+    const now = Date.now();
+    const sessionId = `pending-future-${crypto.randomUUID()}`;
+    const session = {
+      id: sessionId,
+      agentId: "pending-agent",
+      title: null,
+      messages: [
+        {
+          role: "assistant" as const,
+          content: "Old corrupted timestamp",
+          timestamp: new Date(now + 6 * 60 * 60 * 1000).toISOString(),
+        },
+      ],
+      createdAt: new Date(now).toISOString(),
+      updatedAt: new Date(now).toISOString(),
+      persisted: true,
+    };
+    const item: PendingChatItem = {
+      id: `pending_${crypto.randomUUID()}`,
+      sessionId,
+      request: { message: "continue", sessionId },
+      content: "continue",
+      createdAt: now,
+      updatedAt: now,
+      mode: "queued",
+      sequence: 1,
+      materialized: false,
+    };
+
+    const message = preparePendingMessage(session, item);
+    expect(Date.parse(message.timestamp || "")).toBeLessThanOrEqual(Date.now() + 10);
+  });
+
   test("materialized queue entries do not count as visible pending work", () => {
     const sessionId = `materialized-pending-${crypto.randomUUID()}`;
     createdSessionIds.push(sessionId);

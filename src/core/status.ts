@@ -104,6 +104,7 @@ export interface SessionStatusSnapshot {
   runId?: string;
   sequence?: number;
   status: AgentStatus;
+  startedAt: number;
   timestamp: number;
   detail?: string;
   agentId?: string;
@@ -172,6 +173,7 @@ function pendingOnlySnapshot(
   return {
     sessionId,
     status: "thinking",
+    startedAt: timestamp,
     timestamp,
     detail: "Queued follow-up",
     activities: [],
@@ -401,6 +403,10 @@ export function reduceSessionStatusSnapshot(
     runId: payload.runId || previous?.runId,
     sequence: payload.sequence ?? previous?.sequence,
     status: payload.status,
+    startedAt:
+      previous && (!payload.runId || !previous.runId || payload.runId === previous.runId)
+        ? previous.startedAt
+        : payload.timestamp,
     timestamp: payload.timestamp,
     detail: sanitizeActivityText(payload.detail),
     agentId: payload.agentId,

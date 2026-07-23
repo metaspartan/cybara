@@ -151,6 +151,8 @@ export function materializeInterruptedAssistantBeforeSteering(
     (steeringIndex >= 0
       ? parseIsoTimestampMs(session.messages[steeringIndex]?.timestamp)
       : parseIsoTimestampMs(previousInterruptedAssistant?.timestamp)) || Date.now();
+  const boundedSteeringTimestampMs = Math.min(steeringTimestampMs, Date.now());
+  const statusSnapshot = getSessionStatusSnapshot(session.id);
   const interruptedActivities = dedupeProcessActivities([
     ...(observedActivities || []),
     ...(getSessionProcessActivities(session.id, {
@@ -163,9 +165,27 @@ export function materializeInterruptedAssistantBeforeSteering(
     (latest, activity) => Math.max(latest, activity.timestamp),
     0
   );
+  const earliestActivityTimestamp = interruptedActivities.reduce(
+    (earliest, activity) =>
+      activity.timestamp > 0 ? Math.min(earliest, activity.timestamp) : earliest,
+    Number.POSITIVE_INFINITY
+  );
+  const completionTimestampMs = Math.min(
+    Date.now(),
+    Math.max(0, boundedSteeringTimestampMs - 1, latestActivityTimestamp + 1)
+  );
+  const runStartedAtMs =
+    statusSnapshot?.startedAt ||
+    (Number.isFinite(earliestActivityTimestamp)
+      ? earliestActivityTimestamp
+      : boundedSteeringTimestampMs);
+  const workedDurationMs = Math.max(
+    0,
+    completionTimestampMs - Math.min(runStartedAtMs, completionTimestampMs)
+  );
   const steeringCompletion = buildSteeringCompletionActivity(
     pendingSteeringId,
-    Math.max(0, steeringTimestampMs - 1, latestActivityTimestamp + 1)
+    completionTimestampMs
   );
   const processActivities = dedupeProcessActivities([...interruptedActivities, steeringCompletion]);
 
@@ -175,14 +195,16 @@ export function materializeInterruptedAssistantBeforeSteering(
       ...processActivities,
     ]);
     previousInterruptedAssistant.process_activities = merged;
+    previousInterruptedAssistant.worked_duration_ms = workedDurationMs;
     return previousInterruptedAssistant;
   }
 
   const assistantMessage: ChatMessage = {
     role: "assistant",
     content: "",
-    timestamp: new Date(Math.max(0, steeringTimestampMs - 1)).toISOString(),
+    timestamp: new Date(completionTimestampMs).toISOString(),
     process_activities: processActivities,
+    worked_duration_ms: workedDurationMs,
     _pendingSteeringId: pendingSteeringId,
   };
   session.messages.splice(steeringIndex, 0, assistantMessage);

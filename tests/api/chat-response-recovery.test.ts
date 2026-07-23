@@ -169,6 +169,56 @@ describe("chat response recovery", () => {
     expect(result.message.tool_calls).toHaveLength(2);
   });
 
+  test("continues when a model stops after promising to execute its plan", async () => {
+    const agentId = createTestAgent("Unfinished Execution Recovery Agent");
+    const sessionId = `unfinished-execution-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    let callCount = 0;
+
+    agentManager.execute = (async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          content:
+            "The page is blank and I have not yet patched it. Next concrete plan: fix the script, reload the browser, and verify the workflow. Executing now.",
+          tool_calls: [
+            {
+              name: "browser",
+              args: { action: "open", url: "http://127.0.0.1:7818" },
+              result: { error: "SyntaxError: duplicate declaration" },
+            },
+          ],
+        };
+      }
+      return {
+        content: "Fixed the duplicate declaration and verified the primary workflow renders.",
+        tool_calls: [
+          {
+            name: "edit",
+            args: { path: "/tmp/app.js" },
+            result: { filePath: "/tmp/app.js" },
+          },
+          {
+            name: "browser",
+            args: { action: "snapshot" },
+            result: { text: "Dashboard Incidents Releases" },
+          },
+        ],
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Finish and visually verify the app.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(2);
+    expect(result.message.content).toContain("verified the primary workflow renders");
+    expect(result.message.tool_calls).toHaveLength(3);
+  });
+
   test("does not accept failed tool execution as completion evidence", async () => {
     const agentId = createTestAgent("Failed Evidence Recovery Agent");
     const sessionId = `failed-evidence-${crypto.randomUUID()}`;

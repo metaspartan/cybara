@@ -179,7 +179,7 @@ describe("persisted active session context", () => {
       "Change direction",
       "Finished the steered task",
     ]);
-    expect(restored?.messages[1]?.timestamp).toBe("2026-07-15 09:00:05.000");
+    expect(restored?.messages[1]?.timestamp).toBe("2026-07-15T09:00:05.000Z");
     expect(restored?.messages.at(-1)?.content).toBe("Finished the steered task");
     const summary = (await listPersistedSessions()).find((session) => session.id === sessionId);
     expect(summary?.lastMessageRole).toBe("assistant");

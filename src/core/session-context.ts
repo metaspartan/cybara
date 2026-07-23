@@ -61,6 +61,13 @@ function toSqliteTimestamp(value?: string, offsetMs = 0): string {
   return new Date(Math.max(0, timestamp)).toISOString().replace("T", " ").replace("Z", "");
 }
 
+function normalizePersistedMessageTimestamp(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || /(?:z|[+-]\d{2}:?\d{2})$/i.test(trimmed)) return trimmed;
+  const normalized = `${trimmed.replace(" ", "T")}Z`;
+  return Number.isFinite(Date.parse(normalized)) ? normalized : trimmed;
+}
+
 function serializeSessionMessageMetadata(
   message: ChatMessage,
   extra?: Record<string, unknown>
@@ -1008,7 +1015,7 @@ export async function loadPersistedSession(sessionId: string): Promise<{
       return {
         role: m.role as ChatMessage["role"],
         content: sanitizePersistedMessageContent(m.role, m.content),
-        timestamp: m.created_at,
+        timestamp: normalizePersistedMessageTimestamp(m.created_at),
         ...parsed,
         ...(images.length ? { images } : {}),
       };
