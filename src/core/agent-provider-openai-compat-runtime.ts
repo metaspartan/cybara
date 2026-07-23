@@ -110,9 +110,12 @@ function toOpenAICompatTool(
 
 function openAIReasoningContent(message: OpenAIMessage): string {
   const candidates = [message.reasoning_content, message.reasoning, message.thinking];
-  return candidates.find(
-    (candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0
-  ) ?? "";
+  return (
+    candidates.find(
+      (candidate): candidate is string =>
+        typeof candidate === "string" && candidate.trim().length > 0
+    ) ?? ""
+  );
 }
 
 export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderCommonRuntime {

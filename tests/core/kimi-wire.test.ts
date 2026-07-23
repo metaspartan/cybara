@@ -58,7 +58,8 @@ describe("Kimi wire normalization", () => {
     expect(properties.retries?.type).toBe("integer");
     expect(properties.options?.type).toBe("object");
     expect(
-      ((properties.options?.properties as Record<string, Record<string, unknown>>).enabled || {}).type
+      ((properties.options?.properties as Record<string, Record<string, unknown>>).enabled || {})
+        .type
     ).toBe("boolean");
     expect(properties.targets?.type).toBe("array");
     expect((properties.targets?.items as Record<string, unknown>).type).toBe("string");

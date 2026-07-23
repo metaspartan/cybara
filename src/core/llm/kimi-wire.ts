@@ -8,16 +8,7 @@ const KIMI_CODE_PROVIDERS = new Set([
   "kimi-code-subscription",
 ]);
 
-const COMBINATOR_KEYS = new Set([
-  "$ref",
-  "allOf",
-  "anyOf",
-  "oneOf",
-  "not",
-  "if",
-  "then",
-  "else",
-]);
+const COMBINATOR_KEYS = new Set(["$ref", "allOf", "anyOf", "oneOf", "not", "if", "then", "else"]);
 const OBJECT_KEYS = new Set([
   "properties",
   "additionalProperties",

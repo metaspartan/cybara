@@ -778,8 +778,12 @@ describe("Agent tool allowlist guardrails", () => {
     expect(failedLoopBody).toBeDefined();
     expect(retriedLoopBody).toBeDefined();
 
-    const failedLimit = Number(failedLoopBody?.max_tokens || 0);
-    const retriedLimit = Number(retriedLoopBody?.max_tokens || 0);
+    const failedLimit = Number(
+      failedLoopBody?.max_completion_tokens ?? failedLoopBody?.max_tokens ?? 0
+    );
+    const retriedLimit = Number(
+      retriedLoopBody?.max_completion_tokens ?? retriedLoopBody?.max_tokens ?? 0
+    );
     expect(failedLimit).toBeGreaterThan(0);
     expect(retriedLimit).toBeGreaterThan(0);
     expect(retriedLimit).toBeLessThan(failedLimit);
