@@ -304,6 +304,9 @@ describe("app release surface wiring", () => {
     expect(read("apps/mobile/plugins/with-android-lan-cleartext.js")).toContain(
       "android.permission.NEARBY_WIFI_DEVICES"
     );
+    expect(read("apps/mobile/plugins/with-android-lan-cleartext.js")).toContain(
+      "android.permission.ACCESS_LOCAL_NETWORK"
+    );
     expect(appJson.expo?.extra?.gatewayContract).toBe("cybara-mobile-connect-v1");
 
     expect(mobilePkg.scripts?.ios).toBe("bunx expo start --ios");

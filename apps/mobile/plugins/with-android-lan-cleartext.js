@@ -8,6 +8,11 @@ const LAN_PERMISSIONS = [
       "android:usesPermissionFlags": "neverForLocation",
     },
   },
+  {
+    $: {
+      "android:name": "android.permission.ACCESS_LOCAL_NETWORK",
+    },
+  },
 ];
 
 function addPermission(manifest, permission) {
