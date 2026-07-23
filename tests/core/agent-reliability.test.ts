@@ -19,12 +19,17 @@ describe("system prompt reliability guidance", () => {
   });
 
   test("includes act-now (no promises) rule", () => {
+    expect(prompt).toContain("Keep working until the user's request is completely resolved");
+    expect(prompt).toContain("End only when you are confident the problem is solved");
+    expect(prompt).toContain("Do not guess or invent an answer");
     expect(prompt).toContain("Act, don't promise");
     expect(prompt).toContain("Match claims to evidence");
     expect(prompt).toContain("A failed or blocked tool is not evidence of success");
     expect(prompt).toContain("Verify the rendered product");
     expect(prompt).toContain("inspect the rendered state and browser errors");
     expect(prompt).toContain("Make questions visible");
+    expect(prompt).toContain("Fix root causes");
+    expect(prompt).toContain("Begin validation with the most focused check");
   });
 
   test("includes parallel tool-call guidance", () => {
