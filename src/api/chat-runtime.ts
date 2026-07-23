@@ -1210,6 +1210,8 @@ async function handleChatTurn(
   let provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
   const turnAbortController = new AbortController();
   const consumedSteeringCompletionIds = new Set<string>();
+  const finishAbortedTurn = (activeAgent: { id: string; name: string }) =>
+    finishAbortedChatTurn(session, activeAgent, turnAbortController, consumedSteeringCompletionIds);
   const consumeSteeringMessagesForActiveTurn = () => {
     if (turnAbortController.signal.aborted) return [];
     const consumed = consumeSteeringMessages(session);
@@ -1751,7 +1753,7 @@ async function handleChatTurn(
       });
     } catch (error) {
       if (isChatTurnInterrupted(error, turnAbortController.signal)) {
-        return await finishAbortedChatTurn(session, agent, turnAbortController, consumedSteeringCompletionIds);
+        return await finishAbortedTurn(agent);
       }
       if (provider) recordCircuitFailure(`llm:${provider.id}`);
       log.error("LLM API error", {
@@ -1768,7 +1770,7 @@ async function handleChatTurn(
   }
 
   if (turnAbortController.signal.aborted && agent) {
-    return await finishAbortedChatTurn(session, agent, turnAbortController, consumedSteeringCompletionIds);
+    return await finishAbortedTurn(agent);
   }
 
   responseContent = appendToolImageReferences(responseContent, allToolCalls);
