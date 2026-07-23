@@ -596,11 +596,6 @@ class AgentManager extends AgentProviderRuntime {
       agentData: undefined,
       config: {},
       modelDisplay: definition.model || typeConfig?.defaultModel || "MiniMax-M2.5",
-      providerType:
-        definition.provider ||
-        (definition.provider_id
-          ? providerManager.get(definition.provider_id)?.provider
-          : undefined),
       tools: (definition.tools ?? getBuiltinTools()).map((t) => t.name),
       executionMode: definition.type === "planner" ? "plan" : "execute",
       skills: eligibleSkills,
@@ -703,9 +698,6 @@ class AgentManager extends AgentProviderRuntime {
       },
       config: {},
       modelDisplay: agent.model || "MiniMax-M2.5",
-      providerType: agent.provider_id
-        ? providerManager.get(agent.provider_id)?.provider
-        : undefined,
       tools: this.getAgentTools(agent).map((t) => t.name),
       executionMode: agent.type === "planner" ? "plan" : "execute",
       skills: eligibleSkills,

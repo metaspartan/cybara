@@ -1686,9 +1686,6 @@ const routes: Record<string, RouteHandler> = {
         : ["read", "write", "exec", "browser", "memory_search", "message"],
       workspaceDir: homeDir,
       agentData: agent ? { name: agent.name } : undefined,
-      providerType: agent?.provider_id
-        ? providerManager.get(agent.provider_id)?.provider
-        : undefined,
       executionMode: agent?.type === "planner" ? "plan" : "execute",
     });
     return { preview };

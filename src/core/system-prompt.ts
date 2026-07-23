@@ -63,7 +63,6 @@ export interface SystemPromptParams {
   ownerNumbers?: string[];
   heartbeatPrompt?: string;
   modelDisplay: string;
-  providerType?: string;
   tools: string[];
   executionMode?: SystemPromptExecutionMode;
   contextFiles?: Array<{ name: string; path?: string; content: string }>;

@@ -7,7 +7,6 @@ import { getSandboxPromptInfo } from "../core/sandbox";
 import { createEligibilityContext, filterEligibleSkills, loadAllSkills } from "../core/skills";
 import { buildSystemPrompt, AGENT_TYPE_PROMPTS } from "../core/system-prompt";
 import { resolveAgentToolPolicy } from "../core/toolsets";
-import { providerManager } from "../core/providers";
 
 type AgentPromptData = Pick<
   Agent,
@@ -79,7 +78,6 @@ export async function activeAgentSystemPrompt(
     agentData: { name: agent.name, config: agent.config as string | undefined },
     config: {},
     modelDisplay: agent.model || "MiniMax-M2.5",
-    providerType: agent.provider_id ? providerManager.get(agent.provider_id)?.provider : undefined,
     tools: chatAgentToolNames(agent, messages, options),
     executionMode: agent.type === "planner" ? "plan" : "execute",
     skills,
