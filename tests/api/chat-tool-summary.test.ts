@@ -122,6 +122,39 @@ describe("chat tool summary utilities", () => {
     );
   });
 
+  test("distinguishes plan-only implementation replies from requested planning", () => {
+    const plan = [
+      "VibeMail - Next Phase Plan",
+      "1. Backend: Add billing routes and subscription storage.",
+      "2. Frontend: Build the pricing and account management screens.",
+      "3. Deployment: Configure the production service.",
+    ].join("\n");
+
+    expect(
+      findAssistantEvidenceIssue(plan, [], {
+        userMessage: "Continue improving the email platform and add paid plans.",
+      })
+    ).toBe("plan_only");
+    expect(
+      findAssistantEvidenceIssue(plan, [], {
+        userMessage: "Create an implementation plan for paid subscriptions.",
+      })
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue(plan, [], {
+        allowPlanOnly: true,
+        userMessage: "Continue improving the email platform and add paid plans.",
+      })
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue(
+        plan,
+        [{ name: "edit", result: { filePath: "/tmp/billing.ts" } }],
+        { userMessage: "Continue improving the email platform and add paid plans." }
+      )
+    ).toBeUndefined();
+  });
+
   test("turns a structured clarification result into a visible question", () => {
     expect(
       extractVisibleClarification([

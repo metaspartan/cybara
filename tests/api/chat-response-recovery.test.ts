@@ -8,7 +8,7 @@ const createdProviderIds: string[] = [];
 const createdSessionIds: string[] = [];
 const originalExecute = agentManager.execute.bind(agentManager);
 
-function createTestAgent(name: string): string {
+function createTestAgent(name: string, type: "main" | "planner" = "main"): string {
   const provider = providerManager.create({
     provider: "minimax",
     name: `${name} Provider`,
@@ -18,7 +18,7 @@ function createTestAgent(name: string): string {
   createdProviderIds.push(provider.id);
   const agent = agentManager.create({
     name,
-    type: "main",
+    type,
     provider_id: provider.id,
     model: "MiniMax-M3",
     memory_enabled: false,
@@ -217,6 +217,99 @@ describe("chat response recovery", () => {
     expect(callCount).toBe(2);
     expect(result.message.content).toContain("verified the primary workflow renders");
     expect(result.message.tool_calls).toHaveLength(3);
+  });
+
+  test("continues implementation when a newly selected agent returns only a plan", async () => {
+    const firstAgentId = createTestAgent("Initial Project Agent");
+    const kimiAgentId = createTestAgent("Kimi Project Agent");
+    const sessionId = `switch-plan-only-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const executionOptions: Array<Parameters<typeof agentManager.execute>[2]> = [];
+    const executionAgentIds: string[] = [];
+    let callCount = 0;
+
+    agentManager.execute = (async (agentId, _messages, options) => {
+      callCount += 1;
+      executionAgentIds.push(agentId);
+      executionOptions.push(options);
+      if (callCount === 1) {
+        return { content: "The existing implementation context is loaded." };
+      }
+      if (callCount === 2) {
+        return {
+          content: [
+            "VibeMail - Next Phase Plan",
+            "1. Backend: Add Stripe billing and subscription storage.",
+            "2. Frontend: Build pricing and account management screens.",
+            "3. Deployment: Configure the production service.",
+          ].join("\n"),
+        };
+      }
+      return {
+        content: "Implemented the subscription schema and verified the billing tests pass.",
+        tool_calls: [
+          {
+            name: "edit",
+            args: { path: "/tmp/billing.ts" },
+            result: { filePath: "/tmp/billing.ts" },
+          },
+          {
+            name: "exec",
+            args: { command: "bun test billing" },
+            result: { output: "5 pass", exitCode: 0 },
+          },
+        ],
+      };
+    }) as typeof agentManager.execute;
+
+    await handleChat({
+      message: "Load the existing project context.",
+      agentId: firstAgentId,
+      sessionId,
+      tools: true,
+    });
+    const result = await handleChat({
+      message: "Continue improving the email platform and add paid plans.",
+      agentId: kimiAgentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(3);
+    expect(executionAgentIds).toEqual([firstAgentId, kimiAgentId, kimiAgentId]);
+    expect(executionOptions[2]?.requireToolUse).toBe(true);
+    expect(result.agent?.id).toBe(kimiAgentId);
+    expect(result.message.content).toContain("verified the billing tests pass");
+    expect(result.message.tool_calls).toHaveLength(2);
+  });
+
+  test("allows a planner agent to return a plan without an execution retry", async () => {
+    const agentId = createTestAgent("Planning Agent", "planner");
+    const sessionId = `planner-response-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    let callCount = 0;
+
+    agentManager.execute = (async () => {
+      callCount += 1;
+      return {
+        content: [
+          "Implementation Plan",
+          "1. Add billing routes and subscription storage.",
+          "2. Build pricing and account management screens.",
+          "3. Configure and verify the production deployment.",
+        ].join("\n"),
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Continue improving the email platform and add paid plans.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(1);
+    expect(result.message.content).toContain("Implementation Plan");
   });
 
   test("does not accept failed tool execution as completion evidence", async () => {

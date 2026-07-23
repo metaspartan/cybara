@@ -17,9 +17,15 @@ export interface ToolCallOutcome {
 
 export type AssistantEvidenceIssue =
   | "missing_clarification"
+  | "plan_only"
   | "unfinished_execution"
   | "unsupported_completion"
   | "unsupported_verification";
+
+export interface AssistantEvidenceContext {
+  allowPlanOnly?: boolean;
+  userMessage?: string;
+}
 
 const TOOL_RESULT_PREVIEW_LIMIT = 220;
 
@@ -268,6 +274,17 @@ const UNFINISHED_EXECUTION_PATTERNS = [
   /\bI (?:have not|haven't) yet\b[\s\S]{0,1600}\b(?:executing|fixing|continuing|working)\s+now\b/i,
 ];
 
+const IMPLEMENTATION_REQUEST_PATTERN =
+  /(?:^|[.!?]\s+)(?:please\s+)?(?:continue|implement|build|create|add|fix|update|improve|integrate|deploy|set\s*up|configure|change|refactor|install|push|publish)\b/i;
+const EXPLICIT_PLANNING_REQUEST_PATTERN =
+  /^\s*(?:please\s+)?(?:create|draft|write|give|provide|propose|outline|design)\s+(?:me\s+)?(?:a|an|the)?\s*(?:implementation\s+|technical\s+)?(?:plan|roadmap|proposal|outline)\b/i;
+const PLANNING_FOLLOW_THROUGH_PATTERN =
+  /\b(?:and|then)\s+(?:implement|build|execute|apply|make|start|do|continue)\b/i;
+const PLAN_ONLY_RESPONSE_PATTERN =
+  /\b(?:next\s+(?:phase\s+)?plan|implementation plan|action plan|proposed plan|roadmap|next steps?)\b/i;
+const PLANNED_ACTION_PATTERN =
+  /\b(?:add|build|configure|create|deploy|generate|implement|integrate|set\s*up|support|update|use)\b/gi;
+
 function successfulToolCalls(toolCalls: ToolCallResultLike[]): ToolCallResultLike[] {
   return toolCalls.filter(isSuccessfulToolCall);
 }
@@ -302,9 +319,28 @@ function hasSuccessfulVerificationEvidence(
   );
 }
 
-export function findAssistantEvidenceIssue(
+function isPlanOnlyImplementationResponse(
+  userMessage: string | undefined,
   assistantContent: string,
   toolCalls: ToolCallResultLike[]
+): boolean {
+  const request = userMessage?.trim() || "";
+  if (!request || !IMPLEMENTATION_REQUEST_PATTERN.test(request)) return false;
+  if (
+    EXPLICIT_PLANNING_REQUEST_PATTERN.test(request) &&
+    !PLANNING_FOLLOW_THROUGH_PATTERN.test(request)
+  ) {
+    return false;
+  }
+  if (hasSuccessfulCompletionEvidence(assistantContent, toolCalls)) return false;
+  const actions = assistantContent.match(PLANNED_ACTION_PATTERN)?.length || 0;
+  return PLAN_ONLY_RESPONSE_PATTERN.test(assistantContent) && actions >= 2;
+}
+
+export function findAssistantEvidenceIssue(
+  assistantContent: string,
+  toolCalls: ToolCallResultLike[],
+  context: AssistantEvidenceContext = {}
 ): AssistantEvidenceIssue | undefined {
   const visibleContent = assistantContent.trim();
   if (!visibleContent) return undefined;
@@ -317,6 +353,12 @@ export function findAssistantEvidenceIssue(
   }
   if (hasPattern(visibleContent, UNFINISHED_EXECUTION_PATTERNS)) {
     return "unfinished_execution";
+  }
+  if (
+    context.allowPlanOnly !== true &&
+    isPlanOnlyImplementationResponse(context.userMessage, visibleContent, toolCalls)
+  ) {
+    return "plan_only";
   }
   if (
     hasPattern(visibleContent, COMPLETION_CLAIM_PATTERNS) &&
@@ -372,6 +414,9 @@ export function buildUnsupportedAssistantClaimMessage(issue: AssistantEvidenceIs
   }
   if (issue === "unsupported_completion") {
     return "The model claimed the work was completed, but Cybara did not record a successful tool action that supports that claim. Treat this turn as incomplete.";
+  }
+  if (issue === "plan_only") {
+    return "The model returned a plan instead of performing the requested work. No implementation action was completed for this turn.";
   }
   if (issue === "unfinished_execution") {
     return "The model stopped after describing unfinished work instead of completing it. Treat this turn as incomplete.";

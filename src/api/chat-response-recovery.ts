@@ -14,6 +14,7 @@ type AgentExecuteOptions = NonNullable<Parameters<typeof agentManager.execute>[2
 
 export interface AssistantResponseRecoveryParams {
   agentId: string;
+  allowPlanOnly?: boolean;
   executeOptions: Omit<AgentExecuteOptions, "requireToolUse" | "requiredToolName" | "useTools">;
   executionMessages: AgentMessage[];
   requiredToolName?: string;
@@ -46,6 +47,9 @@ function buildRetryInstruction(
   if (evidenceIssue === "unfinished_execution") {
     return "Your previous response stopped after describing work you said you were executing now. Continue immediately, use the available tools to finish and verify the request, and return only after the work is complete or a concrete blocker prevents further progress.";
   }
+  if (evidenceIssue === "plan_only") {
+    return "Your previous response only proposed a plan for work the user asked you to perform. Continue immediately, use the available tools to implement and verify concrete progress, and report the actual result instead of another plan.";
+  }
   if (evidenceIssue === "unsupported_completion") {
     return "Your previous response claimed work was completed without a successful tool action supporting that claim. Perform the requested work with the available tools now, verify the concrete result, and report only what the tool results establish.";
   }
@@ -77,12 +81,14 @@ export async function recoverAssistantResponse(
     ? undefined
     : findAssistantEvidenceIssue(
         visibleAssistantContent(params.responseContent),
-        params.toolResults
+        params.toolResults,
+        { allowPlanOnly: params.allowPlanOnly, userMessage: params.userMessage }
       );
   const shouldRetryToolExecution =
     (params.shouldRequireToolUse && (params.toolResults.length === 0 || !hasRequiredToolCall)) ||
     (params.toolsEnabled === true &&
       (evidenceIssue === "unfinished_execution" ||
+        evidenceIssue === "plan_only" ||
         evidenceIssue === "unsupported_completion" ||
         evidenceIssue === "unsupported_verification"));
   if (!shouldRetryToolExecution && !shouldRecoverCompletion && !evidenceIssue) {
@@ -125,7 +131,8 @@ export async function recoverAssistantResponse(
     );
     const retryEvidenceIssue = findAssistantEvidenceIssue(
       visibleAssistantContent(retryResult.content),
-      combinedToolCalls
+      combinedToolCalls,
+      { allowPlanOnly: params.allowPlanOnly, userMessage: params.userMessage }
     );
     if (
       !retryEvidenceIssue &&

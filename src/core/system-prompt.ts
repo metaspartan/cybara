@@ -8,6 +8,7 @@ import type { SkillEntry } from "./skills/types";
 export const SILENT_REPLY_TOKEN = "[SILENT]";
 
 export type PromptMode = "full" | "minimal" | "none";
+export type SystemPromptExecutionMode = "execute" | "plan";
 
 export const CORE_TOOL_SUMMARIES: Record<string, string> = {
   read: "Read file contents",
@@ -62,7 +63,9 @@ export interface SystemPromptParams {
   ownerNumbers?: string[];
   heartbeatPrompt?: string;
   modelDisplay: string;
+  providerType?: string;
   tools: string[];
+  executionMode?: SystemPromptExecutionMode;
   contextFiles?: Array<{ name: string; path?: string; content: string }>;
   ttsHint?: string;
   promptMode?: PromptMode;
@@ -214,6 +217,13 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
 
   if (!isMinimal && hasTools) {
     lines.push(...buildAgenticBehaviorSection());
+    lines.push(
+      ...buildExecutionContractSection(
+        params.executionMode || "execute",
+        params.modelDisplay,
+        params.providerType
+      )
+    );
     lines.push(...buildGroundingSection());
   }
 
@@ -635,6 +645,47 @@ function buildAgenticBehaviorSection(): string[] {
     "- Provide actionable insights, not just raw tool output.",
     "",
   ];
+}
+
+function buildExecutionContractSection(
+  mode: SystemPromptExecutionMode,
+  modelDisplay: string,
+  providerType?: string
+): string[] {
+  if (mode === "plan") {
+    return [
+      "## Planning Mode",
+      "Produce a grounded, actionable plan rather than making implementation changes.",
+      "Use read-only tools when they improve accuracy. Do not claim that planned work was implemented or verified.",
+      "A plan is a valid final response in this mode.",
+      "",
+    ];
+  }
+
+  const lines = [
+    "## Execution Mode",
+    "For an actionable request, act now and continue until the request is complete or a concrete blocker prevents progress.",
+    "Plans, checklists, and todos are working state, not a final response. After planning, perform the work with tools in the same turn.",
+    "Return a text-only response without tool calls only for a direct informational answer, a necessary safety clarification, a concrete blocker, or the final summary of work already evidenced by tools.",
+  ];
+
+  const normalizedModel = modelDisplay.trim().toLowerCase();
+  const normalizedProvider = providerType?.trim().toLowerCase() || "";
+  const usesKimiToolDiscipline =
+    normalizedProvider.includes("kimi") ||
+    normalizedModel.includes("kimi") ||
+    normalizedModel === "k3" ||
+    normalizedModel.startsWith("k3-");
+
+  if (usesKimiToolDiscipline) {
+    lines.push(
+      "For non-trivial workspace, coding, or system tasks, default to using tools.",
+      "Requests to create, modify, run, test, or inspect code and files require tool calls before the final response."
+    );
+  }
+
+  lines.push("");
+  return lines;
 }
 
 function buildGroundingSection(): string[] {
