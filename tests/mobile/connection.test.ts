@@ -19,6 +19,7 @@ import {
 describe("mobile gateway connection payloads", () => {
   test("accepts only Cybara connection deep links from the operating system", () => {
     expect(isMobileConnectDeepLink("cybara://connect?payload=test")).toBe(true);
+    expect(isMobileConnectDeepLink("cybara://connect.evil.example?payload=test")).toBe(false);
     expect(isMobileConnectDeepLink("cybara://settings")).toBe(false);
     expect(isMobileConnectDeepLink("exp://192.168.1.155:8088")).toBe(false);
     expect(isMobileConnectDeepLink(null)).toBe(false);

@@ -97,15 +97,32 @@ function startGateway(fixture: GatewayFixture): void {
 }
 
 async function stopGateway(fixture: GatewayFixture): Promise<void> {
-  const process = fixture.process;
-  fixture.process = null;
-  if (!process) return;
+  const gatewayProcess = fixture.process;
+  if (!gatewayProcess) return;
   try {
-    process.kill("SIGTERM");
+    gatewayProcess.kill("SIGTERM");
   } catch (error) {
     void error;
   }
-  await Promise.race([process.exited, sleep(5000)]);
+  const exitedGracefully = await Promise.race([
+    gatewayProcess.exited.then(() => true),
+    sleep(5000).then(() => false),
+  ]);
+  if (!exitedGracefully) {
+    try {
+      gatewayProcess.kill("SIGKILL");
+    } catch (error) {
+      void error;
+    }
+    const exitedForcibly = await Promise.race([
+      gatewayProcess.exited.then(() => true),
+      sleep(5000).then(() => false),
+    ]);
+    if (!exitedForcibly) {
+      throw await gatewayFailure(fixture, `Gateway did not exit for ${fixture.baseUrl}`);
+    }
+  }
+  fixture.process = null;
 }
 
 async function readLogTail(path: string): Promise<string> {

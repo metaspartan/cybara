@@ -276,7 +276,23 @@ export function mergeLiveActivity(
   current: SessionProcessActivitySummary[],
   incoming: SessionProcessActivitySummary
 ): SessionProcessActivitySummary[] {
-  return mergeMobileLiveActivities(current, [incoming]);
+  const retained = isGenericMobileLiveStatusActivity(incoming)
+    ? current
+    : withoutMobileGenericLiveStatus(current);
+  return mergeMobileLiveActivities(retained, [incoming]);
+}
+
+function isGenericMobileLiveStatusActivity(activity: SessionProcessActivitySummary): boolean {
+  return (
+    activity.toolName === "__thought" &&
+    (activity.id === "live-agent-status" || activity.id.startsWith("live-thinking-"))
+  );
+}
+
+export function withoutMobileGenericLiveStatus(
+  activities: SessionProcessActivitySummary[]
+): SessionProcessActivitySummary[] {
+  return activities.filter((activity) => !isGenericMobileLiveStatusActivity(activity));
 }
 
 export function mergeMobileLiveActivities(
@@ -353,14 +369,7 @@ export function liveAssistantFromStatusSnapshot(
 ): SessionDetailSummary["messages"][number] {
   const timestamp = typeof snapshot.timestamp === "number" ? snapshot.timestamp : Date.now();
   const base = liveAssistantMessage(sessionId, current, timestamp);
-  const currentActivities = (base.processActivities || []).filter(
-    (activity) =>
-      !(
-        activity.toolName === "__thought" &&
-        activity.text.trim().toLowerCase() === "thinking..." &&
-        (activity.id === "live-agent-status" || activity.id.startsWith("live-thinking-"))
-      )
-  );
+  const currentActivities = withoutMobileGenericLiveStatus(base.processActivities || []);
   const snapshotActivity = liveActivityFromStatusEvent({
     type: "status",
     runId: snapshot.runId,

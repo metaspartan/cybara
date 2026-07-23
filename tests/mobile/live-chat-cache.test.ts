@@ -222,6 +222,64 @@ describe("mobile live chat cache", () => {
     ]);
   });
 
+  test("replaces a generic live status when a snapshot advances to compaction", () => {
+    const sessionId = `mobile-compacting-snapshot-${Date.now()}`;
+    const current = {
+      ...liveAssistantMessage(sessionId, null, 1783015200000),
+      processActivities: [
+        {
+          id: "live-agent-status",
+          phase: "start" as const,
+          text: "Generating response...",
+          timestamp: 1783015200000,
+          toolName: "__thought",
+        },
+      ],
+    };
+
+    const live = liveAssistantFromStatusSnapshot(sessionId, current, {
+      sessionId,
+      status: "compacting",
+      timestamp: 1783015200500,
+      activities: [],
+    });
+
+    expect(live.processActivities).toEqual([
+      expect.objectContaining({
+        id: "live-context-compaction",
+        text: "Compacting earlier context...",
+      }),
+    ]);
+  });
+
+  test("replaces a generic live status when an incremental tool event arrives", () => {
+    const current = [
+      {
+        id: "live-agent-status",
+        phase: "start" as const,
+        text: "Thinking...",
+        timestamp: 1783015200000,
+        toolName: "__thought",
+      },
+    ];
+
+    const merged = mergeLiveActivity(current, {
+      id: "tool-1",
+      phase: "start",
+      text: "Running tests",
+      timestamp: 1783015200500,
+      toolName: "exec",
+      toolCallId: "tool-1",
+    });
+
+    expect(merged).toEqual([
+      expect.objectContaining({
+        id: "tool-1",
+        text: "Running tests",
+      }),
+    ]);
+  });
+
   test("keeps mobile live rows when queue snapshots have no activity rows", () => {
     const sessionId = `mobile-queue-snapshot-${Date.now()}`;
     const current = {
