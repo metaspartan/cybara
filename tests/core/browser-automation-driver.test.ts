@@ -60,6 +60,19 @@ describe("browser automation driver", () => {
     await page.waitForSelector("#result", { timeout: 1000, state: "visible" });
     expect((await page.screenshot({ fullPage: false, type: "png" })).length).toBeGreaterThan(100);
 
+    let resolveStreamedFrame: ((frame: string) => void) | null = null;
+    const streamedFrame = new Promise<string>((resolve) => {
+      resolveStreamedFrame = resolve;
+    });
+    const stopScreencast = await page.startScreencast(
+      { quality: 58, maxWidth: 1024, maxHeight: 700, everyNthFrame: 1 },
+      (frame) => resolveStreamedFrame?.(frame.data)
+    );
+    await page.evaluate<void>("document.body.style.background = 'rgb(12, 34, 56)'");
+    const streamedData = await Promise.race([streamedFrame, Bun.sleep(5_000).then(() => "")]);
+    await stopScreencast();
+    expect(Buffer.from(streamedData, "base64").length).toBeGreaterThan(100);
+
     await context.close();
   }, 30_000);
 });

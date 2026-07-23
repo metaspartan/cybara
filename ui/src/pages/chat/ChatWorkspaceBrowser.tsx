@@ -26,7 +26,15 @@ import {
   type PreviewSize,
 } from "./previewGeometry";
 import { routeChatLink } from "./chatLinkRouting";
+import {
+  BROWSER_PREVIEW_REFRESH_MS,
+  BrowserFramePresenter,
+  BrowserScrollBatcher,
+  decodeBrowserPreviewImage,
+  normalizeBrowserWheelDelta,
+} from "./browserPreviewInteraction";
 import { browserPreviewPollDelay, browserPreviewViewport } from "./browserPreviewTiming";
+import { BrowserPreviewImage } from "./BrowserPreviewImage";
 
 interface BrowserPage {
   id: string;
@@ -228,6 +236,8 @@ export function ChatWorkspaceBrowser({
   const [page, setPage] = useState<BrowserPage | null>(null);
   const [address, setAddress] = useState("");
   const [preview, setPreview] = useState<BrowserPreview | null>(null);
+  const [displayedPreview, setDisplayedPreview] = useState<BrowserPreview | null>(null);
+  const [streamFrameVisible, setStreamFrameVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [startupLabel, setStartupLabel] = useState("Checking installed browsers");
@@ -235,15 +245,43 @@ export function ChatWorkspaceBrowser({
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
   const requestInFlightRef = useRef(false);
   const queuedFreshPageRef = useRef<BrowserPage | null>(null);
-  const stateRequestInFlightRef = useRef(false);
   const pendingPageRef = useRef<PendingBrowserPage | null>(null);
   const lastInteractionAtRef = useRef(Date.now());
+  const lastPreviewRefreshAtRef = useRef(0);
+  const previewRefreshTimerRef = useRef<number | null>(null);
+  const previewRefreshPageRef = useRef<BrowserPage | null>(null);
+  const scrollBatcherRef = useRef<BrowserScrollBatcher | null>(null);
+  const streamConnectedRef = useRef(false);
+  const framePresenterRef = useRef<BrowserFramePresenter<BrowserPreview> | null>(null);
   const previewRevisionRef = useRef("");
   const lastNavigationRequestRef = useRef(0);
   const onTitleChangeRef = useRef(onTitleChange);
   const [browserViewport, setBrowserViewport] = useState(DEFAULT_BROWSER_VIEWPORT);
   const [previewSurfaceSize, setPreviewSurfaceSize] = useState<PreviewSize | null>(null);
   onTitleChangeRef.current = onTitleChange;
+
+  const clearPreview = useCallback((): void => {
+    framePresenterRef.current?.reset();
+    setDisplayedPreview(null);
+    setPreview(null);
+    setStreamFrameVisible(false);
+  }, []);
+
+  useEffect(() => {
+    const presenter = new BrowserFramePresenter<BrowserPreview>(
+      decodeBrowserPreviewImage,
+      setDisplayedPreview
+    );
+    framePresenterRef.current = presenter;
+    return () => {
+      presenter.dispose();
+      if (framePresenterRef.current === presenter) framePresenterRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (preview?.screenshot) framePresenterRef.current?.enqueue(preview);
+  }, [preview]);
 
   const syncPage = useCallback((nextPage: BrowserPage | null) => {
     setPage((current) => {
@@ -303,7 +341,7 @@ export function ChatWorkspaceBrowser({
         if (response.status === 404) {
           queuedFreshPageRef.current = null;
           const replacement = await createSessionPage(browserSessionId);
-          setPreview(null);
+          clearPreview();
           previewRevisionRef.current = "";
           syncPage(replacement);
           return;
@@ -359,52 +397,81 @@ export function ChatWorkspaceBrowser({
         if (queuedPage) queueMicrotask(() => void loadBrowserPreview(queuedPage, true));
       }
     },
-    [browserSessionId, browserViewport.height, browserViewport.width, syncPage]
+    [browserSessionId, browserViewport.height, browserViewport.width, clearPreview, syncPage]
   );
 
   const loadBrowserState = useCallback(
-    async (targetPage: BrowserPage) => {
-      if (stateRequestInFlightRef.current) return;
-      stateRequestInFlightRef.current = true;
-      try {
-        const response = await apiFetch(
-          `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/state?includePage=false`,
-          { signal: AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS) }
-        );
-        if (!response.ok) return;
-        const data: unknown = await response.json();
-        const payload =
-          data && typeof data === "object"
-            ? (data as { data?: Record<string, unknown> }).data
-            : null;
-        const nextPage = parseBrowserPage(payload?.page) ?? targetPage;
-        const cursor = parseBrowserCursor(payload?.cursor);
-        const viewport = parseBrowserViewport(payload?.viewport);
-        setPreview((current) => {
-          if (
-            current &&
-            sameBrowserCursor(current.cursor, cursor) &&
-            sameBrowserViewport(current.viewport, viewport) &&
-            sameBrowserPage(current.page, nextPage)
-          ) {
-            return current;
-          }
-          return current
-            ? { ...current, cursor, viewport, page: nextPage }
-            : {
-                screenshot: "",
-                revision: "",
-                cursor,
-                viewport,
-                page: nextPage,
-              };
-        });
-        syncPage(nextPage);
-      } finally {
-        stateRequestInFlightRef.current = false;
+    async (targetPage: BrowserPage): Promise<void> => {
+      const response = await apiFetch(
+        `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/state`,
+        { signal: AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS) }
+      );
+      if (response.status === 404) {
+        streamConnectedRef.current = false;
+        const replacement = await createSessionPage(browserSessionId);
+        clearPreview();
+        previewRevisionRef.current = "";
+        syncPage(replacement);
+        return;
       }
+      if (!response.ok) throw await responseError(response, "Browser state is unavailable");
+      const data: unknown = await response.json();
+      const payload =
+        data && typeof data === "object" ? (data as { data?: Record<string, unknown> }).data : null;
+      const nextPage = parseBrowserPage(payload?.page) ?? targetPage;
+      const nextCursor = parseBrowserCursor(payload?.cursor);
+      const nextViewport = parseBrowserViewport(payload?.viewport);
+      setPreview((current) => {
+        if (!current) return current;
+        if (
+          sameBrowserCursor(current.cursor, nextCursor) &&
+          sameBrowserViewport(current.viewport, nextViewport) &&
+          sameBrowserPage(current.page, nextPage)
+        ) {
+          return current;
+        }
+        return {
+          ...current,
+          cursor: nextCursor,
+          viewport: nextViewport,
+          page: nextPage,
+        };
+      });
+      syncPage(nextPage);
     },
-    [syncPage]
+    [browserSessionId, clearPreview, syncPage]
+  );
+
+  const schedulePreviewRefresh = useCallback(
+    (targetPage: BrowserPage, immediate = false): void => {
+      previewRefreshPageRef.current = targetPage;
+      if (immediate && previewRefreshTimerRef.current !== null) {
+        window.clearTimeout(previewRefreshTimerRef.current);
+        previewRefreshTimerRef.current = null;
+      }
+      if (previewRefreshTimerRef.current !== null) return;
+      const elapsed = Date.now() - lastPreviewRefreshAtRef.current;
+      const delay = immediate ? 0 : Math.max(0, BROWSER_PREVIEW_REFRESH_MS - elapsed);
+      previewRefreshTimerRef.current = window.setTimeout(() => {
+        previewRefreshTimerRef.current = null;
+        const refreshPage = previewRefreshPageRef.current;
+        if (!refreshPage) return;
+        lastPreviewRefreshAtRef.current = Date.now();
+        void loadPreview(refreshPage, true);
+      }, delay);
+    },
+    [loadPreview]
+  );
+
+  useEffect(
+    () => () => {
+      if (previewRefreshTimerRef.current !== null) {
+        window.clearTimeout(previewRefreshTimerRef.current);
+      }
+      previewRefreshTimerRef.current = null;
+      previewRefreshPageRef.current = null;
+    },
+    []
   );
 
   useEffect(() => {
@@ -473,7 +540,13 @@ export function ChatWorkspaceBrowser({
     let cancelled = false;
     let timer: number | null = null;
     const poll = async () => {
-      if (document.visibilityState === "visible") await loadPreview(page);
+      if (document.visibilityState === "visible") {
+        if (streamConnectedRef.current) {
+          await loadBrowserState(page).catch(() => undefined);
+        } else {
+          await loadPreview(page);
+        }
+      }
       if (!cancelled) {
         timer = window.setTimeout(
           () => void poll(),
@@ -489,7 +562,7 @@ export function ChatWorkspaceBrowser({
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [loadPreview, loading, page, visible]);
+  }, [loadBrowserState, loadPreview, loading, page, visible]);
 
   useEffect(() => {
     const activeSessionId = sessionId?.trim();
@@ -505,11 +578,12 @@ export function ChatWorkspaceBrowser({
         }
         lastInteractionAtRef.current = Date.now();
         if (event.status === "tool_completed" || event.toolPhase === "result") {
-          void loadPreview(page, true);
+          if (streamConnectedRef.current) void loadBrowserState(page).catch(() => undefined);
+          else void loadPreview(page, true);
         }
       },
     });
-  }, [loadPreview, page, sessionId, visible]);
+  }, [loadBrowserState, loadPreview, page, sessionId, visible]);
 
   const runPageAction = async (action: "back" | "forward" | "reload") => {
     if (!page || loading) return;
@@ -586,12 +660,16 @@ export function ChatWorkspaceBrowser({
   }, [navigateTo, navigationRequest, navigationUrl, visible]);
 
   const sendPageInput = useCallback(
-    async (action: "pointer/click" | "scroll" | "keyboard", body: Record<string, unknown>) => {
-      if (!page) return;
+    async (
+      targetPage: BrowserPage,
+      action: "pointer/click" | "scroll" | "keyboard",
+      body: object,
+      immediateFrame = true
+    ) => {
       lastInteractionAtRef.current = Date.now();
       try {
         const response = await apiFetch(
-          `/api/browser/tabs/${encodeURIComponent(page.id)}/${action}`,
+          `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/${action}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -599,14 +677,33 @@ export function ChatWorkspaceBrowser({
           }
         );
         if (!response.ok) throw await responseError(response, "Browser interaction failed");
-        await loadBrowserState(page);
-        window.setTimeout(() => void loadPreview(page, true), 80);
+        if (streamConnectedRef.current) {
+          if (immediateFrame) void loadBrowserState(targetPage).catch(() => undefined);
+        } else {
+          schedulePreviewRefresh(targetPage, immediateFrame);
+        }
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "Browser interaction failed");
       }
     },
-    [loadBrowserState, loadPreview, page]
+    [loadBrowserState, schedulePreviewRefresh]
   );
+
+  useEffect(() => {
+    scrollBatcherRef.current?.dispose();
+    if (!page) {
+      scrollBatcherRef.current = null;
+      return;
+    }
+    const batcher = new BrowserScrollBatcher(async (delta) => {
+      await sendPageInput(page, "scroll", delta, false);
+    });
+    scrollBatcherRef.current = batcher;
+    return () => {
+      batcher.dispose();
+      if (scrollBatcherRef.current === batcher) scrollBatcherRef.current = null;
+    };
+  }, [page, sendPageInput]);
 
   const handlePreviewClick = (event: MouseEvent<HTMLDivElement>) => {
     if (!page || !preview?.viewport) return;
@@ -618,16 +715,21 @@ export function ChatWorkspaceBrowser({
     );
     if (!point) return;
     event.currentTarget.focus();
-    void sendPageInput("pointer/click", { x: point.x, y: point.y });
+    void sendPageInput(page, "pointer/click", { x: point.x, y: point.y });
   };
 
   const handlePreviewWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (!page) return;
     event.preventDefault();
-    void sendPageInput("scroll", {
-      deltaX: event.deltaX,
-      deltaY: event.deltaY,
-    });
+    lastInteractionAtRef.current = Date.now();
+    scrollBatcherRef.current?.enqueue(
+      normalizeBrowserWheelDelta(
+        event.deltaX,
+        event.deltaY,
+        event.deltaMode,
+        preview?.viewport?.height ?? browserViewport.height
+      )
+    );
   };
 
   const handlePreviewKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -651,12 +753,12 @@ export function ChatWorkspaceBrowser({
     ]);
     if (!modifier && event.key.length !== 1 && !supportedNamedKeys.has(event.key)) return;
     event.preventDefault();
-    void sendPageInput("keyboard", { key });
+    void sendPageInput(page, "keyboard", { key });
   };
 
   const cursorStyle = (() => {
-    const cursor = preview?.cursor;
-    const viewport = preview?.viewport;
+    const cursor = displayedPreview?.cursor;
+    const viewport = displayedPreview?.viewport;
     if (!cursor?.visible || cursor.source !== "agent" || !viewport || !previewSurfaceSize) {
       return null;
     }
@@ -737,14 +839,20 @@ export function ChatWorkspaceBrowser({
         tabIndex={0}
         aria-label="Interactive browser preview"
       >
-        {preview?.screenshot ? (
-          <img
-            src={preview.screenshot}
-            alt="Browser preview"
-            className="absolute inset-0 h-full w-full select-none object-contain"
-            draggable={false}
-          />
-        ) : (
+        <BrowserPreviewImage
+          pageId={page?.id ?? null}
+          visible={visible}
+          fallbackSource={displayedPreview?.screenshot ?? null}
+          quality={BROWSER_PREVIEW_QUALITY}
+          maxWidth={browserViewport.width}
+          maxHeight={browserViewport.height}
+          onConnectionChange={(connected) => {
+            streamConnectedRef.current = connected;
+            if (!connected && page) schedulePreviewRefresh(page, true);
+          }}
+          onFramePresented={setStreamFrameVisible}
+        />
+        {!displayedPreview?.screenshot && !streamFrameVisible ? (
           <div className="flex h-full items-center justify-center p-8 text-center">
             <div>
               {loading ? (
@@ -755,7 +863,7 @@ export function ChatWorkspaceBrowser({
               <p className="text-xs text-gray-500">{startupLabel}</p>
             </div>
           </div>
-        )}
+        ) : null}
         {cursorStyle ? (
           <div
             className="pointer-events-none absolute z-20 -translate-x-[2px] -translate-y-[1px] transition-[left,top] duration-150 ease-out"
@@ -763,9 +871,9 @@ export function ChatWorkspaceBrowser({
             data-testid="browser-agent-cursor"
           >
             <span className="absolute -inset-2 rounded-full bg-blue-400/20 blur-md" />
-            {preview?.cursor?.action === "click" ? (
+            {displayedPreview.cursor?.action === "click" ? (
               <span
-                key={preview.cursor.updatedAt}
+                key={displayedPreview.cursor.updatedAt}
                 className="browser-agent-click-pulse absolute -left-2 -top-2 h-5 w-5 rounded-full border border-blue-300/80"
                 data-testid="browser-agent-click"
               />
@@ -782,7 +890,7 @@ export function ChatWorkspaceBrowser({
               onClick={() => {
                 setError(null);
                 setPage(null);
-                setPreview(null);
+                clearPreview();
                 setLoading(true);
                 void ensurePage()
                   .then(loadPreview)

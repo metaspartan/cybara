@@ -20,6 +20,14 @@ const browserSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/chat/ChatWorkspaceBrowser.tsx", import.meta.url)),
   "utf8"
 );
+const browserImageSource = readFileSync(
+  fileURLToPath(new URL("../../ui/src/pages/chat/BrowserPreviewImage.tsx", import.meta.url)),
+  "utf8"
+);
+const browserStreamClientSource = readFileSync(
+  fileURLToPath(new URL("../../ui/src/pages/chat/browserPreviewStreamClient.ts", import.meta.url)),
+  "utf8"
+);
 const computerSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/chat/ChatWorkspaceComputer.tsx", import.meta.url)),
   "utf8"
@@ -116,7 +124,21 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS)");
     expect(browserSource).toContain("data-browser-session-id={browserSessionId}");
     expect(browserSource).toContain("getBoundingClientRect");
-    expect(browserSource).toContain("/state?includePage=false");
+    expect(browserSource).not.toContain("/state?includePage=false");
+    expect(browserSource).toContain("BrowserScrollBatcher");
+    expect(browserSource).toContain("BrowserFramePresenter");
+    expect(browserSource).toContain("decodeBrowserPreviewImage");
+    expect(browserSource).toContain("schedulePreviewRefresh");
+    expect(browserSource).toContain("normalizeBrowserWheelDelta");
+    expect(browserImageSource).toContain('decoding="async"');
+    expect(browserImageSource).toContain("createAuthenticatedWebSocket");
+    expect(browserImageSource).toContain("LatestBrowserFrameDecoder");
+    expect(browserImageSource).toContain("setStreamSource(null)");
+    expect(browserImageSource).toContain("framePresentedRef.current(false)");
+    expect(browserStreamClientSource).toContain("class LatestBrowserFrameDecoder");
+    expect(browserImageSource).toContain("everyNthFrame");
+    expect(browserSource).toContain("streamConnectedRef.current");
+    expect(browserSource).toContain("loadBrowserState");
     expect(browserSource).toContain('query.set("revision", previewRevisionRef.current)');
     expect(browserSource).toContain('aria-label="Open in system browser"');
     expect(chatSource).toContain("openWorkspaceBrowser(route.url)");
@@ -129,14 +151,14 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("const BROWSER_START_TIMEOUT_MS = 90_000");
     expect(browserSource).toContain('apiFetch("/api/browser/status"');
     expect(browserSource).toContain("browserStartupLabel(status)");
-    expect(browserSource).toContain('sendPageInput("pointer/click"');
-    expect(browserSource).toContain('sendPageInput("scroll"');
-    expect(browserSource).toContain('sendPageInput("keyboard"');
+    expect(browserSource).toContain('sendPageInput(page, "pointer/click"');
+    expect(browserSource).toContain('sendPageInput(page, "scroll"');
+    expect(browserSource).toContain('sendPageInput(page, "keyboard"');
     expect(browserSource).toContain("transition-[left,top] duration-150");
     expect(browserSource).not.toContain(">\n              Agent\n");
-    expect(browserSource).toContain("absolute inset-0 h-full w-full");
-    expect(browserSource).toContain("object-contain");
-    expect(browserSource).not.toContain("object-fill");
+    expect(browserImageSource).toContain("absolute inset-0 h-full w-full");
+    expect(browserImageSource).toContain("object-contain");
+    expect(browserImageSource).not.toContain("object-fill");
     expect(browserSource).not.toContain("Close browser tab");
     expect(chatSource).toContain("onTitleChange={(title) => onUpdateTabTitle(instance.id, title)}");
     expect(browserManagerSource).toContain('button[aria-label^="Cybara pet"]');
@@ -149,6 +171,10 @@ describe("chat workspace panel", () => {
     expect(nativeBrowserSource).toContain("@FocusState private var addressFocused: Bool");
     expect(nativeBrowserSource).toContain("guard isActive else { return }");
     expect(nativeBrowserSource).toContain("if !addressFocused {");
+    expect(nativeBrowserSource).toContain("revision: revision");
+    expect(nativeBrowserSource).toContain('URLQueryItem(name: "revision", value: revision)');
+    expect(nativeBrowserSource).toContain('URLQueryItem(name: "viewportWidth", value: "960")');
+    expect(nativeBrowserSource).toContain("if let nextImage = preview.image {");
     expect(nativeBrowserSource).toContain(".scaledToFit()");
     expect(nativeBrowserSource).not.toContain(".scaledToFill()");
     expect(styleSource).toContain("animation: browser-agent-click-pulse 420ms ease-out forwards");

@@ -143,6 +143,7 @@ describe("route scope requirements", () => {
 
   test("terminal execution requires the terminal scope", () => {
     expect(routeRequiredScope("POST", "/api/ide/open-terminal")).toBe("terminal");
+    expect(routeRequiredScope("GET", "/api/browser/tabs/tab-1/stream")).toBe("terminal");
     expect(routeRequiredScope("GET", "/api/computer-use/preview")).toBe("terminal");
     expect(routeRequiredScope("DELETE", "/api/computer-use/preview")).toBe("terminal");
     expect(routeRequiredScope("GET", "/api/computer-use/trajectories")).toBe("terminal");

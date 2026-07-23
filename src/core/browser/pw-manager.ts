@@ -15,6 +15,8 @@ import {
   automationDriverForPlatform,
   type AutomationLocator as Locator,
   type AutomationPage as Page,
+  type AutomationScreencastFrame,
+  type AutomationScreencastOptions,
   connectPuppeteerBrowser,
   launchPuppeteerBrowser,
   wrapPlaywrightBrowser,
@@ -524,6 +526,17 @@ export async function screenshot(
     type: options?.type || "png",
     quality: options?.quality,
   });
+}
+
+export async function startScreencast(
+  pageId: string,
+  options: AutomationScreencastOptions,
+  listener: (frame: AutomationScreencastFrame) => void
+): Promise<() => Promise<void>> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) throw new Error(`Page ${pageId} not found`);
+  await prepareBrowserPreviewPage(page);
+  return await page.startScreencast(options, listener);
 }
 
 export async function pdf(
