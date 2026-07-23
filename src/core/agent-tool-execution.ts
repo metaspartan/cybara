@@ -203,11 +203,27 @@ async function executeAgentToolInternal(
 export async function executeAgentTool(
   options: AgentToolExecutionOptions
 ): Promise<AgentToolExecutionResult> {
-  if (!options.runtimeTracker) return await executeAgentToolInternal(options);
-  pauseAgenticLoopRuntime(options.runtimeTracker);
-  try {
-    return await executeAgentToolInternal(options);
-  } finally {
-    resumeAgenticLoopRuntime(options.runtimeTracker);
+  const executionState = options.toolContext?.executionState;
+  const order = executionState?.nextToolCallOrder ?? 0;
+  if (executionState) executionState.nextToolCallOrder += 1;
+  let execution: AgentToolExecutionResult;
+  if (!options.runtimeTracker) {
+    execution = await executeAgentToolInternal(options);
+  } else {
+    pauseAgenticLoopRuntime(options.runtimeTracker);
+    try {
+      execution = await executeAgentToolInternal(options);
+    } finally {
+      resumeAgenticLoopRuntime(options.runtimeTracker);
+    }
   }
+  if (!execution.skipped && execution.result !== undefined) {
+    executionState?.toolCalls.push({
+      order,
+      name: options.toolName,
+      args: options.args,
+      result: execution.result,
+    });
+  }
+  return execution;
 }

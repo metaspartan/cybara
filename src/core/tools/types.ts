@@ -2,6 +2,19 @@ export interface ToolHandler {
   (args: Record<string, unknown>, context?: ToolContext): Promise<unknown>;
 }
 
+export interface ToolExecutionRecord {
+  order: number;
+  name: string;
+  args: Record<string, unknown>;
+  result: unknown;
+}
+
+export interface ToolExecutionState {
+  nextToolCallOrder: number;
+  toolCallsStarted: number;
+  toolCalls: ToolExecutionRecord[];
+}
+
 export interface ToolContext {
   agentId: string;
   sessionId?: string;
@@ -21,7 +34,7 @@ export interface ToolContext {
   denyWritePrefixes?: string[];
   confineToWorkspace?: boolean;
   consumeSteeringMessages?: () => Array<{ id: string; content: string; createdAt: number }>;
-  executionState?: { toolCallsStarted: number };
+  executionState?: ToolExecutionState;
 }
 
 export interface Tool {
