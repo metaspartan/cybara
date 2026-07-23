@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   clearCachedMobileLiveAssistant,
   isMobileSessionSnapshotCurrent,
+  liveActivityFromStatusEvent,
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
-  liveActivityFromStatusEvent,
   mergeLiveActivity,
   mobileAgentUsingBrowser,
+  mobileLiveStatusIndicatorState,
   mobilePreSteerProcessActivities,
   prunePersistedMobileLiveAssistant,
   readCachedMobileLiveAssistant,
@@ -15,6 +16,35 @@ import {
 } from "../../apps/mobile/src/screens/dashboardLiveChat";
 
 describe("mobile live chat cache", () => {
+  test("maps generic live statuses to native activity indicators", () => {
+    expect(mobileLiveStatusIndicatorState("Thinking...")).toBe("composing");
+    expect(mobileLiveStatusIndicatorState("Generating response...")).toBe("solving");
+    expect(mobileLiveStatusIndicatorState("Compacting earlier context...")).toBe("solving");
+    expect(mobileLiveStatusIndicatorState("Inspecting package.json")).toBeNull();
+  });
+
+  test("updates one generic live status row instead of appending duplicates", () => {
+    const thinking = liveActivityFromStatusEvent({
+      type: "status",
+      status: "thinking",
+      timestamp: 100,
+    });
+    const generating = liveActivityFromStatusEvent({
+      type: "status",
+      status: "generating",
+      timestamp: 200,
+    });
+    if (!thinking || !generating) throw new Error("expected live activities");
+
+    const activities = mergeLiveActivity([thinking], generating);
+    expect(activities).toHaveLength(1);
+    expect(activities[0]).toMatchObject({
+      id: "live-agent-status",
+      text: "Generating response...",
+      toolName: "__thought",
+    });
+  });
+
   test("keeps authoritative quiet long-running sessions active", () => {
     const now = 1_783_700_000_000;
     const oldTimestamp = now - 30 * 60_000;
@@ -153,6 +183,24 @@ describe("mobile live chat cache", () => {
       text: "Exploring package.json",
       toolCallId: "read-1",
     });
+  });
+
+  test("hydrates the current generic activity from a reconnect snapshot", () => {
+    const sessionId = `mobile-generating-snapshot-${Date.now()}`;
+    const live = liveAssistantFromStatusSnapshot(sessionId, null, {
+      sessionId,
+      status: "generating",
+      timestamp: 1783015200500,
+      activities: [],
+    });
+
+    expect(live.processActivities).toEqual([
+      expect.objectContaining({
+        id: "live-agent-status",
+        text: "Generating response...",
+        toolName: "__thought",
+      }),
+    ]);
   });
 
   test("keeps mobile live rows when queue snapshots have no activity rows", () => {

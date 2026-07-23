@@ -474,11 +474,12 @@ export function DashboardScreen({
   }, []);
 
   useEffect(() => {
+    if (detailRoute?.kind === "session") return;
     const interval = setInterval(() => {
       if (appStateRef.current === "active") void refresh(false);
     }, 12000);
     return () => clearInterval(interval);
-  }, [profile.id]);
+  }, [detailRoute?.kind, profile.id]);
 
   useEffect(() => {
     if (

@@ -252,6 +252,17 @@ export function encodeMobileConnectPayload(payload: MobileConnectPayload): strin
   return JSON.stringify(payload);
 }
 
+export function isMobileConnectDeepLink(value: unknown): value is string {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const url = new URL(value.trim());
+    const route = (url.hostname || url.pathname).replace(/^\/+/, "").toLowerCase();
+    return url.protocol === "cybara:" && route === "connect";
+  } catch {
+    return false;
+  }
+}
+
 export function parseMobileConnectPayload(raw: unknown): MobileConnectPayload {
   const trimmed = normalizeConnectionPayloadInput(raw);
   let parsed: unknown;

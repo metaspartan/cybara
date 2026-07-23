@@ -7,6 +7,7 @@ import {
   type ProviderPlanMonitoringConfig,
   type ProviderPlanStatusResponse,
 } from "./apiProviderPlans";
+import { MobileStatusStreamClient } from "./mobileStatusStream";
 import {
   buildMobileMediaUrl,
   buildMobileStatusStreamUrl,
@@ -142,9 +143,6 @@ export * from "./api-types";
 const MOBILE_SESSION_LIST_LIMIT = 100;
 const MOBILE_LOG_LIST_LIMIT = 150;
 
-type MobileWebSocketConstructor = NonNullable<MobileStatusStreamOptions["WebSocketImpl"]>;
-type MobileWebSocket = InstanceType<MobileWebSocketConstructor>;
-
 export class CybaraApiError extends Error {
   status: number;
   path: string;
@@ -159,13 +157,19 @@ export class CybaraApiError extends Error {
 
 export class CybaraMobileApi {
   private profile: GatewayProfile;
+  private readonly statusStreamClient: MobileStatusStreamClient;
 
   constructor(profile: GatewayProfile) {
     this.profile = profile;
+    this.statusStreamClient = new MobileStatusStreamClient(
+      () => this.statusStreamUrl(),
+      normalizeMobileStatusStreamEvent
+    );
   }
 
   setApiKey(apiKey: string): void {
     this.profile = { ...this.profile, apiKey };
+    this.statusStreamClient.reset();
   }
 
   setGatewayPassword(gatewayPassword?: string): void {
@@ -207,75 +211,7 @@ export class CybaraMobileApi {
     handlers: MobileStatusStreamHandlers,
     options?: MobileStatusStreamOptions
   ): () => void {
-    let socket: MobileWebSocket | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let closedByUser = false;
-    const reconnectDelayMs = Math.max(250, options?.reconnectDelayMs ?? 2000);
-    const WebSocketImpl =
-      options?.WebSocketImpl ??
-      (globalThis as { WebSocket?: MobileWebSocketConstructor }).WebSocket;
-
-    if (!WebSocketImpl) {
-      handlers.onError?.();
-      return () => {};
-    }
-
-    const clearReconnect = () => {
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-    };
-
-    const connect = () => {
-      clearReconnect();
-      try {
-        socket = new WebSocketImpl(this.statusStreamUrl());
-      } catch {
-        handlers.onError?.();
-        if (!closedByUser) {
-          reconnectTimer = setTimeout(connect, reconnectDelayMs);
-        }
-        return;
-      }
-
-      socket.onopen = () => {
-        handlers.onOpen?.();
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(String(event.data));
-          const normalized = normalizeMobileStatusStreamEvent(payload);
-          if (normalized) handlers.onEvent(normalized);
-        } catch {}
-      };
-
-      socket.onclose = () => {
-        handlers.onClose?.();
-        if (!closedByUser) {
-          reconnectTimer = setTimeout(connect, reconnectDelayMs);
-        }
-      };
-
-      socket.onerror = () => {
-        handlers.onError?.();
-        try {
-          socket?.close();
-        } catch {}
-      };
-    };
-
-    connect();
-
-    return () => {
-      closedByUser = true;
-      clearReconnect();
-      try {
-        socket?.close();
-      } catch {}
-      socket = null;
-    };
+    return this.statusStreamClient.subscribe(handlers, options);
   }
 
   health(): Promise<HealthResponse> {

@@ -1057,17 +1057,25 @@ export interface MobileStatusStreamHandlers {
   onError?: () => void;
 }
 
-type MobileWebSocket = WebSocket & {
+interface MobileWebSocket {
   onopen: (() => void) | null;
   onclose: (() => void) | null;
   onerror: (() => void) | null;
   onmessage: ((event: { data: unknown }) => void) | null;
-};
+  readyState?: number;
+  send?: (data: string) => void;
+  close: () => void;
+}
 
 type MobileWebSocketConstructor = new (url: string) => MobileWebSocket;
 
 export interface MobileStatusStreamOptions {
   reconnectDelayMs?: number;
+  maxReconnectDelayMs?: number;
+  closeGraceMs?: number;
+  heartbeatMs?: number;
+  staleMs?: number;
+  replayBufferedEvents?: boolean;
   WebSocketImpl?: MobileWebSocketConstructor;
 }
 

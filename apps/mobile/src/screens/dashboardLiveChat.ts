@@ -1,11 +1,11 @@
+import { isProviderRecoveryStatusLabel } from "cybara-shared/chat-status";
+import type { SessionEventIdentity } from "cybara-shared/session-event-order";
 import type {
   MobileStatusSessionSnapshot,
   MobileStatusStreamEvent,
   SessionDetailSummary,
   SessionProcessActivitySummary,
 } from "../lib/api";
-import { isProviderRecoveryStatusLabel } from "cybara-shared/chat-status";
-import type { SessionEventIdentity } from "cybara-shared/session-event-order";
 
 type StatusEvent = Extract<MobileStatusStreamEvent, { type: "status" }>;
 
@@ -239,16 +239,33 @@ export function liveActivityFromStatusEvent(
                 ? `${event.toolName} running...`
                 : "Working...";
   const text = isMeaningfulLiveDetail(event.detail) ? event.detail.trim() : fallbackText;
+  const genericLiveStatus =
+    toolName === "__thought" && !compactionActivity && !isMeaningfulLiveDetail(event.detail);
   return {
     id: compactionActivity
       ? "live-context-compaction"
-      : event.toolCallId || `live-${event.status}-${timestamp}`,
+      : event.toolCallId ||
+        (genericLiveStatus ? "live-agent-status" : `live-${event.status}-${timestamp}`),
     phase,
     text,
     timestamp,
     toolName,
     toolCallId: compactionActivity ? "live-context-compaction" : event.toolCallId,
   };
+}
+
+export function mobileLiveStatusIndicatorState(text: string): "composing" | "solving" | null {
+  const normalized = text.trim().toLowerCase();
+  if (normalized === "thinking" || normalized === "thinking...") return "composing";
+  if (
+    normalized === "generating response" ||
+    normalized === "generating response..." ||
+    normalized === "compacting earlier context" ||
+    normalized === "compacting earlier context..."
+  ) {
+    return "solving";
+  }
+  return null;
 }
 
 export function mergeLiveActivity(
@@ -340,11 +357,32 @@ export function liveAssistantFromStatusSnapshot(
         activity.id.startsWith("live-thinking-")
       )
   );
+  const snapshotActivity = liveActivityFromStatusEvent({
+    type: "status",
+    runId: snapshot.runId,
+    sequence: snapshot.sequence,
+    status: snapshot.status,
+    timestamp,
+    detail: snapshot.detail,
+    sessionId,
+    agentId: snapshot.agentId,
+  });
+  const shouldAddSnapshotActivity =
+    !current ||
+    (base.processActivities || []).some(
+      (activity) => activity.id === "live-agent-status" || activity.id.startsWith("live-thinking-")
+    );
+  const incomingActivities =
+    snapshot.activities.length > 0
+      ? snapshot.activities
+      : snapshotActivity && shouldAddSnapshotActivity
+        ? [snapshotActivity]
+        : [];
   return {
     ...base,
     processActivities:
-      snapshot.activities.length > 0
-        ? mergeMobileLiveActivities(currentActivities, snapshot.activities)
+      incomingActivities.length > 0
+        ? mergeMobileLiveActivities(currentActivities, incomingActivities)
         : base.processActivities,
   };
 }
