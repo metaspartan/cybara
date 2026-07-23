@@ -125,4 +125,169 @@ describe("chat response recovery", () => {
     expect(result.message.content).toContain("no usable response");
     expect(result.message.content).toContain("no tool actions were executed");
   });
+
+  test("forces a tool-backed retry for unsupported implementation claims", async () => {
+    const agentId = createTestAgent("Unsupported Claim Recovery Agent");
+    const sessionId = `unsupported-claim-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const executionOptions: Array<Parameters<typeof agentManager.execute>[2]> = [];
+    let callCount = 0;
+
+    agentManager.execute = (async (_agentId, _messages, options) => {
+      callCount += 1;
+      executionOptions.push(options);
+      if (callCount === 1) {
+        return { content: "Done. I implemented the importer and all tests passed." };
+      }
+      return {
+        content: "I fixed the importer and verified 4 focused tests pass.",
+        tool_calls: [
+          {
+            name: "edit",
+            args: { path: "/tmp/import.ts" },
+            result: { filePath: "/tmp/import.ts" },
+          },
+          {
+            name: "exec",
+            args: { command: "bun test import" },
+            result: { output: "4 pass", exitCode: 0 },
+          },
+        ],
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Fix the importer and test it.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(2);
+    expect(executionOptions[1]?.requireToolUse).toBe(true);
+    expect(result.message.content).toContain("verified 4 focused tests pass");
+    expect(result.message.tool_calls).toHaveLength(2);
+  });
+
+  test("continues when a model stops after promising to execute its plan", async () => {
+    const agentId = createTestAgent("Unfinished Execution Recovery Agent");
+    const sessionId = `unfinished-execution-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    let callCount = 0;
+
+    agentManager.execute = (async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          content:
+            "The page is blank and I have not yet patched it. Next concrete plan: fix the script, reload the browser, and verify the workflow. Executing now.",
+          tool_calls: [
+            {
+              name: "browser",
+              args: { action: "open", url: "http://127.0.0.1:7818" },
+              result: { error: "SyntaxError: duplicate declaration" },
+            },
+          ],
+        };
+      }
+      return {
+        content: "Fixed the duplicate declaration and verified the primary workflow renders.",
+        tool_calls: [
+          {
+            name: "edit",
+            args: { path: "/tmp/app.js" },
+            result: { filePath: "/tmp/app.js" },
+          },
+          {
+            name: "browser",
+            args: { action: "snapshot" },
+            result: { text: "Dashboard Incidents Releases" },
+          },
+        ],
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Finish and visually verify the app.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(2);
+    expect(result.message.content).toContain("verified the primary workflow renders");
+    expect(result.message.tool_calls).toHaveLength(3);
+  });
+
+  test("does not accept failed tool execution as completion evidence", async () => {
+    const agentId = createTestAgent("Failed Evidence Recovery Agent");
+    const sessionId = `failed-evidence-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    let callCount = 0;
+
+    agentManager.execute = (async () => {
+      callCount += 1;
+      return {
+        content: "All tests passed and the build is green.",
+        tool_calls: [
+          {
+            name: "exec",
+            args: { command: "bun test" },
+            result: { output: "2 failed", exitCode: 1 },
+          },
+        ],
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Run the tests and tell me whether they pass.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(2);
+    expect(result.message.content).toContain("did not record a successful verification action");
+    expect(result.message.tool_calls?.[0]?.status).toBe("failed");
+  });
+
+  test("renders the actual structured clarification instead of an invisible asked status", async () => {
+    const agentId = createTestAgent("Visible Clarification Agent");
+    const sessionId = `visible-clarification-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    let callCount = 0;
+
+    agentManager.execute = (async () => {
+      callCount += 1;
+      return {
+        content: "Asked.",
+        tool_calls: [
+          {
+            name: "clarify",
+            args: { question: "Which data source should I use?" },
+            result: {
+              awaiting: "user",
+              question: "Which data source should I use?",
+              options: [
+                { label: "API", description: "Official endpoint" },
+                { label: "Files", description: "Checked-in data" },
+              ],
+            },
+          },
+        ],
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Make the data source configurable.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(1);
+    expect(result.message.content).toContain("Which data source should I use?");
+    expect(result.message.content).toContain("**API**");
+    expect(result.message.content).not.toBe("Asked.");
+  });
 });

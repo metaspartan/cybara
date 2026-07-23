@@ -127,6 +127,7 @@ export interface SessionStatusSnapshot {
   runId?: string;
   sequence?: number;
   status: string;
+  startedAt?: number;
   timestamp: number;
   detail?: string;
   agentId?: string;

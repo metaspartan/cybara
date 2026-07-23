@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { stripReasoningTagTokens, summarizeProgressThought } from "../../src/core/agent-internals";
+import { reduceSessionStatusSnapshot } from "../../src/core/status";
 import { mergeActivityLists, type LiveActivityItem } from "../../ui/src/lib/chatActivities";
 import {
   buildMobileWorkTimeline,
@@ -21,6 +22,16 @@ describe("reasoning tag tokens never leak into visible chat state", () => {
     expect(summarizeProgressThought("[/thinking]")).toBeUndefined();
     expect(summarizeProgressThought("Checking the file</think>")).toBe("Checking the file");
     expect(summarizeProgressThought("<thinking>plan</thinking> run tests")).toBe("plan run tests");
+  });
+
+  test("gateway: summarizeProgressThought preserves complete long thoughts", () => {
+    const thought = Array.from(
+      { length: 40 },
+      (_, index) => `Reasoning step ${index + 1} verifies the next tool call.`
+    ).join(" ");
+
+    expect(thought.length).toBeGreaterThan(500);
+    expect(summarizeProgressThought(thought)).toBe(thought);
   });
 
   test("gateway: stripReasoningTagTokens handles every tag family", () => {
@@ -43,6 +54,22 @@ describe("reasoning tag tokens never leak into visible chat state", () => {
     const statusSource = read("src/core/status.ts");
     expect(statusSource).toContain('import { stripReasoningTagTokens } from "./agent-internals"');
     expect(statusSource).toContain("stripReasoningTagTokens(detail)");
+  });
+
+  test("gateway: live status snapshots preserve complete long thoughts", () => {
+    const thought = Array.from(
+      { length: 35 },
+      (_, index) => `Live thought ${index + 1} checks the next operation.`
+    ).join(" ");
+    const snapshot = reduceSessionStatusSnapshot(undefined, {
+      status: "thinking",
+      timestamp: 1,
+      detail: thought,
+      sessionId: "long-thought-session",
+    });
+
+    expect(snapshot?.detail).toBe(thought);
+    expect(snapshot?.activities[0]?.text).toBe(thought);
   });
 
   test("web: mergeActivityLists drops activities that are only tag markup", () => {
@@ -116,5 +143,13 @@ describe("reasoning tag tokens never leak into visible chat state", () => {
     // macOS: the thinking bubble shows the timeline only, no streamed body.
     const macScreens = read("apps/macos/Cybara/Sources/Cybara/NativeScreens.swift");
     expect(macScreens).not.toContain("NativeMarkdownView(content: visibleStreamingContent");
+  });
+
+  test("mobile and native timelines leave thought rows unbounded", () => {
+    const mobileChat = read("apps/mobile/src/screens/dashboardChat.tsx");
+    const macTimeline = read("apps/macos/Cybara/Sources/Cybara/NativeToolTimeline.swift");
+
+    expect(mobileChat).toContain('numberOfLines={activity.toolName === "__thought" ? 0 : 2}');
+    expect(macTimeline).toContain('.lineLimit(activity.toolName == "__thought" ? nil : 3)');
   });
 });

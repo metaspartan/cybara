@@ -176,4 +176,38 @@ describe("chat response formatting", () => {
     expect(message.process_activities?.[0]?.toolCallId).toBe("read-0");
     expect(message.process_activities?.[300]?.toolCallId).toBe("read-300");
   });
+
+  test("preserves complete thoughts while limiting ordinary activity summaries", () => {
+    const longThought = Array.from(
+      { length: 30 },
+      (_, index) => `Thought ${index + 1} checks the result before continuing.`
+    ).join(" ");
+    const longToolSummary = "x".repeat(700);
+
+    const [message] = sanitizeSessionMessages([
+      {
+        role: "assistant",
+        content: "Complete",
+        process_activities: [
+          {
+            id: "long-thought",
+            phase: "result",
+            text: longThought,
+            timestamp: 1,
+            toolName: "__thought",
+          },
+          {
+            id: "long-command",
+            phase: "result",
+            text: longToolSummary,
+            timestamp: 2,
+            toolName: "exec",
+          },
+        ],
+      },
+    ]);
+
+    expect(message.process_activities?.[0]?.text).toBe(longThought);
+    expect(message.process_activities?.[1]?.text).toBe(`${longToolSummary.slice(0, 500)}...`);
+  });
 });

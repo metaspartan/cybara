@@ -5,6 +5,7 @@ import {
   buildMobileConnectPayload,
   encodeMobileConnectPayload,
   isLoopbackGatewayUrl,
+  isLocalNetworkGatewayUrl,
   isGatewaySessionListResponse,
   normalizeConnectionPayloadInput,
   normalizeGatewayUrl,
@@ -23,6 +24,12 @@ describe("mobile gateway connection payloads", () => {
     expect(isLoopbackGatewayUrl("http://127.0.0.1:4269")).toBe(true);
     expect(isLoopbackGatewayUrl("http://localhost:4269")).toBe(true);
     expect(isLoopbackGatewayUrl("http://192.168.1.10:4269")).toBe(false);
+    expect(isLocalNetworkGatewayUrl("http://192.168.1.10:4269")).toBe(true);
+    expect(isLocalNetworkGatewayUrl("http://10.0.0.4:4269")).toBe(true);
+    expect(isLocalNetworkGatewayUrl("http://100.64.0.8:4269")).toBe(true);
+    expect(isLocalNetworkGatewayUrl("http://gateway.local:4269")).toBe(true);
+    expect(isLocalNetworkGatewayUrl("http://[fd00::4]:4269")).toBe(true);
+    expect(isLocalNetworkGatewayUrl("https://cybara.example.com")).toBe(false);
   });
 
   test("builds and parses QR-safe JSON payloads", () => {
@@ -143,10 +150,14 @@ describe("mobile gateway connection verification", () => {
 
     await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow("same Wi-Fi");
     await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow(
-      "Windows Firewall"
+      "computer's firewall"
     );
+    await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow("TCP 4269");
     await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow("phone's browser");
     await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow("Remote Access");
+    await expect(
+      verifyGatewayProfile({ ...profile, baseUrl: "http://192.168.1.20:5200" }, failingFetch, 0)
+    ).rejects.toThrow("TCP 5200");
   });
 
   test("reports loopback QR payloads as unusable on a phone", async () => {
@@ -196,6 +207,7 @@ describe("pairing-code redemption", () => {
 
   test("resolveGatewayProfile accepts the TestFlight LAN pairing payload shape", async () => {
     const calls: Array<{ url: string; body: unknown }> = [];
+    const preflightUrls: string[] = [];
     const fetchImpl: typeof fetch = (async (url: string, init?: RequestInit) => {
       calls.push({
         url,
@@ -224,7 +236,11 @@ describe("pairing-code redemption", () => {
     const profile = await resolveGatewayProfile(
       raw,
       new Date("2026-07-08T00:00:00.000Z"),
-      fetchImpl
+      fetchImpl,
+      8000,
+      async (baseUrl) => {
+        preflightUrls.push(baseUrl);
+      }
     );
 
     expect(profile).toMatchObject({
@@ -239,6 +255,7 @@ describe("pairing-code redemption", () => {
         body: { code: "BGJ2-L5SE" },
       },
     ]);
+    expect(preflightUrls).toEqual(["http://192.168.1.155:4269"]);
   });
 
   test("resolveGatewayProfile times out when pairing redemption never returns", async () => {

@@ -87,6 +87,7 @@ describe("Tauri wiring", () => {
     expect(mainRs).not.toContain('.env("CYBARA_HOST", "127.0.0.1")');
     expect(mainRs).toContain("child.kill()");
     expect(mainRs).toContain("get_gateway_startup_status");
+    expect(mainRs).toContain("restart_gateway_sidecar");
     expect(mainRs).toContain('log::warn!(target: "cybara::sidecar"');
     expect(mainRs).toContain('log::info!(target: "cybara::sidecar"');
     expect(mainRs).toContain('Ok(value) if value == "0" || value.eq_ignore_ascii_case("false")');
@@ -129,16 +130,20 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("GatewayPortSignalParser::default()");
     expect(mainRs).toContain("port_receiver.recv_timeout(Duration::from_secs(10))");
     expect(mainRs).not.toContain("select_launch_endpoint");
-    expect(mainRs).toContain("SidecarState(std::sync::Mutex::new(None))");
-    expect(mainRs).toContain("*guard = Some(child)");
+    expect(mainRs).toContain("ManagedSidecar::default()");
+    expect(mainRs).toContain("store_sidecar_child(&app, generation, child)");
     expect(mainRs).toContain("Duration::from_secs(25)");
     expect(mainRs).toContain("GatewayStartupStatus::failed");
+    expect(mainRs).toContain("start_gateway_watchdog(app.handle().clone())");
+    expect(mainRs).toContain("schedule_sidecar_restart(");
+    expect(mainRs).toContain('.env("CYBARA_NATIVE_APP", "1")');
+    expect(mainRs).toContain("gateway::is_gateway_healthy_at(&endpoint.addr");
+    expect(mainRs).toContain("shutdown_sidecar(app_handle)");
     expect(mainRs).toContain("tauri::WindowEvent::CloseRequested { api, .. }");
     expect(mainRs).toContain("api.prevent_close()");
     expect(mainRs).toContain("window.hide()");
     expect(mainRs).toContain("if let Some(state) = app.try_state::<SidecarState>()");
-    expect(mainRs).toContain("if let Some(child) = guard.take()");
-    expect(mainRs.match(/stop_sidecar\(&app_handle\)/g)).toHaveLength(3);
+    expect(mainRs).toContain("if let Some(child) = guard.child.take()");
   });
 
   test("desktop shells expose a cross-platform tray with live provider usage", () => {
@@ -205,6 +210,7 @@ describe("Tauri wiring", () => {
     expect(gatewayPermission).toContain('"read_cybara_api_key"');
     expect(gatewayPermission).toContain('"get_gateway_url"');
     expect(gatewayPermission).toContain('"get_gateway_startup_status"');
+    expect(gatewayPermission).toContain('"restart_gateway_sidecar"');
     expect(updaterPermission).toContain('"get_desktop_update_state"');
     expect(updaterPermission).toContain('"check_desktop_update"');
     expect(updaterPermission).toContain('"install_desktop_update"');

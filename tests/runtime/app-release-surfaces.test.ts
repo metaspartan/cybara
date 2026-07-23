@@ -70,6 +70,7 @@ describe("app release surface wiring", () => {
     );
     expect(workflow).toContain("Verify Android LAN pairing transport");
     expect(workflow).toContain('android:usesCleartextTraffic="true"');
+    expect(workflow).toContain("android.permission.NEARBY_WIFI_DEVICES");
     expect(workflow).toContain("name: Tune Android Gradle memory");
     expect(workflow).toContain("MaxMetaspaceSize=1536m");
     expect(workflow).toContain("kotlin.daemon.jvmargs");
@@ -299,6 +300,12 @@ describe("app release surface wiring", () => {
     expect(appJson.expo?.plugins).toContain("./plugins/with-android-lan-cleartext");
     expect(read("apps/mobile/plugins/with-android-lan-cleartext.js")).toContain(
       'application.$["android:usesCleartextTraffic"] = "true"'
+    );
+    expect(read("apps/mobile/plugins/with-android-lan-cleartext.js")).toContain(
+      "android.permission.NEARBY_WIFI_DEVICES"
+    );
+    expect(read("apps/mobile/plugins/with-android-lan-cleartext.js")).toContain(
+      "android.permission.ACCESS_LOCAL_NETWORK"
     );
     expect(appJson.expo?.extra?.gatewayContract).toBe("cybara-mobile-connect-v1");
 

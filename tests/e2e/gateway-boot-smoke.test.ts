@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync } from "fs";
 import { createServer } from "net";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
@@ -131,6 +131,50 @@ describe("gateway boot smoke e2e", () => {
     expect(live.status).toBe(200);
     expect(live.data.live).toBe(true);
   });
+
+  test("CLI doctor probes the live gateway and exports a privacy-reduced report", async () => {
+    const outputPath = join(homeDir, "doctor-report.json");
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "run",
+        "src/cli/index.tsx",
+        "doctor",
+        "--deep",
+        "--json",
+        "--export",
+        outputPath,
+      ],
+      {
+        cwd: ROOT_DIR,
+        env: {
+          ...process.env,
+          HOME: homeDir,
+          USERPROFILE: homeDir,
+          CYBARA_API: baseUrl,
+          CYBARA_API_KEY: apiKey,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      }
+    );
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    expect(exitCode, stderr).toBe(0);
+    const report = JSON.parse(stdout) as {
+      schemaVersion: number;
+      summary: { failed: number };
+      snapshots: Record<string, unknown>;
+    };
+    expect(report.schemaVersion).toBe(1);
+    expect(report.summary.failed).toBe(0);
+    expect(report.snapshots.health).toBeDefined();
+    expect(report.snapshots.logs).toBeDefined();
+    expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(report);
+  }, 30000);
 
   test("pairing code lifecycle: mint, redeem for scoped token, scope-gated 403, one-time", async () => {
     const minted = await api("POST", "/api/mobile/devices/pair-code", {

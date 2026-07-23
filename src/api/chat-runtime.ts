@@ -145,6 +145,7 @@ import {
   buildNoUsableAssistantResponseMessage,
   buildToolExecutionFallbackMessage,
   classifyToolCallResult,
+  extractVisibleClarification,
   requiredDirectToolForMessage,
   shouldPreferArtifactsForMessage,
   suppressRecoveredWebFailureActivities,
@@ -366,6 +367,19 @@ async function finishInterruptedChatTurn(
       name: agent.name,
     },
   };
+}
+
+async function finishAbortedChatTurn(
+  session: InMemoryChatSession,
+  agent: { id: string; name: string },
+  controller: AbortController,
+  consumedSteeringCompletionIds: Set<string>
+): Promise<ChatResponse> {
+  const response = isStoppedChatTurn(controller)
+    ? await finishStoppedChatTurn(session, agent, controller)
+    : await finishInterruptedChatTurn(session, agent, controller);
+  for (const id of consumedSteeringCompletionIds) resolvePendingChatCompletion(id, response);
+  return response;
 }
 
 function enqueuePendingChatMessage(
@@ -1196,6 +1210,8 @@ async function handleChatTurn(
   let provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
   const turnAbortController = new AbortController();
   const consumedSteeringCompletionIds = new Set<string>();
+  const finishAbortedTurn = (activeAgent: { id: string; name: string }) =>
+    finishAbortedChatTurn(session, activeAgent, turnAbortController, consumedSteeringCompletionIds);
   const consumeSteeringMessagesForActiveTurn = () => {
     if (turnAbortController.signal.aborted) return [];
     const consumed = consumeSteeringMessages(session);
@@ -1615,6 +1631,7 @@ async function handleChatTurn(
         toolResults.push(...(result.tool_calls || []));
       }
       responseContent = result.content;
+      responseContent = extractVisibleClarification(toolResults) || responseContent;
 
       const recoveredResponse = await recoverAssistantResponse({
         agentId: agent.id,
@@ -1736,18 +1753,7 @@ async function handleChatTurn(
       });
     } catch (error) {
       if (isChatTurnInterrupted(error, turnAbortController.signal)) {
-        if (isStoppedChatTurn(turnAbortController)) {
-          const response = await finishStoppedChatTurn(session, agent, turnAbortController);
-          for (const id of consumedSteeringCompletionIds) {
-            resolvePendingChatCompletion(id, response);
-          }
-          return response;
-        }
-        const response = await finishInterruptedChatTurn(session, agent, turnAbortController);
-        for (const id of consumedSteeringCompletionIds) {
-          resolvePendingChatCompletion(id, response);
-        }
-        return response;
+        return await finishAbortedTurn(agent);
       }
       if (provider) recordCircuitFailure(`llm:${provider.id}`);
       log.error("LLM API error", {
@@ -1761,6 +1767,10 @@ async function handleChatTurn(
   } else {
     responseContent =
       "No AI provider configured. Please add a provider (like MiniMax, OpenAI, or Ollama) to enable AI responses.";
+  }
+
+  if (turnAbortController.signal.aborted && agent) {
+    return await finishAbortedTurn(agent);
   }
 
   responseContent = appendToolImageReferences(responseContent, allToolCalls);

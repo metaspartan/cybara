@@ -20,6 +20,11 @@ describe("system prompt reliability guidance", () => {
 
   test("includes act-now (no promises) rule", () => {
     expect(prompt).toContain("Act, don't promise");
+    expect(prompt).toContain("Match claims to evidence");
+    expect(prompt).toContain("A failed or blocked tool is not evidence of success");
+    expect(prompt).toContain("Verify the rendered product");
+    expect(prompt).toContain("inspect the rendered state and browser errors");
+    expect(prompt).toContain("Make questions visible");
   });
 
   test("includes parallel tool-call guidance", () => {

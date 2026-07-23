@@ -47,6 +47,13 @@ final class SidecarCoreTests: XCTestCase {
         XCTAssertEqual(SidecarCore.healthURLString(port: 4269), "http://127.0.0.1:4269/api/health")
     }
 
+    func testHealthSupervisionThresholds() {
+        XCTAssertFalse(SidecarCore.healthFailureRequiresRestart(2))
+        XCTAssertTrue(SidecarCore.healthFailureRequiresRestart(3))
+        XCTAssertFalse(SidecarCore.stableHealthResetsRestartBudget(4))
+        XCTAssertTrue(SidecarCore.stableHealthResetsRestartBudget(5))
+    }
+
     func testFallbackPortsFollowPreferredPort() {
         XCTAssertEqual(
             SidecarCore.fallbackPorts(after: 4269, count: 4),

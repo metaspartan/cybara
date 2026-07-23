@@ -1461,10 +1461,7 @@ describe("handleChat per-session serialization", () => {
           toolCallId: "steered-exec",
           toolPhase: "result",
         });
-        throw (
-          options?.abortSignal?.reason ||
-          new DOMException("Chat turn interrupted by user steering", "AbortError")
-        );
+        return { content: "late result that must be discarded" };
       }
       secondExecutionMessages = _messages.map((message) => ({
         role: message.role,

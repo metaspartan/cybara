@@ -119,12 +119,15 @@ final class SidecarManager: ObservableObject {
     private var process: Process?
     private var outputHandle: FileHandle?
     private var readinessTask: Task<Void, Never>?
+    private var healthMonitorTask: Task<Void, Never>?
     private let allowsAutomaticPortFallback: Bool
     /// Set when the user explicitly stops/restarts, so an expected exit isn't
     /// treated as a crash by the auto-restart logic.
     private var userInitiatedStop = false
     /// Consecutive auto-restart attempts since the gateway was last healthy.
     private var restartAttempts = 0
+    private var consecutiveHealthFailures = 0
+    private var stableHealthChecks = 0
 
     init() {
         let configuredPort = ProcessInfo.processInfo.environment["CYBARA_NATIVE_PORT"]
@@ -136,6 +139,7 @@ final class SidecarManager: ObservableObject {
     deinit {
         outputHandle?.readabilityHandler = nil
         readinessTask?.cancel()
+        healthMonitorTask?.cancel()
         process?.terminate()
     }
 
@@ -178,6 +182,8 @@ final class SidecarManager: ObservableObject {
                     self.appendLog("Sidecar exited with code \(code).")
                     self.outputHandle?.readabilityHandler = nil
                     self.outputHandle = nil
+                    self.healthMonitorTask?.cancel()
+                    self.healthMonitorTask = nil
                     self.process = nil
                     guard self.gatewayMode == .managed else { return }
                     self.gatewayMode = .idle
@@ -240,6 +246,8 @@ final class SidecarManager: ObservableObject {
         restartAttempts = 0
         readinessTask?.cancel()
         readinessTask = nil
+        healthMonitorTask?.cancel()
+        healthMonitorTask = nil
         outputHandle?.readabilityHandler = nil
         outputHandle = nil
         let managedProcess = gatewayMode == .managed ? process : nil
@@ -258,8 +266,7 @@ final class SidecarManager: ObservableObject {
         let deadline = Date().addingTimeInterval(30)
         while Date() < deadline {
             if await compatibleGatewayProbe() != nil {
-                status = .ready
-                appendLog("Attached Cybara gateway is healthy at \(serverURL.absoluteString)")
+                markGatewayReady("Attached Cybara gateway is healthy at \(serverURL.absoluteString)")
                 return
             }
             try? await Task.sleep(for: .milliseconds(500))
@@ -272,6 +279,7 @@ final class SidecarManager: ObservableObject {
     /// capped exponential backoff. Gives up after `maxRestartAttempts` so a
     /// crash-looping sidecar surfaces a failure instead of restarting forever.
     private func handleUnexpectedExit() {
+        stableHealthChecks = 0
         restartAttempts += 1
         guard restartAttempts <= SidecarCore.maxRestartAttempts else {
             status = .failed(
@@ -297,6 +305,50 @@ final class SidecarManager: ObservableObject {
         }
     }
 
+    private func markGatewayReady(_ message: String) {
+        status = .ready
+        consecutiveHealthFailures = 0
+        appendLog(message)
+        startHealthMonitor()
+    }
+
+    private func startHealthMonitor() {
+        healthMonitorTask?.cancel()
+        healthMonitorTask = Task { [weak self] in
+            while let self, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled, self.isReady else { continue }
+                if await self.compatibleGatewayProbe() != nil {
+                    self.consecutiveHealthFailures = 0
+                    self.stableHealthChecks += 1
+                    if SidecarCore.stableHealthResetsRestartBudget(self.stableHealthChecks) {
+                        self.restartAttempts = 0
+                    }
+                    continue
+                }
+                self.stableHealthChecks = 0
+                self.consecutiveHealthFailures += 1
+                if !SidecarCore.healthFailureRequiresRestart(self.consecutiveHealthFailures) {
+                    continue
+                }
+                self.consecutiveHealthFailures = 0
+                await self.recoverUnresponsiveGateway()
+                return
+            }
+        }
+    }
+
+    private func recoverUnresponsiveGateway() async {
+        status = .starting
+        appendLog("Gateway stopped responding to health probes; restarting it.")
+        if gatewayMode == .managed {
+            await terminateManagedProcess(process, timeout: 3)
+            return
+        }
+        gatewayMode = .idle
+        await start()
+    }
+
     func revealBinary() {
         let path = binaryPath
         guard path != "Unresolved" else { return }
@@ -309,9 +361,7 @@ final class SidecarManager: ObservableObject {
 
         while !Task.isCancelled && Date() < deadline {
             if await compatibleGatewayProbe() != nil {
-                status = .ready
-                restartAttempts = 0
-                appendLog("Cybara gateway is healthy at \(serverURL.absoluteString)")
+                markGatewayReady("Cybara gateway is healthy at \(serverURL.absoluteString)")
                 return
             }
 
@@ -367,8 +417,7 @@ final class SidecarManager: ObservableObject {
             minimumVersion: minimumGatewayVersion
         ) {
             gatewayMode = .attached
-            status = .ready
-            appendLog("Attached to existing Cybara gateway at \(serverURL.absoluteString)")
+            markGatewayReady("Attached to existing Cybara gateway at \(serverURL.absoluteString)")
             return .attached
         }
 
@@ -402,8 +451,7 @@ final class SidecarManager: ObservableObject {
             case .attach(let fallbackPort):
                 port = fallbackPort
                 gatewayMode = .attached
-                status = .ready
-                appendLog("Attached to compatible Cybara gateway at \(serverURL.absoluteString)")
+                markGatewayReady("Attached to compatible Cybara gateway at \(serverURL.absoluteString)")
                 return .attached
             case .launch(let fallbackPort):
                 port = fallbackPort

@@ -730,7 +730,7 @@ function MobileActivityRow({
         <WorkActivityIcon phase={activity.phase} toolName={activity.toolName} />
       </View>
       <Text
-        numberOfLines={activity.toolName === "__thought" ? 3 : 2}
+        numberOfLines={activity.toolName === "__thought" ? 0 : 2}
         selectable
         style={[
           styles.messageActivityText,

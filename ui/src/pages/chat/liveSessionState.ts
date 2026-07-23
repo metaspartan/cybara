@@ -22,6 +22,32 @@ interface CachedLiveSessionWrite
 const LIVE_SESSION_STATE_STALE_MS = 15 * 60 * 1000;
 const liveSessionStateCache = new Map<string, CachedLiveSessionState>();
 
+interface LiveSessionSnapshotTiming {
+  startedAt?: unknown;
+  timestamp?: unknown;
+  activities?: Array<{ timestamp?: unknown }>;
+}
+
+function validTimestamp(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+export function resolveLiveSessionStartedAtMs(
+  snapshot: LiveSessionSnapshotTiming,
+  fallback = Date.now()
+): number {
+  const explicit = validTimestamp(snapshot.startedAt);
+  if (explicit !== null) return explicit;
+  let earliest = validTimestamp(snapshot.timestamp);
+  for (const activity of snapshot.activities || []) {
+    const timestamp = validTimestamp(activity.timestamp);
+    if (timestamp !== null && (earliest === null || timestamp < earliest)) {
+      earliest = timestamp;
+    }
+  }
+  return earliest ?? fallback;
+}
+
 function normalizeSessionId(sessionId?: string | null): string | null {
   const trimmed = typeof sessionId === "string" ? sessionId.trim() : "";
   return trimmed || null;

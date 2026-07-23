@@ -107,8 +107,9 @@ export function preparePendingMessage(
     const parsed = parseIsoTimestampMs(message.timestamp);
     return parsed ? Math.max(latest, parsed) : latest;
   }, 0);
+  const now = Date.now();
   const timestamp = new Date(
-    Math.max(item.updatedAt || item.createdAt, latestMessageTimestamp + 2)
+    Math.max(item.updatedAt || item.createdAt, Math.min(latestMessageTimestamp, now) + 2)
   ).toISOString();
   const message: ChatMessage = {
     role: "user",

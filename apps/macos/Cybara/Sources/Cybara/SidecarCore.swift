@@ -39,6 +39,14 @@ public enum SidecarCore {
         "\(serverURLString(port: port))/api/health"
     }
 
+    public static func healthFailureRequiresRestart(_ count: Int) -> Bool {
+        count >= 3
+    }
+
+    public static func stableHealthResetsRestartBudget(_ count: Int) -> Bool {
+        count >= 5
+    }
+
     public static func fallbackPorts(after preferredPort: Int, count: Int = 20) -> [Int] {
         guard count > 0 else { return [] }
         let lowerBound = 1024

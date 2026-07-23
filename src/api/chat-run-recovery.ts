@@ -89,6 +89,28 @@ function hasPersistedAssistantEvent(events: SessionLedgerEvent[]): boolean {
   );
 }
 
+function interruptionTimestamp(events: SessionLedgerEvent[]): number {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.type !== "run_completed" || !isRecord(event.payload)) continue;
+    if (event.payload.source !== "gateway_crash_recovery") continue;
+    const timestamp = event.payload.interruptionTimestamp;
+    if (typeof timestamp === "number" && Number.isFinite(timestamp)) return timestamp;
+  }
+  return (
+    events.reduce((latest, event) => {
+      if (
+        event.type === "run_completed" &&
+        isRecord(event.payload) &&
+        event.payload.source === "gateway_crash_recovery"
+      ) {
+        return latest;
+      }
+      return Math.max(latest, eventTimestamp(event));
+    }, 0) + 1
+  );
+}
+
 function buildActivities(
   events: SessionLedgerEvent[],
   interrupted: boolean
@@ -105,15 +127,11 @@ function buildActivities(
   for (const activity of activities) {
     if (activity.phase === "start") activity.phase = "blocked";
   }
-  const lastTimestamp = events.reduce(
-    (latest, event) => Math.max(latest, eventTimestamp(event)),
-    0
-  );
   activities.push({
     id: `${events[0]?.runId || "run"}:interrupted`,
     phase: "blocked",
     text: "Turn interrupted when the gateway stopped.",
-    timestamp: lastTimestamp + 1,
+    timestamp: interruptionTimestamp(events),
     toolName: "__interruption",
   });
   return activities;
@@ -199,11 +217,17 @@ export async function recoverInterruptedSessionMessages(
       stableKey: `interrupted-run:${run.runId}`,
       metadata: { source: "gateway_crash_recovery" },
     });
+    const interruptedAt = processActivities.at(-1)?.timestamp ?? Date.now();
     appendSessionEvent({
       sessionId,
       runId: run.runId,
       type: "run_completed",
-      payload: { interrupted: true, source: "gateway_crash_recovery", timestamp: Date.now() },
+      payload: {
+        interrupted: true,
+        source: "gateway_crash_recovery",
+        timestamp: interruptedAt,
+        interruptionTimestamp: interruptedAt,
+      },
     });
     hydrated.push(recovered);
     representedRunIds.add(run.runId);

@@ -20,7 +20,9 @@ export interface MobileConnectPayload {
   createdAt?: string;
 }
 
-const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS = 8000;
+export const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS = 8000;
+
+export type BeforeGatewayRequest = (baseUrl: string) => Promise<void>;
 
 export function normalizeConnectionPayloadInput(raw: unknown): string {
   if (typeof raw !== "string") {
@@ -48,15 +50,53 @@ export function isLoopbackGatewayUrl(input: string): boolean {
   );
 }
 
+function isPrivateIpv4(host: string): boolean {
+  const parts = host.split(".").map(Number);
+  if (
+    parts.length !== 4 ||
+    parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
+  ) {
+    return false;
+  }
+  const [first, second] = parts;
+  return (
+    first === 10 ||
+    (first === 100 && second >= 64 && second <= 127) ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
+export function isLocalNetworkGatewayUrl(input: string): boolean {
+  const host = urlHost(input).replace(/^\[|\]$/g, "");
+  if (!host || isLoopbackGatewayUrl(input)) return false;
+  return (
+    isPrivateIpv4(host) ||
+    host.endsWith(".local") ||
+    /^f[cd][0-9a-f:]+$/i.test(host) ||
+    /^fe[89ab][0-9a-f:]+$/i.test(host)
+  );
+}
+
 function connectionFailureMessage(profile: GatewayProfile): string {
   return networkFailureMessage(profile.baseUrl);
+}
+
+function gatewayPort(baseUrl: string): string {
+  try {
+    const parsed = new URL(normalizeGatewayUrl(baseUrl));
+    return parsed.port || (parsed.protocol === "https:" ? "443" : "80");
+  } catch {
+    return "4269";
+  }
 }
 
 function networkFailureMessage(baseUrl: string): string {
   if (isLoopbackGatewayUrl(baseUrl)) {
     return "This QR points to localhost on the phone, not the computer running Cybara. In Cybara Settings > Gateway, turn on Listen on local network, create a new QR, and use the LAN URL.";
   }
-  return `Could not reach ${baseUrl}. Open ${baseUrl}/api/health in this phone's browser to verify the network path. For LAN pairing, make sure the phone is on the same Wi-Fi, local network access is available, and Windows Firewall allows inbound TCP 4269. For remote pairing, make sure the private mesh or HTTPS tunnel is connected and the gateway URL matches Settings > Gateway > Remote Access.`;
+  return `Could not reach ${baseUrl}. Open ${baseUrl}/api/health in this phone's browser to verify the network path. For LAN pairing, make sure the phone is on the same Wi-Fi, local network access is allowed, and the gateway computer's firewall allows inbound TCP ${gatewayPort(baseUrl)}. For remote pairing, make sure the private mesh or HTTPS tunnel is connected and the gateway URL matches Settings > Gateway > Remote Access.`;
 }
 
 async function fetchWithTimeout(
@@ -302,11 +342,13 @@ export async function redeemPairingCode(
   code: string,
   name = "Cybara Gateway",
   fetchImpl: typeof fetch = fetch,
-  timeoutMs = DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS
+  timeoutMs = DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS,
+  beforeRequest?: BeforeGatewayRequest
 ): Promise<MobileConnectPayload> {
   const normalized = normalizeGatewayUrl(baseUrl);
   const trimmedCode = code.trim();
   if (!trimmedCode) throw new Error("Pairing code is missing");
+  await beforeRequest?.(normalized);
 
   const response = await fetchWithTimeout(
     `${normalized}/api/mobile/pair/redeem`,
@@ -345,7 +387,8 @@ export async function resolveGatewayProfile(
   raw: unknown,
   now = new Date(),
   fetchImpl: typeof fetch = fetch,
-  timeoutMs = DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS
+  timeoutMs = DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS,
+  beforeRequest?: BeforeGatewayRequest
 ): Promise<GatewayProfile> {
   const trimmed = normalizeConnectionPayloadInput(raw);
 
@@ -353,7 +396,7 @@ export async function resolveGatewayProfile(
     const url = new URL(trimmed);
     const nestedPayload = url.protocol === "cybara:" ? url.searchParams.get("payload") : null;
     if (nestedPayload && nestedPayload !== trimmed) {
-      return resolveGatewayProfile(nestedPayload, now, fetchImpl, timeoutMs);
+      return resolveGatewayProfile(nestedPayload, now, fetchImpl, timeoutMs, beforeRequest);
     }
   } catch {}
 
@@ -372,7 +415,8 @@ export async function resolveGatewayProfile(
       (parsed as { payload: string }).payload,
       now,
       fetchImpl,
-      timeoutMs
+      timeoutMs,
+      beforeRequest
     );
   }
   if (
@@ -393,7 +437,8 @@ export async function resolveGatewayProfile(
       data.code,
       typeof data.name === "string" ? data.name : undefined,
       fetchImpl,
-      timeoutMs
+      timeoutMs,
+      beforeRequest
     );
     return profileFromPayload(payload, now);
   }

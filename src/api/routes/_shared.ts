@@ -989,7 +989,10 @@ export function sanitizeProcessActivities(
       id,
       phase,
       text:
-        typeof maxTextLength === "number" && maxTextLength > 0 && text.length > maxTextLength
+        toolName !== "__thought" &&
+        typeof maxTextLength === "number" &&
+        maxTextLength > 0 &&
+        text.length > maxTextLength
           ? `${text.slice(0, maxTextLength)}...`
           : text,
       timestamp,

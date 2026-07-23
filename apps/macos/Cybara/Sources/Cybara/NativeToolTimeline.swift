@@ -218,7 +218,6 @@ struct NativeLiveToolTimelineView: View {
                     nativeActivityMarkdownText(displayCurrentStep)
                         .font(.system(size: 11.8, design: .rounded))
                         .foregroundStyle(.secondary)
-                        .lineLimit(3)
                         .textSelection(.enabled)
                 }
             } else if visibleActivities.isEmpty {
@@ -273,7 +272,7 @@ private struct NativeToolActivityRow: View {
                 nativeActivityMarkdownText(activity.text)
                     .font(.system(size: appearance.activityFontSize, design: .rounded))
                     .foregroundStyle(appearance.highContrast ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                    .lineLimit(3)
+                    .lineLimit(activity.toolName == "__thought" ? nil : 3)
                     .textSelection(.enabled)
                 if let provider = activity.sandboxProvider {
                     NativeToolSandboxBadge(provider: provider)

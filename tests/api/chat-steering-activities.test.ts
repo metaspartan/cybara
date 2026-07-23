@@ -47,4 +47,28 @@ describe("chat steering activity attribution", () => {
       "Conversation steered.",
     ]);
   });
+
+  test("does not let a future restored timestamp inflate interrupted work duration", () => {
+    const session = createSession();
+    const now = Date.now();
+    session.messages[1]!.timestamp = new Date(now + 6 * 60 * 60 * 1000).toISOString();
+
+    const result = materializeInterruptedAssistantBeforeSteering(
+      session,
+      [
+        {
+          id: "real-work",
+          phase: "result",
+          text: "Read the project",
+          timestamp: now - 8_000,
+          toolName: "read",
+        },
+      ],
+      { pendingSteeringId: "pending-other" }
+    );
+
+    expect(Date.parse(result?.timestamp || "")).toBeLessThanOrEqual(Date.now());
+    expect(result?.worked_duration_ms).toBeGreaterThanOrEqual(7_900);
+    expect(result?.worked_duration_ms).toBeLessThan(9_000);
+  });
 });

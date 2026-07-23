@@ -3,6 +3,7 @@ import {
   clearCachedLiveSessionState,
   isLiveSessionRunning,
   readCachedLiveSessionState,
+  resolveLiveSessionStartedAtMs,
   writeCachedLiveSessionState,
 } from "../../ui/src/pages/chat/liveSessionState";
 
@@ -60,5 +61,21 @@ describe("web chat live session cache", () => {
     });
 
     expect(readCachedLiveSessionState(sessionId)).toBeNull();
+  });
+
+  test("restores elapsed time from a snapshot run start", () => {
+    expect(
+      resolveLiveSessionStartedAtMs({
+        startedAt: 1_000,
+        timestamp: 9_000,
+        activities: [{ timestamp: 4_000 }],
+      })
+    ).toBe(1_000);
+    expect(
+      resolveLiveSessionStartedAtMs({
+        timestamp: 9_000,
+        activities: [{ timestamp: 4_000 }, { timestamp: 7_000 }],
+      })
+    ).toBe(4_000);
   });
 });

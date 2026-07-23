@@ -15,6 +15,8 @@ interface GatewayFixture {
   gatewayPort: number;
   nearbyPort: number;
   baseUrl: string;
+  stdoutPath: string;
+  stderrPath: string;
   process: ReturnType<typeof Bun.spawn> | null;
 }
 
@@ -24,6 +26,7 @@ interface ApiResult {
 }
 
 const gateways: GatewayFixture[] = [];
+const GATEWAY_START_TIMEOUT_MS = process.env.CI ? 60_000 : 30_000;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -61,11 +64,14 @@ async function getFreePort(): Promise<number> {
 async function createGateway(name: string): Promise<GatewayFixture> {
   const gatewayPort = await getFreePort();
   const nearbyPort = await getFreePort();
+  const homeDir = mkdtempSync(join(tmpdir(), `cybara-nearby-${name}-`));
   const fixture: GatewayFixture = {
-    homeDir: mkdtempSync(join(tmpdir(), `cybara-nearby-${name}-`)),
+    homeDir,
     gatewayPort,
     nearbyPort,
     baseUrl: `http://127.0.0.1:${gatewayPort}`,
+    stdoutPath: join(homeDir, "gateway.stdout.log"),
+    stderrPath: join(homeDir, "gateway.stderr.log"),
     process: null,
   };
   gateways.push(fixture);
@@ -85,8 +91,8 @@ function startGateway(fixture: GatewayFixture): void {
       PORT: String(fixture.gatewayPort),
       NODE_ENV: "production",
     },
-    stdout: "ignore",
-    stderr: "ignore",
+    stdout: Bun.file(fixture.stdoutPath),
+    stderr: Bun.file(fixture.stderrPath),
   });
 }
 
@@ -96,20 +102,52 @@ async function stopGateway(fixture: GatewayFixture): Promise<void> {
   if (!process) return;
   try {
     process.kill("SIGTERM");
-  } catch {}
+  } catch (error) {
+    void error;
+  }
   await Promise.race([process.exited, sleep(5000)]);
 }
 
-async function waitForGateway(fixture: GatewayFixture, timeoutMs = 30_000): Promise<void> {
+async function readLogTail(path: string): Promise<string> {
+  const file = Bun.file(path);
+  if (!(await file.exists())) return "<not created>";
+  const content = (await file.text()).trim();
+  return content.length > 0 ? content.slice(-4000) : "<empty>";
+}
+
+async function gatewayFailure(fixture: GatewayFixture, reason: string): Promise<Error> {
+  const stdout = await readLogTail(fixture.stdoutPath);
+  const stderr = await readLogTail(fixture.stderrPath);
+  return new Error(`${reason}\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+}
+
+async function waitForGateway(
+  fixture: GatewayFixture,
+  timeoutMs = GATEWAY_START_TIMEOUT_MS
+): Promise<void> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
+    const process = fixture.process;
+    if (!process)
+      throw await gatewayFailure(fixture, `Gateway process missing for ${fixture.baseUrl}`);
+    if (process.exitCode !== null) {
+      throw await gatewayFailure(
+        fixture,
+        `Gateway exited with code ${process.exitCode} before ${fixture.baseUrl} became ready`
+      );
+    }
     try {
       const response = await fetch(`${fixture.baseUrl}/api/health`);
       if (response.ok) return;
-    } catch {}
+    } catch (error) {
+      void error;
+    }
     await sleep(200);
   }
-  throw new Error(`Timed out waiting for ${fixture.baseUrl}`);
+  throw await gatewayFailure(
+    fixture,
+    `Timed out after ${timeoutMs}ms waiting for ${fixture.baseUrl}`
+  );
 }
 
 async function api(
@@ -153,7 +191,11 @@ function insertSourceSession(fixture: GatewayFixture, marker: string): string {
   const sessionId = randomUUID();
   const timestamp = new Date().toISOString();
   const messages = [
-    { role: "user", content: `Share ${marker} api_key=sk-nearby-secret-value`, timestamp },
+    {
+      role: "user",
+      content: `Share ${marker} api_key=sk-nearby-secret-value`,
+      timestamp,
+    },
     { role: "assistant", content: `Completed ${marker}`, timestamp },
   ];
   const database = new Database(join(fixture.homeDir, ".cybara", "data", "platform.db"));
