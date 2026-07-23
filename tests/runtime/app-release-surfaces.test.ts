@@ -240,8 +240,11 @@ describe("app release surface wiring", () => {
 
   test("dev CI cross-compiles and smoke-tests the Darwin x64 CLI artifact", () => {
     const workflow = read(".github/workflows/ci.yml");
+    const recoveryCondition =
+      "github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')";
 
     expect(workflow).toContain("darwin-x64-cli-build:");
+    expect(workflow.split(recoveryCondition)).toHaveLength(3);
     expect(workflow).toContain("cd ui && bash ../scripts/ci-install.sh && bun run build");
     expect(workflow).toContain(
       "bun run scripts/build-standalone-cli.ts bun-darwin-x64 cybara-darwin-x64"

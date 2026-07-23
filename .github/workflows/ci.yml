@@ -89,7 +89,7 @@ jobs:
 
   darwin-x64-cli-build:
     name: Build CLI darwin-x64
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -123,7 +123,7 @@ jobs:
 
   darwin-x64-cli-smoke:
     name: Smoke CLI darwin-x64
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: darwin-x64-cli-build
     runs-on: macos-26
     timeout-minutes: 10
