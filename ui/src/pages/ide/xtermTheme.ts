@@ -8,6 +8,10 @@ const DARK_VARIANT_BACKGROUNDS: Record<string, string> = {
   "icy-dark": "#060b13",
   "ash-grey": "#121316",
   "sand-dune": "#131009",
+  graphite: "#171717",
+  oled: "#000000",
+  "deep-ocean": "#061012",
+  burgundy: "#160b0e",
 };
 
 export function buildXtermTheme(background = "#0a0a0f"): ITheme {

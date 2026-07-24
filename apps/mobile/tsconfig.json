@@ -11,5 +11,5 @@
     },
     "types": ["react", "react-native"]
   },
-  "include": ["App.tsx", "src/**/*.ts", "src/**/*.tsx"]
+  "include": ["App.tsx", "app.config.ts", "src/**/*.ts", "src/**/*.tsx"]
 }

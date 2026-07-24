@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   hasAssistantAfterLatestUser,
   loadPersistedCompletion,
+  loadPersistedPendingTurns,
 } from "../../ui/src/lib/chatCompletion";
 
 describe("chat completion refresh", () => {
@@ -58,5 +59,42 @@ describe("chat completion refresh", () => {
 
     expect(calls).toBe(3);
     expect(result?.messagesList?.at(-1)?.role).toBe("assistant");
+  });
+
+  test("loads a queued user turn before its assistant response exists", async () => {
+    let calls = 0;
+    const result = await loadPersistedPendingTurns(
+      async () => {
+        calls += 1;
+        return calls < 2
+          ? { messagesList: [{ role: "assistant" }] }
+          : {
+              messagesList: [
+                { role: "assistant" },
+                { role: "user", pending_chat_id: "pending-queued-turn" },
+              ],
+            };
+      },
+      ["pending-queued-turn"],
+      { delaysMs: [0, 0], sleep: async () => {} }
+    );
+
+    expect(calls).toBe(2);
+    expect(result?.messagesList?.at(-1)).toEqual({
+      role: "user",
+      pending_chat_id: "pending-queued-turn",
+    });
+  });
+
+  test("does not accept a stale transcript containing a different queued turn", async () => {
+    const result = await loadPersistedPendingTurns(
+      async () => ({
+        messagesList: [{ role: "user", pending_chat_id: "different-pending-turn" }],
+      }),
+      ["pending-queued-turn"],
+      { delaysMs: [0, 0], sleep: async () => {} }
+    );
+
+    expect(result).toBeNull();
   });
 });

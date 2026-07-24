@@ -63,6 +63,7 @@ describe("mobile push notifications", () => {
       expect(mock.calls[0]?.body).toMatchObject({
         to: expoToken,
         title: "Cybara finished",
+        channelId: "cybara",
         data: { type: "chat_completed", sessionId: "s1" },
       });
     } finally {

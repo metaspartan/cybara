@@ -515,11 +515,7 @@ const makeStyles = () =>
       textTransform: "uppercase",
     },
     settingsGroup: {
-      backgroundColor: colors.surfaceLift,
-      borderColor: colors.border,
-      borderRadius: radius.md,
-      borderWidth: StyleSheet.hairlineWidth,
-      overflow: "hidden",
+      gap: spacing.sm,
     },
     settingsNavigationRow: {
       alignItems: "center",

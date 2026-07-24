@@ -160,9 +160,9 @@ export function Chat() {
   );
   const loadSessionMutation = useLoadSession();
   const updateSessionAgent = useUpdateSessionAgent();
-  const refreshSessionMessagesRef = useRef<(sid: string) => Promise<boolean>>(() =>
-    Promise.resolve(false)
-  );
+  const refreshSessionMessagesRef = useRef<
+    (sid: string, pendingChatIds?: readonly string[]) => Promise<ChatMessage[] | null>
+  >(() => Promise.resolve(null));
   const [input, setInput] = useState("");
   const {
     dictating,

@@ -104,3 +104,22 @@ export function removeHandedOffPendingChatMessage(
     );
   });
 }
+
+export function resolveHandedOffPendingChatId(
+  messages: PendingChatMessage[],
+  pendingChatId?: string,
+  clientPendingId?: string
+): string | null {
+  const normalizedPendingChatId = pendingChatId?.trim() || "";
+  if (normalizedPendingChatId) return normalizedPendingChatId;
+  const normalizedClientPendingId = clientPendingId?.trim() || "";
+  if (!normalizedClientPendingId) return null;
+  const matched = messages.find((message) => {
+    const messageClientPendingId = message.clientPendingId?.trim() || "";
+    return (
+      message.id === normalizedClientPendingId ||
+      messageClientPendingId === normalizedClientPendingId
+    );
+  });
+  return matched?.id.trim() || null;
+}

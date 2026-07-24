@@ -77,3 +77,14 @@ Tagged releases also run best-effort native store builds:
 - iOS: `expo prebuild --platform ios --no-install`, `pod install --repo-update`, then Xcode archive. Without Apple signing secrets it produces an unsigned inspection IPA. With `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_PROVISIONING_PROFILE_BASE64`, and `APPLE_TEAM_ID`, it builds a signed App Store IPA for bundle id `com.ck.cybara`. With `ASC_API_KEY_BASE64`, `ASC_API_KEY_ID`, and `ASC_API_ISSUER_ID`, it retries transient App Store Connect/TestFlight upload failures and uploads the signed IPA to TestFlight when Apple's service accepts it. If Apple returns repeated server-side 5xx errors, the job keeps the signed IPA attached to the GitHub release for a manual retry.
 
 Expo/React Native release jobs use Bun for package scripts, plus a real Node runtime where Expo, CocoaPods, and Gradle tooling require one on `PATH`.
+
+## Push Notification Builds
+
+Remote notifications use Expo Push Service with FCM on Android and APNs on iOS. Native builds require an Expo project and platform credentials before they are releasable:
+
+- Set the GitHub Actions secret `EXPO_PROJECT_ID` to the EAS project UUID. The dynamic Expo config writes it to `extra.eas.projectId` for token registration.
+- Download the Android Firebase client configuration for `com.ck.cybara`, encode it with `base64`, and store it as `FIREBASE_GOOGLE_SERVICES_JSON_BASE64`. This is separate from the Google Play publishing service account.
+- Upload an FCM V1 service-account key for the same Firebase project to the Expo project credentials.
+- Use an iOS provisioning profile for `com.ck.cybara` that contains `aps-environment`, and upload a valid APNs key to the Expo project credentials.
+
+For local native builds, provide `EXPO_PROJECT_ID` and set `FIREBASE_GOOGLE_SERVICES_FILE=./google-services.json` when building Android. `google-services.json` is ignored by Git and must not be copied into release archives.

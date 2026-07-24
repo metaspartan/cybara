@@ -16,6 +16,7 @@ export function readUiStylesSource(): string {
     "styles/index-foundation.css",
     "styles/index-light.css",
     "styles/index-themes.css",
+    "styles/index-dark-presets.css",
   ]);
 }
 

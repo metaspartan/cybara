@@ -75,6 +75,10 @@ describe("UI store theme helpers", () => {
   test("theme modes resolve to matching default accents", () => {
     expect(defaultThemeAccentForMode("dark")).toBe("indigo");
     expect(defaultThemeAccentForMode("sand-dune")).toBe("amber");
+    expect(defaultThemeAccentForMode("graphite")).toBe("orange");
+    expect(defaultThemeAccentForMode("oled")).toBe("cyan");
+    expect(defaultThemeAccentForMode("deep-ocean")).toBe("teal");
+    expect(defaultThemeAccentForMode("burgundy")).toBe("rose");
     expect(defaultThemeAccentForMode("forest")).toBe("emerald");
     expect(defaultThemeAccentForMode("lavender")).toBe("purple");
     expect(defaultThemeAccentForMode("cake")).toBe("pink");
@@ -106,7 +110,12 @@ describe("UI store theme helpers", () => {
   test("normalizes accent values and lets flat aliases win", () => {
     expect(readThemeAccentFromConfig({ theme: "  ROSE  " })).toBe("rose");
     expect(readThemeAccentFromConfig({ ui: { accent: " Emerald " } })).toBe("emerald");
-    expect(readThemeAccentFromConfig({ themeAccent: "rose", ui: { accent: "teal" } })).toBe("rose");
+    expect(
+      readThemeAccentFromConfig({
+        themeAccent: "rose",
+        ui: { accent: "teal" },
+      })
+    ).toBe("rose");
     expect(readThemeAccentFromConfig({ theme: "dark", ui: { accent: "teal" } })).toBe("teal");
   });
 

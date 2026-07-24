@@ -32,7 +32,7 @@
     "package": "bun run scripts/package.ts",
     "format": "biome format --write",
     "format:check": "biome format",
-    "lint": "bun eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.ts\" \"apps/mobile/App.tsx\" \"apps/mobile/src/**/*.{ts,tsx}\"",
+    "lint": "bun eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.ts\" \"apps/mobile/App.tsx\" \"apps/mobile/app.config.ts\" \"apps/mobile/src/**/*.{ts,tsx}\"",
     "typecheck": "bun ./node_modules/@typescript/native/bin/tsc --noEmit",
     "check:loc": "bun run scripts/check-source-max-loc.ts --max 2000",
     "deadcode": "knip --no-progress",

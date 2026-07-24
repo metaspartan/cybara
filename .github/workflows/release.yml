@@ -537,6 +537,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       EXPO_NO_TELEMETRY: "1"
+      EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -560,6 +561,8 @@ jobs:
         run: bun run mobile:expo-check
       - name: Type check mobile app
         run: bun run mobile:typecheck
+      - name: Verify mobile notification project
+        run: test -n "$EXPO_PROJECT_ID" || { echo "EXPO_PROJECT_ID is required for mobile notification builds" >&2; exit 1; }
       - name: Export iOS and Android bundles
         run: |
           set -euo pipefail
@@ -593,6 +596,8 @@ jobs:
     env:
       CYBARA_RELEASE_VERSION: ${{ github.ref_name }}
       EXPO_NO_TELEMETRY: "1"
+      EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID }}
+      FIREBASE_GOOGLE_SERVICES_FILE: "./google-services.json"
       GOOGLE_PLAY_PUBLISH_CONFIGURED: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - name: Checkout
@@ -620,6 +625,14 @@ jobs:
         run: cd apps/mobile && bash ../../scripts/ci-install.sh
       - name: Sync version metadata
         run: bun run version:sync
+      - name: Configure Android notifications
+        env:
+          FIREBASE_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$EXPO_PROJECT_ID" || { echo "EXPO_PROJECT_ID is required for Android notifications" >&2; exit 1; }
+          test -n "$FIREBASE_GOOGLE_SERVICES_JSON_BASE64" || { echo "FIREBASE_GOOGLE_SERVICES_JSON_BASE64 is required for Android notifications" >&2; exit 1; }
+          echo "$FIREBASE_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > apps/mobile/google-services.json
       - name: Prebuild Android project
         run: cd apps/mobile && bunx expo prebuild --platform android --no-install
       - name: Verify Android LAN pairing transport
@@ -718,6 +731,7 @@ jobs:
     env:
       CYBARA_RELEASE_VERSION: ${{ github.ref_name }}
       EXPO_NO_TELEMETRY: "1"
+      EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -735,6 +749,8 @@ jobs:
         run: cd apps/mobile && bash ../../scripts/ci-install.sh
       - name: Sync version metadata
         run: bun run version:sync
+      - name: Verify iOS notification project
+        run: test -n "$EXPO_PROJECT_ID" || { echo "EXPO_PROJECT_ID is required for iOS notifications" >&2; exit 1; }
       - name: Prebuild iOS project
         run: cd apps/mobile && bunx expo prebuild --platform ios --no-install
       # expo prebuild --no-install skips CocoaPods, so the .xcworkspace that
@@ -802,9 +818,8 @@ jobs:
             cp cybara.mobileprovision "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
             PROFILE_HAS_PUSH="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' profile.plist 2>/dev/null || true)"
             if [ -z "$PROFILE_HAS_PUSH" ]; then
-              for ENT in $(find . -name '*.entitlements'); do
-                /usr/libexec/PlistBuddy -c 'Delete :aps-environment' "$ENT" 2>/dev/null || true
-              done
+              echo "The iOS provisioning profile must include the aps-environment entitlement" >&2
+              exit 1
             fi
             {
               echo '<?xml version="1.0" encoding="UTF-8"?>'
