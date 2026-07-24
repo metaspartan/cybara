@@ -472,7 +472,7 @@ export function summarizeProgressThought(value: unknown): string | undefined {
     .replace(/\s{2,}/g, " ")
     .trim();
   if (!compact) return undefined;
-  const maximumLength = 240;
+  const maximumLength = 500;
   if (compact.length <= maximumLength) return compact;
   const candidate = compact.slice(0, maximumLength + 1);
   const sentenceBoundaries = [

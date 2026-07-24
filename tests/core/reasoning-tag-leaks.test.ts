@@ -32,7 +32,8 @@ describe("reasoning tag tokens never leak into visible chat state", () => {
 
     expect(thought.length).toBeGreaterThan(500);
     const summary = summarizeProgressThought(thought);
-    expect(summary?.length).toBeLessThanOrEqual(240);
+    expect(summary?.length).toBeGreaterThan(240);
+    expect(summary?.length).toBeLessThanOrEqual(500);
     expect(summary?.endsWith(".")).toBe(true);
     expect(summary).toStartWith("Reasoning step 1 verifies the next tool call.");
   });
