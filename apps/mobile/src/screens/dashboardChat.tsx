@@ -756,7 +756,7 @@ function MobileActivityRow({
           toolName={activity.toolName}
         />
       </View>
-      {statusState ? (
+      {statusState || activity.phase === "start" ? (
         <MobileLiveStatusText style={textStyle}>{activity.text}</MobileLiveStatusText>
       ) : (
         <Text

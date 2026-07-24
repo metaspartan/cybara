@@ -24,14 +24,17 @@ describe("reasoning tag tokens never leak into visible chat state", () => {
     expect(summarizeProgressThought("<thinking>plan</thinking> run tests")).toBe("plan run tests");
   });
 
-  test("gateway: summarizeProgressThought preserves complete long thoughts", () => {
+  test("gateway: summarizeProgressThought keeps live reasoning concise at a sentence boundary", () => {
     const thought = Array.from(
       { length: 40 },
       (_, index) => `Reasoning step ${index + 1} verifies the next tool call.`
     ).join(" ");
 
     expect(thought.length).toBeGreaterThan(500);
-    expect(summarizeProgressThought(thought)).toBe(thought);
+    const summary = summarizeProgressThought(thought);
+    expect(summary?.length).toBeLessThanOrEqual(240);
+    expect(summary?.endsWith(".")).toBe(true);
+    expect(summary).toStartWith("Reasoning step 1 verifies the next tool call.");
   });
 
   test("gateway: stripReasoningTagTokens handles every tag family", () => {

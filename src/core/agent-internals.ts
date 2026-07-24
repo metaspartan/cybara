@@ -472,7 +472,19 @@ export function summarizeProgressThought(value: unknown): string | undefined {
     .replace(/\s{2,}/g, " ")
     .trim();
   if (!compact) return undefined;
-  return compact;
+  const maximumLength = 240;
+  if (compact.length <= maximumLength) return compact;
+  const candidate = compact.slice(0, maximumLength + 1);
+  const sentenceBoundaries = [
+    candidate.lastIndexOf(". "),
+    candidate.lastIndexOf("! "),
+    candidate.lastIndexOf("? "),
+  ];
+  const sentenceBoundary = Math.max(...sentenceBoundaries);
+  if (sentenceBoundary >= 80) return candidate.slice(0, sentenceBoundary + 1);
+  const wordBoundary = candidate.lastIndexOf(" ", maximumLength - 1);
+  const end = wordBoundary >= 80 ? wordBoundary : maximumLength;
+  return `${candidate.slice(0, end).trimEnd()}…`;
 }
 
 export function toDisplayPath(path: string): string {

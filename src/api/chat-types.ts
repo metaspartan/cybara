@@ -1,4 +1,5 @@
 import { type AgentTransferEnvelope } from "../core/agent-transfer";
+import { type AgentExecutionFailure } from "../core/agent";
 import { type AgentImage } from "../core/llm/image-blocks";
 import { type SessionContextUsage, type SessionTokenUsage } from "../core/session-context";
 import { type SessionPlanSnapshot } from "../core/session-plan";
@@ -70,6 +71,7 @@ export interface ChatResponse {
   queued?: boolean;
   interrupted?: boolean;
   stopped?: boolean;
+  failure?: AgentExecutionFailure;
   pendingMessage?: PendingChatMessageSnapshot;
   pendingMessages?: PendingChatMessageSnapshot[];
   plan?: SessionPlanSnapshot | null;

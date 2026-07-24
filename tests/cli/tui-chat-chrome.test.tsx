@@ -10,7 +10,10 @@ import {
   terminalWorkspaceName,
   type ChatHeaderState,
 } from "../../src/cli/tui/components/chat-chrome";
-import { LiveRunView } from "../../src/cli/tui/components/interactive-chat-view";
+import {
+  LiveRunView,
+  tuiShineSegments,
+} from "../../src/cli/tui/components/interactive-chat-view";
 import { tuiChatPalette } from "../../src/cli/tui/theme";
 
 const baseHeader: ChatHeaderState = {
@@ -164,6 +167,19 @@ describe("CLI TUI chat chrome", () => {
     expect(output).toContain("… 2 earlier work groups");
     expect(output).not.toContain("Inspection thought 0");
     expect(output).toContain("Inspection thought 7");
+  });
+
+  test("sweeps a bounded highlight across live terminal status text", () => {
+    expect(tuiShineSegments("Running tests", 0)).toEqual({
+      before: "",
+      highlight: "",
+      after: "Running tests",
+    });
+    expect(tuiShineSegments("Running tests", 8)).toEqual({
+      before: "Ru",
+      highlight: "nning ",
+      after: "tests",
+    });
   });
 
   test("wraps complete live thoughts in narrow terminals", () => {

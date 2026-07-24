@@ -984,7 +984,7 @@ describe("native macOS shell wiring", () => {
 
     expect(toolTimeline).toContain("private func nativeActivityMarkdownText");
     expect(toolTimeline).toContain("nativeActivityMarkdownText(activity.text)");
-    expect(toolTimeline).toContain("nativeActivityMarkdownText(displayCurrentStep)");
+    expect(toolTimeline).toContain("NativeLiveStatusText(text: displayCurrentStep");
     expect(toolTimeline).toContain("Circle()");
     expect(toolTimeline).toContain(".fill(.secondary)");
     expect(toolTimeline).toContain(".foregroundStyle(.secondary)");
@@ -997,7 +997,7 @@ describe("native macOS shell wiring", () => {
     expect(toolTimeline).toContain("Image(systemName: nativeGroupIcon(items))");
   });
 
-  test("native live response status centers its spinner with the status text", () => {
+  test("native live response and tool statuses share centered orbs and shining text", () => {
     const toolTimeline = readFileSync(join(MACOS_APP_DIR, "NativeToolTimeline.swift"), "utf8");
     const liveTimeline = toolTimeline.slice(
       toolTimeline.indexOf("struct NativeLiveToolTimelineView"),
@@ -1006,8 +1006,10 @@ describe("native macOS shell wiring", () => {
 
     expect(liveTimeline).toContain("HStack(alignment: .center, spacing: 7)");
     expect(liveTimeline).toContain("HStack(alignment: .center, spacing: 5)");
-    expect(liveTimeline).toContain("NativeLiveStatusSpinner()");
-    expect(liveTimeline).toContain(".offset(y: 1)");
+    expect(liveTimeline).toContain("NativeLiveStatusOrb(state:");
+    expect(liveTimeline).toContain("NativeLiveStatusText(text:");
+    expect(liveTimeline).toContain("LinearGradient(");
+    expect(liveTimeline).toContain("accessibilityReduceMotion");
     expect(liveTimeline).not.toContain("HStack(alignment: .top, spacing: 7)");
   });
 

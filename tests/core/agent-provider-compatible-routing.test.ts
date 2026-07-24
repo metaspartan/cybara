@@ -468,6 +468,43 @@ describe("Agent provider Google and compatible routing", () => {
     expect(calls).toBe(1);
   });
 
+  test("returns typed Kimi overload exhaustion without assistant error prose", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json(
+        { error: { code: 1305, message: "The service is temporarily overloaded" } },
+        { status: 429, headers: { "Retry-After": "0" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Overloaded Provider",
+      access_token: "kimi-overloaded-access-token",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Kimi Overloaded Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "k3",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "continue the project" }],
+      { useTools: false, sessionId: "kimi-overloaded-session" }
+    );
+
+    expect(calls).toBe(6);
+    expect(result.content).toBe("");
+    expect(result.failure).toEqual({ category: "overloaded", retryable: true });
+  });
+
   test("removes empty assistant records before switching to Kimi", async () => {
     let requestMessages: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -1123,7 +1160,8 @@ describe("Agent provider Google and compatible routing", () => {
       { useTools: false, sessionId: "openai-codex-429-session" }
     );
 
-    expect(result.content.toLowerCase()).toContain("rate limit");
+    expect(result.content).toBe("");
+    expect(result.failure).toEqual({ category: "rate_limit", retryable: true });
     expect(calls).toBe(4);
     const availability = getProviderAvailability(provider.id);
     expect(availability.inCooldown).toBe(true);

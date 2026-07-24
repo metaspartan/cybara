@@ -52,7 +52,11 @@ import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from ".
 import { resolveAgentToolPolicy } from "./toolsets";
 import { formatLlmFailure } from "./agent-error-format";
 import { resolveModelContextWindowTokens } from "./agent-model-limits";
-import { classifyApiError, type ClassifiedApiError } from "./error-classifier";
+import {
+  classifyApiError,
+  type ApiErrorCategory,
+  type ClassifiedApiError,
+} from "./error-classifier";
 import {
   getProviderAccountPool,
   markProviderAccountHealthy,
@@ -190,6 +194,12 @@ export interface AgentExecutionResult {
   provider_name?: string;
   model?: string;
   router_route_id?: string;
+  failure?: AgentExecutionFailure;
+}
+
+export interface AgentExecutionFailure {
+  category: ApiErrorCategory;
+  retryable: boolean;
 }
 
 class AgentManager extends AgentProviderRuntime {
@@ -342,17 +352,22 @@ class AgentManager extends AgentProviderRuntime {
     provider: ResolvedProvider,
     model: string | undefined
   ): AgentExecutionResult {
+    const classified = classifyApiError({ error });
     const toolCalls = [...(toolContext.executionState?.toolCalls || [])]
       .sort((left, right) => left.order - right.order)
       .map(({ name, args, result }) => ({ name, args, result }));
     return {
-      content: formatLlmFailure(error),
+      content: classified.retryable ? "" : formatLlmFailure(error),
       tool_calls: toolCalls.length > 0 ? [...toolCalls] : undefined,
       provider: provider.provider,
       provider_id: provider.id,
       provider_name: provider.name,
       model,
       router_route_id: toolContext.routerRouteId,
+      failure: {
+        category: classified.category,
+        retryable: classified.retryable,
+      },
     };
   }
 

@@ -48,6 +48,50 @@ const ROLE_META: Record<ChatMessage["role"], { label: string; marker: string }> 
   system: { label: "System", marker: "-" },
 };
 
+export function tuiShineSegments(
+  text: string,
+  frame: number,
+  highlightWidth = 6,
+): { before: string; highlight: string; after: string } {
+  const width = Math.max(1, Math.min(highlightWidth, text.length));
+  const offset = Math.abs(Math.trunc(frame)) % Math.max(1, text.length + width * 2);
+  const start = Math.max(0, offset - width);
+  const end = Math.min(text.length, offset);
+  return {
+    before: text.slice(0, start),
+    highlight: text.slice(start, end),
+    after: text.slice(end),
+  };
+}
+
+function TUIShiningText({
+  baseColor,
+  highlightColor,
+  text,
+  wrap = "wrap",
+}: {
+  baseColor: string;
+  highlightColor: string;
+  text: string;
+  wrap?: "truncate-end" | "wrap";
+}): React.ReactElement {
+  const [frame, setFrame] = React.useState(0);
+  React.useEffect(() => {
+    const timer = setInterval(() => setFrame((value) => value + 1), 90);
+    return () => clearInterval(timer);
+  }, []);
+  const segments = tuiShineSegments(text, frame);
+  return (
+    <Text color={baseColor} wrap={wrap}>
+      {segments.before}
+      <Text bold color={highlightColor}>
+        {segments.highlight}
+      </Text>
+      {segments.after}
+    </Text>
+  );
+}
+
 function relativeTime(value?: number): string {
   if (!value) return "now";
   const seconds = Math.max(0, Math.floor((Date.now() - value) / 1000));
@@ -122,13 +166,22 @@ export function ActivitySummary({
                   />
                 )
               ) : (
-                <Text
-                  color={palette[tuiActivityTone(row)]}
-                  wrap={live ? "truncate-end" : "wrap"}
-                >
-                  {row.icon ? `${row.icon} ` : ""}
-                  {row.label}
-                </Text>
+                row.phase === "start" && live ? (
+                  <TUIShiningText
+                    baseColor={palette[tuiActivityTone(row)]}
+                    highlightColor={palette.heading}
+                    text={`${row.icon ? `${row.icon} ` : ""}${row.label}`}
+                    wrap="truncate-end"
+                  />
+                ) : (
+                  <Text
+                    color={palette[tuiActivityTone(row)]}
+                    wrap={live ? "truncate-end" : "wrap"}
+                  >
+                    {row.icon ? `${row.icon} ` : ""}
+                    {row.label}
+                  </Text>
+                )
               )}
               {limitTUIActivityDetails(
                 row.details,
@@ -273,10 +326,12 @@ export function LiveRunView({
           />
         </Box>
       ) : normalizedDetail && !detailAlreadyVisible ? (
-        <Text color={palette.muted} wrap="truncate-end">
-          {" "}
-          {normalizedDetail}
-        </Text>
+        <TUIShiningText
+          baseColor={palette.muted}
+          highlightColor={palette.heading}
+          text={` ${normalizedDetail}`}
+          wrap="truncate-end"
+        />
       ) : null}
     </Box>
   );
