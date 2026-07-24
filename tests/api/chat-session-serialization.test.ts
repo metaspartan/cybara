@@ -1,13 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { agentManager } from "../../src/core/agent";
-import { providerManager } from "../../src/core/providers";
 import {
-  deleteSession,
-  handleChat,
-  waitForPendingChatCompletion,
-  getSessionMessages,
-  listPendingChatMessages,
   deletePendingChatMessage,
+  deleteSession,
+  getSessionMessages,
+  handleChat,
+  listPendingChatMessages,
   reorderPendingChatMessages,
   restorePersistedPendingChatQueues,
   sendToSession,
@@ -15,17 +12,20 @@ import {
   stopActiveChatTurn,
   updatePendingChatMessage,
   updateSessionAgent,
+  waitForPendingChatCompletion,
 } from "../../src/api/chat";
 import { loadPersistedPendingChatItems } from "../../src/api/chat-pending-store";
 import { pendingChatQueues } from "../../src/api/chat-runtime-state";
-import { broadcastStatus, onStatusStream } from "../../src/core/status";
+import { agentManager } from "../../src/core/agent";
 import { config } from "../../src/core/config";
 import db from "../../src/core/database";
-import { listSessionEvents } from "../../src/core/session-event-ledger";
+import { providerManager } from "../../src/core/providers";
 import {
   loadPersistedSession,
   upsertPersistedSessionMessage,
 } from "../../src/core/session-context";
+import { listSessionEvents } from "../../src/core/session-event-ledger";
+import { broadcastStatus, onStatusStream } from "../../src/core/status";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -1223,11 +1223,16 @@ describe("handleChat per-session serialization", () => {
     expect(messages[0]?.content).toBe("first");
     expect(messages[1]?.role).toBe("assistant");
     expect(messages[2]?.content).toBe("second");
+    expect(messages[2]?.pending_chat_id).toBe(secondResponse.pendingMessage?.id);
+    expect(messages[2]?.client_pending_id).toBe("optimistic-second");
     expect(messages[3]?.role).toBe("assistant");
     expect(listPendingChatMessages(sessionId)).toEqual([]);
     expect(loadPersistedPendingChatItems(sessionId)).toEqual([]);
     expect(queueHandoffVisibility.length).toBeGreaterThan(0);
     expect(await Promise.all(queueHandoffVisibility)).not.toContain(false);
+    const durableSession = await loadPersistedSession(sessionId);
+    expect(durableSession?.messages[2]?.pending_chat_id).toBe(secondResponse.pendingMessage?.id);
+    expect(durableSession?.messages[2]?.client_pending_id).toBe("optimistic-second");
     unsubscribe();
   });
 
