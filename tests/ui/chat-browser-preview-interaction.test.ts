@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   BROWSER_SCROLL_DELTA_LIMIT,
+  BROWSER_SCROLL_FRAME_MS,
   BrowserFramePresenter,
   BrowserScrollBatcher,
   mergeBrowserScrollDelta,
@@ -9,6 +10,10 @@ import {
 } from "../../ui/src/pages/chat/browserPreviewInteraction";
 
 describe("browser preview interactions", () => {
+  test("batches wheel input below one display frame", () => {
+    expect(BROWSER_SCROLL_FRAME_MS).toBe(8);
+  });
+
   test("normalizes pixel, line, and page wheel deltas", () => {
     expect(normalizeBrowserWheelDelta(2, 3, 0, 640)).toEqual({ deltaX: 2, deltaY: 3 });
     expect(normalizeBrowserWheelDelta(2, 3, 1, 640)).toEqual({ deltaX: 32, deltaY: 48 });

@@ -93,7 +93,9 @@ describe("browser executable discovery", () => {
 
   test("suppresses phantom windows and Edge first-run UI on Windows", () => {
     const args = browserLaunchArgs("win32", {});
-    expect(args).toContain("--disable-gpu");
+    expect(args).toContain("--enable-gpu");
+    expect(args).not.toContain("--disable-gpu");
+    expect(args).not.toContain("--disable-software-rasterizer");
     expect(args).toContain("--no-first-run");
     expect(args).toContain("--no-default-browser-check");
     expect(args).toContain("--window-position=-32000,-32000");

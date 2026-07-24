@@ -320,6 +320,21 @@ describe("Browser route contracts (mocked manager)", () => {
     expect(browserMockState.pageSummaryCalls).toBe(1);
   });
 
+  test("POST /api/browser/tabs/:id/viewport resizes without capturing a screenshot", async () => {
+    const res = await api("POST", "/api/browser/tabs/tab-1/viewport", {
+      width: 120,
+      height: 9000,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      success: true,
+      data: { viewport: { width: 1280, height: 800 } },
+    });
+    expect(browserMockState.resizeCalls).toEqual([{ id: "tab-1", width: 320, height: 1600 }]);
+    expect(browserMockState.screenshotCalls).toEqual([]);
+  });
+
   test("GET /api/browser/tabs/:id/screenshot base64 encodes buffer", async () => {
     const res = await api("GET", "/api/browser/tabs/tab-1/screenshot");
     expect(res.status).toBe(200);

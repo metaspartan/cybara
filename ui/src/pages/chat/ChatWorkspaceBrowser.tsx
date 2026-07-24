@@ -219,6 +219,23 @@ async function createSessionPage(sessionId: string): Promise<BrowserPage> {
   return { id };
 }
 
+async function resizeBrowserPage(
+  pageId: string,
+  viewport: BrowserViewport
+): Promise<BrowserViewport> {
+  const response = await apiFetch(`/api/browser/tabs/${encodeURIComponent(pageId)}/viewport`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(viewport),
+    signal: AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS),
+  });
+  if (!response.ok) throw await responseError(response, "Browser viewport could not be resized");
+  const data: unknown = await response.json();
+  const payload =
+    data && typeof data === "object" ? (data as { data?: Record<string, unknown> }).data : null;
+  return parseBrowserViewport(payload?.viewport) ?? viewport;
+}
+
 export function ChatWorkspaceBrowser({
   visible,
   sessionId,
@@ -261,6 +278,7 @@ export function ChatWorkspaceBrowser({
   const lastNavigationRequestRef = useRef(0);
   const onTitleChangeRef = useRef(onTitleChange);
   const [browserViewport, setBrowserViewport] = useState(DEFAULT_BROWSER_VIEWPORT);
+  const browserViewportRef = useRef(DEFAULT_BROWSER_VIEWPORT);
   const [previewSurfaceSize, setPreviewSurfaceSize] = useState<PreviewSize | null>(null);
   onTitleChangeRef.current = onTitleChange;
 
@@ -328,12 +346,13 @@ export function ChatWorkspaceBrowser({
       }
       requestInFlightRef.current = true;
       try {
+        const viewport = browserViewportRef.current;
         const query = new URLSearchParams({
           fullPage: "false",
           format: "jpeg",
           quality: String(BROWSER_PREVIEW_QUALITY),
-          viewportWidth: String(browserViewport.width),
-          viewportHeight: String(browserViewport.height),
+          viewportWidth: String(viewport.width),
+          viewportHeight: String(viewport.height),
         });
         if (fresh) query.set("fresh", "true");
         if (!fresh && previewRevisionRef.current) query.set("includePage", "false");
@@ -401,7 +420,7 @@ export function ChatWorkspaceBrowser({
         if (queuedPage) queueMicrotask(() => void loadBrowserPreview(queuedPage, true));
       }
     },
-    [browserSessionId, browserViewport.height, browserViewport.width, clearPreview, syncPage]
+    [browserSessionId, clearPreview, syncPage]
   );
 
   const loadBrowserState = useCallback(
@@ -487,9 +506,12 @@ export function ChatWorkspaceBrowser({
       timer = window.setTimeout(() => {
         const bounds = surface.getBoundingClientRect();
         setPreviewSurfaceSize({ width: bounds.width, height: bounds.height });
-        const { width, height } = browserPreviewViewport(bounds.width, bounds.height);
+        const nextViewport = browserPreviewViewport(bounds.width, bounds.height);
+        browserViewportRef.current = nextViewport;
         setBrowserViewport((current) =>
-          current.width === width && current.height === height ? current : { width, height }
+          current.width === nextViewport.width && current.height === nextViewport.height
+            ? current
+            : nextViewport
         );
       }, 100);
     };
@@ -501,6 +523,26 @@ export function ChatWorkspaceBrowser({
       if (timer !== null) window.clearTimeout(timer);
     };
   }, []);
+
+  useEffect(() => {
+    if (!visible || !page) return;
+    let active = true;
+    void resizeBrowserPage(page.id, browserViewport)
+      .then((viewport) => {
+        if (!active) return;
+        setPreview((current) => (current ? { ...current, viewport } : current));
+        setError(null);
+      })
+      .catch((reason: unknown) => {
+        if (!active) return;
+        setError(
+          reason instanceof Error ? reason.message : "Browser viewport could not be resized"
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [browserViewport, page, visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -861,8 +903,6 @@ export function ChatWorkspaceBrowser({
           visible={visible}
           fallbackSource={displayedPreview?.screenshot ?? null}
           quality={BROWSER_PREVIEW_QUALITY}
-          maxWidth={browserViewport.width}
-          maxHeight={browserViewport.height}
           inputSenderRef={streamInputRef}
           onConnectionChange={(connected) => {
             streamConnectedRef.current = connected;

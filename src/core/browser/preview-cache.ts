@@ -29,7 +29,11 @@ const pendingCaptures = new Map<string, Promise<CachedBrowserPreview>>();
 const pageGenerations = new Map<string, number>();
 let globalGeneration = 0;
 
-function viewportDimension(value: unknown, fallback: number, maximum: number): number {
+export function browserPreviewViewportDimension(
+  value: unknown,
+  fallback: number,
+  maximum: number
+): number {
   const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : NaN;
   return Number.isFinite(parsed) ? Math.min(maximum, Math.max(320, Math.round(parsed))) : fallback;
 }
@@ -80,8 +84,8 @@ export async function captureBrowserPreview(
 ): Promise<BrowserPreviewFrame> {
   if (request.fresh === "true" || request.fresh === true) invalidateBrowserPreview(pageId);
   const generation = captureGeneration(pageId);
-  const width = viewportDimension(request.viewportWidth, 1280, 2560);
-  const height = viewportDimension(request.viewportHeight, 800, 1600);
+  const width = browserPreviewViewportDimension(request.viewportWidth, 1280, 2560);
+  const height = browserPreviewViewportDimension(request.viewportHeight, 800, 1600);
   const format = request.format === "jpeg" ? "jpeg" : "png";
   const quality = format === "jpeg" ? screenshotQuality(request.quality) : 0;
   const fullPage = request.fullPage !== "false";

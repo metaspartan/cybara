@@ -527,6 +527,11 @@ function emitStatusStreamEvent(event: StatusStreamEvent): void {
   const message = encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
   for (const client of sseClients) {
     try {
+      if (client.desiredSize !== null && client.desiredSize <= 0) {
+        client.close();
+        sseClients.delete(client);
+        continue;
+      }
       client.enqueue(message);
     } catch {
       sseClients.delete(client);

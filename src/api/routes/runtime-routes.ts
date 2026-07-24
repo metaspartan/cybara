@@ -1,5 +1,10 @@
 import { agentManager } from "../../core/agent";
-import { captureBrowserPreview, invalidateBrowserPreview } from "../../core/browser/preview-cache";
+import {
+  browserPreviewViewportDimension,
+  captureBrowserPreview,
+  invalidateBrowserPreview,
+} from "../../core/browser/preview-cache";
+import { refreshBrowserPreviewStream } from "../../core/browser/preview-stream";
 import * as pwManager from "../../core/browser/pw-manager";
 import {
   getSandboxBrowserStatus,
@@ -257,6 +262,18 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
         cursor: pwManager.getPointerState(params!.id),
         page: includePage ? await pwManager.getPageSummary(params!.id) : null,
       },
+    };
+  },
+  "POST /api/browser/tabs/:id/viewport": async (body, params) => {
+    const request = body as { width?: unknown; height?: unknown };
+    const width = browserPreviewViewportDimension(request.width, 1280, 2560);
+    const height = browserPreviewViewportDimension(request.height, 800, 1600);
+    await pwManager.resize(params!.id, width, height);
+    invalidateBrowserPreview(params!.id);
+    await refreshBrowserPreviewStream(params!.id).catch(() => 0);
+    return {
+      success: true,
+      data: { viewport: pwManager.getViewportSize(params!.id) ?? { width, height } },
     };
   },
   "GET /api/browser/tabs/:id/screenshot": async (_body, params) => {

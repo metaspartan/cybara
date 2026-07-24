@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { BrowserPreviewStreamBroker } from "../../src/core/browser/preview-stream";
+import {
+  BROWSER_PREVIEW_STREAM_FRAME_MS,
+  BrowserPreviewStreamBroker,
+} from "../../src/core/browser/preview-stream";
 
 describe("browser preview stream", () => {
+  test("paces the production stream at display refresh cadence", () => {
+    expect(BROWSER_PREVIEW_STREAM_FRAME_MS).toBe(16);
+  });
+
   test("shares one browser stream and replays the latest frame", async () => {
     let starts = 0;
     let stops = 0;
@@ -13,7 +20,12 @@ describe("browser preview stream", () => {
         stops += 1;
       };
     });
-    const options = { quality: 58, maxWidth: 960, maxHeight: 640, everyNthFrame: 1 };
+    const options = {
+      quality: 58,
+      maxWidth: 960,
+      maxHeight: 640,
+      everyNthFrame: 1,
+    };
     const firstFrames: string[] = [];
     const secondFrames: string[] = [];
     const unsubscribeFirst = await broker.subscribe("page-1", options, (frame) => {
@@ -43,7 +55,12 @@ describe("browser preview stream", () => {
       if (starts === 1) throw new Error("CDP unavailable");
       return async () => undefined;
     });
-    const options = { quality: 58, maxWidth: 960, maxHeight: 640, everyNthFrame: 1 };
+    const options = {
+      quality: 58,
+      maxWidth: 960,
+      maxHeight: 640,
+      everyNthFrame: 1,
+    };
 
     await expect(broker.subscribe("page-1", options, () => undefined)).rejects.toThrow(
       "CDP unavailable"
@@ -64,7 +81,12 @@ describe("browser preview stream", () => {
       listener(Buffer.from("frame-2").toString("base64"));
       throw new Error("startup failed");
     }, 20);
-    const options = { quality: 58, maxWidth: 960, maxHeight: 640, everyNthFrame: 1 };
+    const options = {
+      quality: 58,
+      maxWidth: 960,
+      maxHeight: 640,
+      everyNthFrame: 1,
+    };
 
     await expect(
       broker.subscribe("page-1", options, (frame) => frames.push(frame.toString()))
@@ -82,7 +104,12 @@ describe("browser preview stream", () => {
       emit = listener;
       return async () => undefined;
     }, 20);
-    const options = { quality: 58, maxWidth: 960, maxHeight: 640, everyNthFrame: 1 };
+    const options = {
+      quality: 58,
+      maxWidth: 960,
+      maxHeight: 640,
+      everyNthFrame: 1,
+    };
     const frames: string[] = [];
     const unsubscribe = await broker.subscribe("page-1", options, (frame) => {
       frames.push(frame.toString());
@@ -95,5 +122,54 @@ describe("browser preview stream", () => {
     await Bun.sleep(30);
     expect(frames).toEqual(["frame-1", "frame-3"]);
     await unsubscribe();
+  });
+
+  test("injects one fresh frame after a viewport resize without restarting the stream", async () => {
+    let starts = 0;
+    let stops = 0;
+    let captures = 0;
+    const broker = new BrowserPreviewStreamBroker(async () => {
+      starts += 1;
+      return async () => {
+        stops += 1;
+      };
+    });
+    const options = {
+      quality: 58,
+      maxWidth: 1600,
+      maxHeight: 1200,
+      everyNthFrame: 1,
+    };
+    const frames: string[] = [];
+    const unsubscribe = await broker.subscribe("page-1", options, (frame) => {
+      frames.push(frame.toString());
+    });
+
+    const refreshed = await broker.refresh("page-1", async (captureOptions) => {
+      captures += 1;
+      expect(captureOptions).toEqual(options);
+      return Buffer.from("resized-frame");
+    });
+
+    expect(refreshed).toBe(1);
+    expect(captures).toBe(1);
+    expect(frames).toEqual(["resized-frame"]);
+    expect(starts).toBe(1);
+    expect(stops).toBe(0);
+    await unsubscribe();
+    expect(stops).toBe(1);
+  });
+
+  test("does not capture when the resized page has no subscribers", async () => {
+    let captures = 0;
+    const broker = new BrowserPreviewStreamBroker(async () => async () => undefined);
+
+    const refreshed = await broker.refresh("page-1", async () => {
+      captures += 1;
+      return Buffer.from("unused");
+    });
+
+    expect(refreshed).toBe(0);
+    expect(captures).toBe(0);
   });
 });

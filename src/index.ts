@@ -66,6 +66,7 @@ import {
   zaloAdapter,
   zulipAdapter,
 } from "./core/channels";
+import { StatusStreamSender } from "./core/status-stream-sender";
 import { resolveChannelAgentRouting } from "./core/channels/agent-selection";
 import { configureChannelChatRuntime } from "./core/channels/chat-runtime";
 import {
@@ -362,6 +363,7 @@ type WsData =
   | {
       kind: "status";
       unsubscribe?: () => void;
+      sender?: StatusStreamSender;
     }
   | {
       kind: "browser";
@@ -886,10 +888,18 @@ function createGatewayServer(
         const data = ws.data as WsData;
         if (data.kind === "status") {
           try {
-            ws.send(JSON.stringify(createStatusSnapshotEvent()));
+            const sender = new StatusStreamSender({
+              send: (message) => {
+                ws.send(message);
+              },
+              close: (code, reason) => ws.close(code, reason),
+              getBufferedAmount: () => ws.getBufferedAmount(),
+            });
+            data.sender = sender;
+            sender.send(createStatusSnapshotEvent());
             const unsubscribe = onStatusStream((event) => {
               try {
-                ws.send(JSON.stringify(event));
+                sender.send(event);
               } catch {
                 // Connection will be cleaned up in close handler
               }
@@ -1033,6 +1043,7 @@ function createGatewayServer(
       close(ws) {
         const data = ws.data as WsData;
         if (data.kind === "status") {
+          data.sender?.dispose();
           data.unsubscribe?.();
           return;
         }
