@@ -1360,6 +1360,7 @@ export const cloudProviderCatalog = {
       {
         id: "minimax-m3",
         name: "MiniMax M3",
+        api: "anthropic-messages",
         context: 1000000,
         maxTokens: 131072,
         reasoning: true,
@@ -1368,6 +1369,7 @@ export const cloudProviderCatalog = {
       {
         id: "minimax-m2.7",
         name: "MiniMax M2.7",
+        api: "anthropic-messages",
         context: 204800,
         maxTokens: 131072,
         reasoning: true,
@@ -1376,8 +1378,17 @@ export const cloudProviderCatalog = {
       {
         id: "minimax-m2.5",
         name: "MiniMax M2.5",
+        api: "anthropic-messages",
         context: 204800,
         maxTokens: 65536,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
+        id: "kimi-k3",
+        name: "Kimi K3",
+        context: 1048576,
+        maxTokens: 131072,
         reasoning: true,
         input: ["text"],
       },
@@ -1408,6 +1419,7 @@ export const cloudProviderCatalog = {
       {
         id: "qwen3.7-max",
         name: "Qwen3.7 Max",
+        api: "anthropic-messages",
         context: 1000000,
         maxTokens: 65536,
         reasoning: true,
@@ -1416,6 +1428,7 @@ export const cloudProviderCatalog = {
       {
         id: "qwen3.7-plus",
         name: "Qwen3.7 Plus",
+        api: "anthropic-messages",
         context: 1000000,
         maxTokens: 65536,
         reasoning: true,
@@ -1424,6 +1437,7 @@ export const cloudProviderCatalog = {
       {
         id: "qwen3.6-plus",
         name: "Qwen3.6 Plus",
+        api: "anthropic-messages",
         context: 1000000,
         maxTokens: 65536,
         reasoning: true,
@@ -1432,6 +1446,7 @@ export const cloudProviderCatalog = {
       {
         id: "qwen3.5-plus",
         name: "Qwen3.5 Plus",
+        api: "anthropic-messages",
         context: 262144,
         maxTokens: 65536,
         reasoning: true,
@@ -1468,6 +1483,22 @@ export const cloudProviderCatalog = {
         maxTokens: 128000,
         reasoning: true,
         input: ["text", "image", "audio"],
+      },
+      {
+        id: "grok-4.5",
+        name: "Grok 4.5",
+        context: 500000,
+        maxTokens: 500000,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "hy3",
+        name: "Hy3",
+        context: 256000,
+        maxTokens: 64000,
+        reasoning: true,
+        input: ["text"],
       },
       {
         id: "hy3-preview",

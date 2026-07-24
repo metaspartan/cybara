@@ -207,6 +207,9 @@ describe("Provider model defaults and API-family parity", () => {
     expect(openCodeGoIds).toEqual(
       expect.arrayContaining([
         "glm-5.2",
+        "grok-4.5",
+        "hy3",
+        "kimi-k3",
         "kimi-k2.7-code",
         "minimax-m3",
         "qwen3.7-max",

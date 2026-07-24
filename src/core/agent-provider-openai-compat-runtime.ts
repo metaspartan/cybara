@@ -43,6 +43,7 @@ import {
 } from "./llm/kimi-wire";
 import { normalizeModelToolCalls } from "./llm/model-dialect";
 import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
+import { supportsForcedToolChoice } from "./llm/provider-model-transport";
 import {
   coerceReasoningEffort,
   normalizeReasoningEffort,
@@ -181,7 +182,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
       requestBody.tools = tools.map((tool) => toOpenAICompatTool(tool, providerConfig));
-      if (toolContext?.requireToolUse === true) {
+      if (toolContext?.requireToolUse === true && supportsForcedToolChoice(providerConfig)) {
         const requiredToolName = toolContext.requiredToolName?.trim();
         const hasRequiredTool =
           typeof requiredToolName === "string" &&
