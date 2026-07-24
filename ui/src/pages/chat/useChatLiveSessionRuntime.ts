@@ -873,12 +873,8 @@ export function useChatLiveSessionRuntime({
             refreshedMessages,
             (result as { workspace_dir?: string | null }).workspace_dir || null
           );
-          syncSessionAgentSelection(
-            (result as { agent_id?: string | null }).agent_id || null
-          );
-          setUseModelRouter(
-            (result as { use_model_router?: boolean }).use_model_router === true
-          );
+          syncSessionAgentSelection((result as { agent_id?: string | null }).agent_id || null);
+          setUseModelRouter((result as { use_model_router?: boolean }).use_model_router === true);
           setSessionContextUsage(
             (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
           );

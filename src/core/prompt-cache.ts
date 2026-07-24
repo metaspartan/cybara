@@ -60,6 +60,11 @@ function toBlock(part: AnthropicContentBlock | string): AnthropicContentBlock {
   return typeof part === "string" ? { type: "text", text: part } : part;
 }
 
+function withoutBreakpoint(block: AnthropicContentBlock): AnthropicContentBlock {
+  const { cache_control: _cacheControl, ...rest } = block;
+  return rest;
+}
+
 function addBreakpoint(block: AnthropicContentBlock, ttl: "5m" | "1h"): AnthropicContentBlock {
   // Don't stack a second breakpoint on the same block.
   if (block.cache_control) return block;
@@ -73,7 +78,10 @@ function ensureBlockForm(message: AnthropicMessage): AnthropicMessage {
       content: [{ type: "text", text: message.content }],
     };
   }
-  return message;
+  return {
+    role: message.role,
+    content: message.content.map(withoutBreakpoint),
+  };
 }
 
 /**
@@ -100,7 +108,7 @@ export function applyAnthropicCacheControl(
   let breakpointsUsed = 0;
 
   // 1. System prompt: cache the final system block.
-  const systemParts = normalizeSystem(request.system).map(toBlock);
+  const systemParts = normalizeSystem(request.system).map(toBlock).map(withoutBreakpoint);
   if (systemParts.length > 0) {
     const last = systemParts[systemParts.length - 1];
     systemParts[systemParts.length - 1] = addBreakpoint(last, ttl);

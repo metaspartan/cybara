@@ -117,11 +117,42 @@ describe("applyAnthropicCacheControl", () => {
 
   test("does not mutate the input request", () => {
     const request: AnthropicCacheRequest = {
-      system: "system",
-      messages: [{ role: "user", content: "hi" }],
+      system: [{ type: "text", text: "system", cache_control: { type: "ephemeral" } }],
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hi", cache_control: { type: "ephemeral" } }],
+        },
+      ],
     };
     const snapshot = JSON.stringify(request);
     applyAnthropicCacheControl(request);
     expect(JSON.stringify(request)).toBe(snapshot);
+  });
+
+  test("repositions breakpoints without accumulating them across tool-loop requests", () => {
+    const first = applyAnthropicCacheControl({
+      system: "system",
+      messages: [
+        { role: "user", content: "start" },
+        { role: "assistant", content: "checking" },
+      ],
+    });
+    const second = applyAnthropicCacheControl({
+      system: first.system,
+      messages: [
+        ...first.messages,
+        { role: "user", content: "tool result" },
+        { role: "assistant", content: "continuing" },
+      ],
+    });
+
+    const systemBlocks = second.system as Array<{ cache_control?: unknown }>;
+    const messageBreakpoints = second.messages.flatMap((message) =>
+      (message.content as Array<{ cache_control?: unknown }>).filter((block) => block.cache_control)
+    );
+    expect(systemBlocks.filter((block) => block.cache_control)).toHaveLength(1);
+    expect(messageBreakpoints).toHaveLength(3);
+    expect(JSON.stringify(second.messages[0])).not.toContain("cache_control");
   });
 });
