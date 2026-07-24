@@ -1,0 +1,7 @@
+{
+  "build": {
+    "production": {
+      "distribution": "store"
+    }
+  }
+}
