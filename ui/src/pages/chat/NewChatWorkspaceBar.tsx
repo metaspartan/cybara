@@ -1,8 +1,9 @@
 import { Folder, Loader2, X } from "lucide-react";
 import type { ReactElement } from "react";
+import { cn } from "@/lib/utils";
 import { GitBranchSelector, type GitBranchOption } from "./GitBranchSelector";
 
-function workspaceName(path: string): string {
+export function workspaceFolderName(path: string): string {
   const normalized = path.trim().replace(/[\\/]+$/, "");
   return normalized.split(/[\\/]/).filter(Boolean).pop() || normalized;
 }
@@ -18,6 +19,7 @@ export function NewChatWorkspaceBar({
   onRefreshBranches,
   onSelectWorkspace,
   onSwitchBranch,
+  className,
   workspaceDir,
   workspaceSaving,
 }: {
@@ -31,11 +33,17 @@ export function NewChatWorkspaceBar({
   onRefreshBranches: () => Promise<void> | void;
   onSelectWorkspace: () => void;
   onSwitchBranch: (branch: string) => Promise<void> | void;
+  className?: string;
   workspaceDir: string | null;
   workspaceSaving: boolean;
 }): ReactElement {
   return (
-    <div className="new-chat-workspace-bar mx-4 flex h-9 min-w-0 items-center gap-1 rounded-t-[18px] border border-b-0 px-3 text-[12px]">
+    <div
+      className={cn(
+        "new-chat-workspace-bar mx-4 flex h-9 min-w-0 items-center gap-1 rounded-t-[18px] border border-b-0 px-3 text-[12px]",
+        className
+      )}
+    >
       {workspaceDir ? (
         <button
           type="button"
@@ -61,7 +69,7 @@ export function NewChatWorkspaceBar({
           <Folder className="h-3.5 w-3.5 shrink-0 text-[var(--icon-muted)]" />
         )}
         <span className="max-w-48 truncate">
-          {workspaceDir ? workspaceName(workspaceDir) : "Select workspace"}
+          {workspaceDir ? workspaceFolderName(workspaceDir) : "Select workspace"}
         </span>
       </button>
       {workspaceDir ? (

@@ -256,7 +256,7 @@ describe("Chat revert and diff wiring", () => {
       /\(["']__TAURI_INTERNALS__["'] in window \|\| ["']__TAURI__["'] in window\)/
     );
     expect(emptyStateSource).toContain("<NewChatWorkspaceBar");
-    expect(workspaceBarSource).toContain("workspaceName(workspaceDir)");
+    expect(workspaceBarSource).toContain("workspaceFolderName(workspaceDir)");
     expect(source).toContain("info?.defaultWorkspaceDir");
     expect(source).toContain("lastWorkspaceDir || configuredWorkspaceDir || homeWorkspaceDir");
     expect(source).toContain("void handleSelectWorkspace()");

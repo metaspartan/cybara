@@ -29,7 +29,7 @@ describe("chat empty state", () => {
     expect(emptyState).toContain("mx-auto mt-4 w-full");
     expect(emptyState).toContain("<NewChatWorkspaceBar");
     expect(workspaceBar).toContain('appearance="inline"');
-    expect(workspaceBar).toContain("workspaceName(workspaceDir)");
+    expect(workspaceBar).toContain("workspaceFolderName(workspaceDir)");
     expect(workspaceBar).toContain('<X className="h-2.5 w-2.5"');
     expect(workspaceBar).toContain('aria-label="Clear workspace"');
     expect(workspaceBar).toContain("rounded-full bg-[var(--icon-muted)]");
@@ -42,5 +42,19 @@ describe("chat empty state", () => {
     expect(composer).toContain("data-layout={layout}");
     expect(composer).toContain('layout === "new-chat"');
     expect(header).not.toContain("NewChatTitle");
+  });
+
+  test("uses a workspace-aware clickable heading with varied workspace-free prompts", async () => {
+    const source = await Bun.file("ui/src/pages/chat/ChatEmptyState.tsx").text();
+
+    expect(source).toContain("What should we build in");
+    expect(source).toContain("workspaceFolderName(workspaceDir)");
+    expect(source).toContain("onClick={onSelectWorkspace}");
+    expect(source).toContain("Change workspace from ${workspaceName}");
+    expect(source).toContain('"What should we build?"');
+    expect(source).toContain('"Hello, what would you like to do?"');
+    expect(source).toContain('"What would you like to work on?"');
+    expect(source).toContain("text-xl font-medium");
+    expect(source).not.toContain("Start a conversation");
   });
 });

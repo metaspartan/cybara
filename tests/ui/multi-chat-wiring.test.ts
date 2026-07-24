@@ -103,6 +103,31 @@ describe("multi-chat workspace wiring", () => {
     expect(agentControls).toContain("id={controlId}");
   });
 
+  test("gives draft chats the shared workspace picker and git branch controls", () => {
+    const workspace = readSource("ui/src/pages/chat/MultiChatWorkspace.tsx");
+    const workspacePicker = readSource("ui/src/pages/chat/workspacePicker.ts");
+
+    expect(workspace).toContain("<NewChatWorkspaceBar");
+    expect(workspace).toContain("readPersistedWorkspaceDir()");
+    expect(workspace).toContain("useEnvironmentGitBranches(isDraft ? draftWorkspaceDir : null)");
+    expect(workspace).toContain("<LocalFolderPickerModal");
+    expect(workspace).toContain("pickWorkspaceDirectory(draftWorkspaceDir)");
+    expect(workspace).toContain("workspaceDir: effectiveWorkspaceDir");
+    expect(workspace).toContain("workspaceDir={effectiveWorkspaceDir}");
+    expect(workspace).toContain('className="mx-0 rounded-t-lg"');
+    expect(workspacePicker).toContain("isDesktopHostRuntime()");
+    expect(workspacePicker).toContain('apiFetch("/api/system/folder-dialog"');
+    expect(workspacePicker).toContain("requiresFallback: true");
+  });
+
+  test("uses the requested bent branch arrow for message forks", () => {
+    const timeline = readSource("ui/src/pages/chat/ChatMessageTimeline.tsx");
+
+    expect(timeline).toContain("CornerUpRight");
+    expect(timeline).toContain('<CornerUpRight className="h-3 w-3" />');
+    expect(timeline).not.toContain('<GitFork className="h-3 w-3" />');
+  });
+
   test("opens environment panels independently or together without shadows", () => {
     const workspace = readSource("ui/src/pages/chat/MultiChatWorkspace.tsx");
     const paneEnvironment = readSource("ui/src/pages/chat/MultiChatPaneEnvironment.tsx");
