@@ -137,7 +137,13 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("start_gateway_watchdog(app.handle().clone())");
     expect(mainRs).toContain("schedule_sidecar_restart(");
     expect(mainRs).toContain('.env("CYBARA_NATIVE_APP", "1")');
-    expect(mainRs).toContain("gateway::is_gateway_healthy_at(&endpoint.addr");
+    expect(mainRs).toContain("gateway::is_gateway_live_at(&endpoint.addr)");
+    expect(gatewayRs).toContain('http_get_with_timeout(addr, "/api/health/live"');
+    const supervisionRs = readFileSync(
+      join(ROOT_DIR, "src-tauri", "src", "gateway_supervision.rs"),
+      "utf8"
+    );
+    expect(supervisionRs).toContain("HEALTH_FAILURE_THRESHOLD: u8 = 10");
     expect(mainRs).toContain("shutdown_sidecar(app_handle)");
     expect(mainRs).toContain("tauri::WindowEvent::CloseRequested { api, .. }");
     expect(mainRs).toContain("api.prevent_close()");

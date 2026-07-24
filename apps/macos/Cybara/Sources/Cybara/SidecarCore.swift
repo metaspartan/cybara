@@ -39,8 +39,12 @@ public enum SidecarCore {
         "\(serverURLString(port: port))/api/health"
     }
 
+    public static func livenessURLString(port: Int) -> String {
+        "\(serverURLString(port: port))/api/health/live"
+    }
+
     public static func healthFailureRequiresRestart(_ count: Int) -> Bool {
-        count >= 3
+        count >= 10
     }
 
     public static func stableHealthResetsRestartBudget(_ count: Int) -> Bool {
@@ -80,6 +84,14 @@ public enum SidecarCore {
 
     public static func isHealthyResponse(statusCode: Int, body: String) -> Bool {
         gatewayHealthProbe(statusCode: statusCode, body: body) != nil
+    }
+
+    public static func isLiveResponse(statusCode: Int, body: String) -> Bool {
+        guard statusCode == 200,
+              let data = body.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return false }
+        return object["live"] as? Bool == true
     }
 
     public static func gatewayHealthProbe(statusCode: Int, body: String) -> GatewayHealthProbe? {

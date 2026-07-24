@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-pub const HEALTH_FAILURE_THRESHOLD: u8 = 3;
+pub const HEALTH_FAILURE_THRESHOLD: u8 = 10;
 pub const MAX_RESTART_ATTEMPTS: u8 = 4;
 pub const STABLE_HEALTH_THRESHOLD: u8 = 5;
 

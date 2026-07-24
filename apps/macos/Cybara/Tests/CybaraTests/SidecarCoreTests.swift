@@ -45,13 +45,24 @@ final class SidecarCoreTests: XCTestCase {
 
     func testHealthURLString() {
         XCTAssertEqual(SidecarCore.healthURLString(port: 4269), "http://127.0.0.1:4269/api/health")
+        XCTAssertEqual(
+            SidecarCore.livenessURLString(port: 4269),
+            "http://127.0.0.1:4269/api/health/live"
+        )
     }
 
     func testHealthSupervisionThresholds() {
-        XCTAssertFalse(SidecarCore.healthFailureRequiresRestart(2))
-        XCTAssertTrue(SidecarCore.healthFailureRequiresRestart(3))
+        XCTAssertFalse(SidecarCore.healthFailureRequiresRestart(9))
+        XCTAssertTrue(SidecarCore.healthFailureRequiresRestart(10))
         XCTAssertFalse(SidecarCore.stableHealthResetsRestartBudget(4))
         XCTAssertTrue(SidecarCore.stableHealthResetsRestartBudget(5))
+    }
+
+    func testLivenessResponseRequiresExplicitLivePayload() {
+        XCTAssertTrue(SidecarCore.isLiveResponse(statusCode: 200, body: #"{"live":true}"#))
+        XCTAssertFalse(SidecarCore.isLiveResponse(statusCode: 200, body: #"{"live":false}"#))
+        XCTAssertFalse(SidecarCore.isLiveResponse(statusCode: 503, body: #"{"live":true}"#))
+        XCTAssertFalse(SidecarCore.isLiveResponse(statusCode: 200, body: "invalid"))
     }
 
     func testFallbackPortsFollowPreferredPort() {

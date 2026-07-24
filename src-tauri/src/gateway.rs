@@ -4,6 +4,7 @@ use std::net::TcpStream;
 use std::time::Duration;
 
 const PROBE_TIMEOUT: Duration = Duration::from_millis(900);
+const LIVENESS_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const GATEWAY_PORT_SIGNAL_PREFIX: &str = "CYBARA_GATEWAY_PORT=";
 
 #[derive(Clone)]
@@ -28,9 +29,13 @@ impl GatewayEndpoint {
 }
 
 fn http_get(addr: &str, path: &str) -> Option<HttpResponse> {
+    http_get_with_timeout(addr, path, PROBE_TIMEOUT)
+}
+
+fn http_get_with_timeout(addr: &str, path: &str, timeout: Duration) -> Option<HttpResponse> {
     let mut stream = TcpStream::connect(addr).ok()?;
-    stream.set_read_timeout(Some(PROBE_TIMEOUT)).ok()?;
-    stream.set_write_timeout(Some(PROBE_TIMEOUT)).ok()?;
+    stream.set_read_timeout(Some(timeout)).ok()?;
+    stream.set_write_timeout(Some(timeout)).ok()?;
     let request =
         format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nAccept: */*\r\nConnection: close\r\n\r\n");
     stream.write_all(request.as_bytes()).ok()?;
@@ -85,10 +90,18 @@ pub fn is_compatible_gateway_at(addr: &str, expected_version: &str) -> bool {
         && !normalized.contains("ui not built")
 }
 
-pub fn is_gateway_healthy_at(addr: &str, expected_version: &str) -> bool {
-    http_get(addr, "/api/health")
-        .as_ref()
-        .is_some_and(|response| is_matching_health_response(response, expected_version))
+pub fn is_gateway_live_at(addr: &str) -> bool {
+    let Some(response) = http_get_with_timeout(addr, "/api/health/live", LIVENESS_PROBE_TIMEOUT)
+    else {
+        return false;
+    };
+    if response.status != 200 {
+        return false;
+    }
+    serde_json::from_str::<serde_json::Value>(&response.body)
+        .ok()
+        .and_then(|value| value.get("live").and_then(serde_json::Value::as_bool))
+        == Some(true)
 }
 
 fn is_matching_health_response(response: &HttpResponse, expected_version: &str) -> bool {
@@ -137,7 +150,7 @@ impl GatewayPortSignalParser {
 #[cfg(test)]
 mod tests {
     use super::{
-        GatewayEndpoint, GatewayPortSignalParser, is_compatible_gateway_at, is_gateway_healthy_at,
+        GatewayEndpoint, GatewayPortSignalParser, is_compatible_gateway_at, is_gateway_live_at,
         parse_gateway_port_signal,
     };
     use std::io::{Read, Write};
@@ -196,26 +209,49 @@ mod tests {
     }
 
     #[test]
-    fn health_probe_does_not_require_a_second_ui_request() {
-        let (endpoint, handle) = serve(vec![r#"{"status":"warning","version":"1.2.3"}"#.into()]);
-        assert!(is_gateway_healthy_at(&endpoint.addr, "1.2.3"));
-        handle.join().expect("join health gateway");
+    fn liveness_probe_accepts_only_live_payloads() {
+        let (live, live_handle) = serve(vec![r#"{"live":true}"#.into()]);
+        assert!(is_gateway_live_at(&live.addr));
+        live_handle.join().expect("join live gateway");
+
+        let (not_live, not_live_handle) = serve(vec![r#"{"live":false}"#.into()]);
+        assert!(!is_gateway_live_at(&not_live.addr));
+        not_live_handle.join().expect("join non-live gateway");
     }
 
     #[test]
-    fn stalled_gateway_probe_fails_within_timeout() {
+    fn liveness_probe_tolerates_a_busy_event_loop() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind delayed gateway");
+        let port = listener.local_addr().expect("read delayed address").port();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept delayed request");
+            let mut request = [0; 1024];
+            let _ = stream.read(&mut request);
+            thread::sleep(Duration::from_millis(1_100));
+            let body = r#"{"live":true}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write delayed response");
+        });
+        assert!(is_gateway_live_at(&format!("127.0.0.1:{port}")));
+        handle.join().expect("join delayed gateway");
+    }
+
+    #[test]
+    fn stalled_liveness_probe_fails_within_timeout() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind stalled gateway");
         let port = listener.local_addr().expect("read stalled address").port();
         let handle = thread::spawn(move || {
             let _ = listener.accept().expect("accept stalled request");
-            thread::sleep(Duration::from_secs(2));
+            thread::sleep(Duration::from_secs(3));
         });
         let started = std::time::Instant::now();
-        assert!(!is_gateway_healthy_at(
-            &format!("127.0.0.1:{port}"),
-            "1.2.3"
-        ));
-        assert!(started.elapsed() < Duration::from_millis(1_500));
+        assert!(!is_gateway_live_at(&format!("127.0.0.1:{port}")));
+        assert!(started.elapsed() < Duration::from_millis(2_500));
         handle.join().expect("join stalled gateway");
     }
 

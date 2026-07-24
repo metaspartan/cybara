@@ -318,7 +318,7 @@ final class SidecarManager: ObservableObject {
             while let self, !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
                 guard !Task.isCancelled, self.isReady else { continue }
-                if await self.compatibleGatewayProbe() != nil {
+                if await self.livenessProbe() {
                     self.consecutiveHealthFailures = 0
                     self.stableHealthChecks += 1
                     if SidecarCore.stableHealthResetsRestartBudget(self.stableHealthChecks) {
@@ -408,6 +408,20 @@ final class SidecarManager: ObservableObject {
               )
         else { return nil }
         return probe
+    }
+
+    private func livenessProbe(timeoutInterval: TimeInterval = 2) async -> Bool {
+        guard let url = URL(string: SidecarCore.livenessURLString(port: port)) else { return false }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = timeoutInterval
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            return SidecarCore.isLiveResponse(
+                statusCode: code, body: String(data: data, encoding: .utf8) ?? "")
+        } catch {
+            return false
+        }
     }
 
     private func resolveExistingGateway() async -> ExistingGatewayResolution {
