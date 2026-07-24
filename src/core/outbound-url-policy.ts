@@ -25,7 +25,14 @@ const BLOCKED_HOSTNAMES = new Set([
   "metadata.google.internal",
   "metadata",
 ]);
-const BLOCKED_HOST_SUFFIXES = [".localhost", ".local", ".internal", ".lan", ".home.arpa"];
+const BLOCKED_HOST_SUFFIXES = [
+  ".localhost",
+  ".local",
+  ".internal",
+  ".invalid",
+  ".lan",
+  ".home.arpa",
+];
 
 function normalizeIp(value: string): string {
   return (

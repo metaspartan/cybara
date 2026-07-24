@@ -382,7 +382,7 @@ describe("API security module", () => {
     expect(exitCode).toBe(0);
     const result = JSON.parse(output.trim()) as { valid: boolean; error?: string };
     expect(result.valid).toBe(false);
-    expect(result.error).toContain("Unable to resolve hostname");
+    expect(result.error).toContain("Blocked hostname");
   });
 
   test("maintenance timers do not retain one-shot processes", async () => {

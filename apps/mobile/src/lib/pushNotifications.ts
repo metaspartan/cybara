@@ -27,9 +27,6 @@ interface NotificationsLike {
 
 interface ConstantsLike {
   expoConfig?: {
-    android?: {
-      googleServicesFile?: string;
-    };
     extra?: Record<string, unknown>;
   };
   easConfig?: {
@@ -83,15 +80,9 @@ function nativePushPlatform(platform: string): "ios" | "android" | null {
   return platform === "ios" || platform === "android" ? platform : null;
 }
 
-function mobilePushBuildIssue(
-  platform: "ios" | "android",
-  constants: ConstantsLike | null | undefined
-): string | null {
+function mobilePushBuildIssue(constants: ConstantsLike | null | undefined): string | null {
   if (!expoProjectId(constants)) {
     return "This app build is missing its Expo project ID. Install a notification-enabled Cybara build.";
-  }
-  if (platform === "android" && !constants?.expoConfig?.android?.googleServicesFile) {
-    return "This Android build is missing its Firebase services configuration. Install a notification-enabled Cybara build.";
   }
   return null;
 }
@@ -179,7 +170,7 @@ export async function registerMobilePushNotifications(
 
   try {
     const constants = options.constants === undefined ? defaultConstants() : options.constants;
-    const buildIssue = mobilePushBuildIssue(platform, constants);
+    const buildIssue = mobilePushBuildIssue(constants);
     if (buildIssue) return { status: "failed", message: buildIssue };
 
     await configureAndroidNotificationChannel(notifications, platform);

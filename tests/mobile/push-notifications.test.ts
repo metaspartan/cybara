@@ -23,9 +23,8 @@ function createApi() {
   return { api, calls };
 }
 
-const androidBuildConstants = {
+const pushBuildConstants = {
   easConfig: { projectId: "project-123" },
-  expoConfig: { android: { googleServicesFile: "./google-services.json" } },
 };
 
 describe("mobile push notification helpers", () => {
@@ -78,7 +77,7 @@ describe("mobile push notification helpers", () => {
         },
         getExpoPushTokenAsync: async () => ({ data: "ExpoPushToken[abcdefghijklmnopqrstuvwxyz]" }),
       },
-      constants: androidBuildConstants,
+      constants: pushBuildConstants,
     });
 
     expect(result.status).toBe("permission_required");
@@ -100,7 +99,7 @@ describe("mobile push notification helpers", () => {
           channelCalls.push({ channelId, channel });
         },
       },
-      constants: androidBuildConstants,
+      constants: pushBuildConstants,
     });
 
     expect(result.status).toBe("registered");
@@ -149,7 +148,7 @@ describe("mobile push notification helpers", () => {
           throw new Error("No Firebase App '[DEFAULT]' has been created");
         },
       },
-      constants: androidBuildConstants,
+      constants: pushBuildConstants,
     });
 
     expect(result).toEqual({
