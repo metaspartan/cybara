@@ -1,6 +1,4 @@
 import { chatApi } from "@/lib/api";
-import { apiFetch } from "@/lib/auth";
-import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
 import { useUIStore } from "@/stores/uiStore";
 import {
   type Dispatch,
@@ -21,6 +19,7 @@ import {
   readPersistedDiffPanelWidth,
   resolvePathForIde,
 } from "./chatModel";
+import { pickWorkspaceDirectory } from "./workspacePicker";
 
 interface UseChatWorkspaceActionsOptions {
   sessionId: string | null;
@@ -137,39 +136,13 @@ export function useChatWorkspaceActions({
   );
 
   const handleSelectWorkspace = useCallback(async () => {
-    try {
-      let selectedPath: string | null = null;
-      if (isDesktopHostRuntime()) {
-        selectedPath = await openDesktopDirectoryDialog({
-          defaultPath: effectiveWorkspaceDir || undefined,
-          title: "Select Session Workspace",
-        });
-      } else {
-        const response = await apiFetch("/api/system/folder-dialog", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            default_path: effectiveWorkspaceDir || undefined,
-            title: "Select Session Workspace",
-          }),
-        });
-        const result = (await response.json()) as {
-          path?: string | null;
-          success?: boolean;
-          supported?: boolean;
-        };
-        if (!response.ok || result.success === false || result.supported === false) {
-          setShowWorkspacePicker(true);
-          return;
-        }
-        selectedPath = result.path || null;
-      }
-      if (selectedPath) {
-        await applySessionWorkspace(selectedPath);
-      }
-    } catch (error) {
-      console.error("Failed to select workspace:", error);
+    const selection = await pickWorkspaceDirectory(effectiveWorkspaceDir);
+    if (selection.requiresFallback) {
       setShowWorkspacePicker(true);
+      return;
+    }
+    if (selection.path) {
+      await applySessionWorkspace(selection.path);
     }
   }, [applySessionWorkspace, effectiveWorkspaceDir]);
 

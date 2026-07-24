@@ -63,6 +63,17 @@ describe("mobile appearance + background", () => {
     expect(app).not.toContain("styles.background");
   });
 
+  test("settings sections do not place a second background behind their controls", () => {
+    const dashboardStyles = read("screens/dashboardStyles.ts");
+    const settingsGroup = dashboardStyles.slice(
+      dashboardStyles.indexOf("settingsGroup:"),
+      dashboardStyles.indexOf("settingsNavigationRow:")
+    );
+    expect(settingsGroup).toContain("gap: spacing.sm");
+    expect(settingsGroup).not.toContain("backgroundColor");
+    expect(settingsGroup).not.toContain("borderWidth");
+  });
+
   test("both palettes carry translucent glass tints (fully liquid glass)", () => {
     const theme = read("theme/liquidGlass.ts");
     const dark = theme.slice(theme.indexOf("darkColors"), theme.indexOf("lightColors"));

@@ -16,26 +16,82 @@ interface PreviewPalette {
   text: string;
 }
 
+const presetPreviewPalettes: Partial<Record<ThemeMode, PreviewPalette>> = {
+  catppuccin: {
+    background: "#11111b",
+    panel: "#1e1e2e",
+    raised: "#313244",
+    text: "#cdd6f4",
+  },
+  matrix: {
+    background: "#020804",
+    panel: "#06120a",
+    raised: "#0b1f10",
+    text: "#d7ffe0",
+  },
+  "sand-dune": {
+    background: "#131009",
+    panel: "#1b1610",
+    raised: "#241d13",
+    text: "#eee5d7",
+  },
+  graphite: {
+    background: "#171717",
+    panel: "#1e1e1e",
+    raised: "#2b2b2b",
+    text: "#f2f2f2",
+  },
+  oled: {
+    background: "#000000",
+    panel: "#080808",
+    raised: "#121212",
+    text: "#f7f7f7",
+  },
+  "deep-ocean": {
+    background: "#061012",
+    panel: "#0b1a1d",
+    raised: "#10272b",
+    text: "#e7f5f4",
+  },
+  burgundy: {
+    background: "#160b0e",
+    panel: "#211116",
+    raised: "#311820",
+    text: "#f8e9ed",
+  },
+  paper: {
+    background: "#f7f3ec",
+    panel: "#fffefa",
+    raised: "#efe8db",
+    text: "#302b24",
+  },
+};
+
 function previewPalette(option: ThemeModeOption): PreviewPalette {
-  if (option.value === "catppuccin") {
-    return { background: "#11111b", panel: "#1e1e2e", raised: "#313244", text: "#cdd6f4" };
-  }
-  if (option.value === "matrix") {
-    return { background: "#020804", panel: "#06120a", raised: "#0b1f10", text: "#d7ffe0" };
-  }
-  if (option.value === "sand-dune") {
-    return { background: "#131009", panel: "#1b1610", raised: "#241d13", text: "#eee5d7" };
-  }
-  if (option.value === "paper") {
-    return { background: "#f7f3ec", panel: "#fffefa", raised: "#efe8db", text: "#302b24" };
-  }
+  const presetPalette = presetPreviewPalettes[option.value];
+  if (presetPalette) return presetPalette;
   if (option.base === "light") {
-    return { background: "#eef1f5", panel: "#ffffff", raised: "#e2e7ed", text: "#27313d" };
+    return {
+      background: "#eef1f5",
+      panel: "#ffffff",
+      raised: "#e2e7ed",
+      text: "#27313d",
+    };
   }
   if (option.base === "system") {
-    return { background: "#9ca3af", panel: "#f8fafc", raised: "#343944", text: "#1f2937" };
+    return {
+      background: "#9ca3af",
+      panel: "#f8fafc",
+      raised: "#343944",
+      text: "#1f2937",
+    };
   }
-  return { background: "#090b10", panel: "#13171d", raised: "#202731", text: "#edf2f7" };
+  return {
+    background: "#090b10",
+    panel: "#13171d",
+    raised: "#202731",
+    text: "#edf2f7",
+  };
 }
 
 function ThemePreview({ option }: { option: ThemeModeOption }) {

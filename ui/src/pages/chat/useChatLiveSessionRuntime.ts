@@ -2,7 +2,11 @@ import type { LoadedChatSession } from "@/hooks/useChat";
 import { chatApi } from "@/lib/api";
 import type { LiveActivityItem } from "@/lib/chatActivities";
 import { mergeActivityLists } from "@/lib/chatActivities";
-import { loadPersistedCompletion } from "@/lib/chatCompletion";
+import {
+  loadLatestTranscript,
+  loadPersistedCompletion,
+  loadPersistedPendingTurns,
+} from "@/lib/chatCompletion";
 import {
   connectStatusStream,
   type PendingChatMessage,
@@ -53,6 +57,7 @@ import {
   mergePendingChatMessages,
   pendingChatIdsAwaitingTranscript,
   removeHandedOffPendingChatMessage,
+  resolveHandedOffPendingChatId,
 } from "./pendingQueueState";
 
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
@@ -93,7 +98,13 @@ interface UseChatLiveSessionRuntimeOptions {
   eventCursorBySessionRef: RefObject<
     Record<string, { runId: string | null; sequence: number; timestamp: number }>
   >;
-  refreshSessionMessagesRef: RefObject<(sessionId: string) => Promise<boolean>>;
+  refreshSessionMessagesRef: RefObject<
+    (
+      sessionId: string,
+      pendingChatIds?: readonly string[],
+      mode?: "completion" | "latest"
+    ) => Promise<ChatMessage[] | null>
+  >;
   isSessionStopSuppressed: (sessionId?: string | null, runId?: string | null) => boolean;
   acceptSessionEvent: (
     sessionId: string | null | undefined,
@@ -106,6 +117,8 @@ interface UseChatLiveSessionRuntimeOptions {
     workspaceDir?: string | null,
     preserveReferenceTail?: boolean
   ) => void;
+  syncSessionAgentSelection: (agentId?: string | null) => void;
+  setUseModelRouter: Dispatch<SetStateAction<boolean>>;
 }
 
 export function useChatLiveSessionRuntime({
@@ -146,6 +159,8 @@ export function useChatLiveSessionRuntime({
   acceptSessionEvent,
   loadFreshSession,
   loadSession,
+  syncSessionAgentSelection,
+  setUseModelRouter,
 }: UseChatLiveSessionRuntimeOptions): {
   hydrateSessionStatus: (targetSessionId?: string | null) => Promise<void>;
 } {
@@ -174,10 +189,12 @@ export function useChatLiveSessionRuntime({
       );
       let resolvedPendingIds = transcriptPendingIds;
       if (handoffIds.size > 0) {
-        const refreshed = await refreshSessionMessagesRef.current(resolvedSessionId);
+        const refreshed = await refreshSessionMessagesRef.current(resolvedSessionId, [
+          ...handoffIds,
+        ]);
         if (activeSessionRef.current !== resolvedSessionId) return;
         if (refreshed) {
-          resolvedPendingIds = new Set([...transcriptPendingIds, ...handoffIds]);
+          resolvedPendingIds = materializedPendingChatIds(refreshed);
         }
       }
       setPendingMessages((current) =>
@@ -837,27 +854,39 @@ export function useChatLiveSessionRuntime({
   ]);
 
   useEffect(() => {
-    refreshSessionMessagesRef.current = async (sid: string) => {
+    refreshSessionMessagesRef.current = async (
+      sid: string,
+      pendingChatIds: readonly string[] = [],
+      mode: "completion" | "latest" = "completion"
+    ) => {
       try {
-        const result = await loadPersistedCompletion(() => loadFreshSession(sid));
+        const result =
+          pendingChatIds.length > 0
+            ? await loadPersistedPendingTurns(() => loadFreshSession(sid), pendingChatIds)
+            : mode === "latest"
+              ? await loadLatestTranscript(() => loadFreshSession(sid))
+              : await loadPersistedCompletion(() => loadFreshSession(sid));
         if (result?.messagesList && activeSessionRef.current === sid) {
+          const refreshedMessages = result.messagesList as ChatMessage[];
           loadSession(
             sid,
-            result.messagesList as ChatMessage[],
+            refreshedMessages,
             (result as { workspace_dir?: string | null }).workspace_dir || null
           );
+          syncSessionAgentSelection((result as { agent_id?: string | null }).agent_id || null);
+          setUseModelRouter((result as { use_model_router?: boolean }).use_model_router === true);
           setSessionContextUsage(
             (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
           );
           setSessionTokenUsage(
             (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
           );
-          return true;
+          return refreshedMessages;
         }
       } catch {
-        return false;
+        return null;
       }
-      return false;
+      return null;
     };
   });
 
@@ -975,16 +1004,29 @@ export function useChatLiveSessionRuntime({
         const isEventForVisibleSession =
           !!activeSession && !!payloadSessionId && payloadSessionId === activeSession;
         if (isQueuedTurnHandoff && payloadSessionId && isEventForVisibleSession) {
-          void refreshSessionMessagesRef.current(payloadSessionId).then((refreshed) => {
-            if (!refreshed || activeSessionRef.current !== payloadSessionId) return;
-            setPendingMessages((current) =>
-              removeHandedOffPendingChatMessage(
-                current,
-                payload.pendingChatId,
-                payload.clientPendingId
-              )
-            );
-          });
+          const handoffPendingId = resolveHandedOffPendingChatId(
+            pendingMessagesRef.current,
+            payload.pendingChatId,
+            payload.clientPendingId
+          );
+          if (handoffPendingId)
+            void refreshSessionMessagesRef
+              .current(payloadSessionId, [handoffPendingId])
+              .then((refreshed) => {
+                if (
+                  !refreshed ||
+                  activeSessionRef.current !== payloadSessionId ||
+                  !materializedPendingChatIds(refreshed).has(handoffPendingId)
+                )
+                  return;
+                setPendingMessages((current) =>
+                  removeHandedOffPendingChatMessage(
+                    current,
+                    payload.pendingChatId,
+                    payload.clientPendingId
+                  )
+                );
+              });
         }
         if (
           !loadingRef.current &&
@@ -1005,7 +1047,7 @@ export function useChatLiveSessionRuntime({
           !runStartSyncedSessionsRef.current.has(activeSession)
         ) {
           runStartSyncedSessionsRef.current.add(activeSession);
-          void refreshSessionMessagesRef.current(activeSession);
+          void refreshSessionMessagesRef.current(activeSession, [], "latest");
         }
 
         if (status === "thinking") {

@@ -25,6 +25,7 @@ describe("live chat status indicator", () => {
     expect(indicator).toContain('role="presentation"');
     expect(indicator).toContain('aria-hidden="true"');
     expect(indicator).toContain("live-status-shine");
+    expect(indicator).toContain("export function LiveStatusText");
     expect(indicator).toContain("items-center");
     expect(indicator).not.toContain("items-start");
   });
@@ -35,6 +36,8 @@ describe("live chat status indicator", () => {
 
     expect(chatTimeline).toContain("<LiveStatusIndicator");
     expect(ideTimeline).toContain("<LiveStatusIndicator");
+    expect(chatTimeline).toContain('<LiveStatusText className="truncate">');
+    expect(chatTimeline).toContain('activity.phase === "start"');
   });
 
   test("uses theme tokens and disables text animation for reduced motion", () => {

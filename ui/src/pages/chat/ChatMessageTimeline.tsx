@@ -1,8 +1,8 @@
 import {
   Check,
   Copy,
+  CornerUpRight,
   FlaskConical,
-  GitFork,
   Loader2,
   RotateCcw,
   User,
@@ -265,7 +265,7 @@ export function ChatMessageTimeline({
                     {forkingMessageIndex === originalIndex ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
-                      <GitFork className="h-3 w-3" />
+                      <CornerUpRight className="h-3 w-3" />
                     )}
                   </button>
                 )}

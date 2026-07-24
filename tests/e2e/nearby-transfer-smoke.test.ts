@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "crypto";
 import { mkdtempSync, rmSync } from "fs";
 import { createServer } from "net";
@@ -79,7 +79,7 @@ async function createGateway(name: string): Promise<GatewayFixture> {
 }
 
 function startGateway(fixture: GatewayFixture): void {
-  fixture.process = Bun.spawn([process.execPath, "run", "src/index.ts"], {
+  fixture.process = Bun.spawn([process.execPath, "src/index.ts"], {
     cwd: ROOT_DIR,
     env: {
       ...process.env,
@@ -88,6 +88,7 @@ function startGateway(fixture: GatewayFixture): void {
       CYBARA_HOME: join(fixture.homeDir, ".cybara"),
       CYBARA_API_KEY: API_KEY,
       CYBARA_HOST: "127.0.0.1",
+      CYBARA_PORT_FALLBACK_COUNT: "0",
       PORT: String(fixture.gatewayPort),
       NODE_ENV: "production",
     },
@@ -143,6 +144,7 @@ async function waitForGateway(
   timeoutMs = GATEWAY_START_TIMEOUT_MS
 ): Promise<void> {
   const startedAt = Date.now();
+  let healthyChecks = 0;
   while (Date.now() - startedAt < timeoutMs) {
     const process = fixture.process;
     if (!process)
@@ -155,9 +157,15 @@ async function waitForGateway(
     }
     try {
       const response = await fetch(`${fixture.baseUrl}/api/health`);
-      if (response.ok) return;
+      if (response.ok) {
+        healthyChecks += 1;
+        if (healthyChecks >= 2) return;
+      } else {
+        healthyChecks = 0;
+      }
     } catch (error) {
       void error;
+      healthyChecks = 0;
     }
     await sleep(200);
   }

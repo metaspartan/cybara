@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { deleteSession, handleChat } from "../../src/api/chat";
 import { agentManager } from "../../src/core/agent";
 import { providerManager } from "../../src/core/providers";
+import { loadPersistedSession } from "../../src/core/session-context";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -35,6 +36,67 @@ afterEach(async () => {
 });
 
 describe("chat response recovery", () => {
+  test("does not persist a transient provider failure as an assistant answer", async () => {
+    const agentId = createTestAgent("Transient Provider Failure Agent");
+    const sessionId = `transient-provider-failure-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+
+    agentManager.execute = (async () => ({
+      content: "",
+      failure: { category: "overloaded", retryable: true },
+    })) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "continue after switching agents",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(result.interrupted).toBe(true);
+    expect(result.failure).toEqual({ category: "overloaded", retryable: true });
+    expect(result.message.content).toBe("");
+    expect((await loadPersistedSession(sessionId))?.messages).toEqual([
+      expect.objectContaining({ role: "user", content: "continue after switching agents" }),
+    ]);
+  });
+
+  test("keeps completed tools when a transient provider failure ends a turn", async () => {
+    const agentId = createTestAgent("Partial Provider Failure Agent");
+    const sessionId = `partial-provider-failure-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+
+    agentManager.execute = (async () => ({
+      content: "",
+      failure: { category: "overloaded", retryable: true },
+      tool_calls: [
+        {
+          name: "read",
+          args: { path: "/tmp/project.json" },
+          result: { path: "/tmp/project.json", content: "ok" },
+        },
+      ],
+    })) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "inspect the project",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(result.interrupted).toBeUndefined();
+    expect(result.failure).toEqual({ category: "overloaded", retryable: true });
+    expect(result.message.interrupted).toBe(true);
+    expect(result.message.content).not.toContain("overloaded");
+    expect(result.message.tool_calls).toHaveLength(1);
+    expect((await loadPersistedSession(sessionId))?.messages.at(-1)).toMatchObject({
+      role: "assistant",
+      interrupted: true,
+      tool_calls: [expect.objectContaining({ name: "read" })],
+    });
+  });
+
   test("retries a bare completion under the action evidence contract", async () => {
     const agentId = createTestAgent("Bare Completion Recovery Agent");
     const sessionId = `bare-completion-${crypto.randomUUID()}`;

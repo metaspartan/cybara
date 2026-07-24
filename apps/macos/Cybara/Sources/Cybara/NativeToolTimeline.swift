@@ -214,31 +214,86 @@ struct NativeLiveToolTimelineView: View {
 
             if let displayCurrentStep {
                 HStack(alignment: .center, spacing: 7) {
-                    NativeLiveStatusSpinner()
-                    nativeActivityMarkdownText(displayCurrentStep)
-                        .font(.system(size: 11.8, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+                    NativeLiveStatusOrb(state: displayCurrentStep == "Thinking..." ? .composing : .solving)
+                    NativeLiveStatusText(text: displayCurrentStep, fontSize: 11.8)
                 }
             } else if visibleActivities.isEmpty {
                 HStack(alignment: .center, spacing: 5) {
-                    NativeLiveStatusSpinner()
-                    Text("Thinking...")
-                        .font(.system(size: 11.8, design: .rounded))
-                        .foregroundStyle(.secondary)
+                    NativeLiveStatusOrb(state: .composing)
+                    NativeLiveStatusText(text: "Thinking...", fontSize: 11.8)
                 }
             }
         }
     }
 }
 
-private struct NativeLiveStatusSpinner: View {
+private enum NativeLiveStatusOrbState {
+    case composing
+    case solving
+}
+
+private struct NativeLiveStatusOrb: View {
+    let state: NativeLiveStatusOrbState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        ProgressView()
-            .controlSize(.mini)
-            .tint(.secondary)
-            .frame(width: 13, height: 13)
-            .offset(y: 1)
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+            let elapsed = context.date.timeIntervalSinceReferenceDate
+            let progress = reduceMotion ? 0.45 : elapsed.truncatingRemainder(dividingBy: state == .composing ? 1.2 : 0.95) / (state == .composing ? 1.2 : 0.95)
+            ZStack {
+                if state == .solving {
+                    ForEach(0..<3, id: \.self) { index in
+                        Circle()
+                            .fill(Color.secondary)
+                            .frame(width: 3.2, height: 3.2)
+                            .offset(y: -4.2)
+                            .rotationEffect(.degrees(progress * 360 + Double(index) * 120))
+                    }
+                } else {
+                    Circle()
+                        .stroke(Color.secondary, lineWidth: 1.2)
+                        .opacity(0.55 + 0.35 * sin(progress * .pi))
+                        .scaleEffect(0.78 + 0.22 * sin(progress * .pi))
+                    Circle()
+                        .fill(Color.secondary)
+                        .frame(width: 5, height: 5)
+                        .opacity(0.72 + 0.28 * sin(progress * .pi))
+                }
+            }
+            .frame(width: 14, height: 14)
+        }
+    }
+}
+
+private struct NativeLiveStatusText: View {
+    let text: String
+    let fontSize: CGFloat
+    var lineLimit: Int? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.nativeChatAppearance) private var appearance
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+            let progress = reduceMotion ? 0.5 : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.4) / 2.4
+            nativeActivityMarkdownText(text)
+                .font(.system(size: fontSize, design: .rounded))
+                .foregroundStyle(textStyle(progress: progress))
+                .lineLimit(lineLimit)
+                .textSelection(.enabled)
+        }
+    }
+
+    private func textStyle(progress: Double) -> AnyShapeStyle {
+        if reduceMotion || appearance.highContrast {
+            return AnyShapeStyle(appearance.highContrast ? Color.primary : Color.secondary)
+        }
+        return AnyShapeStyle(
+            LinearGradient(
+                colors: [Color.secondary, Color.primary.opacity(0.92), Color.secondary],
+                startPoint: UnitPoint(x: progress - 0.7, y: 0.5),
+                endPoint: UnitPoint(x: progress + 0.3, y: 0.5)
+            )
+        )
     }
 }
 
@@ -249,10 +304,7 @@ private struct NativeToolActivityRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 7) {
             if activity.phase == .start {
-                ProgressView()
-                    .controlSize(.mini)
-                    .tint(.secondary)
-                    .frame(width: 13, height: 13)
+                NativeLiveStatusOrb(state: .solving)
                     .padding(.top, 1)
             } else if activity.toolName == "__thought" {
                 Circle()
@@ -269,11 +321,19 @@ private struct NativeToolActivityRow: View {
                     .padding(.top, 1)
             }
             HStack(alignment: .firstTextBaseline, spacing: 7) {
-                nativeActivityMarkdownText(activity.text)
-                    .font(.system(size: appearance.activityFontSize, design: .rounded))
-                    .foregroundStyle(appearance.highContrast ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                    .lineLimit(activity.toolName == "__thought" ? nil : 3)
-                    .textSelection(.enabled)
+                if activity.phase == .start {
+                    NativeLiveStatusText(
+                        text: activity.text,
+                        fontSize: appearance.activityFontSize,
+                        lineLimit: activity.toolName == "__thought" ? nil : 3
+                    )
+                } else {
+                    nativeActivityMarkdownText(activity.text)
+                        .font(.system(size: appearance.activityFontSize, design: .rounded))
+                        .foregroundStyle(appearance.highContrast ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                        .lineLimit(activity.toolName == "__thought" ? nil : 3)
+                        .textSelection(.enabled)
+                }
                 if let provider = activity.sandboxProvider {
                     NativeToolSandboxBadge(provider: provider)
                 }

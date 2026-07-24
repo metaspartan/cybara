@@ -96,6 +96,9 @@ describe("mobile: chat management", () => {
     expect(read("lib/mobileStatusStream.ts")).toContain("replayBuffer.consume()");
     expect(read("screens/useMobileSessionRuntime.ts")).toContain("replayBufferedEvents: true");
     expect(read("screens/dashboardChat.tsx")).toContain("<MobileThinkingOrb state={statusState}");
+    expect(read("screens/dashboardChat.tsx")).toContain(
+      'statusState || activity.phase === "start"'
+    );
     expect(liveCache).not.toContain("return next.slice(-12)");
     expect(optimisticTranscript).toContain("acknowledgedByPersistedHistory");
     expect(read("lib/api.ts")).not.toContain("calls.slice(0, 20)");

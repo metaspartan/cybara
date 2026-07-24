@@ -1,3 +1,30 @@
+import {
+  activeChatTurnAbortControllers,
+  interruptedChatTurnSteeringIds,
+} from "./chat-runtime-state";
+
+export function isChatTurnInterrupted(error: unknown, signal?: AbortSignal): boolean {
+  if (signal?.aborted) return true;
+  if (error instanceof DOMException) return error.name === "AbortError";
+  return (
+    !!error &&
+    typeof error === "object" &&
+    "name" in error &&
+    (error as Error).name === "AbortError"
+  );
+}
+
+export function interruptActiveChatTurnForSteering(
+  sessionId: string,
+  pendingSteeringId: string
+): boolean {
+  const controller = activeChatTurnAbortControllers.get(sessionId);
+  if (!controller || controller.signal.aborted) return false;
+  interruptedChatTurnSteeringIds.set(controller, pendingSteeringId);
+  controller.abort(new DOMException("Chat turn interrupted by user steering", "AbortError"));
+  return true;
+}
+
 export interface ResidentChatSessionRecord {
   id: string;
   persisted: boolean;

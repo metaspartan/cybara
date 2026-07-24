@@ -105,7 +105,11 @@ export function customThemeConfigPayload(
   activeThemeId: string | null
 ): { custom_themes: CustomThemeCollection } {
   return {
-    custom_themes: normalizeCustomThemeCollection({ version: 1, activeThemeId, themes }),
+    custom_themes: normalizeCustomThemeCollection({
+      version: 1,
+      activeThemeId,
+      themes,
+    }),
   };
 }
 
@@ -126,6 +130,10 @@ export type ThemeMode =
   | "matrix"
   | "slate"
   | "sand-dune"
+  | "graphite"
+  | "oled"
+  | "deep-ocean"
+  | "burgundy"
   | "light"
   | "icy"
   | "paper"
@@ -152,6 +160,10 @@ export const themeModeOptions: ThemeModeOption[] = [
   { value: "matrix", label: "Matrix", base: "dark", swatch: "#39ff68" },
   { value: "slate", label: "Slate", base: "dark", swatch: "#64748b" },
   { value: "sand-dune", label: "Sand Dune", base: "dark", swatch: "#d69a46" },
+  { value: "graphite", label: "Graphite", base: "dark", swatch: "#f97316" },
+  { value: "oled", label: "OLED Black", base: "dark", swatch: "#22d3ee" },
+  { value: "deep-ocean", label: "Deep Ocean", base: "dark", swatch: "#2dd4bf" },
+  { value: "burgundy", label: "Burgundy", base: "dark", swatch: "#fb7185" },
   { value: "light", label: "Light", base: "light", swatch: "#e2e8f0" },
   { value: "icy", label: "Icy", base: "light", swatch: "#0ea5e9" },
   { value: "paper", label: "Paper", base: "light", swatch: "#d9b882" },
@@ -316,6 +328,10 @@ const TINTED_THEME_MODES = new Set<ThemeMode>([
   "matrix",
   "slate",
   "sand-dune",
+  "graphite",
+  "oled",
+  "deep-ocean",
+  "burgundy",
   "icy",
   "paper",
   "mint",
@@ -426,7 +442,10 @@ export const useUIStore = create<UIState>()(
       mode: "dark",
       setMode: (mode) => {
         applyThemeMode(mode);
-        set({ mode, ...(mode === "custom" ? {} : { activeCustomThemeId: null }) });
+        set({
+          mode,
+          ...(mode === "custom" ? {} : { activeCustomThemeId: null }),
+        });
       },
 
       customThemes: [],
@@ -465,7 +484,11 @@ export const useUIStore = create<UIState>()(
           const customThemes = state.customThemes.filter((theme) => theme.id !== id);
           if (state.activeCustomThemeId !== id) return { customThemes };
           applyThemeMode("dark");
-          return { customThemes, activeCustomThemeId: null, mode: "dark" as ThemeMode };
+          return {
+            customThemes,
+            activeCustomThemeId: null,
+            mode: "dark" as ThemeMode,
+          };
         });
       },
       selectCustomTheme: (id) => {

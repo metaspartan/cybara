@@ -91,6 +91,7 @@ export function MultiChatPaneEnvironment({
   draft,
   messageCount,
   statusLabel,
+  workspaceDir: workspaceDirOverride,
   onReplace,
 }: {
   agent?: AgentSummary;
@@ -98,6 +99,7 @@ export function MultiChatPaneEnvironment({
   draft: boolean;
   messageCount: number;
   statusLabel: string;
+  workspaceDir?: string | null;
   onReplace: () => void;
 }) {
   const contextUsage = detail?.contextUsage;
@@ -107,8 +109,8 @@ export function MultiChatPaneEnvironment({
     : agent?.name || detail?.provider_name || detail?.provider || "Gateway default";
   const modelLabel = agent?.model || detail?.model || "Automatic";
   const providerLabel = detail?.provider_name || detail?.provider || agent?.provider || "Automatic";
-  const workspace = detail?.workspace_dir || "No workspace";
-  const workspaceDir = detail?.workspace_dir?.trim() || null;
+  const workspaceDir = workspaceDirOverride?.trim() || detail?.workspace_dir?.trim() || null;
+  const workspace = workspaceDir || "No workspace";
   const workspaceLsp = useWorkspaceLSPStatus(workspaceDir);
   const contextPercent = contextUsage ? Math.min(100, Math.max(0, contextUsage.usedPercent)) : 0;
 

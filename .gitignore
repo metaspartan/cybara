@@ -12,6 +12,7 @@ src-tauri/tauri.release.conf.json
 **/.build/
 **/.swiftpm/
 **/.expo/
+apps/mobile/google-services.json
 **/.wwebjs_cache/
 .research/
 

@@ -1,3 +1,4 @@
+import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
 import { Modal } from "@/components/ui";
 import { useAgentSummaries, useUpdateAgentReasoning } from "@/hooks/useApi";
 import {
@@ -51,9 +52,16 @@ import {
 import { ChatImageLightbox } from "./ChatImageLightbox";
 import { ChatMessageTimeline } from "./ChatMessageTimeline";
 import { MultiChatPaneEnvironment } from "./MultiChatPaneEnvironment";
+import { NewChatWorkspaceBar } from "./NewChatWorkspaceBar";
 import { ChatReasoningControl } from "./ChatReasoningControl";
 import type { ChatMessage } from "./chatModel";
-import { sessionDisplayTitle, sessionPreviewText, sessionRouteLabel } from "./chatModel";
+import {
+  persistWorkspaceDir,
+  readPersistedWorkspaceDir,
+  sessionDisplayTitle,
+  sessionPreviewText,
+  sessionRouteLabel,
+} from "./chatModel";
 import {
   addMultiChatSession,
   buildMultiChatPath,
@@ -72,6 +80,8 @@ import { useChatAttachments } from "./useChatAttachments";
 import { useChatDictation } from "./useChatDictation";
 import { MULTI_CHAT_ACTIVE_STATUSES, type MultiChatLiveState } from "./multiChatLiveStatus";
 import { useMultiChatLiveStatuses } from "./useMultiChatLiveStatuses";
+import { useEnvironmentGitBranches } from "./useEnvironmentGitBranches";
+import { pickWorkspaceDirectory } from "./workspacePicker";
 import type { AgentSummary } from "@/types";
 import type { ChatSidebarSession } from "./sessionGrouping";
 
@@ -263,6 +273,11 @@ function MultiChatPane({
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const [useModelRouter, setUseModelRouter] = useState(false);
   const [draft, setDraft] = useState("");
+  const [draftWorkspaceDir, setDraftWorkspaceDir] = useState<string | null>(() =>
+    isDraft ? readPersistedWorkspaceDir() : null
+  );
+  const [workspaceSaving, setWorkspaceSaving] = useState(false);
+  const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
   const {
     messages: liveMessages,
     isLoading: responsePending,
@@ -298,6 +313,8 @@ function MultiChatPane({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const isActive = !!status && MULTI_CHAT_ACTIVE_STATUSES.has(status.status);
   const selectedAgent = agents.find((agent) => agent.id === (selectedAgentId || detail?.agent_id));
+  const effectiveWorkspaceDir = isDraft ? draftWorkspaceDir : detail?.workspace_dir || null;
+  const environmentGit = useEnvironmentGitBranches(isDraft ? draftWorkspaceDir : null);
 
   useEffect(() => {
     if (!detail) return;
@@ -398,6 +415,23 @@ function MultiChatPane({
     }
   };
 
+  const applyDraftWorkspace = (path: string | null): void => {
+    const normalized = path?.trim() || null;
+    setDraftWorkspaceDir(normalized);
+    if (normalized) persistWorkspaceDir(normalized);
+  };
+
+  const handleSelectWorkspace = async (): Promise<void> => {
+    setWorkspaceSaving(true);
+    const selection = await pickWorkspaceDirectory(draftWorkspaceDir);
+    setWorkspaceSaving(false);
+    if (selection.requiresFallback) {
+      setShowWorkspacePicker(true);
+      return;
+    }
+    if (selection.path) applyDraftWorkspace(selection.path);
+  };
+
   const handleSend = async (event?: FormEvent) => {
     event?.preventDefault();
     const content = draft.trim();
@@ -410,7 +444,7 @@ function MultiChatPane({
     try {
       const response = await sendMessage(attachments.message, {
         ...(!isDraft ? { sessionId } : {}),
-        workspaceDir: detail?.workspace_dir || null,
+        workspaceDir: effectiveWorkspaceDir,
         queueMode: isActive ? "queue" : undefined,
         images: attachments.images,
       });
@@ -460,6 +494,14 @@ function MultiChatPane({
       data-drop-active={dropActive}
       data-drop-preview={dropPreview}
     >
+      <LocalFolderPickerModal
+        isOpen={isDraft && showWorkspacePicker}
+        onClose={() => setShowWorkspacePicker(false)}
+        onSelect={applyDraftWorkspace}
+        defaultPath={draftWorkspaceDir}
+        title="Select Session Workspace"
+        description="Choose the local folder this chat should use for file tools, git context, and workspace-aware prompts."
+      />
       {dropPreview ? (
         <div
           className={cn(
@@ -539,6 +581,7 @@ function MultiChatPane({
           draft={isDraft}
           messageCount={messages.length}
           statusLabel={multiChatStatusLabel(status)}
+          workspaceDir={effectiveWorkspaceDir}
           onReplace={() => onOpenPicker(index)}
         />
       ) : null}
@@ -597,7 +640,7 @@ function MultiChatPane({
               sessionId={sessionId}
               showWorkingTimeline={isActive}
               speakingMessageIndex={null}
-              workspaceDir={detail?.workspace_dir || null}
+              workspaceDir={effectiveWorkspaceDir}
               onCopyMessage={(messageIndex, content) => {
                 void navigator.clipboard.writeText(content).then(() => {
                   setCopiedIndex(messageIndex);
@@ -635,9 +678,27 @@ function MultiChatPane({
             {dictationError || dictationStatus}
           </div>
         ) : null}
+        {isDraft ? (
+          <NewChatWorkspaceBar
+            branches={environmentGit.branches}
+            changingBranch={environmentGit.changingBranch}
+            className="mx-0 rounded-t-lg"
+            currentBranch={environmentGit.currentBranch}
+            error={environmentGit.error}
+            loading={environmentGit.loading}
+            onCreateBranch={environmentGit.createAndCheckout}
+            onClearWorkspace={() => applyDraftWorkspace(null)}
+            onRefreshBranches={environmentGit.refresh}
+            onSelectWorkspace={() => void handleSelectWorkspace()}
+            onSwitchBranch={environmentGit.checkout}
+            workspaceDir={draftWorkspaceDir}
+            workspaceSaving={workspaceSaving}
+          />
+        ) : null}
         <div
           className={cn(
             "chat-composer-surface rounded-lg border px-3 py-2 transition-colors",
+            isDraft && "rounded-t-none",
             imageDragActive && "border-[rgba(var(--accent-primary),0.6)]"
           )}
           onDragOver={(event) => {

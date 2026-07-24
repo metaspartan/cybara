@@ -1199,6 +1199,42 @@ describe("Agent provider API-family routing", () => {
     expect(calls).toBe(1);
   });
 
+  test("returns typed MiniMax overload exhaustion without assistant error prose", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json(
+        { error: { code: 1305, message: "The service is temporarily overloaded" } },
+        { status: 429, headers: { "Retry-After": "0" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "minimax",
+      name: "MiniMax Overloaded Provider",
+      api_key: "minimax-overloaded-key",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "MiniMax Overloaded Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "MiniMax-M3",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "continue the project" }],
+      { useTools: false, sessionId: "minimax-overloaded-session" }
+    );
+
+    expect(calls).toBe(4);
+    expect(result.content).toBe("");
+    expect(result.failure).toEqual({ category: "overloaded", retryable: true });
+  });
+
   test("routes Devin accounts through the native transport validation", async () => {
     let requestCount = 0;
     globalThis.fetch = (async () => {

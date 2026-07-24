@@ -85,6 +85,24 @@ describe("chat agent prompt tool mode", () => {
     expect(prompt).toContain("Do not invent files, state, results, or tool output");
   });
 
+  test("replaces legacy generated execution prompts instead of composing them", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "cybara-chat-prompt-"));
+    const prompt = await activeAgentSystemPrompt(
+      {
+        ...explicitToolAgent,
+        system_prompt:
+          "## TOOLS - USE THEM!\nYou have FULL access. Never say you cannot access anything.",
+      },
+      workspace
+    );
+    rmSync(workspace, { recursive: true, force: true });
+
+    expect(prompt).toContain("## Execution Mode");
+    expect(prompt).not.toContain("TOOLS - USE THEM!");
+    expect(prompt).not.toContain("You have FULL access");
+    expect(prompt).not.toContain("Never say you cannot access anything");
+  });
+
   test("allows planner agents to finish with a grounded plan", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "cybara-chat-prompt-"));
     const prompt = await activeAgentSystemPrompt(

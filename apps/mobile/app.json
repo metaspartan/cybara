@@ -16,6 +16,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ck.cybara",
+      "entitlements": {
+        "aps-environment": "development"
+      },
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Connect to your Cybara gateway on your local network.",
         "NSUserNotificationsUsageDescription": "Receive notifications when Cybara finishes a chat or task.",
@@ -27,6 +30,9 @@
     },
     "android": {
       "package": "com.ck.cybara",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/cybara.png",
         "backgroundColor": "#071016"
@@ -46,7 +52,13 @@
           "photosPermission": "Attach photos to your Cybara chat messages."
         }
       ],
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "color": "#f97316",
+          "defaultChannel": "cybara"
+        }
+      ],
       "expo-secure-store",
       "./plugins/with-android-lan-cleartext"
     ],

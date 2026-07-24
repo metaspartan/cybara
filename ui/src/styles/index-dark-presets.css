@@ -1,0 +1,102 @@
+html[data-theme-mode="graphite"] {
+  --text-primary: #f2f2f2;
+  --text-secondary: #d4d4d4;
+  --text-muted: #a0a0a0;
+  --text-subtle: #737373;
+  --icon-muted: #8a8a8a;
+  --icon-hover: #f5f5f5;
+  --surface-backdrop: #171717;
+  --surface-panel: #1e1e1e;
+  --surface-raised: #2b2b2b;
+  --surface-hover: #333333;
+  --surface-border: #3b3b3b;
+  --glass-border: #3b3b3b;
+  --glass-surface: rgba(255, 255, 255, 0.035);
+  --glass-bg: rgba(30, 30, 30, 0.84);
+  --glass-bg-strong: rgba(23, 23, 23, 0.97);
+  --context-ring-inner: #1e1e1e;
+  --context-tooltip-bg: #2b2b2b;
+  --context-tooltip-border: #454545;
+  --chat-environment-panel-bg: #1e1e1e;
+  --chat-environment-panel-border: #3b3b3b;
+  --workspace-open-menu-bg: #2b2b2b;
+}
+
+html[data-theme-mode="oled"] {
+  --text-primary: #f7f7f7;
+  --text-secondary: #d4d4d4;
+  --text-muted: #949494;
+  --text-subtle: #666666;
+  --icon-muted: #828282;
+  --icon-hover: #ffffff;
+  --surface-backdrop: #000000;
+  --surface-panel: #080808;
+  --surface-raised: #121212;
+  --surface-hover: #1a1a1a;
+  --surface-border: #2a2a2a;
+  --glass-border: #2a2a2a;
+  --glass-surface: rgba(255, 255, 255, 0.025);
+  --glass-bg: rgba(8, 8, 8, 0.88);
+  --glass-bg-strong: rgba(0, 0, 0, 0.98);
+  --context-ring-inner: #080808;
+  --context-tooltip-bg: #121212;
+  --context-tooltip-border: #303030;
+  --chat-environment-panel-bg: #080808;
+  --chat-environment-panel-border: #2a2a2a;
+  --workspace-open-menu-bg: #121212;
+}
+
+html[data-theme-mode="deep-ocean"] {
+  --text-primary: #e7f5f4;
+  --text-secondary: #bdd2d0;
+  --text-muted: #86a6a3;
+  --text-subtle: #5e7c79;
+  --icon-muted: #73918f;
+  --icon-hover: #f0fffd;
+  --surface-backdrop: #061012;
+  --surface-panel: #0b1a1d;
+  --surface-raised: #10272b;
+  --surface-hover: #17363b;
+  --surface-border: #23464b;
+  --glass-border: #23464b;
+  --glass-surface: rgba(45, 212, 191, 0.035);
+  --glass-bg: rgba(11, 26, 29, 0.84);
+  --glass-bg-strong: rgba(6, 16, 18, 0.97);
+  --context-ring-inner: #0b1a1d;
+  --context-tooltip-bg: #10272b;
+  --context-tooltip-border: #2d555b;
+  --chat-environment-panel-bg: #0b1a1d;
+  --chat-environment-panel-border: #23464b;
+  --workspace-open-menu-bg: #10272b;
+}
+
+html[data-theme-mode="burgundy"] {
+  --text-primary: #f8e9ed;
+  --text-secondary: #dec2ca;
+  --text-muted: #b18d97;
+  --text-subtle: #80616a;
+  --icon-muted: #9b747f;
+  --icon-hover: #fff3f6;
+  --surface-backdrop: #160b0e;
+  --surface-panel: #211116;
+  --surface-raised: #311820;
+  --surface-hover: #40202a;
+  --surface-border: #5a2b38;
+  --glass-border: #5a2b38;
+  --glass-surface: rgba(251, 113, 133, 0.035);
+  --glass-bg: rgba(33, 17, 22, 0.84);
+  --glass-bg-strong: rgba(22, 11, 14, 0.97);
+  --context-ring-inner: #211116;
+  --context-tooltip-bg: #311820;
+  --context-tooltip-border: #673442;
+  --chat-environment-panel-bg: #211116;
+  --chat-environment-panel-border: #5a2b38;
+  --workspace-open-menu-bg: #311820;
+}
+
+html[data-theme-mode="graphite"] body::before,
+html[data-theme-mode="oled"] body::before,
+html[data-theme-mode="deep-ocean"] body::before,
+html[data-theme-mode="burgundy"] body::before {
+  background: none;
+}

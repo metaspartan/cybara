@@ -12,6 +12,18 @@ const read = (rel: string) =>
 // reply BEFORE dropping the live timeline/streaming buffer. Clearing first
 // left the chat blank for seconds — or forever on web — right at completion.
 describe("chat completion handoff (no blank chat when a run finishes)", () => {
+  test("web: externally started runs load the user turn and selected agent immediately", () => {
+    const chatSource = read("ui/src/pages/Chat.tsx");
+    const runtimeSource = read("ui/src/pages/chat/useChatLiveSessionRuntime.ts");
+    expect(chatSource).toContain('refreshSessionMessagesRef.current(key, [], "latest")');
+    expect(runtimeSource).toContain(
+      'refreshSessionMessagesRef.current(activeSession, [], "latest")'
+    );
+    expect(runtimeSource).toContain("loadLatestTranscript(() => loadFreshSession(sid))");
+    expect(runtimeSource).toContain("syncSessionAgentSelection(");
+    expect(runtimeSource).toContain("use_model_router === true");
+  });
+
   test("web: idle event refreshes the open session before clearing live state", () => {
     const source = readChatUiSource();
     expect(source).toContain("refreshSessionMessagesRef");

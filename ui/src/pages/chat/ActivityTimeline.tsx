@@ -32,7 +32,7 @@ import {
 } from "@/lib/chatActivities";
 import { SubagentIcon } from "./SubagentIcon";
 import { formatWorkedDuration } from "./assistantMetaModel";
-import { LiveStatusIndicator, LiveStatusOrb } from "./LiveStatusIndicator";
+import { LiveStatusIndicator, LiveStatusOrb, LiveStatusText } from "./LiveStatusIndicator";
 
 const GROUP_ICONS: Record<ActivityGroupKind, LucideIcon> = {
   read: FileText,
@@ -66,7 +66,13 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
         )}
       </span>
       <div className="min-w-0 flex-1 flex items-center gap-2">
-        <ActivityText text={activity.text} />
+        {activity.phase === "start" ? (
+          <LiveStatusText>
+            <ActivityText text={activity.text} />
+          </LiveStatusText>
+        ) : (
+          <ActivityText text={activity.text} />
+        )}
         {activity.toolName !== "__thought" && activity.sandboxProvider && (
           <span className="chat-meta-text inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 leading-none text-sky-200">
             {formatSandboxProviderLabel(activity.sandboxProvider)}
@@ -116,7 +122,11 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
               ) : (
                 <GroupIcon className="w-3 h-3 text-current opacity-70 flex-shrink-0" />
               )}
-              <span className="min-w-0 truncate">{entry.label}</span>
+              {inFlight ? (
+                <LiveStatusText className="truncate">{entry.label}</LiveStatusText>
+              ) : (
+                <span className="min-w-0 truncate">{entry.label}</span>
+              )}
               {expanded ? (
                 <ChevronDown className="w-3 h-3 text-gray-600 flex-shrink-0" />
               ) : (
@@ -375,7 +385,13 @@ export function ActivityStepCard({
         )}
       >
         <div className="min-w-0 flex items-center gap-2">
-          <ActivityText text={activity.text} />
+          {activity.phase === "start" ? (
+            <LiveStatusText>
+              <ActivityText text={activity.text} />
+            </LiveStatusText>
+          ) : (
+            <ActivityText text={activity.text} />
+          )}
           {activity.toolName !== "__thought" && activity.sandboxProvider && (
             <span className="chat-meta-text inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 leading-none text-sky-200">
               {formatSandboxProviderLabel(activity.sandboxProvider)}

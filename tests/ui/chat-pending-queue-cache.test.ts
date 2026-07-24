@@ -10,6 +10,7 @@ import {
   mergePendingChatMessages,
   pendingChatIdsAwaitingTranscript,
   removeHandedOffPendingChatMessage,
+  resolveHandedOffPendingChatId,
 } from "../../ui/src/pages/chat/pendingQueueState";
 import type { PendingChatMessage } from "../../ui/src/lib/status-stream";
 
@@ -202,5 +203,28 @@ describe("web optimistic pending queue cache", () => {
         optimistic.id
       )
     ).toEqual([unrelated]);
+  });
+
+  test("resolves a handoff to the acknowledged server id before transcript reconciliation", () => {
+    const sessionId = `web-pending-resolve-handoff-${Date.now()}`;
+    const optimistic = makeOptimistic(sessionId, "resolve", "queued follow-up");
+    const acknowledged: PendingChatMessage = {
+      id: "pending-server-resolve-handoff",
+      sessionId,
+      clientPendingId: optimistic.id,
+      content: optimistic.content,
+      createdAt: optimistic.createdAt,
+      updatedAt: optimistic.updatedAt,
+      mode: "queued",
+      sequence: 1,
+    };
+
+    expect(resolveHandedOffPendingChatId([acknowledged], undefined, optimistic.id)).toBe(
+      acknowledged.id
+    );
+    expect(resolveHandedOffPendingChatId([acknowledged], acknowledged.id, optimistic.id)).toBe(
+      acknowledged.id
+    );
+    expect(resolveHandedOffPendingChatId([acknowledged], undefined, "missing")).toBeNull();
   });
 });

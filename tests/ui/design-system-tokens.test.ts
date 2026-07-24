@@ -103,6 +103,30 @@ describe("index.css design-system utilities", () => {
     expect(sidebar).toContain("cybara-main-sidebar");
   });
 
+  test("ships distinct dark preset surfaces", () => {
+    const store = read("../../ui/src/stores/uiStore.ts");
+    const previews = read("../../ui/src/pages/settings/theme/ThemePresetGrid.tsx");
+    const terminal = read("../../ui/src/pages/ide/xtermTheme.ts");
+
+    expect(store).toContain('{ value: "graphite", label: "Graphite"');
+    expect(store).toContain('{ value: "oled", label: "OLED Black"');
+    expect(store).toContain('{ value: "deep-ocean", label: "Deep Ocean"');
+    expect(store).toContain('{ value: "burgundy", label: "Burgundy"');
+    expect(css).toMatch(/html\[data-theme-mode="graphite"\][\s\S]*--surface-backdrop:\s*#171717/);
+    expect(css).toMatch(/html\[data-theme-mode="graphite"\][\s\S]*--surface-raised:\s*#2b2b2b/);
+    expect(css).toMatch(/html\[data-theme-mode="oled"\][\s\S]*--surface-backdrop:\s*#000000/);
+    expect(css).toMatch(/html\[data-theme-mode="deep-ocean"\][\s\S]*--surface-panel:\s*#0b1a1d/);
+    expect(css).toMatch(/html\[data-theme-mode="burgundy"\][\s\S]*--surface-panel:\s*#211116/);
+    expect(previews).toMatch(/graphite:\s*\{[\s\S]*?background:\s*"#171717"/);
+    expect(previews).toMatch(/oled:\s*\{[\s\S]*?background:\s*"#000000"/);
+    expect(previews).toContain('"deep-ocean": {');
+    expect(previews).toMatch(/burgundy:\s*\{[\s\S]*?background:\s*"#160b0e"/);
+    expect(terminal).toContain('graphite: "#171717"');
+    expect(terminal).toContain('oled: "#000000"');
+    expect(terminal).toContain('"deep-ocean": "#061012"');
+    expect(terminal).toContain('burgundy: "#160b0e"');
+  });
+
   test("uses theme-aware neutral tokens for chat and workspace actions", () => {
     const chat =
       read("../../ui/src/pages/Chat.tsx") + read("../../ui/src/pages/chat/ChatMessageTimeline.tsx");

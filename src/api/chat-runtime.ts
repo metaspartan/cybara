@@ -1,4 +1,4 @@
-import { agentManager } from "../core/agent";
+import { agentManager, type AgentExecutionFailure } from "../core/agent";
 import { recordCompletedTrajectory } from "../core/agent-eval";
 import { emitAgentHook } from "../core/agent-hooks";
 import { agentSupportsImages } from "../core/agent-image-capabilities";
@@ -79,6 +79,10 @@ import {
 import { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 import { executionMetadataFromResult } from "./chat-execution-metadata";
 import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
+import {
+  finishRetryableProviderFailure,
+  normalizeAgentExecutionFailure,
+} from "./chat-provider-failure";
 import { appendToolImageReferences, maybeSaveAutomaticMemory } from "./chat-response-enrichment";
 import { recoverAssistantResponse } from "./chat-response-recovery";
 import { settlePendingChatFailure } from "./chat-pending-failure";
@@ -106,7 +110,11 @@ import {
   type ProcessActivityInfo,
   type ToolCallInfo,
 } from "./chat-process-activities";
-import { pendingChatDrainRetryDelay } from "./chat-runtime-stability";
+import {
+  interruptActiveChatTurnForSteering,
+  isChatTurnInterrupted,
+  pendingChatDrainRetryDelay,
+} from "./chat-runtime-stability";
 import {
   activeChatTurnAbortControllers,
   buildLastMessagePreview,
@@ -164,7 +172,6 @@ export {
   type ProcessActivityInfo,
   type ToolCallInfo,
 } from "./chat-process-activities";
-
 const log = createLogger("Chat");
 
 export type {
@@ -213,25 +220,6 @@ export async function waitForPendingChatCompletion(id: string): Promise<ChatResp
   } finally {
     pendingChatCompletions.delete(id);
   }
-}
-
-function isChatTurnInterrupted(error: unknown, signal?: AbortSignal): boolean {
-  if (signal?.aborted) return true;
-  if (error instanceof DOMException) return error.name === "AbortError";
-  return (
-    !!error &&
-    typeof error === "object" &&
-    "name" in error &&
-    (error as Error).name === "AbortError"
-  );
-}
-
-function interruptActiveChatTurnForSteering(sessionId: string, pendingSteeringId: string): boolean {
-  const controller = activeChatTurnAbortControllers.get(sessionId);
-  if (!controller || controller.signal.aborted) return false;
-  interruptedChatTurnSteeringIds.set(controller, pendingSteeringId);
-  controller.abort(new DOMException("Chat turn interrupted by user steering", "AbortError"));
-  return true;
 }
 
 export async function stopActiveChatTurn(sessionId: string): Promise<{
@@ -1461,6 +1449,7 @@ async function handleChatTurn(
 
   let responseContent: string;
   let executionModelMetadata: SessionModelMetadata | null = null;
+  let executionFailure: AgentExecutionFailure | undefined;
   const thinkingContent: string = "";
   const allToolCalls: ToolCallInfo[] = [];
   const agentTransfers: AgentTransferEnvelope[] = [];
@@ -1509,11 +1498,8 @@ async function handleChatTurn(
             selectedSkill ||
             capabilityMentions.mentions.some((mention) => mention.kind === "mcp"))
       );
-      let result = await agentManager.execute(agent.id, executionMessages, {
-        useTools: tools,
+      const executionOptions = () => ({
         sessionId: session.id,
-        requireToolUse: shouldRequireToolUse,
-        requiredToolName,
         workspaceDir: session.workspaceDir || undefined,
         abortSignal: turnAbortController.signal,
         consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
@@ -1521,11 +1507,19 @@ async function handleChatTurn(
         modelOverride: activeModelOverride,
         allowedToolNames,
       });
+      let result = await agentManager.execute(agent.id, executionMessages, {
+        ...executionOptions(),
+        useTools: tools,
+        requireToolUse: shouldRequireToolUse,
+        requiredToolName,
+      });
       executionModelMetadata = executionMetadataFromResult(result);
+      executionFailure = result.failure;
       let toolResults = result.tool_calls || [];
       const maximumTransferDepth = 4;
 
       while (true) {
+        if (result.failure) break;
         const transfer = findAgentTransferEnvelope(result.tool_calls);
         if (!transfer) break;
         if (agentTransfers.length >= maximumTransferDepth) {
@@ -1614,54 +1608,44 @@ async function handleChatTurn(
           }
         );
         result = await agentManager.execute(targetAgent.id, executionMessages, {
+          ...executionOptions(),
           useTools: tools,
-          sessionId: session.id,
           requireToolUse: shouldRequireToolUse,
           requiredToolName,
-          workspaceDir: session.workspaceDir || undefined,
-          abortSignal: turnAbortController.signal,
-          consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
-          useModelRouter,
-          allowedToolNames,
         });
         executionModelMetadata = executionMetadataFromResult(result);
+        executionFailure = result.failure;
         toolResults.push(...(result.tool_calls || []));
       }
       responseContent = result.content;
       responseContent = extractVisibleClarification(toolResults) || responseContent;
 
-      const recoveredResponse = await recoverAssistantResponse({
-        agentId: agent.id,
-        allowPlanOnly: agent.type === "planner",
-        executeOptions: {
-          sessionId: session.id,
-          workspaceDir: session.workspaceDir || undefined,
-          abortSignal: turnAbortController.signal,
-          consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
-          useModelRouter,
-          modelOverride: activeModelOverride,
-          allowedToolNames,
-        },
-        executionMessages,
-        requiredToolName,
-        responseContent,
-        shouldRequireToolUse,
-        toolResults,
-        toolsEnabled: tools,
-        userMessage: message,
-      });
-      if (recoveredResponse.error) {
-        log.warn("Assistant response recovery retry failed", {
-          sessionId: session.id,
-          error: recoveredResponse.error,
+      if (!executionFailure) {
+        const recoveredResponse = await recoverAssistantResponse({
+          agentId: agent.id,
+          allowPlanOnly: agent.type === "planner",
+          executeOptions: executionOptions(),
+          executionMessages,
+          requiredToolName,
+          responseContent,
+          shouldRequireToolUse,
+          toolResults,
+          toolsEnabled: tools,
+          userMessage: message,
         });
+        if (recoveredResponse.error) {
+          log.warn("Assistant response recovery retry failed", {
+            sessionId: session.id,
+            error: recoveredResponse.error,
+          });
+        }
+        if (recoveredResponse.result) {
+          result = recoveredResponse.result;
+          executionModelMetadata = executionMetadataFromResult(recoveredResponse.result);
+        }
+        responseContent = recoveredResponse.responseContent;
+        toolResults = recoveredResponse.toolResults;
       }
-      if (recoveredResponse.result) {
-        result = recoveredResponse.result;
-        executionModelMetadata = executionMetadataFromResult(recoveredResponse.result);
-      }
-      responseContent = recoveredResponse.responseContent;
-      toolResults = recoveredResponse.toolResults;
 
       const memorySettings = config.getMemoryBehaviorSettings();
       void maybeRunBackgroundReview(
@@ -1744,7 +1728,10 @@ async function handleChatTurn(
         }
       }
 
-      if (provider) recordCircuitSuccess(`llm:${provider.id}`);
+      if (provider) {
+        if (executionFailure) recordCircuitFailure(`llm:${provider.id}`);
+        else recordCircuitSuccess(`llm:${provider.id}`);
+      }
       log.info("LLM response received", {
         sessionId: session.id,
         preview: responseContent.substring(0, 100),
@@ -1758,7 +1745,9 @@ async function handleChatTurn(
         sessionId: session.id,
         error: (error as Error).message,
       });
-      responseContent = `I encountered an error calling the LLM API: ${(error as Error).message}. Please check your provider configuration.`;
+      const normalizedFailure = normalizeAgentExecutionFailure(error);
+      executionFailure = normalizedFailure.failure;
+      responseContent = normalizedFailure.content;
     } finally {
       clearActiveChatTurnAbortController(session.id, turnAbortController);
     }
@@ -1769,6 +1758,17 @@ async function handleChatTurn(
 
   if (turnAbortController.signal.aborted && agent) {
     return await finishAbortedTurn(agent);
+  }
+
+  if (executionFailure?.retryable && allToolCalls.length === 0 && agent) {
+    const response = await finishRetryableProviderFailure({
+      session,
+      userMessage,
+      agent,
+      failure: executionFailure,
+    });
+    for (const id of consumedSteeringCompletionIds) resolvePendingChatCompletion(id, response);
+    return response;
   }
 
   responseContent = appendToolImageReferences(responseContent, allToolCalls);
@@ -1835,6 +1835,7 @@ async function handleChatTurn(
       0,
       assistantTimestampMs - (getActiveSessionRunStartedAtMs(session.id) ?? assistantTimestampMs)
     ),
+    interrupted: executionFailure?.retryable === true || undefined,
   };
   appendAssistantMessage(session, assistantMessage);
   if (!session.title || shouldRegenerateSessionTitle(session.title)) {
@@ -1852,6 +1853,7 @@ async function handleChatTurn(
       agent_transfers: assistantMessage.agent_transfers,
       run_id: assistantMessage.run_id,
       worked_duration_ms: assistantMessage.worked_duration_ms,
+      interrupted: assistantMessage.interrupted,
     },
   });
   persistActiveSessionContext(session);
@@ -1925,6 +1927,7 @@ async function handleChatTurn(
       : undefined,
     thinking: finalThinking || undefined,
     tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
+    failure: executionFailure,
   };
   for (const id of consumedSteeringCompletionIds) resolvePendingChatCompletion(id, response);
   return response;

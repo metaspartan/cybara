@@ -13,6 +13,7 @@ export default [
             "tests/**/*.ts",
             "scripts/**/*.ts",
             "apps/mobile/App.tsx",
+            "apps/mobile/app.config.ts",
             "apps/mobile/src/**/*.{ts,tsx}",
         ],
         languageOptions: {

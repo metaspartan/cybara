@@ -82,7 +82,6 @@ export function classifyApiError(input: {
     };
   }
   if (
-    (status === 429 || status === 529) &&
     /temporarily overloaded|service (?:is )?overloaded|overloaded.{0,80}(?:retry|try again)|["']?code["']?\s*[:=]\s*1305/.test(
       text
     )

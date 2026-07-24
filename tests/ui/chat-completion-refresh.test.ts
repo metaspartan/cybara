@@ -1,10 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import {
   hasAssistantAfterLatestUser,
+  loadLatestTranscript,
   loadPersistedCompletion,
+  loadPersistedPendingTurns,
 } from "../../ui/src/lib/chatCompletion";
 
 describe("chat completion refresh", () => {
+  test("loads a newly persisted user turn without waiting for an assistant response", async () => {
+    const snapshot = { messagesList: [{ role: "user" }] };
+    let calls = 0;
+    const result = await loadLatestTranscript(async () => {
+      calls += 1;
+      return snapshot;
+    });
+
+    expect(result).toEqual(snapshot);
+    expect(calls).toBe(1);
+  });
+
   test("requires an assistant turn after the latest user message", () => {
     expect(hasAssistantAfterLatestUser([{ role: "user" }])).toBe(false);
     expect(
@@ -58,5 +72,42 @@ describe("chat completion refresh", () => {
 
     expect(calls).toBe(3);
     expect(result?.messagesList?.at(-1)?.role).toBe("assistant");
+  });
+
+  test("loads a queued user turn before its assistant response exists", async () => {
+    let calls = 0;
+    const result = await loadPersistedPendingTurns(
+      async () => {
+        calls += 1;
+        return calls < 2
+          ? { messagesList: [{ role: "assistant" }] }
+          : {
+              messagesList: [
+                { role: "assistant" },
+                { role: "user", pending_chat_id: "pending-queued-turn" },
+              ],
+            };
+      },
+      ["pending-queued-turn"],
+      { delaysMs: [0, 0], sleep: async () => {} }
+    );
+
+    expect(calls).toBe(2);
+    expect(result?.messagesList?.at(-1)).toEqual({
+      role: "user",
+      pending_chat_id: "pending-queued-turn",
+    });
+  });
+
+  test("does not accept a stale transcript containing a different queued turn", async () => {
+    const result = await loadPersistedPendingTurns(
+      async () => ({
+        messagesList: [{ role: "user", pending_chat_id: "different-pending-turn" }],
+      }),
+      ["pending-queued-turn"],
+      { delaysMs: [0, 0], sleep: async () => {} }
+    );
+
+    expect(result).toBeNull();
   });
 });

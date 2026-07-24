@@ -160,9 +160,13 @@ export function Chat() {
   );
   const loadSessionMutation = useLoadSession();
   const updateSessionAgent = useUpdateSessionAgent();
-  const refreshSessionMessagesRef = useRef<(sid: string) => Promise<boolean>>(() =>
-    Promise.resolve(false)
-  );
+  const refreshSessionMessagesRef = useRef<
+    (
+      sid: string,
+      pendingChatIds?: readonly string[],
+      mode?: "completion" | "latest"
+    ) => Promise<ChatMessage[] | null>
+  >(() => Promise.resolve(null));
   const [input, setInput] = useState("");
   const {
     dictating,
@@ -352,7 +356,7 @@ export function Chat() {
           pendingProcessCaptureRef.current = null;
           setStreamingContent(null);
           setLiveCurrentStep(null);
-          void refreshSessionMessagesRef.current(key);
+          void refreshSessionMessagesRef.current(key, [], "latest");
         }
       } else if (visible && liveRunStartedAtMsRef.current === null) {
         const startedAt = decision.cursor.timestamp || Date.now();
@@ -949,6 +953,8 @@ export function Chat() {
     acceptSessionEvent,
     loadFreshSession: loadSessionMutation.loadFresh,
     loadSession,
+    syncSessionAgentSelection,
+    setUseModelRouter,
   });
 
   const resetChatSession = useCallback(

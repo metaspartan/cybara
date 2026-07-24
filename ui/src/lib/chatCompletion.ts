@@ -1,5 +1,6 @@
 export interface CompletionMessage {
   role?: string;
+  pending_chat_id?: string;
 }
 
 export interface CompletionSnapshot {
@@ -46,6 +47,44 @@ export async function loadPersistedCompletion<T extends CompletionSnapshot>(
       ) {
         return snapshot;
       }
+    } catch {}
+  }
+
+  return null;
+}
+
+export async function loadLatestTranscript<T extends CompletionSnapshot>(
+  load: () => Promise<T>
+): Promise<T | null> {
+  try {
+    const snapshot = await load();
+    return Array.isArray(snapshot.messagesList) ? snapshot : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function loadPersistedPendingTurns<T extends CompletionSnapshot>(
+  load: () => Promise<T>,
+  pendingChatIds: readonly string[],
+  options: CompletionLoadOptions = {}
+): Promise<T | null> {
+  const requiredIds = new Set(pendingChatIds.map((id) => id.trim()).filter(Boolean));
+  if (requiredIds.size === 0) return null;
+  const delaysMs = options.delaysMs ?? defaultDelaysMs;
+  const sleep = options.sleep ?? delay;
+
+  for (const delayMs of delaysMs) {
+    if (delayMs > 0) await sleep(delayMs);
+    try {
+      const snapshot = await load();
+      if (!Array.isArray(snapshot.messagesList)) continue;
+      const materializedIds = new Set(
+        snapshot.messagesList
+          .map((message) => message.pending_chat_id?.trim() || "")
+          .filter(Boolean)
+      );
+      if ([...requiredIds].every((id) => materializedIds.has(id))) return snapshot;
     } catch {}
   }
 
