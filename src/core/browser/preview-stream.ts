@@ -9,6 +9,7 @@ export interface BrowserPreviewStreamOptions {
 
 export type BrowserPreviewStreamListener = (frame: Buffer) => void;
 export type BrowserPreviewStreamStop = () => Promise<void>;
+export type BrowserPreviewStreamCapture = (options: BrowserPreviewStreamOptions) => Promise<Buffer>;
 export type BrowserPreviewStreamStarter = (
   pageId: string,
   options: BrowserPreviewStreamOptions,
@@ -16,6 +17,8 @@ export type BrowserPreviewStreamStarter = (
 ) => Promise<BrowserPreviewStreamStop>;
 
 interface BrowserPreviewStreamState {
+  pageId: string;
+  options: BrowserPreviewStreamOptions;
   listeners: Set<BrowserPreviewStreamListener>;
   latest: Buffer | null;
   pendingFrame: string | null;
@@ -24,6 +27,8 @@ interface BrowserPreviewStreamState {
   start: Promise<void>;
   stop: BrowserPreviewStreamStop | null;
 }
+
+export const BROWSER_PREVIEW_STREAM_FRAME_MS = 16;
 
 export class BrowserPreviewStreamBroker {
   private readonly streams = new Map<string, BrowserPreviewStreamState>();
@@ -42,6 +47,8 @@ export class BrowserPreviewStreamBroker {
     let state = this.streams.get(key);
     if (!state) {
       state = {
+        pageId,
+        options,
         listeners: new Set<BrowserPreviewStreamListener>(),
         latest: null,
         pendingFrame: null,
@@ -91,6 +98,28 @@ export class BrowserPreviewStreamBroker {
     return this.streams.size;
   }
 
+  async refresh(pageId: string, capture: BrowserPreviewStreamCapture): Promise<number> {
+    const matchingStreams = [...this.streams.entries()].filter(
+      ([, state]) => state.pageId === pageId && state.listeners.size > 0
+    );
+    if (matchingStreams.length === 0) return 0;
+    const captures = new Map<string, Promise<Buffer>>();
+    await Promise.all(
+      matchingStreams.map(async ([key, state]) => {
+        const captureKey = this.streamKey(pageId, state.options);
+        let framePromise = captures.get(captureKey);
+        if (!framePromise) {
+          framePromise = capture(state.options);
+          captures.set(captureKey, framePromise);
+        }
+        const frame = await framePromise;
+        if (frame.length === 0 || this.streams.get(key) !== state) return;
+        this.queueFrame(key, state, frame.toString("base64"));
+      })
+    );
+    return matchingStreams.length;
+  }
+
   private streamKey(pageId: string, options: BrowserPreviewStreamOptions): string {
     return `${pageId}:${options.quality}:${options.maxWidth}:${options.maxHeight}:${options.everyNthFrame}`;
   }
@@ -125,7 +154,7 @@ export class BrowserPreviewStreamBroker {
 const browserPreviewStreamBroker = new BrowserPreviewStreamBroker(
   async (pageId, options, listener) =>
     await pwManager.startScreencast(pageId, options, (frame) => listener(frame.data)),
-  32
+  BROWSER_PREVIEW_STREAM_FRAME_MS
 );
 
 export async function subscribeBrowserPreviewStream(
@@ -134,4 +163,16 @@ export async function subscribeBrowserPreviewStream(
   listener: BrowserPreviewStreamListener
 ): Promise<BrowserPreviewStreamStop> {
   return await browserPreviewStreamBroker.subscribe(pageId, options, listener);
+}
+
+export async function refreshBrowserPreviewStream(pageId: string): Promise<number> {
+  return await browserPreviewStreamBroker.refresh(
+    pageId,
+    async (options) =>
+      await pwManager.screenshot(pageId, {
+        fullPage: false,
+        type: "jpeg",
+        quality: options.quality,
+      })
+  );
 }

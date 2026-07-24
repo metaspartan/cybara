@@ -4,14 +4,13 @@ import {
   type BrowserPreviewStreamSender,
   LatestBrowserFrameDecoder,
 } from "./browserPreviewStreamClient";
+import { BROWSER_PREVIEW_MAX_HEIGHT, BROWSER_PREVIEW_MAX_WIDTH } from "./browserPreviewTiming";
 
 interface BrowserPreviewImageProps {
   pageId: string | null;
   visible: boolean;
   fallbackSource: string | null;
   quality: number;
-  maxWidth: number;
-  maxHeight: number;
   inputSenderRef: MutableRefObject<BrowserPreviewStreamSender | null>;
   onConnectionChange: (connected: boolean) => void;
   onFramePresented: (presented: boolean) => void;
@@ -75,8 +74,6 @@ export function BrowserPreviewImage({
   visible,
   fallbackSource,
   quality,
-  maxWidth,
-  maxHeight,
   inputSenderRef,
   onConnectionChange,
   onFramePresented,
@@ -180,8 +177,8 @@ export function BrowserPreviewImage({
       if (!active) return;
       const query = new URLSearchParams({
         quality: String(quality),
-        maxWidth: String(maxWidth),
-        maxHeight: String(maxHeight),
+        maxWidth: String(BROWSER_PREVIEW_MAX_WIDTH),
+        maxHeight: String(BROWSER_PREVIEW_MAX_HEIGHT),
         everyNthFrame: "1",
       });
       const nextSocket = await createHydratedAuthenticatedWebSocket(
@@ -269,7 +266,7 @@ export function BrowserPreviewImage({
       clearStreamFrame();
       presentFallback();
     };
-  }, [inputSenderRef, maxHeight, maxWidth, pageId, quality, visible]);
+  }, [inputSenderRef, pageId, quality, visible]);
 
   return (
     <>

@@ -51,6 +51,7 @@ import {
 import { hasImages, toAnthropicImageBlock } from "./llm/image-blocks";
 import { normalizeAnthropicModelToolUses } from "./llm/model-dialect";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
+import { supportsForcedToolChoice } from "./llm/provider-model-transport";
 import {
   applyAnthropicReasoningOptions,
   collectAnthropicThinkingText,
@@ -144,7 +145,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
       }));
       requestBody.tool_choice = resolveAnthropicToolChoice(
         tools.map((tool) => tool.name),
-        toolContext
+        supportsForcedToolChoice(providerConfig) ? toolContext : undefined
       );
     }
 
@@ -176,7 +177,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
     let lastInitialError = "";
     let initialRetryCount = 0;
     let attemptedInitialOAuthRefresh = false;
-    const poolName = "anthropic";
+    const poolName = providerConfig === "anthropic" ? "anthropic" : providerConfig;
     let activeCredential: PooledCredential | null =
       !vertex && !oauth && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
     let currentApiKey = activeCredential?.value ?? auth;

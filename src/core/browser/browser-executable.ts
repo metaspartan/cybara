@@ -187,8 +187,7 @@ export function browserLaunchArgs(
   }
   if (platform === "win32") {
     args.push(
-      "--disable-gpu",
-      "--disable-software-rasterizer",
+      "--enable-gpu",
       "--no-first-run",
       "--no-default-browser-check",
       "--window-position=-32000,-32000"

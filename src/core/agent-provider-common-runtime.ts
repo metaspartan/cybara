@@ -28,6 +28,7 @@ import {
   callGitLabDuoTransport,
 } from "./llm/agent-provider-transports";
 import { normalizeLlmTimeoutError, withLlmRequestTimeout } from "./llm/request-timeout";
+import { resolveProviderModelApiFamily } from "./llm/provider-model-transport";
 import { normalizeProviderMessages } from "./llm/provider-messages";
 import {
   getSessionTokenUsageSnapshot,
@@ -508,7 +509,12 @@ export abstract class AgentProviderCommonRuntime {
     const baseUrl = providerInfo.base_url || getProviderBaseUrl(providerConfig);
     const auth = providerInfo.api_key || providerInfo.access_token;
     const catalogProviderDefinition = providerCatalog[providerConfig as ProviderType] as
-      | { api?: string; headers?: Record<string, string>; authType?: string }
+      | {
+          api?: string;
+          headers?: Record<string, string>;
+          authType?: string;
+          models?: readonly { id: string; api?: string }[];
+        }
       | undefined;
     const pluginProviderDefinition = getPluginProviderContribution(providerConfig);
     if (pluginProviderDefinition && !pluginProviderDefinition.allowPrivateEndpoint) {
@@ -537,7 +543,11 @@ export abstract class AgentProviderCommonRuntime {
     const resolvedAuth = auth || "";
 
     const modelId = model || pluginProviderDefinition?.models[0] || getDefaultModel(providerConfig);
-    const apiFamily = providerDefinition?.api || "openai-completions";
+    const apiFamily = resolveProviderModelApiFamily(
+      providerDefinition?.api,
+      "models" in (providerDefinition || {}) ? providerDefinition?.models : undefined,
+      modelId
+    );
     const providerHeaders = providerDefinition?.headers || {};
     const customHeaders = (providerInfo as { headers?: Record<string, string> }).headers || {};
     const mergedHeaders = { ...providerHeaders, ...customHeaders };
@@ -1120,7 +1130,12 @@ export abstract class AgentProviderCommonRuntime {
 
       if (
         !attemptedToolChoiceCompatibilityRetry &&
-        this.shouldRetryWithAutoToolChoice(response.status, errorText, currentBody)
+        (this.shouldRetryWithAutoToolChoice(response.status, errorText, currentBody) ||
+          (response.status === 400 &&
+            rateLimitContext?.providerType === "opencode-go" &&
+            currentBody.tool_choice !== undefined &&
+            currentBody.tool_choice !== "auto" &&
+            /console go[\s\S]*upstream request failed/i.test(errorText)))
       ) {
         attemptedToolChoiceCompatibilityRetry = true;
         console.log(

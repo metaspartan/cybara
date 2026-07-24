@@ -7,7 +7,7 @@ export interface BrowserPreviewFrameSource {
   screenshot: string;
 }
 
-export const BROWSER_SCROLL_FRAME_MS = 16;
+export const BROWSER_SCROLL_FRAME_MS = 8;
 export const BROWSER_PREVIEW_REFRESH_MS = 90;
 export const BROWSER_SCROLL_DELTA_LIMIT = 4_000;
 

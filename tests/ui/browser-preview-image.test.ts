@@ -1,7 +1,20 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { LatestBrowserFrameDecoder } from "../../ui/src/pages/chat/browserPreviewStreamClient";
 
 describe("browser preview image", () => {
+  test("keeps stream capture bounds stable while the panel viewport resizes", () => {
+    const source = readFileSync("ui/src/pages/chat/BrowserPreviewImage.tsx", "utf8");
+    const workspace = readFileSync("ui/src/pages/chat/ChatWorkspaceBrowser.tsx", "utf8");
+
+    expect(source).toContain("maxWidth: String(BROWSER_PREVIEW_MAX_WIDTH)");
+    expect(source).toContain("maxHeight: String(BROWSER_PREVIEW_MAX_HEIGHT)");
+    expect(workspace).not.toContain("maxWidth={browserViewport.width}");
+    expect(workspace).not.toContain("maxHeight={browserViewport.height}");
+    expect(workspace).toContain("resizeBrowserPage(page.id, browserViewport)");
+    expect(workspace).toContain("const viewport = browserViewportRef.current");
+  });
+
   test("decodes one frame at a time and keeps only the latest queued frame", async () => {
     let releaseFirst: (() => void) | null = null;
     const firstPending = new Promise<void>((resolve) => {

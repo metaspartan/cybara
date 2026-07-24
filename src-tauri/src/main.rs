@@ -750,7 +750,7 @@ fn start_gateway_watchdog(app: tauri::AppHandle) {
                 continue;
             }
             let endpoint = gateway_endpoint(&app);
-            let healthy = gateway::is_gateway_healthy_at(&endpoint.addr, env!("CARGO_PKG_VERSION"));
+            let healthy = gateway::is_gateway_live_at(&endpoint.addr);
             let should_restart = app
                 .try_state::<GatewaySupervisionState>()
                 .and_then(|state| {
@@ -768,7 +768,7 @@ fn start_gateway_watchdog(app: tauri::AppHandle) {
                 stop_sidecar(&app);
                 schedule_sidecar_restart(
                     app.clone(),
-                    "Gateway health probe failed repeatedly.".into(),
+                    "Gateway liveness probe failed repeatedly.".into(),
                 );
             }
         }

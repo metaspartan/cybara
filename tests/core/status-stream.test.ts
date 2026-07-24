@@ -1,15 +1,47 @@
 import { describe, expect, test } from "bun:test";
 import {
+  addSSEClient,
   broadcastStatus,
   broadcastStatusSnapshot,
   broadcastTaskEvent,
   broadcastTokenDelta,
   createStatusSnapshotEvent,
   onStatusStream,
+  removeSSEClient,
   setSessionPendingChatMessages,
 } from "../../src/core/status";
 
 describe("status stream events", () => {
+  test("closes a slow SSE client instead of buffering status events without a bound", async () => {
+    let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const stream = new ReadableStream<Uint8Array>({
+      start(activeController) {
+        controller = activeController;
+        addSSEClient(activeController);
+      },
+    });
+    const activeController = controller;
+    expect(activeController).not.toBeNull();
+
+    broadcastTaskEvent({
+      type: "task_completed",
+      taskId: "sse-1",
+      taskName: "First event",
+      status: "completed",
+    });
+    broadcastTaskEvent({
+      type: "task_completed",
+      taskId: "sse-2",
+      taskName: "Second event",
+      status: "completed",
+    });
+
+    const reader = stream.getReader();
+    expect((await reader.read()).done).toBe(false);
+    expect((await reader.read()).done).toBe(true);
+    if (activeController) removeSSEClient(activeController);
+  });
+
   test("emits typed status and task stream events", () => {
     const sessionId = `status-stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const received: Array<{ type: string; sessionId?: string }> = [];
