@@ -2,7 +2,11 @@ import type { LoadedChatSession } from "@/hooks/useChat";
 import { chatApi } from "@/lib/api";
 import type { LiveActivityItem } from "@/lib/chatActivities";
 import { mergeActivityLists } from "@/lib/chatActivities";
-import { loadPersistedCompletion, loadPersistedPendingTurns } from "@/lib/chatCompletion";
+import {
+  loadLatestTranscript,
+  loadPersistedCompletion,
+  loadPersistedPendingTurns,
+} from "@/lib/chatCompletion";
 import {
   connectStatusStream,
   type PendingChatMessage,
@@ -95,7 +99,11 @@ interface UseChatLiveSessionRuntimeOptions {
     Record<string, { runId: string | null; sequence: number; timestamp: number }>
   >;
   refreshSessionMessagesRef: RefObject<
-    (sessionId: string, pendingChatIds?: readonly string[]) => Promise<ChatMessage[] | null>
+    (
+      sessionId: string,
+      pendingChatIds?: readonly string[],
+      mode?: "completion" | "latest"
+    ) => Promise<ChatMessage[] | null>
   >;
   isSessionStopSuppressed: (sessionId?: string | null, runId?: string | null) => boolean;
   acceptSessionEvent: (
@@ -109,6 +117,8 @@ interface UseChatLiveSessionRuntimeOptions {
     workspaceDir?: string | null,
     preserveReferenceTail?: boolean
   ) => void;
+  syncSessionAgentSelection: (agentId?: string | null) => void;
+  setUseModelRouter: Dispatch<SetStateAction<boolean>>;
 }
 
 export function useChatLiveSessionRuntime({
@@ -149,6 +159,8 @@ export function useChatLiveSessionRuntime({
   acceptSessionEvent,
   loadFreshSession,
   loadSession,
+  syncSessionAgentSelection,
+  setUseModelRouter,
 }: UseChatLiveSessionRuntimeOptions): {
   hydrateSessionStatus: (targetSessionId?: string | null) => Promise<void>;
 } {
@@ -844,19 +856,28 @@ export function useChatLiveSessionRuntime({
   useEffect(() => {
     refreshSessionMessagesRef.current = async (
       sid: string,
-      pendingChatIds: readonly string[] = []
+      pendingChatIds: readonly string[] = [],
+      mode: "completion" | "latest" = "completion"
     ) => {
       try {
         const result =
           pendingChatIds.length > 0
             ? await loadPersistedPendingTurns(() => loadFreshSession(sid), pendingChatIds)
-            : await loadPersistedCompletion(() => loadFreshSession(sid));
+            : mode === "latest"
+              ? await loadLatestTranscript(() => loadFreshSession(sid))
+              : await loadPersistedCompletion(() => loadFreshSession(sid));
         if (result?.messagesList && activeSessionRef.current === sid) {
           const refreshedMessages = result.messagesList as ChatMessage[];
           loadSession(
             sid,
             refreshedMessages,
             (result as { workspace_dir?: string | null }).workspace_dir || null
+          );
+          syncSessionAgentSelection(
+            (result as { agent_id?: string | null }).agent_id || null
+          );
+          setUseModelRouter(
+            (result as { use_model_router?: boolean }).use_model_router === true
           );
           setSessionContextUsage(
             (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
@@ -1030,7 +1051,7 @@ export function useChatLiveSessionRuntime({
           !runStartSyncedSessionsRef.current.has(activeSession)
         ) {
           runStartSyncedSessionsRef.current.add(activeSession);
-          void refreshSessionMessagesRef.current(activeSession);
+          void refreshSessionMessagesRef.current(activeSession, [], "latest");
         }
 
         if (status === "thinking") {

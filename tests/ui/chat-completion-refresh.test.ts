@@ -1,11 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import {
   hasAssistantAfterLatestUser,
+  loadLatestTranscript,
   loadPersistedCompletion,
   loadPersistedPendingTurns,
 } from "../../ui/src/lib/chatCompletion";
 
 describe("chat completion refresh", () => {
+  test("loads a newly persisted user turn without waiting for an assistant response", async () => {
+    const snapshot = { messagesList: [{ role: "user" }] };
+    let calls = 0;
+    const result = await loadLatestTranscript(async () => {
+      calls += 1;
+      return snapshot;
+    });
+
+    expect(result).toEqual(snapshot);
+    expect(calls).toBe(1);
+  });
+
   test("requires an assistant turn after the latest user message", () => {
     expect(hasAssistantAfterLatestUser([{ role: "user" }])).toBe(false);
     expect(

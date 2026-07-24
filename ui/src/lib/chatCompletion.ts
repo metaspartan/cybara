@@ -53,6 +53,17 @@ export async function loadPersistedCompletion<T extends CompletionSnapshot>(
   return null;
 }
 
+export async function loadLatestTranscript<T extends CompletionSnapshot>(
+  load: () => Promise<T>
+): Promise<T | null> {
+  try {
+    const snapshot = await load();
+    return Array.isArray(snapshot.messagesList) ? snapshot : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadPersistedPendingTurns<T extends CompletionSnapshot>(
   load: () => Promise<T>,
   pendingChatIds: readonly string[],
