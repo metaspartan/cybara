@@ -67,6 +67,7 @@ import {
   SIDEBAR_ACTIVE_SESSION_WINDOW_MS,
   SIDEBAR_ACTIVE_STATUSES,
 } from "./activeSessionTracker";
+import { isRunEndingStatus } from "@/pages/chat/sessionRunStatus";
 
 interface SidebarContextType {
   collapsed: boolean;
@@ -182,18 +183,19 @@ function useAgentStatus() {
 
         const statusValue = data.status;
         const sessionId = typeof data.sessionId === "string" ? data.sessionId.trim() : "";
-        const isActiveStatus = SIDEBAR_ACTIVE_STATUSES.has(statusValue);
+        const runEnded = isRunEndingStatus(data);
+        const isActiveStatus = !runEnded && SIDEBAR_ACTIVE_STATUSES.has(statusValue);
 
         if (sessionId) {
           if (isActiveStatus) {
             activeSessionLastSeenRef.current.set(sessionId, now);
-          } else if (statusValue === "idle" || statusValue === "error") {
+          } else if (runEnded) {
             activeSessionLastSeenRef.current.delete(sessionId);
           }
         } else {
           if (isActiveStatus) {
             globalLastSeenRef.current = now;
-          } else if (statusValue === "idle" || statusValue === "error") {
+          } else if (runEnded) {
             globalLastSeenRef.current = 0;
           }
         }

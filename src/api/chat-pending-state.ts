@@ -16,6 +16,43 @@ import {
 } from "./chat-runtime-state";
 import type { ChatMessage } from "./chat-types";
 
+export function queuedMaterializedSteeringIds(sessionId: string): Set<string> {
+  return new Set(
+    (pendingChatQueues.get(sessionId) || [])
+      .filter((item) => item.mode === "steering" && item.materialized === true)
+      .map((item) => item.id)
+  );
+}
+
+export function appendAssistantMessage(
+  session: InMemoryChatSession,
+  assistantMessage: ChatMessage
+): void {
+  const queuedSteeringIds = queuedMaterializedSteeringIds(session.id);
+  const trailingSteeringMessages: ChatMessage[] = [];
+  while (session.messages.length > 0) {
+    const last = session.messages[session.messages.length - 1];
+    const pendingSteeringId = last?._pendingSteeringId;
+    if (!pendingSteeringId || !queuedSteeringIds.has(pendingSteeringId)) break;
+    const removed = session.messages.pop();
+    if (removed) trailingSteeringMessages.unshift(removed);
+  }
+  session.messages.push(assistantMessage, ...trailingSteeringMessages);
+  const lastMessage = session.messages[session.messages.length - 1] || assistantMessage;
+  session.updatedAt =
+    lastMessage.timestamp || assistantMessage.timestamp || new Date().toISOString();
+}
+
+export function resolveQueuedTurnRouting(session: InMemoryChatSession): {
+  agentId?: string;
+  useModelRouter: boolean;
+} {
+  return {
+    ...(session.agentId ? { agentId: session.agentId } : {}),
+    useModelRouter: session.useModelRouter === true,
+  };
+}
+
 let pendingChatSequence = 0;
 
 export function nextPendingChatSequence(): number {

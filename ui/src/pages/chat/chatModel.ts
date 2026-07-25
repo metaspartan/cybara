@@ -986,12 +986,11 @@ export function resolveStatusSnapshotActivities(
   if (
     snapshotActivities.length === 0 &&
     localActivities.length > 0 &&
-    normalizedStatus !== "idle" &&
-    normalizedStatus !== "error"
+    normalizedStatus !== "idle"
   ) {
     return mergeActivityLists([], localActivities);
   }
-  if (normalizedStatus === "idle" || normalizedStatus === "error") {
+  if (normalizedStatus === "idle") {
     return snapshotActivities;
   }
   return mergeActivityLists(snapshotActivities, localActivities).sort((left, right) =>

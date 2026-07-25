@@ -42,12 +42,20 @@ import {
   readCachedMobileOptimisticPendingMessages,
   writeCachedMobileOptimisticPendingMessages,
 } from "./dashboardPendingQueue";
+import {
+  readCachedMobileSessionTranscript,
+  writeCachedMobileSessionTranscript,
+} from "./dashboardSessionTranscriptCache";
 
 function optimisticMobileSessionDetail(
   sessionId: string,
   sessionSummary?: SessionSummary | null
 ): SessionDetailSummary | null {
-  const messages = readCachedMobileOptimisticTranscript(sessionId);
+  const cachedTranscript = readCachedMobileSessionTranscript(sessionId);
+  const messages =
+    cachedTranscript.length > 0
+      ? mergeCachedMobileOptimisticTranscript(sessionId, cachedTranscript)
+      : readCachedMobileOptimisticTranscript(sessionId);
   if (messages.length === 0 && !readCachedMobileLiveAssistant(sessionId)) return null;
   return {
     id: sessionId,
@@ -187,6 +195,7 @@ export function useMobileSessionRuntime({
         ...nextDetail,
         messages: mergeCachedMobileOptimisticTranscript(sessionId, nextDetail.messages),
       };
+      writeCachedMobileSessionTranscript(sessionId, nextDetail.messages);
       setDetail(reconciledDetail);
       onSessionUpdatedRef.current(reconciledDetail);
       commitLiveAssistant((current) =>

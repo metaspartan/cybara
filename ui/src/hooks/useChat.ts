@@ -274,15 +274,16 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
       preserveReferenceTail = false
     ) => {
       setState((prev) => {
+        const sameSession = prev.sessionId === sessionId;
         const reference =
-          prev.sessionId === sessionId && prev.messages.length > 0
+          sameSession && prev.messages.length > 0
             ? prev.messages
             : readCachedSessionMessages(sessionId) || [];
         return {
           messages: enrichReloadedMessages(reference, messages, { preserveReferenceTail }),
           sessionId,
           workspaceDir: workspaceDir ?? null,
-          isLoading: false,
+          isLoading: sameSession ? prev.isLoading : false,
         };
       });
     },

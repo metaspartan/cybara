@@ -277,7 +277,8 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("setActiveSessionIds");
     expect(source).toContain("chatApi.getSessionStatus(");
     expect(source).toContain("hydrateSessionStatus");
-    expect(source).toContain('(status === "idle" && !isSteeringHandoff) || status === "error"');
+    expect(source).toContain("const runEnded = isRunEndingStatus(payload);");
+    expect(source).toContain("if (runEnded && !visibleCompletion) {");
     expect(source).toContain('<Loader2 className="h-3 w-3 animate-spin text-gray-400" />');
     expect(source).toContain("compactSidebarRelativeTime(");
   });

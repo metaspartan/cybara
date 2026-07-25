@@ -78,6 +78,7 @@ import {
 import { useMultiChatDropTarget } from "./useMultiChatDropTarget";
 import { useChatAttachments } from "./useChatAttachments";
 import { useChatDictation } from "./useChatDictation";
+import { hasMixedAssistantAuthors } from "./assistantAuthors";
 import { MULTI_CHAT_ACTIVE_STATUSES, type MultiChatLiveState } from "./multiChatLiveStatus";
 import { useMultiChatLiveStatuses } from "./useMultiChatLiveStatuses";
 import { useEnvironmentGitBranches } from "./useEnvironmentGitBranches";
@@ -127,7 +128,7 @@ function arraysEqual(left: readonly string[], right: readonly string[]): boolean
 }
 
 function multiChatStatusLabel(status?: MultiChatLiveState): string {
-  if (!status || !MULTI_CHAT_ACTIVE_STATUSES.has(status.status)) return "Ready";
+  if (!status || !MULTI_CHAT_ACTIVE_STATUSES.has(status.status)) return "Thinking";
   if (status.status === "tool_executing") return status.detail || "Using tools";
   if (status.status === "compacting") return "Compacting context";
   if (status.status === "generating") return "Responding";
@@ -312,6 +313,7 @@ function MultiChatPane({
   const endRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const isActive = !!status && MULTI_CHAT_ACTIVE_STATUSES.has(status.status);
+  const paneIsWorking = isActive || sending;
   const selectedAgent = agents.find((agent) => agent.id === (selectedAgentId || detail?.agent_id));
   const effectiveWorkspaceDir = isDraft ? draftWorkspaceDir : detail?.workspace_dir || null;
   const environmentGit = useEnvironmentGitBranches(isDraft ? draftWorkspaceDir : null);
@@ -533,9 +535,9 @@ function MultiChatPane({
             {title}
           </span>
           <span className="theme-text-muted flex items-center gap-1.5 truncate text-[10px]">
-            {isActive ? <Loader2 className="h-2.5 w-2.5 shrink-0 animate-spin" /> : null}
+            {paneIsWorking ? <Loader2 className="h-2.5 w-2.5 shrink-0 animate-spin" /> : null}
             <span className="truncate">
-              {isActive ? multiChatStatusLabel(status) : route || "Ready"}
+              {paneIsWorking ? multiChatStatusLabel(status) : route || "Ready"}
             </span>
           </span>
         </span>
@@ -638,7 +640,8 @@ function MultiChatPane({
               messageProcessMap={{}}
               savingGoldenMessageIndex={null}
               sessionId={sessionId}
-              showWorkingTimeline={isActive}
+              showAuthorAttribution={hasMixedAssistantAuthors(displayMessages)}
+              showWorkingTimeline={paneIsWorking}
               speakingMessageIndex={null}
               workspaceDir={effectiveWorkspaceDir}
               onCopyMessage={(messageIndex, content) => {

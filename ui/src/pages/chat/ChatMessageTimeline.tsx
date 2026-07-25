@@ -1,4 +1,5 @@
 import {
+  Bot,
   Check,
   Copy,
   CornerUpRight,
@@ -20,6 +21,7 @@ import {
 import { chatImageSrc, toolOutputImageSources } from "@/lib/chatImages";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { LiveActivityTimeline } from "./ActivityTimeline";
+import { assistantAuthorLabel } from "./assistantAuthors";
 import { AgentTransferTimeline } from "./AgentTransferTimeline";
 import { AssistantMetaInline } from "./AssistantMetaInline";
 import { parseTimestampMs } from "./assistantMetaModel";
@@ -52,6 +54,7 @@ interface ChatMessageTimelineProps {
   messageProcessMap: Record<string, LiveActivityItem[]>;
   savingGoldenMessageIndex: number | null;
   sessionId: string | null;
+  showAuthorAttribution?: boolean;
   showWorkingTimeline: boolean;
   speakingMessageIndex: number | null;
   workspaceDir: string | null;
@@ -78,6 +81,7 @@ export function ChatMessageTimeline({
   messageProcessMap,
   savingGoldenMessageIndex,
   sessionId,
+  showAuthorAttribution = false,
   showWorkingTimeline,
   speakingMessageIndex,
   workspaceDir,
@@ -146,6 +150,9 @@ export function ChatMessageTimeline({
                     : "py-1"
                 }
               >
+                {message.role !== "user" && showAuthorAttribution && (
+                  <AssistantAuthorLabel message={message} />
+                )}
                 {message.role !== "user" && (
                   <AssistantMetaInline
                     message={message}
@@ -318,6 +325,17 @@ export function ChatMessageTimeline({
         </div>
       )}
     </>
+  );
+}
+
+function AssistantAuthorLabel({ message }: { message: ChatMessage }): ReactElement | null {
+  const label = assistantAuthorLabel(message);
+  if (!label) return null;
+  return (
+    <div className="chat-meta-text mb-1.5 inline-flex items-center gap-1 rounded border border-white/10 bg-white/[0.03] px-1.5 py-0.5 leading-none text-gray-400">
+      <Bot className="h-2.5 w-2.5 opacity-70" />
+      {label}
+    </div>
   );
 }
 

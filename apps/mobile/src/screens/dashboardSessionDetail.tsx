@@ -93,6 +93,7 @@ import {
   clearCachedMobileOptimisticTranscript,
   writeCachedMobileOptimisticTranscriptMessage,
 } from "./dashboardOptimisticTranscript";
+import { mobileTranscriptHasMixedAuthors } from "./dashboardMessageAuthors";
 import {
   clearCachedMobileOptimisticPendingMessages,
   mergeMobilePendingMessages,
@@ -1388,6 +1389,10 @@ export function SessionDetailPanel({
     () => latestVisibleChatMessages(renderMessages),
     [renderMessages]
   );
+  const transcriptHasMixedAgents = useMemo(
+    () => mobileTranscriptHasMixedAuthors(renderMessages),
+    [renderMessages]
+  );
   const waitingForAssistant = chatIsWaitingForAssistant(renderMessages, sending);
   // When the keyboard is up it already covers the nav bar, so the composer
   // sits just above the keyboard; otherwise it floats above the nav chrome.
@@ -1457,6 +1462,7 @@ export function SessionDetailPanel({
                 message={message}
                 mediaUrl={(filePath) => api.mediaUrl(filePath)}
                 nowMs={message.id === liveAssistant?.id && sessionActive ? liveNowMs : undefined}
+                showAuthor={transcriptHasMixedAgents}
                 onAddToChat={appendTextToComposer}
                 onRevert={message.role === "user" ? confirmRevertToMessage : undefined}
               />

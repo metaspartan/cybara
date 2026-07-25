@@ -1,4 +1,5 @@
 import { type AgentMessage } from "../core/agent";
+import { buildAgentHandoffInstruction } from "./chat-agent-handoff";
 import { compactChatContentForPrompt } from "../core/chat-token-optimization";
 import { hydrateImageDataFromPath } from "../core/chat/attachments";
 import { getActiveGoalContextLine } from "../core/session-goals";
@@ -60,6 +61,19 @@ export function buildChatExecutionMessagesForAgent(
       executionMessages.splice(1, 0, transferInstruction);
     } else {
       executionMessages.unshift(transferInstruction);
+    }
+  } else {
+    const handoffInstruction = buildAgentHandoffInstruction(
+      sessionMessages,
+      options?.activeAgentId
+    );
+    if (handoffInstruction) {
+      const handoffMessage: AgentMessage = { role: "system", content: handoffInstruction };
+      if (executionMessages[0]?.role === "system") {
+        executionMessages.splice(1, 0, handoffMessage);
+      } else {
+        executionMessages.unshift(handoffMessage);
+      }
     }
   }
 

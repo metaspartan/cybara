@@ -4,6 +4,7 @@ import {
   type StatusStreamStatusEvent,
   type StreamAgentStatus,
 } from "@/lib/status-stream";
+import { isRunEndingStatus, isSteeringHandoffStatus } from "./sessionRunStatus";
 import {
   applyLiveActivityEvent,
   formatToolIntent,
@@ -38,6 +39,7 @@ export const MULTI_CHAT_ACTIVE_STATUSES = new Set<StreamAgentStatus>([
   "tool_executing",
   "tool_completed",
   "compacting",
+  "error",
 ]);
 
 function defaultCurrentStep(
@@ -103,9 +105,8 @@ export function projectMultiChatStatusEvent(
   observedAt = Date.now()
 ): MultiChatLiveState | null {
   const detail = typeof event.detail === "string" ? event.detail.trim() : "";
-  const steeringHandoff =
-    event.status === "idle" && detail.toLowerCase() === "steering to follow-up...";
-  if ((event.status === "idle" && !steeringHandoff) || event.status === "error") return null;
+  const steeringHandoff = isSteeringHandoffStatus(event);
+  if (isRunEndingStatus(event)) return null;
 
   const timestamp = Number.isFinite(event.timestamp) ? event.timestamp : observedAt;
   let status = event.status;
@@ -141,9 +142,15 @@ export function projectMultiChatStatusEvent(
       });
     }
     currentStep = defaultCurrentStep(liveStatus, detail, activities);
-  } else if (event.status === "tool_executing" || event.status === "tool_completed") {
+  } else if (
+    event.status === "tool_executing" ||
+    event.status === "tool_completed" ||
+    event.status === "error"
+  ) {
     streamingContent = null;
-    const phase = event.toolPhase || (event.status === "tool_executing" ? "start" : "result");
+    const phase =
+      event.toolPhase ||
+      (event.status === "tool_executing" ? "start" : event.status === "error" ? "error" : "result");
     const toolName = event.toolName || "tool";
     const text = formatToolIntent(toolName, {}, phase, event.detail);
     activities = applyLiveActivityEvent(activities, {

@@ -826,6 +826,9 @@ export interface SessionMessageSummary {
   timestamp?: string;
   workedDurationMs?: number;
   thinking?: string;
+  agentId?: string;
+  agentName?: string;
+  model?: string;
   toolCalls?: SessionToolCallSummary[];
   processActivities?: SessionProcessActivitySummary[];
   agentTransfers?: AgentTransferSummary[];

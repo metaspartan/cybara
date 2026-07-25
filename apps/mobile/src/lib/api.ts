@@ -409,7 +409,7 @@ export class CybaraMobileApi {
 
   async session(id: string): Promise<SessionDetailSummary> {
     return normalizeSessionDetail(
-      await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}?includeFullToolCalls=1`),
+      await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}`),
       id
     );
   }

@@ -25,6 +25,7 @@ import type { ChatMessage } from "../chat";
 import { sanitizeProcessThoughtText } from "../chat-formatting";
 import type { MetricsEntry } from "../queries";
 import type { AuthResult } from "../security";
+import { truncateToolResultForTransport } from "./tool-result-transport";
 
 export { isSessionStatusActive } from "../../core/status";
 
@@ -1012,7 +1013,7 @@ export function sanitizeSessionMessages(
   const MAX_RESULT_SIZE = truncateLargeFields ? 500 : 0;
   const MAX_ERROR_SIZE = truncateLargeFields ? 200 : 0;
   const PROCESS_OPTIONS = truncateLargeFields ? { maxTextLength: 500 } : undefined;
-  const DEFAULT_MAX_TOOL_CALLS = 50;
+  const DEFAULT_MAX_TOOL_CALLS = 200;
   const maxToolCallsRaw = options?.maxToolCalls;
   const MAX_TOOL_CALLS =
     typeof maxToolCallsRaw === "number" && Number.isFinite(maxToolCallsRaw)
@@ -1135,10 +1136,9 @@ export function sanitizeSessionMessages(
           } else if (todoResult) {
             sanitized.result = todoResult;
           } else {
-            const resultStr = typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result);
             sanitized.result =
-              MAX_RESULT_SIZE > 0 && resultStr.length > MAX_RESULT_SIZE
-                ? resultStr.slice(0, MAX_RESULT_SIZE) + "... [truncated]"
+              MAX_RESULT_SIZE > 0
+                ? truncateToolResultForTransport(tc.result, { maxStringChars: MAX_RESULT_SIZE })
                 : tc.result;
           }
         } catch {

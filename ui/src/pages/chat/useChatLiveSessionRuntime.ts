@@ -52,6 +52,7 @@ import {
   readCachedOptimisticPendingMessages,
   writeCachedOptimisticPendingMessages,
 } from "./pendingQueueCache";
+import { isRunEndingStatus, isSteeringHandoffStatus } from "./sessionRunStatus";
 import {
   materializedPendingChatIds,
   mergePendingChatMessages,
@@ -871,7 +872,8 @@ export function useChatLiveSessionRuntime({
           loadSession(
             sid,
             refreshedMessages,
-            (result as { workspace_dir?: string | null }).workspace_dir || null
+            (result as { workspace_dir?: string | null }).workspace_dir || null,
+            mode === "latest"
           );
           syncSessionAgentSelection((result as { agent_id?: string | null }).agent_id || null);
           setUseModelRouter((result as { use_model_router?: boolean }).use_model_router === true);
@@ -939,8 +941,8 @@ export function useChatLiveSessionRuntime({
         const isQueuedTurnHandoff =
           typeof payload.pendingChatId === "string" ||
           statusDetail.toLowerCase() === "starting queued follow-up";
-        const isSteeringHandoff =
-          status === "idle" && statusDetail.toLowerCase() === "steering to follow-up...";
+        const isSteeringHandoff = isSteeringHandoffStatus(payload);
+        const runEnded = isRunEndingStatus(payload);
         const payloadSessionId =
           typeof payload.sessionId === "string" && payload.sessionId.trim()
             ? payload.sessionId
@@ -950,7 +952,8 @@ export function useChatLiveSessionRuntime({
           status === "generating" ||
           status === "compacting" ||
           status === "tool_executing" ||
-          status === "tool_completed";
+          status === "tool_completed" ||
+          (status === "error" && !runEnded);
         if (
           payloadSessionId &&
           isSessionStopSuppressed(payloadSessionId, payload.runId) &&
@@ -987,14 +990,8 @@ export function useChatLiveSessionRuntime({
               previous.includes(payloadSessionId) ? previous : [...previous, payloadSessionId]
             );
           }
-          const visibleCompletion =
-            status === "idle" &&
-            !isSteeringHandoff &&
-            payloadSessionId === activeSessionRef.current;
-          if (
-            ((status === "idle" && !isSteeringHandoff) || status === "error") &&
-            !visibleCompletion
-          ) {
+          const visibleCompletion = runEnded && payloadSessionId === activeSessionRef.current;
+          if (runEnded && !visibleCompletion) {
             setActiveSessionIds((previous) => previous.filter((id) => id !== payloadSessionId));
             runStartSyncedSessionsRef.current.delete(payloadSessionId);
           }
@@ -1098,7 +1095,7 @@ export function useChatLiveSessionRuntime({
           setLiveStatus("compacting");
           return;
         }
-        if (status === "idle") {
+        if (runEnded || isSteeringHandoff) {
           if (isSteeringHandoff) {
             const eventTimestamp =
               typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)

@@ -36,6 +36,7 @@ import { useUpdateAgentReasoning } from "@/hooks/useApi";
 import { MODEL_ROUTER_SELECTOR_VALUE } from "../chat/ChatAgentControls";
 import { ChatImageLightbox, type ChatLightboxImage } from "../chat/ChatImageLightbox";
 import { isChatNearBottom } from "../chat/chatScroll";
+import { isRunEndingStatus } from "../chat/sessionRunStatus";
 import { MessageContent } from "../chat/MessageContent";
 import { AgentTransferTimeline } from "../chat/AgentTransferTimeline";
 import {
@@ -783,7 +784,7 @@ export function IDEChatPanel({
           return;
         }
 
-        if (payload.status === "idle") {
+        if (isRunEndingStatus(payload)) {
           setLiveStatus("idle");
           void refreshSession();
           if (!sendingRef.current) {
@@ -813,12 +814,6 @@ export function IDEChatPanel({
             payload.toolCallId,
             payload.sandboxProvider
           );
-          if (payload.status === "error") {
-            setLiveStatus("idle");
-            setLiveCurrentStep(null);
-            void refreshSession();
-            return;
-          }
           setLiveStatus("thinking");
           if (phase === "start") {
             setLiveCurrentStep(isGenericIdeStatusLabel(text) ? "Thinking..." : text);
