@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router";
 import { CybaraThinkingMark } from "@/components/CybaraThinkingMark";
 import { SettingsNavigation } from "@/components/settings/SettingsNavigation";
 import { useInfo } from "@/hooks/useApi";

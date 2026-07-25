@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { ArrowUpRight, Bot, Trash2, Edit2 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";

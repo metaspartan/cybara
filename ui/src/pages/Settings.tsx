@@ -120,7 +120,7 @@ import {
   Radio,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 
 function SettingsSurface({ children }: { children: React.ReactNode }) {
   return <EmbeddedPageLayout>{children}</EmbeddedPageLayout>;

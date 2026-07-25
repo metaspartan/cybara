@@ -40,7 +40,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router";
 import type { ChatLightboxImage } from "./ChatImageLightbox";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./ChatAgentControls";
 import { ChatComposerAttachments } from "./ChatComposerAttachments";
