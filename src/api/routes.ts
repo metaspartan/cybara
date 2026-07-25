@@ -1252,7 +1252,7 @@ const routes: Record<string, RouteHandler> = {
       params?.includeFullToolCalls === "true" ||
       params?.includeFullToolCalls === "yes";
     const sanitizedMessages = sanitizeSessionMessages(messages, {
-      maxToolCalls: includeFullToolCalls ? 0 : 50,
+      ...(includeFullToolCalls ? { maxToolCalls: 0 } : {}),
       includeFullToolCalls,
     }).map((m) => ({
       ...m,

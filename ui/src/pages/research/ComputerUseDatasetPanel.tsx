@@ -22,7 +22,7 @@ import {
   Video,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 
 function download(content: string, filename: string, mimeType: string): void {
   const url = URL.createObjectURL(new Blob([content], { type: mimeType }));

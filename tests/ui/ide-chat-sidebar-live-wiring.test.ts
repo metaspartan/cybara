@@ -68,7 +68,7 @@ describe("IDE chat sidebar live wiring", () => {
     const source = readIdeChatPanelSource();
     expect(source).toContain('const showWorkingTimeline = isSending || liveStatus !== "idle";');
     expect(source).toContain('const sessionCurrentlyActive = liveStatus !== "idle";');
-    expect(source).toContain('if (payload.status === "error") {');
+    expect(source).toContain("if (isRunEndingStatus(payload)) {");
     expect(source).toContain('setLiveStatus("idle");');
     expect(source).toContain("<IdeLiveActivityTimeline");
     expect(source).toContain("status={liveStatus}");

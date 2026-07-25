@@ -65,7 +65,8 @@ describe("multi-chat workspace wiring", () => {
     expect(workspace).toContain("(!isActive && responsePending)");
     expect(workspace).toContain("useSessionDetail(sessionId, !isDraft)");
     expect(workspace).toContain("liveActivities={status?.activities || []}");
-    expect(workspace).toContain("showWorkingTimeline={isActive}");
+    expect(workspace).toContain("const paneIsWorking = isActive || sending;");
+    expect(workspace).toContain("showWorkingTimeline={paneIsWorking}");
   });
 
   test("uses true desktop quadrants and stacked responsive panes", () => {

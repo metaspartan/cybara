@@ -70,6 +70,12 @@ function promptMatchesSandboxState(prompt: string, enabled: boolean): boolean {
   return runtimeLine.split(" | ").includes(systemPromptSandboxMarker(enabled));
 }
 
+export function promptMatchesActiveAgent(prompt: string, agentId: string): boolean {
+  const runtimeLine = prompt.split("\n").find((line) => line.startsWith("Runtime: ")) || "";
+  const promptAgentId = runtimeLine.match(/(?:^Runtime: | \| )agent=([^|]+)/)?.[1]?.trim();
+  return !promptAgentId || promptAgentId === agentId;
+}
+
 export async function activeAgentSystemPrompt(
   agent: AgentPromptData,
   workspaceDir?: string | null,
@@ -152,6 +158,7 @@ export async function refreshSessionAgentSystemPromptIfNeeded(
   const sandboxInfo = getSandboxPromptInfo(session.workspaceDir || config.getDefaultWorkspaceDir());
   if (
     !firstMessage.content.split("\n").includes(systemPromptToolMarker(toolNames)) ||
+    !promptMatchesActiveAgent(firstMessage.content, agent.id) ||
     !promptMatchesRuntimeChannel(firstMessage.content, options.runtimeChannel) ||
     !promptMatchesSandboxState(firstMessage.content, sandboxInfo.enabled)
   ) {

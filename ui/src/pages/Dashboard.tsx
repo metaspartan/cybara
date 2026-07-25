@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { PageLayout } from "@/components/layout";
 import { SystemMonitorPanel } from "@/components/settings/SystemMonitorPanel";
 import { Badge } from "@/components/ui/Badge";

@@ -52,7 +52,9 @@ describe("Sidebar status indicator behavior", () => {
       /setStatus\(globalActive \|\| hasActiveSessions \? ["']active["'] : ["']idle["']\)/
     );
     expect(tracker).toContain("SIDEBAR_ACTIVE_SESSION_WINDOW_MS = 60_000");
-    expect(source).toContain('statusValue === "idle" || statusValue === "error"');
+    expect(tracker).toContain('"error"');
+    expect(source).toContain("const runEnded = isRunEndingStatus(data);");
+    expect(source).toContain("} else if (runEnded) {");
     expect(source).toContain("globalLastSeenRef.current = 0");
   });
 

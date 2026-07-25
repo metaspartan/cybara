@@ -309,7 +309,7 @@ describe("status stream websocket wiring", () => {
 
   test("chat idle status refresh is not blocked by pending process capture", () => {
     const source = readChatUiSource();
-    const idleBranch = source.slice(source.indexOf('if (status === "idle")'));
+    const idleBranch = source.slice(source.indexOf("if (runEnded || isSteeringHandoff)"));
     expect(idleBranch).toContain("void refreshSessionMessagesRef.current(sessionToRefresh)");
     expect(idleBranch).toContain("if (loadingRef.current) {");
     expect(idleBranch).toContain('setLiveCurrentStep("Finalizing response...")');

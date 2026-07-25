@@ -10,7 +10,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router";
 import { treeBrowseCache } from "./ide/FileTree";
 import { IDE_TERMINAL_MIN_HEIGHT } from "./ide/ideConstants";
 import { isSameIdePath } from "./ide/ideDiffHelpers";

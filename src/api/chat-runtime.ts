@@ -76,6 +76,7 @@ import {
   applyActiveAgentToSession,
   refreshSessionAgentSystemPromptIfNeeded,
 } from "./chat-agent-prompt";
+import { stripAgentAttributionTag } from "./chat-agent-handoff";
 import { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 import { executionMetadataFromResult } from "./chat-execution-metadata";
 import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
@@ -99,8 +100,10 @@ import {
   nextPendingChatSequence,
   pendingChatSnapshot,
   pendingChatSnapshots,
+  appendAssistantMessage,
   preparePendingMessage,
   removePendingChatQueueItem,
+  resolveQueuedTurnRouting,
   restorePendingChatQueueState,
   syncPendingChatStatus,
 } from "./chat-pending-state";
@@ -535,30 +538,6 @@ async function persistStoppedAssistantTurn(
   return stoppedMessage;
 }
 
-function queuedMaterializedSteeringIds(sessionId: string): Set<string> {
-  return new Set(
-    (pendingChatQueues.get(sessionId) || [])
-      .filter((item) => item.mode === "steering" && item.materialized === true)
-      .map((item) => item.id)
-  );
-}
-
-function appendAssistantMessage(session: InMemoryChatSession, assistantMessage: ChatMessage): void {
-  const queuedSteeringIds = queuedMaterializedSteeringIds(session.id);
-  const trailingSteeringMessages: ChatMessage[] = [];
-  while (session.messages.length > 0) {
-    const last = session.messages[session.messages.length - 1];
-    const pendingSteeringId = last?._pendingSteeringId;
-    if (!pendingSteeringId || !queuedSteeringIds.has(pendingSteeringId)) break;
-    const removed = session.messages.pop();
-    if (removed) trailingSteeringMessages.unshift(removed);
-  }
-  session.messages.push(assistantMessage, ...trailingSteeringMessages);
-  const lastMessage = session.messages[session.messages.length - 1] || assistantMessage;
-  session.updatedAt =
-    lastMessage.timestamp || assistantMessage.timestamp || new Date().toISOString();
-}
-
 async function drainPendingChatQueue(sessionId: string): Promise<void> {
   const runStatusSnapshot = getSessionRunStatusSnapshot(sessionId);
   const isSteeringHandoff =
@@ -644,7 +623,7 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
       timestamp: Date.now(),
       detail: "Starting queued follow-up",
       sessionId,
-      agentId: next.request.agentId,
+      agentId: session.agentId,
       pendingChatId: next.id,
       clientPendingId: next.clientPendingId,
     });
@@ -652,6 +631,7 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
     const response = await runChatTurnWithQueueDrain(
       {
         ...next.request,
+        ...resolveQueuedTurnRouting(session),
         message: next.content,
         sessionId,
         queueMode: "queue",
@@ -1035,7 +1015,7 @@ export async function steerPendingChatMessage(
     timestamp: Date.now(),
     detail: interrupted ? "Steering to follow-up..." : "Follow-up added",
     sessionId: key,
-    agentId: item.request.agentId,
+    agentId: session.agentId,
   });
   return {
     success: true,
@@ -1775,7 +1755,7 @@ async function handleChatTurn(
 
   const { content: extractedContent, thinking: extractedThinking } =
     stripThinkingTags(responseContent);
-  const cleanContent = sanitizeAssistantContent(extractedContent);
+  const cleanContent = stripAgentAttributionTag(sanitizeAssistantContent(extractedContent));
   const finalThinking = sanitizeProcessThoughtText(thinkingContent || extractedThinking);
 
   await maybeSaveAutomaticMemory({

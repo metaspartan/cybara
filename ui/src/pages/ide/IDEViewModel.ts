@@ -39,7 +39,7 @@ export interface IDEViewModel {
     }: import("./ideTypes").IDEChatPanelProps) => import("react").JSX.Element
   >;
   formatIdeScannedFiles: (value?: number) => string | null;
-  navigate: import("react-router-dom").NavigateFunction;
+  navigate: import("react-router").NavigateFunction;
   currentPath: string;
   selectedFile: FileEntry;
   setSelectedFile: import("react").Dispatch<import("react").SetStateAction<FileEntry>>;

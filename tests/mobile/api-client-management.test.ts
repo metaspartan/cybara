@@ -927,7 +927,7 @@ describe("mobile API client", () => {
       });
       expect(calls.map((call) => `${call.method} ${call.path}${call.search}`)).toEqual([
         "GET /api/sessions?limit=100&includeTotal=1",
-        "GET /api/sessions/s1?includeFullToolCalls=1",
+        "GET /api/sessions/s1",
         "POST /api/chat",
         "PUT /api/sessions/s1/agent",
       ]);

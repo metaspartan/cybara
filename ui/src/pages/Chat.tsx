@@ -31,7 +31,7 @@ import { openExternal } from "@/utils/openExternal";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, Loader2, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import {
   resolveSessionEventOrder,
   type SessionEventCursor,
@@ -73,6 +73,7 @@ import { buildMultiChatPath } from "./chat/multiChatLayout";
 import { parseInitialChatRoute } from "./chat/chatRoute";
 import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
+import { hasMixedAssistantAuthors } from "./chat/assistantAuthors";
 import { clearCachedLiveSessionState, isLiveSessionRunning } from "./chat/liveSessionState";
 import { NearbyShareModal } from "./chat/NearbyShareModal";
 import { PendingApprovalsBanner } from "./chat/PendingApprovalsBanner";
@@ -837,6 +838,7 @@ export function Chat() {
   useEffect(() => {
     const pending = pendingProcessCaptureRef.current;
     if (!pending) return;
+    if (currentSessionIsWorking && !isLoading) return;
 
     if (!isLoading && Date.now() - pending.createdAt > PENDING_CAPTURE_TIMEOUT_MS) {
       pendingProcessCaptureRef.current = null;
@@ -913,7 +915,14 @@ export function Chat() {
     runActivityBufferRef.current = [];
     setLiveActivities([]);
     setLiveCurrentStep(null);
-  }, [isLoading, liveActivities, sessionId, typedMessages, turnStartedAtMsByIndex]);
+  }, [
+    currentSessionIsWorking,
+    isLoading,
+    liveActivities,
+    sessionId,
+    typedMessages,
+    turnStartedAtMsByIndex,
+  ]);
 
   const { hydrateSessionStatus } = useChatLiveSessionRuntime({
     sessionId,
@@ -1416,6 +1425,7 @@ export function Chat() {
       ? !pendingCapture.sessionId || pendingCapture.sessionId === sessionId
       : !pendingCapture.sessionId);
   const showWorkingTimeline = currentSessionIsWorking;
+  const transcriptHasMixedAgents = hasMixedAssistantAuthors(typedMessages);
   const composerHasDraft =
     input.trim().length > 0 || pendingImages.length > 0 || pendingFiles.length > 0;
   const sendQueuesFollowUp =
@@ -1662,6 +1672,7 @@ export function Chat() {
                     messageProcessMap={messageProcessMap}
                     savingGoldenMessageIndex={savingGoldenMessageIndex}
                     sessionId={sessionId}
+                    showAuthorAttribution={transcriptHasMixedAgents}
                     showWorkingTimeline={showWorkingTimeline}
                     speakingMessageIndex={speakingMessageIndex}
                     workspaceDir={effectiveWorkspaceDir}

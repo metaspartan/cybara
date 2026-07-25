@@ -349,6 +349,16 @@ export function createDashboardChatStyles() {
       opacity: 0.75,
       width: 6,
     },
+    messageAuthorRow: {
+      alignItems: "flex-start",
+      flexDirection: "row",
+      marginBottom: 4,
+    },
+    messageAuthorText: {
+      color: colors.textMuted,
+      fontSize: typography.label,
+      lineHeight: 14,
+    },
     messageActivityText: {
       color: colors.textMuted,
       flex: 1,

@@ -22,6 +22,7 @@ import {
   projectMultiChatStatusEvent,
   projectMultiChatToken,
 } from "./multiChatLiveStatus";
+import { isRunEndingStatus } from "./sessionRunStatus";
 
 interface UseMultiChatLiveStatusesOptions {
   sessionIds: string[];
@@ -222,11 +223,7 @@ export function useMultiChatLiveStatuses({
         });
         return { ...current, [sessionId]: next };
       });
-      const terminal =
-        event.status === "error" ||
-        (event.status === "idle" &&
-          event.detail?.trim().toLowerCase() !== "steering to follow-up...");
-      onRefresh(sessionId, terminal);
+      onRefresh(sessionId, isRunEndingStatus(event));
     };
 
     return connectStatusStream({

@@ -86,3 +86,14 @@ reason = "Upstream Tauri urlpattern warning via unic 0.9; no patched Tauri relea
 id = "RUSTSEC-2025-0100"
 ignoreUntil = 2026-12-31
 reason = "Upstream Tauri urlpattern warning via unic 0.9; no patched Tauri release is available."
+
+# Root bun.lock only. brace-expansion is patched solely in 5.0.8, whose named
+# export breaks minimatch 5.1.8 (`expand is not a function`). Unpinning
+# minimatch lets @eslint/config-array take minimatch 10, which changes ESLint
+# config matching and surfaces 642 pre-existing lint problems. ui/ and
+# apps/mobile/ are already on 5.0.8. Remove this once the ESLint/minimatch pin
+# is untangled and the root can take brace-expansion 5.
+[[IgnoredVulns]]
+id = "GHSA-mh99-v99m-4gvg"
+ignoreUntil = 2026-10-31
+reason = "brace-expansion 5.0.8 is the only patched release and it breaks the pinned minimatch 5.1.8 that ESLint config matching depends on; transitive build-tooling glob input only."

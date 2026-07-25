@@ -121,6 +121,21 @@ extension ChatScreen {
         .cybaraGlass(cornerRadius: 14)
     }
 
+    @ViewBuilder
+    func messageAuthorLabel(_ message: GatewaySessionMessage) -> some View {
+        if transcriptHasMixedAgents, let label = nativeMessageAuthorLabel(message) {
+            Text(label)
+                .font(.system(size: 10, design: .rounded))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(0.05))
+                )
+        }
+    }
+
     func messageBubble(_ message: GatewaySessionMessage) -> some View {
         let isUser = message.role == "user"
         let visibleContent = NativeMarkdown.preprocess(message.content, stripAssistantMarkup: !isUser)
@@ -129,6 +144,7 @@ extension ChatScreen {
             VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
                 VStack(alignment: .leading, spacing: 7) {
                     if !isUser {
+                        messageAuthorLabel(message)
                         NativeToolTimelineView(
                             message: message,
                             mediaBaseURL: client.baseURL,

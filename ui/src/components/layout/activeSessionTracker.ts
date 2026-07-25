@@ -8,6 +8,7 @@ export const SIDEBAR_ACTIVE_STATUSES = new Set<StreamAgentStatus>([
   "tool_executing",
   "tool_completed",
   "compacting",
+  "error",
 ]);
 
 export function reconcileActiveSessionSnapshot(

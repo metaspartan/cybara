@@ -548,6 +548,9 @@ export function normalizeSessionDetail(value: unknown, fallbackId: string): Sess
       timestamp: readString(messageRecord, ["timestamp", "created_at", "createdAt"]),
       workedDurationMs: readNumber(messageRecord, ["worked_duration_ms", "workedDurationMs"]),
       thinking: readString(messageRecord, ["thinking"]),
+      agentId: readString(messageRecord, ["agent_id", "agentId"]),
+      agentName: readString(messageRecord, ["agent_name", "agentName"]),
+      model: readString(messageRecord, ["model"]),
       toolCalls: normalizeMessageToolCalls(messageRecord?.tool_calls ?? messageRecord?.toolCalls),
       processActivities: normalizeProcessActivities(
         messageRecord?.process_activities ?? messageRecord?.processActivities

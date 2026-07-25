@@ -11,6 +11,10 @@ extension ChatScreen {
         messages.filter { $0.role == "user" || $0.role == "assistant" }
     }
 
+    var transcriptHasMixedAgents: Bool {
+        nativeTranscriptHasMixedAgents(messages)
+    }
+
     var activeWorkspaceDir: String? {
         if let activeSession {
             return firstNonEmptyGatewayString(activeSession.workspace_dir)

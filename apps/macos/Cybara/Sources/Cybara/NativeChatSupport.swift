@@ -800,3 +800,21 @@ extension View {
         self.refreshable { await action() }
     }
 }
+
+func nativeTranscriptHasMixedAgents(_ messages: [GatewaySessionMessage]) -> Bool {
+    var authors = Set<String>()
+    for message in messages where message.role == "assistant" {
+        guard let agentID = firstNonEmptyGatewayString(message.agent_id) else { continue }
+        authors.insert(agentID)
+        if authors.count > 1 { return true }
+    }
+    return false
+}
+
+func nativeMessageAuthorLabel(_ message: GatewaySessionMessage) -> String? {
+    guard message.role == "assistant" else { return nil }
+    let model = firstNonEmptyGatewayString(message.model)
+    guard let agentName = firstNonEmptyGatewayString(message.agent_name) else { return model }
+    guard let model else { return agentName }
+    return "\(agentName) · \(model)"
+}

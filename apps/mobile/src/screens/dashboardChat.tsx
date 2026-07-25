@@ -31,6 +31,7 @@ import {
 import { colors } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
 import { relativeTimestamp } from "./dashboardHelpers";
+import { mobileMessageAuthorLabel } from "./dashboardMessageAuthors";
 import {
   buildMobileWorkTimeline,
   extractMobileMarkdownImages,
@@ -578,11 +579,13 @@ export function ChatMessageRow({
   onAddToChat,
   onRevert,
   mediaUrl,
+  showAuthor = false,
 }: {
   accentColor: string;
   appearance: ChatAppearanceSettings;
   message: SessionDetailSummary["messages"][number];
   nowMs?: number;
+  showAuthor?: boolean;
   onAddToChat?: (content: string) => void;
   onRevert?: (message: SessionDetailSummary["messages"][number]) => void;
   mediaUrl?: (filePath: string) => string;
@@ -626,6 +629,7 @@ export function ChatMessageRow({
     const hasContent = content.trim().length > 0;
     return (
       <View style={styles.agentMessageRow}>
+        {showAuthor ? <MessageAuthorLabel message={message} /> : null}
         {hasWorkTimeline ? (
           <WorkTimeline appearance={appearance} message={message} nowMs={nowMs} />
         ) : null}
@@ -670,6 +674,16 @@ export function ChatMessageRow({
           onRevert={onRevert ? () => onRevert(message) : undefined}
         />
       </View>
+    </View>
+  );
+}
+
+function MessageAuthorLabel({ message }: { message: SessionMessageSummary }) {
+  const label = mobileMessageAuthorLabel(message);
+  if (!label) return null;
+  return (
+    <View style={styles.messageAuthorRow}>
+      <Text style={styles.messageAuthorText}>{label}</Text>
     </View>
   );
 }
