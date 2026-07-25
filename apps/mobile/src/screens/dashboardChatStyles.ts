@@ -350,9 +350,8 @@ export function createDashboardChatStyles() {
       width: 6,
     },
     messageAuthorRow: {
-      alignItems: "center",
+      alignItems: "flex-start",
       flexDirection: "row",
-      gap: 4,
       marginBottom: 4,
     },
     messageAuthorText: {

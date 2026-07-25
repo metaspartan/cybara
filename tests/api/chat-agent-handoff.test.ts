@@ -55,6 +55,28 @@ describe("mid-conversation agent handoff", () => {
     expect(instruction).toContain("Mini (MiniMax-M3)");
     expect(instruction).toContain("You are the active agent now");
     expect(instruction).toContain("Do not claim you personally produced it");
+    expect(instruction).toContain(
+      "The most recent assistant turn was written by Mini (MiniMax-M3)"
+    );
+  });
+
+  test("omits the latest-turn line when the active agent wrote it", () => {
+    const mixed: ChatMessage[] = [
+      { role: "user", content: "Design it." },
+      miniTurn,
+      { role: "user", content: "Continue." },
+      {
+        role: "assistant",
+        content: "Continued.",
+        agent_id: "agent-zai",
+        agent_name: "Zai",
+        model: "glm-5.2",
+      },
+      { role: "user", content: "More." },
+    ];
+    const instruction = buildAgentHandoffInstruction(mixed, "agent-zai") || "";
+    expect(instruction).toContain("written by other agents: Mini (MiniMax-M3)");
+    expect(instruction).not.toContain("The most recent assistant turn was written by");
   });
 
   test("injects the handoff note into execution messages after the system prompt", () => {

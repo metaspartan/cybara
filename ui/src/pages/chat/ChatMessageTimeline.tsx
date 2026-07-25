@@ -1,5 +1,4 @@
 import {
-  Bot,
   Check,
   Copy,
   CornerUpRight,
@@ -332,8 +331,7 @@ function AssistantAuthorLabel({ message }: { message: ChatMessage }): ReactEleme
   const label = assistantAuthorLabel(message);
   if (!label) return null;
   return (
-    <div className="chat-meta-text mb-1.5 inline-flex items-center gap-1 rounded border border-white/10 bg-white/[0.03] px-1.5 py-0.5 leading-none text-gray-400">
-      <Bot className="h-2.5 w-2.5 opacity-70" />
+    <div className="chat-meta-text mb-1.5 inline-flex items-center rounded border border-white/10 bg-white/[0.03] px-1.5 py-0.5 leading-none text-gray-400">
       {label}
     </div>
   );

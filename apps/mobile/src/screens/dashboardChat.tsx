@@ -11,7 +11,6 @@ import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   ArrowRightLeft,
-  Bot,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -684,7 +683,6 @@ function MessageAuthorLabel({ message }: { message: SessionMessageSummary }) {
   if (!label) return null;
   return (
     <View style={styles.messageAuthorRow}>
-      <Bot color={colors.textMuted} size={11} strokeWidth={2.2} />
       <Text style={styles.messageAuthorText}>{label}</Text>
     </View>
   );

@@ -1013,7 +1013,7 @@ export function sanitizeSessionMessages(
   const MAX_RESULT_SIZE = truncateLargeFields ? 500 : 0;
   const MAX_ERROR_SIZE = truncateLargeFields ? 200 : 0;
   const PROCESS_OPTIONS = truncateLargeFields ? { maxTextLength: 500 } : undefined;
-  const DEFAULT_MAX_TOOL_CALLS = 200;
+  const DEFAULT_MAX_TOOL_CALLS = 50;
   const maxToolCallsRaw = options?.maxToolCalls;
   const MAX_TOOL_CALLS =
     typeof maxToolCallsRaw === "number" && Number.isFinite(maxToolCallsRaw)

@@ -124,19 +124,15 @@ extension ChatScreen {
     @ViewBuilder
     func messageAuthorLabel(_ message: GatewaySessionMessage) -> some View {
         if transcriptHasMixedAgents, let label = nativeMessageAuthorLabel(message) {
-            HStack(spacing: 3) {
-                Image(systemName: "cpu")
-                    .font(.system(size: 8.5))
-                Text(label)
-                    .font(.system(size: 10, design: .rounded))
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(Color.white.opacity(0.05))
-            )
+            Text(label)
+                .font(.system(size: 10, design: .rounded))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(0.05))
+                )
         }
     }
 

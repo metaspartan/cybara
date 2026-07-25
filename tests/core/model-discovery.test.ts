@@ -12,6 +12,37 @@ afterEach(() => {
 });
 
 describe("provider model discovery", () => {
+  test("reads the context window a vLLM endpoint reports as max_model_len", async () => {
+    const provider = providerManager.create({
+      provider: "custom",
+      name: "vLLM Discovery Test",
+      api_key: "vllm-key",
+      base_url: "http://192.0.2.10:8000/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const result = await discoverProviderModels(provider.id, {
+      request: async () =>
+        Response.json({
+          data: [
+            {
+              id: "unsloth/Qwen3.6-35B-A3B-NVFP4-Fast",
+              object: "model",
+              owned_by: "vllm",
+              max_model_len: 262144,
+            },
+          ],
+        }),
+      discoverCatalog: async () => [],
+    });
+
+    expect(result.source).toBe("endpoint");
+    const discovered = providerManager
+      .getModels(provider.id)
+      .find((model) => model.model_id === "unsloth/Qwen3.6-35B-A3B-NVFP4-Fast");
+    expect(discovered?.context_window).toBe(262144);
+  });
+
   test("resolves models.dev by provider type while persisting under the provider id", async () => {
     const provider = providerManager.create({
       provider: "opencode-go",

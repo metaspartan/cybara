@@ -45,8 +45,12 @@ function endpointModel(value: unknown): ModelsDevModel | undefined {
     typeof model.display_name === "string" && model.display_name.trim()
       ? model.display_name.trim()
       : undefined;
-  const contextWindow = positiveInteger(model.context_length);
-  const maxTokens = positiveInteger(model.max_output_tokens);
+  const contextWindow =
+    positiveInteger(model.context_length) ??
+    positiveInteger(model.max_model_len) ??
+    positiveInteger(model.context_window) ??
+    positiveInteger(model.max_context_length);
+  const maxTokens = positiveInteger(model.max_output_tokens) ?? positiveInteger(model.max_tokens);
   const hasInputCapabilities =
     Object.hasOwn(model, "supports_image_in") || Object.hasOwn(model, "supports_video_in");
   const input = hasInputCapabilities
