@@ -76,6 +76,7 @@ import {
   applyActiveAgentToSession,
   refreshSessionAgentSystemPromptIfNeeded,
 } from "./chat-agent-prompt";
+import { stripAgentAttributionTag } from "./chat-agent-handoff";
 import { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 import { executionMetadataFromResult } from "./chat-execution-metadata";
 import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
@@ -1754,7 +1755,7 @@ async function handleChatTurn(
 
   const { content: extractedContent, thinking: extractedThinking } =
     stripThinkingTags(responseContent);
-  const cleanContent = sanitizeAssistantContent(extractedContent);
+  const cleanContent = stripAgentAttributionTag(sanitizeAssistantContent(extractedContent));
   const finalThinking = sanitizeProcessThoughtText(thinkingContent || extractedThinking);
 
   await maybeSaveAutomaticMemory({

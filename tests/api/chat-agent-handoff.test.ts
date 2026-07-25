@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import {
+  attributeInheritedAssistantContent,
   buildAgentHandoffInstruction,
   resolveInheritedAgentAuthors,
+  stripAgentAttributionTag,
 } from "../../src/api/chat-agent-handoff";
 import { buildChatExecutionMessagesForAgent } from "../../src/api/chat-execution-messages";
 import { promptMatchesActiveAgent } from "../../src/api/chat-agent-prompt";
@@ -77,6 +79,104 @@ describe("mid-conversation agent handoff", () => {
     const instruction = buildAgentHandoffInstruction(mixed, "agent-zai") || "";
     expect(instruction).toContain("written by other agents: Mini (MiniMax-M3)");
     expect(instruction).not.toContain("The most recent assistant turn was written by");
+  });
+
+  test("tags inherited turns so the active agent can attribute them without searching", () => {
+    const messages = buildChatExecutionMessagesForAgent(transcript(), {
+      activeAgentId: "agent-zai",
+    });
+    const inherited = messages.find((message) => message.content.includes("module layout"));
+
+    expect(inherited?.content.startsWith("[written by Mini (MiniMax-M3)]\n")).toBe(true);
+    expect(messages[1]?.content).toContain("Never write that tag yourself");
+  });
+
+  test("leaves the active agent's own turns untagged", () => {
+    expect(
+      attributeInheritedAssistantContent(
+        { role: "assistant", content: "mine", agent_id: "agent-zai", agent_name: "Zai" },
+        "agent-zai"
+      )
+    ).toBe("mine");
+    expect(
+      attributeInheritedAssistantContent(
+        { role: "user", content: "hello", agent_id: "agent-mini", agent_name: "Mini" },
+        "agent-zai"
+      )
+    ).toBe("hello");
+  });
+
+  test("does not tag turns on the tool-transfer path, which has its own note", () => {
+    const transferred = transcript({
+      role: "assistant",
+      content: "Transferring.",
+      agent_id: "agent-mini",
+      agent_name: "Mini",
+      model: "MiniMax-M3",
+      agent_transfers: [
+        {
+          protocol: "cybara-agent-transfer-v1",
+          status: "accepted",
+          sessionId: "session-1",
+          fromAgentId: "agent-mini",
+          fromAgentName: "Mini",
+          toAgentId: "agent-zai",
+          toAgentName: "Zai",
+          reason: "Needs a coding model",
+          contextMode: "full",
+          requestedAt: new Date().toISOString(),
+        },
+      ],
+    });
+    const messages = buildChatExecutionMessagesForAgent(transferred, {
+      activeAgentId: "agent-zai",
+    });
+
+    expect(messages.some((message) => message.content.includes("[written by"))).toBe(false);
+  });
+
+  test("never stacks tags on a transcript stored before tags were sanitized", () => {
+    const polluted = attributeInheritedAssistantContent(
+      {
+        role: "assistant",
+        content: "[written by Qwen (q3)]\nEarlier answer",
+        agent_id: "agent-mini",
+        agent_name: "Mini",
+        model: "MiniMax-M3",
+      },
+      "agent-zai"
+    );
+    expect(polluted).toBe("[written by Mini (MiniMax-M3)]\nEarlier answer");
+
+    expect(
+      attributeInheritedAssistantContent(
+        {
+          role: "assistant",
+          content: "[written by Qwen (q3)]\nMy own answer",
+          agent_id: "agent-zai",
+          agent_name: "Zai",
+        },
+        "agent-zai"
+      )
+    ).toBe("My own answer");
+  });
+
+  test("strips an author tag a model copied into its own reply", () => {
+    expect(stripAgentAttributionTag("[written by Mini (MiniMax-M3)]\nHello")).toBe("Hello");
+    expect(stripAgentAttributionTag("[written by Qwen (q)]\n[written by Mini (m)]\nDone")).toBe(
+      "Done"
+    );
+    expect(stripAgentAttributionTag("No tag here")).toBe("No tag here");
+    expect(stripAgentAttributionTag("Body mentions [written by X] mid-sentence")).toBe(
+      "Body mentions [written by X] mid-sentence"
+    );
+  });
+
+  test("the chat runtime strips leaked tags before persisting a turn", () => {
+    const runtime = readFileSync(join(ROOT_DIR, "src", "api", "chat-runtime.ts"), "utf8");
+    expect(runtime).toContain(
+      "stripAgentAttributionTag(sanitizeAssistantContent(extractedContent))"
+    );
   });
 
   test("injects the handoff note into execution messages after the system prompt", () => {

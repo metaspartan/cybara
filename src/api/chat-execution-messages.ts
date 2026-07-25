@@ -1,5 +1,8 @@
 import { type AgentMessage } from "../core/agent";
-import { buildAgentHandoffInstruction } from "./chat-agent-handoff";
+import {
+  attributeInheritedAssistantContent,
+  buildAgentHandoffInstruction,
+} from "./chat-agent-handoff";
 import { compactChatContentForPrompt } from "../core/chat-token-optimization";
 import { hydrateImageDataFromPath } from "../core/chat/attachments";
 import { getActiveGoalContextLine } from "../core/session-goals";
@@ -30,8 +33,22 @@ export function buildChatExecutionMessagesForAgent(
     latestUserIndex > previousUserIndex
       ? [...sessionMessages.slice(0, previousUserIndex), ...sessionMessages.slice(latestUserIndex)]
       : sessionMessages;
+  const latestTransfer = sessionMessages
+    .flatMap((sessionMessage) => sessionMessage.agent_transfers || [])
+    .findLast((transfer) => transfer.toAgentId === options?.activeAgentId);
+  // Author tags are only meaningful alongside the handoff note that explains
+  // them, so the tool-transfer path (which has its own note) stays untagged.
+  const handoffInstruction = latestTransfer
+    ? undefined
+    : buildAgentHandoffInstruction(sessionMessages, options?.activeAgentId);
   const executionMessages: AgentMessage[] = executionSource.map((sessionMessage) => {
-    const content = compactChatContentForPrompt(sessionMessage);
+    const compacted = compactChatContentForPrompt(sessionMessage);
+    const content = handoffInstruction
+      ? attributeInheritedAssistantContent(
+          { ...sessionMessage, content: compacted },
+          options?.activeAgentId
+        )
+      : compacted;
     const imageContext = sessionMessage.image_context?.trim();
     return {
       role: sessionMessage.role,
@@ -49,9 +66,6 @@ export function buildChatExecutionMessagesForAgent(
     };
   });
 
-  const latestTransfer = sessionMessages
-    .flatMap((sessionMessage) => sessionMessage.agent_transfers || [])
-    .findLast((transfer) => transfer.toAgentId === options?.activeAgentId);
   if (latestTransfer) {
     const transferInstruction: AgentMessage = {
       role: "system",
@@ -63,10 +77,6 @@ export function buildChatExecutionMessagesForAgent(
       executionMessages.unshift(transferInstruction);
     }
   } else {
-    const handoffInstruction = buildAgentHandoffInstruction(
-      sessionMessages,
-      options?.activeAgentId
-    );
     if (handoffInstruction) {
       const handoffMessage: AgentMessage = { role: "system", content: handoffInstruction };
       if (executionMessages[0]?.role === "system") {

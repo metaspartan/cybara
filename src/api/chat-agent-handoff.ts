@@ -86,6 +86,21 @@ export function buildAgentHandoffInstruction(
 
 export const AGENT_ATTRIBUTION_PREFIX_EXAMPLE = "[written by Mini (MiniMax-M3)]";
 
+const ATTRIBUTION_TAG_PATTERN = /^\s*\[written by [^\]\n]{1,120}\]\s*\n?/;
+
+/**
+ * Models occasionally copy the inherited-turn author tag into their own reply.
+ * Strip it before the turn is persisted so the tag never enters the transcript
+ * and never compounds on later turns.
+ */
+export function stripAgentAttributionTag(content: string): string {
+  let stripped = content;
+  while (ATTRIBUTION_TAG_PATTERN.test(stripped)) {
+    stripped = stripped.replace(ATTRIBUTION_TAG_PATTERN, "");
+  }
+  return stripped;
+}
+
 export function agentAttributionPrefix(message: AgentHandoffMessage): string | undefined {
   const agentName = normalized(message.agent_name);
   if (!agentName) return undefined;
@@ -101,11 +116,13 @@ export function attributeInheritedAssistantContent(
   message: AgentHandoffMessage & { content: string },
   activeAgentId?: string
 ): string {
+  if (message.role !== "assistant") return message.content;
+  // Strip first: a transcript stored before tags were sanitized can already
+  // carry one, and re-prefixing it would stack tags on every later turn.
+  const content = stripAgentAttributionTag(message.content);
   const activeId = normalized(activeAgentId);
   const agentId = normalized(message.agent_id);
-  if (message.role !== "assistant" || !activeId || !agentId || agentId === activeId) {
-    return message.content;
-  }
+  if (!activeId || !agentId || agentId === activeId) return content;
   const prefix = agentAttributionPrefix(message);
-  return prefix ? `${prefix}\n${message.content}` : message.content;
+  return prefix ? `${prefix}\n${content}` : content;
 }
