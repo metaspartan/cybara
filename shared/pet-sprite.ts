@@ -39,7 +39,7 @@ export const PET_SPRITE_EGG_CRACK = [
   "....occcccco....",
   "...occcccccco...",
   "...occoccocco...",
-  "..occcoccocccо..".replace("о", "o"),
+  "..occcoccoccco..",
   "..orrccccccrro..",
   "..occoccccocco..",
   "..orrccccccrro..",

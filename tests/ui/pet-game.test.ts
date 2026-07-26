@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   PET_EASTER_EGG_TAPS,
   applyPetCareAction,
@@ -43,6 +45,14 @@ describe("pet sprites", () => {
           expect(`${name}:${char}:${char in PET_SPRITE_PALETTE}`).toBe(`${name}:${char}:true`);
         }
       }
+    }
+  });
+
+  test("sprite sources hold no lookalike unicode that would punch holes in a frame", () => {
+    for (const file of ["shared/pet-sprite.ts", "apps/macos/Cybara/Sources/Cybara/PetGame.swift"]) {
+      const source = readFileSync(join(process.cwd(), file), "utf8");
+      const offenders = [...source].filter((char) => char.charCodeAt(0) > 127);
+      expect(`${file}:${offenders.join("")}`).toBe(`${file}:`);
     }
   });
 

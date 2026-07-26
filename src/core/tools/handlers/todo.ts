@@ -60,21 +60,25 @@ export async function handleTodo(
 
   const state = getState(context);
   const incomingContents = new Set(items.map((item) => item.content));
-  const introducesNewWork = items.some(
-    (item) => !state.items.some((previous) => previous.content === item.content)
-  );
   const droppedIncomplete =
-    introducesNewWork || items.length === 0
+    items.length === 0
       ? []
       : state.items.filter(
           (previous) => previous.status !== "completed" && !incomingContents.has(previous.content)
         );
   if (droppedIncomplete.length > 0) {
-    const restored = state.items.map(
-      (previous) => items.find((item) => item.content === previous.content) ?? previous
-    );
+    const previousContents = new Set(state.items.map((previous) => previous.content));
+    const merged: TodoItem[] = [];
+    for (const previous of state.items) {
+      const incoming = items.find((item) => item.content === previous.content);
+      if (incoming) merged.push(incoming);
+      else if (previous.status !== "completed") merged.push(previous);
+    }
+    for (const item of items) {
+      if (!previousContents.has(item.content)) merged.push(item);
+    }
     items.length = 0;
-    items.push(...restored);
+    items.push(...merged);
   }
 
   let inProgressSeen = false;
@@ -99,7 +103,7 @@ export async function handleTodo(
   };
 
   const restoredNote = droppedIncomplete.length
-    ? ` This update left out ${droppedIncomplete.length} unfinished item${droppedIncomplete.length === 1 ? "" : "s"} (${droppedIncomplete.map((item) => item.content).join("; ")}), which have been kept so the plan stays complete. Always send the full list; to drop work, mark it completed or resend the plan without it alongside your other changes.`
+    ? ` This update left out ${droppedIncomplete.length} unfinished item${droppedIncomplete.length === 1 ? "" : "s"} (${droppedIncomplete.map((item) => item.content).join("; ")}), which have been kept so the plan stays complete. Always send the full list; to drop work, mark it completed first.`
     : "";
 
   return {

@@ -51,49 +51,61 @@ describe("todo stale-plan reminder", () => {
 
 describe("todo tool", () => {
   test("dedupes multiple in_progress items down to one", async () => {
-    const result = await handleTodo({
-      items: [
-        { content: "a", status: "in_progress", priority: "high" },
-        { content: "b", status: "in_progress", priority: "medium" },
-        { content: "c", status: "in_progress", priority: "low" },
-      ],
-    });
+    const result = await handleTodo(
+      {
+        items: [
+          { content: "a", status: "in_progress", priority: "high" },
+          { content: "b", status: "in_progress", priority: "medium" },
+          { content: "c", status: "in_progress", priority: "low" },
+        ],
+      },
+      { sessionId: "todo-dedupe" }
+    );
     expect(result.summary.inProgress).toBe(1);
     expect(result.summary.total).toBe(3);
   });
 
   test("counts statuses correctly", async () => {
-    const result = await handleTodo({
-      items: [
-        { content: "done1", status: "completed", priority: "high" },
-        { content: "active", status: "in_progress", priority: "high" },
-        { content: "later", status: "pending", priority: "medium" },
-        { content: "later2", status: "pending", priority: "low" },
-      ],
-    });
+    const result = await handleTodo(
+      {
+        items: [
+          { content: "done1", status: "completed", priority: "high" },
+          { content: "active", status: "in_progress", priority: "high" },
+          { content: "later", status: "pending", priority: "medium" },
+          { content: "later2", status: "pending", priority: "low" },
+        ],
+      },
+      { sessionId: "todo-counts" }
+    );
     expect(result.summary).toEqual({ total: 4, pending: 2, inProgress: 1, completed: 1 });
   });
 
   test("defaults unknown status/priority to pending/medium", async () => {
-    const result = await handleTodo({
-      items: [{ content: "x", status: "bogus", priority: "nope" }],
-    });
+    const result = await handleTodo(
+      {
+        items: [{ content: "x", status: "bogus", priority: "nope" }],
+      },
+      { sessionId: "todo-defaults" }
+    );
     expect(result.items[0].status).toBe("pending");
     expect(result.items[0].priority).toBe("medium");
   });
 
   test("skips items with empty content", async () => {
-    const result = await handleTodo({
-      items: [
-        { content: "", status: "pending", priority: "medium" },
-        { content: "real", status: "pending", priority: "medium" },
-      ],
-    });
+    const result = await handleTodo(
+      {
+        items: [
+          { content: "", status: "pending", priority: "medium" },
+          { content: "real", status: "pending", priority: "medium" },
+        ],
+      },
+      { sessionId: "todo-empty-content" }
+    );
     expect(result.summary.total).toBe(1);
   });
 
   test("returns a guidance note", async () => {
-    const result = await handleTodo({ items: [] });
+    const result = await handleTodo({ items: [] }, { sessionId: "todo-guidance" });
     expect(typeof result.note).toBe("string");
     expect(result.summary.total).toBe(0);
   });

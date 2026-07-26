@@ -69,6 +69,34 @@ describe("mobile simulator discovery", () => {
     expect(encodeAndroidRawPreview(Buffer.alloc(8))).toBeNull();
   });
 
+  test("only omits bytes when the caller already holds the returned encoding", () => {
+    const frame = {
+      bytes: Buffer.from([1, 2, 3]),
+      contentType: "image/jpeg" as const,
+      device: {
+        id: "booted",
+        name: "iPhone Pro",
+        platform: "ios" as const,
+        state: "booted" as const,
+        interactive: true,
+      },
+      height: 1_600,
+      revision: "encoded-rev",
+      sourceHeight: 2_556,
+      sourceWidth: 1_179,
+      width: 736,
+    };
+
+    const respond = (requested?: string) => {
+      const unchanged = requested === frame.revision;
+      return { unchanged, hasBytes: !unchanged };
+    };
+
+    expect(respond("encoded-rev")).toEqual({ unchanged: true, hasBytes: false });
+    expect(respond("some-older-rev")).toEqual({ unchanged: false, hasBytes: true });
+    expect(respond(undefined)).toEqual({ unchanged: false, hasBytes: true });
+  });
+
   test("reads the device display scale, not an unrelated adapter listed first", () => {
     const enumerate = [
       "    Class: Display",
