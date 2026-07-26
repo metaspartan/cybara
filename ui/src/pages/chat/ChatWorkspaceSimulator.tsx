@@ -33,6 +33,7 @@ import {
   sourcePointToContainer,
   type PreviewSize,
 } from "./previewGeometry";
+import { SimulatorPreviewImage } from "./SimulatorPreviewImage";
 import { simulatorPreviewPollDelay } from "./simulatorPreviewTiming";
 
 type SimulatorPlatform = "ios" | "android";
@@ -216,6 +217,7 @@ export function ChatWorkspaceSimulator({
   const [notice, setNotice] = useState<string | null>(null);
   const [previewSurfaceSize, setPreviewSurfaceSize] = useState<PreviewSize | null>(null);
   const revisionRef = useRef("");
+  const lastFrameChangeAtRef = useRef(0);
   const frameRequestRef = useRef(false);
   const lastInteractionAtRef = useRef(0);
   const automationAttemptRef = useRef(false);
@@ -286,6 +288,7 @@ export function ChatWorkspaceSimulator({
             interaction: parseInteraction(payload.interaction),
           };
         });
+        if (revision && revision !== revisionRef.current) lastFrameChangeAtRef.current = Date.now();
         revisionRef.current = revision;
       }
       setError(null);
@@ -356,7 +359,11 @@ export function ChatWorkspaceSimulator({
       if (!cancelled) {
         timer = window.setTimeout(
           () => void poll(),
-          simulatorPreviewPollDelay(Date.now(), lastInteractionAtRef.current)
+          simulatorPreviewPollDelay(
+            Date.now(),
+            lastInteractionAtRef.current,
+            lastFrameChangeAtRef.current
+          )
         );
       }
     };
@@ -634,12 +641,10 @@ export function ChatWorkspaceSimulator({
             onWheel={handleWheel}
             tabIndex={selectedDevice?.interactive ? 0 : -1}
           >
-            <img
+            <SimulatorPreviewImage
               alt={`${selectedDevice?.name || label} screen`}
               className="max-h-full max-w-full select-none object-contain"
-              decoding="async"
-              draggable={false}
-              src={frame.screenshot}
+              source={frame.screenshot}
             />
             {interactionStyle ? (
               <div

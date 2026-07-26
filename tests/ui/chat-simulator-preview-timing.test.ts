@@ -11,6 +11,12 @@ describe("simulator preview polling", () => {
     expect(simulatorPreviewPollDelay(10_000, 0)).toBe(SIMULATOR_PREVIEW_IDLE_POLL_MS);
   });
 
+  test("keeps polling quickly while the screen keeps changing without the user touching it", () => {
+    expect(simulatorPreviewPollDelay(10_000, 0, 9_000)).toBe(SIMULATOR_PREVIEW_ACTIVE_POLL_MS);
+    expect(simulatorPreviewPollDelay(10_000, 0, 2_000)).toBe(SIMULATOR_PREVIEW_IDLE_POLL_MS);
+    expect(simulatorPreviewPollDelay(10_000, 0)).toBe(SIMULATOR_PREVIEW_IDLE_POLL_MS);
+  });
+
   test("limits idle simulator capture load", () => {
     expect(SIMULATOR_PREVIEW_ACTIVE_POLL_MS).toBe(250);
     expect(SIMULATOR_PREVIEW_IDLE_POLL_MS).toBe(1_500);
