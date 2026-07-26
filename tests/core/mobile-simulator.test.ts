@@ -12,6 +12,7 @@ import {
   parseAdbDevices,
   parseSimctlDevices,
   recordMobileSimulatorInteraction,
+  parseIosPreferredUiScale,
   resolveAndroidSdkExecutable,
   reusableFrame,
   summarizeMobileSimulatorStatus,
@@ -66,6 +67,26 @@ describe("mobile simulator discovery", () => {
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
     );
     expect(encodeAndroidRawPreview(Buffer.alloc(8))).toBeNull();
+  });
+
+  test("reads the device display scale, not an unrelated adapter listed first", () => {
+    const enumerate = [
+      "    Class: Display",
+      "    Display class: 1",
+      "    Default width: 720",
+      "    Default height: 480",
+      "        Preferred UI Scale: 1",
+      "    Class: Display",
+      "    Display class: 0",
+      "        width              = 1206",
+      "        height             = 2622",
+      "        Preferred UI Scale: 3",
+      "        Preferred UI Scale: 1",
+    ].join("\n");
+
+    expect(parseIosPreferredUiScale(enumerate)).toBe(3);
+    expect(parseIosPreferredUiScale("Preferred UI Scale: 2")).toBe(2);
+    expect(parseIosPreferredUiScale("no scales here")).toBe(1);
   });
 
   test("reuses the encoded frame when the captured screen is byte-identical", () => {

@@ -850,15 +850,22 @@ export async function captureMobileSimulator(
   };
 }
 
+export function parseIosPreferredUiScale(enumerateOutput: string): number {
+  let best = 0;
+  for (const match of enumerateOutput.matchAll(/Preferred UI Scale:\s*([\d.]+)/g)) {
+    const scale = Number(match[1]);
+    if (Number.isFinite(scale) && scale > best) best = scale;
+  }
+  return best > 0 ? best : 1;
+}
+
 async function iosScale(deviceId: string): Promise<number> {
   const cached = iosScaleCache.get(deviceId);
   if (cached) return cached;
   const xcrun = resolveXcrun();
   if (!xcrun) return 1;
   const result = await runCommand(xcrun, ["simctl", "io", deviceId, "enumerate"]);
-  const match = result.stdout.toString("utf8").match(/Preferred UI Scale:\s*([\d.]+)/);
-  const scale = match ? Number(match[1]) : 1;
-  const normalized = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  const normalized = parseIosPreferredUiScale(result.stdout.toString("utf8"));
   iosScaleCache.set(deviceId, normalized);
   return normalized;
 }

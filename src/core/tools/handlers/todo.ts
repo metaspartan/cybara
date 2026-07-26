@@ -58,6 +58,25 @@ export async function handleTodo(
     items.push({ content, status, priority });
   }
 
+  const state = getState(context);
+  const incomingContents = new Set(items.map((item) => item.content));
+  const introducesNewWork = items.some(
+    (item) => !state.items.some((previous) => previous.content === item.content)
+  );
+  const droppedIncomplete =
+    introducesNewWork || items.length === 0
+      ? []
+      : state.items.filter(
+          (previous) => previous.status !== "completed" && !incomingContents.has(previous.content)
+        );
+  if (droppedIncomplete.length > 0) {
+    const restored = state.items.map(
+      (previous) => items.find((item) => item.content === previous.content) ?? previous
+    );
+    items.length = 0;
+    items.push(...restored);
+  }
+
   let inProgressSeen = false;
   for (const item of items) {
     if (item.status === "in_progress") {
@@ -69,7 +88,6 @@ export async function handleTodo(
     }
   }
 
-  const state = getState(context);
   state.items = items;
   state.updatedAt = Date.now();
 
@@ -80,10 +98,16 @@ export async function handleTodo(
     completed: items.filter((i) => i.status === "completed").length,
   };
 
+  const restoredNote = droppedIncomplete.length
+    ? ` This update left out ${droppedIncomplete.length} unfinished item${droppedIncomplete.length === 1 ? "" : "s"} (${droppedIncomplete.map((item) => item.content).join("; ")}), which have been kept so the plan stays complete. Always send the full list; to drop work, mark it completed or resend the plan without it alongside your other changes.`
+    : "";
+
   return {
     items,
     summary,
-    note: "Task list updated. Keep at most one item in_progress at a time. Use this list to track multi-step work and avoid drift. When all work is done, send a final update with every item marked completed before giving your answer.",
+    note:
+      "Task list updated. Keep at most one item in_progress at a time. Use this list to track multi-step work and avoid drift. When all work is done, send a final update with every item marked completed before giving your answer." +
+      restoredNote,
   };
 }
 
