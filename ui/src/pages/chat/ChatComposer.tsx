@@ -20,6 +20,7 @@ import {
   PendingChatQueue,
   type ToolApprovalMode,
 } from "./ChatFollowUpControls";
+import { ChatFastModeToggle } from "./ChatFastModeToggle";
 import { ChatReasoningControl } from "./ChatReasoningControl";
 import { chatHorizontalPaddingClassName } from "./chatAppearanceLayout";
 import type { SessionPlanView } from "./chatModel";
@@ -63,6 +64,8 @@ export interface ChatComposerProps {
   providerPlan: ProviderPlanSnapshot | null;
   queueing: boolean;
   reasoningUpdating: boolean;
+  codexFastMode: boolean;
+  codexFastModeUpdating: boolean;
   selectedAgentId?: string;
   showPlan: boolean;
   showStop: boolean;
@@ -77,6 +80,7 @@ export interface ChatComposerProps {
   onDrop: (event: DragEvent<HTMLDivElement>) => void;
   onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   onReasoningChange: (effort: AgentReasoningEffort | null) => void;
+  onCodexFastModeChange: (enabled: boolean) => void;
   onRemovePendingFile: (index: number) => void;
   onRemovePendingImage: (index: number) => void;
   onReorderPendingMessages: (orderedIds: string[]) => void;
@@ -125,6 +129,8 @@ export function ChatComposer({
   providerPlan,
   queueing,
   reasoningUpdating,
+  codexFastMode,
+  codexFastModeUpdating,
   selectedAgentId,
   showPlan,
   showStop,
@@ -139,6 +145,7 @@ export function ChatComposer({
   onDrop,
   onPaste,
   onReasoningChange,
+  onCodexFastModeChange,
   onRemovePendingFile,
   onRemovePendingImage,
   onReorderPendingMessages,
@@ -272,6 +279,16 @@ export function ChatComposer({
             disabled={useModelRouter || !activeAgent}
             updating={reasoningUpdating}
             onChange={onReasoningChange}
+          />
+          <ChatFastModeToggle
+            enabled={codexFastMode}
+            provider={
+              activeAgent?.provider_type ?? activeAgent?.provider ?? activeAgent?.provider_id
+            }
+            model={activeAgent?.model}
+            disabled={useModelRouter || !activeAgent}
+            updating={codexFastModeUpdating}
+            onChange={onCodexFastModeChange}
           />
           <button
             type="button"

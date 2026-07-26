@@ -336,6 +336,7 @@ const routes: Record<string, RouteHandler> = {
     default_workspace_dir: config.getDefaultWorkspaceDir(),
     ...getCybaraDataDirConfigInfo(),
     reasoning_effort: config.getDefaultReasoningEffort(),
+    codex_fast_mode: config.getCodexFastMode(),
     follow_up_behavior_enabled: config.getFollowUpBehaviorEnabled(),
     self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
   }),
@@ -484,6 +485,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "reasoning_effort") {
         config.setDefaultReasoningEffort(value);
+        continue;
+      }
+      if (key === "codex_fast_mode") {
+        config.setCodexFastMode(value);
         continue;
       }
       if (key === "follow_up_behavior_enabled") {

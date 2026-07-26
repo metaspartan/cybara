@@ -79,6 +79,8 @@ export function IDEChatComposer({
 }: IDEChatComposerProps) {
   const [approvalMode, setApprovalMode] = useState<ToolApprovalMode>("always_allow");
   const [approvalUpdating, setApprovalUpdating] = useState(false);
+  const [codexFastMode, setCodexFastMode] = useState(false);
+  const [codexFastModeUpdating, setCodexFastModeUpdating] = useState(false);
   const [followUpBehaviorEnabled, setFollowUpBehaviorEnabled] = useState(true);
   const [pendingMessages, setPendingMessages] = useState<PendingChatMessage[]>([]);
   const [steeringMessageId, setSteeringMessageId] = useState<string | null>(null);
@@ -116,6 +118,7 @@ export function IDEChatComposer({
       if (!mounted || !result.success) return;
       setApprovalMode(normalizeToolApprovalMode(result.data?.tool_approval_mode));
       setFollowUpBehaviorEnabled(result.data?.follow_up_behavior_enabled !== false);
+      setCodexFastMode(result.data?.codex_fast_mode === true);
     });
     return () => {
       mounted = false;
@@ -155,6 +158,27 @@ export function IDEChatComposer({
       }
     },
     [addToast, approvalMode, approvalUpdating]
+  );
+
+  const handleCodexFastModeChange = useCallback(
+    async (next: boolean): Promise<void> => {
+      if (codexFastModeUpdating) return;
+      const previous = codexFastMode;
+      setCodexFastMode(next);
+      setCodexFastModeUpdating(true);
+      try {
+        const result = await settingsApi.updateConfig({ codex_fast_mode: next });
+        if (!result.success || !result.data?.success)
+          throw new Error(result.error || "Update failed");
+        addToast("success", next ? "Fast mode on" : "Fast mode off");
+      } catch (error) {
+        setCodexFastMode(previous);
+        addToast("error", error instanceof Error ? error.message : "Failed to update fast mode");
+      } finally {
+        setCodexFastModeUpdating(false);
+      }
+    },
+    [addToast, codexFastMode, codexFastModeUpdating]
   );
 
   const handleSubmit = useCallback(async (): Promise<void> => {
@@ -295,6 +319,9 @@ export function IDEChatComposer({
       agentUpdating={false}
       approvalMode={approvalMode}
       approvalUpdating={approvalUpdating}
+      codexFastMode={codexFastMode}
+      codexFastModeUpdating={codexFastModeUpdating}
+      onCodexFastModeChange={(next) => void handleCodexFastModeChange(next)}
       capabilityPicker={capabilityPicker}
       composerHasDraft={composerHasDraft}
       composerRef={composerRef}
