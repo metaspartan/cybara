@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CHAT_FOLLOW_THRESHOLD_PX,
   chatBottomScrollTop,
   distanceFromChatBottom,
   isChatNearBottom,
@@ -27,6 +28,17 @@ describe("chat scroll position", () => {
 
     expect(isChatNearBottom(metrics)).toBe(false);
     expect(isChatNearBottom(metrics, 96)).toBe(true);
+  });
+
+  test("uses one follow threshold so a small deliberate scroll is not treated both ways", () => {
+    const nudgedUp = { scrollTop: 650, clientHeight: 300, scrollHeight: 1000 };
+
+    expect(distanceFromChatBottom(nudgedUp)).toBe(50);
+    expect(isChatNearBottom(nudgedUp, CHAT_FOLLOW_THRESHOLD_PX)).toBe(true);
+
+    const scrolledAway = { scrollTop: 500, clientHeight: 300, scrollHeight: 1000 };
+    expect(distanceFromChatBottom(scrolledAway)).toBe(200);
+    expect(isChatNearBottom(scrolledAway, CHAT_FOLLOW_THRESHOLD_PX)).toBe(false);
   });
 
   test("pins late image growth directly to the final scroll position", () => {

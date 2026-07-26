@@ -528,6 +528,7 @@ struct ChatScreen: View {
     @State var providers: [GatewayProvider] = []
     @State var providerPlanStatus: ProviderPlanStatusResponse?
     @State var messages: [GatewaySessionMessage] = []
+    @State var followsChatBottom = true
     @State var messagesBySessionID: [String: [GatewaySessionMessage]] = [:]
     @State var searchText = ""
     @State var draft = ""

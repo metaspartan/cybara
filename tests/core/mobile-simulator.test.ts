@@ -12,7 +12,9 @@ import {
   parseAdbDevices,
   parseSimctlDevices,
   recordMobileSimulatorInteraction,
+  parseIosPreferredUiScale,
   resolveAndroidSdkExecutable,
+  reusableFrame,
   summarizeMobileSimulatorStatus,
 } from "../../src/core/mobile-simulator";
 import { handleMobileSimulator } from "../../src/core/tools/handlers/mobile-simulator";
@@ -65,6 +67,82 @@ describe("mobile simulator discovery", () => {
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
     );
     expect(encodeAndroidRawPreview(Buffer.alloc(8))).toBeNull();
+  });
+
+  test("only omits bytes when the caller already holds the returned encoding", () => {
+    const frame = {
+      bytes: Buffer.from([1, 2, 3]),
+      contentType: "image/jpeg" as const,
+      device: {
+        id: "booted",
+        name: "iPhone Pro",
+        platform: "ios" as const,
+        state: "booted" as const,
+        interactive: true,
+      },
+      height: 1_600,
+      revision: "encoded-rev",
+      sourceHeight: 2_556,
+      sourceWidth: 1_179,
+      width: 736,
+    };
+
+    const respond = (requested?: string) => {
+      const unchanged = requested === frame.revision;
+      return { unchanged, hasBytes: !unchanged };
+    };
+
+    expect(respond("encoded-rev")).toEqual({ unchanged: true, hasBytes: false });
+    expect(respond("some-older-rev")).toEqual({ unchanged: false, hasBytes: true });
+    expect(respond(undefined)).toEqual({ unchanged: false, hasBytes: true });
+  });
+
+  test("reads the device display scale, not an unrelated adapter listed first", () => {
+    const enumerate = [
+      "    Class: Display",
+      "    Display class: 1",
+      "    Default width: 720",
+      "    Default height: 480",
+      "        Preferred UI Scale: 1",
+      "    Class: Display",
+      "    Display class: 0",
+      "        width              = 1206",
+      "        height             = 2622",
+      "        Preferred UI Scale: 3",
+      "        Preferred UI Scale: 1",
+    ].join("\n");
+
+    expect(parseIosPreferredUiScale(enumerate)).toBe(3);
+    expect(parseIosPreferredUiScale("Preferred UI Scale: 2")).toBe(2);
+    expect(parseIosPreferredUiScale("no scales here")).toBe(1);
+  });
+
+  test("reuses the encoded frame when the captured screen is byte-identical", () => {
+    const cached = {
+      bytes: Buffer.from([1, 2, 3]),
+      capturedAt: 1_000,
+      contentType: "image/jpeg" as const,
+      device: {
+        id: "booted",
+        name: "iPhone Pro",
+        platform: "ios" as const,
+        state: "booted" as const,
+      },
+      height: 1_600,
+      revision: "encoded-rev",
+      sourceHeight: 2_556,
+      sourceRevision: "source-rev",
+      sourceWidth: 1_179,
+      width: 736,
+    };
+
+    const reused = reusableFrame(cached, "source-rev");
+    expect(reused?.revision).toBe("encoded-rev");
+    expect(reused?.bytes).toEqual(cached.bytes);
+    expect(reused?.capturedAt).toBeGreaterThan(cached.capturedAt);
+
+    expect(reusableFrame(cached, "different-source")).toBeNull();
+    expect(reusableFrame(undefined, "source-rev")).toBeNull();
   });
 
   test("downsamples Android emulator PNG fallbacks with explicit native dimensions", () => {

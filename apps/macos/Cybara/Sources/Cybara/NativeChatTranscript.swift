@@ -2,6 +2,15 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+let chatFollowThresholdPoints: CGFloat = 96
+
+struct ChatBottomDistanceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 extension ChatScreen {
     var transcript: some View {
         VStack(spacing: 0) {
@@ -10,6 +19,7 @@ extension ChatScreen {
             approvalBanner
 
             ScrollViewReader { proxy in
+                GeometryReader { viewport in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         if messages.isEmpty {
@@ -35,8 +45,23 @@ extension ChatScreen {
                         }
                     }
                     .padding(20)
+                    .background(
+                        GeometryReader { content in
+                            Color.clear.preference(
+                                key: ChatBottomDistanceKey.self,
+                                value: content.size.height
+                                    - viewport.size.height
+                                    + content.frame(in: .named("chatTranscript")).minY
+                            )
+                        }
+                    )
+                }
+                .coordinateSpace(name: "chatTranscript")
+                .onPreferenceChange(ChatBottomDistanceKey.self) { distance in
+                    followsChatBottom = distance <= chatFollowThresholdPoints
                 }
                 .onChange(of: messages) { _, newValue in
+                    guard followsChatBottom else { return }
                     if let last = newValue.last {
                         if chatAppearance.reduceMotion || systemReduceMotion {
                             proxy.scrollTo(last.id, anchor: .bottom)
@@ -46,14 +71,13 @@ extension ChatScreen {
                     }
                 }
                 .onChange(of: liveActivities.count) { _, _ in
-                    if showWorkingTimeline {
-                        proxy.scrollTo("thinking", anchor: .bottom)
-                    }
+                    guard followsChatBottom, showWorkingTimeline else { return }
+                    proxy.scrollTo("thinking", anchor: .bottom)
                 }
                 .onChange(of: streamingContent) { _, _ in
-                    if showWorkingTimeline {
-                        proxy.scrollTo("thinking", anchor: .bottom)
-                    }
+                    guard followsChatBottom, showWorkingTimeline else { return }
+                    proxy.scrollTo("thinking", anchor: .bottom)
+                }
                 }
             }
 

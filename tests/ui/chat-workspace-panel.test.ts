@@ -116,7 +116,7 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("if (queuedFreshPageRef.current) return;");
     expect(browserSource).toContain("if (!target) return;");
     expect(browserSource).not.toContain("if (!target || loading) return;");
-    expect(browserSource).toContain("const BROWSER_PREVIEW_QUALITY = 58");
+    expect(browserSource).toContain("const BROWSER_PREVIEW_QUALITY = 78");
     expect(browserSource).not.toContain("BROWSER_STATE_POLL_MS");
     expect(browserSource).toContain('format: "jpeg"');
     expect(browserSource).toContain('document.visibilityState === "visible"');
