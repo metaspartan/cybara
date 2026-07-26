@@ -76,9 +76,7 @@ function toTransferableImage(image: {
   if (typeof image.url === "string") {
     try {
       if (new URL(image.url).protocol === "https:") return { url: image.url, mimeType };
-    } catch {
-      // Relative or non-absolute URLs (e.g. /api/media?path=…) cannot be resolved by the peer.
-    }
+    } catch {}
   }
   return null;
 }

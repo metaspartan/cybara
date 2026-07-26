@@ -365,7 +365,6 @@ describe("native macOS shell wiring", () => {
     for (const provider of ["supermemory", "mem0", "honcho", "openviking", "hindsight"]) {
       expect(settings).toContain(`"${provider}"`);
     }
-    // Memory, provider, and indexing write the same config keys as the web UI.
     expect(settings).toContain('saveConfigPatch(["memory": memory], key: "memory")');
     expect(settings).toContain(
       'saveConfigPatch(["memory_provider": payload], key: "memory_provider")'
@@ -373,7 +372,6 @@ describe("native macOS shell wiring", () => {
     expect(settings).toContain(
       'saveConfigPatch(["workspace_indexer": indexer], key: "workspace_indexer")'
     );
-    // Connection test goes through the gateway test route.
     expect(gatewayClient).toContain('request("api/memory/providers/test", method: "POST"');
     expect(settings).toContain("client.testMemoryProvider(body)");
   });
@@ -1024,10 +1022,6 @@ describe("native macOS shell wiring", () => {
     expect(markdownViews).toContain("NativeMarkdown.parse(content, stripAssistantMarkup: !isUser)");
     expect(gatewayModels).toContain("normalizedContentAndThinking(role:");
     expect(gatewayModels).toContain('guard role.lowercased() == "assistant"');
-    // The live streamed-answer body is no longer rendered during a run (only the
-    // timeline/status shows), so there is no streamingContent markdown view to
-    // strip; assistant reasoning markup is stripped on the persisted message
-    // via NativeMarkdown.parse(stripAssistantMarkup:) above.
     expect(nativeScreens).not.toContain("NativeMarkdownView(content: visibleStreamingContent");
   });
 

@@ -16,12 +16,6 @@ export interface RetryInstallOptions {
   warn?: (message: string) => void;
 }
 
-/**
- * Run an install step with retries, mirroring scripts/ci-install.sh: package
- * registries occasionally serve a corrupted tarball ("Fail extracting
- * tarball" / "IntegrityCheckFailed"), which a cache purge and retry rides
- * out. One flaky download must not fail a release job or a fresh clone.
- */
 export async function retryInstall(
   run: () => Promise<void>,
   options: RetryInstallOptions = {}
@@ -45,9 +39,7 @@ export async function retryInstall(
       );
       try {
         await options.cleanup?.(attempt);
-      } catch {
-        // Best-effort cleanup; the retry itself decides success.
-      }
+      } catch {}
       await sleep(attempt * 5000);
     }
   }
@@ -91,8 +83,6 @@ export async function runPostinstall(deps: Partial<PostinstallDeps> = {}): Promi
   await resolved.installUi();
   await resolved.installMobile();
 
-  // Skip Playwright browser download when PUPPETEER_SKIP_DOWNLOAD is set
-  // (CI builds don't need browser binaries for compiling server binaries).
   if (process.env.PUPPETEER_SKIP_DOWNLOAD === "true" || process.env.CI === "true") {
     resolved.warn("[postinstall] Skipping Playwright browser install (CI/build mode).");
     return;

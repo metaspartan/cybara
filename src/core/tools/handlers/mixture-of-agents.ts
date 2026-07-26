@@ -44,8 +44,6 @@ export function buildMoaSynthesisPrompt(userPrompt: string, proposals: MoaPropos
 
 let moaActive = false;
 
-/** True while a mixture-of-agents run is in flight, so proposer/aggregator */
-/* agent messages don't recursively re-enter MoA routing. */
 export function isMixtureOfAgentsActive(): boolean {
   return moaActive;
 }
@@ -59,11 +57,6 @@ export interface MoaRunResult {
   details?: unknown;
 }
 
-/**
- * Core mixture-of-agents orchestration: fan out the prompt to several proposer
- * agents, then synthesize their responses with an aggregator agent. Shared by
- * the `mixture_of_agents` tool and the router's mixture-of-agents strategy.
- */
 export async function runMixtureOfAgents(opts: {
   prompt: string;
   requestedIds?: string[];

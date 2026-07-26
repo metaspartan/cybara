@@ -174,8 +174,6 @@ extension GatewayClient {
         return try JSONDecoder().decode(GatewayOAuthPollResponse.self, from: data)
     }
 
-    // ─── Gateway auth ────────────────────────────────────────────────────────
-
     func authSettings() async throws -> [String: Any] {
         try await rawObject("api/auth/settings")
     }

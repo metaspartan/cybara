@@ -55,6 +55,7 @@ export default [
             "prefer-const": "error",
             "no-var": "error",
             "no-duplicate-imports": "error",
+            "no-empty": ["error", { allowEmptyCatch: true }],
         },
     },
 ];

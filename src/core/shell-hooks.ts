@@ -1,15 +1,3 @@
-/**
- * User-defined shell-script hooks.
- *
- * Extends cybara's in-process TS hook system (src/core/agent-hooks.ts) so users
- * can register shell scripts that run on lifecycle events (tool_before/after,
- * llm_request, message:sent). Configured via the cybara config file under
- * `hooks.shell`.
- *
- * Contract: the script receives a JSON event on stdin and may return a decision
- * object on stdout. For `tool_before`, returning {"block": true, "reason": "..."}
- * blocks the tool call. Events are only sent for allowlisted scripts.
- */
 import { spawn } from "child_process";
 import { existsSync, statSync } from "fs";
 import { registerAgentHook, type AgentHookEvent } from "./agent-hooks";
@@ -17,13 +5,9 @@ import { config } from "./config";
 import { buildSubprocessEnvironment } from "./subprocess-env";
 
 export interface ShellHookConfig {
-  /** Event types this hook fires on. "*" = all. */
   events: string[];
-  /** Absolute path (or $PATH-resolved) to the script. */
   command: string;
-  /** Extra args passed after the event JSON. */
   args?: string[];
-  /** Timeout in ms. Default 5000. */
   timeoutMs?: number;
 }
 
@@ -69,13 +53,11 @@ function wrapForWindowsBatch(cmd: string, args: string[]): { cmd: string; args: 
 }
 
 function resolveCommand(command: string): { cmd: string; args: string[] } | null {
-  // Support "cmd arg arg" strings as well as bare paths.
   const parts = command.split(/\s+/).filter(Boolean);
   if (parts.length === 0) return null;
   const [cmd, ...baseArgs] = parts;
   const looksLikePath = cmd.includes("/") || cmd.includes("\\") || /^[A-Za-z]:/.test(cmd);
   if (!existsSync(cmd) && !looksLikePath) {
-    // Bare command on PATH — allow (spawn will resolve). We can't pre-verify.
     return wrapForWindowsBatch(cmd, baseArgs);
   }
   if (existsSync(cmd) && !statSync(cmd).isDirectory()) {
@@ -84,12 +66,6 @@ function resolveCommand(command: string): { cmd: string; args: string[] } | null
   return null;
 }
 
-/**
- * Run a shell hook for an event. Returns the hook's parsed decision (if any).
- * The event is serialized to stdin as JSON; the script's stdout is parsed as a
- * decision object. Timeouts and failures resolve to "no decision" so a broken
- * user script never breaks the agent loop.
- */
 function runShellHook(
   hook: ShellHookConfig,
   event: AgentHookEvent
@@ -118,9 +94,7 @@ function runShellHook(
       if (!settled) {
         try {
           child.kill("SIGKILL");
-        } catch {
-          /* ignore */
-        }
+        } catch {}
         console.warn(
           `[ShellHook] ${hook.command} timed out after ${hook.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms`
         );
@@ -167,10 +141,6 @@ function runShellHook(
 
 let registered = false;
 
-/**
- * Register all user-defined shell hooks from config. Idempotent — safe to call
- * once at agent startup. Hooks that fail validation are skipped with a warning.
- */
 export function registerShellHooks(): { count: number } {
   if (registered) {
     return { count: 0 };
@@ -204,7 +174,6 @@ export function registerShellHooks(): { count: number } {
   return { count };
 }
 
-/** Reset registration state (for tests). */
 export function resetShellHooksForTests(): void {
   registered = false;
 }

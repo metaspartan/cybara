@@ -116,7 +116,7 @@ export class SlackAdapter implements ChannelAdapter {
       token: botToken,
       appToken: appToken,
       signingSecret: signingSecret,
-      socketMode: true, // Use Socket Mode instead of HTTP endpoints
+      socketMode: true,
     });
 
     app.message(async ({ message, say, client }) => {

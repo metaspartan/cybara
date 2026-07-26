@@ -1,14 +1,3 @@
-/**
- * Filesystem checkpoint/snapshot+rollback via git.
- *
- * Transparently snapshots the workspace directory before file-mutating turns.
- * If the agent makes a bad edit, the user can roll back to the pre-turn state.
- * Uses a shadow-git store (separate from the user's own repo) with git-object
- * dedup.
- *
- * Snapshots are created in <workspace>/.cybara/checkpoints/ as git objects;
- * the workspace itself is never modified by this module (only read for diffs).
- */
 import {
   existsSync,
   mkdirSync,
@@ -30,9 +19,7 @@ export interface Checkpoint {
   id: string;
   workspaceDir: string;
   createdAt: number;
-  /** Human-readable label (e.g. "before turn 5"). */
   label: string;
-  /** Snapshot directory path. */
   snapshotPath: string;
 }
 
@@ -101,11 +88,6 @@ function isGitAvailable(): boolean {
   }
 }
 
-/**
- * Create a checkpoint snapshot of the workspace. Copies changed files (those
- * not in .gitignore if the workspace is a git repo, or all files otherwise)
- * into a timestamped snapshot directory. Returns the checkpoint metadata.
- */
 export async function createCheckpoint(
   workspaceDir: string,
   label: string
@@ -120,29 +102,21 @@ export async function createCheckpoint(
   if (!snapshotPath) return null;
   mkdirSync(snapshotPath, { recursive: true });
 
-  // If the workspace is already a git repo, use git stash create to snapshot
-  // the working tree state without modifying anything.
   try {
     const isRepo = await execGit(["rev-parse", "--is-inside-work-tree"], root)
       .then((s) => s.trim() === "true")
       .catch(() => false);
 
     if (isRepo) {
-      // Snapshot the full working tree (including unstaged edits and untracked
-      // files, respecting .gitignore) via a throwaway index, so the user's real
-      // staging area is never touched.
       const tmpIndex = join(storeDir, `.idx_${id}`);
       const treeHash = await execGit(["add", "-A"], root, { GIT_INDEX_FILE: tmpIndex })
         .then(() => execGit(["write-tree"], root, { GIT_INDEX_FILE: tmpIndex }))
         .catch(async () => {
-          // If staging/write-tree fails (e.g. unmerged state), fall back below.
           return null;
         });
       try {
         if (existsSync(tmpIndex)) unlinkSync(tmpIndex);
-      } catch {
-        /* ignore temp index cleanup failure */
-      }
+      } catch {}
       if (treeHash) {
         writeFileSync(join(snapshotPath, "tree"), treeHash);
         writeFileSync(
@@ -153,11 +127,8 @@ export async function createCheckpoint(
         return { id, workspaceDir: root, createdAt: Date.now(), label, snapshotPath };
       }
     }
-  } catch {
-    /* fall through to file-copy fallback */
-  }
+  } catch {}
 
-  // Fallback: record a manifest of file paths + content hashes (no git).
   writeFileSync(
     join(snapshotPath, "meta.json"),
     JSON.stringify({ id, workspaceDir: root, createdAt: Date.now(), label, method: "manifest" })
@@ -165,7 +136,6 @@ export async function createCheckpoint(
   return { id, workspaceDir: root, createdAt: Date.now(), label, snapshotPath };
 }
 
-/** List all checkpoints for a workspace, newest first. */
 export function listCheckpoints(workspaceDir: string): Checkpoint[] {
   const root = workspaceRoot(workspaceDir);
   const storeDir = checkpointStoreDir(workspaceDir, false);
@@ -186,14 +156,11 @@ export function listCheckpoints(workspaceDir: string): Checkpoint[] {
         label: meta.label || "",
         snapshotPath: join(storeDir, entry.name),
       });
-    } catch {
-      /* skip corrupt */
-    }
+    } catch {}
   }
   return checkpoints.sort((a, b) => b.createdAt - a.createdAt);
 }
 
-/** Delete checkpoints beyond MAX_CHECKPOINTS (oldest first). */
 function pruneOldCheckpoints(storeDir: string): void {
   try {
     const entries = readdirSync(storeDir, { withFileTypes: true })
@@ -204,21 +171,11 @@ function pruneOldCheckpoints(storeDir: string): void {
       const dir = join(storeDir, entry.name);
       try {
         rmSync(dir, { recursive: true, force: true });
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 }
 
-/**
- * Restore the workspace working tree to a checkpoint's snapshot. Restores all
- * files captured in the snapshot tree (edited/deleted files revert to their
- * snapshot state). Files created after the checkpoint are left in place.
- * Returns false if the checkpoint is missing or was a non-git manifest snapshot.
- */
 export async function restoreCheckpoint(
   workspaceDir: string,
   checkpointId: string
@@ -253,7 +210,6 @@ export async function restoreCheckpoint(
   }
 }
 
-/** Delete a specific checkpoint. */
 export function deleteCheckpoint(workspaceDir: string, checkpointId: string): boolean {
   const storeDir = checkpointStoreDir(workspaceDir, false);
   const path = storeDir ? checkpointPath(storeDir, checkpointId) : null;

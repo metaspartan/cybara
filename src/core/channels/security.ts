@@ -31,15 +31,15 @@ export interface ChannelSecurityConfig {
   dm_policy: DMPolicy;
   group_policy: GroupPolicy;
   group_owner_sender_id: string;
-  allowed_senders: string[]; // Platform-specific sender IDs
-  pairing_expiry_minutes: number; // Default: 60
-  max_pending_pairings: number; // Default: 3
+  allowed_senders: string[];
+  pairing_expiry_minutes: number;
+  max_pending_pairings: number;
 }
 
 export interface AccessCheckResult {
   permitted: boolean;
   reason?: "allowed" | "pending_pairing" | "new_pairing" | "blocked" | "disabled";
-  code?: string; // Pairing code if new_pairing
+  code?: string;
   message?: string;
   silent?: boolean;
 }
@@ -95,7 +95,7 @@ export function buildChannelSecurityConfig(
 }
 
 export function generatePairingCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Removed confusing chars: 0, O, 1, I
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const bytes = randomBytes(6);
   let code = "";
   for (let i = 0; i < 6; i++) {
@@ -147,7 +147,6 @@ export class ChannelSecurityManager {
   getConfig(channelId: string): ChannelSecurityConfig {
     if (!this.initialized) this.initialize();
 
-    // Copy so callers/cache holders never see the stored config mutated under them.
     const config = { ...(this.securityConfigs.get(channelId) || DEFAULT_SECURITY_CONFIG) };
     const persistedSenders = this.allowedSenders.get(channelId);
     if (persistedSenders) {
@@ -212,7 +211,6 @@ export class ChannelSecurityManager {
       return { permitted: false, reason: "blocked", silent: true };
     }
 
-    // DM policy: disabled - ignore all messages
     if (config.dm_policy === "disabled") {
       return { permitted: false, reason: "disabled", message: "DMs are disabled for this channel" };
     }
@@ -456,8 +454,6 @@ export class ChannelSecurityManager {
 
 export const securityManager = new ChannelSecurityManager();
 
-// Periodic cleanup of expired pairings. unref() so it never keeps the process
-// (or a test runner) alive, and keep the handle so it can be stopped.
 const pairingCleanupInterval = setInterval(
   () => {
     const cleaned = securityManager.cleanupExpired();
@@ -466,7 +462,7 @@ const pairingCleanupInterval = setInterval(
     }
   },
   5 * 60 * 1000
-); // Every 5 minutes
+);
 pairingCleanupInterval.unref?.();
 
 export function stopPairingCleanup(): void {

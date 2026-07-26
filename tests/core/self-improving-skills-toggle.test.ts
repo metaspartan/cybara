@@ -8,7 +8,6 @@ afterEach(() => {
 
 describe("self-improving skills toggle", () => {
   test("only an explicit false disables it (default-on contract)", () => {
-    // The gate is `!== false`, so any non-false value keeps it enabled.
     config.set("self_improving_skills_enabled", true);
     expect(isSelfImprovingSkillsEnabled()).toBe(true);
   });

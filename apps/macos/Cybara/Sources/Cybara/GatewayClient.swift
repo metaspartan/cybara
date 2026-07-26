@@ -1,7 +1,5 @@
 import Foundation
 
-// ─── Client ──────────────────────────────────────────────────────────────────
-
 enum GatewayClientError: LocalizedError {
     case unauthorized
     case forbidden
@@ -52,16 +50,10 @@ private struct NativeWorkspaceOpenTargetsResponse: Decodable {
     let error: String?
 }
 
-/// Native async client for the local Cybara gateway. Authenticates with the
-/// root API key at ~/.cybara/api_key (same user as the sidecar), so the native
-/// UI has the same access the web UI gets via the localhost same-origin bypass.
 struct GatewayClient: Sendable {
     let baseURL: URL
 
     init(baseURL: URL) {
-        // Relative request paths ("api/…") resolve against the last path
-        // segment, so a gateway served under a base path (e.g. …/cybara)
-        // needs a trailing slash to keep the prefix.
         let path = baseURL.path
         if path.isEmpty || path == "/" || baseURL.absoluteString.hasSuffix("/") {
             self.baseURL = baseURL
@@ -160,8 +152,6 @@ struct GatewayClient: Sendable {
         }
     }
 
-    /// Decode either a bare array or `{ "<key>": [...] }` wrappers, since some
-    /// gateway routes wrap their list payloads.
     private func getList<T: Decodable>(
         _ path: String,
         keys: [String],
@@ -195,8 +185,6 @@ struct GatewayClient: Sendable {
         }
         return []
     }
-
-    // ─── Endpoints ───────────────────────────────────────────────────────────
 
     func health() async throws -> GatewayHealth {
         try await get("api/health", as: GatewayHealth.self)
@@ -578,11 +566,6 @@ struct GatewayClient: Sendable {
         return payload
     }
 
-    // ─── Raw-object config round-trips ───────────────────────────────────────
-    // Config PUT routes store the body verbatim, so screens read the full JSON
-    // object, mutate only the keys they own, and PUT the whole object back —
-    // preserving fields the native UI doesn't model yet (e.g. router routes).
-
     func rawObject(_ path: String) async throws -> [String: Any] {
         let data = try await request(path)
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -591,14 +574,10 @@ struct GatewayClient: Sendable {
         return object
     }
 
-    // Callers serialize on their own actor first ([String: Any] is not
-    // Sendable under Swift 6 strict concurrency; Data is).
     @discardableResult
     func putJSON(_ path: String, body: Data) async throws -> Data {
         try await request(path, method: "PUT", body: body)
     }
-
-    // ─── Router ──────────────────────────────────────────────────────────────
 
     func routerConfig() async throws -> [String: Any] {
         try await rawObject("api/router/config")
@@ -628,8 +607,6 @@ struct GatewayClient: Sendable {
         try await get("api/provider-plans/status", as: ProviderPlanStatusResponse.self)
     }
 
-    // ─── Gateway config ──────────────────────────────────────────────────────
-
     func appConfig() async throws -> [String: Any] {
         try await rawObject("api/config")
     }
@@ -654,8 +631,6 @@ struct GatewayClient: Sendable {
         return object
     }
 
-    // ─── System prompt ───────────────────────────────────────────────────────
-
     func systemPrompt() async throws -> [String: Any] {
         try await rawObject("api/system-prompt")
     }
@@ -664,14 +639,10 @@ struct GatewayClient: Sendable {
         try await putJSON("api/system-prompt", body: body)
     }
 
-    // ─── Memory ──────────────────────────────────────────────────────────────
-
     func memoryList() async throws -> GatewayMemoryList {
         try await get("api/memory", as: GatewayMemoryList.self)
     }
 
-    // Callers serialize the {provider, settings} payload on their own actor
-    // (same Sendable constraint as putJSON).
     func testMemoryProvider(_ body: Data) async throws -> [String: Any] {
         let data = try await request("api/memory/providers/test", method: "POST", body: body)
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -728,8 +699,6 @@ struct GatewayClient: Sendable {
         return try JSONDecoder().decode(GatewaySuccessResponse.self, from: data)
     }
 
-    // ─── Metrics ─────────────────────────────────────────────────────────────
-
     func metricsOverview() async throws -> MetricsOverview {
         try await get("api/metrics/overview", as: MetricsOverview.self)
     }
@@ -769,8 +738,6 @@ struct GatewayClient: Sendable {
     func metricsInsights() async throws -> MetricsInsights {
         try await get("api/metrics/insights", as: MetricsInsights.self)
     }
-
-    // ─── Channels / Logs ─────────────────────────────────────────────────────
 
     func channels() async throws -> [GatewayChannel] {
         try await getList("api/channels", keys: ["channels", "items"])
@@ -839,8 +806,6 @@ struct GatewayClient: Sendable {
         return object
     }
 
-    // ─── Theme ───────────────────────────────────────────────────────────────
-
     func themeAccent() async throws -> String? {
         let config = try await rawObject("api/config")
         for key in ["themeAccent", "theme_accent", "theme", "accent", "ui_accent"] {
@@ -848,8 +813,6 @@ struct GatewayClient: Sendable {
         }
         return nil
     }
-
-    // ─── Wallet / Skills ─────────────────────────────────────────────────────
 
     func walletStatus() async throws -> [String: Any] {
         try await rawObject("api/wallet/status")
@@ -1011,8 +974,6 @@ struct GatewayClient: Sendable {
         _ = try await request("api/skills/update", method: "POST")
     }
 
-    // ─── Session mutations ───────────────────────────────────────────────────
-
     @discardableResult
     func deleteSession(_ id: String) async throws -> Data {
         try await request("api/sessions/\(id)", method: "DELETE")
@@ -1169,11 +1130,6 @@ struct GatewayClient: Sendable {
 
 }
 
-// ─── Live status (SSE) ───────────────────────────────────────────────────────
-
-/// Subscribes to the gateway's status event stream (`/api/sse/status`) and
-/// publishes the latest event, so the chat transcript can show live
-/// "Thinking…" / tool activity while a reply is generating.
 @MainActor
 final class GatewayStatusStream: ObservableObject {
     @Published private(set) var latest: GatewayStatusEvent?
@@ -1202,7 +1158,6 @@ final class GatewayStatusStream: ObservableObject {
                         self?.latest = event
                     }
                 } catch {
-                    // Connection dropped (gateway restart etc.) — retry shortly.
                 }
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }

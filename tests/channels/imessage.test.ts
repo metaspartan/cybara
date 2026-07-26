@@ -169,8 +169,6 @@ describe("iMessage adapter mocked flows", () => {
       adapter,
       channelId,
       makeMessage({
-        // DM chatGuid (does NOT start with "chat") so the dm_policy:"pairing"
-        // path runs — "chat…" guids are treated as group chats.
         chatGuid: "im-dm-1",
         handle: { address: "new-user@icloud.com", service: "iMessage" },
       })

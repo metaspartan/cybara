@@ -314,9 +314,7 @@ export function useMobileSessionRuntime({
         (current) => liveAssistantFromStatusSnapshot(sessionId, current, snapshot),
         snapshot.timestamp
       );
-    } catch {
-      /* best effort */
-    }
+    } catch {}
   }, [acceptLiveEvent, api, commitLiveAssistant, sessionId, shouldPreserveOptimisticPending]);
 
   const hydratePendingMessages = useCallback(async () => {
@@ -332,9 +330,7 @@ export function useMobileSessionRuntime({
           preserveOptimistic: preserveOptimisticPending,
         })
       );
-    } catch {
-      /* best effort */
-    }
+    } catch {}
   }, [api, sessionId, shouldPreserveOptimisticPending]);
 
   useEffect(() => {

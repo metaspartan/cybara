@@ -51,8 +51,8 @@ interface CanvasState {
     width?: number;
     height?: number;
   };
-  a2uiData: string[]; // JSONL lines
-  browserPageId?: string; // For browser tool integration
+  a2uiData: string[];
+  browserPageId?: string;
 }
 
 const canvasStates = new Map<string, CanvasState>();
@@ -165,9 +165,7 @@ export async function handleCanvas(
       if (browserHandler) {
         try {
           await callBrowser("close");
-        } catch {
-          // Ignore close errors
-        }
+        } catch {}
       }
 
       return {
@@ -368,9 +366,7 @@ export async function handleCanvas(
                             if (window.__onA2UIUpdate) window.__onA2UIUpdate(window.__cybara_a2ui);
                         `,
           });
-        } catch {
-          // Ignore eval errors - UI might not have handler
-        }
+        } catch {}
       }
 
       return {
@@ -394,9 +390,7 @@ export async function handleCanvas(
                             if (window.__onA2UIReset) window.__onA2UIReset();
                         `,
           });
-        } catch {
-          // Ignore eval errors
-        }
+        } catch {}
       }
 
       return {

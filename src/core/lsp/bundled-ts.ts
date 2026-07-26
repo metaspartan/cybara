@@ -85,7 +85,7 @@ function convertDiagnostic(diag: ts.Diagnostic): BundledDiagnostic | null {
 
   return {
     file: diag.file.fileName,
-    line: line + 1, // 1-indexed
+    line: line + 1,
     column: character + 1,
     endLine: endLine + 1,
     endColumn: endColumn + 1,
@@ -321,40 +321,40 @@ function tsKindToLspSymbolKind(kind: string): number {
   switch (kind) {
     case "module":
     case "external module name":
-      return 2; // Module
+      return 2;
     case "class":
-      return 5; // Class
+      return 5;
     case "method":
     case "memberFunction":
-      return 6; // Method
+      return 6;
     case "property":
     case "memberVariable":
     case "getter":
     case "setter":
-      return 7; // Property
+      return 7;
     case "constructor":
-      return 9; // Constructor
+      return 9;
     case "enum":
-      return 10; // Enum
+      return 10;
     case "interface":
-      return 11; // Interface
+      return 11;
     case "function":
-      return 12; // Function
+      return 12;
     case "const":
-      return 14; // Constant
+      return 14;
     case "type":
     case "typeParameter":
     case "alias":
-      return 26; // TypeParameter
+      return 26;
     case "enum member":
-      return 22; // EnumMember
+      return 22;
     case "var":
     case "let":
     case "parameter":
     case "local var":
-      return 13; // Variable
+      return 13;
     default:
-      return 13; // Variable fallback
+      return 13;
   }
 }
 
@@ -414,7 +414,6 @@ export function getDeclarationForFile(
   line: number,
   character: number
 ): BundledLocation[] {
-  // TypeScript doesn't expose a separate declaration API for this use case.
   return getDefinitionForFile(filePath, line, character);
 }
 

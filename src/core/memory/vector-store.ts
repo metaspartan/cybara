@@ -126,12 +126,6 @@ export function chunkMarkdown(
   return chunks.filter((chunk) => chunk.text.trim().length > 10);
 }
 
-/**
- * Reciprocal Rank Fusion: combine ranked result lists by rank rather than by
- * raw score, so incomparable score scales (cosine similarity vs BM25) fuse
- * robustly. Each list contributes weight / (k + rank); scores are normalized
- * to [0,1] for display. This is the standard hybrid-search fusion.
- */
 export function reciprocalRankFusion(
   lists: Array<{ ids: string[]; weight: number }>,
   k = 60
@@ -221,17 +215,12 @@ export class VectorStore {
           createdAt: row.created_at,
           hash: row.hash,
         });
-      } catch {
-        // Corrupt rows are ignored and can be rebuilt.
-      }
+      } catch {}
     }
 
     console.log(`[VectorStore] Loaded ${this.chunks.size} chunks from database`);
   }
 
-  // Guards against a slow older init (e.g. the constructor's "auto" probe
-  // downloading a model) resolving after a newer configureEmbeddings call
-  // and clobbering the provider the user actually selected.
   private providerGeneration = 0;
 
   private async initProvider(): Promise<void> {
@@ -370,9 +359,6 @@ export class VectorStore {
     };
   }
 
-  // True when the active provider produces real vectors. "local" and "none"
-  // still index chunks into SQLite so BM25 keyword search works fully
-  // offline; they just skip embedding computation.
   private canEmbed(): boolean {
     return Boolean(this.provider && this.provider.id !== "none" && this.provider.id !== "local");
   }

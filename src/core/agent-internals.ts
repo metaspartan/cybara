@@ -275,12 +275,6 @@ function asPlainObject(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-/**
- * Extract the first balanced {...} object from a string, respecting strings and
- * escapes so braces inside string values don't confuse the scan. Handles the
- * common cases where a model wraps tool JSON in prose or a truncated stream
- * leaves trailing junk.
- */
 function extractBalancedJsonObject(text: string): string | null {
   const start = text.indexOf("{");
   if (start === -1) return null;
@@ -305,17 +299,10 @@ function extractBalancedJsonObject(text: string): string | null {
   return null;
 }
 
-/**
- * Best-effort repair of the small malformations SOTA models occasionally emit
- * in tool-call argument JSON — markdown fences, prose wrapping, trailing
- * commas, and truncated streams. Returns the parsed object or null. Repairs are
- * conservative (no quote-style rewriting) so valid data is never corrupted.
- */
 function repairJsonArguments(raw: string): Record<string, unknown> | null {
   let text = raw.trim();
   if (!text) return null;
 
-  // Strip a leading/trailing markdown code fence (```json ... ```).
   text = text
     .replace(/^```(?:json|javascript|js)?\s*/i, "")
     .replace(/\s*```$/i, "")
@@ -324,7 +311,6 @@ function repairJsonArguments(raw: string): Record<string, unknown> | null {
   const attempts: string[] = [text];
   const balanced = extractBalancedJsonObject(text);
   if (balanced && balanced !== text) attempts.push(balanced);
-  // Remove trailing commas before } or ] (a very common model mistake).
   for (const candidate of [...attempts]) {
     const noTrailingCommas = candidate.replace(/,(\s*[}\]])/g, "$1");
     if (noTrailingCommas !== candidate) attempts.push(noTrailingCommas);
@@ -334,9 +320,7 @@ function repairJsonArguments(raw: string): Record<string, unknown> | null {
     try {
       const parsed = asPlainObject(JSON.parse(candidate));
       if (parsed) return parsed;
-    } catch {
-      /* try the next repair candidate */
-    }
+    } catch {}
   }
   return null;
 }
@@ -349,9 +333,7 @@ export function parseToolArguments(raw: unknown): Record<string, unknown> {
   try {
     const parsed = asPlainObject(JSON.parse(raw));
     if (parsed) return parsed;
-  } catch {
-    // Fall through to lenient repair below.
-  }
+  } catch {}
   return repairJsonArguments(raw) ?? {};
 }
 
@@ -457,7 +439,6 @@ export function summarizeCommand(command: string): string {
 const REASONING_MARKUP_TOKEN_PATTERN =
   /<\/?(?:REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning|final)\b[^>]*>|\[\/?(?:thinking|reasoning)\]/gi;
 
-/** Remove reasoning tag tokens (e.g. a bare "</think>" delta) from display text. */
 export function stripReasoningTagTokens(value: string): string {
   return value.replace(REASONING_MARKUP_TOKEN_PATTERN, " ");
 }

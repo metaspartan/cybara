@@ -7,9 +7,6 @@ import { fileURLToPath } from "url";
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const STORE_PATH = join(ROOT_DIR, "src", "core", "cron", "store.ts").replace(/\\/g, "/");
 
-// store.ts resolves CRON_DIR from process.env.HOME, which Bun fixes at startup,
-// so all persistence-touching assertions run inside a child process pointed at a
-// throwaway HOME. computeNextRun is pure and fuzzed in the same worker.
 const WORKER_SOURCE = `
 import { homedir } from "os";
 import {

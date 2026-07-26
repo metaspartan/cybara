@@ -81,7 +81,6 @@ describe("credential-pool", () => {
 
     test("skips a missing intermediate suffix but keeps later ones", () => {
       process.env.TESTPROV_API_KEY = "k1";
-      // no _2
       process.env.TESTPROV_API_KEY_3 = "k3";
       const name = `env-gap-${Date.now()}`;
       const count = registerCredentialsFromEnv(name, "TESTPROV_API_KEY");
@@ -196,9 +195,6 @@ describe("credential-pool", () => {
       expect(seen).toContain(first.value);
     });
 
-    // Cooldown uses wall-clock Date.now() with no injectable clock, so recovery
-    // is driven deterministically by rewinding the credential's cooldownUntil
-    // rather than sleeping. This asserts the same decision logic the pool runs.
     test("credential becomes available again once its cooldown has elapsed", () => {
       const name = freshPool(`recover-${Date.now()}`, ["a", "b"]);
       const cred = acquireCredential(name)!;
@@ -282,7 +278,6 @@ describe("credential-pool", () => {
             const cred = acquired as PooledCredential;
             expect(keySet.has(cred.value)).toBe(true);
             byValue.set(cred.value, cred);
-            // A returned credential must be currently available.
             expect(cred.cooldownUntil <= Date.now()).toBe(true);
 
             const roll = rand();
@@ -292,11 +287,9 @@ describe("credential-pool", () => {
               markCredentialHealthy(name, cred);
             }
           } else {
-            // Null is only acceptable when nothing is currently available.
             expect(healthyExists).toBe(false);
           }
 
-          // Occasionally rewind a cooldown to simulate elapsed time.
           if (rand() < 0.2) {
             const target = byValue.get(keys[Math.floor(rand() * keys.length)]);
             if (target) target.cooldownUntil = Date.now() - 1;
@@ -318,7 +311,6 @@ describe("credential-pool", () => {
         for (let step = 0; step < 150; step += 1) {
           const cred = acquireCredential(name);
           expect(cred).not.toBeNull();
-          // Keep the "healthy" key perpetually healthy; cool others freely.
           if (cred!.value !== "healthy" && rand() < 0.7) {
             markCredentialCooldown(name, cred!, "rate_limit");
           }

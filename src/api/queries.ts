@@ -1,28 +1,16 @@
-/**
- * Database query functions for API routes
- * Centralizes all SQL logic with proper types
- */
-
 import db, { tables } from "../core/database";
 import { closeSync, existsSync, fstatSync, openSync, readSync } from "fs";
 import { join } from "path";
 import { cybaraDir, logsDir } from "../core/paths";
 
-// ============================================
-// TYPES
-// ============================================
-
-/** Result from COUNT(*) SQL queries */
 export interface CountResult {
   count: number;
 }
 
-/** Result from SUM/aggregate value queries */
 export interface ValueResult {
   value: number;
 }
 
-/** Metrics table entry */
 export interface MetricsEntry {
   type: string;
   key: string;
@@ -31,7 +19,6 @@ export interface MetricsEntry {
   created_at?: string;
 }
 
-/** System log entry */
 export interface LogEntry {
   id: string;
   level?: string;
@@ -42,7 +29,6 @@ export interface LogEntry {
   logType?: string;
 }
 
-/** Agent log entry (raw from DB) */
 export interface AgentLogEntry {
   id: string;
   agent_id: string;
@@ -52,7 +38,6 @@ export interface AgentLogEntry {
   created_at: string;
 }
 
-/** Channel log entry (raw from DB) */
 export interface ChannelLogEntry {
   id: string;
   channel_type: string;
@@ -64,7 +49,6 @@ export interface ChannelLogEntry {
   created_at: string;
 }
 
-/** Combined log from multiple sources */
 export interface CombinedLogEntry {
   id: string;
   level: string;
@@ -83,7 +67,6 @@ export interface CombinedLogPage {
   hasMore: boolean;
 }
 
-/** Log statistics by category */
 export interface LogCategoryCounts {
   system: number;
   messages: number;
@@ -93,18 +76,11 @@ export interface LogCategoryCounts {
 }
 
 export interface LogStats {
-  /** Entries within the trailing window (`hours`). */
   counts: LogCategoryCounts;
-  /**
-   * All-time entries per category. system + agent + channel + cli equals the
-   * combined Log Entries total; messages live in their own table and are not
-   * part of the combined list.
-   */
   totals: LogCategoryCounts & { combined: number };
   hours: number;
 }
 
-/** Model performance metrics */
 export interface ModelMetrics {
   model: string;
   provider: string;
@@ -116,47 +92,24 @@ export interface ModelMetrics {
   callCount: number;
 }
 
-/** Daily log counts for time series */
 export interface DailyLogCounts {
   systemCount: number;
   channelCount: number;
   messageCount: number;
 }
 
-// ============================================
-// UTILITIES
-// ============================================
-
-/**
- * Normalize SQLite timestamps to UTC ISO format.
- * SQLite CURRENT_TIMESTAMP stores UTC but without 'Z' suffix,
- * so JS Date() parses it as local time. This adds the 'Z' suffix.
- */
 export function normalizeTimestamp(timestamp: string | undefined): string | undefined {
   if (!timestamp) return timestamp;
-  // If already has timezone info, return as-is
   if (timestamp.includes("Z") || timestamp.includes("+") || timestamp.includes("-", 10)) {
     return timestamp;
   }
-  // SQLite format: "YYYY-MM-DD HH:MM:SS" - convert to ISO with Z
   return timestamp.replace(" ", "T") + "Z";
 }
 
-// ============================================
-// LOG QUERIES
-// ============================================
-
-/**
- * Get combined logs from all log tables (system, agent, channel)
- * Returns unified format sorted by created_at descending
- */
 export function getCombinedLogs(
   options: { limit?: number; offset?: number } = {}
 ): CombinedLogEntry[] {
   const offset = Math.max(0, options.offset ?? 0);
-  // The pre-existing contract capped each source at 1000 rows (the list()
-  // helpers' LIMIT); fetch only the window each table can contribute instead
-  // of materializing and formatting all rows before slicing.
   const perSourceCap = 1000;
   const windowSize =
     options.limit === undefined
@@ -241,7 +194,6 @@ function combinedChannelLogs(limit: number): CombinedLogEntry[] {
 const CLI_LOG_TAIL_BYTES = 256 * 1024;
 const CLI_LOG_LEVELS = new Set(["debug", "info", "warn", "error"]);
 
-/** Reads only the last CLI_LOG_TAIL_BYTES of the file so huge logs stay cheap. */
 function readLogFileTail(path: string): string | null {
   if (!existsSync(path)) return null;
   let fd: number | null = null;
@@ -253,7 +205,6 @@ function readLogFileTail(path: string): string | null {
     const buffer = Buffer.alloc(readSize);
     readSync(fd, buffer, 0, readSize, size - readSize);
     const text = buffer.toString("utf-8");
-    // Drop the first (possibly truncated) line when we didn't read the whole file.
     return readSize < size ? text.slice(text.indexOf("\n") + 1) : text;
   } catch {
     return null;
@@ -262,11 +213,6 @@ function readLogFileTail(path: string): string | null {
   }
 }
 
-/**
- * Parse the CLI/daemon log file (~/.cybara/cybara.log) into combined-log
- * entries. Lines are structured JSON, "[ISO] message" daemon lines, or plain
- * stdout; plain lines inherit the most recent timestamp seen above them.
- */
 function parseRuntimeLogText(
   text: string,
   idPrefix: string,
@@ -300,9 +246,7 @@ function parseRuntimeLogText(
         if (typeof parsed.source === "string" && parsed.source.trim()) source = parsed.source;
         message = `${parsed.module ? `[${parsed.module}] ` : ""}${parsed.message ?? line}`;
         if (parsed.context !== undefined) metadata = JSON.stringify(parsed.context);
-      } catch {
-        // Not JSON after all; fall through as plain text.
-      }
+      } catch {}
     } else {
       const stamped = line.match(/^\[(\d{4}-\d{2}-\d{2}T[^\]]+)\]\s*(.*)$/);
       if (stamped) {
@@ -377,15 +321,8 @@ export function getCombinedLogsPage(options: { limit: number; offset?: number })
   };
 }
 
-/**
- * Get log statistics for a time window
- * @param hours Number of hours to look back (default 24)
- */
 export function getLogStats(hours: number = 24): LogStats {
   const sinceIso = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-  // datetime() normalizes both SQLite "YYYY-MM-DD HH:MM:SS" rows and ISO input,
-  // so the window compares real instants instead of raw strings. Counting in SQL
-  // also avoids the LIMIT 1000 cap of the list() helpers.
   const countSince = (table: string): number => {
     const safe = assertCountableTable(table);
     const row = db
@@ -425,16 +362,9 @@ export function getLogStats(hours: number = 24): LogStats {
   };
 }
 
-/**
- * Get log counts for a specific date (for time series)
- * @param dateStr Date in YYYY-MM-DD format
- */
 export function getDailyLogCounts(dateStr: string): DailyLogCounts {
-  // Range-compare on the raw column instead of date(created_at) so the
-  // created_at indexes are usable; rows are stored as "YYYY-MM-DD HH:MM:SS"
-  // (or ISO "YYYY-MM-DDT..."), and both sort correctly against these bounds.
   const dayStart = dateStr;
-  const dayEnd = `${dateStr}~`; // "~" sorts after both " " and "T" separators
+  const dayEnd = `${dateStr}~`;
   const countDay = (table: string): number => {
     const row = db
       .prepare(`SELECT COUNT(*) as count FROM ${table} WHERE created_at >= ? AND created_at < ?`)
@@ -448,10 +378,6 @@ export function getDailyLogCounts(dateStr: string): DailyLogCounts {
     messageCount: countDay("session_messages"),
   };
 }
-
-// ============================================
-// METRICS QUERIES
-// ============================================
 
 interface TpsRow {
   model: string;
@@ -487,21 +413,18 @@ interface TokenCallModelRow {
   callCount: number;
 }
 
-/**
- * Get model TPS (tokens per second) metrics
- */
 export function getModelTpsMetrics(): TpsRow[] {
   return db
     .prepare(
       `
-    SELECT 
+    SELECT
       key as model,
       AVG(value) as avgTps,
       MAX(value) as maxTps,
       MIN(value) as minTps,
       COUNT(*) as callCount,
       json_extract(metadata, '$.provider') as provider
-    FROM metrics 
+    FROM metrics
     WHERE type = 'model_tps'
     GROUP BY key
     ORDER BY AVG(value) DESC
@@ -510,18 +433,15 @@ export function getModelTpsMetrics(): TpsRow[] {
     .all() as TpsRow[];
 }
 
-/**
- * Get model latency metrics
- */
 export function getModelLatencyMetrics(): LatencyRow[] {
   return db
     .prepare(
       `
-    SELECT 
+    SELECT
       key as model,
       AVG(value) as avgLatency,
       json_extract(metadata, '$.provider') as provider
-    FROM metrics 
+    FROM metrics
     WHERE type = 'model_latency'
     GROUP BY key
   `
@@ -529,9 +449,6 @@ export function getModelLatencyMetrics(): LatencyRow[] {
     .all() as LatencyRow[];
 }
 
-/**
- * Get total tokens by model
- */
 export function getTokensByModel(): TokenRow[] {
   return db
     .prepare(
@@ -610,9 +527,6 @@ function getModelTokenCallMetrics(): TokenCallModelRow[] {
     .all() as TokenCallModelRow[];
 }
 
-/**
- * Get aggregated model metrics (combines TPS, latency, and tokens)
- */
 export function getModelMetrics(): ModelMetrics[] {
   const tokenCallData = getModelTokenCallMetrics();
   const modernMetrics = tokenCallData.map((row) => ({

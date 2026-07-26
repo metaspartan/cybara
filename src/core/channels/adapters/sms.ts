@@ -1,10 +1,3 @@
-/**
- * SMS channel adapter (Twilio).
- *
- * Sends outbound SMS via the Twilio REST API and accepts inbound SMS via Twilio
- * webhooks (POST /api/channels/:id/webhook with `From`/`Body`). Uses fetch only
- * — no Twilio SDK dependency.
- */
 import type { ChannelAdapter, ToolCallInfo } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 
@@ -69,7 +62,6 @@ export class SmsAdapter implements ChannelAdapter {
     if (toolCalls && toolCalls.length > 0) {
       text = formatToolCallsPlain(toolCalls) + "\n\n" + text;
     }
-    // SMS should be terse; strip thinking to keep messages short.
     return text;
   }
 }

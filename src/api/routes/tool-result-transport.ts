@@ -45,12 +45,6 @@ function shrink(
   return shrunk;
 }
 
-/**
- * Shrink a tool result for transport while preserving its shape. Long string
- * leaves are capped and long arrays are trimmed, but scalars such as exit codes
- * and keys such as stdout/filePath survive, so clients can keep reading fields
- * off the result instead of parsing a flattened blob.
- */
 export function truncateToolResultForTransport(
   result: unknown,
   options: ToolResultTransportOptions = {}
@@ -65,9 +59,6 @@ export function truncateToolResultForTransport(
   if (typeof result === "string") return truncateString(result, resolved.maxStringChars);
   if (result === null || typeof result !== "object") return result;
 
-  // Shrink harder rather than flattening: clients read fields such as exit
-  // codes and stdout off the result, so keeping the shape matters more than
-  // keeping every character.
   let shrunk = shrink(result, 0, resolved);
   let serialized = JSON.stringify(shrunk);
   for (const stringCap of [200, 80, 24]) {

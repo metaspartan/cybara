@@ -1,10 +1,6 @@
-// Cybara-compatible role snapshot utilities
-// Port of /tmp/cybara/src/browser/pw-role-snapshot.ts
-
 export type RoleRef = {
   role: string;
   name?: string;
-  /** Index used only when role+name duplicates exist. */
   nth?: number;
 };
 
@@ -18,11 +14,8 @@ export type RoleSnapshotStats = {
 };
 
 export type RoleSnapshotOptions = {
-  /** Only include interactive elements (buttons, links, inputs, etc.). */
   interactive?: boolean;
-  /** Maximum depth to include (0 = root only). */
   maxDepth?: number;
-  /** Remove unnamed structural elements and empty branches. */
   compact?: boolean;
 };
 
@@ -302,10 +295,6 @@ function parseAiSnapshotRef(suffix: string): string | null {
   return match ? match[1] : null;
 }
 
-/**
- * Build a role snapshot from Playwright's AI snapshot output while preserving Playwright's own
- * aria-ref ids (e.g. ref=e13). This makes the refs self-resolving across calls.
- */
 export function buildRoleSnapshotFromAiSnapshot(
   aiSnapshot: string,
   options: RoleSnapshotOptions = {}

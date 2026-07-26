@@ -31,7 +31,6 @@ describe("Memory and Settings pages: memory controls", () => {
     ]) {
       expect(settings).toMatch(new RegExp(`value: ["']${provider}["']`));
     }
-    // Popular models are offered as a dropdown per provider, with a custom escape hatch.
     expect(settings).toContain("memoryRecallModelSuggestions");
     expect(settings).toContain("Custom model…");
   });
@@ -60,8 +59,6 @@ describe("Memory and Settings pages: memory controls", () => {
     ]) {
       expect(settings).toContain(setting);
     }
-    // Indexing is its own card now, and the external-provider picker replaced
-    // the old "Active memory stack" placeholder note.
     expect(settings).toContain("Save Indexing Settings");
     expect(settings).toContain("Memory provider");
     expect(settings).toContain("memoryApi.testProvider(");

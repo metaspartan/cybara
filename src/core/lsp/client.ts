@@ -140,9 +140,7 @@ export class LSPClient extends EventEmitter {
     try {
       await this.request("shutdown", null);
       this.notify("exit", null);
-    } catch {
-      // Ignore errors during shutdown
-    }
+    } catch {}
 
     this.process.kill();
     this.process = null;
@@ -296,7 +294,6 @@ export class LSPClient extends EventEmitter {
           break;
         }
         default:
-          // Ignore other notifications
           break;
       }
     }

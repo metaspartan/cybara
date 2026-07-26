@@ -285,9 +285,7 @@ export class DiscordAdapter implements ChannelAdapter {
     console.log(`[Discord] Starting bot for channel ${channelId}...`);
 
     const client = new Client({
-      intents: [
-        ...DISCORD_REQUIRED_INTENTS, // MessageContent must be enabled in Discord Developer Portal
-      ],
+      intents: [...DISCORD_REQUIRED_INTENTS],
       partials: [Partials.Channel, Partials.Message, Partials.User, Partials.Reaction],
     });
 
@@ -330,10 +328,8 @@ export class DiscordAdapter implements ChannelAdapter {
   }
 
   private async handleMessage(channelId: string, message: Message): Promise<void> {
-    // Ignore bot messages
     if (message.author.bot) return;
 
-    // Ignore messages without content
     if (!message.content && message.attachments.size === 0) return;
 
     const userId = message.author.id;
@@ -362,7 +358,6 @@ export class DiscordAdapter implements ChannelAdapter {
           console.error("[Discord] Failed to send pairing message:", e);
         }
       } else if (accessCheck.reason === "pending_pairing") {
-        // Already has pending pairing, silently ignore (or optionally remind)
         console.log(`[Discord] Ignoring message from pending user ${userId}`);
       } else if (accessCheck.reason === "blocked") {
         try {
@@ -371,7 +366,6 @@ export class DiscordAdapter implements ChannelAdapter {
           console.error("[Discord] Failed to send blocked message:", e);
         }
       }
-      // For 'disabled', silently ignore
       return;
     }
 

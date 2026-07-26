@@ -1,7 +1,6 @@
 import CryptoKit
 import Foundation
 
-/// A downloadable asset attached to a GitHub release.
 public struct ReleaseAsset: Codable, Equatable, Sendable {
     public let name: String
     public let downloadURL: String
@@ -20,7 +19,6 @@ public struct ReleaseAsset: Codable, Equatable, Sendable {
     }
 }
 
-/// Metadata for a published GitHub release, parsed from the REST API.
 public struct ReleaseInfo: Codable, Equatable, Sendable {
     public let tagName: String
     public let htmlURL: String
@@ -60,14 +58,7 @@ public struct ReleaseInfo: Codable, Equatable, Sendable {
     }
 }
 
-/// Pure, side-effect-free update logic. The app distributes via GitHub Releases
-/// (not a Sparkle appcast), so updates are checked by querying the Releases API,
-/// comparing semantic versions, and pointing the user at the release page — no
-/// hosted appcast, signing keys, or auto-installer required. Kept separate from
-/// the @MainActor network/UI manager so the comparison + parsing logic is unit
-/// testable without hitting the network.
 public enum UpdateCore {
-    /// Semantic version (pre-release/build metadata ignored for ordering).
     public struct SemVer: Equatable, Comparable {
         public let major: Int
         public let minor: Int
@@ -91,14 +82,11 @@ public enum UpdateCore {
         return url
     }
 
-    /// Parse a version string like "v1.2.3", "1.2.3", or "1.2.3-beta.1".
-    /// Returns nil if it doesn't contain at least major.minor.patch.
     public static func parseSemVer(_ raw: String) -> SemVer? {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.hasPrefix("v") || text.hasPrefix("V") {
             text.removeFirst()
         }
-        // Drop pre-release / build metadata: "1.2.3-rc.1+sha" -> "1.2.3".
         let core = text.split(whereSeparator: { $0 == "-" || $0 == "+" }).first.map(String.init) ?? text
         let parts = core.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
         guard parts.count >= 3,
@@ -110,8 +98,6 @@ public enum UpdateCore {
         return SemVer(major: major, minor: minor, patch: patch)
     }
 
-    /// True when `latestTag` is a strictly newer release than `currentVersion`.
-    /// Conservative: unparseable versions never report an update available.
     public static func isUpdateAvailable(latestTag: String, currentVersion: String) -> Bool {
         guard let latest = parseSemVer(latestTag), let current = parseSemVer(currentVersion) else {
             return false
@@ -119,13 +105,11 @@ public enum UpdateCore {
         return latest > current
     }
 
-    /// Decode a GitHub `releases/latest` JSON payload.
     public static func parseLatestRelease(json: String) -> ReleaseInfo? {
         guard let data = json.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(ReleaseInfo.self, from: data)
     }
 
-    /// Architecture slug used in native macOS release asset names.
     public static func currentArchSlug() -> String {
         #if arch(arm64)
         return "arm64"
@@ -134,8 +118,6 @@ public enum UpdateCore {
         #endif
     }
 
-    /// Pick the native SwiftUI app archive (`CybaraNative-v<version>-<arch>.zip`)
-    /// for the given architecture, if one was published in this release.
     public static func selectNativeAsset(_ assets: [ReleaseAsset], arch: String) -> ReleaseAsset? {
         let suffix = "-\(arch).zip".lowercased()
         return assets.first { asset in
@@ -166,10 +148,6 @@ public enum UpdateCore {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Shell script that swaps the running app bundle with a freshly downloaded
-    /// one and relaunches it. Invoked as `bash <script> <pid> <newApp> <destApp>`;
-    /// waits for the current process to exit, moves the old bundle aside, copies
-    /// the new one into place (rolling back on failure), then reopens the app.
     public static let selfUpdateScript = """
         #!/bin/bash
         set -u

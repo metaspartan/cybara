@@ -382,8 +382,6 @@ builtinExecutors.summarization = async (args: Record<string, unknown>) => {
 
 builtinExecutors.video_frames = async (args: Record<string, unknown>) => {
   const video = args.video as string;
-  // Coerce to safe, bounded positive integers. These are interpolated into the
-  // ffmpeg invocation, so non-numeric input must never reach the command.
   const toPosInt = (v: unknown, def: number, max: number): number => {
     const n = Math.floor(Number(v));
     return Number.isFinite(n) && n > 0 ? Math.min(n, max) : def;
@@ -418,8 +416,6 @@ builtinExecutors.video_frames = async (args: Record<string, unknown>) => {
     const framePattern = join(output, "frame_%04d.jpg");
 
     try {
-      // Run ffmpeg directly with an argument array — never via `sh -c` — so that
-      // interval/count/paths cannot be used for shell command injection.
       Bun.spawnSync([
         "ffmpeg",
         "-i",

@@ -50,9 +50,6 @@ interface WorkerReport {
   stopWhenIdleState: string;
 }
 
-// The indexer pins homedir() at module load and refuses workspaces outside
-// HOME, and its config writes under CYBARA_HOME, so everything runs in a
-// child process pointed at a throwaway HOME.
 const WORKER_SOURCE = `
 import { mkdirSync, writeFileSync, rmSync } from "fs";
 import { homedir } from "os";

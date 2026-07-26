@@ -236,24 +236,18 @@ describe("handleGit", () => {
 
 describe("handleProcess kill actually terminates the process", () => {
   test("list surfaces a running async process and kill stops it", async () => {
-    // Start a long sleep but DON'T await it — it stays running. Swallow its
-    // eventual rejection/resolution so we never block the test on the (possibly
-    // slow) child teardown, which is what timed CI out.
     let exitCode: number | undefined;
     const running = handleExecAsync({ command: "sleep 30" });
     void running.then((r) => {
       exitCode = r.exitCode;
     });
 
-    // It should appear in the process list while running.
     const found = await waitFor(async () => {
       const list = (await handleProcess({ action: "list" })) as ProcListEntry[];
       return list.find((p) => p.command.includes("sleep 30"));
     });
     expect(found).toBeDefined();
 
-    // Kill it by its pid/sessionId — this must terminate the process and remove
-    // it from the running list (the previous impl only removed the map entry).
     const killed = (await handleProcess({
       action: "kill",
       sessionId: found.sessionId,
@@ -263,9 +257,6 @@ describe("handleProcess kill actually terminates the process", () => {
     const after = (await handleProcess({ action: "list" })) as ProcListEntry[];
     expect(after.find((p) => p.sessionId === found.sessionId)).toBeUndefined();
 
-    // The killed process should terminate on its own shortly; if it does, it
-    // must report a non-zero (killed) exit. Bounded wait so a slow teardown can
-    // never hang the test.
     await waitFor(() => (exitCode !== undefined ? true : undefined), 4000).catch(() => undefined);
     if (exitCode !== undefined) {
       expect(exitCode).not.toBe(0);

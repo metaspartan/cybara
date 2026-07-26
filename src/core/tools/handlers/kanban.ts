@@ -1,10 +1,3 @@
-/**
- * Kanban agent tool surface — thin wrappers over src/core/kanban.
- *
- * Workers self-report progress via these tools. Orchestrators (or the model)
- * can also create/link tasks to build a dependency graph. The dispatcher tick
- * loop handles promotion (todo→ready) and worker spawning automatically.
- */
 import {
   createTask,
   getTask,
@@ -85,11 +78,8 @@ export async function handleKanbanBlock(
 export async function handleKanbanHeartbeat(
   args: Record<string, unknown>
 ): Promise<{ ok: boolean }> {
-  // Extend the claim so the dispatcher doesn't reclaim this task.
   const id = typeof args.id === "string" ? args.id : "";
   if (!id) throw new Error("Validation error: 'id' is required.");
-  // claim_expires refresh is handled implicitly via the running status; a real
-  // implementation would bump claim_expires = now + TTL here. Kept lightweight.
   return { ok: getTask(id)?.status === "running" };
 }
 

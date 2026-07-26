@@ -286,7 +286,6 @@ describe("Slack adapter mocked flows", () => {
         type: "message",
         text: "hello",
         user: "U-NEW",
-        // DM (Slack DM ids start with "D") so the dm_policy:"pairing" path runs.
         channel: "D1",
         ts: "1.100",
       },
@@ -499,9 +498,6 @@ describe("Slack adapter mocked flows", () => {
     let handlerCalls = 0;
 
     slackSessions.clear();
-    // App mentions occur in channels (groups). Under the owner-only group
-    // default, an unknown (non-owner) sender must be blocked before any greeting
-    // or handler invocation — the security-enforcement invariant this test guards.
     securityManager.setConfig(channelId, { group_policy: "owner_only" });
     adapter.setMessageHandler(async () => {
       handlerCalls += 1;
@@ -523,7 +519,6 @@ describe("Slack adapter mocked flows", () => {
       }
     );
 
-    // Unknown sender is blocked: chat handler never runs.
     expect(handlerCalls).toBe(0);
   });
 

@@ -529,7 +529,6 @@ describe("expiring one-time pairing codes", () => {
     const redeemed = redeemPairingCode(code);
     expect(redeemed).not.toBeNull();
     expect(redeemed?.token).toMatch(/^cybara_mobile_/);
-    // the device inherits the code's role scopes
     const view = authenticateMobileDeviceToken(redeemed!.token);
     expect(view?.scopes.sort()).toEqual(["chat", "read"]);
   });

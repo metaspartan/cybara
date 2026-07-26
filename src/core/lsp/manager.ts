@@ -213,9 +213,7 @@ export class LSPManager {
       try {
         writeFileSync(configPath, JSON.stringify(DEFAULT_LSP_CONFIG, null, 2));
         console.log("[LSP Manager] Created default config at", configPath);
-      } catch {
-        // Ignore write errors
-      }
+      } catch {}
     }
 
     return DEFAULT_LSP_CONFIG;

@@ -131,9 +131,7 @@ async function mirrorToExternalProvider(
     const metadata: Record<string, string> = { category, app: "cybara" };
     if (source) metadata.source = source;
     await captureToExternalMemory(settings, content, metadata);
-  } catch {
-    /* external memory is best-effort; the local write already succeeded */
-  }
+  } catch {}
 }
 
 export function getDurableMemorySummary(): Record<string, number> {
@@ -202,13 +200,7 @@ export function getRecentMemoryContext(
 export function isPrivateSessionContext(channel?: string): boolean {
   if (!channel) return false;
 
-  const privatePatterns = [
-    /^discord:/i, // Discord channels
-    /^slack:/i, // Slack channels
-    /^group:/i, // Generic group prefix
-    /^shared:/i, // Shared context prefix
-    /^channel:/i, // Channel prefix
-  ];
+  const privatePatterns = [/^discord:/i, /^slack:/i, /^group:/i, /^shared:/i, /^channel:/i];
 
   return privatePatterns.some((pattern) => pattern.test(channel));
 }

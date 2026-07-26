@@ -1,9 +1,3 @@
-/**
- * X / Twitter search via xAI Grok "Live Search". Grok can search X (Twitter) in
- * real time through the chat-completions API with `search_parameters` scoped to
- * the `x` source. Requires XAI_API_KEY (the xAI/Grok provider key).
- */
-
 const XAI_CHAT_ENDPOINT = "https://api.x.ai/v1/chat/completions";
 const DEFAULT_MODEL = "grok-4-fast";
 const DEFAULT_MAX_RESULTS = 15;
@@ -14,7 +8,7 @@ export interface XSearchRequestOptions {
   maxResults?: number;
   fromHandles?: string[];
   excludeHandles?: string[];
-  fromDate?: string; // ISO yyyy-mm-dd
+  fromDate?: string;
   toDate?: string;
 }
 
@@ -31,10 +25,6 @@ export interface XSearchResponse {
   tookMs: number;
 }
 
-/**
- * Build the xAI Live Search request body. Pure so the source/parameter shaping
- * is unit-testable without hitting the network.
- */
 export function buildXSearchBody(options: XSearchRequestOptions): Record<string, unknown> {
   const maxResults = Math.min(Math.max(1, options.maxResults ?? DEFAULT_MAX_RESULTS), 30);
   const xSource: Record<string, unknown> = { type: "x" };
@@ -46,7 +36,7 @@ export function buildXSearchBody(options: XSearchRequestOptions): Record<string,
   }
 
   const searchParameters: Record<string, unknown> = {
-    mode: "on", // force live search rather than letting the model decide
+    mode: "on",
     sources: [xSource],
     max_search_results: maxResults,
     return_citations: true,
@@ -71,7 +61,6 @@ export function buildXSearchBody(options: XSearchRequestOptions): Record<string,
 export function extractCitations(data: unknown): string[] {
   if (!data || typeof data !== "object") return [];
   const record = data as Record<string, unknown>;
-  // xAI returns citations either at the top level or under the message.
   const top = record.citations;
   if (Array.isArray(top)) {
     return top.filter((c): c is string => typeof c === "string");

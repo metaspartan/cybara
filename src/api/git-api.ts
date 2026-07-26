@@ -83,10 +83,6 @@ async function runGit(
     ]).finally(() => clearTimeout(timeoutId));
 
     return {
-      // trimEnd only: leading whitespace is significant in `git status
-      // --porcelain` output (a worktree-modified file's line begins with a
-      // space), so a full trim() would shift the status columns of the first
-      // line and truncate its path.
       stdout: stdout.trimEnd(),
       stderr: timedOut ? "Git command timed out" : stderr.trim(),
       success: !timedOut && exitCode === 0,

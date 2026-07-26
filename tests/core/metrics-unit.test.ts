@@ -15,9 +15,6 @@ const TOKEN_TRACKING_MODULE = join(
 ).replace(/\\/g, "/");
 const DB_MODULE = join(ROOT_DIR, "src", "core", "database.ts").replace(/\\/g, "/");
 
-// metrics.ts writes to the platform.db resolved from paths.ts (CYBARA_HOME),
-// fixed at startup — so the recording + aggregation runs in a child process
-// with CYBARA_HOME pointed at a throwaway directory.
 const WORKER_SOURCE = `
 import * as metrics from "${METRICS_MODULE}";
 import { trackTokenUsage as trackDetailedTokenUsage } from "${TOKEN_TRACKING_MODULE}";

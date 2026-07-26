@@ -1,20 +1,7 @@
-/**
- * File-path safety policy for write/edit/apply_patch handlers.
- *
- * Cybara's file handlers historically could write anywhere the process user
- * could touch. This module enforces a hard deny-list of sensitive paths
- * (credentials, keys, env files) and an optional workspace-confinement mode.
- *
- * The deny-list is deliberately conservative: it blocks the common locations of
- * secrets and machine credentials. Workspace confinement is opt-in because many
- * legitimate agent workflows intentionally edit files outside the CWD (dotfiles,
- * notes, config).
- */
 import { existsSync, realpathSync } from "fs";
 import { homedir } from "os";
 import { resolve, isAbsolute, dirname, join } from "path";
 
-/** Reason a path was rejected. */
 export type PathPolicyDenialReason = "sensitive-path" | "outside-workspace" | "empty-path";
 
 export interface PathPolicyDecision {
@@ -23,10 +10,9 @@ export interface PathPolicyDecision {
   resolvedPath: string;
 }
 
-/** Filename patterns (lowercased, matched anywhere in the basename) that are always denied. */
 const DENY_FILENAME_PATTERNS: readonly RegExp[] = [
   /^\.env(\..*)?$/i,
-  /^id_[a-z0-9-]+$/i, // id_rsa, id_ed25519, etc.
+  /^id_[a-z0-9-]+$/i,
   /^authorized_keys$/i,
   /^known_hosts$/i,
   /\.netrc$/i,
@@ -46,27 +32,19 @@ const DENY_FILENAME_PATTERNS: readonly RegExp[] = [
   /service[_-]?account.*\.json$/i,
 ];
 
-/**
- * Absolute path segments (resolved against the home dir) that are always denied
- * when a target path is equal to or nested beneath them.
- */
 const DENY_PATH_SEGMENTS: readonly string[] = [
   ".ssh",
   ".gnupg",
   ".aws",
-  ".cybara", // Cybara's own data dir: provider-keys DB, encrypted wallet, sessions
+  ".cybara",
   "Library/Cookies",
   "Library/Keychains",
 ];
 
 export interface PathPolicyOptions {
-  /** When true, only paths under `workspaceRoot` are allowed. */
   confineToWorkspace?: boolean;
-  /** Root directory for confinement checks. */
   workspaceRoot?: string;
-  /** Optional extra allow/deny prefixes (e.g. from user config). */
   extraDenyPrefixes?: string[];
-  /** Allow the policy to be disabled entirely (e.g. trusted local-only setups). */
   disabled?: boolean;
 }
 
@@ -116,10 +94,7 @@ function policyPaths(rawPath: string): string[] {
 function matchesDenyPattern(resolvedPath: string): boolean {
   const lower = resolvedPath.toLowerCase();
   const basename = lower.split("/").pop() ?? "";
-  // Match against the trailing path component(s) for the segment-style rules.
   for (const pattern of DENY_FILENAME_PATTERNS) {
-    // Some patterns include a path separator (e.g. ".aws/..."); test against the
-    // whole path; others are basename-only — test against basename.
     if (pattern.source.includes("\\/") || pattern.source.includes("/")) {
       if (pattern.test(lower) || pattern.test(resolvedPath)) return true;
     } else if (pattern.test(basename)) {
@@ -147,11 +122,6 @@ function isUnderHomeSubdir(resolvedPath: string, segment: string): boolean {
   });
 }
 
-/**
- * Decide whether a path may be written. Pure function — safe to unit-test.
- * Accepts `undefined` so callers can pass an optional/unvalidated value and get
- * a structured "empty-path" denial instead of a runtime error.
- */
 export function checkWritePath(
   rawPath: string | undefined,
   options: PathPolicyOptions = {}
@@ -193,8 +163,6 @@ export function checkWritePath(
   }
 
   if (options.confineToWorkspace) {
-    // Fail closed: confinement requested without a root is a misconfiguration,
-    // and silently skipping the check would defeat the lock the caller asked for.
     if (!options.workspaceRoot) {
       return { allowed: false, reason: "outside-workspace", resolvedPath: resolved };
     }
@@ -215,7 +183,6 @@ export function checkWritePath(
   return { allowed: true, resolvedPath: resolved };
 }
 
-/** Human-readable message for a denial, suitable for a tool result. */
 export function describeDenial(reason: PathPolicyDenialReason): string {
   switch (reason) {
     case "sensitive-path":
@@ -227,7 +194,6 @@ export function describeDenial(reason: PathPolicyDenialReason): string {
   }
 }
 
-/** Convenience helper used by file handlers. */
 export function assertWritablePath(
   rawPath: string | undefined,
   options?: PathPolicyOptions
@@ -239,12 +205,6 @@ export function assertWritablePath(
   return decision.resolvedPath;
 }
 
-// The agent's OWN memory and skills live under ~/.cybara but are meant to be
-// readable — an agent reading its MEMORY.md or a SKILL.md is normal, and
-// blocking it (the whole `.cybara` dir is denied to protect the keys DB and
-// wallet) caused spurious "sensitive credential" tool failures. These read-only
-// carve-outs re-permit exactly those subtrees; the sensitive parts (data/*.db,
-// api_key, security.json, wallet) remain blocked by the deny-list.
 const READABLE_CYBARA_SUBDIRS: readonly string[] = [
   ".cybara/memory",
   ".cybara/skills",
@@ -253,13 +213,6 @@ const READABLE_CYBARA_SUBDIRS: readonly string[] = [
 const READABLE_CYBARA_IMAGE_SUBDIRS: readonly string[] = [".cybara/screenshots"];
 const READABLE_IMAGE_PATTERN = /\.(png|jpe?g|webp)$/i;
 
-/**
- * Read-side guard. The same sensitive-file deny-list applies to reads — an
- * agent/prompt-injection must not be able to read `~/.ssh/id_rsa`, `.env`,
- * `~/.aws/credentials`, etc. and exfiltrate them. Reuses checkWritePath's rules
- * (workspace confinement is opt-in via options, same as writes), but re-permits
- * the agent's own memory/skills subtrees.
- */
 export function assertReadablePath(
   rawPath: string | undefined,
   options?: PathPolicyOptions
@@ -275,7 +228,6 @@ export function assertReadablePath(
       candidates.every((candidate) =>
         READABLE_CYBARA_IMAGE_SUBDIRS.some((subdir) => isUnderHomeSubdir(candidate, subdir))
       );
-    // Still honor filename-level denials (e.g. a stray .env inside memory/).
     const hitsFilenameDeny = candidates.some((candidate) => matchesDenyPattern(candidate));
     if ((inReadableSubdir || inReadableImageSubdir) && !hitsFilenameDeny) {
       return decision.resolvedPath;

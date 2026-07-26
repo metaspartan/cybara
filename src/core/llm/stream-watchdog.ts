@@ -1,16 +1,3 @@
-/**
- * Inactivity watchdogs for LLM calls. Agent turns may legitimately run for
- * hours, so nothing here caps total duration by default — a request is only
- * killed when the provider goes silent:
- *
- * - first-chunk timeout: no bytes at all since the request started
- * - stall timeout: resets on every streamed chunk once output has begun
- * - optional total cap: off unless explicitly configured
- *
- * Local endpoints get relaxed limits (long prefill before the first token is
- * normal there) and stall detection is disabled for them.
- */
-
 import { config } from "../config";
 
 export interface StreamWatchdogOptions {
@@ -23,12 +10,9 @@ export interface StreamWatchdogOptions {
 
 export interface StreamWatchdog {
   signal: AbortSignal;
-  /** Call on every received chunk/event to prove the stream is alive. */
   touch(): void;
   dispose(): void;
-  /** Non-null when this watchdog (not the caller) aborted the request. */
   timedOutReason(): string | null;
-  /** Convert an abort raised by this watchdog into a descriptive error. */
   wrapError(error: unknown): unknown;
 }
 
@@ -62,19 +46,13 @@ export function resolveLlmWatchdogDefaults(baseUrl: string): {
 } {
   const local = isLocalLlmEndpoint(baseUrl);
   const configured = config.getLlmTimeoutSettings();
-  // Local endpoints auto-relax regardless of the configured remote values:
-  // long prefill before the first token is normal there, and a quiet local
-  // stream usually means heavy compute, not a dead socket.
   const configuredFirstMs = local
     ? Math.max(configured.firstTokenSeconds * 1000, 1_800_000)
     : configured.firstTokenSeconds * 1000;
   const configuredStallMs = local ? 0 : configured.stallSeconds * 1000;
   return {
-    // Env overrides win over persisted settings (ops escape hatch).
     firstChunkMs: readEnvMs("CYBARA_LLM_FIRST_TOKEN_TIMEOUT_MS", configuredFirstMs),
     stallMs: readEnvMs("CYBARA_LLM_STALL_TIMEOUT_MS", configuredStallMs),
-    // No total cap by default: agents are allowed to work for hours as long
-    // as the provider keeps talking.
     totalMs: readEnvMs("CYBARA_LLM_TIMEOUT_MS", configured.totalSeconds * 1000),
   };
 }

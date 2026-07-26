@@ -17,12 +17,10 @@ import { searchFiles } from "../file-search";
 
 const workspace = homeDir;
 
-/** Case-insensitive + small-edit similarity for path-typo suggestions. */
 function pathSegmentSimilarity(a: string, b: string): number {
   const lowerA = a.toLowerCase();
   const lowerB = b.toLowerCase();
   if (lowerA === lowerB) return 1;
-  // Bounded Levenshtein ratio (short segments only).
   const m = lowerA.length;
   const n = lowerB.length;
   if (m === 0 || n === 0) return 0;
@@ -41,12 +39,6 @@ function pathSegmentSimilarity(a: string, b: string): number {
   return 1 - distance / Math.max(m, n);
 }
 
-/**
- * When a path doesn't exist, walk down from its deepest existing ancestor and,
- * at the first missing segment, find the closest real entry (a case or typo
- * fix like "Github"->"GitHub" or "Gybara"->"GitHub"). Returns a corrected path
- * suggestion so the model self-corrects instead of retrying the same typo.
- */
 function suggestNearbyPath(target: string): string | undefined {
   try {
     if (!isAbsolute(target)) return undefined;
@@ -59,7 +51,6 @@ function suggestNearbyPath(target: string): string | undefined {
         current = next;
         continue;
       }
-      // First missing segment: look for the closest sibling entry.
       let entries: string[];
       try {
         entries = readdirSync(current);
@@ -77,7 +68,6 @@ function suggestNearbyPath(target: string): string | undefined {
       const corrected = [current, best.name, ...segments.slice(i + 1)]
         .join(sep)
         .replace(/\/+/g, sep);
-      // Only suggest when the corrected prefix actually exists on disk.
       return existsSync(join(current, best.name)) ? corrected : undefined;
     }
   } catch {
@@ -352,10 +342,6 @@ export async function handleRead(
       'Validation error: path is required. Provide a file path (for example: {"path":"src/index.ts"}).'
     );
   }
-  // Block reads of sensitive credential/key files (SSH keys, .env, cloud creds,
-  // etc.) so an agent/prompt-injection can't read and exfiltrate them. Validate
-  // only — keep using the original (non-normalized) path for the actual read so
-  // case-sensitive filesystems and the returned path are preserved.
   assertReadablePath(path);
   if (!existsSync(path)) {
     throw fileNotFoundError(path);
@@ -822,9 +808,7 @@ async function searchDirectory(
         }
       }
     }
-  } catch {
-    // Ignore permission errors
-  }
+  } catch {}
 }
 
 export async function handleApplyPatch(
@@ -862,7 +846,6 @@ export async function handleApplyPatch(
 
   for (const filePatch of filePatches) {
     try {
-      // Enforce the write path-policy on each file touched by the patch.
       assertWritablePath(expandTilde(filePatch.path), policyOptions);
       const result = await applyFilePatch(filePatch, dryRun);
       if (result.success) {
@@ -975,7 +958,7 @@ function parsePatch(patch: string): FilePatch[] {
           hunks: [],
         };
         currentHunk = null;
-        i++; // Skip +++ line
+        i++;
       }
       continue;
     }

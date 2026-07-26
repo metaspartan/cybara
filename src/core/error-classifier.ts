@@ -1,12 +1,3 @@
-/**
- * Centralized LLM API error classification.
- *
- * Every provider adapter (Anthropic, OpenAI-compat, Google, Bedrock) previously
- * string-matched errors inline to decide retry vs. surface. This single
- * taxonomy replaces that duplication (DRY) and gives the credential pool and
- * retry layer a shared vocabulary to act on.
- */
-
 export type ApiErrorCategory =
   | "auth"
   | "billing"
@@ -21,25 +12,17 @@ export type ApiErrorCategory =
 
 export interface ClassifiedApiError {
   category: ApiErrorCategory;
-  /** True if the error might resolve on retry (transient). */
   retryable: boolean;
-  /** True if rotating to a different credential is likely to help. */
   rotateCredential: boolean;
-  /** True if compressing/reducing context is the appropriate response. */
   reduceContext: boolean;
   status?: number;
   message: string;
 }
 
-/** Whether an HTTP status suggests a transient, retryable failure. */
 export function isTransientStatus(status: number): boolean {
   return [429, 500, 502, 503, 520, 529].includes(status);
 }
 
-/**
- * Classify an error from a provider HTTP response or thrown error.
- * Accepts either an HTTP status code + body text, or a raw Error/message.
- */
 export function classifyApiError(input: {
   status?: number;
   body?: string;
@@ -50,7 +33,6 @@ export function classifyApiError(input: {
     `${input.body ?? ""} ${(input.error as Error)?.message ?? String(input.error ?? "")}`.toLowerCase();
   const message = text.trim() || (status ? `HTTP ${status}` : "unknown error");
 
-  // Auth
   if (
     status === 401 ||
     status === 403 ||
@@ -65,7 +47,6 @@ export function classifyApiError(input: {
       message,
     };
   }
-  // Billing / quota
   if (
     status === 402 ||
     /billing|quota|insufficient|payment|exceeded.*limit|credit|reached.{0,40}(?:usage|monthly).{0,20}limit|usage limit.{0,40}(?:period|billing cycle)|monthly usage limit/.test(
@@ -95,7 +76,6 @@ export function classifyApiError(input: {
       message,
     };
   }
-  // Rate limit
   if (status === 429 || /rate.?limit|too many requests|429/.test(text)) {
     return {
       category: "rate_limit",
@@ -106,7 +86,6 @@ export function classifyApiError(input: {
       message,
     };
   }
-  // Overloaded (provider-specific 529 / "overloaded")
   if (status === 529 || /overloaded/.test(text)) {
     return {
       category: "overloaded",
@@ -117,7 +96,6 @@ export function classifyApiError(input: {
       message,
     };
   }
-  // Context too long
   if (
     /context.*(length|too long|exceed)|maximum.*context|token.*limit|prompt.*too long|context_window_exceeded/.test(
       text
@@ -132,7 +110,6 @@ export function classifyApiError(input: {
       message,
     };
   }
-  // Timeout
   if (status === 408 || /timeout|timed? ?out|aborted/.test(text)) {
     return {
       category: "timeout",
@@ -143,7 +120,6 @@ export function classifyApiError(input: {
       message,
     };
   }
-  // Network
   if (/econnreset|enotfound|econnrefused|fetch failed|network|socket hang up|epipe/.test(text)) {
     return {
       category: "network",
@@ -154,7 +130,6 @@ export function classifyApiError(input: {
       message,
     };
   }
-  // Bad request (400-level, non-auth)
   if (status !== undefined && status >= 400 && status < 500) {
     return {
       category: "bad_request",
@@ -165,7 +140,6 @@ export function classifyApiError(input: {
       message,
     };
   }
-  // Server error (5xx, non-specific)
   if (status !== undefined && status >= 500) {
     return {
       category: "server_error",
@@ -176,7 +150,6 @@ export function classifyApiError(input: {
       message,
     };
   }
-  // Fallback: treat transient statuses as retryable.
   if (status !== undefined && isTransientStatus(status)) {
     return {
       category: "server_error",
@@ -197,7 +170,6 @@ export function classifyApiError(input: {
   };
 }
 
-/** A short, user-facing message derived from a classified error. */
 export function summarizeClassifiedError(error: ClassifiedApiError): string {
   switch (error.category) {
     case "auth":

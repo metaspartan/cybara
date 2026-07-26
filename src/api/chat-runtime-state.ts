@@ -89,9 +89,6 @@ type PersistedSessionIndexEntry = SessionListEntry;
 export const chatSessions = new Map<string, InMemoryChatSession>();
 export const persistedSessionIndex = new Map<string, PersistedSessionIndexEntry>();
 
-// Serialize chat turns per session so two near-simultaneous messages to the same
-// session (e.g. a user retry, or several channel messages) can't interleave
-// their user/assistant pushes or race a mid-turn conversation compaction.
 export const chatTurnMutex = new KeyedMutex();
 setSessionStatusLivenessResolver((sessionId) => chatTurnMutex.isLocked(sessionId));
 export const MAX_PENDING_CHAT_MESSAGES_PER_SESSION = 20;
@@ -225,8 +222,6 @@ export function normalizePersistedIndexEntry(
     useModelRouter:
       entry.useModelRouter ?? persistedSessionIndex.get(entry.id)?.useModelRouter ?? false,
     title: stripSessionTitleAgentPrefix(entry.title, [modelMetadata?.agent_name, entry.agentId]),
-    // Preserve an existing pin when the caller doesn't supply one, so unrelated
-    // index updates (new messages, title regen, etc.) never clear it.
     pinned: entry.pinned ?? persistedSessionIndex.get(entry.id)?.pinned ?? false,
     lastMessage: entry.lastMessage
       ? {
@@ -309,8 +304,6 @@ export function buildMemorySessionListEntries(): SessionListEntry[] {
       createdAt: s.createdAt,
       updatedAt: s.updatedAt || s.createdAt,
       workspaceDir: s.workspaceDir ?? null,
-      // In-memory sessions don't track pin state; inherit it from the persisted
-      // index when the session has been saved.
       pinned: persistedSessionIndex.get(s.id)?.pinned ?? false,
       lastMessage: buildLastMessagePreview(s.messages[s.messages.length - 1]),
       modelMetadata,
@@ -360,8 +353,6 @@ export function hydratePersistedSessionIndex(
 }
 
 export function sortSessionListEntries(sessions: SessionListEntry[]): SessionListEntry[] {
-  // Pinned sessions first, then most-recently-updated. Keeps important chats
-  // at the top regardless of activity.
   return sessions.sort(
     (a, b) =>
       (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) ||

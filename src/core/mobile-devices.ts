@@ -41,11 +41,6 @@ export interface MobileRemoteAccessInfo {
   message: string;
 }
 
-/**
- * Capability scopes a paired device may hold. A device only gets the scopes it
- * was granted, so a stolen token can't reach capabilities the owner didn't opt
- * into (notably fund-moving wallet ops and terminal execution).
- */
 export const MOBILE_SCOPES = [
   "chat",
   "manage",
@@ -57,8 +52,6 @@ export const MOBILE_SCOPES = [
 ] as const;
 export type MobileScope = (typeof MOBILE_SCOPES)[number];
 
-/** Default scopes for a new pairing: everything the mobile app needs, minus */
-/* the dangerous wallet (transfers/signing) and terminal capabilities. */
 export const DEFAULT_MOBILE_SCOPES: MobileScope[] = ["chat", "manage", "read"];
 
 export function normalizeMobileScopes(value: unknown): MobileScope[] {
@@ -70,7 +63,6 @@ export function normalizeMobileScopes(value: unknown): MobileScope[] {
   return valid.length > 0 ? Array.from(new Set(valid)) : [...DEFAULT_MOBILE_SCOPES];
 }
 
-/** Named scope bundles so pairing UIs can offer simple roles instead of raw scopes. */
 export const MOBILE_ROLES = {
   full: ["chat", "manage", "read", "wallet", "terminal", "mcp", "nearby"],
   standard: ["chat", "manage", "read"],
@@ -86,7 +78,7 @@ export function scopesForRole(role: unknown): MobileScope[] | null {
 }
 
 export const MOBILE_PAIRING_PROTOCOL = "cybara-mobile-pair-v1";
-export const DEFAULT_PAIRING_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+export const DEFAULT_PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
 
 export interface MobilePairingCodePayload {
   protocol: typeof MOBILE_PAIRING_PROTOCOL;
@@ -166,9 +158,6 @@ interface MobileDeviceStore {
 
 let cachedStore: MobileDeviceStore | null = null;
 let cachedStorePath = "";
-// mtime of the file when we cached it, so a revoke/remove performed by another
-// process (e.g. `cybara mobile revoke`) is honored by a running gateway instead
-// of being masked by a stale in-memory cache.
 let cachedMtimeMs = 0;
 
 function hashToken(token: string): string {
@@ -477,7 +466,6 @@ function readStore(): MobileDeviceStore {
     return cachedStore;
   }
 
-  // Reuse the cache only while the file on disk hasn't changed under us.
   let mtimeMs = 0;
   try {
     mtimeMs = statSync(storePath).mtimeMs;
@@ -513,8 +501,6 @@ function saveStore(store: MobileDeviceStore): void {
   const storePath = getMobileDeviceStorePath();
   ensureCacheForPath(storePath);
   cachedStore = store;
-  // Atomic write (tmp + rename) so a crash mid-write can't corrupt the store
-  // and wipe paired devices on the next read.
   mkdirSync(dirname(storePath), { recursive: true });
   const tmpPath = `${storePath}.tmp`;
   writeFileSync(tmpPath, JSON.stringify(store, null, 2), { mode: 0o600 });
@@ -678,7 +664,6 @@ export function createMobileDevice(input: {
 }
 
 function generatePairingCode(): string {
-  // 8 base32-ish chars (no ambiguous 0/O/1/I), grouped as XXXX-XXXX.
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const bytes = randomBytes(8);
   const chars = Array.from(bytes, (b) => alphabet[b % alphabet.length]);
@@ -696,11 +681,6 @@ function prunePairingCodes(store: MobileDeviceStore, now: number): PendingPairin
   return (store.pairingCodes ?? []).filter((c) => c.expiresAt > now);
 }
 
-/**
- * Create a short-lived, single-use pairing code (not a token). The QR/link
- * carries only this code; the device redeems it for a scoped device token. The
- * code carries the role/scopes and expires, so a leaked QR can't be reused.
- */
 export function createPairingCode(input: {
   baseUrl: string;
   gatewayName?: string;
@@ -750,11 +730,6 @@ export interface PairingRedemptionResult {
   encoded: string;
 }
 
-/**
- * Redeem a pairing code for a scoped device token. One-time: the code is
- * consumed on success. Returns null when the code is unknown, expired, or
- * already used. Case/whitespace-insensitive on the code.
- */
 export function redeemPairingCode(
   rawCode: string,
   metadata: { userAgent?: string } = {}
@@ -767,14 +742,12 @@ export function redeemPairingCode(
   const live = prunePairingCodes(store, now);
   const match = live.find((c) => constantTimeCodeEqual(c.code, code));
   if (!match) {
-    // Persist the pruning of any expired codes even on a miss.
     if ((store.pairingCodes ?? []).length !== live.length) {
       saveStore({ ...store, pairingCodes: live });
     }
     return null;
   }
 
-  // Consume the code (one-time) before issuing the token.
   const remaining = live.filter((c) => c.code !== match.code);
   saveStore({ ...store, pairingCodes: remaining });
 

@@ -8,20 +8,16 @@ describe("reciprocal rank fusion", () => {
       { ids: ["b", "d", "a"], weight: 0.3 },
     ]);
     const order = fused.map((r) => r.id);
-    // "b" is #2 in vector but #1 in keyword; "a" is #1 in vector but #3 in
-    // keyword. Both appear in both lists and should outrank single-list items.
     expect(order.indexOf("a")).toBeLessThan(order.indexOf("c"));
     expect(order.indexOf("b")).toBeLessThan(order.indexOf("d"));
     expect(order.slice(0, 2).sort()).toEqual(["a", "b"]);
   });
 
   test("is robust to score scale — uses rank, not raw score", () => {
-    // Even if one engine's raw scores were huge, only the RANK matters here.
     const fused = reciprocalRankFusion([
       { ids: ["x", "y"], weight: 0.5 },
       { ids: ["y", "x"], weight: 0.5 },
     ]);
-    // Symmetric ranks + equal weights => equal fused scores.
     expect(fused[0].score).toBeCloseTo(fused[1].score, 10);
   });
 

@@ -1,13 +1,3 @@
-/**
- * Built-in media-generation providers.
- *
- * - OpenAI image generation (DALL-E 3 / gpt-image-1) via the Images API.
- * - fal image / video / music generation (synchronous and async-queue models).
- *
- * Each provider reads its own env keys for `isConfigured` and implements a
- * single `generate(req)` method. Auth/env plumbing is intentionally separate
- * from the capability.
- */
 import {
   registerImageProvider,
   registerVideoProvider,
@@ -33,8 +23,6 @@ function falApiKey(): string | undefined {
   return getEnv("FAL_KEY") || getEnv("FAL_API_KEY");
 }
 
-// ----------------------------- OpenAI image -------------------------------
-
 export function registerOpenAIImageProvider(): void {
   registerImageProvider({
     id: "openai",
@@ -54,7 +42,6 @@ export function registerOpenAIImageProvider(): void {
         size: req.size || "1024x1024",
         quality: req.quality || "standard",
       };
-      // Editing mode when reference images are provided.
       const endpoint = req.inputImages?.length
         ? `${baseUrl}/images/edits`
         : `${baseUrl}/images/generations`;
@@ -88,8 +75,6 @@ export function registerOpenAIImageProvider(): void {
   });
 }
 
-// ------------------------------- fal (all) --------------------------------
-
 function falHeaders(key: string): Record<string, string> {
   return {
     Authorization: `Key ${key}`,
@@ -105,7 +90,6 @@ async function safeText(response: Response): Promise<string> {
   }
 }
 
-/** Poll a fal queue status_url until COMPLETED, then fetch the response_url. */
 async function waitForFalQueue(
   statusUrl: string,
   responseUrl: string,

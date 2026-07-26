@@ -69,8 +69,6 @@ function setRouterConfig(cfg: Partial<RouterConfig>): void {
   });
 }
 
-// ─── Pricing DB ─────────────────────────────────────────────────────────────
-
 describe("built-in pricing DB", () => {
   test("getPricing returns stamped Anthropic prices", () => {
     const p = getPricing("anthropic", "claude-opus-4-8");
@@ -139,8 +137,6 @@ describe("built-in pricing DB", () => {
   });
 });
 
-// ─── Availability + limits ──────────────────────────────────────────────────
-
 describe("router availability + limits", () => {
   test("provider available when router disabled", () => {
     config.set("router", null);
@@ -184,8 +180,6 @@ describe("router availability + limits", () => {
   });
 });
 
-// ─── Circuit breaker ────────────────────────────────────────────────────────
-
 describe("circuit breaker", () => {
   test("opens after 5 consecutive failures", () => {
     setRouterConfig({ routes: { openai: { weight: 50 } } });
@@ -211,8 +205,6 @@ describe("circuit breaker", () => {
   });
 });
 
-// ─── Rate-limit cooldown ────────────────────────────────────────────────────
-
 describe("rate-limit cooldown", () => {
   test("recordRateLimit puts provider in cooldown", () => {
     setRouterConfig({ routes: { openai: { weight: 50 } } });
@@ -223,8 +215,6 @@ describe("rate-limit cooldown", () => {
     expect(avail.reason).toContain("cooldown");
   });
 });
-
-// ─── Selection strategies ───────────────────────────────────────────────────
 
 describe("provider selection", () => {
   test("preferred provider passthrough when available", () => {
@@ -287,7 +277,6 @@ describe("provider selection", () => {
         anthropic: { weight: 100 },
       },
     });
-    // With openai at weight 0, it should never be selected.
     for (let i = 0; i < 10; i++) {
       expect(selectProvider()).toBe("anthropic");
     }
@@ -432,8 +421,6 @@ describe("provider selection", () => {
   });
 });
 
-// ─── Input validation ───────────────────────────────────────────────────────
-
 describe("input validation", () => {
   test("negative weight is clamped to 0", () => {
     setRouterConfig({ routes: { openai: { weight: -10 } } });
@@ -447,12 +434,10 @@ describe("input validation", () => {
   });
 });
 
-// ─── Status + spend tracking ────────────────────────────────────────────────
-
 describe("status + spend tracking", () => {
   test("getRouterStatus includes pricing from built-in DB", () => {
     setRouterConfig({ routes: { anthropic: { weight: 70 } } });
-    recordUsage("anthropic", 1_000_000, 500_000, true); // $5 in + $12.5 out
+    recordUsage("anthropic", 1_000_000, 500_000, true);
     const status = getRouterStatus();
     expect(status.routes[0].spendToday).toBeCloseTo(17.5, 1);
     expect(status.routes[0].inputPerM).toBe(5.0);

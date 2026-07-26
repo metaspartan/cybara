@@ -225,7 +225,6 @@ export async function handleCalc(args: Record<string, unknown>): Promise<unknown
   }
 }
 
-// Convert tool - convert between units
 export async function handleConvert(args: Record<string, unknown>): Promise<unknown> {
   const value = args.value as number;
   const from = args.from as string;
@@ -241,11 +240,9 @@ export async function handleConvert(args: Record<string, unknown>): Promise<unkn
     throw new Error("Target unit (to) is required");
   }
 
-  // Normalize units to lowercase
   const fromUnit = from.toLowerCase();
   const toUnit = to.toLowerCase();
 
-  // Conversion factors to base units (meters, kilograms, Kelvin)
   const lengthToMeters: Record<string, number> = {
     m: 1,
     meter: 1,
@@ -271,12 +268,10 @@ export async function handleConvert(args: Record<string, unknown>): Promise<unkn
     in: 0.0254,
     inch: 0.0254,
     inches: 0.0254,
-    // A nautical mile is exactly 1852 meters (the previous 1.852e+9 was wrong by
-    // ~1e6). Use `nmi` for nautical miles; `nm` is the SI nanometer (1e-9 m).
     nmi: 1852,
     "nautical mile": 1852,
     "nautical miles": 1852,
-    nm: 1e-9, // nanometer
+    nm: 1e-9,
     nanometer: 1e-9,
     nanometers: 1e-9,
   };
@@ -304,7 +299,6 @@ export async function handleConvert(args: Record<string, unknown>): Promise<unkn
     "metric tons": 1000,
   };
 
-  // Temperature conversion (to Kelvin, then to target)
   const toKelvin = (val: number, unit: string): number => {
     switch (unit) {
       case "c":
@@ -337,22 +331,16 @@ export async function handleConvert(args: Record<string, unknown>): Promise<unkn
     }
   };
 
-  // Determine type and convert
   let result: number;
 
-  // Check if it's a temperature conversion
   const tempUnits = ["c", "celsius", "f", "fahrenheit", "k", "kelvin"];
   if (tempUnits.includes(fromUnit) && tempUnits.includes(toUnit)) {
     const kelvin = toKelvin(value, fromUnit);
     result = fromKelvin(kelvin, toUnit);
-  }
-  // Check length conversions
-  else if (fromUnit in lengthToMeters && toUnit in lengthToMeters) {
+  } else if (fromUnit in lengthToMeters && toUnit in lengthToMeters) {
     const meters = value * lengthToMeters[fromUnit];
     result = meters / lengthToMeters[toUnit];
-  }
-  // Check weight conversions
-  else if (fromUnit in weightToKg && toUnit in weightToKg) {
+  } else if (fromUnit in weightToKg && toUnit in weightToKg) {
     const kg = value * weightToKg[fromUnit];
     result = kg / weightToKg[toUnit];
   } else {

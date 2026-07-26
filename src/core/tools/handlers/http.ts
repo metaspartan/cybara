@@ -47,7 +47,7 @@ export async function handleHttp(args: Record<string, unknown>): Promise<HttpRes
       headers,
       body: body ? body : undefined,
       signal: controller.signal,
-      redirect: "manual", // Don't auto-follow redirects (prevent SSRF via redirect)
+      redirect: "manual",
     });
 
     clearTimeout(timeoutId);

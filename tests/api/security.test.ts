@@ -44,8 +44,6 @@ describe("API security module", () => {
   });
 
   test("authenticateRequest does NOT bypass header-less (non-browser) localhost requests", () => {
-    // curl / another local process with no Origin and no Sec-Fetch-Site must
-    // present the API key — they don't inherit the localhost bypass.
     const result = security.authenticateRequest({}, "127.0.0.1");
     expect(result.authenticated).toBe(false);
     expect(result.reason).toContain("Missing Authorization");
@@ -61,9 +59,6 @@ describe("API security module", () => {
   });
 
   test("authenticateRequest blocks DNS-rebinding: local IP but foreign Host header", () => {
-    // attacker.example resolves to 127.0.0.1, so the victim's browser sends a
-    // same-origin request from a loopback IP — but Host still names the
-    // attacker's domain. The bypass must refuse it.
     const result = security.authenticateRequest(
       { "sec-fetch-site": "same-origin", host: "attacker.example:4269" },
       "127.0.0.1"
@@ -352,11 +347,9 @@ describe("API security module", () => {
   });
 
   test("validateUrl blocks cloud-metadata and decimal-encoded loopback (SSRF)", async () => {
-    // Link-local cloud-metadata endpoint — a prime SSRF target.
     const metadata = await security.validateUrl("http://169.254.169.254/latest/meta-data/");
     expect(metadata.valid).toBe(false);
 
-    // Decimal-encoded loopback (2130706433 === 127.0.0.1).
     const decimalLoopback = await security.validateUrl("http://2130706433/");
     expect(decimalLoopback.valid).toBe(false);
   });

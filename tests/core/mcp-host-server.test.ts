@@ -7,10 +7,8 @@ describe("MCP host server", () => {
   });
 
   test("runMcpStdioServer is async", () => {
-    // Verify it returns a Promise without actually running it.
     const result = runMcpStdioServer();
     expect(result).toBeInstanceOf(Promise);
-    // Abort it immediately so it doesn't hang waiting on stdin.
     result.catch(() => {});
   });
 });

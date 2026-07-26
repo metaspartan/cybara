@@ -56,7 +56,6 @@ describe("rate-limit state tracking", () => {
 
   test("isRateLimited clears after the reset window elapses", () => {
     const key = `test-reset-${Date.now()}`;
-    // resetSeconds of 0 means resetAt is now (already elapsed).
     recordRateLimit(
       key,
       new Headers({ "x-ratelimit-remaining-requests": "0", "x-ratelimit-reset-requests": "0" })

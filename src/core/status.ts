@@ -79,12 +79,10 @@ export type StatusStreamEvent =
   | StatusSnapshotEventPayload
   | TokenStreamEventPayload;
 
-/** A delta of assistant text streamed to the UI in real time. */
 export interface TokenStreamEventPayload {
   type: "assistant_token";
   sessionId: string;
   agentId?: string;
-  /** The text delta (may be a few characters or a line). */
   delta: string;
   timestamp: number;
   runId?: string;
@@ -185,8 +183,6 @@ function pendingOnlySnapshot(
 
 function sanitizeActivityText(detail?: string): string {
   if (!detail || typeof detail !== "string") return "";
-  // Streamed reasoning deltas can arrive as bare markup (e.g. "</think>");
-  // never let tag tokens become visible activity text.
   return redactSecretText(stripReasoningTagTokens(detail))
     .replace(/\s{2,}/g, " ")
     .trim();
@@ -519,9 +515,7 @@ function emitStatusStreamEvent(event: StatusStreamEvent): void {
   for (const callback of statusStreamCallbacks) {
     try {
       callback(event);
-    } catch {
-      // Ignore callback errors
-    }
+    } catch {}
   }
 
   const message = encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
@@ -589,9 +583,7 @@ export function broadcastStatus(status: StatusPayload): void {
   for (const callback of statusCallbacks) {
     try {
       callback(sequencedStatus);
-    } catch {
-      // Ignore callback errors
-    }
+    } catch {}
   }
 
   emitStatusStreamEvent({ ...sequencedStatus, type: "status" });
@@ -636,7 +628,6 @@ export function broadcastTaskEvent(event: TaskEventPayload): void {
   });
 }
 
-/** Stream an assistant text delta to the UI in real time. */
 export function broadcastTokenDelta(event: {
   sessionId: string;
   agentId?: string;

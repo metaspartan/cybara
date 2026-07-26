@@ -209,7 +209,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      ...customHeaders, // Merge custom headers (e.g., User-Agent for Kimi Code)
+      ...customHeaders,
     };
     if (auth) {
       const apiKeyHeader = (

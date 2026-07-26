@@ -124,7 +124,6 @@ export function splitMessageContent(content: string): MessageContentPart[] {
 const REASONING_MARKUP_TOKEN_PATTERN =
   /<\/?(?:REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning|final)\b[^>]*>|\[\/?(?:thinking|reasoning)\]/gi;
 
-/** Bare reasoning tag deltas (e.g. "</think>") must never render as activity text. */
 export function stripReasoningTagTokens(value: string): string {
   return value.replace(REASONING_MARKUP_TOKEN_PATTERN, " ");
 }
@@ -515,13 +514,6 @@ export function chatIsWaitingForAssistant(
   return sending || lastVisibleChatMessage(messages)?.role === "user";
 }
 
-// ── Lightweight Markdown (mobile) ────────────────────────────────────────────
-// The RN client has no react-markdown (that renders DOM). This is a small,
-// dependency-free GFM-subset parser so chat messages render with the same
-// structure as the web/Tauri UI: headings, bold/italic, inline code, links,
-// strikethrough, ordered/unordered lists, blockquotes, tables, and rules.
-// Fenced code blocks are handled upstream by splitMessageContent().
-
 export type MarkdownInline =
   | { type: "text"; text: string }
   | { type: "bold"; text: string }
@@ -585,11 +577,9 @@ export function extractMobileMarkdownImages(input: string): MobileMarkdownImageE
   return { content, images };
 }
 
-/** Tokenize a single line of inline markdown into styled spans. */
 export function parseInlineMarkdown(input: string): MarkdownInline[] {
   const tokens: MarkdownInline[] = [];
   let rest = input;
-  // Ordered by precedence; each pattern captures its inner text.
   const patterns: Array<{ re: RegExp; make: (m: RegExpExecArray) => MarkdownInline }> = [
     { re: /`([^`]+)`/, make: (m) => ({ type: "code", text: m[1] }) },
     {
@@ -634,7 +624,6 @@ function splitTableRow(line: string): string[] {
 
 const TABLE_SEPARATOR = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
 
-/** Parse a text block (no fenced code) into structured markdown blocks. */
 export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
   const lines = input.replace(/\r\n/g, "\n").split("\n");
   const blocks: MarkdownBlock[] = [];
@@ -656,14 +645,12 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
       continue;
     }
 
-    // Horizontal rule.
     if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
       flushParagraph();
       blocks.push({ type: "rule" });
       continue;
     }
 
-    // Heading.
     const heading = /^(#{1,6})\s+(.*)$/.exec(trimmed);
     if (heading) {
       flushParagraph();
@@ -675,22 +662,20 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
       continue;
     }
 
-    // Table: a `|` row immediately followed by a separator row.
     if (trimmed.includes("|") && i + 1 < lines.length && TABLE_SEPARATOR.test(lines[i + 1])) {
       flushParagraph();
       const header = splitTableRow(trimmed).map((cell) => parseInlineMarkdown(cell));
       const rows: MarkdownInline[][][] = [];
-      i += 2; // skip header + separator
+      i += 2;
       while (i < lines.length && lines[i].trim().includes("|")) {
         rows.push(splitTableRow(lines[i]).map((cell) => parseInlineMarkdown(cell)));
         i++;
       }
-      i--; // step back; outer loop will advance
+      i--;
       blocks.push({ type: "table", header, rows });
       continue;
     }
 
-    // Blockquote.
     const quote = /^>\s?(.*)$/.exec(trimmed);
     if (quote) {
       flushParagraph();
@@ -698,7 +683,6 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
       continue;
     }
 
-    // Ordered / unordered list item.
     const ordered = /^(\d+)[.)]\s+(.*)$/.exec(trimmed);
     if (ordered) {
       flushParagraph();
@@ -737,11 +721,6 @@ const STREAM_REASONING_BLOCK_PATTERN = new RegExp(
 const STREAM_REASONING_CLOSE_PATTERN = new RegExp(`</${STREAM_REASONING_TAG}\\b[^>]*>`, "gi");
 const STREAM_REASONING_OPEN_PATTERN = new RegExp(`<${STREAM_REASONING_TAG}\\b[^>]*>`, "i");
 
-/**
- * Hide reasoning inside a live streaming buffer: paired think blocks are
- * removed, an unpaired closing tag treats everything before it as reasoning
- * (implicit opener), and an unclosed opening tag hides the streaming tail.
- */
 export function stripStreamingReasoningForDisplay(text: string): string {
   let result = text.replace(STREAM_REASONING_BLOCK_PATTERN, "");
 

@@ -1,28 +1,12 @@
-/**
- * Shared retry/backoff wrapper for provider HTTP calls (DRY).
- *
- * Previously each provider adapter (Anthropic, OpenAI-compat, Google, Bedrock)
- * implemented its own transient-error retry loop with duplicated backoff logic
- * and its own status-code sets. This module provides one configurable wrapper.
- *
- * It classifies failures via `classifyApiError`, retries transient categories
- * with capped exponential backoff + jitter, and optionally consults a credential
- * pool to rotate keys on rate-limit/auth failures.
- */
 import { classifyApiError, type ClassifiedApiError } from "./error-classifier";
 
 export interface RetryOptions {
   maxAttempts?: number;
-  /** Base backoff in ms; actual = min(base * 2^attempt, maxBackoffMs) + jitter. */
   baseBackoffMs?: number;
   maxBackoffMs?: number;
-  /** Called when a credential-rotatable error occurs; may return a new key. */
   onRotate?: (error: ClassifiedApiError) => string | null | Promise<string | null>;
-  /** Called after each attempt with the classified result, for logging/metrics. */
   onAttempt?: (info: { attempt: number; status?: number; error?: ClassifiedApiError }) => void;
-  /** AbortSignal to cancel retrying. */
   signal?: AbortSignal;
-  /** Sleep function (overridable for tests). */
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -65,13 +49,6 @@ export interface RetryResult<T> {
   attempts: number;
 }
 
-/**
- * Run an async operation that produces a `Response` (or throws), retrying
- * transient failures and rotating credentials when appropriate.
- *
- * `operation` receives the credential to use (the initial value or a rotated
- * one) so callers can inject it into headers. It should return the `Response`.
- */
 export async function withRetry(
   operation: (credential: string | null) => Promise<Response>,
   initialCredential: string | null,
@@ -129,7 +106,6 @@ export async function withRetry(
     lastError = error;
     options.onAttempt?.({ attempt, status: response.status, error });
 
-    // Rotate credential first if the error suggests it might help.
     if (error.rotateCredential && options.onRotate) {
       const next = await options.onRotate(error);
       if (next) credential = next;

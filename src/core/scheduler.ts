@@ -352,9 +352,6 @@ class TaskScheduler {
         error: errorMsg.slice(0, 200),
       });
 
-      // A transient failure (e.g. a provider hiccup) must NOT permanently kill a
-      // recurring task. Re-arm it for its next scheduled run; only one-shot tasks
-      // stay in the terminal `failed` state.
       const failedAt = new Date().toISOString();
       if (task.schedule) {
         const next_run = this.calculateNextRun(task.schedule);
@@ -369,18 +366,12 @@ class TaskScheduler {
   private calculateNextRun(schedule?: string): string | undefined {
     if (!schedule) return undefined;
 
-    // Use the canonical cron parser (the same one validateTaskInput validates
-    // with) rather than a hand-rolled subset. The old subset ignored day-of-
-    // month/month fields and mis-parsed ranges/lists (e.g. `0 9 * * 1-5` ran
-    // only on Mondays because `parseInt("1-5")` === 1).
     try {
       const nextMs = nextCronRun(schedule, Date.now());
       if (Number.isFinite(nextMs) && nextMs > 0) {
         return new Date(nextMs).toISOString();
       }
-    } catch {
-      // Fall through to the safe default below on an unparseable schedule.
-    }
+    } catch {}
 
     const fallback = new Date(Date.now() + 60 * 60 * 1000);
     return fallback.toISOString();

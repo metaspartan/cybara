@@ -8,11 +8,6 @@ import {
 import { agentManager } from "../../src/core/agent";
 import { providerManager } from "../../src/core/providers";
 
-// ── Scripted OpenAI-compatible provider ─────────────────────────────────────
-// Real server + real fetch so watchdog aborts genuinely cancel socket reads,
-// exactly like production. Behaviors are selected per-request via the model
-// name, mirroring the failure modes from the stalled session 07e1bb.
-
 function sseChunk(payload: Record<string, unknown>): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
 }
@@ -101,7 +96,6 @@ const server = Bun.serve({
     }
 
     if (model === "behave-silent") {
-      // Headers arrive, then the socket goes quiet forever (dead provider).
       const stream = new ReadableStream<Uint8Array>({ start() {} });
       return new Response(stream, {
         headers: { "Content-Type": "text/event-stream" },
@@ -129,7 +123,6 @@ const server = Bun.serve({
           const encoder = new TextEncoder();
           controller.enqueue(encoder.encode(contentDelta("partial ")));
           controller.enqueue(encoder.encode(contentDelta("output")));
-          // ...then silence forever.
         },
       });
       return new Response(stream, {
@@ -138,8 +131,6 @@ const server = Bun.serve({
     }
 
     if (model === "behave-slow-but-alive") {
-      // Total duration far exceeds the stall window, but chunks keep coming:
-      // inactivity-based watchdogs must let this finish.
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
           const encoder = new TextEncoder();
@@ -308,8 +299,6 @@ describe("LLM stream watchdog (inactivity, not duration)", () => {
   });
 
   test("a slow-but-alive stream outlives the stall window because chunks reset it", async () => {
-    // 12 chunks * 60ms ≈ 720ms total with a 250ms stall window: duration-based
-    // timeouts would kill this; inactivity-based ones must not.
     const result = await fetchStreaming("behave-slow-but-alive", {
       firstChunkMs: 2000,
       stallMs: 250,
@@ -425,10 +414,7 @@ describe("agentic loop stability against a real streaming provider", () => {
     const agent = createLoopAgent("behave-scripted");
     scriptedTurns = [
       () => streamedToolCallTurn(),
-      // The turn that broke session 07e1bb: tools ran, then the provider
-      // returned an empty final message.
       () => streamedTextTurn(""),
-      // The nudge (no-tools closing request) recovers the real answer.
       () => streamedTextTurn("The result of 2+2 is 4."),
     ];
 
@@ -441,7 +427,6 @@ describe("agentic loop stability against a real streaming provider", () => {
     expect(result.tool_calls?.map((call) => call.name)).toContain("calc");
     expect(result.content).toContain("4");
     expect(result.content).not.toMatch(/completed.*tool/i);
-    // Three requests total: tool turn, empty final, nudge.
     expect(observedBodies.length).toBe(3);
     const nudgeBody = observedBodies[2]!;
     expect(JSON.stringify(nudgeBody.messages)).toContain("Do not call any more tools");
@@ -523,7 +508,6 @@ describe("Codex transcript compaction keeps long runs under context budget", () 
         content: [{ type: "input_text", text: "review the repo" }],
       },
     ];
-    // Simulate hundreds of tool rounds with large outputs.
     for (let i = 0; i < 200; i++) {
       items.push({
         type: "function_call",
@@ -542,16 +526,10 @@ describe("Codex transcript compaction keeps long runs under context budget", () 
 
     const totalChars = items.reduce((sum, item) => sum + JSON.stringify(item).length, 0);
     expect(totalChars).toBeLessThanOrEqual(50_000);
-    // Elide-in-place keeps every structural item (pairing-safe) — the count is
-    // unchanged; it's the old output *content* that shrank.
     expect(items.length).toBe(before);
-    // Leading user request survives untouched.
     expect(JSON.stringify(items[0])).toContain("review the repo");
-    // Recent tail is protected: the last output keeps its real content.
     expect(items[items.length - 1].output).toBe("x".repeat(2000));
-    // An old output was elided to the shared notice.
     expect(JSON.stringify(items)).toContain("elided to free context");
-    // Every output still has its matching call — no orphans possible.
     const liveCallIds = new Set(
       items.filter((i) => i.type === "function_call").map((i) => i.call_id as string)
     );

@@ -42,8 +42,6 @@ let sentinelDir = "";
 let sentinelFile = "";
 let memoryListingBefore: string[] = [];
 
-// Mirrors safeMemoryPath's sanitization purely to guard against ever running
-// the destructive branch on a file that really exists in the user's memoryDir.
 function candidatePath(payload: string): string | null {
   const safe = basename(payload.trim()).replace(/[^\w.-]/g, "-");
   if (!safe || safe === "." || safe === "..") return null;

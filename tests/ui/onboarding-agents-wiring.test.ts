@@ -14,10 +14,8 @@ describe("onboarding boot: no shell flash + full-screen spinner", () => {
   const app = read("App.tsx");
 
   test("Sidebar renders inside SetupGuard (not before it), so the shell doesn't flash", () => {
-    // The wildcard route must wrap Sidebar within SetupGuard.
     const guardBlock = app.slice(app.indexOf("<SetupGuard>"), app.indexOf("</SetupGuard>"));
     expect(guardBlock).toContain("<Sidebar />");
-    // Sidebar must NOT be rendered as a sibling before SetupGuard in the route element.
     expect(app).not.toMatch(/<Sidebar \/>\s*<SetupGuard>/);
   });
 

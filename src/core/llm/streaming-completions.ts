@@ -1,14 +1,6 @@
 import { parseServerSentEvents } from "../agent-internals";
 import type { StreamWatchdog } from "./stream-watchdog";
 
-/**
- * Consume an OpenAI-compatible `stream: true` chat completion and assemble it
- * back into the non-streaming response shape the agentic loop already
- * understands. Streaming is what makes inactivity watchdogs possible: a
- * healthy multi-hour generation keeps emitting chunks, while a dead socket
- * goes quiet and trips the stall timer.
- */
-
 interface StreamedToolCallDelta {
   index?: number;
   id?: string;

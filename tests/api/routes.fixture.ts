@@ -56,8 +56,6 @@ function buildRoutesFixture() {
   }
 
   async function api(method: string, path: string, body?: unknown) {
-    // Simulate the same-origin web UI (browsers send Sec-Fetch-Site) so localhost
-    // auth bypass applies; non-browser header-less requests now require the key.
     const headers: Record<string, string> = { "sec-fetch-site": "same-origin" };
 
     if (body) {

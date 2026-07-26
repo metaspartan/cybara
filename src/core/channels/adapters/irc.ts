@@ -89,9 +89,7 @@ export class IrcAdapter implements ChannelAdapter {
       try {
         runtime.socket.write("QUIT :bye\r\n");
         runtime.socket.end();
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }
     this.runtimes.delete(channelId);
   }

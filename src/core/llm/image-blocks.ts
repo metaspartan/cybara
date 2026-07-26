@@ -1,24 +1,7 @@
-/**
- * Provider-agnostic image input → per-provider content block conversion.
- *
- * Cybara's request builders previously sent text only, so models advertising
- * image input could never actually see an image. These pure helpers turn a
- * normalized AgentImage into the block shape each provider's API expects:
- *   - Anthropic Messages:    { type: "image", source: {...} }
- *   - OpenAI chat/completions:{ type: "image_url", image_url: { url } }
- *   - Google generative-ai:   { inlineData: { mimeType, data } }
- *
- * Kept pure for unit testing.
- */
-
 export interface AgentImage {
-  /** Base64 data WITHOUT the data: URI prefix. */
   data?: string;
-  /** Remote URL (used when data is absent). */
   url?: string;
-  /** Persisted attachment path relative to the cybara home (display/rehydration). */
   path?: string;
-  /** MIME type, e.g. "image/png". Defaults to image/png when omitted. */
   mimeType?: string;
 }
 
@@ -30,7 +13,6 @@ export function normalizeMimeType(mime?: string): string {
   return m || "image/png";
 }
 
-/** Strip a `data:<mime>;base64,` prefix if present, returning {data, mimeType}. */
 export function parseDataUri(value: string): { data: string; mimeType?: string } {
   const match = /^data:([^;,]+)?(?:;base64)?,(.*)$/s.exec(value.trim());
   if (match) {
@@ -42,7 +24,6 @@ export function parseDataUri(value: string): { data: string; mimeType?: string }
 function resolveImage(image: AgentImage): { data?: string; url?: string; mimeType: string } {
   let data = image.data;
   let mimeType = image.mimeType;
-  // Accept a data: URI passed in either field and split it.
   if (!data && image.url && image.url.startsWith("data:")) {
     const parsed = parseDataUri(image.url);
     data = parsed.data;
@@ -61,7 +42,6 @@ export function toAnthropicImageBlock(image: AgentImage): Record<string, unknown
     const media_type = SUPPORTED_ANTHROPIC_MIME.has(mimeType) ? mimeType : "image/png";
     return { type: "image", source: { type: "base64", media_type, data } };
   }
-  // Anthropic supports URL sources on recent API versions.
   return { type: "image", source: { type: "url", url } };
 }
 
@@ -110,14 +90,12 @@ export function bedrockUserContent(
   return content;
 }
 
-/** Returns null when the image has only a remote URL (Google needs inline bytes). */
 export function toGoogleImagePart(image: AgentImage): Record<string, unknown> | null {
   const { data, mimeType } = resolveImage(image);
   if (!data) return null;
   return { inlineData: { mimeType, data } };
 }
 
-/** True when a message has at least one usable image. */
 export function hasImages(images?: AgentImage[]): images is AgentImage[] {
   return Array.isArray(images) && images.some((i) => !!(i.data || i.url));
 }
@@ -125,10 +103,6 @@ export function hasImages(images?: AgentImage[]): images is AgentImage[] {
 export const MAX_INLINE_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_INLINE_BASE64_CHARS = Math.ceil((MAX_INLINE_IMAGE_BYTES * 4) / 3) + 4;
 
-/**
- * Validate/limit untrusted image inputs from the API: cap count, drop oversized
- * inline payloads, and only allow http(s)/data: URLs (no file:// etc.).
- */
 export function sanitizeAgentImages(input: unknown, maxCount = 8): AgentImage[] {
   if (!Array.isArray(input)) return [];
   const out: AgentImage[] = [];

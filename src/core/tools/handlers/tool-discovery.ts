@@ -1,17 +1,3 @@
-/**
- * Dynamic tool discovery — search, describe, then call on demand.
- *
- * As cybara accumulates tools (built-in + MCP servers + skills), registering
- * every tool's full schema in the system prompt bloats context. Instead the
- * model uses these three lightweight tools to find what it needs at runtime:
- *
- *   - tool_search    : fuzzy/keyword search across the full inventory -> names + short descriptions
- *   - tool_describe  : fetch the full input schema for one tool (cheap to call before tool_call)
- *   - tool_call      : invoke a discovered tool by name
- *
- * A tool-search pattern whose inventory combines cybara's built-in tools,
- * registered MCP server tools, and skill-exposed tools.
- */
 import { executeTool, toolSchemas } from "./index";
 import { getToolSchemasForLLM, type ToolContext } from "../index";
 import { mcpManager } from "../../mcp";
@@ -22,10 +8,8 @@ export interface InventoryEntry {
   name: string;
   description: string;
   source: "builtin" | "mcp" | "skill";
-  /** Full schema, populated lazily by tool_describe. */
 }
 
-/** Build the full searchable inventory (built-in + MCP + skills). */
 export async function buildToolInventory(context?: ToolContext): Promise<InventoryEntry[]> {
   const entries: InventoryEntry[] = [];
   const allowed = context?.allowedToolNames ? new Set(context.allowedToolNames) : undefined;
@@ -39,7 +23,6 @@ export async function buildToolInventory(context?: ToolContext): Promise<Invento
     });
   }
 
-  // MCP server tools.
   try {
     if (context?.allowDynamicTools === false) throw new Error("disabled");
     for (const tool of mcpManager.getAllTools()) {
@@ -49,11 +32,8 @@ export async function buildToolInventory(context?: ToolContext): Promise<Invento
         source: "mcp",
       });
     }
-  } catch {
-    /* MCP registry unavailable — skip. */
-  }
+  } catch {}
 
-  // Skill-exposed tools (skills advertise themselves as callable capabilities).
   try {
     if (context?.allowDynamicTools === false) throw new Error("disabled");
     for (const skill of getSkills()) {
@@ -63,9 +43,7 @@ export async function buildToolInventory(context?: ToolContext): Promise<Invento
         source: "skill",
       });
     }
-  } catch {
-    /* skills unavailable — skip. */
-  }
+  } catch {}
 
   return entries;
 }
@@ -79,7 +57,6 @@ function score(entry: InventoryEntry, query: string): number {
   if (name === q) s += 100;
   if (name.includes(q)) s += 40;
   if (desc.includes(q)) s += 20;
-  // Word-level token matches (cheap fuzzy boost).
   for (const token of q.split(/\s+/).filter(Boolean)) {
     if (name.includes(token)) s += 8;
     if (desc.includes(token)) s += 4;
@@ -127,7 +104,6 @@ export async function handleToolDescribe(
     throw new Error("Validation error: 'name' is required.");
   }
 
-  // Built-in tool: return full schema.
   const builtin = toolSchemas[name as keyof typeof toolSchemas];
   if (builtin) {
     if (context?.allowedToolNames && !context.allowedToolNames.includes(name)) {
@@ -142,7 +118,6 @@ export async function handleToolDescribe(
     };
   }
 
-  // MCP tool: resolve server + tool, return its schema.
   if (name.includes("__") && context?.allowDynamicTools !== false) {
     const [serverId, toolName] = name.split("__", 2);
     const status = mcpManager.getStatus(serverId);
@@ -158,7 +133,6 @@ export async function handleToolDescribe(
     }
   }
 
-  // Skill: describe from the catalog.
   if (name.startsWith("skill__") && context?.allowDynamicTools !== false) {
     const skillName = name.slice("skill__".length);
     const skill = getSkills().find((s) => s.name === skillName);
@@ -189,13 +163,11 @@ export async function handleToolCall(
     throw new Error("Validation error: 'name' is required.");
   }
 
-  // Built-in tool.
   if (toolSchemas[name as keyof typeof toolSchemas]) {
     const result = await executeTool(name, toolArgs, context);
     return { name, result };
   }
 
-  // Skill (skill__<name>). Must be checked before the generic "__" MCP branch.
   if (name.startsWith("skill__")) {
     if (context?.allowDynamicTools === false) {
       throw new Error(`Tool "${name}" is not enabled for this agent.`);
@@ -205,7 +177,6 @@ export async function handleToolCall(
     return { name, result };
   }
 
-  // MCP tool.
   if (name.includes("__")) {
     if (context?.allowDynamicTools === false) {
       throw new Error(`Tool "${name}" is not enabled for this agent.`);

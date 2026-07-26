@@ -69,9 +69,7 @@ export class TwitchAdapter implements ChannelAdapter {
       runtime.closed = true;
       try {
         runtime.ws?.close();
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }
     this.runtimes.delete(channelId);
   }
@@ -136,9 +134,7 @@ export class TwitchAdapter implements ChannelAdapter {
     ws.addEventListener("error", () => {
       try {
         ws.close();
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     });
   }
 

@@ -50,15 +50,12 @@ describe("mobile appearance + background", () => {
 
   test("system appearance is enabled so light/dark follow the device", () => {
     const appJson = JSON.parse(readApp("app.json"));
-    // Forcing "dark" made useColorScheme always report dark, so "System" and
-    // light mode never worked. "automatic" lets the OS drive the scheme.
     expect(appJson.expo.userInterfaceStyle).toBe("automatic");
   });
 
   test("App shell paints a single base background (no duplicated layer)", () => {
     const app = readApp("App.tsx");
     const matches = app.match(/backgroundColor:\s*colors\.background/g) ?? [];
-    // Previously both `safe` and `background` painted it; now just one base.
     expect(matches.length).toBe(1);
     expect(app).not.toContain("styles.background");
   });
@@ -90,7 +87,6 @@ describe("mobile theming", () => {
 
   test("defines light and dark palettes with a shared type (enforces token parity)", () => {
     expect(theme).toContain("export const darkColors");
-    // The `: typeof darkColors` annotation makes tsc require identical keys.
     expect(theme).toMatch(/export const lightColors:\s*typeof darkColors/);
     expect(theme).toContain("export const palettes");
     expect(theme).toContain("export type Palette");
@@ -99,7 +95,7 @@ describe("mobile theming", () => {
   test("light background/text differ from dark", () => {
     const light = theme.slice(theme.indexOf("lightColors"));
     expect(light).not.toContain('background: "#020407"');
-    expect(light).toMatch(/text:\s*"#1/); // dark near-black text in light mode
+    expect(light).toMatch(/text:\s*"#1/);
   });
 
   test("ThemeContext follows the OS appearance and persists the choice", () => {
@@ -155,19 +151,16 @@ describe("mobile theming", () => {
     expect(src).toContain("isLiquidGlassAvailable");
     expect(src).toContain("GlassView");
     expect(src).toContain("useNativeGlassView");
-    // Also loads GlassContainer for Apple's recommended adjacent-glass grouping.
     expect(src).toContain("GlassContainer");
     expect(src).toContain("useNativeGlassContainer");
   });
 
   test("GlassPanel's native surface is shape-only so the real material shows (not a white fill)", () => {
     const src = read("components/Glass.tsx");
-    // Native path uses the shape style (border + radius, no backgroundColor)...
     expect(src).toContain("styles.panelShape");
     expect(src).toMatch(/panelShape:\s*\{[^}]*borderRadius/);
     const shape = src.slice(src.indexOf("panelShape: {"), src.indexOf("panelShapeElevated"));
     expect(shape).not.toContain("backgroundColor");
-    // ...while the BlurView fallback still tints with colors.glass for contrast.
     expect(src).toMatch(/panel:\s*\{[^}]*backgroundColor:\s*colors\.glass/);
   });
 
@@ -176,13 +169,10 @@ describe("mobile theming", () => {
     expect(src).toContain("export function GlassGroup");
     expect(src).toContain("useNativeGlassContainer");
     expect(src).toContain("spacing");
-    // Falls back to a plain View when Liquid Glass isn't available.
     expect(src).toMatch(/return <View style=\{style\}>\{children\}<\/View>/);
   });
 
   test("LiquidGlass and GlassPanel both use the native glass surface with a BlurView fallback", () => {
-    // Every primary surface uses genuine iOS 26 Liquid Glass, not just LiquidGlass:
-    // GlassPanel (the app's most-used surface) now upgrades too.
     for (const rel of ["components/LiquidGlass.tsx", "components/Glass.tsx"]) {
       const src = read(rel);
       expect(src).toContain("useNativeGlassView");
@@ -245,14 +235,12 @@ describe("mobile theming", () => {
     const screen = read("screens/DashboardScreen.tsx");
     expect(screen).toContain("import { LiquidGlass }");
     expect(screen).toContain("<LiquidGlass");
-    // the composer bar must be full-bleed glass, not an opaque surface bar
     const barStyle = screen.slice(screen.indexOf("chatComposerBar: {"));
     expect(barStyle.slice(0, 200)).not.toContain("backgroundColor");
   });
 
   test("every styled surface rebuilds its StyleSheet when the scheme changes", () => {
     const styledFiles = [
-      // Dashboard styles were extracted from the screen into their own module.
       "screens/dashboardStyles.ts",
       "screens/ConnectScreen.tsx",
       "components/Glass.tsx",
@@ -263,7 +251,6 @@ describe("mobile theming", () => {
       const src = read(rel);
       expect(src).toMatch(/const makeStyles = \(\) =>\s*StyleSheet\.create\(/);
       expect(src).toContain("subscribeColors(() => {");
-      // no un-rebuilt static stylesheet left behind
       expect(src).not.toContain("const styles = StyleSheet.create(");
     }
   });

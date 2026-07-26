@@ -239,11 +239,11 @@ const config = {
   },
 
   rateLimits: {
-    global: { windowMs: 60000, maxRequests: 200 }, // 200 req/min globally
+    global: { windowMs: 60000, maxRequests: 200 },
     read: { windowMs: 60000, maxRequests: 600 },
-    chat: { windowMs: 60000, maxRequests: 60 }, // 60 req/min for chat
-    pairing: { windowMs: 60000, maxRequests: 10 }, // 10 req/min for pairing attempts
-    auth: { windowMs: 300000, maxRequests: 5 }, // 5 failed auths per 5 min
+    chat: { windowMs: 60000, maxRequests: 60 },
+    pairing: { windowMs: 60000, maxRequests: 10 },
+    auth: { windowMs: 300000, maxRequests: 5 },
   },
 
   maxMessageSize: 32 * 1024,

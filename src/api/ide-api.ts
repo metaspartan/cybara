@@ -233,7 +233,6 @@ export async function browseDirectory(inputPath?: string): Promise<BrowseResult>
     };
 
     for (const item of items) {
-      // Skip hidden files and common ignored directories
       if (item.name.startsWith(".") && item.name !== ".cybara") continue;
       if (item.name === "node_modules" || item.name === "__pycache__") continue;
       if (item.isSymbolicLink()) continue;

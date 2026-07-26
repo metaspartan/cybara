@@ -8,11 +8,6 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SCHED_PATH = join(ROOT_DIR, "src", "core", "cron", "scheduler.ts").replace(/\\/g, "/");
 const STORE_PATH = join(ROOT_DIR, "src", "core", "cron", "store.ts").replace(/\\/g, "/");
 
-// scheduler.ts holds a module-level timer Map and uses real setTimeout, and its
-// store dependency persists to HOME/.cybara/cron. Everything runs in a child
-// process pointed at a throwaway HOME. runJob is driven with injected handlers
-// so nothing waits on wall-clock time; scheduleJob is exercised only with
-// far-future delays that never actually fire during the test.
 const WORKER_SOURCE = `
 import {
   setWakeHandler,

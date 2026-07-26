@@ -38,12 +38,10 @@ describe("applyAnthropicCacheControl", () => {
     };
     const result = applyAnthropicCacheControl(request, { strategy: "system_and_last" });
 
-    // System becomes array form with cache_control on the last block.
     expect(Array.isArray(result.system)).toBe(true);
     const systemBlocks = result.system as Array<{ cache_control?: unknown }>;
     expect(blockHasCacheControl(systemBlocks[systemBlocks.length - 1])).toBe(true);
 
-    // Only the final message should carry a breakpoint.
     const cached = result.messages.filter((m) => {
       const blocks = m.content as Array<{ cache_control?: unknown }>;
       return blocks.some((b) => b.cache_control);
@@ -69,7 +67,6 @@ describe("applyAnthropicCacheControl", () => {
       const blocks = m.content as Array<{ cache_control?: unknown }>;
       return blocks.some((b) => b.cache_control);
     });
-    // 3 trailing messages cached (5, 4, 3) + 1 system breakpoint = 4 total.
     expect(cached.length).toBe(3);
   });
 
@@ -101,7 +98,6 @@ describe("applyAnthropicCacheControl", () => {
     };
     const result = applyAnthropicCacheControl(request);
     const systemBlocks = result.system as Array<{ cache_control?: unknown }>;
-    // Still exactly one breakpoint on system, not two.
     expect(systemBlocks.filter((b) => b.cache_control).length).toBe(1);
   });
 

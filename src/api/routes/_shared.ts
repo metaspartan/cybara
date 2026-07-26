@@ -1,8 +1,3 @@
-/**
- * Shared route helpers + types extracted from routes.ts.
- * Pure functions (parsing, metrics, storage, LSP normalization, session
- * sanitization) used across multiple route domains.
- */
 import { existsSync, statSync } from "fs";
 import { readdir, stat } from "fs/promises";
 import { join } from "path";

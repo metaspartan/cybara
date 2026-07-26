@@ -1363,9 +1363,6 @@ function createNullProvider(): EmbeddingProvider {
   };
 }
 
-// Keyword-only mode: chunks are stored and searched in the local SQLite index
-// (BM25) without computing embeddings, so memory works fully offline with no
-// model download and no external service.
 function createLocalKeywordProvider(): EmbeddingProvider {
   return {
     id: "local",
@@ -1467,11 +1464,6 @@ async function tryCreateProvider(
   };
 }
 
-/**
- * Embed a large set of texts by splitting into fixed-size sub-batches run with
- * bounded concurrency, preserving input order. Keeps big re-indexes under
- * per-request input/token limits without serializing every batch.
- */
 export async function embedInSubBatches(
   texts: string[],
   embedBatch: (batch: string[]) => Promise<number[][]>,

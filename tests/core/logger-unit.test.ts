@@ -21,8 +21,6 @@ interface WorkerReport {
   sinkLevels: string[];
 }
 
-// Level threshold and output format are frozen from env at module load, so
-// each env combination runs in a child process.
 function runLoggerWorker(env: Record<string, string | undefined>, body: string): WorkerReport {
   const dir = mkdtempSync(join(tmpdir(), "cybara-logger-"));
   try {

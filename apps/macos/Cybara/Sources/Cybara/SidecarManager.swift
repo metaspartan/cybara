@@ -121,10 +121,7 @@ final class SidecarManager: ObservableObject {
     private var readinessTask: Task<Void, Never>?
     private var healthMonitorTask: Task<Void, Never>?
     private let allowsAutomaticPortFallback: Bool
-    /// Set when the user explicitly stops/restarts, so an expected exit isn't
-    /// treated as a crash by the auto-restart logic.
     private var userInitiatedStop = false
-    /// Consecutive auto-restart attempts since the gateway was last healthy.
     private var restartAttempts = 0
     private var consecutiveHealthFailures = 0
     private var stableHealthChecks = 0
@@ -188,13 +185,11 @@ final class SidecarManager: ObservableObject {
                     guard self.gatewayMode == .managed else { return }
                     self.gatewayMode = .idle
 
-                    // Expected exit (user stop/restart) — don't auto-recover.
                     if self.userInitiatedStop {
                         self.status = .stopped
                         return
                     }
 
-                    // Unexpected crash — auto-restart with capped exponential backoff.
                     self.handleUnexpectedExit()
                 }
             }
@@ -275,9 +270,6 @@ final class SidecarManager: ObservableObject {
         appendLog("Timed out waiting for attached gateway restart.")
     }
 
-    /// Recover from an unexpected managed-sidecar exit by restarting with a
-    /// capped exponential backoff. Gives up after `maxRestartAttempts` so a
-    /// crash-looping sidecar surfaces a failure instead of restarting forever.
     private func handleUnexpectedExit() {
         stableHealthChecks = 0
         restartAttempts += 1
@@ -299,7 +291,6 @@ final class SidecarManager: ObservableObject {
         readinessTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard let self, !Task.isCancelled else { return }
-            // Bail if the user stopped us or another start already happened.
             if self.userInitiatedStop || self.process != nil { return }
             await self.start()
         }

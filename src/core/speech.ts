@@ -146,9 +146,7 @@ function writeAudioFile(bytes: Uint8Array, extension: string): string {
   writeFileSync(audioPath, bytes, { mode: 0o600 });
   try {
     chmodSync(audioPath, 0o600);
-  } catch {
-    // Best-effort on platforms that do not support POSIX permissions.
-  }
+  } catch {}
   return audioPath;
 }
 
@@ -418,9 +416,7 @@ export async function synthesizeWithSystemVoice(
     if (converted.exitCode === 0 && existsSync(outPath)) {
       try {
         chmodSync(outPath, 0o600);
-      } catch {
-        // Best-effort on platforms and volumes that do not support POSIX permissions.
-      }
+      } catch {}
       audioPath = outPath;
       format = requestedFormat;
     }

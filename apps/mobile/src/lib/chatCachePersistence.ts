@@ -34,9 +34,7 @@ export function schedulePersistJson(key: string, read: () => unknown): void {
           } else {
             await AsyncStorage.setItem(key, JSON.stringify(value));
           }
-        } catch {
-          /* best effort */
-        }
+        } catch {}
       })();
     }, PERSIST_DEBOUNCE_MS)
   );
@@ -49,9 +47,7 @@ export async function persistLastOpenedSessionId(sessionId: string | null): Prom
     } else {
       await AsyncStorage.removeItem(MOBILE_CHAT_CACHE_KEYS.lastSessionId);
     }
-  } catch {
-    /* best effort */
-  }
+  } catch {}
 }
 
 export async function readLastOpenedSessionId(): Promise<string | null> {

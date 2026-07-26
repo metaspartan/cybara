@@ -73,7 +73,6 @@ describe("ideUtils (extracted pure helpers)", () => {
   });
 
   test("scoreQuickOpenResult ranks exact filename best (lowest score)", () => {
-    // Scoring is inverted: 0 = exact filename match, 10 = no match.
     const exact = scoreQuickOpenResult("foo.ts", "foo.ts");
     const path = scoreQuickOpenResult("src/foo.ts", "foo");
     const none = scoreQuickOpenResult("bar.ts", "foo");

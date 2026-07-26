@@ -33,13 +33,9 @@ interface PlatformConfig {
 }
 
 export interface LlmTimeoutSettings {
-  /** Max seconds with zero output before a remote call is considered dead. */
   firstTokenSeconds: number;
-  /** Max silent gap between streamed chunks (0 disables). */
   stallSeconds: number;
-  /** Absolute cap on a single LLM call (0 = unlimited; agents may run hours). */
   totalSeconds: number;
-  /** Ceiling for non-streaming calls, where silence is indistinguishable from work. */
   nonStreamingSeconds: number;
 }
 

@@ -632,10 +632,6 @@ export async function buildSidecar(): Promise<void> {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   }
 
-  // tiny-secp256k1 loads secp256k1.wasm at runtime via readFileSync + import.meta.url.
-  // bun build --compile doesn't embed .wasm files into the virtual FS, so we:
-  // 1. Patch wasm_loader.js to fall back to the executable's directory
-  // 2. Copy secp256k1.wasm alongside the compiled binary
   const wasmLoaderPath = join(
     import.meta.dirname,
     "..",
@@ -710,7 +706,6 @@ export default instance.exports;
       externalPackages: ["playwright", "playwright-core"],
     });
   } finally {
-    // Restore original wasm_loader.js
     if (originalWasmLoader) {
       await Bun.write(wasmLoaderPath, originalWasmLoader);
       console.log(`  🔧 Restored original wasm_loader.js`);
@@ -754,7 +749,6 @@ export default instance.exports;
   }
   console.log("  📦 Copied bundled plugins");
 
-  // Copy secp256k1.wasm alongside the binary
   if (existsSync(wasmSource)) {
     for (const dir of [RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]) {
       await copyFilePortable(wasmSource, join(dir, "secp256k1.wasm"));
@@ -788,8 +782,6 @@ export default instance.exports;
     );
   }
 
-  // Ship the Playwright runtime beside the sidecar so browser tools resolve it
-  // at runtime (the sidecar imports it lazily via node_modules search roots).
   const playwrightPackages = ["playwright", "playwright-core"];
   for (const pkg of playwrightPackages) {
     const source = join(NODE_MODULES_ROOT, pkg);
@@ -816,7 +808,6 @@ export default instance.exports;
   }
   console.log(`  📦 Copied Playwright runtime to sidecar directories`);
 
-  // Ensure the sidecar can serve the packaged UI in tauri:dev.
   if (existsSync(uiDistPath)) {
     for (const targetBase of [RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]) {
       const targetUiDist = join(targetBase, "ui", "dist");
@@ -832,8 +823,6 @@ export default instance.exports;
     );
   }
 
-  // Stage the sandbox-browser Docker context so the packaged app can build the
-  // isolated browser image at runtime (tauri.conf.json bundles bin/docker/sandbox-browser).
   const dockerSandboxSource = join(import.meta.dirname, "..", "docker", "sandbox-browser");
   if (existsSync(join(dockerSandboxSource, "Dockerfile"))) {
     for (const targetBase of [TAURI_BIN_DIR, tauriDebugDir]) {

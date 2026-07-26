@@ -7,9 +7,6 @@ import { fileURLToPath } from "url";
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const KANBAN_MODULE = join(ROOT_DIR, "src", "core", "kanban.ts").replace(/\\/g, "/");
 
-// kanban.ts resolves its SQLite path from paths.ts (CYBARA_HOME / HOME), both
-// fixed at process startup, so the operations run in a child process with those
-// env vars pointed at a throwaway directory. The worker emits a single JSON line.
 const WORKER_SOURCE = `
 import * as kanban from "${KANBAN_MODULE}";
 

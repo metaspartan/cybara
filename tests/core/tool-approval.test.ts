@@ -63,13 +63,11 @@ describe("tool-approval request + resolve", () => {
       toolName: "exec",
       argsSummary: "rm -rf /",
     });
-    // There should be a pending request.
     const pending = getPendingApprovals();
     expect(pending.length).toBeGreaterThanOrEqual(1);
     const req = pending.find((r) => r.toolName === "exec" && r.sessionId === "s1");
     expect(req).toBeDefined();
 
-    // Resolve it.
     resolveApproval(req!.id, "deny");
     const decision = await promise;
     expect(decision).toBe("deny");
@@ -162,7 +160,6 @@ describe("tool-approval per-command scoping (security)", () => {
     expect(buildApprovalKey("execute_code", { code: "print(1)", language: "python" })).toBe(
       "execute_code print(1) python"
     );
-    // Non-command tools stay keyed on the tool name.
     expect(buildApprovalKey("browser", { action: "navigate" })).toBe("browser");
     expect(buildApprovalKey("exec", undefined)).toBe("exec");
   });
@@ -172,7 +169,6 @@ describe("tool-approval per-command scoping (security)", () => {
     const dangerous = buildApprovalKey("exec", { command: "rm -rf ~" });
     approveToolForSession("s1", benign);
     expect(isToolApproved("s1", benign)).toBe(true);
-    // The core regression: approving `ls` must not green-light `rm -rf ~`.
     expect(isToolApproved("s1", dangerous)).toBe(false);
   });
 
@@ -202,10 +198,8 @@ describe("tool-approval per-command scoping (security)", () => {
   });
 
   test("requestToolApproval fast-path is scoped to the exact command", async () => {
-    // Pre-approve `exec ls` for the session.
     approveToolForSession("s1", buildApprovalKey("exec", { command: "ls" }));
 
-    // Same command → auto-approved without a prompt.
     const approved = await requestToolApproval({
       sessionId: "s1",
       toolName: "exec",
@@ -214,7 +208,6 @@ describe("tool-approval per-command scoping (security)", () => {
     });
     expect(approved).toBe("approve_session");
 
-    // Different command → must create a pending request (not auto-approved).
     config.set("tool_approval_mode", "ask");
     const pendingBefore = getPendingApprovals().length;
     const promise = requestToolApproval({
@@ -241,10 +234,8 @@ describe("tool-approval per-command scoping (security)", () => {
     resolveApproval(req.id, "approve_session");
     expect(await promise).toBe("approve_session");
 
-    // Same command is now remembered for the session.
     expect(isToolApproved("s1", buildApprovalKey("exec", { command: "git status" }))).toBe(true);
 
-    // Revoking the tool clears every command-scoped grant for it.
     revokeToolApproval("exec", "s1");
     expect(isToolApproved("s1", buildApprovalKey("exec", { command: "git status" }))).toBe(false);
   });

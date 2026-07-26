@@ -9,7 +9,6 @@ import {
 } from "../../src/core/conversation-window";
 
 function turns(n: number): WindowMessage[] {
-  // Alternating user/assistant starting with user, like a real chat history.
   return Array.from({ length: n }, (_, i) => ({
     role: i % 2 === 0 ? "user" : "assistant",
     content: `m${i}`,
@@ -71,8 +70,6 @@ describe("conversation windowing", () => {
   });
 
   test("planCompactionCut keeps the last N and nudges off a user boundary", () => {
-    // 20 turns, keepRecent 8 -> raw cut = 12. convo[12] is user (even index),
-    // so it nudges to 13 (assistant) to keep alternation clean.
     const convo = turns(20);
     expect(convo[12].role).toBe("user");
     expect(planCompactionCut(convo, 8)).toBe(13);
@@ -103,7 +100,6 @@ describe("conversation windowing", () => {
       { role: "assistant", content: "a11" },
     ];
     const out = buildCompactedConversation(system, recent, "SUMMARY", "PREFIX");
-    // No extra message added: summary is prepended into the first user turn.
     expect(out).toHaveLength(3);
     expect(out[1].role).toBe("user");
     expect(out[1].content).toContain("PREFIX\nSUMMARY");
@@ -126,24 +122,17 @@ describe("conversation windowing", () => {
 
 describe("model-aware compaction trigger ratio", () => {
   test("large-context models run closer to full before compacting", () => {
-    // 272K (gpt-5.4-class) should compact at 85%, not the old ~41%.
     expect(resolveCompactionTriggerRatio(272_000)).toBe(0.85);
     expect(resolveCompactionTriggerRatio(200_000)).toBe(0.85);
-    // 128K (spark-class) at 80%.
     expect(resolveCompactionTriggerRatio(128_000)).toBe(0.8);
-    // Default/small windows keep headroom for the summary call.
     expect(resolveCompactionTriggerRatio(65_536)).toBe(0.72);
   });
 
   test("user override can only RAISE the model default, never lower it", () => {
-    // A high user threshold is honored (never clamped down — the PR's bug 3).
     expect(resolveCompactionTriggerRatio(272_000, 0.9)).toBe(0.9);
-    // A low user threshold cannot drag a large model below its safe default.
     expect(resolveCompactionTriggerRatio(272_000, 0.4)).toBe(0.85);
-    // Out-of-range / invalid user values are ignored.
     expect(resolveCompactionTriggerRatio(65_536, 0)).toBe(0.72);
     expect(resolveCompactionTriggerRatio(65_536, Number.NaN)).toBe(0.72);
-    // Clamped to the sane ceiling.
     expect(resolveCompactionTriggerRatio(65_536, 5)).toBe(0.95);
   });
 });

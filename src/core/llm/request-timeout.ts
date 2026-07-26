@@ -1,10 +1,5 @@
 import { config } from "../config";
 
-// Ceiling for genuinely non-streaming calls only (Anthropic path, providers
-// that reject `stream`). Streaming paths use inactivity watchdogs instead
-// (see stream-watchdog.ts) and have NO duration cap — agents may run for
-// hours. This ceiling exists because a non-streaming response is one silent
-// socket read, indistinguishable from a hang; keep it generous and tunable.
 export function resolveNonStreamingCeilingMs(): number {
   const raw = Number(process.env.CYBARA_LLM_NONSTREAMING_TIMEOUT_MS);
   if (Number.isFinite(raw) && raw >= 10_000) return raw;

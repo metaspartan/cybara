@@ -634,9 +634,7 @@ class ProviderManager {
           is_default: false,
         });
         console.log(`[ProviderManager] Seeded provider: ${config.name}`);
-      } catch {
-        // Ignore errors
-      }
+      } catch {}
     }
   }
 

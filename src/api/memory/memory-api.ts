@@ -84,7 +84,6 @@ function decodeMemoryFileParam(file: string): string {
   }
 }
 
-/** Resolve a caller-supplied memory file name safely inside memoryDir. */
 function safeMemoryPath(file: string): string {
   const decoded = decodeMemoryFileParam(file);
   const safe = basename(decoded.trim()).replace(/[^\w.-]/g, "-");

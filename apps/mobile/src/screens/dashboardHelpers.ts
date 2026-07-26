@@ -1,4 +1,3 @@
-/** Pure formatting + derivation helpers shared across the dashboard. */
 import {
   formatMobileValue,
   isMobileSettingsDetailFieldVisible,

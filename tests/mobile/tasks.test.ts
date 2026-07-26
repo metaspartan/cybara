@@ -21,7 +21,6 @@ describe("mobile: task creation", () => {
     expect(panel).toContain("Chat context");
     expect(panel).toContain(".sessions()");
     expect(panel).toContain("session_id: selectedSessionId");
-    // sends the action/prompt and enables the task
     expect(panel).toContain("action:");
     expect(panel).toContain("enabled: true");
   });
@@ -35,7 +34,6 @@ describe("mobile: task creation", () => {
     expect(screen).toContain("<TasksPanel");
     expect(screen).toContain('kind: "newTask"');
     expect(screen).toContain("<NewTaskPanel");
-    // empty state offers a first-task CTA
     expect(screen).toContain("Create your first task");
   });
 });

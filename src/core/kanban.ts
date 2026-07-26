@@ -1,19 +1,3 @@
-/**
- * Kanban multi-agent orchestration — lean MVP.
- *
- * A SQLite-backed task board with a dependency engine and a tick-loop
- * dispatcher. Tasks flow triage → todo → ready → running → (done|blocked).
- * The dispatcher promotes tasks to `ready` once their parent dependencies are
- * `done`, then claims + spawns a worker agent for each ready task. Workers
- * self-report completion via the kanban_* tools.
- *
- * Core kanban kernel (recompute_ready + dispatch_once). The LLM-driven
- * decompose/specify/swarm
- * helpers are intentionally omitted here (they're pure DB writes on top and
- * can be layered later) — this is the durable foundation.
- *
- * Storage: one SQLite DB at <cybaraDir>/kanban.db via bun:sqlite.
- */
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { cybaraDir } from "./paths";
 import { join } from "path";
@@ -168,10 +152,6 @@ function recordEvent(taskId: string, kind: string, payload: Record<string, unkno
     .run(crypto.randomUUID(), taskId, kind, JSON.stringify(payload), now());
 }
 
-// ---------------------------------------------------------------------------
-// CRUD
-// ---------------------------------------------------------------------------
-
 export function createTask(input: {
   title: string;
   body?: string;
@@ -302,9 +282,7 @@ export function getComments(
     .all(taskId) as Array<{ author: string; body: string; created_at: string }>;
 }
 
-/** Cycle detection: would adding parent→child create a cycle (child already an ancestor of parent)? */
 function wouldCycle(parentId: string, childId: string): boolean {
-  // A cycle exists if childId can already reach parentId by following child links.
   const database = getDb();
   const visited = new Set<string>();
   const stack = [childId];
@@ -322,11 +300,6 @@ function wouldCycle(parentId: string, childId: string): boolean {
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// Dependency engine + dispatcher
-// ---------------------------------------------------------------------------
-
-/** Number of parents of a task that are NOT yet done/archived. */
 function pendingParentCount(taskId: string): number {
   const database = getDb();
   const rows = database
@@ -340,10 +313,6 @@ function pendingParentCount(taskId: string): number {
   return rows.n;
 }
 
-/**
- * Promote tasks from todo/blocked → ready when all parents are done/archived.
- * Returns the IDs that were promoted. This is the heart of the task graph.
- */
 export function recomputeReady(): string[] {
   const database = getDb();
   const candidates = database
@@ -363,14 +332,6 @@ const TICK_INTERVAL_MS = 5_000;
 const CLAIM_TTL_MS = 10 * 60 * 1000;
 let tickTimer: NodeJS.Timeout | null = null;
 
-/**
- * One dispatcher tick: release expired claims, recompute ready tasks, claim +
- * spawn a worker for each ready task (up to maxConcurrent). Safe to call
- * directly or via startDispatcherTick().
- *
- * The worker-spawn callback is injected so this module stays decoupled from the
- * agent runner. Returning the spawned task IDs lets tests assert behavior.
- */
 export async function dispatchTick(options?: {
   maxConcurrent?: number;
   spawnWorker?: (task: KanbanTask) => Promise<{ pid?: number } | void>;
@@ -378,7 +339,6 @@ export async function dispatchTick(options?: {
   const database = getDb();
   const maxConcurrent = options?.maxConcurrent ?? 4;
 
-  // 1. Release expired claims (crashed/timed-out workers).
   const nowMs = Date.now();
   database
     .query(
@@ -386,10 +346,8 @@ export async function dispatchTick(options?: {
     )
     .run(nowMs);
 
-  // 2. Promote ready tasks.
   recomputeReady();
 
-  // 3. Count running; claim + spawn up to the concurrency cap.
   const running = database
     .query("SELECT COUNT(*) as n FROM tasks WHERE status = 'running'")
     .get() as { n: number };
@@ -405,13 +363,12 @@ export async function dispatchTick(options?: {
   const spawned: string[] = [];
   for (const row of readyTasks) {
     const task = rowToTask(row);
-    // Atomic claim: set running + claim expiry in one statement.
     const claim = database
       .query(
         "UPDATE tasks SET status = 'running', claim_expires = ? WHERE id = ? AND status = 'ready'"
       )
       .run(nowMs + CLAIM_TTL_MS, task.id);
-    if (claim.changes === 0) continue; // lost the race
+    if (claim.changes === 0) continue;
     recordEvent(task.id, "claimed", {});
     if (options?.spawnWorker) {
       try {
@@ -422,7 +379,6 @@ export async function dispatchTick(options?: {
             .run(spawnResult.pid, task.id);
         }
       } catch (error) {
-        // Spawn failed: revert to ready, bump failure counter.
         database
           .query(
             "UPDATE tasks SET status = 'ready', claim_expires = NULL, consecutive_failures = consecutive_failures + 1 WHERE id = ?"
@@ -439,7 +395,6 @@ export async function dispatchTick(options?: {
   return spawned;
 }
 
-/** Start the background tick loop. Returns a stop() function. */
 export function startDispatcherTick(
   spawnWorker: (task: KanbanTask) => Promise<{ pid?: number } | void>,
   options?: { maxConcurrent?: number; intervalMs?: number }
@@ -462,11 +417,6 @@ export function startDispatcherTick(
   };
 }
 
-/**
- * For tests: clear all kanban data and close the connection so the next call
- * starts from an empty board. In production this is never called; the tick
- * timer is also stopped.
- */
 export function resetKanbanForTests(): void {
   if (tickTimer) {
     clearInterval(tickTimer);
@@ -478,9 +428,7 @@ export function resetKanbanForTests(): void {
       db.exec("DELETE FROM task_comments;");
       db.exec("DELETE FROM task_links;");
       db.exec("DELETE FROM tasks;");
-    } catch {
-      /* ignore if schema not yet created */
-    }
+    } catch {}
     db.close();
     db = null;
   }

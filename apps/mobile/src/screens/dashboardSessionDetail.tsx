@@ -1394,8 +1394,6 @@ export function SessionDetailPanel({
     [renderMessages]
   );
   const waitingForAssistant = chatIsWaitingForAssistant(renderMessages, sending);
-  // When the keyboard is up it already covers the nav bar, so the composer
-  // sits just above the keyboard; otherwise it floats above the nav chrome.
   const composerBottom =
     keyboardHeight > 0 ? keyboardHeight + spacing.xs : navFootprint + spacing.xs;
   const chatAppearance = useEffectiveChatAppearance(

@@ -9,8 +9,8 @@ export interface HeartbeatState {
   lastChecks: Record<string, number | null>;
   lastHeartbeat: number | null;
   checksPerformed: number;
-  quietHoursStart?: number; // Hour in 24h format (e.g., 23 for 11 PM)
-  quietHoursEnd?: number; // Hour in 24h format (e.g., 8 for 8 AM)
+  quietHoursStart?: number;
+  quietHoursEnd?: number;
 }
 
 const DEFAULT_STATE: HeartbeatState = {

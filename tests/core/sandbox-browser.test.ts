@@ -22,9 +22,7 @@ describe("sandbox browser launcher", () => {
     expect(args).toContain("-d");
     expect(args).toContain("127.0.0.1:9222:9222");
     expect(args).toContain("127.0.0.1:6080:6080");
-    // image is the final argument.
     expect(args[args.length - 1]).toBe(SANDBOX_BROWSER_IMAGE);
-    // never bind to all interfaces on the host.
     expect(args.some((a) => a === "0.0.0.0:9222:9222")).toBe(false);
   });
 

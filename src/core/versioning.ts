@@ -86,8 +86,6 @@ export function resolveReleaseAssetBasename(
   }
 
   if (platform === "win32" || platform === "windows") {
-    // Windows ARM64 not supported — Bun doesn't ship a pre-built aarch64
-    // Windows executable. Falls through to null.
     if (arch === "x64" || arch === "x86_64") return "cybara-windows-x64";
     return null;
   }
@@ -143,11 +141,6 @@ export function buildGitHubReleasesPageUrl(repository: string): string {
   return `https://github.com/${normalizedRepository}/releases`;
 }
 
-/**
- * Build the GitHub download URL for the SHA256 sidecar of a release asset.
- * Sidecars are published by release.yml as `<asset>.sha256` and mirror the
- * binary's per-tag download path so the self-updater can verify integrity.
- */
 export function buildReleaseChecksumUrl(
   repository: string,
   assetName: string,
@@ -159,11 +152,6 @@ export function buildReleaseChecksumUrl(
   return `https://github.com/${normalizedRepository}/releases/download/${tagSegment}/${assetName}.sha256`;
 }
 
-/**
- * Compare two semver-ish versions (e.g. "1.0.203" vs "1.0.204").
- * Returns a positive number if `left` is newer, negative if `right` is newer,
- * and 0 if equal. Non-numeric / malformed segments are compared lexically.
- */
 export function compareVersions(left: string, right: string): number {
   const strip = (value: string) => value.trim().replace(/^v/i, "").split(/[+-]/)[0];
   const leftParts = strip(left).split(".");
@@ -241,12 +229,6 @@ export interface TauriUpdaterManifestValidation {
   invalidPlatforms: string[];
 }
 
-/**
- * True for a GitHub *draft* release asset URL. GitHub serves draft assets from a
- * `/releases/download/untagged-<hex>/` path that stops resolving once the
- * release is published under its tag, so such a URL in a shipped manifest is a
- * guaranteed 404 for the in-app updater.
- */
 export function isDraftReleaseUrl(url: string): boolean {
   return /\/releases\/download\/untagged-[0-9a-f]+\//i.test(url);
 }
@@ -274,10 +256,6 @@ export function validateTauriUpdaterManifest(
       entry.signature.trim().length === 0 ||
       typeof entry.url !== "string" ||
       entry.url.trim().length === 0 ||
-      // Reject draft-release download paths. When the manifest is generated
-      // before the release is published, GitHub reports an `untagged-<id>` URL
-      // that 404s the moment the release goes live — the in-app updater then
-      // finds an update but fails to download it. Fail the release instead.
       isDraftReleaseUrl(entry.url)
     ) {
       invalidPlatforms.push(platform);

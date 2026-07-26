@@ -150,9 +150,7 @@ async function expectWebSocketOpenFailure(url: string, timeoutMs = 10000): Promi
     const timer = setTimeout(() => {
       try {
         ws.close();
-      } catch {
-        // no-op
-      }
+      } catch {}
       resolve();
     }, timeoutMs);
 
@@ -160,9 +158,7 @@ async function expectWebSocketOpenFailure(url: string, timeoutMs = 10000): Promi
       clearTimeout(timer);
       try {
         ws.close();
-      } catch {
-        // no-op
-      }
+      } catch {}
       reject(new Error("WebSocket unexpectedly opened"));
     };
     ws.onerror = () => {
@@ -271,20 +267,15 @@ describe("Security auth e2e", () => {
       });
       await waitForServerReady(baseUrl);
 
-      // A non-browser localhost client (no Origin, no Sec-Fetch-Site — e.g. curl
-      // or another local process) must NOT inherit the localhost bypass.
       const noSignal = await request(baseUrl, "/api/info");
       expect(noSignal.status).toBe(401);
 
-      // A same-origin browser request (Sec-Fetch-Site: same-origin, as the web
-      // UI sends) is still bypassed for local-dev convenience.
       const browser = await request(baseUrl, "/api/info", {
         "sec-fetch-site": "same-origin",
       });
       expect(browser.status).toBe(200);
       expect(browser.data.name).toBe("Cybara");
 
-      // And an explicit bearer token always works.
       const bearer = await request(baseUrl, "/api/info", {
         authorization: `Bearer ${apiKey}`,
       });
