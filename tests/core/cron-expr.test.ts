@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { parseCronExpression, nextCronRun } from "../../src/core/cron/cron-expr";
 
-// Use a fixed reference instant in UTC so local-time math is deterministic
-// relative to the machine tz; we assert via tz-aware computation where it matters.
 function at(iso: string): number {
   return new Date(iso).getTime();
 }
@@ -59,17 +57,13 @@ describe("nextCronRun (UTC)", () => {
   });
 
   test("day-of-week target (next Monday 00:00)", () => {
-    // 2026-06-30 is a Tuesday; next Monday is 2026-07-06.
     const from = at("2026-06-30T10:15:00Z");
     expect(nextCronRun("0 0 * * mon", from, TZ)).toBe(at("2026-07-06T00:00:00Z"));
   });
 
   test("DOM+DOW both restricted use OR semantics", () => {
-    // "0 0 1 * fri" fires on the 1st OR any Friday. From Tue 2026-06-30 10:15,
-    // the first qualifying midnight is 2026-07-01 (the 1st), before Fri 07-03.
     const from = at("2026-06-30T10:15:00Z");
     expect(nextCronRun("0 0 1 * fri", from, TZ)).toBe(at("2026-07-01T00:00:00Z"));
-    // And from 07-01 12:00, the next is Friday 07-03 (DOW branch).
     expect(nextCronRun("0 0 1 * fri", at("2026-07-01T12:00:00Z"), TZ)).toBe(
       at("2026-07-03T00:00:00Z")
     );

@@ -318,9 +318,6 @@ describe("Agent hooks", () => {
       { useTools: false, sessionId: "hook-error-session" }
     );
 
-    // The friendly-error mapper now surfaces the real cause instead of a
-    // blank apology: a 500 with an OpenAI-style error body becomes a server
-    // error message carrying the provider's detail.
     expect(result.content.toLowerCase()).toContain("server error");
     expect(result.content).toContain("provider down");
     const errorEvent = events.find((event) => event.type === "llm_error");

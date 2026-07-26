@@ -412,8 +412,6 @@ struct RouterScreen: View {
         )
     }
 
-    /// Returns a setter that mutates the config dict and PUTs the whole object
-    /// back (preserving fields like `routes` the native UI doesn't model).
     private func save<T>(_ mutate: @escaping (inout [String: Any], T) -> Void) -> (T) -> Void {
         { value in
             var next = config
@@ -717,4 +715,3 @@ struct RouterScreen: View {
     }
 }
 
-// ─── System Prompt ───────────────────────────────────────────────────────────

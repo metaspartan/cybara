@@ -138,9 +138,7 @@ export async function uploadIpaToTestFlight(options: TestFlightUploadOptions): P
   } finally {
     try {
       unlinkSync(keyPath);
-    } catch {
-      // Best-effort cleanup on ephemeral CI runners.
-    }
+    } catch {}
   }
 
   return false;

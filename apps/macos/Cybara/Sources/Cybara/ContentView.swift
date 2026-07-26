@@ -228,8 +228,6 @@ struct ContentView: View {
         )
     }
 
-    // ─── Sidebar ─────────────────────────────────────────────────────────────
-
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
@@ -336,8 +334,6 @@ struct ContentView: View {
             .padding(.vertical, 8)
         }
     }
-
-    // ─── Detail ──────────────────────────────────────────────────────────────
 
     @ViewBuilder
     private var detail: some View {

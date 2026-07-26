@@ -292,9 +292,7 @@ describe("nextMcpRequestId", () => {
   test("returns strictly increasing, collision-free ids (fixes Date.now() collisions)", () => {
     const ids: number[] = [];
     for (let i = 0; i < 1000; i++) ids.push(nextMcpRequestId());
-    // All unique.
     expect(new Set(ids).size).toBe(ids.length);
-    // Monotonic within the run.
     for (let i = 1; i < ids.length; i++) {
       expect(ids[i]).toBeGreaterThan(ids[i - 1]);
     }
@@ -307,7 +305,6 @@ describe("drainNdjsonLines (stdout reassembly)", () => {
     expect(first.lines).toEqual(['{"id":1}', '{"id":2}']);
     expect(first.rest).toBe('{"par');
 
-    // Next chunk completes the partial message.
     const second = drainNdjsonLines(first.rest + 'tial":true}\n');
     expect(second.lines).toEqual(['{"partial":true}']);
     expect(second.rest).toBe("");
@@ -321,7 +318,7 @@ describe("drainNdjsonLines (stdout reassembly)", () => {
     let buffer = "";
     buffer += chunkA;
     let out = drainNdjsonLines(buffer);
-    expect(out.lines).toEqual([]); // no newline yet → nothing complete
+    expect(out.lines).toEqual([]);
     buffer = out.rest + chunkB;
     out = drainNdjsonLines(buffer);
     expect(out.lines).toHaveLength(1);

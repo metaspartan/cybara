@@ -1,14 +1,3 @@
-/**
- * `todo` tool — a session-scoped task list with status discipline.
- *
- * A structured list of tasks, each pending/in_progress/completed,
- * with a "max one in_progress at a time" rule. Surfacing a plan to the model
- * measurably improves multi-step task quality and reduces drift.
- *
- * State is held in-memory keyed by sessionId (matching how subagents/sessions
- * are tracked elsewhere). When no sessionId is present, a singleton list is
- * used so the tool still works in single-shot CLI invocations.
- */
 import type { ToolContext } from "../index";
 
 export type TodoStatus = "pending" | "in_progress" | "completed";
@@ -24,7 +13,6 @@ export interface TodoState {
   updatedAt: number;
 }
 
-/** Internal representation; status is derived from items for the model. */
 type SessionTodos = Record<string, TodoState>;
 
 const sessionTodos: SessionTodos = {};
@@ -43,12 +31,6 @@ function getState(context?: ToolContext): TodoState {
   return sessionTodos[key];
 }
 
-/**
- * Replace the entire task list (the model sends the full list each call, like
- * TodoWrite / update_plan). Enforces status discipline: only one item may be
- * `in_progress`; if more than one is marked in_progress, the first is kept and
- * the rest are demoted to `pending`.
- */
 export async function handleTodo(
   args: Record<string, unknown>,
   context?: ToolContext
@@ -76,7 +58,6 @@ export async function handleTodo(
     items.push({ content, status, priority });
   }
 
-  // Enforce "max one in_progress".
   let inProgressSeen = false;
   for (const item of items) {
     if (item.status === "in_progress") {
@@ -106,7 +87,6 @@ export async function handleTodo(
   };
 }
 
-/** Read the current list without mutating it (used by UI / status tooling). */
 export function readTodo(context?: ToolContext): TodoItem[] {
   return getState(context).items;
 }

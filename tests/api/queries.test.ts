@@ -8,12 +8,6 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const QUERIES_PATH = join(ROOT_DIR, "src", "api", "queries.ts").replace(/\\/g, "/");
 const DB_PATH = join(ROOT_DIR, "src", "core", "database.ts").replace(/\\/g, "/");
 
-// queries.ts imports the live DB from database.ts, which initializes a SQLite
-// file under CYBARA_HOME at module load. The scenarios therefore run in a child
-// process with HOME/CYBARA_HOME pointed at a throwaway directory; rows are
-// seeded through the tables API before the query functions are exercised. Pure
-// helpers (normalizeTimestamp) run in the same worker so no live DB leaks into
-// the test process.
 const WORKER_SOURCE = `
 import {
   normalizeTimestamp,
@@ -300,7 +294,6 @@ describe("getCliLogs", () => {
   test("cli entries join combined logs and totals; stats window still applies", () => {
     expect(r("combinedIncludesCli")).toBe(true);
     expect(r("totalWithCli")).toBe(11);
-    // Fixture timestamps are far outside the 24h stats window.
     expect(r("statsWithCli")).toBe(0);
   });
 

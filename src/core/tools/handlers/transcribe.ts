@@ -1,8 +1,3 @@
-/**
- * Speech-to-text (transcription). Sends an audio file to a Whisper-compatible
- * endpoint. Groq (whisper-large-v3, fast) is preferred when configured, then
- * OpenAI (whisper-1). Both use the OpenAI /audio/transcriptions multipart API.
- */
 import { existsSync, statSync } from "fs";
 import { basename } from "path";
 import { assertReadablePath } from "../path-policy";
@@ -12,7 +7,7 @@ import { providerManager, providers, resolveProviderType } from "../../providers
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions";
 const OPENAI_ENDPOINT = "https://api.openai.com/v1/audio/transcriptions";
-const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // 25MB (Whisper API limit)
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 export type TranscribeBackend = "groq" | "openai" | "openai-codex";
 
@@ -31,10 +26,6 @@ interface BackendConfig {
   providerId?: string;
 }
 
-/**
- * Resolve which transcription backend to use. Pure for unit testing. Returns
- * null when no key is configured.
- */
 export function selectTranscribeBackend(
   env: Record<string, string | undefined>
 ): { backend: TranscribeBackend; model: string } | null {
@@ -108,7 +99,7 @@ async function loadAudio(args: Record<string, unknown>): Promise<{ blob: Blob; f
   const url = typeof args.url === "string" ? args.url.trim() : "";
 
   if (path) {
-    assertReadablePath(path); // blocks secret files / traversal
+    assertReadablePath(path);
     if (!existsSync(path)) throw new Error(`Audio file not found: ${path}`);
     if (statSync(path).size > MAX_AUDIO_BYTES) {
       throw new Error(`Audio file exceeds 25MB limit: ${path}`);

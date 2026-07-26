@@ -810,7 +810,6 @@ export async function handleChannelManagementCommand(
       return "Workspace cleared for this session.";
     }
 
-    // Expand ~ and ~/ to the user's home directory (cross-platform)
     let targetPath = joinedArgs;
     if (targetPath === "~") {
       targetPath = homedir();
@@ -819,7 +818,6 @@ export async function handleChannelManagementCommand(
     }
     targetPath = resolve(targetPath);
 
-    // Validate the directory exists
     if (!existsSync(targetPath)) {
       return `Directory not found: ${targetPath}\nMake sure the path exists and try again.`;
     }

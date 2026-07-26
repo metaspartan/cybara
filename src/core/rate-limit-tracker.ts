@@ -1,25 +1,10 @@
-/**
- * Rate-limit tracking from provider HTTP responses.
- *
- * Captures the `x-ratelimit-*` headers many providers return and exposes a
- * compact view so the credential pool and retry layer can decide whether to
- * wait, rotate, or proceed. Per-provider keyed. Pure data; no I/O.
- */
-
 export interface RateLimitSnapshot {
-  /** Epoch ms when this snapshot was recorded. */
   recordedAt: number;
-  /** Remaining requests in the current window (if reported). */
   remaining?: number;
-  /** Total requests allowed in the window. */
   limit?: number;
-  /** Epoch ms when the window resets (if reported). */
   resetAt?: number;
-  /** Reset interval in seconds reported by the header (if any). */
   resetSeconds?: number;
-  /** Requests per minute, if derived. */
   rpm?: number;
-  /** Tokens per minute, if reported. */
   tpm?: number;
 }
 
@@ -33,7 +18,6 @@ function toNumber(value: string | null | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-/** Parse common x-ratelimit-* header variants across providers. */
 export function parseRateLimitHeaders(headers: Headers): {
   requests?: RateLimitSnapshot;
   tokens?: RateLimitSnapshot;
@@ -76,7 +60,6 @@ export function parseRateLimitHeaders(headers: Headers): {
   return { requests, tokens };
 }
 
-/** Record a rate-limit snapshot for a (provider, credential) key. */
 export function recordRateLimit(
   key: string,
   headers: Headers
@@ -95,10 +78,6 @@ export function getRateLimit(
   return snapshots.get(`${key}:${tier}`);
 }
 
-/**
- * Returns true when the (provider, credential) key is currently exhausted —
- * i.e. remaining is 0 and the reset window has not elapsed.
- */
 export function isRateLimited(key: string, tier: RateLimitTier = "requests"): boolean {
   const snap = getRateLimit(key, tier);
   if (!snap) return false;
@@ -106,7 +85,6 @@ export function isRateLimited(key: string, tier: RateLimitTier = "requests"): bo
   return snap.remaining !== undefined && snap.remaining <= 0;
 }
 
-/** Estimated ms to wait before the window resets (0 if unknown/reset). */
 export function msUntilReset(key: string, tier: RateLimitTier = "requests"): number {
   const snap = getRateLimit(key, tier);
   if (!snap || snap.resetAt === undefined) return 0;

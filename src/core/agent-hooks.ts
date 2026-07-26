@@ -74,7 +74,6 @@ export interface AgentMessageSentEvent {
   metadata?: Record<string, unknown>;
 }
 
-/** Transform hook: rewrite a tool result before it's stored/returned to the model. */
 export interface AgentTransformToolResultEvent {
   type: "transform:tool_result";
   context: AgentHookContext;
@@ -82,14 +81,12 @@ export interface AgentTransformToolResultEvent {
   result: unknown;
 }
 
-/** Transform hook: rewrite LLM output before it's finalized. */
 export interface AgentTransformLLMOutputEvent {
   type: "transform:llm_output";
   context: AgentHookContext;
   content: string;
 }
 
-/** Transform hook: rewrite terminal/exec output before it's stored. */
 export interface AgentTransformTerminalOutputEvent {
   type: "transform:terminal_output";
   context: AgentHookContext;
@@ -114,7 +111,6 @@ export type AgentHookEvent =
 export interface AgentHookDecision {
   block?: boolean;
   reason?: string;
-  /** For transform hooks: the rewritten value (if the hook modified it). */
   transformedResult?: unknown;
   transformedContent?: string;
   transformedOutput?: string;
@@ -158,7 +154,6 @@ export async function emitAgentHook(event: AgentHookEvent): Promise<AgentHookDec
       const result = await hook(event);
       if (!result || typeof result !== "object") continue;
 
-      // Block handling for tool_before.
       if (event.type === "tool_before" && result.block) {
         if (!decision) {
           decision = {
@@ -171,7 +166,6 @@ export async function emitAgentHook(event: AgentHookEvent): Promise<AgentHookDec
         }
       }
 
-      // Transform handling: the last hook's transformed value wins.
       if (event.type === "transform:tool_result" && result.transformedResult !== undefined) {
         (event as AgentTransformToolResultEvent).result = result.transformedResult;
       } else if (

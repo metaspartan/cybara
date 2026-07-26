@@ -7,39 +7,20 @@ const SOURCE_ROOTS = ["src", "tests", "ui/src", "scripts"];
 const TS_FILE_PATTERN = /\.(ts|tsx)$/;
 const EXCLUDED_FILES = new Set(["tests/runtime/import-style-guard.test.ts"]);
 const DYNAMIC_IMPORT_ALLOWLIST = new Set([
-  // Packaged launcher dispatches server vs CLI at runtime. Static importing
-  // both paths breaks one-shot CLI commands and bundled ESM startup.
   "src/main.ts",
   "src/core/tools/handlers/wallet.ts",
   "src/api/routes.ts",
   "src/api/routes/wallet.ts",
-  // The `acp` command lazy-loads the in-process agent stack only when running
-  // the ACP server, so one-shot HTTP CLI commands stay lightweight.
   "src/cli/index.tsx",
-  // Lazy-loads optional/native ML runtimes (onnxruntime-node,
-  // @huggingface/transformers) and runtime-resolved model paths. Eagerly
-  // importing these would break the server-only runtime and pull native deps.
   "src/core/memory/embeddings.ts",
-  // Lazy-loads the optional kokoro-js neural TTS runtime only when the local
-  // speech provider is selected, keeping it out of the base server bundle.
   "src/core/local-speech.ts",
-  // Lazy-loads the optional Playwright runtime resolved from packaged resource
-  // dirs at runtime; static importing bundles a build-time path that breaks the
-  // compiled sidecar at startup.
   "src/core/browser/playwright-loader.ts",
-  // Mixture-of-agents routing delegates to the MoA tool handler, which imports
-  // agentManager from agent.ts — a circular dependency, so the handler is loaded
-  // lazily only when the MoA strategy is active.
   "src/core/agent.ts",
-  // Lazy-load the Tauri/desktop bridge modules, which only exist when running
-  // inside the desktop app (not the server/CLI runtime).
   "ui/src/lib/desktopHost.ts",
   "ui/src/lib/tauriPet.ts",
   "ui/src/pages/PetOverlay.tsx",
   "ui/src/App.tsx",
   "ui/src/pages/IDE.tsx",
-  // Uses a top-level await import() to isolate the SQLite HOME before the
-  // module under test initializes its DB connection.
   "tests/core/kanban.test.ts",
 ]);
 

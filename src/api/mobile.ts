@@ -59,8 +59,6 @@ export const mobileRoutes: Record<string, MobileRouteHandler> = {
     });
   },
 
-  // Create a short-lived, single-use pairing code (root-gated via the
-  // /api/mobile/devices path prefix). The QR carries only this code.
   "POST /api/mobile/devices/pair-code": async (body, _params, ctx) => {
     const data = readBodyObject(body);
     const baseUrl = readOptionalString(data.baseUrl);
@@ -97,9 +95,6 @@ export const mobileRoutes: Record<string, MobileRouteHandler> = {
     };
   },
 
-  // Redeem a pairing code for a scoped device token. Reachable by an unpaired
-  // device (see the pairing allowance in securityCheck); the code is the secret
-  // and is one-time + expiring, and the endpoint is pairing-rate-limited.
   "POST /api/mobile/pair/redeem": (body) => {
     const data = readBodyObject(body);
     const code = readOptionalString(data.code);

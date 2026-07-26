@@ -649,8 +649,6 @@ export function DashboardScreen({
     }
   };
 
-  // Chats and Tasks are omitted here — both are primary bottom-tab
-  // destinations, so the Home grid stays focused on management surfaces.
   const modules: ModuleCard[] = [
     {
       key: "agents",

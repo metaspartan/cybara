@@ -423,7 +423,7 @@ async function waitForSubagentCompletion(runId: string, timeoutMs: number): Prom
   const timer = setTimeout(() => {
     const entry = subagentRuns.get(runId);
     if (!entry) return;
-    if (entry.endedAt) return; // Already completed
+    if (entry.endedAt) return;
 
     entry.endedAt = Date.now();
     entry.outcome = {

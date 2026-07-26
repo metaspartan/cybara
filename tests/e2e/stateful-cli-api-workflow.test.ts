@@ -8,9 +8,6 @@ import { fileURLToPath } from "url";
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const API_KEY = "stateful-cli-e2e-key";
 
-// Skip spawn-heavy e2e in constrained environments (CI sandboxes, containers
-// where child bun processes get SIGTERM'd). Set SKIP_SPAWN_TESTS=1 to opt out.
-// Also auto-detect constrained environments by checking if we're in a sandbox.
 const SKIP_SPAWN =
   process.env.SKIP_SPAWN_TESTS === "1" ||
   process.env.CI_SANDBOX === "1" ||
@@ -92,16 +89,13 @@ async function runCli(
       CYBARA_HOME: join(homeDir, ".cybara"),
       HOME: homeDir,
       USERPROFILE: homeDir,
-      // Skip auto-update checks during e2e to avoid network calls.
       CYBARA_DISABLE_UPDATE_CHECK: "1",
     },
     stdout: "pipe",
     stderr: "pipe",
-    // Ensure the process isn't killed by the test runner's cleanup.
     onExit: () => {},
   });
 
-  // Add a timeout so the CLI can't hang forever.
   const timeoutMs = 30_000;
   const timeoutPromise = new Promise<{ exitCode: number; stdout: string; stderr: string }>(
     (resolve) => {

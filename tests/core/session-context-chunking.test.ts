@@ -100,17 +100,14 @@ describe("session-context chunking helpers", () => {
     );
     const chunks = splitMessagesByTokenShare(msgs, 2);
     expect(chunks.length).toBe(2);
-    // All messages accounted for.
     const total = chunks.reduce((sum, c) => sum + c.length, 0);
     expect(total).toBe(msgs.length);
-    // No empty chunks.
     expect(chunks.every((c) => c.length > 0)).toBe(true);
   });
 
   test("splitMessagesByTokenShare handles fewer messages than parts", () => {
     const msgs = [msg("user", "a"), msg("assistant", "b")];
     const chunks = splitMessagesByTokenShare(msgs, 5);
-    // Should not produce more chunks than messages.
     expect(chunks.length).toBeLessThanOrEqual(msgs.length);
   });
 

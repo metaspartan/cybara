@@ -23,10 +23,6 @@ let tempHome = "";
 let skillsRoot = "";
 let report: FuzzReport;
 
-// createLocalSkill resolves its target from os.homedir(), which Bun fixes at
-// process startup, so the fuzz runs in a child process with HOME pointed at a
-// throwaway directory. The worker embeds a seeded mulberry32 PRNG so failures
-// reproduce deterministically.
 const WORKER_SOURCE = `
 import { homedir } from "os";
 import { createLocalSkill } from "${join(ROOT_DIR, "src", "core", "skills", "index.ts").replace(/\\/g, "/")}";

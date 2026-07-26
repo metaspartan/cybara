@@ -128,7 +128,6 @@ describe("groupActivitiesForDisplay", () => {
     expect(entries).toHaveLength(1);
     const group = entries[0];
     if (group.type !== "group") throw new Error("expected group");
-    // All three are "read" kind -> specific label.
     expect(group.label).toBe("Read 3 files");
   });
 

@@ -32,9 +32,6 @@ describe("persistSession result signalling", () => {
 
   test("returns false when persistence fails (invalid workspace dir), not a false success", async () => {
     const id = makeSessionId("fail");
-    // A non-existent workspace dir makes normalizeSessionWorkspaceDir throw inside
-    // persistSession; the old code swallowed it and the caller still marked the
-    // session persisted. It must now report failure.
     const ok = await persistSession(
       id,
       "test-agent",
@@ -43,7 +40,6 @@ describe("persistSession result signalling", () => {
       "Title"
     );
     expect(ok).toBe(false);
-    // And nothing was written.
     const row = db.prepare("SELECT id FROM chat_sessions WHERE id = ?").get(id);
     expect(row).toBeFalsy();
   });

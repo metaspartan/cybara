@@ -1,11 +1,3 @@
-/**
- * Model-facing media-generation tools: image_generate, video_generate, music_generate.
- *
- * Thin wrappers over the media-generation provider registry. The model picks a
- * provider/model (or omits for the default), the runtime dispatches to the
- * configured provider. Generated assets are saved to the workspace and their
- * paths returned, so the result is actionable for downstream tools.
- */
 import { basename, join } from "path";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { validateUrl } from "../../../api/security";
@@ -87,7 +79,6 @@ async function persistAssets(
     if (asset.buffer) {
       writeFileSync(filePath, Buffer.from(asset.buffer, "base64"));
     } else if (asset.url) {
-      // Download the URL to disk so the asset is durable/local.
       const buf = Buffer.from(await fetchValidatedAssetUrl(asset.url));
       writeFileSync(filePath, buf);
     }

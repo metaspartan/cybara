@@ -22,7 +22,6 @@ beforeEach(() => {
     saved[k] = process.env[k];
     delete process.env[k];
   }
-  // Idempotent re-registration; the module also registers these at import.
   registerOpenAIImageProvider();
   registerFalProviders();
 });
@@ -56,7 +55,6 @@ describe("media provider selection", () => {
   });
 
   test("aliases resolve to the canonical provider", () => {
-    // OpenAI image provider declares aliases dall-e / gpt-image.
     expect(getMediaProvider("image", "dall-e").id).toBe("openai");
     expect(getMediaProvider("image", "gpt-image").id).toBe("openai");
   });

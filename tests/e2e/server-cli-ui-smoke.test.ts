@@ -8,7 +8,6 @@ import { fileURLToPath } from "url";
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const API_KEY = "server-cli-ui-e2e-key";
 
-// Skip spawn-heavy e2e in constrained sandboxes where child bun processes get SIGTERM'd.
 const SKIP_SPAWN =
   process.env.SKIP_SPAWN_TESTS === "1" ||
   process.env.CI_SANDBOX === "1" ||
@@ -134,8 +133,6 @@ describeOrSkip("Server + CLI + UI smoke", () => {
     const walletRes = await fetch(`${baseUrl}/api/wallet/status`, {
       headers: { Authorization: `Bearer ${API_KEY}` },
     });
-    // Wallet module may fail to load (WASM/dependency issues in some environments).
-    // Accept 200 (success) or 500 (module unavailable) — the route itself must respond.
     expect([200, 500]).toContain(walletRes.status);
     if (walletRes.status === 200) {
       const wallet = (await walletRes.json()) as { exists: boolean; unlocked: boolean };

@@ -971,8 +971,6 @@ func gatewayWorkspaceFolderName(_ path: String?) -> String? {
 
 private func gatewayProviderDisplayNameForProviderType(_ value: String?) -> String? {
     guard let value = firstNonEmptyGatewayString(value) else { return nil }
-    // Provider IDs are UUIDs in normal gateway rows. Do not turn those into
-    // noisy labels when the provider list has not been loaded yet.
     if value.range(
         of: #"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#,
         options: .regularExpression

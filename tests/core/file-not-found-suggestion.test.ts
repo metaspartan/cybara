@@ -4,11 +4,6 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { handleRead } from "../../src/core/tools/handlers/file";
 
-// When the model typos a path segment, the read error should suggest the
-// corrected path so it self-corrects instead of retrying the same typo (the
-// "Read failed" wall). Uses a real temp tree so the suggestion walks the FS.
-// Typos here differ by >1 char (not case-only) to stay deterministic on
-// case-insensitive filesystems.
 let root = "";
 let realFile = "";
 

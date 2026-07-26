@@ -355,8 +355,6 @@ describe("Tools API", () => {
     expect(blocked.data.code).toBe("VALIDATION_ERROR");
     expect(String(blocked.data.error || "")).toContain("Dangerous tool 'exec' blocked by policy");
 
-    // SECURITY: a client-supplied allowDangerousTools must NOT bypass the
-    // policy — the server ignores it, so the dangerous tool stays blocked.
     const overrideIgnored = await fixture.api("POST", "/api/tools/execute", {
       name: "exec",
       args: { command: "echo policy-allowed" },
@@ -401,8 +399,6 @@ describe("Tools API", () => {
     expect(blocked.data.code).toBe("VALIDATION_ERROR");
     expect(String(blocked.data.error || "")).toContain("requires approval");
 
-    // SECURITY: a client-supplied allowDangerousTools must NOT bypass the
-    // approval gate — the server ignores it, so approval is still required.
     const overrideIgnored = await fixture.api("POST", "/api/tools/execute", {
       name: "exec",
       args: { command: "echo approval-override" },

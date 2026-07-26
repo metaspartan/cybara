@@ -72,7 +72,7 @@ describe("computer_use safety: hard-blocked patterns", () => {
   test("allows benign typed text", () => {
     expect(isBlockedTypeText("hello world")).toBe(false);
     expect(isBlockedTypeText("console.log('hi')")).toBe(false);
-    expect(isBlockedTypeText("rm file.txt")).toBe(false); // not recursive on root
+    expect(isBlockedTypeText("rm file.txt")).toBe(false);
   });
 });
 
@@ -209,8 +209,6 @@ describe("computer_use action validation", () => {
 
   test("assertActionAllowed allows destructive actions when auto-approve is off and no callback (gated by dangerous-tool system upstream)", () => {
     setComputerUseAutoApprove(false);
-    // With no callback configured, the dangerous-tool approval flow gates computer_use
-    // upstream; assertActionAllowed itself does not block here.
     expect(() => assertActionAllowed("click", { action: "click", element: 3 })).not.toThrow();
   });
 
@@ -219,7 +217,6 @@ describe("computer_use action validation", () => {
     const { setComputerUseApprovalCallback } = require("../../src/core/computer-use");
     setComputerUseApprovalCallback(() => false);
     expect(() => assertActionAllowed("click", { action: "click", element: 3 })).toThrow(/denied/i);
-    // reset
     setComputerUseApprovalCallback(() => true);
   });
 });
@@ -585,12 +582,6 @@ describe("cua-driver resolution", () => {
   });
 });
 
-// The driver's tool vocabulary is NOT our action vocabulary. cua-driver 0.6.x
-// advertises get_window_state/type_text/press_key/hotkey/bring_to_front/...
-// (verified against a real 0.6.8 tools/list) and every interactive tool
-// requires a target pid. Sending our action names straight through produced
-// "Unknown tool: capture" / "Unknown tool: focus_app" / "Unknown tool: wait"
-// on real installs. These assertions pin the translation layer.
 describe("computer_use driver vocabulary translation", () => {
   const source = readFileSync(
     join(dirname(new URL(import.meta.url).pathname), "..", "..", "src", "core", "computer-use.ts"),
@@ -621,11 +612,8 @@ describe("computer_use driver vocabulary translation", () => {
     expect(source).toContain('driverHasTool("type_text") ? "type_text" : "type"');
     expect(source).toContain('driverHasTool("press_key") ? "press_key" : "key"');
     expect(source).toContain('callDriverTool("hotkey", { ...base, keys: parts })');
-    // middle_click has no driver tool; it maps to click with a button param.
     expect(source).toContain('callDriverTool("click", { ...coordinateArgs, button: "middle" })');
-    // wait is local; the driver has no wait tool.
     expect(source).toContain("Waited ${seconds}s.");
-    // Older drivers keep the cheap standalone screenshot path.
     expect(source).toContain('driverToolNames.has("screenshot")');
   });
 });

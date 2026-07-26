@@ -73,7 +73,7 @@ export function parseFrontmatter(content: string): {
         if (baseIndent !== -1) {
           multilineContent.push(nextLine.slice(baseIndent).trimEnd());
         }
-        i = j; // Skip these lines in outer loop
+        i = j;
       }
 
       value = multilineContent.join(" ").trim();
@@ -135,7 +135,7 @@ export function parseSkillFile(
         !trimmed.startsWith("```") &&
         !trimmed.startsWith("|")
       ) {
-        description = trimmed.slice(0, 200); // First 200 chars
+        description = trimmed.slice(0, 200);
         break;
       }
     }
@@ -273,8 +273,6 @@ export async function loadAllSkills(options: {
   const plugins = listInstalledPlugins({ workspaceDir: options.workspaceDir });
   const pluginEnabled = new Map(plugins.map((plugin) => [plugin.manifest.id, plugin.enabled]));
 
-  // Curated built-in packs ship compiled into the binary (lowest priority, so
-  // user/workspace skills of the same name override them).
   for (const pack of getBuiltinSkillPacks()) {
     const owner = getBuiltinPluginForSkill(pack.skill.name);
     if (owner && pluginEnabled.get(owner.id) === false) continue;
@@ -395,7 +393,7 @@ export async function watchSkillDirectories(options: {
 
   const watchDir = async (dir: string) => {
     try {
-      await stat(dir); // Check if exists
+      await stat(dir);
       const controller = new AbortController();
       controllers.push(controller);
 

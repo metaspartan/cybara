@@ -1,17 +1,3 @@
-/**
- * Anthropic prompt-cache breakpoint injection.
- *
- * Anthropic's prompt caching lets you mark cacheable content with a
- * `cache_control: { type: "ephemeral" }` breakpoint. Up to 4 breakpoints are
- * honored per request. Marking the stable system prompt + the most recent turn
- * ("system_and_last" / "system_and_3") yields ~75% input-token
- * savings on multi-turn sessions because the prefix up to the last breakpoint
- * is reused.
- *
- * This module is a pure transformer over a generic Anthropic-shaped request
- * body so it can be unit-tested in isolation.
- */
-
 export interface AnthropicCacheControl {
   type: "ephemeral";
   ttl?: "5m" | "1h";
@@ -38,9 +24,7 @@ export type CacheStrategy = "system_and_last" | "system_and_3" | "disabled";
 
 export interface ApplyCacheOptions {
   strategy?: CacheStrategy;
-  /** TTL for cache entries. Default "1h". */
   ttl?: "5m" | "1h";
-  /** Max breakpoints Anthropic honors is 4; never exceed. */
   maxBreakpoints?: number;
 }
 
@@ -66,7 +50,6 @@ function withoutBreakpoint(block: AnthropicContentBlock): AnthropicContentBlock 
 }
 
 function addBreakpoint(block: AnthropicContentBlock, ttl: "5m" | "1h"): AnthropicContentBlock {
-  // Don't stack a second breakpoint on the same block.
   if (block.cache_control) return block;
   return { ...block, cache_control: { type: "ephemeral", ttl } };
 }
@@ -84,16 +67,6 @@ function ensureBlockForm(message: AnthropicMessage): AnthropicMessage {
   };
 }
 
-/**
- * Apply cache breakpoints to an Anthropic request body. Returns a NEW object;
- * does not mutate the input. When strategy is "disabled" or there are no
- * messages, the input is returned unchanged.
- *
- * Strategy:
- * - "system_and_last": breakpoint on the last system block + the last message.
- * - "system_and_3": breakpoint on the last system block + the last 3 messages
- *   (capped so total breakpoints <= maxBreakpoints). This is the default.
- */
 export function applyAnthropicCacheControl(
   request: AnthropicCacheRequest,
   options: ApplyCacheOptions = {}
@@ -107,7 +80,6 @@ export function applyAnthropicCacheControl(
 
   let breakpointsUsed = 0;
 
-  // 1. System prompt: cache the final system block.
   const systemParts = normalizeSystem(request.system).map(toBlock).map(withoutBreakpoint);
   if (systemParts.length > 0) {
     const last = systemParts[systemParts.length - 1];
@@ -115,7 +87,6 @@ export function applyAnthropicCacheControl(
     breakpointsUsed += 1;
   }
 
-  // 2. Messages: cache the trailing message(s).
   const messages = request.messages.map(ensureBlockForm);
   const trailingCount = strategy === "system_and_last" ? 1 : Math.min(3, messages.length);
   const remaining = Math.max(0, maxBreakpoints - breakpointsUsed);

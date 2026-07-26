@@ -16,7 +16,7 @@ const USER_AGENT =
 
 const DEFAULT_SEARCH_COUNT = 5;
 const MAX_SEARCH_COUNT = 10;
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 const searchCache = new Map<string, { results: unknown; timestamp: number }>();
 

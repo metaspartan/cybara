@@ -298,8 +298,6 @@ const toolHandlers: Record<
   phone: handlePhoneCall,
   voice_call: handleVoiceCall,
 
-  // Keys MUST match the tool schema names in tools/index.ts (lsp_*), otherwise
-  // executeTool throws "Unknown tool" for tools the LLM is advertised.
   lsp_diagnostics: handleLSPDiagnostics,
   lsp_definition: handleLSPDefinition,
   lsp_references: handleLSPReferences,
@@ -579,9 +577,6 @@ export async function executeTool(
     !allowDangerous &&
     !capabilityAllows
   ) {
-    // Interactive approval: suspend the tool call and wait for user consent,
-    // rather than throwing immediately. If no session context (e.g. CLI one-shot),
-    // fall back to the throw.
     if (context?.sessionId) {
       const decision = await requestToolApproval({
         sessionId: context.sessionId,
@@ -601,9 +596,7 @@ export async function executeTool(
         });
         throw new Error(`Tool '${name}' was denied by the operator.`);
       }
-      // Approved — fall through to execute.
     } else {
-      // No session context — can't suspend for approval, so throw the old error.
       trackMetric("dangerous_tool_usage", name, 1, {
         blocked: true,
         mode: dangerousPolicy.mode,

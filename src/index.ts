@@ -187,16 +187,10 @@ function readUiIndex(): string {
   });
   const basePath = getGatewayBasePath();
   if (!basePath) return raw;
-  // The Vite build emits root-absolute asset URLs; rewrite them under the
-  // configured prefix and tell the SPA its base so routing/fetches line up.
   return raw
     .replaceAll('src="/', `src="${basePath}/`)
     .replaceAll('href="/', `href="${basePath}/`)
-    .replace(
-      "<head>",
-      // A meta tag (not an inline script) so the strict CSP needs no carve-out.
-      `<head><meta name="cybara-base-path" content="${basePath}">`
-    );
+    .replace("<head>", `<head><meta name="cybara-base-path" content="${basePath}">`);
 }
 
 const mimeTypes: Record<string, string> = {
@@ -402,10 +396,6 @@ function boundedStreamParameter(
 }
 
 function withOptionalQueryToken(headers: Record<string, string>, url: URL): Record<string, string> {
-  // Query-token auth exists only for browser WebSocket/EventSource clients,
-  // which cannot set an Authorization header. Honor it solely on upgrade/SSE
-  // requests (never overriding a real header) so tokens stay out of ordinary
-  // request URLs, where they would leak into proxy logs and browser history.
   const connection = (headers.connection || headers.Connection || "").toLowerCase();
   const accept = headers.accept || headers.Accept || "";
   const isBrowserStreamClient =
@@ -459,9 +449,6 @@ function createGatewayServer(
       const url = new URL(req.url);
       let pathname = url.pathname;
 
-      // Optional URL prefix (Settings > Auth): strip it once here so every
-      // route below stays prefix-agnostic. Health stays reachable unprefixed —
-      // supervisors (sidecars, scripts, load balancers) probe it directly.
       const basePath = getGatewayBasePath();
       if (basePath) {
         if (pathname === basePath || pathname.startsWith(`${basePath}/`)) {
@@ -762,7 +749,6 @@ function createGatewayServer(
         }
         const response = await handleRequest({
           method: req.method,
-          // Route matching re-parses the URL, so hand it the prefix-stripped path.
           url: basePath ? `${url.origin}${pathname}${url.search}` : req.url,
           headers: requestHeaders,
           body,
@@ -900,18 +886,14 @@ function createGatewayServer(
             const unsubscribe = onStatusStream((event) => {
               try {
                 sender.send(event);
-              } catch {
-                // Connection will be cleaned up in close handler
-              }
+              } catch {}
             });
             data.unsubscribe = unsubscribe;
           } catch (error) {
             console.debug("[Status WS] Failed to initialize websocket:", error);
             try {
               ws.close();
-            } catch {
-              // ignore
-            }
+            } catch {}
           }
           return;
         }
@@ -1003,9 +985,7 @@ function createGatewayServer(
           if (text === "ping") {
             try {
               ws.send("pong");
-            } catch {
-              // ignore
-            }
+            } catch {}
           }
           return;
         }
@@ -1123,8 +1103,6 @@ setGatewayHostApplyHandler((nextHost) => {
   }, 250);
 });
 
-// Eagerly materialize the gateway API key so onboarding always has one on
-// first boot instead of waiting for the first authenticated request.
 revealGatewayApiKey();
 const startupBasePath = getGatewayBasePath();
 const dashboardUrl = `http://localhost:${PORT}${startupBasePath}`;
@@ -1183,8 +1161,6 @@ try {
   console.error("[Plugins] Runtime activation failed:", error);
 }
 
-// First-run nudge: if no LLM provider has credentials yet, the agent can't do
-// anything useful — point the user at setup instead of leaving them guessing.
 try {
   const providerStats = providerManager.getStats();
   if (providerStats.withAuth === 0) {
@@ -1195,9 +1171,7 @@ try {
      • Or set a key, e.g.:  OPENAI_API_KEY / ANTHROPIC_API_KEY / MINIMAX_API_KEY  (see .env.example)
 `);
   }
-} catch {
-  /* best-effort nudge */
-}
+} catch {}
 
 setAgentHandler(async (job) => {
   const agent = agentManager.list().find((a) => a.status === "running");

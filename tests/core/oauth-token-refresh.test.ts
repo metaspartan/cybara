@@ -11,9 +11,6 @@ afterEach(() => {
   }
 });
 
-// ChatGPT/Codex OAuth tokens are short-lived. Without a refresh-on-use path,
-// every Codex call fails once the access_token lapses. These cover the
-// refresh_token exchange, expiry gating, and credential persistence.
 describe("OAuth token refresh (openai-codex)", () => {
   function createCodexProvider(fields: {
     access_token?: string;
@@ -34,7 +31,7 @@ describe("OAuth token refresh (openai-codex)", () => {
     const provider = createCodexProvider({
       access_token: "stale-token",
       refresh_token: "refresh-abc",
-      expires_at: Date.now() - 60_000, // expired a minute ago
+      expires_at: Date.now() - 60_000,
     });
 
     let tokenUrl = "";
@@ -60,7 +57,6 @@ describe("OAuth token refresh (openai-codex)", () => {
     expect(sentBody).toContain("grant_type=refresh_token");
     expect(sentBody).toContain("refresh-abc");
     expect(refreshed?.access_token).toBe("fresh-token");
-    // Persisted, so the next read sees the rotated refresh token + future expiry.
     const reread = providerManager.getWithCredentials(provider.id);
     expect(reread?.access_token).toBe("fresh-token");
     expect(reread?.refresh_token).toBe("refresh-def");
@@ -71,7 +67,6 @@ describe("OAuth token refresh (openai-codex)", () => {
     const provider = createCodexProvider({
       access_token: "stale-token",
       refresh_token: "refresh-abc",
-      // no expires_at
     });
     let called = false;
     globalThis.fetch = (async () => {
@@ -93,7 +88,7 @@ describe("OAuth token refresh (openai-codex)", () => {
     const provider = createCodexProvider({
       access_token: "good-token",
       refresh_token: "refresh-abc",
-      expires_at: Date.now() + 30 * 60_000, // 30 min out
+      expires_at: Date.now() + 30 * 60_000,
     });
     let called = false;
     globalThis.fetch = (async () => {
@@ -121,7 +116,6 @@ describe("OAuth token refresh (openai-codex)", () => {
       providerManager.getWithCredentials(provider.id)
     );
     expect(result).toBeUndefined();
-    // Original token is untouched so the call can still surface a clear auth error.
     expect(providerManager.getWithCredentials(provider.id)?.access_token).toBe("stale-token");
   });
 
@@ -129,7 +123,6 @@ describe("OAuth token refresh (openai-codex)", () => {
     const provider = createCodexProvider({
       access_token: "stale-token",
       refresh_token: "refresh-abc",
-      // unknown expiry
     });
     let calls = 0;
     globalThis.fetch = (async () => {
@@ -143,7 +136,6 @@ describe("OAuth token refresh (openai-codex)", () => {
     await providerManager.refreshOAuthCredentialsIfNeeded(
       providerManager.getWithCredentials(provider.id)
     );
-    // Second call is inside the cooldown window, so the token endpoint is hit once.
     expect(calls).toBe(1);
   });
 

@@ -120,15 +120,11 @@ function log(
 
   try {
     otelBridge?.(entry);
-  } catch {
-    // Never break primary logging path on OTEL bridge errors.
-  }
+  } catch {}
 
   try {
     customSink?.(entry);
-  } catch {
-    // Never break primary logging path on custom sink errors.
-  }
+  } catch {}
 
   const formattedLine = LOG_FORMAT === "json" ? safeStringify(entry) : formatLogEntry(entry);
 

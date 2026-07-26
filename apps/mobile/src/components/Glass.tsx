@@ -35,14 +35,7 @@ export function GlassPanel({
     );
   }
 
-  // On iOS 26 use the genuine Liquid Glass material for every panel (this is the
-  // app's primary surface, used ~20×). The real material supplies its own
-  // translucency and edge highlight, so the BlurView wash/highlight overlays are
-  // only needed on the fallback path.
   if (GlassView) {
-    // Shape only — no opaque fill. The native material IS the surface; painting
-    // colors.glass over it (0.82-opaque white in light mode) flattened it back
-    // into a solid card and defeated the Liquid Glass look.
     return (
       <GlassView
         glassEffectStyle="regular"
@@ -119,8 +112,6 @@ const makeStyles = () =>
       borderWidth: 1,
       overflow: "hidden",
     },
-    // Native-glass surfaces: keep the rounded clip + hairline edge, but let the
-    // real material provide the translucency (no opaque background fill).
     panelShape: {
       borderRadius: radius.lg,
       borderColor: colors.border,

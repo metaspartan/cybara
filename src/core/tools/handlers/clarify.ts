@@ -1,16 +1,3 @@
-/**
- * `clarify` tool — ask the user a structured clarifying question.
- *
- * The model can pause and request a decision
- * when a task is ambiguous, presenting up to 4 multiple-choice options OR an
- * open-ended question. This surfaces a clean prompt in the conversation rather
- * than the model guessing and proceeding on a wrong assumption.
- *
- * The tool *returns* the question as a structured payload (rendered by the UI);
- * the agent loop treats the pending user reply as the next turn. It does not
- * block — it emits the question and the host (TUI/web) is responsible for
- * collecting the answer.
- */
 export interface ClarifyOption {
   label: string;
   description?: string;
@@ -57,6 +44,5 @@ export async function handleClarify(args: Record<string, unknown>): Promise<{
     };
   }
 
-  // Open-ended question (no options).
   return { question, header, awaiting: "user" };
 }

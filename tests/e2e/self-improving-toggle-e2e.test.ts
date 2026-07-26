@@ -89,9 +89,7 @@ beforeAll(async () => {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (response.ok) return;
-    } catch {
-      /* not up yet */
-    }
+    } catch {}
     await sleep(500);
   }
   throw new Error("Gateway did not become healthy in time");
@@ -101,9 +99,7 @@ afterAll(async () => {
   try {
     proc?.kill();
     if (proc) await proc.exited;
-  } catch {
-    /* already gone */
-  }
+  } catch {}
   rmSync(homeDir, { recursive: true, force: true });
 });
 

@@ -7,10 +7,6 @@ import { fileURLToPath } from "url";
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const ARTIFACTS_MODULE = join(ROOT_DIR, "src", "core", "artifacts.ts").replace(/\\/g, "/");
 
-// artifacts.ts resolves ARTIFACTS_ROOT from paths.ts (CYBARA_HOME), fixed at
-// startup — so all disk-writing operations run in a child process pointed at a
-// throwaway CYBARA_HOME. A seeded mulberry32 PRNG drives the name fuzzing so
-// failures reproduce deterministically.
 const WORKER_SOURCE = `
 import * as art from "${ARTIFACTS_MODULE}";
 import { getArtifactsRootDir } from "${ARTIFACTS_MODULE}";

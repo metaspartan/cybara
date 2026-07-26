@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { embedInSubBatches } from "../../src/core/memory/embeddings";
 
-// A fake embedder: each text -> a 1-dim vector encoding its numeric value, so
-// we can assert the output stays aligned with the input order.
 const fakeEmbed = (batch: string[]): Promise<number[][]> =>
   Promise.resolve(batch.map((t) => [Number(t)]));
 
@@ -22,7 +20,7 @@ describe("embedInSubBatches", () => {
     };
     const texts = Array.from({ length: 200 }, (_, i) => String(i));
     await embedInSubBatches(texts, counting, { batchSize: 96, concurrency: 8 });
-    expect(calls).toBe(3); // ceil(200/96)
+    expect(calls).toBe(3);
   });
 
   test("small inputs make a single call", async () => {

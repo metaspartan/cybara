@@ -1094,7 +1094,6 @@ describe("Telegram webhook secret verification helpers", () => {
 
   test("generateTelegramWebhookSecret returns a Telegram-valid token", () => {
     const secret = generateTelegramWebhookSecret();
-    // 1–256 chars, only A-Z a-z 0-9 _ - per Telegram's setWebhook contract.
     expect(secret.length).toBeGreaterThanOrEqual(16);
     expect(secret.length).toBeLessThanOrEqual(256);
     expect(secret).toMatch(/^[A-Za-z0-9_-]+$/);

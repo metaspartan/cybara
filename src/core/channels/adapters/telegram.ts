@@ -24,7 +24,6 @@ import {
   sendChannelRuntimeMessage,
 } from "../chat-runtime";
 
-/** Escape text for Telegram HTML parse mode. */
 function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -162,7 +161,6 @@ async function telegramApi(
     description?: string;
   };
 
-  // Rate-limit handling: on 429, wait retry_after and retry (up to 3 times).
   if (
     !data.ok &&
     data.error_code === 429 &&
@@ -848,8 +846,6 @@ export class TelegramBotManager implements ChannelAdapter {
       this.startPolling(channelId, botToken);
     } else {
       console.log(`[Telegram] Setting up webhook: ${webhookUrl}`);
-      // Reuse an existing secret when present, otherwise mint one so inbound
-      // updates can be authenticated via X-Telegram-Bot-Api-Secret-Token.
       const existingSecret =
         typeof config.webhook_secret === "string" && config.webhook_secret.trim()
           ? config.webhook_secret.trim()
@@ -860,8 +856,6 @@ export class TelegramBotManager implements ChannelAdapter {
       if (success) {
         console.log(`[Telegram] Webhook configured: ${webhookUrl}`);
         if (!existingSecret) {
-          // Persist the secret so it survives restarts and is available to
-          // verify inbound webhooks.
           const channel = tables.channels.get(channelId) as { config?: unknown } | null;
           const storedConfig = parseStoredTelegramConfig(channel?.config, channelId);
           tables.channels.update(channelId, {
@@ -1066,7 +1060,6 @@ export class TelegramBotManager implements ChannelAdapter {
   ): Promise<boolean> {
     const bot = this.bots.get(channelId);
     if (!bot) return false;
-    // Telegram doesn't have native embeds; render as HTML-formatted text.
     const parts: string[] = [];
     if (embed.title) parts.push(`<b>${escapeHtml(embed.title)}</b>`);
     if (embed.description) parts.push(escapeHtml(embed.description));
@@ -1350,7 +1343,6 @@ export class TelegramBotManager implements ChannelAdapter {
           { parse_mode: "Markdown" }
         );
       }
-      // For "disabled" policy, silently ignore
       return;
     }
 

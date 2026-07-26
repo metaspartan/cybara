@@ -1,8 +1,3 @@
-/**
- * Skills Registry
- * Multi-registry compatible skill install/sync (ClawdHub, skills.sh, GitHub)
- */
-
 import { mkdir, writeFile, readFile, rm, readdir } from "fs/promises";
 import { existsSync } from "fs";
 import { join, dirname, resolve, sep } from "path";
@@ -24,27 +19,18 @@ export function fetchRegistryResource(
   });
 }
 
-/**
- * Registry provider interface
- * Implement this for each registry (ClawdHub, skills.sh, GitHub)
- */
 export interface SkillRegistry {
   name: string;
   baseUrl: string;
 
-  /** Search for skills by query */
   search(query: string, options?: RegistrySearchOptions): Promise<RegistrySkill[]>;
 
-  /** Get skill details by slug/name */
   get(slug: string): Promise<RegistrySkillDetails | null>;
 
-  /** Download skill content */
   download(slug: string): Promise<SkillDownload>;
 
-  /** List popular/recent skills (for browse) */
   list?(options?: RegistryBrowseOptions): Promise<RegistrySkill[] | RegistryListResult>;
 
-  /** Check for updates to installed skills */
   checkUpdates?(installed: InstalledSkillInfo[]): Promise<UpdateInfo[]>;
 }
 
@@ -148,17 +134,12 @@ function mapClawHubTags(input: unknown): string[] | undefined {
   return Object.keys(input as Record<string, unknown>);
 }
 
-/**
- * ClawdHub Registry Implementation
- * https://clawhub.ai - Official Cybara skill registry
- */
 export class ClawdHubRegistry implements SkillRegistry {
   name = "clawhub";
   baseUrl = "https://clawhub.ai";
 
-  // Simple in-memory cache with TTL
   private cache = new Map<string, { data: unknown; expires: number }>();
-  private CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private CACHE_TTL = 5 * 60 * 1000;
 
   private getCached<T>(key: string): T | null {
     const entry = this.cache.get(key);
@@ -256,19 +237,14 @@ export class ClawdHubRegistry implements SkillRegistry {
   }
 
   async download(slug: string): Promise<SkillDownload> {
-    // ClawdHub returns a ZIP file with the skill content
     const url = `${this.baseUrl}/api/v1/download?slug=${encodeURIComponent(slug)}`;
     const res = await fetchRegistryResource(url);
     if (!res.ok) throw new Error(`Failed to download skill: ${slug}`);
 
-    // Check if it's a ZIP file
     const contentType = res.headers.get("content-type");
     if (contentType?.includes("application/zip")) {
-      // Write to temp and use unzip command
       const buffer = await res.arrayBuffer();
 
-      // Fallback: use JSZip or handle manually
-      // For now, write to temp and use unzip command
       const tempDir = join(homedir(), ".cybara", "temp", slug);
       const zipPath = join(tempDir, `${slug}.zip`);
       await mkdir(tempDir, { recursive: true });
@@ -276,18 +252,15 @@ export class ClawdHubRegistry implements SkillRegistry {
 
       extractZipArchive(zipPath, tempDir);
 
-      // Find and read skill file (case-insensitive, also check for skill.json)
       const files = await readdir(tempDir, { recursive: true });
       const allFiles: string[] = [];
       for (const f of files) {
         if (typeof f === "string") allFiles.push(f);
       }
 
-      // Look for skill.md (case insensitive) or skill.json
       const skillMdPath = allFiles.find((f) => f.toLowerCase().endsWith("skill.md"));
       const skillJsonPath = allFiles.find((f) => f.toLowerCase().endsWith("skill.json"));
 
-      // Get version from filename if available
       const disposition = res.headers.get("content-disposition");
       const versionMatch = disposition?.match(/(\d+\.\d+\.\d+)/);
 
@@ -301,7 +274,6 @@ export class ClawdHubRegistry implements SkillRegistry {
         };
       }
 
-      // If no skill.md but has skill.json, read all .md files as skill content
       if (skillJsonPath) {
         const mdFiles = allFiles.filter((f) => f.toLowerCase().endsWith(".md"));
         const fileContents: Array<{ path: string; content: string }> = [];
@@ -326,11 +298,9 @@ export class ClawdHubRegistry implements SkillRegistry {
       throw new Error(`No skill files found in ZIP for: ${slug}`);
     }
 
-    // Fallback to JSON response (old behavior)
     return res.json() as Promise<SkillDownload>;
   }
 
-  /** List recent skills (for browse) */
   async list(options?: RegistryBrowseOptions): Promise<RegistryListResult> {
     const limit = sanitizeLimit(options?.limit, REGISTRY_DEFAULT_LIMIT);
     const sort = options?.sort ?? "downloads";
@@ -397,17 +367,12 @@ export class ClawdHubRegistry implements SkillRegistry {
   }
 }
 
-/**
- * skills.sh Registry Implementation
- * https://skills.sh - Vercel's Agent Skills Directory
- */
 export class SkillsShRegistry implements SkillRegistry {
   name = "skills.sh";
   baseUrl = "https://skills.sh";
 
-  // Simple in-memory cache with TTL
   private cache = new Map<string, { data: unknown; expires: number }>();
-  private CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private CACHE_TTL = 5 * 60 * 1000;
 
   private getCached<T>(key: string): T | null {
     const entry = this.cache.get(key);
@@ -471,7 +436,6 @@ export class SkillsShRegistry implements SkillRegistry {
   }
 
   async download(slug: string): Promise<SkillDownload> {
-    // First, try to get the source info from search
     const skills = await this.search(slug, { limit: 100 });
     const match = skills.find((s) => s.slug === slug);
 
@@ -480,9 +444,7 @@ export class SkillsShRegistry implements SkillRegistry {
     }
 
     const source = match.description.replace("Source: ", "");
-    // source is like "owner/repo"
 
-    // Use GitHub tree API to find the SKILL.md file for this skill
     try {
       const cacheKey = `tree:${source}`;
       let tree = this.getCached<Array<{ path: string }>>(cacheKey);
@@ -503,14 +465,11 @@ export class SkillsShRegistry implements SkillRegistry {
       }
 
       if (tree) {
-        // Find SKILL.md file that matches the slug
         const skillFile =
           tree.find((t) => t.path.endsWith("/SKILL.md") && t.path.includes(slug)) ||
           tree.find((t) => t.path.endsWith(`/${slug}/SKILL.md`)) ||
           tree.find(
-            (t) =>
-              // Handle cases like skills/username/skillname/SKILL.md
-              t.path.endsWith("/SKILL.md") && t.path.toLowerCase().includes(slug.toLowerCase())
+            (t) => t.path.endsWith("/SKILL.md") && t.path.toLowerCase().includes(slug.toLowerCase())
           );
 
         if (skillFile) {
@@ -532,7 +491,6 @@ export class SkillsShRegistry implements SkillRegistry {
       console.warn(`[skills.sh] GitHub tree lookup failed for ${source}:`, err);
     }
 
-    // Fallback: try common path patterns
     const [owner] = source.split("/");
     const slugWithoutPrefix = slug.replace(new RegExp(`^${owner.replace(/-.*$/, "")}-`), "");
 
@@ -570,7 +528,6 @@ export class SkillsShRegistry implements SkillRegistry {
     );
   }
 
-  /** List popular skills (for browse) */
   async list(options?: RegistryBrowseOptions): Promise<RegistrySkill[]> {
     const limit = sanitizeLimit(options?.limit, 100);
     const cacheKey = `list:${limit}`;
@@ -581,7 +538,6 @@ export class SkillsShRegistry implements SkillRegistry {
       const url = `${this.baseUrl}/api/skills`;
       const res = await fetchRegistryResource(url);
       if (!res.ok) {
-        // If api/skills returns 404, we use the working search API as a fallback to list popular skills
         return await this.search("agent", { limit });
       }
       const data = (await res.json()) as {
@@ -765,17 +721,13 @@ export type RegistryAggregateOptions = {
   maxPages?: number;
 };
 
-/**
- * Multi-registry manager
- */
 export class SkillRegistryManager {
   private registries: Map<string, SkillRegistry> = new Map();
   private defaultRegistry: string;
-  private SEARCH_TIMEOUT = 8000; // 8 second timeout per registry (ClawHub can be slow)
+  private SEARCH_TIMEOUT = 8000;
 
   constructor(defaultRegistry = "clawhub") {
     this.defaultRegistry = defaultRegistry;
-    // Register default providers (only working ones)
     this.register(new ClawdHubRegistry());
     this.register(new SkillsShRegistry());
     this.register(new GitHubSkillsRegistry());
@@ -851,9 +803,6 @@ export class SkillRegistryManager {
     return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
   }
 
-  /**
-   * Search across all registries
-   */
   async searchAll(
     query: string,
     options: RegistryAggregateOptions = {}
@@ -888,9 +837,6 @@ export class SkillRegistryManager {
     return this.dedupeByRegistry(resultsByRegistry);
   }
 
-  /**
-   * Browse (list) skills from all registries that support it
-   */
   async browseAll(
     options: RegistryAggregateOptions = {}
   ): Promise<Array<RegistrySkill & { registry: string }>> {
@@ -929,7 +875,6 @@ export class SkillRegistryManager {
 
               cursor = nextCursor;
 
-              // ClawHub only supports cursor pagination for sort=updated.
               if (sort && sort !== "updated") {
                 break;
               }
@@ -952,9 +897,6 @@ export class SkillRegistryManager {
     return this.dedupeByRegistry(resultsByRegistry);
   }
 
-  /**
-   * Dedupe skills by slug, preferring default registry order.
-   */
   private dedupeByRegistry(
     resultsByRegistry: Map<string, Array<RegistrySkill & { registry: string }>>
   ): Array<RegistrySkill & { registry: string }> {
@@ -974,9 +916,6 @@ export class SkillRegistryManager {
     return Array.from(bySlug.values());
   }
 
-  /**
-   * Install a skill from any registry
-   */
   async install(
     slug: string,
     options: {
@@ -1029,7 +968,6 @@ export class SkillRegistryManager {
       const download = await registry.download(slug);
       const targetDir = options.targetDir ?? join(homedir(), ".cybara", "skills", slug);
 
-      // Create directory
       await mkdir(targetDir, { recursive: true });
 
       const resolvedTarget = resolve(targetDir);
@@ -1045,7 +983,6 @@ export class SkillRegistryManager {
         await writeFile(filePath, file.content, "utf-8");
       }
 
-      // Write metadata
       const metadataPath = join(targetDir, ".registry.json");
       await writeFile(
         metadataPath,
@@ -1068,13 +1005,9 @@ export class SkillRegistryManager {
     }
   }
 
-  /**
-   * Get workspace path for skills directory
-   */
   private getWorkspaceSkillsDir(): string {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
-    // Handle bunfs paths (production builds)
     if (__dirname.startsWith("/$bunfs") || __dirname.includes("$bunfs")) {
       const execDir = dirname(process.execPath);
       return join(execDir, "..", "..", "skills");
@@ -1082,22 +1015,13 @@ export class SkillRegistryManager {
     return join(__dirname, "..", "..", "..", "skills");
   }
 
-  /**
-   * Find skill directory or file by looking in all possible locations
-   */
   private async findSkillPath(slug: string): Promise<string | null> {
-    // Normalize slug for comparison
     const normalizedSlug = slug.toLowerCase().replace(/[\s_]+/g, "-");
 
-    // Check possible locations in order of priority
-    const possibleDirs = [
-      join(homedir(), ".cybara", "skills"), // User-installed
-      this.getWorkspaceSkillsDir(), // Workspace skills
-    ];
+    const possibleDirs = [join(homedir(), ".cybara", "skills"), this.getWorkspaceSkillsDir()];
 
     for (const skillsDir of possibleDirs) {
       try {
-        // Check if directory exists
         if (!existsSync(skillsDir)) continue;
 
         const entries = await readdir(skillsDir, { withFileTypes: true });
@@ -1107,14 +1031,12 @@ export class SkillRegistryManager {
           const baseName =
             entry.isFile() && entry.name.endsWith(".md") ? entry.name.slice(0, -3) : entry.name;
 
-          // Compare normalized names
           const entryNormalized = baseName.toLowerCase().replace(/[\s_]+/g, "-");
           if (entryNormalized === normalizedSlug || baseName === slug) {
             return join(skillsDir, entry.name);
           }
         }
       } catch {
-        // Skip this directory if we can't read it
         continue;
       }
     }
@@ -1122,14 +1044,10 @@ export class SkillRegistryManager {
     return null;
   }
 
-  /**
-   * Uninstall a skill
-   */
   async uninstall(
     slug: string,
     options: { targetDir?: string } = {}
   ): Promise<{ success: boolean; error?: string; location?: string }> {
-    // If targetDir is explicitly specified, use it
     if (options.targetDir) {
       try {
         await rm(options.targetDir, { recursive: true, force: true });
@@ -1139,7 +1057,6 @@ export class SkillRegistryManager {
       }
     }
 
-    // Otherwise, search for the skill in all possible locations
     const skillPath = await this.findSkillPath(slug);
 
     if (!skillPath) {
@@ -1154,16 +1071,9 @@ export class SkillRegistryManager {
     }
   }
 
-  /**
-   * Update all installed skills
-   */
-  /**
-   * Get all skills directories to check for updates
-   */
   private getSkillsDirs(): string[] {
     const dirs: string[] = [join(homedir(), ".cybara", "skills")];
 
-    // Add workspace skills directory
     const workspaceDir = this.getWorkspaceSkillsDir();
     if (!dirs.includes(workspaceDir)) {
       dirs.push(workspaceDir);
@@ -1180,7 +1090,6 @@ export class SkillRegistryManager {
     const results: Array<{ slug: string; updated: boolean; error?: string }> = [];
 
     for (const skillsDir of skillsDirs) {
-      // Find all installed skills with registry metadata
       try {
         if (!existsSync(skillsDir)) continue;
 
@@ -1220,20 +1129,15 @@ export class SkillRegistryManager {
                 error: installResult.error,
               });
             } else {
-              results.push({ slug: dir.name, updated: false }); // Already up to date
+              results.push({ slug: dir.name, updated: false });
             }
-          } catch {
-            // No metadata file, skip
-          }
+          } catch {}
         }
-      } catch {
-        // Skills directory doesn't exist, skip
-      }
+      } catch {}
     }
 
     return results;
   }
 }
 
-// Default manager instance
 export const registryManager = new SkillRegistryManager("clawhub");

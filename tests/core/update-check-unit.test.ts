@@ -20,7 +20,6 @@ const sign = (n: number): -1 | 0 | 1 => (n > 0 ? 1 : n < 0 ? -1 : 0);
 
 describe("update-check semver comparison (compareVersions / isNewerVersion)", () => {
   test("update-check uses a strict > 0 newer decision", () => {
-    // update-check.ts computes: updateAvailable = compareVersions(latest, current) > 0
     expect(isNewerVersion("1.0.1", "1.0.0")).toBe(true);
     expect(isNewerVersion("1.0.0", "1.0.0")).toBe(false);
     expect(isNewerVersion("1.0.0", "1.0.1")).toBe(false);
@@ -49,13 +48,11 @@ describe("update-check semver comparison (compareVersions / isNewerVersion)", ()
     expect(sign(compareVersions("1.1.0", "1.0.9"))).toBe(1);
     expect(sign(compareVersions("2.0.0", "1.99.99"))).toBe(1);
     expect(sign(compareVersions("1.0.0", "1.0.1"))).toBe(-1);
-    // 10 > 9 numerically (not lexically) — regression guard
     expect(sign(compareVersions("1.0.10", "1.0.9"))).toBe(1);
     expect(sign(compareVersions("1.0.100", "1.0.20"))).toBe(1);
   });
 
   test("prerelease/build suffixes are stripped before compare", () => {
-    // strip() cuts at the first [+-], so prerelease tags collapse to base version.
     expect(compareVersions("1.2.3-beta.1", "1.2.3")).toBe(0);
     expect(compareVersions("1.2.3-rc.1", "1.2.3-rc.2")).toBe(0);
     expect(sign(compareVersions("1.2.4-beta", "1.2.3"))).toBe(1);
@@ -71,7 +68,6 @@ describe("update-check semver comparison (compareVersions / isNewerVersion)", ()
       const ab = sign(compareVersions(a, b));
       const ba = sign(compareVersions(b, a));
       expect(ab + ba).toBe(0);
-      // isNewerVersion is exactly compare > 0
       expect(isNewerVersion(a, b)).toBe(ab === 1);
     }
   });

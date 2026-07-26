@@ -1,9 +1,5 @@
 import { Platform, StyleSheet } from "react-native";
 
-// Dark palette follows Apple's Dark Mode system: a base -> elevated gray ladder
-// (systemBackground #000 -> secondary #1c1c1e -> tertiary #2c2c2e), pure-white
-// primary label, systemGray secondary/tertiary labels, and translucent glass
-// tints so blurred chrome (nav bar, composer) shows content behind it.
 export const darkColors = {
   background: "#000000",
   backgroundLift: "#1c1c1e",
@@ -33,8 +29,6 @@ export const darkColors = {
   softRedBorder: "rgba(255, 123, 139, 0.4)",
 };
 
-// Light palette mirrors Apple's grouped-list light system: grouped background
-// #f2f2f7 with white cards, near-black label, systemGray secondary labels.
 export const lightColors: typeof darkColors = {
   background: "#f2f2f7",
   backgroundLift: "#ffffff",
@@ -72,11 +66,6 @@ export const palettes: Record<ColorScheme, Palette> = {
   light: lightColors,
 };
 
-// `colors` is a live binding that swaps between the light/dark palette when the
-// active scheme changes. StyleSheets built from it are rebuilt via
-// subscribeColors(); inline `colors.x` reads (evaluated at render) update on the
-// next render. This lets the whole app follow the system theme without threading
-// a palette through every component.
 export let colors: Palette = darkColors;
 
 const colorListeners = new Set<() => void>();

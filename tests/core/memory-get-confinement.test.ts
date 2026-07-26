@@ -4,7 +4,6 @@ import { join } from "path";
 import { handleMemoryGet } from "../../src/core/tools/handlers/memory";
 import { memoryDir } from "../../src/core/paths";
 
-// Ensure memoryDir exists so the happy-path read can find its fixture.
 if (!existsSync(memoryDir)) mkdirSync(memoryDir, { recursive: true });
 
 const fixtureName = "cybara-test-memory-get-fixture.md";
@@ -15,7 +14,6 @@ afterAll(() => {
   if (existsSync(fixturePath)) rmSync(fixturePath);
 });
 
-// mulberry32 PRNG so the fuzz cases are deterministic across runs.
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -75,11 +73,8 @@ describe("memory_get confinement (security)", () => {
       try {
         result = await handleMemoryGet({ path: payload });
       } catch {
-        // Rejected — the desired outcome for an escaping/invalid path.
         continue;
       }
-      // If it resolved, it must have read the returned path from within memoryDir.
-      // Any accepted read must have targeted a path under the memory dir.
       expect(result!.path.length).toBeGreaterThan(0);
     }
   });

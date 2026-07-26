@@ -60,10 +60,6 @@ interface WorkerReport {
   stats: Record<string, number>;
 }
 
-// The scheduler module opens the SQLite DB at import time (via core/paths →
-// CYBARA_HOME), so everything runs in a child process pointed at a throwaway
-// CYBARA_HOME. The worker never starts the 60s loop's work: it stops the
-// scheduler and exits before any interval tick could fire.
 const WORKER_SOURCE = `
 import { taskScheduler } from "${join(ROOT_DIR, "src", "core", "scheduler.ts").replace(/\\/g, "/")}";
 import { tables } from "${join(ROOT_DIR, "src", "core", "database.ts").replace(/\\/g, "/")}";
@@ -311,8 +307,6 @@ describe("calculateNextRun via created tasks", () => {
   });
 
   test("0 9 * * 1-5 schedules 09:00 on a weekday (range parsing fixed)", () => {
-    // The old hand-rolled parser did parseInt("1-5") === 1, so this ran only on
-    // Mondays. The canonical parser honors the Mon–Fri range.
     const next = new Date(report.weekday.next_run as string);
     expect(next.getUTCHours()).toBe(9);
     expect(next.getUTCMinutes()).toBe(0);
@@ -322,7 +316,6 @@ describe("calculateNextRun via created tasks", () => {
   });
 
   test("0 0 1 * * schedules midnight on the 1st (day-of-month honored)", () => {
-    // The old parser ignored the day-of-month field entirely.
     const next = new Date(report.monthly.next_run as string);
     expect(next.getUTCDate()).toBe(1);
     expect(next.getUTCHours()).toBe(0);

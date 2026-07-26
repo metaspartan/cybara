@@ -42,11 +42,6 @@ export function conversationNeedsCompaction(opts: {
   return opts.convoChars > opts.threshold || opts.convoLength > opts.maxMessages;
 }
 
-/**
- * Index in `convo` where the retained window begins. Nudged forward by one when
- * it would land on a user turn, so a user-role summary message alternates
- * cleanly with the retained window. Returns 0 when nothing should be cut.
- */
 export function planCompactionCut(convo: WindowMessage[], keepRecent: number): number {
   let cut = convo.length - keepRecent;
   if (cut <= 0) return 0;
@@ -54,11 +49,6 @@ export function planCompactionCut(convo: WindowMessage[], keepRecent: number): n
   return cut;
 }
 
-/**
- * Rebuild the message list as: system prompt(s), a single summary of the older
- * turns, then the retained recent turns. If the retained window opens on a user
- * turn, the summary is folded into it to avoid two consecutive user messages.
- */
 export function buildCompactedConversation<T extends WindowMessage>(
   system: T[],
   recent: T[],

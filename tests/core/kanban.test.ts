@@ -59,8 +59,6 @@ describe("kanban dependency engine", () => {
   test("linkTasks refuses a cycle", () => {
     const a = kanban.createTask({ title: "a" });
     const b = kanban.createTask({ title: "b", parentIds: [a.id] });
-    // b -> a would create a cycle (a already depends on b transitively? no; but
-    // making a depend on b after b depends on a is a cycle).
     expect(kanban.linkTasks(b.id, a.id)).toBe(false);
   });
 
@@ -68,7 +66,7 @@ describe("kanban dependency engine", () => {
     const a = kanban.createTask({ title: "a" });
     const b = kanban.createTask({ title: "b" });
     expect(kanban.linkTasks(a.id, b.id)).toBe(true);
-    expect(kanban.linkTasks(a.id, b.id)).toBe(false); // duplicate ignored
+    expect(kanban.linkTasks(a.id, b.id)).toBe(false);
   });
 });
 
@@ -127,7 +125,6 @@ describe("kanban comments", () => {
     const comments = kanban.getComments(task.id);
     expect(comments.length).toBe(1);
     expect(comments[0].body).toBe("found the bug");
-    // Commenting a nonexistent task fails.
     expect(kanban.addComment("nope", "x", "y")).toBe(false);
   });
 });

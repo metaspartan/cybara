@@ -92,8 +92,6 @@ function buildMetricsOverview() {
     filesSearched: metrics.getTotal("file_operation", "search") || 0,
   };
   const totalToolCalls = metrics.getTotalByType("tool_call");
-  // api_call is by far the largest metric type (millions of rows); one grouped
-  // index scan replaces three separate SUM scans over the same rows.
   const apiCallTotals = new Map(
     metrics.getKeyAggregates("api_call").map((row) => [row.key, row.total || 0])
   );

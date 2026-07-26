@@ -1375,10 +1375,6 @@ describe("Agent tool allowlist guardrails", () => {
       sessionId: "openai-missing-args-session",
     });
 
-    // A malformed tool call is no longer fatal on the first turn: its error is
-    // fed back so the model can self-correct. This mock repeats the identical
-    // malformed calls forever, so the run continues past turn 1 and is stopped
-    // by the no-progress loop guard (bounded), not by a premature bail.
     expect(completionCalls).toBeGreaterThan(1);
     expect(completionCalls).toBeLessThan(30);
     expect(result.content).toContain("no progress");

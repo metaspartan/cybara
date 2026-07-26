@@ -1,13 +1,10 @@
-// --- Safety: un-overridable hard blocks ---
-
-/** Typed text patterns that are too dangerous to inject (shell pipe-to-bash, rm -rf, fork bombs). */
 const BLOCKED_TYPE_PATTERNS: readonly RegExp[] = [
-  /(\||;|&&|\|\|)\s*(bash|sh|zsh)\b/i, // curl ... | bash
-  /\brm\s+(-[a-z]*r[a-z]*\s+)?\/(\s|$)/i, // rm -rf /
-  /\bsudo\s+rm\s+-[a-z]*r/i, // sudo rm -r
-  /:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;?\s*:/i, // fork bomb
-  /\bmkfs\b/i, // filesystem format
-  /\bdd\s+if=\/dev\//i, // raw disk overwrite
+  /(\||;|&&|\|\|)\s*(bash|sh|zsh)\b/i,
+  /\brm\s+(-[a-z]*r[a-z]*\s+)?\/(\s|$)/i,
+  /\bsudo\s+rm\s+-[a-z]*r/i,
+  /:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;?\s*:/i,
+  /\bmkfs\b/i,
+  /\bdd\s+if=\/dev\//i,
   /\bpowershell(?:\.exe)?\b[^\r\n]*(?:-enc|-encodedcommand)\b/i,
   /\b(?:irm|invoke-restmethod|iwr|invoke-webrequest)\b[^\r\n]*\|\s*(?:iex|invoke-expression)\b/i,
   /\bcertutil\b[^\r\n]*-urlcache\b/i,
@@ -65,7 +62,6 @@ export type ComputerUseAction =
   | "list_apps"
   | "focus_app";
 
-/** Actions that only read/inspect (no side effects) — safe to run without consent. */
 const SAFE_ACTIONS: ReadonlySet<ComputerUseAction> = new Set([
   "capture",
   "move",
@@ -184,13 +180,11 @@ export function normalizeComputerUseCompatToolArgs(
   return normalized;
 }
 
-/** Per-session auto-approval for destructive actions (set by the host UI). */
 let sessionAutoApprove = false;
 export function setComputerUseAutoApprove(enabled: boolean): void {
   sessionAutoApprove = enabled;
 }
 
-/** Optional consent callback; if unset, destructive actions require sessionAutoApprove. */
 let approvalCallback:
   | ((action: ComputerUseAction, args: ComputerUseArgs, summary: string) => boolean)
   | null = null;
@@ -226,9 +220,7 @@ export function summarizeAction(action: ComputerUseAction, args: ComputerUseArgs
   }
 }
 
-/** Enforce un-overridable hard blocks + per-action consent. Throws if denied. */
 export function assertActionAllowed(action: ComputerUseAction, args: ComputerUseArgs): void {
-  // 1. Hard blocks (never overridable).
   if (action === "key" && args.keys && isBlockedKeyCombo(args.keys)) {
     throw new Error(`Refused: the key combo "${args.keys}" is blocked (logout/lock/power).`);
   }
@@ -238,7 +230,6 @@ export function assertActionAllowed(action: ComputerUseAction, args: ComputerUse
       "Refused: the typed text matched a blocked pattern (shell pipe-to-bash / rm -rf / fork bomb)."
     );
   }
-  // 2. Consent for destructive actions.
   if (SAFE_ACTIONS.has(action)) return;
   if (sessionAutoApprove) return;
   if (approvalCallback) {
@@ -248,6 +239,4 @@ export function assertActionAllowed(action: ComputerUseAction, args: ComputerUse
     }
     return;
   }
-  // No approval mechanism configured and not auto-approved: allow but warn.
-  // (The host gates computer_use via the dangerous-tool system; see tools/index.ts.)
 }

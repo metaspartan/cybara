@@ -123,7 +123,6 @@ export class IMessageAdapter implements ChannelAdapter {
   }
 
   private async handleMessage(channelId: string, message: BlueBubblesMessage): Promise<void> {
-    // Ignore own messages
     if (message.isFromMe) return;
 
     const text = message.text;
@@ -233,7 +232,7 @@ export class IMessageAdapter implements ChannelAdapter {
         body: JSON.stringify({
           chatGuid,
           message,
-          method: "private-api", // Use Private API for faster delivery
+          method: "private-api",
           tempGuid: crypto.randomUUID(),
         }),
       });

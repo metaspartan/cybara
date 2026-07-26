@@ -11,7 +11,6 @@ import {
   parseZaiUsageResponse,
 } from "../../src/core/provider-usage-source";
 
-// Real shape captured from chatgpt.com/backend-api/wham/usage.
 const CODEX_BODY = {
   plan_type: "pro",
   rate_limit: {

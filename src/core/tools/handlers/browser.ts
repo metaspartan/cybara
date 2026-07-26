@@ -536,7 +536,7 @@ export async function handleBrowser(
 
     case "snapshot": {
       const useHeadless = useEmbeddedBrowser(args);
-      const waitForContent = args.wait !== false; // Default: wait for content to load
+      const waitForContent = args.wait !== false;
 
       if (useHeadless) {
         const pageId = await getOrCreateBrowserPageForSession(sessionId);
@@ -674,7 +674,7 @@ export async function handleBrowser(
             snapshotLines.push("");
             snapshotLines.push("## Page Text Content");
             snapshotLines.push("");
-            snapshotLines.push(...textLines.slice(0, 800)); // Increased from 300 to get more content
+            snapshotLines.push(...textLines.slice(0, 800));
           }
         }
       } catch (domErr) {
@@ -701,9 +701,7 @@ export async function handleBrowser(
         if (vendor) {
           captchaLine = `# ⚠ CAPTCHA detected (${vendor}) — automated interaction will likely be blocked\n`;
         }
-      } catch {
-        /* detection is best-effort */
-      }
+      } catch {}
 
       const usageHint = `# Page: ${title}\n# URL: ${url}\n${captchaLine}# Interactive elements have [ref=eN] - use browser({action:'act', request:{kind:'click', ref:'eN'}}) to interact\n\n`;
 

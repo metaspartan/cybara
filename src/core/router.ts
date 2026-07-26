@@ -1,20 +1,3 @@
-/**
- * Weighted model/provider router with budget + rate limiting + health checking.
- *
- * Routes requests across multiple providers with:
- *  - Weighted / round-robin / lowest-cost / priority-tier selection
- *  - Rate limits (5h window, weekly) + spend limits (daily, weekly, global)
- *  - Built-in pricing data (stamped)
- *  - Circuit-breaker integration (auto-disable providers after N failures)
- *  - Rate-limit cooldown (temporarily skip providers that just 429'd)
- *  - Priority tiers (primary > secondary > fallback ordering)
- *  - Model-level routing (per model, not just per provider)
- *  - DB-persisted usage records (survives restarts)
- *  - Input validation (rejects negative weights/prices/limits)
- *
- * Pricing data stamped *-2026-05 with mid-2026 estimates.
- */
-
 import { config } from "./config";
 import { providerManager } from "./providers";
 import { tables } from "./database";
@@ -33,10 +16,6 @@ import {
   providerAccountPoolRouteProvider,
 } from "./provider-account-pool";
 
-// ─── Built-in pricing data ($USD per 1M tokens) ─────────────────────────────
-// Stamped pricing data + estimates.
-// Format: [providerId, modelId, inputPerM, outputPerM, cacheReadPerM?, cacheWritePerM?]
-
 type PricingEntry = [
   provider: string,
   model: string,
@@ -47,7 +26,6 @@ type PricingEntry = [
 ];
 
 const PROVIDER_PRICING: readonly PricingEntry[] = [
-  // OpenAI (est. mid-2026)
   ["openai", "gpt-5.6-sol", 5.0, 30.0, 0.5, 6.25],
   ["openai", "gpt-5.6", 5.0, 30.0, 0.5, 6.25],
   ["openai", "gpt-5.6-terra", 2.5, 15.0, 0.25, 3.125],
@@ -64,7 +42,6 @@ const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["openai", "gpt-5.2", 1.5, 6.0, 0.38],
   ["openai", "gpt-5.1", 2.0, 8.0, 0.5],
 
-  // Anthropic (anthropic-pricing-2026-05)
   ["anthropic", "claude-opus-4-8", 5.0, 25.0, 0.5, 6.25],
   ["anthropic", "claude-opus-4-7", 5.0, 25.0, 0.5, 6.25],
   ["anthropic", "claude-opus-4-6", 5.0, 25.0, 0.5, 6.25],
@@ -72,14 +49,12 @@ const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["anthropic", "claude-haiku-4-5", 1.0, 5.0, 0.1, 1.25],
   ["anthropic", "claude-fable-5", 5.0, 25.0, 0.5, 6.25],
 
-  // Google (gemini-pricing-2026-03 + est.)
   ["google", "gemini-3.1-pro-preview", 2.0, 12.0],
   ["google", "gemini-3.5-flash", 0.3, 1.2],
   ["google", "gemini-2.5-pro", 1.25, 10.0],
   ["google", "gemini-2.5-flash", 0.15, 0.6],
   ["google", "gemini-2.5-flash-lite", 0.075, 0.3],
 
-  // xAI (est.)
   ["xai", "grok-4.3", 1.25, 2.5, 0.125],
   ["xai", "grok-4.20-0309-reasoning", 1.25, 2.5, 0.125],
   ["xai", "grok-4.20-0309-non-reasoning", 1.25, 2.5, 0.125],
@@ -92,41 +67,33 @@ const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["xai", "grok-4", 3.0, 15.0],
   ["xai", "grok-4-fast", 0.2, 1.5],
 
-  // DeepSeek (deepseek-pricing-2026-05)
   ["deepseek", "deepseek-v4-pro", 1.74, 3.48, 0.0145],
   ["deepseek", "deepseek-v4-flash", 0.3, 0.6],
   ["deepseek", "deepseek-chat", 0.14, 0.28],
   ["deepseek", "deepseek-reasoner", 0.14, 0.28],
 
-  // Z.AI / GLM (est.)
   ["z.ai", "glm-5.2", 1.0, 1.0],
   ["z.ai", "glm-5.1", 0.8, 0.8],
   ["z.ai", "glm-5", 0.6, 0.6],
   ["z.ai", "glm-4.7", 0.6, 0.6],
 
-  // MiniMax (minimax-pricing-2026-04 + est.)
   ["minimax", "MiniMax-M3", 0.5, 2.0],
   ["minimax", "MiniMax-M2.7", 0.3, 1.2],
 
-  // Moonshot / Kimi (est.)
   ["moonshot", "kimi-k2.6", 1.2, 8.0],
   ["moonshot", "kimi-k2.5", 0.6, 2.5],
 
-  // Mistral (est.)
   ["mistral", "mistral-large-latest", 2.0, 6.0],
   ["mistral", "devstral-medium-latest", 0.4, 1.2],
   ["mistral", "mistral-small-latest", 0.2, 0.6],
 
-  // Together / Groq (est. — near upstream for OSS models)
   ["together", "moonshotai/Kimi-K2.6", 1.3, 8.8],
   ["groq", "llama-3.3-70b-versatile", 0.59, 0.79],
 
-  // OpenRouter — passthrough, varies per model (free-tier = $0)
   ["openrouter", "anthropic/claude-opus-4-8", 5.0, 25.0],
   ["openrouter", "openai/gpt-5.4", 2.5, 10.0],
 ];
 
-/** Lookup pricing for a provider+model. Returns null if unknown. */
 export function getPricing(
   providerId: string,
   modelId?: string
@@ -136,7 +103,6 @@ export function getPricing(
   cacheReadPerM?: number;
   cacheWritePerM?: number;
 } | null {
-  // Try exact provider+model match first.
   const exact = PROVIDER_PRICING.find(
     ([p, m]) => p === providerId && (modelId ? m === modelId : true)
   );
@@ -148,7 +114,6 @@ export function getPricing(
       cacheWritePerM: exact[5],
     };
   }
-  // Try provider-only match (first model for that provider).
   const providerMatch = PROVIDER_PRICING.find(([p]) => p === providerId);
   if (providerMatch) {
     return {
@@ -161,33 +126,20 @@ export function getPricing(
   return null;
 }
 
-/** Get all known pricing entries (for the UI to display). */
 export function getAllPricing(): PricingEntry[] {
   return [...PROVIDER_PRICING];
 }
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
 export interface ProviderRouteConfig {
-  /** Routing weight (0-100, clamped). 0 = excluded from weighted rotation. Default 50. */
   weight: number;
-  /** Priority tier: 0=primary, 1=secondary, 2=fallback. Lower = tried first. Default 0. */
   priority?: number;
-  /** Max requests in the rolling 5-hour window. 0 = unlimited. */
   limit5h?: number;
-  /** Max requests in the rolling 7-day window. 0 = unlimited. */
   limitWeekly?: number;
-  /** Max spend ($USD) per day. 0 = unlimited. */
   spendLimitDaily?: number;
-  /** Max spend ($USD) per week. 0 = unlimited. */
   spendLimitWeekly?: number;
-  /** Override input price per 1M tokens. If unset, uses built-in pricing DB. */
   priceInputPerM?: number;
-  /** Override output price per 1M tokens. */
   priceOutputPerM?: number;
-  /** Whether this route is enabled. Default true. */
   enabled?: boolean;
-  /** Model to pin for this route (model-level routing). */
   model?: string;
 }
 
@@ -205,9 +157,7 @@ export interface RouterConfig {
   globalSpendLimitDaily?: number;
   fallbackToAny: boolean;
   routes: Record<string, ProviderRouteConfig>;
-  /** Mixture-of-agents: how many proposer agents to fan out to (default 4). */
   moaMaxAgents?: number;
-  /** Mixture-of-agents: agent id used to synthesize the final answer. */
   moaAggregatorAgentId?: string;
 }
 
@@ -252,32 +202,24 @@ export interface ProviderAvailability {
   spendThisWeek: number;
   inputPerM?: number;
   outputPerM?: number;
-  /** True if the circuit breaker is open (too many recent failures). */
   circuitOpen: boolean;
-  /** True if the provider is in rate-limit cooldown. */
   inCooldown: boolean;
   plan?: ProviderPlanRouteConstraint;
 }
-
-// ─── State (in-memory cache + DB persistence) ───────────────────────────────
 
 const usageLog: RouterUsageRecord[] = [];
 const MAX_USAGE_RECORDS = 10_000;
 let roundRobinIndex = 0;
 
-// Circuit breaker: providerId → { consecutiveFailures, openUntil }
 const circuitState = new Map<string, { consecutiveFailures: number; openUntil: number }>();
 const CIRCUIT_FAILURE_THRESHOLD = 5;
-const CIRCUIT_RECOVERY_MS = 60_000; // 60s half-open recovery
+const CIRCUIT_RECOVERY_MS = 60_000;
 
-// Rate-limit cooldown: providerId → cooldownUntil
 const cooldownUntil = new Map<string, number>();
 
 const WINDOW_5H_MS = 5 * 60 * 60 * 1000;
 const WINDOW_DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOW_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
-// ─── Config ─────────────────────────────────────────────────────────────────
 
 function getRouterConfig(): RouterConfig {
   const cfg = config.get<RouterConfig>("router");
@@ -307,10 +249,6 @@ export function isModelRouterEnabled(): boolean {
   return getRouterConfig().enabled;
 }
 
-/**
- * True when the router is enabled and configured to run the mixture-of-agents
- * strategy, so the chat path should fan out to proposer agents and synthesize.
- */
 export function isMixtureOfAgentsRoutingActive(): boolean {
   const cfg = getRouterConfig();
   return cfg.enabled === true && cfg.strategy === "mixture_of_agents";
@@ -344,14 +282,12 @@ function normalizeRoute(route: ProviderRouteConfig): ProviderRouteConfig {
   };
 }
 
-// ─── Windowed queries (O(n) but capped) ─────────────────────────────────────
-
 function getWindowedRequests(providerId: string, windowMs: number): number {
   const cutoff = Date.now() - windowMs;
   let count = 0;
   for (let i = usageLog.length - 1; i >= 0; i--) {
     const r = usageLog[i];
-    if (r.timestamp < cutoff) break; // sorted by time, early exit
+    if (r.timestamp < cutoff) break;
     if (r.providerId === providerId) count++;
   }
   return count;
@@ -364,13 +300,11 @@ function getWindowedSpend(providerId: string | null, windowMs: number): number {
     const r = usageLog[i];
     if (r.timestamp < cutoff) break;
     if (providerId === null || r.providerId === providerId) {
-      sum += Math.max(0, r.estimatedCost); // guard against negative
+      sum += Math.max(0, r.estimatedCost);
     }
   }
   return sum;
 }
-
-// ─── Circuit breaker ────────────────────────────────────────────────────────
 
 function isCircuitOpen(providerId: string): boolean {
   const state = circuitState.get(providerId);
@@ -379,7 +313,6 @@ function isCircuitOpen(providerId: string): boolean {
   return false;
 }
 
-/** Record a provider failure. Opens the circuit after CIRCUIT_FAILURE_THRESHOLD. */
 export function recordProviderFailure(providerId: string, reason?: string): void {
   const state = circuitState.get(providerId) ?? {
     consecutiveFailures: 0,
@@ -395,12 +328,10 @@ export function recordProviderFailure(providerId: string, reason?: string): void
   circuitState.set(providerId, state);
 }
 
-/** Record a provider success (resets the circuit). */
 export function recordProviderSuccess(providerId: string): void {
   circuitState.set(providerId, { consecutiveFailures: 0, openUntil: 0 });
 }
 
-/** Put a provider in rate-limit cooldown for N seconds. */
 export function setProviderCooldown(providerId: string, cooldownMs: number): void {
   cooldownUntil.set(providerId, Date.now() + cooldownMs);
 }
@@ -414,8 +345,6 @@ function isInCooldown(providerId: string): boolean {
   }
   return true;
 }
-
-// ─── Availability computation ───────────────────────────────────────────────
 
 function resolvePrice(
   route: ProviderRouteConfig,
@@ -531,8 +460,6 @@ export function getProviderAvailability(
     plan,
   };
 }
-
-// ─── Selection ──────────────────────────────────────────────────────────────
 
 interface RouterSelectionTargets {
   routeIds: string[];
@@ -708,8 +635,6 @@ export function getRouterRouteModel(providerId?: string): string | undefined {
   return route ? normalizeRoute(route).model : undefined;
 }
 
-// ─── Usage recording (DB-persisted) ─────────────────────────────────────────
-
 function usageTokenCount(value: number | undefined): number {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
 }
@@ -767,7 +692,6 @@ export function recordUsage(
   usageLog.push(record);
   if (usageLog.length > MAX_USAGE_RECORDS) usageLog.splice(0, usageLog.length - MAX_USAGE_RECORDS);
 
-  // Persist to DB (metrics table with type 'router_usage').
   try {
     tables.metrics.add({
       id: crypto.randomUUID(),
@@ -785,22 +709,16 @@ export function recordUsage(
         })
       ),
     });
-  } catch {
-    /* DB persistence is best-effort */
-  }
+  } catch {}
 
-  // Update circuit breaker.
   if (success) recordProviderSuccess(providerId);
   else recordProviderFailure(providerId);
 }
 
-/** Record a rate-limit hit and trigger cooldown. */
 export function recordRateLimit(providerId: string, retryAfterMs: number): void {
   setProviderCooldown(providerId, Math.max(retryAfterMs, 10_000));
   recordProviderFailure(providerId, "rate_limit");
 }
-
-// ─── Inspection ─────────────────────────────────────────────────────────────
 
 export interface RouterStatus {
   enabled: boolean;
@@ -827,7 +745,6 @@ export function getRouterStatus(): RouterStatus {
   };
 }
 
-/** Reset all state (for tests). */
 export function resetRouterForTests(): void {
   usageLog.length = 0;
   roundRobinIndex = 0;

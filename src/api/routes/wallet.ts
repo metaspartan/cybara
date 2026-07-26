@@ -30,8 +30,6 @@ async function getWalletManager(): Promise<WalletManagerInstance> {
   try {
     const walletModule = await walletModulePromise;
     if (!walletModule.walletManager) {
-      // Module imported but walletManager is undefined — module evaluation
-      // likely failed partway through (e.g. WASM crash). Clear cache and retry.
       walletModulePromise = null;
       throw new Error(
         "Wallet module loaded but walletManager is undefined. " +

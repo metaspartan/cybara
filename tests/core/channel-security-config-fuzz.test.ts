@@ -166,9 +166,6 @@ describe("generatePairingCode", () => {
       }
       seen.add(code);
     }
-    // 32^6 space is large enough that collisions should be rare, but random
-    // sampling can still produce one. Keep this as an entropy sanity check
-    // instead of a probabilistically flaky uniqueness proof.
     expect(seen.size).toBeGreaterThanOrEqual(N - 3);
   });
 

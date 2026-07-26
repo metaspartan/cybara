@@ -80,13 +80,12 @@ function findMatchesInContent(
   const matches: IdeSearchMatch[] = [];
   if (!query) return matches;
 
-  // Regex mode: compile the user's pattern and iterate matches.
   if (options.useRegex) {
     let re: RegExp;
     try {
       re = new RegExp(query, options.caseSensitive ? "g" : "gi");
     } catch {
-      return matches; // invalid regex → no matches
+      return matches;
     }
     let m: RegExpExecArray | null;
     while ((m = re.exec(content)) !== null && matches.length < maxMatches) {
@@ -100,7 +99,7 @@ function findMatchesInContent(
           text: getLineText(content, found),
         });
       }
-      if (m.index === re.lastIndex) re.lastIndex += 1; // avoid zero-length loop
+      if (m.index === re.lastIndex) re.lastIndex += 1;
     }
     return matches;
   }
@@ -297,7 +296,7 @@ export function applyReplacements(
   try {
     regex = new RegExp(pattern, options?.caseSensitive ? "g" : "gi");
   } catch {
-    return { content, replacements: 0 }; // invalid regex → no changes
+    return { content, replacements: 0 };
   }
   const matches = content.match(regex);
   const replacements = matches ? matches.length : 0;

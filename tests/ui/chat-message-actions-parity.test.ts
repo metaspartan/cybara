@@ -6,8 +6,6 @@ import { readNativeChatSource } from "../shared/source-bundles";
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(`../../${rel}`, import.meta.url)), "utf8");
 
-// Copy + revert message actions must exist on every client, icon-only, below
-// the message, with revert always behind a confirmation dialog.
 describe("chat message actions parity (copy + confirmed revert on all clients)", () => {
   test("mobile: actions row with clipboard copy and confirmed revert", () => {
     const chat = read("apps/mobile/src/screens/dashboardChat.tsx");
@@ -17,7 +15,6 @@ describe("chat message actions parity (copy + confirmed revert on all clients)",
     expect(chat).toContain("Clipboard.setStringAsync(content)");
 
     const screen = read("apps/mobile/src/screens/dashboardSessionDetail.tsx");
-    // Revert goes through a native confirmation alert and refreshes the session.
     expect(screen).toContain('"Revert to before this message?"');
     expect(screen).toContain('{ text: "Cancel", style: "cancel" }');
     expect(screen).toContain(".revertSession(sessionId, {");

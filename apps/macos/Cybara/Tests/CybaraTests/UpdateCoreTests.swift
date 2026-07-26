@@ -4,8 +4,6 @@ import XCTest
 
 final class UpdateCoreTests: XCTestCase {
 
-    // MARK: - latestReleaseAPIURLString
-
     func testReleaseAPIURL() {
         XCTAssertEqual(
             UpdateCore.latestReleaseAPIURLString(repo: "metaspartan/cybara"),
@@ -19,8 +17,6 @@ final class UpdateCoreTests: XCTestCase {
         XCTAssertNil(UpdateCore.trustedReleaseAssetURL("http://github.com/update.zip"))
         XCTAssertNil(UpdateCore.trustedReleaseAssetURL("https://example.com/update.zip"))
     }
-
-    // MARK: - parseSemVer
 
     func testParseSemVerPlain() {
         XCTAssertEqual(UpdateCore.parseSemVer("1.2.3"), .init(major: 1, minor: 2, patch: 3))
@@ -48,8 +44,6 @@ final class UpdateCoreTests: XCTestCase {
         XCTAssertNil(UpdateCore.parseSemVer("v1.x.0"))
     }
 
-    // MARK: - SemVer ordering
-
     func testSemVerComparison() {
         let a = UpdateCore.SemVer(major: 1, minor: 0, patch: 0)
         let b = UpdateCore.SemVer(major: 1, minor: 0, patch: 1)
@@ -61,8 +55,6 @@ final class UpdateCoreTests: XCTestCase {
         XCTAssertFalse(d < a)
         XCTAssertEqual(a, UpdateCore.SemVer(major: 1, minor: 0, patch: 0))
     }
-
-    // MARK: - isUpdateAvailable
 
     func testUpdateAvailableWhenNewer() {
         XCTAssertTrue(UpdateCore.isUpdateAvailable(latestTag: "v1.0.328", currentVersion: "1.0.327"))
@@ -77,12 +69,9 @@ final class UpdateCoreTests: XCTestCase {
     }
 
     func testNoUpdateWhenVersionsUnparseable() {
-        // Conservative: never claim an update if either side is garbage.
         XCTAssertFalse(UpdateCore.isUpdateAvailable(latestTag: "nightly", currentVersion: "1.0.0"))
         XCTAssertFalse(UpdateCore.isUpdateAvailable(latestTag: "v2.0.0", currentVersion: "dev"))
     }
-
-    // MARK: - parseLatestRelease
 
     func testParseLatestReleaseFull() {
         let json = """
@@ -117,8 +106,6 @@ final class UpdateCoreTests: XCTestCase {
         XCTAssertNil(UpdateCore.parseLatestRelease(json: "{}"))
         XCTAssertNil(UpdateCore.parseLatestRelease(json: ""))
     }
-
-    // MARK: - assets + native asset selection
 
     func testParseLatestReleaseDecodesAssets() {
         let json = """
@@ -191,7 +178,6 @@ final class UpdateCoreTests: XCTestCase {
 
     func testSelfUpdateScriptHasSafeSwapAndRelaunch() {
         let script = UpdateCore.selfUpdateScript
-        // rolls the old bundle aside, copies the new one, and relaunches.
         XCTAssertTrue(script.contains("mv \"$DEST_APP\" \"$BACKUP\""))
         XCTAssertTrue(script.contains("ditto \"$NEW_APP\" \"$DEST_APP\""))
         XCTAssertTrue(script.contains("mv \"$BACKUP\" \"$DEST_APP\""))

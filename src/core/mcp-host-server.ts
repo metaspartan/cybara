@@ -62,7 +62,6 @@ function makeError(
   return { jsonrpc: "2.0", id, error: { code, message, data } };
 }
 
-/** Convert a cybara tool schema into the MCP tool-list shape. */
 function toMcpTool(tool: CybaraTool): {
   name: string;
   description: string;
@@ -75,18 +74,11 @@ function toMcpTool(tool: CybaraTool): {
   };
 }
 
-/**
- * Whether the MCP host server may run dangerous tools (exec/process/etc.)
- * without the normal approval/policy gate. Off by default: exposing Cybara as an
- * MCP server must not silently grant any connected client unattended shell
- * access. Operators who intend this must opt in explicitly.
- */
 export function hostAllowsDangerousTools(): boolean {
   const v = process.env.CYBARA_MCP_HOST_ALLOW_DANGEROUS;
   return v === "1" || v === "true";
 }
 
-/** Build the workspace tool context for a host-exposed tool call. */
 function buildContext(params: Record<string, unknown> | null | undefined): ToolContext {
   const meta =
     params && typeof params === "object" && params._meta && typeof params._meta === "object"
@@ -112,7 +104,6 @@ function buildInitializeResult(): Record<string, unknown> {
   };
 }
 
-/** Handle a single JSON-RPC request and return a response (or null for notifications). */
 async function handleRequest(req: JsonRpcRequest): Promise<JsonRpcResponse | null> {
   const id = req.id ?? null;
 
@@ -121,7 +112,6 @@ async function handleRequest(req: JsonRpcRequest): Promise<JsonRpcResponse | nul
       return makeResponse(id, buildInitializeResult());
 
     case "notifications/initialized":
-      // Notification — no response.
       return null;
 
     case "ping":
@@ -166,15 +156,7 @@ async function handleRequest(req: JsonRpcRequest): Promise<JsonRpcResponse | nul
   }
 }
 
-/**
- * Run the MCP stdio server. Reads JSON-RPC lines from stdin, writes responses
- * to stdout. Returns when stdin closes. Safe to run as `cybara mcp serve`.
- */
 export async function runMcpStdioServer(): Promise<void> {
-  // stdout is the JSON-RPC transport and must carry nothing else. Route every
-  // console.log (including diagnostic output from lazily-loaded modules such as
-  // the database bootstrap) to stderr so it can never corrupt the protocol
-  // stream that MCP clients parse.
   const toStderr = (...args: unknown[]) => {
     process.stderr.write(`${args.map((a) => (typeof a === "string" ? a : String(a))).join(" ")}\n`);
   };

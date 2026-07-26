@@ -26,14 +26,6 @@ import { memoryDir } from "../../paths";
 import { searchSessionMessages } from "../../session-search";
 import { config } from "../../config";
 
-/**
- * Resolve `candidate` and assert it stays inside `memoryDir`, following symlinks
- * on whatever portion of the path already exists. Rejects absolute paths that
- * escape the memory dir, `..` traversal, and symlinked escapes. Confinement to
- * the memory dir (rather than the general deny-list) is the right control here:
- * memoryDir lives under ~/.cybara, so the deny-list would reject it, yet
- * containment already excludes the wallet/keys/session siblings.
- */
 function assertWithinMemoryDir(candidate: string): void {
   let root: string;
   try {
@@ -65,10 +57,6 @@ function assertWithinMemoryDir(candidate: string): void {
 
 let vectorStoreInitialized = false;
 
-// Memory tools honor the embedding provider/model configured in settings
-// (including the local keyword-only mode) instead of whatever "auto" resolved
-// to at startup. configureEmbeddings is a no-op when the selection is
-// unchanged.
 async function getConfiguredVectorStore(): Promise<ReturnType<typeof getVectorStore>> {
   const vectorStore = getVectorStore();
   try {
@@ -257,8 +245,6 @@ async function searchExternalMemoryProvider(
     const settings = config.getMemoryProviderSettings();
     const adapter = getActiveMemoryProviderAdapter(settings);
     if (!adapter) return [];
-    // Explicit tool searches always query the provider; autoRecall only gates
-    // the automatic context injection.
     const external = await adapter.search(settings, query, maxResults);
     return external.map((entry) => ({
       file: `${adapter.label} (external)`,
@@ -289,9 +275,6 @@ export async function handleMemoryGet(
   const normalizedPath = path.replace(/^memory[\\/]/i, "");
   const filePath = isAbsolute(path) ? path : join(memoryDir, normalizedPath);
 
-  // Reject anything that escapes the memory directory so `memory_get` can never
-  // be used to read arbitrary host files (e.g. ~/.ssh/id_rsa, /etc/passwd, or the
-  // sibling wallet/keys files under ~/.cybara).
   assertWithinMemoryDir(filePath);
 
   if (!existsSync(filePath)) {
@@ -315,7 +298,6 @@ export async function handleMemoryGet(
   };
 }
 
-/** Coerce a caller-supplied `tags` value into a clean string[] regardless of shape. */
 function normalizeTagList(raw: unknown): string[] {
   if (Array.isArray(raw)) {
     return raw.map((t) => String(t).trim()).filter((t) => t.length > 0);
@@ -334,8 +316,6 @@ export async function handleMemorySave(
 ): Promise<{ success: boolean; path: string; type: string; indexed: boolean }> {
   const content = args.content as string;
   const type = (args.type as string) || "context";
-  // Coerce tags robustly: models pass an array, a comma-separated string, or
-  // omit it entirely. Never assume Array so `.join` can't blow up the call.
   const tags = normalizeTagList(args.tags);
 
   if (!content) {
@@ -490,10 +470,10 @@ export async function handleHeartbeatState(args: Record<string, unknown>): Promi
 
     case "due": {
       const intervals = (args.intervals as Record<string, number>) || {
-        email: 60, // Check email every hour
-        calendar: 120, // Check calendar every 2 hours
-        weather: 360, // Check weather every 6 hours
-        mentions: 30, // Check social mentions every 30 min
+        email: 60,
+        calendar: 120,
+        weather: 360,
+        mentions: 30,
       };
       const dueChecks = getDueChecks(intervals);
       return {

@@ -20,7 +20,6 @@ describe("KeyedMutex", () => {
     });
 
     await Promise.all([a, b]);
-    // b must not start until a has finished — no interleaving.
     expect(order).toEqual(["a-start", "a-end", "b-start", "b-end"]);
   });
 
@@ -40,7 +39,6 @@ describe("KeyedMutex", () => {
     });
 
     await Promise.all([a, b]);
-    // Different keys overlap: b starts before a ends and finishes first.
     expect(order[0]).toBe("a-start");
     expect(order[1]).toBe("b-start");
     expect(order.indexOf("b-end")).toBeLessThan(order.indexOf("a-end"));
@@ -61,7 +59,6 @@ describe("KeyedMutex", () => {
     const mutex = new KeyedMutex();
     const value = await mutex.run("s1", async () => 42);
     expect(value).toBe(42);
-    // After everything settles the key map is empty (no unbounded growth).
     await tick(5);
     expect(mutex.activeKeyCount).toBe(0);
   });

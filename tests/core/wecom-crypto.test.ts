@@ -9,7 +9,6 @@ import {
   parseWecomMessage,
 } from "../../src/core/channels/wecom-crypto";
 
-// A valid EncodingAESKey is 43 base64 chars -> 32 bytes after appending "=".
 const encodingAesKey = randomBytes(32).toString("base64").replace(/=+$/, "").slice(0, 43);
 const token = "cybaratoken";
 const receiveId = "wwcorpid123";

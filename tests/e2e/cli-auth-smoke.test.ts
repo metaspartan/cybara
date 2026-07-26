@@ -7,7 +7,6 @@ import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-// Skip spawn-heavy e2e in constrained sandboxes where child bun processes get SIGTERM'd.
 const SKIP_SPAWN =
   process.env.SKIP_SPAWN_TESTS === "1" ||
   process.env.CI_SANDBOX === "1" ||

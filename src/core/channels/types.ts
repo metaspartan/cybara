@@ -597,7 +597,6 @@ export interface ChannelAdapter {
     options?: Record<string, unknown>
   ): Promise<boolean>;
 
-  /** Edit a previously-sent message. Returns the (possibly new) message id. */
   editMessage?(
     channelId: string,
     chatId: string | number,
@@ -660,7 +659,6 @@ export interface ChannelAdapter {
     videoNote: string | Buffer
   ): Promise<boolean>;
 
-  /** Send a file attachment (generic — Discord attachment, Telegram document). */
   sendAttachment?(
     channelId: string,
     chatId: string | number,
@@ -669,10 +667,8 @@ export interface ChannelAdapter {
     caption?: string
   ): Promise<boolean>;
 
-  /** Send a rich embed (Discord) or HTML-formatted message (Telegram). */
   sendEmbed?(channelId: string, chatId: string | number, embed: ChannelEmbed): Promise<boolean>;
 
-  /** Create a thread under a message (Discord) or forum topic (Telegram). */
   createThread?(
     channelId: string,
     chatId: string | number,
@@ -681,7 +677,6 @@ export interface ChannelAdapter {
     message?: string
   ): Promise<string | null>;
 
-  /** Send a message with inline keyboard buttons (Telegram). */
   sendInlineKeyboard?(
     channelId: string,
     chatId: string | number,
@@ -706,7 +701,6 @@ export interface WebhookResult {
   contentType?: string;
 }
 
-/** Rich embed definition (Discord embeds, Telegram HTML). */
 export interface ChannelEmbed {
   title?: string;
   description?: string;
@@ -719,7 +713,6 @@ export interface ChannelEmbed {
   timestamp?: number;
 }
 
-/** Inline keyboard button (Telegram callback/url buttons). */
 export interface InlineKeyboardButton {
   text: string;
   callbackData?: string;

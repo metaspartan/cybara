@@ -775,8 +775,6 @@ export async function testMemoryProvider(
   return adapter.health(settings);
 }
 
-/** Mirror a durable memory write to the active external provider. Never throws;
- *  external memory is best-effort alongside the local source of truth. */
 export async function captureToExternalMemory(
   settings: MemoryProviderSettings,
   content: string,
@@ -797,7 +795,6 @@ export async function captureToExternalMemory(
   }
 }
 
-/** Recall from the active external provider. Never throws. */
 export async function recallFromExternalMemory(
   settings: MemoryProviderSettings,
   query: string,

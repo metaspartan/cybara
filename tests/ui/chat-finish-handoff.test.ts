@@ -7,10 +7,6 @@ import { readNativeChatSource } from "../shared/source-bundles";
 const read = (rel: string) =>
   readFileSync(fileURLToPath(new URL(`../../${rel}`, import.meta.url)), "utf8");
 
-// When a run this client didn't drive finishes (started on another client, or
-// the view remounted mid-run), every UI must fetch the persisted assistant
-// reply BEFORE dropping the live timeline/streaming buffer. Clearing first
-// left the chat blank for seconds — or forever on web — right at completion.
 describe("chat completion handoff (no blank chat when a run finishes)", () => {
   test("web: externally started runs load the user turn and selected agent immediately", () => {
     const chatSource = read("ui/src/pages/Chat.tsx");
@@ -81,8 +77,6 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
   });
 });
 
-// The chat must follow live output (activities, tool calls, streamed tokens)
-// without trapping users who scrolled up to read.
 describe("chat live auto-scroll", () => {
   test("web: sticks to bottom on live content only when already near the bottom", () => {
     const source = readChatUiSource();

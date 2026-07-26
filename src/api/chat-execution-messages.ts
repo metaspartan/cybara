@@ -36,8 +36,6 @@ export function buildChatExecutionMessagesForAgent(
   const latestTransfer = sessionMessages
     .flatMap((sessionMessage) => sessionMessage.agent_transfers || [])
     .findLast((transfer) => transfer.toAgentId === options?.activeAgentId);
-  // Author tags are only meaningful alongside the handoff note that explains
-  // them, so the tool-transfer path (which has its own note) stays untagged.
   const handoffInstruction = latestTransfer
     ? undefined
     : buildAgentHandoffInstruction(sessionMessages, options?.activeAgentId);

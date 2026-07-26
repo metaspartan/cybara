@@ -902,8 +902,6 @@ const makeStyles = () =>
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
-    // Icon + title header row inside a settings group card (padded to align with
-    // the padded rows below it, with a divider so it reads as a group header).
     settingsGroupHeader: {
       alignItems: "center",
       borderBottomColor: colors.border,

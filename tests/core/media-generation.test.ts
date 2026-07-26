@@ -25,7 +25,7 @@ describe("media-generation registry", () => {
 
   test("getMediaProvider resolves aliases", () => {
     expect(getMediaProvider("image", "dall-e").id).toBe("openai");
-    expect(getMediaProvider("image", "DALL-E").id).toBe("openai"); // case-insensitive
+    expect(getMediaProvider("image", "DALL-E").id).toBe("openai");
   });
 
   test("getMediaProvider throws for an unknown provider", () => {

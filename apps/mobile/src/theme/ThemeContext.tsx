@@ -55,8 +55,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const scheme: ColorScheme =
     mode === "system" ? (systemScheme === "light" ? "light" : "dark") : mode;
 
-  // Swap the live `colors` binding + rebuild StyleSheets synchronously before
-  // children render, so there is no flash of the previous theme.
   const appliedScheme = useRef<ColorScheme | null>(null);
   if (appliedScheme.current !== scheme) {
     setActiveScheme(scheme);

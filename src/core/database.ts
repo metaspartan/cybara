@@ -22,9 +22,6 @@ if (!existsSync(dataDir)) {
   mkdirSync(dataDir, { recursive: true });
 }
 
-// The DB holds provider API keys/tokens (and the encrypted wallet). Restrict it
-// to the owner so other local users / backups can't read credentials at rest.
-// Best-effort: no-op on platforms without POSIX permissions.
 function restrictPermissions(): void {
   try {
     chmodSync(dataDir, 0o700);
@@ -32,9 +29,7 @@ function restrictPermissions(): void {
       const p = `${dbPath}${suffix}`;
       if (existsSync(p)) chmodSync(p, 0o600);
     }
-  } catch {
-    /* best-effort */
-  }
+  } catch {}
 }
 restrictPermissions();
 
@@ -43,11 +38,8 @@ console.error("[Database] Database instance created");
 restrictPermissions();
 db.exec("PRAGMA foreign_keys = ON");
 db.exec("PRAGMA journal_mode = WAL");
-// NORMAL is safe under WAL and much faster than FULL for our write-heavy
-// telemetry; busy_timeout avoids "database is locked" under concurrent access.
 db.exec("PRAGMA synchronous = NORMAL");
 db.exec("PRAGMA busy_timeout = 5000");
-// Zero freed cells so rotated or deleted credentials do not linger in slack space.
 db.exec("PRAGMA secure_delete = ON");
 console.error("[Database] Journal mode set");
 
@@ -409,8 +401,6 @@ try {
       (db.query("SELECT COUNT(*) as c FROM metrics_totals").get() as { c: number }).c === 0;
     if (totalsEmpty) {
       const started = Date.now();
-      // Bare `metadata` alongside MAX(created_at) selects it from the newest
-      // row of each group (documented SQLite behavior for min/max queries).
       db.exec(
         `INSERT INTO metrics_totals (type, key, total, count, metadata, updated_at)
          SELECT type, key, SUM(value), COUNT(*), metadata, MAX(created_at)
@@ -435,30 +425,22 @@ try {
   try {
     db.exec("ALTER TABLE agents ADD COLUMN fallback_provider_id TEXT");
     console.error("[Database] Migration: Added fallback_provider_id column");
-  } catch {
-    // Column already exists, ignore
-  }
+  } catch {}
 
   try {
     db.exec("ALTER TABLE chat_sessions ADD COLUMN workspace_dir TEXT");
     console.error("[Database] Migration: Added workspace_dir column to chat_sessions");
-  } catch {
-    // Column already exists, ignore
-  }
+  } catch {}
 
   try {
     db.exec("ALTER TABLE chat_sessions ADD COLUMN title TEXT");
     console.error("[Database] Migration: Added title column to chat_sessions");
-  } catch {
-    // Column already exists, ignore
-  }
+  } catch {}
 
   try {
     db.exec("ALTER TABLE chat_sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
     console.error("[Database] Migration: Added pinned column to chat_sessions");
-  } catch {
-    // Column already exists, ignore
-  }
+  } catch {}
 
   try {
     db.exec("ALTER TABLE chat_sessions ADD COLUMN context_state TEXT");
@@ -473,9 +455,7 @@ try {
   try {
     db.exec("ALTER TABLE mcp_servers ADD COLUMN url TEXT");
     console.error("[Database] Migration: Added url column to mcp_servers");
-  } catch {
-    // Column already exists, ignore
-  }
+  } catch {}
 
   try {
     db.exec("ALTER TABLE tasks ADD COLUMN session_id TEXT");
@@ -821,7 +801,6 @@ const stmts = {
     ),
     getWorkspace: prepare("SELECT workspace_dir FROM chat_sessions WHERE id = ?"),
     getTitle: prepare("SELECT title FROM chat_sessions WHERE id = ?"),
-    // Pin toggle deliberately does NOT bump updated_at — pinning is not chat activity.
     setPinned: prepare("UPDATE chat_sessions SET pinned = ? WHERE id = ?"),
     delete: prepare("DELETE FROM chat_sessions WHERE id = ?"),
     list: prepare("SELECT * FROM chat_sessions ORDER BY pinned DESC, updated_at DESC"),
@@ -948,7 +927,6 @@ const stmts = {
     getByTypeRecent: prepare(
       "SELECT * FROM metrics WHERE type = ? ORDER BY created_at DESC LIMIT ?"
     ),
-    // lifetime aggregates read the rollup (~10K rows), never the raw table
     getTotal: prepare("SELECT total FROM metrics_totals WHERE type = ? AND key = ?"),
     getCount: prepare("SELECT count FROM metrics_totals WHERE type = ? AND key = ?"),
     getTotalRaw: prepare("SELECT SUM(value) as total FROM metrics WHERE type = ? AND key = ?"),
@@ -1087,12 +1065,6 @@ function openMcpServerRow(row: unknown): MCPServer | undefined {
   return result as unknown as MCPServer;
 }
 
-/**
- * Sealing a legacy row with UPDATE leaves the original plaintext behind in
- * freed pages and in the WAL, so an upgraded install still yields its old API
- * keys to `strings platform.db`. Rewrite the database once, after a migration
- * actually changed something, so the pre-encryption copies are gone.
- */
 function scrubMigratedPlaintext(): void {
   try {
     db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
@@ -1691,7 +1663,7 @@ export interface Provider {
   settings?: Record<string, unknown>;
   expires_at?: number;
   is_default: boolean;
-  headers?: Record<string, string>; // For provider-specific headers (e.g., User-Agent for Kimi Code)
+  headers?: Record<string, string>;
 }
 
 export interface ProviderModel {

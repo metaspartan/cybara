@@ -102,7 +102,6 @@ describe("route _shared pure helpers", () => {
         { value: 3, created_at: "2026-06-24T00:00:00Z" },
         { value: 2, created_at: "2026-06-25T00:00:00Z" },
       ] as never;
-      // Predicate selects only June-24 entries.
       const result = sumMetricValues(
         entries,
         (_e, ts) => ts !== null && ts < Date.parse("2026-06-25T00:00:00Z")

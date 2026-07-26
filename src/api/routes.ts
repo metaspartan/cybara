@@ -1013,7 +1013,7 @@ const routes: Record<string, RouteHandler> = {
       allowSuspicious,
     });
     if (result.success) {
-      clearSkillsCache(); // Invalidate cache so new skill appears in list
+      clearSkillsCache();
     }
     return result;
   },
@@ -1028,7 +1028,7 @@ const routes: Record<string, RouteHandler> = {
 
     const result = await registryManager.uninstall(skillName, { targetDir });
     if (result.success) {
-      clearSkillsCache(); // Invalidate cache so deleted skill disappears from list
+      clearSkillsCache();
     }
     return result;
   },

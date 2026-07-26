@@ -765,10 +765,6 @@ class AgentManager extends AgentProviderRuntime {
 
     state.lastActive = new Date();
 
-    // Mixture-of-agents routing: when the router runs the MoA strategy, fan the
-    // turn out to several proposer agents and synthesize one answer. Guarded so
-    // the proposer/aggregator sub-messages (which re-enter message()) run
-    // normally instead of recursively re-triggering MoA.
     if (isMixtureOfAgentsRoutingActive()) {
       const moa = await import("./tools/handlers/mixture-of-agents");
       if (!moa.isMixtureOfAgentsActive()) {
@@ -799,12 +795,6 @@ class AgentManager extends AgentProviderRuntime {
     return result;
   }
 
-  /**
-   * Condense the oldest stored turns into a single summary message once the
-   * conversation grows past its window, keeping recent turns verbatim. This
-   * bounds the per-turn token cost of a long chat instead of letting the full
-   * history replay every turn. Best-effort: any failure leaves history intact.
-   */
   private async maybeCompactConversation(state: RunningAgentState): Promise<void> {
     try {
       const messages = state.messages;

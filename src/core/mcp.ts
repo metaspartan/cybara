@@ -12,11 +12,6 @@ import {
   replaceMcpOAuthEnvironment,
 } from "./mcp-http";
 
-/**
- * Monotonic JSON-RPC request id. Using Date.now() (as before) collided when two
- * calls landed in the same millisecond, cross-wiring one caller's handler onto
- * another's response.
- */
 let mcpRequestSeq = 0;
 export function nextMcpRequestId(): number {
   mcpRequestSeq = (mcpRequestSeq + 1) % Number.MAX_SAFE_INTEGER;
@@ -54,12 +49,6 @@ export interface MCPServerSummary extends Omit<MCPServer, "env"> {
   transport: "stdio" | "http";
 }
 
-/**
- * Split a stdout accumulator into complete newline-delimited lines, returning
- * any trailing partial line to carry into the next chunk. Without this, a
- * JSON-RPC message larger than one pipe chunk is split across `data` events,
- * never parses, and the tool call hangs until its timeout.
- */
 export function drainNdjsonLines(buffer: string): { lines: string[]; rest: string } {
   const parts = buffer.split("\n");
   const rest = parts.pop() ?? "";
@@ -252,9 +241,7 @@ class MCPServerManager extends EventEmitter {
               env[key.trim()] = value.trim();
             }
           }
-        } catch {
-          /* ignore */
-        }
+        } catch {}
       }
 
       const proc = spawn(cmd, cmdArgs, {

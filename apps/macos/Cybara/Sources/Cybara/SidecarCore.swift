@@ -1,10 +1,9 @@
 import Foundation
 
-/// Deep-link actions parsed from the `cybara://` URL scheme.
 public enum DeepLinkAction: Equatable {
-    case focus // cybara:// or cybara://open  — bring the window forward
-    case restart // cybara://restart            — restart the gateway
-    case openBrowser // cybara://browser         — open the web UI in the system browser
+    case focus
+    case restart
+    case openBrowser
 }
 
 public struct GatewayHealthProbe: Equatable {
@@ -18,9 +17,6 @@ public enum FallbackPortDecision: Equatable {
     case launch(Int)
 }
 
-/// Pure, side-effect-free logic for the macOS sidecar shell. Kept separate from
-/// `SidecarManager` (which is @MainActor and owns Process/network/UI state) so it
-/// is straightforward to unit-test without spawning processes or hitting sockets.
 public enum SidecarCore {
     public static let defaultPort = 4269
 
@@ -152,8 +148,6 @@ public enum SidecarCore {
         return components.compactMap(Int.init)
     }
 
-    /// Environment for the spawned sidecar: inherits the parent env and lets the
-    /// gateway config choose the secure loopback host by default.
     public static func launchEnvironment(
         base: [String: String], port: Int, resourceDirectory: String? = nil,
         parentProcessID: Int? = nil
@@ -199,9 +193,6 @@ public enum SidecarCore {
         return directories
     }
 
-    /// `PATH` can include an app bundle's `Contents/MacOS` directory after a
-    /// native launch. Treat a lowercase `cybara` binary there as an app-bundle
-    /// executable alias, not as the external Bun sidecar, to avoid recursion.
     public static func isAppBundleExecutableAlias(_ path: String, executableDirectory: String)
         -> Bool
     {
@@ -215,8 +206,6 @@ public enum SidecarCore {
         return candidateURL.lastPathComponent.lowercased() == "cybara"
     }
 
-    /// Ordered sidecar-binary candidate paths (most-specific first). Pure so the
-    /// resolution order is testable without a filesystem.
     public static func sidecarCandidatePaths(currentDirectory: String, executableDirectory: String)
         -> [String]
     {
@@ -228,10 +217,6 @@ public enum SidecarCore {
             bundledSidecar.appendingPathComponent("cybara-x86_64-apple-darwin").path,
         ]
 
-        // SwiftPM/Xcode local runs commonly start from apps/macos/Cybara or a
-        // .build directory, while the sidecar is generated at the repo root.
-        // Walk ancestors from both cwd and executable location so dev launches
-        // resolve the same sidecar that release packaging embeds.
         let roots =
             ancestorDirectories(from: currentDirectory)
             + ancestorDirectories(from: executableDirectory)
@@ -256,21 +241,15 @@ public enum SidecarCore {
         }
     }
 
-    /// Exponential backoff (capped) between automatic restart attempts after an
-    /// unexpected sidecar crash. attempt is 1-based.
     public static func restartDelaySeconds(attempt: Int) -> Double {
         let clamped = max(1, attempt)
-        return min(pow(2.0, Double(clamped - 1)), 30.0) // 1, 2, 4, 8, 16, 30, 30…
+        return min(pow(2.0, Double(clamped - 1)), 30.0)
     }
 
-    /// Maximum consecutive auto-restart attempts before giving up and surfacing a
-    /// failure (so a crash-looping sidecar doesn't restart forever).
     public static let maxRestartAttempts = 4
 
-    /// Parse a `cybara://` deep link into an action. Returns nil for unknown URLs.
     public static func parseDeepLink(_ url: URL) -> DeepLinkAction? {
         guard url.scheme?.lowercased() == "cybara" else { return nil }
-        // Host or first path component identifies the action.
         let host = url.host?.lowercased() ?? ""
         let firstPath = url.pathComponents.first(where: { $0 != "/" })?.lowercased() ?? ""
         let token = host.isEmpty ? firstPath : host

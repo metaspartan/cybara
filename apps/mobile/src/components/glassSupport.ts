@@ -49,12 +49,6 @@ export function useNativeGlassView(): GlassComponent | null {
   return useResolvedGlass()?.GlassView ?? null;
 }
 
-/**
- * React hook: resolves to the native GlassContainer when available. Apple
- * recommends grouping adjacent glass elements in a container on iOS 26 so they
- * blend/merge correctly (via its `spacing` prop) instead of layering as
- * independent panes.
- */
 export function useNativeGlassContainer(): GlassContainerComponent | null {
   return useResolvedGlass()?.GlassContainer ?? null;
 }

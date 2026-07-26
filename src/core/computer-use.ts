@@ -63,9 +63,7 @@ export {
 } from "./computer-use-driver-resolution";
 
 let driverProcess: ChildProcess | null = null;
-/** Tool names advertised by the running driver (tools/list); empty = unknown. */
 let driverToolNames = new Set<string>();
-/** Window the next action targets; every interactive driver tool requires a pid. */
 let activeWindowTarget: {
   pid: number;
   windowId?: number;
@@ -96,8 +94,6 @@ let trajectoryLifecycle: Promise<void> = Promise.resolve();
 const COMPUTER_USE_TRAJECTORY_IDLE_MS = 60_000;
 
 function isAvailable(): boolean {
-  // We can't synchronously check PATH portably; the doctor() call verifies.
-  // Treat as available and let start() surface a clear error if missing.
   return true;
 }
 
@@ -132,7 +128,6 @@ function spawnDriver(command: string, args: string[], options: Parameters<typeof
   });
 }
 
-/** Ensure the cua-driver MCP server process is running. */
 async function ensureDriver(): Promise<void> {
   if (driverProcess && driverProcess.exitCode === null) return;
 
@@ -167,9 +162,7 @@ async function ensureDriver(): Promise<void> {
             }
           }
         }
-      } catch {
-        /* non-JSON line (logs) — ignore */
-      }
+      } catch {}
     }
   });
 
@@ -177,11 +170,6 @@ async function ensureDriver(): Promise<void> {
     console.warn(`[cua-driver] ${chunk.toString().trim()}`);
   });
 
-  // CRITICAL: a spawn failure (e.g. cua-driver not installed -> ENOENT) emits an
-  // asynchronous "error" event. An unhandled "error" event on a ChildProcess is
-  // a fatal uncaught exception in Bun/Node and would crash the whole server.
-  // Handle it: reject any in-flight requests and clear the dead process so the
-  // next call can retry, surfacing a clean tool error instead of a crash.
   driverProcess.on("error", (err) => {
     console.warn(`[cua-driver] failed to start: ${err instanceof Error ? err.message : err}`);
     for (const [id, entry] of pending) {
@@ -193,7 +181,6 @@ async function ensureDriver(): Promise<void> {
   });
 
   driverProcess.on("exit", (code) => {
-    // Reject any in-flight requests on unexpected exit.
     for (const [id, entry] of pending) {
       clearTimeout(entry.timer);
       pending.delete(id);
@@ -211,13 +198,8 @@ async function initializeSession(): Promise<void> {
     capabilities: {},
     clientInfo: { name: "cybara", version: "1.0.0" },
   });
-  // Complete the MCP handshake; some driver builds queue tool calls until
-  // the initialized notification arrives.
   sendNotification("notifications/initialized");
 
-  // Discover the driver's actual tool vocabulary. cua-driver's tool names are
-  // NOT our action names (e.g. 0.6.x has get_window_state/type_text/press_key
-  // and no capture/type/key), and the set varies by driver version.
   driverToolNames = new Set();
   activeWindowTarget = null;
   try {
@@ -236,13 +218,11 @@ async function initializeSession(): Promise<void> {
   }
 }
 
-/** Fire-and-forget JSON-RPC notification (no id, no response expected). */
 function sendNotification(method: string): void {
   if (!driverProcess?.stdin?.writable) return;
   driverProcess.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method })}\n`);
 }
 
-/** Send a JSON-RPC request to cua-driver and await its response. */
 function sendRaw(method: string, params: Record<string, unknown>): Promise<unknown> {
   return new Promise((resolve, reject) => {
     if (!driverProcess?.stdin?.writable) {
@@ -260,10 +240,6 @@ function sendRaw(method: string, params: Record<string, unknown>): Promise<unkno
   });
 }
 
-/**
- * Send a request to cua-driver, reconnecting once if the session died
- * (exactly one retry, never loops).
- */
 async function sendWithReconnect(
   method: string,
   params: Record<string, unknown>
@@ -274,13 +250,10 @@ async function sendWithReconnect(
     const message = error instanceof Error ? error.message : String(error);
     const isClosedSession = /exited|EPIPE|closed|Broken pipe|not running/i.test(message);
     if (!isClosedSession) throw error;
-    // Force a fresh driver process and retry exactly once.
     if (driverProcess) {
       try {
         driverProcess.kill();
-      } catch {
-        /* ignore */
-      }
+      } catch {}
       driverProcess = null;
     }
     declaredDriverSessions.clear();
@@ -292,15 +265,10 @@ async function sendWithReconnect(
 export interface ComputerUseResult {
   action: ComputerUseAction;
   ok: boolean;
-  /** Text summary returned by the driver. */
   text?: string;
-  /** Base64 screenshot data (no data: prefix) when the action produced an image. */
   screenshot?: string;
-  /** MIME type of the screenshot (default image/png). */
   screenshotMime?: string;
-  /** Whether a follow-up capture was performed (when captureAfter was set). */
   capturedAfter?: boolean;
-  /** Absolute path to the saved screenshot PNG (set by the native capture fallback). */
   filePath?: string;
   viewport?: { width: number; height: number };
   error?: string;
@@ -630,18 +598,6 @@ function persistDriverScreenshot(screenshot: string, mime: string): string | und
   }
 }
 
-/**
- * Native OS screenshot fallback for the `capture` action when cua-driver isn't
- * installed. Uses the platform's built-in screenshot tool, saves a PNG under
- * ~/.cybara/screenshots, and returns base64 + filePath so the result rides the
- * existing screenshot-delivery path. Returns null if no native tool is available
- * or the capture failed.
- *
- * macOS note: the capturing process (your terminal/bun) needs Screen Recording
- * permission, or the image will be of the desktop wallpaper only — macOS will
- * prompt once on first use.
- */
-/** True when running inside WSL (process.platform is "linux" but the host is Windows). */
 function isWsl(): boolean {
   if (process.platform !== "linux") return false;
   if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
@@ -652,7 +608,6 @@ function isWsl(): boolean {
   }
 }
 
-/** First available Windows-PowerShell executable (also reachable from WSL via interop). */
 function resolvePowerShell(): string | null {
   for (const exe of ["powershell.exe", "pwsh.exe", "powershell", "pwsh"]) {
     if (Bun.which(exe)) return exe;
@@ -660,8 +615,6 @@ function resolvePowerShell(): string | null {
   return null;
 }
 
-// Emits the primary/virtual screen as base64 PNG on stdout — no file path or
-// /mnt bridging, so it works identically on native Windows and inside WSL.
 const WINDOWS_CAPTURE_PS = [
   "Add-Type -AssemblyName System.Windows.Forms,System.Drawing;",
   "$b=[System.Windows.Forms.SystemInformation]::VirtualScreen;",
@@ -700,8 +653,6 @@ async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const filePath = join(SCREENSHOTS_DIR, `screen_${stamp}.png`);
 
-    // Windows (and WSL bridging to the Windows host) capture over stdout as
-    // base64, avoiding all path-escaping / mount issues.
     const wantsWindowsCapture = process.platform === "win32" || isWsl();
     if (wantsWindowsCapture) {
       const ps = resolvePowerShell();
@@ -723,8 +674,6 @@ async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
             filePath
           );
         }
-        // On native Windows there's no other tool; on WSL fall through to any
-        // Linux capture tool (captures the WSLg Linux desktop, if present).
         if (process.platform === "win32") {
           console.warn(
             `[computer_use] windows screenshot failed: ${proc.stderr?.toString().trim() || "no output"}`
@@ -739,10 +688,8 @@ async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
 
     let cmd: string[] | null = null;
     if (process.platform === "darwin") {
-      // -x: silent (no shutter sound), -t png, capture the full main display.
       cmd = ["screencapture", "-x", "-t", "png", filePath];
     } else if (process.platform === "linux") {
-      // Prefer grim (wayland) -> scrot -> ImageMagick import, whichever exists.
       if (Bun.which("grim")) cmd = ["grim", filePath];
       else if (Bun.which("scrot")) cmd = ["scrot", "-o", filePath];
       else if (Bun.which("import")) cmd = ["import", "-window", "root", filePath];
@@ -842,12 +789,9 @@ export function summarizeDriverApps(result: DriverCallResult): DriverCallResult 
 }
 
 function driverHasTool(name: string): boolean {
-  // With no discovery data, optimistically assume the tool exists and let the
-  // call itself fail — self-healing across driver versions.
   return driverToolNames.size === 0 || driverToolNames.has(name);
 }
 
-/** Call a driver tool and flatten the MCP result (text/image/structuredContent). */
 async function callDriverTool(
   name: string,
   args: Record<string, unknown>
@@ -1267,9 +1211,7 @@ async function listDriverWindows(): Promise<DriverWindow[]> {
         windows?: Array<Record<string, unknown>>;
       };
       rawWindows = parsed?.windows || [];
-    } catch {
-      // Text wasn't JSON; fall through with what we have.
-    }
+    } catch {}
   }
   return rawWindows
     .filter((w) => Number.isFinite(Number(w.pid)))
@@ -1282,10 +1224,6 @@ async function listDriverWindows(): Promise<DriverWindow[]> {
     .sort((a, b) => a.zIndex - b.zIndex);
 }
 
-/**
- * Resolve which window an action targets. Explicit app name wins; otherwise
- * reuse the window focus_app selected; otherwise the frontmost window.
- */
 async function resolveWindowTarget(app?: string): Promise<{ pid: number; windowId?: number }> {
   const windows = await listDriverWindows();
   const wanted = typeof app === "string" ? app.trim().toLowerCase() : "";
@@ -1348,11 +1286,6 @@ function focusApplicationNatively(app: string): boolean {
   return true;
 }
 
-/**
- * Translate one of our high-level actions into the driver's tool vocabulary
- * (cua-driver 0.6.x: get_window_state/type_text/press_key/hotkey/... — every
- * interactive tool requires a target pid) and execute it.
- */
 async function performDriverAction(
   typedArgs: ComputerUseArgs,
   sessionId?: string
@@ -1371,8 +1304,6 @@ async function performDriverAction(
 
   if (action === "capture") {
     const target = await resolveWindowTarget(typedArgs.app);
-    // Older drivers had a cheap standalone screenshot tool; 0.5.x+ folded
-    // window capture into get_window_state.
     if (driverToolNames.has("screenshot")) {
       const shot = await callDriverTool("screenshot", {
         window_id: target.windowId,
@@ -1445,7 +1376,6 @@ async function performDriverAction(
         coordinateArgs.y = typedArgs.coordinate[1];
       }
       if (action === "middle_click") {
-        // 0.6.x has no middle_click tool; click accepts a button parameter.
         return callDriverTool("click", { ...coordinateArgs, button: "middle" });
       }
       return callDriverTool(action, coordinateArgs);
@@ -1511,7 +1441,6 @@ export async function handleComputerUse(
     args
   ) as unknown as ComputerUseArgs;
   const sessionId = normalizedComputerUseSessionId(context?.sessionId);
-  // Safety gate: hard blocks + consent.
   assertActionAllowed(typedArgs.action, typedArgs);
 
   if (!isAvailable()) {
@@ -1576,7 +1505,6 @@ export async function handleComputerUse(
     let screenshot = result.screenshot;
     let screenshotMime = result.screenshotMime || "image/png";
 
-    // Optional follow-up capture so the model can self-verify the action.
     let capturedAfter = false;
     const refreshActivePreview =
       sessionId !== null &&
@@ -1603,9 +1531,7 @@ export async function handleComputerUse(
           screenshotMime = after.screenshotMime || screenshotMime;
           capturedAfter = typedArgs.captureAfter === true;
         }
-      } catch {
-        /* follow-up capture is best-effort */
-      }
+      } catch {}
     }
 
     const filePath = screenshot ? persistDriverScreenshot(screenshot, screenshotMime) : undefined;
@@ -1653,9 +1579,6 @@ export async function handleComputerUse(
     );
     return response;
   } catch (error) {
-    // cua-driver unavailable (e.g. not installed). For the read-only `capture`
-    // action, fall back to the native OS screenshot tool so "give me a
-    // screenshot" still works without the full driver.
     if (typedArgs.action === "capture") {
       const native = await nativeScreenCapture();
       if (native && sessionId) {
@@ -1695,7 +1618,6 @@ export async function handleComputerUse(
   }
 }
 
-/** Stop the cua-driver process (called on agent shutdown). */
 export function stopComputerUseDriver(): void {
   if (activeComputerUseTrajectory) {
     clearTimeout(activeComputerUseTrajectory.idleTimer);
@@ -1706,14 +1628,11 @@ export function stopComputerUseDriver(): void {
   if (driverProcess) {
     try {
       driverProcess.kill();
-    } catch {
-      /* ignore */
-    }
+    } catch {}
     driverProcess = null;
   }
 }
 
-/** Run a cua-driver subcommand and return its parsed JSON stdout (best-effort). */
 async function runDriverCommand(
   subcommand: string[],
   timeoutMs = 10_000,
@@ -1744,9 +1663,7 @@ async function runDriverCommand(
       const timer = setTimeout(() => {
         try {
           proc.kill("SIGKILL");
-        } catch {
-          /* ignore */
-        }
+        } catch {}
         finish(false);
       }, timeoutMs);
       proc.stdout?.on("data", (c: Buffer) => {
@@ -1797,12 +1714,9 @@ export interface ComputerUseDoctorResult {
   driverSource?: CuaDriverCommandSource;
   configuredCommand?: string;
   platform: string;
-  /** Resolved version string, if the driver reported one. */
   version?: string;
-  /** macOS-only: TCC grants to cua-driver. */
   accessibility?: boolean;
   screenRecording?: boolean;
-  /** True when the driver is usable (installed + healthy + permissions granted on macOS). */
   ready: boolean;
   message: string;
   installHint?: string;
@@ -1810,7 +1724,6 @@ export interface ComputerUseDoctorResult {
   checks?: unknown;
 }
 
-/** Diagnostics: probe cua-driver install, version, health, and macOS TCC state. */
 export async function computerUseDoctor(): Promise<ComputerUseDoctorResult> {
   const platform = process.platform;
   const configuredCommand = config.getComputerUseSettings().driverCommand || undefined;
@@ -1840,7 +1753,6 @@ export async function computerUseDoctor(): Promise<ComputerUseDoctorResult> {
     ready: false,
   };
 
-  // 1. Version probe (also confirms the binary is on PATH).
   const versionRes = await runDriverCommand(["--version"], 10_000, resolution.command);
   if (!versionRes.ok) {
     return {
@@ -1852,11 +1764,9 @@ export async function computerUseDoctor(): Promise<ComputerUseDoctorResult> {
   }
   const version = parseCuaDriverVersion(versionRes.stdout, versionRes.json);
 
-  // 2. Health check via the driver's own doctor.
   const healthRes = await runDriverCommand(["doctor", "--json"], 10_000, resolution.command);
   const checks = healthRes.json;
 
-  // 3. macOS TCC permissions.
   let accessibility: boolean | undefined;
   let screenRecording: boolean | undefined;
   if (platform === "darwin") {
@@ -1904,7 +1814,6 @@ export async function computerUseDoctor(): Promise<ComputerUseDoctorResult> {
   };
 }
 
-/** Drive `cua-driver permissions grant` to request macOS TCC prompts (macOS only). */
 export async function requestComputerUsePermissionsGrant(): Promise<{
   ok: boolean;
   message: string;

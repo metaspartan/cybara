@@ -17,8 +17,6 @@ function asset(id: number, name: string): GitHubReleaseAsset {
   };
 }
 
-// Mimics the GitHub API while a release is still a DRAFT: browser_download_url
-// uses an `untagged-<id>` path that 404s the moment the release is published.
 function draftAsset(id: number, name: string): GitHubReleaseAsset {
   return {
     id,
@@ -126,9 +124,6 @@ describe("Tauri updater manifest publisher", () => {
   });
 
   test("REGRESSION: draft `untagged-` download URLs are rewritten to the canonical tag URL", async () => {
-    // The manifest is generated while the release is a draft, so every asset's
-    // browser_download_url points at an `untagged-<id>` path that 404s once the
-    // release is published — the exact in-app updater failure being fixed.
     const assets = draftUpdaterAssets(ALL_UPDATER_ASSET_NAMES);
 
     const manifest = await buildTauriUpdaterManifestFromAssets({
@@ -141,12 +136,10 @@ describe("Tauri updater manifest publisher", () => {
       version: "1.0.627",
     });
 
-    // No platform may keep a draft `untagged-` URL — that is the download 404.
     for (const [platform, entry] of Object.entries(manifest.platforms)) {
       expect(entry.url, `${platform} must not use a draft URL`).not.toContain("untagged-");
       expect(entry.url).toContain("/releases/download/v1.0.627/");
     }
-    // Windows specifically (the reported failure): MSI + NSIS resolve to the tag.
     expect(manifest.platforms["windows-x86_64"].url).toBe(
       "https://github.com/metaspartan/cybara/releases/download/v1.0.627/Cybara_1.0.627_x64_en-US.msi"
     );
@@ -170,8 +163,6 @@ describe("Tauri updater manifest publisher", () => {
   });
 
   test("build fails closed if draft `untagged-` URLs would ship (no resolver override)", async () => {
-    // Even if a future caller forgets the canonical resolver, the manifest build
-    // must not emit draft URLs — the validator now rejects them.
     const assets = draftUpdaterAssets(ALL_UPDATER_ASSET_NAMES);
     await expect(
       buildTauriUpdaterManifestFromAssets({

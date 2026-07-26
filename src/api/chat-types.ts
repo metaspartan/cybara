@@ -32,7 +32,6 @@ export interface ChatMessage {
   interrupted?: boolean;
   pending_chat_id?: string;
   client_pending_id?: string;
-  /** Optional image inputs (vision) attached to a user message. */
   images?: AgentImage[];
   image_context?: string;
   _pendingSteeringId?: string;
@@ -54,7 +53,6 @@ export interface ChatRequest {
   recordedUserMessageId?: string;
   useModelRouter?: boolean;
   awaitQueuedCompletion?: boolean;
-  /** Optional image inputs (vision) for this user turn. */
   images?: AgentImage[];
 }
 

@@ -341,7 +341,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
       return false;
     }
 
-    // Fallback for event payload mismatches where exact normalized text changed.
     for (const variant of variants) {
       if (!variant) continue;
       const fingerprintPrefix = `${variant}:fp:`;
@@ -497,10 +496,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
       return true;
     }
 
-    // WhatsApp may use LID (Linked Identity) format for msg.to in self-messages
-    // (e.g. "222771514765317@lid" instead of "12086303682@c.us"), so from !== to
-    // even though they refer to the same user. Skip the rejection when to is a LID
-    // and fall through to the account ID check below.
     const toLid = msg.to && typeof msg.to === "string" && msg.to.endsWith("@lid");
     if (msg.fromMe && to && to !== from && !toLid) {
       return false;
@@ -536,8 +531,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
     if (messageId && this.consumeOutboundMessage(channelId, messageId)) {
       return true;
     }
-    // Some echo payloads arrive with id.fromMe=true even though msg.fromMe=false.
-    // Only suppress if they match an outbound signature; otherwise allow processing.
     if (!msg.fromMe && msg.id?.fromMe) {
       if (!msg.body) {
         return false;
@@ -545,9 +538,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
       return this.consumeOutboundSignature(channelId, chatId, msg.body);
     }
 
-    // For fromMe messages (including self-chat echoes arriving via either
-    // "message" or "message_create"), always check the text signature to
-    // prevent infinite reply loops.
     if (!msg.body) {
       return false;
     }

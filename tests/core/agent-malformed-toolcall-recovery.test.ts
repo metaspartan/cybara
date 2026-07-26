@@ -18,7 +18,6 @@ describe("malformed tool-call recovery (Anthropic loop)", () => {
     globalThis.fetch = (async () => {
       call += 1;
       if (call === 1) {
-        // Turn 1: model emits a `read` tool_use with NO path (missing required arg).
         return new Response(
           JSON.stringify({
             id: "msg-1",
@@ -33,7 +32,6 @@ describe("malformed tool-call recovery (Anthropic loop)", () => {
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
       }
-      // Turn 2: after seeing the error, the model finishes with a normal answer.
       return new Response(
         JSON.stringify({
           id: "msg-2",
@@ -67,10 +65,8 @@ describe("malformed tool-call recovery (Anthropic loop)", () => {
       { useTools: true, sessionId: "malformed-recovery-session" }
     );
 
-    // The run continued to a real answer instead of bailing early.
     expect(result.content).toBe("RECOVERED-OK");
     expect(result.content).not.toContain("without the required arguments");
-    // Two turns happened: the malformed call was fed back, not fatal.
     expect(call).toBe(2);
   });
 });

@@ -4,8 +4,6 @@ import XCTest
 
 final class SidecarCoreTests: XCTestCase {
 
-    // MARK: - port(fromEnv:)
-
     func testPortDefaultsWhenEnvMissing() {
         XCTAssertEqual(SidecarCore.port(fromEnv: nil), SidecarCore.defaultPort)
         XCTAssertEqual(SidecarCore.defaultPort, 4269)
@@ -35,8 +33,6 @@ final class SidecarCoreTests: XCTestCase {
         XCTAssertEqual(SidecarCore.port(fromEnv: "65536"), SidecarCore.defaultPort)
         XCTAssertEqual(SidecarCore.port(fromEnv: "99999"), SidecarCore.defaultPort)
     }
-
-    // MARK: - URL builders
 
     func testServerURLString() {
         XCTAssertEqual(SidecarCore.serverURLString(port: 4269), "http://127.0.0.1:4269")
@@ -128,8 +124,6 @@ final class SidecarCoreTests: XCTestCase {
         )
     }
 
-    // MARK: - isHealthyResponse
-
     func testHealthyResponseAccepts200WithStatus() {
         XCTAssertTrue(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"status":"healthy"}"#))
         XCTAssertTrue(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"status":"warning"}"#))
@@ -155,7 +149,6 @@ final class SidecarCoreTests: XCTestCase {
         XCTAssertFalse(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"status":"unhealthy"}"#))
         XCTAssertFalse(SidecarCore.isHealthyResponse(statusCode: 200, body: "OK"))
         XCTAssertFalse(SidecarCore.isHealthyResponse(statusCode: 200, body: ""))
-        // A different process squatting on the port must not be mistaken for Cybara.
         XCTAssertFalse(
             SidecarCore.isHealthyResponse(statusCode: 200, body: "<html>It works!</html>"))
     }
@@ -201,8 +194,6 @@ final class SidecarCoreTests: XCTestCase {
         XCTAssertNil(SidecarCore.bundleVersion(infoDictionary: [:]))
     }
 
-    // MARK: - launchEnvironment
-
     func testLaunchEnvironmentPinsExpectedKeys() {
         let env = SidecarCore.launchEnvironment(base: [:], port: 4269)
         XCTAssertEqual(env["PORT"], "4269")
@@ -223,7 +214,6 @@ final class SidecarCoreTests: XCTestCase {
         let env = SidecarCore.launchEnvironment(base: base, port: 4269)
         XCTAssertEqual(env["PATH"], "/usr/bin")
         XCTAssertEqual(env["HOME"], "/Users/x")
-        // The base PORT must be overridden with the resolved port.
         XCTAssertEqual(env["PORT"], "4269")
     }
 
@@ -271,8 +261,6 @@ final class SidecarCoreTests: XCTestCase {
         )
     }
 
-    // MARK: - sidecarCandidatePaths
-
     func testAncestorDirectoriesWalkUpFromLocalPackagePath() {
         let directories = SidecarCore.ancestorDirectories(
             from: "/work/apps/macos/Cybara/.build/arm64-apple-macosx/debug")
@@ -310,8 +298,6 @@ final class SidecarCoreTests: XCTestCase {
         )
     }
 
-    // MARK: - restartDelaySeconds
-
     func testRestartBackoffSequence() {
         XCTAssertEqual(SidecarCore.restartDelaySeconds(attempt: 1), 1.0)
         XCTAssertEqual(SidecarCore.restartDelaySeconds(attempt: 2), 2.0)
@@ -332,8 +318,6 @@ final class SidecarCoreTests: XCTestCase {
     func testMaxRestartAttempts() {
         XCTAssertEqual(SidecarCore.maxRestartAttempts, 4)
     }
-
-    // MARK: - parseDeepLink
 
     func testParseDeepLinkFocus() {
         XCTAssertEqual(SidecarCore.parseDeepLink(URL(string: "cybara://")!), .focus)
@@ -359,7 +343,6 @@ final class SidecarCoreTests: XCTestCase {
     }
 
     func testParseDeepLinkAcceptsPathStyle() {
-        // cybara:///restart — action carried in the path rather than the host.
         XCTAssertEqual(SidecarCore.parseDeepLink(URL(string: "cybara:///restart")!), .restart)
         XCTAssertEqual(SidecarCore.parseDeepLink(URL(string: "cybara:///browser")!), .openBrowser)
     }

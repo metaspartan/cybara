@@ -33,9 +33,7 @@ describe("mobile settings: Speech lives on its own screen", () => {
   test("speech is a drill-in detail route, not an inline settings section", () => {
     expect(screen).toContain('{ kind: "speech" }');
     expect(screen).toContain("<SpeechSettingsPanel");
-    // The root settings panel opens it via a navigation row, not an inline block.
     expect(screen).toContain("onPress={openSpeech}");
-    // The old inline speech form is gone from the root settings panel.
     expect(screen).not.toContain("void saveSpeechPatch(");
   });
 

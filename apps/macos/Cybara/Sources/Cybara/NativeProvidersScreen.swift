@@ -1088,7 +1088,6 @@ private struct ProviderEditorSheet: View {
         try await saveRoutePricing()
     }
 
-    // Custom pay-as-you-go pricing per 1M tokens rides on the router route config.
     private func saveRoutePricing() async throws {
         guard let provider, var config = routerConfig else { return }
         let priceInput = parsePlanLimit(planPriceInput)

@@ -767,7 +767,7 @@ async function installGo(info: LSPInfo, lspDir: string): Promise<InstallResult> 
 
   const result = Bun.spawnSync(["go", "install", "golang.org/x/tools/gopls@latest"], {
     env: { ...process.env, GOBIN: lspDir },
-    timeout: 120000, // 2 minutes
+    timeout: 120000,
   });
 
   if (result.exitCode !== 0) {

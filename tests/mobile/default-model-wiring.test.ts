@@ -30,8 +30,6 @@ describe("mobile: memory method toggle", () => {
   const screen = readDashboardModules();
 
   test("recall-method selector lives on the Memory sub-page, not the settings tab", () => {
-    // Recall now belongs to the Memory detail page (MemoryRecallCard),
-    // rendered when the memory surface opens.
     expect(screen).toContain("function MemoryRecallCard(");
     expect(screen).toContain('label="Recall method"');
     expect(screen).toContain('surface === "memory" ? (');
@@ -50,8 +48,6 @@ describe("mobile: memory method toggle", () => {
     ]) {
       expect(screen).toContain(`value: "${provider}"`);
     }
-    // Memory settings are a drill-in detail page (MemorySettingsPanel), not an
-    // inline section on the root settings tab.
     expect(screen).toContain("onPress={openMemory}");
     expect(screen).not.toContain('label="Memory method"');
   });
@@ -64,7 +60,6 @@ describe("mobile: primary navigation", () => {
     expect(screen).toContain("tasks: CalendarCheck");
     expect(screen).toContain('activeTab === "tasks"');
     expect(screen).toContain("<TasksPanel");
-    // Settings is a first-class tab now; the redundant header gear is gone.
     expect(screen).toContain("settings: Settings");
     expect(screen).not.toContain('accessibilityLabel="Open settings"');
   });
@@ -83,13 +78,11 @@ describe("mobile: system prompt sub-page (web parity)", () => {
   const screen = readDashboardModules();
 
   test("identity + instructions live on a dedicated System Prompt page reached from settings", () => {
-    // Dedicated sub-page component + settings nav row + route
     expect(screen).toContain("function SystemPromptPanel(");
     expect(screen).toContain("<SystemPromptPanel");
     expect(screen).toContain('kind: "systemPrompt"');
     expect(screen).toContain("openSystemPrompt");
     expect(screen).toContain("<Text style={styles.listTitle}>System Prompt</Text>");
-    // and it is no longer a section on the settings tab
     expect(screen).not.toContain('title="Assistant identity"');
     expect(screen).not.toContain('title="Agent prompt features"');
   });
@@ -112,7 +105,6 @@ describe("mobile: model router sub-page", () => {
     expect(screen).toContain('kind: "modelRouter"');
     expect(screen).toContain("openModelRouter");
     expect(screen).toContain("<Text style={styles.listTitle}>Model Router</Text>");
-    // no longer an inline section on the settings tab
     expect(screen).not.toContain('title="Model router"');
   });
 
@@ -121,7 +113,6 @@ describe("mobile: model router sub-page", () => {
     expect(panel).toContain('label="Selection strategy"');
     expect(panel).toContain('label="Fallback providers"');
     expect(panel.slice(0, 10000)).toContain("api.updateRouterConfig");
-    // MoA-specific controls surface when that strategy is picked
     expect(panel).toContain('label="Aggregator agent"');
     expect(panel).toContain('label="Monitor coding plans"');
     expect(panel).toContain('label="Block exhausted plans"');

@@ -81,8 +81,6 @@ export async function runInRemoteSandbox(
     options.signal?.removeEventListener("abort", abortHandler);
     try {
       await sandbox.kill();
-    } catch {
-      /* best-effort teardown */
-    }
+    } catch {}
   }
 }

@@ -1291,9 +1291,6 @@ private let nativeReasoningMarkupTokenPattern =
     "</?(?:REASONING_SCRATCHPAD|antthinking|(?:antml:|mm:)?(?:thinking|think|thought)|reasoning|final)\\b[^>]*>|\\[/?(?:thinking|reasoning)\\]"
 
 private func nativeNormalizeActivityText(_ value: String) -> String {
-    // Bare reasoning tag deltas (e.g. "</think>") must never render as
-    // activity text; also cleans activities persisted before the gateway
-    // stripped them at the source.
     value.replacingOccurrences(
         of: nativeReasoningMarkupTokenPattern,
         with: " ",
@@ -1414,8 +1411,6 @@ private func nativeCompactDuration(_ durationMs: Double) -> String {
     }
     return nativeFormatWorkedDuration(durationMs)
 }
-
-// ── Codex-style tool-call grouping (parity with the web + mobile timeline) ───
 
 enum NativeActivityGroupKind: Hashable {
     case read
@@ -1610,7 +1605,6 @@ func nativeGroupActivities(_ activities: [NativeToolActivity]) -> [NativeTimelin
     return entries
 }
 
-/// Renders a grouped activity list with collapsible "Ran N commands" rows.
 struct NativeGroupedActivities: View {
     let activities: [NativeToolActivity]
     @State private var expanded: Set<String> = []

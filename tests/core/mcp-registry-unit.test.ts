@@ -58,10 +58,6 @@ interface WorkerReport {
   installInvalidCustoms: Array<{ name: string; success: boolean; hasId: boolean; error?: string }>;
 }
 
-// mcp-registry imports mcpManager, which opens the SQLite database under
-// CYBARA_HOME at import time, so the whole exercise runs in a child process
-// with CYBARA_HOME pointed at a throwaway directory. fetch is replaced with a
-// thrower so the npm search path can never touch the network.
 const WORKER_SOURCE = `
 import { mcpRegistry } from "${join(ROOT_DIR, "src", "core", "mcp-registry.ts").replace(/\\/g, "/")}";
 import { mcpManager } from "${join(ROOT_DIR, "src", "core", "mcp.ts").replace(/\\/g, "/")}";

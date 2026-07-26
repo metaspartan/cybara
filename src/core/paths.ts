@@ -33,11 +33,6 @@ export const uiDistDir = join(projectRoot, "ui", "dist");
 
 export const userSkillsDir = join(cybaraDir, "skills");
 
-/**
- * Directories whose contents are credential-bearing enough that a nested pass
- * is worth the extra stat calls. Channel adapters and the browser tool write
- * live session state (cookies, auth profiles) into per-integration subfolders.
- */
 const NESTED_PRIVATE_DIRS = ["channels", "browser"] as const;
 
 const PRIVATE_TOP_LEVEL_FILES = ["api_key", "security.json"] as const;
@@ -48,12 +43,6 @@ function restrictPathMode(path: string, mode: number): void {
   } catch {}
 }
 
-/**
- * Older installs created most of these directories with the default umask, so
- * anything outside the original six was left world-readable. Re-harden every
- * Cybara-managed directory on startup so upgrades repair themselves without a
- * separate migration step.
- */
 function hardenExistingCybaraEntries(): void {
   let entries: Dirent[] = [];
   try {

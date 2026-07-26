@@ -281,9 +281,6 @@ export function isMachOFile(path: string): boolean {
   }
 }
 
-/// Collect nested Mach-O binaries bundled with the app. Notarization rejects
-/// any unsigned Mach-O, including extensionless helper executables in package
-/// payloads, so every nested binary must be signed inner-first.
 export function findNestedSignables(contentsPath: string): string[] {
   const results: string[] = [];
   const walk = (dir: string): void => {
@@ -308,14 +305,10 @@ export function findNestedSignables(contentsPath: string): string[] {
 }
 
 async function codesignBundle(bundlePath: string, identity: string): Promise<void> {
-  // Sign inner-out, applying the hardened-runtime entitlements (JIT/network/
-  // capture) to the executables so the Bun sidecar's JS engine can run and the
-  // app can request camera/screen/automation permissions when used.
   const ent = ENTITLEMENTS_PATH;
   const contentsPath = join(bundlePath, "Contents");
   stripAppleMetadata(bundlePath);
 
-  // 1. Nested libraries/addons (onnxruntime dylib, .node binding, etc.).
   const nestedSignables = findNestedSignables(contentsPath);
   if (nestedSignables.length > 0) {
     console.log(`   signing ${nestedSignables.length} nested Mach-O file(s)`);
@@ -324,12 +317,8 @@ async function codesignBundle(bundlePath: string, identity: string): Promise<voi
     await codesignPath(signable, identity);
   }
 
-  // 2. The bundled sidecar executable (Bun-compiled JS engine needs the
-  //    JIT/unsigned-memory entitlements).
   await codesignPath(join(contentsPath, "MacOS", "sidecar", "cybara"), identity, ent);
-  // 3. The main app executable.
   await codesignPath(join(contentsPath, "MacOS", APP_NAME), identity, ent);
-  // 4. The bundle last, so the seal covers everything inside.
   await codesignPath(bundlePath, identity, ent);
 }
 
@@ -392,9 +381,7 @@ function parseJSONRecord(raw: string, label: string): Record<string, unknown> {
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed as Record<string, unknown>;
     }
-  } catch {
-    // Keep the caller-facing error focused on the invalid notarytool payload.
-  }
+  } catch {}
   throw new Error(`Unable to parse ${label} JSON: ${raw.trim() || "<empty>"}`);
 }
 

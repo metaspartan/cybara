@@ -1,22 +1,8 @@
-/**
- * Media-generation provider registry (image / video / music).
- *
- * A single swappable-provider pattern for all three
- * media domains. Providers implement a small interface and register themselves;
- * the runtime dispatch resolves config/fallbacks and calls the provider. This
- * keeps the model-facing tools (`image_generate`, `video_generate`,
- * `music_generate`) decoupled from concrete APIs (fal, openai, elevenlabs, …).
- *
- * Auth/env plumbing lives separately from the capability — providers read their
- * own env keys in `isConfigured`.
- */
-
 import { registerOpenAIImageProvider, registerFalProviders } from "./media-providers";
 
 type MediaKind = "image" | "video" | "music";
 
 export interface GeneratedAsset {
-  /** Base64 (no data: prefix) OR a remote URL the host can fetch. */
   buffer?: string;
   url?: string;
   mimeType: string;
@@ -39,14 +25,12 @@ export interface ImageGenerationRequest extends BaseGenerationRequest {
   aspectRatio?: string;
   quality?: "standard" | "hd";
   outputFormat?: "png" | "jpeg" | "webp";
-  /** Reference images for editing (base64 buffers). */
   inputImages?: Array<{ buffer: string; mimeType: string }>;
 }
 
 export interface VideoGenerationRequest extends BaseGenerationRequest {
   durationSeconds?: number;
   audio?: boolean;
-  /** First frame / reference image (base64). */
   inputImages?: Array<{ buffer: string; mimeType: string; role?: string }>;
 }
 
@@ -157,7 +141,6 @@ function envContext(): ProviderConfiguredContext {
   return { env: process.env as Record<string, string | undefined> };
 }
 
-/** Return the first configured provider for a kind, or the first registered. */
 export function resolveDefaultProvider(kind: MediaKind): AnyProvider | null {
   const providers = [...registries[kind].values()];
   const configured = providers.find((p) => p.isConfigured?.(envContext()) ?? true);
@@ -167,12 +150,6 @@ export function resolveDefaultProvider(kind: MediaKind): AnyProvider | null {
 export function isConfigured(provider: AnyProvider): boolean {
   return provider.isConfigured?.(envContext()) ?? true;
 }
-
-// ---------------------------------------------------------------------------
-// Built-in providers — auto-registered at import time.
-// (The provider implementations live in ./media-providers and register
-// themselves by calling registerImageProvider/registerVideoProvider/...)
-// ---------------------------------------------------------------------------
 
 registerOpenAIImageProvider();
 registerFalProviders();

@@ -11,7 +11,6 @@ const PLAINTEXT_TOKEN = "ya29.legacy-access-token-value-9876543210";
 const PLAINTEXT_CHANNEL_TOKEN = "1234567890:AAHlegacyTelegramBotTokenValue012345";
 const PLAINTEXT_MCP_TOKEN = "ghp_legacyMcpEnvTokenValue0123456789";
 
-/** Builds the database shape a pre-encryption release would have written. */
 function seedLegacyHome(): string {
   const home = mkdtempSync(join(tmpdir(), "cybara-legacy-"));
   mkdirSync(join(home, "data"), { recursive: true });
@@ -84,8 +83,6 @@ describe("legacy credential migration", () => {
         expect(String(value).startsWith("cybara-secret:v1:")).toBe(true);
       }
 
-      // The rewritten file must not retain the pre-encryption copies that an
-      // UPDATE would otherwise strand in freed pages or the WAL.
       const bytes = await Bun.file(join(home, "data", "platform.db")).arrayBuffer();
       const haystack = Buffer.from(bytes).toString("latin1");
       for (const secret of [
@@ -136,8 +133,6 @@ describe("legacy credential migration", () => {
 
       expect(bootDatabase(home).exitCode).toBe(0);
 
-      // A second boot has nothing to seal, so it must not VACUUM the file --
-      // that would stall startup on large installs.
       expect(statSync(dbPath).mtimeMs).toBe(afterMigration);
     } finally {
       rmSync(home, { recursive: true, force: true });

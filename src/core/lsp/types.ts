@@ -162,7 +162,7 @@ export interface ServerCapabilities {
 
 export interface TextDocumentSyncOptions {
   openClose?: boolean;
-  change?: number; // 0 = None, 1 = Full, 2 = Incremental
+  change?: number;
   willSave?: boolean;
   willSaveWaitUntil?: boolean;
   save?: boolean | { includeText?: boolean };

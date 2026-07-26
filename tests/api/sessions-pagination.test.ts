@@ -144,14 +144,12 @@ describe("session listing pagination", () => {
       assistantReply: "newer reply",
     });
 
-    // Without pinning, the newer session leads.
     let sessions = await listSessions();
     let olderIndex = sessions.findIndex((s) => s.id === older);
     let newerIndex = sessions.findIndex((s) => s.id === newer);
     expect(newerIndex).toBeLessThan(olderIndex);
     expect(sessions[olderIndex]?.pinned).toBe(false);
 
-    // Pin the older one — it should jump above the newer, unpinned session.
     await setSessionPinned(older, true);
     sessions = await listSessions();
     olderIndex = sessions.findIndex((s) => s.id === older);
@@ -159,7 +157,6 @@ describe("session listing pagination", () => {
     expect(olderIndex).toBeLessThan(newerIndex);
     expect(sessions[olderIndex]?.pinned).toBe(true);
 
-    // Unpin restores recency ordering.
     await setSessionPinned(older, false);
     sessions = await listSessions();
     expect(sessions.find((s) => s.id === older)?.pinned).toBe(false);
@@ -224,7 +221,6 @@ describe("session listing pagination", () => {
     await setSessionPinned(id, true);
     expect((await listSessions()).find((s) => s.id === id)?.pinned).toBe(true);
 
-    // A subsequent title update must not clear the pin.
     await setPersistedSessionTitle(id, "Renamed while pinned");
     const after = await listSessions();
     const session = after.find((s) => s.id === id);

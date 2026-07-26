@@ -275,15 +275,15 @@ function deriveSessionTitle(messages: ChatMessage[], agentId: string): string {
 }
 
 const DEFAULT_CONTEXT_TOKENS = 200_000;
-const CONTEXT_SAFETY_MARGIN = 1.2; // 20% buffer for token estimation
-const MAX_HISTORY_SHARE = 0.5; // Max 50% of context for history
-const SUMMARY_RESERVE_TOKENS = 4000; // Reserve tokens for summary generation
+const CONTEXT_SAFETY_MARGIN = 1.2;
+const MAX_HISTORY_SHARE = 0.5;
+const SUMMARY_RESERVE_TOKENS = 4000;
 const COMPACTION_SUMMARY_MAX_CHARS = 4000;
 const COMPACTION_CHUNK_SUMMARY_MAX_CHARS = 2400;
 
 const BASE_CHUNK_RATIO = 0.4;
 const MIN_CHUNK_RATIO = 0.15;
-const OVERSIZED_MESSAGE_THRESHOLD = 0.5; // Message > 50% of context is oversized
+const OVERSIZED_MESSAGE_THRESHOLD = 0.5;
 
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -685,8 +685,6 @@ export async function compactContext(
   const systemMessages = messages.filter((m) => m.role === "system");
   const nonSystemMessages = messages.filter((m) => m.role !== "system");
 
-  // Token-aware recent window: keep as many trailing messages as fit the budget,
-  // rather than a fixed -4 tail. Ensures the model retains the most context.
   const minRecent = 4;
   let recentCount = Math.min(nonSystemMessages.length, minRecent);
   const systemTokens = estimateMessagesTokens(systemMessages);
@@ -751,11 +749,6 @@ export async function compactContext(
   };
 }
 
-/**
- * Structured summary prompt with a compaction quality contract.
- * Forces explicit sections + literal identifier preservation so the summary is
- * genuinely useful for continuing work, not a vague paragraph.
- */
 function buildStructuredSummaryPrompt(conversationText: string, previousSummary?: string): string {
   return `Summarize the conversation history below so work can continue without it. Be precise, not generic.
 
@@ -793,9 +786,6 @@ async function generateContextSummary(
     throw new Error("Provider not found");
   }
 
-  // If the older history is large, chunk it by token share, summarize each chunk,
-  // then merge the chunk summaries in a final pass (summarize-in-stages).
-  // ~2k tokens per chunk keeps each summary call well within the aux model's window.
   const totalTokens = estimateMessagesTokens(messages);
   const chunkCount = totalTokens > 8000 ? Math.min(4, Math.ceil(totalTokens / 4000)) : 1;
 
@@ -810,7 +800,6 @@ async function generateContextSummary(
     return response.content.slice(0, COMPACTION_SUMMARY_MAX_CHARS);
   }
 
-  // Multi-stage: summarize each chunk, then merge.
   const chunks = splitMessagesByTokenShare(messages, chunkCount);
   const chunkSummaries: string[] = [];
   let previousSummary: string | undefined;
@@ -827,7 +816,6 @@ async function generateContextSummary(
     previousSummary = summary;
   }
 
-  // Final merge pass.
   const mergePrompt = `Merge these partial context summaries into one concise summary with these sections:
 ## Decisions / ## Open TODOs / ## Constraints / ## Pending asks / ## Exact identifiers
 Deduplicate. Keep it under 250 words. Preserve all literal identifiers.
@@ -915,9 +903,6 @@ export async function persistSession(
     log.info("Persisted session", { sessionId, messageCount: messages.length });
     return true;
   } catch (error) {
-    // Return failure so callers don't falsely mark the session as persisted;
-    // a swallowed error here previously reported success to the client while
-    // the write never landed.
     log.exception("Failed to persist session", error, { sessionId });
     return false;
   }
@@ -1115,11 +1100,6 @@ function persistedSessionListSql(
   sql: string;
   params: number[];
 } {
-  // The last-message subqueries resolve the target rowid FIRST (sorting only
-  // rowids), then fetch that one row's columns. Sorting rows directly pulls
-  // their payloads through the temp b-tree — with large stored messages that
-  // meant re-reading hundreds of MB per list call. Content is also substr'd to
-  // the preview budget so the list never ships whole messages.
   const sql = `
       SELECT
         cs.id,
@@ -1259,7 +1239,6 @@ export async function setPersistedSessionRouting(
   return tables.chatSessions.updateRouting(sessionId, normalizedAgentId, useModelRouter);
 }
 
-/** Returns true when a chat_sessions row was actually updated (i.e. it exists). */
 export async function setPersistedSessionPinned(
   sessionId: string,
   pinned: boolean
@@ -1293,7 +1272,7 @@ export async function getSessionStats(sessionId: string): Promise<{
     const stats = db
       .prepare(
         `
-      SELECT 
+      SELECT
         COUNT(*) as messageCount,
         MIN(created_at) as firstMessageAt,
         MAX(created_at) as lastMessageAt

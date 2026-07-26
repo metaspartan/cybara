@@ -1,11 +1,3 @@
-/**
- * Email channel adapter (SMTP send + IMAP poll receive).
- *
- * Sends outbound email via raw SMTP (socket-level, no nodemailer dependency) and
- * polls an IMAP inbox for inbound mail (IMAP poll + allowed-senders). This
- * adapter handles SMTP send directly; IMAP receive is polled by the manager
- * via fetchInbox().
- */
 import { Socket } from "net";
 import { connect as tlsConnect, TLSSocket } from "tls";
 import type { ChannelAdapter, ToolCallInfo } from "../types";
@@ -53,10 +45,6 @@ export class EmailAdapter implements ChannelAdapter {
     return this.running.has(channelId);
   }
 
-  /**
-   * Send an email via raw SMTP (EHLO/AUTH LOGIN/MAIL FROM/RCPT TO/DATA).
-   * `chatId` is the recipient address. Minimal but dependency-free.
-   */
   async sendMessage(channelId: string, chatId: string | number, text: string): Promise<boolean> {
     const cfg = this.configs.get(channelId);
     if (!cfg?.smtp_host || !cfg?.username || !cfg?.password || !cfg?.from_address) {

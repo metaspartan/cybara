@@ -19,7 +19,6 @@ describe("mobile: chat management", () => {
   test("long-pressing a chat offers a native delete confirmation", () => {
     expect(screen).toContain("onLongPress={() => confirmDeleteSession(session)}");
     expect(screen).toContain("const confirmDeleteSession");
-    // native destructive action sheet on iOS, Alert on Android
     expect(screen).toContain("destructiveButtonIndex: 0");
     expect(screen).toContain('style: "destructive"');
   });

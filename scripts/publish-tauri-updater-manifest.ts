@@ -35,13 +35,6 @@ export type CanonicalTauriUpdaterManifest = {
 type BuildManifestOptions = {
   assets: readonly GitHubReleaseAsset[];
   downloadAssetText: (asset: GitHubReleaseAsset) => Promise<string>;
-  /**
-   * Resolves the public download URL for an updater asset. Defaults to the
-   * asset's `browser_download_url`, but the release pipeline MUST override this
-   * with a canonical tag URL: when the manifest is built the release is still a
-   * draft, so GitHub reports an `untagged-<id>` download path that 404s the
-   * moment the release is published. See `canonicalDownloadUrl`.
-   */
   downloadUrl?: (asset: GitHubReleaseAsset) => string;
   notes: string;
   pubDate: string;
@@ -63,11 +56,6 @@ class GitHubApiError extends Error {
   }
 }
 
-/**
- * The stable public download URL for a release asset. This is what GitHub serves
- * once the release is published under its tag, and — unlike the API's
- * `browser_download_url` — it does not change when a draft release is promoted.
- */
 export function canonicalDownloadUrl(
   owner: string,
   repo: string,
@@ -84,8 +72,6 @@ export function resolveUpdaterPlatformKeys(assetName: string): readonly string[]
   if (/\.exe$/i.test(assetName)) {
     return ["windows-x86_64-nsis"];
   }
-  // Linux arch is encoded in the bundle name: deb uses `_arm64`/`_amd64`,
-  // rpm/AppImage use `aarch64`/`x86_64`. Default to x86_64 when unlabelled.
   const isLinuxArm64 = /(?:_arm64|aarch64)/i.test(assetName);
   const linuxArch = isLinuxArm64 ? "aarch64" : "x86_64";
   if (/\.deb$/i.test(assetName)) {
@@ -350,10 +336,6 @@ if (import.meta.main) {
     const manifest = await buildTauriUpdaterManifestFromAssets({
       assets,
       downloadAssetText: (asset) => downloadReleaseAssetText(owner, repo, asset, token),
-      // Build canonical tag URLs, not the draft-release `browser_download_url`.
-      // The manifest is generated while the release is still a draft, so the API
-      // reports an `untagged-<id>` path that 404s once the release is published —
-      // exactly the in-app updater download failure this pipeline had.
       downloadUrl: (asset) => canonicalDownloadUrl(owner, repo, release.tag_name, asset.name),
       notes: process.env.CYBARA_TAURI_UPDATER_NOTES?.trim() || DEFAULT_NOTES,
       pubDate: new Date().toISOString(),

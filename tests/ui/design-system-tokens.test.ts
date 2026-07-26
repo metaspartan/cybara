@@ -10,14 +10,11 @@ describe("index.css design-system utilities", () => {
   const sessionSidebar = read("../../ui/src/pages/chat/SessionSidebar.tsx");
 
   test("defines the glass utilities that shared primitives reference", () => {
-    // These were used by TextArea / GlassButton / GlassCard / Button but defined
-    // nowhere, so those primitives rendered unstyled.
     expect(css).toContain(".glass-input");
     expect(css).toContain(".glass-button-primary");
     expect(css).toContain(".glass-card-hover");
     expect(css).toContain("@keyframes glow-pulse");
     expect(css).toContain(".glow-pulse");
-    // They should be built on the accent token, not hardcoded colors.
     expect(css).toMatch(/\.glass-button-primary\s*\{[^}]*var\(--accent-primary\)/);
   });
 
@@ -25,7 +22,6 @@ describe("index.css design-system utilities", () => {
     expect(css).toMatch(
       /:focus-visible\s*\{\s*outline:\s*2px solid rgb\(var\(--accent-primary\)\)/
     );
-    // The suppressive `outline: none !important` global rule is gone.
     expect(css).not.toContain("outline: none !important");
   });
 

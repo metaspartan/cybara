@@ -204,8 +204,6 @@ describe("checkWritePath", () => {
   });
 
   test("agent's own memory and skills under ~/.cybara are readable", () => {
-    // These were spuriously blocked as 'sensitive' because the whole .cybara
-    // dir is denied to protect the keys DB / wallet.
     expect(() => assertReadablePath(`${homedir()}/.cybara/memory/MEMORY.md`)).not.toThrow();
     expect(() => assertReadablePath(`${homedir()}/.cybara/memory/2026-07-07.md`)).not.toThrow();
     expect(() => assertReadablePath(`${homedir()}/.cybara/skills/my-skill/SKILL.md`)).not.toThrow();
@@ -248,7 +246,6 @@ describe("checkWritePath", () => {
     expect(() => assertReadablePath(`${homedir()}/.cybara/data/platform.db`)).toThrow();
     expect(() => assertReadablePath(`${homedir()}/.cybara/security.json`)).toThrow();
     expect(() => assertReadablePath(`${homedir()}/.cybara/tool-results/session/.env`)).toThrow();
-    // Writes to memory/skills remain blocked — the dedicated tools handle those.
     expect(checkWritePath(`${homedir()}/.cybara/memory/MEMORY.md`).allowed).toBe(false);
   });
 });

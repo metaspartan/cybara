@@ -10,9 +10,6 @@ describe("Tool schema import stability", () => {
     expect(builtins.length).toBeGreaterThan(0);
   });
 
-  // Guard against the runtime registry drifting from the advertised schemas:
-  // every tool the LLM can be told about must have a live handler, otherwise
-  // executeTool throws "Unknown tool" at call time.
   test("every advertised tool schema has a runtime handler", () => {
     const missing = Object.keys(toolSchemas).filter((name) => !hasTool(name));
     expect(missing).toEqual([]);

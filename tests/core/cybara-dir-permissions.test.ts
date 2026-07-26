@@ -7,10 +7,6 @@ function mode(path: string): string {
   return (statSync(path).mode & 0o777).toString(8).padStart(3, "0");
 }
 
-/**
- * Runs paths.ts in a child process against a throwaway CYBARA_HOME so the
- * module-level ensureCybaraDirs() call executes against the fixture.
- */
 function bootPathsModule(home: string): { code: number; stderr: string } {
   const result = Bun.spawnSync(
     ["bun", "-e", 'import("./src/core/paths.ts").then(() => process.exit(0));'],
@@ -26,8 +22,6 @@ describe("cybara home permissions", () => {
   test("repairs a pre-upgrade install that left directories world-readable", () => {
     const home = mkdtempSync(join(tmpdir(), "cybara-perms-"));
 
-    // Simulate an install created before the hardening: the original six were
-    // private, everything else took the default umask.
     for (const dir of ["data", "memory", "logs", "secure", "skills"]) {
       mkdirSync(join(home, dir), { recursive: true, mode: 0o700 });
     }
@@ -78,7 +72,6 @@ describe("cybara home permissions", () => {
       expect(`${dir}=${mode(join(home, dir))}`).toBe(`${dir}=700`);
     }
 
-    // Credential-bearing trees are hardened one level deeper.
     expect(mode(join(home, "channels", "whatsapp-auth"))).toBe("700");
     expect(mode(join(home, "browser", "profile-default"))).toBe("700");
 
