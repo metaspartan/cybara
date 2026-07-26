@@ -75,7 +75,7 @@ interface PendingBrowserPage {
 const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = { width: 960, height: 640 };
 const BROWSER_START_TIMEOUT_MS = 90_000;
 const BROWSER_REQUEST_TIMEOUT_MS = 12_000;
-const BROWSER_PREVIEW_QUALITY = 58;
+const BROWSER_PREVIEW_QUALITY = 78;
 
 interface BrowserLaunchStatus {
   phase: "idle" | "starting" | "running" | "failed";

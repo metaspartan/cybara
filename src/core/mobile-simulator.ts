@@ -150,6 +150,7 @@ const MAX_CACHED_FRAMES = 8;
 const ANDROID_PREVIEW_MAX_WIDTH = 720;
 const ANDROID_PREVIEW_MAX_HEIGHT = 1_600;
 const IOS_PREVIEW_MAX_HEIGHT = 1_600;
+const IOS_PREVIEW_JPEG_QUALITY = "78";
 const screenshotDir = join(
   process.env.HOME || process.env.USERPROFILE || homedir(),
   ".cybara",
@@ -619,7 +620,7 @@ async function captureIos(
         "jpeg",
         "-s",
         "formatOptions",
-        "58",
+        IOS_PREVIEW_JPEG_QUALITY,
         filePath,
         "--out",
         previewPath,
