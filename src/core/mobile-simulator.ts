@@ -125,6 +125,7 @@ interface CachedFrame {
   revision: string;
   sourceHeight: number;
   sourceWidth: number;
+  sourceRevision: string;
   width: number;
 }
 
@@ -589,7 +590,11 @@ function jpegDimensions(bytes: Buffer): { width: number; height: number } | null
   return null;
 }
 
-async function captureIos(device: MobileSimulatorDevice, preview = false): Promise<CachedFrame> {
+async function captureIos(
+  device: MobileSimulatorDevice,
+  preview = false,
+  cached?: CachedFrame
+): Promise<CachedFrame> {
   const xcrun = resolveXcrun();
   if (!xcrun) throw new Error("iOS Simulator requires macOS and Xcode");
   const filePath = join(tmpdir(), `cybara-ios-${device.id}-${randomUUID()}.jpg`);
@@ -597,6 +602,9 @@ async function captureIos(device: MobileSimulatorDevice, preview = false): Promi
   try {
     await runChecked(xcrun, ["simctl", "io", device.id, "screenshot", "--type=jpeg", filePath]);
     const original = readFileSync(filePath);
+    const sourceRevision = frameDigest(original);
+    const reusable = reusableFrame(cached, sourceRevision);
+    if (reusable) return reusable;
     const dimensions = jpegDimensions(original);
     if (!dimensions) throw new Error("iOS Simulator returned an invalid screenshot");
     let bytes = original;
@@ -629,8 +637,9 @@ async function captureIos(device: MobileSimulatorDevice, preview = false): Promi
       contentType: "image/jpeg",
       device,
       ...encodedDimensions,
-      revision: createHash("sha256").update(bytes).digest("base64url").slice(0, 16),
+      revision: frameDigest(bytes),
       sourceHeight: dimensions.height,
+      sourceRevision,
       sourceWidth: dimensions.width,
     };
   } finally {
@@ -649,14 +658,16 @@ async function captureAndroid(device: MobileSimulatorDevice): Promise<CachedFram
   const result = await runChecked(adb, ["-s", device.id, "exec-out", "screencap", "-p"]);
   const dimensions = pngDimensions(result.stdout);
   if (!dimensions) throw new Error("Android Emulator returned an invalid screenshot");
+  const revision = frameDigest(result.stdout);
   return {
     bytes: result.stdout,
     capturedAt: Date.now(),
     contentType: "image/png",
     device,
     ...dimensions,
-    revision: createHash("sha256").update(result.stdout).digest("base64url").slice(0, 16),
+    revision,
     sourceHeight: dimensions.height,
+    sourceRevision: revision,
     sourceWidth: dimensions.width,
   };
 }
@@ -713,16 +724,16 @@ export function encodeAndroidPngPreview(bytes: Buffer): EncodedPreviewFrame | nu
   }
 }
 
-async function captureAndroidEmulatorPreview(
+async function captureAndroidEmulatorSource(
   adb: string,
   device: MobileSimulatorDevice
-): Promise<ReturnType<typeof encodeAndroidPngPreview>> {
+): Promise<Buffer | null> {
   const directory = join(tmpdir(), `cybara-android-${device.id}-${randomUUID()}`);
   mkdirSync(directory, { recursive: true });
   try {
     await runChecked(adb, ["-s", device.id, "emu", "screenrecord", "screenshot", directory]);
     const fileName = readdirSync(directory).find((entry) => entry.toLowerCase().endsWith(".png"));
-    return fileName ? encodeAndroidPngPreview(readFileSync(join(directory, fileName))) : null;
+    return fileName ? readFileSync(join(directory, fileName)) : null;
   } finally {
     try {
       for (const entry of readdirSync(directory)) {
@@ -737,17 +748,23 @@ async function captureAndroidEmulatorPreview(
   }
 }
 
-async function captureAndroidPreview(device: MobileSimulatorDevice): Promise<CachedFrame> {
+async function captureAndroidPreview(
+  device: MobileSimulatorDevice,
+  cached?: CachedFrame
+): Promise<CachedFrame> {
   const adb = resolveAndroidSdkExecutable("adb");
   if (!adb) throw new Error("Android SDK Platform Tools are required");
-  let preview: ReturnType<typeof encodeAndroidRawPreview> = null;
+  let source: Buffer | null = null;
   try {
-    preview = await captureAndroidEmulatorPreview(adb, device);
+    source = await captureAndroidEmulatorSource(adb, device);
   } catch {}
-  if (!preview) {
-    const result = await runChecked(adb, ["-s", device.id, "exec-out", "screencap", "-p"]);
-    preview = encodeAndroidPngPreview(result.stdout);
+  if (!source) {
+    source = (await runChecked(adb, ["-s", device.id, "exec-out", "screencap", "-p"])).stdout;
   }
+  const sourceRevision = frameDigest(source);
+  const reusable = reusableFrame(cached, sourceRevision);
+  if (reusable) return reusable;
+  const preview = encodeAndroidPngPreview(source);
   if (!preview) return await captureAndroid(device);
   return {
     bytes: preview.bytes,
@@ -755,11 +772,24 @@ async function captureAndroidPreview(device: MobileSimulatorDevice): Promise<Cac
     contentType: "image/png",
     device,
     height: preview.height,
-    revision: createHash("sha256").update(preview.bytes).digest("base64url").slice(0, 16),
+    revision: frameDigest(preview.bytes),
     sourceHeight: preview.sourceHeight,
+    sourceRevision,
     sourceWidth: preview.sourceWidth,
     width: preview.width,
   };
+}
+
+function frameDigest(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("base64url").slice(0, 16);
+}
+
+export function reusableFrame(
+  cached: CachedFrame | undefined,
+  sourceRevision: string
+): CachedFrame | null {
+  if (!cached || cached.sourceRevision !== sourceRevision) return null;
+  return { ...cached, capturedAt: Date.now() };
 }
 
 function cacheFrame(key: string, frame: CachedFrame): void {
@@ -792,12 +822,13 @@ export async function captureMobileSimulator(
   const key = `${simulatorStateKey(platform, device.id)}:${mode}:${generation}`;
   let frame = frameCache.get(key);
   if (!frame || Date.now() - frame.capturedAt > FRAME_CACHE_MS) {
+    const stale = frame;
     frame = await coalescePendingWork(pendingFrameCaptures, key, async () => {
       const captured =
         platform === "ios"
-          ? await captureIos(device, mode === "preview")
+          ? await captureIos(device, mode === "preview", stale)
           : mode === "preview"
-            ? await captureAndroidPreview(device)
+            ? await captureAndroidPreview(device, stale)
             : await captureAndroid(device);
       if (frameGeneration(platform, device.id) === generation) cacheFrame(key, captured);
       return captured;
