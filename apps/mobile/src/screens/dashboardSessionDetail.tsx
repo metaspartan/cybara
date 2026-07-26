@@ -1,4 +1,5 @@
 import { normalizeChatAppearanceSettings } from "cybara-shared/chat-appearance";
+import { CHAT_FOLLOW_THRESHOLD_PX, isChatNearBottom } from "cybara-shared/chat-scroll-follow";
 import {
   ArrowDown,
   ArrowUp,
@@ -219,6 +220,7 @@ export function SessionDetailPanel({
   const [toolApprovalUpdating, setToolApprovalUpdating] = useState(false);
   const [pendingToolApprovalMode, setPendingToolApprovalMode] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
+  const followChatBottomRef = useRef(true);
   const headerActionRef = useRef<() => void>(() => {});
   const {
     detail,
@@ -1437,8 +1439,21 @@ export function SessionDetailPanel({
         ]}
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => {
+          if (!followChatBottomRef.current) return;
           scrollRef.current?.scrollToEnd({ animated: false });
         }}
+        onScroll={(event) => {
+          const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+          followChatBottomRef.current = isChatNearBottom(
+            {
+              clientHeight: layoutMeasurement.height,
+              scrollHeight: contentSize.height,
+              scrollTop: contentOffset.y,
+            },
+            CHAT_FOLLOW_THRESHOLD_PX
+          );
+        }}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         style={styles.chatScroll}
       >
