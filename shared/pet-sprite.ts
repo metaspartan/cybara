@@ -7,6 +7,8 @@ export const PET_SPRITE_PALETTE: Record<string, string> = {
   w: "#FFFFFF",
   r: "#F58220",
   c: "#F2E4CE",
+  l: "#DFAE78",
+  s: "#A87038",
 };
 
 export const PET_SPRITE_WIDTH = 16;
@@ -60,10 +62,10 @@ export const PET_SPRITE_BABY = [
   "....offffffo....",
   "....owffffwo....",
   "....offffffo....",
-  "....offddffo....",
+  "....offleffo....",
+  "....offssffo....",
   ".....oooooo.....",
   ".....oo..oo.....",
-  "................",
   "................",
   "................",
 ];
@@ -73,16 +75,16 @@ export const PET_SPRITE_ADULT = [
   ".......rr.......",
   "......orro......",
   "...oooooooooo...",
-  "..offffffffffo..",
+  ".ooffffffffffoo.",
   ".offffffffffffo.",
   ".offffffffffffo.",
   ".offweffffweffo.",
   ".offeeffffeeffo.",
   ".offffffffffmmo.",
-  ".offffddddffmmo.",
-  ".offffddddffffo.",
-  ".offffffffffffo.",
-  "..offffffffffo..",
+  ".offflleellfffo.",
+  ".offfllllllfffo.",
+  ".offffssssssffo.",
+  "..offsssssssfo..",
   "...oooooooooo...",
   "...oo......oo...",
 ];

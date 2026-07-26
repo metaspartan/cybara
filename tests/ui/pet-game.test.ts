@@ -8,6 +8,7 @@ import {
   petMood,
   petStage,
   registerPetTap,
+  resetPetGameState,
   serializePetGameState,
 } from "../../shared/pet-game";
 import {
@@ -111,6 +112,19 @@ describe("pet game", () => {
     expect(restored.hunger).toBe(state.hunger);
     expect(parsePetGameState("not json", 0).cares).toBe(0);
     expect(parsePetGameState(null, 0).hunger).toBe(80);
+  });
+
+  test("starting over returns a grown pet to the egg", () => {
+    let grown = createPetGameState(0);
+    for (let index = 1; index <= 10; index += 1) {
+      grown = applyPetCareAction(grown, "feed", index * 1000);
+    }
+    expect(petStage(grown)).toBe("adult");
+
+    const fresh = resetPetGameState(20_000);
+    expect(petStage(fresh)).toBe("egg");
+    expect(fresh.cares).toBe(0);
+    expect(fresh.bond).toBe(0);
   });
 
   test("the easter egg needs consecutive taps, not taps spread over time", () => {

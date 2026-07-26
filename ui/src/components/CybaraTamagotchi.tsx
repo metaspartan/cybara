@@ -1,3 +1,4 @@
+import { Settings2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type PetCareAction,
@@ -9,6 +10,7 @@ import {
   petMood,
   petMoodLabel,
   petStage,
+  resetPetGameState,
   serializePetGameState,
 } from "../../../shared/pet-game";
 import { PET_SPRITE_PALETTE, petSpriteRows, petSpriteSize } from "../../../shared/pet-sprite";
@@ -16,6 +18,7 @@ import { PET_SPRITE_PALETTE, petSpriteRows, petSpriteSize } from "../../../share
 const PET_GAME_STORAGE_KEY = "cybara.pet.game";
 const TICK_MS = 15_000;
 const BLINK_MS = 4_200;
+const SCREEN_SCALE = 4;
 
 function readStoredState(): PetGameState {
   try {
@@ -25,19 +28,17 @@ function readStoredState(): PetGameState {
   }
 }
 
-function StatBar({ label, value, tone }: { label: string; value: number; tone: string }) {
+function StatPip({ label, value, tone }: { label: string; value: number; tone: string }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="w-9 shrink-0 text-[9px] uppercase tracking-wide text-[var(--text-muted)]">
-        {label}
-      </span>
-      <span className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--surface-border)]">
+    <span className="flex items-center gap-1" title={`${label} ${value}%`}>
+      <span className="text-[8px] uppercase text-[var(--text-muted)]">{label}</span>
+      <span className="h-1 w-7 overflow-hidden rounded-full bg-[var(--surface-border)]">
         <span
-          className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300"
+          className="block h-full rounded-full"
           style={{ background: tone, width: `${value}%` }}
         />
       </span>
-    </div>
+    </span>
   );
 }
 
@@ -46,10 +47,11 @@ export function CybaraTamagotchi({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<PetGameState>(() => readStoredState());
   const [blink, setBlink] = useState(false);
   const [cue, setCue] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const mood = petMood(state);
-  const level = petLevel(state);
   const stage = petStage(state);
+  const hatched = stage !== "egg" && stage !== "hatching";
 
   useEffect(() => {
     try {
@@ -60,9 +62,10 @@ export function CybaraTamagotchi({ onClose }: { onClose: () => void }) {
   }, [state]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setState((current) => decayPetGameState(current, Date.now()));
-    }, TICK_MS);
+    const timer = window.setInterval(
+      () => setState((current) => decayPetGameState(current, Date.now())),
+      TICK_MS
+    );
     return () => window.clearInterval(timer);
   }, []);
 
@@ -79,10 +82,9 @@ export function CybaraTamagotchi({ onClose }: { onClose: () => void }) {
     if (!canvas) return;
     const rows = petSpriteRows(stage, mood, blink);
     const { width, height } = petSpriteSize(rows);
-    const scale = 5;
-    if (canvas.width !== width * scale || canvas.height !== height * scale) {
-      canvas.width = width * scale;
-      canvas.height = height * scale;
+    if (canvas.width !== width * SCREEN_SCALE || canvas.height !== height * SCREEN_SCALE) {
+      canvas.width = width * SCREEN_SCALE;
+      canvas.height = height * SCREEN_SCALE;
     }
     const context = canvas.getContext("2d");
     if (!context) return;
@@ -94,7 +96,7 @@ export function CybaraTamagotchi({ onClose }: { onClose: () => void }) {
         const color = PET_SPRITE_PALETTE[row[x] ?? "."];
         if (!color) continue;
         context.fillStyle = color;
-        context.fillRect(x * scale, y * scale, scale, scale);
+        context.fillRect(x * SCREEN_SCALE, y * SCREEN_SCALE, SCREEN_SCALE, SCREEN_SCALE);
       }
     }
   }, [blink, mood, stage]);
@@ -102,76 +104,101 @@ export function CybaraTamagotchi({ onClose }: { onClose: () => void }) {
   const care = useCallback((action: PetCareAction, message: string) => {
     setState((current) => applyPetCareAction(current, action));
     setCue(message);
-    window.setTimeout(() => setCue(null), 1400);
+    window.setTimeout(() => setCue(null), 1200);
   }, []);
 
+  const reset = useCallback(() => {
+    setState(resetPetGameState());
+    setMenuOpen(false);
+    setCue("reset");
+    window.setTimeout(() => setCue(null), 1200);
+  }, []);
+
+  const status = !hatched
+    ? stage === "egg"
+      ? "Care for the egg"
+      : "Something stirs"
+    : petMoodLabel(mood);
+
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] p-2.5">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
-          {stage === "egg" || stage === "hatching" ? "Cybara · Egg" : `Cybara · Lv ${level}`}
+    <div className="relative mx-auto w-[164px] rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-raised)] p-2 shadow-sm">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-[8px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+          {hatched ? `Lv ${petLevel(state)}` : "Egg"}
         </span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded px-1 text-[10px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
-        >
-          close
-        </button>
+        <span className="flex items-center gap-0.5">
+          <button
+            type="button"
+            aria-label="Pet options"
+            onClick={() => setMenuOpen((value) => !value)}
+            className="rounded p-0.5 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+          >
+            <Settings2 className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            aria-label="Close pet game"
+            onClick={onClose}
+            className="rounded px-1 text-[10px] leading-none text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+          >
+            ×
+          </button>
+        </span>
       </div>
 
-      <div className="relative flex items-center justify-center rounded-lg bg-[var(--surface-backdrop)] py-2">
+      <div className="relative flex items-center justify-center rounded-lg border border-[var(--surface-border)] bg-[var(--surface-backdrop)] py-1">
         <canvas
           ref={canvasRef}
           aria-label="Pixel art Cybara"
-          className="h-[120px] w-auto"
+          className="h-[64px] w-auto"
           role="img"
           style={{ imageRendering: "pixelated" }}
         />
         {cue ? (
-          <span className="absolute right-2 top-1 rounded bg-[var(--surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--text-primary)]">
+          <span className="absolute right-1 top-0.5 rounded bg-[var(--surface-raised)] px-1 text-[8px] text-[var(--text-primary)]">
             {cue}
           </span>
         ) : null}
       </div>
 
-      <span className="text-center text-[10px] text-[var(--text-muted)]">
-        {stage === "egg"
-          ? "An egg. Care for it to hatch."
-          : stage === "hatching"
-            ? "Something is stirring..."
-            : petMoodLabel(mood)}
-      </span>
-
-      <div className="flex flex-col gap-1">
-        <StatBar label="Food" value={state.hunger} tone="#F58220" />
-        <StatBar label="Rest" value={state.energy} tone="#7CA9E8" />
-        <StatBar label="Joy" value={state.joy} tone="#4CAF50" />
+      <div className="mt-1 flex items-center justify-between">
+        <StatPip label="fd" value={state.hunger} tone="#F58220" />
+        <StatPip label="rs" value={state.energy} tone="#7CA9E8" />
+        <StatPip label="jy" value={state.joy} tone="#4CAF50" />
       </div>
 
-      <div className="grid grid-cols-3 gap-1">
-        <button
-          type="button"
-          onClick={() => care("feed", "yum")}
-          className="rounded-lg border border-[var(--surface-border)] py-1 text-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
-        >
-          Feed
-        </button>
-        <button
-          type="button"
-          onClick={() => care("play", "wheee")}
-          className="rounded-lg border border-[var(--surface-border)] py-1 text-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
-        >
-          Play
-        </button>
-        <button
-          type="button"
-          onClick={() => care("rest", "zzz")}
-          className="rounded-lg border border-[var(--surface-border)] py-1 text-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
-        >
-          Rest
-        </button>
+      <div className="mt-1 text-center text-[8px] text-[var(--text-muted)]">{status}</div>
+
+      <div className="mt-1 grid grid-cols-3 gap-1">
+        {(
+          [
+            ["feed", "Feed", "yum"],
+            ["play", "Play", "wheee"],
+            ["rest", "Rest", "zzz"],
+          ] as const
+        ).map(([action, label, message]) => (
+          <button
+            key={action}
+            type="button"
+            onClick={() => care(action, message)}
+            className="rounded-md border border-[var(--surface-border)] py-0.5 text-[9px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+          >
+            {label}
+          </button>
+        ))}
       </div>
+
+      {menuOpen ? (
+        <div className="absolute right-2 top-7 z-10 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-raised)] p-1 shadow-md">
+          <button
+            type="button"
+            onClick={reset}
+            className="block w-full rounded px-2 py-1 text-left text-[9px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+          >
+            Start over
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

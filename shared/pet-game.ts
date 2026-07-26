@@ -106,6 +106,10 @@ export function petLevel(state: PetGameState): number {
   return 1 + Math.floor(state.bond / 20);
 }
 
+export function resetPetGameState(now = Date.now()): PetGameState {
+  return createPetGameState(now);
+}
+
 export function serializePetGameState(state: PetGameState): string {
   return JSON.stringify(state);
 }
