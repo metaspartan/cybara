@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { LiveActivityItem } from "@/lib/chatActivities";
-import { chatBottomScrollTop, isChatNearBottom } from "./chatScroll";
+import { CHAT_FOLLOW_THRESHOLD_PX, chatBottomScrollTop, isChatNearBottom } from "./chatScroll";
 import type { ChatMessage } from "./chatModel";
 
 interface ChatScrollOptions {
@@ -47,9 +47,15 @@ export function useChatScroll({
           programmaticScrollTimeoutRef.current = null;
           programmaticScrollUntilRef.current = 0;
           const latestContainer = messagesContainerRef.current;
-          if (!latestContainer || isChatNearBottom(latestContainer)) return;
-          keepScrolledToBottomRef.current = false;
-          setShowScrollToBottomButton(true);
+          if (
+            !latestContainer ||
+            !keepScrolledToBottomRef.current ||
+            isChatNearBottom(latestContainer, CHAT_FOLLOW_THRESHOLD_PX)
+          ) {
+            return;
+          }
+          latestContainer.scrollTop = chatBottomScrollTop(latestContainer);
+          setShowScrollToBottomButton(false);
         }, 2500);
       } else if (programmaticScrollUntilRef.current !== Number.POSITIVE_INFINITY) {
         programmaticScrollUntilRef.current = performance.now() + 100;
@@ -66,7 +72,7 @@ export function useChatScroll({
       setShowScrollToBottomButton(false);
       return;
     }
-    const nearBottom = isChatNearBottom(container);
+    const nearBottom = isChatNearBottom(container, CHAT_FOLLOW_THRESHOLD_PX);
     const programmaticScrollActive = performance.now() < programmaticScrollUntilRef.current;
     if (nearBottom) {
       keepScrolledToBottomRef.current = true;
@@ -93,19 +99,45 @@ export function useChatScroll({
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
-    if (!keepScrolledToBottomRef.current && !isChatNearBottom(container, 96)) {
+    const releaseProgrammaticScroll = (): void => {
+      if (programmaticScrollTimeoutRef.current !== null) {
+        window.clearTimeout(programmaticScrollTimeoutRef.current);
+        programmaticScrollTimeoutRef.current = null;
+      }
+      programmaticScrollUntilRef.current = 0;
+      refreshScrollToBottomVisibility();
+    };
+    container.addEventListener("wheel", releaseProgrammaticScroll, { passive: true });
+    container.addEventListener("touchstart", releaseProgrammaticScroll, { passive: true });
+    container.addEventListener("keydown", releaseProgrammaticScroll);
+    return () => {
+      container.removeEventListener("wheel", releaseProgrammaticScroll);
+      container.removeEventListener("touchstart", releaseProgrammaticScroll);
+      container.removeEventListener("keydown", releaseProgrammaticScroll);
+    };
+  }, [messagesContainerRef, refreshScrollToBottomVisibility]);
+
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    if (
+      !keepScrolledToBottomRef.current &&
+      !isChatNearBottom(container, CHAT_FOLLOW_THRESHOLD_PX)
+    ) {
       setShowScrollToBottomButton(true);
       return;
     }
-    const rafId = window.requestAnimationFrame(() => scrollToBottom("auto"));
-    return () => window.cancelAnimationFrame(rafId);
-  }, [messages, messagesContainerRef, scrollToBottom]);
+    keepScrolledToBottomRef.current = true;
+    container.scrollTop = chatBottomScrollTop(container);
+    setShowScrollToBottomButton(false);
+  }, [messages, messagesContainerRef]);
 
   useEffect(() => {
     if (artifactViewerOpen) return;
     const container = messagesContainerRef.current;
     if (!container) return;
-    if (!keepScrolledToBottomRef.current && !isChatNearBottom(container, 96)) return;
+    if (!keepScrolledToBottomRef.current && !isChatNearBottom(container, CHAT_FOLLOW_THRESHOLD_PX))
+      return;
     const rafId = window.requestAnimationFrame(() => scrollToBottom("auto"));
     return () => window.cancelAnimationFrame(rafId);
   }, [

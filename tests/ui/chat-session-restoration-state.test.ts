@@ -16,12 +16,12 @@ describe("chat session restoration state", () => {
 
   test("does not force persisted updates to the bottom while reading older messages", () => {
     const source = readFileSync(join(process.cwd(), "ui/src/pages/chat/useChatScroll.ts"), "utf8");
-    const effectStart = source.indexOf("if (!keepScrolledToBottomRef.current");
-    const effectEnd = source.indexOf("useEffect(() =>", effectStart + 1);
+    const effectStart = source.indexOf("useLayoutEffect(() => {");
+    const effectEnd = source.indexOf("}, [messages, messagesContainerRef]);", effectStart);
     const effect = source.slice(effectStart, effectEnd);
 
-    expect(effect).toContain("isChatNearBottom(container, 96)");
+    expect(effect).toContain("isChatNearBottom(container, CHAT_FOLLOW_THRESHOLD_PX)");
     expect(effect).toContain("setShowScrollToBottomButton(true)");
-    expect(effect).toContain('scrollToBottom("auto")');
+    expect(effect).toContain("container.scrollTop = chatBottomScrollTop(container)");
   });
 });
