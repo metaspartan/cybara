@@ -46,8 +46,8 @@ describe("codex fast mode", () => {
     expect(codexFastModeServiceTier(true, "gpt-5.2-codex")).toBeNull();
   });
 
-  test("sends the tier value the Codex backend documents", () => {
-    expect(CODEX_FAST_MODE_SERVICE_TIER).toBe("fast");
+  test("sends the tier value the Codex backend accepts", () => {
+    expect(CODEX_FAST_MODE_SERVICE_TIER).toBe("priority");
   });
 
   test("the toggle only appears for the Codex provider on a capable model", () => {

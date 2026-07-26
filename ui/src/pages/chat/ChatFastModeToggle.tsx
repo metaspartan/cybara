@@ -42,17 +42,22 @@ export function ChatFastModeToggle({
           : "Fast mode: run this model about 1.5x faster for more credits"
       }
       className={cn(
-        "inline-flex h-7 w-7 items-center justify-center rounded-lg border transition-colors",
+        "inline-flex h-5 w-5 shrink-0 items-center justify-center bg-transparent transition-colors",
         enabled
-          ? "border-amber-400/40 bg-amber-400/15 text-amber-400 hover:bg-amber-400/25"
-          : "border-[var(--surface-border)] bg-[var(--surface-raised)] text-[var(--icon-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]",
+          ? "text-amber-400 hover:text-amber-300"
+          : "text-[var(--icon-muted)] hover:text-[var(--text-primary)]",
         (disabled || updating) && "cursor-not-allowed opacity-60"
       )}
     >
       {updating ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <Loader2 className="h-3 w-3 animate-spin" />
       ) : (
-        <Zap className={cn("h-3.5 w-3.5", enabled && "fill-current")} />
+        <Zap
+          className={cn(
+            "h-3.5 w-3.5",
+            enabled && "fill-current drop-shadow-[0_0_4px_rgba(251,191,36,0.55)]"
+          )}
+        />
       )}
     </button>
   );

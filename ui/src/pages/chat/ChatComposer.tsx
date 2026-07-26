@@ -20,7 +20,6 @@ import {
   PendingChatQueue,
   type ToolApprovalMode,
 } from "./ChatFollowUpControls";
-import { ChatFastModeToggle } from "./ChatFastModeToggle";
 import { ChatReasoningControl } from "./ChatReasoningControl";
 import { chatHorizontalPaddingClassName } from "./chatAppearanceLayout";
 import type { SessionPlanView } from "./chatModel";
@@ -267,6 +266,9 @@ export function ChatComposer({
             providerPlan={providerPlan}
             onSelectAgent={onSelectAgent}
             updating={agentUpdating}
+            fastMode={codexFastMode}
+            fastModeUpdating={codexFastModeUpdating}
+            onFastModeChange={onCodexFastModeChange}
           />
           <ChatReasoningControl
             effort={activeAgent?.reasoning_effort}
@@ -279,16 +281,6 @@ export function ChatComposer({
             disabled={useModelRouter || !activeAgent}
             updating={reasoningUpdating}
             onChange={onReasoningChange}
-          />
-          <ChatFastModeToggle
-            enabled={codexFastMode}
-            provider={
-              activeAgent?.provider_type ?? activeAgent?.provider ?? activeAgent?.provider_id
-            }
-            model={activeAgent?.model}
-            disabled={useModelRouter || !activeAgent}
-            updating={codexFastModeUpdating}
-            onChange={onCodexFastModeChange}
           />
           <button
             type="button"

@@ -1,4 +1,4 @@
-export const CODEX_FAST_MODE_SERVICE_TIER = "fast";
+export const CODEX_FAST_MODE_SERVICE_TIER = "priority";
 
 const FAST_MODE_FAMILIES = ["gpt-5.4", "gpt-5.5", "gpt-5.6"];
 const FAST_MODE_EXCLUDED_SUFFIXES = ["-spark", "-pro", "-nano"];
