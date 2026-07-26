@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CybaraThinkingMark } from "@/components/CybaraThinkingMark";
+import { CybaraTamagotchi } from "@/components/CybaraTamagotchi";
+import { registerPetTap } from "../../../shared/pet-game";
 import { apiFetch } from "@/lib/auth";
 import { connectStatusStream, type StatusStreamEvent } from "@/lib/status-stream";
 import {
@@ -32,6 +34,9 @@ interface SessionSummary {
 
 export function PetOverlay() {
   const [open, setOpen] = useState(false);
+  const [gameOpen, setGameOpen] = useState(false);
+  const tapCountRef = useRef(0);
+  const lastTapAtRef = useRef(0);
   const [activeSessions, setActiveSessions] = useState<ActiveSessionEntry[]>([]);
   const [titles, setTitles] = useState<Map<string, string>>(() => new Map());
   const dragStateRef = useRef<{
@@ -161,10 +166,24 @@ export function PetOverlay() {
       dragStateRef.current = null;
       if (drag?.dragging) return;
       event.preventDefault();
+      const now = Date.now();
+      const tap = registerPetTap(tapCountRef.current, lastTapAtRef.current, now);
+      tapCountRef.current = tap.taps;
+      lastTapAtRef.current = now;
+      if (tap.unlocked) {
+        setGameOpen(true);
+        setOpen(true);
+        void setPetWindowExpanded(true);
+        return;
+      }
       togglePopover();
     },
     [togglePopover]
   );
+
+  const closeGame = useCallback(() => {
+    setGameOpen(false);
+  }, []);
 
   const openSession = useCallback((sessionId: string) => {
     setOpen(false);
@@ -211,8 +230,9 @@ export function PetOverlay() {
         )}
       </button>
       {open && (
-        <div className="mt-2 w-full flex-1 overflow-y-auto rounded-xl border border-white/15 bg-[#12121a] p-2">
-          <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-500">
+        <div className="mt-2 w-full flex-1 overflow-y-auto rounded-xl border border-[var(--surface-border)] bg-[var(--surface-overlay,var(--surface-raised))] p-2">
+          {gameOpen ? <CybaraTamagotchi onClose={closeGame} /> : null}
+          <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
             {activeCount > 0 ? `Running sessions (${activeCount})` : "No active sessions"}
           </div>
           {sortedSessions.map((entry) => (
@@ -220,12 +240,14 @@ export function PetOverlay() {
               key={entry.sessionId}
               type="button"
               onClick={() => openSession(entry.sessionId)}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/5"
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-[var(--surface-hover)]"
             >
               <span className="h-2 w-2 flex-shrink-0 animate-pulse rounded-full bg-emerald-400" />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs text-gray-100">{sessionLabel(entry)}</span>
-                <span className="block truncate text-[10px] text-gray-500">
+                <span className="block truncate text-xs text-[var(--text-primary)]">
+                  {sessionLabel(entry)}
+                </span>
+                <span className="block truncate text-[10px] text-[var(--text-muted)]">
                   {entry.detail || entry.status}
                 </span>
               </span>
@@ -234,7 +256,7 @@ export function PetOverlay() {
           <button
             type="button"
             onClick={() => openSession("")}
-            className="mt-1 w-full rounded-lg border border-white/10 px-2 py-1.5 text-center text-xs text-gray-300 hover:bg-white/5"
+            className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-2 py-1.5 text-center text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
           >
             Open Cybara
           </button>

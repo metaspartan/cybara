@@ -129,6 +129,19 @@ select option:hover {
 
 /* ==================== BACKGROUND ==================== */
 
+html[data-pet="1"],
+html[data-pet="1"] body,
+html[data-pet="1"] #root {
+  background: transparent !important;
+  min-height: 0;
+  overflow: hidden;
+}
+
+html[data-pet="1"] body::before,
+html[data-pet="1"] body::after {
+  display: none !important;
+}
+
 body::before {
   content: '';
   position: fixed;

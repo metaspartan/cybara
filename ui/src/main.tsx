@@ -23,6 +23,7 @@ const platformHint = (() => {
 
 rootElement.dataset.runtime = desktopRuntime || "web";
 rootElement.dataset.platform = platformHint;
+if (new URLSearchParams(window.location.search).has("pet")) rootElement.dataset.pet = "1";
 
 const queryClient = new QueryClient({
   defaultOptions: {
