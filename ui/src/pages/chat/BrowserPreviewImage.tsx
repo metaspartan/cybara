@@ -22,6 +22,17 @@ function browserStreamUrl(path: string): string {
   return `${protocol}//${window.location.host}${withGatewayBasePath(path)}`;
 }
 
+function applyFallbackSource(image: HTMLImageElement | null, source: string | null): void {
+  if (!image) return;
+  if (source) {
+    image.src = source;
+    image.style.visibility = "visible";
+    return;
+  }
+  image.removeAttribute("src");
+  image.style.visibility = "hidden";
+}
+
 function frameBlob(value: unknown): Blob | null {
   if (value instanceof Blob) return value;
   if (value instanceof ArrayBuffer) return new Blob([value], { type: "image/jpeg" });
@@ -99,8 +110,7 @@ export function BrowserPreviewImage({
     if (connectedRef.current) return;
     const image = imageRef.current;
     if (!image) return;
-    if (fallbackSource) image.src = fallbackSource;
-    else image.removeAttribute("src");
+    applyFallbackSource(image, fallbackSource);
     framePresentedRef.current(Boolean(fallbackSource));
   }, [fallbackSource]);
 
@@ -113,6 +123,8 @@ export function BrowserPreviewImage({
     let reconnectAttempt = 0;
     let hasStreamFrame = false;
     let streamFrameVersion = 0;
+    let pendingFrame: DecodedBrowserFrame | null = null;
+    let paintHandle: number | null = null;
     const clearStreamFrame = (): void => {
       const canvas = canvasRef.current;
       const context = canvasContextRef.current;
@@ -125,7 +137,7 @@ export function BrowserPreviewImage({
         canvas.height = 1;
       }
     };
-    const presentStreamFrame = (frame: DecodedBrowserFrame): void => {
+    const paintStreamFrame = (frame: DecodedBrowserFrame): void => {
       const canvas = canvasRef.current;
       if (!canvas) {
         frame.release();
@@ -153,11 +165,20 @@ export function BrowserPreviewImage({
         frame.release();
       }
     };
+    const presentStreamFrame = (frame: DecodedBrowserFrame): void => {
+      pendingFrame?.release();
+      pendingFrame = frame;
+      if (paintHandle !== null) return;
+      paintHandle = window.requestAnimationFrame(() => {
+        paintHandle = null;
+        const next = pendingFrame;
+        pendingFrame = null;
+        if (next) paintStreamFrame(next);
+      });
+    };
     const presentFallback = (): void => {
-      const image = imageRef.current;
       const fallback = fallbackSourceRef.current;
-      if (image && fallback) image.src = fallback;
-      else image?.removeAttribute("src");
+      applyFallbackSource(imageRef.current, fallback);
       framePresentedRef.current(Boolean(fallback));
     };
     clearStreamFrame();
@@ -255,6 +276,10 @@ export function BrowserPreviewImage({
     void connect();
     return () => {
       active = false;
+      if (paintHandle !== null) window.cancelAnimationFrame(paintHandle);
+      paintHandle = null;
+      pendingFrame?.release();
+      pendingFrame = null;
       decoder.dispose();
       connectedRef.current = false;
       inputSenderRef.current = null;
@@ -272,10 +297,11 @@ export function BrowserPreviewImage({
     <>
       <img
         ref={imageRef}
-        alt="Browser preview"
+        alt=""
         className="absolute inset-0 h-full w-full select-none object-contain"
         decoding="async"
         draggable={false}
+        style={{ visibility: "hidden" }}
       />
       <canvas
         ref={canvasRef}

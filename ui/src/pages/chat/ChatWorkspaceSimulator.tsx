@@ -637,6 +637,7 @@ export function ChatWorkspaceSimulator({
             <img
               alt={`${selectedDevice?.name || label} screen`}
               className="max-h-full max-w-full select-none object-contain"
+              decoding="async"
               draggable={false}
               src={frame.screenshot}
             />
