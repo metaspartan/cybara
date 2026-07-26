@@ -47,6 +47,8 @@ db.exec("PRAGMA journal_mode = WAL");
 // telemetry; busy_timeout avoids "database is locked" under concurrent access.
 db.exec("PRAGMA synchronous = NORMAL");
 db.exec("PRAGMA busy_timeout = 5000");
+// Zero freed cells so rotated or deleted credentials do not linger in slack space.
+db.exec("PRAGMA secure_delete = ON");
 console.error("[Database] Journal mode set");
 
 console.error("[Database] Creating schema...");
@@ -1085,7 +1087,33 @@ function openMcpServerRow(row: unknown): MCPServer | undefined {
   return result as unknown as MCPServer;
 }
 
+/**
+ * Sealing a legacy row with UPDATE leaves the original plaintext behind in
+ * freed pages and in the WAL, so an upgraded install still yields its old API
+ * keys to `strings platform.db`. Rewrite the database once, after a migration
+ * actually changed something, so the pre-encryption copies are gone.
+ */
+function scrubMigratedPlaintext(): void {
+  try {
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  } catch {}
+  try {
+    db.exec("VACUUM");
+  } catch (error) {
+    console.warn(
+      "[Database] Could not compact the database after sealing legacy credentials; " +
+        "previous plaintext may remain in freed pages.",
+      error instanceof Error ? error.message : error
+    );
+    return;
+  }
+  try {
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  } catch {}
+}
+
 function migrateStoredCredentials(): void {
+  let sealedAny = false;
   const providers = stmts.providers.all.all() as StoredRow[];
   for (const provider of providers) {
     const id = storedString(provider.id);
@@ -1097,6 +1125,7 @@ function migrateStoredCredentials(): void {
     const originalValues = [provider.api_key, provider.access_token, provider.refresh_token];
     if (values.some((value, index) => value !== originalValues[index])) {
       stmts.providers.migrateSecrets.run(values[0], values[1], values[2], id);
+      sealedAny = true;
     }
   }
   const channels = stmts.channels.all.all() as StoredRow[];
@@ -1105,6 +1134,7 @@ function migrateStoredCredentials(): void {
     const config = storedString(channel.config);
     if (!id || !config || isSealedSecret(config)) continue;
     stmts.channels.migrateConfig.run(sealSecret(config, `channel:${id}:config`), id);
+    sealedAny = true;
   }
   const servers = stmts.mcpServers.all.all() as StoredRow[];
   for (const server of servers) {
@@ -1112,7 +1142,9 @@ function migrateStoredCredentials(): void {
     const env = storedString(server.env);
     if (!id || !env || isSealedSecret(env)) continue;
     stmts.mcpServers.migrateEnv.run(sealSecret(env, `mcp:${id}:env`), id);
+    sealedAny = true;
   }
+  if (sealedAny) scrubMigratedPlaintext();
 }
 
 migrateStoredCredentials();
