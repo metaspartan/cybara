@@ -286,6 +286,7 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
           name: toolCall.name,
           args,
           result: executed.result,
+          duration: executed.durationMs,
         };
         allToolCalls.push(toolCallRecord);
         iterationToolCalls.push(toolCallRecord);
@@ -540,6 +541,7 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
           name: toolUse.name,
           args,
           result: executed.result,
+          duration: executed.durationMs,
         };
         allToolCalls.push(toolCallRecord);
         iterationToolCalls.push(toolCallRecord);

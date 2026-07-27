@@ -211,10 +211,17 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
             name: toolName,
             args,
             result: resultPayload,
+            duration: executed.durationMs,
           });
         }
         if (!executed.skipped && executed.result !== undefined) {
-          allToolCalls.push({ id: toolCallId, name: toolName, args, result: executed.result });
+          allToolCalls.push({
+            id: toolCallId,
+            name: toolName,
+            args,
+            result: executed.result,
+            duration: executed.durationMs,
+          });
         }
         toolResults.push({
           tool_call_id: toolCallId,

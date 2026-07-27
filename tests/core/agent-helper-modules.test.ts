@@ -31,6 +31,21 @@ describe("agent helper modules", () => {
     ).toContain("automatic retries");
   });
 
+  test("directs expired OAuth sessions to reconnect without changing API-key guidance", () => {
+    expect(
+      formatLlmFailure(new Error("API error: 401 - unauthorized"), {
+        authType: "oauth",
+        providerName: "xAI Grok OAuth",
+      })
+    ).toBe("xAI Grok OAuth sign-in expired (401). Reconnect the provider in Settings and retry.");
+    expect(
+      formatLlmFailure(new Error("API error: 401 - unauthorized"), {
+        authType: "api_key",
+        providerName: "xAI",
+      })
+    ).toBe("Provider authentication failed (401). Verify your provider API key/token.");
+  });
+
   test("keeps provider-specific token parameter preference outside AgentManager", () => {
     expect(shouldPreferMaxCompletionTokens("z.ai")).toBe(true);
     expect(shouldPreferMaxCompletionTokens("zai")).toBe(true);

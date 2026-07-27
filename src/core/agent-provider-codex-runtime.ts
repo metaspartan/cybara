@@ -772,6 +772,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
             name: toolCall.name,
             args: toolCall.args,
             result: resultPayload,
+            duration: executed.durationMs,
           };
           allToolCalls.push(toolCallRecord);
           iterationToolCalls.push(toolCallRecord);

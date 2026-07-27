@@ -16,10 +16,12 @@ const cachedRouteGenerations = new Map<string, number>();
 function requestCacheKey(
   routeKey: string,
   body?: unknown,
-  params?: Record<string, string>
+  params?: Record<string, string>,
+  cacheQueryParams?: readonly string[]
 ): string {
   const query = params
     ? Object.entries(params)
+        .filter(([key]) => cacheQueryParams === undefined || cacheQueryParams.includes(key))
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
         .join("&")
@@ -36,11 +38,12 @@ function routeGeneration(routeKey: string): number {
 export function createCachedRouteHandler(
   routeKey: string,
   ttlMs: number,
-  handler: CacheableRouteHandler
+  handler: CacheableRouteHandler,
+  cacheQueryParams?: readonly string[]
 ): CacheableRouteHandler {
   return async (body?: unknown, params?: Record<string, string>) => {
     const now = Date.now();
-    const cacheKey = requestCacheKey(routeKey, body, params);
+    const cacheKey = requestCacheKey(routeKey, body, params, cacheQueryParams);
     const cached = cachedRouteResponses.get(cacheKey);
 
     if (cached?.hasValue) {
@@ -111,6 +114,11 @@ export const METRICS_ROUTE_CACHE_TTLS: Readonly<Record<string, number>> = {
   "GET /api/provider-plans/status": 30_000,
 };
 
+export const METRICS_ROUTE_CACHE_QUERY_PARAMS: Readonly<Record<string, readonly string[]>> = {
+  "GET /api/metrics/snapshot": ["compact"],
+  "GET /api/metrics/sessions": ["limit", "page", "pageSize"],
+};
+
 const isTestEnv = process.env.NODE_ENV === "test";
 
 export function invalidateCachedRoute(routeKey: string): void {
@@ -125,7 +133,12 @@ export function cacheMetricsRoutes(routes: Record<string, CacheableRouteHandler>
   for (const [routeKey, ttlMs] of Object.entries(METRICS_ROUTE_CACHE_TTLS)) {
     const handler = routes[routeKey];
     if (handler) {
-      routes[routeKey] = createCachedRouteHandler(routeKey, ttlMs, handler);
+      routes[routeKey] = createCachedRouteHandler(
+        routeKey,
+        ttlMs,
+        handler,
+        METRICS_ROUTE_CACHE_QUERY_PARAMS[routeKey] ?? []
+      );
     }
   }
 }

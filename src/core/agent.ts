@@ -205,6 +205,14 @@ export interface AgentExecutionFailure {
 class AgentManager extends AgentProviderRuntime {
   private runningAgents: Map<string, RunningAgentState> = new Map();
 
+  private formatProviderFailure(error: unknown, provider: ResolvedProvider): string {
+    const catalogEntry = providerCatalog[provider.provider as ProviderType];
+    return formatLlmFailure(error, {
+      authType: catalogEntry?.authType,
+      providerName: provider.name || catalogEntry?.name,
+    });
+  }
+
   private shouldUseOpenAICodexProvider(
     provider: ReturnType<typeof providerManager.getWithCredentials> | undefined,
     model: string | undefined
@@ -355,9 +363,9 @@ class AgentManager extends AgentProviderRuntime {
     const classified = classifyApiError({ error });
     const toolCalls = [...(toolContext.executionState?.toolCalls || [])]
       .sort((left, right) => left.order - right.order)
-      .map(({ name, args, result }) => ({ name, args, result }));
+      .map(({ name, args, result, durationMs }) => ({ name, args, result, duration: durationMs }));
     return {
-      content: classified.retryable ? "" : formatLlmFailure(error),
+      content: classified.retryable ? "" : this.formatProviderFailure(error, provider),
       tool_calls: toolCalls.length > 0 ? [...toolCalls] : undefined,
       provider: provider.provider,
       provider_id: provider.id,
@@ -976,12 +984,12 @@ class AgentManager extends AgentProviderRuntime {
             };
           } catch (fallbackError) {
             console.error("[Agent] Fallback LLM call also failed:", fallbackError);
-            return { response: formatLlmFailure(fallbackError) };
+            return { response: this.formatProviderFailure(fallbackError, fallbackProvider) };
           }
         }
       }
 
-      return { response: formatLlmFailure(error) };
+      return { response: this.formatProviderFailure(error, activeProvider) };
     }
   }
 

@@ -1672,7 +1672,10 @@ async function handleChatTurn(
             status: outcome.status,
             result: tc.result,
             error: outcome.error,
-            duration: 0,
+            duration:
+              typeof tc.duration === "number" && Number.isFinite(tc.duration)
+                ? Math.max(0, Math.round(tc.duration))
+                : 0,
             timeline_index: timelineIndex,
           });
         }

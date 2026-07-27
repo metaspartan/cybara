@@ -18,7 +18,7 @@ import {
   resolveModelMaxOutputTokens,
   shouldPreferMaxCompletionTokens,
 } from "./agent-model-limits";
-import { executeAgentTool } from "./agent-tool-execution";
+import { executeAgentTool, type AgentToolExecutionResult } from "./agent-tool-execution";
 import { config } from "./config";
 import type { Agent, Provider, ToolDefinition } from "./database";
 import { classifyApiError } from "./error-classifier";
@@ -392,7 +392,7 @@ export abstract class AgentProviderCommonRuntime {
     toolContext: ToolContext | undefined,
     hookContext: AgentHookContext,
     runtimeTracker?: AgenticLoopRuntimeTracker
-  ): Promise<{ skipped: boolean; result?: unknown }> {
+  ): Promise<AgentToolExecutionResult> {
     return await executeAgentTool({
       toolName,
       args,

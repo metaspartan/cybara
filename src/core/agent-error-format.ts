@@ -23,7 +23,12 @@ function extractLlmErrorDetail(message: string): string | undefined {
   return trimmed.replace(/\s+/g, " ").slice(0, 300);
 }
 
-export function formatLlmFailure(error: unknown): string {
+export interface LlmFailureContext {
+  authType?: string;
+  providerName?: string;
+}
+
+export function formatLlmFailure(error: unknown, context?: LlmFailureContext): string {
   const message =
     typeof error === "object" && error && "message" in error
       ? String((error as { message?: unknown }).message || "")
@@ -52,6 +57,10 @@ export function formatLlmFailure(error: unknown): string {
     return "Provider billing/membership inactive (402). Check your provider account's subscription or credits.";
   }
   if (lower.includes("401")) {
+    if (context?.authType === "oauth") {
+      const providerName = context.providerName?.trim() || "Provider";
+      return `${providerName} sign-in expired (401). Reconnect the provider in Settings and retry.`;
+    }
     return "Provider authentication failed (401). Verify your provider API key/token.";
   }
   if (lower.includes("403")) {
