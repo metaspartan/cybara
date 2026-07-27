@@ -212,26 +212,28 @@ img {
 }
 
 .btn--primary {
-  border: 1px solid rgba(0, 0, 0, 0.22);
-  background-image: linear-gradient(180deg, #dedde2 0%, #c6c5cd 100%);
-  color: #16161a;
+  border: 1px solid rgba(0, 0, 0, 0.34);
+  background-image: linear-gradient(180deg, #d6d6da 0%, #bcbcc3 52%, #a7a7b0 100%);
+  color: #17171c;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.7),
-    0 1px 2px rgba(0, 0, 0, 0.6),
-    0 6px 20px rgba(0, 0, 0, 0.45);
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.14),
+    0 1px 2px rgba(0, 0, 0, 0.7),
+    0 6px 18px rgba(0, 0, 0, 0.5);
 }
 
 .btn--primary:hover {
-  border-color: rgba(0, 0, 0, 0.26);
-  background-image: linear-gradient(180deg, #ecebf0 0%, #d4d3db 100%);
+  border-color: rgba(0, 0, 0, 0.38);
+  background-image: linear-gradient(180deg, #e1e1e5 0%, #c7c7ce 52%, #b2b2ba 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.8),
-    0 1px 2px rgba(0, 0, 0, 0.6),
-    0 8px 24px rgba(0, 0, 0, 0.5);
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.14),
+    0 1px 2px rgba(0, 0, 0, 0.7),
+    0 8px 22px rgba(0, 0, 0, 0.55);
 }
 
 .btn--primary .btn-icon {
-  color: #26262c;
+  color: #2b2b32;
 }
 
 .btn--ghost {
