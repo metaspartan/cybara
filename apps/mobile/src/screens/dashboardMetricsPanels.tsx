@@ -373,7 +373,11 @@ export function MetricsPanel({
           >
             <TokenHeatmap tokenAnalysis={tokenAnalysis} tone={accentColor} />
           </MetricSection>
+        </>
+      ) : null}
 
+      {activeMetricsSection === "usage" ? (
+        <>
           <MetricSection title="Prompt vs output" detail="Ratio, median, and response balance">
             <View style={styles.metricMicroGrid}>
               <MetricMicro
@@ -425,11 +429,7 @@ export function MetricsPanel({
               />
             </View>
           </MetricSection>
-        </>
-      ) : null}
 
-      {activeMetricsSection === "usage" ? (
-        <>
           <MetricSection title="Provider efficiency" detail="Tokens per provider call">
             <MetricShareRows rows={providerRows} tone={colors.blueText} />
           </MetricSection>

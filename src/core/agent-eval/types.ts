@@ -130,3 +130,60 @@ export interface AgentEvalRun {
   createdAt: string;
   completedAt: string | null;
 }
+
+export type AgentDatasetRunStatus = "queued" | "running" | "completed" | "cancelled" | "error";
+
+export type AgentDatasetItemStatus = "queued" | "running" | "completed" | "cancelled" | "error";
+
+export interface AgentDatasetUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  cacheHitRate: number | null;
+  totalTokens: number;
+  callCount: number;
+  durationMs: number;
+  tokensPerSecond: number | null;
+  averageFirstTokenMs: number | null;
+}
+
+export interface AgentDatasetRun {
+  id: string;
+  name: string;
+  agentId: string;
+  provider: string | null;
+  model: string | null;
+  status: AgentDatasetRunStatus;
+  samplesPerPrompt: number;
+  concurrency: number;
+  toolsEnabled: boolean;
+  totalItems: number;
+  completedItems: number;
+  failedItems: number;
+  cancelledItems: number;
+  queuedItems: number;
+  runningItems: number;
+  cancelRequested: boolean;
+  usage: AgentDatasetUsage;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface AgentDatasetItem {
+  id: string;
+  runId: string;
+  promptIndex: number;
+  sampleIndex: number;
+  prompt: string;
+  sessionId: string;
+  status: AgentDatasetItemStatus;
+  trajectoryId: string | null;
+  usage: AgentDatasetUsage;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}

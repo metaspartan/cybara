@@ -308,7 +308,7 @@ onBrowserSupervisionSettingsChanged((settings) => {
   if (legacyBrowser) scheduleBrowserHealthCheck(legacyBrowser, legacyBrowserOwner);
   if (
     legacyContext &&
-    browserDownloadsAccepted(legacyDownloadPolicy || "ask") !==
+    browserDownloadsAccepted(legacyDownloadPolicy || "deny") !==
       browserDownloadsAccepted(settings.downloadPolicy)
   ) {
     const context = legacyContext;

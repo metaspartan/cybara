@@ -113,6 +113,64 @@ export interface ResearchTraceStats {
   test: number;
 }
 
+export type AgentDatasetRunStatus = "queued" | "running" | "completed" | "cancelled" | "error";
+
+export type AgentDatasetItemStatus = "queued" | "running" | "completed" | "cancelled" | "error";
+
+export interface AgentDatasetUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  cacheHitRate: number | null;
+  totalTokens: number;
+  callCount: number;
+  durationMs: number;
+  tokensPerSecond: number | null;
+  averageFirstTokenMs: number | null;
+}
+
+export interface AgentDatasetRun {
+  id: string;
+  name: string;
+  agentId: string;
+  provider: string | null;
+  model: string | null;
+  status: AgentDatasetRunStatus;
+  samplesPerPrompt: number;
+  concurrency: number;
+  toolsEnabled: boolean;
+  totalItems: number;
+  completedItems: number;
+  failedItems: number;
+  cancelledItems: number;
+  queuedItems: number;
+  runningItems: number;
+  cancelRequested: boolean;
+  usage: AgentDatasetUsage;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface AgentDatasetItem {
+  id: string;
+  runId: string;
+  promptIndex: number;
+  sampleIndex: number;
+  prompt: string;
+  sessionId: string;
+  status: AgentDatasetItemStatus;
+  trajectoryId: string | null;
+  usage: AgentDatasetUsage;
+  trace: ResearchTraceSummary | null;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
 export type IntelligenceTaskDifficulty =
   | "basic"
   | "intermediate"
@@ -225,6 +283,52 @@ export const researchApi = {
       count: number;
     }>(`/evals/research/card?${params.toString()}`);
   },
+};
+
+export const datasetRunsApi = {
+  list: (limit = 50) => fetchApi<{ runs: AgentDatasetRun[] }>(`/evals/datasets?limit=${limit}`),
+  get: (runId: string) =>
+    fetchApi<{
+      success: boolean;
+      run?: AgentDatasetRun;
+      items?: AgentDatasetItem[];
+      error?: string;
+    }>(`/evals/datasets/${encodeURIComponent(runId)}`),
+  create: (payload: {
+    name: string;
+    agentId: string;
+    prompts: string[];
+    samplesPerPrompt: number;
+    concurrency: number;
+    toolsEnabled: boolean;
+  }) =>
+    fetchApi<{ success: boolean; run?: AgentDatasetRun; error?: string }>("/evals/datasets", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  cancel: (runId: string) =>
+    fetchApi<{ success: boolean; run?: AgentDatasetRun; error?: string }>(
+      `/evals/datasets/${encodeURIComponent(runId)}/cancel`,
+      { method: "POST" }
+    ),
+  remove: (runId: string) =>
+    fetchApi<{ success: boolean; error?: string }>(`/evals/datasets/${encodeURIComponent(runId)}`, {
+      method: "DELETE",
+    }),
+  export: (runId: string, format: ResearchExportFormat, sanitize: boolean) =>
+    fetchApi<{
+      format: ResearchExportFormat;
+      filename: string;
+      mimeType: string;
+      content: string;
+      count: number;
+    }>(
+      `/evals/datasets/${encodeURIComponent(runId)}/export?format=${format}&sanitize=${sanitize ? "1" : "0"}`
+    ),
+  datasetCard: (runId: string, format: ResearchExportFormat, sanitize: boolean) =>
+    fetchApi<{ filename: string; mimeType: string; content: string; count: number }>(
+      `/evals/datasets/${encodeURIComponent(runId)}/card?format=${format}&sanitize=${sanitize ? "1" : "0"}`
+    ),
 };
 
 export const benchmarksApi = {

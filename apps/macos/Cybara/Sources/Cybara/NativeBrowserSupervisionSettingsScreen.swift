@@ -45,7 +45,7 @@ struct NativeBrowserSupervisionSettingsScreen: View {
     @State private var settings = NativeBrowserSupervisionSettings(
         autoRestart: true,
         healthCheckIntervalMs: 30_000,
-        downloadPolicy: "ask",
+        downloadPolicy: "deny",
         remoteRoutingEnabled: false,
         remoteEndpoint: "",
         remoteToken: ""
@@ -66,7 +66,6 @@ struct NativeBrowserSupervisionSettingsScreen: View {
                             .toggleStyle(.switch)
                             .disabled(busy)
                         Picker("Downloads", selection: $settings.downloadPolicy) {
-                            Text("Guarded").tag("ask")
                             Text("Allow").tag("allow")
                             Text("Block").tag("deny")
                         }

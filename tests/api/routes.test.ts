@@ -769,6 +769,12 @@ describe("Agent Evals API", () => {
     expect(rejected.data?.success).toBe(false);
     expect(rejected.data?.error).toContain("not replayable");
   });
+
+  test("lists persistent dataset generation runs", async () => {
+    const response = await fixture.api("GET", "/api/evals/datasets");
+    expect(response.status).toBe(200);
+    expect(Array.isArray(response.data.runs)).toBe(true);
+  });
 });
 
 describe("Provider Plan API", () => {

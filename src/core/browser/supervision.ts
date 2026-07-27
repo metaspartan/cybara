@@ -1,7 +1,7 @@
 import { config } from "../config";
 import { isSealedSecret, openSecret, sealSecret } from "../secret-storage";
 
-export type BrowserDownloadPolicy = "ask" | "allow" | "deny";
+export type BrowserDownloadPolicy = "allow" | "deny";
 
 export interface BrowserSupervisionSettings {
   autoRestart: boolean;
@@ -24,7 +24,7 @@ export interface BrowserSupervisionStatus {
 const DEFAULT_SETTINGS: BrowserSupervisionSettings = {
   autoRestart: true,
   healthCheckIntervalMs: 30_000,
-  downloadPolicy: "ask",
+  downloadPolicy: "deny",
   remoteRoutingEnabled: false,
   remoteEndpoint: "",
   remoteToken: "",
@@ -84,10 +84,7 @@ function normalize(value: unknown): BrowserSupervisionSettings {
       Number.isFinite(record.healthCheckIntervalMs)
         ? Math.min(300_000, Math.max(5_000, Math.floor(record.healthCheckIntervalMs)))
         : DEFAULT_SETTINGS.healthCheckIntervalMs,
-    downloadPolicy:
-      record.downloadPolicy === "allow" || record.downloadPolicy === "deny"
-        ? record.downloadPolicy
-        : "ask",
+    downloadPolicy: record.downloadPolicy === "allow" ? "allow" : "deny",
     remoteRoutingEnabled: record.remoteRoutingEnabled === true,
     remoteEndpoint,
     remoteToken: openToken(record.remoteToken),

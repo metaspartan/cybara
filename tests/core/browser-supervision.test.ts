@@ -18,7 +18,7 @@ describe("browser supervision", () => {
 
     expect(settings.autoRestart).toBe(true);
     expect(settings.remoteRoutingEnabled).toBe(false);
-    expect(settings.downloadPolicy).toBe("ask");
+    expect(settings.downloadPolicy).toBe("deny");
     expect(settings.healthCheckIntervalMs).toBe(30000);
   });
 
@@ -53,9 +53,14 @@ describe("browser supervision", () => {
   });
 
   test("only accepts downloads when explicitly allowed", () => {
-    expect(browserDownloadsAccepted("ask")).toBe(false);
     expect(browserDownloadsAccepted("deny")).toBe(false);
     expect(browserDownloadsAccepted("allow")).toBe(true);
+  });
+
+  test("migrates the retired guarded download policy to deny", () => {
+    config.set("browser_supervision", { downloadPolicy: "ask" });
+
+    expect(getBrowserSupervisionSettings().downloadPolicy).toBe("deny");
   });
 
   test("notifies the active supervisor when settings change", () => {

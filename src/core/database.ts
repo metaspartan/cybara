@@ -291,6 +291,43 @@ try {
     completed_at DATETIME
   );
 
+  CREATE TABLE IF NOT EXISTS agent_dataset_runs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    provider TEXT,
+    model TEXT,
+    status TEXT NOT NULL DEFAULT 'queued',
+    samples_per_prompt INTEGER NOT NULL,
+    concurrency INTEGER NOT NULL,
+    tools_enabled INTEGER NOT NULL DEFAULT 1,
+    total_items INTEGER NOT NULL,
+    cancel_requested INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at DATETIME,
+    completed_at DATETIME
+  );
+
+  CREATE TABLE IF NOT EXISTS agent_dataset_items (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    prompt_index INTEGER NOT NULL,
+    sample_index INTEGER NOT NULL,
+    prompt TEXT NOT NULL,
+    session_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'queued',
+    trajectory_id TEXT,
+    usage_json TEXT,
+    error TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at DATETIME,
+    completed_at DATETIME,
+    UNIQUE(run_id, prompt_index, sample_index),
+    FOREIGN KEY (run_id) REFERENCES agent_dataset_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (trajectory_id) REFERENCES agent_trajectories(id) ON DELETE SET NULL
+  );
+
   -- System logs
   CREATE TABLE IF NOT EXISTS system_logs (
     id TEXT PRIMARY KEY,
@@ -638,6 +675,43 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
   );
+
+  CREATE TABLE IF NOT EXISTS agent_dataset_runs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    provider TEXT,
+    model TEXT,
+    status TEXT NOT NULL DEFAULT 'queued',
+    samples_per_prompt INTEGER NOT NULL,
+    concurrency INTEGER NOT NULL,
+    tools_enabled INTEGER NOT NULL DEFAULT 1,
+    total_items INTEGER NOT NULL,
+    cancel_requested INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at DATETIME,
+    completed_at DATETIME
+  );
+
+  CREATE TABLE IF NOT EXISTS agent_dataset_items (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    prompt_index INTEGER NOT NULL,
+    sample_index INTEGER NOT NULL,
+    prompt TEXT NOT NULL,
+    session_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'queued',
+    trajectory_id TEXT,
+    usage_json TEXT,
+    error TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at DATETIME,
+    completed_at DATETIME,
+    UNIQUE(run_id, prompt_index, sample_index),
+    FOREIGN KEY (run_id) REFERENCES agent_dataset_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (trajectory_id) REFERENCES agent_trajectories(id) ON DELETE SET NULL
+  );
 `);
 
 db.exec("DELETE FROM agent_eval_runs WHERE golden_id NOT IN (SELECT id FROM agent_goldens)");
@@ -648,6 +722,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_chat_memory_session ON chat_memory(session_id);
   CREATE INDEX IF NOT EXISTS idx_agent_trajectories_session ON agent_trajectories(session_id, turn_index);
   CREATE INDEX IF NOT EXISTS idx_agent_benchmark_runs_created ON agent_benchmark_runs(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_agent_dataset_runs_created ON agent_dataset_runs(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_agent_dataset_items_run_status ON agent_dataset_items(run_id, status, prompt_index, sample_index);
   CREATE INDEX IF NOT EXISTS idx_agent_goldens_updated ON agent_goldens(updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_agent_eval_runs_golden ON agent_eval_runs(golden_id, created_at DESC);
 `);

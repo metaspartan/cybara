@@ -15,14 +15,13 @@ import { useEffect, useState } from "react";
 const DEFAULT_SETTINGS: Settings = {
   autoRestart: true,
   healthCheckIntervalMs: 30000,
-  downloadPolicy: "ask",
+  downloadPolicy: "deny",
   remoteRoutingEnabled: false,
   remoteEndpoint: "",
   remoteToken: "",
 };
 
 const DOWNLOAD_POLICY_OPTIONS: Array<{ value: BrowserDownloadPolicy; label: string }> = [
-  { value: "ask", label: "Block until explicitly allowed" },
   { value: "allow", label: "Always allow" },
   { value: "deny", label: "Block downloads" },
 ];

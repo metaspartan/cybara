@@ -71,20 +71,26 @@ export function buildChatExecutionMessagesForAgent(
       return [message];
     }
 
+    const replayableToolCalls = sessionMessage.tool_calls.filter(
+      (toolCall) => toolCall.result !== undefined || Boolean(toolCall.error)
+    );
+    if (replayableToolCalls.length === 0) {
+      return message.content.trim() || message.images?.length ? [message] : [];
+    }
+
     const toolRequest: AgentMessage = {
       role: "assistant",
       content: "",
-      tool_calls: sessionMessage.tool_calls.map((toolCall) => ({
+      tool_calls: replayableToolCalls.map((toolCall) => ({
         id: toolCall.id,
         name: toolCall.name,
         arguments: toolCall.args,
       })),
     };
-    const toolResults: AgentMessage[] = sessionMessage.tool_calls.map((toolCall) => ({
+    const toolResults: AgentMessage[] = replayableToolCalls.map((toolCall) => ({
       role: "tool",
       content: truncateToolResultContentForContext(
-        toolCall.result ??
-          (toolCall.error ? { error: toolCall.error } : { status: toolCall.status }),
+        toolCall.result ?? { error: toolCall.error },
         TOOL_RESULT_PROMPT_MAX_CHARS
       ),
       tool_call_id: toolCall.id,

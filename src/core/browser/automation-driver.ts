@@ -6,7 +6,24 @@ import puppeteer, {
   type KeyInput,
   type Page as PuppeteerPage,
 } from "puppeteer-core";
+import { basename, join } from "node:path";
 import type * as Playwright from "playwright";
+
+export function browserDownloadDestination(
+  downloadPath: string,
+  suggestedFilename: string
+): string {
+  const normalized = suggestedFilename.replace(/\\/g, "/");
+  const filename = basename(normalized)
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim()
+    .slice(0, 240);
+  const safeFilename =
+    filename && filename !== "." && filename !== ".."
+      ? filename
+      : `download-${crypto.randomUUID()}`;
+  return join(downloadPath, safeFilename);
+}
 
 export interface AutomationBox {
   x: number;
@@ -501,10 +518,23 @@ class PlaywrightPageAdapter implements AutomationPage {
 }
 
 class PlaywrightContextAdapter implements AutomationContext {
-  constructor(private readonly context: Playwright.BrowserContext) {}
+  constructor(
+    private readonly context: Playwright.BrowserContext,
+    private readonly downloadPath?: string
+  ) {}
 
   async newPage(): Promise<AutomationPage> {
-    return new PlaywrightPageAdapter(await this.context.newPage());
+    const page = await this.context.newPage();
+    const downloadPath = this.downloadPath;
+    if (downloadPath) {
+      page.on("download", (download) => {
+        const destination = browserDownloadDestination(downloadPath, download.suggestedFilename());
+        void download
+          .saveAs(destination)
+          .catch((error: unknown) => console.error("[Browser] Failed to save download:", error));
+      });
+    }
+    return new PlaywrightPageAdapter(page);
   }
 
   close(): Promise<void> {
@@ -520,7 +550,8 @@ class PlaywrightBrowserAdapter implements AutomationBrowser {
       await this.browser.newContext({
         viewport: options.viewport,
         acceptDownloads: options.acceptDownloads,
-      })
+      }),
+      options.acceptDownloads ? options.downloadPath : undefined
     );
   }
 

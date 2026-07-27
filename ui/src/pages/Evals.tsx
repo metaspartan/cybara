@@ -7,6 +7,7 @@ import { TraceDatasetPanel } from "@/pages/research/TraceDatasetPanel";
 import { BenchmarkPanel } from "@/pages/research/BenchmarkPanel";
 import { LeaderboardPanel } from "@/pages/research/LeaderboardPanel";
 import { ComputerUseDatasetPanel } from "@/pages/research/ComputerUseDatasetPanel";
+import { DatasetGeneratorPanel } from "@/pages/research/DatasetGeneratorPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -23,6 +24,7 @@ import {
   Play,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Trophy,
   Upload,
@@ -32,9 +34,10 @@ import {
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
-type LabView = "data" | "computer-use" | "benchmarks" | "leaderboard" | "evals";
+type LabView = "generate" | "data" | "computer-use" | "benchmarks" | "leaderboard" | "evals";
 
 const labViews: ReadonlyArray<{ key: LabView; label: string; icon: typeof Database }> = [
+  { key: "generate", label: "Generate", icon: Sparkles },
   { key: "data", label: "Data", icon: Database },
   { key: "computer-use", label: "Computer Use", icon: MousePointer2 },
   { key: "benchmarks", label: "Benchmark", icon: Gauge },
@@ -273,14 +276,14 @@ export function Evals() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedView = searchParams.get("view");
-  const labView: LabView = isLabView(requestedView) ? requestedView : "data";
+  const labView: LabView = isLabView(requestedView) ? requestedView : "generate";
   const [busyGoldenId, setBusyGoldenId] = useState<string | null>(null);
   const [sanitizeExport, setSanitizeExport] = useState(true);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const setLabView = (view: LabView): void => {
     const next = new URLSearchParams(searchParams);
-    if (view === "data") next.delete("view");
+    if (view === "generate") next.delete("view");
     else next.set("view", view);
     setSearchParams(next, { replace: true });
   };
@@ -511,7 +514,7 @@ export function Evals() {
             type="button"
             onClick={() => setLabView(tab.key)}
             className={cn(
-              "inline-flex h-8 items-center gap-2 rounded-md px-3 text-[12px] transition-colors",
+              "inline-flex h-8 items-center gap-2 rounded-md px-3 text-[12px] transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-[rgba(var(--accent-primary),0.55)]",
               labView === tab.key
                 ? "bg-[var(--surface-hover)] text-[var(--text-primary)]"
                 : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -522,7 +525,12 @@ export function Evals() {
           </button>
         ))}
       </div>
-      {labView === "data" ? (
+      {labView === "generate" ? (
+        <DatasetGeneratorPanel
+          defaultFormat={labSettings.defaultExportFormat}
+          defaultSanitize={labSettings.sanitizeExportsByDefault}
+        />
+      ) : labView === "data" ? (
         <TraceDatasetPanel
           defaultFormat={labSettings.defaultExportFormat}
           defaultSanitize={labSettings.sanitizeExportsByDefault}

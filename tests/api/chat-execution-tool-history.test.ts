@@ -88,6 +88,65 @@ describe("chat execution tool history", () => {
     expect(execution[2]).toEqual({ role: "assistant", content: "Done." });
   });
 
+  test("does not invent tool output for interrupted activity-only calls", () => {
+    const messages: ChatMessage[] = [
+      { role: "user", content: "Inspect the workspace." },
+      {
+        role: "assistant",
+        content: "",
+        interrupted: true,
+        tool_calls: [
+          {
+            id: "call_completed_without_output",
+            name: "read",
+            args: {},
+            status: "completed",
+          },
+          {
+            id: "call_interrupted_without_output",
+            name: "exec",
+            args: {},
+            status: "executing",
+          },
+        ],
+      },
+      { role: "user", content: "Continue." },
+    ];
+
+    expect(buildChatExecutionMessagesForAgent(messages)).toEqual([
+      { role: "user", content: "Inspect the workspace." },
+      { role: "user", content: "Continue." },
+    ]);
+  });
+
+  test("retains interrupted tool failures with recorded errors", () => {
+    const messages: ChatMessage[] = [
+      {
+        role: "assistant",
+        content: "",
+        interrupted: true,
+        tool_calls: [
+          {
+            id: "call_failed",
+            name: "exec",
+            args: {},
+            status: "failed",
+            error: "Process stopped",
+          },
+        ],
+      },
+    ];
+
+    expect(buildChatExecutionMessagesForAgent(messages)).toEqual([
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [{ id: "call_failed", name: "exec", arguments: {} }],
+      },
+      { role: "tool", content: '{"error":"Process stopped"}', tool_call_id: "call_failed" },
+    ]);
+  });
+
   test("preserves reconstructed tool history through provider serialization", () => {
     const messages: ChatMessage[] = [
       { role: "user", content: "Read the package name." },

@@ -10,11 +10,13 @@ import {
   clearIntelligenceBenchmarkCancelRequest,
   compareTrajectoryStructures,
   countTrajectories,
+  createDatasetRun,
   createEvalRun,
   createEvalSuiteBundle,
   createIntelligenceBenchmarkRun,
   createResearchDatasetCard,
   deleteGolden,
+  deleteDatasetRun,
   deleteIntelligenceBenchmarkRun,
   deleteSessionTrajectories,
   type EvalReplayOptions,
@@ -27,6 +29,7 @@ import {
   finishEvalRun,
   forkSessionFromMessages,
   getGolden,
+  getDatasetRun,
   getTrajectory,
   gradeIntelligenceBenchmarkTask,
   INTELLIGENCE_RATING_EDGE_MARGIN,
@@ -35,7 +38,10 @@ import {
   intelligenceRatingManifest,
   intelligenceRatingTasks,
   isIntelligenceBenchmarkCancelRequested,
+  isDatasetRunActive,
   listEvalRuns,
+  listDatasetRunItems,
+  listDatasetRuns,
   listGoldens,
   listIntelligenceBenchmarkRuns,
   listSessionTrajectories,
@@ -43,15 +49,20 @@ import {
   parseEvalSuiteBundle,
   parseResearchExportFormat,
   registerEvalReplayExecutor,
+  requestDatasetRunCancel,
+  resumeDatasetRuns,
   requestIntelligenceBenchmarkCancel,
   saveGolden,
+  startDatasetRun,
   summarizeGolden,
+  summarizeResearchTrace,
   summarizeResearchTraces,
   updateGoldenAssertions,
   updateIntelligenceBenchmarkRun,
 } from "../../core/agent-eval";
 import { config } from "../../core/config";
 import { deleteSession, handleChat } from "../chat";
+import "../eval-dataset-runtime";
 import type { RouteHandler } from "./_shared";
 import { parseBoundedQueryNumber } from "./request-runtime";
 
@@ -245,6 +256,124 @@ export const evalRoutes: Record<string, RouteHandler> = {
       ids.length > 0
         ? ids.map(getTrajectory).filter((trajectory) => trajectory !== null)
         : listTrajectories(1000);
+    return createResearchDatasetCard(trajectories, {
+      format: parseResearchExportFormat(params?.format ?? lab.defaultExportFormat),
+      sanitize:
+        params?.sanitize === undefined
+          ? lab.sanitizeExportsByDefault
+          : params.sanitize === "true" || params.sanitize === "1",
+    });
+  },
+  "GET /api/evals/datasets": (_body, params) => {
+    requireLabEnabled();
+    resumeDatasetRuns();
+    return {
+      runs: listDatasetRuns(parseBoundedQueryNumber(params?.limit, 1, 200) ?? 50),
+    };
+  },
+  "GET /api/evals/datasets/:id": (_body, params) => {
+    requireLabEnabled();
+    const id = params?.id?.trim() || "";
+    const run = getDatasetRun(id);
+    if (!run) return { success: false, error: "Dataset run not found" };
+    return {
+      success: true,
+      run,
+      items: listDatasetRunItems(id).map((item) => {
+        const trajectory = item.trajectoryId ? getTrajectory(item.trajectoryId) : null;
+        return {
+          ...item,
+          trace: trajectory ? summarizeResearchTrace(trajectory) : null,
+        };
+      }),
+    };
+  },
+  "POST /api/evals/datasets": (body) => {
+    requireLabEnabled();
+    const data = (body || {}) as {
+      name?: string;
+      agentId?: string;
+      prompts?: unknown;
+      samplesPerPrompt?: number;
+      concurrency?: number;
+      toolsEnabled?: boolean;
+    };
+    const agentId = data.agentId?.trim() || "";
+    const agent = agentManager.get(agentId);
+    if (!agent) return { success: false, error: "Select an available agent" };
+    if (!Array.isArray(data.prompts)) {
+      return { success: false, error: "Prompts must be an array" };
+    }
+    const prompts = data.prompts
+      .filter((prompt): prompt is string => typeof prompt === "string")
+      .map((prompt) => prompt.trim())
+      .filter(Boolean);
+    if (prompts.length === 0) return { success: false, error: "Add at least one prompt" };
+    if (prompts.length > 500) return { success: false, error: "Use 500 prompts or fewer per run" };
+    const samplesPerPrompt = Math.floor(data.samplesPerPrompt ?? 1);
+    if (samplesPerPrompt < 1 || samplesPerPrompt > 8) {
+      return { success: false, error: "Samples per prompt must be between 1 and 8" };
+    }
+    if (prompts.length * samplesPerPrompt > 1000) {
+      return { success: false, error: "A dataset run can contain at most 1,000 samples" };
+    }
+    const concurrency = Math.floor(data.concurrency ?? 2);
+    if (concurrency < 1 || concurrency > 6) {
+      return { success: false, error: "Concurrency must be between 1 and 6" };
+    }
+    const run = createDatasetRun({
+      name: data.name?.trim().slice(0, 120) || `Dataset ${new Date().toLocaleDateString()}`,
+      agentId,
+      provider: agent.provider_pool_name || agent.provider_type || agent.provider || null,
+      model: agent.model || null,
+      prompts,
+      samplesPerPrompt,
+      concurrency,
+      toolsEnabled: data.toolsEnabled !== false,
+    });
+    startDatasetRun(run.id);
+    return { success: true, run: getDatasetRun(run.id) ?? run };
+  },
+  "POST /api/evals/datasets/:id/cancel": (_body, params) => {
+    requireLabEnabled();
+    const id = params?.id?.trim() || "";
+    const run = requestDatasetRunCancel(id);
+    if (!run) return { success: false, error: "Dataset run not found" };
+    if (!isDatasetRunActive(id)) resumeDatasetRuns();
+    return { success: true, run: getDatasetRun(id) ?? run };
+  },
+  "DELETE /api/evals/datasets/:id": (_body, params) => {
+    requireLabEnabled();
+    const id = params?.id?.trim() || "";
+    const deleted = !isDatasetRunActive(id) && deleteDatasetRun(id);
+    return deleted
+      ? { success: true }
+      : { success: false, error: "Run not found or still running" };
+  },
+  "GET /api/evals/datasets/:id/export": (_body, params) => {
+    requireLabEnabled();
+    const run = getDatasetRun(params?.id?.trim() || "");
+    if (!run) throw new Error("Dataset run not found");
+    const trajectories = listDatasetRunItems(run.id)
+      .map((item) => (item.trajectoryId ? getTrajectory(item.trajectoryId) : null))
+      .filter((trajectory) => trajectory !== null);
+    const lab = config.getLabSettings();
+    return exportResearchTraces(trajectories, {
+      format: parseResearchExportFormat(params?.format ?? lab.defaultExportFormat),
+      sanitize:
+        params?.sanitize === undefined
+          ? lab.sanitizeExportsByDefault
+          : params.sanitize === "true" || params.sanitize === "1",
+    });
+  },
+  "GET /api/evals/datasets/:id/card": (_body, params) => {
+    requireLabEnabled();
+    const run = getDatasetRun(params?.id?.trim() || "");
+    if (!run) throw new Error("Dataset run not found");
+    const trajectories = listDatasetRunItems(run.id)
+      .map((item) => (item.trajectoryId ? getTrajectory(item.trajectoryId) : null))
+      .filter((trajectory) => trajectory !== null);
+    const lab = config.getLabSettings();
     return createResearchDatasetCard(trajectories, {
       format: parseResearchExportFormat(params?.format ?? lab.defaultExportFormat),
       sanitize:
