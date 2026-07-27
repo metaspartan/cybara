@@ -33,6 +33,11 @@ import { hasAgentTransferEnvelope } from "./agent-transfer";
 import type { ToolDefinition } from "./database";
 import { classifyApiError } from "./error-classifier";
 import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
+import {
+  isCodexFunctionCallItemId,
+  parseCodexFunctionCallId,
+  serializeCodexFunctionCallId,
+} from "./llm/codex-function-call-ids";
 import { openAIResponsesUserContent } from "./llm/image-blocks";
 import { codexFastModeServiceTier } from "../../shared/codex-fast-mode";
 import { config } from "./config";
@@ -97,10 +102,11 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
           });
         }
         for (const toolCall of message.tool_calls || []) {
+          const { callId, itemId } = parseCodexFunctionCallId(toolCall.id);
           input.push({
             type: "function_call",
-            id: toolCall.id.split("|")[1] || toolCall.id,
-            call_id: toolCall.id.split("|")[0] || toolCall.id,
+            ...(itemId ? { id: itemId } : {}),
+            call_id: callId,
             name: toolCall.name,
             arguments: JSON.stringify(toolCall.arguments || {}),
           });
@@ -111,7 +117,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
       if (message.role === "tool") {
         const rawToolCallId = message.tool_call_id || "";
         const callId =
-          rawToolCallId.split("|")[0] || rawToolCallId || `call_${crypto.randomUUID()}`;
+          parseCodexFunctionCallId(rawToolCallId).callId || `call_${crypto.randomUUID()}`;
         input.push({
           type: "function_call_output",
           call_id: callId,
@@ -214,8 +220,10 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
               ? item.call_id
               : `call_${crypto.randomUUID()}`;
           const itemId =
-            typeof item.id === "string" && item.id.trim().length > 0 ? item.id.trim() : undefined;
-          const key = `${callId}|${itemId || callId}`;
+            typeof item.id === "string" && isCodexFunctionCallItemId(item.id.trim())
+              ? item.id.trim()
+              : undefined;
+          const key = serializeCodexFunctionCallId(callId, itemId);
           toolCalls.set(key, {
             callId,
             itemId,
@@ -284,8 +292,10 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
               ? item.call_id
               : `call_${crypto.randomUUID()}`;
           const itemId =
-            typeof item.id === "string" && item.id.trim().length > 0 ? item.id.trim() : undefined;
-          const key = `${callId}|${itemId || callId}`;
+            typeof item.id === "string" && isCodexFunctionCallItemId(item.id.trim())
+              ? item.id.trim()
+              : undefined;
+          const key = serializeCodexFunctionCallId(callId, itemId);
           const existing = toolCalls.get(key);
           toolCalls.set(key, {
             callId,
@@ -750,7 +760,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
       for (const toolCall of turn.toolCalls) {
         functionCallItems.push({
           type: "function_call",
-          id: toolCall.itemId || toolCall.callId,
+          ...(isCodexFunctionCallItemId(toolCall.itemId) ? { id: toolCall.itemId } : {}),
           call_id: toolCall.callId,
           name: toolCall.name,
           arguments: JSON.stringify(toolCall.args || {}),
@@ -768,7 +778,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
           executed.result === undefined ? { skipped: true, reason: "no result" } : executed.result;
         if (!executed.skipped) {
           const toolCallRecord = {
-            id: toolCall.callId,
+            id: serializeCodexFunctionCallId(toolCall.callId, toolCall.itemId),
             name: toolCall.name,
             args: toolCall.args,
             result: resultPayload,

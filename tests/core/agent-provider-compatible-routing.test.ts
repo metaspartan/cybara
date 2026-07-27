@@ -993,7 +993,7 @@ describe("Agent provider Google and compatible routing", () => {
           type: "response.output_item.added",
           item: {
             type: "function_call",
-            id: "item_calc",
+            id: "fc_calc",
             call_id: "call_calc",
             name: "calc",
             arguments: '{"expression":"2+2"}',
@@ -1043,11 +1043,77 @@ describe("Agent provider Google and compatible routing", () => {
     expect(result.content).toBe("The checked result is 4.");
     expect(result.content).not.toBe("I'll check that.");
     expect(result.tool_calls?.map((call) => call.name)).toContain("calc");
-    expect(result.tool_calls?.map((call) => call.id)).toContain("call_calc");
+    expect(result.tool_calls?.map((call) => call.id)).toContain("call_calc|fc_calc");
     expect(requestBodies).toHaveLength(3);
     expect(requestBodies[2]?.tool_choice).toBe("none");
     expect(requestBodies[2]?.tools).toBeUndefined();
     expect(JSON.stringify(requestBodies[2]?.input)).toContain("Do not call any more tools");
+  });
+
+  test("replays codex tool history with valid optional function-call item ids", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBodies.push(
+        init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {}
+      );
+      return new Response(
+        [
+          `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "continued" })}`,
+          "",
+          `data: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+          "",
+        ].join("\n"),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "openai-codex",
+      name: "OpenAI Codex History Provider",
+      access_token: "codex-test-token",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "OpenAI Codex History Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.6-sol",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [
+        { role: "user", content: "inspect" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { id: "call_legacy", name: "read", arguments: { path: "README.md" } },
+            { id: "call_saved|fc_saved", name: "read", arguments: { path: "package.json" } },
+          ],
+        },
+        { role: "tool", content: "legacy result", tool_call_id: "call_legacy" },
+        { role: "tool", content: "saved result", tool_call_id: "call_saved|fc_saved" },
+        { role: "user", content: "continue" },
+      ],
+      { useTools: false, sessionId: "openai-codex-history-session" }
+    );
+
+    expect(result.content).toBe("continued");
+    const input = requestBodies[0]?.input as Array<Record<string, unknown>>;
+    const legacyCall = input.find(
+      (item) => item.type === "function_call" && item.call_id === "call_legacy"
+    );
+    const savedCall = input.find(
+      (item) => item.type === "function_call" && item.call_id === "call_saved"
+    );
+    expect(legacyCall?.id).toBeUndefined();
+    expect(savedCall?.id).toBe("fc_saved");
+    expect(
+      input.some((item) => item.type === "function_call_output" && item.call_id === "call_saved")
+    ).toBe(true);
   });
 
   test("normalizes openai gpt-5.3-codex model selection to openai-codex provider", async () => {
