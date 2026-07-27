@@ -1305,7 +1305,7 @@ describe("Agent provider API-family routing", () => {
           id: "msg-1m",
           type: "message",
           role: "assistant",
-          model: "claude-opus-4-6",
+          model: "claude-sonnet-4-5",
           content: [{ type: "text", text: "context1m-ok" }],
           usage: { input_tokens: 12, output_tokens: 2 },
         }),
@@ -1324,7 +1324,7 @@ describe("Agent provider API-family routing", () => {
       name: "Anthropic Context1M Agent",
       type: "main",
       provider_id: provider.id,
-      model: "claude-opus-4-6",
+      model: "claude-sonnet-4-5",
       tools: [],
       config: {
         model_params: {

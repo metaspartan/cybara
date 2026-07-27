@@ -55,6 +55,10 @@ describe("vertex provider entries", () => {
     expect(p.authType).toBe("api_key");
     expect(p.baseUrl).toContain("aiplatform.googleapis.com");
     expect(p.baseUrl).toContain("publishers/anthropic/models");
+    expect(providers.anthropic_vertex.models.map((model) => model.id)).toEqual([
+      "claude-opus-5@default",
+      "claude-sonnet-5@default",
+    ]);
   });
 
   test("google_vertex uses the google-vertex api family with a publishers/google base", () => {
@@ -63,5 +67,19 @@ describe("vertex provider entries", () => {
     expect(p.authType).toBe("api_key");
     expect(p.baseUrl).toContain("aiplatform.googleapis.com");
     expect(p.baseUrl).toContain("publishers/google");
+    expect(providers.google_vertex.models.map((model) => model.id)).toEqual([
+      "gemini-3.6-flash",
+      "gemini-3.5-flash-lite",
+    ]);
+  });
+
+  test("bedrock exposes only current models supported by its Converse transport", () => {
+    const modelIds = providers.bedrock.models.map((model) => model.id);
+    expect(modelIds).toEqual([
+      "anthropic.claude-opus-4-8",
+      "anthropic.claude-fable-5",
+      "anthropic.claude-sonnet-5",
+    ]);
+    expect(modelIds).not.toContain("anthropic.claude-opus-5");
   });
 });

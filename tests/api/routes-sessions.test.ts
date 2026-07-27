@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { join } from "path";
-import { createRoutesFixture } from "./routes.fixture";
-import { revertSessionToMessage } from "../../src/api/chat-session-api";
 import { chatTurnMutex } from "../../src/api/chat-runtime-state";
+import { revertSessionToMessage } from "../../src/api/chat-session-api";
+import { createRoutesFixture } from "./routes.fixture";
 
 const fixture = createRoutesFixture();
 
@@ -1285,6 +1285,16 @@ describe("Session API", () => {
     expect(scoped.data.sessionId).toBe(sessionId);
     expect(typeof scoped.data.active).toBe("boolean");
     expect(Array.isArray(scoped.data.activeSessionIds)).toBe(true);
+  });
+
+  test("steering a pending message accepts an omitted request body", async () => {
+    const response = await fixture.api(
+      "POST",
+      `/api/chat/sessions/missing-session/pending/missing-pending/steer`
+    );
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(false);
+    expect(response.data.error).toBe("Pending message not found");
   });
 
   test("GET /api/artifacts lists artifacts across sessions", async () => {

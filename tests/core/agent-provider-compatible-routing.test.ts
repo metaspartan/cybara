@@ -693,6 +693,108 @@ describe("Agent provider Google and compatible routing", () => {
     expect(replayedAssistant?.reasoning_content).toBe("I should verify this with the calculator.");
   });
 
+  test("keeps Moonshot K3 interleaved reasoning valid through a complete tool loop", async () => {
+    const requestBodies: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      requestBodies.push(body);
+      if (requestBodies.length === 1) {
+        return Response.json({
+          id: "moonshot-tool-response",
+          object: "chat.completion",
+          model: "kimi-k3",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "tool_calls",
+              message: {
+                role: "assistant",
+                content: null,
+                reasoning_content: "I should verify this with the calculator.",
+                tool_calls: [
+                  {
+                    id: "moonshot-calc-call",
+                    type: "function",
+                    function: { name: "calc", arguments: '{"expression":"6 * 7"}' },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+        });
+      }
+      return Response.json({
+        id: "moonshot-final-response",
+        object: "chat.completion",
+        model: "kimi-k3",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: "The verified result is 42.",
+              reasoning_content: "The calculator returned 42.",
+            },
+          },
+        ],
+        usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "moonshot",
+      name: "Moonshot K3 Wire Provider",
+      api_key: "moonshot-wire-token",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Moonshot K3 Wire Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "kimi-k3",
+      config: { model_params: { reasoning_effort: "high" } },
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate a mathematical expression",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("tool_approval_mode", "always_allow");
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate six times seven with the tool." }],
+      {
+        useTools: true,
+        requireToolUse: true,
+        requiredToolName: "calc",
+        sessionId: "moonshot-k3-wire-session",
+      }
+    );
+
+    expect(result.content).toBe("The verified result is 42.");
+    expect(result.thinking).toContain("verify this with the calculator");
+    expect(result.tool_calls?.[0]?.name).toBe("calc");
+    expect(requestBodies).toHaveLength(2);
+    for (const body of requestBodies) {
+      expect(body.reasoning_effort).toBe("high");
+      expect(body.temperature).toBeUndefined();
+      expect(body.top_p).toBeUndefined();
+    }
+    const loopMessages = requestBodies[1]?.messages as Array<Record<string, unknown>>;
+    const replayedAssistant = loopMessages.find((message) => message.role === "assistant");
+    expect(replayedAssistant?.reasoning_content).toBe("I should verify this with the calculator.");
+  });
+
   test("refreshes Kimi OAuth in place when a long tool loop crosses token expiry", async () => {
     const chatAuthorizations: string[] = [];
     let chatCalls = 0;

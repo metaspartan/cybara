@@ -82,4 +82,16 @@ describe("system prompt cache stability", () => {
       expect(readAndExec).toContain("Available tools: read, exec");
     });
   });
+
+  test("Windows runtimes receive native shell guidance", () => {
+    const params = baseParams(["read", "exec"]);
+    const prompt = buildSystemPrompt({
+      ...params,
+      runtimeInfo: { ...params.runtimeInfo, os: "win32" },
+    });
+
+    expect(prompt).toContain("exec uses PowerShell when available and cmd.exe otherwise");
+    expect(prompt).toContain("Get-Command or where.exe");
+    expect(prompt).not.toContain("use POSIX syntax");
+  });
 });

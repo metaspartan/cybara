@@ -32,6 +32,10 @@ import { sessionIdForVisibleTokenUsage } from "./agent-provider-common-runtime";
 import { hasAgentTransferEnvelope } from "./agent-transfer";
 import type { ToolDefinition } from "./database";
 import { classifyApiError } from "./error-classifier";
+import {
+  bedrockAnthropicReasoningFields,
+  collectBedrockReasoningText,
+} from "./llm/bedrock-reasoning";
 import { googleFunctionDeclaration } from "./llm/google-tool-schema";
 import { toBedrockHistory, toGoogleHistory } from "./llm/provider-history";
 import { googleThinkingConfig, normalizeReasoningEffort } from "./llm/reasoning";
@@ -386,6 +390,7 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
     const client = new BedrockRuntimeClient({ region });
     const systemMessage = messages.find((message) => message.role === "system");
     const conversation = toBedrockHistory(messages) as unknown as BedrockMessage[];
+    const thinkingParts: string[] = [];
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
     const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
@@ -426,6 +431,13 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
           maxTokens: maxOutputTokens,
         },
       };
+      const reasoningFields = bedrockAnthropicReasoningFields(
+        modelId,
+        this.resolveModelParams(toolContext).reasoning_effort
+      );
+      if (reasoningFields) {
+        requestPayload.additionalModelRequestFields = reasoningFields as SmithyDocumentType;
+      }
 
       if (systemMessage) {
         requestPayload.system = [{ text: systemMessage.content }];
@@ -480,6 +492,8 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
 
       const outputMessage = response.output?.message;
       const outputContent: BedrockContentBlock[] = outputMessage?.content || [];
+      const iterationThinking = collectBedrockReasoningText(outputContent);
+      thinkingParts.push(...iterationThinking);
       const textParts = outputContent
         .map((block) => ("text" in block && typeof block.text === "string" ? block.text : ""))
         .filter((text) => text.length > 0);
@@ -511,7 +525,7 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
         break;
       }
 
-      const progressThought = summarizeProgressThought(text);
+      const progressThought = summarizeProgressThought(text || iterationThinking.join("\n"));
       if (progressThought && progressThought !== lastProgressThought) {
         this.broadcastAgentStatus("thinking", toolContext, progressThought);
         lastProgressThought = progressThought;
@@ -606,6 +620,7 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
 
     return {
       content: finalContent.trim(),
+      thinking: thinkingParts.length > 0 ? thinkingParts.join("\n\n") : undefined,
       tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
     };
   }

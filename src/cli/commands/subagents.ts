@@ -1,4 +1,4 @@
-import { parseSubagentSpawnArgs } from "./subagent-args";
+import { parseSubagentSpawnArgs, resolveSubagentSpawnAgent } from "./subagent-args";
 
 interface SubagentInfo {
   id: string;
@@ -130,7 +130,19 @@ async function showSubagent(id: string | undefined, options: SubagentCliOptions)
 }
 
 async function spawnSubagent(args: string[], options: SubagentCliOptions): Promise<void> {
-  const payload = parseSubagentSpawnArgs(args);
+  let payload = parseSubagentSpawnArgs(args);
+  if (payload.agentId) {
+    const { response, data } = await request<Array<{ id?: string; name?: string; model?: string }>>(
+      options,
+      "/api/agents/summary",
+      {
+        headers: options.withAuthHeaders(),
+      }
+    );
+    if (response.ok && Array.isArray(data)) {
+      payload = resolveSubagentSpawnAgent(payload, data);
+    }
+  }
   const { response, data } = await request<{
     id?: string;
     subagentId?: string;

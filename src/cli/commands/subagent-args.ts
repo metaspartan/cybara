@@ -1,3 +1,5 @@
+import { type AgentIdentifierCandidate, resolveAgentIdentifier } from "./agent-resolution";
+
 export interface SubagentSpawnPayload {
   task: string;
   label: string;
@@ -103,4 +105,13 @@ export function parseSubagentSpawnArgs(args: string[]): SubagentSpawnPayload {
     task,
     label: `Task: ${task.slice(0, 30)}...`,
   };
+}
+
+export function resolveSubagentSpawnAgent(
+  payload: SubagentSpawnPayload,
+  agents: AgentIdentifierCandidate[]
+): SubagentSpawnPayload {
+  if (!payload.agentId) return payload;
+  const agentId = resolveAgentIdentifier(payload.agentId, agents);
+  return agentId ? { ...payload, agentId } : payload;
 }

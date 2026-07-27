@@ -100,4 +100,37 @@ describe("subprocess environment", () => {
       rmSync(resourceDir, { recursive: true, force: true });
     }
   });
+
+  test("recovers common Windows developer tools from a stale desktop PATH", () => {
+    const executableDirectories = new Set(
+      [
+        "C:\\Cybara",
+        "C:\\Program Files\\GitHub CLI",
+        "C:\\Program Files\\Git\\cmd",
+        "C:\\Users\\test\\scoop\\shims",
+        "C:\\Users\\test\\AppData\\Local\\Microsoft\\WinGet\\Links",
+      ].map((path) => path.toLowerCase())
+    );
+    const environment = buildHostSubprocessEnvironment(
+      {},
+      {
+        Path: "C:\\Windows\\System32",
+        UserProfile: "C:\\Users\\test",
+        ProgramFiles: "C:\\Program Files",
+        LocalAppData: "C:\\Users\\test\\AppData\\Local",
+      },
+      {
+        platform: "win32",
+        executablePath: "C:\\Cybara\\cybara.exe",
+        directoryExists: (path) => executableDirectories.has(path.toLowerCase()),
+      }
+    );
+    const pathKey = Object.keys(environment).find((name) => name.toUpperCase() === "PATH");
+    const entries = (pathKey ? environment[pathKey] : "").split(";");
+
+    expect(entries).toContain("C:\\Program Files\\GitHub CLI");
+    expect(entries).toContain("C:\\Program Files\\Git\\cmd");
+    expect(entries).toContain("C:\\Users\\test\\scoop\\shims");
+    expect(entries).toContain("C:\\Users\\test\\AppData\\Local\\Microsoft\\WinGet\\Links");
+  });
 });

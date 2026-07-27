@@ -348,6 +348,14 @@ export const foundationProviderCatalog = {
     authType: "api_key",
     models: [
       {
+        id: "claude-opus-5",
+        name: "Claude Opus 5",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image", "pdf"],
+      },
+      {
         id: "claude-mythos-5",
         name: "Claude Mythos 5",
         context: 1000000,
@@ -369,7 +377,7 @@ export const foundationProviderCatalog = {
         context: 1000000,
         maxTokens: 128000,
         reasoning: true,
-        input: ["text", "image"],
+        input: ["text", "image", "pdf"],
       },
       {
         id: "claude-fable-5",
@@ -377,7 +385,7 @@ export const foundationProviderCatalog = {
         context: 1000000,
         maxTokens: 128000,
         reasoning: true,
-        input: ["text", "image"],
+        input: ["text", "image", "pdf"],
       },
       {
         id: "claude-opus-4-8",
@@ -459,6 +467,22 @@ export const foundationProviderCatalog = {
     api: "google-generative-ai",
     authType: "api_key",
     models: [
+      {
+        id: "gemini-3.6-flash",
+        name: "Gemini 3.6 Flash",
+        context: 1048576,
+        maxTokens: 65536,
+        reasoning: true,
+        input: ["text", "image", "audio", "video", "pdf"],
+      },
+      {
+        id: "gemini-3.5-flash-lite",
+        name: "Gemini 3.5 Flash Lite",
+        context: 1048576,
+        maxTokens: 65536,
+        reasoning: true,
+        input: ["text", "image", "audio", "video", "pdf"],
+      },
       {
         id: "gemini-3.5-flash",
         name: "Gemini 3.5 Flash",
@@ -554,6 +578,14 @@ export const foundationProviderCatalog = {
       callbackPath: "/oauth-callback",
     },
     models: [
+      {
+        id: "gemini-3.6-flash",
+        name: "Gemini 3.6 Flash (Antigravity)",
+        context: 1048576,
+        maxTokens: 65536,
+        reasoning: true,
+        input: ["text", "image", "audio", "video", "pdf"],
+      },
       {
         id: "gemini-3.1-pro-preview",
         name: "Gemini 3.1 Pro (Antigravity)",
@@ -753,6 +785,14 @@ export const foundationProviderCatalog = {
     authType: "api_key",
     models: [
       {
+        id: "kimi-k3",
+        name: "Kimi K3",
+        context: 1048576,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image", "video"],
+      },
+      {
         id: "kimi-k2-thinking",
         name: "Kimi K2 Thinking",
         context: 262144,
@@ -779,6 +819,14 @@ export const foundationProviderCatalog = {
       {
         id: "kimi-k2.7-code",
         name: "Kimi K2.7 Code",
+        context: 262144,
+        maxTokens: 262144,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "kimi-k2.7-code-highspeed",
+        name: "Kimi K2.7 Code High Speed",
         context: 262144,
         maxTokens: 262144,
         reasoning: true,

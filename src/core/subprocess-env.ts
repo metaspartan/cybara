@@ -67,19 +67,34 @@ function existingSubdirectories(root: string): string[] {
   }
 }
 
+function environmentValue(
+  source: Readonly<Record<string, string | undefined>>,
+  name: string
+): string | undefined {
+  const matchedName = Object.keys(source).find(
+    (candidate) => candidate.toUpperCase() === name.toUpperCase()
+  );
+  return matchedName ? source[matchedName] : undefined;
+}
+
 function hostExecutableDirectories(
   source: Readonly<Record<string, string | undefined>>,
   platform: NodeJS.Platform = process.platform,
-  executablePath = process.execPath
+  executablePath = process.execPath,
+  directoryExists: (path: string) => boolean = existsSync
 ): string[] {
-  const home = source.HOME || source.USERPROFILE || homedir();
+  const home =
+    environmentValue(source, "HOME") || environmentValue(source, "USERPROFILE") || homedir();
   const pathJoin = platform === "win32" ? win32.join : join;
   const pathDirname = platform === "win32" ? win32.dirname : dirname;
+  const cybaraBunPath = environmentValue(source, "CYBARA_BUN_PATH");
+  const resourceDir = environmentValue(source, "CYBARA_RESOURCE_DIR");
+  const bunInstall = environmentValue(source, "BUN_INSTALL");
   const candidates: Array<string | undefined> = [
     pathDirname(executablePath),
-    source.CYBARA_BUN_PATH ? pathDirname(source.CYBARA_BUN_PATH) : undefined,
-    source.CYBARA_RESOURCE_DIR ? pathJoin(source.CYBARA_RESOURCE_DIR, "runtime") : undefined,
-    source.BUN_INSTALL ? pathJoin(source.BUN_INSTALL, "bin") : undefined,
+    cybaraBunPath ? pathDirname(cybaraBunPath) : undefined,
+    resourceDir ? pathJoin(resourceDir, "runtime") : undefined,
+    bunInstall ? pathJoin(bunInstall, "bin") : undefined,
     pathJoin(home, ".bun", "bin"),
     pathJoin(home, ".local", "bin"),
     pathJoin(home, ".volta", "bin"),
@@ -88,13 +103,31 @@ function hostExecutableDirectories(
   ];
 
   if (platform === "win32") {
-    const localAppData = source.LOCALAPPDATA;
-    const programFiles = source.PROGRAMFILES || "C:\\Program Files";
+    const localAppData = environmentValue(source, "LOCALAPPDATA");
+    const appData = environmentValue(source, "APPDATA");
+    const programData = environmentValue(source, "PROGRAMDATA") || "C:\\ProgramData";
+    const programFiles =
+      environmentValue(source, "PROGRAMW6432") ||
+      environmentValue(source, "PROGRAMFILES") ||
+      "C:\\Program Files";
+    const programFilesX86 = environmentValue(source, "PROGRAMFILES(X86)");
+    const chocolateyInstall = environmentValue(source, "CHOCOLATEYINSTALL");
     candidates.push(
       pathJoin(programFiles, "nodejs"),
-      source.APPDATA ? pathJoin(source.APPDATA, "npm") : undefined,
+      pathJoin(programFiles, "GitHub CLI"),
+      pathJoin(programFiles, "Git", "cmd"),
+      programFilesX86 ? pathJoin(programFilesX86, "GitHub CLI") : undefined,
+      programFilesX86 ? pathJoin(programFilesX86, "Git", "cmd") : undefined,
+      appData ? pathJoin(appData, "npm") : undefined,
       pathJoin(home, "scoop", "shims"),
-      localAppData ? pathJoin(localAppData, "Microsoft", "WinGet", "Links") : undefined
+      pathJoin(home, ".cargo", "bin"),
+      pathJoin(home, ".dotnet", "tools"),
+      pathJoin(home, "go", "bin"),
+      localAppData ? pathJoin(localAppData, "Microsoft", "WinGet", "Links") : undefined,
+      localAppData ? pathJoin(localAppData, "Programs", "GitHub CLI") : undefined,
+      localAppData ? pathJoin(localAppData, "Programs", "Git", "cmd") : undefined,
+      chocolateyInstall ? pathJoin(chocolateyInstall, "bin") : undefined,
+      pathJoin(programData, "chocolatey", "bin")
     );
   } else {
     candidates.push("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin");
@@ -115,7 +148,7 @@ function hostExecutableDirectories(
 
   const seen = new Set<string>();
   return candidates.filter((candidate): candidate is string => {
-    if (!candidate || !existsSync(candidate)) return false;
+    if (!candidate || !directoryExists(candidate)) return false;
     const key = platform === "win32" ? candidate.toLowerCase() : candidate;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -159,24 +192,36 @@ export function buildSubprocessEnvironment(
 
 export function buildHostSubprocessEnvironment(
   overrides: Readonly<Record<string, string | undefined>> = {},
-  source: Readonly<Record<string, string | undefined>> = process.env
+  source: Readonly<Record<string, string | undefined>> = process.env,
+  options: {
+    platform?: NodeJS.Platform;
+    executablePath?: string;
+    directoryExists?: (path: string) => boolean;
+  } = {}
 ): Record<string, string> {
+  const platform = options.platform ?? process.platform;
+  const pathDelimiter = platform === "win32" ? win32.delimiter : delimiter;
   const environment = buildSubprocessEnvironment(overrides, source);
   const pathKey = environmentPathKey(environment);
   const currentEntries = (environment[pathKey] || "")
-    .split(delimiter)
+    .split(pathDelimiter)
     .map((entry) => entry.trim())
     .filter(Boolean);
   const seen = new Set(
-    currentEntries.map((entry) => (process.platform === "win32" ? entry.toLowerCase() : entry))
+    currentEntries.map((entry) => (platform === "win32" ? entry.toLowerCase() : entry))
   );
-  for (const directory of hostExecutableDirectories({ ...source, ...environment })) {
-    const key = process.platform === "win32" ? directory.toLowerCase() : directory;
+  for (const directory of hostExecutableDirectories(
+    { ...source, ...environment },
+    platform,
+    options.executablePath,
+    options.directoryExists
+  )) {
+    const key = platform === "win32" ? directory.toLowerCase() : directory;
     if (seen.has(key)) continue;
     seen.add(key);
     currentEntries.push(directory);
   }
-  environment[pathKey] = currentEntries.join(delimiter);
+  environment[pathKey] = currentEntries.join(pathDelimiter);
   return environment;
 }
 

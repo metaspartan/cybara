@@ -15,14 +15,17 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("meta")).toBe("muse-spark-1.1");
     expect(getDefaultModel("ds4")).toBe("deepseek-v4-flash");
     expect(getDefaultModel("inferrs")).toBe("google/gemma-4-E2B-it");
-    expect(getDefaultModel("anthropic")).toBe("claude-opus-4-8");
-    expect(getDefaultModel("anthropic-oauth")).toBe("claude-opus-4-8");
+    expect(getDefaultModel("anthropic")).toBe("claude-opus-5");
+    expect(getDefaultModel("anthropic-oauth")).toBe("claude-opus-5");
+    expect(getDefaultModel("anthropic_vertex")).toBe("claude-opus-5@default");
     expect(getDefaultModel("cursor")).toBe("default");
     expect(getDefaultModel("devin")).toBe("claude-sonnet-5-medium");
     expect(getDefaultModel("gitlab-duo")).toBe("duo-chat-sonnet-4-6");
     expect(getDefaultModel("minimax")).toBe("MiniMax-M3");
     expect(getDefaultModel("minimax-portal")).toBe("MiniMax-M3");
-    expect(getDefaultModel("moonshot")).toBe("kimi-k2.6");
+    expect(getDefaultModel("moonshot")).toBe("kimi-k3");
+    expect(getDefaultModel("google_vertex")).toBe("gemini-3.6-flash");
+    expect(getDefaultModel("bedrock")).toBe("anthropic.claude-opus-4-8");
     expect(getDefaultModel("litellm")).toBe("gpt-4o");
     expect(getDefaultModel("z.ai")).toBe("glm-5.2");
     expect(getDefaultModel("zai")).toBe("glm-5.2");
@@ -31,14 +34,14 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("google-antigravity")).toBe("gemini-3.1-pro-preview");
     expect(getDefaultModel("google-gemini-cli")).toBe("gemini-3.1-pro-preview");
     expect(getDefaultModel("gemini-cli")).toBe("gemini-3.1-pro-preview");
-    expect(getDefaultModel("opencode_zen")).toBe("claude-opus-4-8");
-    expect(getDefaultModel("opencode")).toBe("claude-opus-4-8");
+    expect(getDefaultModel("opencode_zen")).toBe("claude-opus-5");
+    expect(getDefaultModel("opencode")).toBe("claude-opus-5");
     expect(getDefaultModel("openai-codex")).toBe("gpt-5.6-sol");
     expect(getDefaultModel("chutes")).toBe("Qwen/Qwen3-32B-TEE");
     expect(getDefaultModel("featherless")).toBe("Qwen/Qwen3-32B");
     expect(getDefaultModel("longcat")).toBe("LongCat-2.0");
-    expect(getDefaultModel("github_copilot")).toBe("gpt-5.5");
-    expect(getDefaultModel("github-copilot")).toBe("gpt-5.5");
+    expect(getDefaultModel("github_copilot")).toBe("claude-opus-5");
+    expect(getDefaultModel("github-copilot")).toBe("claude-opus-5");
     expect(getDefaultModel("kimi-coding")).toBe("k3");
     expect(getDefaultModel("kimi-code-oauth")).toBe("k3");
     expect(getDefaultModel("qianfan")).toBe("deepseek-v3.2");
@@ -127,10 +130,61 @@ describe("Provider model defaults and API-family parity", () => {
     }
   });
 
+  test("includes current Claude, Gemini, and Kimi model contracts", () => {
+    expect(providers.anthropic.models.find((model) => model.id === "claude-opus-5")).toMatchObject({
+      context: 1_000_000,
+      maxTokens: 128_000,
+      reasoning: true,
+      input: ["text", "image", "pdf"],
+    });
+    expect(providers.google.models.find((model) => model.id === "gemini-3.6-flash")).toMatchObject({
+      context: 1_048_576,
+      maxTokens: 65_536,
+      reasoning: true,
+      input: ["text", "image", "audio", "video", "pdf"],
+    });
+    expect(
+      providers.google.models.find((model) => model.id === "gemini-3.5-flash-lite")
+    ).toMatchObject({ context: 1_048_576, maxTokens: 65_536, reasoning: true });
+    expect(providers.moonshot.models.find((model) => model.id === "kimi-k3")).toMatchObject({
+      context: 1_048_576,
+      maxTokens: 131_072,
+      reasoning: true,
+      input: ["text", "image", "video"],
+    });
+    expect(
+      providers.openrouter.models.find((model) => model.id === "moonshotai/kimi-k3")
+    ).toMatchObject({ context: 1_048_576, maxTokens: 1_048_576, reasoning: true });
+    for (const modelId of [
+      "anthropic/claude-opus-5-fast",
+      "openai/gpt-5.6-sol",
+      "openai/gpt-5.6-sol-pro",
+      "openai/gpt-5.6-terra",
+      "openai/gpt-5.6-terra-pro",
+      "openai/gpt-5.6-luna",
+      "openai/gpt-5.6-luna-pro",
+      "x-ai/grok-4.5",
+      "meituan/longcat-2.0",
+      "tencent/hy3",
+    ]) {
+      expect(providers.openrouter.models.some((model) => model.id === modelId)).toBe(true);
+    }
+    expect(
+      providers.github_copilot.models.find((model) => model.id === "claude-opus-5")
+    ).toMatchObject({ context: 1_000_000, maxTokens: 64_000, reasoning: true });
+  });
+
   test("includes default GitHub Copilot model ids for broad plan compatibility", () => {
     const copilotModelIds = providers.github_copilot.models.map((model) => model.id);
     expect(copilotModelIds).toEqual(
       expect.arrayContaining([
+        "claude-fable-5",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "gemini-3.6-flash",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
         "gpt-4o",
         "gpt-4.1",
         "gpt-4.1-mini",
@@ -167,6 +221,7 @@ describe("Provider model defaults and API-family parity", () => {
       true
     );
     expect(providers.anthropic.models.some((model) => model.id === "claude-mythos-5")).toBe(true);
+    expect(providers.anthropic.models.some((model) => model.id === "claude-opus-5")).toBe(true);
     expect(providers.groq.models.some((model) => model.id === "groq/compound")).toBe(true);
     expect(providers.cohere.models.some((model) => model.id === "command-a-plus-05-2026")).toBe(
       true
@@ -193,8 +248,16 @@ describe("Provider model defaults and API-family parity", () => {
     const openCodeZenIds = providers.opencode_zen.models.map((model) => model.id);
     expect(openCodeZenIds).toEqual(
       expect.arrayContaining([
+        "claude-opus-5",
         "claude-fable-5",
         "claude-sonnet-5",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "laguna-s-2.1-free",
+        "ling-3.0-flash-free",
         "gemini-3.5-flash",
         "gpt-5.5",
         "gpt-5.3-codex-spark",
@@ -221,6 +284,7 @@ describe("Provider model defaults and API-family parity", () => {
     const antigravityIds = providers.antigravity.models.map((model) => model.id);
     expect(antigravityIds).toEqual(
       expect.arrayContaining([
+        "gemini-3.6-flash",
         "gemini-3.1-pro-preview",
         "gemini-3.1-pro-preview-customtools",
         "gemini-3-flash-preview",

@@ -8,7 +8,7 @@ import {
   toGoogleImagePart,
   toOpenAIImageBlock,
 } from "./image-blocks";
-import { isKimiCodeProvider, normalizeKimiAssistantToolMessage } from "./kimi-wire";
+import { normalizeKimiCompatibleAssistantToolMessage } from "./kimi-wire";
 
 export interface BedrockHistoryMessage {
   role: "user" | "assistant";
@@ -229,7 +229,8 @@ export function toBedrockHistory(messages: AgentMessage[]): BedrockHistoryMessag
 
 export function toOpenAIChatMessage(
   message: AgentMessage,
-  providerConfig?: string
+  providerConfig?: string,
+  modelId: string = ""
 ): Record<string, unknown> {
   if (message.role === "user" && hasImages(message.images)) {
     return {
@@ -253,9 +254,7 @@ export function toOpenAIChatMessage(
         },
       })),
     };
-    return isKimiCodeProvider(providerConfig)
-      ? normalizeKimiAssistantToolMessage(converted)
-      : converted;
+    return normalizeKimiCompatibleAssistantToolMessage(converted, providerConfig, modelId);
   }
   if (message.role === "tool" && message.tool_call_id) {
     return {
@@ -269,11 +268,12 @@ export function toOpenAIChatMessage(
 
 export function toOpenAIChatHistory(
   messages: AgentMessage[],
-  providerConfig?: string
+  providerConfig?: string,
+  modelId: string = ""
 ): Array<Record<string, unknown>> {
   const systemMessages = messages.filter((message) => message.role === "system");
   const chatMessages = messages.filter((message) => message.role !== "system");
   return [...systemMessages, ...chatMessages].map((message) =>
-    toOpenAIChatMessage(message, providerConfig)
+    toOpenAIChatMessage(message, providerConfig, modelId)
   );
 }

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { parseSubagentSpawnArgs } from "../../src/cli/commands/subagent-args";
+import {
+  parseSubagentSpawnArgs,
+  resolveSubagentSpawnAgent,
+} from "../../src/cli/commands/subagent-args";
 
 describe("CLI subagent spawn argument parsing", () => {
   test("parses routing, workspace, timeout, cleanup, and task flags", () => {
@@ -51,5 +54,12 @@ describe("CLI subagent spawn argument parsing", () => {
     expect(() => parseSubagentSpawnArgs(["--cleanup", "later", "task"])).toThrow(
       "--cleanup must be keep or delete"
     );
+  });
+
+  test("resolves a display name before spawning a subagent", () => {
+    const payload = parseSubagentSpawnArgs(["--agent", "Mini", "review", "repo"]);
+    expect(
+      resolveSubagentSpawnAgent(payload, [{ id: "agent-mini", name: "Mini", model: "MiniMax-M3" }])
+    ).toMatchObject({ agentId: "agent-mini", task: "review repo" });
   });
 });

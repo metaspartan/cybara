@@ -71,12 +71,57 @@ function setRouterConfig(cfg: Partial<RouterConfig>): void {
 
 describe("built-in pricing DB", () => {
   test("getPricing returns stamped Anthropic prices", () => {
-    const p = getPricing("anthropic", "claude-opus-4-8");
+    const p = getPricing("anthropic", "claude-opus-5");
     expect(p).not.toBeNull();
     expect(p!.inputPerM).toBe(5.0);
     expect(p!.outputPerM).toBe(25.0);
     expect(p!.cacheReadPerM).toBe(0.5);
     expect(p!.cacheWritePerM).toBe(6.25);
+  });
+
+  test("getPricing covers current Claude, Gemini, and Kimi models", () => {
+    expect(getPricing("anthropic", "claude-sonnet-5")).toEqual({
+      inputPerM: 2,
+      outputPerM: 10,
+      cacheReadPerM: 0.2,
+      cacheWritePerM: 2.5,
+    });
+    expect(getPricing("anthropic", "claude-fable-5")).toEqual({
+      inputPerM: 10,
+      outputPerM: 50,
+      cacheReadPerM: 1,
+      cacheWritePerM: 12.5,
+    });
+    expect(getPricing("anthropic", "claude-mythos-5")).toEqual({
+      inputPerM: 10,
+      outputPerM: 50,
+      cacheReadPerM: 1,
+      cacheWritePerM: 12.5,
+    });
+    expect(getPricing("google", "gemini-3.6-flash")).toEqual({
+      inputPerM: 1.5,
+      outputPerM: 7.5,
+      cacheReadPerM: 0.15,
+      cacheWritePerM: undefined,
+    });
+    expect(getPricing("google", "gemini-3.5-flash-lite")).toEqual({
+      inputPerM: 0.3,
+      outputPerM: 2.5,
+      cacheReadPerM: 0.03,
+      cacheWritePerM: undefined,
+    });
+    expect(getPricing("moonshot", "kimi-k3")).toEqual({
+      inputPerM: 3,
+      outputPerM: 15,
+      cacheReadPerM: 0.3,
+      cacheWritePerM: undefined,
+    });
+    expect(getPricing("openrouter", "openai/gpt-5.6-terra")).toEqual({
+      inputPerM: 2.5,
+      outputPerM: 15,
+      cacheReadPerM: 0.25,
+      cacheWritePerM: 3.125,
+    });
   });
 
   test("getPricing returns stamped DeepSeek prices", () => {
@@ -121,7 +166,7 @@ describe("built-in pricing DB", () => {
     expect(grok45).toEqual({
       inputPerM: 2,
       outputPerM: 6,
-      cacheReadPerM: 0.5,
+      cacheReadPerM: 0.3,
       cacheWritePerM: undefined,
     });
   });

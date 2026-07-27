@@ -1,10 +1,11 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { chatApi } from "@/lib/api";
 import {
   connectStatusStream,
+  type PendingChatMessage,
   type StatusSessionSnapshot,
   type StatusStreamEvent,
 } from "@/lib/status-stream";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   resolveSessionEventOrder,
   type SessionEventCursor,
@@ -27,6 +28,7 @@ import { isRunEndingStatus } from "./sessionRunStatus";
 interface UseMultiChatLiveStatusesOptions {
   sessionIds: string[];
   onRefresh: (sessionId: string, includeSessionList?: boolean) => void;
+  onPendingMessages: (sessionId: string, messages?: PendingChatMessage[]) => void;
 }
 
 function snapshotIdentity(snapshot: StatusSessionSnapshot): {
@@ -44,6 +46,7 @@ function snapshotIdentity(snapshot: StatusSessionSnapshot): {
 export function useMultiChatLiveStatuses({
   sessionIds,
   onRefresh,
+  onPendingMessages,
 }: UseMultiChatLiveStatusesOptions): Record<string, MultiChatLiveState> {
   const [statuses, setStatuses] = useState<Record<string, MultiChatLiveState>>({});
   const cursorsRef = useRef<Record<string, SessionEventCursor>>({});
@@ -109,6 +112,7 @@ export function useMultiChatLiveStatuses({
     (snapshot: StatusSessionSnapshot, observedAt = Date.now()): void => {
       const sessionId = snapshot.sessionId.trim();
       if (!sessionId || !sessionIdSetRef.current.has(sessionId)) return;
+      if (snapshot.pendingMessages) onPendingMessages(sessionId, snapshot.pendingMessages);
       if (!MULTI_CHAT_ACTIVE_STATUSES.has(snapshot.status)) return;
       if (!acceptEvent(sessionId, snapshotIdentity(snapshot))) return;
       setStatuses((current) => {
@@ -127,7 +131,7 @@ export function useMultiChatLiveStatuses({
       });
       onRefresh(sessionId);
     },
-    [acceptEvent, onRefresh]
+    [acceptEvent, onPendingMessages, onRefresh]
   );
 
   const hydrate = useCallback(async (): Promise<void> => {
@@ -178,6 +182,7 @@ export function useMultiChatLiveStatuses({
         const sessionId = event.sessionId?.trim();
         if (!sessionId || !sessionIdSetRef.current.has(sessionId)) return;
         storeStatus(sessionId, null);
+        onPendingMessages(sessionId);
         onRefresh(sessionId, true);
         return;
       }
@@ -223,6 +228,9 @@ export function useMultiChatLiveStatuses({
         });
         return { ...current, [sessionId]: next };
       });
+      if (event.pendingChatId || event.clientPendingId || isRunEndingStatus(event)) {
+        onPendingMessages(sessionId);
+      }
       onRefresh(sessionId, isRunEndingStatus(event));
     };
 
@@ -231,7 +239,7 @@ export function useMultiChatLiveStatuses({
       onOpen: () => void hydrate(),
       onEvent: handleEvent,
     });
-  }, [acceptEvent, applySnapshot, hydrate, onRefresh, storeStatus]);
+  }, [acceptEvent, applySnapshot, hydrate, onPendingMessages, onRefresh, storeStatus]);
 
   return statuses;
 }

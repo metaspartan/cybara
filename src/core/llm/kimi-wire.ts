@@ -1,4 +1,7 @@
-import type { ReasoningEffort } from "../../../shared/reasoning-capabilities";
+import {
+  normalizeReasoningEffort,
+  type ReasoningEffort,
+} from "../../../shared/reasoning-capabilities";
 
 const KIMI_CODE_PROVIDERS = new Set([
   "kimi-code",
@@ -7,6 +10,18 @@ const KIMI_CODE_PROVIDERS = new Set([
   "kimi-oauth",
   "kimi-code-subscription",
 ]);
+
+const MOONSHOT_PROVIDER = "moonshot";
+const MOONSHOT_K3_MODEL = "kimi-k3";
+const MOONSHOT_K27_CODE_MODELS = new Set(["kimi-k2.7-code", "kimi-k2.7-code-highspeed"]);
+const MOONSHOT_FIXED_SAMPLING_FIELDS = [
+  "temperature",
+  "top_p",
+  "n",
+  "presence_penalty",
+  "frequency_penalty",
+] as const;
+const KIMI_K3_EFFORTS = new Set<ReasoningEffort>(["low", "high", "max"]);
 
 const COMBINATOR_KEYS = new Set(["$ref", "allOf", "anyOf", "oneOf", "not", "if", "then", "else"]);
 const OBJECT_KEYS = new Set([
@@ -149,6 +164,44 @@ export function isKimiCodeProvider(providerId: string | undefined): boolean {
   return KIMI_CODE_PROVIDERS.has((providerId ?? "").trim().toLowerCase());
 }
 
+export function isMoonshotK3(providerId: string | undefined, modelId: string): boolean {
+  return (
+    (providerId ?? "").trim().toLowerCase() === MOONSHOT_PROVIDER &&
+    modelId.trim().toLowerCase() === MOONSHOT_K3_MODEL
+  );
+}
+
+function isMoonshotAlwaysThinkingModel(providerId: string | undefined, modelId: string): boolean {
+  if ((providerId ?? "").trim().toLowerCase() !== MOONSHOT_PROVIDER) return false;
+  const normalizedModel = modelId.trim().toLowerCase();
+  return normalizedModel === MOONSHOT_K3_MODEL || MOONSHOT_K27_CODE_MODELS.has(normalizedModel);
+}
+
+export function applyMoonshotRequestOptions(
+  requestBody: Record<string, unknown>,
+  providerId: string | undefined,
+  modelId: string
+): void {
+  if (!isMoonshotAlwaysThinkingModel(providerId, modelId)) return;
+  delete requestBody.thinking;
+  delete requestBody.reasoningEffort;
+  for (const field of MOONSHOT_FIXED_SAMPLING_FIELDS) delete requestBody[field];
+  if (isMoonshotK3(providerId, modelId)) {
+    const effort = normalizeReasoningEffort(requestBody.reasoning_effort);
+    requestBody.reasoning_effort = effort && KIMI_K3_EFFORTS.has(effort) ? effort : "max";
+    return;
+  }
+  delete requestBody.reasoning_effort;
+  const toolChoice = requestBody.tool_choice;
+  if (!toolChoice || toolChoice === "auto" || toolChoice === "none") return;
+  if (typeof toolChoice !== "object" || Array.isArray(toolChoice)) {
+    requestBody.tool_choice = "auto";
+    return;
+  }
+  const type = (toolChoice as Record<string, unknown>).type;
+  if (type !== "auto" && type !== "none") requestBody.tool_choice = "auto";
+}
+
 export function kimiThinkingParams(effort: ReasoningEffort): Record<string, unknown> {
   return { thinking: { type: "enabled", effort } };
 }
@@ -174,4 +227,22 @@ export function normalizeKimiAssistantToolMessage(
   const normalized = { ...message };
   delete normalized.content;
   return normalized;
+}
+
+export function normalizeKimiCompatibleAssistantToolMessage(
+  message: Record<string, unknown>,
+  providerId: string | undefined,
+  modelId: string
+): Record<string, unknown> {
+  if (isKimiCodeProvider(providerId)) return normalizeKimiAssistantToolMessage(message);
+  if (
+    !isMoonshotAlwaysThinkingModel(providerId, modelId) ||
+    message.role !== "assistant" ||
+    !Array.isArray(message.tool_calls) ||
+    message.tool_calls.length === 0 ||
+    Object.hasOwn(message, "reasoning_content")
+  ) {
+    return message;
+  }
+  return { ...message, reasoning_content: "" };
 }
