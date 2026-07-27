@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { latestRecoveredAssistantContent } from "../../src/cli/commands/raw-agent-recovery";
+import {
+  latestRecoveredAssistantContent,
+  recoverRawAgentResult,
+} from "../../src/cli/commands/raw-agent-recovery";
 
 describe("raw agent recovery", () => {
   test("returns only an assistant response added after the request began", () => {
@@ -27,5 +30,21 @@ describe("raw agent recovery", () => {
         2
       )
     ).toBeNull();
+  });
+
+  test("does not attempt recovery without a valid history baseline", async () => {
+    let fetchCount = 0;
+    const result = await recoverRawAgentResult({
+      baselineMessageCount: null,
+      fetchAPI: async <T>(): Promise<T | null> => {
+        fetchCount += 1;
+        return [{ role: "assistant", content: "Earlier answer" }] as T;
+      },
+      sessionId: "session-without-baseline",
+      waitMs: 10,
+    });
+
+    expect(result).toBeNull();
+    expect(fetchCount).toBe(0);
   });
 });

@@ -569,6 +569,7 @@ export async function rawAgent(rawArgs: string[]): Promise<void> {
         `/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`
       )
     : [];
+  const baselineMessageCount = Array.isArray(baselineMessages) ? baselineMessages.length : null;
   sessionId ||= crypto.randomUUID();
 
   const body: Record<string, unknown> = {
@@ -595,7 +596,7 @@ export async function rawAgent(rawArgs: string[]): Promise<void> {
 
   if (!res) {
     const recovered = await recoverRawAgentResult({
-      baselineMessageCount: baselineMessages?.length || 0,
+      baselineMessageCount,
       fetchAPI: chatContext().fetchAPI,
       sessionId,
     });

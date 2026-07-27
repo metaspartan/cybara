@@ -10,7 +10,7 @@ interface RawAgentStatusResponse {
 type RawAgentFetch = <T>(endpoint: string, options?: RequestInit) => Promise<T | null>;
 
 interface RawAgentRecoveryOptions {
-  baselineMessageCount: number;
+  baselineMessageCount: number | null;
   fetchAPI: RawAgentFetch;
   sessionId: string;
   waitMs?: number;
@@ -54,6 +54,7 @@ export async function recoverRawAgentResult({
   sessionId,
   waitMs = recoveryWaitMs(),
 }: RawAgentRecoveryOptions): Promise<string | null> {
+  if (baselineMessageCount === null) return null;
   const deadline = Date.now() + waitMs;
   let observedActiveRun = false;
   let inactiveChecks = 0;

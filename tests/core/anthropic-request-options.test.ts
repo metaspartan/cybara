@@ -48,6 +48,33 @@ describe("Anthropic request options", () => {
     expect(requestBody.top_k).toBeUndefined();
   });
 
+  test("preserves a valid top-p value for legacy manual thinking", () => {
+    const requestBody: Record<string, unknown> = {
+      temperature: 0.5,
+      top_p: 0.97,
+      top_k: 20,
+    };
+
+    applyAnthropicReasoningOptions(requestBody, "anthropic", "claude-sonnet-4-5", 64000, {
+      reasoning_effort: "high",
+    });
+
+    expect(requestBody.thinking).toEqual({ type: "enabled", budget_tokens: 16384 });
+    expect(requestBody.temperature).toBeUndefined();
+    expect(requestBody.top_p).toBe(0.97);
+    expect(requestBody.top_k).toBeUndefined();
+  });
+
+  test("removes an invalid top-p value from legacy manual thinking", () => {
+    const requestBody: Record<string, unknown> = { top_p: 0.9 };
+
+    applyAnthropicReasoningOptions(requestBody, "anthropic", "claude-sonnet-4-5", 64000, {
+      reasoning_effort: "high",
+    });
+
+    expect(requestBody.top_p).toBeUndefined();
+  });
+
   test("sends the legacy 1M beta only for models without native 1M context", () => {
     expect(shouldSendAnthropicContext1mBeta("claude-opus-5", true)).toBe(false);
     expect(shouldSendAnthropicContext1mBeta("claude-sonnet-5", true)).toBe(false);
