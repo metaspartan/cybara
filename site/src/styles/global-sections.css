@@ -213,7 +213,7 @@
 
 .migrate-source {
   padding: 8px 15px;
-  border-radius: 999px;
+  border-radius: 11px;
   background: var(--glass-surface-strong);
   border: 1px solid var(--glass-border);
   font-weight: 600;
@@ -229,7 +229,7 @@
 
 .migrate-target {
   padding: 8px 16px;
-  border-radius: 999px;
+  border-radius: 11px;
   font-weight: 700;
   font-size: 0.94rem;
   color: #fff;
@@ -274,7 +274,7 @@
 
 .migrate-command-state {
   padding: 2px 9px;
-  border-radius: 999px;
+  border-radius: 11px;
   background: var(--accent-soft);
   color: var(--text);
   font-family: var(--font-ui);

@@ -167,20 +167,26 @@ img {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
+  gap: 8px;
   font-family: var(--font-ui);
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   font-weight: 600;
-  letter-spacing: -0.005em;
-  padding: 12px 22px;
-  border-radius: 999px;
-  border: 1px solid var(--glass-border);
+  letter-spacing: -0.006em;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.05);
+  background-image: linear-gradient(
+    104deg,
+    rgba(253, 253, 253, 0.05) 5%,
+    rgba(240, 240, 228, 0.1) 100%
+  );
+  color: rgba(255, 255, 255, 0.96);
   cursor: pointer;
-  overflow: hidden;
   backdrop-filter: blur(20px) saturate(115%);
   -webkit-backdrop-filter: blur(20px) saturate(115%);
-  transition: transform 0.18s ease, box-shadow 0.25s ease, background 0.25s ease,
-    border-color 0.25s ease;
+  transition: background-image 0.22s ease, border-color 0.22s ease, color 0.22s ease,
+    transform 0.16s ease;
   white-space: nowrap;
 }
 
@@ -189,57 +195,54 @@ img {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.02) 46%, transparent 70%);
-  opacity: 0.9;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), transparent 52%);
   pointer-events: none;
   z-index: -1;
 }
 
+.btn:hover {
+  border-color: rgba(255, 255, 255, 0.09);
+  background-image: linear-gradient(
+    104deg,
+    rgba(253, 253, 253, 0.09) 5%,
+    rgba(240, 240, 228, 0.16) 100%
+  );
+}
+
 .btn:active {
-  transform: translateY(0);
+  transform: translateY(0.5px);
 }
 
 .btn-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .btn--primary {
-  background: linear-gradient(180deg, rgba(139, 137, 246, 0.42), rgba(108, 106, 226, 0.34));
-  border-color: rgba(160, 158, 255, 0.34);
+  border-color: rgba(158, 156, 250, 0.16);
+  background-image: linear-gradient(
+    104deg,
+    rgba(150, 148, 250, 0.13) 5%,
+    rgba(196, 195, 255, 0.16) 100%
+  );
   color: #fff;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.24),
-    0 10px 30px rgba(0, 0, 0, 0.55),
-    0 0 24px rgba(124, 123, 240, 0.16);
 }
 
 .btn--primary:hover {
-  transform: translateY(-1px);
-  background: linear-gradient(180deg, rgba(152, 150, 250, 0.52), rgba(118, 116, 236, 0.42));
-  border-color: rgba(176, 174, 255, 0.46);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    0 14px 36px rgba(0, 0, 0, 0.6),
-    0 0 34px rgba(124, 123, 240, 0.26);
+  border-color: rgba(168, 166, 255, 0.26);
+  background-image: linear-gradient(
+    104deg,
+    rgba(158, 156, 252, 0.2) 5%,
+    rgba(206, 205, 255, 0.24) 100%
+  );
 }
 
 .btn--ghost {
-  background: var(--glass-surface-strong);
-  border-color: var(--glass-border);
-  color: var(--text);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 8px 24px rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .btn--ghost:hover {
-  border-color: var(--glass-border-strong);
-  transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.075);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    0 12px 30px rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.96);
 }
 
 .nav {
@@ -495,7 +498,7 @@ img {
 }
 
 .hero-title-accent {
-  background: linear-gradient(104deg, #f2f1ff 0%, #b9b7fb 42%, #8f8df2 100%);
+  background: linear-gradient(104deg, #ffffff 0%, #dedcff 46%, #b3b0f7 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -525,7 +528,7 @@ img {
   color: var(--text-dim);
   background: var(--glass-surface);
   border: 1px solid var(--glass-border);
-  border-radius: 999px;
+  border-radius: 11px;
   padding: 11px 16px;
   cursor: pointer;
   max-width: 100%;
@@ -565,7 +568,7 @@ img {
 
 .install-tab {
   padding: 5px 12px;
-  border-radius: 999px;
+  border-radius: 11px;
   border: 1px solid var(--glass-border);
   background: var(--glass-surface);
   color: var(--text-dim);
@@ -715,7 +718,7 @@ img {
 .code-copy-state {
   margin-left: 4px;
   padding: 2px 9px;
-  border-radius: 999px;
+  border-radius: 11px;
   background: var(--accent-soft);
   color: var(--text);
   font-family: var(--font-ui);
@@ -735,10 +738,7 @@ img {
   font-size: 2rem;
   font-weight: 700;
   letter-spacing: -0.03em;
-  background: var(--accent-gradient);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .hero-stat-label {
