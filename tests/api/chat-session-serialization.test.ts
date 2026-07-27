@@ -26,22 +26,12 @@ import {
 } from "../../src/core/session-context";
 import { listSessionEvents } from "../../src/core/session-event-ledger";
 import { broadcastStatus, onStatusStream } from "../../src/core/status";
+import { waitForVisibleSessionMessages } from "./chat-session-test-helpers";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
 const createdSessionIds: string[] = [];
 const originalFetch = globalThis.fetch;
-
-async function waitForVisibleSessionMessages(sessionId: string, expectedCount: number) {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    const messages = (await getSessionMessages(sessionId)).filter(
-      (message) => message.role !== "system"
-    );
-    if (messages.length >= expectedCount) return messages;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  return (await getSessionMessages(sessionId)).filter((message) => message.role !== "system");
-}
 
 afterEach(async () => {
   config.setFollowUpBehaviorEnabled(true);
@@ -384,6 +374,12 @@ describe("handleChat per-session serialization", () => {
     expect(providerAborted).toBe(true);
     const messages = await waitForVisibleSessionMessages(sessionId, 2);
     expect(messages.map((message) => message.content)).toEqual(["start a long response", ""]);
+    expect(messages[1]?.interrupted).toBe(true);
+    expect(messages[1]?.tool_calls?.map(({ id, status }) => [id, status])).toEqual([
+      ["read-complete", "completed"],
+      ["search-stopped", "failed"],
+    ]);
+    expect(messages[1]?.tool_calls?.[1]?.error).toBe("Stopped: Searching workspace");
     const stoppedActivities = messages[1]?.process_activities || [];
     expect(stoppedActivities).toEqual(
       expect.arrayContaining([
@@ -411,6 +407,8 @@ describe("handleChat per-session serialization", () => {
       (message) => message.role === "assistant" && message.content === ""
     );
     expect(persistedStopped?.process_activities).toEqual(stoppedActivities);
+    expect(persistedStopped?.tool_calls).toEqual(messages[1]?.tool_calls);
+    expect(persistedStopped?.interrupted).toBe(true);
     expect((await stopActiveChatTurn(sessionId)).stopped).toBe(false);
   });
 
@@ -913,6 +911,10 @@ describe("handleChat per-session serialization", () => {
       contextMode: "full",
     });
     expect(transferred.tool_calls?.map((toolCall) => toolCall.name)).toContain("sessions_transfer");
+    expect(transferred.tool_calls?.map((toolCall) => toolCall.id)).toEqual([
+      "transfer-context-call-1",
+      "transfer-call-1",
+    ]);
     expect(requestedModels.filter((model) => model === "gpt-transfer-a")).toHaveLength(1);
     expect(requestedModels.filter((model) => model === "gpt-transfer-b")).toHaveLength(1);
 

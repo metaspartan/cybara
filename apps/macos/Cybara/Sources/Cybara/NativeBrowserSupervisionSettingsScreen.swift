@@ -66,7 +66,7 @@ struct NativeBrowserSupervisionSettingsScreen: View {
                             .toggleStyle(.switch)
                             .disabled(busy)
                         Picker("Downloads", selection: $settings.downloadPolicy) {
-                            Text("Ask").tag("ask")
+                            Text("Guarded").tag("ask")
                             Text("Allow").tag("allow")
                             Text("Block").tag("deny")
                         }

@@ -35,7 +35,6 @@ import {
 } from "./agent-web-research";
 import type { ToolDefinition } from "./database";
 import { applyProviderApiKey } from "./llm/auth-headers";
-import { hasImages, toOpenAIImageBlock } from "./llm/image-blocks";
 import {
   isKimiCodeProvider,
   normalizeKimiAssistantToolMessage,
@@ -43,6 +42,7 @@ import {
 } from "./llm/kimi-wire";
 import { normalizeModelToolCalls } from "./llm/model-dialect";
 import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
+import { toOpenAIChatHistory } from "./llm/provider-history";
 import { supportsForcedToolChoice } from "./llm/provider-model-transport";
 import {
   coerceReasoningEffort,
@@ -57,42 +57,6 @@ import {
 import { isContextOverflowError } from "./llm/tool-transcript";
 import { providers as providerCatalog, type ProviderType } from "./providers";
 import type { ToolContext } from "./tools/index";
-
-function toOpenAICompatMessage(
-  message: AgentMessage,
-  providerConfig: string | undefined
-): Record<string, unknown> {
-  if (message.role === "user" && hasImages(message.images)) {
-    return {
-      role: message.role,
-      content: [
-        ...(message.content ? [{ type: "text", text: message.content }] : []),
-        ...message.images.map(toOpenAIImageBlock),
-      ],
-    };
-  }
-  if (message.role === "assistant" && message.tool_calls?.length) {
-    const converted = {
-      role: message.role,
-      content: message.content || null,
-      tool_calls: message.tool_calls.map((toolCall) => ({
-        id: toolCall.id,
-        type: "function",
-        function: {
-          name: toolCall.name,
-          arguments: JSON.stringify(toolCall.arguments),
-        },
-      })),
-    };
-    return isKimiCodeProvider(providerConfig)
-      ? normalizeKimiAssistantToolMessage(converted)
-      : converted;
-  }
-  if (message.role === "tool" && message.tool_call_id) {
-    return { role: message.role, content: message.content, tool_call_id: message.tool_call_id };
-  }
-  return { role: message.role, content: message.content };
-}
 
 function toOpenAICompatTool(
   tool: ToolDefinition,
@@ -156,7 +120,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     );
     const requestBody: Record<string, unknown> = {
       model: modelId,
-      messages: messages.map((message) => toOpenAICompatMessage(message, providerConfig)),
+      messages: toOpenAIChatHistory(messages, providerConfig),
     };
 
     const openaiEffort = normalizeReasoningEffort(
@@ -350,6 +314,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         if (!toolName) {
           const missingNamePayload = { error: "Tool call missing tool name" };
           iterationToolCalls.push({
+            id: toolCallId,
             name: "__missing_tool_name__",
             args,
             result: missingNamePayload,
@@ -383,13 +348,14 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
             : executed.result;
         if (!executed.skipped) {
           iterationToolCalls.push({
+            id: toolCallId,
             name: toolName,
             args,
             result: resultPayload,
           });
         }
         if (!executed.skipped && executed.result !== undefined) {
-          allToolCalls.push({ name: toolName, args, result: executed.result });
+          allToolCalls.push({ id: toolCallId, name: toolName, args, result: executed.result });
         }
         toolResults.push({
           tool_call_id: toolCallId,

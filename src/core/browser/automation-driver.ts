@@ -224,9 +224,16 @@ export interface AutomationContext {
   close(): Promise<void>;
 }
 
+export interface AutomationContextOptions {
+  viewport: { width: number; height: number };
+  acceptDownloads: boolean;
+  downloadPath?: string;
+}
+
 export interface AutomationBrowser {
-  newContext(options: { viewport: { width: number; height: number } }): Promise<AutomationContext>;
+  newContext(options: AutomationContextOptions): Promise<AutomationContext>;
   onDisconnected(listener: () => void): void;
+  isConnected(): boolean;
   close(): Promise<void>;
 }
 
@@ -508,14 +515,21 @@ class PlaywrightContextAdapter implements AutomationContext {
 class PlaywrightBrowserAdapter implements AutomationBrowser {
   constructor(private readonly browser: Playwright.Browser) {}
 
-  async newContext(options: {
-    viewport: { width: number; height: number };
-  }): Promise<AutomationContext> {
-    return new PlaywrightContextAdapter(await this.browser.newContext(options));
+  async newContext(options: AutomationContextOptions): Promise<AutomationContext> {
+    return new PlaywrightContextAdapter(
+      await this.browser.newContext({
+        viewport: options.viewport,
+        acceptDownloads: options.acceptDownloads,
+      })
+    );
   }
 
   onDisconnected(listener: () => void): void {
     this.browser.on("disconnected", listener);
+  }
+
+  isConnected(): boolean {
+    return this.browser.isConnected();
   }
 
   close(): Promise<void> {
@@ -928,14 +942,22 @@ class PuppeteerContextAdapter implements AutomationContext {
 class PuppeteerBrowserAdapter implements AutomationBrowser {
   constructor(private readonly browser: PuppeteerBrowser) {}
 
-  async newContext(options: {
-    viewport: { width: number; height: number };
-  }): Promise<AutomationContext> {
-    return new PuppeteerContextAdapter(await this.browser.createBrowserContext(), options.viewport);
+  async newContext(options: AutomationContextOptions): Promise<AutomationContext> {
+    const downloadBehavior = options.acceptDownloads
+      ? { policy: "allow" as const, downloadPath: options.downloadPath }
+      : { policy: "deny" as const };
+    return new PuppeteerContextAdapter(
+      await this.browser.createBrowserContext({ downloadBehavior }),
+      options.viewport
+    );
   }
 
   onDisconnected(listener: () => void): void {
     this.browser.on("disconnected", listener);
+  }
+
+  isConnected(): boolean {
+    return this.browser.connected;
   }
 
   close(): Promise<void> {

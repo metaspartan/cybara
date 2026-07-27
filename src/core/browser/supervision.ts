@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS: BrowserSupervisionSettings = {
 };
 const TOKEN_CONTEXT = "browser:remote-token";
 const REDACTED = "***redacted***";
+const settingsListeners = new Set<(settings: BrowserSupervisionSettings) => void>();
 let status: BrowserSupervisionStatus = {
   owner: "none",
   healthy: false,
@@ -116,7 +117,25 @@ export function setBrowserSupervisionSettings(value: unknown): BrowserSupervisio
     ...settings,
     remoteToken: settings.remoteToken ? sealSecret(settings.remoteToken, TOKEN_CONTEXT) : "",
   });
+  for (const listener of settingsListeners) {
+    try {
+      listener(settings);
+    } catch {
+      continue;
+    }
+  }
   return { ...settings, remoteToken: settings.remoteToken ? REDACTED : "" };
+}
+
+export function browserDownloadsAccepted(policy: BrowserDownloadPolicy): boolean {
+  return policy === "allow";
+}
+
+export function onBrowserSupervisionSettingsChanged(
+  listener: (settings: BrowserSupervisionSettings) => void
+): () => void {
+  settingsListeners.add(listener);
+  return () => settingsListeners.delete(listener);
 }
 
 export function recordBrowserHealthy(owner: BrowserSupervisionStatus["owner"]): void {

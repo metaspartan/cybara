@@ -1,6 +1,7 @@
 import { createInterface } from "readline";
 import { getFlagValue } from "./args";
 import { resolveAgentIdentifier } from "./agent-resolution";
+import { createChatInputQueue } from "./chat-input-queue";
 import { limitTUIActivityDetails, presentTUIActivities } from "../tui/activity";
 import {
   environmentSnapshotFromDetail,
@@ -555,6 +556,10 @@ export async function rawAgent(rawArgs: string[]): Promise<void> {
     );
     console.error("       echo '<prompt>' | cybara agent --json");
     process.exit(1);
+  }
+
+  if (agentId) {
+    agentId = await resolveAgentId(agentId);
   }
 
   const body: Record<string, unknown> = {
@@ -1266,13 +1271,8 @@ async function rawChat(options: CliChatOptions): Promise<void> {
     return false;
   };
 
-  rl.on("line", (line) => {
-    const input = line.trim();
-    if (!input) {
-      rl.prompt();
-      return;
-    }
-    void (async () => {
+  const enqueueInput = createChatInputQueue(
+    async (input) => {
       if (input.startsWith("/") && (await handleCommand(input))) {
         rl.prompt();
         return;
@@ -1283,6 +1283,19 @@ async function rawChat(options: CliChatOptions): Promise<void> {
         return;
       }
       void runTurn(input);
-    })();
+    },
+    (error) => {
+      console.error(`  Error: ${error instanceof Error ? error.message : String(error)}`);
+      rl.prompt();
+    }
+  );
+
+  rl.on("line", (line) => {
+    const input = line.trim();
+    if (!input) {
+      rl.prompt();
+      return;
+    }
+    enqueueInput(input);
   });
 }

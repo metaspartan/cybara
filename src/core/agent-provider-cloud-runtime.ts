@@ -11,7 +11,6 @@ import type { AgentMessage } from "./agent";
 import {
   type AgenticLoopState,
   type AgentToolCallResult,
-  type GoogleContent,
   type GooglePart,
   type GoogleResponse,
   normalizeGoogleModelId,
@@ -34,7 +33,7 @@ import { hasAgentTransferEnvelope } from "./agent-transfer";
 import type { ToolDefinition } from "./database";
 import { classifyApiError } from "./error-classifier";
 import { googleFunctionDeclaration } from "./llm/google-tool-schema";
-import { bedrockUserContent, hasImages, toGoogleImagePart } from "./llm/image-blocks";
+import { toBedrockHistory, toGoogleHistory } from "./llm/provider-history";
 import { googleThinkingConfig, normalizeReasoningEffort } from "./llm/reasoning";
 import { withLlmRequestTimeout } from "./llm/request-timeout";
 import {
@@ -64,20 +63,7 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
     tool_calls?: AgentToolCallResult[];
   }> {
     const systemMessage = messages.find((message) => message.role === "system");
-    const chatMessages = messages.filter((message) => message.role !== "system");
-    const contents: GoogleContent[] = chatMessages.map((message) => {
-      const role = message.role === "assistant" ? "model" : "user";
-      if (role === "user" && hasImages(message.images)) {
-        const parts: unknown[] = [];
-        if (message.content) parts.push({ text: message.content });
-        for (const img of message.images) {
-          const part = toGoogleImagePart(img);
-          if (part) parts.push(part);
-        }
-        return { role, parts: parts as GooglePart[] };
-      }
-      return { role, parts: [{ text: message.content }] };
-    });
+    const contents = toGoogleHistory(messages);
 
     const headers: Record<string, string> = vertex
       ? {
@@ -398,18 +384,7 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
     const region = this.resolveBedrockRegion(baseUrl);
     const client = new BedrockRuntimeClient({ region });
     const systemMessage = messages.find((message) => message.role === "system");
-    const conversation: BedrockMessage[] = messages
-      .filter((message) => message.role !== "system")
-      .map(
-        (message) =>
-          ({
-            role: message.role === "assistant" ? "assistant" : "user",
-            content: bedrockUserContent(
-              message.content,
-              message.role === "user" ? message.images : undefined
-            ),
-          }) as unknown as BedrockMessage
-      );
+    const conversation = toBedrockHistory(messages) as unknown as BedrockMessage[];
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
     const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
@@ -561,6 +536,7 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
         }
 
         const toolCallRecord = {
+          id: toolUse.toolUseId,
           name: toolUse.name,
           args,
           result: executed.result,

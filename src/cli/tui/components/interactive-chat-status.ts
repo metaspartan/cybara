@@ -1,7 +1,7 @@
 import React from "react";
 import { isProviderRecoveryStatusLabel } from "../../../../shared/chat-status";
 import {
-  consumeTUIStatusStream,
+  maintainTUIStatusStream,
   reconcileTUIStreamingText,
   type TUIStatusStreamEvent,
   type TUIStreamActivity,
@@ -104,16 +104,19 @@ export function useInteractiveChatStatus({
         activity,
       ]);
     };
-    void consumeTUIStatusStream({
+    void maintainTUIStatusStream({
       apiBase,
       apiKey,
       gatewayPassword,
       signal: controller.signal,
       onEvent: appendStatusActivity,
-    }).catch((cause) => {
-      if (!controller.signal.aborted) {
-        setStreamDetail(cause instanceof Error ? cause.message : String(cause));
-      }
+      onConnectionState: (state, detail) => {
+        if (state === "connected") {
+          setStreamDetail("");
+          return;
+        }
+        setStreamDetail(detail || "Reconnecting to gateway");
+      },
     });
     return () => controller.abort();
   }, [apiBase, apiKey, gatewayPassword, sessionIdRef]);

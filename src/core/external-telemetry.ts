@@ -73,6 +73,17 @@ let lastError: string | null = null;
 let exportedMetrics = 0;
 let exportedSpans = 0;
 let runtimeTelemetrySettings: ExternalTelemetrySettings | null = null;
+let flushPromise: Promise<ExternalTelemetryStatus> | null = null;
+
+function trimTelemetryQueue<T>(queue: T[]): void {
+  if (queue.length > MAX_QUEUE_SIZE) queue.splice(0, queue.length - MAX_QUEUE_SIZE);
+}
+
+function restoreTelemetryBatch<T>(queue: T[], batch: T[]): void {
+  if (batch.length === 0) return;
+  queue.unshift(...batch);
+  trimTelemetryQueue(queue);
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -244,9 +255,7 @@ export function recordExternalMetric(
     timestamp: Date.now(),
     attributes: telemetryAttributes(metadata),
   });
-  if (metricQueue.length > MAX_QUEUE_SIZE)
-    metricQueue.splice(0, metricQueue.length - MAX_QUEUE_SIZE);
-  configureTelemetryFlush(settings);
+  trimTelemetryQueue(metricQueue);
 }
 
 function randomHex(bytes: number): string {
@@ -273,8 +282,7 @@ export function recordExternalSpan(input: {
     statusCode: input.statusCode,
     attributes: telemetryAttributes(input.attributes),
   });
-  if (spanQueue.length > MAX_QUEUE_SIZE) spanQueue.splice(0, spanQueue.length - MAX_QUEUE_SIZE);
-  configureTelemetryFlush(settings);
+  trimTelemetryQueue(spanQueue);
 }
 
 function otlpAttributes(attributes: Record<string, string | number | boolean>): unknown[] {
@@ -313,11 +321,13 @@ async function postOtlp(
   if (!response.ok) throw new Error(`OTLP export failed with HTTP ${response.status}`);
 }
 
-export async function flushExternalTelemetry(): Promise<ExternalTelemetryStatus> {
+async function performExternalTelemetryFlush(): Promise<ExternalTelemetryStatus> {
   const settings = getExternalTelemetrySettings({ redactHeaders: false });
   if (!settings.enabled || !settings.otlpEnabled) return getExternalTelemetryStatus();
   const metrics = metricQueue.splice(0, metricQueue.length);
   const spans = spanQueue.splice(0, spanQueue.length);
+  let pendingMetrics = metrics;
+  let pendingSpans = spans;
   try {
     if (metrics.length > 0 && settings.metricsEnabled) {
       await postOtlp(
@@ -349,6 +359,9 @@ export async function flushExternalTelemetry(): Promise<ExternalTelemetryStatus>
         settings
       );
       exportedMetrics += metrics.length;
+      pendingMetrics = [];
+    } else {
+      pendingMetrics = [];
     }
     if (spans.length > 0 && settings.tracesEnabled) {
       await postOtlp(
@@ -378,16 +391,27 @@ export async function flushExternalTelemetry(): Promise<ExternalTelemetryStatus>
         settings
       );
       exportedSpans += spans.length;
+      pendingSpans = [];
+    } else {
+      pendingSpans = [];
     }
     lastExportAt = new Date().toISOString();
     lastError = null;
   } catch (error) {
-    metricQueue.unshift(...metrics);
-    spanQueue.unshift(...spans);
+    restoreTelemetryBatch(metricQueue, pendingMetrics);
+    restoreTelemetryBatch(spanQueue, pendingSpans);
     lastError = error instanceof Error ? error.message : String(error);
     await log.warn("External telemetry export failed", { error: lastError });
   }
   return getExternalTelemetryStatus();
+}
+
+export function flushExternalTelemetry(): Promise<ExternalTelemetryStatus> {
+  if (flushPromise) return flushPromise;
+  flushPromise = performExternalTelemetryFlush().finally(() => {
+    flushPromise = null;
+  });
+  return flushPromise;
 }
 
 function configureTelemetryFlush(

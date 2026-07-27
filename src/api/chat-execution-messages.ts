@@ -3,7 +3,11 @@ import {
   attributeInheritedAssistantContent,
   buildAgentHandoffInstruction,
 } from "./chat-agent-handoff";
-import { compactChatContentForPrompt } from "../core/chat-token-optimization";
+import { truncateToolResultContentForContext } from "../core/agent-context-guard";
+import {
+  compactChatContentForPrompt,
+  TOOL_RESULT_PROMPT_MAX_CHARS,
+} from "../core/chat-token-optimization";
 import { hydrateImageDataFromPath } from "../core/chat/attachments";
 import { getActiveGoalContextLine } from "../core/session-goals";
 import type { ChatMessage } from "./chat-types";
@@ -39,7 +43,7 @@ export function buildChatExecutionMessagesForAgent(
   const handoffInstruction = latestTransfer
     ? undefined
     : buildAgentHandoffInstruction(sessionMessages, options?.activeAgentId);
-  const executionMessages: AgentMessage[] = executionSource.map((sessionMessage) => {
+  const executionMessages: AgentMessage[] = executionSource.flatMap((sessionMessage) => {
     const compacted = compactChatContentForPrompt(sessionMessage);
     const content = handoffInstruction
       ? attributeInheritedAssistantContent(
@@ -48,7 +52,7 @@ export function buildChatExecutionMessagesForAgent(
         )
       : compacted;
     const imageContext = sessionMessage.image_context?.trim();
-    return {
+    const message: AgentMessage = {
       role: sessionMessage.role,
       content:
         !supportsImages && sessionMessage.images?.length
@@ -62,6 +66,32 @@ export function buildChatExecutionMessagesForAgent(
         ? { images: sessionMessage.images.map(hydrateImageDataFromPath) }
         : {}),
     };
+
+    if (sessionMessage.role !== "assistant" || !sessionMessage.tool_calls?.length) {
+      return [message];
+    }
+
+    const toolRequest: AgentMessage = {
+      role: "assistant",
+      content: "",
+      tool_calls: sessionMessage.tool_calls.map((toolCall) => ({
+        id: toolCall.id,
+        name: toolCall.name,
+        arguments: toolCall.args,
+      })),
+    };
+    const toolResults: AgentMessage[] = sessionMessage.tool_calls.map((toolCall) => ({
+      role: "tool",
+      content: truncateToolResultContentForContext(
+        toolCall.result ??
+          (toolCall.error ? { error: toolCall.error } : { status: toolCall.status }),
+        TOOL_RESULT_PROMPT_MAX_CHARS
+      ),
+      tool_call_id: toolCall.id,
+    }));
+    return message.content.trim()
+      ? [toolRequest, ...toolResults, message]
+      : [toolRequest, ...toolResults];
   });
 
   if (latestTransfer) {

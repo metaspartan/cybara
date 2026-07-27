@@ -35,6 +35,7 @@ import {
 import type { ToolDefinition } from "./database";
 import { normalizeModelToolCalls } from "./llm/model-dialect";
 import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
+import { toOpenAIChatHistory } from "./llm/provider-history";
 import {
   sanitizeAssistantContent,
   toOpenAIReplayMessageWithNormalizedToolCalls,
@@ -54,20 +55,7 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
     const maxOutputTokens = resolveModelMaxOutputTokens("openai", undefined, modelId);
     const contextWindowTokens = resolveModelContextWindowTokens("openai", undefined, modelId);
     const contextGuard = resolveContextGuardBudgets(contextWindowTokens);
-    const systemMessage = messages.find((m) => m.role === "system");
-    const chatMessages = messages
-      .filter((m) => m.role !== "system")
-      .map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
-    if (systemMessage) {
-      chatMessages.unshift({
-        role: "system",
-        content: systemMessage.content,
-      });
-    }
+    const chatMessages = toOpenAIChatHistory(messages);
 
     const requestBody: Record<string, unknown> = {
       model: modelId,
@@ -185,6 +173,7 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
         if (!toolName) {
           const missingNamePayload = { error: "Tool call missing tool name" };
           iterationToolCalls.push({
+            id: toolCallId,
             name: "__missing_tool_name__",
             args,
             result: missingNamePayload,
@@ -218,13 +207,14 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
             : executed.result;
         if (!executed.skipped) {
           iterationToolCalls.push({
+            id: toolCallId,
             name: toolName,
             args,
             result: resultPayload,
           });
         }
         if (!executed.skipped && executed.result !== undefined) {
-          allToolCalls.push({ name: toolName, args, result: executed.result });
+          allToolCalls.push({ id: toolCallId, name: toolName, args, result: executed.result });
         }
         toolResults.push({
           tool_call_id: toolCallId,

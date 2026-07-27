@@ -48,9 +48,9 @@ import {
   anthropicRequestBase,
   anthropicRequestHeaders,
 } from "./llm/anthropic-vertex";
-import { hasImages, toAnthropicImageBlock } from "./llm/image-blocks";
 import { normalizeAnthropicModelToolUses } from "./llm/model-dialect";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
+import { toAnthropicHistory } from "./llm/provider-history";
 import { supportsForcedToolChoice } from "./llm/provider-model-transport";
 import {
   applyAnthropicReasoningOptions,
@@ -100,21 +100,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
     tool_calls?: AgentToolCallResult[];
   }> {
     const systemMessage = messages.find((m) => m.role === "system");
-    const chatMessages = messages
-      .filter((m) => m.role !== "system")
-      .map((m) => {
-        const role = m.role === "assistant" ? "assistant" : "user";
-        if (role === "user" && hasImages(m.images)) {
-          return {
-            role,
-            content: [
-              ...(m.content ? [{ type: "text", text: m.content }] : []),
-              ...m.images.map(toAnthropicImageBlock),
-            ],
-          };
-        }
-        return { role, content: m.content };
-      });
+    const chatMessages = toAnthropicHistory(messages);
 
     const anthropicEndpoint = anthropicEndpointPath(modelId, vertex);
 
@@ -427,6 +413,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
             error: "Tool use block missing tool name",
           };
           iterationToolCalls.push({
+            id: toolUseId,
             name: "__missing_tool_name__",
             args,
             result: missingNamePayload,
@@ -462,13 +449,14 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
             : executed.result;
         if (!executed.skipped) {
           iterationToolCalls.push({
+            id: toolUseId,
             name: toolName,
             args,
             result: resultPayload,
           });
         }
         if (!executed.skipped && executed.result !== undefined) {
-          allToolCalls.push({ name: toolName, args, result: executed.result });
+          allToolCalls.push({ id: toolUseId, name: toolName, args, result: executed.result });
         }
         toolResults.push({
           type: "tool_result",

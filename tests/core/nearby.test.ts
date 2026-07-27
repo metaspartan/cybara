@@ -20,6 +20,7 @@ import {
   normalizeNearbySettings,
   parseNearbyDiscoveryDatagram,
   parseNearbyBaseUrl,
+  resolveNearbyDiscoveryPort,
   selectNearbyAddress,
   setNearbySettings,
   verifyNearbyPairingProof,
@@ -67,6 +68,12 @@ describe("nearby cryptography", () => {
 });
 
 describe("nearby network and settings boundaries", () => {
+  test("uses an isolated discovery port only when explicitly valid", () => {
+    expect(resolveNearbyDiscoveryPort("45123")).toBe(45123);
+    expect(resolveNearbyDiscoveryPort("0")).toBe(4270);
+    expect(resolveNearbyDiscoveryPort("invalid")).toBe(4270);
+  });
+
   test("nearby is disabled by default and settings are bounded", () => {
     expect(normalizeNearbySettings(undefined).enabled).toBe(false);
     expect(normalizeNearbySettings({ enabled: true, port: 1, discoveryMinutes: 500 }).port).toBe(

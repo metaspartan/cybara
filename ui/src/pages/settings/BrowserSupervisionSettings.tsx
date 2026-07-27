@@ -22,7 +22,7 @@ const DEFAULT_SETTINGS: Settings = {
 };
 
 const DOWNLOAD_POLICY_OPTIONS: Array<{ value: BrowserDownloadPolicy; label: string }> = [
-  { value: "ask", label: "Ask before downloading" },
+  { value: "ask", label: "Block until explicitly allowed" },
   { value: "allow", label: "Always allow" },
   { value: "deny", label: "Block downloads" },
 ];

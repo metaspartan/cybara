@@ -643,7 +643,7 @@ export function ChatWorkspaceSimulator({
           >
             <SimulatorPreviewImage
               alt={`${selectedDevice?.name || label} screen`}
-              className="max-h-full max-w-full select-none object-contain"
+              className="h-full w-full select-none object-contain"
               source={frame.screenshot}
             />
             {interactionStyle ? (

@@ -27,6 +27,7 @@ interface ApiResult {
 
 const gateways: GatewayFixture[] = [];
 const GATEWAY_START_TIMEOUT_MS = process.env.CI ? 60_000 : 30_000;
+let discoveryPort = 0;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -89,6 +90,7 @@ function startGateway(fixture: GatewayFixture): void {
       CYBARA_API_KEY: API_KEY,
       CYBARA_HOST: "127.0.0.1",
       CYBARA_PORT_FALLBACK_COUNT: "0",
+      CYBARA_NEARBY_DISCOVERY_PORT: String(discoveryPort),
       PORT: String(fixture.gatewayPort),
       NODE_ENV: "production",
     },
@@ -285,6 +287,7 @@ async function enableNearby(fixture: GatewayFixture, displayName: string): Promi
 }
 
 beforeAll(async () => {
+  discoveryPort = await getFreePort();
   const first = await createGateway("first");
   const second = await createGateway("second");
   startGateway(first);

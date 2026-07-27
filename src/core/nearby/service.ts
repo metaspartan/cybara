@@ -20,6 +20,7 @@ import {
 import {
   NearbyLanDiscovery,
   NEARBY_DISCOVERY_PORT,
+  resolveNearbyDiscoveryPort,
   type NearbyDiscoveryAnnouncement,
   type NearbyLanDiscoveryOptions,
 } from "./discovery";
@@ -1192,4 +1193,6 @@ export class NearbyService {
   }
 }
 
-export const nearbyService = new NearbyService();
+export const nearbyService = new NearbyService(
+  resolveNearbyDiscoveryPort(process.env.CYBARA_NEARBY_DISCOVERY_PORT)
+);
