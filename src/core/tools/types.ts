@@ -7,6 +7,7 @@ export interface ToolExecutionRecord {
   name: string;
   args: Record<string, unknown>;
   result: unknown;
+  durationMs: number;
 }
 
 export interface ToolExecutionState {

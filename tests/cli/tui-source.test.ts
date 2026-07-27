@@ -338,7 +338,7 @@ describe("CLI TUI source wiring", () => {
       expect(cliTuiInteractiveChatSource).toContain(route);
     }
     expect(cliTuiInteractiveChatSource).toContain("PendingQueue");
-    expect(cliTuiInteractiveChatSource).toContain("consumeTUIStatusStream");
+    expect(cliTuiInteractiveChatSource).toContain("maintainTUIStatusStream");
     expect(cliTuiInteractiveChatSource).toContain("/api/chat/capabilities");
     expect(cliTuiInteractiveChatSource).toContain("CapabilityPalette");
     expect(cliTuiInteractiveChatSource).toContain("Enter queues · /steer injects");

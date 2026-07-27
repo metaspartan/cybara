@@ -1,6 +1,9 @@
 import { randomUUID } from "crypto";
+import { mkdirSync } from "fs";
+import { join } from "path";
 import type { LaunchOptions } from "playwright";
 import { systemLogger } from "../logging";
+import { cybaraDir } from "../paths";
 import {
   browserExecutableLabel,
   browserLaunchArgs,
@@ -23,9 +26,12 @@ import {
 } from "./automation-driver";
 import { findHermeticPlaywrightBrowserPath, getChromium } from "./playwright-loader";
 import {
+  type BrowserDownloadPolicy,
   type BrowserSupervisionStatus,
+  browserDownloadsAccepted,
   getBrowserSupervisionSettings,
   getBrowserSupervisionStatus,
+  onBrowserSupervisionSettingsChanged,
   recordBrowserDisconnect,
   recordBrowserHealthy,
   recordBrowserRestart,
@@ -250,6 +256,9 @@ export interface BrowserStatus {
 }
 
 function resetLegacyBrowserState(): void {
+  clearBrowserHealthTimer();
+  legacyBrowserOwner = "none";
+  legacyDownloadPolicy = null;
   legacyBrowser = null;
   legacyContext = null;
   legacyBrowserPromise = null;
@@ -263,6 +272,52 @@ function resetLegacyBrowserState(): void {
 let legacyBrowserPromise: Promise<Browser> | null = null;
 let legacyContextPromise: Promise<BrowserContext> | null = null;
 let browserRestartTimer: ReturnType<typeof setTimeout> | null = null;
+let browserHealthTimer: ReturnType<typeof setTimeout> | null = null;
+let legacyBrowserOwner: BrowserSupervisionStatus["owner"] = "none";
+let legacyDownloadPolicy: BrowserDownloadPolicy | null = null;
+
+function clearBrowserHealthTimer(): void {
+  if (!browserHealthTimer) return;
+  clearTimeout(browserHealthTimer);
+  browserHealthTimer = null;
+}
+
+function scheduleBrowserHealthCheck(
+  browser: Browser,
+  owner: BrowserSupervisionStatus["owner"]
+): void {
+  clearBrowserHealthTimer();
+  const interval = getBrowserSupervisionSettings({ redact: false }).healthCheckIntervalMs;
+  browserHealthTimer = setTimeout(() => {
+    browserHealthTimer = null;
+    if (legacyBrowser !== browser) return;
+    if (!browser.isConnected()) {
+      const hadActivePages = legacyPages.size > 0;
+      recordBrowserDisconnect("Browser health check failed");
+      resetLegacyBrowserState();
+      scheduleBrowserRestart(hadActivePages);
+      return;
+    }
+    recordBrowserHealthy(owner);
+    scheduleBrowserHealthCheck(browser, owner);
+  }, interval);
+  browserHealthTimer.unref?.();
+}
+
+onBrowserSupervisionSettingsChanged((settings) => {
+  if (legacyBrowser) scheduleBrowserHealthCheck(legacyBrowser, legacyBrowserOwner);
+  if (
+    legacyContext &&
+    browserDownloadsAccepted(legacyDownloadPolicy || "deny") !==
+      browserDownloadsAccepted(settings.downloadPolicy)
+  ) {
+    const context = legacyContext;
+    legacyContext = null;
+    legacyContextPromise = null;
+    legacyDownloadPolicy = settings.downloadPolicy;
+    void context.close().catch(() => undefined);
+  }
+});
 
 function remoteBrowserHeaders(token: string): Record<string, string> | undefined {
   return token ? { Authorization: `Bearer ${token}` } : undefined;
@@ -338,7 +393,9 @@ async function getLegacyBrowser(): Promise<Browser> {
         scheduleBrowserRestart(hadActivePages);
       });
       legacyBrowser = browser;
+      legacyBrowserOwner = owner;
       recordBrowserHealthy(owner);
+      scheduleBrowserHealthCheck(browser, owner);
       return browser;
     } catch (error) {
       legacyBrowserPromise = null;
@@ -359,10 +416,16 @@ async function getLegacyContext(): Promise<BrowserContext> {
   legacyContextPromise = (async () => {
     try {
       const bw = await getLegacyBrowser();
+      const supervision = getBrowserSupervisionSettings({ redact: false });
+      const downloadPath = join(cybaraDir, "downloads");
+      mkdirSync(downloadPath, { recursive: true, mode: 0o700 });
       const context = await bw.newContext({
         viewport: { width: 1920, height: 1080 },
+        acceptDownloads: browserDownloadsAccepted(supervision.downloadPolicy),
+        downloadPath,
       });
       legacyContext = context;
+      legacyDownloadPolicy = supervision.downloadPolicy;
       return context;
     } catch (error) {
       legacyContextPromise = null;

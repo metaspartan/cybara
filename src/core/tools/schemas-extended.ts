@@ -1204,7 +1204,7 @@ ACTIONS:
   mobile_simulator: {
     name: "mobile_simulator",
     description:
-      "Inspect and control iOS Simulator on macOS or Android Emulator on macOS, Windows, and Linux. Use status first, start a device when needed, then screenshot or describe before tapping. Android uses the installed SDK and ADB. iOS uses Xcode simctl for lifecycle, apps, URLs, and screenshots; direct touch and text input require IDB.",
+      "Inspect and control iOS Simulator on macOS or Android Emulator on macOS, Windows, and Linux. Use status first and start a device when needed. Use describe for controls and screenshot-pixel coordinates before tapping; do not read screenshot files as text. Use screenshot to save a visual artifact and the image tool when pixel inspection is needed. Android uses the installed SDK and ADB. iOS uses Xcode simctl for lifecycle, apps, URLs, and screenshots; direct touch and text input require IDB.",
     category: "media",
     input_schema: {
       type: "object",

@@ -55,6 +55,7 @@ import { EmptyState, LoadingState, SummaryTile, type IconGlyph } from "./dashboa
 import type { FeatureSummary } from "../lib/api";
 
 const USAGE_ORDER_KEY = "cybara.mobile.usageOrder";
+type MobileMetricsSection = "activity" | "usage" | "runtime" | "system";
 
 function mobileMetricLatency(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "--";
@@ -227,6 +228,8 @@ export function MetricsPanel({
 }) {
   const [sessionRuntime, setSessionRuntime] = useState(metrics?.sessions ?? null);
   const [sessionRuntimeLoading, setSessionRuntimeLoading] = useState(false);
+  const [activeMetricsSection, setActiveMetricsSection] =
+    useState<MobileMetricsSection>("activity");
 
   useEffect(() => {
     setSessionRuntime(metrics?.sessions ?? null);
@@ -311,246 +314,303 @@ export function MetricsPanel({
         summary={summary}
       />
 
-      <MetricSection
-        title="Activity trend"
-        detail="Last 14 days across tokens, tools, API, files, and messages"
-      >
-        <MetricBarChart data={activitySeries} tone={accentColor} />
-      </MetricSection>
-
-      <MetricSection title="Token velocity" detail="Last 24 hours by token volume and calls">
-        <MetricAreaChart data={velocityRows} tone={accentColor} />
-      </MetricSection>
-
-      <MetricSection
-        title="Token heatmap"
-        detail={
-          tokenAnalysis?.tokenHeatmap?.hottestHour
-            ? `${tokenAnalysis.tokenHeatmap.hottestHour.dayLabel} ${String(tokenAnalysis.tokenHeatmap.hottestHour.hour).padStart(2, "0")}:00 hottest`
-            : "7-day hourly usage"
-        }
-      >
-        <TokenHeatmap tokenAnalysis={tokenAnalysis} tone={accentColor} />
-      </MetricSection>
-
-      <MetricSection title="Prompt vs output" detail="Ratio, median, and response balance">
-        <View style={styles.metricMicroGrid}>
-          <MetricMicro
-            label="Input:Output"
-            value={
-              tokenAnalysis?.summary?.inputToOutputRatio === null ||
-              tokenAnalysis?.summary?.inputToOutputRatio === undefined
-                ? "n/a"
-                : `${tokenAnalysis.summary.inputToOutputRatio}:1`
-            }
-          />
-          <MetricMicro
-            label="Avg/call"
-            value={formatMetricNumber(tokenAnalysis?.summary?.averageTokensPerCall)}
-          />
-          <MetricMicro
-            label="Median"
-            value={formatMetricNumber(tokenAnalysis?.summary?.medianTokensPerCall)}
-          />
-        </View>
-        <MetricShareRows
-          rows={(tokenAnalysis?.promptOutputDistribution?.bands || []).map((band) => ({
-            label: band.band.replace(/_/g, " "),
-            value: `${band.sharePct}%`,
-            amount: band.sharePct,
-          }))}
-          tone={colors.green}
-        />
-      </MetricSection>
-
-      <MetricSection
-        title="Token insights"
-        detail={`${insights?.tokenTrend24h.changePct ?? 0}% 24h trend - ${insights?.cacheEfficiency.cacheSharePct ?? 0}% cache`}
-      >
-        <View style={styles.metricMicroGrid}>
-          <MetricMicro label="Top model share" value={`${insights?.topModel?.sharePct ?? 0}%`} />
-          <MetricMicro
-            label="Tool success"
-            value={`${insights?.toolReliability.successRatePct ?? 100}%`}
-          />
-          <MetricMicro
-            label="Context warnings"
-            value={String(
-              insights?.contextHealth24h.warnings ?? overview?.contextHealth?.warnings ?? 0
-            )}
-          />
-        </View>
-      </MetricSection>
-
-      <MetricSection title="Provider efficiency" detail="Tokens per provider call">
-        <MetricShareRows rows={providerRows} tone={colors.blueText} />
-      </MetricSection>
-
-      <MetricSection
-        title="Provider plans"
-        detail={`${providerPlanStatus?.summary?.configured ?? metrics?.providerPlans?.summary?.configured ?? 0} configured - ${
-          providerPlanStatus?.summary?.warnings ?? metrics?.providerPlans?.summary?.warnings ?? 0
-        } warnings`}
-      >
-        <ProviderPlanMetricsGrid plans={providerPlanRows} />
-      </MetricSection>
-
-      <MetricSection title="Models" detail="Throughput, latency, and token share">
-        <MetricShareRows rows={modelRows} tone={colors.amber} />
-      </MetricSection>
-
-      <MetricSection
-        title="Chat runtime"
-        detail={`${formatMetricNumber(sessionMetrics?.totals.callCount)} provider calls across ${formatMetricNumber(sessionMetrics?.totals.sessions)} chats`}
-      >
-        <View style={styles.metricMicroGrid}>
-          <MetricMicro
-            label="Input"
-            value={formatMetricNumber(sessionMetrics?.totals.inputTokens)}
-          />
-          <MetricMicro
-            label="Output"
-            value={formatMetricNumber(sessionMetrics?.totals.outputTokens)}
-          />
-          <MetricMicro
-            label="Model calls"
-            value={formatMetricNumber(sessionMetrics?.totals.callCount)}
-          />
-          <MetricMicro
-            label="Output speed"
-            value={
-              sessionMetrics?.totals.tokensPerSecond === null ||
-              sessionMetrics?.totals.tokensPerSecond === undefined
-                ? "--"
-                : `${sessionMetrics.totals.tokensPerSecond} tok/s`
-            }
-          />
-          <MetricMicro
-            label="Average TTFT"
-            value={mobileMetricLatency(sessionMetrics?.totals.firstTokenMs)}
-          />
-          <MetricMicro
-            label="Compactions"
-            value={formatMetricNumber(sessionMetrics?.totals.compactionCount)}
-          />
-          <MetricMicro
-            label="Cache read"
-            value={formatMetricNumber(sessionMetrics?.totals.cachedInputTokens)}
-          />
-          <MetricMicro
-            label="Cache write"
-            value={formatMetricNumber(sessionMetrics?.totals.cacheWriteTokens)}
-          />
-          <MetricMicro
-            label="Compacted"
-            value={formatMetricNumber(sessionMetrics?.totals.compactedTokens)}
-          />
-        </View>
-        <MetricShareRows
-          rows={(sessionMetrics?.sessions || []).slice(0, 10).map((session) => ({
-            label: session.title,
-            value: `${formatMetricNumber(session.inputTokens)} in · ${formatMetricNumber(session.outputTokens)} out`,
-            detail: `${session.model || "Unknown model"} · ${session.tokensPerSecond === null ? "--" : `${session.tokensPerSecond} tok/s`} · ${mobileMetricLatency(session.firstTokenMs)}`,
-            amount: session.totalTokens,
-          }))}
-          tone={colors.cyan}
-        />
-        {sessionPagination && sessionPagination.totalPages > 1 ? (
-          <View style={styles.pagerRow}>
-            <Text style={styles.counterText}>
-              Page {sessionPagination.page} of {sessionPagination.totalPages}
-            </Text>
-            <View style={styles.inlineButtonRow}>
-              <Pressable
-                style={[styles.smallButton, sessionRuntimeLoading && styles.controlDisabled]}
-                disabled={!sessionPagination.hasPreviousPage || sessionRuntimeLoading}
-                onPress={() => void loadSessionRuntimePage(sessionPagination.page - 1)}
+      <View style={styles.metricSectionTabs} accessibilityRole="tablist">
+        {[
+          { key: "activity", label: "Activity" },
+          { key: "usage", label: "Usage" },
+          { key: "runtime", label: "Runtime" },
+          { key: "system", label: "System" },
+        ].map(({ key, label }) => {
+          const selected = activeMetricsSection === key;
+          return (
+            <Pressable
+              key={key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              onPress={() => setActiveMetricsSection(key as MobileMetricsSection)}
+              style={[
+                styles.metricSectionTab,
+                selected && {
+                  backgroundColor: `${accentColor}18`,
+                  borderColor: `${accentColor}55`,
+                },
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.metricSectionTabText,
+                  { color: selected ? accentColor : colors.textMuted },
+                ]}
               >
-                <Text style={styles.smallButtonText}>Previous</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.smallButton, sessionRuntimeLoading && styles.controlDisabled]}
-                disabled={!sessionPagination.hasNextPage || sessionRuntimeLoading}
-                onPress={() => void loadSessionRuntimePage(sessionPagination.page + 1)}
-              >
-                <Text style={styles.smallButtonText}>Next</Text>
-              </Pressable>
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {activeMetricsSection === "activity" ? (
+        <>
+          <MetricSection
+            title="Activity trend"
+            detail="Last 14 days across tokens, tools, API, files, and messages"
+          >
+            <MetricBarChart data={activitySeries} tone={accentColor} />
+          </MetricSection>
+
+          <MetricSection title="Token velocity" detail="Last 24 hours by token volume and calls">
+            <MetricAreaChart data={velocityRows} tone={accentColor} />
+          </MetricSection>
+
+          <MetricSection
+            title="Token heatmap"
+            detail={
+              tokenAnalysis?.tokenHeatmap?.hottestHour
+                ? `${tokenAnalysis.tokenHeatmap.hottestHour.dayLabel} ${String(tokenAnalysis.tokenHeatmap.hottestHour.hour).padStart(2, "0")}:00 hottest`
+                : "7-day hourly usage"
+            }
+          >
+            <TokenHeatmap tokenAnalysis={tokenAnalysis} tone={accentColor} />
+          </MetricSection>
+        </>
+      ) : null}
+
+      {activeMetricsSection === "usage" ? (
+        <>
+          <MetricSection title="Prompt vs output" detail="Ratio, median, and response balance">
+            <View style={styles.metricMicroGrid}>
+              <MetricMicro
+                label="Input:Output"
+                value={
+                  tokenAnalysis?.summary?.inputToOutputRatio === null ||
+                  tokenAnalysis?.summary?.inputToOutputRatio === undefined
+                    ? "n/a"
+                    : `${tokenAnalysis.summary.inputToOutputRatio}:1`
+                }
+              />
+              <MetricMicro
+                label="Avg/call"
+                value={formatMetricNumber(tokenAnalysis?.summary?.averageTokensPerCall)}
+              />
+              <MetricMicro
+                label="Median"
+                value={formatMetricNumber(tokenAnalysis?.summary?.medianTokensPerCall)}
+              />
             </View>
-          </View>
-        ) : null}
-      </MetricSection>
+            <MetricShareRows
+              rows={(tokenAnalysis?.promptOutputDistribution?.bands || []).map((band) => ({
+                label: band.band.replace(/_/g, " "),
+                value: `${band.sharePct}%`,
+                amount: band.sharePct,
+              }))}
+              tone={colors.green}
+            />
+          </MetricSection>
 
-      <MetricSection
-        title="Tools"
-        detail={`${formatMetricNumber(overview?.toolCalls.totalCalls)} calls - ${formatMetricNumber(insights?.toolReliability.totalErrors)} errors`}
-      >
-        <MetricShareRows
-          rows={(metrics?.tools?.mostUsed || []).slice(0, 7).map((tool) => ({
-            label: tool.tool,
-            value: `${formatMetricNumber(tool.calls)} calls`,
-            amount: tool.calls,
-          }))}
-          tone={colors.green}
-        />
-        {metrics?.tools?.mostErrors?.length ? (
-          <MetricShareRows
-            rows={metrics.tools.mostErrors.slice(0, 4).map((tool) => ({
-              label: tool.tool,
-              value: `${formatMetricNumber(tool.errors)} errors`,
-              amount: tool.errors,
-            }))}
-            tone={colors.red}
-          />
-        ) : null}
-      </MetricSection>
+          <MetricSection
+            title="Token insights"
+            detail={`${insights?.tokenTrend24h.changePct ?? 0}% 24h trend - ${insights?.cacheEfficiency.cacheSharePct ?? 0}% cache`}
+          >
+            <View style={styles.metricMicroGrid}>
+              <MetricMicro
+                label="Top model share"
+                value={`${insights?.topModel?.sharePct ?? 0}%`}
+              />
+              <MetricMicro
+                label="Tool success"
+                value={`${insights?.toolReliability.successRatePct ?? 100}%`}
+              />
+              <MetricMicro
+                label="Context warnings"
+                value={String(
+                  insights?.contextHealth24h.warnings ?? overview?.contextHealth?.warnings ?? 0
+                )}
+              />
+            </View>
+          </MetricSection>
 
-      <MetricSection
-        title="Files"
-        detail={`${formatMetricNumber(totalFileOperations(overview))} read/write/edit operations`}
-      >
-        <MetricShareRows
-          rows={(metrics?.files?.mostRead || []).slice(0, 4).map((file) => ({
-            label: file.path.split("/").pop() || file.path,
-            value: `${formatMetricNumber(file.count)} reads`,
-            amount: file.count,
-          }))}
-          tone={colors.cyan}
-        />
-        <MetricShareRows
-          rows={[
-            ...(metrics?.files?.mostWritten || []).slice(0, 2).map((file) => ({
-              label: file.path.split("/").pop() || file.path,
-              value: `${formatMetricNumber(file.count)} writes`,
-              amount: file.count,
-            })),
-            ...(metrics?.files?.mostEdited || []).slice(0, 2).map((file) => ({
-              label: file.path.split("/").pop() || file.path,
-              value: `${formatMetricNumber(file.count)} edits`,
-              amount: file.count,
-            })),
-          ]}
-          tone={colors.amber}
-        />
-      </MetricSection>
+          <MetricSection title="Provider efficiency" detail="Tokens per provider call">
+            <MetricShareRows rows={providerRows} tone={colors.blueText} />
+          </MetricSection>
+        </>
+      ) : null}
 
-      <MetricSection title="Storage" detail={formatMetricBytes(metrics?.storage?.totalBytes)}>
-        <MetricShareRows
-          rows={storageRows.map((entry) => ({
-            label: entry.label,
-            value: formatMetricBytes(entry.bytes),
-            detail: compactWorkspace(entry.path),
-            amount: entry.bytes,
-          }))}
-          tone={colors.cyan}
-        />
-      </MetricSection>
+      {activeMetricsSection === "runtime" ? (
+        <>
+          <MetricSection
+            title="Provider plans"
+            detail={`${providerPlanStatus?.summary?.configured ?? metrics?.providerPlans?.summary?.configured ?? 0} configured - ${
+              providerPlanStatus?.summary?.warnings ??
+              metrics?.providerPlans?.summary?.warnings ??
+              0
+            } warnings`}
+          >
+            <ProviderPlanMetricsGrid plans={providerPlanRows} />
+          </MetricSection>
 
-      <MetricSection
-        title="Token cloud"
-        detail="Models, providers, tools, and recurring output terms"
-      >
-        <MetricTokenCloud entries={tokenAnalysis?.tokenCloud} />
-      </MetricSection>
+          <MetricSection title="Models" detail="Throughput, latency, and token share">
+            <MetricShareRows rows={modelRows} tone={colors.amber} />
+          </MetricSection>
+
+          <MetricSection
+            title="Chat runtime"
+            detail={`${formatMetricNumber(sessionMetrics?.totals.callCount)} provider calls across ${formatMetricNumber(sessionMetrics?.totals.sessions)} chats`}
+          >
+            <View style={styles.metricMicroGrid}>
+              <MetricMicro
+                label="Input"
+                value={formatMetricNumber(sessionMetrics?.totals.inputTokens)}
+              />
+              <MetricMicro
+                label="Output"
+                value={formatMetricNumber(sessionMetrics?.totals.outputTokens)}
+              />
+              <MetricMicro
+                label="Model calls"
+                value={formatMetricNumber(sessionMetrics?.totals.callCount)}
+              />
+              <MetricMicro
+                label="Output speed"
+                value={
+                  sessionMetrics?.totals.tokensPerSecond === null ||
+                  sessionMetrics?.totals.tokensPerSecond === undefined
+                    ? "--"
+                    : `${sessionMetrics.totals.tokensPerSecond} tok/s`
+                }
+              />
+              <MetricMicro
+                label="Average TTFT"
+                value={mobileMetricLatency(sessionMetrics?.totals.firstTokenMs)}
+              />
+              <MetricMicro
+                label="Compactions"
+                value={formatMetricNumber(sessionMetrics?.totals.compactionCount)}
+              />
+              <MetricMicro
+                label="Cache read"
+                value={formatMetricNumber(sessionMetrics?.totals.cachedInputTokens)}
+              />
+              <MetricMicro
+                label="Cache write"
+                value={formatMetricNumber(sessionMetrics?.totals.cacheWriteTokens)}
+              />
+              <MetricMicro
+                label="Compacted"
+                value={formatMetricNumber(sessionMetrics?.totals.compactedTokens)}
+              />
+            </View>
+            <MetricShareRows
+              rows={(sessionMetrics?.sessions || []).slice(0, 10).map((session) => ({
+                label: session.title,
+                value: `${formatMetricNumber(session.inputTokens)} in · ${formatMetricNumber(session.outputTokens)} out`,
+                detail: `${session.model || "Unknown model"} · ${session.tokensPerSecond === null ? "--" : `${session.tokensPerSecond} tok/s`} · ${mobileMetricLatency(session.firstTokenMs)}`,
+                amount: session.totalTokens,
+              }))}
+              tone={colors.cyan}
+            />
+            {sessionPagination && sessionPagination.totalPages > 1 ? (
+              <View style={styles.pagerRow}>
+                <Text style={styles.counterText}>
+                  Page {sessionPagination.page} of {sessionPagination.totalPages}
+                </Text>
+                <View style={styles.inlineButtonRow}>
+                  <Pressable
+                    style={[styles.smallButton, sessionRuntimeLoading && styles.controlDisabled]}
+                    disabled={!sessionPagination.hasPreviousPage || sessionRuntimeLoading}
+                    onPress={() => void loadSessionRuntimePage(sessionPagination.page - 1)}
+                  >
+                    <Text style={styles.smallButtonText}>Previous</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.smallButton, sessionRuntimeLoading && styles.controlDisabled]}
+                    disabled={!sessionPagination.hasNextPage || sessionRuntimeLoading}
+                    onPress={() => void loadSessionRuntimePage(sessionPagination.page + 1)}
+                  >
+                    <Text style={styles.smallButtonText}>Next</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+          </MetricSection>
+
+          <MetricSection
+            title="Tools"
+            detail={`${formatMetricNumber(overview?.toolCalls.totalCalls)} calls - ${formatMetricNumber(insights?.toolReliability.totalErrors)} errors`}
+          >
+            <MetricShareRows
+              rows={(metrics?.tools?.mostUsed || []).slice(0, 7).map((tool) => ({
+                label: tool.tool,
+                value: `${formatMetricNumber(tool.calls)} calls`,
+                amount: tool.calls,
+              }))}
+              tone={colors.green}
+            />
+            {metrics?.tools?.mostErrors?.length ? (
+              <MetricShareRows
+                rows={metrics.tools.mostErrors.slice(0, 4).map((tool) => ({
+                  label: tool.tool,
+                  value: `${formatMetricNumber(tool.errors)} errors`,
+                  amount: tool.errors,
+                }))}
+                tone={colors.red}
+              />
+            ) : null}
+          </MetricSection>
+
+          <MetricSection
+            title="Files"
+            detail={`${formatMetricNumber(totalFileOperations(overview))} read/write/edit operations`}
+          >
+            <MetricShareRows
+              rows={(metrics?.files?.mostRead || []).slice(0, 4).map((file) => ({
+                label: file.path.split("/").pop() || file.path,
+                value: `${formatMetricNumber(file.count)} reads`,
+                amount: file.count,
+              }))}
+              tone={colors.cyan}
+            />
+            <MetricShareRows
+              rows={[
+                ...(metrics?.files?.mostWritten || []).slice(0, 2).map((file) => ({
+                  label: file.path.split("/").pop() || file.path,
+                  value: `${formatMetricNumber(file.count)} writes`,
+                  amount: file.count,
+                })),
+                ...(metrics?.files?.mostEdited || []).slice(0, 2).map((file) => ({
+                  label: file.path.split("/").pop() || file.path,
+                  value: `${formatMetricNumber(file.count)} edits`,
+                  amount: file.count,
+                })),
+              ]}
+              tone={colors.amber}
+            />
+          </MetricSection>
+        </>
+      ) : null}
+
+      {activeMetricsSection === "system" ? (
+        <>
+          <MetricSection title="Storage" detail={formatMetricBytes(metrics?.storage?.totalBytes)}>
+            <MetricShareRows
+              rows={storageRows.map((entry) => ({
+                label: entry.label,
+                value: formatMetricBytes(entry.bytes),
+                detail: compactWorkspace(entry.path),
+                amount: entry.bytes,
+              }))}
+              tone={colors.cyan}
+            />
+          </MetricSection>
+
+          <MetricSection
+            title="Token cloud"
+            detail="Models, providers, tools, and recurring output terms"
+          >
+            <MetricTokenCloud entries={tokenAnalysis?.tokenCloud} />
+          </MetricSection>
+        </>
+      ) : null}
 
       <View style={styles.subsectionHeader}>
         <Text style={styles.subsectionTitle}>Runtime checks</Text>

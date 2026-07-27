@@ -810,7 +810,7 @@ export const externalTelemetryApi = {
     }),
 };
 
-export type BrowserDownloadPolicy = "ask" | "allow" | "deny";
+export type BrowserDownloadPolicy = "allow" | "deny";
 
 export interface BrowserSupervisionSettings {
   autoRestart: boolean;

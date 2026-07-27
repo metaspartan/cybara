@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { executeAgentTool } from "../../src/core/agent-tool-execution";
 import type { AgentStatus } from "../../src/core/status";
+import { registerToolHandler, unregisterToolHandler } from "../../src/core/tools/handlers/index";
 
 describe("agent tool execution", () => {
   test("rejects unknown and disabled tools before execution", async () => {
@@ -36,6 +37,7 @@ describe("agent tool execution", () => {
     });
 
     expect(result.result).toEqual({ result: 42, expression: "6 * 7" });
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
     expect(executionState.toolCallsStarted).toBe(1);
     expect(executionState.toolCalls).toEqual([
       {
@@ -43,8 +45,37 @@ describe("agent tool execution", () => {
         name: "calc",
         args: { expression: "6 * 7" },
         result: { result: 42, expression: "6 * 7" },
+        durationMs: result.durationMs,
       },
     ]);
     expect(statuses).toEqual(["tool_executing", "tool_completed"]);
+  });
+
+  test("records elapsed time for long-running tools", async () => {
+    const toolName = "duration_probe";
+    const executionState = { nextToolCallOrder: 0, toolCallsStarted: 0, toolCalls: [] };
+    registerToolHandler(toolName, async () => {
+      await Bun.sleep(30);
+      return { completed: true };
+    });
+    try {
+      const result = await executeAgentTool({
+        toolName,
+        args: {},
+        allowedToolNames: new Set([toolName]),
+        hookContext: { agentId: "agent-duration", sessionId: "session-duration" },
+        toolContext: {
+          agentId: "agent-duration",
+          sessionId: "session-duration",
+          executionState,
+        },
+        broadcastStatus: () => undefined,
+      });
+
+      expect(result.durationMs).toBeGreaterThanOrEqual(20);
+      expect(executionState.toolCalls[0]?.durationMs).toBe(result.durationMs);
+    } finally {
+      unregisterToolHandler(toolName);
+    }
   });
 });

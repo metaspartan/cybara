@@ -21,6 +21,7 @@ describe("chat empty state", () => {
     const header = await Bun.file("ui/src/pages/chat/ChatPageHeader.tsx").text();
 
     expect(chat).toContain("{sessionId ? (");
+    expect(chat).toContain("sessionId && showEnvironmentOverview && !showWorkspacePanel");
     expect(chat).toContain("<ChatEmptyState");
     expect(chat).toContain('layout="new-chat"');
     expect(chat).toContain("typedMessages.length > 0 ? <ChatComposer");

@@ -5,6 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { findBundledBrowserExecutable, findSystemBrowserExecutable } from "./browser-executable";
 import { getChromium } from "./playwright-loader";
+import {
+  browserDownloadsAccepted,
+  getBrowserSupervisionSettings,
+  onBrowserSupervisionSettingsChanged,
+} from "./supervision";
 
 const CDP_PORT_RANGE_START = 18800;
 const CDP_PORT_RANGE_END = 18900;
@@ -29,6 +34,35 @@ const browsers = new Map<string, { process: ChildProcess; browser: Browser }>();
 const pages = new Map<string, Page>();
 const profiles = new Map<string, BrowserProfile>();
 const usedPorts = new Set<number>();
+
+function profileDownloadBehavior(): { policy: "allow"; downloadPath: string } | { policy: "deny" } {
+  const supervision = getBrowserSupervisionSettings({ redact: false });
+  if (!browserDownloadsAccepted(supervision.downloadPolicy)) return { policy: "deny" };
+  const downloadPath = path.join(getConfigDir(), "downloads");
+  fs.mkdirSync(downloadPath, { recursive: true, mode: 0o700 });
+  return { policy: "allow", downloadPath };
+}
+
+onBrowserSupervisionSettingsChanged(() => {
+  const downloadBehavior = profileDownloadBehavior();
+  for (const { browser } of browsers.values()) {
+    void browser
+      .target()
+      .createCDPSession()
+      .then(async (session) => {
+        try {
+          await session.send("Browser.setDownloadBehavior", {
+            behavior: downloadBehavior.policy,
+            downloadPath:
+              downloadBehavior.policy === "allow" ? downloadBehavior.downloadPath : undefined,
+          });
+        } finally {
+          await session.detach();
+        }
+      })
+      .catch(() => undefined);
+  }
+});
 
 function getConfigDir(): string {
   const configDir = process.env.CONFIG_DIR || path.join(os.homedir(), ".cybara");
@@ -260,6 +294,7 @@ export async function startBrowser(profileName: string): Promise<Browser> {
             const browser = await puppeteer.connect({
               browserWSEndpoint: wsUrl,
               defaultViewport: null,
+              downloadBehavior: profileDownloadBehavior(),
             });
 
             if (settled) {

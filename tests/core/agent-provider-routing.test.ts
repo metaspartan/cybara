@@ -275,13 +275,14 @@ describe("Agent provider API-family routing", () => {
     );
 
     expect(result.content).not.toContain("backup-replayed-the-turn");
-    expect(result.tool_calls).toEqual([
+    expect(result.tool_calls).toMatchObject([
       {
         name: "calc",
         args: { expression: "6*7" },
         result: { result: 42, expression: "6*7" },
       },
     ]);
+    expect(result.tool_calls?.[0]?.duration).toBeGreaterThanOrEqual(0);
     expect(primaryCalls).toBe(2);
     expect(authorizationHeaders).toEqual([
       "Bearer primary-side-effect-key",
@@ -661,6 +662,38 @@ describe("Agent provider API-family routing", () => {
 
     expect(result.content.toLowerCase()).toContain("quota");
     expect(calls).toBe(1);
+  });
+
+  test("directs rejected Grok OAuth sessions to reconnect", async () => {
+    globalThis.fetch = (async () =>
+      Response.json({ error: { message: "token expired" } }, { status: 401 })) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "xai-oauth",
+      name: "Grok OAuth Session",
+      access_token: "expired-grok-token",
+      base_url: "https://api.x.ai/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Grok OAuth Session Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "grok-4.5",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "reply briefly" }],
+      { useTools: false, sessionId: "grok-oauth-expired-session" }
+    );
+
+    expect(result.content).toBe(
+      "Grok OAuth Session sign-in expired (401). Reconnect the provider in Settings and retry."
+    );
+    expect(result.content).not.toContain("API key");
   });
 
   test("refreshes Grok OAuth in place when a tool loop crosses token expiry", async () => {

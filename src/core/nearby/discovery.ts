@@ -4,6 +4,13 @@ import { NEARBY_PROTOCOL } from "./types";
 
 export const NEARBY_DISCOVERY_PORT = 4270;
 
+export function resolveNearbyDiscoveryPort(value: unknown): number {
+  const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : NaN;
+  return Number.isInteger(parsed) && parsed >= 1024 && parsed <= 65_535
+    ? parsed
+    : NEARBY_DISCOVERY_PORT;
+}
+
 const MAX_DATAGRAM_BYTES = 2048;
 const ANNOUNCEMENT_INTERVAL_MS = 8000;
 const REFRESH_DELAYS_MS = [0, 250, 1000] as const;

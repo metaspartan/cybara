@@ -768,9 +768,11 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
           executed.result === undefined ? { skipped: true, reason: "no result" } : executed.result;
         if (!executed.skipped) {
           const toolCallRecord = {
+            id: toolCall.callId,
             name: toolCall.name,
             args: toolCall.args,
             result: resultPayload,
+            duration: executed.durationMs,
           };
           allToolCalls.push(toolCallRecord);
           iterationToolCalls.push(toolCallRecord);

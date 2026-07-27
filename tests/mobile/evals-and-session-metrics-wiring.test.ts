@@ -46,6 +46,20 @@ describe("mobile eval and session runtime parity", () => {
     expect(metrics).toContain('label="Compacted"');
     expect(metrics).toContain("loadSessionRuntimePage");
     expect(metrics).toContain("sessionPagination.totalPages");
+    expect(metrics).toContain(
+      'type MobileMetricsSection = "activity" | "usage" | "runtime" | "system"'
+    );
+    expect(metrics).toContain('accessibilityRole="tablist"');
+    expect(metrics).toContain('activeMetricsSection === "activity"');
+    expect(metrics.indexOf('activeMetricsSection === "usage"')).toBeLessThan(
+      metrics.indexOf('title="Prompt vs output"')
+    );
+    expect(metrics.indexOf('activeMetricsSection === "usage"')).toBeLessThan(
+      metrics.indexOf('title="Token insights"')
+    );
+    expect(metrics.indexOf('activeMetricsSection === "usage"')).toBeLessThan(
+      metrics.indexOf('title="Provider efficiency"')
+    );
     expect(evals).toContain("Copy redacted eval JSONL");
     expect(evals).toContain("Copy replayable eval suite");
     expect(evals).toContain("Import eval suite from clipboard");

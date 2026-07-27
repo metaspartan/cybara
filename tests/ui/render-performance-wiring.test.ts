@@ -21,20 +21,20 @@ describe("UI render performance wiring", () => {
     expect(source).not.toContain("...timeSeries.days.map((d) =>");
   });
 
-  test("Metrics defers expensive detail feeds until after overview render", () => {
+  test("Metrics defers one aggregate detail feed until after overview render", () => {
     const metricsSource = read("pages/Metrics.tsx");
     const hooksSource = read("hooks/useApi.ts");
 
     expect(metricsSource).toContain("DETAIL_METRICS_IDLE_DELAY_MS");
     expect(metricsSource).toContain("requestIdleCallback");
     expect(metricsSource).toContain("const detailQueryOptions = useMemo");
-    expect(metricsSource).toContain("useMetricsTokenAnalysis(detailQueryOptions)");
-    expect(metricsSource).toContain("useMetricsModels(detailQueryOptions)");
+    expect(metricsSource).toContain("useMetricsSnapshot(detailQueryOptions)");
+    expect(metricsSource).not.toContain("useMetricsTokenAnalysis(detailQueryOptions)");
+    expect(metricsSource).not.toContain("useMetricsModels(detailQueryOptions)");
     expect(metricsSource).toContain("enabled: detailMetricsEnabled");
     expect(hooksSource).toContain("type MetricsQueryControlOptions");
-    expect(hooksSource).toContain(
-      "useMetricsTokenAnalysis(options: MetricsQueryControlOptions = {})"
-    );
+    expect(hooksSource).toContain("useMetricsSnapshot(options: MetricsQueryControlOptions = {})");
+    expect(hooksSource).toContain('queryFn: () => fetchApi<MetricsSnapshot>("/metrics/snapshot")');
     expect(hooksSource).toContain("...options");
   });
 

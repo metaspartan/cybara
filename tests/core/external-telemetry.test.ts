@@ -81,4 +81,72 @@ describe("external telemetry", () => {
     recordExternalMetric("tools", "success", 1);
     expect(renderPrometheusMetrics()).toContain("cybara_tools_success 1");
   });
+
+  test("shares one in-flight export across concurrent flushes", async () => {
+    let requests = 0;
+    let release: (() => void) | null = null;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const server = Bun.serve({
+      port: 0,
+      async fetch() {
+        requests += 1;
+        await gate;
+        return new Response(null, { status: 200 });
+      },
+    });
+
+    try {
+      setExternalTelemetrySettings({
+        enabled: true,
+        otlpEnabled: true,
+        metricsEnabled: true,
+        tracesEnabled: false,
+        otlpEndpoint: `http://127.0.0.1:${server.port}`,
+      });
+      recordExternalMetric("test", "single_flight", 1);
+      const first = flushExternalTelemetry();
+      const second = flushExternalTelemetry();
+      release?.();
+      await Promise.all([first, second]);
+
+      expect(requests).toBe(1);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("keeps failed export queues bounded", async () => {
+    const failingServer = Bun.serve({
+      port: 0,
+      fetch: () => new Response(null, { status: 503 }),
+    });
+    const successServer = Bun.serve({
+      port: 0,
+      fetch: () => new Response(null, { status: 200 }),
+    });
+
+    try {
+      setExternalTelemetrySettings({
+        enabled: true,
+        otlpEnabled: true,
+        metricsEnabled: true,
+        tracesEnabled: false,
+        otlpEndpoint: `http://127.0.0.1:${failingServer.port}`,
+      });
+      for (let index = 0; index < 10_005; index += 1) {
+        recordExternalMetric("test", "bounded", index);
+      }
+      const failed = await flushExternalTelemetry();
+      expect(failed.queuedMetrics).toBe(10_000);
+
+      setExternalTelemetrySettings({ otlpEndpoint: `http://127.0.0.1:${successServer.port}` });
+      const recovered = await flushExternalTelemetry();
+      expect(recovered.queuedMetrics).toBe(0);
+    } finally {
+      failingServer.stop(true);
+      successServer.stop(true);
+    }
+  });
 });

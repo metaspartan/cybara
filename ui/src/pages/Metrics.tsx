@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
   FileText,
@@ -15,39 +15,18 @@ import {
   Clock,
   RefreshCw,
   Wrench,
+  ChartNoAxesCombined,
+  Layers3,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { PageLayout } from "@/components/layout";
-import {
-  useMetricsOverview,
-  useMetricsTokens,
-  useMetricsFiles,
-  useMetricsTools,
-  useMetricsTimeSeries,
-  useMetricsProviders,
-  useMetricsModels,
-  useMetricsInsights,
-  useMetricsTokenAnalysis,
-  useMetricsSessions,
-  useMetricsStorage,
-  type MetricsOverview,
-  type TokenMetrics,
-  type TokenAnalysisMetrics,
-  type FileMetrics,
-  type ToolMetrics,
-  type TimeSeriesData,
-  type ProviderMetrics,
-  type ModelMetrics,
-  type MetricsInsights,
-  type MetricsStorage,
-} from "@/hooks/useApi";
-import { providerPlansApi } from "@/lib/api";
+import { useMetricsOverview, useMetricsSnapshot, useMetricsSessions } from "@/hooks/useApi";
 import {
   providerPlanUsageClasses,
   providerPlanWindowDisplay,
   type ProviderPlanWindowDisplay,
 } from "@/lib/providerPlanDisplay";
-import type { ProviderPlanSnapshot, ProviderPlanStatusResponse } from "@/types";
+import type { ProviderPlanSnapshot } from "@/types";
 import {
   MetricAreaChart,
   MetricShareStack,
@@ -64,9 +43,10 @@ import {
   FileStat,
   ActivityStat,
 } from "./metrics/MetricsComponents";
-import { formatBytes, formatNumber } from "./metrics/metricsFormatting";
+import { formatBytes, formatNumber, metricTokenActivityRows } from "./metrics/metricsFormatting";
 
 const DETAIL_METRICS_IDLE_DELAY_MS = 120;
+type MetricsSection = "overview" | "tokens" | "operations" | "storage";
 
 type MetricsIdleWindow = Window & {
   requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
@@ -94,12 +74,13 @@ interface ProviderPlanMetricCard {
 export function Metrics() {
   const queryClient = useQueryClient();
   const {
-    data: overview,
-    dataUpdatedAt,
+    data: overviewPreview,
+    dataUpdatedAt: overviewUpdatedAt,
     isFetching: refreshingOverview,
     isLoading: loadingOverview,
   } = useMetricsOverview();
   const [detailMetricsEnabled, setDetailMetricsEnabled] = useState(false);
+  const [activeSection, setActiveSection] = useState<MetricsSection>("overview");
   const [sessionPage, setSessionPage] = useState(1);
   const [refreshingMetrics, setRefreshingMetrics] = useState(false);
   const sessionPageSize = 20;
@@ -107,44 +88,29 @@ export function Metrics() {
     () => ({ enabled: detailMetricsEnabled }),
     [detailMetricsEnabled]
   );
-  const { data: tokens, isLoading: loadingTokens } = useMetricsTokens(detailQueryOptions);
-  const { data: files, isLoading: loadingFiles } = useMetricsFiles(detailQueryOptions);
-  const { data: tools, isLoading: loadingTools } = useMetricsTools(detailQueryOptions);
-  const { data: timeSeries, isLoading: loadingTimeSeries } =
-    useMetricsTimeSeries(detailQueryOptions);
-  const { data: providers, isLoading: loadingProviders } = useMetricsProviders(detailQueryOptions);
-  const { data: modelMetrics, isLoading: loadingModels } = useMetricsModels(detailQueryOptions);
-  const { data: insights, isLoading: loadingInsights } = useMetricsInsights(detailQueryOptions);
-  const { data: tokenAnalysis, isLoading: loadingTokenAnalysis } =
-    useMetricsTokenAnalysis(detailQueryOptions);
+  const {
+    data: snapshot,
+    dataUpdatedAt: snapshotUpdatedAt,
+    isLoading: loadingSnapshot,
+  } = useMetricsSnapshot(detailQueryOptions);
   const { data: sessionMetrics, isLoading: loadingSessionMetrics } = useMetricsSessions(
     sessionPage,
     sessionPageSize,
     detailQueryOptions
   );
-  const { data: storage, isLoading: loadingStorage } = useMetricsStorage(detailQueryOptions);
-  const { data: providerPlanStatus, isLoading: loadingProviderPlans } =
-    useQuery<ProviderPlanStatusResponse>({
-      queryKey: ["provider-plan-status"],
-      queryFn: async () => {
-        const response = await providerPlansApi.status();
-        if (!response.success || !response.data) {
-          throw new Error(response.error || "Failed to load provider usage");
-        }
-        return response.data;
-      },
-      enabled: detailMetricsEnabled,
-      staleTime: 15_000,
-      refetchInterval: 30_000,
-      refetchIntervalInBackground: false,
-      refetchOnWindowFocus: true,
-    });
+  const overview = snapshot?.overview ?? overviewPreview;
+  const tokens = snapshot?.tokens ?? undefined;
+  const files = snapshot?.files ?? undefined;
+  const tools = snapshot?.tools ?? undefined;
+  const timeSeries = snapshot?.timeSeries ?? undefined;
+  const providers = snapshot?.providers ?? undefined;
+  const modelMetrics = snapshot?.models ?? undefined;
+  const insightsData = snapshot?.insights ?? undefined;
+  const tokenAnalysisData = snapshot?.tokenAnalysis ?? undefined;
+  const storageData = snapshot?.storage ?? undefined;
+  const providerPlanStatus = snapshot?.providerPlans ?? undefined;
 
   const isLoading = loadingOverview;
-  const insightsData = insights as MetricsInsights | undefined;
-  const tokenAnalysisData = tokenAnalysis as TokenAnalysisMetrics | undefined;
-  const storageData = storage as MetricsStorage | undefined;
-
   useEffect(() => {
     if (loadingOverview) {
       setDetailMetricsEnabled(false);
@@ -167,19 +133,18 @@ export function Metrics() {
     return () => window.clearTimeout(timeout);
   }, [loadingOverview]);
 
-  const tokensPending = !tokens && (!detailMetricsEnabled || loadingTokens);
-  const filesPending = !files && (!detailMetricsEnabled || loadingFiles);
-  const toolsPending = !tools && (!detailMetricsEnabled || loadingTools);
-  const timeSeriesPending = !timeSeries && (!detailMetricsEnabled || loadingTimeSeries);
-  const providersPending = !providers && (!detailMetricsEnabled || loadingProviders);
-  const modelsPending = !modelMetrics && (!detailMetricsEnabled || loadingModels);
-  const insightsPending = !insightsData && (!detailMetricsEnabled || loadingInsights);
-  const tokenAnalysisPending =
-    !tokenAnalysisData && (!detailMetricsEnabled || loadingTokenAnalysis);
-  const storagePending = !storageData && (!detailMetricsEnabled || loadingStorage);
+  const detailPending = !snapshot && (!detailMetricsEnabled || loadingSnapshot);
+  const tokensPending = !tokens && detailPending;
+  const filesPending = !files && detailPending;
+  const toolsPending = !tools && detailPending;
+  const timeSeriesPending = !timeSeries && detailPending;
+  const providersPending = !providers && detailPending;
+  const modelsPending = !modelMetrics && detailPending;
+  const insightsPending = !insightsData && detailPending;
+  const tokenAnalysisPending = !tokenAnalysisData && detailPending;
+  const storagePending = !storageData && detailPending;
   const sessionMetricsPending = !sessionMetrics && (!detailMetricsEnabled || loadingSessionMetrics);
-  const providerPlansPending =
-    !providerPlanStatus && (!detailMetricsEnabled || loadingProviderPlans);
+  const providerPlansPending = !providerPlanStatus && detailPending;
 
   const stats = useMemo(() => {
     if (!overview) return null;
@@ -328,20 +293,17 @@ export function Metrics() {
     }));
   }, [modelMetrics?.models]);
 
-  const activityDayRows = useMemo(() => {
-    const rows = timeSeries?.days || [];
-    const totals = rows.map((day, index) => {
-      const dayTotal = Object.entries(day)
-        .filter(([key]) => key !== "date")
-        .reduce((sum, [, value]) => sum + (typeof value === "number" ? value : 0), 0);
-      return { date: day.date, dayTotal, key: `${day.date}:${index}` };
-    });
-    const maxDayTotal = Math.max(...totals.map((day) => day.dayTotal), 1);
-    return totals.map((day) => ({
-      ...day,
-      height: (day.dayTotal / maxDayTotal) * 100,
-    }));
-  }, [timeSeries?.days]);
+  const activityDayRows = useMemo(
+    () =>
+      metricTokenActivityRows(timeSeries?.days || []).map((row) => ({
+        ...row,
+        label: new Date(`${row.label}T12:00:00`).toLocaleDateString([], {
+          month: "short",
+          day: "numeric",
+        }),
+      })),
+    [timeSeries?.days]
+  );
 
   const tokenVelocityRows = useMemo(
     () =>
@@ -444,6 +406,7 @@ export function Metrics() {
   };
 
   const refreshPending = refreshingMetrics || refreshingOverview;
+  const dataUpdatedAt = Math.max(overviewUpdatedAt, snapshotUpdatedAt);
   const updatedLabel = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
     : "Not updated";
@@ -531,1087 +494,1167 @@ export function Metrics() {
         />
       </div>
 
-      <SessionRuntimeTable
-        metrics={sessionMetrics}
-        loading={sessionMetricsPending}
-        onPageChange={setSessionPage}
-      />
-
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
-        <Card className="xl:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-cyan-400" />
-              Token Velocity
-            </CardTitle>
-            <CardDescription>24-hour area trend for recent input/output workloads</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {tokenAnalysisPending ? (
-              <MetricChartSkeleton />
-            ) : (
-              <MetricAreaChart
-                rows={tokenVelocityRows}
-                strokeColor="#22d3ee"
-                fillColor="#22d3ee"
-                emptyLabel="No token velocity data yet"
-              />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Gauge className="w-5 h-5 text-emerald-400" />
-              Token Mix
-            </CardTitle>
-            <CardDescription>
-              Input, output, and cache share for current research usage
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <MetricShareStack rows={tokenFlowShareRows} total={overview?.tokenUsage.total || 0} />
-          </CardContent>
-        </Card>
+      <div
+        className="mb-6 flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-md border border-[var(--surface-border)] bg-[var(--surface-panel)] p-1"
+        role="tablist"
+        aria-label="Metric sections"
+      >
+        {[
+          { key: "overview", label: "Overview", Icon: ChartNoAxesCombined },
+          { key: "tokens", label: "Analysis", Icon: Layers3 },
+          { key: "operations", label: "Operations", Icon: Wrench },
+          { key: "storage", label: "Storage", Icon: HardDrive },
+        ].map(({ key, label, Icon }) => {
+          const selected = activeSection === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => setActiveSection(key as MetricsSection)}
+              className={`inline-flex h-8 shrink-0 items-center gap-2 rounded px-3 text-xs font-medium transition-colors ${
+                selected
+                  ? "bg-[var(--surface-raised)] text-[var(--text-primary)]"
+                  : "text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
-        <Card className="xl:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-cyan-400" />
-              Token Heatmap
-            </CardTitle>
-            <CardDescription>7-day intensity map by hour with hottest usage window</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {tokenAnalysisPending ? (
-              <MetricHeatmapSkeleton />
-            ) : tokenAnalysisData?.tokenHeatmap?.days &&
-              tokenAnalysisData.tokenHeatmap.days.length > 0 ? (
-              <>
-                <div className="space-y-2">
-                  {tokenAnalysisData.tokenHeatmap.days.map((day) => (
-                    <div key={day.date} className="grid grid-cols-[64px,1fr] gap-2 items-center">
-                      <p className="text-xs text-gray-400">{day.dayLabel}</p>
-                      <div
-                        className="grid gap-1"
-                        style={{
-                          gridTemplateColumns: "repeat(24, minmax(0, 1fr))",
-                        }}
-                      >
-                        {day.hours.map((hour) => (
-                          <div
-                            key={`${day.date}-${hour.hour}`}
-                            className="h-3 rounded-sm border border-white/5"
-                            style={{
-                              backgroundColor: `rgba(34, 211, 238, ${0.08 + hour.intensity * 0.92})`,
-                            }}
-                            title={`${day.date} ${String(hour.hour).padStart(2, "0")}:00 - ${formatNumber(hour.tokens)} tokens (${hour.calls} calls)`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {tokenAnalysisData.tokenHeatmap.hottestHour && (
-                  <div className="rounded-lg bg-white/5 p-3 text-xs text-gray-300">
-                    Hottest window: {tokenAnalysisData.tokenHeatmap.hottestHour.dayLabel}{" "}
-                    {String(tokenAnalysisData.tokenHeatmap.hottestHour.hour).padStart(2, "0")}
-                    :00 with {formatNumber(tokenAnalysisData.tokenHeatmap.hottestHour.tokens)}{" "}
-                    tokens
-                  </div>
+      {activeSection === "overview" ? (
+        <>
+          <SessionRuntimeTable
+            metrics={sessionMetrics}
+            loading={sessionMetricsPending}
+            onPageChange={setSessionPage}
+          />
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+            <Card className="xl:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-cyan-400" />
+                  Token Velocity
+                </CardTitle>
+                <CardDescription>
+                  24-hour area trend for recent input/output workloads
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {tokenAnalysisPending ? (
+                  <MetricChartSkeleton />
+                ) : (
+                  <MetricAreaChart
+                    rows={tokenVelocityRows}
+                    strokeColor="#22d3ee"
+                    fillColor="#22d3ee"
+                    emptyLabel="No token velocity data yet"
+                  />
                 )}
-              </>
-            ) : (
-              <p className="text-sm text-gray-500">No heatmap data yet</p>
-            )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-emerald-400" />
-              Prompt vs Output
-            </CardTitle>
-            <CardDescription>Token flow ratios and distribution</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {tokenAnalysisPending ? (
-              <MetricPanelSkeleton rows={4} />
-            ) : (
-              <>
-                <div className="rounded-lg bg-white/5 p-3">
-                  <p className="text-xs text-gray-500 mb-1">Input:Output</p>
-                  <p className="text-lg font-semibold text-white">
-                    {tokenAnalysisData?.summary?.inputToOutputRatio !== null &&
-                    tokenAnalysisData?.summary?.inputToOutputRatio !== undefined
-                      ? `${tokenAnalysisData.summary.inputToOutputRatio}:1`
-                      : "n/a"}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-white/5 p-3">
-                  <p className="text-xs text-gray-500 mb-2">Distribution</p>
-                  <div className="space-y-2">
-                    {tokenAnalysisData?.promptOutputDistribution?.bands?.map((band) => (
-                      <div key={band.band}>
-                        <div className="flex items-center justify-between text-xs mb-1">
-                          <span className="text-gray-300">{band.band.split("_").join(" ")}</span>
-                          <span className="text-gray-500">{band.sharePct}%</span>
-                        </div>
-                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Gauge className="w-5 h-5 text-emerald-400" />
+                  Token Mix
+                </CardTitle>
+                <CardDescription>
+                  Input, output, and cache share for current research usage
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MetricShareStack
+                  rows={tokenFlowShareRows}
+                  total={overview?.tokenUsage.total || 0}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      ) : null}
+
+      {activeSection === "tokens" ? (
+        <>
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+            <Card className="xl:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-cyan-400" />
+                  Token Heatmap
+                </CardTitle>
+                <CardDescription>
+                  7-day intensity map by hour with hottest usage window
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {tokenAnalysisPending ? (
+                  <MetricHeatmapSkeleton />
+                ) : tokenAnalysisData?.tokenHeatmap?.days &&
+                  tokenAnalysisData.tokenHeatmap.days.length > 0 ? (
+                  <>
+                    <div className="space-y-2">
+                      {tokenAnalysisData.tokenHeatmap.days.map((day) => (
+                        <div
+                          key={day.date}
+                          className="grid grid-cols-[64px,1fr] gap-2 items-center"
+                        >
+                          <p className="text-xs text-gray-400">{day.dayLabel}</p>
                           <div
-                            className="h-full bg-emerald-500 rounded-full"
+                            className="grid gap-1"
                             style={{
-                              width: `${Math.min(100, band.sharePct)}%`,
+                              gridTemplateColumns: "repeat(24, minmax(0, 1fr))",
                             }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-lg bg-white/5 p-3 grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <p className="text-gray-500">Avg/call</p>
-                    <p className="text-white">
-                      {formatNumber(tokenAnalysisData?.summary?.averageTokensPerCall || 0)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Median</p>
-                    <p className="text-white">
-                      {formatNumber(tokenAnalysisData?.summary?.medianTokensPerCall || 0)}
-                    </p>
-                  </div>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-blue-400" />
-              Provider Token Share
-            </CardTitle>
-            <CardDescription>
-              Where token volume and spend pressure are concentrated
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {tokensPending || insightsPending ? (
-              <MetricRowsSkeleton />
-            ) : (
-              <MetricRankedRows rows={providerTokenRows} accentClass="bg-blue-400" />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-amber-400" />
-              Model Token Share
-            </CardTitle>
-            <CardDescription>Top models by tracked token volume and behavior</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {modelsPending || tokenAnalysisPending ? (
-              <MetricRowsSkeleton />
-            ) : (
-              <MetricRankedRows rows={modelTokenRows} accentClass="bg-amber-400" />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Gauge className="w-5 h-5 text-emerald-400" />
-              Provider Plan Health
-            </CardTitle>
-            <CardDescription>Automatic usage windows for connected coding plans</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {providerPlansPending ? (
-              <MetricRowsSkeleton />
-            ) : (
-              <div className="grid grid-cols-1 gap-2.5">
-                {providerPlanCards.map((plan) => (
-                  <div
-                    key={plan.id}
-                    className="rounded-lg border border-white/10 bg-white/[0.04] p-2.5"
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-white">
-                          {plan.providerName}
-                        </p>
-                        <p className="truncate text-[11px] text-gray-500">
-                          {plan.planName || "Automatic plan"}
-                        </p>
-                      </div>
-                      <span
-                        className={`text-[11px] font-medium ${providerPlanStatusTone(plan.status)}`}
-                      >
-                        {plan.status}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {plan.windows.map(({ label, usage }) => {
-                        const classes = providerPlanUsageClasses(usage);
-                        const width = usage.unlimited ? 100 : (usage.percent ?? 0);
-                        return (
-                          <div
-                            key={`${plan.id}:${label}`}
-                            className={`rounded-md border px-2.5 py-2 ${classes.borderClass} ${classes.bgClass}`}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] font-medium text-gray-400">{label}</span>
-                              <span
-                                className={`text-xs font-semibold tabular-nums ${classes.textClass}`}
-                              >
-                                {usage.value}
-                              </span>
-                            </div>
-                            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                            {day.hours.map((hour) => (
                               <div
-                                className={`h-full rounded-full ${classes.fillClass}`}
+                                key={`${day.date}-${hour.hour}`}
+                                className="h-3 rounded-sm border border-white/5"
                                 style={{
-                                  width: `${Math.max(usage.unlimited ? 100 : 2, width)}%`,
+                                  backgroundColor: `rgba(34, 211, 238, ${0.08 + hour.intensity * 0.92})`,
+                                }}
+                                title={`${day.date} ${String(hour.hour).padStart(2, "0")}:00 - ${formatNumber(hour.tokens)} tokens (${hour.calls} calls)`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {tokenAnalysisData.tokenHeatmap.hottestHour && (
+                      <div className="rounded-lg bg-white/5 p-3 text-xs text-gray-300">
+                        Hottest window: {tokenAnalysisData.tokenHeatmap.hottestHour.dayLabel}{" "}
+                        {String(tokenAnalysisData.tokenHeatmap.hottestHour.hour).padStart(2, "0")}
+                        :00 with {formatNumber(tokenAnalysisData.tokenHeatmap.hottestHour.tokens)}{" "}
+                        tokens
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-500">No heatmap data yet</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-emerald-400" />
+                  Prompt vs Output
+                </CardTitle>
+                <CardDescription>Token flow ratios and distribution</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {tokenAnalysisPending ? (
+                  <MetricPanelSkeleton rows={4} />
+                ) : (
+                  <>
+                    <div className="rounded-lg bg-white/5 p-3">
+                      <p className="text-xs text-gray-500 mb-1">Input:Output</p>
+                      <p className="text-lg font-semibold text-white">
+                        {tokenAnalysisData?.summary?.inputToOutputRatio !== null &&
+                        tokenAnalysisData?.summary?.inputToOutputRatio !== undefined
+                          ? `${tokenAnalysisData.summary.inputToOutputRatio}:1`
+                          : "n/a"}
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-white/5 p-3">
+                      <p className="text-xs text-gray-500 mb-2">Distribution</p>
+                      <div className="space-y-2">
+                        {tokenAnalysisData?.promptOutputDistribution?.bands?.map((band) => (
+                          <div key={band.band}>
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <span className="text-gray-300">
+                                {band.band.split("_").join(" ")}
+                              </span>
+                              <span className="text-gray-500">{band.sharePct}%</span>
+                            </div>
+                            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-emerald-500 rounded-full"
+                                style={{
+                                  width: `${Math.min(100, band.sharePct)}%`,
                                 }}
                               />
                             </div>
-                            {usage.resetLabel && (
-                              <p className="mt-1 truncate text-[10px] leading-none text-gray-500">
-                                {usage.resetLabel}
-                              </p>
-                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-                {providerPlanCards.length === 0 && (
-                  <p className="text-sm text-gray-500">No provider plan data yet</p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-amber-400" />
-              Token Cloud
-            </CardTitle>
-            <CardDescription>
-              Most active models, providers, tools, and recurring terms
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {tokenAnalysisPending ? (
-              <MetricCloudSkeleton />
-            ) : tokenCloudEntries.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {tokenCloudEntries.map((entry) => {
-                  const size = Math.min(26, 11 + entry.sharePct * 0.5);
-                  const color =
-                    entry.category === "model"
-                      ? "text-cyan-300"
-                      : entry.category === "provider"
-                        ? "text-emerald-300"
-                        : entry.category === "tool"
-                          ? "text-violet-300"
-                          : entry.category === "pattern"
-                            ? "text-orange-300"
-                            : "text-amber-300";
-                  return (
-                    <span
-                      key={`${entry.category}-${entry.token}`}
-                      className={`px-2 py-1 rounded-md bg-white/5 border border-white/10 ${color}`}
-                      style={{ fontSize: `${size}px`, lineHeight: 1.1 }}
-                      title={`${entry.category} · ${entry.sharePct}%`}
-                    >
-                      {entry.token}
-                    </span>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500">No token cloud data yet</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Gauge className="w-5 h-5 text-rose-400" />
-              Model Thought Profiles
-            </CardTitle>
-            <CardDescription>Prompt/output style, latency, and throughput by model</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {tokenAnalysisPending ? (
-              <MetricRowsSkeleton />
-            ) : (
-              <div className="space-y-3">
-                {tokenAnalysisData?.modelThoughtProfiles?.slice(0, 8).map((profile) => (
-                  <div
-                    key={`${profile.provider}-${profile.model}`}
-                    className="rounded-lg bg-white/5 p-3"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-sm text-white">{profile.model}</p>
-                      <span className="text-[11px] uppercase tracking-wide text-rose-300">
-                        {profile.behavior}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-gray-400">
-                      <span>{profile.promptSharePct}% prompt</span>
-                      <span>{profile.responseSharePct}% output</span>
-                      <span>{profile.avgTps} tok/s</span>
-                      <span>{profile.avgLatencyMs}ms</span>
-                    </div>
-                  </div>
-                ))}
-                {(!tokenAnalysisData?.modelThoughtProfiles ||
-                  tokenAnalysisData.modelThoughtProfiles.length === 0) && (
-                  <p className="text-sm text-gray-500">No model thought profile data yet</p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-indigo-400" />
-              Token Insights
-            </CardTitle>
-            <CardDescription>24h trend, cache share, and top model concentration</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {insightsPending ? (
-              <MetricPanelSkeleton rows={4} />
-            ) : (
-              <>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="rounded-lg bg-white/5 p-3">
-                    <p className="text-xs text-gray-500 mb-1">24h Trend</p>
-                    <p
-                      className={`text-lg font-semibold ${insightsData?.tokenTrend24h.direction === "up" ? "text-emerald-400" : insightsData?.tokenTrend24h.direction === "down" ? "text-red-400" : "text-gray-300"}`}
-                    >
-                      {insightsData?.tokenTrend24h.changePct ?? 0}%
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-white/5 p-3">
-                    <p className="text-xs text-gray-500 mb-1">Cache Share</p>
-                    <p className="text-lg font-semibold text-purple-300">
-                      {insightsData?.cacheEfficiency.cacheSharePct ?? 0}%
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-white/5 p-3">
-                    <p className="text-xs text-gray-500 mb-1">Top Model Share</p>
-                    <p className="text-lg font-semibold text-amber-300">
-                      {insightsData?.topModel?.sharePct ?? 0}%
-                    </p>
-                  </div>
-                </div>
-                <div className="pt-3 border-t border-white/10">
-                  <p className="text-sm text-gray-400 mb-1">Most used model</p>
-                  <p className="text-sm text-white font-medium">
-                    {insightsData?.topModel?.model || "No model data yet"}
-                  </p>
-                  {insightsData?.topModel && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      {formatNumber(insightsData.topModel.tokens)} tokens tracked
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Gauge className="w-5 h-5 text-cyan-400" />
-              Provider Efficiency
-            </CardTitle>
-            <CardDescription>Tokens per provider call with share breakdown</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {insightsPending ? (
-              <MetricRowsSkeleton />
-            ) : (
-              <div className="space-y-3">
-                {insightsData?.providerEfficiency.slice(0, 6).map((provider, i) => (
-                  <div key={i} className="rounded-lg bg-white/5 p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-sm text-white">{provider.provider}</p>
-                      <p className="text-xs text-gray-400">{provider.sharePct}% share</p>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-cyan-300">
-                        {formatNumber(provider.tokensPerCall)} tok/call
-                      </span>
-                      <span className="text-gray-500">{formatNumber(provider.calls)} calls</span>
-                    </div>
-                  </div>
-                ))}
-                {(!insightsData?.providerEfficiency ||
-                  insightsData.providerEfficiency.length === 0) && (
-                  <p className="text-sm text-gray-500 text-center py-4">
-                    No provider efficiency data yet
-                  </p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-yellow-400" />
-              Token Usage
-            </CardTitle>
-            <CardDescription>Breakdown of token consumption</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {tokensPending ? (
-              <MetricPanelSkeleton rows={7} />
-            ) : (
-              <div className="space-y-4">
-                <TokenBar
-                  label="Input"
-                  value={overview?.tokenUsage.input || 0}
-                  total={overview?.tokenUsage.total || 1}
-                  color="bg-blue-500"
-                />
-                <TokenBar
-                  label="Output"
-                  value={overview?.tokenUsage.output || 0}
-                  total={overview?.tokenUsage.total || 1}
-                  color="bg-green-500"
-                />
-                <TokenBar
-                  label="Cache"
-                  value={overview?.tokenUsage.cache || 0}
-                  total={overview?.tokenUsage.total || 1}
-                  color="bg-purple-500"
-                />
-
-                <div className="pt-4 border-t border-white/10">
-                  <p className="text-sm text-gray-400 mb-2">By Model</p>
-                  <div className="space-y-2">
-                    {tokens?.topModels.slice(0, 5).map((model, i) => (
-                      <div key={i} className="flex items-center justify-between">
-                        <span className="text-sm text-gray-300">{model.model}</span>
-                        <span className="text-sm text-gray-500">{formatNumber(model.tokens)}</span>
-                      </div>
-                    ))}
-                    {(!tokens?.topModels || tokens.topModels.length === 0) && (
-                      <p className="text-sm text-gray-500">No model data yet</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-white/10">
-                  <p className="text-sm text-gray-400 mb-2">By Provider</p>
-                  <div className="space-y-2">
-                    {tokens?.topProviders.slice(0, 5).map((provider, i) => (
-                      <div key={i} className="flex items-center justify-between">
-                        <span className="text-sm text-gray-300">{provider.provider}</span>
-                        <span className="text-sm text-gray-500">
-                          {formatNumber(provider.tokens)}
-                        </span>
-                      </div>
-                    ))}
-                    {(!tokens?.topProviders || tokens.topProviders.length === 0) && (
-                      <p className="text-sm text-gray-500">No provider data yet</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <HardDrive className="w-5 h-5 text-orange-400" />
-              File Operations
-            </CardTitle>
-            <CardDescription>Files read, written, and edited</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <FileStat
-                icon={<FileText className="w-4 h-4" />}
-                label="Read"
-                value={formatNumber(overview?.fileOperations.filesRead || 0)}
-              />
-              <FileStat
-                icon={<FileText className="w-4 h-4" />}
-                label="Written"
-                value={formatNumber(overview?.fileOperations.filesWritten || 0)}
-              />
-              <FileStat
-                icon={<Terminal className="w-4 h-4" />}
-                label="Edited"
-                value={formatNumber(overview?.fileOperations.filesEdited || 0)}
-              />
-            </div>
-
-            {filesPending ? (
-              <MetricRowsSkeleton rows={6} />
-            ) : (
-              <>
-                <div>
-                  <p className="text-sm text-gray-400 mb-2">Most Read Files</p>
-                  <div className="space-y-2">
-                    {files?.mostRead.slice(0, 5).map((file, i) => (
-                      <div key={i} className="flex items-center justify-between">
-                        <span className="text-sm text-gray-300 truncate max-w-[200px]">
-                          {file.path.split("/").pop()}
-                        </span>
-                        <span className="text-sm text-gray-500">{formatNumber(file.count)}</span>
-                      </div>
-                    ))}
-                    {(!files?.mostRead || files.mostRead.length === 0) && (
-                      <p className="text-sm text-gray-500">No file data yet</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-white/10">
-                  <p className="text-sm text-gray-400 mb-2">Most Written Files</p>
-                  <div className="space-y-2">
-                    {files?.mostWritten.slice(0, 5).map((file, i) => (
-                      <div key={i} className="flex items-center justify-between">
-                        <span className="text-sm text-gray-300 truncate max-w-[200px]">
-                          {file.path.split("/").pop()}
-                        </span>
-                        <span className="text-sm text-gray-500">{formatNumber(file.count)}</span>
-                      </div>
-                    ))}
-                    {(!files?.mostWritten || files.mostWritten.length === 0) && (
-                      <p className="text-sm text-gray-500">No file data yet</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-white/10">
-                  <p className="text-sm text-gray-400 mb-2">Most Edited Files</p>
-                  <div className="space-y-2">
-                    {files?.mostEdited.slice(0, 5).map((file, i) => (
-                      <div key={i} className="flex items-center justify-between">
-                        <span className="text-sm text-gray-300 truncate max-w-[200px]">
-                          {file.path.split("/").pop()}
-                        </span>
-                        <span className="text-sm text-gray-500">{formatNumber(file.count)}</span>
-                      </div>
-                    ))}
-                    {(!files?.mostEdited || files.mostEdited.length === 0) && (
-                      <p className="text-sm text-gray-500">No file data yet</p>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Terminal className="w-5 h-5 text-cyan-400" />
-              Tool Usage
-            </CardTitle>
-            <CardDescription>Most frequently used tools</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {toolsPending || insightsPending ? (
-              <MetricRowsSkeleton rows={8} />
-            ) : (
-              <>
-                <div className="space-y-3">
-                  {tools?.mostUsed.slice(0, 8).map((tool, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
-                        <Terminal className="w-4 h-4 text-cyan-400" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm text-gray-300">{tool.tool}</span>
-                          <span className="text-sm text-gray-500">{formatNumber(tool.calls)}</span>
-                        </div>
-                        <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-cyan-500 rounded-full"
-                            style={{
-                              width: `${Math.min(100, (tool.calls / (tools?.mostUsed[0]?.calls || 1)) * 100)}%`,
-                            }}
-                          />
-                        </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                  {(!tools?.mostUsed || tools.mostUsed.length === 0) && (
-                    <p className="text-sm text-gray-500 text-center py-4">No tool data yet</p>
-                  )}
-                </div>
-                {insightsData?.toolReliability && (
-                  <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-3 gap-2 text-xs">
-                    <div className="rounded bg-white/5 p-2 text-center">
-                      <p className="text-gray-500">Success</p>
-                      <p className="text-emerald-400 font-semibold">
-                        {insightsData.toolReliability.successRatePct}%
-                      </p>
-                    </div>
-                    <div className="rounded bg-white/5 p-2 text-center">
-                      <p className="text-gray-500">Calls</p>
-                      <p className="text-white font-semibold">
-                        {formatNumber(insightsData.toolReliability.totalCalls)}
-                      </p>
-                    </div>
-                    <div className="rounded bg-white/5 p-2 text-center">
-                      <p className="text-gray-500">Errors</p>
-                      <p className="text-red-400 font-semibold">
-                        {formatNumber(insightsData.toolReliability.totalErrors)}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-green-400" />
-              Activity Summary
-            </CardTitle>
-            <CardDescription>System activity overview</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <ActivityStat
-                icon={<MessageSquare className="w-5 h-5" />}
-                label="Agent Messages"
-                value={formatNumber(overview?.agentActivity.totalMessages || 0)}
-              />
-              <ActivityStat
-                icon={<Terminal className="w-5 h-5" />}
-                label="Tool Calls"
-                value={formatNumber(overview?.toolCalls.totalCalls || 0)}
-              />
-              <ActivityStat
-                icon={<Zap className="w-5 h-5" />}
-                label="API Calls"
-                value={formatNumber(overview?.apiCalls.totalCalls || 0)}
-              />
-              <ActivityStat
-                icon={<TrendingUp className="w-5 h-5" />}
-                label="Avg Tokens/Message"
-                value={formatNumber(stats?.avgTokensPerMessage || 0)}
-              />
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-white/10">
-              <p className="text-sm text-gray-400 mb-3">API Status</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10">
-                  <span className="text-sm text-gray-300">Successful</span>
-                  <span className="text-sm text-green-400">
-                    {formatNumber(overview?.apiCalls.successfulCalls || 0)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between p-3 rounded-lg bg-red-500/10">
-                  <span className="text-sm text-gray-300">Failed</span>
-                  <span className="text-sm text-red-400">
-                    {formatNumber(overview?.apiCalls.failedCalls || 0)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Zap className="w-5 h-5 text-yellow-400" />
-              Providers
-            </CardTitle>
-            <CardDescription>API provider usage and hits</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {providersPending ? (
-              <MetricRowsSkeleton />
-            ) : visibleProviders.length > 0 ? (
-              <div className="space-y-4">
-                {visibleProviders.map((provider, i) => (
-                  <div
-                    key={`${provider.provider}:${provider.url}:${i}`}
-                    className="p-4 rounded-lg bg-white/5 border border-white/10"
-                  >
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="rounded-lg bg-white/5 p-3 grid grid-cols-2 gap-2 text-xs">
                       <div>
-                        <p className="text-sm font-medium text-white">{provider.provider}</p>
-                        <p className="text-xs text-gray-500 truncate max-w-[200px]">
-                          {provider.url}
+                        <p className="text-gray-500">Avg/call</p>
+                        <p className="text-white">
+                          {formatNumber(tokenAnalysisData?.summary?.averageTokensPerCall || 0)}
                         </p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-white">
-                          {formatNumber(provider.tokens)}
+                      <div>
+                        <p className="text-gray-500">Median</p>
+                        <p className="text-white">
+                          {formatNumber(tokenAnalysisData?.summary?.medianTokensPerCall || 0)}
                         </p>
-                        <p className="text-xs text-gray-500">tokens</p>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">API Hits</span>
-                      <span className="text-gray-300">{formatNumber(provider.hits)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500 text-center py-4">No provider data yet</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-indigo-400" />
-              Cybara Signal
-            </CardTitle>
-            <CardDescription>Autonomy and model behavior telemetry</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {toolsPending || insightsPending || tokenAnalysisPending ? (
-              <MetricPanelSkeleton rows={5} />
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg bg-white/5 p-3">
-                    <p className="text-xs text-gray-500 mb-1">Autonomy</p>
-                    <p className="text-lg font-semibold text-indigo-300">
-                      {cybaraSignals.toolsPerMessage}
-                    </p>
-                    <p className="text-[11px] text-gray-500">tools/message</p>
-                  </div>
-                  <div className="rounded-lg bg-white/5 p-3">
-                    <p className="text-xs text-gray-500 mb-1">Memory Share</p>
-                    <p className="text-lg font-semibold text-emerald-300">
-                      {cybaraSignals.memorySharePct}%
-                    </p>
-                    <p className="text-[11px] text-gray-500">memory tool calls</p>
-                  </div>
-                  <div className="rounded-lg bg-white/5 p-3">
-                    <p className="text-xs text-gray-500 mb-1">Provider Balance</p>
-                    <p className="text-lg font-semibold text-cyan-300">
-                      {cybaraSignals.providerBalance}
-                    </p>
-                    <p className="text-[11px] text-gray-500">100 - top provider share</p>
-                  </div>
-                  <div className="rounded-lg bg-white/5 p-3">
-                    <p className="text-xs text-gray-500 mb-1">Output-Heavy</p>
-                    <p className="text-lg font-semibold text-amber-300">
-                      {cybaraSignals.outputHeavyShare}%
-                    </p>
-                    <p className="text-[11px] text-gray-500">response-forward calls</p>
-                  </div>
-                </div>
-
-                <div className="rounded-lg bg-white/5 p-3 border border-white/10">
-                  <p className="text-xs text-gray-500 mb-1">Dominant Thinking Style</p>
-                  <p className="text-sm font-medium text-white">{cybaraSignals.dominantBehavior}</p>
-                </div>
-
-                {cybaraSignals.topBurst && (
-                  <div className="rounded-lg bg-white/5 p-3 border border-white/10">
-                    <p className="text-xs text-gray-500 mb-1">Top Burst</p>
-                    <p className="text-sm text-indigo-300">
-                      {formatNumber(cybaraSignals.topBurst.totalTokens)} tokens in one call
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {cybaraSignals.topBurst.model} · {cybaraSignals.topBurst.provider}
-                    </p>
-                  </div>
+                  </>
                 )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              </CardContent>
+            </Card>
+          </div>
 
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Gauge className="w-5 h-5 text-emerald-400" />
-            Model Performance
-          </CardTitle>
-          <CardDescription>Tokens per second and latency by model</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {modelsPending ? (
-            <MetricRowsSkeleton rows={5} />
-          ) : modelPerformanceRows.length > 0 ? (
-            <div className="space-y-3">
-              {modelPerformanceRows.map((model) => (
-                <div key={model.key} className="p-4 rounded-lg bg-white/5 border border-white/10">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <p className="text-sm font-medium text-white">{model.model}</p>
-                      <p className="text-xs text-gray-500">{model.provider}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-emerald-400">
-                        {model.avgTps} <span className="text-xs text-gray-400">tok/s</span>
-                      </p>
-                    </div>
-                  </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-blue-400" />
+                  Provider Token Share
+                </CardTitle>
+                <CardDescription>
+                  Where token volume and spend pressure are concentrated
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {tokensPending || insightsPending ? (
+                  <MetricRowsSkeleton />
+                ) : (
+                  <MetricRankedRows rows={providerTokenRows} accentClass="bg-blue-400" />
+                )}
+              </CardContent>
+            </Card>
 
-                  <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-3">
-                    <div
-                      className="h-full bg-emerald-500 rounded-full transition-all"
-                      style={{ width: `${model.tpsPercent}%` }}
-                    />
-                  </div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Cpu className="w-5 h-5 text-amber-400" />
+                  Model Token Share
+                </CardTitle>
+                <CardDescription>Top models by tracked token volume and behavior</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {modelsPending || tokenAnalysisPending ? (
+                  <MetricRowsSkeleton />
+                ) : (
+                  <MetricRankedRows rows={modelTokenRows} accentClass="bg-amber-400" />
+                )}
+              </CardContent>
+            </Card>
 
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-gray-500" />
-                      <span className="text-gray-400">{model.avgLatencyMs}ms avg</span>
-                    </div>
-                    <div className="text-center text-gray-400">
-                      {formatNumber(model.totalTokens)} tokens
-                    </div>
-                    <div className="text-right text-gray-400">{model.callCount} calls</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <Gauge className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>No model performance data yet</p>
-              <p className="text-sm">Use the chat to generate TPS metrics</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <HardDrive className="w-5 h-5 text-cyan-300" />
-            Storage Footprint
-          </CardTitle>
-          <CardDescription>Local disk usage for Cybara data and runtime files</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {storagePending ? (
-            <MetricPanelSkeleton rows={8} />
-          ) : storageData ? (
-            <div className="space-y-4">
-              <div className="rounded-lg bg-white/5 p-3">
-                <p className="text-xs text-gray-500 mb-1">Total Local Storage</p>
-                <p className="text-xl font-semibold text-white">
-                  {formatBytes(storageData.totalBytes)}
-                </p>
-                <p className="text-[11px] text-gray-500 mt-1">
-                  {storageData.directories.cybaraDir}
-                </p>
-                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
-                  <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1.5">
-                    <p className="text-gray-500">Accounted</p>
-                    <p className="text-gray-200">
-                      {formatBytes(storageData.accountedBytes ?? storageData.totalBytes)}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1.5">
-                    <p className="text-gray-500">Uncategorized</p>
-                    <p className="text-gray-200">
-                      {formatBytes(storageData.uncategorizedBytes ?? 0)}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1.5">
-                    <p className="text-gray-500">Database (in Data)</p>
-                    <p className="text-gray-200">
-                      {formatBytes(storageData.components.database.bytes)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  {storageCategoryEntries.map((entry) => {
-                    const sharePct =
-                      storageData.totalBytes > 0 ? (entry.bytes / storageData.totalBytes) * 100 : 0;
-                    return (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Gauge className="w-5 h-5 text-emerald-400" />
+                  Provider Plan Health
+                </CardTitle>
+                <CardDescription>
+                  Automatic usage windows for connected coding plans
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {providerPlansPending ? (
+                  <MetricRowsSkeleton />
+                ) : (
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {providerPlanCards.map((plan) => (
                       <div
-                        key={entry.label}
-                        className="rounded-lg border border-white/10 bg-white/[0.02] p-3"
+                        key={plan.id}
+                        className="rounded-lg border border-white/10 bg-white/[0.04] p-2.5"
                       >
-                        <div className="flex items-center justify-between text-sm mb-1.5">
-                          <span className="text-gray-200">{entry.label}</span>
-                          <span className="text-cyan-300">{formatBytes(entry.bytes)}</span>
-                        </div>
-                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-1.5">
-                          <div
-                            className="h-full bg-cyan-500 rounded-full"
-                            style={{ width: `${Math.min(100, sharePct)}%` }}
-                          />
-                        </div>
-                        <p className="text-[11px] text-gray-500 truncate">{entry.path}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
-                  <p className="text-sm text-gray-200 mb-2">Top Local Paths</p>
-                  <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                    {storageTopLevelEntries.length > 0 ? (
-                      storageTopLevelEntries.map((entry) => {
-                        const sharePct =
-                          storageData.totalBytes > 0
-                            ? (entry.bytes / storageData.totalBytes) * 100
-                            : 0;
-                        return (
-                          <div
-                            key={entry.path}
-                            className="rounded-md border border-white/10 bg-black/20 p-2.5"
-                          >
-                            <div className="flex items-center justify-between gap-3 text-[12px]">
-                              <span className="text-gray-200 truncate">{entry.name}</span>
-                              <span className="text-cyan-300 shrink-0">
-                                {formatBytes(entry.bytes)}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-gray-500 truncate mt-1">{entry.path}</p>
-                            <p className="text-[10px] text-gray-500 mt-1">
-                              {sharePct.toFixed(2)}% of total
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-white">
+                              {plan.providerName}
+                            </p>
+                            <p className="truncate text-[11px] text-gray-500">
+                              {plan.planName || "Automatic plan"}
                             </p>
                           </div>
-                        );
-                      })
-                    ) : (
-                      <p className="text-[12px] text-gray-500">No top-level path data available.</p>
+                          <span
+                            className={`text-[11px] font-medium ${providerPlanStatusTone(plan.status)}`}
+                          >
+                            {plan.status}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {plan.windows.map(({ label, usage }) => {
+                            const classes = providerPlanUsageClasses(usage);
+                            const width = usage.unlimited ? 100 : (usage.percent ?? 0);
+                            return (
+                              <div
+                                key={`${plan.id}:${label}`}
+                                className={`rounded-md border px-2.5 py-2 ${classes.borderClass} ${classes.bgClass}`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[11px] font-medium text-gray-400">
+                                    {label}
+                                  </span>
+                                  <span
+                                    className={`text-xs font-semibold tabular-nums ${classes.textClass}`}
+                                  >
+                                    {usage.value}
+                                  </span>
+                                </div>
+                                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                                  <div
+                                    className={`h-full rounded-full ${classes.fillClass}`}
+                                    style={{
+                                      width: `${Math.max(usage.unlimited ? 100 : 2, width)}%`,
+                                    }}
+                                  />
+                                </div>
+                                {usage.resetLabel && (
+                                  <p className="mt-1 truncate text-[10px] leading-none text-gray-500">
+                                    {usage.resetLabel}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    {providerPlanCards.length === 0 && (
+                      <p className="text-sm text-gray-500">No provider plan data yet</p>
                     )}
                   </div>
-                </div>
-              </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
-              {storageCategoryEntries.length === 0 && (
-                <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-sm text-gray-500">
-                  Storage categories are empty.
-                </div>
-              )}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Cpu className="w-5 h-5 text-amber-400" />
+                  Token Cloud
+                </CardTitle>
+                <CardDescription>
+                  Most active models, providers, tools, and recurring terms
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {tokenAnalysisPending ? (
+                  <MetricCloudSkeleton />
+                ) : tokenCloudEntries.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {tokenCloudEntries.map((entry) => {
+                      const size = Math.min(26, 11 + entry.sharePct * 0.5);
+                      const color =
+                        entry.category === "model"
+                          ? "text-cyan-300"
+                          : entry.category === "provider"
+                            ? "text-emerald-300"
+                            : entry.category === "tool"
+                              ? "text-violet-300"
+                              : entry.category === "pattern"
+                                ? "text-orange-300"
+                                : "text-amber-300";
+                      return (
+                        <span
+                          key={`${entry.category}-${entry.token}`}
+                          className={`px-2 py-1 rounded-md bg-white/5 border border-white/10 ${color}`}
+                          style={{ fontSize: `${size}px`, lineHeight: 1.1 }}
+                          title={`${entry.category} · ${entry.sharePct}%`}
+                        >
+                          {entry.token}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No token cloud data yet</p>
+                )}
+              </CardContent>
+            </Card>
 
-              {(() => {
-                const entry = {
-                  label: "Database files",
-                  bytes: storageData.components.database.bytes,
-                  path: storageData.components.database.path,
-                };
-                const sharePct =
-                  storageData.totalBytes > 0 ? (entry.bytes / storageData.totalBytes) * 100 : 0;
-                return (
-                  <div
-                    key={entry.label}
-                    className="rounded-lg border border-white/10 bg-white/[0.02] p-3"
-                  >
-                    <div className="flex items-center justify-between text-sm mb-1.5">
-                      <span className="text-gray-200">{entry.label}</span>
-                      <span className="text-cyan-300">{formatBytes(entry.bytes)}</span>
-                    </div>
-                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-1.5">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Gauge className="w-5 h-5 text-rose-400" />
+                  Model Thought Profiles
+                </CardTitle>
+                <CardDescription>
+                  Prompt/output style, latency, and throughput by model
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {tokenAnalysisPending ? (
+                  <MetricRowsSkeleton />
+                ) : (
+                  <div className="space-y-3">
+                    {tokenAnalysisData?.modelThoughtProfiles?.slice(0, 8).map((profile) => (
                       <div
-                        className="h-full bg-cyan-500 rounded-full"
-                        style={{ width: `${Math.min(100, sharePct)}%` }}
+                        key={`${profile.provider}-${profile.model}`}
+                        className="rounded-lg bg-white/5 p-3"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-sm text-white">{profile.model}</p>
+                          <span className="text-[11px] uppercase tracking-wide text-rose-300">
+                            {profile.behavior}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-gray-400">
+                          <span>{profile.promptSharePct}% prompt</span>
+                          <span>{profile.responseSharePct}% output</span>
+                          <span>{profile.avgTps} tok/s</span>
+                          <span>{profile.avgLatencyMs}ms</span>
+                        </div>
+                      </div>
+                    ))}
+                    {(!tokenAnalysisData?.modelThoughtProfiles ||
+                      tokenAnalysisData.modelThoughtProfiles.length === 0) && (
+                      <p className="text-sm text-gray-500">No model thought profile data yet</p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-indigo-400" />
+                  Token Insights
+                </CardTitle>
+                <CardDescription>
+                  24h trend, cache share, and top model concentration
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {insightsPending ? (
+                  <MetricPanelSkeleton rows={4} />
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="rounded-lg bg-white/5 p-3">
+                        <p className="text-xs text-gray-500 mb-1">24h Trend</p>
+                        <p
+                          className={`text-lg font-semibold ${insightsData?.tokenTrend24h.direction === "up" ? "text-emerald-400" : insightsData?.tokenTrend24h.direction === "down" ? "text-red-400" : "text-gray-300"}`}
+                        >
+                          {insightsData?.tokenTrend24h.changePct ?? 0}%
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-white/5 p-3">
+                        <p className="text-xs text-gray-500 mb-1">Cache Share</p>
+                        <p className="text-lg font-semibold text-purple-300">
+                          {insightsData?.cacheEfficiency.cacheSharePct ?? 0}%
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-white/5 p-3">
+                        <p className="text-xs text-gray-500 mb-1">Top Model Share</p>
+                        <p className="text-lg font-semibold text-amber-300">
+                          {insightsData?.topModel?.sharePct ?? 0}%
+                        </p>
+                      </div>
+                    </div>
+                    <div className="pt-3 border-t border-white/10">
+                      <p className="text-sm text-gray-400 mb-1">Most used model</p>
+                      <p className="text-sm text-white font-medium">
+                        {insightsData?.topModel?.model || "No model data yet"}
+                      </p>
+                      {insightsData?.topModel && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {formatNumber(insightsData.topModel.tokens)} tokens tracked
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Gauge className="w-5 h-5 text-cyan-400" />
+                  Provider Efficiency
+                </CardTitle>
+                <CardDescription>Tokens per provider call with share breakdown</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {insightsPending ? (
+                  <MetricRowsSkeleton />
+                ) : (
+                  <div className="space-y-3">
+                    {insightsData?.providerEfficiency.slice(0, 6).map((provider, i) => (
+                      <div key={i} className="rounded-lg bg-white/5 p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-sm text-white">{provider.provider}</p>
+                          <p className="text-xs text-gray-400">{provider.sharePct}% share</p>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-cyan-300">
+                            {formatNumber(provider.tokensPerCall)} tok/call
+                          </span>
+                          <span className="text-gray-500">
+                            {formatNumber(provider.calls)} calls
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {(!insightsData?.providerEfficiency ||
+                      insightsData.providerEfficiency.length === 0) && (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        No provider efficiency data yet
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      ) : null}
+
+      {activeSection === "operations" ? (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-yellow-400" />
+                  Token Usage
+                </CardTitle>
+                <CardDescription>Breakdown of token consumption</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {tokensPending ? (
+                  <MetricPanelSkeleton rows={7} />
+                ) : (
+                  <div className="space-y-4">
+                    <TokenBar
+                      label="Input"
+                      value={overview?.tokenUsage.input || 0}
+                      total={overview?.tokenUsage.total || 1}
+                      color="bg-blue-500"
+                    />
+                    <TokenBar
+                      label="Output"
+                      value={overview?.tokenUsage.output || 0}
+                      total={overview?.tokenUsage.total || 1}
+                      color="bg-green-500"
+                    />
+                    <TokenBar
+                      label="Cache"
+                      value={overview?.tokenUsage.cache || 0}
+                      total={overview?.tokenUsage.total || 1}
+                      color="bg-purple-500"
+                    />
+
+                    <div className="pt-4 border-t border-white/10">
+                      <p className="text-sm text-gray-400 mb-2">By Model</p>
+                      <div className="space-y-2">
+                        {tokens?.topModels.slice(0, 5).map((model, i) => (
+                          <div key={i} className="flex items-center justify-between">
+                            <span className="text-sm text-gray-300">{model.model}</span>
+                            <span className="text-sm text-gray-500">
+                              {formatNumber(model.tokens)}
+                            </span>
+                          </div>
+                        ))}
+                        {(!tokens?.topModels || tokens.topModels.length === 0) && (
+                          <p className="text-sm text-gray-500">No model data yet</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-white/10">
+                      <p className="text-sm text-gray-400 mb-2">By Provider</p>
+                      <div className="space-y-2">
+                        {tokens?.topProviders.slice(0, 5).map((provider, i) => (
+                          <div key={i} className="flex items-center justify-between">
+                            <span className="text-sm text-gray-300">{provider.provider}</span>
+                            <span className="text-sm text-gray-500">
+                              {formatNumber(provider.tokens)}
+                            </span>
+                          </div>
+                        ))}
+                        {(!tokens?.topProviders || tokens.topProviders.length === 0) && (
+                          <p className="text-sm text-gray-500">No provider data yet</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <HardDrive className="w-5 h-5 text-orange-400" />
+                  File Operations
+                </CardTitle>
+                <CardDescription>Files read, written, and edited</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <FileStat
+                    icon={<FileText className="w-4 h-4" />}
+                    label="Read"
+                    value={formatNumber(overview?.fileOperations.filesRead || 0)}
+                  />
+                  <FileStat
+                    icon={<FileText className="w-4 h-4" />}
+                    label="Written"
+                    value={formatNumber(overview?.fileOperations.filesWritten || 0)}
+                  />
+                  <FileStat
+                    icon={<Terminal className="w-4 h-4" />}
+                    label="Edited"
+                    value={formatNumber(overview?.fileOperations.filesEdited || 0)}
+                  />
+                </div>
+
+                {filesPending ? (
+                  <MetricRowsSkeleton rows={6} />
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-sm text-gray-400 mb-2">Most Read Files</p>
+                      <div className="space-y-2">
+                        {files?.mostRead.slice(0, 5).map((file, i) => (
+                          <div key={i} className="flex items-center justify-between">
+                            <span className="text-sm text-gray-300 truncate max-w-[200px]">
+                              {file.path.split("/").pop()}
+                            </span>
+                            <span className="text-sm text-gray-500">
+                              {formatNumber(file.count)}
+                            </span>
+                          </div>
+                        ))}
+                        {(!files?.mostRead || files.mostRead.length === 0) && (
+                          <p className="text-sm text-gray-500">No file data yet</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-white/10">
+                      <p className="text-sm text-gray-400 mb-2">Most Written Files</p>
+                      <div className="space-y-2">
+                        {files?.mostWritten.slice(0, 5).map((file, i) => (
+                          <div key={i} className="flex items-center justify-between">
+                            <span className="text-sm text-gray-300 truncate max-w-[200px]">
+                              {file.path.split("/").pop()}
+                            </span>
+                            <span className="text-sm text-gray-500">
+                              {formatNumber(file.count)}
+                            </span>
+                          </div>
+                        ))}
+                        {(!files?.mostWritten || files.mostWritten.length === 0) && (
+                          <p className="text-sm text-gray-500">No file data yet</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-white/10">
+                      <p className="text-sm text-gray-400 mb-2">Most Edited Files</p>
+                      <div className="space-y-2">
+                        {files?.mostEdited.slice(0, 5).map((file, i) => (
+                          <div key={i} className="flex items-center justify-between">
+                            <span className="text-sm text-gray-300 truncate max-w-[200px]">
+                              {file.path.split("/").pop()}
+                            </span>
+                            <span className="text-sm text-gray-500">
+                              {formatNumber(file.count)}
+                            </span>
+                          </div>
+                        ))}
+                        {(!files?.mostEdited || files.mostEdited.length === 0) && (
+                          <p className="text-sm text-gray-500">No file data yet</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Terminal className="w-5 h-5 text-cyan-400" />
+                  Tool Usage
+                </CardTitle>
+                <CardDescription>Most frequently used tools</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {toolsPending || insightsPending ? (
+                  <MetricRowsSkeleton rows={8} />
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      {tools?.mostUsed.slice(0, 8).map((tool, i) => (
+                        <div key={i} className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                            <Terminal className="w-4 h-4 text-cyan-400" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm text-gray-300">{tool.tool}</span>
+                              <span className="text-sm text-gray-500">
+                                {formatNumber(tool.calls)}
+                              </span>
+                            </div>
+                            <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-cyan-500 rounded-full"
+                                style={{
+                                  width: `${Math.min(100, (tool.calls / (tools?.mostUsed[0]?.calls || 1)) * 100)}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {(!tools?.mostUsed || tools.mostUsed.length === 0) && (
+                        <p className="text-sm text-gray-500 text-center py-4">No tool data yet</p>
+                      )}
+                    </div>
+                    {insightsData?.toolReliability && (
+                      <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-3 gap-2 text-xs">
+                        <div className="rounded bg-white/5 p-2 text-center">
+                          <p className="text-gray-500">Success</p>
+                          <p className="text-emerald-400 font-semibold">
+                            {insightsData.toolReliability.successRatePct}%
+                          </p>
+                        </div>
+                        <div className="rounded bg-white/5 p-2 text-center">
+                          <p className="text-gray-500">Calls</p>
+                          <p className="text-white font-semibold">
+                            {formatNumber(insightsData.toolReliability.totalCalls)}
+                          </p>
+                        </div>
+                        <div className="rounded bg-white/5 p-2 text-center">
+                          <p className="text-gray-500">Errors</p>
+                          <p className="text-red-400 font-semibold">
+                            {formatNumber(insightsData.toolReliability.totalErrors)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-green-400" />
+                  Activity Summary
+                </CardTitle>
+                <CardDescription>System activity overview</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  <ActivityStat
+                    icon={<MessageSquare className="w-5 h-5" />}
+                    label="Agent Messages"
+                    value={formatNumber(overview?.agentActivity.totalMessages || 0)}
+                  />
+                  <ActivityStat
+                    icon={<Terminal className="w-5 h-5" />}
+                    label="Tool Calls"
+                    value={formatNumber(overview?.toolCalls.totalCalls || 0)}
+                  />
+                  <ActivityStat
+                    icon={<Zap className="w-5 h-5" />}
+                    label="API Calls"
+                    value={formatNumber(overview?.apiCalls.totalCalls || 0)}
+                  />
+                  <ActivityStat
+                    icon={<TrendingUp className="w-5 h-5" />}
+                    label="Avg Tokens/Message"
+                    value={formatNumber(stats?.avgTokensPerMessage || 0)}
+                  />
+                </div>
+
+                <div className="mt-6 pt-6 border-t border-white/10">
+                  <p className="text-sm text-gray-400 mb-3">API Status</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10">
+                      <span className="text-sm text-gray-300">Successful</span>
+                      <span className="text-sm text-green-400">
+                        {formatNumber(overview?.apiCalls.successfulCalls || 0)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-red-500/10">
+                      <span className="text-sm text-gray-300">Failed</span>
+                      <span className="text-sm text-red-400">
+                        {formatNumber(overview?.apiCalls.failedCalls || 0)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-yellow-400" />
+                  Providers
+                </CardTitle>
+                <CardDescription>API provider usage and hits</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {providersPending ? (
+                  <MetricRowsSkeleton />
+                ) : visibleProviders.length > 0 ? (
+                  <div className="space-y-4">
+                    {visibleProviders.map((provider, i) => (
+                      <div
+                        key={`${provider.provider}:${provider.url}:${i}`}
+                        className="p-4 rounded-lg bg-white/5 border border-white/10"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <p className="text-sm font-medium text-white">{provider.provider}</p>
+                            <p className="text-xs text-gray-500 truncate max-w-[200px]">
+                              {provider.url}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-white">
+                              {formatNumber(provider.tokens)}
+                            </p>
+                            <p className="text-xs text-gray-500">tokens</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-400">API Hits</span>
+                          <span className="text-gray-300">{formatNumber(provider.hits)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 text-center py-4">No provider data yet</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Cpu className="w-5 h-5 text-indigo-400" />
+                  Cybara Signal
+                </CardTitle>
+                <CardDescription>Autonomy and model behavior telemetry</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {toolsPending || insightsPending || tokenAnalysisPending ? (
+                  <MetricPanelSkeleton rows={5} />
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-white/5 p-3">
+                        <p className="text-xs text-gray-500 mb-1">Autonomy</p>
+                        <p className="text-lg font-semibold text-indigo-300">
+                          {cybaraSignals.toolsPerMessage}
+                        </p>
+                        <p className="text-[11px] text-gray-500">tools/message</p>
+                      </div>
+                      <div className="rounded-lg bg-white/5 p-3">
+                        <p className="text-xs text-gray-500 mb-1">Memory Share</p>
+                        <p className="text-lg font-semibold text-emerald-300">
+                          {cybaraSignals.memorySharePct}%
+                        </p>
+                        <p className="text-[11px] text-gray-500">memory tool calls</p>
+                      </div>
+                      <div className="rounded-lg bg-white/5 p-3">
+                        <p className="text-xs text-gray-500 mb-1">Provider Balance</p>
+                        <p className="text-lg font-semibold text-cyan-300">
+                          {cybaraSignals.providerBalance}
+                        </p>
+                        <p className="text-[11px] text-gray-500">100 - top provider share</p>
+                      </div>
+                      <div className="rounded-lg bg-white/5 p-3">
+                        <p className="text-xs text-gray-500 mb-1">Output-Heavy</p>
+                        <p className="text-lg font-semibold text-amber-300">
+                          {cybaraSignals.outputHeavyShare}%
+                        </p>
+                        <p className="text-[11px] text-gray-500">response-forward calls</p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg bg-white/5 p-3 border border-white/10">
+                      <p className="text-xs text-gray-500 mb-1">Dominant Thinking Style</p>
+                      <p className="text-sm font-medium text-white">
+                        {cybaraSignals.dominantBehavior}
+                      </p>
+                    </div>
+
+                    {cybaraSignals.topBurst && (
+                      <div className="rounded-lg bg-white/5 p-3 border border-white/10">
+                        <p className="text-xs text-gray-500 mb-1">Top Burst</p>
+                        <p className="text-sm text-indigo-300">
+                          {formatNumber(cybaraSignals.topBurst.totalTokens)} tokens in one call
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {cybaraSignals.topBurst.model} · {cybaraSignals.topBurst.provider}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      ) : null}
+
+      {activeSection === "tokens" ? (
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Gauge className="w-5 h-5 text-emerald-400" />
+              Model Performance
+            </CardTitle>
+            <CardDescription>Tokens per second and latency by model</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {modelsPending ? (
+              <MetricRowsSkeleton rows={5} />
+            ) : modelPerformanceRows.length > 0 ? (
+              <div className="space-y-3">
+                {modelPerformanceRows.map((model) => (
+                  <div key={model.key} className="p-4 rounded-lg bg-white/5 border border-white/10">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <p className="text-sm font-medium text-white">{model.model}</p>
+                        <p className="text-xs text-gray-500">{model.provider}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-emerald-400">
+                          {model.avgTps} <span className="text-xs text-gray-400">tok/s</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-3">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all"
+                        style={{ width: `${model.tpsPercent}%` }}
                       />
                     </div>
-                    <p className="text-[11px] text-gray-500 truncate">{entry.path}</p>
-                  </div>
-                );
-              })()}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">No storage data available.</p>
-          )}
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-indigo-400" />
-            30-Day Activity
-          </CardTitle>
-          <CardDescription>Daily activity over the past month</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {timeSeriesPending ? (
-            <MetricChartSkeleton />
-          ) : activityDayRows.length > 0 ? (
-            <>
-              <div className="h-48 flex items-end gap-1">
-                {activityDayRows.map((day) => (
-                  <div
-                    key={day.key}
-                    className="flex-1 bg-indigo-500/30 hover:bg-indigo-500/50 transition-colors rounded-t cursor-pointer"
-                    style={{ height: `${Math.max(day.height, 2)}%` }}
-                    title={`${day.date}: ${formatNumber(day.dayTotal)} total activity`}
-                  />
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-gray-500" />
+                        <span className="text-gray-400">{model.avgLatencyMs}ms avg</span>
+                      </div>
+                      <div className="text-center text-gray-400">
+                        {formatNumber(model.totalTokens)} tokens
+                      </div>
+                      <div className="text-right text-gray-400">{model.callCount} calls</div>
+                    </div>
+                  </div>
                 ))}
               </div>
-              <div className="flex justify-between mt-2 text-xs text-gray-500">
-                <span>{activityDayRows[0]?.date}</span>
-                <span>{activityDayRows[activityDayRows.length - 1]?.date}</span>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <Gauge className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>No model performance data yet</p>
+                <p className="text-sm">Use the chat to generate TPS metrics</p>
               </div>
-            </>
-          ) : (
-            <div className="h-48 flex items-center justify-center text-gray-500">
-              <div className="text-center">
-                <BarChart3 className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p>No activity data yet</p>
-                <p className="text-sm">Use the platform to start generating metrics</p>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeSection === "storage" ? (
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <HardDrive className="w-5 h-5 text-cyan-300" />
+              Storage Footprint
+            </CardTitle>
+            <CardDescription>Local disk usage for Cybara data and runtime files</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {storagePending ? (
+              <MetricPanelSkeleton rows={8} />
+            ) : storageData ? (
+              <div className="space-y-4">
+                <div className="rounded-lg bg-white/5 p-3">
+                  <p className="text-xs text-gray-500 mb-1">Total Local Storage</p>
+                  <p className="text-xl font-semibold text-white">
+                    {formatBytes(storageData.totalBytes)}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    {storageData.directories.cybaraDir}
+                  </p>
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                    <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1.5">
+                      <p className="text-gray-500">Accounted</p>
+                      <p className="text-gray-200">
+                        {formatBytes(storageData.accountedBytes ?? storageData.totalBytes)}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1.5">
+                      <p className="text-gray-500">Uncategorized</p>
+                      <p className="text-gray-200">
+                        {formatBytes(storageData.uncategorizedBytes ?? 0)}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1.5">
+                      <p className="text-gray-500">Database (in Data)</p>
+                      <p className="text-gray-200">
+                        {formatBytes(storageData.components.database.bytes)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    {storageCategoryEntries.map((entry) => {
+                      const sharePct =
+                        storageData.totalBytes > 0
+                          ? (entry.bytes / storageData.totalBytes) * 100
+                          : 0;
+                      return (
+                        <div
+                          key={entry.label}
+                          className="rounded-lg border border-white/10 bg-white/[0.02] p-3"
+                        >
+                          <div className="flex items-center justify-between text-sm mb-1.5">
+                            <span className="text-gray-200">{entry.label}</span>
+                            <span className="text-cyan-300">{formatBytes(entry.bytes)}</span>
+                          </div>
+                          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-1.5">
+                            <div
+                              className="h-full bg-cyan-500 rounded-full"
+                              style={{ width: `${Math.min(100, sharePct)}%` }}
+                            />
+                          </div>
+                          <p className="text-[11px] text-gray-500 truncate">{entry.path}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                    <p className="text-sm text-gray-200 mb-2">Top Local Paths</p>
+                    <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                      {storageTopLevelEntries.length > 0 ? (
+                        storageTopLevelEntries.map((entry) => {
+                          const sharePct =
+                            storageData.totalBytes > 0
+                              ? (entry.bytes / storageData.totalBytes) * 100
+                              : 0;
+                          return (
+                            <div
+                              key={entry.path}
+                              className="rounded-md border border-white/10 bg-black/20 p-2.5"
+                            >
+                              <div className="flex items-center justify-between gap-3 text-[12px]">
+                                <span className="text-gray-200 truncate">{entry.name}</span>
+                                <span className="text-cyan-300 shrink-0">
+                                  {formatBytes(entry.bytes)}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-gray-500 truncate mt-1">
+                                {entry.path}
+                              </p>
+                              <p className="text-[10px] text-gray-500 mt-1">
+                                {sharePct.toFixed(2)}% of total
+                              </p>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-[12px] text-gray-500">
+                          No top-level path data available.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {storageCategoryEntries.length === 0 && (
+                  <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-sm text-gray-500">
+                    Storage categories are empty.
+                  </div>
+                )}
+
+                {(() => {
+                  const entry = {
+                    label: "Database files",
+                    bytes: storageData.components.database.bytes,
+                    path: storageData.components.database.path,
+                  };
+                  const sharePct =
+                    storageData.totalBytes > 0 ? (entry.bytes / storageData.totalBytes) * 100 : 0;
+                  return (
+                    <div
+                      key={entry.label}
+                      className="rounded-lg border border-white/10 bg-white/[0.02] p-3"
+                    >
+                      <div className="flex items-center justify-between text-sm mb-1.5">
+                        <span className="text-gray-200">{entry.label}</span>
+                        <span className="text-cyan-300">{formatBytes(entry.bytes)}</span>
+                      </div>
+                      <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-1.5">
+                        <div
+                          className="h-full bg-cyan-500 rounded-full"
+                          style={{ width: `${Math.min(100, sharePct)}%` }}
+                        />
+                      </div>
+                      <p className="text-[11px] text-gray-500 truncate">{entry.path}</p>
+                    </div>
+                  );
+                })()}
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            ) : (
+              <p className="text-sm text-gray-500">No storage data available.</p>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeSection === "overview" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-indigo-400" />
+              30-Day Token Volume
+            </CardTitle>
+            <CardDescription>Tracked model token usage over the past month</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {timeSeriesPending ? (
+              <MetricChartSkeleton />
+            ) : activityDayRows.length > 0 ? (
+              <MetricAreaChart
+                rows={activityDayRows}
+                strokeColor="#818cf8"
+                fillColor="#818cf8"
+                emptyLabel="No token activity yet"
+              />
+            ) : (
+              <div className="h-48 flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <BarChart3 className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>No activity data yet</p>
+                  <p className="text-sm">Use the platform to start generating metrics</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
     </PageLayout>
   );
 }

@@ -674,6 +674,7 @@ describe("Agent provider Google and compatible routing", () => {
     expect(result.thinking).toContain("verify this with the calculator");
     expect(result.thinking).toContain("calculator returned 42");
     expect(result.tool_calls?.[0]?.name).toBe("calc");
+    expect(result.tool_calls?.[0]?.id).toBe("kimi-calc-call");
     expect(requestBodies).toHaveLength(2);
     for (const body of requestBodies) {
       expect(body.thinking).toEqual({ type: "enabled", effort: "max" });
@@ -940,6 +941,7 @@ describe("Agent provider Google and compatible routing", () => {
     expect(result.content).toBe("The checked result is 4.");
     expect(result.content).not.toBe("I'll check that.");
     expect(result.tool_calls?.map((call) => call.name)).toContain("calc");
+    expect(result.tool_calls?.map((call) => call.id)).toContain("call_calc");
     expect(requestBodies).toHaveLength(3);
     expect(requestBodies[2]?.tool_choice).toBe("none");
     expect(requestBodies[2]?.tools).toBeUndefined();

@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 interface SimulatorPreviewImageProps {
   source: string;
@@ -6,33 +7,47 @@ interface SimulatorPreviewImageProps {
   className?: string;
 }
 
+export function isRenderableSimulatorImage(image: {
+  complete: boolean;
+  naturalHeight: number;
+  naturalWidth: number;
+}): boolean {
+  return image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
+}
+
 export function SimulatorPreviewImage({ source, alt, className }: SimulatorPreviewImageProps) {
-  const imageRef = useRef<HTMLImageElement>(null);
+  const [presentedSource, setPresentedSource] = useState<string | null>(null);
 
   useEffect(() => {
-    const image = imageRef.current;
-    if (!image) return;
-    if (!image.getAttribute("src")) {
-      image.src = source;
-      return;
-    }
     let active = true;
+    let paintHandle: number | null = null;
     const next = new Image();
     next.decoding = "async";
-    next.src = source;
-    const swap = (): void => {
-      if (active && imageRef.current) imageRef.current.src = source;
+    const present = (): void => {
+      if (!active || !isRenderableSimulatorImage(next)) return;
+      paintHandle = window.requestAnimationFrame(() => {
+        if (active) setPresentedSource(source);
+      });
     };
+    next.src = source;
     if (typeof next.decode === "function") {
-      next.decode().then(swap, swap);
+      next.decode().then(present, present);
     } else {
-      next.onload = swap;
-      next.onerror = swap;
+      next.onload = present;
     }
     return () => {
       active = false;
+      if (paintHandle !== null) window.cancelAnimationFrame(paintHandle);
     };
   }, [source]);
 
-  return <img ref={imageRef} alt={alt} className={className} decoding="async" draggable={false} />;
+  return (
+    <img
+      alt={alt}
+      className={cn(className, !presentedSource && "invisible")}
+      decoding="async"
+      draggable={false}
+      src={presentedSource || undefined}
+    />
+  );
 }

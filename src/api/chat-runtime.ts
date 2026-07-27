@@ -146,6 +146,7 @@ import {
   upsertPersistedSessionIndex,
 } from "./chat-runtime-state";
 import {
+  buildInterruptedToolCalls,
   collectAttachedProcessActivityIds,
   getSessionProcessActivities,
   materializeInterruptedAssistantBeforeSteering,
@@ -504,16 +505,26 @@ function materializeStoppedAssistantTurn(session: InMemoryChatSession): ChatMess
     ...(observed || []).map(finalizeStoppedProcessActivity),
   ]);
   if (activities.length === 0) return existing;
+  const stoppedAt = Date.now();
+  const statusSnapshot = getSessionRunStatusSnapshot(session.id);
+  const userTimestamp = parseIsoTimestampMs(session.messages[latestUserIndex]?.timestamp);
+  const startedAt = statusSnapshot?.startedAt ?? userTimestamp ?? stoppedAt;
+  const toolCalls = buildInterruptedToolCalls(activities);
   if (existing) {
     existing.process_activities = activities;
+    existing.tool_calls = toolCalls;
+    existing.interrupted = true;
+    existing.worked_duration_ms = Math.max(0, stoppedAt - startedAt);
     return existing;
   }
-  const userTimestamp = parseIsoTimestampMs(session.messages[latestUserIndex]?.timestamp);
   const assistantMessage: ChatMessage = {
     role: "assistant",
     content: "",
-    timestamp: new Date(Math.max(Date.now(), (userTimestamp ?? 0) + 1)).toISOString(),
+    timestamp: new Date(Math.max(stoppedAt, (userTimestamp ?? 0) + 1)).toISOString(),
     process_activities: activities,
+    tool_calls: toolCalls,
+    interrupted: true,
+    worked_duration_ms: Math.max(0, stoppedAt - startedAt),
   };
   session.messages.splice(latestUserIndex + 1, 0, assistantMessage);
   session.updatedAt = assistantMessage.timestamp || new Date().toISOString();
@@ -1649,7 +1660,10 @@ async function handleChatTurn(
           const timelineIndex = allToolCalls.length;
           const outcome = classifyToolCallResult(tc.result);
           allToolCalls.push({
-            id: `call_${crypto.randomUUID().slice(0, 8)}`,
+            id:
+              typeof tc.id === "string" && tc.id.trim()
+                ? tc.id
+                : `call_${crypto.randomUUID().slice(0, 8)}`,
             name: tc.name,
             args:
               tc.args && typeof tc.args === "object" && !Array.isArray(tc.args)
@@ -1658,7 +1672,10 @@ async function handleChatTurn(
             status: outcome.status,
             result: tc.result,
             error: outcome.error,
-            duration: 0,
+            duration:
+              typeof tc.duration === "number" && Number.isFinite(tc.duration)
+                ? Math.max(0, Math.round(tc.duration))
+                : 0,
             timeline_index: timelineIndex,
           });
         }

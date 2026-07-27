@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   createCachedRouteHandler,
   invalidateCachedRoute,
+  METRICS_ROUTE_CACHE_QUERY_PARAMS,
   METRICS_ROUTE_CACHE_TTLS,
 } from "../../src/api/route-cache";
 
@@ -102,6 +103,40 @@ describe("route response cache", () => {
       call: 3,
       page: "2",
     });
+  });
+
+  test("ignores query parameters that do not affect the cached route", async () => {
+    const key = `GET /test/${crypto.randomUUID()}`;
+    routeKeys.add(key);
+    let calls = 0;
+    const run = createCachedRouteHandler(
+      key,
+      10_000,
+      (_body, params) => ({ call: ++calls, compact: params?.compact }),
+      ["compact"]
+    );
+
+    expect(await run(undefined, { compact: "1", cacheBust: "first" })).toEqual({
+      call: 1,
+      compact: "1",
+    });
+    expect(await run(undefined, { cacheBust: "second", compact: "1" })).toEqual({
+      call: 1,
+      compact: "1",
+    });
+    expect(await run(undefined, { compact: "0", cacheBust: "third" })).toEqual({
+      call: 2,
+      compact: "0",
+    });
+  });
+
+  test("declares only behavior-changing metrics query parameters", () => {
+    expect(METRICS_ROUTE_CACHE_QUERY_PARAMS["GET /api/metrics/snapshot"]).toEqual(["compact"]);
+    expect(METRICS_ROUTE_CACHE_QUERY_PARAMS["GET /api/metrics/sessions"]).toEqual([
+      "limit",
+      "page",
+      "pageSize",
+    ]);
   });
 
   test("does not restore an invalidated in-flight response", async () => {

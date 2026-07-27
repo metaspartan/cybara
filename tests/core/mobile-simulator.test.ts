@@ -9,6 +9,7 @@ import {
   getMobileSimulatorStatus,
   getMobileSimulatorInteraction,
   isMobileSimulatorAction,
+  normalizeIosAccessibilityHierarchy,
   parseAdbDevices,
   parseSimctlDevices,
   recordMobileSimulatorInteraction,
@@ -18,6 +19,7 @@ import {
   summarizeMobileSimulatorStatus,
 } from "../../src/core/mobile-simulator";
 import { handleMobileSimulator } from "../../src/core/tools/handlers/mobile-simulator";
+import { extendedToolSchemas } from "../../src/core/tools/schemas-extended";
 
 describe("mobile simulator discovery", () => {
   test("parses available iOS devices and prioritizes booted devices", () => {
@@ -117,6 +119,36 @@ describe("mobile simulator discovery", () => {
     expect(parseIosPreferredUiScale("no scales here")).toBe(1);
   });
 
+  test("normalizes iOS accessibility frames into screenshot pixel coordinates", () => {
+    const hierarchy = JSON.stringify([
+      {
+        AXFrame: "{{20, 106.5}, {362, 53}}",
+        frame: { x: 20, y: 106.5, width: 362, height: 53 },
+        children: [
+          {
+            AXFrame: "{{36, 224}, {80, 26}}",
+            frame: { x: 36, y: 224, width: 80, height: 26 },
+          },
+        ],
+      },
+    ]);
+    const normalized = JSON.parse(normalizeIosAccessibilityHierarchy(hierarchy, 3)) as Array<{
+      AXFrame: string;
+      frame: { x: number; y: number; width: number; height: number };
+      children: Array<{ frame: { x: number; y: number; width: number; height: number } }>;
+    }>;
+
+    expect(normalized[0]?.frame).toEqual({ x: 60, y: 319.5, width: 1086, height: 159 });
+    expect(normalized[0]?.AXFrame).toBe("{{60, 319.5}, {1086, 159}}");
+    expect(normalized[0]?.children[0]?.frame).toEqual({
+      x: 108,
+      y: 672,
+      width: 240,
+      height: 78,
+    });
+    expect(normalizeIosAccessibilityHierarchy("not json", 3)).toBe("not json");
+  });
+
   test("reuses the encoded frame when the captured screen is byte-identical", () => {
     const cached = {
       bytes: Buffer.from([1, 2, 3]),
@@ -200,6 +232,13 @@ describe("mobile simulator discovery", () => {
     expect(isMobileSimulatorAction("tap")).toBe(true);
     expect(isMobileSimulatorAction("erase")).toBe(false);
     expect(isMobileSimulatorAction(null)).toBe(false);
+  });
+
+  test("directs simulator agents to hierarchy and visual tools without reading image bytes", () => {
+    const description = extendedToolSchemas.mobile_simulator.description;
+    expect(description).toContain("Use describe for controls and screenshot-pixel coordinates");
+    expect(description).toContain("do not read screenshot files as text");
+    expect(description).toContain("image tool");
   });
 
   test("tracks agent taps and swipes in native simulator coordinates", () => {

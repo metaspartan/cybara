@@ -1736,7 +1736,7 @@ export function Chat() {
           )}
         </div>
 
-        {showEnvironmentOverview && !showWorkspacePanel ? (
+        {sessionId && showEnvironmentOverview && !showWorkspacePanel ? (
           <div
             aria-hidden="true"
             className="hidden w-96 shrink-0 xl:block"

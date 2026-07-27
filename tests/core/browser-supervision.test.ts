@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { config } from "../../src/core/config";
 import {
+  browserDownloadsAccepted,
   getBrowserSupervisionSettings,
+  onBrowserSupervisionSettingsChanged,
   setBrowserSupervisionSettings,
 } from "../../src/core/browser/supervision";
 import { isSealedSecret } from "../../src/core/secret-storage";
@@ -16,7 +18,7 @@ describe("browser supervision", () => {
 
     expect(settings.autoRestart).toBe(true);
     expect(settings.remoteRoutingEnabled).toBe(false);
-    expect(settings.downloadPolicy).toBe("ask");
+    expect(settings.downloadPolicy).toBe("deny");
     expect(settings.healthCheckIntervalMs).toBe(30000);
   });
 
@@ -48,5 +50,29 @@ describe("browser supervision", () => {
     expect(
       setBrowserSupervisionSettings({ healthCheckIntervalMs: 999999 }).healthCheckIntervalMs
     ).toBe(300000);
+  });
+
+  test("only accepts downloads when explicitly allowed", () => {
+    expect(browserDownloadsAccepted("deny")).toBe(false);
+    expect(browserDownloadsAccepted("allow")).toBe(true);
+  });
+
+  test("migrates the retired guarded download policy to deny", () => {
+    config.set("browser_supervision", { downloadPolicy: "ask" });
+
+    expect(getBrowserSupervisionSettings().downloadPolicy).toBe("deny");
+  });
+
+  test("notifies the active supervisor when settings change", () => {
+    const updates: string[] = [];
+    const unsubscribe = onBrowserSupervisionSettingsChanged((settings) => {
+      updates.push(settings.downloadPolicy);
+    });
+    try {
+      setBrowserSupervisionSettings({ downloadPolicy: "deny" });
+      expect(updates).toEqual(["deny"]);
+    } finally {
+      unsubscribe();
+    }
   });
 });

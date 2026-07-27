@@ -6,7 +6,24 @@ import puppeteer, {
   type KeyInput,
   type Page as PuppeteerPage,
 } from "puppeteer-core";
+import { basename, join } from "node:path";
 import type * as Playwright from "playwright";
+
+export function browserDownloadDestination(
+  downloadPath: string,
+  suggestedFilename: string
+): string {
+  const normalized = suggestedFilename.replace(/\\/g, "/");
+  const filename = basename(normalized)
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim()
+    .slice(0, 240);
+  const safeFilename =
+    filename && filename !== "." && filename !== ".."
+      ? filename
+      : `download-${crypto.randomUUID()}`;
+  return join(downloadPath, safeFilename);
+}
 
 export interface AutomationBox {
   x: number;
@@ -224,9 +241,16 @@ export interface AutomationContext {
   close(): Promise<void>;
 }
 
+export interface AutomationContextOptions {
+  viewport: { width: number; height: number };
+  acceptDownloads: boolean;
+  downloadPath?: string;
+}
+
 export interface AutomationBrowser {
-  newContext(options: { viewport: { width: number; height: number } }): Promise<AutomationContext>;
+  newContext(options: AutomationContextOptions): Promise<AutomationContext>;
   onDisconnected(listener: () => void): void;
+  isConnected(): boolean;
   close(): Promise<void>;
 }
 
@@ -494,10 +518,23 @@ class PlaywrightPageAdapter implements AutomationPage {
 }
 
 class PlaywrightContextAdapter implements AutomationContext {
-  constructor(private readonly context: Playwright.BrowserContext) {}
+  constructor(
+    private readonly context: Playwright.BrowserContext,
+    private readonly downloadPath?: string
+  ) {}
 
   async newPage(): Promise<AutomationPage> {
-    return new PlaywrightPageAdapter(await this.context.newPage());
+    const page = await this.context.newPage();
+    const downloadPath = this.downloadPath;
+    if (downloadPath) {
+      page.on("download", (download) => {
+        const destination = browserDownloadDestination(downloadPath, download.suggestedFilename());
+        void download
+          .saveAs(destination)
+          .catch((error: unknown) => console.error("[Browser] Failed to save download:", error));
+      });
+    }
+    return new PlaywrightPageAdapter(page);
   }
 
   close(): Promise<void> {
@@ -508,14 +545,22 @@ class PlaywrightContextAdapter implements AutomationContext {
 class PlaywrightBrowserAdapter implements AutomationBrowser {
   constructor(private readonly browser: Playwright.Browser) {}
 
-  async newContext(options: {
-    viewport: { width: number; height: number };
-  }): Promise<AutomationContext> {
-    return new PlaywrightContextAdapter(await this.browser.newContext(options));
+  async newContext(options: AutomationContextOptions): Promise<AutomationContext> {
+    return new PlaywrightContextAdapter(
+      await this.browser.newContext({
+        viewport: options.viewport,
+        acceptDownloads: options.acceptDownloads,
+      }),
+      options.acceptDownloads ? options.downloadPath : undefined
+    );
   }
 
   onDisconnected(listener: () => void): void {
     this.browser.on("disconnected", listener);
+  }
+
+  isConnected(): boolean {
+    return this.browser.isConnected();
   }
 
   close(): Promise<void> {
@@ -928,14 +973,22 @@ class PuppeteerContextAdapter implements AutomationContext {
 class PuppeteerBrowserAdapter implements AutomationBrowser {
   constructor(private readonly browser: PuppeteerBrowser) {}
 
-  async newContext(options: {
-    viewport: { width: number; height: number };
-  }): Promise<AutomationContext> {
-    return new PuppeteerContextAdapter(await this.browser.createBrowserContext(), options.viewport);
+  async newContext(options: AutomationContextOptions): Promise<AutomationContext> {
+    const downloadBehavior = options.acceptDownloads
+      ? { policy: "allow" as const, downloadPath: options.downloadPath }
+      : { policy: "deny" as const };
+    return new PuppeteerContextAdapter(
+      await this.browser.createBrowserContext({ downloadBehavior }),
+      options.viewport
+    );
   }
 
   onDisconnected(listener: () => void): void {
     this.browser.on("disconnected", listener);
+  }
+
+  isConnected(): boolean {
+    return this.browser.connected;
   }
 
   close(): Promise<void> {

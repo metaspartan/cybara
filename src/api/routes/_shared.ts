@@ -18,6 +18,7 @@ import {
 import type { WalletChain, WalletTokenChain } from "../../core/wallet";
 import type { ChatMessage } from "../chat";
 import { sanitizeProcessThoughtText } from "../chat-formatting";
+import { createPersistentStaleValue } from "../persistent-stale-value";
 import type { MetricsEntry } from "../queries";
 import type { AuthResult } from "../security";
 import { truncateToolResultForTransport } from "./tool-result-transport";
@@ -347,25 +348,32 @@ export async function collectTopLevelStorageEntries(
 
 const STORAGE_METRICS_TTL_MS = 5 * 60_000;
 type StorageMetrics = Awaited<ReturnType<typeof computeStorageMetrics>>;
-let storageMetricsCache: { at: number; value: StorageMetrics } | null = null;
-let storageMetricsInFlight: Promise<StorageMetrics> | null = null;
+
+function isStorageMetrics(value: unknown): value is StorageMetrics {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const candidate = value as Partial<StorageMetrics>;
+  return (
+    typeof candidate.totalBytes === "number" &&
+    typeof candidate.accountedBytes === "number" &&
+    typeof candidate.uncategorizedBytes === "number" &&
+    typeof candidate.directories === "object" &&
+    candidate.directories !== null &&
+    typeof candidate.components === "object" &&
+    candidate.components !== null &&
+    Array.isArray(candidate.topLevel)
+  );
+}
+
+const loadStorageMetrics = createPersistentStaleValue<StorageMetrics>({
+  filePath: join(dataDir, "metrics-storage-cache.json"),
+  ttlMs: STORAGE_METRICS_TTL_MS,
+  version: 1,
+  compute: computeStorageMetrics,
+  isValue: isStorageMetrics,
+});
 
 export function buildStorageMetrics(): Promise<StorageMetrics> {
-  const now = Date.now();
-  if (storageMetricsCache && now - storageMetricsCache.at < STORAGE_METRICS_TTL_MS) {
-    return Promise.resolve(storageMetricsCache.value);
-  }
-  if (storageMetricsInFlight) return storageMetricsInFlight;
-  const task = computeStorageMetrics()
-    .then((value) => {
-      storageMetricsCache = { at: Date.now(), value };
-      return value;
-    })
-    .finally(() => {
-      if (storageMetricsInFlight === task) storageMetricsInFlight = null;
-    });
-  storageMetricsInFlight = task;
-  return task;
+  return loadStorageMetrics();
 }
 
 async function computeStorageMetrics() {

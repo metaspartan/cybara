@@ -859,6 +859,75 @@ export function parseIosPreferredUiScale(enumerateOutput: string): number {
   return best > 0 ? best : 1;
 }
 
+interface IosAccessibilityFrame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function accessibilityFrame(value: unknown): IosAccessibilityFrame | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.x !== "number" ||
+    typeof record.y !== "number" ||
+    typeof record.width !== "number" ||
+    typeof record.height !== "number"
+  ) {
+    return null;
+  }
+  return {
+    x: record.x,
+    y: record.y,
+    width: record.width,
+    height: record.height,
+  };
+}
+
+function scaledAccessibilityFrame(
+  frame: IosAccessibilityFrame,
+  scale: number
+): IosAccessibilityFrame {
+  return {
+    x: frame.x * scale,
+    y: frame.y * scale,
+    width: frame.width * scale,
+    height: frame.height * scale,
+  };
+}
+
+function normalizeIosAccessibilityValue(value: unknown, scale: number): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeIosAccessibilityValue(entry, scale));
+  }
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  const normalized = Object.fromEntries(
+    Object.entries(record).map(([key, entry]) => [
+      key,
+      normalizeIosAccessibilityValue(entry, scale),
+    ])
+  );
+  const frame = accessibilityFrame(record.frame);
+  if (!frame) return normalized;
+  const scaled = scaledAccessibilityFrame(frame, scale);
+  normalized.frame = scaled;
+  if (typeof record.AXFrame === "string") {
+    normalized.AXFrame = `{{${scaled.x}, ${scaled.y}}, {${scaled.width}, ${scaled.height}}}`;
+  }
+  return normalized;
+}
+
+export function normalizeIosAccessibilityHierarchy(hierarchy: string, scale: number): string {
+  if (!Number.isFinite(scale) || scale <= 0) return hierarchy;
+  try {
+    return JSON.stringify(normalizeIosAccessibilityValue(JSON.parse(hierarchy), scale));
+  } catch {
+    return hierarchy;
+  }
+}
+
 async function iosScale(deviceId: string): Promise<number> {
   const cached = iosScaleCache.get(deviceId);
   if (cached) return cached;
@@ -964,12 +1033,20 @@ async function runIosAction(
   if (!idb) throw new Error("Direct iOS simulator controls are unavailable");
   const idbOptions = { env: iosSimulatorAutomationEnv(automation) };
   if (input.action === "describe") {
-    const result = await runChecked(
-      idb,
-      ["ui", "describe-all", "--udid", device.id, "--json", "--nested"],
-      idbOptions
-    );
-    return { success: true, hierarchy: result.stdout.toString("utf8") };
+    const [result, scale] = await Promise.all([
+      runChecked(
+        idb,
+        ["ui", "describe-all", "--udid", device.id, "--json", "--nested"],
+        idbOptions
+      ),
+      iosScale(device.id),
+    ]);
+    return {
+      success: true,
+      hierarchy: normalizeIosAccessibilityHierarchy(result.stdout.toString("utf8"), scale),
+      coordinateSpace: "screenshot_pixels",
+      displayScale: scale,
+    };
   }
   if (input.action === "text") {
     await runChecked(

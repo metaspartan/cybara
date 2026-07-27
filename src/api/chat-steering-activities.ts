@@ -1,6 +1,10 @@
 import { getSessionStatusSnapshot } from "../core/status";
 import { sanitizeProcessThoughtText } from "./chat-formatting";
-import { dedupeProcessActivities, type ProcessActivityInfo } from "./chat-process-activities";
+import {
+  dedupeProcessActivities,
+  type ProcessActivityInfo,
+  type ToolCallInfo,
+} from "./chat-process-activities";
 import { parseIsoTimestampMs, type InMemoryChatSession } from "./chat-runtime-state";
 import type { ChatMessage } from "./chat-types";
 export { stripThinkingTags } from "./chat-formatting";
@@ -95,6 +99,43 @@ export function sanitizeObservedProcessActivities(
   }
   const deduped = dedupeProcessActivities(sanitized);
   return deduped.length > 0 ? deduped : undefined;
+}
+
+export function buildInterruptedToolCalls(
+  activities: ProcessActivityInfo[]
+): ToolCallInfo[] | undefined {
+  const toolCalls = new Map<string, { call: ToolCallInfo; startedAt: number }>();
+  for (const activity of activities) {
+    if (!activity.toolCallId || !activity.toolName || activity.toolName.startsWith("__")) {
+      continue;
+    }
+    const status =
+      activity.phase === "result"
+        ? "completed"
+        : activity.phase === "start"
+          ? "executing"
+          : "failed";
+    const existing = toolCalls.get(activity.toolCallId);
+    if (!existing) {
+      toolCalls.set(activity.toolCallId, {
+        call: {
+          id: activity.toolCallId,
+          name: activity.toolName,
+          args: {},
+          status,
+          ...(status === "failed" ? { error: activity.text } : {}),
+          timeline_index: toolCalls.size,
+        },
+        startedAt: activity.timestamp,
+      });
+      continue;
+    }
+    existing.call.status = status;
+    existing.call.duration = Math.max(0, activity.timestamp - existing.startedAt);
+    if (status === "failed") existing.call.error = activity.text;
+  }
+  const result = [...toolCalls.values()].map(({ call }) => call);
+  return result.length > 0 ? result : undefined;
 }
 
 function isSteeringHandoffProcessActivity(activity: ProcessActivityInfo): boolean {

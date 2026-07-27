@@ -13,6 +13,11 @@ describe("agent eval UI wiring", () => {
     const research = read("ui/src/pages/research/TraceDatasetPanel.tsx");
     const formats = read("ui/src/lib/labFormats.ts");
     const computerUse = read("ui/src/pages/research/ComputerUseDatasetPanel.tsx");
+    const generator = [
+      read("ui/src/pages/research/DatasetGeneratorPanel.tsx"),
+      read("ui/src/pages/research/DatasetGenerationForm.tsx"),
+      read("ui/src/pages/research/DatasetRunsSection.tsx"),
+    ].join("\n");
     const benchmarks = read("ui/src/pages/research/BenchmarkPanel.tsx");
     const chat = read("ui/src/pages/Chat.tsx") + read("ui/src/pages/chat/ChatMessageTimeline.tsx");
 
@@ -56,6 +61,14 @@ describe("agent eval UI wiring", () => {
     expect(research).toContain("Has reasoning");
     expect(page).toContain("ComputerUseDatasetPanel");
     expect(page).toContain('key: "computer-use", label: "Computer Use"');
+    expect(page).toContain('key: "generate", label: "Generate"');
+    expect(page).toContain("DatasetGeneratorPanel");
+    expect(generator).toContain("Generate teacher data");
+    expect(generator).toContain("Concurrent samples");
+    expect(generator).toContain("Provider usage");
+    expect(generator).toContain("Dataset runs");
+    expect(generator).toContain("averageFirstTokenMs");
+    expect(generator).toContain("Multiple agents can generate data");
     expect(page).toContain("useSearchParams");
     expect(page).toContain("Verify behavior and results");
     expect(computerUse).toContain("Interaction trajectories");

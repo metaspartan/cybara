@@ -1,16 +1,18 @@
 import type { CronJob, CronRunLog } from "./types";
 import {
-  loadJobs,
-  saveJobs,
   getJob,
   listJobs,
   computeNextRun,
   addRunLog,
   getRunLogs,
+  removeJob,
+  updateJob,
 } from "./store";
+import { cronLeaseIsHeld, tryAcquireCronLease } from "./file-lock";
 
 const jobTimers = new Map<string, NodeJS.Timeout>();
 const activeRuns = new Map<string, Promise<CronRunLog>>();
+const EXTERNAL_RUN_RECHECK_MS = 1_000;
 
 type WakeHandler = (text: string) => Promise<void>;
 let wakeHandler: WakeHandler | null = null;
@@ -71,12 +73,29 @@ export function scheduleJob(job: CronJob): void {
   console.log(`[Cron] Job ${job.id} scheduled to run in ${Math.round(effectiveDelay / 1000)}s`);
 
   const timer = setTimeout(() => {
-    runJob(job.id).catch((err) => {
-      console.error(`[Cron] Error running job ${job.id}:`, err);
-    });
+    runJob(job.id)
+      .then((log) => {
+        if (log.status === "skipped") scheduleAfterExternalRun(job.id);
+      })
+      .catch((err) => {
+        console.error(`[Cron] Error running job ${job.id}:`, err);
+      });
   }, effectiveDelay);
 
   jobTimers.set(job.id, timer);
+}
+
+function scheduleAfterExternalRun(jobId: string): void {
+  const timer = setTimeout(() => {
+    if (cronLeaseIsHeld(`run:${jobId}`)) {
+      scheduleAfterExternalRun(jobId);
+      return;
+    }
+    const job = getJob(jobId);
+    if (job?.enabled && job.schedule.kind !== "at") scheduleJob(job);
+    else jobTimers.delete(jobId);
+  }, EXTERNAL_RUN_RECHECK_MS);
+  jobTimers.set(jobId, timer);
 }
 
 async function executeJob(jobId: string): Promise<CronRunLog> {
@@ -138,12 +157,7 @@ async function executeJob(jobId: string): Promise<CronRunLog> {
   }
 
   if (current.deleteAfterRun && current.schedule.kind === "at") {
-    const jobs = loadJobs();
-    const index = jobs.findIndex((j) => j.id === jobId);
-    if (index !== -1) {
-      jobs.splice(index, 1);
-      saveJobs(jobs);
-    }
+    removeJob(jobId);
     jobTimers.delete(jobId);
   } else {
     const now = Date.now();
@@ -169,22 +183,33 @@ async function executeJob(jobId: string): Promise<CronRunLog> {
 }
 
 function updateJobState(jobId: string, state: CronJob["state"]): void {
-  const jobs = loadJobs();
-  const index = jobs.findIndex((candidate) => candidate.id === jobId);
-  if (index === -1) return;
-  jobs[index] = {
-    ...jobs[index],
-    updatedAtMs: Date.now(),
-    state: { ...jobs[index].state, ...state },
-  };
-  saveJobs(jobs);
+  updateJob(jobId, { state });
 }
 
 export function runJob(jobId: string): Promise<CronRunLog> {
   const active = activeRuns.get(jobId);
   if (active) return active;
 
-  const run = executeJob(jobId).finally(() => {
+  const run: Promise<CronRunLog> = (async (): Promise<CronRunLog> => {
+    const lease = tryAcquireCronLease(`run:${jobId}`);
+    if (!lease) {
+      const now = Date.now();
+      return {
+        jobId,
+        runId: `skip_${now}_${Math.random().toString(36).slice(2, 6)}`,
+        startedAtMs: now,
+        completedAtMs: now,
+        status: "skipped",
+        error: "Job is already running in another gateway process",
+        durationMs: 0,
+      };
+    }
+    try {
+      return await executeJob(jobId);
+    } finally {
+      lease.release();
+    }
+  })().finally(() => {
     if (activeRuns.get(jobId) === run) activeRuns.delete(jobId);
   });
   activeRuns.set(jobId, run);

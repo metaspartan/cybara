@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import {
   automationDriverForPlatform,
+  browserDownloadDestination,
   launchPuppeteerBrowser,
   type AutomationBrowser,
 } from "../../src/core/browser/automation-driver";
@@ -18,6 +19,15 @@ describe("browser automation driver", () => {
     expect(automationDriverForPlatform("win32")).toBe("puppeteer");
     expect(automationDriverForPlatform("darwin")).toBe("playwright");
     expect(automationDriverForPlatform("linux")).toBe("playwright");
+  });
+
+  test("confines browser downloads to the configured directory", () => {
+    expect(browserDownloadDestination("/tmp/cybara-downloads", "../../report.pdf")).toBe(
+      "/tmp/cybara-downloads/report.pdf"
+    );
+    expect(browserDownloadDestination("/tmp/cybara-downloads", "..\\..\\report.pdf")).toBe(
+      "/tmp/cybara-downloads/report.pdf"
+    );
   });
 
   test("Puppeteer transport preserves the browser preview contract", async () => {

@@ -179,6 +179,7 @@ export interface AgentToolCallResult {
   args?: Record<string, unknown>;
   result: unknown;
   status?: "pending" | "executing" | "completed" | "failed";
+  duration?: number;
   timeline_index?: number;
 }
 

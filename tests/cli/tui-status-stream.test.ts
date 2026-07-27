@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   consumeTUIStatusStream,
+  maintainTUIStatusStream,
   parseTUIStatusEvent,
   reconcileTUIStreamingText,
   type TUIStatusStreamEvent,
@@ -156,5 +157,34 @@ describe("CLI TUI status stream", () => {
     expect(authorization).toBe("Bearer secret");
     expect(gatewayPassword).toBe("gateway-secret");
     expect(events.map((event) => event.type)).toEqual(["status", "assistant_token"]);
+  });
+
+  test("reconnects after the status stream closes", async () => {
+    let requests = 0;
+    const controller = new AbortController();
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        requests += 1;
+        return new Response(
+          `data: {"type":"status","status":"thinking","timestamp":${requests},"sessionId":"s1"}\n\n`,
+          { headers: { "Content-Type": "text/event-stream" } }
+        );
+      },
+    });
+    servers.push(server);
+    const events: TUIStatusStreamEvent[] = [];
+    await maintainTUIStatusStream({
+      apiBase: server.url.origin,
+      signal: controller.signal,
+      reconnectDelayMs: 1,
+      onEvent: (event) => {
+        events.push(event);
+        if (events.length === 2) controller.abort();
+      },
+    });
+
+    expect(requests).toBe(2);
+    expect(events.map((event) => event.timestamp)).toEqual([1, 2]);
   });
 });

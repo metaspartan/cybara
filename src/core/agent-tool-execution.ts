@@ -21,7 +21,10 @@ import { type ToolContext, toolSchemas } from "./tools/index";
 export interface AgentToolExecutionResult {
   skipped: boolean;
   result?: unknown;
+  durationMs: number;
 }
+
+type AgentToolExecutionOutcome = Omit<AgentToolExecutionResult, "durationMs">;
 
 export interface AgentToolExecutionOptions {
   toolName: string;
@@ -52,7 +55,7 @@ function normalizeErrorMessage(error: unknown): string {
 
 async function executeAgentToolInternal(
   options: AgentToolExecutionOptions
-): Promise<AgentToolExecutionResult> {
+): Promise<AgentToolExecutionOutcome> {
   const { toolName, allowedToolNames, toolContext, hookContext, broadcastStatus } = options;
   let { args } = options;
   if (!hasTool(toolName)) {
@@ -203,10 +206,11 @@ async function executeAgentToolInternal(
 export async function executeAgentTool(
   options: AgentToolExecutionOptions
 ): Promise<AgentToolExecutionResult> {
+  const startedAt = Date.now();
   const executionState = options.toolContext?.executionState;
   const order = executionState?.nextToolCallOrder ?? 0;
   if (executionState) executionState.nextToolCallOrder += 1;
-  let execution: AgentToolExecutionResult;
+  let execution: AgentToolExecutionOutcome;
   if (!options.runtimeTracker) {
     execution = await executeAgentToolInternal(options);
   } else {
@@ -217,13 +221,15 @@ export async function executeAgentTool(
       resumeAgenticLoopRuntime(options.runtimeTracker);
     }
   }
-  if (!execution.skipped && execution.result !== undefined) {
+  const completedExecution = { ...execution, durationMs: Math.max(0, Date.now() - startedAt) };
+  if (!completedExecution.skipped && completedExecution.result !== undefined) {
     executionState?.toolCalls.push({
       order,
       name: options.toolName,
       args: options.args,
-      result: execution.result,
+      result: completedExecution.result,
+      durationMs: completedExecution.durationMs,
     });
   }
-  return execution;
+  return completedExecution;
 }

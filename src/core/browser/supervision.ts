@@ -1,7 +1,7 @@
 import { config } from "../config";
 import { isSealedSecret, openSecret, sealSecret } from "../secret-storage";
 
-export type BrowserDownloadPolicy = "ask" | "allow" | "deny";
+export type BrowserDownloadPolicy = "allow" | "deny";
 
 export interface BrowserSupervisionSettings {
   autoRestart: boolean;
@@ -24,13 +24,14 @@ export interface BrowserSupervisionStatus {
 const DEFAULT_SETTINGS: BrowserSupervisionSettings = {
   autoRestart: true,
   healthCheckIntervalMs: 30_000,
-  downloadPolicy: "ask",
+  downloadPolicy: "deny",
   remoteRoutingEnabled: false,
   remoteEndpoint: "",
   remoteToken: "",
 };
 const TOKEN_CONTEXT = "browser:remote-token";
 const REDACTED = "***redacted***";
+const settingsListeners = new Set<(settings: BrowserSupervisionSettings) => void>();
 let status: BrowserSupervisionStatus = {
   owner: "none",
   healthy: false,
@@ -83,10 +84,7 @@ function normalize(value: unknown): BrowserSupervisionSettings {
       Number.isFinite(record.healthCheckIntervalMs)
         ? Math.min(300_000, Math.max(5_000, Math.floor(record.healthCheckIntervalMs)))
         : DEFAULT_SETTINGS.healthCheckIntervalMs,
-    downloadPolicy:
-      record.downloadPolicy === "allow" || record.downloadPolicy === "deny"
-        ? record.downloadPolicy
-        : "ask",
+    downloadPolicy: record.downloadPolicy === "allow" ? "allow" : "deny",
     remoteRoutingEnabled: record.remoteRoutingEnabled === true,
     remoteEndpoint,
     remoteToken: openToken(record.remoteToken),
@@ -116,7 +114,25 @@ export function setBrowserSupervisionSettings(value: unknown): BrowserSupervisio
     ...settings,
     remoteToken: settings.remoteToken ? sealSecret(settings.remoteToken, TOKEN_CONTEXT) : "",
   });
+  for (const listener of settingsListeners) {
+    try {
+      listener(settings);
+    } catch {
+      continue;
+    }
+  }
   return { ...settings, remoteToken: settings.remoteToken ? REDACTED : "" };
+}
+
+export function browserDownloadsAccepted(policy: BrowserDownloadPolicy): boolean {
+  return policy === "allow";
+}
+
+export function onBrowserSupervisionSettingsChanged(
+  listener: (settings: BrowserSupervisionSettings) => void
+): () => void {
+  settingsListeners.add(listener);
+  return () => settingsListeners.delete(listener);
 }
 
 export function recordBrowserHealthy(owner: BrowserSupervisionStatus["owner"]): void {

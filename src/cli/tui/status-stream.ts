@@ -69,6 +69,8 @@ export interface TUIStatusStreamOptions {
   gatewayPassword?: string | null;
   signal: AbortSignal;
   onEvent: (event: TUIStatusStreamEvent) => void;
+  onConnectionState?: (state: "connected" | "reconnecting", detail?: string) => void;
+  reconnectDelayMs?: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -211,6 +213,7 @@ export async function consumeTUIStatusStream(options: TUIStatusStreamOptions): P
   if (!response.ok || !response.body) {
     throw new Error(`Status stream unavailable (${response.status})`);
   }
+  options.onConnectionState?.("connected");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -230,5 +233,44 @@ export async function consumeTUIStatusStream(options: TUIStatusStreamOptions): P
       const event = parseTUIStatusEvent(data);
       if (event) options.onEvent(event);
     }
+  }
+}
+
+function reconnectDelay(signal: AbortSignal, delayMs: number): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+export async function maintainTUIStatusStream(options: TUIStatusStreamOptions): Promise<void> {
+  const initialDelay = Math.max(1, options.reconnectDelayMs ?? 500);
+  let delayMs = initialDelay;
+  while (!options.signal.aborted) {
+    try {
+      await consumeTUIStatusStream({
+        ...options,
+        onConnectionState: (state, detail) => {
+          if (state === "connected") delayMs = initialDelay;
+          options.onConnectionState?.(state, detail);
+        },
+      });
+      if (options.signal.aborted) return;
+      options.onConnectionState?.("reconnecting", "Status stream disconnected");
+    } catch (cause) {
+      if (options.signal.aborted) return;
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      options.onConnectionState?.("reconnecting", detail);
+    }
+    await reconnectDelay(options.signal, delayMs);
+    delayMs = Math.min(5_000, delayMs * 2);
   }
 }
