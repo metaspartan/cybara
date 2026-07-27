@@ -1196,7 +1196,7 @@
   font-weight: 600;
   font-size: 0.94rem;
   padding: 9px 18px;
-  border-radius: 999px;
+  border-radius: 12px;
   border: 1px solid var(--glass-border-strong);
   background: var(--glass-surface);
   transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;

@@ -172,40 +172,33 @@ img {
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: -0.006em;
-  height: 40px;
-  padding: 0 16px;
-  border-radius: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.05);
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   background-image: linear-gradient(
-    104deg,
-    rgba(253, 253, 253, 0.05) 5%,
-    rgba(240, 240, 228, 0.1) 100%
+    180deg,
+    rgba(255, 255, 255, 0.07) 0%,
+    rgba(255, 255, 255, 0.028) 100%
   );
-  color: rgba(255, 255, 255, 0.96);
+  color: rgba(255, 255, 255, 0.94);
   cursor: pointer;
   backdrop-filter: blur(20px) saturate(115%);
   -webkit-backdrop-filter: blur(20px) saturate(115%);
-  transition: background-image 0.22s ease, border-color 0.22s ease, color 0.22s ease,
-    transform 0.16s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 1px 2px rgba(0, 0, 0, 0.5);
+  transition: background-image 0.2s ease, border-color 0.2s ease, color 0.2s ease,
+    box-shadow 0.2s ease, transform 0.14s ease;
   white-space: nowrap;
 }
 
-.btn::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), transparent 52%);
-  pointer-events: none;
-  z-index: -1;
-}
-
 .btn:hover {
-  border-color: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.14);
   background-image: linear-gradient(
-    104deg,
-    rgba(253, 253, 253, 0.09) 5%,
-    rgba(240, 240, 228, 0.16) 100%
+    180deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.045) 100%
   );
 }
 
@@ -219,30 +212,34 @@ img {
 }
 
 .btn--primary {
-  border-color: rgba(158, 156, 250, 0.16);
-  background-image: linear-gradient(
-    104deg,
-    rgba(150, 148, 250, 0.13) 5%,
-    rgba(196, 195, 255, 0.16) 100%
-  );
-  color: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.22);
+  background-image: linear-gradient(180deg, #dedde2 0%, #c6c5cd 100%);
+  color: #16161a;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 1px 2px rgba(0, 0, 0, 0.6),
+    0 6px 20px rgba(0, 0, 0, 0.45);
 }
 
 .btn--primary:hover {
-  border-color: rgba(168, 166, 255, 0.26);
-  background-image: linear-gradient(
-    104deg,
-    rgba(158, 156, 252, 0.2) 5%,
-    rgba(206, 205, 255, 0.24) 100%
-  );
+  border-color: rgba(0, 0, 0, 0.26);
+  background-image: linear-gradient(180deg, #ecebf0 0%, #d4d3db 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 1px 2px rgba(0, 0, 0, 0.6),
+    0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.btn--primary .btn-icon {
+  color: #26262c;
 }
 
 .btn--ghost {
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .btn--ghost:hover {
-  color: rgba(255, 255, 255, 0.96);
+  color: #fff;
 }
 
 .nav {
