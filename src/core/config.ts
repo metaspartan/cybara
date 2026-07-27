@@ -907,6 +907,18 @@ class ConfigManager {
     return normalized;
   }
 
+  getCodexFastMode(): boolean {
+    return this.get<unknown>("codex_fast_mode") === true;
+  }
+
+  setCodexFastMode(value: unknown): boolean {
+    if (typeof value !== "boolean") {
+      throw new Error("codex_fast_mode must be a boolean");
+    }
+    this.set("codex_fast_mode", value);
+    return value;
+  }
+
   getFollowUpBehaviorEnabled(): boolean {
     return this.get<unknown>("follow_up_behavior_enabled") !== false;
   }

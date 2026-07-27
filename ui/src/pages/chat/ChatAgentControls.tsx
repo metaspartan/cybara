@@ -1,5 +1,6 @@
 import { ChevronDown, Loader2 } from "lucide-react";
 import type { AgentSummary, ProviderPlanSnapshot, SessionContextUsage } from "@/types";
+import { ChatFastModeToggle } from "./ChatFastModeToggle";
 import { ContextUsageRing } from "./ContextUsageRing";
 
 export const MODEL_ROUTER_SELECTOR_VALUE = "__model_router__";
@@ -13,6 +14,9 @@ export function ChatAgentControls({
   providerPlan,
   onSelectAgent,
   updating,
+  fastMode,
+  fastModeUpdating,
+  onFastModeChange,
   controlId = "chat-agent-selector",
 }: {
   agents: AgentSummary[];
@@ -23,6 +27,9 @@ export function ChatAgentControls({
   providerPlan?: ProviderPlanSnapshot | null;
   onSelectAgent: (agentId?: string) => void;
   updating?: boolean;
+  fastMode?: boolean;
+  fastModeUpdating?: boolean;
+  onFastModeChange?: (enabled: boolean) => void;
   controlId?: string;
 }) {
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
@@ -37,6 +44,18 @@ export function ChatAgentControls({
   return (
     <div className="chat-agent-controls flex min-w-0 items-center gap-0.5">
       <ContextUsageRing usage={contextUsage} providerPlan={providerPlan} />
+      {onFastModeChange ? (
+        <ChatFastModeToggle
+          enabled={fastMode === true}
+          provider={
+            selectedAgent?.provider_type ?? selectedAgent?.provider ?? selectedAgent?.provider_id
+          }
+          model={selectedAgent?.model}
+          disabled={useModelRouter}
+          updating={fastModeUpdating}
+          onChange={onFastModeChange}
+        />
+      ) : null}
       <label className="sr-only" htmlFor={controlId}>
         Chat agent
       </label>

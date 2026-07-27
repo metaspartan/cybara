@@ -34,6 +34,8 @@ import type { ToolDefinition } from "./database";
 import { classifyApiError } from "./error-classifier";
 import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
 import { openAIResponsesUserContent } from "./llm/image-blocks";
+import { codexFastModeServiceTier } from "../../shared/codex-fast-mode";
+import { config } from "./config";
 import { coerceReasoningEffort, normalizeReasoningEffort } from "./llm/reasoning";
 import {
   createStreamWatchdog,
@@ -600,6 +602,10 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
             : "auto",
         parallel_tool_calls: true,
       };
+      const fastModeTier = codexFastModeServiceTier(config.getCodexFastMode(), activeModelId);
+      if (fastModeTier) {
+        requestBody.service_tier = fastModeTier;
+      }
       const codexEffort = normalizeReasoningEffort(
         this.resolveModelParams(toolContext).reasoning_effort
       );

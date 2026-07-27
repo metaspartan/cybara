@@ -63,6 +63,8 @@ export interface ChatComposerProps {
   providerPlan: ProviderPlanSnapshot | null;
   queueing: boolean;
   reasoningUpdating: boolean;
+  codexFastMode: boolean;
+  codexFastModeUpdating: boolean;
   selectedAgentId?: string;
   showPlan: boolean;
   showStop: boolean;
@@ -77,6 +79,7 @@ export interface ChatComposerProps {
   onDrop: (event: DragEvent<HTMLDivElement>) => void;
   onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   onReasoningChange: (effort: AgentReasoningEffort | null) => void;
+  onCodexFastModeChange: (enabled: boolean) => void;
   onRemovePendingFile: (index: number) => void;
   onRemovePendingImage: (index: number) => void;
   onReorderPendingMessages: (orderedIds: string[]) => void;
@@ -125,6 +128,8 @@ export function ChatComposer({
   providerPlan,
   queueing,
   reasoningUpdating,
+  codexFastMode,
+  codexFastModeUpdating,
   selectedAgentId,
   showPlan,
   showStop,
@@ -139,6 +144,7 @@ export function ChatComposer({
   onDrop,
   onPaste,
   onReasoningChange,
+  onCodexFastModeChange,
   onRemovePendingFile,
   onRemovePendingImage,
   onReorderPendingMessages,
@@ -260,6 +266,9 @@ export function ChatComposer({
             providerPlan={providerPlan}
             onSelectAgent={onSelectAgent}
             updating={agentUpdating}
+            fastMode={codexFastMode}
+            fastModeUpdating={codexFastModeUpdating}
+            onFastModeChange={onCodexFastModeChange}
           />
           <ChatReasoningControl
             effort={activeAgent?.reasoning_effort}
