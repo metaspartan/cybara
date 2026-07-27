@@ -9,12 +9,12 @@ describe("simulator preview image", () => {
     expect(
       isRenderableSimulatorImage({ complete: false, naturalHeight: 1_600, naturalWidth: 736 })
     ).toBe(false);
-    expect(isRenderableSimulatorImage({ complete: true, naturalHeight: 0, naturalWidth: 736 })).toBe(
-      false
-    );
-    expect(isRenderableSimulatorImage({ complete: true, naturalHeight: 1_600, naturalWidth: 0 })).toBe(
-      false
-    );
+    expect(
+      isRenderableSimulatorImage({ complete: true, naturalHeight: 0, naturalWidth: 736 })
+    ).toBe(false);
+    expect(
+      isRenderableSimulatorImage({ complete: true, naturalHeight: 1_600, naturalWidth: 0 })
+    ).toBe(false);
   });
 
   test("retains the previous frame until a valid replacement is ready", async () => {

@@ -44,7 +44,14 @@ export async function handleMobileSimulator(
     return {
       success: true,
       ...saved,
-      message: `Captured ${saved.device.name} to ${saved.filePath}`,
+      inspectWith: {
+        tool: "image",
+        arguments: {
+          image: saved.filePath,
+          prompt: `Inspect the current ${saved.device.name} simulator screen`,
+        },
+      },
+      message: `Captured ${saved.device.name} to ${saved.filePath}. Use mobile_simulator describe for controls and screenshot-pixel coordinates. Use the image tool for visual inspection; do not read the image as text.`,
     };
   }
   if (action === "preview") {

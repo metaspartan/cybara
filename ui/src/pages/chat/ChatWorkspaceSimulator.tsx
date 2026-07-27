@@ -221,6 +221,7 @@ export function ChatWorkspaceSimulator({
   const frameRequestRef = useRef(false);
   const lastInteractionAtRef = useRef(0);
   const automationAttemptRef = useRef(false);
+  const actionQueueRef = useRef<Promise<void>>(Promise.resolve());
   const surfaceRef = useRef<HTMLDivElement>(null);
 
   const loadStatus = useCallback(async (): Promise<SimulatorPlatformStatus> => {
@@ -455,24 +456,29 @@ export function ChatWorkspaceSimulator({
   };
 
   const runAction = useCallback(
-    async (action: Record<string, unknown>): Promise<void> => {
-      if (!selectedId || busy) return;
-      lastInteractionAtRef.current = Date.now();
-      setNotice(null);
-      try {
-        const response = await apiFetch(`/api/simulators/${platform}/action`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...action, deviceId: selectedId, sessionId }),
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        });
-        if (!response.ok) throw await responseError(response, "Simulator interaction failed");
-        revisionRef.current = "";
-        window.setTimeout(() => void loadFrame(), 100);
-        setError(null);
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Simulator interaction failed");
-      }
+    (action: Record<string, unknown>): Promise<void> => {
+      const execute = async (): Promise<void> => {
+        if (!selectedId || busy) return;
+        lastInteractionAtRef.current = Date.now();
+        setNotice(null);
+        try {
+          const response = await apiFetch(`/api/simulators/${platform}/action`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...action, deviceId: selectedId, sessionId }),
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          });
+          if (!response.ok) throw await responseError(response, "Simulator interaction failed");
+          revisionRef.current = "";
+          void loadFrame();
+          setError(null);
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : "Simulator interaction failed");
+        }
+      };
+      const queued = actionQueueRef.current.then(execute, execute);
+      actionQueueRef.current = queued.catch(() => undefined);
+      return queued;
     },
     [busy, loadFrame, platform, selectedId, sessionId]
   );

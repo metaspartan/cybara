@@ -204,6 +204,9 @@ describe("chat workspace panel", () => {
     expect(simulatorSource).toContain("connectStatusStream");
     expect(simulatorSource).toContain('event.toolName !== "mobile_simulator"');
     expect(simulatorSource).toContain("simulatorPreviewPollDelay");
+    expect(simulatorSource).toContain("actionQueueRef.current.then(execute, execute)");
+    expect(simulatorSource).toContain("void loadFrame()");
+    expect(simulatorSource).not.toContain("window.setTimeout(() => void loadFrame(), 100)");
     expect(simulatorSource).toContain('data-testid="simulator-agent-cursor"');
     expect(simulatorSource).toContain('label="Home"');
     expect(simulatorSource).toContain('label="Save screenshot"');
