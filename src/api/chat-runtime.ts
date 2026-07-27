@@ -1,4 +1,4 @@
-import { agentManager, type AgentExecutionFailure } from "../core/agent";
+import { type AgentExecutionFailure, agentManager } from "../core/agent";
 import { recordCompletedTrajectory } from "../core/agent-eval";
 import { emitAgentHook } from "../core/agent-hooks";
 import { agentSupportsImages } from "../core/agent-image-capabilities";
@@ -71,36 +71,25 @@ import {
   recordCircuitSuccess,
 } from "../core/tools/index";
 import { resolveAgentToolPolicy } from "../core/toolsets";
+import { stripAgentAttributionTag } from "./chat-agent-handoff";
 import {
   activeAgentSystemPrompt,
   applyActiveAgentToSession,
   refreshSessionAgentSystemPromptIfNeeded,
 } from "./chat-agent-prompt";
-import { stripAgentAttributionTag } from "./chat-agent-handoff";
 import { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 import { executionMetadataFromResult } from "./chat-execution-metadata";
 import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
-import {
-  finishRetryableProviderFailure,
-  normalizeAgentExecutionFailure,
-} from "./chat-provider-failure";
-import { appendToolImageReferences, maybeSaveAutomaticMemory } from "./chat-response-enrichment";
-import { recoverAssistantResponse } from "./chat-response-recovery";
 import { settlePendingChatFailure } from "./chat-pending-failure";
 import {
-  deletePersistedPendingChatItem,
-  persistPendingChatItem,
-  persistPendingChatItems,
-} from "./chat-pending-store";
-import {
-  findMaterializedPendingMessage,
+  appendAssistantMessage,
   findAssistantResponseAfterPendingMessage,
+  findMaterializedPendingMessage,
   hasPendingChatMessages,
   materializePendingMessage,
   nextPendingChatSequence,
   pendingChatSnapshot,
   pendingChatSnapshots,
-  appendAssistantMessage,
   preparePendingMessage,
   removePendingChatQueueItem,
   resolveQueuedTurnRouting,
@@ -108,11 +97,22 @@ import {
   syncPendingChatStatus,
 } from "./chat-pending-state";
 import {
+  deletePersistedPendingChatItem,
+  persistPendingChatItem,
+  persistPendingChatItems,
+} from "./chat-pending-store";
+import {
   buildFallbackProcessActivities,
   dedupeProcessActivities,
   type ProcessActivityInfo,
   type ToolCallInfo,
 } from "./chat-process-activities";
+import {
+  finishRetryableProviderFailure,
+  normalizeAgentExecutionFailure,
+} from "./chat-provider-failure";
+import { appendToolImageReferences, maybeSaveAutomaticMemory } from "./chat-response-enrichment";
+import { recoverAssistantResponse } from "./chat-response-recovery";
 import {
   interruptActiveChatTurnForSteering,
   isChatTurnInterrupted,
@@ -176,6 +176,7 @@ export {
   type ProcessActivityInfo,
   type ToolCallInfo,
 } from "./chat-process-activities";
+
 const log = createLogger("Chat");
 
 export type {
@@ -645,7 +646,7 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
         ...resolveQueuedTurnRouting(session),
         message: next.content,
         sessionId,
-        queueMode: "queue",
+        queueMode: next.mode === "steering" ? "steer" : "queue",
         recordedUserMessageId: next.id,
       },
       sessionId
@@ -1168,7 +1169,7 @@ async function handleChatTurn(
   let userMessage = recordedUserMessageId
     ? findMaterializedPendingMessage(session, recordedUserMessageId)
     : undefined;
-  const isMaterializedSteeringTurn = !!userMessage;
+  const isMaterializedSteeringTurn = !!userMessage && request.queueMode === "steer";
   const shouldLogUserMessage = !userMessage;
   if (userMessage) {
     delete userMessage._pendingSteeringId;

@@ -1,7 +1,4 @@
 import { createInterface } from "readline";
-import { getFlagValue } from "./args";
-import { resolveAgentIdentifier } from "./agent-resolution";
-import { createChatInputQueue } from "./chat-input-queue";
 import { limitTUIActivityDetails, presentTUIActivities } from "../tui/activity";
 import {
   environmentSnapshotFromDetail,
@@ -15,6 +12,10 @@ import {
   subagentsFromResponse,
   tasksFromResponse,
 } from "../tui/chat-environment";
+import { resolveAgentIdentifier } from "./agent-resolution";
+import { getFlagValue } from "./args";
+import { createChatInputQueue } from "./chat-input-queue";
+import { recoverRawAgentResult } from "./raw-agent-recovery";
 
 type FetchAPI = <T>(endpoint: string, options?: RequestInit) => Promise<T | null>;
 type WithAuthHeaders = (
@@ -25,6 +26,7 @@ type WithAuthHeaders = (
 interface ChatCliContext {
   apiBase: string;
   fetchAPI: FetchAPI;
+  requestAPI?: FetchAPI;
   withAuthHeaders: WithAuthHeaders;
 }
 
@@ -562,6 +564,14 @@ export async function rawAgent(rawArgs: string[]): Promise<void> {
     agentId = await resolveAgentId(agentId);
   }
 
+  const baselineMessages = sessionId
+    ? await chatContext().fetchAPI<CliHistoryMessage[]>(
+        `/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`
+      )
+    : [];
+  const baselineMessageCount = Array.isArray(baselineMessages) ? baselineMessages.length : null;
+  sessionId ||= crypto.randomUUID();
+
   const body: Record<string, unknown> = {
     message: prompt,
     sessionId,
@@ -571,13 +581,35 @@ export async function rawAgent(rawArgs: string[]): Promise<void> {
     tools: true,
   };
   if (useModelRouter) body.useModelRouter = true;
-  const res = await chatContext().fetchAPI<CliChatResponse>("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const current = chatContext();
+  let requestError: unknown;
+  let res: CliChatResponse | null = null;
+  try {
+    res = await (current.requestAPI || current.fetchAPI)<CliChatResponse>("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    requestError = error;
+  }
 
   if (!res) {
+    const recovered = await recoverRawAgentResult({
+      baselineMessageCount,
+      fetchAPI: chatContext().fetchAPI,
+      sessionId,
+    });
+    if (recovered) {
+      if (json) console.log(JSON.stringify({ sessionId, content: recovered }));
+      else console.log(formatMarkdownForTerminal(recovered));
+      return;
+    }
+    if (requestError) {
+      console.error(
+        `ERROR: ${requestError instanceof Error ? requestError.message : requestError}`
+      );
+    }
     process.exit(1);
   }
 

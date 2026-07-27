@@ -4,6 +4,7 @@ import {
   type OpenAIUsage,
   parseToolArguments,
 } from "./agent-internals";
+import { parseCodexFunctionCallId } from "./llm/codex-function-call-ids";
 import { redactSecretText } from "./redaction";
 
 export function parseOpenAICodexJsonTurnResponse(
@@ -16,13 +17,16 @@ export function parseOpenAICodexJsonTurnResponse(
   }
   return {
     content: choice.message.content || "",
-    toolCalls: (choice.message.tool_calls || []).map((toolCall) => ({
-      id: toolCall.id,
-      callId: toolCall.id.split("|")[0] || toolCall.id,
-      itemId: toolCall.id.split("|")[1] || undefined,
-      name: toolCall.function?.name || "",
-      args: parseToolArguments(toolCall.function?.arguments),
-    })),
+    toolCalls: (choice.message.tool_calls || []).map((toolCall) => {
+      const { callId, itemId } = parseCodexFunctionCallId(toolCall.id);
+      return {
+        id: toolCall.id,
+        callId,
+        itemId,
+        name: toolCall.function?.name || "",
+        args: parseToolArguments(toolCall.function?.arguments),
+      };
+    }),
     usage: json.usage
       ? {
           inputTokens: Number((json.usage as OpenAIUsage).prompt_tokens || 0),

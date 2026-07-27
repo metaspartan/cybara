@@ -108,6 +108,7 @@ describe("thinking budgets", () => {
   test("anthropic adaptive mode follows model family", () => {
     expect(usesAnthropicAdaptiveThinking("claude-sonnet-4-6")).toBe(true);
     expect(usesAnthropicAdaptiveThinking("claude-opus-4-8")).toBe(true);
+    expect(usesAnthropicAdaptiveThinking("claude-opus-5")).toBe(true);
     expect(usesAnthropicAdaptiveThinking("claude-sonnet-4-5")).toBe(false);
     expect(usesAnthropicAdaptiveThinking("MiniMax-M2.7")).toBe(false);
   });

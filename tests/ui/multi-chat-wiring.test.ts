@@ -51,6 +51,7 @@ describe("multi-chat workspace wiring", () => {
   test("shares status streaming, bounds rendering, and queues active follow-ups", () => {
     const workspace = readSource("ui/src/pages/chat/MultiChatWorkspace.tsx");
     const liveStatuses = readSource("ui/src/pages/chat/useMultiChatLiveStatuses.ts");
+    const pendingQueue = readSource("ui/src/pages/chat/useMultiChatPendingQueue.ts");
 
     expect(workspace).toContain("useMultiChatLiveStatuses");
     expect(liveStatuses).toContain("const response = await chatApi.getSessionStatus()");
@@ -67,6 +68,15 @@ describe("multi-chat workspace wiring", () => {
     expect(workspace).toContain("liveActivities={status?.activities || []}");
     expect(workspace).toContain("const paneIsWorking = isActive || sending;");
     expect(workspace).toContain("showWorkingTimeline={paneIsWorking}");
+    expect(workspace).toContain("<PendingChatQueue");
+    expect(workspace).toContain("pendingQueue.replaceMessages(response?.pendingMessages)");
+    expect(liveStatuses).toContain("onPendingMessages(sessionId, snapshot.pendingMessages)");
+    expect(workspace).toContain("queryClient.setQueryData(queryKey");
+    expect(pendingQueue).toContain("chatApi.getPendingMessages(sessionId)");
+    expect(pendingQueue).toContain("processActivities: activities.map");
+    expect(pendingQueue).toContain("chatApi.reorderPendingMessages");
+    expect(pendingQueue).toContain("chatApi.updatePendingMessage");
+    expect(pendingQueue).toContain("chatApi.deletePendingMessage");
   });
 
   test("uses true desktop quadrants and stacked responsive panes", () => {

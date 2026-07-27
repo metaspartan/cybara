@@ -31,6 +31,7 @@ const ADAPTIVE_THINKING_PROVIDERS = new Set([
 ]);
 
 const KIMI_CODE_PROVIDERS = new Set([
+  "moonshot",
   "kimi-code",
   "kimi-code-oauth",
   "kimi-coding",
@@ -42,6 +43,7 @@ const ANTHROPIC_PROVIDERS = new Set([
   "anthropic",
   "anthropic-oauth",
   "anthropic_vertex",
+  "bedrock",
   "claude-oauth",
 ]);
 
@@ -131,7 +133,10 @@ function resolveGoogleModelEfforts(modelId: string): ReasoningEffort[] {
 }
 
 function isKimiK3(provider: string, model: string | null | undefined): boolean {
-  return KIMI_CODE_PROVIDERS.has(provider) && /(?:^|\/)k3$/.test(normalizeReasoningModelId(model));
+  return (
+    KIMI_CODE_PROVIDERS.has(provider) &&
+    /(?:^|\/)(?:kimi-)?k3$/.test(normalizeReasoningModelId(model))
+  );
 }
 
 export function usesBinaryReasoning(providerId?: string | null): boolean {

@@ -540,7 +540,6 @@ describe("handleChat per-session serialization", () => {
       base_url: "https://api.openai.com/v1",
     });
     createdProviderIds.push(provider.id);
-
     const agent = agentManager.create({
       name: "Subagent Ordering Agent",
       type: "main",
@@ -629,7 +628,6 @@ describe("handleChat per-session serialization", () => {
       base_url: "https://api.openai.com/v1",
     });
     createdProviderIds.push(provider.id);
-
     const agent = agentManager.create({
       name: "Prompt Refresh Agent",
       type: "main",
@@ -1140,10 +1138,14 @@ describe("handleChat per-session serialization", () => {
       memory_enabled: false,
     });
     createdAgentIds.push(agent.id);
-
     let call = 0;
-    globalThis.fetch = (async () => {
+    const providerRequests: Array<Array<{ role: string; content: string }>> = [];
+    globalThis.fetch = (async (_url, init) => {
       const n = ++call;
+      const body = JSON.parse(String(init?.body)) as {
+        messages?: Array<{ role: string; content: string }>;
+      };
+      providerRequests.push(body.messages || []);
       await new Promise((r) => setTimeout(r, n === 1 ? 40 : 5));
       return new Response(
         JSON.stringify({
@@ -1162,7 +1164,6 @@ describe("handleChat per-session serialization", () => {
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }) as typeof fetch;
-
     const sessionId = `serialize-${Date.now()}`;
     createdSessionIds.push(sessionId);
     const statusDetails: string[] = [];
@@ -1186,7 +1187,6 @@ describe("handleChat per-session serialization", () => {
         }
       }
     });
-
     const firstTurn = handleChat({
       message: "first",
       agentId: agent.id,
@@ -1205,22 +1205,18 @@ describe("handleChat per-session serialization", () => {
       "second",
     ]);
     const firstResponse = await firstTurn;
-
     expect(firstResponse.queued).toBeUndefined();
     expect(secondResponse.queued).toBe(true);
     expect(secondResponse.pendingMessages?.map((message) => message.content)).toEqual(["second"]);
     expect(secondResponse.pendingMessage?.clientPendingId).toBe("optimistic-second");
     expect(secondResponse.pendingMessages?.[0]?.clientPendingId).toBe("optimistic-second");
     expect(statusDetails).not.toContain("Queued follow-up");
-
     const messages = await waitForVisibleSessionMessages(sessionId, 4);
     expect(queuedTurnHandoff).toEqual([secondResponse.pendingMessage?.id, "optimistic-second"]);
-    const roles = messages.map((m) => m.role);
-
-    const userIdxs = roles.flatMap((r, i) => (r === "user" ? [i] : []));
+    const userIdxs = messages.flatMap((message, index) => (message.role === "user" ? [index] : []));
     expect(userIdxs.length).toBe(2);
     for (const idx of userIdxs) {
-      expect(roles[idx + 1]).toBe("assistant");
+      expect(messages[idx + 1]?.role).toBe("assistant");
     }
     expect(messages[0]?.content).toBe("first");
     expect(messages[1]?.role).toBe("assistant");
@@ -1228,6 +1224,13 @@ describe("handleChat per-session serialization", () => {
     expect(messages[2]?.pending_chat_id).toBe(secondResponse.pendingMessage?.id);
     expect(messages[2]?.client_pending_id).toBe("optimistic-second");
     expect(messages[3]?.role).toBe("assistant");
+    const queuedProviderRequest = providerRequests.find((entries) =>
+      entries.some((entry) => entry.content === "second")
+    );
+    const queuedContents = (queuedProviderRequest || []).map((entry) => entry.content);
+    expect(queuedContents).toEqual(expect.arrayContaining(["first", "second"]));
+    expect(queuedContents.some((content) => content.startsWith("reply-"))).toBe(true);
+    expect(queuedContents.join("\n")).not.toContain("interrupted by user steering");
     expect(listPendingChatMessages(sessionId)).toEqual([]);
     expect(loadPersistedPendingChatItems(sessionId)).toEqual([]);
     expect(queueHandoffVisibility.length).toBeGreaterThan(0);
@@ -1255,7 +1258,6 @@ describe("handleChat per-session serialization", () => {
       memory_enabled: false,
     });
     createdAgentIds.push(agent.id);
-
     let call = 0;
     let firstRequestAborted = false;
     globalThis.fetch = (async (_url, init) => {
@@ -1283,7 +1285,6 @@ describe("handleChat per-session serialization", () => {
         { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }) as typeof fetch;
-
     const sessionId = `steering-${Date.now()}`;
     createdSessionIds.push(sessionId);
     const steeringStatuses: Array<{ status: string; detail?: string }> = [];

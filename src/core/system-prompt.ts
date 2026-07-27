@@ -163,7 +163,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
     );
   }
 
-  lines.push(...buildToolingSection(params.tools, isMinimal));
+  lines.push(...buildToolingSection(params.tools, isMinimal, params.runtimeInfo?.os));
 
   if (!isMinimal && hasTools) {
     lines.push(...buildWorkingAgreementSection(params.executionMode || "execute"));
@@ -402,7 +402,7 @@ export function systemPromptSandboxMarker(enabled: boolean): string {
   return `sandbox=${enabled ? "enabled" : "disabled"}`;
 }
 
-function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
+function buildToolingSection(tools: string[], isMinimal: boolean, runtimeOs?: string): string[] {
   const orderedTools = orderedToolNames(tools);
   const availableTools = new Set(orderedTools.map((tool) => tool.toLowerCase()));
 
@@ -432,9 +432,14 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
 
     if (availableTools.has("exec")) {
       lines.push(
-        "For development servers and other long-running commands, call exec with background:true and a workdir. Do not append shell '&'. Use process to list or stop background processes.",
-        ""
+        "For development servers and other long-running commands, call exec with background:true and a workdir. Do not append shell '&'. Use process to list or stop background processes."
       );
+      if ((runtimeOs || process.platform).trim().toLowerCase().startsWith("win")) {
+        lines.push(
+          "On Windows, exec uses PowerShell when available and cmd.exe otherwise. Use Windows-native syntax instead of POSIX-only commands. Locate executables with Get-Command or where.exe, then invoke them by name."
+        );
+      }
+      lines.push("");
     }
 
     if (availableTools.has("browser")) {
@@ -987,15 +992,17 @@ export function resolveModelAlias(modelId: string, provider?: string): string {
     o1: "o1",
     o3: "o3",
 
-    "claude-opus": "claude-opus-4-6",
-    "claude-sonnet": "claude-sonnet-4-6",
+    "claude-opus": "claude-opus-5",
+    "claude-sonnet": "claude-sonnet-5",
     "claude-haiku": "claude-haiku-4-5",
     "claude-opus-4.6": "claude-opus-4-6",
     "claude-sonnet-4.6": "claude-sonnet-4-6",
     "anthropic/claude-opus-4-6": "claude-opus-4-6",
     "anthropic/claude-sonnet-4-6": "claude-sonnet-4-6",
-    opus: "claude-opus-4-6",
-    sonnet: "claude-sonnet-4-6",
+    "opus-5": "claude-opus-5",
+    "sonnet-5": "claude-sonnet-5",
+    opus: "claude-opus-5",
+    sonnet: "claude-sonnet-5",
     haiku: "claude-haiku-4-5",
 
     "gemini-2-flash": "gemini-2.0-flash-exp",
@@ -1004,7 +1011,7 @@ export function resolveModelAlias(modelId: string, provider?: string): string {
 
     default: "MiniMax-M2.5",
     fast: "MiniMax-M2.5-highspeed",
-    smart: "claude-opus-4-6",
+    smart: "claude-opus-5",
   };
 
   const key = `${provider || ""}/${modelId}`.toLowerCase();

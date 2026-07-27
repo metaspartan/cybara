@@ -36,8 +36,9 @@ import {
 import type { ToolDefinition } from "./database";
 import { applyProviderApiKey } from "./llm/auth-headers";
 import {
+  applyMoonshotRequestOptions,
   isKimiCodeProvider,
-  normalizeKimiAssistantToolMessage,
+  normalizeKimiCompatibleAssistantToolMessage,
   normalizeKimiToolSchema,
 } from "./llm/kimi-wire";
 import { normalizeModelToolCalls } from "./llm/model-dialect";
@@ -120,7 +121,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     );
     const requestBody: Record<string, unknown> = {
       model: modelId,
-      messages: toOpenAIChatHistory(messages, providerConfig),
+      messages: toOpenAIChatHistory(messages, providerConfig, modelId),
     };
 
     const openaiEffort = normalizeReasoningEffort(
@@ -162,6 +163,8 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         requestBody.tool_choice = "auto";
       }
     }
+
+    applyMoonshotRequestOptions(requestBody, providerConfig, modelId);
 
     this.compactOpenAIRequestMessagesForContext(requestBody, contextWindowTokens);
     const initialTokenLimit = this.resolveOpenAIRequestTokenLimit(
@@ -429,9 +432,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         normalizedToolCalls
       );
       currentMessages.push(
-        isKimiCodeProvider(providerConfig)
-          ? normalizeKimiAssistantToolMessage(replayMessage)
-          : replayMessage
+        normalizeKimiCompatibleAssistantToolMessage(replayMessage, providerConfig, modelId)
       );
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);

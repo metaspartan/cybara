@@ -7,6 +7,14 @@ describe("Model alias compatibility", () => {
     expect(resolveModelAlias("anthropic/claude-opus-4-6")).toBe("claude-opus-4-6");
   });
 
+  test("maps current Anthropic family aliases to Claude 5", () => {
+    expect(resolveModelAlias("opus")).toBe("claude-opus-5");
+    expect(resolveModelAlias("opus-5")).toBe("claude-opus-5");
+    expect(resolveModelAlias("claude-opus")).toBe("claude-opus-5");
+    expect(resolveModelAlias("sonnet")).toBe("claude-sonnet-5");
+    expect(resolveModelAlias("smart")).toBe("claude-opus-5");
+  });
+
   test("maps codex forward-compat aliases to GPT-5.3 Codex", () => {
     expect(resolveModelAlias("gpt-5-codex")).toBe("gpt-5.3-codex");
     expect(resolveModelAlias("gpt-5.2-codex", "openai-codex")).toBe("gpt-5.3-codex");

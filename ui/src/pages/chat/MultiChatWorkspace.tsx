@@ -1,17 +1,3 @@
-import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
-import { Modal } from "@/components/ui";
-import { useAgentSummaries, useUpdateAgentReasoning } from "@/hooks/useApi";
-import {
-  useChat,
-  useSessionDetail,
-  useSessions,
-  useUpdateSessionAgent,
-  SESSION_DETAIL_QUERY_KEY,
-} from "@/hooks/useChat";
-import { chatApi, routerApi, settingsApi } from "@/lib/api";
-import { cn } from "@/lib/utils";
-import { useUIStore } from "@/stores/uiStore";
-import { openExternal } from "@/utils/openExternal";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpRight,
@@ -41,18 +27,34 @@ import {
   useState,
 } from "react";
 import { useLocation, useNavigate } from "react-router";
-import type { ChatLightboxImage } from "./ChatImageLightbox";
+import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
+import { Modal } from "@/components/ui";
+import { useAgentSummaries, useUpdateAgentReasoning } from "@/hooks/useApi";
+import {
+  SESSION_DETAIL_QUERY_KEY,
+  useChat,
+  useSessionDetail,
+  useSessions,
+  useUpdateSessionAgent,
+} from "@/hooks/useChat";
+import { chatApi, routerApi, settingsApi } from "@/lib/api";
+import type { PendingChatMessage } from "@/lib/status-stream";
+import { cn } from "@/lib/utils";
+import { useUIStore } from "@/stores/uiStore";
+import type { AgentSummary } from "@/types";
+import { openExternal } from "@/utils/openExternal";
+import { hasMixedAssistantAuthors } from "./assistantAuthors";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./ChatAgentControls";
 import { ChatComposerAttachments } from "./ChatComposerAttachments";
 import {
   ChatApprovalControls,
   normalizeToolApprovalMode,
+  PendingChatQueue,
   type ToolApprovalMode,
 } from "./ChatFollowUpControls";
+import type { ChatLightboxImage } from "./ChatImageLightbox";
 import { ChatImageLightbox } from "./ChatImageLightbox";
 import { ChatMessageTimeline } from "./ChatMessageTimeline";
-import { MultiChatPaneEnvironment } from "./MultiChatPaneEnvironment";
-import { NewChatWorkspaceBar } from "./NewChatWorkspaceBar";
 import { ChatReasoningControl } from "./ChatReasoningControl";
 import type { ChatMessage } from "./chatModel";
 import {
@@ -62,6 +64,7 @@ import {
   sessionPreviewText,
   sessionRouteLabel,
 } from "./chatModel";
+import { MultiChatPaneEnvironment } from "./MultiChatPaneEnvironment";
 import {
   addMultiChatSession,
   buildMultiChatPath,
@@ -75,16 +78,17 @@ import {
   replaceMultiChatSession,
   resolveMultiChatSlotCount,
 } from "./multiChatLayout";
-import { useMultiChatDropTarget } from "./useMultiChatDropTarget";
+import { MULTI_CHAT_ACTIVE_STATUSES, type MultiChatLiveState } from "./multiChatLiveStatus";
+import { NewChatWorkspaceBar } from "./NewChatWorkspaceBar";
+import { normalizePendingChatMessages } from "./pendingQueueState";
+import type { ChatSidebarSession } from "./sessionGrouping";
 import { useChatAttachments } from "./useChatAttachments";
 import { useChatDictation } from "./useChatDictation";
-import { hasMixedAssistantAuthors } from "./assistantAuthors";
-import { MULTI_CHAT_ACTIVE_STATUSES, type MultiChatLiveState } from "./multiChatLiveStatus";
-import { useMultiChatLiveStatuses } from "./useMultiChatLiveStatuses";
 import { useEnvironmentGitBranches } from "./useEnvironmentGitBranches";
+import { useMultiChatDropTarget } from "./useMultiChatDropTarget";
+import { useMultiChatLiveStatuses } from "./useMultiChatLiveStatuses";
+import { multiChatPendingQueryKey, useMultiChatPendingQueue } from "./useMultiChatPendingQueue";
 import { pickWorkspaceDirectory } from "./workspacePicker";
-import type { AgentSummary } from "@/types";
-import type { ChatSidebarSession } from "./sessionGrouping";
 
 const MULTI_CHAT_RENDERED_MESSAGE_LIMIT = 80;
 const MULTI_CHAT_REFRESH_THROTTLE_MS = 750;
@@ -317,6 +321,12 @@ function MultiChatPane({
   const selectedAgent = agents.find((agent) => agent.id === (selectedAgentId || detail?.agent_id));
   const effectiveWorkspaceDir = isDraft ? draftWorkspaceDir : detail?.workspace_dir || null;
   const environmentGit = useEnvironmentGitBranches(isDraft ? draftWorkspaceDir : null);
+  const pendingQueue = useMultiChatPendingQueue({
+    activities: status?.activities || [],
+    enabled: !isDraft,
+    onRefresh: () => onRefresh(sessionId),
+    sessionId,
+  });
 
   useEffect(() => {
     if (!detail) return;
@@ -406,7 +416,10 @@ function MultiChatPane({
   const handleReasoningChange = async (effort: AgentSummary["reasoning_effort"]): Promise<void> => {
     if (!selectedAgent) return;
     try {
-      await updateAgentReasoning.mutateAsync({ id: selectedAgent.id, effort: effort ?? null });
+      await updateAgentReasoning.mutateAsync({
+        id: selectedAgent.id,
+        effort: effort ?? null,
+      });
     } catch (error) {
       useUIStore
         .getState()
@@ -451,6 +464,7 @@ function MultiChatPane({
         images: attachments.images,
       });
       const resolvedSessionId = response?.sessionId;
+      pendingQueue.replaceMessages(response?.pendingMessages);
       if (isDraft && resolvedSessionId) {
         onReplaceSession(sessionId, resolvedSessionId);
         onRefresh(resolvedSessionId);
@@ -670,6 +684,17 @@ function MultiChatPane({
         onSubmit={(event) => void handleSend(event)}
         className="chat-composer-responsive shrink-0 border-t border-[var(--surface-border)] p-2.5"
       >
+        <PendingChatQueue
+          messages={pendingQueue.messages}
+          mutatingMessageId={pendingQueue.mutatingMessageId}
+          steeringMessageId={pendingQueue.steeringMessageId}
+          onDelete={(pendingMessageId) => void pendingQueue.deleteMessage(pendingMessageId)}
+          onReorder={(orderedIds) => void pendingQueue.reorderMessages(orderedIds)}
+          onSteer={(pendingMessageId) => void pendingQueue.steerMessage(pendingMessageId)}
+          onUpdate={(pendingMessageId, content) =>
+            void pendingQueue.updateMessage(pendingMessageId, content)
+          }
+        />
         {dictationError || dictationStatus ? (
           <div
             className={cn(
@@ -939,7 +964,9 @@ export function MultiChatWorkspace() {
       setToolApprovalMode(nextMode);
       setSavingToolApprovalMode(true);
       try {
-        const response = await settingsApi.updateConfig({ tool_approval_mode: nextMode });
+        const response = await settingsApi.updateConfig({
+          tool_approval_mode: nextMode,
+        });
         if (!response.success || response.data?.success !== true) {
           throw new Error(response.error || "Failed to update tool approvals");
         }
@@ -998,7 +1025,9 @@ export function MultiChatWorkspace() {
       const timer = window.setTimeout(() => {
         const pending = refreshTimersRef.current.get(sessionId);
         refreshTimersRef.current.delete(sessionId);
-        void queryClient.invalidateQueries({ queryKey: [SESSION_DETAIL_QUERY_KEY, sessionId] });
+        void queryClient.invalidateQueries({
+          queryKey: [SESSION_DETAIL_QUERY_KEY, sessionId],
+        });
         if (pending?.includeSessionList) {
           void queryClient.invalidateQueries({ queryKey: ["sessions"] });
         }
@@ -1008,7 +1037,22 @@ export function MultiChatWorkspace() {
     [queryClient]
   );
 
-  const statuses = useMultiChatLiveStatuses({ sessionIds, onRefresh: refreshSession });
+  const syncPendingMessages = useCallback(
+    (sessionId: string, messages?: PendingChatMessage[]): void => {
+      const queryKey = multiChatPendingQueryKey(sessionId);
+      if (messages) {
+        queryClient.setQueryData(queryKey, normalizePendingChatMessages(messages));
+        return;
+      }
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    [queryClient]
+  );
+  const statuses = useMultiChatLiveStatuses({
+    sessionIds,
+    onRefresh: refreshSession,
+    onPendingMessages: syncPendingMessages,
+  });
 
   useEffect(
     () => () => {

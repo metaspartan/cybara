@@ -10,7 +10,7 @@ describe("OpenAI Codex JSON response parsing", () => {
             content: "done",
             tool_calls: [
               {
-                id: "call-1|item-1",
+                id: "call-1|fc_item-1",
                 function: { name: "read", arguments: '{"path":"README.md"}' },
               },
             ],
@@ -27,9 +27,9 @@ describe("OpenAI Codex JSON response parsing", () => {
       content: "done",
       toolCalls: [
         {
-          id: "call-1|item-1",
+          id: "call-1|fc_item-1",
           callId: "call-1",
-          itemId: "item-1",
+          itemId: "fc_item-1",
           name: "read",
           args: { path: "README.md" },
         },

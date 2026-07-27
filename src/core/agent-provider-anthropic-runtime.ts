@@ -56,6 +56,7 @@ import {
   applyAnthropicReasoningOptions,
   collectAnthropicThinkingText,
   resolveAnthropicToolChoice,
+  shouldSendAnthropicContext1mBeta,
 } from "./llm/anthropic-request-options";
 import { withLlmRequestTimeout } from "./llm/request-timeout";
 import { normalizeProviderTokenUsage } from "./llm/token-usage-normalization";
@@ -138,7 +139,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
     const oauth = providerCatalog[providerConfig as ProviderType]?.authType === "oauth";
     const headers: Record<string, string> = anthropicRequestHeaders(auth, vertex, oauth);
 
-    if (!vertex && modelParams?.context1m === true) {
+    if (!vertex && shouldSendAnthropicContext1mBeta(modelId, modelParams?.context1m === true)) {
       headers["anthropic-beta"] = this.mergeHeaderToken(
         headers["anthropic-beta"],
         ANTHROPIC_CONTEXT_1M_BETA

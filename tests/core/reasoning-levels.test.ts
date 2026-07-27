@@ -77,6 +77,13 @@ describe("reasoning level support matrix", () => {
   });
 
   test("anthropic uses model-specific adaptive effort ladders", () => {
+    expect(supportedReasoningEfforts("anthropic", "claude-opus-5")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
     expect(supportedReasoningEfforts("anthropic", "claude-opus-4-8")).toEqual([
       "low",
       "medium",
@@ -88,6 +95,13 @@ describe("reasoning level support matrix", () => {
       "low",
       "medium",
       "high",
+      "max",
+    ]);
+    expect(supportedReasoningEfforts("bedrock", "anthropic.claude-sonnet-5")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
       "max",
     ]);
   });
@@ -113,6 +127,7 @@ describe("reasoning level support matrix", () => {
   });
 
   test("Kimi K3 uses its current low, high, and max reasoning contract", () => {
+    expect(supportedReasoningEfforts("moonshot", "kimi-k3")).toEqual(["low", "high", "max"]);
     expect(supportedReasoningEfforts("kimi-code", "k3")).toEqual(["low", "high", "max"]);
     expect(supportedReasoningEfforts("kimi-code-oauth", "kimi-code/k3")).toEqual([
       "low",
@@ -129,6 +144,12 @@ describe("reasoning level support matrix", () => {
   });
 
   test("Gemini 3 Flash exposes the current four-level thinking ladder", () => {
+    expect(supportedReasoningEfforts("google", "gemini-3.6-flash")).toEqual([
+      "minimal",
+      "low",
+      "medium",
+      "high",
+    ]);
     expect(supportedReasoningEfforts("google", "gemini-3.5-flash")).toEqual([
       "minimal",
       "low",

@@ -11,6 +11,29 @@ export interface AnthropicToolChoiceContext {
   requireToolUse?: boolean;
 }
 
+const ANTHROPIC_NATIVE_1M_MODEL =
+  /claude-(?:(?:opus|sonnet|fable|mythos)-5|(?:opus|sonnet)-4[-.](?:6|8))(?:-|$)/;
+
+function removeAnthropicSamplingOptions(requestBody: Record<string, unknown>): void {
+  delete requestBody.temperature;
+  delete requestBody.top_p;
+  delete requestBody.top_k;
+}
+
+function removeIncompatibleManualThinkingOptions(requestBody: Record<string, unknown>): void {
+  delete requestBody.temperature;
+  delete requestBody.top_k;
+  const topP = requestBody.top_p;
+  if (typeof topP !== "number" || !Number.isFinite(topP) || topP < 0.95 || topP > 1) {
+    delete requestBody.top_p;
+  }
+}
+
+export function shouldSendAnthropicContext1mBeta(modelId: string, requested: boolean): boolean {
+  if (!requested) return false;
+  return !ANTHROPIC_NATIVE_1M_MODEL.test(modelId.trim().toLowerCase());
+}
+
 export function applyAnthropicReasoningOptions(
   requestBody: Record<string, unknown>,
   providerId: string,
@@ -20,7 +43,7 @@ export function applyAnthropicReasoningOptions(
 ): void {
   if (usesProviderAdaptiveReasoning(providerId, modelId)) {
     requestBody.thinking = { type: "adaptive" };
-    delete requestBody.temperature;
+    removeAnthropicSamplingOptions(requestBody);
     return;
   }
 
@@ -31,13 +54,14 @@ export function applyAnthropicReasoningOptions(
   if (usesAnthropicAdaptiveThinking(modelId)) {
     requestBody.thinking = { type: "adaptive", display: "summarized" };
     requestBody.output_config = { effort: resolvedEffort };
+    removeAnthropicSamplingOptions(requestBody);
   } else {
     requestBody.thinking = {
       type: "enabled",
       budget_tokens: anthropicThinkingBudget(resolvedEffort, maxOutputTokens),
     };
+    removeIncompatibleManualThinkingOptions(requestBody);
   }
-  delete requestBody.temperature;
 }
 
 export function resolveAnthropicToolChoice(

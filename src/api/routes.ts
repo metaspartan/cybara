@@ -142,7 +142,6 @@ import { getCybaraDataDirConfigInfo, getCybaraDataDirInfo } from "./data-dir-inf
 import { gatewayAuthSettingsResponse, updateGatewayHostSetting } from "./gateway-network";
 import { buildJourney } from "./journey";
 import { mobileRoutes } from "./mobile";
-import { mobileSimulatorRoutes } from "./routes/mobile-simulator-routes";
 import { discoverMarketplacePlugins, installMarketplacePlugin } from "./plugin-marketplace";
 import { pollProviderDeviceCodeOAuth, startProviderDeviceCodeOAuth } from "./provider-oauth-device";
 import { pollProviderRedirectOAuth, startProviderRedirectOAuth } from "./provider-oauth-redirect";
@@ -156,8 +155,8 @@ import {
   normalizeOptionalString,
   normalizeSystemPromptConfig,
   type RouteHandler,
-  sanitizeSessionMessages,
   type SessionMessageView,
+  sanitizeSessionMessages,
 } from "./routes/_shared";
 import { accountConnectorRoutes } from "./routes/account-connectors";
 import { browserSupervisionRoutes } from "./routes/browser-supervision";
@@ -168,6 +167,7 @@ import { ideLspRoutes } from "./routes/ide-lsp-routes";
 import { integrationCredentialRoutes } from "./routes/integration-credential-routes";
 import { mcpRoutes } from "./routes/mcp";
 import { metricsRoutes } from "./routes/metrics";
+import { mobileSimulatorRoutes } from "./routes/mobile-simulator-routes";
 import { nearbyRoutes } from "./routes/nearby";
 import {
   buildCorsHeaders,
@@ -196,12 +196,12 @@ import {
   getGatewayAuthSettings,
   revealGatewayApiKey,
   rotateGatewayApiKey,
+  type SecurityCheckResult,
   securityCheck,
   setGatewayBasePath,
   setGatewayPassword,
   setGatewayRemoteAccessSettings,
   setRequireAuthForLocalhost,
-  type SecurityCheckResult,
   validateUrl,
 } from "./security";
 import { serializeSubagentDetail, serializeSubagentSummary } from "./subagents";
@@ -808,7 +808,7 @@ const routes: Record<string, RouteHandler> = {
   "DELETE /api/chat/sessions/:id/pending/:pendingId": (_body, params) =>
     deletePendingChatMessage(params!.id, params!.pendingId),
   "POST /api/chat/sessions/:id/pending/:pendingId/steer": async (body, params) => {
-    const data = body as { processActivities?: unknown };
+    const data = (body ?? {}) as { processActivities?: unknown };
     return await steerPendingChatMessage(params!.id, params!.pendingId, {
       processActivities: data.processActivities,
     });

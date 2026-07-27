@@ -176,4 +176,12 @@ describe("provider history conversion", () => {
       { role: "user", content: "Continue." },
     ]);
   });
+
+  test("adds interleaved reasoning content when switching into Moonshot K3", () => {
+    const history = toOpenAIChatHistory(switchedProviderHistory, "moonshot", "kimi-k3");
+    const assistantToolMessage = history.find(
+      (message) => message.role === "assistant" && Array.isArray(message.tool_calls)
+    );
+    expect(assistantToolMessage?.reasoning_content).toBe("");
+  });
 });

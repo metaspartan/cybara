@@ -693,6 +693,108 @@ describe("Agent provider Google and compatible routing", () => {
     expect(replayedAssistant?.reasoning_content).toBe("I should verify this with the calculator.");
   });
 
+  test("keeps Moonshot K3 interleaved reasoning valid through a complete tool loop", async () => {
+    const requestBodies: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      requestBodies.push(body);
+      if (requestBodies.length === 1) {
+        return Response.json({
+          id: "moonshot-tool-response",
+          object: "chat.completion",
+          model: "kimi-k3",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "tool_calls",
+              message: {
+                role: "assistant",
+                content: null,
+                reasoning_content: "I should verify this with the calculator.",
+                tool_calls: [
+                  {
+                    id: "moonshot-calc-call",
+                    type: "function",
+                    function: { name: "calc", arguments: '{"expression":"6 * 7"}' },
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+        });
+      }
+      return Response.json({
+        id: "moonshot-final-response",
+        object: "chat.completion",
+        model: "kimi-k3",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: "The verified result is 42.",
+              reasoning_content: "The calculator returned 42.",
+            },
+          },
+        ],
+        usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "moonshot",
+      name: "Moonshot K3 Wire Provider",
+      api_key: "moonshot-wire-token",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Moonshot K3 Wire Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "kimi-k3",
+      config: { model_params: { reasoning_effort: "high" } },
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate a mathematical expression",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("tool_approval_mode", "always_allow");
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate six times seven with the tool." }],
+      {
+        useTools: true,
+        requireToolUse: true,
+        requiredToolName: "calc",
+        sessionId: "moonshot-k3-wire-session",
+      }
+    );
+
+    expect(result.content).toBe("The verified result is 42.");
+    expect(result.thinking).toContain("verify this with the calculator");
+    expect(result.tool_calls?.[0]?.name).toBe("calc");
+    expect(requestBodies).toHaveLength(2);
+    for (const body of requestBodies) {
+      expect(body.reasoning_effort).toBe("high");
+      expect(body.temperature).toBeUndefined();
+      expect(body.top_p).toBeUndefined();
+    }
+    const loopMessages = requestBodies[1]?.messages as Array<Record<string, unknown>>;
+    const replayedAssistant = loopMessages.find((message) => message.role === "assistant");
+    expect(replayedAssistant?.reasoning_content).toBe("I should verify this with the calculator.");
+  });
+
   test("refreshes Kimi OAuth in place when a long tool loop crosses token expiry", async () => {
     const chatAuthorizations: string[] = [];
     let chatCalls = 0;
@@ -891,7 +993,7 @@ describe("Agent provider Google and compatible routing", () => {
           type: "response.output_item.added",
           item: {
             type: "function_call",
-            id: "item_calc",
+            id: "fc_calc",
             call_id: "call_calc",
             name: "calc",
             arguments: '{"expression":"2+2"}',
@@ -941,11 +1043,77 @@ describe("Agent provider Google and compatible routing", () => {
     expect(result.content).toBe("The checked result is 4.");
     expect(result.content).not.toBe("I'll check that.");
     expect(result.tool_calls?.map((call) => call.name)).toContain("calc");
-    expect(result.tool_calls?.map((call) => call.id)).toContain("call_calc");
+    expect(result.tool_calls?.map((call) => call.id)).toContain("call_calc|fc_calc");
     expect(requestBodies).toHaveLength(3);
     expect(requestBodies[2]?.tool_choice).toBe("none");
     expect(requestBodies[2]?.tools).toBeUndefined();
     expect(JSON.stringify(requestBodies[2]?.input)).toContain("Do not call any more tools");
+  });
+
+  test("replays codex tool history with valid optional function-call item ids", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBodies.push(
+        init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {}
+      );
+      return new Response(
+        [
+          `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "continued" })}`,
+          "",
+          `data: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}`,
+          "",
+        ].join("\n"),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "openai-codex",
+      name: "OpenAI Codex History Provider",
+      access_token: "codex-test-token",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "OpenAI Codex History Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.6-sol",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [
+        { role: "user", content: "inspect" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            { id: "call_legacy", name: "read", arguments: { path: "README.md" } },
+            { id: "call_saved|fc_saved", name: "read", arguments: { path: "package.json" } },
+          ],
+        },
+        { role: "tool", content: "legacy result", tool_call_id: "call_legacy" },
+        { role: "tool", content: "saved result", tool_call_id: "call_saved|fc_saved" },
+        { role: "user", content: "continue" },
+      ],
+      { useTools: false, sessionId: "openai-codex-history-session" }
+    );
+
+    expect(result.content).toBe("continued");
+    const input = requestBodies[0]?.input as Array<Record<string, unknown>>;
+    const legacyCall = input.find(
+      (item) => item.type === "function_call" && item.call_id === "call_legacy"
+    );
+    const savedCall = input.find(
+      (item) => item.type === "function_call" && item.call_id === "call_saved"
+    );
+    expect(legacyCall?.id).toBeUndefined();
+    expect(savedCall?.id).toBe("fc_saved");
+    expect(
+      input.some((item) => item.type === "function_call_output" && item.call_id === "call_saved")
+    ).toBe(true);
   });
 
   test("normalizes openai gpt-5.3-codex model selection to openai-codex provider", async () => {

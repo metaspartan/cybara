@@ -60,6 +60,7 @@ import {
   CLI_API_BASE as API_BASE,
   CLI_API_KEY,
   fetchCliAPI as fetchAPI,
+  requestCliAPI as requestAPI,
   TUI_INPUT_OPTIONS,
   withCliAuthHeaders,
 } from "./client";
@@ -180,6 +181,7 @@ const {
 configureChatCli({
   apiBase: API_BASE,
   fetchAPI,
+  requestAPI,
   withAuthHeaders: withCliAuthHeaders,
 });
 
