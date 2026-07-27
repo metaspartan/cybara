@@ -20,6 +20,7 @@ import type {
   MobileDevicePairing,
   MobileConnectInfo,
   MobilePairing,
+  ProviderPlanStatusResponse,
 } from "../types";
 import { subagentApi, skillsApi } from "@/lib/api";
 import { apiFetch } from "@/lib/auth";
@@ -1502,9 +1503,6 @@ export interface MetricsStorage {
   }>;
 }
 
-// The gateway serves metrics from a stale-while-revalidate cache, so a steady
-// 30s poll is a cheap cache hit and keeps charts current without refresh
-// buttons. Polling pauses when the tab is unfocused.
 const METRICS_QUERY_OPTIONS = {
   refetchInterval: 30_000,
   refetchOnReconnect: true,
@@ -1516,11 +1514,36 @@ type MetricsQueryControlOptions = {
   enabled?: boolean;
 };
 
+export interface MetricsSnapshot {
+  overview: MetricsOverview | null;
+  tokens: TokenMetrics | null;
+  files: FileMetrics | null;
+  tools: ToolMetrics | null;
+  providers: ProviderMetrics | null;
+  timeSeries: TimeSeriesData | null;
+  models: ModelMetrics | null;
+  insights: MetricsInsights | null;
+  tokenAnalysis: TokenAnalysisMetrics | null;
+  storage: MetricsStorage | null;
+  providerPlans: ProviderPlanStatusResponse | null;
+  sessions: SessionRuntimeMetrics | null;
+  availability: Record<string, { ok: boolean; error?: string }>;
+}
+
 export function useMetricsOverview() {
   return useQuery({
     queryKey: ["metrics", "overview"],
     queryFn: () => fetchApi<MetricsOverview>("/metrics/overview"),
     ...METRICS_QUERY_OPTIONS,
+  });
+}
+
+export function useMetricsSnapshot(options: MetricsQueryControlOptions = {}) {
+  return useQuery({
+    queryKey: ["metrics", "snapshot"],
+    queryFn: () => fetchApi<MetricsSnapshot>("/metrics/snapshot"),
+    ...METRICS_QUERY_OPTIONS,
+    ...options,
   });
 }
 

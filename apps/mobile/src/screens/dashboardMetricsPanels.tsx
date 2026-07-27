@@ -55,6 +55,7 @@ import { EmptyState, LoadingState, SummaryTile, type IconGlyph } from "./dashboa
 import type { FeatureSummary } from "../lib/api";
 
 const USAGE_ORDER_KEY = "cybara.mobile.usageOrder";
+type MobileMetricsSection = "activity" | "usage" | "runtime" | "system";
 
 function mobileMetricLatency(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "--";
@@ -227,6 +228,8 @@ export function MetricsPanel({
 }) {
   const [sessionRuntime, setSessionRuntime] = useState(metrics?.sessions ?? null);
   const [sessionRuntimeLoading, setSessionRuntimeLoading] = useState(false);
+  const [activeMetricsSection, setActiveMetricsSection] =
+    useState<MobileMetricsSection>("activity");
 
   useEffect(() => {
     setSessionRuntime(metrics?.sessions ?? null);
@@ -311,7 +314,45 @@ export function MetricsPanel({
         summary={summary}
       />
 
-      <MetricSection
+      <View style={styles.metricSectionTabs} accessibilityRole="tablist">
+        {[
+          { key: "activity", label: "Activity" },
+          { key: "usage", label: "Usage" },
+          { key: "runtime", label: "Runtime" },
+          { key: "system", label: "System" },
+        ].map(({ key, label }) => {
+          const selected = activeMetricsSection === key;
+          return (
+            <Pressable
+              key={key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              onPress={() => setActiveMetricsSection(key as MobileMetricsSection)}
+              style={[
+                styles.metricSectionTab,
+                selected && {
+                  backgroundColor: `${accentColor}18`,
+                  borderColor: `${accentColor}55`,
+                },
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.metricSectionTabText,
+                  { color: selected ? accentColor : colors.textMuted },
+                ]}
+              >
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {activeMetricsSection === "activity" ? (
+        <>
+          <MetricSection
         title="Activity trend"
         detail="Last 14 days across tokens, tools, API, files, and messages"
       >
@@ -382,11 +423,21 @@ export function MetricsPanel({
         </View>
       </MetricSection>
 
-      <MetricSection title="Provider efficiency" detail="Tokens per provider call">
+        </>
+      ) : null}
+
+      {activeMetricsSection === "usage" ? (
+        <>
+          <MetricSection title="Provider efficiency" detail="Tokens per provider call">
         <MetricShareRows rows={providerRows} tone={colors.blueText} />
       </MetricSection>
 
-      <MetricSection
+        </>
+      ) : null}
+
+      {activeMetricsSection === "runtime" ? (
+        <>
+          <MetricSection
         title="Provider plans"
         detail={`${providerPlanStatus?.summary?.configured ?? metrics?.providerPlans?.summary?.configured ?? 0} configured - ${
           providerPlanStatus?.summary?.warnings ?? metrics?.providerPlans?.summary?.warnings ?? 0
@@ -533,7 +584,12 @@ export function MetricsPanel({
         />
       </MetricSection>
 
-      <MetricSection title="Storage" detail={formatMetricBytes(metrics?.storage?.totalBytes)}>
+        </>
+      ) : null}
+
+      {activeMetricsSection === "system" ? (
+        <>
+          <MetricSection title="Storage" detail={formatMetricBytes(metrics?.storage?.totalBytes)}>
         <MetricShareRows
           rows={storageRows.map((entry) => ({
             label: entry.label,
@@ -545,12 +601,14 @@ export function MetricsPanel({
         />
       </MetricSection>
 
-      <MetricSection
+          <MetricSection
         title="Token cloud"
         detail="Models, providers, tools, and recurring output terms"
       >
         <MetricTokenCloud entries={tokenAnalysis?.tokenCloud} />
-      </MetricSection>
+          </MetricSection>
+        </>
+      ) : null}
 
       <View style={styles.subsectionHeader}>
         <Text style={styles.subsectionTitle}>Runtime checks</Text>

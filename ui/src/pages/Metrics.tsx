@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
   FileText,
@@ -15,39 +15,22 @@ import {
   Clock,
   RefreshCw,
   Wrench,
+  ChartNoAxesCombined,
+  Layers3,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { PageLayout } from "@/components/layout";
 import {
   useMetricsOverview,
-  useMetricsTokens,
-  useMetricsFiles,
-  useMetricsTools,
-  useMetricsTimeSeries,
-  useMetricsProviders,
-  useMetricsModels,
-  useMetricsInsights,
-  useMetricsTokenAnalysis,
+  useMetricsSnapshot,
   useMetricsSessions,
-  useMetricsStorage,
-  type MetricsOverview,
-  type TokenMetrics,
-  type TokenAnalysisMetrics,
-  type FileMetrics,
-  type ToolMetrics,
-  type TimeSeriesData,
-  type ProviderMetrics,
-  type ModelMetrics,
-  type MetricsInsights,
-  type MetricsStorage,
 } from "@/hooks/useApi";
-import { providerPlansApi } from "@/lib/api";
 import {
   providerPlanUsageClasses,
   providerPlanWindowDisplay,
   type ProviderPlanWindowDisplay,
 } from "@/lib/providerPlanDisplay";
-import type { ProviderPlanSnapshot, ProviderPlanStatusResponse } from "@/types";
+import type { ProviderPlanSnapshot } from "@/types";
 import {
   MetricAreaChart,
   MetricShareStack,
@@ -64,9 +47,14 @@ import {
   FileStat,
   ActivityStat,
 } from "./metrics/MetricsComponents";
-import { formatBytes, formatNumber } from "./metrics/metricsFormatting";
+import {
+  formatBytes,
+  formatNumber,
+  metricTokenActivityRows,
+} from "./metrics/metricsFormatting";
 
 const DETAIL_METRICS_IDLE_DELAY_MS = 120;
+type MetricsSection = "overview" | "tokens" | "operations" | "storage";
 
 type MetricsIdleWindow = Window & {
   requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
@@ -94,12 +82,13 @@ interface ProviderPlanMetricCard {
 export function Metrics() {
   const queryClient = useQueryClient();
   const {
-    data: overview,
-    dataUpdatedAt,
+    data: overviewPreview,
+    dataUpdatedAt: overviewUpdatedAt,
     isFetching: refreshingOverview,
     isLoading: loadingOverview,
   } = useMetricsOverview();
   const [detailMetricsEnabled, setDetailMetricsEnabled] = useState(false);
+  const [activeSection, setActiveSection] = useState<MetricsSection>("overview");
   const [sessionPage, setSessionPage] = useState(1);
   const [refreshingMetrics, setRefreshingMetrics] = useState(false);
   const sessionPageSize = 20;
@@ -107,44 +96,29 @@ export function Metrics() {
     () => ({ enabled: detailMetricsEnabled }),
     [detailMetricsEnabled]
   );
-  const { data: tokens, isLoading: loadingTokens } = useMetricsTokens(detailQueryOptions);
-  const { data: files, isLoading: loadingFiles } = useMetricsFiles(detailQueryOptions);
-  const { data: tools, isLoading: loadingTools } = useMetricsTools(detailQueryOptions);
-  const { data: timeSeries, isLoading: loadingTimeSeries } =
-    useMetricsTimeSeries(detailQueryOptions);
-  const { data: providers, isLoading: loadingProviders } = useMetricsProviders(detailQueryOptions);
-  const { data: modelMetrics, isLoading: loadingModels } = useMetricsModels(detailQueryOptions);
-  const { data: insights, isLoading: loadingInsights } = useMetricsInsights(detailQueryOptions);
-  const { data: tokenAnalysis, isLoading: loadingTokenAnalysis } =
-    useMetricsTokenAnalysis(detailQueryOptions);
+  const {
+    data: snapshot,
+    dataUpdatedAt: snapshotUpdatedAt,
+    isLoading: loadingSnapshot,
+  } = useMetricsSnapshot(detailQueryOptions);
   const { data: sessionMetrics, isLoading: loadingSessionMetrics } = useMetricsSessions(
     sessionPage,
     sessionPageSize,
     detailQueryOptions
   );
-  const { data: storage, isLoading: loadingStorage } = useMetricsStorage(detailQueryOptions);
-  const { data: providerPlanStatus, isLoading: loadingProviderPlans } =
-    useQuery<ProviderPlanStatusResponse>({
-      queryKey: ["provider-plan-status"],
-      queryFn: async () => {
-        const response = await providerPlansApi.status();
-        if (!response.success || !response.data) {
-          throw new Error(response.error || "Failed to load provider usage");
-        }
-        return response.data;
-      },
-      enabled: detailMetricsEnabled,
-      staleTime: 15_000,
-      refetchInterval: 30_000,
-      refetchIntervalInBackground: false,
-      refetchOnWindowFocus: true,
-    });
+  const overview = snapshot?.overview ?? overviewPreview;
+  const tokens = snapshot?.tokens ?? undefined;
+  const files = snapshot?.files ?? undefined;
+  const tools = snapshot?.tools ?? undefined;
+  const timeSeries = snapshot?.timeSeries ?? undefined;
+  const providers = snapshot?.providers ?? undefined;
+  const modelMetrics = snapshot?.models ?? undefined;
+  const insightsData = snapshot?.insights ?? undefined;
+  const tokenAnalysisData = snapshot?.tokenAnalysis ?? undefined;
+  const storageData = snapshot?.storage ?? undefined;
+  const providerPlanStatus = snapshot?.providerPlans ?? undefined;
 
   const isLoading = loadingOverview;
-  const insightsData = insights as MetricsInsights | undefined;
-  const tokenAnalysisData = tokenAnalysis as TokenAnalysisMetrics | undefined;
-  const storageData = storage as MetricsStorage | undefined;
-
   useEffect(() => {
     if (loadingOverview) {
       setDetailMetricsEnabled(false);
@@ -167,19 +141,18 @@ export function Metrics() {
     return () => window.clearTimeout(timeout);
   }, [loadingOverview]);
 
-  const tokensPending = !tokens && (!detailMetricsEnabled || loadingTokens);
-  const filesPending = !files && (!detailMetricsEnabled || loadingFiles);
-  const toolsPending = !tools && (!detailMetricsEnabled || loadingTools);
-  const timeSeriesPending = !timeSeries && (!detailMetricsEnabled || loadingTimeSeries);
-  const providersPending = !providers && (!detailMetricsEnabled || loadingProviders);
-  const modelsPending = !modelMetrics && (!detailMetricsEnabled || loadingModels);
-  const insightsPending = !insightsData && (!detailMetricsEnabled || loadingInsights);
-  const tokenAnalysisPending =
-    !tokenAnalysisData && (!detailMetricsEnabled || loadingTokenAnalysis);
-  const storagePending = !storageData && (!detailMetricsEnabled || loadingStorage);
+  const detailPending = !snapshot && (!detailMetricsEnabled || loadingSnapshot);
+  const tokensPending = !tokens && detailPending;
+  const filesPending = !files && detailPending;
+  const toolsPending = !tools && detailPending;
+  const timeSeriesPending = !timeSeries && detailPending;
+  const providersPending = !providers && detailPending;
+  const modelsPending = !modelMetrics && detailPending;
+  const insightsPending = !insightsData && detailPending;
+  const tokenAnalysisPending = !tokenAnalysisData && detailPending;
+  const storagePending = !storageData && detailPending;
   const sessionMetricsPending = !sessionMetrics && (!detailMetricsEnabled || loadingSessionMetrics);
-  const providerPlansPending =
-    !providerPlanStatus && (!detailMetricsEnabled || loadingProviderPlans);
+  const providerPlansPending = !providerPlanStatus && detailPending;
 
   const stats = useMemo(() => {
     if (!overview) return null;
@@ -328,20 +301,17 @@ export function Metrics() {
     }));
   }, [modelMetrics?.models]);
 
-  const activityDayRows = useMemo(() => {
-    const rows = timeSeries?.days || [];
-    const totals = rows.map((day, index) => {
-      const dayTotal = Object.entries(day)
-        .filter(([key]) => key !== "date")
-        .reduce((sum, [, value]) => sum + (typeof value === "number" ? value : 0), 0);
-      return { date: day.date, dayTotal, key: `${day.date}:${index}` };
-    });
-    const maxDayTotal = Math.max(...totals.map((day) => day.dayTotal), 1);
-    return totals.map((day) => ({
-      ...day,
-      height: (day.dayTotal / maxDayTotal) * 100,
-    }));
-  }, [timeSeries?.days]);
+  const activityDayRows = useMemo(
+    () =>
+      metricTokenActivityRows(timeSeries?.days || []).map((row) => ({
+        ...row,
+        label: new Date(`${row.label}T12:00:00`).toLocaleDateString([], {
+          month: "short",
+          day: "numeric",
+        }),
+      })),
+    [timeSeries?.days]
+  );
 
   const tokenVelocityRows = useMemo(
     () =>
@@ -444,6 +414,7 @@ export function Metrics() {
   };
 
   const refreshPending = refreshingMetrics || refreshingOverview;
+  const dataUpdatedAt = Math.max(overviewUpdatedAt, snapshotUpdatedAt);
   const updatedLabel = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
     : "Not updated";
@@ -531,13 +502,47 @@ export function Metrics() {
         />
       </div>
 
-      <SessionRuntimeTable
-        metrics={sessionMetrics}
-        loading={sessionMetricsPending}
-        onPageChange={setSessionPage}
-      />
+      <div
+        className="mb-6 flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-md border border-[var(--surface-border)] bg-[var(--surface-panel)] p-1"
+        role="tablist"
+        aria-label="Metric sections"
+      >
+        {[
+          { key: "overview", label: "Overview", Icon: ChartNoAxesCombined },
+          { key: "tokens", label: "Analysis", Icon: Layers3 },
+          { key: "operations", label: "Operations", Icon: Wrench },
+          { key: "storage", label: "Storage", Icon: HardDrive },
+        ].map(({ key, label, Icon }) => {
+          const selected = activeSection === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => setActiveSection(key as MetricsSection)}
+              className={`inline-flex h-8 shrink-0 items-center gap-2 rounded px-3 text-xs font-medium transition-colors ${
+                selected
+                  ? "bg-[var(--surface-raised)] text-[var(--text-primary)]"
+                  : "text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-secondary)]"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          );
+        })}
+      </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+      {activeSection === "overview" ? (
+        <>
+          <SessionRuntimeTable
+            metrics={sessionMetrics}
+            loading={sessionMetricsPending}
+            onPageChange={setSessionPage}
+          />
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
         <Card className="xl:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -574,9 +579,13 @@ export function Metrics() {
             <MetricShareStack rows={tokenFlowShareRows} total={overview?.tokenUsage.total || 0} />
           </CardContent>
         </Card>
-      </div>
+          </div>
+        </>
+      ) : null}
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
+      {activeSection === "tokens" ? (
+        <>
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
         <Card className="xl:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -986,8 +995,12 @@ export function Metrics() {
           </CardContent>
         </Card>
       </div>
+        </>
+      ) : null}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      {activeSection === "operations" ? (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1141,7 +1154,7 @@ export function Metrics() {
             )}
           </CardContent>
         </Card>
-      </div>
+          </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <Card>
@@ -1371,9 +1384,12 @@ export function Metrics() {
             )}
           </CardContent>
         </Card>
-      </div>
+          </div>
+        </>
+      ) : null}
 
-      <Card className="mb-8">
+      {activeSection === "tokens" ? (
+        <Card className="mb-8">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Gauge className="w-5 h-5 text-emerald-400" />
@@ -1428,9 +1444,11 @@ export function Metrics() {
             </div>
           )}
         </CardContent>
-      </Card>
+        </Card>
+      ) : null}
 
-      <Card className="mb-8">
+      {activeSection === "storage" ? (
+        <Card className="mb-8">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <HardDrive className="w-5 h-5 text-cyan-300" />
@@ -1571,36 +1589,28 @@ export function Metrics() {
             <p className="text-sm text-gray-500">No storage data available.</p>
           )}
         </CardContent>
-      </Card>
+        </Card>
+      ) : null}
 
-      <Card>
+      {activeSection === "overview" ? (
+        <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-indigo-400" />
-            30-Day Activity
+            30-Day Token Volume
           </CardTitle>
-          <CardDescription>Daily activity over the past month</CardDescription>
+          <CardDescription>Tracked model token usage over the past month</CardDescription>
         </CardHeader>
         <CardContent>
           {timeSeriesPending ? (
             <MetricChartSkeleton />
           ) : activityDayRows.length > 0 ? (
-            <>
-              <div className="h-48 flex items-end gap-1">
-                {activityDayRows.map((day) => (
-                  <div
-                    key={day.key}
-                    className="flex-1 bg-indigo-500/30 hover:bg-indigo-500/50 transition-colors rounded-t cursor-pointer"
-                    style={{ height: `${Math.max(day.height, 2)}%` }}
-                    title={`${day.date}: ${formatNumber(day.dayTotal)} total activity`}
-                  />
-                ))}
-              </div>
-              <div className="flex justify-between mt-2 text-xs text-gray-500">
-                <span>{activityDayRows[0]?.date}</span>
-                <span>{activityDayRows[activityDayRows.length - 1]?.date}</span>
-              </div>
-            </>
+            <MetricAreaChart
+              rows={activityDayRows}
+              strokeColor="#818cf8"
+              fillColor="#818cf8"
+              emptyLabel="No token activity yet"
+            />
           ) : (
             <div className="h-48 flex items-center justify-center text-gray-500">
               <div className="text-center">
@@ -1611,7 +1621,8 @@ export function Metrics() {
             </div>
           )}
         </CardContent>
-      </Card>
+        </Card>
+      ) : null}
     </PageLayout>
   );
 }
