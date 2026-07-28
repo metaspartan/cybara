@@ -164,6 +164,13 @@ function itemFromRow(row: DatasetItemRow): AgentDatasetItem {
   };
 }
 
+function getDatasetItem(itemId: string): AgentDatasetItem | null {
+  const row = db
+    .prepare("SELECT * FROM agent_dataset_items WHERE id = ?")
+    .get(itemId) as DatasetItemRow | null;
+  return row ? itemFromRow(row) : null;
+}
+
 function countRunItems(runId: string): DatasetRunCountsRow {
   return db
     .prepare(
@@ -348,40 +355,37 @@ export function completeDatasetItem(
   trajectoryId: string,
   usage: AgentDatasetUsage
 ): AgentDatasetItem | null {
-  db.prepare(
-    `UPDATE agent_dataset_items
-     SET status = 'completed', trajectory_id = ?, usage_json = ?, error = NULL,
-         completed_at = CURRENT_TIMESTAMP
-     WHERE id = ?`
-  ).run(trajectoryId, JSON.stringify(usage), itemId);
-  const row = db
-    .prepare("SELECT * FROM agent_dataset_items WHERE id = ?")
-    .get(itemId) as DatasetItemRow | null;
-  return row ? itemFromRow(row) : null;
+  const changed = db
+    .prepare(
+      `UPDATE agent_dataset_items
+       SET status = 'completed', trajectory_id = ?, usage_json = ?, error = NULL,
+           completed_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND status = 'running'`
+    )
+    .run(trajectoryId, JSON.stringify(usage), itemId).changes;
+  return changed === 1 ? getDatasetItem(itemId) : null;
 }
 
 export function failDatasetItem(itemId: string, error: string): AgentDatasetItem | null {
-  db.prepare(
-    `UPDATE agent_dataset_items
-     SET status = 'error', error = ?, completed_at = CURRENT_TIMESTAMP
-     WHERE id = ?`
-  ).run(error, itemId);
-  const row = db
-    .prepare("SELECT * FROM agent_dataset_items WHERE id = ?")
-    .get(itemId) as DatasetItemRow | null;
-  return row ? itemFromRow(row) : null;
+  const changed = db
+    .prepare(
+      `UPDATE agent_dataset_items
+       SET status = 'error', error = ?, completed_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND status = 'running'`
+    )
+    .run(error, itemId).changes;
+  return changed === 1 ? getDatasetItem(itemId) : null;
 }
 
 export function cancelDatasetItem(itemId: string, error: string): AgentDatasetItem | null {
-  db.prepare(
-    `UPDATE agent_dataset_items
-     SET status = 'cancelled', error = ?, completed_at = CURRENT_TIMESTAMP
-     WHERE id = ? AND status = 'running'`
-  ).run(error, itemId);
-  const row = db
-    .prepare("SELECT * FROM agent_dataset_items WHERE id = ?")
-    .get(itemId) as DatasetItemRow | null;
-  return row ? itemFromRow(row) : null;
+  const changed = db
+    .prepare(
+      `UPDATE agent_dataset_items
+       SET status = 'cancelled', error = ?, completed_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND status = 'running'`
+    )
+    .run(error, itemId).changes;
+  return changed === 1 ? getDatasetItem(itemId) : null;
 }
 
 export function requestDatasetRunCancel(runId: string): AgentDatasetRun | null {

@@ -2,10 +2,13 @@ import { describe, expect, test } from "bun:test";
 import {
   type AgentDatasetItem,
   type AgentDatasetRun,
+  cancelDatasetItem,
   cancelDatasetRunExecutions,
   claimDatasetItem,
+  completeDatasetItem,
   createDatasetRun,
   deleteDatasetRun,
+  failDatasetItem,
   finalizeDatasetRun,
   getDatasetRun,
   listDatasetRunItems,
@@ -134,6 +137,35 @@ describe("agent dataset generation", () => {
     expect(items.every((item) => item.status === "cancelled")).toBe(true);
     expect(items.every((item) => item.completedAt !== null)).toBe(true);
     expect(cancelDatasetRunExecutions(run.id)).toBe(0);
+    expect(finalizeDatasetRun(run.id)?.status).toBe("cancelled");
+    expect(deleteDatasetRun(run.id)).toBe(true);
+  });
+
+  test("keeps cancelled items terminal when worker results arrive late", () => {
+    const run = createDatasetRun({
+      name: "Cancellation race",
+      agentId: "teacher-agent",
+      prompts: ["Running"],
+      samplesPerPrompt: 1,
+      concurrency: 1,
+      toolsEnabled: false,
+    });
+    expect(markDatasetRunRunning(run.id)?.status).toBe("running");
+    const item = claimDatasetItem(run.id);
+    expect(item?.status).toBe("running");
+    if (!item) throw new Error("Dataset item was not claimed");
+    const trajectoryId = createTrajectory(run, item);
+
+    expect(requestDatasetRunCancel(run.id)?.cancelRequested).toBe(true);
+    expect(cancelDatasetItem(item.id, "Cancelled by user")?.status).toBe("cancelled");
+    expect(completeDatasetItem(item.id, trajectoryId, completedUsage)).toBeNull();
+    expect(failDatasetItem(item.id, "Late provider error")).toBeNull();
+
+    const cancelled = listDatasetRunItems(run.id)[0];
+    expect(cancelled?.status).toBe("cancelled");
+    expect(cancelled?.error).toBe("Cancelled by user");
+    expect(cancelled?.trajectoryId).toBeNull();
+    expect(cancelled?.usage.totalTokens).toBe(0);
     expect(finalizeDatasetRun(run.id)?.status).toBe("cancelled");
     expect(deleteDatasetRun(run.id)).toBe(true);
   });
