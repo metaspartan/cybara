@@ -561,10 +561,9 @@ export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
   },
   sessions_spawn: {
     name: "sessions_spawn",
-    description: `Spawn a background sub-agent run in an isolated session and announce the result back to the requester chat.
-    
-The sub-agent runs independently, and its final response is automatically delivered to the requester session.
-Use for tasks that may take longer or require separate context. For parallel delegation that needs one combined answer, spawn the workers first, then call sessions_wait with every returned runId and synthesize the completed results.`,
+    description: `Spawn a background sub-agent run in an isolated session and return its runId.
+
+The child result is not inserted into the parent transcript automatically. Call sessions_wait with the returned runId, then synthesize the completed result. Each sessions_spawn call creates a new run, so do not call it again to retrieve or retry the same accepted task. For parallel delegation, spawn each distinct worker once, then wait for all returned runIds together.`,
     category: "core",
     input_schema: {
       type: "object",

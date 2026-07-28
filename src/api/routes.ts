@@ -204,7 +204,11 @@ import {
   setRequireAuthForLocalhost,
   validateUrl,
 } from "./security";
-import { serializeSubagentDetail, serializeSubagentSummary } from "./subagents";
+import {
+  isVisibleSubagentRun,
+  serializeSubagentDetail,
+  serializeSubagentSummary,
+} from "./subagents";
 
 const log = createLogger("API");
 
@@ -1573,7 +1577,7 @@ const routes: Record<string, RouteHandler> = {
     const runs = requesterSessionId
       ? subagentRegistry.getRunsByRequester(requesterSessionId)
       : subagentRegistry.listAllRuns();
-    return runs.map(serializeSubagentSummary);
+    return runs.filter(isVisibleSubagentRun).map(serializeSubagentSummary);
   },
   "POST /api/subagents/wait": async (body) => {
     const data = body as {

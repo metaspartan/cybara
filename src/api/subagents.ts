@@ -40,6 +40,10 @@ export interface ApiSubagentDetail extends ApiSubagentSummary {
   toolCalls: SubagentToolCall[];
 }
 
+export function isVisibleSubagentRun(run: SubagentRunRecord): boolean {
+  return run.silent !== true;
+}
+
 export function subagentStatus(run: SubagentRunRecord): ApiSubagentStatus {
   if (run.outcome?.status === "ok") return "completed";
   if (run.outcome?.status === "error") return "failed";

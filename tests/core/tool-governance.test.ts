@@ -118,4 +118,13 @@ describe("tool governance invariants", () => {
     expect(properties.userDataDir).toBeUndefined();
     expect(properties.viewportMode?.enum).toEqual(["responsive", "mobile", "desktop"]);
   });
+
+  test("subagent schema prevents duplicate spawn calls for result retrieval", () => {
+    const description = toolSchemas.sessions_spawn.description;
+    expect(description).toContain(
+      "result is not inserted into the parent transcript automatically"
+    );
+    expect(description).toContain("Each sessions_spawn call creates a new run");
+    expect(description).toContain("do not call it again");
+  });
 });
