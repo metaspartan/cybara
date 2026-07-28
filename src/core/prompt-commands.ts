@@ -56,6 +56,19 @@ const REVIEW_TEMPLATE = (target: string) =>
     "nothing meaningful is wrong, say so plainly.",
   ].join("\n");
 
+const SECURITY_TEMPLATE = (target: string) =>
+  [
+    "Run an authorized security assessment of code the user owns or has permission to assess.",
+    target.trim() ? `Target: ${target}` : "Target: the current workspace.",
+    "",
+    "1. Use @security-scan for this turn.",
+    "2. Use `cybara security info --json` to verify the scanner runtime and credential state.",
+    "3. Run `cybara security scan` against the target. Keep scan artifacts in a private location outside the repository.",
+    "4. Validate plausible findings before presenting them. Do not report unsupported checklist items.",
+    "5. Report verified findings most severe first with attack path, evidence, and minimal remediation.",
+    "6. Do not apply a patch unless the user explicitly asks for remediation.",
+  ].join("\n");
+
 const TEST_TEMPLATE = (args: string) =>
   [
     "Run the project's tests and fix what's broken.",
@@ -90,6 +103,10 @@ const COMMANDS: Record<string, PromptCommand> = {
   review: {
     name: "review",
     expand: (args) => REVIEW_TEMPLATE(args),
+  },
+  security: {
+    name: "security",
+    expand: (args) => SECURITY_TEMPLATE(args),
   },
   test: {
     name: "test",

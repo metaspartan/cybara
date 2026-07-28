@@ -24,6 +24,7 @@ describe("CLI help", () => {
     expect(lines).toContain(
       "  ide [path[:line]] [--print]          Open a workspace or file in the IDE"
     );
+    expect(lines).toContain("  security    Run authorized repository security scans through Bun");
     expect(lines).not.toContain("    telemetry   External telemetry commands");
     expect(lines).not.toContain("    permissions Manage agent capability access");
   });

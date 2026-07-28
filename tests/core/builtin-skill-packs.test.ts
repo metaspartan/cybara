@@ -23,7 +23,13 @@ describe("built-in skill packs", () => {
 
   test("covers a broad set of common workflows", () => {
     const names = packs.map((p) => p.skill.name);
-    for (const expected of ["web-research", "code-review", "debugging", "security-review"]) {
+    for (const expected of [
+      "web-research",
+      "code-review",
+      "debugging",
+      "security-review",
+      "security-scan",
+    ]) {
       expect(names).toContain(expected);
     }
   });

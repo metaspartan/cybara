@@ -36,12 +36,17 @@ describe("chat capability mentions", () => {
     );
     expect(execTool).toBeDefined();
     expect(execTool?.source).toBe("Tool");
+    expect(
+      capabilities.find(
+        (capability) => capability.kind === "skill" && capability.token === "@security-scan"
+      )
+    ).toBeDefined();
   });
 
   test("lists goal, loop, and prompt commands for composer discovery", () => {
     const commands = listChatCommands();
     expect(commands.map((command) => command.token)).toEqual(
-      expect.arrayContaining(["/goal", "/loop", "/learn", "/plan", "/review", "/test"])
+      expect.arrayContaining(["/goal", "/loop", "/learn", "/plan", "/review", "/security", "/test"])
     );
     expect(commands.every((command) => command.kind === "command")).toBe(true);
   });

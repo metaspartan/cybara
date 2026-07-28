@@ -386,6 +386,7 @@ cybara status
 cybara gateway logs --tail 100
 cybara models <provider-id>
 cybara doctor
+cybara security scan .
 cybara provider available
 cybara completion zsh
 cybara channels

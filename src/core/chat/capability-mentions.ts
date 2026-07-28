@@ -168,6 +168,7 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   learn: "Create a reusable skill from a URL, local source, or recent conversation",
   plan: "Create a concise implementation plan before making changes",
   review: "Review code for correctness, security, and performance issues",
+  security: "Scan owned or authorized code and validate security findings",
   test: "Run the relevant tests and fix failures",
   summarize: "Summarize the conversation and current work state",
 };

@@ -309,6 +309,7 @@ describe("CLI TUI source wiring", () => {
       "/raw",
       "/details",
       "/review",
+      "/security",
       "/expand",
       "/resume",
       "/sessions",

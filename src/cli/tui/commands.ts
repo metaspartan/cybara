@@ -51,6 +51,7 @@ export const TUI_CHAT_COMMANDS: TUIChatCommandOption[] = [
   { name: "/scroll", detail: "Show or change transcript wheel speed" },
   { name: "/raw", detail: "Toggle compact or detailed message rendering" },
   { name: "/review", detail: "Load a workspace review prompt" },
+  { name: "/security", detail: "Load an authorized security scan prompt" },
   { name: "/details", detail: "Expand or collapse completed work details" },
   { name: "/expand", detail: "Toggle compact or detailed transcript messages" },
   { name: "/clear", detail: "Clear the local view" },

@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
+import { expandPromptCommand } from "../../../core/prompt-commands";
 import { resolveAgentIdentifier } from "../../commands/agent-resolution";
 import {
   approvalDecisionForInput,
@@ -1152,12 +1153,12 @@ export function InteractiveChatTUI({
         setNotice(preferenceResult.notice || null);
         return true;
       }
-      if (normalizedCommand === "review") {
-        const prompt =
-          "Review the current workspace changes for correctness, regressions, security risks, performance issues, and missing tests. Report findings first with file references.";
+      if (normalizedCommand === "review" || normalizedCommand === "security") {
+        const prompt = expandPromptCommand(`/${normalizedCommand}${argument ? ` ${argument}` : ""}`);
+        if (!prompt) return false;
         setInput(prompt);
         setCursor(prompt.length);
-        setNotice("Review prompt loaded. Edit it or press Enter to send.");
+        setNotice(`${normalizedCommand === "security" ? "Security scan" : "Review"} prompt loaded. Edit it or press Enter to send.`);
         return true;
       }
       if (normalizedCommand === "details") {
