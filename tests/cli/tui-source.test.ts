@@ -273,6 +273,7 @@ describe("CLI TUI source wiring", () => {
       "/skills",
       "/mcp",
       "/lsp",
+      "/ide",
       "/memory",
       "/logs",
       "/agent",

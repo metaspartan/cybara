@@ -116,5 +116,6 @@ describe("tool governance invariants", () => {
     const properties = toolSchemas.browser.input_schema.properties ?? {};
     expect(properties.executablePath).toBeUndefined();
     expect(properties.userDataDir).toBeUndefined();
+    expect(properties.viewportMode?.enum).toEqual(["responsive", "mobile", "desktop"]);
   });
 });

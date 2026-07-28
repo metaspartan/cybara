@@ -35,7 +35,13 @@ const browserMockState = {
     id: string;
     options?: { fullPage?: boolean; type?: "png" | "jpeg"; quality?: number };
   }>,
-  resizeCalls: [] as Array<{ id: string; width: number; height: number }>,
+  resizeCalls: [] as Array<{
+    id: string;
+    width: number;
+    height: number;
+    mode?: "responsive" | "mobile" | "desktop" | null;
+  }>,
+  viewportMode: null as "responsive" | "mobile" | "desktop" | null,
   clickCalls: [] as ClickCall[],
   coordinateClickCalls: [] as Array<{ id: string; x: number; y: number }>,
   scrollCalls: [] as Array<{ id: string; deltaX: number; deltaY: number }>,
@@ -89,10 +95,22 @@ mock.module("../../src/core/browser/pw-manager", () => ({
     browserMockState.screenshotCalls.push({ id, options });
     return Buffer.from("img");
   },
-  resize: async (id: string, width: number, height: number) => {
-    browserMockState.resizeCalls.push({ id, width, height });
+  resize: async (
+    id: string,
+    width: number,
+    height: number,
+    mode?: "responsive" | "mobile" | "desktop" | null
+  ) => {
+    browserMockState.resizeCalls.push({
+      id,
+      width,
+      height,
+      ...(mode !== undefined ? { mode } : {}),
+    });
+    if (mode !== undefined) browserMockState.viewportMode = mode;
   },
   getViewportSize: () => ({ width: 1280, height: 800 }),
+  getViewportMode: () => browserMockState.viewportMode,
   getPointerState: () => ({
     x: 64,
     y: 72,
@@ -153,6 +171,7 @@ function resetState() {
   browserMockState.snapshotCalls = [];
   browserMockState.screenshotCalls = [];
   browserMockState.resizeCalls = [];
+  browserMockState.viewportMode = null;
   browserMockState.clickCalls = [];
   browserMockState.coordinateClickCalls = [];
   browserMockState.scrollCalls = [];
@@ -301,6 +320,7 @@ describe("Browser route contracts (mocked manager)", () => {
       success: true,
       data: {
         viewport: { width: 1280, height: 800 },
+        viewportMode: null,
         cursor: {
           x: 64,
           y: 72,
@@ -329,10 +349,57 @@ describe("Browser route contracts (mocked manager)", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       success: true,
-      data: { viewport: { width: 1280, height: 800 } },
+      data: { viewport: { width: 1280, height: 800 }, viewportMode: null },
     });
     expect(browserMockState.resizeCalls).toEqual([{ id: "tab-1", width: 320, height: 1600 }]);
     expect(browserMockState.screenshotCalls).toEqual([]);
+  });
+
+  test("POST /api/browser/tabs/:id/viewport resolves and validates named modes", async () => {
+    const mobile = await api("POST", "/api/browser/tabs/tab-1/viewport", {
+      viewportMode: "mobile",
+    });
+    expect(mobile.status).toBe(200);
+    expect(mobile.body).toEqual({
+      success: true,
+      data: { viewport: { width: 1280, height: 800 }, viewportMode: "mobile" },
+    });
+    expect(browserMockState.resizeCalls).toEqual([
+      { id: "tab-1", width: 390, height: 844, mode: "mobile" },
+    ]);
+
+    const responsive = await api("POST", "/api/browser/tabs/tab-1/viewport", {
+      width: 700,
+      height: 500,
+      viewportMode: "responsive",
+    });
+    expect(responsive.status).toBe(200);
+    expect(browserMockState.resizeCalls.at(-1)).toEqual({
+      id: "tab-1",
+      width: 700,
+      height: 500,
+      mode: "responsive",
+    });
+
+    const responsiveFallback = await api("POST", "/api/browser/tabs/tab-1/viewport", {
+      viewportMode: "responsive",
+    });
+    expect(responsiveFallback.status).toBe(200);
+    expect(browserMockState.resizeCalls.at(-1)).toEqual({
+      id: "tab-1",
+      width: 960,
+      height: 640,
+      mode: "responsive",
+    });
+
+    const invalid = await api("POST", "/api/browser/tabs/tab-1/viewport", {
+      viewportMode: "watch",
+    });
+    expect(invalid.body).toEqual({
+      success: false,
+      error: "Invalid browser viewport mode",
+    });
+    expect(browserMockState.resizeCalls).toHaveLength(3);
   });
 
   test("GET /api/browser/tabs/:id/screenshot base64 encodes buffer", async () => {
@@ -345,6 +412,7 @@ describe("Browser route contracts (mocked manager)", () => {
         revision: expect.any(String),
         contentType: "image/png",
         viewport: { width: 1280, height: 800 },
+        viewportMode: null,
         cursor: {
           x: 64,
           y: 72,

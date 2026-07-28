@@ -118,6 +118,7 @@ import {
   normalizeTuiScrollStep,
 } from "../../../../shared/tui-preferences";
 import { runTuiPreferenceCommand } from "../tui-preference-commands";
+import { runTuiIdeCommand } from "../tui-ide-command";
 
 export function InteractiveChatTUI({
   apiBase,
@@ -570,6 +571,14 @@ export function InteractiveChatTUI({
             ? compactInspectionLines(lines)
             : "No language servers returned by the gateway.",
         );
+        return true;
+      }
+      if (normalizedCommand === "ide") {
+        try {
+          setNotice(await runTuiIdeCommand({ apiBase, argument, workspaceDir }));
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Unable to open Cybara IDE.");
+        }
         return true;
       }
       if (normalizedCommand === "memory") {

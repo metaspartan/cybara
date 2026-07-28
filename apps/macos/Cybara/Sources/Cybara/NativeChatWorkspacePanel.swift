@@ -98,6 +98,7 @@ private struct NativeBrowserScreenshotData: Decodable {
     let revision: String
     let cursor: NativeBrowserCursor?
     let viewport: NativeBrowserViewport?
+    let viewportMode: String?
     let page: NativeBrowserTab?
 }
 
@@ -109,12 +110,23 @@ private struct NativeBrowserScreenshotEnvelope: Decodable {
 private struct NativeBrowserStateData: Decodable {
     let cursor: NativeBrowserCursor?
     let viewport: NativeBrowserViewport?
+    let viewportMode: String?
     let page: NativeBrowserTab?
 }
 
 private struct NativeBrowserStateEnvelope: Decodable {
     let success: Bool?
     let data: NativeBrowserStateData
+}
+
+private struct NativeBrowserViewportEnvelope: Decodable {
+    let success: Bool?
+    let data: NativeBrowserViewportData
+}
+
+private struct NativeBrowserViewportData: Decodable {
+    let viewport: NativeBrowserViewport
+    let viewportMode: String?
 }
 
 private struct NativeBrowserCursor: Decodable {
@@ -130,11 +142,48 @@ private struct NativeBrowserViewport: Decodable {
     let height: Double
 }
 
+private enum NativeBrowserViewportMode: String, CaseIterable, Identifiable {
+    case responsive
+    case mobile
+    case desktop
+
+    var id: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .responsive: "viewfinder"
+        case .mobile: "iphone"
+        case .desktop: "display"
+        }
+    }
+}
+
+private func nativeBrowserViewport(
+    mode: NativeBrowserViewportMode,
+    container: CGSize
+) -> NativeBrowserViewport {
+    switch mode {
+    case .mobile:
+        return NativeBrowserViewport(width: 390, height: 844)
+    case .desktop:
+        return NativeBrowserViewport(width: 1_440, height: 900)
+    case .responsive:
+        let sourceWidth = max(320, container.width.rounded())
+        let sourceHeight = max(320, container.height.rounded())
+        let scale = min(1, 1_600 / sourceWidth, 1_200 / sourceHeight)
+        return NativeBrowserViewport(
+            width: max(320, (sourceWidth * scale).rounded()),
+            height: max(320, (sourceHeight * scale).rounded())
+        )
+    }
+}
+
 private struct NativeBrowserPreview {
     let image: NSImage?
     let revision: String
     let cursor: NativeBrowserCursor?
     let viewport: NativeBrowserViewport?
+    let viewportMode: String?
     let page: NativeBrowserTab?
 }
 
@@ -174,14 +223,15 @@ extension GatewayClient {
 
     fileprivate func chatBrowserScreenshot(
         _ id: String,
-        revision: String
+        revision: String,
+        viewport: NativeBrowserViewport
     ) async throws -> NativeBrowserPreview {
         var queryItems = [
             URLQueryItem(name: "fullPage", value: "false"),
             URLQueryItem(name: "format", value: "jpeg"),
             URLQueryItem(name: "quality", value: "58"),
-            URLQueryItem(name: "viewportWidth", value: "960"),
-            URLQueryItem(name: "viewportHeight", value: "640"),
+            URLQueryItem(name: "viewportWidth", value: String(Int(viewport.width))),
+            URLQueryItem(name: "viewportHeight", value: String(Int(viewport.height))),
         ]
         if !revision.isEmpty {
             queryItems.append(URLQueryItem(name: "revision", value: revision))
@@ -198,6 +248,7 @@ extension GatewayClient {
                 revision: payload.revision,
                 cursor: payload.cursor,
                 viewport: payload.viewport,
+                viewportMode: payload.viewportMode,
                 page: payload.page
             )
         }
@@ -206,6 +257,7 @@ extension GatewayClient {
             revision: payload.revision,
             cursor: payload.cursor,
             viewport: payload.viewport,
+            viewportMode: payload.viewportMode,
             page: payload.page
         )
     }
@@ -218,8 +270,27 @@ extension GatewayClient {
             revision: "",
             cursor: payload.cursor,
             viewport: payload.viewport,
+            viewportMode: payload.viewportMode,
             page: payload.page
         )
+    }
+
+    fileprivate func resizeChatBrowserTab(
+        _ id: String,
+        viewport: NativeBrowserViewport,
+        mode: NativeBrowserViewportMode
+    ) async throws -> NativeBrowserViewport {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "width": Int(viewport.width),
+            "height": Int(viewport.height),
+            "viewportMode": mode.rawValue,
+        ])
+        let data = try await request(
+            "api/browser/tabs/\(nativeChatPathSegment(id))/viewport",
+            method: "POST",
+            body: body
+        )
+        return try JSONDecoder().decode(NativeBrowserViewportEnvelope.self, from: data).data.viewport
     }
 }
 
@@ -228,6 +299,7 @@ struct NativeChatBrowserPanel: View {
     let sessionID: String?
     let isActive: Bool
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @AppStorage("cybara.browser.viewport-mode") private var viewportModeRaw = NativeBrowserViewportMode.responsive.rawValue
     @StateObject private var stream = NativeBrowserStreamConnection()
     @State private var page: NativeBrowserTab?
     @State private var address = ""
@@ -235,6 +307,7 @@ struct NativeChatBrowserPanel: View {
     @State private var revision = ""
     @State private var cursor: NativeBrowserCursor?
     @State private var viewport: NativeBrowserViewport?
+    @State private var requestedViewport = NativeBrowserViewport(width: 960, height: 640)
     @State private var loading = false
     @State private var error: String?
     @FocusState private var addressFocused: Bool
@@ -278,14 +351,27 @@ struct NativeChatBrowserPanel: View {
                     .multilineTextAlignment(.center)
                     .focused($addressFocused)
                     .onSubmit { Task { await navigate() } }
+
+                Picker("Browser viewport", selection: $viewportModeRaw) {
+                    ForEach(NativeBrowserViewportMode.allCases) { mode in
+                        Image(systemName: mode.systemImage)
+                            .tag(mode.rawValue)
+                            .help(mode.rawValue.capitalized)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 92)
             }
             .padding(8)
 
             Divider()
 
-            ZStack {
-                if let presentedImage = stream.image ?? image {
-                    GeometryReader { proxy in
+            GeometryReader { proxy in
+                let mode = NativeBrowserViewportMode(rawValue: viewportModeRaw) ?? .responsive
+                let targetViewport = nativeBrowserViewport(mode: mode, container: proxy.size)
+                ZStack {
+                    if let presentedImage = stream.image ?? image {
                         Image(nsImage: presentedImage)
                             .resizable()
                             .scaledToFit()
@@ -304,15 +390,21 @@ struct NativeChatBrowserPanel: View {
                                 ))
                                 .animation(systemReduceMotion ? nil : .easeOut(duration: 0.15), value: cursor.updatedAt ?? 0)
                         }
+                    } else if loading {
+                        ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ContentUnavailableView(
+                            "No Browser Preview",
+                            systemImage: "globe",
+                            description: Text("Open a browser tab to follow the agent's browser activity.")
+                        )
                     }
-                } else if loading {
-                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ContentUnavailableView(
-                        "No Browser Preview",
-                        systemImage: "globe",
-                        description: Text("Open a browser tab to follow the agent's browser activity.")
-                    )
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .task(id: "\(page?.id ?? "none"):\(Int(targetViewport.width))x\(Int(targetViewport.height))") {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    guard !Task.isCancelled else { return }
+                    await resizeViewport(targetViewport, mode: mode)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -397,7 +489,11 @@ struct NativeChatBrowserPanel: View {
         loading = true
         defer { loading = false }
         do {
-            let preview = try await client.chatBrowserScreenshot(page.id, revision: revision)
+            let preview = try await client.chatBrowserScreenshot(
+                page.id,
+                revision: revision,
+                viewport: requestedViewport
+            )
             if let nextImage = preview.image {
                 image = nextImage
             }
@@ -425,11 +521,31 @@ struct NativeChatBrowserPanel: View {
     private func applyPreviewMetadata(_ preview: NativeBrowserPreview) {
         cursor = preview.cursor
         viewport = preview.viewport
+        if let mode = preview.viewportMode,
+           NativeBrowserViewportMode(rawValue: mode) != nil,
+           viewportModeRaw != mode {
+            viewportModeRaw = mode
+        }
         if let updatedPage = preview.page {
             page = updatedPage
             if !addressFocused {
                 address = updatedPage.url ?? address
             }
+        }
+    }
+
+    private func resizeViewport(
+        _ target: NativeBrowserViewport,
+        mode: NativeBrowserViewportMode
+    ) async {
+        guard let page else { return }
+        do {
+            let applied = try await client.resizeChatBrowserTab(page.id, viewport: target, mode: mode)
+            requestedViewport = applied
+            viewport = applied
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 }

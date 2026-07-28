@@ -18,6 +18,7 @@ const TOP_LEVEL_COMMANDS = [
   "gateway",
   "health",
   "help",
+  "ide",
   "journey",
   "loop",
   "logs",

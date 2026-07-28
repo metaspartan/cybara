@@ -12,6 +12,7 @@ import {
   type MouseEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -32,12 +33,25 @@ import {
   decodeBrowserPreviewImage,
   normalizeBrowserWheelDelta,
 } from "./browserPreviewInteraction";
-import { browserPreviewPollDelay, browserPreviewViewport } from "./browserPreviewTiming";
+import { browserPreviewPollDelay } from "./browserPreviewTiming";
 import { BrowserPreviewImage } from "./BrowserPreviewImage";
+import { BrowserViewportModeControl } from "./BrowserViewportModeControl";
 import {
   type BrowserPreviewStreamInput,
   type BrowserPreviewStreamSender,
 } from "./browserPreviewStreamClient";
+import {
+  BROWSER_VIEWPORT_MODE_STORAGE_KEY,
+  BROWSER_VIEWPORT_PRESETS,
+  BrowserViewportResizeQueue,
+  browserViewportForMode,
+  DEFAULT_BROWSER_VIEWPORT,
+  inferBrowserViewportMode,
+  isBrowserViewportMode,
+  parseBrowserViewportMode,
+  type BrowserViewport,
+  type BrowserViewportMode,
+} from "./browserViewportMode";
 
 interface BrowserPage {
   id: string;
@@ -54,11 +68,6 @@ interface BrowserCursor {
   source: "agent" | "user";
 }
 
-interface BrowserViewport {
-  width: number;
-  height: number;
-}
-
 interface BrowserPreview {
   screenshot: string;
   revision: string;
@@ -72,7 +81,6 @@ interface PendingBrowserPage {
   promise: Promise<BrowserPage>;
 }
 
-const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = { width: 960, height: 640 };
 const BROWSER_START_TIMEOUT_MS = 90_000;
 const BROWSER_REQUEST_TIMEOUT_MS = 12_000;
 const BROWSER_PREVIEW_QUALITY = 78;
@@ -221,12 +229,13 @@ async function createSessionPage(sessionId: string): Promise<BrowserPage> {
 
 async function resizeBrowserPage(
   pageId: string,
-  viewport: BrowserViewport
+  viewport: BrowserViewport,
+  viewportMode: BrowserViewportMode
 ): Promise<BrowserViewport> {
   const response = await apiFetch(`/api/browser/tabs/${encodeURIComponent(pageId)}/viewport`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(viewport),
+    body: JSON.stringify({ ...viewport, viewportMode }),
     signal: AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS),
   });
   if (!response.ok) throw await responseError(response, "Browser viewport could not be resized");
@@ -274,13 +283,65 @@ export function ChatWorkspaceBrowser({
   const streamConnectedRef = useRef(false);
   const streamInputRef = useRef<BrowserPreviewStreamSender | null>(null);
   const framePresenterRef = useRef<BrowserFramePresenter<BrowserPreview> | null>(null);
+  const viewportResizeQueueRef = useRef<BrowserViewportResizeQueue | null>(null);
   const previewRevisionRef = useRef("");
   const lastNavigationRequestRef = useRef(0);
   const onTitleChangeRef = useRef(onTitleChange);
-  const [browserViewport, setBrowserViewport] = useState(DEFAULT_BROWSER_VIEWPORT);
   const browserViewportRef = useRef(DEFAULT_BROWSER_VIEWPORT);
   const [previewSurfaceSize, setPreviewSurfaceSize] = useState<PreviewSize | null>(null);
-  onTitleChangeRef.current = onTitleChange;
+  const [viewportMode, setViewportMode] = useState<BrowserViewportMode>(() =>
+    parseBrowserViewportMode(
+      typeof window === "undefined"
+        ? null
+        : window.localStorage.getItem(BROWSER_VIEWPORT_MODE_STORAGE_KEY)
+    )
+  );
+  const [viewportModeHydratedPageId, setViewportModeHydratedPageId] = useState<string | null>(null);
+  const viewportModeRef = useRef(viewportMode);
+  const localViewportModeChangeAtRef = useRef(0);
+  const browserViewport = useMemo(
+    () => browserViewportForMode(viewportMode, previewSurfaceSize),
+    [previewSurfaceSize, viewportMode]
+  );
+  const browserPageId = page?.id ?? null;
+
+  useEffect(() => {
+    browserViewportRef.current = browserViewport;
+    viewportModeRef.current = viewportMode;
+  }, [browserViewport, viewportMode]);
+
+  const selectViewportMode = useCallback((mode: BrowserViewportMode): void => {
+    viewportModeRef.current = mode;
+    localViewportModeChangeAtRef.current = Date.now();
+    setViewportMode(mode);
+  }, []);
+
+  const syncRemoteViewportMode = useCallback(
+    (value: unknown, viewport: BrowserViewport | null): void => {
+      if (!isBrowserViewportMode(value)) return;
+      if (
+        value !== viewportModeRef.current &&
+        Date.now() - localViewportModeChangeAtRef.current < 1_000
+      ) {
+        return;
+      }
+      viewportModeRef.current = value;
+      browserViewportRef.current =
+        value === "responsive"
+          ? (viewport ?? DEFAULT_BROWSER_VIEWPORT)
+          : BROWSER_VIEWPORT_PRESETS[value];
+      setViewportMode((current) => (current === value ? current : value));
+    },
+    []
+  );
+
+  useEffect(() => {
+    onTitleChangeRef.current = onTitleChange;
+  }, [onTitleChange]);
+
+  useEffect(() => {
+    window.localStorage.setItem(BROWSER_VIEWPORT_MODE_STORAGE_KEY, viewportMode);
+  }, [viewportMode]);
 
   const clearPreview = useCallback((): void => {
     framePresenterRef.current?.reset();
@@ -389,6 +450,8 @@ export function ChatWorkspaceBrowser({
             : null;
         const nextCursor = parseBrowserCursor(payload?.cursor);
         const nextViewport = parseBrowserViewport(payload?.viewport);
+        syncRemoteViewportMode(payload?.viewportMode, nextViewport);
+        setViewportModeHydratedPageId(targetPage.id);
         setPreview((current) => {
           const resolvedScreenshot = nextScreenshot ?? current?.screenshot ?? "";
           if (
@@ -420,13 +483,13 @@ export function ChatWorkspaceBrowser({
         if (queuedPage) queueMicrotask(() => void loadBrowserPreview(queuedPage, true));
       }
     },
-    [browserSessionId, clearPreview, syncPage]
+    [browserSessionId, clearPreview, syncPage, syncRemoteViewportMode]
   );
 
   const loadBrowserState = useCallback(
-    async (targetPage: BrowserPage): Promise<void> => {
+    async (targetPage: BrowserPage, includePage = false): Promise<void> => {
       const response = await apiFetch(
-        `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/state`,
+        `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/state?includePage=${includePage}`,
         { signal: AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS) }
       );
       if (response.status === 404) {
@@ -444,6 +507,8 @@ export function ChatWorkspaceBrowser({
       const nextPage = parseBrowserPage(payload?.page) ?? targetPage;
       const nextCursor = parseBrowserCursor(payload?.cursor);
       const nextViewport = parseBrowserViewport(payload?.viewport);
+      syncRemoteViewportMode(payload?.viewportMode, nextViewport);
+      setViewportModeHydratedPageId(targetPage.id);
       setPreview((current) => {
         if (!current) return current;
         if (
@@ -462,7 +527,7 @@ export function ChatWorkspaceBrowser({
       });
       syncPage(nextPage);
     },
-    [browserSessionId, clearPreview, syncPage]
+    [browserSessionId, clearPreview, syncPage, syncRemoteViewportMode]
   );
 
   const schedulePreviewRefresh = useCallback(
@@ -505,13 +570,10 @@ export function ChatWorkspaceBrowser({
       if (timer !== null) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         const bounds = surface.getBoundingClientRect();
-        setPreviewSurfaceSize({ width: bounds.width, height: bounds.height });
-        const nextViewport = browserPreviewViewport(bounds.width, bounds.height);
-        browserViewportRef.current = nextViewport;
-        setBrowserViewport((current) =>
-          current.width === nextViewport.width && current.height === nextViewport.height
+        setPreviewSurfaceSize((current) =>
+          current?.width === bounds.width && current.height === bounds.height
             ? current
-            : nextViewport
+            : { width: bounds.width, height: bounds.height }
         );
       }, 100);
     };
@@ -525,24 +587,39 @@ export function ChatWorkspaceBrowser({
   }, []);
 
   useEffect(() => {
-    if (!visible || !page) return;
-    let active = true;
-    void resizeBrowserPage(page.id, browserViewport)
-      .then((viewport) => {
-        if (!active) return;
+    setViewportModeHydratedPageId((current) => (current === browserPageId ? current : null));
+  }, [browserPageId]);
+
+  useEffect(() => {
+    viewportResizeQueueRef.current?.dispose();
+    viewportResizeQueueRef.current = null;
+    if (!visible || !browserPageId) return;
+    const queue = new BrowserViewportResizeQueue(
+      async (viewport) => {
+        const fixedMode = inferBrowserViewportMode(viewport) ?? "responsive";
+        return await resizeBrowserPage(browserPageId, viewport, fixedMode);
+      },
+      (viewport) => {
         setPreview((current) => (current ? { ...current, viewport } : current));
         setError(null);
-      })
-      .catch((reason: unknown) => {
-        if (!active) return;
+      },
+      (reason) => {
         setError(
           reason instanceof Error ? reason.message : "Browser viewport could not be resized"
         );
-      });
+      }
+    );
+    viewportResizeQueueRef.current = queue;
     return () => {
-      active = false;
+      queue.dispose();
+      if (viewportResizeQueueRef.current === queue) viewportResizeQueueRef.current = null;
     };
-  }, [browserViewport, page, visible]);
+  }, [browserPageId, visible]);
+
+  useEffect(() => {
+    if (!browserPageId || viewportModeHydratedPageId !== browserPageId) return;
+    viewportResizeQueueRef.current?.enqueue(browserViewport);
+  }, [browserPageId, browserViewport, viewportModeHydratedPageId, visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -550,8 +627,10 @@ export function ChatWorkspaceBrowser({
     let cancelled = false;
     setLoading(true);
     void ensurePage()
-      .then((nextPage) => {
-        if (!cancelled) return loadPreview(nextPage);
+      .then(async (nextPage) => {
+        if (cancelled) return;
+        await loadBrowserState(nextPage, true);
+        if (!cancelled) await loadPreview(nextPage);
       })
       .catch((reason: unknown) => {
         if (!cancelled) {
@@ -564,7 +643,7 @@ export function ChatWorkspaceBrowser({
     return () => {
       cancelled = true;
     };
-  }, [ensurePage, loadPreview, navigationRequest, navigationUrl, visible]);
+  }, [ensurePage, loadBrowserState, loadPreview, navigationRequest, navigationUrl, visible]);
 
   useEffect(() => {
     if (!visible || !loading || preview?.screenshot) return;
@@ -588,7 +667,7 @@ export function ChatWorkspaceBrowser({
     const poll = async () => {
       if (document.visibilityState === "visible") {
         if (streamConnectedRef.current) {
-          await loadBrowserState(page).catch(() => undefined);
+          await loadBrowserState(page, false).catch(() => undefined);
         } else {
           await loadPreview(page);
         }
@@ -624,7 +703,7 @@ export function ChatWorkspaceBrowser({
         }
         lastInteractionAtRef.current = Date.now();
         if (event.status === "tool_completed" || event.toolPhase === "result") {
-          if (streamConnectedRef.current) void loadBrowserState(page).catch(() => undefined);
+          if (streamConnectedRef.current) void loadBrowserState(page, true).catch(() => undefined);
           else void loadPreview(page, true);
         }
       },
@@ -874,6 +953,7 @@ export function ChatWorkspaceBrowser({
           placeholder="Search or enter address"
           aria-label="Browser address"
         />
+        <BrowserViewportModeControl mode={viewportMode} onChange={selectViewportMode} />
         <button
           type="button"
           onClick={() => {
@@ -891,12 +971,15 @@ export function ChatWorkspaceBrowser({
       </div>
       <div
         ref={previewSurfaceRef}
-        className="relative min-h-0 flex-1 touch-none cursor-default overflow-hidden overscroll-contain bg-[#111216] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-blue-400/35"
+        className="relative min-h-0 flex-1 touch-none cursor-default overflow-hidden overscroll-contain bg-[var(--surface-backdrop)] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[rgb(var(--accent-primary))]"
         onClick={handlePreviewClick}
         onKeyDown={handlePreviewKeyDown}
         role="application"
         tabIndex={0}
         aria-label="Interactive browser preview"
+        data-browser-viewport-mode={viewportMode}
+        data-browser-viewport-width={browserViewport.width}
+        data-browser-viewport-height={browserViewport.height}
       >
         <BrowserPreviewImage
           pageId={page?.id ?? null}

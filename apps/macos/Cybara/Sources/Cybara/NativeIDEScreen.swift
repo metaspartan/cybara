@@ -4,6 +4,7 @@ import SwiftUI
 struct IDEScreen: View {
     let client: GatewayClient
     @AppStorage("cybara.ide.pendingWorkspacePath") private var pendingWorkspacePath = ""
+    @AppStorage("cybara.ide.pendingFilePath") private var pendingFilePath = ""
     @State private var status: NativeIDEIndexStatus?
     @State private var browse: NativeIDEBrowseResult?
     @State private var workspacePath = ""
@@ -116,6 +117,10 @@ struct IDEScreen: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
         .task { await load() }
+        .onChange(of: pendingFilePath) { _, path in
+            guard !path.isEmpty, loaded else { return }
+            Task { await openPendingFile(path) }
+        }
         .sheet(isPresented: $showingCreate) {
             createSheet
         }
@@ -726,10 +731,16 @@ struct IDEScreen: View {
 
     private func load() async {
         do {
+            let pendingFile = firstNonEmptyGatewayString(pendingFilePath)
             if let pending = firstNonEmptyGatewayString(pendingWorkspacePath) {
                 workspacePath = pending
                 currentPath = pending
                 pendingWorkspacePath = ""
+            }
+            if let pendingFile {
+                let directory = URL(fileURLWithPath: pendingFile).deletingLastPathComponent().path
+                workspacePath = directory
+                currentPath = directory
             }
             status = try await client.ideIndexStatus(workspacePath: firstNonEmptyGatewayString(workspacePath))
             if workspacePath.isEmpty {
@@ -737,11 +748,25 @@ struct IDEScreen: View {
             }
             let initialPath = firstNonEmptyGatewayString(currentPath == "~" ? workspacePath : currentPath, workspacePath, "~") ?? "~"
             await browsePath(initialPath)
+            if let pendingFile {
+                pendingFilePath = ""
+                await openFile(path: pendingFile)
+            }
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
         loaded = true
+    }
+
+    private func openPendingFile(_ path: String) async {
+        guard let normalized = firstNonEmptyGatewayString(path) else { return }
+        pendingFilePath = ""
+        let directory = URL(fileURLWithPath: normalized).deletingLastPathComponent().path
+        workspacePath = directory
+        currentPath = directory
+        await browsePath(directory)
+        await openFile(path: normalized)
     }
 
     private func browsePath(_ path: String) async {

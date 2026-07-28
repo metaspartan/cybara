@@ -77,6 +77,7 @@ const CLI_COMMANDS = [
   "acp",
   "artifacts",
   "journey",
+  "ide",
   "mobile",
   "help",
   "--help",
@@ -212,6 +213,7 @@ Usage:
   cybara version            Show the current version
   cybara agents             List all agents
   cybara chat               Interactive TUI chat
+  cybara ide [path[:line]]  Open a workspace or file in the Cybara IDE
   cybara config             Show / get / set config
   cybara plugin             Plugin management (list, validate, install, remove)
   cybara provider           Provider management (add, update, delete, models)

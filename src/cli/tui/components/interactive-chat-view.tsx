@@ -456,6 +456,7 @@ export function HelpPanel({
       </Text>
       <Text>/followups on|off controls queue and steer behavior</Text>
       <Text>/reasoning changes effort · /title renames · /workspace changes the working root</Text>
+      <Text>/ide [path[:line]] opens the workspace or file in Cybara IDE</Text>
       <Text>/environment toggles context, plan, diffs, tasks, and subagents</Text>
       <Text>/goal start &lt;objective&gt; creates persistent work · /loop is an alias</Text>
       <Text>/context, /usage, /plan, /diffs, /tasks, /subagents inspect session state</Text>

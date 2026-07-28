@@ -28,6 +28,7 @@ import { runEvalCommand } from "./commands/evals";
 import { runSystemBackupCommand } from "./commands/system-backup";
 import { runTelemetryCommand } from "./commands/telemetry";
 import { runPermissionsCommand } from "./commands/permissions";
+import { runIdeCommand } from "./commands/ide";
 import { type MetricsResponse } from "./commands/status-contract";
 import { rawStatus } from "./commands/status";
 import {
@@ -1401,6 +1402,9 @@ async function main() {
       break;
     case "chat":
       await rawChatCommand(args.slice(1));
+      break;
+    case "ide":
+      await runIdeCommand(args.slice(1), { apiBase: API_BASE });
       break;
     case "agent":
       await rawAgent(args.slice(1));

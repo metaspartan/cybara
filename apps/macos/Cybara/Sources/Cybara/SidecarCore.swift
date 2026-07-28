@@ -264,4 +264,10 @@ public enum SidecarCore {
             return nil
         }
     }
+
+    public static func openFilePath(from url: URL) -> String? {
+        guard url.isFileURL else { return nil }
+        let path = url.standardizedFileURL.path.trimmingCharacters(in: .whitespacesAndNewlines)
+        return path.isEmpty ? nil : path
+    }
 }

@@ -10,6 +10,17 @@ cybara <command> [options]
 
 ## Commands
 
+### Open the IDE
+
+```bash
+cybara ide
+cybara ide src/index.ts:42
+cybara ide ./workspace
+cybara ide src/index.ts:42 --print
+```
+
+The command opens the current workspace, a directory, or a file at an optional line in the Cybara IDE. Use `--print` on remote or headless systems to emit the URL without launching a browser. In TUI chat, `/ide` opens the active workspace and `/ide path:line` opens a specific file.
+
 ### Server Control
 
 ```bash

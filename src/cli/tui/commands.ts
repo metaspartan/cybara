@@ -10,6 +10,7 @@ export const TUI_CHAT_COMMANDS: TUIChatCommandOption[] = [
   { name: "/skills", detail: "Show installed and available skills" },
   { name: "/mcp", detail: "Show connected MCP services" },
   { name: "/lsp", detail: "Show language server status" },
+  { name: "/ide", detail: "Open the workspace or a file in Cybara IDE" },
   { name: "/memory", detail: "Show memory and indexing health" },
   { name: "/logs", detail: "Show recent gateway logs" },
   { name: "/agent", detail: "Switch the active chat agent" },

@@ -12,6 +12,7 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  chat        Interactive chat with AI");
   console.log("    chat --agent <id> --model <id>     Chat with an agent/model override");
   console.log("    chat --router                      Chat through the model router");
+  console.log("  ide [path[:line]] [--print]          Open a workspace or file in the IDE");
   console.log("  status      Show system status");
   console.log("  health      Alias for status");
   console.log("  backup      Backup and restore durable gateway state");
