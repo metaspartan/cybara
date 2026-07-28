@@ -126,22 +126,34 @@ export function DatasetGeneratorPanel({
 
   const createRun = useMutation({
     mutationFn: async () => {
-      const runPrompts = prompts.length > 0 ? prompts : await requestPromptDraft();
-      if (prompts.length === 0) setPromptText(formatDatasetPromptsForEditor(runPrompts));
       const response = await datasetRunsApi.create({
         name,
         agentId,
-        prompts: runPrompts,
+        prompts,
         samplesPerPrompt,
         concurrency,
         toolsEnabled,
         maxOutputTokens,
         sampleTimeoutSeconds,
+        promptDraft:
+          prompts.length === 0
+            ? {
+                agentId: resolvedPromptAuthorAgentId,
+                objective: promptObjective,
+                focus: promptFocus,
+                difficulty: promptDifficulty,
+                count: promptDraftCount,
+                seedPrompts: [],
+              }
+            : undefined,
       });
       if (!response.success || !response.data?.run) {
         throw new Error(response.error || response.data?.error || "Dataset run failed to start");
       }
-      return { run: response.data.run, authored: prompts.length === 0 };
+      return {
+        run: response.data.run,
+        authoredPrompts: response.data.prompts ?? [],
+      };
     },
     onMutate: () =>
       setMessage(
@@ -149,10 +161,13 @@ export function DatasetGeneratorPanel({
           ? `Drafting ${promptDraftCount} prompts with ${selectedPromptAuthor?.name || "the selected agent"}…`
           : `Starting ${plannedItems} samples with ${selectedAgent?.name || "the selected agent"}…`
       ),
-    onSuccess: ({ run, authored }) => {
+    onSuccess: ({ run, authoredPrompts }) => {
+      if (authoredPrompts.length > 0) {
+        setPromptText(formatDatasetPromptsForEditor(authoredPrompts));
+      }
       setSelectedRunId(run.id);
       setMessage(
-        `${authored ? `Drafted ${run.totalItems / run.samplesPerPrompt} prompts and started` : "Started"} ${run.totalItems} samples with ${selectedAgent?.name || "the selected agent"}`
+        `${authoredPrompts.length > 0 ? `Drafted ${authoredPrompts.length} prompts and started` : "Started"} ${run.totalItems} samples with ${selectedAgent?.name || "the selected agent"}`
       );
       void queryClient.invalidateQueries({ queryKey: ["lab-dataset-runs"] });
     },

@@ -298,6 +298,17 @@ export function markDatasetRunRunning(runId: string): AgentDatasetRun | null {
 }
 
 export function resetInterruptedDatasetItems(runId: string): number {
+  const run = getDatasetRun(runId);
+  if (!run) return 0;
+  if (run.cancelRequested) {
+    return db
+      .prepare(
+        `UPDATE agent_dataset_items
+         SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP, error = 'Cancelled by user'
+         WHERE run_id = ? AND status IN ('queued', 'running')`
+      )
+      .run(runId).changes;
+  }
   return db
     .prepare(
       `UPDATE agent_dataset_items

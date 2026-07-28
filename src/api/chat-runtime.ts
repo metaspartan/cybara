@@ -1309,16 +1309,19 @@ async function handleChatTurn(
   }
 
   if (isNewSession && (!session.title || shouldRegenerateSessionTitle(session.title))) {
-    const generatedTitle = await generateSessionTitleViaModel({
-      provider,
-      agent,
-      sessionId: session.id,
-      userMessage: message,
-      channel,
-      userId,
-      workspaceDir: session.workspaceDir,
-      abortSignal: turnAbortController.signal,
-    });
+    const generatedTitle =
+      request.source === "dataset_generation"
+        ? null
+        : await generateSessionTitleViaModel({
+            provider,
+            agent,
+            sessionId: session.id,
+            userMessage: message,
+            channel,
+            userId,
+            workspaceDir: session.workspaceDir,
+            abortSignal: turnAbortController.signal,
+          });
     session.title = cleanGeneratedSessionTitle(agent?.name, generatedTitle);
     if (!session.title) {
       session.title = cleanGeneratedSessionTitle(agent?.name, deriveSessionTitleFromTurn(message));

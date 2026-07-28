@@ -144,14 +144,17 @@ describe("CLI TUI terminal behavior", () => {
     expect(terminalScreenSequence(true, { CYBARA_TUI_ALT_SCREEN: "0" })).toBeNull();
   });
 
-  test("captures portable SGR mouse scrolling with an explicit opt-out", () => {
+  test("captures portable SGR mouse scrolling with a runtime override", () => {
     expect(terminalMouseTrackingSequence(true, {}, true)).toEqual({
       enter: "\u001B[?1000h\u001B[?1006h",
       exit: "\u001B[?1006l\u001B[?1000l",
     });
     expect(terminalMouseTrackingSequence(false, {}, true)).toBeNull();
     expect(terminalMouseTrackingSequence(true, { TERM: "dumb" }, true)).toBeNull();
-    expect(terminalMouseTrackingSequence(true, { CYBARA_TUI_MOUSE: "0" }, true)).toBeNull();
+    expect(terminalMouseTrackingSequence(true, { CYBARA_TUI_MOUSE: "0" }, true)).toEqual({
+      enter: "\u001B[?1000h\u001B[?1006h",
+      exit: "\u001B[?1006l\u001B[?1000l",
+    });
     expect(parseTerminalMouseEvent("[<64;12;8M")).toEqual({
       type: "scroll",
       direction: "up",

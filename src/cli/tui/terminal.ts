@@ -69,7 +69,7 @@ export function terminalMouseTrackingSequence(
   env: NodeJS.ProcessEnv,
   enabled: boolean
 ): TerminalScreenSequence | null {
-  if (!enabled || !isTTY || env.TERM === "dumb" || env.CYBARA_TUI_MOUSE === "0") return null;
+  if (!enabled || !isTTY || env.TERM === "dumb") return null;
   return {
     enter: "\u001B[?1000h\u001B[?1006h",
     exit: "\u001B[?1006l\u001B[?1000l",

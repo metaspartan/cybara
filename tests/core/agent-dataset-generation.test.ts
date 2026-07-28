@@ -3,12 +3,16 @@ import {
   type AgentDatasetItem,
   type AgentDatasetRun,
   cancelDatasetRunExecutions,
+  claimDatasetItem,
   createDatasetRun,
   deleteDatasetRun,
+  finalizeDatasetRun,
   getDatasetRun,
   listDatasetRunItems,
+  markDatasetRunRunning,
   recordCompletedTrajectory,
   registerDatasetItemExecutor,
+  resetInterruptedDatasetItems,
   requestDatasetRunCancel,
   retryDatasetRun,
   startDatasetRun,
@@ -109,6 +113,28 @@ describe("agent dataset generation", () => {
     expect(cancelled?.status).toBe("cancelled");
     expect(cancelled?.cancelledItems).toBe(3);
     expect(listDatasetRunItems(run.id).every((item) => item.status === "cancelled")).toBe(true);
+    expect(deleteDatasetRun(run.id)).toBe(true);
+  });
+
+  test("recovers interrupted items as cancelled after a persisted cancel request", () => {
+    const run = createDatasetRun({
+      name: "Interrupted cancellation",
+      agentId: "teacher-agent",
+      prompts: ["Running", "Queued"],
+      samplesPerPrompt: 1,
+      concurrency: 1,
+      toolsEnabled: false,
+    });
+    expect(markDatasetRunRunning(run.id)?.status).toBe("running");
+    expect(claimDatasetItem(run.id)?.status).toBe("running");
+    expect(requestDatasetRunCancel(run.id)?.cancelRequested).toBe(true);
+
+    expect(resetInterruptedDatasetItems(run.id)).toBe(1);
+    const items = listDatasetRunItems(run.id);
+    expect(items.every((item) => item.status === "cancelled")).toBe(true);
+    expect(items.every((item) => item.completedAt !== null)).toBe(true);
+    expect(cancelDatasetRunExecutions(run.id)).toBe(0);
+    expect(finalizeDatasetRun(run.id)?.status).toBe("cancelled");
     expect(deleteDatasetRun(run.id)).toBe(true);
   });
 

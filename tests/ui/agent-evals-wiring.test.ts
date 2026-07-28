@@ -68,6 +68,8 @@ describe("agent eval UI wiring", () => {
     expect(generator).toContain("Draft prompts");
     expect(generator).toContain("Dataset goal");
     expect(generator).toContain("generatePrompts");
+    expect(generator).toContain("promptDraft:");
+    expect(generator).not.toContain("await requestPromptDraft();");
     expect(generator).toContain("Concurrent samples");
     expect(generator).toContain("Output budget");
     expect(generator).toContain("Sample timeout");

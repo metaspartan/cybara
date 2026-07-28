@@ -803,6 +803,22 @@ describe("Agent Evals API", () => {
     expect(sampleTimeout.data.success).toBe(false);
     expect(sampleTimeout.data.error).toContain("Sample timeout");
 
+    for (const [field, error] of [
+      ["samplesPerPrompt", "Samples per prompt"],
+      ["concurrency", "Concurrency"],
+      ["maxOutputTokens", "Output budget"],
+      ["sampleTimeoutSeconds", "Sample timeout"],
+    ] as const) {
+      const malformed = await fixture.api("POST", "/api/evals/datasets", {
+        agentId: agent.data.id,
+        prompts: ["Return one sentence."],
+        [field]: "invalid",
+      });
+      expect(malformed.status).toBe(200);
+      expect(malformed.data.success).toBe(false);
+      expect(malformed.data.error).toContain(error);
+    }
+
     await fixture.api("DELETE", `/api/agents/${agent.data.id}`);
   });
 

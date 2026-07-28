@@ -320,11 +320,22 @@ export const datasetRunsApi = {
     toolsEnabled: boolean;
     maxOutputTokens: number;
     sampleTimeoutSeconds: number;
+    promptDraft?: {
+      agentId: string;
+      objective: string;
+      focus: DatasetPromptFocus;
+      difficulty: DatasetPromptDifficulty;
+      count: number;
+      seedPrompts: string[];
+    };
   }) =>
-    fetchApi<{ success: boolean; run?: AgentDatasetRun; error?: string }>("/evals/datasets", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+    fetchApi<{ success: boolean; run?: AgentDatasetRun; prompts?: string[]; error?: string }>(
+      "/evals/datasets",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
   generatePrompts: (payload: {
     agentId: string;
     targetAgentId: string;
