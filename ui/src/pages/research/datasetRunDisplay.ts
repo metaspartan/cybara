@@ -19,6 +19,24 @@ export function formatDatasetDuration(value: number): string {
   return `${Math.floor(value / 60_000)}m ${Math.round((value % 60_000) / 1000)}s`;
 }
 
+function datasetTimestampMs(value: string | null): number | null {
+  if (!value) return null;
+  const normalized = /(?:z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value.replace(" ", "T")}Z`;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function formatDatasetElapsed(
+  startedAt: string | null,
+  completedAt: string | null = null,
+  now = Date.now()
+): string | null {
+  const started = datasetTimestampMs(startedAt);
+  if (started === null) return null;
+  const completed = datasetTimestampMs(completedAt);
+  return formatDatasetDuration(Math.max(0, (completed ?? now) - started));
+}
+
 export function datasetRunProviderLabel(provider: string | null): string | null {
   if (!provider) return null;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(provider)

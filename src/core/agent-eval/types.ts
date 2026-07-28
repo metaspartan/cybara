@@ -158,6 +158,8 @@ export interface AgentDatasetRun {
   samplesPerPrompt: number;
   concurrency: number;
   toolsEnabled: boolean;
+  maxOutputTokens: number;
+  sampleTimeoutSeconds: number;
   totalItems: number;
   completedItems: number;
   failedItems: number;

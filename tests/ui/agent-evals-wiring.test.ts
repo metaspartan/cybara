@@ -64,7 +64,14 @@ describe("agent eval UI wiring", () => {
     expect(page).toContain('key: "generate", label: "Generate"');
     expect(page).toContain("DatasetGeneratorPanel");
     expect(generator).toContain("Generate teacher data");
+    expect(generator).toContain("Same as teacher");
+    expect(generator).toContain("Draft prompts");
+    expect(generator).toContain("Dataset goal");
+    expect(generator).toContain("generatePrompts");
     expect(generator).toContain("Concurrent samples");
+    expect(generator).toContain("Output budget");
+    expect(generator).toContain("Sample timeout");
+    expect(generator).toContain("Retry incomplete samples");
     expect(generator).toContain("Provider usage");
     expect(generator).toContain("Dataset runs");
     expect(generator).toContain("averageFirstTokenMs");

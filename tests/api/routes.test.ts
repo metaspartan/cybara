@@ -775,6 +775,47 @@ describe("Agent Evals API", () => {
     expect(response.status).toBe(200);
     expect(Array.isArray(response.data.runs)).toBe(true);
   });
+
+  test("rejects dataset runs with unsafe execution limits", async () => {
+    const agent = await fixture.api("POST", "/api/agents", {
+      name: `dataset-limits-${Date.now()}`,
+      type: "basic",
+      provider: "anthropic",
+      model: "claude-sonnet-4-20250514",
+    });
+    expect(agent.status).toBe(200);
+
+    const outputBudget = await fixture.api("POST", "/api/evals/datasets", {
+      agentId: agent.data.id,
+      prompts: ["Return one sentence."],
+      maxOutputTokens: 64,
+    });
+    expect(outputBudget.status).toBe(200);
+    expect(outputBudget.data.success).toBe(false);
+    expect(outputBudget.data.error).toContain("Output budget");
+
+    const sampleTimeout = await fixture.api("POST", "/api/evals/datasets", {
+      agentId: agent.data.id,
+      prompts: ["Return one sentence."],
+      sampleTimeoutSeconds: 10,
+    });
+    expect(sampleTimeout.status).toBe(200);
+    expect(sampleTimeout.data.success).toBe(false);
+    expect(sampleTimeout.data.error).toContain("Sample timeout");
+
+    await fixture.api("DELETE", `/api/agents/${agent.data.id}`);
+  });
+
+  test("rejects prompt drafting without configured author and teacher agents", async () => {
+    const response = await fixture.api("POST", "/api/evals/dataset-prompts", {
+      agentId: "missing-author",
+      targetAgentId: "missing-teacher",
+      count: 12,
+    });
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(false);
+    expect(response.data.error).toContain("prompt author");
+  });
 });
 
 describe("Provider Plan API", () => {

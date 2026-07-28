@@ -14,10 +14,7 @@ import {
   applyChatCapabilityInstruction,
   resolveChatCapabilityMentions,
 } from "../core/chat/capability-mentions";
-import {
-  buildMemoryFlushMessages,
-  formatToolResultPromptBlock,
-} from "../core/chat-token-optimization";
+import { buildMemoryFlushMessages } from "../core/chat-token-optimization";
 import { stopComputerUseTrajectoryForSession } from "../core/computer-use";
 import { config } from "../core/config";
 import { hasImages, sanitizeAgentImages } from "../core/llm/image-blocks";
@@ -32,7 +29,6 @@ import {
   trackSessionTokens,
 } from "../core/metrics";
 import { expandPromptCommand } from "../core/prompt-commands";
-import { providerManager } from "../core/providers";
 import {
   compactContext,
   estimateMessagesTokens,
@@ -153,6 +149,7 @@ import {
   sanitizeObservedProcessActivities,
 } from "./chat-steering-activities";
 import { constrainToolsForMessage } from "./chat-tool-constraints";
+import { resolveToolResponseContent } from "./chat-tool-response";
 import {
   buildNoUsableAssistantResponseMessage,
   buildToolExecutionFallbackMessage,
@@ -178,6 +175,7 @@ export {
 } from "./chat-process-activities";
 
 const log = createLogger("Chat");
+const linkedChatAbortCleanups = new WeakMap<AbortController, () => void>();
 
 export type {
   ChatMessage,
@@ -253,9 +251,26 @@ export async function stopActiveChatTurn(sessionId: string): Promise<{
 }
 
 function clearActiveChatTurnAbortController(sessionId: string, controller: AbortController): void {
+  linkedChatAbortCleanups.get(controller)?.();
+  linkedChatAbortCleanups.delete(controller);
   if (activeChatTurnAbortControllers.get(sessionId) === controller) {
     activeChatTurnAbortControllers.delete(sessionId);
   }
+}
+
+function linkChatAbortSignal(controller: AbortController, signal?: AbortSignal): void {
+  if (!signal) return;
+  const abort = () => {
+    if (!controller.signal.aborted) {
+      controller.abort(signal.reason ?? new DOMException("Chat turn aborted", "AbortError"));
+    }
+  };
+  if (signal.aborted) {
+    abort();
+    return;
+  }
+  signal.addEventListener("abort", abort, { once: true });
+  linkedChatAbortCleanups.set(controller, () => signal.removeEventListener("abort", abort));
 }
 
 function isStoppedChatTurn(controller: AbortController): boolean {
@@ -1186,6 +1201,7 @@ async function handleChatTurn(
 
   let provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
   const turnAbortController = new AbortController();
+  linkChatAbortSignal(turnAbortController, request.abortSignal);
   const consumedSteeringCompletionIds = new Set<string>();
   const finishAbortedTurn = (activeAgent: { id: string; name: string }) =>
     finishAbortedChatTurn(session, activeAgent, turnAbortController, consumedSteeringCompletionIds);
@@ -1358,6 +1374,8 @@ async function handleChatTurn(
             userId,
             workspaceDir: session.workspaceDir || undefined,
             suppressStreaming: true,
+            maxOutputTokens: request.maxOutputTokens,
+            modelParamsOverride: request.modelParamsOverride,
           }
         );
 
@@ -1498,6 +1516,8 @@ async function handleChatTurn(
         useModelRouter,
         modelOverride: activeModelOverride,
         allowedToolNames,
+        maxOutputTokens: request.maxOutputTokens,
+        modelParamsOverride: request.modelParamsOverride,
       });
       let result = await agentManager.execute(agent.id, executionMessages, {
         ...executionOptions(),
@@ -1655,8 +1675,6 @@ async function handleChatTurn(
       ).catch(() => undefined);
 
       if (toolResults.length > 0) {
-        const toonStructuredDataEnabled =
-          config.getTokenOptimizationSettings().toonStructuredDataEnabled;
         for (const tc of toolResults) {
           const timelineIndex = allToolCalls.length;
           const outcome = classifyToolCallResult(tc.result);
@@ -1680,50 +1698,21 @@ async function handleChatTurn(
             timeline_index: timelineIndex,
           });
         }
-
-        const toolResultsText = toolResults
-          .map((tc) =>
-            formatToolResultPromptBlock(tc.name, tc.result, {
-              toonEnabled: toonStructuredDataEnabled,
-              sessionId: session.id,
-              toolCallId: typeof tc.id === "string" ? tc.id : undefined,
-            })
-          )
-          .join("\n\n");
-
-        if (!responseContent.trim()) {
-          const providerForSummary = agent?.provider_id
-            ? providerManager.getWithCredentials(agent.provider_id)
-            : undefined;
-          if (providerForSummary) {
-            try {
-              const finalResult = await agentManager.callLLM(
-                providerForSummary,
-                agent?.model,
-                [
-                  {
-                    role: "user",
-                    content: `The user asked: "${message}"\n\nTools completed:\n${toolResultsText}\n\nAnswer the user from these results. Do not call tools.`,
-                  },
-                ],
-                [],
-                {
-                  agentId: agent.id,
-                  sessionId: session.id,
-                  channel,
-                  userId,
-                  workspaceDir: session.workspaceDir || undefined,
-                  abortSignal: turnAbortController.signal,
-                }
-              );
-              responseContent = finalResult.content;
-            } catch {
-              responseContent = buildToolExecutionFallbackMessage(toolResults);
-            }
-          } else {
-            responseContent = buildToolExecutionFallbackMessage(toolResults);
-          }
-        }
+        responseContent = await resolveToolResponseContent({
+          abortSignal: turnAbortController.signal,
+          agentId: agent.id,
+          channel,
+          maxOutputTokens: request.maxOutputTokens,
+          message,
+          model: agent.model,
+          modelParamsOverride: request.modelParamsOverride,
+          providerId: agent.provider_id,
+          responseContent,
+          sessionId: session.id,
+          toolResults,
+          userId,
+          workspaceDir: session.workspaceDir || undefined,
+        });
       }
 
       if (provider) {

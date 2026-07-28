@@ -1,7 +1,3 @@
-import { Switch } from "@/components/ui/Switch";
-import type { AgentDatasetItem, AgentDatasetRun, ResearchExportFormat } from "@/lib/api";
-import { labExportFormats } from "@/lib/labFormats";
-import { cn } from "@/lib/utils";
 import {
   AlertCircle,
   Bot,
@@ -13,17 +9,23 @@ import {
   Download,
   FileText,
   Loader2,
+  RotateCcw,
   Trash2,
   XCircle,
 } from "lucide-react";
 import { Link } from "react-router";
+import { Switch } from "@/components/ui/Switch";
+import type { AgentDatasetItem, AgentDatasetRun, ResearchExportFormat } from "@/lib/api";
+import { labExportFormats } from "@/lib/labFormats";
+import { cn } from "@/lib/utils";
+import { DatasetUsageStat } from "./DatasetUsageStat";
 import {
   datasetRunIsActive,
   datasetRunProviderLabel,
   formatDatasetDuration,
+  formatDatasetElapsed,
   formatDatasetMetricCount,
 } from "./datasetRunDisplay";
-import { DatasetUsageStat } from "./DatasetUsageStat";
 
 function statusLabel(run: AgentDatasetRun): string {
   if (run.cancelRequested && run.status === "running") return "Stopping";
@@ -39,7 +41,8 @@ function StatusIcon({ run }: { run: AgentDatasetRun }) {
   return <CircleStop className="h-3.5 w-3.5 text-[var(--text-muted)]" />;
 }
 
-function DatasetItemRow({ item }: { item: AgentDatasetItem }) {
+function DatasetItemRow({ item, run }: { item: AgentDatasetItem; run: AgentDatasetRun }) {
+  const elapsed = formatDatasetElapsed(item.startedAt, item.completedAt);
   return (
     <div className="grid gap-2 border-t border-[var(--surface-border)] px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div className="min-w-0">
@@ -51,7 +54,9 @@ function DatasetItemRow({ item }: { item: AgentDatasetItem }) {
         </Link>
         <p className="mt-0.5 line-clamp-1 text-[11px] text-[var(--text-secondary)]">
           {item.trace?.responsePreview ||
-            (item.status === "running" ? "Generating response…" : "No response captured")}
+            (item.status === "running"
+              ? `Generating response${elapsed ? ` · ${elapsed}` : ""} / ${formatDatasetDuration(run.sampleTimeoutSeconds * 1000)} limit`
+              : "No response captured")}
         </p>
         <p className="mt-1 text-[10px] text-[var(--text-muted)]">
           Prompt {item.promptIndex + 1} · Sample {item.sampleIndex + 1}
@@ -81,6 +86,7 @@ interface DatasetRunRowProps {
   onCancel: (runId: string) => void;
   onExport: (runId: string, card: boolean) => void;
   onRemove: (runId: string) => void;
+  onRetry: (runId: string) => void;
   onSelect: (runId: string | null) => void;
 }
 
@@ -89,6 +95,7 @@ function DatasetRunRow(props: DatasetRunRowProps) {
   const finishedItems = run.completedItems + run.failedItems + run.cancelledItems;
   const progress = run.totalItems > 0 ? Math.round((finishedItems / run.totalItems) * 100) : 0;
   const provider = datasetRunProviderLabel(run.provider);
+  const elapsed = formatDatasetElapsed(run.startedAt, run.completedAt);
   return (
     <div
       className={cn(
@@ -116,7 +123,9 @@ function DatasetRunRow(props: DatasetRunRowProps) {
             </div>
             <p className="mt-1 truncate pl-[58px] text-[10px] text-[var(--text-muted)]">
               {run.model || "Default model"}
-              {provider ? ` · ${provider}` : ""} · {run.totalItems} samples
+              {provider ? ` · ${provider}` : ""} · {run.totalItems} samples ·{" "}
+              {formatDatasetMetricCount(run.maxOutputTokens)} max ·{" "}
+              {formatDatasetDuration(run.sampleTimeoutSeconds * 1000)} limit
             </p>
           </div>
           <div className="min-w-0">
@@ -124,6 +133,7 @@ function DatasetRunRow(props: DatasetRunRowProps) {
               <span className="flex items-center gap-1.5 text-[var(--text-secondary)]">
                 <StatusIcon run={run} />
                 {statusLabel(run)}
+                {elapsed ? ` · ${elapsed}` : ""}
               </span>
               <span className="tabular-nums text-[var(--text-muted)]">
                 {finishedItems}/{run.totalItems}
@@ -172,15 +182,28 @@ function DatasetRunRow(props: DatasetRunRowProps) {
               <CircleStop className="h-3.5 w-3.5" />
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => props.onRemove(run.id)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--icon-muted)] hover:bg-[var(--surface-hover)] hover:text-red-300"
-              title="Remove run"
-              aria-label="Remove run"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            <>
+              {run.completedItems < run.totalItems ? (
+                <button
+                  type="button"
+                  onClick={() => props.onRetry(run.id)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--icon-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                  title="Retry incomplete samples"
+                  aria-label="Retry incomplete samples"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => props.onRemove(run.id)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--icon-muted)] hover:bg-[var(--surface-hover)] hover:text-red-300"
+                title="Remove run"
+                aria-label="Remove run"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -229,7 +252,7 @@ function DatasetRunRow(props: DatasetRunRowProps) {
             </div>
           ) : null}
           {props.items.map((item) => (
-            <DatasetItemRow key={item.id} item={item} />
+            <DatasetItemRow key={item.id} item={item} run={run} />
           ))}
         </div>
       ) : null}
@@ -250,6 +273,7 @@ interface DatasetRunsSectionProps {
   onExport: (runId: string, card: boolean) => void;
   onFormatChange: (format: ResearchExportFormat) => void;
   onRemove: (runId: string) => void;
+  onRetry: (runId: string) => void;
   onSanitizeChange: (sanitize: boolean) => void;
   onSelect: (runId: string | null) => void;
 }
@@ -321,6 +345,7 @@ export function DatasetRunsSection(props: DatasetRunsSectionProps) {
           onCancel={props.onCancel}
           onExport={props.onExport}
           onRemove={props.onRemove}
+          onRetry={props.onRetry}
         />
       ))}
     </section>

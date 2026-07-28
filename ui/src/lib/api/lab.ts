@@ -140,6 +140,8 @@ export interface AgentDatasetRun {
   samplesPerPrompt: number;
   concurrency: number;
   toolsEnabled: boolean;
+  maxOutputTokens: number;
+  sampleTimeoutSeconds: number;
   totalItems: number;
   completedItems: number;
   failedItems: number;
@@ -170,6 +172,21 @@ export interface AgentDatasetItem {
   startedAt: string | null;
   completedAt: string | null;
 }
+
+export type DatasetPromptFocus =
+  | "mixed"
+  | "coding"
+  | "reasoning"
+  | "research"
+  | "tool_use"
+  | "writing";
+
+export type DatasetPromptDifficulty =
+  | "mixed"
+  | "foundational"
+  | "intermediate"
+  | "advanced"
+  | "expert";
 
 export type IntelligenceTaskDifficulty =
   | "basic"
@@ -301,14 +318,41 @@ export const datasetRunsApi = {
     samplesPerPrompt: number;
     concurrency: number;
     toolsEnabled: boolean;
+    maxOutputTokens: number;
+    sampleTimeoutSeconds: number;
   }) =>
     fetchApi<{ success: boolean; run?: AgentDatasetRun; error?: string }>("/evals/datasets", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  generatePrompts: (payload: {
+    agentId: string;
+    targetAgentId: string;
+    objective: string;
+    focus: DatasetPromptFocus;
+    difficulty: DatasetPromptDifficulty;
+    count: number;
+    toolsEnabled: boolean;
+    seedPrompts: string[];
+  }) =>
+    fetchApi<{
+      success: boolean;
+      prompts?: string[];
+      author?: { id: string; name: string; model: string | null };
+      target?: { id: string; name: string; model: string | null };
+      error?: string;
+    }>("/evals/dataset-prompts", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
   cancel: (runId: string) =>
     fetchApi<{ success: boolean; run?: AgentDatasetRun; error?: string }>(
       `/evals/datasets/${encodeURIComponent(runId)}/cancel`,
+      { method: "POST" }
+    ),
+  retry: (runId: string) =>
+    fetchApi<{ success: boolean; run?: AgentDatasetRun; error?: string }>(
+      `/evals/datasets/${encodeURIComponent(runId)}/retry`,
       { method: "POST" }
     ),
   remove: (runId: string) =>

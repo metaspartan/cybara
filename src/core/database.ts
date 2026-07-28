@@ -301,6 +301,8 @@ try {
     samples_per_prompt INTEGER NOT NULL,
     concurrency INTEGER NOT NULL,
     tools_enabled INTEGER NOT NULL DEFAULT 1,
+    max_output_tokens INTEGER NOT NULL DEFAULT 4096,
+    sample_timeout_seconds INTEGER NOT NULL DEFAULT 300,
     total_items INTEGER NOT NULL,
     cancel_requested INTEGER NOT NULL DEFAULT 0,
     error TEXT,
@@ -514,6 +516,15 @@ try {
     db.exec("ALTER TABLE agent_goldens ADD COLUMN assertions_json TEXT");
   } catch {}
 
+  for (const sql of [
+    "ALTER TABLE agent_dataset_runs ADD COLUMN max_output_tokens INTEGER NOT NULL DEFAULT 4096",
+    "ALTER TABLE agent_dataset_runs ADD COLUMN sample_timeout_seconds INTEGER NOT NULL DEFAULT 300",
+  ]) {
+    try {
+      db.exec(sql);
+    } catch {}
+  }
+
   try {
     db.exec(
       "CREATE INDEX IF NOT EXISTS idx_chat_sessions_pinned_updated ON chat_sessions(pinned DESC, updated_at DESC)"
@@ -686,6 +697,8 @@ db.exec(`
     samples_per_prompt INTEGER NOT NULL,
     concurrency INTEGER NOT NULL,
     tools_enabled INTEGER NOT NULL DEFAULT 1,
+    max_output_tokens INTEGER NOT NULL DEFAULT 4096,
+    sample_timeout_seconds INTEGER NOT NULL DEFAULT 300,
     total_items INTEGER NOT NULL,
     cancel_requested INTEGER NOT NULL DEFAULT 0,
     error TEXT,

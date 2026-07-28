@@ -43,3 +43,11 @@ export function parseDatasetPrompts(source: string): string[] {
     return prompt ? [prompt] : [];
   });
 }
+
+export function formatDatasetPromptsForEditor(prompts: string[]): string {
+  return prompts
+    .map((prompt) =>
+      /[\r\n]/.test(prompt) ? JSON.stringify({ prompt: prompt.replace(/\r\n/g, "\n") }) : prompt
+    )
+    .join("\n");
+}

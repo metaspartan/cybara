@@ -120,6 +120,55 @@ describe("Agent provider Google and compatible routing", () => {
     });
   });
 
+  test("applies scoped reasoning and output limits without changing agent settings", async () => {
+    let requestBody: Record<string, unknown> = {};
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBody = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      return Response.json({
+        id: "scoped-agent-response",
+        model: "kimi-k3",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "Done" },
+          },
+        ],
+        usage: { prompt_tokens: 8, completion_tokens: 1, total_tokens: 9 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "moonshot",
+      name: "Scoped Execution Provider",
+      api_key: "scoped-execution-token",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Scoped Execution Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "kimi-k3",
+      config: { model_params: { reasoning_effort: "high" } },
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Reply briefly." }],
+      {
+        useTools: false,
+        modelParamsOverride: { reasoning_effort: "minimal" },
+        maxOutputTokens: 777,
+      }
+    );
+
+    expect(result.content).toBe("Done");
+    expect(requestBody.reasoning_effort).toBe("low");
+    expect(requestBody.max_tokens).toBe(777);
+    expect(agentManager.get(agent.id)?.config).toContain('"reasoning_effort":"high"');
+  });
+
   test("routes google providers through generateContent with x-goog-api-key and model normalization", async () => {
     let requestUrl = "";
     let requestBody: Record<string, unknown> = {};

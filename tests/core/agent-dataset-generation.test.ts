@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   type AgentDatasetItem,
   type AgentDatasetRun,
+  cancelDatasetRunExecutions,
   createDatasetRun,
   deleteDatasetRun,
   getDatasetRun,
@@ -9,6 +10,7 @@ import {
   recordCompletedTrajectory,
   registerDatasetItemExecutor,
   requestDatasetRunCancel,
+  retryDatasetRun,
   startDatasetRun,
 } from "../../src/core/agent-eval";
 
@@ -146,13 +148,14 @@ describe("agent dataset generation", () => {
     expect(deleteDatasetRun(second.id)).toBe(true);
   });
 
-  test("finishes an active sample while cancelling queued work", async () => {
-    let release: (() => void) | null = null;
-    registerDatasetItemExecutor(async (activeRun, item) => {
-      await new Promise<void>((resolve) => {
-        release = resolve;
+  test("aborts an active sample while cancelling queued work", async () => {
+    let started = false;
+    registerDatasetItemExecutor(async (_activeRun, _item, signal) => {
+      started = true;
+      await new Promise<void>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
       });
-      return { trajectoryId: createTrajectory(activeRun, item), usage: completedUsage };
+      throw new Error("unreachable");
     });
     const run = createDatasetRun({
       name: "Cancel active teacher",
@@ -164,14 +167,70 @@ describe("agent dataset generation", () => {
     });
 
     expect(startDatasetRun(run.id)).toBe(true);
-    for (let attempt = 0; attempt < 50 && !release; attempt += 1) await Bun.sleep(2);
-    expect(release).not.toBeNull();
+    for (let attempt = 0; attempt < 50 && !started; attempt += 1) await Bun.sleep(2);
+    expect(started).toBe(true);
     expect(requestDatasetRunCancel(run.id)?.cancelRequested).toBe(true);
-    release?.();
+    expect(cancelDatasetRunExecutions(run.id)).toBe(1);
     const cancelled = await waitForRun(run.id);
     expect(cancelled?.status).toBe("cancelled");
-    expect(cancelled?.completedItems).toBe(1);
-    expect(cancelled?.cancelledItems).toBe(2);
+    expect(cancelled?.completedItems).toBe(0);
+    expect(cancelled?.cancelledItems).toBe(3);
+    expect(deleteDatasetRun(run.id)).toBe(true);
+  });
+
+  test("fails a sample that exceeds its configured time limit", async () => {
+    registerDatasetItemExecutor(async (_run, _item, signal) => {
+      await new Promise<void>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+      throw new Error("unreachable");
+    });
+    const run = createDatasetRun({
+      name: "Bounded teacher",
+      agentId: "teacher-agent",
+      prompts: ["Slow prompt"],
+      samplesPerPrompt: 1,
+      concurrency: 1,
+      toolsEnabled: true,
+      sampleTimeoutSeconds: 0.02,
+    });
+
+    expect(startDatasetRun(run.id)).toBe(true);
+    const failed = await waitForRun(run.id);
+    expect(failed?.status).toBe("error");
+    expect(failed?.failedItems).toBe(1);
+    expect(listDatasetRunItems(run.id)[0]?.error).toContain("time limit");
+    expect(deleteDatasetRun(run.id)).toBe(true);
+  });
+
+  test("retries only incomplete samples and preserves completed work", async () => {
+    let attempts = 0;
+    registerDatasetItemExecutor(async (activeRun, item) => {
+      attempts += 1;
+      if (item.prompt === "Retry" && attempts === 2) throw new Error("temporary failure");
+      return { trajectoryId: createTrajectory(activeRun, item), usage: completedUsage };
+    });
+    const run = createDatasetRun({
+      name: "Retry teacher",
+      agentId: "teacher-agent",
+      prompts: ["Keep", "Retry"],
+      samplesPerPrompt: 1,
+      concurrency: 1,
+      toolsEnabled: false,
+    });
+
+    expect(startDatasetRun(run.id)).toBe(true);
+    const first = await waitForRun(run.id);
+    expect(first?.completedItems).toBe(1);
+    expect(first?.failedItems).toBe(1);
+    const queuedRetry = retryDatasetRun(run.id);
+    expect(queuedRetry?.status).toBe("queued");
+    expect(queuedRetry?.startedAt).toBeNull();
+    expect(startDatasetRun(run.id)).toBe(true);
+    const retried = await waitForRun(run.id);
+    expect(retried?.status).toBe("completed");
+    expect(retried?.completedItems).toBe(2);
+    expect(attempts).toBe(3);
     expect(deleteDatasetRun(run.id)).toBe(true);
   });
 

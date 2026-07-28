@@ -6,6 +6,7 @@ import {
   type AgentEvalRun,
   applyGoldenAssertions,
   buildTrajectoryStructure,
+  cancelDatasetRunExecutions,
   cancelIntelligenceBenchmarkRun,
   clearIntelligenceBenchmarkCancelRequest,
   compareTrajectoryStructures,
@@ -15,8 +16,8 @@ import {
   createEvalSuiteBundle,
   createIntelligenceBenchmarkRun,
   createResearchDatasetCard,
-  deleteGolden,
   deleteDatasetRun,
+  deleteGolden,
   deleteIntelligenceBenchmarkRun,
   deleteSessionTrajectories,
   type EvalReplayOptions,
@@ -28,8 +29,8 @@ import {
   findRunningIntelligenceBenchmark,
   finishEvalRun,
   forkSessionFromMessages,
-  getGolden,
   getDatasetRun,
+  getGolden,
   getTrajectory,
   gradeIntelligenceBenchmarkTask,
   INTELLIGENCE_RATING_EDGE_MARGIN,
@@ -37,11 +38,11 @@ import {
   importGoldens,
   intelligenceRatingManifest,
   intelligenceRatingTasks,
-  isIntelligenceBenchmarkCancelRequested,
   isDatasetRunActive,
-  listEvalRuns,
+  isIntelligenceBenchmarkCancelRequested,
   listDatasetRunItems,
   listDatasetRuns,
+  listEvalRuns,
   listGoldens,
   listIntelligenceBenchmarkRuns,
   listSessionTrajectories,
@@ -50,8 +51,9 @@ import {
   parseResearchExportFormat,
   registerEvalReplayExecutor,
   requestDatasetRunCancel,
-  resumeDatasetRuns,
   requestIntelligenceBenchmarkCancel,
+  resumeDatasetRuns,
+  retryDatasetRun,
   saveGolden,
   startDatasetRun,
   summarizeGolden,
@@ -60,6 +62,13 @@ import {
   updateGoldenAssertions,
   updateIntelligenceBenchmarkRun,
 } from "../../core/agent-eval";
+import {
+  datasetPromptAuthorMaxOutputTokens,
+  generateDatasetPromptDraft,
+  parseDatasetPromptDifficulty,
+  parseDatasetPromptFocus,
+} from "../../core/agent-eval/prompt-generation";
+import { parseAgentConfig } from "../../core/agent-internals";
 import { config } from "../../core/config";
 import { deleteSession, handleChat } from "../chat";
 import "../eval-dataset-runtime";
@@ -288,6 +297,86 @@ export const evalRoutes: Record<string, RouteHandler> = {
       }),
     };
   },
+  "POST /api/evals/dataset-prompts": async (body) => {
+    requireLabEnabled();
+    const data = (body || {}) as {
+      agentId?: string;
+      targetAgentId?: string;
+      objective?: string;
+      focus?: unknown;
+      difficulty?: unknown;
+      count?: number;
+      toolsEnabled?: boolean;
+      seedPrompts?: unknown;
+    };
+    const authorAgent = agentManager.get(data.agentId?.trim() || "");
+    if (!authorAgent) return { success: false, error: "Select an available prompt author" };
+    const targetAgent = agentManager.get(data.targetAgentId?.trim() || "");
+    if (!targetAgent) return { success: false, error: "Select an available teacher agent" };
+    const count = Math.floor(data.count ?? 12);
+    if (!Number.isFinite(count) || count < 1 || count > 50) {
+      return { success: false, error: "Prompt count must be between 1 and 50" };
+    }
+    const objective = typeof data.objective === "string" ? data.objective.trim() : "";
+    if (objective.length > 4_000) {
+      return { success: false, error: "Dataset objective must be 4,000 characters or fewer" };
+    }
+    const seedPrompts = Array.isArray(data.seedPrompts)
+      ? data.seedPrompts
+          .filter((prompt): prompt is string => typeof prompt === "string")
+          .map((prompt) => prompt.trim().slice(0, 4_000))
+          .filter(Boolean)
+          .slice(0, 20)
+      : [];
+    const targetAgentConfig = parseAgentConfig(targetAgent.config, targetAgent.id);
+    const targetToolProfileValue = targetAgentConfig.tool_profile ?? targetAgentConfig.toolProfile;
+    const promptAuthorSignal = AbortSignal.timeout(180_000);
+    const prompts = await generateDatasetPromptDraft(
+      {
+        authorAgentName: authorAgent.name,
+        authorModel: authorAgent.model || null,
+        targetAgentName: targetAgent.name,
+        targetModel: targetAgent.model || null,
+        targetToolProfile:
+          typeof targetToolProfileValue === "string" ? targetToolProfileValue : null,
+        objective,
+        focus: parseDatasetPromptFocus(data.focus),
+        difficulty: parseDatasetPromptDifficulty(data.difficulty),
+        count,
+        toolsEnabled: data.toolsEnabled !== false,
+        seedPrompts,
+      },
+      async (messages) => {
+        const result = await agentManager.execute(authorAgent.id, messages, {
+          useTools: false,
+          useMemory: false,
+          abortSignal: promptAuthorSignal,
+          modelParamsOverride: { reasoning_effort: "minimal" },
+          maxOutputTokens: datasetPromptAuthorMaxOutputTokens(count),
+        });
+        if (result.failure) {
+          throw new Error(
+            result.content || "The prompt author provider could not complete the request"
+          );
+        }
+        return result.content;
+      }
+    );
+    return {
+      success: true,
+      prompts,
+      author: {
+        id: authorAgent.id,
+        name: authorAgent.name,
+        model: authorAgent.model || null,
+      },
+      target: {
+        id: targetAgent.id,
+        name: targetAgent.name,
+        model: targetAgent.model || null,
+      },
+    };
+  },
   "POST /api/evals/datasets": (body) => {
     requireLabEnabled();
     const data = (body || {}) as {
@@ -297,6 +386,8 @@ export const evalRoutes: Record<string, RouteHandler> = {
       samplesPerPrompt?: number;
       concurrency?: number;
       toolsEnabled?: boolean;
+      maxOutputTokens?: number;
+      sampleTimeoutSeconds?: number;
     };
     const agentId = data.agentId?.trim() || "";
     const agent = agentManager.get(agentId);
@@ -321,6 +412,14 @@ export const evalRoutes: Record<string, RouteHandler> = {
     if (concurrency < 1 || concurrency > 6) {
       return { success: false, error: "Concurrency must be between 1 and 6" };
     }
+    const maxOutputTokens = Math.floor(data.maxOutputTokens ?? 4096);
+    if (maxOutputTokens < 512 || maxOutputTokens > 32768) {
+      return { success: false, error: "Output budget must be between 512 and 32,768 tokens" };
+    }
+    const sampleTimeoutSeconds = Math.floor(data.sampleTimeoutSeconds ?? 300);
+    if (sampleTimeoutSeconds < 30 || sampleTimeoutSeconds > 3600) {
+      return { success: false, error: "Sample timeout must be between 30 and 3,600 seconds" };
+    }
     const run = createDatasetRun({
       name: data.name?.trim().slice(0, 120) || `Dataset ${new Date().toLocaleDateString()}`,
       agentId,
@@ -330,6 +429,8 @@ export const evalRoutes: Record<string, RouteHandler> = {
       samplesPerPrompt,
       concurrency,
       toolsEnabled: data.toolsEnabled !== false,
+      maxOutputTokens,
+      sampleTimeoutSeconds,
     });
     startDatasetRun(run.id);
     return { success: true, run: getDatasetRun(run.id) ?? run };
@@ -339,7 +440,16 @@ export const evalRoutes: Record<string, RouteHandler> = {
     const id = params?.id?.trim() || "";
     const run = requestDatasetRunCancel(id);
     if (!run) return { success: false, error: "Dataset run not found" };
+    cancelDatasetRunExecutions(id);
     if (!isDatasetRunActive(id)) resumeDatasetRuns();
+    return { success: true, run: getDatasetRun(id) ?? run };
+  },
+  "POST /api/evals/datasets/:id/retry": (_body, params) => {
+    requireLabEnabled();
+    const id = params?.id?.trim() || "";
+    const run = retryDatasetRun(id);
+    if (!run) return { success: false, error: "Run has no incomplete samples to retry" };
+    startDatasetRun(id);
     return { success: true, run: getDatasetRun(id) ?? run };
   },
   "DELETE /api/evals/datasets/:id": (_body, params) => {

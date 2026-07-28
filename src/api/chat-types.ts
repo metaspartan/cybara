@@ -1,5 +1,5 @@
-import { type AgentTransferEnvelope } from "../core/agent-transfer";
 import { type AgentExecutionFailure } from "../core/agent";
+import { type AgentTransferEnvelope } from "../core/agent-transfer";
 import { type AgentImage } from "../core/llm/image-blocks";
 import { type SessionContextUsage, type SessionTokenUsage } from "../core/session-context";
 import { type SessionPlanSnapshot } from "../core/session-plan";
@@ -54,6 +54,9 @@ export interface ChatRequest {
   useModelRouter?: boolean;
   awaitQueuedCompletion?: boolean;
   images?: AgentImage[];
+  abortSignal?: AbortSignal;
+  maxOutputTokens?: number;
+  modelParamsOverride?: Record<string, unknown>;
 }
 
 export interface SteerPendingChatMessageOptions {

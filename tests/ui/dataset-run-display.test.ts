@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   datasetRunProviderLabel,
   formatDatasetDuration,
+  formatDatasetElapsed,
   formatDatasetMetricCount,
 } from "../../ui/src/pages/research/datasetRunDisplay";
 
@@ -17,5 +18,8 @@ describe("dataset run display", () => {
     expect(formatDatasetDuration(425)).toBe("425ms");
     expect(formatDatasetDuration(12_500)).toBe("12.5s");
     expect(formatDatasetDuration(125_000)).toBe("2m 5s");
+    expect(
+      formatDatasetElapsed("2026-07-27 12:00:00", null, Date.parse("2026-07-27T12:02:05Z"))
+    ).toBe("2m 5s");
   });
 });

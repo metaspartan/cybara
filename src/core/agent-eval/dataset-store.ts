@@ -17,6 +17,8 @@ interface DatasetRunRow {
   samples_per_prompt: number;
   concurrency: number;
   tools_enabled: number;
+  max_output_tokens: number;
+  sample_timeout_seconds: number;
   total_items: number;
   cancel_requested: number;
   error: string | null;
@@ -188,6 +190,8 @@ function runFromRow(row: DatasetRunRow): AgentDatasetRun {
     samplesPerPrompt: row.samples_per_prompt,
     concurrency: row.concurrency,
     toolsEnabled: row.tools_enabled === 1,
+    maxOutputTokens: Math.max(512, Number(row.max_output_tokens || 4096)),
+    sampleTimeoutSeconds: Math.max(0.01, Number(row.sample_timeout_seconds || 300)),
     totalItems: row.total_items,
     completedItems: Number(counts.completed_items || 0),
     failedItems: Number(counts.failed_items || 0),
@@ -212,13 +216,16 @@ export function createDatasetRun(input: {
   samplesPerPrompt: number;
   concurrency: number;
   toolsEnabled: boolean;
+  maxOutputTokens?: number;
+  sampleTimeoutSeconds?: number;
 }): AgentDatasetRun {
   const id = crypto.randomUUID();
   db.transaction(() => {
     db.prepare(
       `INSERT INTO agent_dataset_runs
-        (id, name, agent_id, provider, model, samples_per_prompt, concurrency, tools_enabled, total_items)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (id, name, agent_id, provider, model, samples_per_prompt, concurrency, tools_enabled,
+         max_output_tokens, sample_timeout_seconds, total_items)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       input.name,
@@ -228,6 +235,8 @@ export function createDatasetRun(input: {
       input.samplesPerPrompt,
       input.concurrency,
       input.toolsEnabled ? 1 : 0,
+      input.maxOutputTokens ?? 4096,
+      input.sampleTimeoutSeconds ?? 300,
       input.prompts.length * input.samplesPerPrompt
     );
     const insertItem = db.prepare(
@@ -352,6 +361,18 @@ export function failDatasetItem(itemId: string, error: string): AgentDatasetItem
   return row ? itemFromRow(row) : null;
 }
 
+export function cancelDatasetItem(itemId: string, error: string): AgentDatasetItem | null {
+  db.prepare(
+    `UPDATE agent_dataset_items
+     SET status = 'cancelled', error = ?, completed_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND status = 'running'`
+  ).run(error, itemId);
+  const row = db
+    .prepare("SELECT * FROM agent_dataset_items WHERE id = ?")
+    .get(itemId) as DatasetItemRow | null;
+  return row ? itemFromRow(row) : null;
+}
+
 export function requestDatasetRunCancel(runId: string): AgentDatasetRun | null {
   const cancelled = db.transaction(() => {
     const changed = db
@@ -391,6 +412,28 @@ export function finalizeDatasetRun(runId: string, runtimeError?: string): AgentD
      WHERE id = ?`
   ).run(status, error, runId);
   return getDatasetRun(runId);
+}
+
+export function retryDatasetRun(runId: string): AgentDatasetRun | null {
+  const retried = db.transaction(() => {
+    const run = getDatasetRun(runId);
+    if (!run || run.status === "queued" || run.status === "running") return false;
+    const reset = db
+      .prepare(
+        `UPDATE agent_dataset_items
+         SET status = 'queued', started_at = NULL, completed_at = NULL, error = NULL
+         WHERE run_id = ? AND status != 'completed'`
+      )
+      .run(runId).changes;
+    if (reset === 0) return false;
+    db.prepare(
+      `UPDATE agent_dataset_runs
+       SET status = 'queued', cancel_requested = 0, started_at = NULL, completed_at = NULL, error = NULL
+       WHERE id = ?`
+    ).run(runId);
+    return true;
+  })();
+  return retried ? getDatasetRun(runId) : null;
 }
 
 export function deleteDatasetRun(runId: string): boolean {

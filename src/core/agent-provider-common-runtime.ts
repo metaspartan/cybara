@@ -186,11 +186,12 @@ export abstract class AgentProviderCommonRuntime {
   ): Promise<AgentProviderResponse>;
 
   protected resolveModelParams(toolContext?: ToolContext): Record<string, unknown> {
+    const override = toolContext?.modelParamsOverride ?? {};
     const agentId = toolContext?.agentId;
-    if (!agentId) return {};
+    if (!agentId) return { ...override };
 
     const agent = this.get(agentId);
-    if (!agent) return {};
+    if (!agent) return { ...override };
 
     const parsedConfig = parseAgentConfig(agent.config, agent.id);
     const params = parseModelParams(parsedConfig.model_params ?? parsedConfig.modelParams);
@@ -198,7 +199,7 @@ export abstract class AgentProviderCommonRuntime {
       const globalDefault = config.getDefaultReasoningEffort();
       if (globalDefault) params.reasoning_effort = globalDefault;
     }
-    return params;
+    return { ...params, ...override };
   }
 
   protected resolveAgenticLoopPolicy(toolContext?: ToolContext): AgenticLoopPolicy {
@@ -552,11 +553,18 @@ export abstract class AgentProviderCommonRuntime {
     const customHeaders = (providerInfo as { headers?: Record<string, string> }).headers || {};
     const mergedHeaders = { ...providerHeaders, ...customHeaders };
     const modelParams = this.resolveModelParams(toolContext);
-    const modelMaxOutputTokens = resolveModelMaxOutputTokens(
+    const resolvedModelMaxOutputTokens = resolveModelMaxOutputTokens(
       providerConfig,
       providerInfo.id,
       modelId
     );
+    const requestedMaxOutputTokens = toolContext?.maxOutputTokens;
+    const modelMaxOutputTokens =
+      typeof requestedMaxOutputTokens === "number" &&
+      Number.isFinite(requestedMaxOutputTokens) &&
+      requestedMaxOutputTokens > 0
+        ? Math.min(resolvedModelMaxOutputTokens, Math.floor(requestedMaxOutputTokens))
+        : resolvedModelMaxOutputTokens;
     const modelContextWindowTokens = resolveModelContextWindowTokens(
       providerConfig,
       providerInfo.id,

@@ -7,7 +7,7 @@ describe("chat tool pass boundary", () => {
 
     expect(source).not.toContain("If more actions are needed to fully complete");
     expect(source).not.toContain("summaryToolPolicy");
-    expect(source).toContain("if (!responseContent.trim())");
+    expect(source).toContain("if (options.responseContent.trim()) return options.responseContent");
     expect(source).toContain("Answer the user from these results. Do not call tools.");
   });
 });
