@@ -37,6 +37,8 @@ describe("CLI chat source wiring", () => {
     expect(chatSource).toContain('queueMode: "queue"');
     expect(chatSource).toContain("/pending/reorder");
     expect(chatSource).toContain("Working. Type a follow-up to queue it");
+    expect(chatSource).toContain("sessionId ||= crypto.randomUUID();");
+    expect(chatSource).toContain("{ message, sessionId, tools: true }");
     expect(chatSource).toContain("formatMarkdownForTerminal");
     expect(chatSource).toContain("agentId = await resolveAgentId(agentId)");
     expect(chatSource).toContain('fetchAPI<CliChatSessionSummary[]>("/api/sessions?limit=10")');

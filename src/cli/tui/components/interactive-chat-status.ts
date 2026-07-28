@@ -24,7 +24,45 @@ interface InteractiveChatStatusState {
   streamDetail: string;
   streamingText: string;
   streamStatus: TUIStreamStatus;
-  queuedTurnHandoff: { sessionId: string; pendingChatId: string; timestamp: number } | null;
+  queuedTurnHandoff: QueuedTurnHandoff | null;
+}
+
+export interface QueuedTurnHandoff {
+  sessionId: string;
+  pendingChatId: string;
+  phase: "started" | "completed";
+  timestamp: number;
+}
+
+export function reconcileQueuedTurnHandoff(
+  current: QueuedTurnHandoff | null,
+  event: TUIStatusStreamEvent,
+  activeSessionId: string
+): QueuedTurnHandoff | null {
+  if (!activeSessionId) return current;
+  if (event.type === "snapshot") {
+    if (
+      current?.sessionId === activeSessionId &&
+      current.phase === "started" &&
+      !event.activeSessions.some((session) => session.sessionId === activeSessionId)
+    ) {
+      return { ...current, phase: "completed", timestamp: event.timestamp };
+    }
+    return current;
+  }
+  if (event.type !== "status" || event.sessionId !== activeSessionId) return current;
+  if (event.pendingChatId || event.detail?.trim().toLowerCase() === "starting queued follow-up") {
+    return {
+      sessionId: activeSessionId,
+      pendingChatId: event.pendingChatId || `${activeSessionId}-${event.timestamp}`,
+      phase: "started",
+      timestamp: event.timestamp,
+    };
+  }
+  if (event.status === "idle" && current?.sessionId === activeSessionId) {
+    return { ...current, phase: "completed", timestamp: event.timestamp };
+  }
+  return current;
 }
 
 export function useInteractiveChatStatus({
@@ -37,17 +75,16 @@ export function useInteractiveChatStatus({
   const [streamDetail, setStreamDetail] = React.useState("");
   const [streamingText, setStreamingText] = React.useState("");
   const [liveActivities, setLiveActivities] = React.useState<TUIStreamActivity[]>([]);
-  const [queuedTurnHandoff, setQueuedTurnHandoff] = React.useState<{
-    sessionId: string;
-    pendingChatId: string;
-    timestamp: number;
-  } | null>(null);
+  const [queuedTurnHandoff, setQueuedTurnHandoff] = React.useState<QueuedTurnHandoff | null>(null);
 
   React.useEffect(() => {
     const controller = new AbortController();
     const appendStatusActivity = (event: TUIStatusStreamEvent): void => {
       const activeSessionId = sessionIdRef.current;
       if (event.type === "snapshot") {
+        setQueuedTurnHandoff((current) =>
+          reconcileQueuedTurnHandoff(current, event, activeSessionId)
+        );
         setStreamingText((current) => reconcileTUIStreamingText(current, event, activeSessionId));
         const active = event.activeSessions.find(
           (session) => session.sessionId === activeSessionId
@@ -70,16 +107,9 @@ export function useInteractiveChatStatus({
         setStreamingText((current) => current + event.delta);
         return;
       }
-      if (
-        event.pendingChatId ||
-        event.detail?.trim().toLowerCase() === "starting queued follow-up"
-      ) {
-        setQueuedTurnHandoff({
-          sessionId: activeSessionId,
-          pendingChatId: event.pendingChatId || `${activeSessionId}-${event.timestamp}`,
-          timestamp: event.timestamp,
-        });
-      }
+      setQueuedTurnHandoff((current) =>
+        reconcileQueuedTurnHandoff(current, event, activeSessionId)
+      );
       setStreamStatus(event.status);
       setStreamDetail(
         event.detail && !isProviderRecoveryStatusLabel(event.detail) ? event.detail : ""
