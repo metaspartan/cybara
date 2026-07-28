@@ -114,6 +114,11 @@ mock.module("../../src/core/tools/handlers/memory", () => ({
     query: "mock-query",
     searchMethod: memoryMockState.searchMethod,
   }),
+  handleSessionSearch: async () => ({
+    results: [],
+    query: "mock-query",
+    sessionsSearched: 0,
+  }),
   handleMemoryGet: async () => ({
     content: memoryMockState.context,
     file: "2026-02-18.md",

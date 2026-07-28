@@ -35,7 +35,10 @@ import {
   trackEstimatedSessionTokenUsage,
 } from "./llm/session-token-usage";
 import { createStreamWatchdog, resolveLlmWatchdogDefaults } from "./llm/stream-watchdog";
-import { consumeOpenAIChatStream } from "./llm/streaming-completions";
+import {
+  consumeOpenAIChatStream,
+  IncompleteOpenAIChatStreamError,
+} from "./llm/streaming-completions";
 import { coalesceSystemMessages } from "./llm/system-messages";
 import { hasTextToolCallMarkup, sanitizeAssistantContent } from "./llm/text-tool-calls";
 import {
@@ -1062,7 +1065,25 @@ export abstract class AgentProviderCommonRuntime {
 
     let attemptedNonStreamingRetry = false;
     while (true) {
-      const result = await post(currentBody);
+      let result: Response | OpenAIResponse;
+      try {
+        result = await post(currentBody);
+      } catch (error) {
+        if (
+          !attemptedNonStreamingRetry &&
+          !streamingDisabled &&
+          error instanceof IncompleteOpenAIChatStreamError
+        ) {
+          attemptedNonStreamingRetry = true;
+          streamingDisabled = true;
+          this.logProviderRetryStatus(
+            streamContext,
+            "Provider stream ended early; recovering response..."
+          );
+          continue;
+        }
+        throw error;
+      }
       if (!(result instanceof Response)) {
         return result;
       }

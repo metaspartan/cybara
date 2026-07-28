@@ -125,7 +125,9 @@ describe("index.css design-system utilities", () => {
 
   test("uses theme-aware neutral tokens for chat and workspace actions", () => {
     const chat =
-      read("../../ui/src/pages/Chat.tsx") + read("../../ui/src/pages/chat/ChatMessageTimeline.tsx");
+      read("../../ui/src/pages/Chat.tsx") +
+      read("../../ui/src/pages/chat/ChatMessageTimeline.tsx") +
+      read("../../ui/src/pages/chat/ChatMessageActionRow.tsx");
     const sessionSidebar = read("../../ui/src/pages/chat/SessionSidebar.tsx");
 
     expect(css).toContain("--icon-muted");

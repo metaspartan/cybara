@@ -19,7 +19,10 @@ describe("agent eval UI wiring", () => {
       read("ui/src/pages/research/DatasetRunsSection.tsx"),
     ].join("\n");
     const benchmarks = read("ui/src/pages/research/BenchmarkPanel.tsx");
-    const chat = read("ui/src/pages/Chat.tsx") + read("ui/src/pages/chat/ChatMessageTimeline.tsx");
+    const chat =
+      read("ui/src/pages/Chat.tsx") +
+      read("ui/src/pages/chat/ChatMessageTimeline.tsx") +
+      read("ui/src/pages/chat/ChatMessageActionRow.tsx");
 
     expect(app).toContain('path="/lab"');
     expect(app).toContain('path="/evals" element={<Navigate to="/lab" replace />}');

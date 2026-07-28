@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from "fs";
 import { type AgentImage, MAX_INLINE_IMAGE_BYTES } from "../llm/image-blocks";
-import type { MessageHandlerFileInfo } from "./types";
+import type { MessageHandlerAttachmentInfo, MessageHandlerFileInfo } from "./types";
 
 const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp)$/i;
 const TEXT_EXTENSION =
@@ -18,24 +18,36 @@ export function channelFileIsImage(fileInfo?: Partial<MessageHandlerFileInfo>): 
   return fileType.startsWith("image/") || IMAGE_EXTENSION.test(filePath);
 }
 
+function channelFiles(
+  fileInfo?: Partial<MessageHandlerFileInfo>
+): Partial<MessageHandlerAttachmentInfo>[] {
+  if (!fileInfo?.hasFile) return [];
+  if (Array.isArray(fileInfo.files) && fileInfo.files.length > 0) return fileInfo.files;
+  return [fileInfo];
+}
+
 export function buildChannelImages(fileInfo?: Partial<MessageHandlerFileInfo>): AgentImage[] {
-  if (!fileInfo || !channelFileIsImage(fileInfo)) return [];
-  const filePath = (fileInfo.filePath || "").trim();
-  const fileType = (fileInfo.fileType || "").toLowerCase();
-  if (!filePath) return [];
-
-  if (isHttpUrl(filePath)) {
-    return [{ url: filePath, mimeType: fileType || undefined }];
+  const images: AgentImage[] = [];
+  for (const file of channelFiles(fileInfo)) {
+    if (!channelFileIsImage(file)) continue;
+    const filePath = (file.filePath || "").trim();
+    const fileType = (file.fileType || "").toLowerCase();
+    if (!filePath) continue;
+    if (isHttpUrl(filePath)) {
+      images.push({ url: filePath, mimeType: fileType || undefined });
+      continue;
+    }
+    try {
+      if (!existsSync(filePath)) continue;
+      const stats = statSync(filePath);
+      if (stats.isDirectory() || stats.size > MAX_INLINE_IMAGE_BYTES) continue;
+      images.push({
+        data: readFileSync(filePath).toString("base64"),
+        mimeType: fileType || "image/png",
+      });
+    } catch {}
   }
-
-  try {
-    if (!existsSync(filePath)) return [];
-    const stats = statSync(filePath);
-    if (stats.isDirectory() || stats.size > MAX_INLINE_IMAGE_BYTES) return [];
-    return [{ data: readFileSync(filePath).toString("base64"), mimeType: fileType || "image/png" }];
-  } catch {
-    return [];
-  }
+  return images;
 }
 
 export function inlineChannelTextFile(fileInfo?: Partial<MessageHandlerFileInfo>): string | null {
@@ -69,18 +81,17 @@ export function buildChannelMessageWithFileContext(
   const parts: string[] = [];
   const normalizedMessage = message.trim();
   if (normalizedMessage) parts.push(normalizedMessage);
-  if (!fileInfo?.hasFile) return parts.join("\n\n");
-
-  const placeholder = fileInfo.placeholder?.trim() || "";
-  if (placeholder && !normalizedMessage.includes(placeholder)) parts.push(placeholder);
-
-  const inlinedText = inlineChannelTextFile(fileInfo);
-  if (inlinedText) {
-    parts.push(inlinedText);
-  } else if (!channelFileIsImage(fileInfo)) {
-    if (fileInfo.fileType?.trim()) parts.push(`[File type: ${fileInfo.fileType.trim()}]`);
-    const fileName = (fileInfo.filePath || "").trim().split(/[\\/]/).pop();
-    if (fileName) parts.push(`[File attached: ${fileName}]`);
+  for (const file of channelFiles(fileInfo)) {
+    const placeholder = file.placeholder?.trim() || "";
+    if (placeholder && !normalizedMessage.includes(placeholder)) parts.push(placeholder);
+    const inlinedText = inlineChannelTextFile(file);
+    if (inlinedText) {
+      parts.push(inlinedText);
+    } else if (!channelFileIsImage(file)) {
+      if (file.fileType?.trim()) parts.push(`[File type: ${file.fileType.trim()}]`);
+      const fileName = (file.filePath || "").trim().split(/[\\/]/).pop();
+      if (fileName) parts.push(`[File attached: ${fileName}]`);
+    }
   }
 
   return parts.join("\n\n");

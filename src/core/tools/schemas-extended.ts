@@ -4,14 +4,14 @@ export const extendedToolSchemas: Record<string, Omit<Tool, "handler">> = {
   message: {
     name: "message",
     description:
-      "List enabled channel connections and their safe destinations, send messages by destination id or friendly name, broadcast, and run supported reactions. Use action=list instead of inspecting local files or databases when a destination is unknown.",
+      "List enabled channel connections, destinations, and capabilities; send, edit, attach files, create threads, broadcast, and run supported reactions. Use action=list instead of inspecting local files or databases when a destination is unknown.",
     category: "channel",
     input_schema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          enum: ["list", "send", "broadcast", "react", "unreact"],
+          enum: ["list", "send", "broadcast", "edit", "attach", "thread", "react", "unreact"],
           description: "Message action",
         },
         channel: {
@@ -36,8 +36,9 @@ export const extendedToolSchemas: Record<string, Omit<Tool, "handler">> = {
         content: { type: "string", description: "Alias for message" },
         messageId: {
           type: "string",
-          description: "Required for react/unreact. Message id to react to.",
+          description: "Required for edit, thread, react, and unreact.",
         },
+        replyToId: { type: "string", description: "Message id to reply to when sending." },
         emoji: {
           type: "string",
           description:
@@ -49,6 +50,11 @@ export const extendedToolSchemas: Record<string, Omit<Tool, "handler">> = {
         },
         contentType: { type: "string", description: "Content type" },
         buffer: { type: "string", description: "Base64 attachment" },
+        file: { type: "string", description: "Attachment file path or URL." },
+        filename: { type: "string", description: "Attachment filename." },
+        caption: { type: "string", description: "Optional attachment caption." },
+        threadName: { type: "string", description: "Thread name for action=thread." },
+        name: { type: "string", description: "Alias for threadName." },
       },
       required: ["action"],
     },

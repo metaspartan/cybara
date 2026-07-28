@@ -1,14 +1,4 @@
-import {
-  Check,
-  Copy,
-  CornerUpRight,
-  FlaskConical,
-  Loader2,
-  RotateCcw,
-  User,
-  Volume2,
-  VolumeX,
-} from "lucide-react";
+import { User } from "lucide-react";
 import type { ReactElement } from "react";
 import {
   buildActivitiesFromToolCalls,
@@ -18,13 +8,14 @@ import {
   suppressRecoveredWebFailureActivities,
 } from "@/lib/chatActivities";
 import { chatImageSrc, toolOutputImageSources } from "@/lib/chatImages";
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { LiveActivityTimeline } from "./ActivityTimeline";
 import { assistantAuthorLabel } from "./assistantAuthors";
 import { AgentTransferTimeline } from "./AgentTransferTimeline";
 import { AssistantMetaInline } from "./AssistantMetaInline";
 import { parseTimestampMs } from "./assistantMetaModel";
 import { ChatImagePreview } from "./ChatImagePreview";
+import { ChatMessageActionRow } from "./ChatMessageActionRow";
 import type { ArtifactSummaryView, ChatMessage, RevertTarget } from "./chatModel";
 import type { ChatLinkOpenOptions } from "./chatLinkRouting";
 import {
@@ -216,99 +207,30 @@ export function ChatMessageTimeline({
                 )}
               </div>
 
-              <div
-                className={cn(
-                  "mt-1.5 flex items-center gap-1.5",
-                  message.role === "user" ? "justify-end" : "justify-start"
-                )}
-              >
-                {message.timestamp && (
-                  <span className="text-[10px] text-gray-600">
-                    {formatRelativeTime(message.timestamp)}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => onCopyMessage(originalIndex, message.content)}
-                  className="chat-message-action cursor-pointer rounded-md p-1"
-                  title="Copy message"
-                  aria-label="Copy message"
-                >
-                  {copiedMessageIndex === originalIndex ? (
-                    <Check className="h-3 w-3 text-emerald-400" />
-                  ) : (
-                    <Copy className="h-3 w-3" />
-                  )}
-                </button>
-                {!compact && message.role === "assistant" && message.content.trim() && (
-                  <button
-                    type="button"
-                    onClick={() => onReadAloud(originalIndex, message.content)}
-                    className="chat-message-action cursor-pointer rounded-md p-1"
-                    title={
-                      speakingMessageIndex === originalIndex ? "Stop reading aloud" : "Read aloud"
-                    }
-                    aria-label={
-                      speakingMessageIndex === originalIndex ? "Stop reading aloud" : "Read aloud"
-                    }
-                  >
-                    {speakingMessageIndex === originalIndex ? (
-                      <VolumeX className="h-3 w-3" />
-                    ) : (
-                      <Volume2 className="h-3 w-3" />
-                    )}
-                  </button>
-                )}
-                {!compact && sessionId && (
-                  <button
-                    type="button"
-                    onClick={() => onForkSession(originalIndex)}
-                    disabled={forkingMessageIndex !== null}
-                    className="chat-message-action cursor-pointer rounded-md p-1 disabled:opacity-50"
-                    title="Fork chat from this message"
-                    aria-label="Fork chat from this message"
-                  >
-                    {forkingMessageIndex === originalIndex ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <CornerUpRight className="h-3 w-3" />
-                    )}
-                  </button>
-                )}
-                {!compact && message.role === "assistant" && sessionId && goldenTurnsEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => onSaveGolden(originalIndex)}
-                    disabled={savingGoldenMessageIndex !== null}
-                    className="chat-message-action cursor-pointer rounded-md p-1 disabled:opacity-50"
-                    title="Save turn as golden test"
-                    aria-label="Save turn as golden test"
-                  >
-                    {savingGoldenMessageIndex === originalIndex ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <FlaskConical className="h-3 w-3" />
-                    )}
-                  </button>
-                )}
-                {!compact && message.role === "user" && sessionId && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onRevert({
-                        index: originalIndex,
-                        content: message.content,
-                        timestamp: message.timestamp,
-                      })
-                    }
-                    className="chat-message-action cursor-pointer rounded-md p-1"
-                    title="Revert to before this message"
-                    aria-label="Revert to before this message"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
+              <ChatMessageActionRow
+                compact={compact}
+                content={message.content}
+                copiedMessageIndex={copiedMessageIndex}
+                forkingMessageIndex={forkingMessageIndex}
+                goldenTurnsEnabled={goldenTurnsEnabled}
+                messageIndex={originalIndex}
+                role={message.role}
+                savingGoldenMessageIndex={savingGoldenMessageIndex}
+                sessionId={sessionId}
+                speakingMessageIndex={speakingMessageIndex}
+                timestamp={message.timestamp}
+                onCopyMessage={onCopyMessage}
+                onForkSession={onForkSession}
+                onReadAloud={onReadAloud}
+                onRevert={(index) =>
+                  onRevert({
+                    index,
+                    content: message.content,
+                    timestamp: message.timestamp,
+                  })
+                }
+                onSaveGolden={onSaveGolden}
+              />
             </div>
           </div>
         );

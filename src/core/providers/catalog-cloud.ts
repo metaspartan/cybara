@@ -441,9 +441,9 @@ export const cloudProviderCatalog = {
       {
         id: "z-ai/glm-5.2",
         name: "GLM 5.2",
-        context: 202752,
-        maxTokens: 8192,
-        reasoning: false,
+        context: 1000000,
+        maxTokens: 131072,
+        reasoning: true,
         input: ["text"],
       },
       {

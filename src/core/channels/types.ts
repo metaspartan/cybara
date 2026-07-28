@@ -548,12 +548,16 @@ export const channels = {
 
 export type ChannelType = keyof typeof channels;
 
-export interface MessageHandlerFileInfo {
+export interface MessageHandlerAttachmentInfo {
   hasFile: boolean;
   filePath: string;
   fileType: string;
   placeholder: string;
+}
+
+export interface MessageHandlerFileInfo extends MessageHandlerAttachmentInfo {
   channelId: string;
+  files?: MessageHandlerAttachmentInfo[];
 }
 
 export type MessageHandler = (

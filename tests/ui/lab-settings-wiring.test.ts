@@ -15,7 +15,9 @@ describe("Lab settings parity", () => {
     const formats = source("ui/src/lib/labFormats.ts");
     const lab = source("ui/src/pages/Evals.tsx");
     const sidebar = source("ui/src/components/layout/Sidebar.tsx");
-    const timeline = source("ui/src/pages/chat/ChatMessageTimeline.tsx");
+    const timeline =
+      source("ui/src/pages/chat/ChatMessageTimeline.tsx") +
+      source("ui/src/pages/chat/ChatMessageActionRow.tsx");
 
     expect(settings).toContain('label="Enable Lab"');
     expect(settings).toContain('label="Show golden turn actions"');
@@ -29,7 +31,7 @@ describe("Lab settings parity", () => {
     expect(lab).toContain("defaultFormat={labSettings.defaultExportFormat}");
     expect(sidebar).toContain('.filter((item) => item !== "lab" || labEnabled)');
     expect(sidebar).toContain('if (item === "lab" && !labEnabled) return null;');
-    expect(timeline).toContain('message.role === "assistant" && sessionId && goldenTurnsEnabled');
+    expect(timeline).toContain('role === "assistant" && sessionId && goldenTurnsEnabled');
   });
 
   test("native macOS, mobile, and TUI expose the shared Lab state", () => {

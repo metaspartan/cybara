@@ -339,11 +339,30 @@ export function parseToolArguments(raw: unknown): Record<string, unknown> {
 }
 
 export async function* parseServerSentEvents(
-  body: ReadableStream<Uint8Array>
+  body: ReadableStream<Uint8Array>,
+  options?: { onDone?: () => void }
 ): AsyncGenerator<Record<string, unknown>> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+
+  const parseChunk = (chunk: string): Record<string, unknown> | undefined => {
+    const dataLines = chunk
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trim())
+      .filter((line) => line.length > 0);
+    if (dataLines.includes("[DONE]")) {
+      options?.onDone?.();
+    }
+    const payloadLines = dataLines.filter((line) => line !== "[DONE]");
+    if (payloadLines.length === 0) return undefined;
+    try {
+      return JSON.parse(payloadLines.join("\n")) as Record<string, unknown>;
+    } catch {
+      return undefined;
+    }
+  };
 
   try {
     while (true) {
@@ -351,27 +370,19 @@ export async function* parseServerSentEvents(
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
-      let delimiter = buffer.indexOf("\n\n");
-      while (delimiter !== -1) {
-        const chunk = buffer.slice(0, delimiter);
-        buffer = buffer.slice(delimiter + 2);
-
-        const dataLines = chunk
-          .split("\n")
-          .filter((line) => line.startsWith("data:"))
-          .map((line) => line.slice(5).trim())
-          .filter((line) => line.length > 0 && line !== "[DONE]");
-
-        if (dataLines.length > 0) {
-          const data = dataLines.join("\n");
-          try {
-            const parsed = JSON.parse(data) as Record<string, unknown>;
-            yield parsed;
-          } catch {}
-        }
-
-        delimiter = buffer.indexOf("\n\n");
+      let delimiter = buffer.match(/\r?\n\r?\n/);
+      while (delimiter?.index !== undefined) {
+        const chunk = buffer.slice(0, delimiter.index);
+        buffer = buffer.slice(delimiter.index + delimiter[0].length);
+        const parsed = parseChunk(chunk);
+        if (parsed) yield parsed;
+        delimiter = buffer.match(/\r?\n\r?\n/);
       }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      const parsed = parseChunk(buffer);
+      if (parsed) yield parsed;
     }
   } finally {
     reader.releaseLock();

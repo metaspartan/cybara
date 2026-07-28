@@ -132,7 +132,9 @@ describe("multi-chat workspace wiring", () => {
   });
 
   test("uses the requested bent branch arrow for message forks", () => {
-    const timeline = readSource("ui/src/pages/chat/ChatMessageTimeline.tsx");
+    const timeline =
+      readSource("ui/src/pages/chat/ChatMessageTimeline.tsx") +
+      readSource("ui/src/pages/chat/ChatMessageActionRow.tsx");
 
     expect(timeline).toContain("CornerUpRight");
     expect(timeline).toContain('<CornerUpRight className="h-3 w-3" />');

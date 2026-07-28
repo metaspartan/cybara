@@ -47,6 +47,13 @@ describe("IDE chat parity", () => {
     expect(panel).toContain("readPersistedIdeChatSessionId(workspaceDir)");
     expect(panel).toContain("<MessageContent");
     expect(panel).toContain("<ChatImageLightbox");
+    expect(panel).toContain("<ChatImagePreview");
+    expect(panel).toContain("<ChatMessageActionRow");
+    expect(panel).toContain("useChatMessageActions()");
+    expect(panel).toContain("chatApi.forkSession");
+    expect(panel).toContain("settingsApi.getConfig");
+    expect(panel).toContain("chatApi.saveGolden");
+    expect(panel).toContain('invalidateQueries({ queryKey: ["agent-evals"] })');
     expect(composer).toContain("<ChatComposer");
     expect(composer).toContain("state.chatAppearance.horizontalPadding");
     expect(composer).toContain("horizontalPadding={horizontalPadding}");

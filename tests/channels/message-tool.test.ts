@@ -76,6 +76,7 @@ describe("message tool routing", () => {
         name: "Web Discovery Test",
         type: "web",
         running: true,
+        capabilities: [],
         targets: [{ id: "chat-safe-1", name: "cybara", label: "#cybara", group: "Cybara" }],
       },
     ]);
@@ -197,6 +198,129 @@ describe("message tool routing", () => {
       target: "chat-web-1",
       text: "hello from message tool",
     });
+  });
+
+  test("send preserves reply targets for adapters", async () => {
+    const discordChannelId = createChannel("discord", "Discord Reply Test");
+    const adapter = channelManager.getAdapter("discord");
+    expect(adapter).toBeDefined();
+    if (!adapter) throw new Error("discord adapter not available");
+
+    const originalSendMessage = adapter.sendMessage.bind(adapter);
+    let replyToId: unknown;
+    adapter.sendMessage = async (_channelId, _chatId, _text, options) => {
+      replyToId = options?.replyToId;
+      return true;
+    };
+    restorers.push(() => {
+      adapter.sendMessage = originalSendMessage;
+    });
+
+    const result = await handleMessage({
+      action: "send",
+      channelId: discordChannelId,
+      target: "discord-chat-1",
+      message: "reply body",
+      replyToId: "discord-message-1",
+    });
+
+    expect(result.success).toBe(true);
+    expect(replyToId).toBe("discord-message-1");
+  });
+
+  test("lists the operations supported by each channel adapter", async () => {
+    const discordChannelId = createChannel("discord", "Discord Capabilities Test");
+
+    const result = await handleMessage({ action: "list", channelId: discordChannelId });
+
+    expect(result.channels?.[0]?.capabilities).toEqual(
+      expect.arrayContaining(["attachments", "editing", "reactions", "threads", "richContent"])
+    );
+  });
+
+  test("edit routes through the selected channel adapter", async () => {
+    const discordChannelId = createChannel("discord", "Discord Edit Test");
+    const adapter = channelManager.getAdapter("discord");
+    expect(adapter).toBeDefined();
+    if (!adapter) throw new Error("discord adapter not available");
+
+    const originalEditMessage = adapter.editMessage;
+    let edited: { messageId: string; text: string } | undefined;
+    adapter.editMessage = async (_channelId, _chatId, messageId, text) => {
+      edited = { messageId, text };
+      return true;
+    };
+    restorers.push(() => {
+      adapter.editMessage = originalEditMessage;
+    });
+
+    const result = await handleMessage({
+      action: "edit",
+      channelId: discordChannelId,
+      target: "discord-chat-1",
+      messageId: "discord-message-1",
+      message: "updated",
+    });
+
+    expect(result.success).toBe(true);
+    expect(edited).toEqual({ messageId: "discord-message-1", text: "updated" });
+  });
+
+  test("attach routes files through the selected channel adapter", async () => {
+    const discordChannelId = createChannel("discord", "Discord Attachment Test");
+    const adapter = channelManager.getAdapter("discord");
+    expect(adapter).toBeDefined();
+    if (!adapter) throw new Error("discord adapter not available");
+
+    const originalSendAttachment = adapter.sendAttachment;
+    let attachment: { file: string; filename: string; caption?: string } | undefined;
+    adapter.sendAttachment = async (_channelId, _chatId, file, filename, caption) => {
+      attachment = { file: String(file), filename, caption };
+      return true;
+    };
+    restorers.push(() => {
+      adapter.sendAttachment = originalSendAttachment;
+    });
+
+    const result = await handleMessage({
+      action: "attach",
+      channelId: discordChannelId,
+      target: "discord-chat-1",
+      file: "/tmp/report.pdf",
+      caption: "Audit report",
+    });
+
+    expect(result.success).toBe(true);
+    expect(attachment).toEqual({
+      file: "/tmp/report.pdf",
+      filename: "report.pdf",
+      caption: "Audit report",
+    });
+  });
+
+  test("thread creates a channel thread and returns its id", async () => {
+    const discordChannelId = createChannel("discord", "Discord Thread Test");
+    const adapter = channelManager.getAdapter("discord");
+    expect(adapter).toBeDefined();
+    if (!adapter) throw new Error("discord adapter not available");
+
+    const originalCreateThread = adapter.createThread;
+    adapter.createThread = async () => "discord-thread-1";
+    restorers.push(() => {
+      adapter.createThread = originalCreateThread;
+    });
+
+    const result = await handleMessage({
+      action: "thread",
+      channelId: discordChannelId,
+      target: "discord-chat-1",
+      messageId: "discord-message-1",
+      threadName: "Release review",
+      message: "Starting the review",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.threadId).toBe("discord-thread-1");
   });
 
   test("send reaches every registered channel adapter", async () => {

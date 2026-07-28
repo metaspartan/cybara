@@ -41,6 +41,9 @@ const sessionDiffPanelPath = fileURLToPath(
 const chatMessageTimelinePath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatMessageTimeline.tsx", import.meta.url)
 );
+const chatMessageActionRowPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ChatMessageActionRow.tsx", import.meta.url)
+);
 const chatPageHeaderPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatPageHeader.tsx", import.meta.url)
 );
@@ -62,6 +65,7 @@ function readChatSource(): string {
     readFileSync(sessionFileChangesPath, "utf8") +
     readFileSync(sessionDiffPanelPath, "utf8") +
     readFileSync(chatMessageTimelinePath, "utf8") +
+    readFileSync(chatMessageActionRowPath, "utf8") +
     readFileSync(chatPageHeaderPath, "utf8") +
     readFileSync(chatMessageActionsPath, "utf8")
   );
@@ -80,7 +84,7 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain(
       "onCopyMessage={(index, content) => void handleCopyMessage(index, content)}"
     );
-    expect(source).toContain("copiedMessageIndex === originalIndex");
+    expect(source).toContain("copiedMessageIndex === messageIndex");
     expect(source).toContain('document.execCommand("copy")');
     expect(source).toContain("Confirm Revert");
     expect(source).toContain("Are you sure you want to revert here?");

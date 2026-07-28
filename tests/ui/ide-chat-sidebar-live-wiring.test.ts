@@ -84,6 +84,8 @@ describe("IDE chat sidebar live wiring", () => {
     const helpersSource = readIdeActivityHelpersSource();
     expect(panelSource).toContain("<MessageContent");
     expect(panelSource).toContain("<ChatImageLightbox");
+    expect(panelSource).toContain("<ChatImagePreview");
+    expect(panelSource).toContain("<ChatMessageActionRow");
     expect(helpersSource).toContain('const normalized = value.replace(/\\r\\n/g, "\\n").trim();');
     expect(helpersSource).toContain("[output truncated]");
     expect(panelSource).toContain(
