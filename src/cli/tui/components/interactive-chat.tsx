@@ -113,6 +113,11 @@ import {
 import { useInteractiveChatLayout } from "./interactive-chat-layout";
 import { executePendingChatCommand } from "./interactive-chat-pending-commands";
 import { useInteractiveChatStatus } from "./interactive-chat-status";
+import {
+  DEFAULT_TUI_PREFERENCES,
+  normalizeTuiScrollStep,
+} from "../../../../shared/tui-preferences";
+import { runTuiPreferenceCommand } from "../tui-preference-commands";
 
 export function InteractiveChatTUI({
   apiBase,
@@ -167,7 +172,12 @@ export function InteractiveChatTUI({
   const [expandedActivities, setExpandedActivities] = React.useState(false);
   const [transcriptOffset, setTranscriptOffset] = React.useState(0);
   const [mouseScrollingEnabled, setMouseScrollingEnabled] = React.useState(
-    process.env.CYBARA_TUI_MOUSE !== "0",
+    process.env.CYBARA_TUI_MOUSE === undefined
+      ? DEFAULT_TUI_PREFERENCES.mouseScrolling
+      : process.env.CYBARA_TUI_MOUSE !== "0",
+  );
+  const [scrollStep, setScrollStep] = React.useState(() =>
+    normalizeTuiScrollStep(process.env.CYBARA_TUI_SCROLL_STEP),
   );
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -268,6 +278,12 @@ export function InteractiveChatTUI({
       setApprovalMode(next.approvalMode);
       setFollowUpBehaviorEnabled(next.followUpBehaviorEnabled);
       setRouterStatus(next.routerStatus);
+      if (process.env.CYBARA_TUI_MOUSE === undefined) {
+        setMouseScrollingEnabled(next.tuiPreferences.mouseScrolling);
+      }
+      if (process.env.CYBARA_TUI_SCROLL_STEP === undefined) {
+        setScrollStep(next.tuiPreferences.scrollStep);
+      }
       return next;
     }, [approvalMode, fetchAPI]);
 
@@ -1110,23 +1126,21 @@ export function InteractiveChatTUI({
         );
         return true;
       }
-      if (normalizedCommand === "mouse") {
-        const mode = argument.trim().toLowerCase();
-        if (mode && !["on", "off", "toggle", "show"].includes(mode)) {
-          setNotice("Usage: /mouse [on|off|toggle|show]");
-          return true;
+      const preferenceResult = await runTuiPreferenceCommand({
+        argument,
+        command: normalizedCommand,
+        fetchAPI,
+        mouseScrolling: mouseScrollingEnabled,
+        scrollStep,
+      });
+      if (preferenceResult.handled) {
+        if (preferenceResult.mouseScrolling !== undefined) {
+          setMouseScrollingEnabled(preferenceResult.mouseScrolling);
         }
-        if (!mode || mode === "show") {
-          setNotice(`Mouse transcript scrolling is ${mouseScrollingEnabled ? "on" : "off"}.`);
-          return true;
+        if (preferenceResult.scrollStep !== undefined) {
+          setScrollStep(preferenceResult.scrollStep);
         }
-        const enabled = mode === "on" || (mode === "toggle" && !mouseScrollingEnabled);
-        setMouseScrollingEnabled(enabled);
-        setNotice(
-          enabled
-            ? "Mouse transcript scrolling enabled. Hold Shift to select terminal text."
-            : "Mouse transcript scrolling disabled.",
-        );
+        setNotice(preferenceResult.notice || null);
         return true;
       }
       if (normalizedCommand === "review") {
@@ -1207,6 +1221,7 @@ export function InteractiveChatTUI({
       selectedAgent,
       selectedAgentId,
       sessionTitle,
+      scrollStep,
       toggleEnvironmentPanel,
       useModelRouter,
       workspaceDir,
@@ -1464,7 +1479,7 @@ export function InteractiveChatTUI({
     const mouseEvent = parseTerminalMouseEvent(value);
     if (mouseEvent) {
       if (mouseEvent.type === "scroll") {
-        scrollTranscript(mouseEvent.direction === "up" ? 1 : -1);
+        scrollTranscript(mouseEvent.direction === "up" ? scrollStep : -scrollStep);
       }
       return;
     }

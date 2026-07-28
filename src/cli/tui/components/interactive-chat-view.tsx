@@ -446,7 +446,7 @@ export function HelpPanel({
         Enter send · Shift+Enter/Ctrl+J newline · ←/→ move · ↑/↓ palette or history
       </Text>
       <Text>Alt+←/→ words · Ctrl+W delete word · wheel/PgUp/PgDn transcript</Text>
-      <Text>Empty composer: ↑/↓ scroll · Home/End jump · /mouse toggles capture</Text>
+      <Text>Empty composer: ↑/↓ scroll · Home/End jump · /mouse and /scroll tune wheel</Text>
       <Text>Ctrl+P commands · Ctrl+F transcript search · Esc closes the active panel</Text>
       <Text>
         Tab completes slash commands and @ capabilities · approvals use 1/2/3/4 or y/s/a/n

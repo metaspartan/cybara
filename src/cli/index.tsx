@@ -17,7 +17,11 @@ import {
 import { configureChatCli, rawAgent, rawChatCommand } from "./commands/chat";
 import { runSubagentCommand } from "./commands/subagents";
 import { printArtifacts, printJourney } from "./commands/resource-commands";
-import { getFlagValue, hasFlag } from "./commands/args";
+import {
+  getFlagValue,
+  hasFlag,
+  parseTuiLaunchSettings,
+} from "./commands/args";
 import { rawUpdate } from "./commands/update";
 import { rawDoctor } from "./commands/doctor";
 import { runEvalCommand } from "./commands/evals";
@@ -99,7 +103,17 @@ async function runConnectorCliCommand(commandArgs: string[]): Promise<void> {
   await runConnectorCommand(commandArgs, fetchAPI);
 }
 
-async function renderTUI(commandOverride?: string): Promise<void> {
+async function renderTUI(commandOverride?: string, launchArgs: string[] = args): Promise<void> {
+  const settings = parseTuiLaunchSettings(launchArgs);
+  if (settings.alternateScreen !== undefined) {
+    process.env.CYBARA_TUI_ALT_SCREEN = settings.alternateScreen ? "1" : "0";
+  }
+  if (settings.mouse !== undefined) {
+    process.env.CYBARA_TUI_MOUSE = settings.mouse ? "1" : "0";
+  }
+  if (settings.scrollStep !== undefined) {
+    process.env.CYBARA_TUI_SCROLL_STEP = String(settings.scrollStep);
+  }
   const [{ render }, { TUIApp }] = await Promise.all([
     import("ink"),
     import("./tui/components/app"),
@@ -1828,7 +1842,11 @@ async function main() {
       await renderTUI(command);
       break;
     case "tui":
-      await renderTUI(args[1]);
+      {
+        const launchArgs = args.slice(1);
+        const settings = parseTuiLaunchSettings(launchArgs);
+        await renderTUI(settings.command, launchArgs);
+      }
       break;
 
     default:

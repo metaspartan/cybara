@@ -6,6 +6,7 @@ import type {
   ChatMessage,
   PendingMessage,
 } from "./components/interactive-chat-view";
+import { normalizeTuiPreferences, type TuiPreferences } from "../../../shared/tui-preferences";
 
 export interface AgentSummary {
   id?: string;
@@ -31,6 +32,7 @@ export interface ControlPlaneState {
   approvalMode: string;
   followUpBehaviorEnabled: boolean;
   routerStatus: RouterStatus | null;
+  tuiPreferences: TuiPreferences;
 }
 
 export interface InteractiveChatProps {
@@ -288,5 +290,8 @@ export async function fetchControlPlaneState(
     followUpBehaviorEnabled:
       !isRecord(configResponse) || configResponse.follow_up_behavior_enabled !== false,
     routerStatus: isRecord(routerResponse) ? (routerResponse as RouterStatus) : null,
+    tuiPreferences: normalizeTuiPreferences(
+      isRecord(configResponse) ? configResponse.tui : undefined
+    ),
   };
 }

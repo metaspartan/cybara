@@ -338,6 +338,7 @@ const routes: Record<string, RouteHandler> = {
     reasoning_effort: config.getDefaultReasoningEffort(),
     codex_fast_mode: config.getCodexFastMode(),
     follow_up_behavior_enabled: config.getFollowUpBehaviorEnabled(),
+    tui: config.getTuiPreferences(),
     self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
   }),
   "GET /api/auth/settings": () => gatewayAuthSettingsResponse(),
@@ -497,6 +498,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "chat_appearance") {
         config.setChatAppearanceSettings(value);
+        continue;
+      }
+      if (key === "tui") {
+        config.setTuiPreferences(value);
         continue;
       }
       if (value === "***redacted***") continue;

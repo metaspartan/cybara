@@ -76,6 +76,11 @@ Wide terminals keep this information visible in a persistent right-side inspecto
 preserve the full chat width and open the same details as a stacked panel with `/environment`.
 The TUI follows `COLORFGBG` when the terminal exposes it. Set `CYBARA_TUI_THEME=light` or
 `CYBARA_TUI_THEME=dark` to override automatic color selection.
+Use `cybara tui chat --no-alt-screen` to keep the TUI in the primary terminal buffer. Use
+`--no-mouse` when terminal-native selection and scrolling should take precedence over Cybara's
+mouse-wheel transcript navigation. `--scroll-step 3` changes how many messages each wheel event
+moves. `--alt-screen` and `--mouse` explicitly restore either mode. Use `/scroll 1-8` in chat to
+change and persist the wheel step.
 `/goal start <objective>` creates persistent long-running work for the session, with `/loop` as an
 alias; goal status, pause, resume, completion, blocking, editing, and clearing use the shared chat
 runtime behavior.
