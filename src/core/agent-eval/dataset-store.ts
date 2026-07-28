@@ -433,14 +433,22 @@ export function retryDatasetRun(runId: string): AgentDatasetRun | null {
   const retried = db.transaction(() => {
     const run = getDatasetRun(runId);
     if (!run || run.status === "queued" || run.status === "running") return false;
-    const reset = db
+    const incompleteItems = db
       .prepare(
-        `UPDATE agent_dataset_items
-         SET status = 'queued', started_at = NULL, completed_at = NULL, error = NULL
+        `SELECT id FROM agent_dataset_items
          WHERE run_id = ? AND status != 'completed'`
       )
-      .run(runId).changes;
-    if (reset === 0) return false;
+      .all(runId) as Array<{ id: string }>;
+    if (incompleteItems.length === 0) return false;
+    const resetItem = db.prepare(
+      `UPDATE agent_dataset_items
+       SET status = 'queued', session_id = ?, trajectory_id = NULL, usage_json = NULL,
+           started_at = NULL, completed_at = NULL, error = NULL
+       WHERE id = ? AND status != 'completed'`
+    );
+    for (const item of incompleteItems) {
+      resetItem.run(crypto.randomUUID(), item.id);
+    }
     db.prepare(
       `UPDATE agent_dataset_runs
        SET status = 'queued', cancel_requested = 0, started_at = NULL, completed_at = NULL, error = NULL

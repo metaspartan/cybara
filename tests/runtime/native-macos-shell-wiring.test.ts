@@ -138,6 +138,20 @@ describe("native macOS shell wiring", () => {
     expect(workspace).toContain("client.lspStatus()");
   });
 
+  test("native IDE retains pending file deep links until the file opens", () => {
+    const ide = readFileSync(join(MACOS_APP_DIR, "NativeIDEScreen.swift"), "utf8");
+
+    expect(ide).toContain("guard await browsePath(initialPath) else { return }");
+    expect(ide).toContain("guard await openFile(path: pendingFile) else { return }");
+    expect(ide).toContain(
+      "guard await browsePath(directory), await openFile(path: normalized) else { return }"
+    );
+    expect(ide).toContain("if firstNonEmptyGatewayString(pendingFilePath) == normalized");
+    expect(ide).not.toContain(
+      'guard let normalized = firstNonEmptyGatewayString(path) else { return }\n        pendingFilePath = ""'
+    );
+  });
+
   test("native shell exposes major web and Tauri destinations as SwiftUI screens", () => {
     const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
     const app = readFileSync(join(ROOT_DIR, "ui", "src", "App.tsx"), "utf8");

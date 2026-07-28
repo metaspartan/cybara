@@ -228,6 +228,7 @@ describe("agent dataset generation", () => {
     for (let attempt = 0; attempt < 50 && !started; attempt += 1) await Bun.sleep(2);
     expect(started).toBe(true);
     expect(requestDatasetRunCancel(run.id)?.cancelRequested).toBe(true);
+    expect(retryDatasetRun(run.id)).toBeNull();
     expect(cancelDatasetRunExecutions(run.id)).toBe(1);
     const cancelled = await waitForRun(run.id);
     expect(cancelled?.status).toBe("cancelled");
@@ -281,9 +282,19 @@ describe("agent dataset generation", () => {
     const first = await waitForRun(run.id);
     expect(first?.completedItems).toBe(1);
     expect(first?.failedItems).toBe(1);
+    const firstItems = listDatasetRunItems(run.id);
+    const completedItem = firstItems.find((item) => item.status === "completed");
+    const failedItem = firstItems.find((item) => item.status === "error");
     const queuedRetry = retryDatasetRun(run.id);
     expect(queuedRetry?.status).toBe("queued");
     expect(queuedRetry?.startedAt).toBeNull();
+    const retryItems = listDatasetRunItems(run.id);
+    expect(retryItems.find((item) => item.id === completedItem?.id)?.sessionId).toBe(
+      completedItem?.sessionId
+    );
+    expect(retryItems.find((item) => item.id === failedItem?.id)?.sessionId).not.toBe(
+      failedItem?.sessionId
+    );
     expect(startDatasetRun(run.id)).toBe(true);
     const retried = await waitForRun(run.id);
     expect(retried?.status).toBe("completed");
