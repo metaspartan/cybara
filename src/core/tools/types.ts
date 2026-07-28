@@ -31,6 +31,8 @@ export interface ToolContext {
   allowedToolNames?: string[];
   allowDynamicTools?: boolean;
   abortSignal?: AbortSignal;
+  modelParamsOverride?: Record<string, unknown>;
+  maxOutputTokens?: number;
   suppressStreaming?: boolean;
   denyWritePrefixes?: string[];
   confineToWorkspace?: boolean;

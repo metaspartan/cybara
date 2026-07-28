@@ -33,7 +33,11 @@ import {
   clipboardCandidates,
   composerWindow,
   copyTextToClipboard,
+  nextTranscriptOffset,
+  parseTerminalMouseEvent,
+  transcriptOffsetAfterMessageChange,
   transcriptMessageLimit,
+  useTerminalMouseScrolling,
 } from "../terminal";
 import {
   defaultTUIConversationExportPath,
@@ -109,6 +113,12 @@ import {
 import { useInteractiveChatLayout } from "./interactive-chat-layout";
 import { executePendingChatCommand } from "./interactive-chat-pending-commands";
 import { useInteractiveChatStatus } from "./interactive-chat-status";
+import {
+  DEFAULT_TUI_PREFERENCES,
+  normalizeTuiScrollStep,
+} from "../../../../shared/tui-preferences";
+import { runTuiPreferenceCommand } from "../tui-preference-commands";
+import { runTuiIdeCommand } from "../tui-ide-command";
 
 export function InteractiveChatTUI({
   apiBase,
@@ -162,6 +172,14 @@ export function InteractiveChatTUI({
   const [expandedTranscript, setExpandedTranscript] = React.useState(false);
   const [expandedActivities, setExpandedActivities] = React.useState(false);
   const [transcriptOffset, setTranscriptOffset] = React.useState(0);
+  const [mouseScrollingEnabled, setMouseScrollingEnabled] = React.useState(
+    process.env.CYBARA_TUI_MOUSE === undefined
+      ? DEFAULT_TUI_PREFERENCES.mouseScrolling
+      : process.env.CYBARA_TUI_MOUSE !== "0",
+  );
+  const [scrollStep, setScrollStep] = React.useState(() =>
+    normalizeTuiScrollStep(process.env.CYBARA_TUI_SCROLL_STEP),
+  );
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [searchIndex, setSearchIndex] = React.useState(0);
@@ -182,6 +200,7 @@ export function InteractiveChatTUI({
     transcriptColumns,
   } = useInteractiveChatLayout();
   const sessionIdRef = React.useRef(localSessionId);
+  const transcriptMessageCountRef = React.useRef(0);
   const lastInterruptAtRef = React.useRef(0);
   const capabilitiesWorkspaceRef = React.useRef<string | null>(null);
   const commandPaletteDraftRef = React.useRef<{
@@ -199,6 +218,8 @@ export function InteractiveChatTUI({
     streamStatus,
     queuedTurnHandoff,
   } = useInteractiveChatStatus({ apiBase, apiKey, gatewayPassword, sessionIdRef });
+
+  useTerminalMouseScrolling(mouseScrollingEnabled);
 
   const activeCapabilityMention = React.useMemo(
     () => activeTUICapabilityMention(input, cursor),
@@ -258,6 +279,12 @@ export function InteractiveChatTUI({
       setApprovalMode(next.approvalMode);
       setFollowUpBehaviorEnabled(next.followUpBehaviorEnabled);
       setRouterStatus(next.routerStatus);
+      if (process.env.CYBARA_TUI_MOUSE === undefined) {
+        setMouseScrollingEnabled(next.tuiPreferences.mouseScrolling);
+      }
+      if (process.env.CYBARA_TUI_SCROLL_STEP === undefined) {
+        setScrollStep(next.tuiPreferences.scrollStep);
+      }
       return next;
     }, [approvalMode, fetchAPI]);
 
@@ -370,8 +397,9 @@ export function InteractiveChatTUI({
   }, [loadMessagesForSession, localSessionId]);
 
   React.useEffect(() => {
+    if (sending) return;
     void loadMessages();
-  }, [loadMessages]);
+  }, [loadMessages, sending]);
 
   React.useEffect(() => {
     if (!queuedTurnHandoff || queuedTurnHandoff.sessionId !== localSessionId) return;
@@ -543,6 +571,14 @@ export function InteractiveChatTUI({
             ? compactInspectionLines(lines)
             : "No language servers returned by the gateway.",
         );
+        return true;
+      }
+      if (normalizedCommand === "ide") {
+        try {
+          setNotice(await runTuiIdeCommand({ apiBase, argument, workspaceDir }));
+        } catch (error) {
+          setNotice(error instanceof Error ? error.message : "Unable to open Cybara IDE.");
+        }
         return true;
       }
       if (normalizedCommand === "memory") {
@@ -1099,6 +1135,23 @@ export function InteractiveChatTUI({
         );
         return true;
       }
+      const preferenceResult = await runTuiPreferenceCommand({
+        argument,
+        command: normalizedCommand,
+        fetchAPI,
+        mouseScrolling: mouseScrollingEnabled,
+        scrollStep,
+      });
+      if (preferenceResult.handled) {
+        if (preferenceResult.mouseScrolling !== undefined) {
+          setMouseScrollingEnabled(preferenceResult.mouseScrolling);
+        }
+        if (preferenceResult.scrollStep !== undefined) {
+          setScrollStep(preferenceResult.scrollStep);
+        }
+        setNotice(preferenceResult.notice || null);
+        return true;
+      }
       if (normalizedCommand === "review") {
         const prompt =
           "Review the current workspace changes for correctness, regressions, security risks, performance issues, and missing tests. Report findings first with file references.";
@@ -1168,6 +1221,7 @@ export function InteractiveChatTUI({
       layout.rows,
       localSessionId,
       messages,
+      mouseScrollingEnabled,
       modelLine,
       modelOverride,
       onExit,
@@ -1176,6 +1230,7 @@ export function InteractiveChatTUI({
       selectedAgent,
       selectedAgentId,
       sessionTitle,
+      scrollStep,
       toggleEnvironmentPanel,
       useModelRouter,
       workspaceDir,
@@ -1347,6 +1402,14 @@ export function InteractiveChatTUI({
     Math.max(0, visibleMessageEnd - visibleMessageLimit),
     visibleMessageEnd,
   );
+  React.useEffect(() => {
+    const previousCount = transcriptMessageCountRef.current;
+    const nextCount = transcriptMessages.length;
+    transcriptMessageCountRef.current = nextCount;
+    setTranscriptOffset((current) =>
+      transcriptOffsetAfterMessageChange(current, previousCount, nextCount),
+    );
+  }, [transcriptMessages.length]);
   const activeApproval = approvalRequests[0];
   const expandedMessageLines = Math.max(
     layout.messageLines,
@@ -1412,7 +1475,23 @@ export function InteractiveChatTUI({
     visibleMessageLimit,
   ]);
 
+  const scrollTranscript = React.useCallback(
+    (delta: number): void => {
+      setTranscriptOffset((current) =>
+        nextTranscriptOffset(current, maximumTranscriptOffset, delta),
+      );
+    },
+    [maximumTranscriptOffset],
+  );
+
   useInput((value, key) => {
+    const mouseEvent = parseTerminalMouseEvent(value);
+    if (mouseEvent) {
+      if (mouseEvent.type === "scroll") {
+        scrollTranscript(mouseEvent.direction === "up" ? scrollStep : -scrollStep);
+      }
+      return;
+    }
     if (key.ctrl && value === "c") {
       const now = Date.now();
       const activeSessionId = localSessionId || sessionIdRef.current;
@@ -1544,17 +1623,20 @@ export function InteractiveChatTUI({
       onExit();
       return;
     }
-    const pagingKey = key as { pageUp?: boolean; pageDown?: boolean };
-    if (pagingKey.pageUp) {
-      setTranscriptOffset((current) =>
-        Math.min(maximumTranscriptOffset, current + visibleMessageLimit),
-      );
+    if (key.pageUp) {
+      scrollTranscript(Math.max(1, visibleMessageLimit - 1));
       return;
     }
-    if (pagingKey.pageDown) {
-      setTranscriptOffset((current) =>
-        Math.max(0, current - visibleMessageLimit),
-      );
+    if (key.pageDown) {
+      scrollTranscript(-Math.max(1, visibleMessageLimit - 1));
+      return;
+    }
+    if (key.home && input.length === 0) {
+      setTranscriptOffset(maximumTranscriptOffset);
+      return;
+    }
+    if (key.end && input.length === 0) {
+      setTranscriptOffset(0);
       return;
     }
     if ((key.ctrl && value === "j") || (key.return && key.shift)) {
@@ -1597,6 +1679,10 @@ export function InteractiveChatTUI({
         );
         return;
       }
+      if (input.length === 0 && normalizedTranscriptOffset < maximumTranscriptOffset) {
+        scrollTranscript(1);
+        return;
+      }
       if (history.length === 0) return;
       const nextIndex =
         historyIndex === null
@@ -1618,6 +1704,10 @@ export function InteractiveChatTUI({
         setCommandIndex((current) =>
           nextTUIChatCommandIndex(current, 1, commandOptions.length),
         );
+        return;
+      }
+      if (input.length === 0 && normalizedTranscriptOffset > 0) {
+        scrollTranscript(-1);
         return;
       }
       if (history.length === 0) return;
@@ -1776,7 +1866,7 @@ export function InteractiveChatTUI({
                   palette={tuiPalette}
                 />
               ))}
-              {sending ? (
+              {sending && normalizedTranscriptOffset === 0 ? (
                 <LiveRunView
                   activities={liveActivities}
                   content={streamingText}

@@ -83,6 +83,40 @@ export function createNativeMacOSInfoPlist(version: string): string {
   <string>14.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>LSSupportsOpeningDocumentsInPlace</key>
+  <true/>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Cybara Source File</string>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.text</string>
+        <string>public.source-code</string>
+      </array>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>txt</string><string>md</string><string>markdown</string>
+        <string>json</string><string>jsonc</string><string>js</string><string>jsx</string>
+        <string>mjs</string><string>cjs</string><string>ts</string><string>tsx</string>
+        <string>html</string><string>htm</string><string>css</string><string>scss</string>
+        <string>less</string><string>py</string><string>rs</string><string>go</string>
+        <string>java</string><string>kt</string><string>swift</string><string>c</string>
+        <string>h</string><string>cc</string><string>cpp</string><string>hpp</string>
+        <string>cs</string><string>rb</string><string>php</string><string>sh</string>
+        <string>bash</string><string>zsh</string><string>yaml</string><string>yml</string>
+        <string>toml</string><string>ini</string><string>cfg</string><string>env</string>
+        <string>xml</string><string>sql</string><string>lua</string><string>vue</string>
+        <string>svelte</string><string>astro</string><string>dart</string><string>ex</string>
+        <string>exs</string>
+      </array>
+    </dict>
+  </array>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
   <key>NSCameraUsageDescription</key>

@@ -1,5 +1,6 @@
 import * as http from "http";
 import * as vscode from "vscode";
+import { buildCybaraRouteUrl, type CybaraRouteContext } from "./routes";
 
 function gatewayUrl(): string {
   const configured = vscode.workspace.getConfiguration("cybara").get<string>("gatewayUrl");
@@ -24,7 +25,7 @@ function checkGateway(base: string): Promise<boolean> {
   });
 }
 
-async function openRoute(route: string): Promise<void> {
+async function openRoute(route: string, context: CybaraRouteContext = {}): Promise<void> {
   const base = gatewayUrl();
   const online = await checkGateway(base);
   if (!online) {
@@ -37,9 +38,23 @@ async function openRoute(route: string): Promise<void> {
     }
     return;
   }
-  const dir = workspaceDir();
-  const query = dir ? `?workspace=${encodeURIComponent(dir)}` : "";
-  await vscode.env.openExternal(vscode.Uri.parse(`${base}${route}${query}`));
+  await vscode.env.openExternal(
+    vscode.Uri.parse(
+      buildCybaraRouteUrl(base, route, {
+        workspacePath: workspaceDir(),
+        ...context,
+      })
+    )
+  );
+}
+
+async function openCurrentFile(uri?: vscode.Uri): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  const fileUri = uri?.scheme === "file" ? uri : editor?.document.uri;
+  await openRoute("/ide", {
+    filePath: fileUri?.scheme === "file" ? fileUri.fsPath : undefined,
+    line: uri ? undefined : editor ? editor.selection.active.line + 1 : undefined,
+  });
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -62,7 +77,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("cybara.openDashboard", () => void openRoute("/")),
     vscode.commands.registerCommand("cybara.openChat", () => void openRoute("/chat")),
-    vscode.commands.registerCommand("cybara.openIde", () => void openRoute("/ide"))
+    vscode.commands.registerCommand("cybara.openIde", () => void openRoute("/ide")),
+    vscode.commands.registerCommand("cybara.openCurrentFile", (uri?: vscode.Uri) =>
+      void openCurrentFile(uri)
+    )
   );
 }
 

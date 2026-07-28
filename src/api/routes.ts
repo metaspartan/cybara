@@ -204,7 +204,11 @@ import {
   setRequireAuthForLocalhost,
   validateUrl,
 } from "./security";
-import { serializeSubagentDetail, serializeSubagentSummary } from "./subagents";
+import {
+  isVisibleSubagentRun,
+  serializeSubagentDetail,
+  serializeSubagentSummary,
+} from "./subagents";
 
 const log = createLogger("API");
 
@@ -338,6 +342,7 @@ const routes: Record<string, RouteHandler> = {
     reasoning_effort: config.getDefaultReasoningEffort(),
     codex_fast_mode: config.getCodexFastMode(),
     follow_up_behavior_enabled: config.getFollowUpBehaviorEnabled(),
+    tui: config.getTuiPreferences(),
     self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
   }),
   "GET /api/auth/settings": () => gatewayAuthSettingsResponse(),
@@ -497,6 +502,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "chat_appearance") {
         config.setChatAppearanceSettings(value);
+        continue;
+      }
+      if (key === "tui") {
+        config.setTuiPreferences(value);
         continue;
       }
       if (value === "***redacted***") continue;
@@ -1568,7 +1577,7 @@ const routes: Record<string, RouteHandler> = {
     const runs = requesterSessionId
       ? subagentRegistry.getRunsByRequester(requesterSessionId)
       : subagentRegistry.listAllRuns();
-    return runs.map(serializeSubagentSummary);
+    return runs.filter(isVisibleSubagentRun).map(serializeSubagentSummary);
   },
   "POST /api/subagents/wait": async (body) => {
     const data = body as {

@@ -80,6 +80,7 @@ afterEach(() => {
     tables.agents.delete(agentId);
   }
   for (const providerId of createdProviders.splice(0)) {
+    tables.providerModels.deleteByProvider(providerId);
     tables.providers.delete(providerId);
   }
   resetChannelChatRuntime();
@@ -134,6 +135,11 @@ interface FakeDiscordMessage {
   content: string;
   attachments: {
     size: number;
+    values?: () => IterableIterator<{
+      url: string;
+      contentType?: string;
+      name?: string;
+    }>;
     first: () =>
       | {
           url: string;
@@ -392,6 +398,31 @@ describe("Discord adapter mocked message flows", () => {
     expect(replies).toContain("echo:hello two");
   });
 
+  test("processes the same Discord message id only once", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-deduplicate");
+    const replies: string[] = [];
+    const followUps: string[] = [];
+    let handlerCalls = 0;
+
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    adapter.setMessageHandler(async () => {
+      handlerCalls += 1;
+      return "once";
+    });
+    const message = createFakeDiscordMessage(
+      { guild: null, id: "duplicate-message" },
+      replies,
+      followUps
+    );
+
+    await handleDiscordMessage(adapter, channelId, message);
+    await handleDiscordMessage(adapter, channelId, message);
+
+    expect(handlerCalls).toBe(1);
+    expect(replies).toEqual(["once"]);
+  });
+
   test("caches inbound attachments and forwards local file metadata", async () => {
     const adapter = new DiscordAdapter();
     const channelId = makeChannelId("discord-attachment");
@@ -464,6 +495,99 @@ describe("Discord adapter mocked message flows", () => {
         rmSync(captured.filePath, { force: true });
       }
     }
+  });
+
+  test("forwards every inbound attachment in source order", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-multi-attachment");
+    const replies: string[] = [];
+    const followUps: string[] = [];
+    const originalFetch = globalThis.fetch;
+    let capturedFiles: Array<{ filePath: string; fileType: string; placeholder: string }> = [];
+
+    try {
+      globalThis.fetch = (async () =>
+        new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { "content-type": "image/png" },
+        })) as typeof fetch;
+      securityManager.setConfig(channelId, { dm_policy: "open" });
+      adapter.setMessageHandler(async (_content, _chatId, _sessionId, fileInfo) => {
+        capturedFiles = fileInfo.files || [];
+        return "attachments-ok";
+      });
+      const attachments = [
+        { url: "https://1.1.1.1/discord/first.png", contentType: "image/png", name: "first.png" },
+        {
+          url: "https://1.1.1.1/discord/second.png",
+          contentType: "image/png",
+          name: "second.png",
+        },
+      ];
+      const message = createFakeDiscordMessage(
+        {
+          guild: null,
+          content: "compare these",
+          attachments: {
+            size: attachments.length,
+            first: () => attachments[0],
+            values: () => attachments.values(),
+          },
+        },
+        replies,
+        followUps
+      );
+
+      await handleDiscordMessage(adapter, channelId, message);
+
+      expect(capturedFiles.map((file) => file.placeholder)).toEqual([
+        "<attachment:first.png>",
+        "<attachment:second.png>",
+      ]);
+      expect(capturedFiles.every((file) => existsSync(file.filePath))).toBe(true);
+      expect(replies).toContain("attachments-ok");
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const file of capturedFiles) rmSync(file.filePath, { force: true });
+    }
+  });
+
+  test("sends replies through the requested Discord message", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-reply-target");
+    const replies: string[] = [];
+    const sends: string[] = [];
+    const fakeClient = {
+      isReady: () => true,
+      channels: {
+        fetch: async () => ({
+          isTextBased: () => true,
+          send: async (text: string) => {
+            sends.push(text);
+          },
+          messages: {
+            fetch: async (messageId: string) => ({
+              reply: async (text: string) => {
+                replies.push(`${messageId}:${text}`);
+              },
+            }),
+          },
+        }),
+      },
+    };
+    (
+      adapter as unknown as {
+        clients: Map<string, unknown>;
+      }
+    ).clients.set(channelId, fakeClient);
+
+    const sent = await adapter.sendMessage(channelId, "chat-1", "threaded response", {
+      replyToId: "message-1",
+    });
+
+    expect(sent).toBe(true);
+    expect(replies).toEqual(["message-1:threaded response"]);
+    expect(sends).toHaveLength(0);
   });
 
   test("attaches trusted generated image file references to outbound replies", async () => {

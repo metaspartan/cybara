@@ -21,6 +21,9 @@ describe("CLI help", () => {
 
     expect(lines).toContain("  telemetry   External telemetry commands");
     expect(lines).toContain("  permissions Manage agent capability access");
+    expect(lines).toContain(
+      "  ide [path[:line]] [--print]          Open a workspace or file in the IDE"
+    );
     expect(lines).not.toContain("    telemetry   External telemetry commands");
     expect(lines).not.toContain("    permissions Manage agent capability access");
   });

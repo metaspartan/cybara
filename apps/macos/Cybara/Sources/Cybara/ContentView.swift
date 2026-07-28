@@ -208,6 +208,12 @@ struct ContentView: View {
             PetPanelController.shared.setVisible(PetPanelController.isEnabled)
         }
         .onOpenURL { url in
+            if let filePath = SidecarCore.openFilePath(from: url) {
+                UserDefaults.standard.set(filePath, forKey: "cybara.ide.pendingFilePath")
+                destination = .ide
+                NSApplication.shared.activate(ignoringOtherApps: true)
+                return
+            }
             switch SidecarCore.parseDeepLink(url) {
             case .focus:
                 NSApplication.shared.activate(ignoringOtherApps: true)

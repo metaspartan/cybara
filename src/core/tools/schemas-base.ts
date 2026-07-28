@@ -166,7 +166,7 @@ export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
   browser: {
     name: "browser",
     description: [
-      "Control browser sessions via status/start/stop/profiles/tabs/open/snapshot/screenshot/actions.",
+      "Control browser sessions via status/start/stop/profiles/tabs/open/snapshot/screenshot/actions and responsive/mobile/desktop preview modes.",
       "The embedded session browser is the default so users can follow actions in the chat preview panel.",
       "Use open -> snapshot -> act for UI automation and use openVisual only when the user explicitly requests a separate visible browser window.",
       "Keep the embedded browser open after completing the task so the user can inspect the final page; close it only when explicitly requested.",
@@ -218,7 +218,7 @@ export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
             "act",
           ],
           description:
-            "Browser action: 'open'/'navigate' to load URL, 'screenshot' to capture page as IMAGE (returns base64), 'snapshot' for page TEXT, 'click'/'type' to interact",
+            "Browser action: 'open'/'navigate' to load URL, 'resize' to set a named viewportMode or explicit dimensions, 'screenshot' to capture page as IMAGE (returns base64), 'snapshot' for page TEXT, 'click'/'type' to interact",
         },
         sessionId: { type: "string", description: "Session ID for legacy browser session" },
         name: { type: "string", description: "Profile name for create/delete/start/stopProfile" },
@@ -322,6 +322,12 @@ export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
         endRef: { type: "string", description: "Ending element for drag action" },
         width: { type: "number", description: "Viewport width for resize" },
         height: { type: "number", description: "Viewport height for resize" },
+        viewportMode: {
+          type: "string",
+          enum: ["responsive", "mobile", "desktop"],
+          description:
+            "Named viewport for resize: responsive (960x640), mobile (390x844), or desktop (1440x900)",
+        },
         paths: { type: "array", items: { type: "string" }, description: "File paths for upload" },
         inputRef: { type: "string", description: "File input reference for upload" },
         accept: { type: "boolean", description: "Accept or dismiss dialog" },
@@ -555,10 +561,9 @@ export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
   },
   sessions_spawn: {
     name: "sessions_spawn",
-    description: `Spawn a background sub-agent run in an isolated session and announce the result back to the requester chat.
-    
-The sub-agent runs independently, and its final response is automatically delivered to the requester session.
-Use for tasks that may take longer or require separate context. For parallel delegation that needs one combined answer, spawn the workers first, then call sessions_wait with every returned runId and synthesize the completed results.`,
+    description: `Spawn a background sub-agent run in an isolated session and return its runId.
+
+The child result is not inserted into the parent transcript automatically. Call sessions_wait with the returned runId, then synthesize the completed result. Each sessions_spawn call creates a new run, so do not call it again to retrieve or retry the same accepted task. For parallel delegation, spawn each distinct worker once, then wait for all returned runIds together.`,
     category: "core",
     input_schema: {
       type: "object",

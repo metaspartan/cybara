@@ -1,4 +1,5 @@
 import { agentManager } from "../../core/agent";
+import { browserViewportPreset, isBrowserViewportMode } from "../../../shared/browser-viewport";
 import {
   browserPreviewViewportDimension,
   captureBrowserPreview,
@@ -259,21 +260,37 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
       success: true,
       data: {
         viewport: pwManager.getViewportSize(params!.id),
+        viewportMode: pwManager.getViewportMode(params!.id),
         cursor: pwManager.getPointerState(params!.id),
         page: includePage ? await pwManager.getPageSummary(params!.id) : null,
       },
     };
   },
   "POST /api/browser/tabs/:id/viewport": async (body, params) => {
-    const request = body as { width?: unknown; height?: unknown };
-    const width = browserPreviewViewportDimension(request.width, 1280, 2560);
-    const height = browserPreviewViewportDimension(request.height, 800, 1600);
-    await pwManager.resize(params!.id, width, height);
+    const request = body as { width?: unknown; height?: unknown; viewportMode?: unknown };
+    if (request.viewportMode !== undefined && !isBrowserViewportMode(request.viewportMode)) {
+      return { success: false, error: "Invalid browser viewport mode" };
+    }
+    const preset = isBrowserViewportMode(request.viewportMode)
+      ? browserViewportPreset(request.viewportMode)
+      : null;
+    const fixedPreset =
+      request.viewportMode === "mobile" || request.viewportMode === "desktop" ? preset : null;
+    const width = fixedPreset
+      ? fixedPreset.width
+      : browserPreviewViewportDimension(request.width, preset?.width ?? 1280, 2560);
+    const height = fixedPreset
+      ? fixedPreset.height
+      : browserPreviewViewportDimension(request.height, preset?.height ?? 800, 1600);
+    await pwManager.resize(params!.id, width, height, request.viewportMode);
     invalidateBrowserPreview(params!.id);
     await refreshBrowserPreviewStream(params!.id).catch(() => 0);
     return {
       success: true,
-      data: { viewport: pwManager.getViewportSize(params!.id) ?? { width, height } },
+      data: {
+        viewport: pwManager.getViewportSize(params!.id) ?? { width, height },
+        viewportMode: pwManager.getViewportMode(params!.id),
+      },
     };
   },
   "GET /api/browser/tabs/:id/screenshot": async (_body, params) => {
@@ -288,6 +305,7 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
         revision: frame.revision,
         contentType: frame.contentType,
         viewport: pwManager.getViewportSize(params!.id),
+        viewportMode: pwManager.getViewportMode(params!.id),
         cursor: pwManager.getPointerState(params!.id),
         page,
       },

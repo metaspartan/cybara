@@ -4,8 +4,10 @@ import {
   channels as channelDefinitions,
   channelManager,
   discordSessions,
+  inspectChannelAdapter,
   slackSessions,
   type ChannelAdapter,
+  type ChannelCapability,
   type ChannelTarget,
   type ChannelType,
 } from "../../channels";
@@ -904,13 +906,22 @@ type MessageToolContext = {
   sessionId?: string;
 };
 
-type MessageAction = "list" | "send" | "broadcast" | "react" | "unreact";
+type MessageAction =
+  | "list"
+  | "send"
+  | "broadcast"
+  | "edit"
+  | "attach"
+  | "thread"
+  | "react"
+  | "unreact";
 
 type MessageChannelSummary = {
   id: string;
   name: string;
   type: ChannelType;
   running: boolean;
+  capabilities: ChannelCapability[];
   targets: ChannelTarget[];
   targetError?: string;
 };
@@ -926,6 +937,7 @@ type MessageToolResult = {
   channels?: MessageChannelSummary[];
   delivered?: number;
   attempted?: number;
+  threadId?: string;
 };
 
 function asNonEmptyString(value: unknown): string | undefined {
@@ -962,12 +974,14 @@ function resolveEnabledChannels(): EnabledChannel[] {
 async function summarizeChannel(channel: EnabledChannel): Promise<MessageChannelSummary> {
   const adapter = channelManager.getAdapter(channel.type);
   const running = adapter?.isRunning(channel.id) ?? false;
+  const capabilities = adapter ? inspectChannelAdapter(adapter).capabilities : [];
   if (!adapter?.listTargets || !running) {
     return {
       id: channel.id,
       name: channel.name,
       type: channel.type,
       running,
+      capabilities,
       targets: [],
     };
   }
@@ -977,6 +991,7 @@ async function summarizeChannel(channel: EnabledChannel): Promise<MessageChannel
       name: channel.name,
       type: channel.type,
       running,
+      capabilities,
       targets: await adapter.listTargets(channel.id),
     };
   } catch (error) {
@@ -985,6 +1000,7 @@ async function summarizeChannel(channel: EnabledChannel): Promise<MessageChannel
       name: channel.name,
       type: channel.type,
       running,
+      capabilities,
       targets: [],
       targetError: error instanceof Error ? error.message : String(error),
     };
@@ -1014,18 +1030,28 @@ function resolveChannelsForAction(args: {
     return matching;
   }
 
-  if (args.action === "react" || args.action === "unreact") {
-    const reactionCapable = allEnabled.filter((entry) => {
-      const adapter = channelManager.getAdapter(entry.type) as ReactionAdapter | undefined;
+  if (["edit", "attach", "thread", "react", "unreact"].includes(args.action)) {
+    const capable = allEnabled.filter((entry) => {
+      const adapter = channelManager.getAdapter(entry.type);
       if (!adapter) return false;
-      return args.action === "react"
-        ? Boolean(adapter.sendReaction)
-        : Boolean(adapter.removeReaction);
+      if (args.action === "edit") return Boolean(adapter.editMessage);
+      if (args.action === "attach") {
+        return Boolean(
+          adapter.sendAttachment ||
+            adapter.sendPhoto ||
+            adapter.sendDocument ||
+            adapter.sendVideo ||
+            adapter.sendAudio
+        );
+      }
+      if (args.action === "thread") return Boolean(adapter.createThread);
+      if (args.action === "react") return Boolean(adapter.sendReaction);
+      return Boolean(adapter.removeReaction);
     });
-    if (reactionCapable.length === 0) {
+    if (capable.length === 0) {
       throw new Error(`No active channels support '${args.action}'`);
     }
-    return reactionCapable;
+    return capable;
   }
 
   if (allEnabled.length === 0) {
@@ -1142,6 +1168,52 @@ async function sendSingleMessage(
   return { success, resolvedTarget };
 }
 
+async function resolveAdapterTarget(
+  channel: EnabledChannel,
+  target: string
+): Promise<{ adapter: ChannelAdapter; resolvedTarget: string }> {
+  const adapter = channelManager.getAdapter(channel.type);
+  if (!adapter) {
+    throw new Error(`Adapter not available for channel type '${channel.type}'`);
+  }
+  const resolvedTarget = adapter.resolveTarget
+    ? await adapter.resolveTarget(channel.id, target)
+    : target;
+  return { adapter, resolvedTarget };
+}
+
+async function sendChannelAttachment(
+  adapter: ChannelAdapter,
+  channelId: string,
+  target: string,
+  args: Record<string, unknown>
+): Promise<boolean> {
+  const filePath = asNonEmptyString(args.file);
+  const encoded = asNonEmptyString(args.buffer);
+  if (!filePath && !encoded) throw new Error("file or buffer is required for attach");
+  const file: string | Buffer = filePath || Buffer.from(encoded || "", "base64");
+  const filename =
+    asNonEmptyString(args.filename) || filePath?.split(/[\\/]/).pop() || "attachment";
+  const caption = asNonEmptyString(args.caption) || asNonEmptyString(args.message);
+  if (adapter.sendAttachment) {
+    return await adapter.sendAttachment(channelId, target, file, filename, caption);
+  }
+  const contentType = asNonEmptyString(args.contentType)?.toLowerCase() || "";
+  if (contentType.startsWith("image/") && adapter.sendPhoto) {
+    return await adapter.sendPhoto(channelId, target, file, caption);
+  }
+  if (contentType.startsWith("video/") && adapter.sendVideo) {
+    return await adapter.sendVideo(channelId, target, file, caption);
+  }
+  if (contentType.startsWith("audio/") && adapter.sendAudio) {
+    return await adapter.sendAudio(channelId, target, file, caption);
+  }
+  if (adapter.sendDocument) {
+    return await adapter.sendDocument(channelId, target, file, caption);
+  }
+  throw new Error(`Channel '${adapter.type}' cannot send this attachment type`);
+}
+
 async function runReactionAction(
   action: "react" | "unreact",
   channel: EnabledChannel,
@@ -1183,6 +1255,9 @@ export async function handleMessage(
     normalizedAction === "list" ||
     normalizedAction === "send" ||
     normalizedAction === "broadcast" ||
+    normalizedAction === "edit" ||
+    normalizedAction === "attach" ||
+    normalizedAction === "thread" ||
     normalizedAction === "react" ||
     normalizedAction === "unreact"
       ? normalizedAction
@@ -1215,7 +1290,7 @@ export async function handleMessage(
     };
   }
 
-  if ((action === "send" || action === "react" || action === "unreact") && channels.length > 1) {
+  if (action !== "broadcast" && channels.length > 1) {
     throw new Error(
       `Multiple active channels match request (${channels.length}). Provide channel or channelId to disambiguate.`
     );
@@ -1256,7 +1331,69 @@ export async function handleMessage(
     };
   }
 
+  const channel = channels[0];
+  const { adapter, resolvedTarget } = await resolveAdapterTarget(channel, target);
   const messageId = asNonEmptyString(args.messageId) || asNonEmptyString(args.replyToId);
+
+  if (action === "edit") {
+    if (!messageId) throw new Error("messageId is required for edit");
+    if (!adapter.editMessage) throw new Error(`Channel '${channel.type}' does not support edit`);
+    const edited = await adapter.editMessage(
+      channel.id,
+      resolvedTarget,
+      messageId,
+      resolveMessageText(args)
+    );
+    return {
+      success: Boolean(edited),
+      action,
+      target,
+      resolvedTarget,
+      channel: channel.type,
+      channelId: channel.id,
+      message: edited ? `Message ${messageId} edited` : `Failed to edit message ${messageId}`,
+    };
+  }
+
+  if (action === "attach") {
+    const success = await sendChannelAttachment(adapter, channel.id, resolvedTarget, args);
+    return {
+      success,
+      action,
+      target,
+      resolvedTarget,
+      channel: channel.type,
+      channelId: channel.id,
+      message: success ? `Attachment sent to ${target}` : `Failed to send attachment to ${target}`,
+    };
+  }
+
+  if (action === "thread") {
+    if (!messageId) throw new Error("messageId is required for thread");
+    if (!adapter.createThread) throw new Error(`Channel '${channel.type}' does not support thread`);
+    const threadName = asNonEmptyString(args.threadName) || asNonEmptyString(args.name);
+    if (!threadName) throw new Error("threadName is required for thread");
+    const threadId = await adapter.createThread(
+      channel.id,
+      resolvedTarget,
+      messageId,
+      threadName,
+      asNonEmptyString(args.message)
+    );
+    return {
+      success: Boolean(threadId),
+      action,
+      target,
+      resolvedTarget,
+      channel: channel.type,
+      channelId: channel.id,
+      threadId: threadId || undefined,
+      message: threadId
+        ? `Thread '${threadName}' created`
+        : `Failed to create thread '${threadName}'`,
+    };
+  }
+
   if (!messageId) {
     throw new Error("messageId is required for react/unreact actions");
   }
@@ -1265,11 +1402,6 @@ export async function handleMessage(
     throw new Error("emoji is required for react/unreact actions");
   }
 
-  const channel = channels[0];
-  const adapter = channelManager.getAdapter(channel.type);
-  const resolvedTarget = adapter?.resolveTarget
-    ? await adapter.resolveTarget(channel.id, target)
-    : target;
   const success = await runReactionAction(action, channel, resolvedTarget, messageId, emoji, {
     userId: args.userId,
   });

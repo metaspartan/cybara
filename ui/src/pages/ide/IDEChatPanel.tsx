@@ -30,15 +30,18 @@ import {
 import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
-import { chatApi } from "@/lib/api";
+import { chatApi, settingsApi } from "@/lib/api";
 import { chatImageSrc } from "@/lib/chatImages";
 import { useUpdateAgentReasoning } from "@/hooks/useApi";
 import { MODEL_ROUTER_SELECTOR_VALUE } from "../chat/ChatAgentControls";
-import { ChatImageLightbox, type ChatLightboxImage } from "../chat/ChatImageLightbox";
+import { ChatImageLightbox } from "../chat/ChatImageLightbox";
+import { ChatImagePreview } from "../chat/ChatImagePreview";
+import { ChatMessageActionRow } from "../chat/ChatMessageActionRow";
 import { isChatNearBottom } from "../chat/chatScroll";
 import { isRunEndingStatus } from "../chat/sessionRunStatus";
 import { MessageContent } from "../chat/MessageContent";
 import { AgentTransferTimeline } from "../chat/AgentTransferTimeline";
+import { useChatMessageActions } from "../chat/useChatMessageActions";
 import {
   mergeActivityLists,
   normalizeActivityTextForPhase,
@@ -184,6 +187,8 @@ import type {
 import { IdeActivityText, IdeProcessActivityList } from "./IdeActivityTimeline";
 import { useIDEChatDiffSummary } from "./useIDEChatDiffSummary";
 import { useIDEChatRouting } from "./useIDEChatRouting";
+import { useUIStore } from "@/stores/uiStore";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function IDEChatPanel({
   workspaceDir,
@@ -197,6 +202,7 @@ export function IDEChatPanel({
   onPendingFileDiffsChange,
   onPendingFileDiffControllerChange,
 }: IDEChatPanelProps) {
+  const queryClient = useQueryClient();
   const updateAgentReasoning = useUpdateAgentReasoning();
   const [sessionId, setSessionId] = useState<string | null>(() =>
     readPersistedIdeChatSessionId(workspaceDir)
@@ -221,10 +227,19 @@ export function IDEChatPanel({
   const [collapseProgressUpdates, setCollapseProgressUpdates] = useState(false);
   const [isStoppingSession, setIsStoppingSession] = useState(false);
   const [copiedToolCallKey, setCopiedToolCallKey] = useState<string | null>(null);
-  const [lightbox, setLightbox] = useState<{ images: ChatLightboxImage[]; index: number } | null>(
-    null
-  );
-  const listRef = useRef<HTMLDivElement | null>(null);
+  const [forkingMessageIndex, setForkingMessageIndex] = useState<number | null>(null);
+  const [goldenTurnsEnabled, setGoldenTurnsEnabled] = useState(true);
+  const [savingGoldenMessageIndex, setSavingGoldenMessageIndex] = useState<number | null>(null);
+  const {
+    copiedMessageIndex,
+    handleCopyMessage,
+    handleReadAloud,
+    imageLightbox: lightbox,
+    messagesContainerRef: listRef,
+    openChatImage,
+    setImageLightbox: setLightbox,
+    speakingMessageIndex,
+  } = useChatMessageActions();
   const shouldFollowOutputRef = useRef(true);
   const activeRequestAbortRef = useRef<AbortController | null>(null);
   const activeSessionRef = useRef<string | null>(null);
@@ -237,6 +252,28 @@ export function IDEChatPanel({
     if (!list) return;
     if (shouldFollowOutputRef.current) list.scrollTop = list.scrollHeight;
   }, [liveActivities.length, messages, isSending]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadLabSettings = async (): Promise<void> => {
+      try {
+        const result = await settingsApi.getConfig();
+        if (!mounted || !result.success) return;
+        const lab = result.data?.lab;
+        const labRecord =
+          lab && typeof lab === "object" && !Array.isArray(lab)
+            ? (lab as Record<string, unknown>)
+            : {};
+        setGoldenTurnsEnabled(
+          labRecord.enabled !== false && labRecord.goldenTurnsEnabled !== false
+        );
+      } catch {}
+    };
+    void loadLabSettings();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     const persistedSessionId = readPersistedIdeChatSessionId(workspaceDir);
@@ -1041,6 +1078,63 @@ export function IDEChatPanel({
     clearLiveRunState();
   }, [clearLiveRunState, selectedAgentId]);
 
+  const handleForkSession = useCallback(
+    async (messageIndex: number): Promise<void> => {
+      if (!sessionId || forkingMessageIndex !== null) return;
+      setForkingMessageIndex(messageIndex);
+      setError(null);
+      try {
+        const response = await chatApi.forkSession(sessionId, {
+          throughMessageIndex: messageIndex,
+        });
+        if (!response.success || !response.data?.fork) {
+          throw new Error(response.error || "Failed to fork chat");
+        }
+        const fork = response.data.fork;
+        setSessionId(fork.sessionId);
+        setSessionTitle(fork.title || null);
+        setActiveAgentId(fork.agentId || null);
+        if (fork.agentId) onSelectedAgentIdChange(fork.agentId);
+        setMessages([]);
+        setSessionContextUsage(null);
+        setFileDiffDecision({});
+        setResolvedPendingDiffs({});
+        setExpandedDiffs({});
+        clearLiveRunState();
+        useUIStore.getState().addToast("success", "Forked chat from this point");
+      } catch (forkError) {
+        const message = forkError instanceof Error ? forkError.message : "Failed to fork chat";
+        setError(message);
+        useUIStore.getState().addToast("error", message);
+      } finally {
+        setForkingMessageIndex(null);
+      }
+    },
+    [clearLiveRunState, forkingMessageIndex, onSelectedAgentIdChange, sessionId]
+  );
+
+  const handleSaveGolden = useCallback(
+    async (messageIndex: number): Promise<void> => {
+      if (!sessionId || savingGoldenMessageIndex !== null) return;
+      setSavingGoldenMessageIndex(messageIndex);
+      try {
+        const response = await chatApi.saveGolden(sessionId, { messageIndex });
+        if (!response.success || !response.data?.golden) {
+          throw new Error(response.error || "Failed to save golden test");
+        }
+        void queryClient.invalidateQueries({ queryKey: ["agent-evals"] });
+        useUIStore.getState().addToast("success", "Saved turn as a golden test");
+      } catch (saveError) {
+        const message =
+          saveError instanceof Error ? saveError.message : "Failed to save golden test";
+        useUIStore.getState().addToast("error", message);
+      } finally {
+        setSavingGoldenMessageIndex(null);
+      }
+    },
+    [queryClient, savingGoldenMessageIndex, sessionId]
+  );
+
   const handleRevertToHere = useCallback(
     async (messageIndex: number) => {
       if (!sessionId || isSending || isReverting) return;
@@ -1430,27 +1524,12 @@ export function IDEChatPanel({
                   className={cn(
                     "rounded-md px-2.5 py-2 text-xs whitespace-pre-wrap break-words border",
                     message.role === "user"
-                      ? "border-indigo-500/30 bg-indigo-500/10 text-indigo-100"
-                      : "border-white/10 bg-black/30 text-gray-200"
+                      ? "border-[rgba(var(--accent-primary),0.24)] bg-[rgba(var(--accent-primary),0.1)] text-[var(--text-primary)]"
+                      : "border-[var(--surface-border)] bg-[var(--surface-panel)] text-[var(--text-primary)]"
                   )}
                 >
-                  <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-gray-500">
+                  <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-[var(--text-muted)]">
                     <span>{message.role === "user" ? "You" : "Assistant"}</span>
-                    <div className="flex items-center gap-2">
-                      <span>{new Date(message.timestamp).toLocaleTimeString()}</span>
-                      {message.role === "user" && sessionId && (
-                        <button
-                          type="button"
-                          disabled={isReverting || isSending || isApplyingDiffAction}
-                          onClick={() => void handleRevertToHere(index)}
-                          className="inline-flex items-center rounded border border-amber-500/30 bg-amber-500/10 p-1 text-amber-200 hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Revert this IDE chat session to before this message"
-                          aria-label="Revert to here"
-                        >
-                          <RotateCcw className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
                   </div>
                   {message.role === "assistant" && (
                     <AgentTransferTimeline transfers={message.agent_transfers} />
@@ -1466,39 +1545,23 @@ export function IDEChatPanel({
                         const src = chatImageSrc(image);
                         if (!src) return null;
                         const alt = image.name || "Attachment";
-                        const allImages =
-                          message.images
-                            ?.map((candidate) => ({
-                              src: chatImageSrc(candidate),
-                              alt: candidate.name || "Attachment",
-                            }))
-                            .filter(
-                              (candidate): candidate is ChatLightboxImage => !!candidate.src
-                            ) || [];
                         return (
-                          <button
-                            type="button"
+                          <ChatImagePreview
                             key={`${messageKey}:image:${imageIndex}`}
-                            onClick={() => setLightbox({ images: allImages, index: imageIndex })}
-                            className="block max-w-[220px] cursor-zoom-in overflow-hidden rounded-lg border border-[var(--surface-border)]"
-                            aria-label={`Open ${alt} preview`}
-                          >
-                            <img
-                              src={src}
-                              alt={alt}
-                              loading="lazy"
-                              className="h-auto max-h-64 w-full object-contain"
-                            />
-                          </button>
+                            source={src}
+                            alt={alt}
+                            width={220}
+                            height={165}
+                            className="aspect-[4/3] max-h-64 w-full object-contain"
+                            containerClassName="block max-w-[220px] cursor-zoom-in overflow-hidden rounded-lg border border-[var(--surface-border)]"
+                            onOpen={openChatImage}
+                          />
                         );
                       })}
                     </div>
                   ) : null}
                   <div className="text-[12px] leading-6">
-                    <MessageContent
-                      content={message.content}
-                      onOpenImage={(src, alt) => setLightbox({ images: [{ src, alt }], index: 0 })}
-                    />
+                    <MessageContent content={message.content} onOpenImage={openChatImage} />
                   </div>
 
                   {message.role === "assistant" && message.thinking && (
@@ -1771,6 +1834,27 @@ export function IDEChatPanel({
                       </div>
                     </div>
                   )}
+                  <ChatMessageActionRow
+                    content={message.content}
+                    copiedMessageIndex={copiedMessageIndex}
+                    forkingMessageIndex={forkingMessageIndex}
+                    goldenTurnsEnabled={goldenTurnsEnabled}
+                    messageIndex={index}
+                    role={message.role}
+                    savingGoldenMessageIndex={savingGoldenMessageIndex}
+                    sessionId={sessionId}
+                    speakingMessageIndex={speakingMessageIndex}
+                    timestamp={message.timestamp}
+                    onCopyMessage={(messageIndex, content) =>
+                      void handleCopyMessage(messageIndex, content)
+                    }
+                    onForkSession={(messageIndex) => void handleForkSession(messageIndex)}
+                    onReadAloud={(messageIndex, content) =>
+                      void handleReadAloud(messageIndex, content)
+                    }
+                    onRevert={(messageIndex) => void handleRevertToHere(messageIndex)}
+                    onSaveGolden={(messageIndex) => void handleSaveGolden(messageIndex)}
+                  />
                 </div>
               );
             })()

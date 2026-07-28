@@ -125,7 +125,8 @@ describe("CLI TUI source wiring", () => {
       expect(cliTuiAppSource).toContain(`case "${panel.command}":`);
       expect(cliTuiAppSource).toContain(panel.component);
     }
-    expect(cliSource).toContain("await renderTUI(args[1])");
+    expect(cliSource).toContain("const settings = parseTuiLaunchSettings(launchArgs)");
+    expect(cliSource).toContain("await renderTUI(settings.command, launchArgs)");
     expect(cliTuiMenuSource).toContain("Direct launch: cybara tui <panel> · Press ? for keys");
     expect(cliTuiAppSource).toContain("<MainMenu");
     expect(cliTuiAppSource).toContain("onOpenPanel");
@@ -186,6 +187,7 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiSettingsSource).toContain('fetchAPI<SettingsConfig>("/api/config")');
     expect(cliTuiSettingsSource).toContain("chat_appearance");
     expect(cliTuiSettingsSource).toContain("follow_up_behavior_enabled");
+    expect(cliTuiSettingsSource).toContain("Terminal wheel step");
     expect(cliTuiSettingsSource).toContain("tool_approval_mode");
     expect(cliTuiSettingsSource).toContain("terminal_enabled");
     expect(cliTuiSettingsSource).toContain("dangerous_tool_policy");
@@ -271,6 +273,7 @@ describe("CLI TUI source wiring", () => {
       "/skills",
       "/mcp",
       "/lsp",
+      "/ide",
       "/memory",
       "/logs",
       "/agent",
@@ -353,6 +356,7 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain('value === "p"');
     expect(cliTuiInteractiveChatSource).toContain("Follow-ups off");
     expect(cliTuiInteractiveChatSource).toContain("follow_up_behavior_enabled");
+    expect(cliTuiInteractiveChatSource).toContain("runTuiPreferenceCommand");
     expect(cliTuiCommandsSource).toContain('{ name: "/followups"');
     expect(cliTuiInteractiveChatSource).toContain("sessionIdRef.current = turnSessionId");
     expect(cliTuiInteractiveChatSource).toContain("CommandPalette");
@@ -395,6 +399,17 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("Ctrl+J newline");
     expect(cliTuiInteractiveChatSource).toContain("pageUp");
     expect(cliTuiInteractiveChatSource).toContain("pageDown");
+    expect(cliTuiInteractiveChatSource).toContain("parseTerminalMouseEvent");
+    expect(cliTuiInteractiveChatSource).toContain("useTerminalMouseScrolling");
+    expect(cliTuiInteractiveChatSource).toContain(
+      "normalizedTranscriptOffset < maximumTranscriptOffset"
+    );
+    expect(cliTuiInteractiveChatSource).toContain("key.home && input.length === 0");
+    expect(cliTuiInteractiveChatSource).toContain("key.end && input.length === 0");
+    expect(cliTuiInteractiveChatSource).toContain("sending && normalizedTranscriptOffset === 0");
+    expect(cliTuiInteractiveChatSource).toMatch(
+      /React\.useEffect\(\(\) => \{\s*if \(sending\) return;\s*void loadMessages\(\);/
+    );
     expect(cliTuiInteractiveChatSource).toMatch(/expandedTranscript\s*\? expandedMessageLines/);
     expect(cliTuiInteractiveChatSource).toContain(
       "const [expandedTranscript, setExpandedTranscript] = React.useState(false)"

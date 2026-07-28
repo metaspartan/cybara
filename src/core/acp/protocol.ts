@@ -19,7 +19,10 @@ export const AGENT_CAPABILITIES = {
   promptCapabilities: {
     image: false,
     audio: false,
-    embeddedContext: false,
+    embeddedContext: true,
+  },
+  sessionCapabilities: {
+    close: {},
   },
 } as const;
 
@@ -111,6 +114,10 @@ export function extractPromptText(params: unknown): string {
         name?: string;
         title?: string;
         description?: string;
+        resource?: {
+          uri?: string;
+          text?: string;
+        };
       }>;
     }
   )?.prompt;
@@ -118,6 +125,13 @@ export function extractPromptText(params: unknown): string {
   return prompt
     .map((block) => {
       if (block?.type === "text" && typeof block.text === "string") return block.text;
+      if (
+        block?.type === "resource" &&
+        typeof block.resource?.uri === "string" &&
+        typeof block.resource.text === "string"
+      ) {
+        return `Embedded resource: ${block.resource.uri}\n${block.resource.text}`;
+      }
       if (block?.type !== "resource_link" || typeof block.uri !== "string") return "";
       const label = block.title || block.name || "resource";
       const description = block.description?.trim();

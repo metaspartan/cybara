@@ -1,6 +1,11 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
+import {
+  browserViewportPreset,
+  inferBrowserViewportMode,
+  isBrowserViewportMode,
+} from "../../../../shared/browser-viewport";
 import { validateUrl } from "../../../api/security";
 import {
   fillField,
@@ -1302,20 +1307,36 @@ export async function handleBrowser(
     }
 
     case "resize": {
-      const width = args.width as number;
-      const height = args.height as number;
-      if (typeof width !== "number" || typeof height !== "number") {
-        throw new Error("width and height required for resize action");
+      const requestedMode = args.viewportMode;
+      if (requestedMode !== undefined && !isBrowserViewportMode(requestedMode)) {
+        throw new Error("viewportMode must be responsive, mobile, or desktop");
       }
+      const preset = isBrowserViewportMode(requestedMode)
+        ? browserViewportPreset(requestedMode)
+        : null;
+      const width = preset?.width ?? args.width;
+      const height = preset?.height ?? args.height;
+      if (
+        typeof width !== "number" ||
+        typeof height !== "number" ||
+        !Number.isFinite(width) ||
+        !Number.isFinite(height)
+      ) {
+        throw new Error("viewportMode or finite width and height are required for resize action");
+      }
+      const viewportMode = requestedMode ?? inferBrowserViewportMode({ width, height });
 
       const pageId = await getOrCreateBrowserPageForSession(sessionId);
-      await pwManager.resize(pageId, width, height);
+      await pwManager.resize(pageId, width, height, viewportMode);
 
       return {
         success: true,
         width,
         height,
-        message: `Resized to ${width}x${height}`,
+        viewportMode,
+        message: viewportMode
+          ? `Set ${viewportMode} viewport (${width}x${height})`
+          : `Resized to ${width}x${height}`,
       };
     }
 

@@ -240,6 +240,12 @@ describe("Provider model defaults and API-family parity", () => {
     expect(
       providers.nvidia.models.some((model) => model.id === "nvidia/llama-3.1-nemotron-70b-instruct")
     ).toBe(true);
+    expect(providers.nvidia.models.find((model) => model.id === "z-ai/glm-5.2")).toMatchObject({
+      context: 1_000_000,
+      maxTokens: 131_072,
+      reasoning: true,
+      input: ["text"],
+    });
     expect(providers.chutes.baseUrl).toBe("https://llm.chutes.ai/v1");
     expect(providers.chutes.authType).toBe("api_key");
     expect(providers.featherless.models.some((model) => model.id === "Qwen/Qwen3-32B")).toBe(true);

@@ -46,6 +46,11 @@ describe("native macOS packaging helpers", () => {
     expect(plist).toContain("<string>14.0</string>");
     expect(plist).toContain("<key>NSLocalNetworkUsageDescription</key>");
     expect(plist).toContain("<string>_cybara-nearby._tcp</string>");
+    expect(plist).toContain("<key>CFBundleDocumentTypes</key>");
+    expect(plist).toContain("<string>public.source-code</string>");
+    expect(plist).toContain("<string>Editor</string>");
+    expect(plist).toContain("<string>tsx</string>");
+    expect(plist).toContain("<key>LSSupportsOpeningDocumentsInPlace</key>");
   });
 
   test("keeps sidecar resources outside Contents/MacOS for codesigning", () => {

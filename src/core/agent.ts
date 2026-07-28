@@ -167,6 +167,9 @@ interface AgentExecutionOptions {
   }>;
   useModelRouter?: boolean;
   allowedToolNames?: string[];
+  useMemory?: boolean;
+  modelParamsOverride?: Record<string, unknown>;
+  maxOutputTokens?: number;
 }
 
 interface RunningAgentState {
@@ -1107,10 +1110,14 @@ class AgentManager extends AgentProviderRuntime {
           },
           ...messages,
         ];
-    const workspaceAwareMessages = await this.injectMemoryRecall(
-      this.injectWorkspaceSystemMessage(fullMessages, options?.workspaceDir),
-      agent
+    const workspaceMessages = this.injectWorkspaceSystemMessage(
+      fullMessages,
+      options?.workspaceDir
     );
+    const workspaceAwareMessages =
+      options?.useMemory === false
+        ? workspaceMessages
+        : await this.injectMemoryRecall(workspaceMessages, agent);
 
     const supportsTools = true;
 
@@ -1256,6 +1263,8 @@ class AgentManager extends AgentProviderRuntime {
       allowedToolNames: toolPolicy.allowedToolNames,
       allowDynamicTools: toolPolicy.allowDynamicTools,
       abortSignal: options?.abortSignal,
+      modelParamsOverride: options?.modelParamsOverride,
+      maxOutputTokens: options?.maxOutputTokens,
       confineToWorkspace: true,
       consumeSteeringMessages: options?.consumeSteeringMessages,
       executionState: { nextToolCallOrder: 0, toolCallsStarted: 0, toolCalls: [] },

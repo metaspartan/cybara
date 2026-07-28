@@ -89,6 +89,7 @@ afterEach(() => {
     tables.agents.delete(agentId);
   }
   for (const providerId of createdProviders.splice(0)) {
+    tables.providerModels.deleteByProvider(providerId);
     tables.providers.delete(providerId);
   }
 });

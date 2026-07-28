@@ -357,4 +357,13 @@ final class SidecarCoreTests: XCTestCase {
         XCTAssertNil(SidecarCore.parseDeepLink(URL(string: "file:///etc/passwd")!))
         XCTAssertNil(SidecarCore.parseDeepLink(URL(string: "javascript://restart")!))
     }
+
+    func testDocumentOpenAcceptsOnlyFileURLs() {
+        XCTAssertEqual(
+            SidecarCore.openFilePath(from: URL(fileURLWithPath: "/Users/test/project/main.swift")),
+            "/Users/test/project/main.swift"
+        )
+        XCTAssertNil(SidecarCore.openFilePath(from: URL(string: "https://example.com/main.swift")!))
+        XCTAssertNil(SidecarCore.openFilePath(from: URL(string: "cybara://open")!))
+    }
 }

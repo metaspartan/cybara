@@ -243,6 +243,8 @@ describe("Config API", () => {
     expect(["audit", "block"]).toContain(data.dangerous_tool_policy.mode);
     expect(["always_allow", "ask"]).toContain(data.tool_approval_mode);
     expect(typeof data.follow_up_behavior_enabled).toBe("boolean");
+    expect(typeof data.tui.mouseScrolling).toBe("boolean");
+    expect(typeof data.tui.scrollStep).toBe("number");
     expect(typeof data.token_optimization.toonStructuredDataEnabled).toBe("boolean");
     expect(typeof data.acp_enabled).toBe("boolean");
   });
@@ -270,6 +272,17 @@ describe("Config API", () => {
     const getRes = await fixture.api("GET", "/api/config");
     expect(getRes.status).toBe(200);
     expect(getRes.data[key]).toBe(value);
+  });
+
+  test("PUT /api/config normalizes terminal interface preferences", async () => {
+    const putRes = await fixture.api("PUT", "/api/config", {
+      tui: { mouseScrolling: false, scrollStep: 99 },
+    });
+    expect(putRes.status).toBe(200);
+
+    const getRes = await fixture.api("GET", "/api/config");
+    expect(getRes.status).toBe(200);
+    expect(getRes.data.tui).toEqual({ mouseScrolling: false, scrollStep: 8 });
   });
 
   test("PUT /api/config ignores redacted sentinel values echoed back by clients", async () => {

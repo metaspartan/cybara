@@ -2,6 +2,11 @@ import { randomUUID } from "crypto";
 import { mkdirSync } from "fs";
 import { join } from "path";
 import type { LaunchOptions } from "playwright";
+import {
+  inferBrowserViewportMode,
+  type BrowserViewportMode,
+} from "../../../shared/browser-viewport";
+import { KeyedSerialTaskQueue } from "../keyed-serial-task-queue";
 import { systemLogger } from "../logging";
 import { cybaraDir } from "../paths";
 import {
@@ -225,6 +230,8 @@ let legacyContext: BrowserContext | null = null;
 const legacyPages = new Map<string, Page>();
 const consoleLogs = new Map<string, Array<{ type: string; text: string; location?: string }>>();
 const pointerStates = new Map<string, BrowserPointerState>();
+const viewportModes = new Map<string, BrowserViewportMode>();
+const viewportResizeQueue = new KeyedSerialTaskQueue();
 const preparedPreviewPages = new WeakSet<Page>();
 const BROWSER_PREVIEW_STYLE = `
 :root { --cybara-agent-browser-preview: 1; }
@@ -521,6 +528,7 @@ export async function closePage(id: string): Promise<boolean> {
   legacyPages.delete(id);
   consoleLogs.delete(id);
   pointerStates.delete(id);
+  viewportModes.delete(id);
   return true;
 }
 
@@ -1055,13 +1063,25 @@ export function getViewportSize(pageId: string): BrowserViewportSize | null {
   return page?.viewportSize() ?? null;
 }
 
-export async function resize(pageId: string, width: number, height: number): Promise<void> {
-  const page = getPageById(pageId) || getPageById("default");
-  if (!page) throw new Error(`Page ${pageId} not found`);
+export function getViewportMode(pageId: string): BrowserViewportMode | null {
+  return viewportModes.get(pageId) ?? inferBrowserViewportMode(getViewportSize(pageId));
+}
 
-  const current = page.viewportSize();
-  if (current?.width === width && current.height === height) return;
-  await page.setViewportSize({ width, height });
+export async function resize(
+  pageId: string,
+  width: number,
+  height: number,
+  mode?: BrowserViewportMode | null
+): Promise<void> {
+  await viewportResizeQueue.run(pageId, async () => {
+    const page = getPageById(pageId) || getPageById("default");
+    if (!page) throw new Error(`Page ${pageId} not found`);
+    const current = page.viewportSize();
+    if (current?.width === width && current.height === height) return;
+    await page.setViewportSize({ width, height });
+  });
+  if (mode === null) viewportModes.delete(pageId);
+  else if (mode) viewportModes.set(pageId, mode);
 }
 
 export async function uploadFiles(
@@ -1231,6 +1251,7 @@ export async function closeAll(): Promise<void> {
   }
 
   consoleLogs.clear();
+  viewportModes.clear();
 
   if (legacyContext) {
     await legacyContext.close().catch(() => {});

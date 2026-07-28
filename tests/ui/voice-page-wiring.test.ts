@@ -8,6 +8,7 @@ const voice = readFileSync(join(root, "ui", "src", "pages", "Voice.tsx"), "utf8"
 const chat =
   readFileSync(join(root, "ui", "src", "pages", "Chat.tsx"), "utf8") +
   readFileSync(join(root, "ui", "src", "pages", "chat", "ChatMessageTimeline.tsx"), "utf8") +
+  readFileSync(join(root, "ui", "src", "pages", "chat", "ChatMessageActionRow.tsx"), "utf8") +
   readFileSync(join(root, "ui", "src", "pages", "chat", "useChatMessageActions.ts"), "utf8");
 const speechSettings = readFileSync(
   join(root, "ui", "src", "pages", "settings", "SpeechSettingsSection.tsx"),

@@ -6,6 +6,7 @@ import {
   type AgentEvalRun,
   applyGoldenAssertions,
   buildTrajectoryStructure,
+  cancelDatasetRunExecutions,
   cancelIntelligenceBenchmarkRun,
   clearIntelligenceBenchmarkCancelRequest,
   compareTrajectoryStructures,
@@ -15,8 +16,8 @@ import {
   createEvalSuiteBundle,
   createIntelligenceBenchmarkRun,
   createResearchDatasetCard,
-  deleteGolden,
   deleteDatasetRun,
+  deleteGolden,
   deleteIntelligenceBenchmarkRun,
   deleteSessionTrajectories,
   type EvalReplayOptions,
@@ -28,8 +29,8 @@ import {
   findRunningIntelligenceBenchmark,
   finishEvalRun,
   forkSessionFromMessages,
-  getGolden,
   getDatasetRun,
+  getGolden,
   getTrajectory,
   gradeIntelligenceBenchmarkTask,
   INTELLIGENCE_RATING_EDGE_MARGIN,
@@ -37,11 +38,11 @@ import {
   importGoldens,
   intelligenceRatingManifest,
   intelligenceRatingTasks,
-  isIntelligenceBenchmarkCancelRequested,
   isDatasetRunActive,
-  listEvalRuns,
+  isIntelligenceBenchmarkCancelRequested,
   listDatasetRunItems,
   listDatasetRuns,
+  listEvalRuns,
   listGoldens,
   listIntelligenceBenchmarkRuns,
   listSessionTrajectories,
@@ -50,8 +51,9 @@ import {
   parseResearchExportFormat,
   registerEvalReplayExecutor,
   requestDatasetRunCancel,
-  resumeDatasetRuns,
   requestIntelligenceBenchmarkCancel,
+  resumeDatasetRuns,
+  retryDatasetRun,
   saveGolden,
   startDatasetRun,
   summarizeGolden,
@@ -60,6 +62,13 @@ import {
   updateGoldenAssertions,
   updateIntelligenceBenchmarkRun,
 } from "../../core/agent-eval";
+import {
+  datasetPromptAuthorMaxOutputTokens,
+  generateDatasetPromptDraft,
+  parseDatasetPromptDifficulty,
+  parseDatasetPromptFocus,
+} from "../../core/agent-eval/prompt-generation";
+import { parseAgentConfig } from "../../core/agent-internals";
 import { config } from "../../core/config";
 import { deleteSession, handleChat } from "../chat";
 import "../eval-dataset-runtime";
@@ -77,6 +86,102 @@ function requireGoldenTurnsEnabled(): void {
   if (!config.getLabSettings().goldenTurnsEnabled) {
     throw new Error("Validation error: Golden turns are disabled in Lab settings");
   }
+}
+
+function boundedBodyInteger(
+  value: unknown,
+  fallback: number,
+  minimum: number,
+  maximum: number
+): number | null {
+  const candidate = value === undefined ? fallback : value;
+  if (typeof candidate !== "number" || !Number.isFinite(candidate)) return null;
+  const integer = Math.floor(candidate);
+  return integer >= minimum && integer <= maximum ? integer : null;
+}
+
+interface DatasetPromptDraftData {
+  agentId?: unknown;
+  targetAgentId?: unknown;
+  objective?: unknown;
+  focus?: unknown;
+  difficulty?: unknown;
+  count?: unknown;
+  toolsEnabled?: unknown;
+  seedPrompts?: unknown;
+}
+
+type DatasetPromptDraftResult =
+  | {
+      success: true;
+      prompts: string[];
+      author: { id: string; name: string; model: string | null };
+      target: { id: string; name: string; model: string | null };
+    }
+  | { success: false; error: string };
+
+async function authorDatasetPrompts(
+  data: DatasetPromptDraftData
+): Promise<DatasetPromptDraftResult> {
+  const authorAgent = agentManager.get(typeof data.agentId === "string" ? data.agentId.trim() : "");
+  if (!authorAgent) return { success: false, error: "Select an available prompt author" };
+  const targetAgent = agentManager.get(
+    typeof data.targetAgentId === "string" ? data.targetAgentId.trim() : ""
+  );
+  if (!targetAgent) return { success: false, error: "Select an available teacher agent" };
+  const count = boundedBodyInteger(data.count, 12, 1, 50);
+  if (count === null) {
+    return { success: false, error: "Prompt count must be between 1 and 50" };
+  }
+  const objective = typeof data.objective === "string" ? data.objective.trim() : "";
+  if (objective.length > 4_000) {
+    return { success: false, error: "Dataset objective must be 4,000 characters or fewer" };
+  }
+  const seedPrompts = Array.isArray(data.seedPrompts)
+    ? data.seedPrompts
+        .filter((prompt): prompt is string => typeof prompt === "string")
+        .map((prompt) => prompt.trim().slice(0, 4_000))
+        .filter(Boolean)
+        .slice(0, 20)
+    : [];
+  const targetAgentConfig = parseAgentConfig(targetAgent.config, targetAgent.id);
+  const targetToolProfileValue = targetAgentConfig.tool_profile ?? targetAgentConfig.toolProfile;
+  const prompts = await generateDatasetPromptDraft(
+    {
+      authorAgentName: authorAgent.name,
+      authorModel: authorAgent.model || null,
+      targetAgentName: targetAgent.name,
+      targetModel: targetAgent.model || null,
+      targetToolProfile: typeof targetToolProfileValue === "string" ? targetToolProfileValue : null,
+      objective,
+      focus: parseDatasetPromptFocus(data.focus),
+      difficulty: parseDatasetPromptDifficulty(data.difficulty),
+      count,
+      toolsEnabled: data.toolsEnabled !== false,
+      seedPrompts,
+    },
+    async (messages) => {
+      const result = await agentManager.execute(authorAgent.id, messages, {
+        useTools: false,
+        useMemory: false,
+        abortSignal: AbortSignal.timeout(180_000),
+        modelParamsOverride: { reasoning_effort: "minimal" },
+        maxOutputTokens: datasetPromptAuthorMaxOutputTokens(count),
+      });
+      if (result.failure) {
+        throw new Error(
+          result.content || "The prompt author provider could not complete the request"
+        );
+      }
+      return result.content;
+    }
+  );
+  return {
+    success: true,
+    prompts,
+    author: { id: authorAgent.id, name: authorAgent.name, model: authorAgent.model || null },
+    target: { id: targetAgent.id, name: targetAgent.name, model: targetAgent.model || null },
+  };
 }
 
 async function runGoldenReplay(
@@ -288,41 +393,69 @@ export const evalRoutes: Record<string, RouteHandler> = {
       }),
     };
   },
-  "POST /api/evals/datasets": (body) => {
+  "POST /api/evals/dataset-prompts": async (body) => {
+    requireLabEnabled();
+    return authorDatasetPrompts((body || {}) as DatasetPromptDraftData);
+  },
+  "POST /api/evals/datasets": async (body) => {
     requireLabEnabled();
     const data = (body || {}) as {
-      name?: string;
-      agentId?: string;
+      name?: unknown;
+      agentId?: unknown;
       prompts?: unknown;
-      samplesPerPrompt?: number;
-      concurrency?: number;
+      promptDraft?: unknown;
+      samplesPerPrompt?: unknown;
+      concurrency?: unknown;
       toolsEnabled?: boolean;
+      maxOutputTokens?: unknown;
+      sampleTimeoutSeconds?: unknown;
     };
-    const agentId = data.agentId?.trim() || "";
+    const agentId = typeof data.agentId === "string" ? data.agentId.trim() : "";
     const agent = agentManager.get(agentId);
     if (!agent) return { success: false, error: "Select an available agent" };
-    if (!Array.isArray(data.prompts)) {
-      return { success: false, error: "Prompts must be an array" };
-    }
-    const prompts = data.prompts
-      .filter((prompt): prompt is string => typeof prompt === "string")
-      .map((prompt) => prompt.trim())
-      .filter(Boolean);
-    if (prompts.length === 0) return { success: false, error: "Add at least one prompt" };
-    if (prompts.length > 500) return { success: false, error: "Use 500 prompts or fewer per run" };
-    const samplesPerPrompt = Math.floor(data.samplesPerPrompt ?? 1);
-    if (samplesPerPrompt < 1 || samplesPerPrompt > 8) {
+    const samplesPerPrompt = boundedBodyInteger(data.samplesPerPrompt, 1, 1, 8);
+    if (samplesPerPrompt === null) {
       return { success: false, error: "Samples per prompt must be between 1 and 8" };
     }
+    const concurrency = boundedBodyInteger(data.concurrency, 2, 1, 6);
+    if (concurrency === null) {
+      return { success: false, error: "Concurrency must be between 1 and 6" };
+    }
+    const maxOutputTokens = boundedBodyInteger(data.maxOutputTokens, 4096, 512, 32768);
+    if (maxOutputTokens === null) {
+      return { success: false, error: "Output budget must be between 512 and 32,768 tokens" };
+    }
+    const sampleTimeoutSeconds = boundedBodyInteger(data.sampleTimeoutSeconds, 300, 30, 3600);
+    if (sampleTimeoutSeconds === null) {
+      return { success: false, error: "Sample timeout must be between 30 and 3,600 seconds" };
+    }
+    const suppliedPrompts = Array.isArray(data.prompts)
+      ? data.prompts
+          .filter((prompt): prompt is string => typeof prompt === "string")
+          .map((prompt) => prompt.trim())
+          .filter(Boolean)
+      : [];
+    let prompts = suppliedPrompts;
+    let authoredPrompts: string[] | undefined;
+    if (prompts.length === 0 && data.promptDraft && typeof data.promptDraft === "object") {
+      const drafted = await authorDatasetPrompts({
+        ...(data.promptDraft as DatasetPromptDraftData),
+        targetAgentId: agentId,
+        toolsEnabled: data.toolsEnabled !== false,
+      });
+      if (!drafted.success) return drafted;
+      prompts = drafted.prompts;
+      authoredPrompts = drafted.prompts;
+    }
+    if (prompts.length === 0) return { success: false, error: "Add at least one prompt" };
+    if (prompts.length > 500) return { success: false, error: "Use 500 prompts or fewer per run" };
     if (prompts.length * samplesPerPrompt > 1000) {
       return { success: false, error: "A dataset run can contain at most 1,000 samples" };
     }
-    const concurrency = Math.floor(data.concurrency ?? 2);
-    if (concurrency < 1 || concurrency > 6) {
-      return { success: false, error: "Concurrency must be between 1 and 6" };
-    }
     const run = createDatasetRun({
-      name: data.name?.trim().slice(0, 120) || `Dataset ${new Date().toLocaleDateString()}`,
+      name:
+        (typeof data.name === "string" ? data.name.trim().slice(0, 120) : "") ||
+        `Dataset ${new Date().toLocaleDateString()}`,
       agentId,
       provider: agent.provider_pool_name || agent.provider_type || agent.provider || null,
       model: agent.model || null,
@@ -330,16 +463,27 @@ export const evalRoutes: Record<string, RouteHandler> = {
       samplesPerPrompt,
       concurrency,
       toolsEnabled: data.toolsEnabled !== false,
+      maxOutputTokens,
+      sampleTimeoutSeconds,
     });
     startDatasetRun(run.id);
-    return { success: true, run: getDatasetRun(run.id) ?? run };
+    return { success: true, run: getDatasetRun(run.id) ?? run, prompts: authoredPrompts };
   },
   "POST /api/evals/datasets/:id/cancel": (_body, params) => {
     requireLabEnabled();
     const id = params?.id?.trim() || "";
     const run = requestDatasetRunCancel(id);
     if (!run) return { success: false, error: "Dataset run not found" };
+    cancelDatasetRunExecutions(id);
     if (!isDatasetRunActive(id)) resumeDatasetRuns();
+    return { success: true, run: getDatasetRun(id) ?? run };
+  },
+  "POST /api/evals/datasets/:id/retry": (_body, params) => {
+    requireLabEnabled();
+    const id = params?.id?.trim() || "";
+    const run = retryDatasetRun(id);
+    if (!run) return { success: false, error: "Run has no incomplete samples to retry" };
+    startDatasetRun(id);
     return { success: true, run: getDatasetRun(id) ?? run };
   },
   "DELETE /api/evals/datasets/:id": (_body, params) => {

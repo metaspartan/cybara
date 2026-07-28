@@ -8,6 +8,10 @@ import {
   normalizeChatAppearanceSettings,
   type ChatAppearanceSettings,
 } from "../../../../shared/chat-appearance";
+import {
+  normalizeTuiPreferences,
+  tuiScrollStepOptions,
+} from "../../../../shared/tui-preferences";
 import { TUIErrorState, TUILoadingState, TUILogo } from "./primitives";
 import { useTUIBack } from "./navigation";
 import { useTerminalLayout } from "../terminal";
@@ -57,6 +61,11 @@ function nextOption<T extends string>(value: T, options: readonly { value: T }[]
 
 function booleanLabel(value: boolean): string {
   return value ? "On" : "Off";
+}
+
+function nextNumberOption(value: number, options: readonly number[]): number {
+  const index = options.indexOf(value);
+  return options[(index + 1 + options.length) % options.length] ?? options[0] ?? value;
 }
 
 export function TUISettingsCommand({ fetchAPI }: { fetchAPI: FetchAPI }): React.ReactElement {
@@ -109,6 +118,10 @@ export function TUISettingsCommand({ fetchAPI }: { fetchAPI: FetchAPI }): React.
   );
 
   const appearance = normalizeChatAppearanceSettings(config?.chat_appearance);
+  const tuiPreferences = React.useMemo(
+    () => normalizeTuiPreferences(config?.tui),
+    [config?.tui]
+  );
   const dangerousPolicy = record(config?.dangerous_tool_policy);
   const rows = React.useMemo<SettingRow[]>(() => {
     const updateAppearance = async <K extends keyof ChatAppearanceSettings>(
@@ -125,6 +138,7 @@ export function TUISettingsCommand({ fetchAPI }: { fetchAPI: FetchAPI }): React.
       appearance.horizontalPadding,
       chatHorizontalPaddingOptions
     );
+    const scrollStep = nextNumberOption(tuiPreferences.scrollStep, tuiScrollStepOptions);
     const approvalMode = config?.tool_approval_mode === "ask" ? "ask" : "always_allow";
     const terminalEnabled = config?.terminal_enabled === true;
     const acpEnabled = config?.acp_enabled !== false;
@@ -217,6 +231,28 @@ export function TUISettingsCommand({ fetchAPI }: { fetchAPI: FetchAPI }): React.
           ),
       },
       {
+        id: "tui-mouse",
+        group: "Chat",
+        label: "Terminal mouse scrolling",
+        value: booleanLabel(tuiPreferences.mouseScrolling),
+        activate: () =>
+          save(
+            { tui: { ...tuiPreferences, mouseScrolling: !tuiPreferences.mouseScrolling } },
+            `Terminal mouse scrolling: ${booleanLabel(!tuiPreferences.mouseScrolling)}`
+          ),
+      },
+      {
+        id: "tui-scroll-step",
+        group: "Chat",
+        label: "Terminal wheel step",
+        value: `${tuiPreferences.scrollStep} message${tuiPreferences.scrollStep === 1 ? "" : "s"}`,
+        activate: () =>
+          save(
+            { tui: { ...tuiPreferences, scrollStep } },
+            `Terminal wheel step: ${scrollStep}`
+          ),
+      },
+      {
         id: "approvals",
         group: "Safety",
         label: "Tool approvals",
@@ -289,7 +325,7 @@ export function TUISettingsCommand({ fetchAPI }: { fetchAPI: FetchAPI }): React.
           ]
         : []),
     ];
-  }, [appearance, config, dangerousPolicy, fetchAPI, save, saving, telemetry]);
+  }, [appearance, config, dangerousPolicy, fetchAPI, save, saving, telemetry, tuiPreferences]);
 
   useInput(
     (input, key) => {

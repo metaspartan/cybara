@@ -91,6 +91,36 @@ describe("channel inbound media", () => {
     expect(buildChannelImages(fileInfo)).toHaveLength(1);
   });
 
+  test("preserves multiple image and text attachments in source order", () => {
+    const fileInfo = {
+      hasFile: true,
+      filePath: pngPath,
+      fileType: "image/png",
+      placeholder: "<attachment:shot.png>",
+      channelId: "discord-test",
+      files: [
+        {
+          hasFile: true,
+          filePath: pngPath,
+          fileType: "image/png",
+          placeholder: "<attachment:shot.png>",
+        },
+        {
+          hasFile: true,
+          filePath: txtPath,
+          fileType: "text/plain",
+          placeholder: "<attachment:notes.txt>",
+        },
+      ],
+    };
+
+    expect(buildChannelImages(fileInfo)).toHaveLength(1);
+    const prompt = buildChannelMessageWithFileContext("Compare both files", fileInfo);
+    expect(prompt).toContain("<attachment:shot.png>");
+    expect(prompt).toContain("<attachment:notes.txt>");
+    expect(prompt).toContain("hello from a file");
+  });
+
   test("no file → empty / null", () => {
     expect(buildChannelImages({ hasFile: false } as never)).toEqual([]);
     expect(inlineChannelTextFile(undefined)).toBeNull();

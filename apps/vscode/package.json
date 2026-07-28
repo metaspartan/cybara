@@ -33,8 +33,28 @@
         "command": "cybara.openIde",
         "title": "Cybara: Open IDE for Workspace",
         "category": "Cybara"
+      },
+      {
+        "command": "cybara.openCurrentFile",
+        "title": "Cybara: Open File in IDE",
+        "category": "Cybara"
       }
     ],
+    "menus": {
+      "editor/title/context": [
+        {
+          "command": "cybara.openCurrentFile",
+          "group": "navigation@20"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "cybara.openCurrentFile",
+          "group": "navigation@20",
+          "when": "resourceScheme == file"
+        }
+      ]
+    },
     "configuration": {
       "title": "Cybara",
       "properties": {
@@ -47,8 +67,8 @@
     }
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --platform=node --external:vscode --format=cjs --outfile=dist/extension.js",
-    "package": "vsce package --no-dependencies"
+    "build": "bunx esbuild src/extension.ts --bundle --platform=node --external:vscode --format=cjs --outfile=dist/extension.js",
+    "package": "bunx @vscode/vsce package --no-dependencies"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0",

@@ -50,6 +50,7 @@ export function readChatRuntimeSource(): string {
     "src/api/chat-runtime.ts",
     "src/api/chat-session-api.ts",
     "src/api/chat-steering-activities.ts",
+    "src/api/chat-tool-response.ts",
     "src/api/chat-types.ts",
   ]);
 }

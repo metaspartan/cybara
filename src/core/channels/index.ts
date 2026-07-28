@@ -3,6 +3,7 @@ export {
   type ChannelType,
   type ChannelAdapter,
   type MessageHandler,
+  type MessageHandlerAttachmentInfo,
   type MessageHandlerFileInfo,
   type ToolCallInfo,
   type ChannelTarget,

@@ -13,6 +13,7 @@ import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useSt
 import { CodeViewerView } from "./CodeViewerView";
 import {
   getCodeViewerConfiguration,
+  getMinimapRowBudget,
   isCodeViewerLargeFile,
   type CodeViewerProps,
 } from "./codeViewerConfig";
@@ -1459,7 +1460,7 @@ export function CodeViewer({
     return grouped;
   }, [pendingLineDecorations]);
   const minimapRows = useMemo(() => {
-    const maxRows = 1200;
+    const maxRows = getMinimapRowBudget(scrollMetrics.height);
     const previewRows = showPendingInlinePreview ? pendingInlinePreviewRows : null;
     const totalRows = previewRows ? previewRows.length : sourceLines.length;
     const step = Math.max(1, Math.ceil(Math.max(totalRows, 1) / maxRows));
@@ -1486,7 +1487,7 @@ export function CodeViewer({
       rows.push({ sourceLine: i + 1, length: longest, kind: segmentKind });
     }
     return { rows, step };
-  }, [pendingInlinePreviewRows, showPendingInlinePreview, sourceLines]);
+  }, [pendingInlinePreviewRows, scrollMetrics.height, showPendingInlinePreview, sourceLines]);
   const activeEditorRowIndex = showPendingInlinePreview
     ? (pendingInlinePreviewIndexByLine.get(activeLine) ?? Math.max(activeLine - 1, 0))
     : Math.max(activeLine - 1, 0);

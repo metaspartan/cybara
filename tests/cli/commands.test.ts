@@ -21,6 +21,7 @@ describe("CLI Commands", () => {
     expect(stdout).toContain("completion");
     expect(stdout).toContain("channels");
     expect(stdout).toContain("plugin");
+    expect(stdout).toContain("ide [path[:line]]");
   });
 
   test("status command renders health summary", async () => {
@@ -72,6 +73,10 @@ describe("CLI Commands", () => {
     const completion = await runCli(["completion", "bash"]);
     expect(completion.exitCode).toBe(0);
     expect(completion.stdout).toContain("complete -F _cybara_completion cybara");
+    expect(completion.stdout).toContain('tui) opts="status metrics usage evals');
+    expect(completion.stdout).toContain("--no-alt-screen");
+    expect(completion.stdout).toContain("--scroll-step");
+    expect(completion.stdout).toContain(" ide ");
   });
 
   test("metrics command renders usage summary", async () => {

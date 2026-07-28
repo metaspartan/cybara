@@ -11,6 +11,7 @@ import {
   type ChatInputCommandInteraction,
   type Interaction,
   type Message,
+  type Attachment,
   type MessageReaction,
   type PartialMessageReaction,
   type User,
@@ -22,6 +23,7 @@ import type {
   ToolCallInfo,
   MessageHandler,
   ChannelEmbed,
+  MessageHandlerAttachmentInfo,
 } from "../types";
 import { formatToolCallsForDiscord } from "../formatting";
 import { logChannelMessage } from "../../logging";
@@ -31,6 +33,7 @@ import { handleChannelManagementCommand } from "../commands";
 import { sendChannelRuntimeMessage } from "../chat-runtime";
 import { saveInboundMediaFromUrl } from "../media";
 import { cybaraDir } from "../../paths";
+import { RecentMessageIds } from "../recent-message-ids";
 
 export const discordSessions = new Map<string, string>();
 
@@ -258,6 +261,7 @@ export class DiscordAdapter implements ChannelAdapter {
   private reactionScopes = new Map<string, DiscordReactionNotificationScope>();
   private messageHandler: MessageHandler = async () => "No handler configured";
   private typingRefreshMs = 7000;
+  private readonly processedMessageIds = new RecentMessageIds();
 
   setMessageHandler(handler: MessageHandler) {
     this.messageHandler = handler;
@@ -340,6 +344,7 @@ export class DiscordAdapter implements ChannelAdapter {
     const isDM = !message.guild;
 
     if (!isMentioned && !isDM) return;
+    if (!this.processedMessageIds.accept(`${channelId}:${message.id}`)) return;
 
     const accessCheck = securityManager.checkAccess(
       channelId,
@@ -377,13 +382,9 @@ export class DiscordAdapter implements ChannelAdapter {
     let filePath = "";
     let fileType = "";
     let placeholder = "";
+    const files: MessageHandlerAttachmentInfo[] = [];
 
     if (message.attachments.size > 0) {
-      const attachment = message.attachments.first()!;
-      hasFile = true;
-      fileType = attachment.contentType || "application/octet-stream";
-      const attachmentName = attachment.name || "attachment";
-      placeholder = `<attachment:${attachmentName}>`;
       const token = (message.client as { token?: string }).token;
       const authHeader =
         typeof token === "string" && token.trim()
@@ -392,27 +393,50 @@ export class DiscordAdapter implements ChannelAdapter {
             : `Bot ${token}`
           : undefined;
 
-      try {
-        const saved = await saveInboundMediaFromUrl({
-          channel: "discord",
-          url: attachment.url,
-          fileName: attachmentName,
-          contentType: attachment.contentType || undefined,
-          headers: authHeader ? { Authorization: authHeader } : undefined,
+      const attachments: Attachment[] =
+        typeof message.attachments.values === "function"
+          ? Array.from(message.attachments.values())
+          : [message.attachments.first()].filter(
+              (attachment): attachment is Attachment => attachment !== undefined
+            );
+      for (const attachment of attachments) {
+        const attachmentName = attachment.name || "attachment";
+        const attachmentPlaceholder = `<attachment:${attachmentName}>`;
+        let attachmentPath = "";
+        try {
+          const saved = await saveInboundMediaFromUrl({
+            channel: "discord",
+            url: attachment.url,
+            fileName: attachmentName,
+            contentType: attachment.contentType || undefined,
+            headers: authHeader ? { Authorization: authHeader } : undefined,
+          });
+          attachmentPath = saved.path;
+        } catch (error) {
+          console.warn(
+            "[Discord] Failed to cache attachment locally; falling back to remote URL:",
+            error
+          );
+          attachmentPath = attachment.url || "";
+        }
+        const attachmentType = attachment.contentType || "application/octet-stream";
+        const fileDescriptor = attachmentPath || attachment.url || attachmentName;
+        files.push({
+          hasFile: true,
+          filePath: attachmentPath,
+          fileType: attachmentType,
+          placeholder: attachmentPlaceholder,
         });
-        filePath = saved.path;
-      } catch (error) {
-        console.warn(
-          "[Discord] Failed to cache attachment locally; falling back to remote URL:",
-          error
+        const attachmentSection = [attachmentPlaceholder, `[Attachment: ${fileDescriptor}]`].join(
+          "\n"
         );
-        filePath = attachment.url || "";
+        content = content ? `${content}\n\n${attachmentSection}` : attachmentSection;
       }
-
-      const fileDescriptor = filePath || attachment.url || attachmentName;
-      const attachmentSection = [`${placeholder}`, `[Attachment: ${fileDescriptor}]`].join("\n");
-      content = content ? `${content}\n\n${attachmentSection}` : attachmentSection;
-      fileType = attachment.contentType || "application/octet-stream";
+      const firstFile = files[0];
+      hasFile = files.length > 0;
+      filePath = firstFile?.filePath || "";
+      fileType = firstFile?.fileType || "";
+      placeholder = firstFile?.placeholder || "";
     }
 
     await logChannelMessage("discord", "incoming", content, {
@@ -460,6 +484,7 @@ export class DiscordAdapter implements ChannelAdapter {
             filePath,
             fileType,
             placeholder,
+            files,
           });
         }
       } catch (error) {
@@ -937,7 +962,7 @@ export class DiscordAdapter implements ChannelAdapter {
     channelId: string,
     chatId: string | number,
     text: string,
-    _options?: Record<string, unknown>
+    options?: Record<string, unknown>
   ): Promise<boolean> {
     const client = this.clients.get(channelId);
     if (!client?.isReady()) {
@@ -948,6 +973,12 @@ export class DiscordAdapter implements ChannelAdapter {
     try {
       const channel = await client.channels.fetch(String(chatId));
       if (channel?.isTextBased() && "send" in channel) {
+        const replyToId = typeof options?.replyToId === "string" ? options.replyToId.trim() : "";
+        if (replyToId && "messages" in channel) {
+          const replyTo = await channel.messages.fetch(replyToId);
+          await replyTo.reply(text);
+          return true;
+        }
         await channel.send(text);
         return true;
       }

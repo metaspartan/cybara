@@ -423,7 +423,7 @@ export function HelpPanel({
           Chat controls
         </Text>
         <Text>Enter send · Shift+Enter/^J newline · Tab complete</Text>
-        <Text>^P commands · ^F search · PgUp/PgDn scroll</Text>
+        <Text>^P commands · ^F search · wheel/PgUp/PgDn scroll</Text>
         <Text>Esc sessions · ^C quit</Text>
         <Text>/model · /agent · /permissions · /followups · /reasoning</Text>
         <Text>/copy [n] · /export · /diff · /environment</Text>
@@ -445,7 +445,8 @@ export function HelpPanel({
       <Text>
         Enter send · Shift+Enter/Ctrl+J newline · ←/→ move · ↑/↓ palette or history
       </Text>
-      <Text>Alt+←/→ words · Ctrl+W delete word · PgUp/PgDn transcript</Text>
+      <Text>Alt+←/→ words · Ctrl+W delete word · wheel/PgUp/PgDn transcript</Text>
+      <Text>Empty composer: ↑/↓ scroll · Home/End jump · /mouse and /scroll tune wheel</Text>
       <Text>Ctrl+P commands · Ctrl+F transcript search · Esc closes the active panel</Text>
       <Text>
         Tab completes slash commands and @ capabilities · approvals use 1/2/3/4 or y/s/a/n
@@ -455,6 +456,7 @@ export function HelpPanel({
       </Text>
       <Text>/followups on|off controls queue and steer behavior</Text>
       <Text>/reasoning changes effort · /title renames · /workspace changes the working root</Text>
+      <Text>/ide [path[:line]] opens the workspace or file in Cybara IDE</Text>
       <Text>/environment toggles context, plan, diffs, tasks, and subagents</Text>
       <Text>/goal start &lt;objective&gt; creates persistent work · /loop is an alias</Text>
       <Text>/context, /usage, /plan, /diffs, /tasks, /subagents inspect session state</Text>

@@ -192,6 +192,23 @@ export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<vo
           return;
         }
 
+        case "session/close": {
+          if (!initialized) {
+            deps.write(jsonRpcError(req.id, -32002, "ACP connection is not initialized"));
+            return;
+          }
+          const params = req.params as { sessionId?: string } | undefined;
+          const session = params?.sessionId ? sessions.get(params.sessionId) : undefined;
+          if (!session || !params?.sessionId) {
+            deps.write(jsonRpcError(req.id, -32602, "Unknown or missing sessionId"));
+            return;
+          }
+          session.activePrompt?.abort(new DOMException("ACP session closed", "AbortError"));
+          sessions.delete(params.sessionId);
+          deps.write(jsonRpcResult(req.id, {}));
+          return;
+        }
+
         default:
           if (!notification) {
             deps.write(jsonRpcError(req.id, -32601, `Method not found: ${req.method}`));

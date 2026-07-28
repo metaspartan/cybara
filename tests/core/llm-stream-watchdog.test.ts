@@ -497,6 +497,46 @@ describe("agentic loop stability against a real streaming provider", () => {
     });
     expect(result.content).toBe("plain-json-ok");
   });
+
+  test("an incomplete stream recovers with a plain completion", async () => {
+    const agent = createLoopAgent("behave-scripted");
+    scriptedTurns = [
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(contentDelta("Let")));
+              controller.close();
+            },
+          }),
+          { headers: { "Content-Type": "text/event-stream" } }
+        ),
+      (body) => {
+        expect(body.stream).toBeUndefined();
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: "Let me inspect that with the tools." },
+                finish_reason: "stop",
+              },
+            ],
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      },
+    ];
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "inspect the workspace" }],
+      { useTools: false, sessionId: "incomplete-stream-recovery-session" }
+    );
+
+    expect(result.content).toBe("Let me inspect that with the tools.");
+    expect(observedBodies).toHaveLength(2);
+  });
 });
 
 describe("Codex transcript compaction keeps long runs under context budget", () => {

@@ -1045,7 +1045,7 @@ export function CodeViewerView({ model }: { model: CodeViewerViewModel }): React
               </div>
 
               {showMinimap && (
-                <div className="w-24 shrink-0 border-l border-white/10 bg-[#080810] hidden xl:flex flex-col">
+                <div className="w-24 shrink-0 border-l border-[var(--surface-border)] bg-[var(--surface-panel)] hidden xl:flex flex-col">
                   <div
                     className="relative flex-1 overflow-hidden cursor-pointer"
                     onMouseDown={(event) => {
@@ -1083,14 +1083,14 @@ export function CodeViewerView({ model }: { model: CodeViewerViewModel }): React
                             className={cn(
                               "h-[2px] rounded-sm",
                               isActive
-                                ? "bg-indigo-300/70"
+                                ? "bg-[rgb(var(--accent-primary))] opacity-70"
                                 : row.kind === "added"
                                   ? "bg-emerald-300/40"
                                   : row.kind === "removed"
                                     ? "bg-red-300/40"
                                     : row.kind === "mixed"
                                       ? "bg-amber-300/35"
-                                      : "bg-white/20"
+                                      : "bg-[var(--text-muted)] opacity-25"
                             )}
                             style={{ width: `${width}%` }}
                           />
@@ -1098,7 +1098,7 @@ export function CodeViewerView({ model }: { model: CodeViewerViewModel }): React
                       })}
                     </div>
                     <div
-                      className="absolute left-0 right-0 border border-indigo-400/40 bg-indigo-500/10 pointer-events-none"
+                      className="absolute left-0 right-0 border border-[rgba(var(--accent-primary),0.5)] bg-[rgba(var(--accent-primary),0.12)] pointer-events-none"
                       style={{
                         height: `${Math.max((scrollMetrics.height / Math.max(scrollMetrics.scrollHeight, 1)) * 100, 6)}%`,
                         top: `${Math.min(

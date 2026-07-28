@@ -12,6 +12,7 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  chat        Interactive chat with AI");
   console.log("    chat --agent <id> --model <id>     Chat with an agent/model override");
   console.log("    chat --router                      Chat through the model router");
+  console.log("  ide [path[:line]] [--print]          Open a workspace or file in the IDE");
   console.log("  status      Show system status");
   console.log("  health      Alias for status");
   console.log("  backup      Backup and restore durable gateway state");
@@ -185,6 +186,9 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  -c, --check       'update' — check only, don't install");
   console.log("  -y, --yes         Skip confirmation prompts");
   console.log("  -j, --json        JSON output where supported");
+  console.log("  --no-alt-screen   Run the TUI in the primary terminal buffer");
+  console.log("  --no-mouse        Keep native terminal mouse selection and scrolling");
+  console.log("  --scroll-step N   Move 1-8 messages per transcript wheel event");
   console.log("  -n/-k/-t/-d/-o    provider add: name/key/token/default/oauth");
   console.log("  --url URL          Custom provider API base URL");
   console.log("");

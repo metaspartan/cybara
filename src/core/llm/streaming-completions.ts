@@ -37,6 +37,13 @@ export interface AssembledOpenAIResponse {
   generation_duration_ms?: number;
 }
 
+export class IncompleteOpenAIChatStreamError extends Error {
+  constructor() {
+    super("OpenAI-compatible stream ended before its completion marker");
+    this.name = "IncompleteOpenAIChatStreamError";
+  }
+}
+
 export async function consumeOpenAIChatStream(
   body: ReadableStream<Uint8Array>,
   watchdog?: StreamWatchdog,
@@ -51,6 +58,7 @@ export async function consumeOpenAIChatStream(
   let firstOutputAt: number | undefined;
   let lastOutputAt: number | undefined;
   let outputEventCount = 0;
+  let completionMarkerSeen = false;
   const toolCalls = new Map<number, { id: string; name: string; args: string }>();
 
   const markOutputProgress = (): void => {
@@ -63,7 +71,11 @@ export async function consumeOpenAIChatStream(
     }
   };
 
-  for await (const event of parseServerSentEvents(body)) {
+  for await (const event of parseServerSentEvents(body, {
+    onDone: () => {
+      completionMarkerSeen = true;
+    },
+  })) {
     const choices = event.choices as StreamedChoiceDelta[] | undefined;
     let madeProgress = false;
     let madeOutputProgress = false;
@@ -79,6 +91,7 @@ export async function consumeOpenAIChatStream(
 
     if (typeof choice.finish_reason === "string" && choice.finish_reason) {
       finishReason = choice.finish_reason;
+      completionMarkerSeen = true;
       madeProgress = true;
     }
     const delta = choice.delta;
@@ -120,6 +133,10 @@ export async function consumeOpenAIChatStream(
     }
     if (madeOutputProgress) markOutputProgress();
     if (madeProgress) watchdog?.touch();
+  }
+
+  if (!completionMarkerSeen) {
+    throw new IncompleteOpenAIChatStreamError();
   }
 
   const generationDurationMs =

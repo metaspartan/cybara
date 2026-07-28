@@ -24,6 +24,10 @@ const browserImageSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/chat/BrowserPreviewImage.tsx", import.meta.url)),
   "utf8"
 );
+const browserViewportControlSource = readFileSync(
+  fileURLToPath(new URL("../../ui/src/pages/chat/BrowserViewportModeControl.tsx", import.meta.url)),
+  "utf8"
+);
 const browserStreamClientSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/chat/browserPreviewStreamClient.ts", import.meta.url)),
   "utf8"
@@ -124,7 +128,20 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS)");
     expect(browserSource).toContain("data-browser-session-id={browserSessionId}");
     expect(browserSource).toContain("getBoundingClientRect");
-    expect(browserSource).not.toContain("/state?includePage=false");
+    expect(browserSource).toContain("state?includePage=${includePage}");
+    expect(browserSource).toContain("BrowserViewportResizeQueue");
+    expect(browserSource).toContain("BrowserViewportModeControl");
+    expect(browserSource).toContain("data-browser-viewport-mode={viewportMode}");
+    expect(browserSource).toContain("data-browser-viewport-width={browserViewport.width}");
+    expect(browserSource).toContain("data-browser-viewport-height={browserViewport.height}");
+    expect(browserSource).toContain("syncRemoteViewportMode(payload?.viewportMode, nextViewport)");
+    expect(browserSource).toContain("viewportModeHydratedPageId !== browserPageId");
+    expect(browserSource).toContain("await loadBrowserState(nextPage, true)");
+    expect(browserSource).toContain("viewportMode: BrowserViewportMode");
+    expect(browserSource).toContain("bg-[var(--surface-backdrop)]");
+    expect(browserViewportControlSource).toContain(
+      "data-testid={`browser-viewport-mode-${item.mode}`}"
+    );
     expect(browserSource).toContain("BrowserScrollBatcher");
     expect(browserSource).toContain("BrowserFramePresenter");
     expect(browserSource).toContain("decodeBrowserPreviewImage");
@@ -188,7 +205,13 @@ describe("chat workspace panel", () => {
     expect(nativeBrowserSource).toContain("if !addressFocused {");
     expect(nativeBrowserSource).toContain("revision: revision");
     expect(nativeBrowserSource).toContain('URLQueryItem(name: "revision", value: revision)');
-    expect(nativeBrowserSource).toContain('URLQueryItem(name: "viewportWidth", value: "960")');
+    expect(nativeBrowserSource).toContain("NativeBrowserViewportMode.allCases");
+    expect(nativeBrowserSource).toContain("resizeChatBrowserTab");
+    expect(nativeBrowserSource).toContain('"viewportMode": mode.rawValue');
+    expect(nativeBrowserSource).toContain("viewportModeRaw = mode");
+    expect(nativeBrowserSource).toContain(
+      'URLQueryItem(name: "viewportWidth", value: String(Int(viewport.width)))'
+    );
     expect(nativeBrowserSource).toContain("if let nextImage = preview.image {");
     expect(nativeBrowserSource).toContain(".scaledToFit()");
     expect(nativeBrowserSource).not.toContain(".scaledToFill()");

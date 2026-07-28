@@ -15,6 +15,7 @@ import {
 import { resolveAgentIdentifier } from "./agent-resolution";
 import { getFlagValue } from "./args";
 import { createChatInputQueue } from "./chat-input-queue";
+import { waitForQueuedAssistantMessage } from "./chat-queued-response";
 import { recoverRawAgentResult } from "./raw-agent-recovery";
 
 type FetchAPI = <T>(endpoint: string, options?: RequestInit) => Promise<T | null>;
@@ -78,6 +79,7 @@ interface CliHistoryMessage {
   role?: string;
   content?: unknown;
   thinking?: string;
+  pending_chat_id?: string;
   process_activities?: CliProcessActivity[];
   tool_calls?: CliToolCall[];
   agent_transfers?: CliAgentTransfer[];
@@ -436,8 +438,8 @@ async function queueMessage(
   sessionId: string,
   message: string,
   turnContext?: CliTurnContext
-): Promise<CliPendingResponse | null> {
-  return await chatContext().fetchAPI<CliPendingResponse>("/api/chat", {
+): Promise<CliChatResponse | null> {
+  return await chatContext().fetchAPI<CliChatResponse>("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -904,14 +906,37 @@ async function rawChat(options: CliChatOptions): Promise<void> {
     return false;
   };
 
+  const waitForQueuedResponse = async (
+    targetSessionId: string,
+    pendingId: string
+  ): Promise<CliHistoryMessage | null> =>
+    await waitForQueuedAssistantMessage({
+      pendingId,
+      loadSnapshot: async () => {
+        const [messages, pending] = await Promise.all([
+          chatContext().fetchAPI<CliHistoryMessage[]>(
+            `/api/chat/sessions/${encodeURIComponent(targetSessionId)}/messages`
+          ),
+          chatContext().fetchAPI<CliPendingResponse>(
+            `/api/chat/sessions/${encodeURIComponent(targetSessionId)}/pending`
+          ),
+        ]);
+        if (!messages || !pending) return null;
+        return {
+          messages,
+          pendingIds: (pending.pendingMessages || []).map((item) => item.id),
+        };
+      },
+    });
+
   const runTurn = async (message: string) => {
     running = true;
+    sessionId ||= crypto.randomUUID();
     console.log(
       `  ${dim("Working. Type a follow-up to queue it, or use /steer <id|#n> to inject one now.")}`
     );
     try {
-      const body: Record<string, unknown> = { message, tools: true };
-      if (sessionId) body.sessionId = sessionId;
+      const body: Record<string, unknown> = { message, sessionId, tools: true };
       if (agentId) body.agentId = agentId;
       if (modelOverride && !useModelRouter) body.modelOverride = modelOverride;
       if (useModelRouter) body.useModelRouter = true;
@@ -943,6 +968,20 @@ async function rawChat(options: CliChatOptions): Promise<void> {
         printPendingMessages(pendingMessages);
         console.log("");
       }
+      while (sessionId && pendingMessages.length > 0) {
+        const pendingId = pendingMessages[0]?.id;
+        if (!pendingId) break;
+        const queuedAssistant = await waitForQueuedResponse(sessionId, pendingId);
+        if (queuedAssistant) {
+          printAssistantResponse({ sessionId, message: queuedAssistant }, options.showThinking);
+        }
+        pendingMessages = await fetchPendingMessages(sessionId);
+        if (pendingMessages.length > 0) {
+          console.log("  Pending follow-ups");
+          printPendingMessages(pendingMessages);
+          console.log("");
+        }
+      }
     } catch (err) {
       console.error(`  Error: ${(err as Error).message}`);
     } finally {
@@ -964,6 +1003,11 @@ async function rawChat(options: CliChatOptions): Promise<void> {
       useModelRouter,
     });
     if (!data) return;
+    if (data.queued !== true) {
+      printAssistantResponse(data, options.showThinking);
+      pendingMessages = data.pendingMessages || [];
+      return;
+    }
     pendingMessages = data.pendingMessages || (data.pendingMessage ? [data.pendingMessage] : []);
     console.log("  Queued follow-up");
     printPendingMessages(pendingMessages);

@@ -20,6 +20,11 @@ import {
   DEFAULT_CHAT_APPEARANCE_SETTINGS,
   normalizeChatAppearanceSettings,
 } from "../../shared/chat-appearance";
+import {
+  DEFAULT_TUI_PREFERENCES,
+  normalizeTuiPreferences,
+  type TuiPreferences,
+} from "../../shared/tui-preferences";
 
 interface PlatformConfig {
   name: string;
@@ -885,6 +890,7 @@ class ConfigManager {
       computer_use: { ...DEFAULT_COMPUTER_USE_SETTINGS },
       lab: { ...DEFAULT_LAB_SETTINGS },
       chat_appearance: { ...DEFAULT_CHAT_APPEARANCE_SETTINGS },
+      tui: { ...DEFAULT_TUI_PREFERENCES },
       default_workspace_dir: homeDir,
     };
 
@@ -938,6 +944,16 @@ class ConfigManager {
   setChatAppearanceSettings(value: unknown): ChatAppearanceSettings {
     const normalized = normalizeChatAppearanceSettings(value);
     this.set("chat_appearance", normalized);
+    return normalized;
+  }
+
+  getTuiPreferences(): TuiPreferences {
+    return normalizeTuiPreferences(this.get<unknown>("tui"));
+  }
+
+  setTuiPreferences(value: unknown): TuiPreferences {
+    const normalized = normalizeTuiPreferences(value);
+    this.set("tui", normalized);
     return normalized;
   }
 

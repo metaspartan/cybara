@@ -27,7 +27,8 @@ describe("ACP protocol helpers", () => {
     const r = initializeResult("1.2.3");
     expect(r.protocolVersion).toBe(ACP_PROTOCOL_VERSION);
     expect(r.agentCapabilities.promptCapabilities.image).toBe(false);
-    expect(r.agentCapabilities.promptCapabilities.embeddedContext).toBe(false);
+    expect(r.agentCapabilities.promptCapabilities.embeddedContext).toBe(true);
+    expect(r.agentCapabilities.sessionCapabilities.close).toEqual({});
     expect(r.agentInfo).toEqual({ name: "cybara", title: "Cybara", version: "1.2.3" });
   });
 
@@ -40,12 +41,19 @@ describe("ACP protocol helpers", () => {
     expect((n as { id?: unknown }).id).toBeUndefined();
   });
 
-  test("extractPromptText joins text and resource link blocks", () => {
+  test("extractPromptText joins text, embedded resources, and resource links", () => {
     expect(
       extractPromptText({
         prompt: [
           { type: "text", text: "a" },
           { type: "image" },
+          {
+            type: "resource",
+            resource: {
+              uri: "file:///workspace/main.ts",
+              text: "export const value = 1;",
+            },
+          },
           {
             type: "resource_link",
             uri: "file:///workspace/notes.md",
@@ -55,7 +63,9 @@ describe("ACP protocol helpers", () => {
           { type: "text", text: "b" },
         ],
       })
-    ).toBe("a\nReferenced resource: notes.md (file:///workspace/notes.md)\nProject notes\nb");
+    ).toBe(
+      "a\nEmbedded resource: file:///workspace/main.ts\nexport const value = 1;\nReferenced resource: notes.md (file:///workspace/notes.md)\nProject notes\nb"
+    );
     expect(extractPromptText({})).toBe("");
   });
 
@@ -206,6 +216,39 @@ describe("ACP dispatcher", () => {
     expect(signal?.aborted).toBe(true);
     const done = out.find((message) => "id" in message && message.id === 3) as JsonRpcResponse;
     expect(done.result).toEqual({ stopReason: "cancelled" });
+  });
+
+  test("session/close cancels work and releases the session", async () => {
+    const out: (JsonRpcRequest | JsonRpcResponse)[] = [];
+    const dispatch = createAcpDispatcher({
+      write: (message) => out.push(message),
+      resolveAgentId: () => "agent-1",
+      newSessionId: () => "session-1",
+      sendMessage: (request) =>
+        new Promise<string>((_resolve, reject) => {
+          request.signal.addEventListener("abort", () => reject(request.signal.reason), {
+            once: true,
+          });
+        }),
+    });
+    await dispatch('{"jsonrpc":"2.0","id":1,"method":"initialize"}');
+    await dispatch('{"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":"/x"}}');
+    const pending = dispatch(
+      '{"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"sessionId":"session-1","prompt":[{"type":"text","text":"wait"}]}}'
+    );
+    await Promise.resolve();
+    await dispatch(
+      '{"jsonrpc":"2.0","id":4,"method":"session/close","params":{"sessionId":"session-1"}}'
+    );
+    await pending;
+    await dispatch(
+      '{"jsonrpc":"2.0","id":5,"method":"session/prompt","params":{"sessionId":"session-1","prompt":[{"type":"text","text":"again"}]}}'
+    );
+
+    const close = out.find((message) => "id" in message && message.id === 4) as JsonRpcResponse;
+    const rejected = out.find((message) => "id" in message && message.id === 5) as JsonRpcResponse;
+    expect(close.result).toEqual({});
+    expect(rejected.error?.code).toBe(-32602);
   });
 
   test("authenticate with no methodId succeeds (no auth required over stdio)", async () => {

@@ -24,6 +24,11 @@ export interface TerminalScreenSequence {
   exit: string;
 }
 
+export interface TerminalMouseEvent {
+  type: "button" | "scroll";
+  direction?: "down" | "up";
+}
+
 export interface TerminalChatInspectorLayout {
   contentColumns: number;
   sidebar: boolean;
@@ -59,6 +64,42 @@ export function terminalScreenSequence(
   };
 }
 
+export function terminalMouseTrackingSequence(
+  isTTY: boolean,
+  env: NodeJS.ProcessEnv,
+  enabled: boolean
+): TerminalScreenSequence | null {
+  if (!enabled || !isTTY || env.TERM === "dumb") return null;
+  return {
+    enter: "\u001B[?1000h\u001B[?1006h",
+    exit: "\u001B[?1006l\u001B[?1000l",
+  };
+}
+
+export function parseTerminalMouseEvent(value: string): TerminalMouseEvent | null {
+  const match = value.match(/^(?:\u001B)?\[<(\d+);\d+;\d+[mM]$/);
+  if (!match?.[1]) return null;
+  const button = Number.parseInt(match[1], 10);
+  if ((button & 64) === 0) return { type: "button" };
+  const wheelButton = button & 3;
+  if (wheelButton === 0) return { type: "scroll", direction: "up" };
+  if (wheelButton === 1) return { type: "scroll", direction: "down" };
+  return { type: "button" };
+}
+
+export function nextTranscriptOffset(current: number, maximum: number, delta: number): number {
+  return Math.max(0, Math.min(Math.max(0, maximum), current + delta));
+}
+
+export function transcriptOffsetAfterMessageChange(
+  current: number,
+  previousCount: number,
+  nextCount: number
+): number {
+  if (current <= 0) return 0;
+  return Math.max(0, current + nextCount - previousCount);
+}
+
 export function useTerminalScreen(): void {
   React.useEffect(() => {
     const sequence = terminalScreenSequence(Boolean(process.stdout.isTTY), process.env);
@@ -68,6 +109,21 @@ export function useTerminalScreen(): void {
       process.stdout.write(sequence.exit);
     };
   }, []);
+}
+
+export function useTerminalMouseScrolling(enabled: boolean): void {
+  React.useEffect(() => {
+    const sequence = terminalMouseTrackingSequence(
+      Boolean(process.stdout.isTTY),
+      process.env,
+      enabled
+    );
+    if (!sequence) return;
+    process.stdout.write(sequence.enter);
+    return () => {
+      process.stdout.write(sequence.exit);
+    };
+  }, [enabled]);
 }
 
 export function resolveTerminalLayout(columns?: number, rows?: number): TerminalLayout {

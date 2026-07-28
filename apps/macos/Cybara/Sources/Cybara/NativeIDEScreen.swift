@@ -4,6 +4,7 @@ import SwiftUI
 struct IDEScreen: View {
     let client: GatewayClient
     @AppStorage("cybara.ide.pendingWorkspacePath") private var pendingWorkspacePath = ""
+    @AppStorage("cybara.ide.pendingFilePath") private var pendingFilePath = ""
     @State private var status: NativeIDEIndexStatus?
     @State private var browse: NativeIDEBrowseResult?
     @State private var workspacePath = ""
@@ -116,6 +117,10 @@ struct IDEScreen: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
         .task { await load() }
+        .onChange(of: pendingFilePath) { _, path in
+            guard !path.isEmpty, loaded else { return }
+            Task { await openPendingFile(path) }
+        }
         .sheet(isPresented: $showingCreate) {
             createSheet
         }
@@ -725,31 +730,57 @@ struct IDEScreen: View {
     }
 
     private func load() async {
+        defer { loaded = true }
         do {
+            let pendingFile = firstNonEmptyGatewayString(pendingFilePath)
             if let pending = firstNonEmptyGatewayString(pendingWorkspacePath) {
                 workspacePath = pending
                 currentPath = pending
                 pendingWorkspacePath = ""
+            }
+            if let pendingFile {
+                let directory = URL(fileURLWithPath: pendingFile).deletingLastPathComponent().path
+                workspacePath = directory
+                currentPath = directory
             }
             status = try await client.ideIndexStatus(workspacePath: firstNonEmptyGatewayString(workspacePath))
             if workspacePath.isEmpty {
                 workspacePath = status?.workspacePath ?? status?.indexedWorkspacePath ?? ""
             }
             let initialPath = firstNonEmptyGatewayString(currentPath == "~" ? workspacePath : currentPath, workspacePath, "~") ?? "~"
-            await browsePath(initialPath)
+            guard await browsePath(initialPath) else { return }
+            if let pendingFile {
+                guard await openFile(path: pendingFile) else { return }
+                if firstNonEmptyGatewayString(pendingFilePath) == pendingFile {
+                    pendingFilePath = ""
+                }
+            }
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
-        loaded = true
     }
 
-    private func browsePath(_ path: String) async {
+    private func openPendingFile(_ path: String) async {
+        guard let normalized = firstNonEmptyGatewayString(path) else { return }
+        let directory = URL(fileURLWithPath: normalized).deletingLastPathComponent().path
+        workspacePath = directory
+        currentPath = directory
+        guard await browsePath(directory), await openFile(path: normalized) else { return }
+        if firstNonEmptyGatewayString(pendingFilePath) == normalized {
+            pendingFilePath = ""
+        }
+    }
+
+    @discardableResult
+    private func browsePath(_ path: String) async -> Bool {
         loadingBrowse = true
+        defer { loadingBrowse = false }
         do {
             let result = try await client.browseIDE(path: firstNonEmptyGatewayString(path) ?? "~")
             if result.success == false {
                 error = result.error ?? "Unable to browse path."
+                return false
             } else {
                 browse = result
                 currentPath = result.path
@@ -757,11 +788,12 @@ struct IDEScreen: View {
                     workspacePath = result.path
                 }
                 error = nil
+                return true
             }
         } catch {
             self.error = error.localizedDescription
+            return false
         }
-        loadingBrowse = false
     }
 
     private func openEntry(_ entry: NativeIDEEntry) async {
@@ -773,12 +805,15 @@ struct IDEScreen: View {
         }
     }
 
-    private func openFile(path: String) async {
+    @discardableResult
+    private func openFile(path: String) async -> Bool {
         loadingFile = true
+        defer { loadingFile = false }
         do {
             let result = try await client.readIDEFile(path: path)
             if result.success == false {
                 error = result.error ?? "Unable to read file."
+                return false
             } else {
                 selectedFilePath = result.path
                 fileInfo = result
@@ -789,11 +824,12 @@ struct IDEScreen: View {
                 if result.isBinary != true {
                     await loadBlame(path: result.path, content: fileContent)
                 }
+                return true
             }
         } catch {
             self.error = error.localizedDescription
+            return false
         }
-        loadingFile = false
     }
 
     private func loadBlame(path: String, content: String) async {

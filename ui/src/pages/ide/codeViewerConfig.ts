@@ -79,3 +79,8 @@ export function isCodeViewerLargeFile(
   }
   return false;
 }
+
+export function getMinimapRowBudget(viewportHeight: number): number {
+  const height = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 0;
+  return Math.max(120, Math.min(360, Math.ceil(height / 2)));
+}
