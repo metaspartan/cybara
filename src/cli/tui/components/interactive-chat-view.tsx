@@ -423,7 +423,7 @@ export function HelpPanel({
           Chat controls
         </Text>
         <Text>Enter send · Shift+Enter/^J newline · Tab complete</Text>
-        <Text>^P commands · ^F search · PgUp/PgDn scroll</Text>
+        <Text>^P commands · ^F search · wheel/PgUp/PgDn scroll</Text>
         <Text>Esc sessions · ^C quit</Text>
         <Text>/model · /agent · /permissions · /followups · /reasoning</Text>
         <Text>/copy [n] · /export · /diff · /environment</Text>
@@ -445,7 +445,8 @@ export function HelpPanel({
       <Text>
         Enter send · Shift+Enter/Ctrl+J newline · ←/→ move · ↑/↓ palette or history
       </Text>
-      <Text>Alt+←/→ words · Ctrl+W delete word · PgUp/PgDn transcript</Text>
+      <Text>Alt+←/→ words · Ctrl+W delete word · wheel/PgUp/PgDn transcript</Text>
+      <Text>Empty composer: ↑/↓ scroll · Home/End jump · /mouse toggles capture</Text>
       <Text>Ctrl+P commands · Ctrl+F transcript search · Esc closes the active panel</Text>
       <Text>
         Tab completes slash commands and @ capabilities · approvals use 1/2/3/4 or y/s/a/n

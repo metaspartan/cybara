@@ -395,6 +395,17 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("Ctrl+J newline");
     expect(cliTuiInteractiveChatSource).toContain("pageUp");
     expect(cliTuiInteractiveChatSource).toContain("pageDown");
+    expect(cliTuiInteractiveChatSource).toContain("parseTerminalMouseEvent");
+    expect(cliTuiInteractiveChatSource).toContain("useTerminalMouseScrolling");
+    expect(cliTuiInteractiveChatSource).toContain(
+      "normalizedTranscriptOffset < maximumTranscriptOffset"
+    );
+    expect(cliTuiInteractiveChatSource).toContain("key.home && input.length === 0");
+    expect(cliTuiInteractiveChatSource).toContain("key.end && input.length === 0");
+    expect(cliTuiInteractiveChatSource).toContain("sending && normalizedTranscriptOffset === 0");
+    expect(cliTuiInteractiveChatSource).toMatch(
+      /React\.useEffect\(\(\) => \{\s*if \(sending\) return;\s*void loadMessages\(\);/
+    );
     expect(cliTuiInteractiveChatSource).toMatch(/expandedTranscript\s*\? expandedMessageLines/);
     expect(cliTuiInteractiveChatSource).toContain(
       "const [expandedTranscript, setExpandedTranscript] = React.useState(false)"

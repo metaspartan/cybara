@@ -3,10 +3,14 @@ import {
   chatEscapeAction,
   clipboardCandidates,
   composerWindow,
+  nextTranscriptOffset,
+  parseTerminalMouseEvent,
   resolveTerminalChatInspector,
   resolveTerminalLayout,
   terminalSelectionWindow,
   terminalScreenSequence,
+  terminalMouseTrackingSequence,
+  transcriptOffsetAfterMessageChange,
   transcriptMessageLimit,
   transcriptWindow,
 } from "../../src/cli/tui/terminal";
@@ -138,5 +142,34 @@ describe("CLI TUI terminal behavior", () => {
     expect(terminalScreenSequence(false, {})).toBeNull();
     expect(terminalScreenSequence(true, { TERM: "dumb" })).toBeNull();
     expect(terminalScreenSequence(true, { CYBARA_TUI_ALT_SCREEN: "0" })).toBeNull();
+  });
+
+  test("captures portable SGR mouse scrolling with an explicit opt-out", () => {
+    expect(terminalMouseTrackingSequence(true, {}, true)).toEqual({
+      enter: "\u001B[?1000h\u001B[?1006h",
+      exit: "\u001B[?1006l\u001B[?1000l",
+    });
+    expect(terminalMouseTrackingSequence(false, {}, true)).toBeNull();
+    expect(terminalMouseTrackingSequence(true, { TERM: "dumb" }, true)).toBeNull();
+    expect(terminalMouseTrackingSequence(true, { CYBARA_TUI_MOUSE: "0" }, true)).toBeNull();
+    expect(parseTerminalMouseEvent("[<64;12;8M")).toEqual({
+      type: "scroll",
+      direction: "up",
+    });
+    expect(parseTerminalMouseEvent("\u001B[<65;12;8M")).toEqual({
+      type: "scroll",
+      direction: "down",
+    });
+    expect(parseTerminalMouseEvent("[<0;12;8M")).toEqual({ type: "button" });
+    expect(parseTerminalMouseEvent("hello")).toBeNull();
+  });
+
+  test("bounds line and page transcript movement and preserves a scrolled viewport", () => {
+    expect(nextTranscriptOffset(0, 12, 1)).toBe(1);
+    expect(nextTranscriptOffset(11, 12, 5)).toBe(12);
+    expect(nextTranscriptOffset(2, 12, -5)).toBe(0);
+    expect(transcriptOffsetAfterMessageChange(4, 20, 23)).toBe(7);
+    expect(transcriptOffsetAfterMessageChange(0, 20, 23)).toBe(0);
+    expect(transcriptOffsetAfterMessageChange(2, 20, 10)).toBe(0);
   });
 });
