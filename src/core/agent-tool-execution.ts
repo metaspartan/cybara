@@ -108,24 +108,6 @@ async function executeAgentToolInternal(
     return { skipped: false, result: { error: reason } };
   }
 
-  const hookDecision = await emitAgentHook({
-    type: "tool_before",
-    context: hookContext,
-    toolName,
-    args,
-  });
-  if (hookDecision?.block) {
-    const reason = hookDecision.reason || `Tool blocked by hook: ${toolName}`;
-    await emitAgentHook({
-      type: "tool_blocked",
-      context: hookContext,
-      toolName,
-      args,
-      reason,
-    });
-    return { skipped: false, result: { error: reason } };
-  }
-
   const executionState = toolContext?.executionState;
   const configuredToolBudget = toolContext?.maxToolCalls;
   if (
@@ -148,6 +130,24 @@ async function executeAgentToolInternal(
     executionState.toolCallsStarted += 1;
   } else if (executionState) {
     executionState.toolCallsStarted += 1;
+  }
+
+  const hookDecision = await emitAgentHook({
+    type: "tool_before",
+    context: hookContext,
+    toolName,
+    args,
+  });
+  if (hookDecision?.block) {
+    const reason = hookDecision.reason || `Tool blocked by hook: ${toolName}`;
+    await emitAgentHook({
+      type: "tool_blocked",
+      context: hookContext,
+      toolName,
+      args,
+      reason,
+    });
+    return { skipped: false, result: { error: reason } };
   }
 
   const toolCallId = createAgentToolCallStatusId(toolName);
