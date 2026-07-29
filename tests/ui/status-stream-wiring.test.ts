@@ -31,6 +31,9 @@ const workspaceOpenMenuPath = fileURLToPath(
 const sidebarPath = fileURLToPath(
   new URL("../../ui/src/components/layout/Sidebar.tsx", import.meta.url)
 );
+const sidebarStatusPath = fileURLToPath(
+  new URL("../../ui/src/components/layout/useSidebarAgentStatus.ts", import.meta.url)
+);
 const notificationsPath = fileURLToPath(
   new URL("../../ui/src/hooks/useNotifications.ts", import.meta.url)
 );
@@ -234,7 +237,7 @@ describe("status stream websocket wiring", () => {
   });
 
   test("sidebar status indicator uses websocket status stream", () => {
-    const source = readSource(sidebarPath);
+    const source = readSource(sidebarPath) + readSource(sidebarStatusPath);
     expect(source).toContain("connectStatusStream");
     expect(source).not.toContain("new EventSource(");
   });

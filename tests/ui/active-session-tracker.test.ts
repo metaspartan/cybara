@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  pruneInactiveSessions,
   reconcileActiveSessionSnapshot,
+  reconcileAuthoritativeActiveSessions,
   SIDEBAR_ACTIVE_STATUSES,
 } from "../../ui/src/components/layout/activeSessionTracker";
 
@@ -11,7 +11,6 @@ describe("sidebar active session tracker", () => {
     const reconciled = reconcileActiveSessionSnapshot(active, [], 1_100);
 
     expect([...reconciled.keys()]).toEqual(["session-1"]);
-    expect(pruneInactiveSessions(reconciled, 2_000, 60_000).has("session-1")).toBe(true);
   });
 
   test("treats tool completion as an active point in the run", () => {
@@ -32,8 +31,38 @@ describe("sidebar active session tracker", () => {
     expect(reconciled.get("session-1")).toBe(1_100);
   });
 
-  test("expires activity when no terminal event arrives", () => {
+  test("retains a long-running session until the gateway confirms it ended", () => {
     const active = new Map([["session-1", 1_000]]);
-    expect(pruneInactiveSessions(active, 62_001, 60_000).size).toBe(0);
+    const afterTenHours = reconcileActiveSessionSnapshot(active, [], 36_001_000);
+    expect(afterTenHours.has("session-1")).toBe(true);
+
+    const reconciled = reconcileAuthoritativeActiveSessions(
+      afterTenHours,
+      [],
+      36_002_000,
+      36_002_100
+    );
+    expect(reconciled.size).toBe(0);
+  });
+
+  test("does not erase a stream event newer than an in-flight gateway snapshot", () => {
+    const active = new Map([["session-1", 2_100]]);
+    const reconciled = reconcileAuthoritativeActiveSessions(active, [], 2_000, 2_200);
+
+    expect(reconciled.get("session-1")).toBe(2_100);
+  });
+
+  test("refreshes sessions confirmed active by the gateway", () => {
+    const reconciled = reconcileAuthoritativeActiveSessions(
+      new Map([["session-1", 1_000]]),
+      ["session-1", " session-2 ", ""],
+      2_000,
+      2_100
+    );
+
+    expect([...reconciled.entries()]).toEqual([
+      ["session-1", 2_100],
+      ["session-2", 2_100],
+    ]);
   });
 });

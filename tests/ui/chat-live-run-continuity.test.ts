@@ -111,14 +111,14 @@ describe("chat live run continuity", () => {
       join(ROOT_DIR, "ui", "src", "pages", "ide", "IDEChatPanel.tsx"),
       "utf8"
     );
-    const sidebar = readFileSync(
-      join(ROOT_DIR, "ui", "src", "components", "layout", "Sidebar.tsx"),
+    const sidebarStatus = readFileSync(
+      join(ROOT_DIR, "ui", "src", "components", "layout", "useSidebarAgentStatus.ts"),
       "utf8"
     );
 
     expect(idePanel).toContain("if (isRunEndingStatus(payload)) {");
     expect(idePanel).not.toContain('if (payload.status === "error") {');
-    expect(sidebar).toContain("const runEnded = isRunEndingStatus(data);");
+    expect(sidebarStatus).toContain("const runEnded = isRunEndingStatus(data);");
   });
 
   test("preserves locally known trailing messages when reloading mid-run", () => {

@@ -38,6 +38,11 @@ import {
   parseCodexFunctionCallId,
   serializeCodexFunctionCallId,
 } from "./llm/codex-function-call-ids";
+import {
+  incompleteOpenAICodexStreamError,
+  OpenAICodexStreamError,
+  openAICodexStreamEventError,
+} from "./llm/codex-stream-errors";
 import { openAIResponsesUserContent } from "./llm/image-blocks";
 import { codexFastModeServiceTier } from "../../shared/codex-fast-mode";
 import { config } from "./config";
@@ -166,6 +171,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
     let usage: OpenAICodexUsage | undefined;
     let firstTokenMs: number | undefined;
     let activeToolCallKey: string | undefined;
+    let terminalEventSeen = false;
     const toolCalls = new Map<
       string,
       {
@@ -314,7 +320,12 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
         continue;
       }
 
-      if (type === "response.completed") {
+      if (
+        type === "response.completed" ||
+        type === "response.done" ||
+        type === "response.incomplete"
+      ) {
+        terminalEventSeen = true;
         const completed = event.response as Record<string, unknown> | undefined;
         const usageObj = completed?.usage as Record<string, unknown> | undefined;
         if (usageObj) {
@@ -338,19 +349,16 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
       }
 
       if (type === "response.failed") {
-        const failed = event.response as Record<string, unknown> | undefined;
-        const failedError = failed?.error as Record<string, unknown> | undefined;
-        const message =
-          (typeof failedError?.message === "string" && failedError.message) ||
-          "OpenAI Codex response failed";
-        throw new Error(message);
+        throw openAICodexStreamEventError(event, "OpenAI Codex response failed", false);
       }
 
       if (type === "error") {
-        const message =
-          (typeof event.message === "string" && event.message) || "OpenAI Codex stream error";
-        throw new Error(message);
+        throw openAICodexStreamEventError(event, "OpenAI Codex stream error", true);
       }
+    }
+
+    if (!terminalEventSeen) {
+      throw incompleteOpenAICodexStreamError();
     }
 
     return {
@@ -481,7 +489,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
           watchdog.touch();
           const parsed = await this.parseOpenAICodexTurnResponse(
             response,
-            sessionId,
+            transientRetryCount === 0 ? sessionId : undefined,
             agentId,
             watchdog,
             requestStartedAt
@@ -490,7 +498,30 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
           return { ...parsed, resolvedModel: candidate };
         } catch (error) {
           watchdog.dispose();
-          throw watchdog.wrapError(error);
+          const normalized = watchdog.wrapError(error);
+          const streamRetryDelayMs =
+            normalized instanceof OpenAICodexStreamError &&
+            normalized.retryable &&
+            transientRetryCount < retryPolicy.maxRetries
+              ? this.providerRetryDelayMs(0, new Headers(), transientRetryCount)
+              : undefined;
+          const retryDelayMs =
+            streamRetryDelayMs ??
+            providerExceptionRetryDelayMs(
+              normalized,
+              transientRetryCount,
+              signal,
+              Math.random,
+              retryPolicy.maxRetries
+            );
+          if (retryDelayMs === undefined || retryDelayMs > retryPolicy.maxDelayMs) throw normalized;
+          transientRetryCount += 1;
+          this.logProviderRetryStatus(
+            { sessionId, agentId },
+            `Provider stream interrupted; retrying (${transientRetryCount}/${retryPolicy.maxRetries})...`
+          );
+          await this.waitForRetryDelay(retryDelayMs, signal);
+          continue;
         }
       }
     }

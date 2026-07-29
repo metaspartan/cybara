@@ -10,6 +10,9 @@ const sidebarPath = fileURLToPath(
 const activeSessionTrackerPath = fileURLToPath(
   new URL("../../ui/src/components/layout/activeSessionTracker.ts", import.meta.url)
 );
+const sidebarAgentStatusPath = fileURLToPath(
+  new URL("../../ui/src/components/layout/useSidebarAgentStatus.ts", import.meta.url)
+);
 const logoPath = fileURLToPath(new URL("../../ui/public/cybara.png", import.meta.url));
 const thinkingLogoPath = fileURLToPath(
   new URL("../../ui/public/cybara-thinking.png", import.meta.url)
@@ -36,6 +39,7 @@ describe("Sidebar status indicator behavior", () => {
   test("treats every in-turn status event as activity so the indicator never flickers", () => {
     const source = readSidebarSource();
     const tracker = readFileSync(activeSessionTrackerPath, "utf8");
+    const statusHook = readFileSync(sidebarAgentStatusPath, "utf8");
 
     for (const status of [
       "thinking",
@@ -46,16 +50,18 @@ describe("Sidebar status indicator behavior", () => {
     ]) {
       expect(tracker).toContain(`"${status}"`);
     }
-    expect(source).toContain("SIDEBAR_ACTIVE_STATUSES.has(statusValue)");
-    expect(source).toContain('data.type === "task_completed"');
-    expect(source).toMatch(
+    expect(statusHook).toContain("SIDEBAR_ACTIVE_STATUSES.has(data.status)");
+    expect(statusHook).toContain('data.type === "task_completed"');
+    expect(statusHook).toMatch(
       /setStatus\(globalActive \|\| hasActiveSessions \? ["']active["'] : ["']idle["']\)/
     );
-    expect(tracker).toContain("SIDEBAR_ACTIVE_SESSION_WINDOW_MS = 60_000");
     expect(tracker).toContain('"error"');
-    expect(source).toContain("const runEnded = isRunEndingStatus(data);");
-    expect(source).toContain("} else if (runEnded) {");
-    expect(source).toContain("globalLastSeenRef.current = 0");
+    expect(statusHook).toContain("const runEnded = isRunEndingStatus(data);");
+    expect(statusHook).toContain("} else if (runEnded) {");
+    expect(statusHook).toContain("globalLastSeenRef.current = 0");
+    expect(statusHook).toContain("chatApi.getSessionStatus()");
+    expect(statusHook).toContain("reconcileAuthoritativeActiveSessions(");
+    expect(statusHook).not.toContain("pruneInactiveSessions");
   });
 
   test("renders the shared two-frame thinking mark instead of a halo ring", () => {
@@ -100,7 +106,12 @@ describe("Sidebar status indicator behavior", () => {
           }
         }
       }
-      return { top, bottom, height: bottom - top + 1, center: (top + bottom) / 2 };
+      return {
+        top,
+        bottom,
+        height: bottom - top + 1,
+        center: (top + bottom) / 2,
+      };
     };
 
     expect(logo.width).toBe(logo.height);

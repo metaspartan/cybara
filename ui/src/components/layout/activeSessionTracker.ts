@@ -1,7 +1,5 @@
 import type { StatusSessionSnapshot, StreamAgentStatus } from "@/lib/status-stream";
 
-export const SIDEBAR_ACTIVE_SESSION_WINDOW_MS = 60_000;
-
 export const SIDEBAR_ACTIVE_STATUSES = new Set<StreamAgentStatus>([
   "thinking",
   "generating",
@@ -25,10 +23,17 @@ export function reconcileActiveSessionSnapshot(
   return next;
 }
 
-export function pruneInactiveSessions(
+export function reconcileAuthoritativeActiveSessions(
   previous: ReadonlyMap<string, number>,
-  now = Date.now(),
-  activeWindowMs = SIDEBAR_ACTIVE_SESSION_WINDOW_MS
+  activeSessionIds: readonly string[],
+  requestedAt: number,
+  observedAt = Date.now()
 ): Map<string, number> {
-  return new Map([...previous].filter(([, lastSeen]) => now - lastSeen <= activeWindowMs));
+  const confirmed = new Set(activeSessionIds.map((sessionId) => sessionId.trim()).filter(Boolean));
+  const next = new Map<string, number>();
+  for (const sessionId of confirmed) next.set(sessionId, observedAt);
+  for (const [sessionId, lastSeen] of previous) {
+    if (!confirmed.has(sessionId) && lastSeen > requestedAt) next.set(sessionId, lastSeen);
+  }
+  return next;
 }
