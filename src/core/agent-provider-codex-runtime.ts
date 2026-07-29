@@ -1,3 +1,4 @@
+import { codexFastModeServiceTier } from "../../shared/codex-fast-mode";
 import type { AgentMessage } from "./agent";
 import {
   resolveContextGuardBudgets,
@@ -30,6 +31,7 @@ import {
 } from "./agent-provider-common-runtime";
 import { AgentProviderOpenAICompatRuntime } from "./agent-provider-openai-compat-runtime";
 import { hasAgentTransferEnvelope } from "./agent-transfer";
+import { config } from "./config";
 import type { ToolDefinition } from "./database";
 import { classifyApiError } from "./error-classifier";
 import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
@@ -44,8 +46,6 @@ import {
   openAICodexStreamEventError,
 } from "./llm/codex-stream-errors";
 import { openAIResponsesUserContent } from "./llm/image-blocks";
-import { codexFastModeServiceTier } from "../../shared/codex-fast-mode";
-import { config } from "./config";
 import { coerceReasoningEffort, normalizeReasoningEffort } from "./llm/reasoning";
 import {
   createStreamWatchdog,
@@ -59,8 +59,8 @@ import {
   getOpenAICodexModelCandidates,
   shouldRetryOpenAICodexModel,
 } from "./openai-codex-models";
-import { providerExceptionRetryDelayMs, resolveProviderRetryPolicy } from "./provider-retry";
 import { parseOpenAICodexJsonTurnResponse } from "./openai-codex-response";
+import { providerExceptionRetryDelayMs, resolveProviderRetryPolicy } from "./provider-retry";
 import { broadcastTokenDelta } from "./status";
 import type { ToolContext } from "./tools/index";
 
@@ -320,11 +320,11 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
         continue;
       }
 
-      if (
-        type === "response.completed" ||
-        type === "response.done" ||
-        type === "response.incomplete"
-      ) {
+      if (type === "response.incomplete") {
+        throw incompleteOpenAICodexStreamError();
+      }
+
+      if (type === "response.completed" || type === "response.done") {
         terminalEventSeen = true;
         const completed = event.response as Record<string, unknown> | undefined;
         const usageObj = completed?.usage as Record<string, unknown> | undefined;

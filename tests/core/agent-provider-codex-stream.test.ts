@@ -101,6 +101,38 @@ describe("OpenAI Codex stream recovery", () => {
     expect(result.content).toBe("recovered");
   });
 
+  test("retries response.incomplete without exposing partial output", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      if (calls === 1) {
+        return eventStream([
+          { type: "response.output_text.delta", delta: "partial" },
+          {
+            type: "response.incomplete",
+            response: {
+              status: "incomplete",
+              incomplete_details: { reason: "max_output_tokens" },
+            },
+          },
+        ]);
+      }
+      return eventStream([
+        { type: "response.output_text.delta", delta: "complete" },
+        { type: "response.completed", response: { status: "completed" } },
+      ]);
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      createCodexAgent(),
+      [{ role: "user", content: "retry an incomplete response" }],
+      { useTools: false, sessionId: "codex-stream-incomplete-event-session" }
+    );
+
+    expect(calls).toBe(2);
+    expect(result.content).toBe("complete");
+  });
+
   test("does not retry invalid response failures", async () => {
     let calls = 0;
     globalThis.fetch = (async () => {
