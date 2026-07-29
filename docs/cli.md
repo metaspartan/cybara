@@ -152,11 +152,10 @@ cybara journey            # Show learned skills and memory activity
 cybara journey --json     # Emit journey data for scripts
 ```
 
-`cybara security` delegates to the pinned `@openai/codex-security` package through Cybara's Bun
-runtime. It does not require Node, npm, or npx. The upstream scanner requires Python 3.10 or later
-for scans and exports; help, version, login status, and runtime metadata do not require Python.
-Keep scan output outside the checked-out repository because reports may contain source excerpts,
-vulnerability evidence, and reproduction details.
+`cybara security` sends the assessment through the selected Cybara agent, provider, and model. Use
+`--agent <name-or-id>` to select an agent or `--router` to use the configured model router. The
+agent receives a read-only security toolset and cannot switch to a separate scanner model. Use
+`--deep`, `--working-tree`, `--diff <ref>`, or `--path <path>` to narrow the requested assessment.
 
 ### Lab and Evals
 

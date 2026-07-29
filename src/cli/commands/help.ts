@@ -35,14 +35,8 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    evals export [--format jsonl] [--sanitize] [--output PATH]");
   console.log("    evals import <path>                  Import a replayable suite backup");
   console.log("  doctor      Run environment diagnostics [--deep] [--json] [--export [path]]");
-  console.log("  security    Run authorized repository security scans through Bun");
-  console.log("    security login [--device-auth]       Sign in for security scans");
-  console.log("    security login status                Show the active credential source");
-  console.log("    security scan [path] [options]       Scan an owned or authorized repository");
-  console.log("    security scans list [path]           List previous scans");
-  console.log("    security export <scan> [options]     Export SARIF, CSV, or JSON");
-  console.log("    security validate <scan> <finding>   Validate a finding");
-  console.log("    security patch <scan> <finding>      Prepare a reviewed patch");
+  console.log("  security    Assess an authorized repository with the active Cybara agent");
+  console.log("    security [scan] [path] [--agent ID] [--router] [--deep] [--working-tree]");
   console.log("  update      Download and install the latest CLI release (verifies SHA256)");
   console.log(
     "    update --check     Only report whether a newer release exists (non-zero if stale)"

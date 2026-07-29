@@ -50,6 +50,7 @@ import { handleEvalReplay, handleEvalSave } from "./eval";
 import { handleToolSearch, handleToolDescribe, handleToolCall } from "./tool-discovery";
 import { handleExecuteCode } from "./execute-code";
 import { handleSandboxRun } from "./sandbox";
+import { handleSecurityScan } from "./security-scan";
 import { handleImageGenerate, handleVideoGenerate, handleMusicGenerate } from "./media-generation";
 import {
   COMPUTER_USE_ACTION_TOOL_ALIASES,
@@ -268,6 +269,7 @@ const toolHandlers: Record<
 
   execute_code: handleExecuteCode,
   sandbox_run: handleSandboxRun,
+  security_scan: handleSecurityScan,
 
   image_generate: handleImageGenerate,
   video_generate: handleVideoGenerate,

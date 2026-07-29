@@ -57,6 +57,21 @@ describe("chat capability mentions", () => {
     expect(resolved.instruction).toContain("exec");
   });
 
+  test("selects the integrated security skill and tool from natural language", async () => {
+    const resolved = await resolveChatCapabilityMentions(
+      "Do a Codex Security scan of this repo",
+      process.cwd()
+    );
+    expect(resolved.mentions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "skill", token: "@security-scan" }),
+        expect.objectContaining({ kind: "tool", token: "@security_scan" }),
+      ])
+    );
+    expect(resolved.instruction).toContain('skill_load with "security-scan"');
+    expect(resolved.instruction).toContain('use the "security_scan" built-in tool');
+  });
+
   test("exposes connected accounts as explicit chat capabilities", async () => {
     updateAccountConnectorConfig("microsoft_365", { clientId: "microsoft-app" });
     storeAccountConnectorToken("microsoft_365", {

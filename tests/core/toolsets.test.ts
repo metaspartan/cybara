@@ -97,6 +97,7 @@ describe("agent toolsets", () => {
     expect(first.offeredTools.map((tool) => tool.name)).toContain("agents_list");
     expect(first.offeredTools.map((tool) => tool.name)).toContain("sessions_transfer");
     expect(first.offeredTools.map((tool) => tool.name)).toContain("message");
+    expect(first.offeredTools.map((tool) => tool.name)).toContain("security_scan");
   });
 
   test("supports profiles and additive toolsets", () => {

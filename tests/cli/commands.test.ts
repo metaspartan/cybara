@@ -22,7 +22,7 @@ describe("CLI Commands", () => {
     expect(stdout).toContain("channels");
     expect(stdout).toContain("plugin");
     expect(stdout).toContain("ide [path[:line]]");
-    expect(stdout).toContain("security scan [path]");
+    expect(stdout).toContain("security [scan] [path]");
   });
 
   test("status command renders health summary", async () => {
@@ -79,7 +79,9 @@ describe("CLI Commands", () => {
     expect(completion.stdout).toContain("--scroll-step");
     expect(completion.stdout).toContain(" ide ");
     expect(completion.stdout).toContain(" security ");
-    expect(completion.stdout).toContain('security) opts="scan login logout info scans export');
+    expect(completion.stdout).toContain(
+      'security) opts="scan --agent --router --deep --working-tree --diff --path'
+    );
   });
 
   test("metrics command renders usage summary", async () => {

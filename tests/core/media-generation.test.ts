@@ -90,24 +90,20 @@ describe("media-generation registry", () => {
       }),
     });
 
-    const originalFetch = globalThis.fetch;
     let fetchCalls = 0;
-    globalThis.fetch = (async () => {
+    const fetchUrl = async (): Promise<Response> => {
       fetchCalls += 1;
       return new Response(new Uint8Array([1]), { status: 200 });
-    }) as typeof fetch;
+    };
 
-    try {
-      await expect(
-        handleImageGenerate(
-          { provider: providerId, prompt: "asset url" },
-          { workspaceDir: tmpdir() }
-        )
-      ).rejects.toThrow("media asset URL blocked");
-      expect(fetchCalls).toBe(0);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    await expect(
+      handleImageGenerate(
+        { provider: providerId, prompt: "asset url" },
+        { workspaceDir: tmpdir() },
+        fetchUrl
+      )
+    ).rejects.toThrow("media asset URL blocked");
+    expect(fetchCalls).toBe(0);
   });
 
   test("image generation blocks private redirects from public asset URLs", async () => {
@@ -126,30 +122,29 @@ describe("media-generation registry", () => {
       }),
     });
 
-    const originalFetch = globalThis.fetch;
     const dnsLookup = spyOn(Bun.dns, "lookup").mockResolvedValue([
       { address: "1.1.1.1", family: 4, ttl: 60 },
     ]);
     const fetched: string[] = [];
-    globalThis.fetch = (async (url) => {
+    const fetchUrl = async (url: string): Promise<Response> => {
       fetched.push(String(url));
       return new Response(null, {
         status: 302,
         headers: { location: "http://127.0.0.1:4269/redirected.png" },
       });
-    }) as typeof fetch;
+    };
 
     try {
       await expect(
         handleImageGenerate(
           { provider: providerId, prompt: "redirect" },
-          { workspaceDir: tmpdir() }
+          { workspaceDir: tmpdir() },
+          fetchUrl
         )
       ).rejects.toThrow("media asset URL blocked");
       expect(fetched).toEqual(["https://assets.example.test/generated.png"]);
     } finally {
       dnsLookup.mockRestore();
-      globalThis.fetch = originalFetch;
     }
   });
 

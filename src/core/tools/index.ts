@@ -38,6 +38,7 @@ import {
 } from "./handlers/memory";
 import { handleWorkspaceIndexSearch } from "./handlers/workspace-index";
 import { handleMobileSimulator } from "./handlers/mobile-simulator";
+import { handleSecurityScan } from "./handlers/security-scan";
 import { toolSchemas } from "./schemas";
 import type { Tool, ToolContext, ToolHandler } from "./types";
 
@@ -333,6 +334,7 @@ _toolHandlers.set("lsp_languages", handleLSPLanguages);
 _toolHandlers.set("canvas", handleCanvas);
 _toolHandlers.set("computer_use", handleComputerUse);
 _toolHandlers.set("mobile_simulator", handleMobileSimulator);
+_toolHandlers.set("security_scan", handleSecurityScan);
 for (const action of COMPUTER_USE_ACTION_TOOL_ALIASES) {
   _toolHandlers.set(action, async (args, context) =>
     handleComputerUse(normalizeComputerUseActionArgs(action, args), context)

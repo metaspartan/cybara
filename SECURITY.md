@@ -38,7 +38,7 @@ follows:
 
 | Artifact | Verification |
 | --- | --- |
-| Compiled CLI binaries (`cybara-<os>-<arch>`) | Each ships with a `<asset>.sha256` sidecar and a combined `checksums.txt`. `cybara update` and `install.sh` verify the SHA256 before installing. A missing sidecar aborts the install unless explicitly overridden with `--force`. |
+| Compiled CLI binaries (`cybara-<os>-<arch>`) | Each ships with a `<asset>.sha256` sidecar and a combined `checksums.txt`. `cybara update`, `install.sh`, and `install.ps1` verify the SHA256 before installing. A missing or malformed sidecar, unavailable verification tool, or checksum mismatch aborts the install. |
 | Tauri desktop installers (macOS/Windows/Linux) | Signed with a Tauri updater keypair; the in-app updater checks the `latest.json` manifest and signature. The publish workflow refuses to publish a release that is missing `latest.json`. |
 | Native macOS `.app` bundles | Codesigned and notarized with an Apple Developer ID when the Apple secrets are configured; each ships with a `.sha256` sidecar. |
 

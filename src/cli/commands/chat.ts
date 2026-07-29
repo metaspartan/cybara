@@ -943,18 +943,12 @@ async function rawChat(options: CliChatOptions): Promise<void> {
       if (workspaceDir) body.workspaceDir = workspaceDir;
 
       const current = chatContext();
-      const resp = await fetch(`${current.apiBase}/api/chat`, {
+      const data = await (current.requestAPI || current.fetchAPI)<CliChatResponse>("/api/chat", {
         method: "POST",
-        headers: current.withAuthHeaders({ "Content-Type": "application/json" }),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-
-      if (!resp.ok) {
-        console.error(`  Error: ${resp.status} ${resp.statusText}`);
-        return;
-      }
-
-      const data = (await resp.json()) as CliChatResponse;
+      if (!data) return;
       if (data.sessionId) {
         sessionId = data.sessionId;
       }

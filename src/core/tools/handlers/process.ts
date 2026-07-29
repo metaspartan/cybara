@@ -13,6 +13,7 @@ import {
   sanitizeSubprocessEnvironment,
 } from "../../subprocess-env";
 import type { ToolContext } from "../index";
+import { killSubprocessTree } from "../../subprocess-tree";
 
 const log = createLogger("ProcessTool");
 const STREAM_DRAIN_GRACE_MS = 200;
@@ -498,37 +499,6 @@ type RunningProcess = {
   proc: Bun.Subprocess;
 };
 const runningProcesses = new Map<string, RunningProcess>();
-
-type ProcessSignal = Parameters<Bun.Subprocess["kill"]>[0];
-
-function killSubprocessTree(proc: Bun.Subprocess, signal: ProcessSignal = "SIGTERM"): void {
-  if (process.platform === "win32") {
-    try {
-      Bun.spawn(["taskkill", "/pid", String(proc.pid), "/t", "/f"], {
-        stdout: "ignore",
-        stderr: "ignore",
-      });
-      return;
-    } catch {
-      void 0;
-    }
-  }
-
-  if (process.platform !== "win32") {
-    try {
-      process.kill(-proc.pid, signal);
-      return;
-    } catch {
-      void 0;
-    }
-  }
-
-  try {
-    proc.kill(signal);
-  } catch {
-    void 0;
-  }
-}
 
 export async function handleProcess(args: Record<string, unknown>): Promise<unknown> {
   const action = args.action as string;

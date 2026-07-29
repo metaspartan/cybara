@@ -1,9 +1,12 @@
 import { isIP } from "net";
+import { Agent, buildConnector, fetch as undiciFetch } from "undici";
 
 export interface PublicHttpUrlValidation {
   valid: boolean;
   error?: string;
 }
+
+export type PublicHttpFetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
 export const PUBLIC_HTTP_BLOCKED_CIDRS = [
   "127.0.0.0/8",
@@ -100,6 +103,37 @@ export function isPrivateOrBlockedIp(value: string): boolean {
   }
   return false;
 }
+
+export function createPublicHttpConnector(
+  connector: ReturnType<typeof buildConnector> = buildConnector()
+): ReturnType<typeof buildConnector> {
+  return (options, callback) => {
+    connector(options, (error, socket) => {
+      if (error || !socket) {
+        callback(error ?? new Error("Public HTTP connection failed"), null);
+        return;
+      }
+      const address = socket.remoteAddress;
+      if (!address || isPrivateOrBlockedIp(address)) {
+        socket.destroy();
+        callback(new Error(`Blocked connected address: ${address || "unknown"}`), null);
+        return;
+      }
+      callback(null, socket);
+    });
+  };
+}
+
+const publicHttpDispatcher = new Agent({ connect: createPublicHttpConnector() });
+
+export const fetchPublicHttpUrl: PublicHttpFetcher = async (url, init) => {
+  const shape = validatePublicHttpUrlShape(url);
+  if (!shape.valid) throw new Error(`Request blocked: ${shape.error}`);
+  const options = { ...init, dispatcher: publicHttpDispatcher } as Parameters<
+    typeof undiciFetch
+  >[1];
+  return (await undiciFetch(url, options)) as unknown as Response;
+};
 
 export function validatePublicHttpUrlShape(rawUrl: string): PublicHttpUrlValidation {
   let parsed: URL;

@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { forwardedClientIp, getClientIp, isLoopbackIp } from "../../src/api/client-ip";
+import {
+  forwardedClientIp,
+  getClientIp,
+  isLoopbackIp,
+  isTrustedProxyPeer,
+} from "../../src/api/client-ip";
 import * as security from "../../src/api/security";
 
 let previousApiKey: string | undefined;
@@ -41,13 +46,49 @@ describe("client IP resolution", () => {
     ).toBe("203.0.113.42");
   });
 
-  test("trustProxy mode honors the first forwarded address", () => {
+  test("trustProxy mode uses the rightmost address supplied by a trusted proxy", () => {
     expect(
-      getClientIp({ "X-Forwarded-For": "198.51.100.7, 127.0.0.1" }, "10.0.0.8", {
+      getClientIp({ "X-Forwarded-For": "198.51.100.7, 203.0.113.8" }, "10.0.0.8", {
         trustProxy: true,
+        trustedProxyCidrs: ["10.0.0.8/32"],
       })
-    ).toBe("198.51.100.7");
+    ).toBe("203.0.113.8");
     expect(forwardedClientIp({ "x-real-ip": "198.51.100.8" })).toBe("198.51.100.8");
+  });
+
+  test("rejects proxy headers from peers outside the trusted proxy list", () => {
+    expect(
+      getClientIp({ "x-forwarded-for": "198.51.100.7" }, "10.0.0.9", {
+        trustProxy: true,
+        trustedProxyCidrs: ["10.0.0.8/32"],
+      })
+    ).toBe("10.0.0.9");
+    expect(
+      isTrustedProxyPeer("10.0.0.8", {
+        trustProxy: true,
+        trustedProxyCidrs: ["10.0.0.0/24"],
+      })
+    ).toBe(true);
+  });
+
+  test("attacker-controlled leftmost addresses cannot rotate the effective client", () => {
+    const options = {
+      trustProxy: true,
+      trustedProxyCidrs: ["10.0.0.8/32"],
+    };
+    const first = getClientIp(
+      { "x-forwarded-for": "198.51.100.1, 203.0.113.42" },
+      "10.0.0.8",
+      options
+    );
+    const second = getClientIp(
+      { "x-forwarded-for": "198.51.100.2, 203.0.113.42" },
+      "10.0.0.8",
+      options
+    );
+
+    expect(first).toBe("203.0.113.42");
+    expect(second).toBe(first);
   });
 
   test("trustProxy mode cannot manufacture loopback from a remote direct peer", () => {

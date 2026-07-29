@@ -8,6 +8,7 @@ import {
   type VideoGenerationRequest,
   type MusicGenerationRequest,
 } from "../../media-generation";
+import { fetchPublicHttpUrl, type PublicHttpFetcher } from "../../outbound-url-policy";
 import type { ToolContext } from "../index";
 
 function workspaceOutDir(context?: ToolContext): string {
@@ -37,7 +38,11 @@ function safeAssetFileName(fileName: string | undefined, fallback: string): stri
   return leaf && leaf !== "." && leaf !== ".." ? leaf : fallback;
 }
 
-async function fetchValidatedAssetUrl(url: string, redirects = 0): Promise<ArrayBuffer> {
+async function fetchValidatedAssetUrl(
+  url: string,
+  redirects = 0,
+  fetchUrl: PublicHttpFetcher = fetchPublicHttpUrl
+): Promise<ArrayBuffer> {
   if (redirects > 5) {
     throw new Error("Media asset download failed: too many redirects");
   }
@@ -47,13 +52,13 @@ async function fetchValidatedAssetUrl(url: string, redirects = 0): Promise<Array
     throw new Error(`Validation error: media asset URL blocked: ${validation.error}`);
   }
 
-  const response = await fetch(url, { redirect: "manual" });
+  const response = await fetchUrl(url, { redirect: "manual" });
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get("location");
     if (!location) {
       throw new Error(`Media asset download failed: HTTP ${response.status}`);
     }
-    return fetchValidatedAssetUrl(new URL(location, url).toString(), redirects + 1);
+    return fetchValidatedAssetUrl(new URL(location, url).toString(), redirects + 1, fetchUrl);
   }
 
   if (!response.ok) {
@@ -66,7 +71,8 @@ async function fetchValidatedAssetUrl(url: string, redirects = 0): Promise<Array
 async function persistAssets(
   assets: Array<{ buffer?: string; url?: string; mimeType: string; fileName?: string }>,
   prefix: string,
-  context?: ToolContext
+  context?: ToolContext,
+  fetchUrl: PublicHttpFetcher = fetchPublicHttpUrl
 ): Promise<Array<{ path: string; url?: string; mimeType: string }>> {
   const dir = workspaceOutDir(context);
   const slug = timestampSlug();
@@ -79,7 +85,7 @@ async function persistAssets(
     if (asset.buffer) {
       writeFileSync(filePath, Buffer.from(asset.buffer, "base64"));
     } else if (asset.url) {
-      const buf = Buffer.from(await fetchValidatedAssetUrl(asset.url));
+      const buf = Buffer.from(await fetchValidatedAssetUrl(asset.url, 0, fetchUrl));
       writeFileSync(filePath, buf);
     }
     out.push({ path: filePath, url: asset.url, mimeType: asset.mimeType });
@@ -89,7 +95,8 @@ async function persistAssets(
 
 export async function handleImageGenerate(
   args: Record<string, unknown>,
-  context?: ToolContext
+  context?: ToolContext,
+  fetchUrl: PublicHttpFetcher = fetchPublicHttpUrl
 ): Promise<{
   provider: string;
   model?: string;
@@ -118,13 +125,14 @@ export async function handleImageGenerate(
   };
   if (!req.prompt) throw new Error("Validation error: 'prompt' is required.");
   const result = await provider.generate(req);
-  const assets = await persistAssets(result.assets, "image", context);
+  const assets = await persistAssets(result.assets, "image", context, fetchUrl);
   return { provider: provider.id, model: result.model, assets };
 }
 
 export async function handleVideoGenerate(
   args: Record<string, unknown>,
-  context?: ToolContext
+  context?: ToolContext,
+  fetchUrl: PublicHttpFetcher = fetchPublicHttpUrl
 ): Promise<{
   provider: string;
   model?: string;
@@ -150,13 +158,14 @@ export async function handleVideoGenerate(
   };
   if (!req.prompt) throw new Error("Validation error: 'prompt' is required.");
   const result = await provider.generate(req);
-  const assets = await persistAssets(result.assets, "video", context);
+  const assets = await persistAssets(result.assets, "video", context, fetchUrl);
   return { provider: provider.id, model: result.model, assets };
 }
 
 export async function handleMusicGenerate(
   args: Record<string, unknown>,
-  context?: ToolContext
+  context?: ToolContext,
+  fetchUrl: PublicHttpFetcher = fetchPublicHttpUrl
 ): Promise<{
   provider: string;
   model?: string;
@@ -184,6 +193,6 @@ export async function handleMusicGenerate(
   };
   if (!req.prompt) throw new Error("Validation error: 'prompt' is required.");
   const result = await provider.generate(req);
-  const assets = await persistAssets(result.assets, "music", context);
+  const assets = await persistAssets(result.assets, "music", context, fetchUrl);
   return { provider: provider.id, model: result.model, assets };
 }

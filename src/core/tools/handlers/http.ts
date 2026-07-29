@@ -1,5 +1,7 @@
 import { validateUrl } from "../../../api/security";
 import { createLogger } from "../../logger";
+import { fetchPublicHttpUrl, type PublicHttpFetcher } from "../../outbound-url-policy";
+import type { ToolContext } from "../index";
 
 const log = createLogger("HTTP");
 
@@ -11,7 +13,11 @@ interface HttpResponse {
   elapsed: number;
 }
 
-export async function handleHttp(args: Record<string, unknown>): Promise<HttpResponse> {
+export async function handleHttp(
+  args: Record<string, unknown>,
+  _context?: ToolContext,
+  fetchUrl: PublicHttpFetcher = fetchPublicHttpUrl
+): Promise<HttpResponse> {
   const url = args.url as string;
   const method = (args.method as string) || "GET";
   const headers = (args.headers as Record<string, string>) || {};
@@ -42,7 +48,7 @@ export async function handleHttp(args: Record<string, unknown>): Promise<HttpRes
   try {
     log.debug(`HTTP ${method} ${url}`);
 
-    const response = await fetch(url, {
+    const response = await fetchUrl(url, {
       method: method.toUpperCase(),
       headers,
       body: body ? body : undefined,
@@ -60,11 +66,15 @@ export async function handleHttp(args: Record<string, unknown>): Promise<HttpRes
           log.warn(`SSRF blocked redirect: ${redirectValidation.error}`, { location });
           throw new Error(`Redirect blocked: ${redirectValidation.error}`);
         }
-        return handleHttp({
-          ...args,
-          url: new URL(location, url).toString(),
-          __redirectHops: redirectHops + 1,
-        });
+        return handleHttp(
+          {
+            ...args,
+            url: new URL(location, url).toString(),
+            __redirectHops: redirectHops + 1,
+          },
+          undefined,
+          fetchUrl
+        );
       }
     }
 

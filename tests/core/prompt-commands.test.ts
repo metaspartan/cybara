@@ -46,9 +46,10 @@ describe("expandPromptCommand", () => {
     const current = expandPromptCommand("/security");
     const scoped = expandPromptCommand("/security src/api");
     expect(current).toContain("Target: the current workspace");
-    expect(current).toContain("cybara security scan");
+    expect(current).toContain("security_scan with action=scan");
     expect(current).toContain("@security-scan");
-    expect(current).toContain("private location outside the repository");
+    expect(current).toContain("supports cancellation");
+    expect(current).toContain("action=validate");
     expect(scoped).toContain("Target: src/api");
   });
 
