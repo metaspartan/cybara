@@ -72,6 +72,24 @@ describe("chat capability mentions", () => {
     expect(resolved.instruction).toContain('use the "security_scan" built-in tool');
   });
 
+  test("selects the integrated security workflow from a vague action request", async () => {
+    const resolved = await resolveChatCapabilityMentions(
+      "Do a security scan of this repo and keep it concise",
+      process.cwd()
+    );
+    expect(resolved.mentions.map((mention) => mention.token)).toEqual(
+      expect.arrayContaining(["@security-scan", "@security_scan"])
+    );
+  });
+
+  test("does not infer a scan from an informational security question", async () => {
+    const resolved = await resolveChatCapabilityMentions(
+      "What does a security scan usually check?",
+      process.cwd()
+    );
+    expect(resolved.mentions.map((mention) => mention.token)).not.toContain("@security-scan");
+  });
+
   test("exposes connected accounts as explicit chat capabilities", async () => {
     updateAccountConnectorConfig("microsoft_365", { clientId: "microsoft-app" });
     storeAccountConnectorToken("microsoft_365", {

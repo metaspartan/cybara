@@ -736,7 +736,7 @@ ACTIONS:
         failOnSeverity: {
           type: "string",
           enum: ["critical", "high", "medium", "low"],
-          description: "Return a nonzero exit when findings meet this severity.",
+          description: "Highlight whether findings meet this severity threshold.",
         },
         dryRun: {
           type: "boolean",
@@ -756,7 +756,7 @@ ACTIONS:
       },
       required: ["action"],
     },
-    permissions: ["fs:read", "net:fetch"],
+    permissions: ["fs:read"],
   },
 
   skill_save: {

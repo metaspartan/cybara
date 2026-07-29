@@ -38,7 +38,13 @@ function inferredCapabilityTokens(message: string): string[] {
   const requestsCodexSecurity =
     /\bcodex[\s-]+security(?:\s+(?:scan|assessment|audit))?\b/i.test(message) ||
     /\bsecurity[\s-]+scan\b[^\n]{0,80}\bcodex\b/i.test(message);
-  return requestsCodexSecurity ? ["@security-scan", "@security_scan"] : [];
+  const requestsSecurityAssessment =
+    /\b(?:run|do|perform|conduct|start|launch|execute|complete)\s+(?:a\s+|an\s+|the\s+)?(?:full\s+|deep\s+|quick\s+|focused\s+|repository\s+|repo\s+|code\s+)*(?:security[\s-]+(?:scan|assessment|audit))\b/i.test(
+      message
+    );
+  return requestsCodexSecurity || requestsSecurityAssessment
+    ? ["@security-scan", "@security_scan"]
+    : [];
 }
 
 async function skillCapabilities(workspaceDir?: string): Promise<ResolvedChatCapability[]> {

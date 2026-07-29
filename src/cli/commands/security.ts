@@ -23,7 +23,7 @@ export function securityCommandHelp(): string {
     "  --deep                 Request a deep multi-pass assessment",
     "  --working-tree         Focus on staged and unstaged changes",
     "  --diff <ref>           Focus on changes from a Git base ref",
-    "  --path <path>          Restrict the assessment to a repository path",
+    "  --path <path>          Focus the assessment on a repository path",
     "  --workspace, -w <path> Set the active workspace",
     "  --json                 Print the chat response as JSON",
   ].join("\n");
@@ -68,7 +68,7 @@ export function buildSecurityAgentArgs(args: string[], cwd = process.cwd()): str
       request.push(
         value === "--diff"
           ? `Focus on changes from Git base ${selected}.`
-          : `Restrict the assessment to ${selected}.`
+          : `Focus the assessment on ${selected}.`
       );
       continue;
     }
