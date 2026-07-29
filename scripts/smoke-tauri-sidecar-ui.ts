@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { chmodSync, copyFileSync, mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { basename, join, resolve } from "path";
@@ -9,11 +10,15 @@ function availablePort(): number {
   return port;
 }
 
-async function waitForResponse(url: string): Promise<Response> {
+export function sidecarSmokeAuthorization(apiKey: string): string {
+  return `Bearer ${apiKey}`;
+}
+
+async function waitForResponse(url: string, authorization: string): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 120; attempt++) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { headers: { Authorization: authorization } });
       if (response.ok) return response;
       lastError = new Error(`Gateway returned HTTP ${response.status}`);
     } catch (error) {
@@ -72,6 +77,8 @@ export async function smokeSidecarUi(
   const binary = join(directory, basename(sourceBinary));
   const home = join(directory, "home");
   const port = availablePort();
+  const apiKey = `cybara_smoke_${randomBytes(24).toString("hex")}`;
+  const authorization = sidecarSmokeAuthorization(apiKey);
   copyFileSync(sourceBinary, binary);
   if (process.platform !== "win32") chmodSync(binary, 0o755);
 
@@ -81,7 +88,8 @@ export async function smokeSidecarUi(
   environment.HOME = home;
   environment.USERPROFILE = home;
   environment.PORT = String(port);
-  environment.CYBARA_REQUIRE_AUTH = "0";
+  environment.CYBARA_API_KEY = apiKey;
+  environment.CYBARA_REQUIRE_AUTH = "1";
 
   const processHandle = Bun.spawn([binary, "start", "--port", String(port)], {
     cwd: directory,
@@ -95,15 +103,20 @@ export async function smokeSidecarUi(
   let output = "";
 
   try {
-    const dashboard = await waitForResponse(`http://127.0.0.1:${port}/`);
+    const dashboard = await waitForResponse(`http://127.0.0.1:${port}/`, authorization);
     const html = await dashboard.text();
     if (html.includes("UI not built")) throw new Error("Tauri sidecar served the missing UI page");
     const assetPath = firstAssetPath(html);
-    const asset = await fetch(`http://127.0.0.1:${port}${assetPath}`);
+    const asset = await fetch(`http://127.0.0.1:${port}${assetPath}`, {
+      headers: { Authorization: authorization },
+    });
     if (!asset.ok) throw new Error(`Embedded UI asset returned HTTP ${asset.status}: ${assetPath}`);
-    const health = await waitForResponse(`http://127.0.0.1:${port}/api/health`);
+    const health = await waitForResponse(`http://127.0.0.1:${port}/api/health`, authorization);
     assertSidecarVersion(await health.json(), expectedVersion);
-    const buildInfo = await waitForResponse(`http://127.0.0.1:${port}/api/build-info`);
+    const buildInfo = await waitForResponse(
+      `http://127.0.0.1:${port}/api/build-info`,
+      authorization
+    );
     assertSidecarBuildCommit(await buildInfo.json(), expectedCommit);
   } catch (error) {
     failure = error;
