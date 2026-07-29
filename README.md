@@ -135,7 +135,7 @@ cybara update --check      # just report whether a newer release exists (non-zer
 cybara update --force      # reinstall even when already current
 ```
 
-The desktop app now checks the same GitHub release channel from `Settings -> Desktop Updates` and can install signed app updates in place.
+The Tauri desktop app checks the same GitHub release channel from `Settings -> Desktop Updates` and can install signed app updates in place. The native SwiftUI macOS app provides its own checksum-verified updater from `App -> Check for Updates...`.
 
 Production deployment guidance: [docs/production.md](docs/production.md)
 
@@ -158,7 +158,7 @@ See [docs/desktop.md](docs/desktop.md) and [apps/macos/Cybara/README.md](apps/ma
 
 ## Mobile Companion
 
-Cybara Mobile is a dark Liquid Glass-inspired React Native app for iOS and Android. It connects to a Cybara gateway already running from CLI, Tauri/Web UI, native macOS, or a hosted deployment, then manages remote sessions and operator settings.
+Cybara Mobile is a system-aware Liquid Glass-inspired React Native app for iOS and Android, with light and dark appearance overrides. It connects to a Cybara gateway already running from CLI, Tauri/Web UI, native macOS, or a hosted deployment, then manages remote sessions and operator settings.
 
 ```bash
 bun run mobile:dev

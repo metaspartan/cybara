@@ -37,8 +37,8 @@ Useful installer env vars:
 
 Use GitHub Releases for production desktop installs.
 
-- Tauri desktop builds are the only desktop surface with in-app updater support today.
-- Native SwiftUI macOS bundles use the same `127.0.0.1:4269` local gateway contract and UI surface, but updates are manual through GitHub Releases. The current release workflow packages native macOS arm64.
+- Tauri desktop builds use the signed `latest.json` updater channel from GitHub Releases.
+- Native SwiftUI macOS bundles use the same `127.0.0.1:4269` local gateway contract and provide a separate GitHub Releases updater with download progress, SHA256 and code-signature verification, staged replacement, and automatic relaunch. The current release workflow packages native macOS arm64.
 - The native macOS publish path can codesign and notarize release bundles when the Apple signing/notary secrets are configured in GitHub Actions.
 
 ### Mobile
@@ -86,7 +86,7 @@ Official Tauri release builds support:
 2. `Check Now`
 3. `Install And Restart`
 
-Update native SwiftUI macOS bundles by downloading the latest GitHub Release bundle.
+The native SwiftUI macOS app updates from `App -> Check for Updates...`. It selects the matching native archive, verifies the published SHA256 sidecar and extracted code signature, replaces the app bundle, and relaunches.
 
 ## Backups
 

@@ -241,9 +241,12 @@ jobs:
         run: bun run ui:build
       - name: Build Sidecar binary
         env:
+          CYBARA_BUILD_COMMIT: ${{ github.sha }}
           CYBARA_SIDECAR_BUN_TARGET: ${{ matrix.bun_target }}
         run: bun run scripts/build-sidecar.ts
       - name: Smoke Tauri sidecar embedded UI
+        env:
+          CYBARA_EXPECTED_BUILD_COMMIT: ${{ github.sha }}
         run: bun run scripts/smoke-tauri-sidecar-ui.ts "${{ matrix.sidecar }}"
       - name: Prepare updater config
         env:

@@ -74,7 +74,8 @@ describe("native macOS packaging helpers", () => {
       join(import.meta.dirname, "..", "..", "scripts", "package-native-macos.ts"),
       "utf8"
     );
-    expect(source).toContain("await smokeSidecarUi(SIDEcar_RELEASE_PATH, version)");
+    expect(source).toContain("await smokeSidecarUi(");
+    expect(source).toContain("process.env.CYBARA_BUILD_COMMIT?.trim()");
   });
 
   test("detects extensionless Mach-O helper executables for nested signing", () => {

@@ -9,7 +9,7 @@ This is the native SwiftUI macOS app for Cybara. It launches the same local serv
   - `src-tauri/bin/cybara-aarch64-apple-darwin`
   - `src-tauri/bin/cybara-x86_64-apple-darwin`
   - `release/cybara`
-  - bundled sidecar paths inside `Cybara.app`
+  - bundled sidecar paths inside `CybaraNative.app`
   - `cybara` on `PATH` as a last resort, excluding app-bundle executable aliases
 - attaches to an existing local Cybara gateway on `http://127.0.0.1:4269` when one is already running
 - otherwise starts `cybara start` with `PORT=4269` and `CYBARA_HOST=127.0.0.1`; web terminal access stays off until explicitly enabled
@@ -33,7 +33,7 @@ bun run native:macos:build
 bun run native:macos:package
 ```
 
-This assembles a real `Cybara.app` bundle under `release/native-macos/<arch>/` and embeds:
+This assembles a real `CybaraNative.app` bundle under `release/native-macos/<arch>/` and embeds:
 
 - the SwiftUI shell executable
 - the compiled `cybara` sidecar binary under `Contents/MacOS/sidecar/`

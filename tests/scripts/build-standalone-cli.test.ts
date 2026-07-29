@@ -1,12 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
+  buildStandaloneCli,
   createStandaloneAssetsSource,
   createStandaloneEntrySource,
   standaloneCliBuildArgs,
 } from "../../scripts/build-standalone-cli";
+
+function currentBunTarget(): string {
+  const platform = process.platform === "win32" ? "windows" : process.platform;
+  const architecture = process.arch === "arm64" ? "arm64" : "x64";
+  return `bun-${platform}-${architecture}`;
+}
 
 describe("standalone CLI build", () => {
   test("uses the embedded entrypoint for every released OS and architecture", () => {
@@ -60,10 +67,14 @@ describe("standalone CLI build", () => {
         cwd: directory,
         assetsModule,
         version: "1.2.3",
+        buildCommit: "0123456789ABCDEF0123456789ABCDEF01234567",
       });
       expect(source).toContain('command === "--version"');
       expect(source).toContain('"1.2.3"');
       expect(source).toContain('await import("./.cybara-assets.ts")');
+      expect(source).toContain(
+        'Object.assign(globalThis, { __CYBARA_BUILD_COMMIT__: "0123456789abcdef0123456789abcdef01234567" })'
+      );
       expect(source).not.toContain('with { type: "file" }');
 
       const sidecarAssetsSource = createStandaloneAssetsSource({
@@ -76,4 +87,55 @@ describe("standalone CLI build", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  test("preserves the compiled commit outside the source checkout", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "cybara-standalone-commit-"));
+    const uiDir = join(directory, "ui", "dist");
+    const runDirectory = join(directory, "run");
+    const runtimeEntry = join(directory, "runtime.ts");
+    const outfile = join(directory, process.platform === "win32" ? "cybara.exe" : "cybara");
+    const commit = "0123456789abcdef0123456789abcdef01234567";
+    const buildInfoModule = join(
+      import.meta.dirname,
+      "..",
+      "..",
+      "src",
+      "core",
+      "build-info.ts"
+    ).replaceAll("\\", "/");
+    mkdirSync(uiDir, { recursive: true });
+    mkdirSync(runDirectory, { recursive: true });
+    writeFileSync(join(directory, "package.json"), JSON.stringify({ version: "1.2.3" }));
+    writeFileSync(join(uiDir, "index.html"), "<main>Cybara</main>");
+    writeFileSync(
+      runtimeEntry,
+      `import { getBuildProvenance } from ${JSON.stringify(buildInfoModule)}; console.log((await getBuildProvenance()).commit ?? "unavailable");`
+    );
+
+    try {
+      await buildStandaloneCli({
+        target: currentBunTarget(),
+        outfile,
+        cwd: directory,
+        uiDir,
+        entryModule: "runtime.ts",
+        buildCommit: commit,
+      });
+      if (process.platform !== "win32") chmodSync(outfile, 0o755);
+      const processHandle = Bun.spawn([outfile], {
+        cwd: runDirectory,
+        env: {},
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const stdoutPromise = new Response(processHandle.stdout).text();
+      const stderrPromise = new Response(processHandle.stderr).text();
+      const exitCode = await processHandle.exited;
+      const stderr = await stderrPromise;
+      expect(exitCode, stderr).toBe(0);
+      expect((await stdoutPromise).trim()).toBe(commit);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

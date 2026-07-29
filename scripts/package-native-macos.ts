@@ -554,7 +554,11 @@ export async function packageNativeMacOSApp(): Promise<NativeMacOSPackageResult>
   console.log("⚡ Building sidecar...");
   await buildSidecar();
   console.log("🩺 Verifying sidecar version...");
-  await smokeSidecarUi(SIDEcar_RELEASE_PATH, version);
+  await smokeSidecarUi(
+    SIDEcar_RELEASE_PATH,
+    version,
+    process.env.CYBARA_BUILD_COMMIT?.trim() || process.env.GITHUB_SHA?.trim()
+  );
 
   console.log("🧱 Building SwiftUI shell...");
   await $`cd ${ROOT} && swift build --package-path ${APP_PACKAGE_PATH} -c release`.quiet();
