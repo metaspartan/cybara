@@ -13,7 +13,7 @@ import {
   tasksFromResponse,
 } from "../tui/chat-environment";
 import { resolveAgentIdentifier } from "./agent-resolution";
-import { getFlagValue } from "./args";
+import { getFlagValue, stripTuiLaunchArgs } from "./args";
 import { createChatInputQueue } from "./chat-input-queue";
 import { waitForQueuedAssistantMessage } from "./chat-queued-response";
 import { recoverRawAgentResult } from "./raw-agent-recovery";
@@ -31,7 +31,7 @@ interface ChatCliContext {
   withAuthHeaders: WithAuthHeaders;
 }
 
-interface CliChatOptions {
+export interface CliChatOptions {
   agentId?: string;
   modelOverride?: string;
   sessionId?: string;
@@ -377,30 +377,31 @@ function parseActivityJson(rawArgs: string[]): unknown[] | undefined {
   process.exit(1);
 }
 
-function parseChatOptions(rawArgs: string[]): CliChatOptions {
+export function parseChatOptions(rawArgs: string[]): CliChatOptions {
+  const chatArgs = stripTuiLaunchArgs(rawArgs);
   const options: CliChatOptions = {
-    showThinking: !rawArgs.includes("--no-thinking"),
-    useModelRouter: rawArgs.includes("--router"),
+    showThinking: !chatArgs.includes("--no-thinking"),
+    useModelRouter: chatArgs.includes("--router"),
   };
   const positional: string[] = [];
-  for (let i = 0; i < rawArgs.length; i++) {
-    const arg = rawArgs[i];
+  for (let i = 0; i < chatArgs.length; i++) {
+    const arg = chatArgs[i];
     if (arg === "--no-thinking") continue;
     if (arg === "--router") continue;
     if (arg === "--session" || arg === "-s") {
-      options.sessionId = rawArgs[++i];
+      options.sessionId = chatArgs[++i];
       continue;
     }
     if (arg === "--agent" || arg === "-a") {
-      options.agentId = rawArgs[++i];
+      options.agentId = chatArgs[++i];
       continue;
     }
     if (arg === "--model" || arg === "-m") {
-      options.modelOverride = rawArgs[++i];
+      options.modelOverride = chatArgs[++i];
       continue;
     }
     if (arg === "--workspace" || arg === "-w") {
-      options.workspaceDir = rawArgs[++i];
+      options.workspaceDir = chatArgs[++i];
       continue;
     }
     positional.push(arg);

@@ -169,6 +169,7 @@ interface AgentExecutionOptions {
   allowedToolNames?: string[];
   useMemory?: boolean;
   modelParamsOverride?: Record<string, unknown>;
+  maxToolCalls?: number;
   maxOutputTokens?: number;
 }
 
@@ -1271,6 +1272,7 @@ class AgentManager extends AgentProviderRuntime {
       abortSignal: options?.abortSignal,
       modelParamsOverride: options?.modelParamsOverride,
       useModelRouter: options?.useModelRouter === true,
+      maxToolCalls: options?.maxToolCalls,
       maxOutputTokens: options?.maxOutputTokens,
       confineToWorkspace: true,
       consumeSteeringMessages: options?.consumeSteeringMessages,

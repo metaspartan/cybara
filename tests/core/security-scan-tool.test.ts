@@ -105,6 +105,7 @@ describe("security scan tool", () => {
             temperature: 0.2,
             maxToolIterations: 12,
           },
+          maxToolCalls: 16,
         })
       );
     } finally {

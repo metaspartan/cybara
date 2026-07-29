@@ -36,6 +36,7 @@ export interface ToolContext {
   activeModel?: string;
   activeProviderId?: string;
   activeProviderName?: string;
+  maxToolCalls?: number;
   maxOutputTokens?: number;
   suppressStreaming?: boolean;
   denyWritePrefixes?: string[];

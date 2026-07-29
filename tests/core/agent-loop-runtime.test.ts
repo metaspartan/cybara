@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AgenticLoopPolicy, AgenticLoopState } from "../../src/core/agent-internals";
+import { resolveAgenticLoopPolicyFromConfig } from "../../src/core/agent-loop-policy";
 import {
   agenticLoopActiveRuntimeMs,
   agenticLoopClosingPrompt,
@@ -53,6 +54,16 @@ describe("agent loop runtime", () => {
     expect(
       resolveAgenticLoopLimit(policy, 1, createAgenticLoopRuntimeTracker(1_000), 2_000)
     ).toBeUndefined();
+  });
+
+  test("honors per-execution camel-case iteration overrides", () => {
+    const resolved = resolveAgenticLoopPolicyFromConfig({
+      agentConfig: {},
+      env: {},
+      modelParams: { maxToolIterations: 12 },
+    });
+
+    expect(resolved.maxIterations).toBe(12);
   });
 
   test("does not charge long-running tools against active agent runtime", () => {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { parseTuiLaunchSettings } from "../../src/cli/commands/args";
+import { parseChatOptions } from "../../src/cli/commands/chat";
+import { parseTuiLaunchSettings, stripTuiLaunchArgs } from "../../src/cli/commands/args";
 
 describe("TUI launch settings", () => {
   test("finds the panel without treating flags as commands", () => {
@@ -39,6 +40,17 @@ describe("TUI launch settings", () => {
     expect(parseTuiLaunchSettings(["--scroll-step", "--no-mouse", "chat"])).toEqual({
       command: "chat",
       mouse: false,
+    });
+  });
+
+  test("keeps terminal launch flags out of chat session arguments", () => {
+    const args = ["--no-alt-screen", "--scroll-step", "3", "--no-mouse", "--agent", "agent-1"];
+
+    expect(stripTuiLaunchArgs(args)).toEqual(["--agent", "agent-1"]);
+    expect(parseChatOptions(args)).toEqual({
+      agentId: "agent-1",
+      showThinking: true,
+      useModelRouter: false,
     });
   });
 });

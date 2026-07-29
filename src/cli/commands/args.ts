@@ -17,6 +17,29 @@ export interface TuiLaunchSettings {
   scrollStep?: number;
 }
 
+export function stripTuiLaunchArgs(args: string[]): string[] {
+  const remaining: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index] || "";
+    if (
+      value === "--no-alt-screen" ||
+      value === "--alt-screen" ||
+      value === "--no-mouse" ||
+      value === "--mouse" ||
+      value.startsWith("--scroll-step=")
+    ) {
+      continue;
+    }
+    if (value === "--scroll-step") {
+      const nextValue = args[index + 1];
+      if (nextValue && !nextValue.startsWith("--")) index += 1;
+      continue;
+    }
+    remaining.push(value);
+  }
+  return remaining;
+}
+
 export function parseTuiLaunchSettings(args: string[]): TuiLaunchSettings {
   const settings: TuiLaunchSettings = {};
   for (let index = 0; index < args.length; index += 1) {

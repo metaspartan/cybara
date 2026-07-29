@@ -232,6 +232,7 @@ async function runAssessment(
           ...context.modelParamsOverride,
           maxToolIterations: limits.maxIterations,
         },
+        maxToolCalls: limits.toolBudget,
         maxOutputTokens: 6_000,
       }
     );
