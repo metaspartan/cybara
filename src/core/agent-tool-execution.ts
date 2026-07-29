@@ -108,6 +108,30 @@ async function executeAgentToolInternal(
     return { skipped: false, result: { error: reason } };
   }
 
+  const executionState = toolContext?.executionState;
+  const configuredToolBudget = toolContext?.maxToolCalls;
+  if (
+    executionState &&
+    typeof configuredToolBudget === "number" &&
+    Number.isFinite(configuredToolBudget)
+  ) {
+    const toolBudget = Math.max(0, Math.floor(configuredToolBudget));
+    if (executionState.toolCallsStarted >= toolBudget) {
+      const reason = `Tool call budget reached (${toolBudget}); return the final response without more tools.`;
+      await emitAgentHook({
+        type: "tool_blocked",
+        context: hookContext,
+        toolName,
+        args,
+        reason,
+      });
+      return { skipped: false, result: { error: reason, blocked: true } };
+    }
+    executionState.toolCallsStarted += 1;
+  } else if (executionState) {
+    executionState.toolCallsStarted += 1;
+  }
+
   const hookDecision = await emitAgentHook({
     type: "tool_before",
     context: hookContext,
@@ -129,7 +153,6 @@ async function executeAgentToolInternal(
   const toolCallId = createAgentToolCallStatusId(toolName);
   try {
     const startedAt = Date.now();
-    if (toolContext?.executionState) toolContext.executionState.toolCallsStarted += 1;
     broadcastStatus(
       "tool_executing",
       toolContext,

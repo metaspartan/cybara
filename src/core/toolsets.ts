@@ -170,6 +170,7 @@ const directToolNames = new Set([
   "tool_describe",
   "tool_call",
   "skill_load",
+  "security_scan",
 ]);
 
 function stringList(value: unknown): string[] | undefined {

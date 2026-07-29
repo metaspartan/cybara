@@ -56,6 +56,19 @@ const REVIEW_TEMPLATE = (target: string) =>
     "nothing meaningful is wrong, say so plainly.",
   ].join("\n");
 
+const SECURITY_TEMPLATE = (target: string) =>
+  [
+    "Run an authorized security assessment of code the user owns or has permission to assess.",
+    target.trim() ? `Target: ${target}` : "Target: the current workspace.",
+    "",
+    "1. Load @security-scan and follow its instructions for this turn.",
+    "2. Call security_scan with action=info to verify the active analysis engine without exposing credentials.",
+    "3. Call security_scan with action=scan against the target directly. Do not inspect the repository separately before calling it. The tool always uses this active agent, provider, and model and supports cancellation.",
+    "4. Use action=validate on plausible findings before presenting them. Do not report unsupported checklist items.",
+    "5. Report verified findings most severe first with attack path, evidence, and minimal remediation.",
+    "6. Do not apply a patch unless the user explicitly asks for remediation.",
+  ].join("\n");
+
 const TEST_TEMPLATE = (args: string) =>
   [
     "Run the project's tests and fix what's broken.",
@@ -90,6 +103,10 @@ const COMMANDS: Record<string, PromptCommand> = {
   review: {
     name: "review",
     expand: (args) => REVIEW_TEMPLATE(args),
+  },
+  security: {
+    name: "security",
+    expand: (args) => SECURITY_TEMPLATE(args),
   },
   test: {
     name: "test",

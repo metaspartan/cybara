@@ -694,6 +694,71 @@ ACTIONS:
     permissions: [],
   },
 
+  security_scan: {
+    name: "security_scan",
+    description:
+      "Run an integrated security assessment for an owned or authorized repository with the active Cybara agent. Use action=info to inspect the active agent, action=scan for a cancellable standard or deep assessment, and action=validate to independently assess candidate findings. Prefer this tool over shell commands for security scan requests.",
+    category: "skill",
+    input_schema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["info", "scan", "validate"],
+          description: "Scanner action.",
+        },
+        target: {
+          type: "string",
+          description: "Repository path. Defaults to the active workspace.",
+        },
+        mode: {
+          type: "string",
+          enum: ["standard", "deep"],
+          description: "Scan depth. Defaults to standard.",
+        },
+        paths: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional repository-relative paths to scan.",
+        },
+        knowledgeBases: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional repository security documents to include.",
+        },
+        diff: { type: "string", description: "Optional Git base ref for a diff scan." },
+        head: { type: "string", description: "Optional Git head ref used with diff." },
+        workingTree: {
+          type: "boolean",
+          description: "Scan staged and unstaged changes instead of the full repository.",
+        },
+        base: { type: "string", description: "Optional base ref used with workingTree." },
+        failOnSeverity: {
+          type: "string",
+          enum: ["critical", "high", "medium", "low"],
+          description: "Highlight whether findings meet this severity threshold.",
+        },
+        dryRun: {
+          type: "boolean",
+          description: "Validate scan inputs without starting model analysis.",
+        },
+        findings: {
+          type: "array",
+          items: { type: "string" },
+          description: "Finding text or finding file paths for action=validate.",
+        },
+        timeoutMinutes: {
+          type: "number",
+          minimum: 1,
+          maximum: 1440,
+          description: "Cancellation timeout in minutes. Defaults to 120.",
+        },
+      },
+      required: ["action"],
+    },
+    permissions: ["fs:read"],
+  },
+
   skill_save: {
     name: "skill_save",
     description:

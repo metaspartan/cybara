@@ -43,14 +43,14 @@ describe("Web tool URL allowlist policy", () => {
 
   test("blocks web_fetch before fetch for private hosts", async () => {
     let called = false;
-    globalThis.fetch = (async () => {
+    const fetchUrl = async (): Promise<Response> => {
       called = true;
       return new Response("unexpected");
-    }) as typeof fetch;
+    };
 
-    await expect(handleWebFetch({ url: "http://127.0.0.1:4269/api/config" })).rejects.toThrow(
-      "Request blocked"
-    );
+    await expect(
+      handleWebFetch({ url: "http://127.0.0.1:4269/api/config" }, undefined, fetchUrl)
+    ).rejects.toThrow("Request blocked");
     expect(called).toBe(false);
   });
 
@@ -107,16 +107,20 @@ describe("Web tool URL allowlist policy", () => {
       search_result_allowlist: [],
     });
 
-    globalThis.fetch = (async () =>
+    const fetchUrl = async (): Promise<Response> =>
       new Response(
         "<html><head><title>Allowed</title></head><body><p>Hello world</p></body></html>",
         {
           status: 200,
           headers: { "Content-Type": "text/html" },
         }
-      )) as typeof fetch;
+      );
 
-    const result = await handleWebFetch({ url: "https://docs.allowed.example/path" });
+    const result = await handleWebFetch(
+      { url: "https://docs.allowed.example/path" },
+      undefined,
+      fetchUrl
+    );
     expect(result.title).toBe("Allowed");
     expect(result.content).toContain("Hello world");
   });

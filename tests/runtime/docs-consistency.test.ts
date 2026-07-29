@@ -77,12 +77,26 @@ describe("documentation consistency", () => {
     const docs = [
       read("docs/desktop.md"),
       read("docs/native-shells.md"),
+      read("docs/production.md"),
       read("apps/macos/Cybara/README.md"),
     ].join("\n");
 
     expect(docs).toContain("SHA256");
     expect(docs).toContain("relaunch");
+    expect(docs).toContain("CybaraNative.app");
     expect(docs).not.toMatch(/WKWebView|__CYBARA_NATIVE__|updated manually|no auto-install/i);
+    expect(docs).not.toMatch(/only desktop surface with in-app updater|updates are manual/i);
+  });
+
+  test("mobile documentation matches system-aware appearance behavior", () => {
+    const docs = [
+      read("README.md"),
+      read("docs/native-shells.md"),
+      read("apps/mobile/README.md"),
+    ].join("\n");
+
+    expect(docs).toContain("system appearance");
+    expect(docs).not.toMatch(/dark theme by default|dark Liquid Glass-inspired/i);
   });
 
   test("release docs use the current signing secret contract", () => {

@@ -24,6 +24,9 @@ describe("CLI help", () => {
     expect(lines).toContain(
       "  ide [path[:line]] [--print]          Open a workspace or file in the IDE"
     );
+    expect(lines).toContain(
+      "  security    Assess an authorized repository with the active Cybara agent"
+    );
     expect(lines).not.toContain("    telemetry   External telemetry commands");
     expect(lines).not.toContain("    permissions Manage agent capability access");
   });

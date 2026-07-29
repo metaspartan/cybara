@@ -169,6 +169,7 @@ interface AgentExecutionOptions {
   allowedToolNames?: string[];
   useMemory?: boolean;
   modelParamsOverride?: Record<string, unknown>;
+  maxToolCalls?: number;
   maxOutputTokens?: number;
 }
 
@@ -947,6 +948,9 @@ class AgentManager extends AgentProviderRuntime {
     const resolvedExecution = this.resolveProviderModelForExecution(provider, selectedModel);
     const activeProvider = resolvedExecution.provider;
     const activeModel = resolvedExecution.model;
+    toolContext.activeModel = activeModel;
+    toolContext.activeProviderId = activeProvider.id;
+    toolContext.activeProviderName = activeProvider.name;
     const activePoolId = activeProvider.provider === provider.provider ? target.poolId : undefined;
     const toolCallsBeforePrimary = toolContext.executionState?.toolCalls.length ?? 0;
 
@@ -1157,6 +1161,9 @@ class AgentManager extends AgentProviderRuntime {
     const resolvedExecution = this.resolveProviderModelForExecution(provider, selectedModel);
     const activeProvider = resolvedExecution.provider;
     const activeModel = resolvedExecution.model;
+    toolContext.activeModel = activeModel;
+    toolContext.activeProviderId = activeProvider.id;
+    toolContext.activeProviderName = activeProvider.name;
     const activePoolId = activeProvider.provider === provider.provider ? target.poolId : undefined;
     const toolCallsBeforePrimary = toolContext.executionState?.toolCalls.length ?? 0;
 
@@ -1264,6 +1271,8 @@ class AgentManager extends AgentProviderRuntime {
       allowDynamicTools: toolPolicy.allowDynamicTools,
       abortSignal: options?.abortSignal,
       modelParamsOverride: options?.modelParamsOverride,
+      useModelRouter: options?.useModelRouter === true,
+      maxToolCalls: options?.maxToolCalls,
       maxOutputTokens: options?.maxOutputTokens,
       confineToWorkspace: true,
       consumeSteeringMessages: options?.consumeSteeringMessages,

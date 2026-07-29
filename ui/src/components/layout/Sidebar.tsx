@@ -36,7 +36,6 @@ import { resolveSettingsSectionId, type SettingsSectionId } from "@/lib/settings
 import { settingsApi } from "@/lib/api";
 import { readLabSettings } from "@/lib/labSettings";
 import type { SidebarDestinationId, SidebarPrimaryItemId } from "@/lib/sidebarNavigation";
-import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { SessionsPanel } from "@/pages/chat/SessionSidebar";
 import { buildFreshChatPath } from "@/pages/chat/chatRoute";
@@ -61,13 +60,7 @@ import {
   usesAvailableMainSidebarChatHeight,
 } from "./sidebarSizing";
 import { UpdateButton } from "./UpdateButton";
-import {
-  pruneInactiveSessions,
-  reconcileActiveSessionSnapshot,
-  SIDEBAR_ACTIVE_SESSION_WINDOW_MS,
-  SIDEBAR_ACTIVE_STATUSES,
-} from "./activeSessionTracker";
-import { isRunEndingStatus } from "@/pages/chat/sessionRunStatus";
+import { useSidebarAgentStatus } from "./useSidebarAgentStatus";
 
 interface SidebarContextType {
   collapsed: boolean;
@@ -77,7 +70,6 @@ interface SidebarContextType {
   mobileOpen: boolean;
   setMobileOpen: (open: boolean) => void;
 }
-
 const SidebarContext = createContext<SidebarContextType>({
   collapsed: false,
   setCollapsed: () => {},
@@ -125,93 +117,6 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-function useAgentStatus() {
-  const [status, setStatus] = useState<"idle" | "active">("idle");
-  const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
-  const activeSessionLastSeenRef = useRef<Map<string, number>>(new Map());
-  const globalLastSeenRef = useRef<number>(0);
-
-  useEffect(() => {
-    const refreshDerivedStatus = () => {
-      const now = Date.now();
-      activeSessionLastSeenRef.current = pruneInactiveSessions(
-        activeSessionLastSeenRef.current,
-        now,
-        SIDEBAR_ACTIVE_SESSION_WINDOW_MS
-      );
-      const globalActive =
-        globalLastSeenRef.current > 0 &&
-        now - globalLastSeenRef.current <= SIDEBAR_ACTIVE_SESSION_WINDOW_MS;
-      const hasActiveSessions = activeSessionLastSeenRef.current.size > 0;
-      setStatus(globalActive || hasActiveSessions ? "active" : "idle");
-      setActiveSessionIds([...activeSessionLastSeenRef.current.keys()]);
-    };
-
-    const sweepInterval = setInterval(() => {
-      refreshDerivedStatus();
-    }, 2000);
-
-    const disconnect = connectStatusStream({
-      onEvent: (data) => {
-        if (!data || typeof data !== "object" || typeof data.type !== "string") return;
-        const now = Date.now();
-
-        if (data.type === "snapshot") {
-          const activeSessions = Array.isArray(data.activeSessions) ? data.activeSessions : [];
-          activeSessionLastSeenRef.current = reconcileActiveSessionSnapshot(
-            activeSessionLastSeenRef.current,
-            activeSessions,
-            now
-          );
-          refreshDerivedStatus();
-          return;
-        }
-
-        if (data.type === "task_completed") {
-          const sessionId = typeof data.sessionId === "string" ? data.sessionId.trim() : "";
-          if (sessionId) {
-            activeSessionLastSeenRef.current.delete(sessionId);
-          } else {
-            activeSessionLastSeenRef.current.clear();
-            globalLastSeenRef.current = 0;
-          }
-          refreshDerivedStatus();
-          return;
-        }
-
-        if (data.type !== "status") return;
-
-        const statusValue = data.status;
-        const sessionId = typeof data.sessionId === "string" ? data.sessionId.trim() : "";
-        const runEnded = isRunEndingStatus(data);
-        const isActiveStatus = !runEnded && SIDEBAR_ACTIVE_STATUSES.has(statusValue);
-
-        if (sessionId) {
-          if (isActiveStatus) {
-            activeSessionLastSeenRef.current.set(sessionId, now);
-          } else if (runEnded) {
-            activeSessionLastSeenRef.current.delete(sessionId);
-          }
-        } else {
-          if (isActiveStatus) {
-            globalLastSeenRef.current = now;
-          } else if (runEnded) {
-            globalLastSeenRef.current = 0;
-          }
-        }
-        refreshDerivedStatus();
-      },
-    });
-
-    return () => {
-      disconnect();
-      clearInterval(sweepInterval);
-    };
-  }, []);
-
-  return { activeSessionIds, status };
-}
-
 type SidebarNavItem = {
   path: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -238,7 +143,7 @@ const sidebarDestinations: Record<SidebarDestinationId, SidebarNavItem> = {
 export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { activeSessionIds, status } = useAgentStatus();
+  const { activeSessionIds, status } = useSidebarAgentStatus();
   const { data: info } = useInfo();
   const onChatPage = location.pathname === "/chat" || location.pathname.startsWith("/chat/");
   const settingsMode = location.pathname === "/settings";

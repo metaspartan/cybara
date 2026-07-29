@@ -102,6 +102,13 @@ export async function hashFileSha256(filePath: string): Promise<string | null> {
 }
 
 async function resolveBuildCommit(): Promise<string | null> {
+  const runtime = globalThis as typeof globalThis & {
+    __CYBARA_BUILD_COMMIT__?: unknown;
+  };
+  const compiled = runtime.__CYBARA_BUILD_COMMIT__;
+  if (typeof compiled === "string" && commitPattern.test(compiled.trim())) {
+    return compiled.trim().toLowerCase();
+  }
   const stamped = process.env.CYBARA_BUILD_COMMIT?.trim();
   if (stamped && commitPattern.test(stamped)) return stamped.toLowerCase();
   const roots = [process.cwd(), resolve(import.meta.dir, "..", "..")];

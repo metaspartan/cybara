@@ -1,5 +1,6 @@
 import { readFileSync } from "fs";
 import { join } from "path";
+import { Agent, fetch as undiciFetch } from "undici";
 import { resolveCybaraHome } from "../core/cybara-home";
 
 export const CLI_API_BASE = process.env.CYBARA_API || "http://localhost:4269";
@@ -48,12 +49,23 @@ export class CliApiError extends Error {
   }
 }
 
+export type CliFetch = (url: string, init?: RequestInit) => Promise<Response>;
+
 export interface CliApiRequestContext {
   apiBase?: string;
   apiKey?: string | null;
   gatewayPassword?: string | null;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: CliFetch;
 }
+
+const longRunningCliDispatcher = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
+
+const longRunningCliFetch: CliFetch = async (url, init) => {
+  const options = { ...init, dispatcher: longRunningCliDispatcher } as Parameters<
+    typeof undiciFetch
+  >[1];
+  return (await undiciFetch(url, options)) as unknown as Response;
+};
 
 export function buildCliAuthHeaders(
   apiKey: string | null,
@@ -139,6 +151,17 @@ export async function requestCliAPI<T>(
   }
 }
 
+export async function requestLongRunningCliAPI<T>(
+  endpoint: string,
+  options?: RequestInit,
+  context: CliApiRequestContext = {}
+): Promise<T> {
+  return requestCliAPI<T>(endpoint, options, {
+    ...context,
+    fetchImpl: context.fetchImpl ?? longRunningCliFetch,
+  });
+}
+
 export function formatCliApiError(error: unknown, apiBase = CLI_API_BASE): string {
   const message = error instanceof Error ? error.message : String(error);
   const endpoint = error instanceof CliApiError ? error.endpoint : "";
@@ -157,7 +180,11 @@ export function formatCliApiError(error: unknown, apiBase = CLI_API_BASE): strin
 
 export async function fetchCliAPI<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
   try {
-    return await requestCliAPI<T>(endpoint, options);
+    const request =
+      endpoint === "/api/chat" && (options?.method || "GET").toUpperCase() === "POST"
+        ? requestLongRunningCliAPI
+        : requestCliAPI;
+    return await request<T>(endpoint, options);
   } catch (error) {
     console.error(`ERROR: ${formatCliApiError(error)}`);
     return null;

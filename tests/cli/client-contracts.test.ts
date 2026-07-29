@@ -6,6 +6,7 @@ import {
   buildCliAuthHeaders,
   CliApiError,
   formatCliApiError,
+  requestLongRunningCliAPI,
   requestCliAPI,
   resolveCliApiKey,
   resolveCliGatewayPassword,
@@ -123,6 +124,31 @@ describe("CLI client contracts", () => {
         fetchImpl: async () => new Response("not-json", { status: 200 }),
       })
     ).rejects.toThrow("Gateway returned invalid JSON");
+  });
+
+  test("keeps long-running chat requests connected until response headers arrive", async () => {
+    const server = Bun.serve({
+      port: 0,
+      async fetch() {
+        await Bun.sleep(50);
+        return Response.json({ completed: true });
+      },
+    });
+
+    try {
+      await expect(
+        requestLongRunningCliAPI<{ completed: boolean }>(
+          "/api/chat",
+          { method: "POST" },
+          {
+            apiBase: `http://127.0.0.1:${server.port}`,
+            apiKey: null,
+          }
+        )
+      ).resolves.toEqual({ completed: true });
+    } finally {
+      server.stop(true);
+    }
   });
 });
 

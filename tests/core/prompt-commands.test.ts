@@ -32,6 +32,7 @@ describe("expandPromptCommand", () => {
     expect(commands).toContain("learn");
     expect(commands).toContain("plan");
     expect(commands).toContain("review");
+    expect(commands).toContain("security");
     expect(commands).toContain("test");
     expect(commands).toContain("summarize");
   });
@@ -39,6 +40,17 @@ describe("expandPromptCommand", () => {
   test("/review targets uncommitted changes by default and accepts a target", () => {
     expect(expandPromptCommand("/review")).toContain("uncommitted changes");
     expect(expandPromptCommand("/review src/core/agent.ts")).toContain("src/core/agent.ts");
+  });
+
+  test("/security loads the authorized scanner workflow and accepts a target", () => {
+    const current = expandPromptCommand("/security");
+    const scoped = expandPromptCommand("/security src/api");
+    expect(current).toContain("Target: the current workspace");
+    expect(current).toContain("security_scan with action=scan");
+    expect(current).toContain("@security-scan");
+    expect(current).toContain("supports cancellation");
+    expect(current).toContain("action=validate");
+    expect(scoped).toContain("Target: src/api");
   });
 
   test("/plan asks for a plan before acting", () => {

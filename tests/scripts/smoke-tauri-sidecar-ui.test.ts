@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { assertSidecarVersion } from "../../scripts/smoke-tauri-sidecar-ui";
+import {
+  assertSidecarBuildCommit,
+  assertSidecarVersion,
+} from "../../scripts/smoke-tauri-sidecar-ui";
 
 describe("sidecar release smoke", () => {
   test("accepts a gateway matching the app version", () => {
@@ -16,6 +19,23 @@ describe("sidecar release smoke", () => {
     expect(() => assertSidecarVersion({}, "1.0.1798")).toThrow("Bundled gateway version unknown");
     expect(() => assertSidecarVersion({ version: 1798 }, "1.0.1798")).toThrow(
       "Bundled gateway version unknown"
+    );
+  });
+});
+
+describe("Tauri sidecar build commit", () => {
+  const commit = "0123456789abcdef0123456789abcdef01234567";
+
+  test("accepts the exact compiled release commit", () => {
+    expect(() => assertSidecarBuildCommit({ commit }, commit.toUpperCase())).not.toThrow();
+  });
+
+  test("rejects unavailable or mismatched release commits", () => {
+    expect(() => assertSidecarBuildCommit({ commit: null }, commit)).toThrow(
+      "Bundled gateway commit unavailable"
+    );
+    expect(() => assertSidecarBuildCommit({ commit: "abcdef0" }, commit)).toThrow(
+      "does not match release commit"
     );
   });
 });

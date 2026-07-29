@@ -36,12 +36,17 @@ describe("chat capability mentions", () => {
     );
     expect(execTool).toBeDefined();
     expect(execTool?.source).toBe("Tool");
+    expect(
+      capabilities.find(
+        (capability) => capability.kind === "skill" && capability.token === "@security-scan"
+      )
+    ).toBeDefined();
   });
 
   test("lists goal, loop, and prompt commands for composer discovery", () => {
     const commands = listChatCommands();
     expect(commands.map((command) => command.token)).toEqual(
-      expect.arrayContaining(["/goal", "/loop", "/learn", "/plan", "/review", "/test"])
+      expect.arrayContaining(["/goal", "/loop", "/learn", "/plan", "/review", "/security", "/test"])
     );
     expect(commands.every((command) => command.kind === "command")).toBe(true);
   });
@@ -50,6 +55,39 @@ describe("chat capability mentions", () => {
     const resolved = await resolveChatCapabilityMentions("Please @exec the tests", process.cwd());
     expect(resolved.mentions.map((mention) => mention.token)).toContain("@exec");
     expect(resolved.instruction).toContain("exec");
+  });
+
+  test("selects the integrated security skill and tool from natural language", async () => {
+    const resolved = await resolveChatCapabilityMentions(
+      "Do a Codex Security scan of this repo",
+      process.cwd()
+    );
+    expect(resolved.mentions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "skill", token: "@security-scan" }),
+        expect.objectContaining({ kind: "tool", token: "@security_scan" }),
+      ])
+    );
+    expect(resolved.instruction).toContain('skill_load with "security-scan"');
+    expect(resolved.instruction).toContain('use the "security_scan" built-in tool');
+  });
+
+  test("selects the integrated security workflow from a vague action request", async () => {
+    const resolved = await resolveChatCapabilityMentions(
+      "Do a security scan of this repo and keep it concise",
+      process.cwd()
+    );
+    expect(resolved.mentions.map((mention) => mention.token)).toEqual(
+      expect.arrayContaining(["@security-scan", "@security_scan"])
+    );
+  });
+
+  test("does not infer a scan from an informational security question", async () => {
+    const resolved = await resolveChatCapabilityMentions(
+      "What does a security scan usually check?",
+      process.cwd()
+    );
+    expect(resolved.mentions.map((mention) => mention.token)).not.toContain("@security-scan");
   });
 
   test("exposes connected accounts as explicit chat capabilities", async () => {

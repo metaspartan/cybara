@@ -34,6 +34,19 @@ export function normalizeCapabilityAlias(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function inferredCapabilityTokens(message: string): string[] {
+  const requestsCodexSecurity =
+    /\bcodex[\s-]+security(?:\s+(?:scan|assessment|audit))?\b/i.test(message) ||
+    /\bsecurity[\s-]+scan\b[^\n]{0,80}\bcodex\b/i.test(message);
+  const requestsSecurityAssessment =
+    /\b(?:run|do|perform|conduct|start|launch|execute|complete)\s+(?:a\s+|an\s+|the\s+)?(?:full\s+|deep\s+|quick\s+|focused\s+|repository\s+|repo\s+|code\s+)*(?:security[\s-]+(?:scan|assessment|audit))\b/i.test(
+      message
+    );
+  return requestsCodexSecurity || requestsSecurityAssessment
+    ? ["@security-scan", "@security_scan"]
+    : [];
+}
+
 async function skillCapabilities(workspaceDir?: string): Promise<ResolvedChatCapability[]> {
   const loaded = await loadAllSkills({ workspaceDir });
   return filterEligibleSkills(loaded, createEligibilityContext()).map((entry) => {
@@ -168,6 +181,7 @@ const COMMAND_DESCRIPTIONS: Record<string, string> = {
   learn: "Create a reusable skill from a URL, local source, or recent conversation",
   plan: "Create a concise implementation plan before making changes",
   review: "Review code for correctness, security, and performance issues",
+  security: "Scan owned or authorized code and validate security findings",
   test: "Run the relevant tests and fix failures",
   summarize: "Summarize the conversation and current work state",
 };
@@ -201,6 +215,10 @@ export async function resolveChatCapabilityMentions(
   for (const match of matches) {
     const token = match[2]?.toLowerCase();
     const capability = token ? available.get(token) : undefined;
+    if (capability) selected.set(capability.token, capability);
+  }
+  for (const token of inferredCapabilityTokens(message)) {
+    const capability = available.get(token);
     if (capability) selected.set(capability.token, capability);
   }
   const mentions = [...selected.values()];

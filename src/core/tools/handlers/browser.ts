@@ -20,6 +20,7 @@ import {
 import * as profileManager from "../../browser/profiles";
 import * as pwManager from "../../browser/pw-manager";
 import { CONTENT_ROLES, INTERACTIVE_ROLES, STRUCTURAL_ROLES } from "../../browser/pw-role-snapshot";
+import { fetchPublicHttpUrl, type PublicHttpFetcher } from "../../outbound-url-policy";
 import type { ToolContext } from "../index";
 import { getWebResearchRuntimeEnv } from "../../web-research-settings";
 import { enforceWebFetchAllowlist } from "./web-policy";
@@ -1406,7 +1407,9 @@ export async function handleBrowser(
 }
 
 export async function handleWebFetch(
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  _context?: ToolContext,
+  fetchUrl: PublicHttpFetcher = fetchPublicHttpUrl
 ): Promise<{ content: string; url: string; title?: string; provider?: string }> {
   const url = typeof args.url === "string" ? args.url.trim() : "";
   const extractMode = args.extractMode === "text" ? "text" : "markdown";
@@ -1451,7 +1454,7 @@ export async function handleWebFetch(
           typeof args.objective === "string" ? args.objective : undefined
         );
       }
-      const result = await fetchDirectWebContent(validatedUrl, extractMode, maxChars);
+      const result = await fetchDirectWebContent(validatedUrl, extractMode, maxChars, fetchUrl);
       if (!result.content.trim()) throw new Error("page contained no readable content");
       return { ...result, provider: "direct" };
     } catch (error) {
@@ -1465,14 +1468,15 @@ export async function handleWebFetch(
 async function fetchDirectWebContent(
   url: string,
   extractMode: "markdown" | "text",
-  maxChars: number
+  maxChars: number,
+  fetchUrl: PublicHttpFetcher
 ): Promise<{ content: string; url: string; title?: string }> {
   const maxRedirects = 5;
   let currentUrl = url;
   let response: Response | undefined;
   for (let hop = 0; hop <= maxRedirects; hop++) {
     currentUrl = await validateBrowserNavigationUrl(currentUrl, "Request");
-    const hopResponse = await fetch(currentUrl, {
+    const hopResponse = await fetchUrl(currentUrl, {
       redirect: "manual",
       headers: {
         "User-Agent":

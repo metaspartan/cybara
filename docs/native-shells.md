@@ -55,7 +55,7 @@ Locally, packaging signs when `CYBARA_MACOS_SIGN_IDENTITY` is set and notarizes 
 
 ## Mobile: iOS + Android
 
-The mobile companion now lives in [apps/mobile/README.md](../apps/mobile/README.md). It is a React Native / Expo app for iOS and Android with a dark Liquid Glass-inspired interface.
+The mobile companion now lives in [apps/mobile/README.md](../apps/mobile/README.md). It is a React Native / Expo app for iOS and Android with a system-aware Liquid Glass-inspired interface and explicit light and dark appearance overrides.
 
 The mobile companion:
 

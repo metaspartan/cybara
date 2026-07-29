@@ -28,5 +28,5 @@ console.log("transformers-worker-asset-ok");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });

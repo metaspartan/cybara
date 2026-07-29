@@ -38,6 +38,7 @@ const TOP_LEVEL_COMMANDS = [
   "provider",
   "providers",
   "router",
+  "security",
   "sessions",
   "setup",
   "skills",
@@ -109,6 +110,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
   ],
   lsp: ["list", "install", "uninstall"],
   logs: ["--tail", "-n", "--follow", "-f"],
+  security: ["scan", "--agent", "--router", "--deep", "--working-tree", "--diff", "--path"],
   tui: [
     "status",
     "metrics",

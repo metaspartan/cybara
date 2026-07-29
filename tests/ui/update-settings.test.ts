@@ -34,7 +34,9 @@ describe("desktop update settings", () => {
     expect(buildScript).toContain('entryModule: "src/index.ts"');
     expect(packageScript).toContain("process.env.CYBARA_BUILD_COMMIT = buildCommit");
     expect(packageScript).toContain("buildStandaloneCli");
-    expect(standaloneBuildScript).toContain('"--env=CYBARA_BUILD_*"');
+    expect(standaloneBuildScript).toContain("__CYBARA_BUILD_COMMIT__");
+    expect(standaloneBuildScript).not.toContain('"--env=CYBARA_BUILD_*"');
+    expect(releaseWorkflow).toContain("CYBARA_EXPECTED_BUILD_COMMIT: ${{ github.sha }}");
     expect(releaseWorkflow).toContain("scripts/build-standalone-cli.ts");
     expect(buildScript).not.toContain("--compile --env=CYBARA_BUILD_*");
     expect(standaloneBuildScript).not.toContain("--compile --env=CYBARA_BUILD_*");

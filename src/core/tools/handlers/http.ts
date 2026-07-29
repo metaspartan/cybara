@@ -1,5 +1,7 @@
 import { validateUrl } from "../../../api/security";
 import { createLogger } from "../../logger";
+import { fetchPublicHttpUrl } from "../../outbound-url-policy";
+import type { ToolContext } from "../index";
 
 const log = createLogger("HTTP");
 
@@ -11,21 +13,49 @@ interface HttpResponse {
   elapsed: number;
 }
 
-export async function handleHttp(args: Record<string, unknown>): Promise<HttpResponse> {
+interface HttpRedirectState {
+  url: string;
+  redirectHops: number;
+}
+
+const MAX_REDIRECTS = 5;
+
+export async function resolveHttpRedirect(
+  url: string,
+  location: string,
+  redirectHops: number
+): Promise<HttpRedirectState> {
+  if (redirectHops >= MAX_REDIRECTS) {
+    throw new Error("Too many redirects");
+  }
+  const redirectUrl = new URL(location, url).toString();
+  const redirectValidation = await validateUrl(redirectUrl);
+  if (!redirectValidation.valid) {
+    log.warn(`SSRF blocked redirect: ${redirectValidation.error}`, { location });
+    throw new Error(`Redirect blocked: ${redirectValidation.error}`);
+  }
+  return { url: redirectUrl, redirectHops: redirectHops + 1 };
+}
+
+export async function handleHttp(
+  args: Record<string, unknown>,
+  _context?: ToolContext
+): Promise<HttpResponse> {
+  return executeHttpRequest(args, 0);
+}
+
+async function executeHttpRequest(
+  args: Record<string, unknown>,
+  redirectHops: number
+): Promise<HttpResponse> {
   const url = args.url as string;
   const method = (args.method as string) || "GET";
   const headers = (args.headers as Record<string, string>) || {};
   const body = args.body as string | undefined;
   const timeout = (args.timeout as number) || 30000;
-  const redirectHops = typeof args.__redirectHops === "number" ? args.__redirectHops : 0;
-  const MAX_REDIRECTS = 5;
 
   if (!url) {
     throw new Error("URL is required");
-  }
-
-  if (redirectHops > MAX_REDIRECTS) {
-    throw new Error("Too many redirects");
   }
 
   const urlValidation = await validateUrl(url);
@@ -42,7 +72,7 @@ export async function handleHttp(args: Record<string, unknown>): Promise<HttpRes
   try {
     log.debug(`HTTP ${method} ${url}`);
 
-    const response = await fetch(url, {
+    const response = await fetchPublicHttpUrl(url, {
       method: method.toUpperCase(),
       headers,
       body: body ? body : undefined,
@@ -55,16 +85,8 @@ export async function handleHttp(args: Record<string, unknown>): Promise<HttpRes
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (location) {
-        const redirectValidation = await validateUrl(new URL(location, url).toString());
-        if (!redirectValidation.valid) {
-          log.warn(`SSRF blocked redirect: ${redirectValidation.error}`, { location });
-          throw new Error(`Redirect blocked: ${redirectValidation.error}`);
-        }
-        return handleHttp({
-          ...args,
-          url: new URL(location, url).toString(),
-          __redirectHops: redirectHops + 1,
-        });
+        const redirect = await resolveHttpRedirect(url, location, redirectHops);
+        return executeHttpRequest({ ...args, url: redirect.url }, redirect.redirectHops);
       }
     }
 

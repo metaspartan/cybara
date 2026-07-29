@@ -32,6 +32,11 @@ export interface ToolContext {
   allowDynamicTools?: boolean;
   abortSignal?: AbortSignal;
   modelParamsOverride?: Record<string, unknown>;
+  useModelRouter?: boolean;
+  activeModel?: string;
+  activeProviderId?: string;
+  activeProviderName?: string;
+  maxToolCalls?: number;
   maxOutputTokens?: number;
   suppressStreaming?: boolean;
   denyWritePrefixes?: string[];

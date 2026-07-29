@@ -23,8 +23,26 @@ describe("built-in skill packs", () => {
 
   test("covers a broad set of common workflows", () => {
     const names = packs.map((p) => p.skill.name);
-    for (const expected of ["web-research", "code-review", "debugging", "security-review"]) {
+    for (const expected of [
+      "web-research",
+      "code-review",
+      "debugging",
+      "security-review",
+      "security-scan",
+    ]) {
       expect(names).toContain(expected);
     }
+  });
+
+  test("security scans use the integrated native tool", () => {
+    const security = packs.find((pack) => pack.skill.name === "security-scan");
+    expect(security?.skill.instructions).toContain("Call `security_scan` with `action=scan`");
+    expect(security?.skill.instructions).toContain(
+      "always uses the currently selected Cybara agent, provider, and model"
+    );
+    expect(security?.skill.instructions).toContain(
+      "Do not invoke a separate scanner through `exec`, `process`, or a shell command"
+    );
+    expect(security?.skill.instructions).toContain("A dry run produces no findings to validate");
   });
 });

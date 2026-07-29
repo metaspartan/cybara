@@ -3,7 +3,9 @@ import { basename } from "path";
 import { assertReadablePath } from "../path-policy";
 import { validateUrl } from "../../../api/security";
 import { config } from "../../config";
+import { fetchPublicHttpUrl, type PublicHttpFetcher } from "../../outbound-url-policy";
 import { providerManager, providers, resolveProviderType } from "../../providers";
+import type { ToolContext } from "../index";
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions";
 const OPENAI_ENDPOINT = "https://api.openai.com/v1/audio/transcriptions";
@@ -94,7 +96,10 @@ function resolveBackend(args: Record<string, unknown>, modelOverride?: string): 
   };
 }
 
-async function loadAudio(args: Record<string, unknown>): Promise<{ blob: Blob; filename: string }> {
+async function loadAudio(
+  args: Record<string, unknown>,
+  fetchUrl: PublicHttpFetcher
+): Promise<{ blob: Blob; filename: string }> {
   const path = typeof args.audioPath === "string" ? args.audioPath.trim() : "";
   const url = typeof args.url === "string" ? args.url.trim() : "";
 
@@ -116,7 +121,7 @@ async function loadAudio(args: Record<string, unknown>): Promise<{ blob: Blob; f
       if (!verdict.valid) {
         throw new Error(`Refusing to fetch audio URL: ${verdict.error || "blocked by URL policy"}`);
       }
-      res = await fetch(current, { redirect: "manual" });
+      res = await fetchUrl(current, { redirect: "manual" });
       if (res.status >= 300 && res.status < 400) {
         const location = res.headers.get("location");
         if (!location) break;
@@ -137,9 +142,13 @@ async function loadAudio(args: Record<string, unknown>): Promise<{ blob: Blob; f
   throw new Error("Provide either audioPath (local file) or url.");
 }
 
-export async function handleTranscribe(args: Record<string, unknown>): Promise<TranscribeResponse> {
+export async function handleTranscribe(
+  args: Record<string, unknown>,
+  _context?: ToolContext,
+  fetchUrl: PublicHttpFetcher = fetchPublicHttpUrl
+): Promise<TranscribeResponse> {
   const config = resolveBackend(args, typeof args.model === "string" ? args.model : undefined);
-  const { blob, filename } = await loadAudio(args);
+  const { blob, filename } = await loadAudio(args, fetchUrl);
 
   const form = new FormData();
   form.append("file", blob, filename || "audio.m4a");

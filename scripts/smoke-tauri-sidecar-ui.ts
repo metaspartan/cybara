@@ -36,6 +36,12 @@ function readHealthVersion(value: unknown): string | null {
   return typeof version === "string" && version.trim() ? version.trim() : null;
 }
 
+function readBuildCommit(value: unknown): string | null {
+  if (!value || typeof value !== "object" || !("commit" in value)) return null;
+  const commit = (value as { commit?: unknown }).commit;
+  return typeof commit === "string" && commit.trim() ? commit.trim().toLowerCase() : null;
+}
+
 export function assertSidecarVersion(value: unknown, expectedVersion?: string): void {
   if (!expectedVersion) return;
   const version = readHealthVersion(value);
@@ -46,9 +52,21 @@ export function assertSidecarVersion(value: unknown, expectedVersion?: string): 
   }
 }
 
+export function assertSidecarBuildCommit(value: unknown, expectedCommit?: string): void {
+  if (!expectedCommit) return;
+  const commit = readBuildCommit(value);
+  const expected = expectedCommit.trim().toLowerCase();
+  if (commit !== expected) {
+    throw new Error(
+      `Bundled gateway commit ${commit ?? "unavailable"} does not match release commit ${expected}`
+    );
+  }
+}
+
 export async function smokeSidecarUi(
   sourceBinary: string,
-  expectedVersion?: string
+  expectedVersion?: string,
+  expectedCommit?: string
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), "cybara-tauri-sidecar-ui-"));
   const binary = join(directory, basename(sourceBinary));
@@ -85,6 +103,8 @@ export async function smokeSidecarUi(
     if (!asset.ok) throw new Error(`Embedded UI asset returned HTTP ${asset.status}: ${assetPath}`);
     const health = await waitForResponse(`http://127.0.0.1:${port}/api/health`);
     assertSidecarVersion(await health.json(), expectedVersion);
+    const buildInfo = await waitForResponse(`http://127.0.0.1:${port}/api/build-info`);
+    assertSidecarBuildCommit(await buildInfo.json(), expectedCommit);
   } catch (error) {
     failure = error;
   } finally {
@@ -102,6 +122,10 @@ export async function smokeSidecarUi(
 if (import.meta.main) {
   const sourceBinary = process.argv[2]?.trim();
   if (!sourceBinary) throw new Error("Usage: bun run scripts/smoke-tauri-sidecar-ui.ts <binary>");
-  await smokeSidecarUi(resolve(sourceBinary), process.argv[3]?.trim() || undefined);
+  await smokeSidecarUi(
+    resolve(sourceBinary),
+    process.argv[3]?.trim() || undefined,
+    process.argv[4]?.trim() || process.env.CYBARA_EXPECTED_BUILD_COMMIT?.trim() || undefined
+  );
   console.log("Sidecar embedded UI smoke passed");
 }

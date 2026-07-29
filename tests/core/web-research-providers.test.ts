@@ -248,10 +248,9 @@ describe("web research providers", () => {
   test("web_fetch falls back from a blocked direct response to configured Firecrawl", async () => {
     process.env.FIRECRAWL_API_KEY = "fc-key";
     delete process.env.PARALLEL_API_KEY;
-    let calls = 0;
+    let externalCalls = 0;
     globalThis.fetch = (async () => {
-      calls += 1;
-      if (calls === 1) return new Response("blocked", { status: 403, statusText: "Forbidden" });
+      externalCalls += 1;
       return new Response(
         JSON.stringify({
           success: true,
@@ -260,10 +259,20 @@ describe("web research providers", () => {
         { status: 200 }
       );
     }) as typeof fetch;
+    let directCalls = 0;
+    const fetchUrl = async (): Promise<Response> => {
+      directCalls += 1;
+      return new Response("blocked", { status: 403, statusText: "Forbidden" });
+    };
 
-    const result = await handleWebFetch({ url: "https://example.com/protected" });
+    const result = await handleWebFetch(
+      { url: "https://example.com/protected" },
+      undefined,
+      fetchUrl
+    );
     expect(result.provider).toBe("firecrawl");
     expect(result.content).toBe("Recovered content");
-    expect(calls).toBe(2);
+    expect(directCalls).toBe(1);
+    expect(externalCalls).toBe(1);
   });
 });

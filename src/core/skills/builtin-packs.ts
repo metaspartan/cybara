@@ -88,6 +88,24 @@ Audit for real, exploitable issues — not theoretical checklists:
 For each finding: state the concrete attack (input → impact), rate severity, and give the minimal fix. Only report issues you can trace to a real code path.`,
   },
   {
+    name: "security-scan",
+    description:
+      "Run an authorized repository security scan, validate findings, and prepare evidence-backed remediation.",
+    instructions: `# Security scan
+
+Use this workflow only for code the user owns or has explicit permission to assess.
+
+1. Confirm the target repository and authorization boundary.
+2. Call \`security_scan\` with \`action=info\` to verify the active analysis engine without exposing credentials.
+3. Call \`security_scan\` with \`action=scan\`. It always uses the currently selected Cybara agent, provider, and model. Do not invoke a separate scanner through \`exec\`, \`process\`, or a shell command.
+4. Use \`dryRun=true\` before a live scan when target, diff, or scope selection is uncertain. A dry run produces no findings to validate.
+5. Inspect the completed report and call \`security_scan\` with \`action=validate\` for plausible findings before presenting them as confirmed.
+6. Report verified findings most severe first with the attack path, affected location, evidence, and minimal remediation.
+7. Modify source only when the user explicitly requests remediation, then review and test every resulting change.
+
+Never publish scan artifacts, source excerpts, credentials, reproduction details, or vulnerability reports without the user's explicit approval.`,
+  },
+  {
     name: "technical-writing",
     description:
       "Write or restructure documentation (README, guide, API doc) that a newcomer can actually follow.",

@@ -15,10 +15,7 @@ if (restoreStatus.state === "failed") {
 
 const dbPath = join(dataDir, "platform.db");
 
-console.error("[Database] Initializing at:", dbPath);
-
 if (!existsSync(dataDir)) {
-  console.error("[Database] Creating data directory");
   mkdirSync(dataDir, { recursive: true });
 }
 
@@ -34,16 +31,13 @@ function restrictPermissions(): void {
 restrictPermissions();
 
 const db = new Database(dbPath);
-console.error("[Database] Database instance created");
 restrictPermissions();
 db.exec("PRAGMA foreign_keys = ON");
 db.exec("PRAGMA journal_mode = WAL");
 db.exec("PRAGMA synchronous = NORMAL");
 db.exec("PRAGMA busy_timeout = 5000");
 db.exec("PRAGMA secure_delete = ON");
-console.error("[Database] Journal mode set");
 
-console.error("[Database] Creating schema...");
 try {
   db.exec(`
   -- Platform configuration
@@ -433,8 +427,6 @@ try {
   CREATE INDEX IF NOT EXISTS idx_metrics_created ON metrics(created_at);
   CREATE INDEX IF NOT EXISTS idx_metrics_daily_date ON metrics_daily(date);
 `);
-  console.error("[Database] Schema created successfully");
-
   try {
     const totalsEmpty =
       (db.query("SELECT COUNT(*) as c FROM metrics_totals").get() as { c: number }).c === 0;

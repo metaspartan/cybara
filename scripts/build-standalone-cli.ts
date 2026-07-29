@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { existsSync, readdirSync, readFileSync, rmSync } from "fs";
 import { basename, relative, resolve, sep } from "path";
+import { readGitCommit } from "../src/core/build-info";
 
 export interface StandaloneCliBuildOptions {
   target: string;
@@ -9,6 +10,7 @@ export interface StandaloneCliBuildOptions {
   uiDir?: string;
   entryModule?: string;
   externalPackages?: readonly string[];
+  buildCommit?: string;
 }
 
 interface StandaloneAssetsSourceOptions {
@@ -22,6 +24,7 @@ interface StandaloneEntrySourceOptions {
   cwd: string;
   assetsModule?: string;
   version?: string;
+  buildCommit?: string;
 }
 
 interface StandaloneRuntimeBundle {
@@ -37,6 +40,8 @@ const EXTERNAL_PACKAGES = [
   "onnxruntime-node",
   "onnxruntime-web",
 ];
+
+const commitPattern = /^[0-9a-f]{7,64}$/i;
 
 function listFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true })
@@ -110,8 +115,13 @@ export function createStandaloneEntrySource(options: StandaloneEntrySourceOption
     resolve(options.cwd, options.assetsModule ?? ".cybara-standalone-assets.ts")
   );
   const version = options.version?.trim() || "unknown";
+  const buildCommit = options.buildCommit?.trim();
+  const buildStamp =
+    buildCommit && commitPattern.test(buildCommit)
+      ? `Object.assign(globalThis, { __CYBARA_BUILD_COMMIT__: ${JSON.stringify(buildCommit.toLowerCase())} });\n`
+      : "";
 
-  return `const command = process.argv[2]?.trim().toLowerCase();
+  return `${buildStamp}const command = process.argv[2]?.trim().toLowerCase();
 const versionCommand = command === "version" || command === "--version" || command === "-v";
 
 if (versionCommand) {
@@ -121,6 +131,23 @@ if (versionCommand) {
   await import(${JSON.stringify(assetsModule)});
 }
 `;
+}
+
+async function resolveStandaloneBuildCommit(
+  cwd: string,
+  requestedCommit?: string
+): Promise<string | undefined> {
+  const candidates = [
+    requestedCommit,
+    process.env.CYBARA_BUILD_COMMIT,
+    process.env.GITHUB_SHA,
+    await readGitCommit(cwd),
+  ];
+  for (const candidate of candidates) {
+    const commit = candidate?.trim();
+    if (commit && commitPattern.test(commit)) return commit.toLowerCase();
+  }
+  return undefined;
 }
 
 function readStandaloneVersion(cwd: string): string {
@@ -191,7 +218,6 @@ export function standaloneCliBuildArgs(
     "build",
     entrypoint,
     "--compile",
-    "--env=CYBARA_BUILD_*",
     `--target=${target}`,
     `--outfile=${outfile}`,
     ...[...new Set([...EXTERNAL_PACKAGES, ...externalPackages])].flatMap((packageName) => [
@@ -211,6 +237,7 @@ export async function buildStandaloneCli(options: StandaloneCliBuildOptions): Pr
   const entrypoint = resolve(cwd, `.cybara-standalone-${buildId}.ts`);
   const assetsModule = resolve(cwd, `.cybara-standalone-assets-${buildId}.ts`);
   const runtimeDirectory = resolve(cwd, `.cybara-standalone-runtime-${buildId}`);
+  const buildCommit = await resolveStandaloneBuildCommit(cwd, options.buildCommit);
 
   try {
     const runtime = await buildStandaloneRuntime(
@@ -234,6 +261,7 @@ export async function buildStandaloneCli(options: StandaloneCliBuildOptions): Pr
         cwd,
         assetsModule,
         version: readStandaloneVersion(cwd),
+        buildCommit,
       })
     );
     const processHandle = Bun.spawn(

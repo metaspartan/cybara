@@ -31,6 +31,7 @@ import { runPermissionsCommand } from "./commands/permissions";
 import { runIdeCommand } from "./commands/ide";
 import { type MetricsResponse } from "./commands/status-contract";
 import { rawStatus } from "./commands/status";
+import { runSecurityCommand } from "./commands/security";
 import {
   configureWalletCli,
   rawWalletAccounts,
@@ -65,7 +66,7 @@ import {
   CLI_API_BASE as API_BASE,
   CLI_API_KEY,
   fetchCliAPI as fetchAPI,
-  requestCliAPI as requestAPI,
+  requestLongRunningCliAPI as requestAPI,
   TUI_INPUT_OPTIONS,
   withCliAuthHeaders,
 } from "./client";
@@ -1160,7 +1161,7 @@ async function rawModels(args: string[]): Promise<void> {
 }
 
 async function main() {
-  if (command !== "chat" && hasFlag(args, "--help", "-h")) {
+  if (command !== "chat" && command !== "security" && hasFlag(args, "--help", "-h")) {
     rawHelp(getVersion(), API_BASE);
     return;
   }
@@ -1184,6 +1185,9 @@ async function main() {
       break;
     case "doctor":
       await rawDoctor(args.slice(1));
+      break;
+    case "security":
+      process.exitCode = await runSecurityCommand(args.slice(1));
       break;
     case "computer-use":
     case "computeruse":

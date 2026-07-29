@@ -254,13 +254,12 @@ describe("CLI auth header forwarding", () => {
     expect(setNoPassword.stderr).toContain("Failed to set config: 403");
   });
 
-  test("chat request path uses auth header helper for /api/chat", () => {
+  test("chat request path uses the shared authenticated API client", () => {
     const cliPath = join(ROOT_DIR, "src", "cli", "commands", "chat.ts");
     const cliSource = readFileSync(cliPath, "utf8");
 
-    expect(cliSource).toContain("const resp = await fetch(`${current.apiBase}/api/chat`, {");
     expect(cliSource).toContain(
-      'headers: current.withAuthHeaders({ "Content-Type": "application/json" }),'
+      '(current.requestAPI || current.fetchAPI)<CliChatResponse>("/api/chat", {'
     );
   });
 });

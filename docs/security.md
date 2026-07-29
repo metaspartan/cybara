@@ -43,6 +43,12 @@ Recommended setup:
    `http://127.0.0.1:4269`, terminate TLS at the proxy, and keep the Cybara API key and gateway
    password private.
 
+Proxy headers are ignored unless `CYBARA_TRUST_PROXY=1`. Loopback reverse proxies are trusted when
+that flag is enabled. A non-loopback proxy must also be listed explicitly in
+`CYBARA_TRUST_PROXY_CIDRS` as a comma-separated IP/CIDR list, such as `10.0.0.8/32`. The proxy must
+append or replace `X-Forwarded-For`; Cybara uses the rightmost valid address and ignores headers from
+unlisted peers.
+
 Mobile QR pairings carry a short-lived one-time code, not a root API key. Redeemed devices receive
 scoped mobile tokens that can be revoked without rotating the root key.
 

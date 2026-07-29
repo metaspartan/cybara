@@ -35,6 +35,8 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    evals export [--format jsonl] [--sanitize] [--output PATH]");
   console.log("    evals import <path>                  Import a replayable suite backup");
   console.log("  doctor      Run environment diagnostics [--deep] [--json] [--export [path]]");
+  console.log("  security    Assess an authorized repository with the active Cybara agent");
+  console.log("    security [scan] [path] [--agent ID] [--router] [--deep] [--working-tree]");
   console.log("  update      Download and install the latest CLI release (verifies SHA256)");
   console.log(
     "    update --check     Only report whether a newer release exists (non-zero if stale)"

@@ -99,7 +99,8 @@ runtime behavior.
 `Ctrl+P` opens the slash-command palette. `/copy [n]` copies the latest or numbered assistant
 response, `/export [path]` writes the conversation as portable Markdown, and `/terminal-info`
 reports viewport, color, clipboard, and alternate-screen capabilities. `/raw` toggles complete
-message bodies, `/review` loads a focused workspace review prompt, and `/resume` or `/sessions`
+message bodies, `/review` loads a focused workspace review prompt, `/security [path]` loads an
+authorized repository scan workflow, and `/resume` or `/sessions`
 returns to the saved-session picker. Model overrides selected with `/model` remain distinct from
 agent selection and are carried through normal turns, queued follow-ups, and subagent launches.
 
@@ -130,6 +131,10 @@ without leaving the terminal. Every panel supports `r` to refresh and `q` or `Es
 cybara status             # Show status and health
 cybara health             # Alias for status
 cybara doctor             # Run API + stream + sandbox diagnostics
+cybara security login     # Sign in for repository security scans
+cybara security scan .    # Scan an owned or authorized repository through Bun
+cybara security scans list . # List previous scans for a repository
+cybara security export <scan> --export-format sarif --output results.sarif
 cybara metrics            # Show token usage and metrics
 cybara metrics analysis   # Advanced token analysis
 cybara update            # Verify SHA256, then download + install the latest CLI release
@@ -146,6 +151,11 @@ cybara artifacts --json   # Emit artifact data for scripts
 cybara journey            # Show learned skills and memory activity
 cybara journey --json     # Emit journey data for scripts
 ```
+
+`cybara security` sends the assessment through the selected Cybara agent, provider, and model. Use
+`--agent <name-or-id>` to select an agent or `--router` to use the configured model router. The
+agent receives a read-only security toolset and cannot switch to a separate scanner model. Use
+`--deep`, `--working-tree`, `--diff <ref>`, or `--path <path>` to narrow the requested assessment.
 
 ### Lab and Evals
 

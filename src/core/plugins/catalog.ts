@@ -27,10 +27,11 @@ export const BUILTIN_PLUGIN_CATALOG: PluginCatalogEntry[] = [
     id: "safety-reliability",
     name: "Safety & Reliability",
     version: "1.0.0",
-    description: "Security review, incident response, accessibility, and text-matching workflows.",
+    description:
+      "Security scanning, code review, incident response, accessibility, and text-matching workflows.",
     author: "Cybara",
     tags: ["Security", "Reliability"],
-    skillNames: ["security-review", "incident-response", "accessibility", "regex"],
+    skillNames: ["security-review", "security-scan", "incident-response", "accessibility", "regex"],
     installedByDefault: true,
     enabledByDefault: true,
   },

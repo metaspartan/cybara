@@ -59,6 +59,10 @@ if ($checksumAsset) {
     $expected = ((Invoke-WebRequest -Uri $checksumAsset.browser_download_url -UseBasicParsing).Content)
     if ($expected -is [byte[]]) { $expected = [Text.Encoding]::UTF8.GetString($expected) }
     $expected = ($expected -split "\s+")[0].ToLowerInvariant()
+    if ($expected -notmatch "^[0-9a-f]{64}$") {
+        Remove-Item -Force $tmpFile
+        throw "Release checksum is missing or malformed; installation aborted."
+    }
     $actual = (Get-FileHash -Path $tmpFile -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actual -ne $expected) {
         Remove-Item -Force $tmpFile
@@ -66,7 +70,8 @@ if ($checksumAsset) {
     }
     Write-Host "Checksum verified."
 } else {
-    Write-Warning "No SHA256 sidecar found for $($asset.name); installing unverified."
+    Remove-Item -Force $tmpFile
+    throw "No SHA256 sidecar found for $($asset.name); installation aborted."
 }
 
 $target = Join-Path $InstallDir "cybara.exe"

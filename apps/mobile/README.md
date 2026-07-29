@@ -4,7 +4,7 @@ Cybara Mobile is the React Native companion app for iOS and Android. It does not
 
 ## Design Direction
 
-- dark theme by default
+- system appearance by default with light and dark overrides
 - Liquid Glass-inspired translucent surfaces, grouped controls, and interactive glass buttons
 - compact operator dashboard instead of a marketing screen
 - remote-first feature coverage for sessions, agents, providers, provider plan limits, metrics, speech settings, tools, approvals, wallet policy, channels, tasks, memory, terminal, gateway logs, gateway restart, and settings

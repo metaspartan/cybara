@@ -96,7 +96,7 @@ export class ChannelManager {
 
   registerAdapter(type: ChannelType, adapter: ChannelAdapter) {
     this.adapters.set(type, adapter);
-    log.info("Registered adapter", { type });
+    log.debug("Registered adapter", { type });
   }
 
   getAdapter(type: ChannelType): ChannelAdapter | undefined {

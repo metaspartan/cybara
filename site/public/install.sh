@@ -89,7 +89,7 @@ ASSET_URLS="$(
     | sed -E 's/.*"(https[^"]+)".*/\1/'
 )"
 DOWNLOAD_URL="$(printf '%s\n' "$ASSET_URLS" | grep -E -e "${ASSET_SUFFIX}\$" | head -n 1)"
-CHECKSUM_URL="$(printf '%s\n' "$ASSET_URLS" | grep -E -e "${ASSET_SUFFIX}\.sha256\$" | head -n 1)"
+CHECKSUM_URL="$(printf '%s\n' "$ASSET_URLS" | grep -E -e "${ASSET_SUFFIX}\.sha256\$" | head -n 1 || true)"
 RELEASE_TAG="$(
   grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' "$REL_JSON" \
     | head -n 1 \
@@ -116,16 +116,19 @@ echo
 
 if [ -n "$CHECKSUM_URL" ]; then
   EXPECTED="$(curl -fsSL "$CHECKSUM_URL" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
-  if [ -n "$EXPECTED" ] && command -v sha256sum >/dev/null 2>&1; then
+  if ! printf '%s' "$EXPECTED" | grep -Eq '^[0-9a-f]{64}$'; then
+    echo "Release checksum is missing or malformed; installation aborted." >&2
+    exit 1
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
     ACTUAL="$(sha256sum "$TMP_FILE" | awk '{print $1}')"
-  elif [ -n "$EXPECTED" ] && command -v shasum >/dev/null 2>&1; then
+  elif command -v shasum >/dev/null 2>&1; then
     ACTUAL="$(shasum -a 256 "$TMP_FILE" | awk '{print $1}')"
   else
-    ACTUAL=""
+    echo "A SHA256 tool is required to verify the release; installation aborted." >&2
+    exit 1
   fi
-  if [ -z "$ACTUAL" ]; then
-    echo "Warning: could not compute SHA256; skipping verification." >&2
-  elif [ "$ACTUAL" != "$EXPECTED" ]; then
+  if [ "$ACTUAL" != "$EXPECTED" ]; then
     echo "Checksum verification FAILED — the downloaded asset is corrupted or tampered." >&2
     echo "Expected: $EXPECTED" >&2
     echo "Actual:   $ACTUAL" >&2
@@ -134,7 +137,8 @@ if [ -n "$CHECKSUM_URL" ]; then
     echo "Checksum verified."
   fi
 else
-  echo "Warning: no SHA256 sidecar found for cybara${ASSET_SUFFIX}; installing unverified." >&2
+  echo "No SHA256 sidecar found for cybara${ASSET_SUFFIX}; installation aborted." >&2
+  exit 1
 fi
 
 chmod +x "$TMP_FILE"
