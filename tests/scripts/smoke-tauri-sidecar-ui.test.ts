@@ -2,9 +2,14 @@ import { describe, expect, test } from "bun:test";
 import {
   assertSidecarBuildCommit,
   assertSidecarVersion,
+  sidecarSmokeAuthorization,
 } from "../../scripts/smoke-tauri-sidecar-ui";
 
 describe("sidecar release smoke", () => {
+  test("authenticates production sidecar requests with the isolated smoke key", () => {
+    expect(sidecarSmokeAuthorization("cybara_smoke_test")).toBe("Bearer cybara_smoke_test");
+  });
+
   test("accepts a gateway matching the app version", () => {
     expect(() => assertSidecarVersion({ version: "1.0.1798" }, "1.0.1798")).not.toThrow();
   });
