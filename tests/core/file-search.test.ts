@@ -41,6 +41,27 @@ describe("file search", () => {
     }
   });
 
+  test("limits grep results globally across files", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "cybara-grep-limit-"));
+    try {
+      for (let index = 0; index < 12; index += 1) {
+        writeFileSync(join(directory, `match-${index}.txt`), `needle ${index}`);
+      }
+
+      const result = await handleGrep({
+        pattern: "needle",
+        path: directory,
+        maxResults: 3,
+      });
+
+      expect(result.results).toHaveLength(3);
+      expect(result.count).toBe(3);
+      expect(result.truncated).toBe(true);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("does not follow directory symlinks", async () => {
     const directory = mkdtempSync(join(tmpdir(), "cybara-file-search-symlink-"));
     const external = mkdtempSync(join(tmpdir(), "cybara-file-search-external-"));

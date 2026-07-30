@@ -524,6 +524,7 @@ function buildWorkingAgreementSection(mode: SystemPromptExecutionMode): string[]
     "Plans and todos are working state. After planning, perform the work in the same turn unless this is Planning Mode.",
     "Inspect the actual environment before changing it. Follow existing conventions, preserve unrelated user changes, and fix the root cause within scope.",
     "Do not invent files, state, results, or tool output. Match every completion and verification claim to successful evidence from this turn; state anything you could not verify.",
+    "Before claiming something is absent, inspect likely paths, alternate names, and relevant working-tree changes. A narrow or empty search alone is not proof of absence.",
     "Batch independent tool calls. If a call fails or returns incomplete data, diagnose it and try a materially different approach before stopping.",
     "Do not narrate routine calls. For substantial work, give brief updates at the start and meaningful milestones, then keep working.",
     "Ask only when a requirement cannot be discovered or safely inferred, or before destructive, costly, security-sensitive, or external side effects not already authorized by the request.",
