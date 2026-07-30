@@ -41,6 +41,98 @@ describe("file search", () => {
     }
   });
 
+  test("limits grep results globally across files", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "cybara-grep-limit-"));
+    try {
+      for (let index = 0; index < 12; index += 1) {
+        writeFileSync(join(directory, `match-${index}.txt`), `needle ${index}`);
+      }
+
+      const result = await handleGrep({
+        pattern: "needle",
+        path: directory,
+        maxResults: 3,
+      });
+
+      expect(result.results).toHaveLength(3);
+      expect(result.count).toBe(3);
+      expect(result.truncated).toBe(true);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("does not mark an exact grep boundary as truncated", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "cybara-grep-exact-limit-"));
+    try {
+      for (let index = 0; index < 3; index += 1) {
+        writeFileSync(join(directory, `match-${index}.txt`), `needle ${index}`);
+      }
+
+      const result = await handleGrep({
+        pattern: "needle",
+        path: directory,
+        maxResults: 3,
+      });
+
+      expect(result.results).toHaveLength(3);
+      expect(result.truncated).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("marks only omitted JavaScript fallback results as truncated", () => {
+    const directory = mkdtempSync(join(tmpdir(), "cybara-grep-fallback-limit-"));
+    const emptyPath = join(directory, "bin");
+    try {
+      mkdirSync(emptyPath);
+      for (let index = 0; index < 3; index += 1) {
+        writeFileSync(join(directory, `match-${index}.txt`), `needle ${index}`);
+      }
+
+      const handlerUrl = new URL("../../src/core/tools/handlers/file.ts", import.meta.url).href;
+      const worker = [
+        `const { handleGrep } = await import(${JSON.stringify(handlerUrl)});`,
+        'const exact = await handleGrep({ pattern: "needle", path: process.env.SEARCH_DIR, maxResults: 3 });',
+        'await Bun.write(process.env.EXTRA_FILE, "needle overflow");',
+        'const overflow = await handleGrep({ pattern: "needle", path: process.env.SEARCH_DIR, maxResults: 3 });',
+        'console.log("GREPFALLBACK:" + JSON.stringify({ exact, overflow }));',
+      ].join("\n");
+      const result = Bun.spawnSync([process.execPath, "-e", worker], {
+        cwd: directory,
+        env: {
+          ...process.env,
+          PATH: emptyPath,
+          SEARCH_DIR: directory,
+          EXTRA_FILE: join(directory, "match-3.txt"),
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const output = result.stdout.toString();
+      const marker = output.split("\n").find((line) => line.startsWith("GREPFALLBACK:"));
+      expect(result.exitCode).toBe(0);
+      expect(marker).toBeDefined();
+      const parsed = JSON.parse(marker?.slice("GREPFALLBACK:".length) || "{}") as {
+        exact?: { count: number; truncated: boolean; source: string };
+        overflow?: { count: number; truncated: boolean; source: string };
+      };
+      expect(parsed.exact).toMatchObject({
+        count: 3,
+        truncated: false,
+        source: "javascript",
+      });
+      expect(parsed.overflow).toMatchObject({
+        count: 3,
+        truncated: true,
+        source: "javascript",
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("does not follow directory symlinks", async () => {
     const directory = mkdtempSync(join(tmpdir(), "cybara-file-search-symlink-"));
     const external = mkdtempSync(join(tmpdir(), "cybara-file-search-external-"));

@@ -1,3 +1,5 @@
+import { formatStructuredToolActivityDetail } from "../../shared/tool-activity-detail";
+
 export interface ProcessActivityInfo {
   id: string;
   phase: "start" | "result" | "error" | "blocked";
@@ -93,6 +95,19 @@ function normalizeProcessActivityTextForPhase(
 export function formatProcessActivityFromToolCall(toolCall: ToolCallInfo): string {
   const key = toolCall.name.toLowerCase();
   const args = toolCall.args || {};
+  const phase =
+    toolCall.status === "pending" || toolCall.status === "executing"
+      ? "start"
+      : toolCall.status === "failed"
+        ? "error"
+        : "result";
+  const structuredDetail = formatStructuredToolActivityDetail(
+    toolCall.name,
+    args,
+    phase,
+    toolCall.result ?? toolCall.error
+  );
+  if (structuredDetail) return structuredDetail;
   const path = readToolArgString(args, "path");
   const displayPath = path ? toActivityDisplayPath(path) : undefined;
 

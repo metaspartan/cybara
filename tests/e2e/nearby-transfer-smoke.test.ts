@@ -27,6 +27,8 @@ interface ApiResult {
 
 const gateways: GatewayFixture[] = [];
 const GATEWAY_START_TIMEOUT_MS = process.env.CI ? 60_000 : 30_000;
+const NEARBY_ENABLE_ATTEMPTS = 5;
+const allocatedPorts = new Set<number>();
 let discoveryPort = 0;
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -44,22 +46,27 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function getFreePort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close();
-        reject(new Error("Failed to allocate a free port"));
-        return;
-      }
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve(address.port);
+  while (true) {
+    const port = await new Promise<number>((resolve, reject) => {
+      const server = createServer();
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        const address = server.address();
+        if (!address || typeof address === "string") {
+          server.close();
+          reject(new Error("Failed to allocate a free port"));
+          return;
+        }
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve(address.port);
+        });
       });
     });
-  });
+    if (allocatedPorts.has(port)) continue;
+    allocatedPorts.add(port);
+    return port;
+  }
 }
 
 async function createGateway(name: string): Promise<GatewayFixture> {
@@ -276,14 +283,23 @@ function insertSourceSession(fixture: GatewayFixture, marker: string): string {
 }
 
 async function enableNearby(fixture: GatewayFixture, displayName: string): Promise<void> {
-  const result = await api(fixture, "PUT", "/api/nearby/settings", {
-    enabled: true,
-    displayName,
-    port: fixture.nearbyPort,
-    discoveryMinutes: 1,
-  });
-  expect(result.status).toBe(200);
-  expect(asRecord(result.data).success).toBe(true);
+  let lastResult: ApiResult | null = null;
+  for (let attempt = 0; attempt < NEARBY_ENABLE_ATTEMPTS; attempt += 1) {
+    const result = await api(fixture, "PUT", "/api/nearby/settings", {
+      enabled: true,
+      displayName,
+      port: fixture.nearbyPort,
+      discoveryMinutes: 1,
+    });
+    if (result.status === 200 && asRecord(result.data).success === true) return;
+    lastResult = result;
+    if (result.status !== 500) break;
+    fixture.nearbyPort = await getFreePort();
+  }
+  throw await gatewayFailure(
+    fixture,
+    `Failed to enable Nearby at ${fixture.baseUrl}: ${JSON.stringify(lastResult)}`
+  );
 }
 
 beforeAll(async () => {
@@ -310,7 +326,18 @@ describe("Nearby two-gateway e2e", () => {
     expect(second).toBeDefined();
     if (!first || !second) throw new Error("Gateway fixtures were not created");
 
-    await enableNearby(first, "Nearby First");
+    const initiallySelectedPort = first.nearbyPort;
+    const portBlocker = Bun.serve({
+      hostname: "0.0.0.0",
+      port: initiallySelectedPort,
+      fetch: () => new Response("occupied"),
+    });
+    try {
+      await enableNearby(first, "Nearby First");
+    } finally {
+      portBlocker.stop(true);
+    }
+    expect(first.nearbyPort).not.toBe(initiallySelectedPort);
     await enableNearby(second, "Nearby Second");
 
     await waitFor(async () => {

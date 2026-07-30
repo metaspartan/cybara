@@ -328,6 +328,41 @@ export function latestSessionEventSequence(sessionId: string): number {
   return tables.sessionEvents.latestSequence(sessionId.trim());
 }
 
+function completionEventSource(event: SessionLedgerEvent): string | undefined {
+  if (event.type !== "run_completed" || !event.payload || typeof event.payload !== "object") {
+    return undefined;
+  }
+  const source = (event.payload as Record<string, unknown>).source;
+  return typeof source === "string" ? source : undefined;
+}
+
+export function removeSupersededRecoveryCompletion(sessionId: string, runId: string): void {
+  tables.sessionEvents.deleteRecoveryCompletion(sessionId.trim(), runId.trim());
+}
+
+export function reconcileRecoveredSessionRunCompletion(sessionId: string, runId: string): void {
+  const normalizedSessionId = sessionId.trim();
+  const normalizedRunId = runId.trim();
+  if (!normalizedSessionId || !normalizedRunId) return;
+  const events = listAllRunEvents(normalizedRunId);
+  const hasRecoveryCompletion = events.some(
+    (event) => completionEventSource(event) === "gateway_crash_recovery"
+  );
+  if (!hasRecoveryCompletion) return;
+  const hasCanonicalCompletion = events.some(
+    (event) =>
+      event.type === "run_completed" && completionEventSource(event) !== "gateway_crash_recovery"
+  );
+  removeSupersededRecoveryCompletion(normalizedSessionId, normalizedRunId);
+  if (hasCanonicalCompletion) return;
+  appendSessionEvent({
+    sessionId: normalizedSessionId,
+    runId: normalizedRunId,
+    type: "run_completed",
+    payload: { timestamp: Date.now(), source: "assistant_persistence_reconciliation" },
+  });
+}
+
 export function clearSessionEventLedger(sessionId: string): void {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) return;

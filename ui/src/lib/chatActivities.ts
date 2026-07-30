@@ -3,6 +3,10 @@ import {
   type SharedActivityDisplayEntry,
   type SharedActivityGroupKind,
 } from "../../../shared/chat-activity-groups";
+import {
+  formatExpandedToolActivityDetail,
+  formatStructuredToolActivityDetail,
+} from "../../../shared/tool-activity-detail";
 
 export type ActivityPhase = "start" | "result" | "error" | "blocked";
 
@@ -14,6 +18,7 @@ export interface LiveActivityItem {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
+  fullText?: string;
 }
 
 export interface ToolCallLike {
@@ -287,6 +292,58 @@ export function buildActivitiesFromToolCalls(
   }
 
   return activities;
+}
+
+function normalizedToolCallId(value: string | undefined): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function equivalentActivityText(left: string, right: string): boolean {
+  return left.trim().replace(/\s+/g, " ") === right.trim().replace(/\s+/g, " ");
+}
+
+export function enrichActivitiesWithToolCallDetails(
+  activities: LiveActivityItem[],
+  toolCalls: ToolCallLike[] | undefined
+): LiveActivityItem[] {
+  if (!toolCalls || toolCalls.length === 0) return activities;
+  const callsById = new Map<string, ToolCallLike>();
+  const callsByName = new Map<string, ToolCallLike[]>();
+  for (const call of toolCalls) {
+    const callId = normalizedToolCallId(call.id);
+    if (callId) callsById.set(callId, call);
+    const name = call.name.trim().toLowerCase();
+    if (!name) continue;
+    const namedCalls = callsByName.get(name) || [];
+    namedCalls.push(call);
+    callsByName.set(name, namedCalls);
+  }
+  const usedCalls = new Set<ToolCallLike>();
+
+  return activities.map((activity) => {
+    const toolCallId = normalizedToolCallId(activity.toolCallId);
+    const callById = toolCallId ? callsById.get(toolCallId) : undefined;
+    const toolName = activity.toolName?.trim().toLowerCase() || "";
+    const callByName = toolName
+      ? callsByName.get(toolName)?.find((candidate) => !usedCalls.has(candidate))
+      : undefined;
+    const call = callById && !usedCalls.has(callById) ? callById : callByName;
+    if (!call) return activity;
+    usedCalls.add(call);
+    const args = call.arguments || call.args || {};
+    const structuredText = formatStructuredToolActivityDetail(
+      call.name,
+      args,
+      activity.phase,
+      call.result
+    );
+    const text = structuredText || activity.text;
+    const fullText = formatExpandedToolActivityDetail(call.name, args, activity.phase, call.result);
+    if (!fullText || equivalentActivityText(text, fullText)) {
+      return text === activity.text ? activity : { ...activity, text };
+    }
+    return { ...activity, text, fullText };
+  });
 }
 
 export function mergeActivityLists(

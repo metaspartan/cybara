@@ -37,14 +37,6 @@ function truncate(value: string, limit = TOOL_RESULT_PREVIEW_LIMIT): string {
   return `${compact.slice(0, Math.max(0, limit - 3))}...`;
 }
 
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
 export function classifyToolCallResult(result: unknown): ToolCallOutcome {
   if (!result || typeof result !== "object" || Array.isArray(result)) {
     return { status: "completed" };
@@ -126,54 +118,6 @@ export function suppressRecoveredWebFailureActivities<T extends ProcessActivityL
       activity.phase !== "error" ||
       (activity.toolName !== "web_search" && activity.toolName !== "web_fetch")
   );
-}
-
-function summarizeUnknownResult(value: unknown): string {
-  if (value === null || value === undefined) return "No output";
-  if (typeof value === "string") return truncate(value);
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-
-  if (typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    if (typeof obj.error === "string" && obj.error.trim()) {
-      return `Error: ${truncate(obj.error)}`;
-    }
-    if (typeof obj.message === "string" && obj.message.trim()) {
-      return truncate(obj.message);
-    }
-    if (typeof obj.path === "string" && typeof obj.content === "string") {
-      const lineCount = obj.content.split(/\r?\n/).length;
-      return `Read ${obj.path} (${lineCount} lines)`;
-    }
-    if (typeof obj.filePath === "string") {
-      return `Wrote ${obj.filePath}`;
-    }
-    if (typeof obj.output === "string" && obj.output.trim()) {
-      return truncate(obj.output);
-    }
-    if (typeof obj.status === "string" && typeof obj.txid === "string") {
-      return `${obj.status}: ${obj.txid}`;
-    }
-  }
-
-  return truncate(safeStringify(value));
-}
-
-export function buildToolExecutionFallbackMessage(toolCalls: ToolCallResultLike[]): string {
-  if (!toolCalls.length) {
-    return "No tool actions were executed.";
-  }
-
-  const heading = `Completed ${toolCalls.length} tool call${toolCalls.length === 1 ? "" : "s"}:`;
-  const bulletLines = toolCalls.slice(0, 8).map((toolCall) => {
-    const preview = summarizeUnknownResult(toolCall.result);
-    return `- \`${toolCall.name}\`: ${preview || "completed"}`;
-  });
-  const extraCount = toolCalls.length - bulletLines.length;
-  if (extraCount > 0) {
-    bulletLines.push(`- ...and ${extraCount} more tool call${extraCount === 1 ? "" : "s"}.`);
-  }
-  return `${heading}\n${bulletLines.join("\n")}`;
 }
 
 const NON_SUBSTANTIVE_COMPLETION_PATTERN =

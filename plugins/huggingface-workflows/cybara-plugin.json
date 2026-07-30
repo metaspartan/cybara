@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "huggingface-workflows",
+  "name": "Hugging Face Workflows",
+  "version": "1.0.0",
+  "description": "Hub, dataset, evaluation, training, experiment tracking, application, and local inference workflows for Hugging Face.",
+  "author": "Cybara",
+  "homepage": "https://huggingface.co/docs",
+  "contributions": {
+    "skills": {
+      "dirs": ["skills"]
+    }
+  }
+}

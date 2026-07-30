@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildActivitiesFromToolCalls,
+  enrichActivitiesWithToolCallDetails,
   mergeActivityLists,
   finalizeCompletedActivities,
   normalizeActivityTextForPhase,
@@ -129,6 +130,116 @@ describe("buildActivitiesFromToolCalls", () => {
     const result = buildActivitiesFromToolCalls(calls, identityIntent);
     expect(result[0].sandboxProvider).toBe("podman");
     expect(result[1].sandboxProvider).toBeUndefined();
+  });
+});
+
+describe("enrichActivitiesWithToolCallDetails", () => {
+  test("restores a complete command behind a shortened activity", () => {
+    const command =
+      "bun test tests/core/one.test.ts tests/core/two.test.ts tests/core/three.test.ts";
+    const result = enrichActivitiesWithToolCallDetails(
+      [
+        activity({
+          id: "command",
+          phase: "result",
+          text: "Ran bun test tests/core/one.test.ts tests/core/two.test.ts tests/core/...",
+          toolName: "exec",
+          toolCallId: "gateway-call-1",
+        }),
+      ],
+      [
+        {
+          id: "provider-call-1",
+          name: "exec",
+          args: { command },
+          status: "completed",
+        },
+      ]
+    );
+
+    expect(result[0].text).toContain("...");
+    expect(result[0].fullText).toBe(`Ran ${command}`);
+  });
+
+  test("replaces opaque skill and plan completions with useful summaries", () => {
+    const result = enrichActivitiesWithToolCallDetails(
+      [
+        activity({
+          id: "skill",
+          text: "skill_load complete",
+          toolName: "skill_load",
+          toolCallId: "gateway-skill-1",
+        }),
+        activity({
+          id: "todo",
+          text: "todo complete",
+          toolName: "todo",
+          toolCallId: "gateway-todo-1",
+        }),
+      ],
+      [
+        {
+          id: "skill-1",
+          name: "skill_load",
+          args: { name: "security-scan" },
+          result: { name: "security-scan" },
+          status: "completed",
+        },
+        {
+          id: "todo-1",
+          name: "todo",
+          args: {
+            items: [
+              { content: "Inspect runtime", status: "completed" },
+              { content: "Verify UI", status: "in_progress" },
+            ],
+          },
+          status: "completed",
+        },
+      ]
+    );
+
+    expect(result[0].text).toBe("Loaded security-scan skill");
+    expect(result[1].text).toBe("Updated plan: Verify UI in progress (1/2 complete)");
+    expect(result[1].fullText).toContain("[x] Inspect runtime");
+    expect(result[1].fullText).toContain("[~] Verify UI");
+  });
+
+  test("consumes duplicate tool-call IDs only once", () => {
+    const result = enrichActivitiesWithToolCallDetails(
+      [
+        activity({
+          id: "live",
+          text: "Ran shortened command...",
+          toolName: "exec",
+          toolCallId: "shared-call",
+        }),
+        activity({
+          id: "recovered",
+          text: "Recovered command summary",
+          toolName: "exec",
+          toolCallId: "shared-call",
+        }),
+      ],
+      [
+        {
+          id: "shared-call",
+          name: "exec",
+          args: { command: "bun test tests/core/provider-retry.test.ts" },
+          status: "completed",
+        },
+      ]
+    );
+
+    expect(result[0].fullText).toBe("Ran bun test tests/core/provider-retry.test.ts");
+    expect(result[1]).toEqual(
+      activity({
+        id: "recovered",
+        text: "Recovered command summary",
+        toolName: "exec",
+        toolCallId: "shared-call",
+      })
+    );
   });
 });
 

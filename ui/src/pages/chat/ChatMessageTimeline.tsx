@@ -2,6 +2,7 @@ import { User } from "lucide-react";
 import type { ReactElement } from "react";
 import {
   buildActivitiesFromToolCalls,
+  enrichActivitiesWithToolCallDetails,
   finalizeCompletedActivities,
   type LiveActivityItem,
   mergeActivityLists,
@@ -111,8 +112,13 @@ export function ChatMessageTimeline({
           mergeActivityLists(restoredProcessActivities, fallbackToolActivities),
           message.tool_calls
         );
-        const processActivities =
-          mergedActivities.length > 0 ? finalizeCompletedActivities(mergedActivities) : undefined;
+        const completedActivities =
+          mergedActivities.length > 0 ? finalizeCompletedActivities(mergedActivities) : [];
+        const detailedActivities = enrichActivitiesWithToolCallDetails(
+          completedActivities,
+          message.tool_calls
+        );
+        const processActivities = detailedActivities.length > 0 ? detailedActivities : undefined;
         return (
           <div
             key={`${message.timestamp || "msg"}-${originalIndex}`}

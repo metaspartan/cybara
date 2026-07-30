@@ -102,4 +102,47 @@ describe("session transcript separation", () => {
     expect(merged.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
     expect(merged.map((message) => message.content)).toEqual(["Initial request", "", "Steer now"]);
   });
+
+  test("removes a stale interrupted row when the same run has a completed response", () => {
+    const persisted: ChatMessage[] = [
+      {
+        role: "user",
+        content: "Read the package name",
+        timestamp: "2026-07-09T01:00:00.000Z",
+      },
+      {
+        role: "assistant",
+        content: "The package name is cybara.",
+        timestamp: "2026-07-09T01:00:43.000Z",
+        run_id: "run-1",
+      },
+    ];
+    const active: ChatMessage[] = [
+      persisted[0]!,
+      {
+        role: "assistant",
+        content: "",
+        timestamp: "2026-07-09T01:00:00.500Z",
+        run_id: "run-1",
+        interrupted: true,
+      },
+      persisted[1]!,
+    ];
+
+    const merged = mergeSessionTranscriptMessages(persisted, active);
+
+    expect(merged).toHaveLength(2);
+    expect(merged.filter((message) => message.role === "assistant")).toEqual([persisted[1]]);
+  });
+
+  test("preserves interrupted rows without a completed response for the same run", () => {
+    const interrupted: ChatMessage = {
+      role: "assistant",
+      content: "Partial verified progress",
+      run_id: "run-interrupted",
+      interrupted: true,
+    };
+
+    expect(mergeSessionTranscriptMessages([], [interrupted])).toEqual([interrupted]);
+  });
 });

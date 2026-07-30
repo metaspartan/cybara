@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   buildNoUsableAssistantResponseMessage,
   buildUnsupportedAssistantClaimMessage,
-  buildToolExecutionFallbackMessage,
   classifyToolCallResult,
   extractVisibleClarification,
   findAssistantEvidenceIssue,
@@ -35,21 +34,6 @@ describe("chat tool summary utilities", () => {
       status: "failed",
       error: "Tool finished with status blocked",
     });
-  });
-
-  test("builds concise fallback message from tool results", () => {
-    const message = buildToolExecutionFallbackMessage([
-      { name: "exec", result: { output: "updated 3 files successfully" } },
-      {
-        name: "read",
-        result: { path: "/tmp/a.ts", content: "line1\nline2\nline3" },
-      },
-    ]);
-
-    expect(message).toContain("Completed 2 tool calls:");
-    expect(message).toContain("- `exec`:");
-    expect(message).toContain("- `read`: Read /tmp/a.ts (3 lines)");
-    expect(message).not.toContain("Tool: exec");
   });
 
   test("recovers empty and bare success claims without overriding literal response requests", () => {

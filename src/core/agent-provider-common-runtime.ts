@@ -1071,7 +1071,22 @@ export abstract class AgentProviderCommonRuntime {
         return assembled as unknown as OpenAIResponse;
       } catch (error) {
         watchdog.dispose();
-        throw watchdog.wrapError(error);
+        const normalized = watchdog.wrapError(error);
+        const retryDelayMs = providerExceptionRetryDelayMs(
+          normalized,
+          transientRetryCount,
+          signal,
+          Math.random,
+          retryPolicy.maxRetries
+        );
+        if (retryDelayMs === undefined) throw normalized;
+        transientRetryCount += 1;
+        this.logProviderRetryStatus(
+          streamContext,
+          `Provider stream interrupted; retrying (${transientRetryCount}/${retryPolicy.maxRetries})...`
+        );
+        await this.waitForRetryDelay(retryDelayMs, signal);
+        return post(body);
       }
     };
 

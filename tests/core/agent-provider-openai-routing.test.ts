@@ -234,4 +234,58 @@ describe("Agent provider OpenAI-compatible routing", () => {
     expect(usage.outputTokens).toBe(8);
     expect(usage.totalTokens).toBe(38);
   });
+
+  test("retries a socket reset while consuming an OpenAI-compatible stream", async () => {
+    let requestCount = 0;
+    globalThis.fetch = (async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.error(new Error("The socket connection was closed unexpectedly."));
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "text/event-stream" } }
+        );
+      }
+      return Response.json({
+        id: "resp-zai-stream-recovery",
+        object: "chat.completion",
+        model: "glm-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "stream-recovered" },
+          },
+        ],
+        usage: { prompt_tokens: 9, completion_tokens: 2, total_tokens: 11 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "z.ai-coding",
+      name: "Zai Stream Recovery Provider",
+      api_key: "zai-stream-recovery-key",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Zai Stream Recovery Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "glm-5.2",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Verify stream recovery" }],
+      { useTools: false, sessionId: "zai-stream-recovery-session" }
+    );
+
+    expect(result.content).toBe("stream-recovered");
+    expect(requestCount).toBe(2);
+  });
 });

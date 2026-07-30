@@ -120,7 +120,11 @@ export function classifyApiError(input: {
       message,
     };
   }
-  if (/econnreset|enotfound|econnrefused|fetch failed|network|socket hang up|epipe/.test(text)) {
+  if (
+    /econnreset|enotfound|econnrefused|fetch failed|network|socket hang up|socket connection.*closed|connection (?:was )?closed unexpectedly|epipe/.test(
+      text
+    )
+  ) {
     return {
       category: "network",
       retryable: true,

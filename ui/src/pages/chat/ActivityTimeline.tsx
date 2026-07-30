@@ -44,6 +44,7 @@ const GROUP_ICONS: Record<ActivityGroupKind, LucideIcon> = {
 };
 
 function ActivityRow({ activity }: { activity: LiveActivityItem }) {
+  const [expanded, setExpanded] = useState(false);
   if (isRawToolCallThought(activity)) return null;
   if (activity.toolName === "__thought") {
     return (
@@ -52,6 +53,32 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
       </div>
     );
   }
+  const fullText = activity.fullText?.trim();
+  const expandable = Boolean(fullText && fullText !== activity.text.trim());
+  const content = expanded && fullText ? fullText : activity.text;
+  const textContent = (
+    <>
+      {activity.phase === "start" ? (
+        <LiveStatusText>
+          <ActivityText text={content} />
+        </LiveStatusText>
+      ) : (
+        <ActivityText text={content} />
+      )}
+      {activity.toolName !== "__thought" && activity.sandboxProvider && (
+        <span className="chat-meta-text inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 leading-none text-sky-200">
+          {formatSandboxProviderLabel(activity.sandboxProvider)}
+        </span>
+      )}
+      {expandable &&
+        (expanded ? (
+          <ChevronDown className="h-3 w-3 shrink-0 text-current opacity-60" />
+        ) : (
+          <ChevronRight className="h-3 w-3 shrink-0 text-current opacity-60" />
+        ))}
+    </>
+  );
+
   return (
     <div className="chat-activity-text flex items-start gap-2 px-0.5 text-gray-400">
       <span className="flex h-[1.5em] shrink-0 items-center" data-testid="activity-row-icon">
@@ -65,20 +92,19 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
           <AlertTriangle className="h-3 w-3 text-current opacity-70" />
         )}
       </span>
-      <div className="min-w-0 flex-1 flex items-center gap-2">
-        {activity.phase === "start" ? (
-          <LiveStatusText>
-            <ActivityText text={activity.text} />
-          </LiveStatusText>
-        ) : (
-          <ActivityText text={activity.text} />
-        )}
-        {activity.toolName !== "__thought" && activity.sandboxProvider && (
-          <span className="chat-meta-text inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 leading-none text-sky-200">
-            {formatSandboxProviderLabel(activity.sandboxProvider)}
-          </span>
-        )}
-      </div>
+      {expandable ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="min-w-0 flex-1 cursor-pointer text-left text-inherit"
+          aria-expanded={expanded}
+          title={expanded ? "Collapse tool call" : "Show full tool call"}
+        >
+          <span className="flex min-w-0 items-start gap-2">{textContent}</span>
+        </button>
+      ) : (
+        <div className="min-w-0 flex-1 flex items-center gap-2">{textContent}</div>
+      )}
     </div>
   );
 }

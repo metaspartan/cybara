@@ -154,24 +154,29 @@ describe("chat response recovery", () => {
     const sessionId = `partial-provider-failure-${crypto.randomUUID()}`;
     createdSessionIds.push(sessionId);
 
-    agentManager.execute = (async () => ({
-      content: "",
-      failure: { category: "overloaded", retryable: true },
-      tool_calls: [
-        {
-          name: "read",
-          args: { path: "/tmp/project.json" },
-          result: { path: "/tmp/project.json", content: "ok" },
-        },
-      ],
-    })) as typeof agentManager.execute;
-    let synthesisCalls = 0;
-    agentManager.callLLM = (async (_provider, _model, messages) => {
-      if (messages.some((message) => message.content.includes("Tools completed:"))) {
-        synthesisCalls += 1;
+    let executionCalls = 0;
+    agentManager.execute = (async (_agentId, messages, options) => {
+      executionCalls += 1;
+      if (executionCalls === 1) {
+        return {
+          content: "",
+          failure: { category: "overloaded", retryable: true },
+          tool_calls: [
+            {
+              name: "read",
+              args: { path: "/tmp/project.json" },
+              result: { path: "/tmp/project.json", content: "ok" },
+            },
+          ],
+        };
       }
-      return { content: "This redundant synthesis should not run." };
-    }) as typeof agentManager.callLLM;
+      expect(options?.useTools).toBe(false);
+      expect(messages.at(-1)?.content).toContain("Observed tool results:");
+      return {
+        content:
+          "I verified that `/tmp/project.json` is readable. The original turn was interrupted before any remaining inspection finished.",
+      };
+    }) as typeof agentManager.execute;
 
     const result = await handleChat({
       message: "inspect the project",
@@ -184,14 +189,57 @@ describe("chat response recovery", () => {
     expect(result.failure).toEqual({ category: "overloaded", retryable: true });
     expect(result.message.interrupted).toBe(true);
     expect(result.message.content).not.toContain("overloaded");
-    expect(result.message.content).toContain("Completed 1 tool call");
+    expect(result.message.content).toContain("verified that `/tmp/project.json` is readable");
+    expect(result.message.content).not.toMatch(/completed \d+ tool call/i);
     expect(result.message.tool_calls).toHaveLength(1);
-    expect(synthesisCalls).toBe(0);
+    expect(executionCalls).toBe(2);
     expect((await loadPersistedSession(sessionId))?.messages.at(-1)).toMatchObject({
       role: "assistant",
       interrupted: true,
       tool_calls: [expect.objectContaining({ name: "read" })],
     });
+  });
+
+  test("never promotes tool-count diagnostics when response synthesis also fails", async () => {
+    const agentId = createTestAgent("Failed Tool Response Synthesis Agent");
+    const sessionId = `failed-tool-synthesis-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    let executionCalls = 0;
+
+    agentManager.execute = (async () => {
+      executionCalls += 1;
+      if (executionCalls === 1) {
+        return {
+          content: "",
+          failure: { category: "overloaded", retryable: true },
+          tool_calls: [
+            {
+              name: "read",
+              args: { path: "/tmp/project.json" },
+              result: { path: "/tmp/project.json", content: "ok" },
+            },
+          ],
+        };
+      }
+      return {
+        content: "",
+        failure: { category: "overloaded", retryable: true },
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "inspect the project",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(executionCalls).toBe(2);
+    expect(result.message.content).toBe(
+      "Response interrupted before completion. Send the message again to retry."
+    );
+    expect(result.message.content).not.toMatch(/completed \d+ tool call/i);
+    expect(result.message.tool_calls).toHaveLength(1);
   });
 
   test("retries a bare completion under the action evidence contract", async () => {

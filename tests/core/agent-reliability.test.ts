@@ -16,6 +16,7 @@ describe("system prompt reliability guidance", () => {
     expect(prompt).toContain("Treat actionable requests as work to perform");
     expect(prompt).toContain("Do not invent files, state, results, or tool output");
     expect(prompt).toContain("Match every completion and verification claim");
+    expect(prompt).toContain("A narrow or empty search alone is not proof of absence");
     expect(prompt).toContain("fix the root cause within scope");
     expect(prompt).toContain("Validate the changed behavior with the narrowest useful check");
     expect(prompt).toContain("inspect and exercise the rendered result");

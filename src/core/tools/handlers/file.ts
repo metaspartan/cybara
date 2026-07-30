@@ -585,6 +585,7 @@ export async function handleGrep(
   pattern: string;
   count: number;
   source: string;
+  truncated: boolean;
 }> {
   const pattern = args.pattern as string;
   const path = args.path as string | undefined;
@@ -600,9 +601,10 @@ export async function handleGrep(
   const results: Array<{ path: string; line: number; content: string }> = [];
 
   const hasRipgrep = await checkRipgrepAvailable();
+  let truncated = false;
 
   if (hasRipgrep) {
-    await searchWithRipgrep(
+    truncated = await searchWithRipgrep(
       searchDir,
       pattern,
       extensions,
@@ -614,7 +616,7 @@ export async function handleGrep(
       toolContext?.abortSignal
     );
   } else {
-    await searchDirectory(
+    truncated = await searchDirectory(
       searchDir,
       pattern,
       extensions,
@@ -633,7 +635,13 @@ export async function handleGrep(
     source: hasRipgrep ? "ripgrep" : "javascript",
   });
 
-  return { results, pattern, count: results.length, source: hasRipgrep ? "ripgrep" : "javascript" };
+  return {
+    results,
+    pattern,
+    count: results.length,
+    source: hasRipgrep ? "ripgrep" : "javascript",
+    truncated,
+  };
 }
 
 async function checkRipgrepAvailable(): Promise<boolean> {
@@ -650,14 +658,14 @@ async function searchWithRipgrep(
   results: Array<{ path: string; line: number; content: string }>,
   maxResults: number,
   signal?: AbortSignal
-): Promise<void> {
+): Promise<boolean> {
   try {
-    if (signal?.aborted) return;
+    if (signal?.aborted) return false;
     const args = [
       "--json",
       "--no-messages",
       "--max-filesize=10M",
-      `--max-count=${maxResults}`,
+      `--max-count=${maxResults + 1}`,
       `--context=${context}`,
       "--glob=!node_modules/**",
       "--glob=!.git/**",
@@ -698,35 +706,79 @@ async function searchWithRipgrep(
     const stop = (): void => process.kill();
     const timeout = setTimeout(stop, 30_000);
     signal?.addEventListener("abort", stop, { once: true });
-    let output = "";
+    const reader = process.stdout.getReader();
+    const decoder = new TextDecoder();
+    let buffered = "";
+    let truncated = false;
     try {
-      output = await new Response(process.stdout).text();
+      while (!signal?.aborted && !truncated) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffered += decoder.decode(chunk.value, { stream: true });
+        let newline = buffered.indexOf("\n");
+        while (newline >= 0) {
+          const line = buffered.slice(0, newline);
+          buffered = buffered.slice(newline + 1);
+          if (appendRipgrepMatch(results, line, dir) && results.length > maxResults) {
+            truncated = true;
+            stop();
+            break;
+          }
+          newline = buffered.indexOf("\n");
+        }
+      }
+      if (!truncated && buffered.trim()) {
+        appendRipgrepMatch(results, buffered, dir);
+        truncated = results.length > maxResults;
+      }
       await process.exited;
     } finally {
       clearTimeout(timeout);
       signal?.removeEventListener("abort", stop);
+      if (truncated) await reader.cancel().catch(() => undefined);
     }
-
-    for (const line of output.split("\n")) {
-      if (!line.trim()) continue;
-
-      try {
-        const match = JSON.parse(line);
-        if (match.type === "match") {
-          const matchedPath = match.data.path?.text || match.data.path;
-          if (!matchedPath || !isReadableSearchResult(dir, matchedPath)) continue;
-          results.push({
-            path: matchedPath,
-            line: match.data.line_number || 1,
-            content: match.data.lines?.text || "",
-          });
-        }
-      } catch {
-        void 0;
-      }
-    }
+    if (truncated) results.length = maxResults;
+    return truncated;
   } catch (e) {
     console.error("[grep] ripgrep error:", e);
+    return false;
+  }
+}
+
+function appendRipgrepMatch(
+  results: Array<{ path: string; line: number; content: string }>,
+  line: string,
+  dir: string
+): boolean {
+  if (!line.trim()) return false;
+  try {
+    const match = JSON.parse(line) as {
+      type?: unknown;
+      data?: {
+        path?: string | { text?: unknown };
+        line_number?: unknown;
+        lines?: { text?: unknown };
+      };
+    };
+    if (match.type !== "match") return false;
+    const matchedPath =
+      typeof match.data?.path === "string"
+        ? match.data.path
+        : typeof match.data?.path?.text === "string"
+          ? match.data.path.text
+          : "";
+    if (!matchedPath || !isReadableSearchResult(dir, matchedPath)) return false;
+    results.push({
+      path: matchedPath,
+      line:
+        typeof match.data?.line_number === "number" && Number.isFinite(match.data.line_number)
+          ? match.data.line_number
+          : 1,
+      content: typeof match.data?.lines?.text === "string" ? match.data.lines.text : "",
+    });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -740,13 +792,17 @@ async function searchDirectory(
   results: Array<{ path: string; line: number; content: string }>,
   maxResults: number,
   signal?: AbortSignal
-): Promise<void> {
+): Promise<boolean> {
   try {
-    if (signal?.aborted) return;
+    if (signal?.aborted) return false;
     const entries = await fs.readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (results.length >= maxResults || signal?.aborted) return;
+      if (results.length > maxResults) {
+        results.length = maxResults;
+        return true;
+      }
+      if (signal?.aborted) return false;
 
       const fullPath = join(dir, entry.name);
 
@@ -757,7 +813,7 @@ async function searchDirectory(
           entry.name !== "node_modules" &&
           entry.name !== ".git"
         ) {
-          await searchDirectory(
+          const truncated = await searchDirectory(
             fullPath,
             pattern,
             extensions,
@@ -768,6 +824,7 @@ async function searchDirectory(
             maxResults,
             signal
           );
+          if (truncated) return true;
         }
       } else if (entry.isFile()) {
         try {
@@ -797,7 +854,7 @@ async function searchDirectory(
             const endLine = Math.min(lines.length - 1, i + context);
 
             for (let j = startLine; j <= endLine; j++) {
-              if (results.length >= maxResults) break;
+              if (results.length > maxResults) break;
               results.push({
                 path: fullPath,
                 line: j + 1,
@@ -809,6 +866,11 @@ async function searchDirectory(
       }
     }
   } catch {}
+  if (results.length > maxResults) {
+    results.length = maxResults;
+    return true;
+  }
+  return false;
 }
 
 export async function handleApplyPatch(

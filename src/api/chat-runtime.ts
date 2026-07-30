@@ -147,7 +147,6 @@ import { constrainToolsForMessage } from "./chat-tool-constraints";
 import { resolveToolResponseContent } from "./chat-tool-response";
 import {
   buildNoUsableAssistantResponseMessage,
-  buildToolExecutionFallbackMessage,
   classifyToolCallResult,
   extractVisibleClarification,
   requiredDirectToolForMessage,
@@ -313,10 +312,10 @@ async function finishInterruptedChatTurn(
 ): Promise<ChatResponse> {
   clearActiveChatTurnAbortController(session.id, controller);
   const pendingSteeringId = interruptedChatTurnSteeringIds.get(controller);
-  const materializedMessage = materializeInterruptedAssistantBeforeSteering(session, undefined, {
-    ...(pendingSteeringId ? { pendingSteeringId } : {}),
-  });
-  if (materializedMessage) {
+  const materializedMessage = pendingSteeringId
+    ? materializeInterruptedAssistantBeforeSteering(session, undefined, { pendingSteeringId })
+    : await persistInterruptedAssistantTurn(session, "interrupted");
+  if (pendingSteeringId && materializedMessage) {
     const stableKey = materializedMessage._pendingSteeringId
       ? `interrupted:${materializedMessage._pendingSteeringId}`
       : `interrupted:${materializedMessage.timestamp || ""}`;
@@ -351,7 +350,7 @@ async function finishInterruptedChatTurn(
   broadcastStatus({
     status: "idle",
     timestamp: Date.now(),
-    detail: "Steering to follow-up...",
+    detail: pendingSteeringId ? "Steering to follow-up..." : "Interrupted",
     sessionId: session.id,
     agentId: agent.id,
   });
@@ -360,11 +359,13 @@ async function finishInterruptedChatTurn(
     workspaceDir: session.workspaceDir ?? null,
     interrupted: true,
     plan: extractLatestSessionPlan(session.id, session.messages),
-    message: {
-      role: "assistant",
-      content: "",
-      timestamp: new Date().toISOString(),
-    },
+    message:
+      materializedMessage ||
+      ({
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString(),
+      } satisfies ChatMessage),
     agent: {
       id: agent.id,
       name: agent.name,
@@ -489,16 +490,25 @@ function schedulePendingChatDrain(sessionId: string, delayMs = 0): void {
   timer.unref?.();
 }
 
-function finalizeStoppedProcessActivity(activity: ProcessActivityInfo): ProcessActivityInfo {
+type ChatTurnInterruptionKind = "stopped" | "interrupted";
+
+function finalizeInterruptedProcessActivity(
+  activity: ProcessActivityInfo,
+  kind: ChatTurnInterruptionKind
+): ProcessActivityInfo {
   if (activity.phase !== "start") return activity;
+  const label = kind === "stopped" ? "Stopped" : "Interrupted";
   return {
     ...activity,
     phase: "blocked",
-    text: `Stopped: ${activity.text}`,
+    text: `${label}: ${activity.text}`,
   };
 }
 
-function materializeStoppedAssistantTurn(session: InMemoryChatSession): ChatMessage | undefined {
+function materializeInterruptedAssistantTurn(
+  session: InMemoryChatSession,
+  kind: ChatTurnInterruptionKind
+): ChatMessage | undefined {
   const latestUserIndex = session.messages.findLastIndex((message) => message.role === "user");
   if (latestUserIndex < 0) return undefined;
   const nextMessage = session.messages[latestUserIndex + 1];
@@ -513,7 +523,7 @@ function materializeStoppedAssistantTurn(session: InMemoryChatSession): ChatMess
   });
   const activities = dedupeProcessActivities([
     ...(existing?.process_activities || []),
-    ...(observed || []).map(finalizeStoppedProcessActivity),
+    ...(observed || []).map((activity) => finalizeInterruptedProcessActivity(activity, kind)),
   ]);
   if (activities.length === 0) return existing;
   const stoppedAt = Date.now();
@@ -545,19 +555,26 @@ function materializeStoppedAssistantTurn(session: InMemoryChatSession): ChatMess
 async function persistStoppedAssistantTurn(
   session: InMemoryChatSession
 ): Promise<ChatMessage | undefined> {
-  const stoppedMessage = materializeStoppedAssistantTurn(session);
-  if (!stoppedMessage) return undefined;
+  return persistInterruptedAssistantTurn(session, "stopped");
+}
+
+async function persistInterruptedAssistantTurn(
+  session: InMemoryChatSession,
+  kind: ChatTurnInterruptionKind
+): Promise<ChatMessage | undefined> {
+  const interruptedMessage = materializeInterruptedAssistantTurn(session, kind);
+  if (!interruptedMessage) return undefined;
   const latestUser = [...session.messages]
-    .slice(0, session.messages.indexOf(stoppedMessage))
+    .slice(0, session.messages.indexOf(interruptedMessage))
     .reverse()
     .find((message) => message.role === "user");
-  await upsertPersistedSessionMessage(session.id, session.agentId, stoppedMessage, {
-    stableKey: `stopped:${latestUser?.timestamp || stoppedMessage.timestamp || session.id}`,
-    metadata: { source: "chat_stopped" },
+  await upsertPersistedSessionMessage(session.id, session.agentId, interruptedMessage, {
+    stableKey: `${kind}:${latestUser?.timestamp || interruptedMessage.timestamp || session.id}`,
+    metadata: { source: kind === "stopped" ? "chat_stopped" : "chat_interrupted" },
   });
-  await persistChatSessionSnapshot(session, stoppedMessage);
+  await persistChatSessionSnapshot(session, interruptedMessage);
   persistActiveSessionContext(session);
-  return stoppedMessage;
+  return interruptedMessage;
 }
 
 async function drainPendingChatQueue(sessionId: string): Promise<void> {
@@ -1656,6 +1673,10 @@ async function handleChatTurn(
           agentId: agent.id,
           sessionId: session.id,
           workspaceDir: session.workspaceDir || undefined,
+          useModelRouter,
+          activeModel: executionModelMetadata?.model || activeModelOverride,
+          activeProviderId: executionModelMetadata?.provider_id,
+          activeProviderName: executionModelMetadata?.provider_name,
         },
         responseContent,
         {
@@ -1694,14 +1715,15 @@ async function handleChatTurn(
           agentId: agent.id,
           channel,
           executionFailure,
+          executionMessages,
           maxOutputTokens: request.maxOutputTokens,
           message,
-          model: agent.model,
+          modelOverride: activeModelOverride,
           modelParamsOverride: request.modelParamsOverride,
-          providerId: agent.provider_id,
           responseContent,
           sessionId: session.id,
           toolResults,
+          useModelRouter,
           userId,
           workspaceDir: session.workspaceDir || undefined,
         });
@@ -1788,16 +1810,7 @@ async function handleChatTurn(
     allToolCalls
   );
   const assistantContent =
-    cleanContent.trim().length > 0
-      ? cleanContent
-      : allToolCalls.length > 0
-        ? buildToolExecutionFallbackMessage(
-            allToolCalls.map((toolCall) => ({
-              name: toolCall.name,
-              result: toolCall.result ?? null,
-            }))
-          )
-        : buildNoUsableAssistantResponseMessage();
+    cleanContent.trim().length > 0 ? cleanContent : buildNoUsableAssistantResponseMessage();
 
   const configuredModelMetadata = resolveSessionModelMetadata(agent?.id ?? session.agentId);
   const modelMetadata = executionModelMetadata
