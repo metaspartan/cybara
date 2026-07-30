@@ -23,7 +23,7 @@ describe("chat response persistence guards", () => {
   test("avoids blank assistant bubbles by using a content fallback", () => {
     const source = readFileSync(chatSourcePath, "utf8");
     expect(source).toContain("const assistantContent =");
-    expect(source).toContain("buildToolExecutionFallbackMessage(");
+    expect(source).not.toContain("Completed ${toolCalls.length} tool call");
     expect(source).toContain(": buildNoUsableAssistantResponseMessage()");
     expect(source).toContain("content: assistantContent");
   });

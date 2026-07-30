@@ -87,6 +87,11 @@ describe("classifyApiError", () => {
     expect(classifyApiError({ error: new Error("fetch failed: ECONNRESET") }).category).toBe(
       "network"
     );
+    expect(
+      classifyApiError({
+        error: new Error("The socket connection was closed unexpectedly."),
+      }).category
+    ).toBe("network");
     expect(classifyApiError({ error: new Error("Operation timed out") }).retryable).toBe(true);
   });
 

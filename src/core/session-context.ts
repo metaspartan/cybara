@@ -11,7 +11,10 @@ import { sanitizeAssistantContent } from "./llm/text-tool-calls";
 import { createLogger } from "./logger";
 import { providerManager, providers } from "./providers";
 import { capSessionMessageMetadata } from "./session-message-metadata";
-import { clearSessionEventLedger } from "./session-event-ledger";
+import {
+  clearSessionEventLedger,
+  reconcileRecoveredSessionRunCompletion,
+} from "./session-event-ledger";
 import { deriveSessionTitleFromMessages, normalizeSessionTitle } from "./session-title";
 
 const log = createLogger("Session");
@@ -21,6 +24,7 @@ function sanitizePersistedMessageContent(role: string, content: string): string 
 }
 
 interface PersistedSessionMessage {
+  id: string;
   role: string;
   content: string;
   created_at: string;
@@ -49,6 +53,15 @@ type SessionMessageMetadata = Partial<
     | "client_pending_id"
   >
 >;
+
+interface PersistedSessionMessageMetadata extends SessionMessageMetadata {
+  source?: string;
+}
+
+const RECOVERY_MESSAGE_SOURCES = new Set([
+  "completed_empty_run_recovery",
+  "gateway_crash_recovery",
+]);
 
 function sessionMessageStableId(parts: unknown[]): string {
   const hash = createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 32);
@@ -124,6 +137,14 @@ export async function upsertPersistedSessionMessage(
   options?: { stableKey?: string; createdAtOffsetMs?: number; metadata?: Record<string, unknown> }
 ): Promise<void> {
   tables.chatSessions.ensure(sessionId, agentId);
+  if (
+    message.role === "assistant" &&
+    message.interrupted !== true &&
+    typeof message.run_id === "string" &&
+    message.run_id.trim()
+  ) {
+    deleteRecoveryMessagesForRun(sessionId, message.run_id.trim());
+  }
   const id = sessionMessageStableId([
     sessionId,
     message.role,
@@ -152,16 +173,65 @@ export interface SessionModelMetadata {
   agent_type?: string;
 }
 
-function parseSessionMessageMetadata(metadata?: string): SessionMessageMetadata {
+function parseSessionMessageMetadata(metadata?: string): PersistedSessionMessageMetadata {
   if (!metadata) return {};
   try {
     const parsed = JSON.parse(metadata);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as SessionMessageMetadata)
+      ? (parsed as PersistedSessionMessageMetadata)
       : {};
   } catch {
     return {};
   }
+}
+
+function deleteRecoveryMessagesForRun(sessionId: string, runId: string): void {
+  db.prepare(
+    `DELETE FROM session_messages
+     WHERE session_id = ?
+       AND role = 'assistant'
+       AND json_extract(metadata, '$.run_id') = ?
+       AND json_extract(metadata, '$.source') IN ('completed_empty_run_recovery', 'gateway_crash_recovery')`
+  ).run(sessionId, runId);
+}
+
+function reconcilePersistedRecoveryMessages(
+  sessionId: string,
+  messages: PersistedSessionMessage[]
+): PersistedSessionMessage[] {
+  const parsed = messages.map((message) => ({
+    message,
+    metadata: parseSessionMessageMetadata(message.metadata),
+  }));
+  const completedRunIds = new Set(
+    parsed
+      .filter(
+        ({ message, metadata }) =>
+          message.role === "assistant" &&
+          metadata.interrupted !== true &&
+          typeof metadata.run_id === "string" &&
+          metadata.run_id.trim().length > 0
+      )
+      .map(({ metadata }) => metadata.run_id?.trim())
+      .filter((runId): runId is string => !!runId)
+  );
+  for (const runId of completedRunIds) {
+    reconcileRecoveredSessionRunCompletion(sessionId, runId);
+  }
+  const supersededIds = parsed
+    .filter(
+      ({ metadata }) =>
+        typeof metadata.run_id === "string" &&
+        completedRunIds.has(metadata.run_id.trim()) &&
+        typeof metadata.source === "string" &&
+        RECOVERY_MESSAGE_SOURCES.has(metadata.source)
+    )
+    .map(({ message }) => message.id);
+  if (supersededIds.length === 0) return messages;
+  const remove = db.prepare("DELETE FROM session_messages WHERE session_id = ? AND id = ?");
+  for (const id of supersededIds) remove.run(sessionId, id);
+  const superseded = new Set(supersededIds);
+  return messages.filter((message) => !superseded.has(message.id));
 }
 
 function nonEmptyString(value: unknown): string | undefined {
@@ -987,8 +1057,10 @@ export async function loadPersistedSession(sessionId: string): Promise<{
   title: string | null;
 } | null> {
   try {
-    const sessionMessages =
+    const storedSessionMessages =
       (tables.sessionMessages?.getBySession(sessionId) as PersistedSessionMessage[]) || [];
+
+    const sessionMessages = reconcilePersistedRecoveryMessages(sessionId, storedSessionMessages);
 
     if (sessionMessages.length === 0) {
       return null;

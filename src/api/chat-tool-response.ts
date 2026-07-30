@@ -1,8 +1,8 @@
-import { agentManager, type AgentExecutionFailure } from "../core/agent";
+import { agentManager, type AgentExecutionFailure, type AgentMessage } from "../core/agent";
 import { formatToolResultPromptBlock } from "../core/chat-token-optimization";
 import { config } from "../core/config";
-import { providerManager } from "../core/providers";
-import { buildToolExecutionFallbackMessage } from "./chat-tool-summary";
+import { INTERRUPTED_RESPONSE } from "./chat-interruption";
+import { buildNoUsableAssistantResponseMessage } from "./chat-tool-summary";
 
 interface ToolResponseResult {
   id?: string;
@@ -15,14 +15,15 @@ interface ResolveToolResponseOptions {
   agentId: string;
   channel?: string;
   executionFailure?: AgentExecutionFailure;
+  executionMessages: AgentMessage[];
   maxOutputTokens?: number;
   message: string;
-  model?: string;
+  modelOverride?: string;
   modelParamsOverride?: Record<string, unknown>;
-  providerId?: string;
   responseContent: string;
   sessionId: string;
   toolResults: ToolResponseResult[];
+  useModelRouter?: boolean;
   userId?: string;
   workspaceDir?: string;
 }
@@ -31,11 +32,9 @@ export async function resolveToolResponseContent(
   options: ResolveToolResponseOptions
 ): Promise<string> {
   if (options.responseContent.trim()) return options.responseContent;
-  const fallback = buildToolExecutionFallbackMessage(options.toolResults);
-  if (options.executionFailure) return fallback;
-  if (!options.providerId) return fallback;
-  const provider = providerManager.getWithCredentials(options.providerId);
-  if (!provider) return fallback;
+  const fallback = options.executionFailure
+    ? INTERRUPTED_RESPONSE
+    : buildNoUsableAssistantResponseMessage();
   const toonEnabled = config.getTokenOptimizationSettings().toonStructuredDataEnabled;
   const toolResultsText = options.toolResults
     .map((toolCall) =>
@@ -46,29 +45,34 @@ export async function resolveToolResponseContent(
       })
     )
     .join("\n\n");
+  const synthesisInstruction = [
+    "Write the final user-facing response for the latest request using the observed tool results below.",
+    "Do not call tools, mention internal tool counts, or claim anything the results do not establish.",
+    options.executionFailure
+      ? "The original execution was interrupted, so report verified progress and clearly identify anything that remains unfinished."
+      : "Answer directly and concisely with the verified result.",
+    `Latest request: ${options.message}`,
+    `Observed tool results:\n${toolResultsText}`,
+  ].join("\n\n");
   try {
-    const result = await agentManager.callLLM(
-      provider,
-      options.model,
-      [
-        {
-          role: "user",
-          content: `The user asked: "${options.message}"\n\nTools completed:\n${toolResultsText}\n\nAnswer the user from these results. Do not call tools.`,
-        },
-      ],
-      [],
+    const result = await agentManager.execute(
+      options.agentId,
+      [...options.executionMessages, { role: "user", content: synthesisInstruction }],
       {
-        agentId: options.agentId,
         sessionId: options.sessionId,
         channel: options.channel,
         userId: options.userId,
         workspaceDir: options.workspaceDir,
         abortSignal: options.abortSignal,
         maxOutputTokens: options.maxOutputTokens,
+        modelOverride: options.modelOverride,
         modelParamsOverride: options.modelParamsOverride,
+        useModelRouter: options.useModelRouter,
+        useMemory: false,
+        useTools: false,
       }
     );
-    return result.content || fallback;
+    return result.failure || !result.content.trim() ? fallback : result.content;
   } catch {
     return fallback;
   }

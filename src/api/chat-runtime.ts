@@ -147,7 +147,6 @@ import { constrainToolsForMessage } from "./chat-tool-constraints";
 import { resolveToolResponseContent } from "./chat-tool-response";
 import {
   buildNoUsableAssistantResponseMessage,
-  buildToolExecutionFallbackMessage,
   classifyToolCallResult,
   extractVisibleClarification,
   requiredDirectToolForMessage,
@@ -1694,14 +1693,15 @@ async function handleChatTurn(
           agentId: agent.id,
           channel,
           executionFailure,
+          executionMessages,
           maxOutputTokens: request.maxOutputTokens,
           message,
-          model: agent.model,
+          modelOverride: activeModelOverride,
           modelParamsOverride: request.modelParamsOverride,
-          providerId: agent.provider_id,
           responseContent,
           sessionId: session.id,
           toolResults,
+          useModelRouter,
           userId,
           workspaceDir: session.workspaceDir || undefined,
         });
@@ -1788,16 +1788,7 @@ async function handleChatTurn(
     allToolCalls
   );
   const assistantContent =
-    cleanContent.trim().length > 0
-      ? cleanContent
-      : allToolCalls.length > 0
-        ? buildToolExecutionFallbackMessage(
-            allToolCalls.map((toolCall) => ({
-              name: toolCall.name,
-              result: toolCall.result ?? null,
-            }))
-          )
-        : buildNoUsableAssistantResponseMessage();
+    cleanContent.trim().length > 0 ? cleanContent : buildNoUsableAssistantResponseMessage();
 
   const configuredModelMetadata = resolveSessionModelMetadata(agent?.id ?? session.agentId);
   const modelMetadata = executionModelMetadata

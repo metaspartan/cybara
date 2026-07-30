@@ -936,6 +936,13 @@ const stmts = {
     latestSequence: prepare(
       "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM session_events WHERE session_id = ?"
     ),
+    deleteRecoveryCompletion: prepare(
+      `DELETE FROM session_events
+       WHERE session_id = ?
+         AND run_id = ?
+         AND event_type = 'run_completed'
+         AND json_extract(payload, '$.source') = 'gateway_crash_recovery'`
+    ),
     deleteBySession: prepare("DELETE FROM session_events WHERE session_id = ?"),
   },
   systemLogs: {
@@ -1542,6 +1549,8 @@ export const tables = {
       const row = stmts.sessionEvents.latestSequence.get(sessionId) as { sequence?: number } | null;
       return typeof row?.sequence === "number" ? row.sequence : 0;
     },
+    deleteRecoveryCompletion: (sessionId: string, runId: string) =>
+      stmts.sessionEvents.deleteRecoveryCompletion.run(sessionId, runId),
     deleteBySession: (sessionId: string) => stmts.sessionEvents.deleteBySession.run(sessionId),
   },
   systemLogs: {

@@ -4,20 +4,50 @@ function messageIdentity(message: ChatMessage): string {
   return `${message.role}\u0000${message.run_id || ""}\u0000${message.content}`;
 }
 
+function removeSupersededInterruptedMessages(
+  persistedMessages: ChatMessage[],
+  activeMessages: ChatMessage[]
+): { persisted: ChatMessage[]; active: ChatMessage[] } {
+  const completedRunIds = new Set(
+    [...persistedMessages, ...activeMessages]
+      .filter(
+        (message) =>
+          message.role === "assistant" &&
+          message.interrupted !== true &&
+          typeof message.run_id === "string" &&
+          message.run_id.trim().length > 0
+      )
+      .map((message) => message.run_id?.trim())
+      .filter((runId): runId is string => !!runId)
+  );
+  const keep = (message: ChatMessage): boolean =>
+    !(
+      message.role === "assistant" &&
+      message.interrupted === true &&
+      typeof message.run_id === "string" &&
+      completedRunIds.has(message.run_id.trim())
+    );
+  return {
+    persisted: persistedMessages.filter(keep),
+    active: activeMessages.filter(keep),
+  };
+}
+
 export function mergeSessionTranscriptMessages(
   persistedMessages: ChatMessage[],
   activeMessages: ChatMessage[]
 ): ChatMessage[] {
-  if (persistedMessages.length === 0) return activeMessages;
+  const reconciled = removeSupersededInterruptedMessages(persistedMessages, activeMessages);
+  if (reconciled.persisted.length === 0) return reconciled.active;
 
-  const compacted = activeMessages.some(
+  const compacted = reconciled.active.some(
     (message) => message.role === "system" && message.content.includes("Context Summary")
   );
   if (compacted) {
-    return mergePersistedFirst(persistedMessages, activeMessages);
+    return mergePersistedFirst(reconciled.persisted, reconciled.active);
   }
 
-  return mergeActiveFirst(persistedMessages, activeMessages);
+  return mergeActiveFirst(reconciled.persisted, reconciled.active);
 }
 
 function mergePersistedFirst(

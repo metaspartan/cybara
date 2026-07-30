@@ -11,6 +11,7 @@ import {
   ensureSessionRunId,
   flushBufferedAssistantDeltas,
   getActiveSessionRunId,
+  removeSupersededRecoveryCompletion,
 } from "./session-event-ledger";
 
 export type AgentStatus =
@@ -563,7 +564,7 @@ export function broadcastStatus(status: StatusPayload): void {
           sessionId,
           runId,
           type: "run_started",
-          payload: { timestamp: Date.now() },
+          payload: { timestamp: Date.now(), processId: process.pid },
         });
       }
       sequence = appendSessionEvent({
@@ -597,6 +598,7 @@ export function broadcastStatus(status: StatusPayload): void {
           type: "run_completed",
           payload: { timestamp: Date.now() },
         });
+        removeSupersededRecoveryCompletion(sessionId, runId);
       } catch {
         void 0;
       }

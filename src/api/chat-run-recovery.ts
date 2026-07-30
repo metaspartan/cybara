@@ -18,6 +18,13 @@ import type { ProcessActivityInfo } from "./chat-process-activities";
 import { INTERRUPTED_RESPONSE } from "./chat-interruption";
 import type { ChatMessage } from "./chat-types";
 
+const LEGACY_RUN_RECOVERY_SETTLE_MS = 30_000;
+
+export interface ChatRunRecoveryOptions {
+  now?: number;
+  processAlive?: (processId: number) => boolean;
+}
+
 const AGENT_STATUSES = new Set<AgentStatus>([
   "idle",
   "thinking",
@@ -42,6 +49,45 @@ function eventTimestamp(event: SessionLedgerEvent): number {
     : `${event.createdAt.replace(" ", "T")}Z`;
   const parsed = Date.parse(normalized);
   return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+function runProcessId(events: SessionLedgerEvent[]): number | undefined {
+  for (const event of events) {
+    if (event.type !== "run_started" || !isRecord(event.payload)) continue;
+    const processId = event.payload.processId;
+    if (typeof processId === "number" && Number.isInteger(processId) && processId > 0) {
+      return processId;
+    }
+  }
+  return undefined;
+}
+
+function processIsAlive(processId: number): boolean {
+  if (processId === process.pid) return true;
+  try {
+    process.kill(processId, 0);
+    return true;
+  } catch (error) {
+    return isRecord(error) && error.code === "EPERM";
+  }
+}
+
+function latestRunActivityAt(events: SessionLedgerEvent[]): number {
+  return events.reduce((latest, event) => Math.max(latest, eventTimestamp(event)), 0);
+}
+
+function legacyRunIsSettled(events: SessionLedgerEvent[], now: number): boolean {
+  const latestActivityAt = latestRunActivityAt(events);
+  return latestActivityAt > 0 && now - latestActivityAt >= LEGACY_RUN_RECOVERY_SETTLE_MS;
+}
+
+function incompleteRunCanBeRecovered(
+  events: SessionLedgerEvent[],
+  options: Required<ChatRunRecoveryOptions>
+): boolean {
+  const ownerProcessId = runProcessId(events);
+  if (ownerProcessId !== undefined) return !options.processAlive(ownerProcessId);
+  return legacyRunIsSettled(events, options.now);
 }
 
 function statusPayload(event: SessionLedgerEvent): StatusPayload | null {
@@ -207,8 +253,13 @@ function hasDurableAssistantWithinRun(
 export async function recoverInterruptedSessionMessages(
   sessionId: string,
   agentId: string,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  recoveryOptions: ChatRunRecoveryOptions = {}
 ): Promise<ChatMessage[]> {
+  const options: Required<ChatRunRecoveryOptions> = {
+    now: recoveryOptions.now ?? Date.now(),
+    processAlive: recoveryOptions.processAlive ?? processIsAlive,
+  };
   const eventCache = new Map<string, SessionLedgerEvent[]>();
   for (const event of listAllSessionEvents(sessionId)) {
     const events = eventCache.get(event.runId) || [];
@@ -238,7 +289,8 @@ export async function recoverInterruptedSessionMessages(
       !runId ||
       runId === activeRunId ||
       representedRunIds.has(runId) ||
-      hasDurableAssistantWithinRun(hydrated, events)
+      hasDurableAssistantWithinRun(hydrated, events) ||
+      !legacyRunIsSettled(events, options.now)
     ) {
       continue;
     }
@@ -266,7 +318,13 @@ export async function recoverInterruptedSessionMessages(
   for (const run of listIncompleteSessionRuns(sessionId)) {
     if (run.runId === activeRunId || representedRunIds.has(run.runId)) continue;
     const events = eventsForRun(run.runId);
-    if (events.length === 0 || hasPersistedAssistantEvent(events)) continue;
+    if (
+      events.length === 0 ||
+      hasPersistedAssistantEvent(events) ||
+      !incompleteRunCanBeRecovered(events, options)
+    ) {
+      continue;
+    }
     const processActivities = buildActivities(events, true);
     const content = sanitizeAssistantContent(events.map(assistantDelta).join(""));
     if (processActivities.length <= 1 && !content.trim()) continue;

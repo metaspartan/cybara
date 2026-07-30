@@ -134,7 +134,9 @@ describe("chat run recovery", () => {
     expect(runId).toBeString();
     completeSessionRun(sessionId);
 
-    const recovered = await recoverInterruptedSessionMessages(sessionId, agentId, []);
+    const recovered = await recoverInterruptedSessionMessages(sessionId, agentId, [], {
+      processAlive: () => false,
+    });
 
     expect(recovered.some((message) => message.run_id === runId && message.interrupted)).toBe(true);
     expect(listIncompleteSessionRuns(sessionId)).toEqual([]);
@@ -161,7 +163,9 @@ describe("chat run recovery", () => {
     });
     broadcastStatus({ status: "idle", timestamp: timestamp + 2, sessionId, agentId });
 
-    const firstRecovery = await recoverInterruptedSessionMessages(sessionId, agentId, []);
+    const firstRecovery = await recoverInterruptedSessionMessages(sessionId, agentId, [], {
+      now: Date.now() + 31_000,
+    });
     const secondRecovery = await recoverInterruptedSessionMessages(
       sessionId,
       agentId,
@@ -219,5 +223,58 @@ describe("chat run recovery", () => {
       content: "Completed successfully.",
     });
     expect(recovered[0]?.interrupted).toBeUndefined();
+  });
+
+  test("does not recover a run while its owning gateway process is alive", async () => {
+    const { sessionId, agentId } = createSession("owned-live-run");
+    const timestamp = Date.now();
+    broadcastTool(sessionId, 0, timestamp);
+    completeSessionRun(sessionId);
+
+    const recovered = await recoverInterruptedSessionMessages(sessionId, agentId, [], {
+      now: timestamp + 60_000,
+    });
+
+    expect(recovered).toEqual([]);
+  });
+
+  test("removes a crash placeholder superseded by the real assistant response", async () => {
+    const { sessionId, agentId } = createSession("superseded-recovery");
+    const timestamp = Date.now();
+    broadcastTool(sessionId, 0, timestamp);
+    const runId = getActiveSessionRunId(sessionId);
+    expect(runId).toBeString();
+    completeSessionRun(sessionId);
+    await recoverInterruptedSessionMessages(sessionId, agentId, [], {
+      processAlive: () => false,
+    });
+    await upsertPersistedSessionMessage(
+      sessionId,
+      agentId,
+      {
+        role: "assistant",
+        content: "The requested work completed successfully.",
+        timestamp: new Date(timestamp + 2).toISOString(),
+        run_id: runId,
+      },
+      { stableKey: "real-assistant" }
+    );
+
+    const persisted = await loadPersistedSession(sessionId);
+    const completionEvents = listAllRunEvents(runId || "").filter(
+      (event) => event.type === "run_completed"
+    );
+
+    expect(persisted?.messages).toEqual([
+      expect.objectContaining({
+        role: "assistant",
+        content: "The requested work completed successfully.",
+        run_id: runId,
+      }),
+    ]);
+    expect(completionEvents).toHaveLength(1);
+    expect(completionEvents[0]?.payload).not.toMatchObject({
+      source: "gateway_crash_recovery",
+    });
   });
 });
