@@ -7,6 +7,7 @@ import {
 } from "../core/chat-token-optimization";
 import { hydrateImageDataFromPath } from "../core/chat/attachments";
 import { getActiveGoalContextLine } from "../core/session-goals";
+import { INTERRUPTED_RESPONSE } from "./chat-interruption";
 import type { ChatMessage } from "./chat-types";
 export { stripThinkingTags } from "./chat-formatting";
 export {
@@ -41,6 +42,14 @@ export function buildChatExecutionMessagesForAgent(
     ? undefined
     : buildAgentHandoffInstruction(sessionMessages, options?.activeAgentId);
   const executionMessages: AgentMessage[] = executionSource.flatMap((sessionMessage) => {
+    if (
+      sessionMessage.role === "assistant" &&
+      sessionMessage.interrupted === true &&
+      !sessionMessage.tool_calls?.length &&
+      sessionMessage.content === INTERRUPTED_RESPONSE
+    ) {
+      return [];
+    }
     const compacted = compactChatContentForPrompt(sessionMessage);
     const content =
       sessionMessage.role === "assistant" ? stripAgentAttributionTag(compacted) : compacted;

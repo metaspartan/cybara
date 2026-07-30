@@ -140,4 +140,45 @@ describe("chat run recovery", () => {
     expect(listIncompleteSessionRuns(sessionId)).toEqual([]);
     expect(listAllRunEvents(runId || "").at(-1)?.type).toBe("run_completed");
   });
+
+  test("repairs a completed generating run that persisted no assistant response", async () => {
+    const { sessionId, agentId } = createSession("completed-empty-run");
+    const timestamp = Date.now();
+    broadcastStatus({
+      status: "thinking",
+      timestamp,
+      detail: "Thinking...",
+      sessionId,
+      agentId,
+    });
+    const runId = getActiveSessionRunId(sessionId);
+    broadcastStatus({
+      status: "generating",
+      timestamp: timestamp + 1,
+      detail: "Generating response...",
+      sessionId,
+      agentId,
+    });
+    broadcastStatus({ status: "idle", timestamp: timestamp + 2, sessionId, agentId });
+
+    const firstRecovery = await recoverInterruptedSessionMessages(sessionId, agentId, []);
+    const secondRecovery = await recoverInterruptedSessionMessages(
+      sessionId,
+      agentId,
+      (await loadPersistedSession(sessionId))?.messages || []
+    );
+
+    expect(firstRecovery).toEqual([
+      expect.objectContaining({
+        role: "assistant",
+        content: expect.stringContaining("interrupted before completion"),
+        interrupted: true,
+        run_id: runId,
+      }),
+    ]);
+    expect(secondRecovery).toHaveLength(1);
+    expect(secondRecovery[0]?.process_activities || []).not.toContainEqual(
+      expect.objectContaining({ text: "Turn interrupted when the gateway stopped." })
+    );
+  });
 });

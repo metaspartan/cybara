@@ -3,6 +3,7 @@ import { upsertPersistedSessionMessage } from "../core/session-context";
 import {
   appendSessionEvent,
   getActiveSessionRunId,
+  listAllSessionEvents,
   listAllRunEvents,
   listIncompleteSessionRuns,
   type SessionLedgerEvent,
@@ -14,6 +15,7 @@ import {
   type StatusPayload,
 } from "../core/status";
 import type { ProcessActivityInfo } from "./chat-process-activities";
+import { INTERRUPTED_RESPONSE } from "./chat-interruption";
 import type { ChatMessage } from "./chat-types";
 
 const AGENT_STATUSES = new Set<AgentStatus>([
@@ -89,6 +91,15 @@ function hasPersistedAssistantEvent(events: SessionLedgerEvent[]): boolean {
   );
 }
 
+function isGatewayCrashRecovery(events: SessionLedgerEvent[]): boolean {
+  return events.some(
+    (event) =>
+      event.type === "run_completed" &&
+      isRecord(event.payload) &&
+      event.payload.source === "gateway_crash_recovery"
+  );
+}
+
 function interruptionTimestamp(events: SessionLedgerEvent[]): number {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
@@ -157,12 +168,22 @@ function sortMessages(messages: ChatMessage[]): ChatMessage[] {
 }
 
 function hydrateRunMessage(message: ChatMessage, events: SessionLedgerEvent[]): ChatMessage {
-  const interrupted = message.interrupted === true;
-  const processActivities = buildActivities(events, interrupted);
+  const processActivities = buildActivities(events, isGatewayCrashRecovery(events));
   return {
     ...message,
     ...(processActivities.length > 0 ? { process_activities: processActivities } : {}),
   };
+}
+
+function completedEmptyRunEvents(
+  eventsByRun: Map<string, SessionLedgerEvent[]>
+): SessionLedgerEvent[][] {
+  return [...eventsByRun.values()].filter((events) => {
+    const hasStarted = events.some((event) => event.type === "run_started");
+    const hasCompleted = events.some((event) => event.type === "run_completed");
+    const generated = events.some((event) => statusPayload(event)?.status === "generating");
+    return hasStarted && hasCompleted && generated && !hasPersistedAssistantEvent(events);
+  });
 }
 
 export async function recoverInterruptedSessionMessages(
@@ -171,6 +192,11 @@ export async function recoverInterruptedSessionMessages(
   messages: ChatMessage[]
 ): Promise<ChatMessage[]> {
   const eventCache = new Map<string, SessionLedgerEvent[]>();
+  for (const event of listAllSessionEvents(sessionId)) {
+    const events = eventCache.get(event.runId) || [];
+    events.push(event);
+    eventCache.set(event.runId, events);
+  }
   const eventsForRun = (runId: string): SessionLedgerEvent[] => {
     const cached = eventCache.get(runId);
     if (cached) return cached;
@@ -187,6 +213,30 @@ export async function recoverInterruptedSessionMessages(
   );
   let recoveredRunAdded = false;
   const activeRunId = getActiveSessionRunId(sessionId);
+
+  for (const events of completedEmptyRunEvents(eventCache)) {
+    const runId = events[0]?.runId;
+    if (!runId || runId === activeRunId || representedRunIds.has(runId)) continue;
+    const timestamp = new Date(
+      events.reduce((latest, event) => Math.max(latest, eventTimestamp(event)), 0) || Date.now()
+    ).toISOString();
+    const processActivities = buildActivities(events, false);
+    const recovered: ChatMessage = {
+      role: "assistant",
+      content: INTERRUPTED_RESPONSE,
+      timestamp,
+      run_id: runId,
+      interrupted: true,
+      ...(processActivities.length > 0 ? { process_activities: processActivities } : {}),
+    };
+    await upsertPersistedSessionMessage(sessionId, agentId, recovered, {
+      stableKey: `completed-empty-run:${runId}`,
+      metadata: { source: "completed_empty_run_recovery" },
+    });
+    hydrated.push(recovered);
+    representedRunIds.add(runId);
+    recoveredRunAdded = true;
+  }
 
   for (const run of listIncompleteSessionRuns(sessionId)) {
     if (run.runId === activeRunId || representedRunIds.has(run.runId)) continue;

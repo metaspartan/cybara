@@ -1745,7 +1745,6 @@ async function handleChatTurn(
   if (executionFailure?.retryable && allToolCalls.length === 0 && agent) {
     const response = await finishRetryableProviderFailure({
       session,
-      userMessage,
       agent,
       failure: executionFailure,
     });

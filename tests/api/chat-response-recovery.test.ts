@@ -8,6 +8,7 @@ import {
   recordCircuitFailure,
   recordCircuitSuccess,
 } from "../../src/core/tools/index";
+import { listAllRunEvents } from "../../src/core/session-event-ledger";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -99,7 +100,7 @@ describe("chat response recovery", () => {
     }
   });
 
-  test("does not persist a transient provider failure as an assistant answer", async () => {
+  test("persists a neutral interrupted response before completing a failed provider run", async () => {
     const agentId = createTestAgent("Transient Provider Failure Agent");
     const sessionId = `transient-provider-failure-${crypto.randomUUID()}`;
     createdSessionIds.push(sessionId);
@@ -118,10 +119,34 @@ describe("chat response recovery", () => {
 
     expect(result.interrupted).toBe(true);
     expect(result.failure).toEqual({ category: "overloaded", retryable: true });
-    expect(result.message.content).toBe("");
-    expect((await loadPersistedSession(sessionId))?.messages).toEqual([
-      expect.objectContaining({ role: "user", content: "continue after switching agents" }),
-    ]);
+    expect(result.message).toMatchObject({ role: "assistant", interrupted: true });
+    expect(result.message.content).toContain("interrupted before completion");
+    expect(result.message.content).not.toMatch(/provider|overloaded|rate limit/i);
+    const persistedMessages = (await loadPersistedSession(sessionId))?.messages || [];
+    expect(persistedMessages).toHaveLength(2);
+    expect(persistedMessages[0]).toMatchObject({
+      role: "user",
+      content: "continue after switching agents",
+    });
+    expect(persistedMessages[1]).toMatchObject({
+      role: "assistant",
+      content: result.message.content,
+      interrupted: true,
+      run_id: result.message.run_id,
+    });
+    const events = listAllRunEvents(result.message.run_id || "");
+    const assistantSequence = events.find(
+      (event) =>
+        event.type === "message" &&
+        typeof event.payload === "object" &&
+        event.payload !== null &&
+        "role" in event.payload &&
+        event.payload.role === "assistant"
+    )?.sequence;
+    const completionSequence = events.find((event) => event.type === "run_completed")?.sequence;
+    expect(assistantSequence).toBeNumber();
+    expect(completionSequence).toBeNumber();
+    expect(assistantSequence || 0).toBeLessThan(completionSequence || 0);
   });
 
   test("keeps completed tools when a transient provider failure ends a turn", async () => {
