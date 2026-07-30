@@ -39,6 +39,26 @@ describe("chat process activities", () => {
     ).toBe(`Ran ${command}`);
   });
 
+  test("describes loaded skills and completed plan items", () => {
+    expect(
+      formatProcessActivityFromToolCall({
+        id: "skill-1",
+        name: "skill_load",
+        args: { name: "security-scan" },
+        status: "completed",
+        result: { name: "security-scan" },
+      })
+    ).toBe("Loaded security-scan skill");
+    expect(
+      formatProcessActivityFromToolCall({
+        id: "todo-1",
+        name: "todo",
+        args: { items: [{ content: "Verify release", status: "completed" }] },
+        status: "completed",
+      })
+    ).toBe('Completed "Verify release"');
+  });
+
   test("replaces a start activity with its later completion", () => {
     const activities: ProcessActivityInfo[] = [
       {

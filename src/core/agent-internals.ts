@@ -1,3 +1,5 @@
+import { formatStructuredToolActivityDetail } from "../../shared/tool-activity-detail";
+
 export interface OpenAIToolCall {
   id: string;
   type: "function";
@@ -546,6 +548,9 @@ export function formatToolActivityDetail(
   phase: "start" | "result" | "error" | "blocked",
   result?: unknown
 ): string {
+  const structuredDetail = formatStructuredToolActivityDetail(toolName, args, phase, result);
+  if (structuredDetail) return structuredDetail;
+
   const key = toolName.toLowerCase();
   const path = readStringArg(args, ["path", "file_path", "filePath"]);
 
