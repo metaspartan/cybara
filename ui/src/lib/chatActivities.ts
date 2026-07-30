@@ -327,7 +327,7 @@ export function enrichActivitiesWithToolCallDetails(
     const callByName = toolName
       ? callsByName.get(toolName)?.find((candidate) => !usedCalls.has(candidate))
       : undefined;
-    const call = callById || callByName;
+    const call = callById && !usedCalls.has(callById) ? callById : callByName;
     if (!call) return activity;
     usedCalls.add(call);
     const args = call.arguments || call.args || {};

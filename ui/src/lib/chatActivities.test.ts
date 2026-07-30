@@ -204,6 +204,43 @@ describe("enrichActivitiesWithToolCallDetails", () => {
     expect(result[1].fullText).toContain("[x] Inspect runtime");
     expect(result[1].fullText).toContain("[~] Verify UI");
   });
+
+  test("consumes duplicate tool-call IDs only once", () => {
+    const result = enrichActivitiesWithToolCallDetails(
+      [
+        activity({
+          id: "live",
+          text: "Ran shortened command...",
+          toolName: "exec",
+          toolCallId: "shared-call",
+        }),
+        activity({
+          id: "recovered",
+          text: "Recovered command summary",
+          toolName: "exec",
+          toolCallId: "shared-call",
+        }),
+      ],
+      [
+        {
+          id: "shared-call",
+          name: "exec",
+          args: { command: "bun test tests/core/provider-retry.test.ts" },
+          status: "completed",
+        },
+      ]
+    );
+
+    expect(result[0].fullText).toBe("Ran bun test tests/core/provider-retry.test.ts");
+    expect(result[1]).toEqual(
+      activity({
+        id: "recovered",
+        text: "Recovered command summary",
+        toolName: "exec",
+        toolCallId: "shared-call",
+      })
+    );
+  });
 });
 
 describe("mergeActivityLists", () => {
