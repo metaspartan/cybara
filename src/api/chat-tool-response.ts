@@ -1,4 +1,4 @@
-import { agentManager } from "../core/agent";
+import { agentManager, type AgentExecutionFailure } from "../core/agent";
 import { formatToolResultPromptBlock } from "../core/chat-token-optimization";
 import { config } from "../core/config";
 import { providerManager } from "../core/providers";
@@ -14,6 +14,7 @@ interface ResolveToolResponseOptions {
   abortSignal: AbortSignal;
   agentId: string;
   channel?: string;
+  executionFailure?: AgentExecutionFailure;
   maxOutputTokens?: number;
   message: string;
   model?: string;
@@ -31,6 +32,7 @@ export async function resolveToolResponseContent(
 ): Promise<string> {
   if (options.responseContent.trim()) return options.responseContent;
   const fallback = buildToolExecutionFallbackMessage(options.toolResults);
+  if (options.executionFailure) return fallback;
   if (!options.providerId) return fallback;
   const provider = providerManager.getWithCredentials(options.providerId);
   if (!provider) return fallback;

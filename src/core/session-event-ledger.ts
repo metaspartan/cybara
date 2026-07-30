@@ -240,6 +240,32 @@ export function listSessionEvents(
   ).map(toLedgerEvent);
 }
 
+export function listAllSessionEvents(sessionId: string, pageSize = 5000): SessionLedgerEvent[] {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) return [];
+  flushBufferedAssistantDeltas(normalizedSessionId);
+  const boundedPageSize = Number.isFinite(pageSize)
+    ? Math.min(5000, Math.max(1, Math.floor(pageSize)))
+    : 5000;
+  const events: SessionLedgerEvent[] = [];
+  let afterSequence = 0;
+  while (true) {
+    const page = (
+      tables.sessionEvents.bySession(
+        normalizedSessionId,
+        afterSequence,
+        boundedPageSize
+      ) as StoredSessionEvent[]
+    ).map(toLedgerEvent);
+    events.push(...page);
+    if (page.length < boundedPageSize) break;
+    const nextSequence = page[page.length - 1]?.sequence ?? afterSequence;
+    if (nextSequence <= afterSequence) break;
+    afterSequence = nextSequence;
+  }
+  return events;
+}
+
 export function listRunEvents(runId: string, limit = 1000): SessionLedgerEvent[] {
   const normalizedRunId = runId.trim();
   for (const pending of pendingAssistantDeltas.values()) {

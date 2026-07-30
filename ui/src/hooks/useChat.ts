@@ -194,7 +194,19 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
         }
         if (response.data.interrupted) {
           setState((prev) =>
-            prev.sessionId === requestSessionId ? { ...prev, isLoading: false } : prev
+            prev.sessionId !== requestSessionId
+              ? prev
+              : {
+                  ...prev,
+                  messages: response.data!.message.content.trim()
+                    ? queuedSend
+                      ? [...prev.messages, userMessage, response.data!.message]
+                      : [...prev.messages, response.data!.message]
+                    : prev.messages,
+                  sessionId: response.data!.sessionId,
+                  workspaceDir: resolvedWorkspaceDir ?? null,
+                  isLoading: false,
+                }
           );
           void queryClient.invalidateQueries({ queryKey: ["sessions"] });
           void invalidateSessionDetail(queryClient, response.data.sessionId);

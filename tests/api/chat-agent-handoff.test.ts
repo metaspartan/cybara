@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import {
-  attributeInheritedAssistantContent,
   buildAgentHandoffInstruction,
   resolveInheritedAgentAuthors,
   stripAgentAttributionTag,
@@ -81,29 +80,15 @@ describe("mid-conversation agent handoff", () => {
     expect(instruction).not.toContain("The most recent assistant turn was written by");
   });
 
-  test("tags inherited turns so the active agent can attribute them without searching", () => {
+  test("keeps inherited content unchanged and identifies authors in the system instruction", () => {
     const messages = buildChatExecutionMessagesForAgent(transcript(), {
       activeAgentId: "agent-zai",
     });
     const inherited = messages.find((message) => message.content.includes("module layout"));
 
-    expect(inherited?.content.startsWith("[written by Mini (MiniMax-M3)]\n")).toBe(true);
-    expect(messages[1]?.content).toContain("Never write that tag yourself");
-  });
-
-  test("leaves the active agent's own turns untagged", () => {
-    expect(
-      attributeInheritedAssistantContent(
-        { role: "assistant", content: "mine", agent_id: "agent-zai", agent_name: "Zai" },
-        "agent-zai"
-      )
-    ).toBe("mine");
-    expect(
-      attributeInheritedAssistantContent(
-        { role: "user", content: "hello", agent_id: "agent-mini", agent_name: "Mini" },
-        "agent-zai"
-      )
-    ).toBe("hello");
+    expect(inherited?.content).toBe("Here is the module layout.");
+    expect(messages[1]?.content).toContain("written by other agents: Mini (MiniMax-M3)");
+    expect(messages.some((message) => message.content.includes("[written by"))).toBe(false);
   });
 
   test("does not tag turns on the tool-transfer path, which has its own note", () => {
@@ -135,30 +120,20 @@ describe("mid-conversation agent handoff", () => {
     expect(messages.some((message) => message.content.includes("[written by"))).toBe(false);
   });
 
-  test("never stacks tags on a transcript stored before tags were sanitized", () => {
-    const polluted = attributeInheritedAssistantContent(
-      {
+  test("removes legacy attribution tags from inherited transcripts", () => {
+    const messages = buildChatExecutionMessagesForAgent(
+      transcript({
         role: "assistant",
         content: "[written by Qwen (q3)]\nEarlier answer",
         agent_id: "agent-mini",
         agent_name: "Mini",
-        model: "MiniMax-M3",
-      },
-      "agent-zai"
+      }),
+      { activeAgentId: "agent-zai" }
     );
-    expect(polluted).toBe("[written by Mini (MiniMax-M3)]\nEarlier answer");
-
-    expect(
-      attributeInheritedAssistantContent(
-        {
-          role: "assistant",
-          content: "[written by Qwen (q3)]\nMy own answer",
-          agent_id: "agent-zai",
-          agent_name: "Zai",
-        },
-        "agent-zai"
-      )
-    ).toBe("My own answer");
+    expect(messages.find((message) => message.content.includes("Earlier answer"))?.content).toBe(
+      "Earlier answer"
+    );
+    expect(messages.some((message) => message.content.includes("[written by"))).toBe(false);
   });
 
   test("strips an author tag a model copied into its own reply", () => {

@@ -44,6 +44,17 @@ import {
 import type { ToolDefinition } from "./database";
 import { classifyApiError } from "./error-classifier";
 import {
+  isAnthropicContextOverflowError,
+  recoverAnthropicRequestForContext,
+  resolveAnthropicRequestTokenLimit,
+} from "./llm/anthropic-context";
+import {
+  applyAnthropicReasoningOptions,
+  collectAnthropicThinkingText,
+  resolveAnthropicToolChoice,
+  shouldSendAnthropicContext1mBeta,
+} from "./llm/anthropic-request-options";
+import {
   anthropicEndpointPath,
   anthropicRequestBase,
   anthropicRequestHeaders,
@@ -52,23 +63,17 @@ import { normalizeAnthropicModelToolUses } from "./llm/model-dialect";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
 import { toAnthropicHistory } from "./llm/provider-history";
 import { supportsForcedToolChoice } from "./llm/provider-model-transport";
-import {
-  applyAnthropicReasoningOptions,
-  collectAnthropicThinkingText,
-  resolveAnthropicToolChoice,
-  shouldSendAnthropicContext1mBeta,
-} from "./llm/anthropic-request-options";
 import { withLlmRequestTimeout } from "./llm/request-timeout";
-import { normalizeProviderTokenUsage } from "./llm/token-usage-normalization";
 import {
   sanitizeAssistantContent,
   toAnthropicReplayContentWithNormalizedToolUses,
 } from "./llm/text-tool-calls";
+import { normalizeProviderTokenUsage } from "./llm/token-usage-normalization";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
 import { isContextOverflowError } from "./llm/tool-transcript";
 import { type AnthropicCacheRequest, applyAnthropicCacheControl } from "./prompt-cache";
 import { boundedPoolRetryDelayMs, providerExceptionRetryDelayMs } from "./provider-retry";
-import { providers as providerCatalog, type ProviderType } from "./providers";
+import { type ProviderType, providers as providerCatalog } from "./providers";
 import { recordRateLimit } from "./rate-limit-tracker";
 import type { ToolContext } from "./tools/index";
 
@@ -102,6 +107,12 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
   }> {
     const systemMessage = messages.find((m) => m.role === "system");
     const chatMessages = toAnthropicHistory(messages);
+    const contextWindowTokens = resolveModelContextWindowTokens(
+      providerConfig,
+      providerId,
+      modelId
+    );
+    const contextGuard = resolveContextGuardBudgets(contextWindowTokens);
 
     const anthropicEndpoint = anthropicEndpointPath(modelId, vertex);
 
@@ -115,14 +126,6 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
     if (systemMessage) {
       requestBody.system = systemMessage.content;
     }
-
-    applyAnthropicReasoningOptions(
-      requestBody,
-      providerConfig,
-      modelId,
-      maxOutputTokens,
-      modelParams
-    );
 
     if (tools && Array.isArray(tools) && tools.length > 0) {
       requestBody.tools = tools.map((t) => ({
@@ -157,12 +160,25 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
     );
     if (cached.system !== undefined) requestBody.system = cached.system;
     requestBody.messages = cached.messages;
+    requestBody.max_tokens = resolveAnthropicRequestTokenLimit(
+      requestBody,
+      maxOutputTokens,
+      contextWindowTokens
+    );
+    applyAnthropicReasoningOptions(
+      requestBody,
+      providerConfig,
+      modelId,
+      requestBody.max_tokens as number,
+      modelParams
+    );
 
     const startTime = performance.now();
     const INITIAL_MAX_RETRIES = 3;
     let response: Response | null = null;
     let lastInitialError = "";
     let initialRetryCount = 0;
+    let initialContextRecoveryCount = 0;
     let attemptedInitialOAuthRefresh = false;
     const poolName = providerConfig === "anthropic" ? "anthropic" : providerConfig;
     let activeCredential: PooledCredential | null =
@@ -239,6 +255,37 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         }
       }
 
+      if (
+        response.status === 400 &&
+        initialContextRecoveryCount < 2 &&
+        isAnthropicContextOverflowError(
+          providerConfig,
+          lastInitialError,
+          isContextOverflowError(lastInitialError)
+        ) &&
+        recoverAnthropicRequestForContext(
+          requestBody,
+          contextWindowTokens,
+          initialContextRecoveryCount,
+          { model: modelId, toolContext }
+        )
+      ) {
+        initialContextRecoveryCount += 1;
+        applyAnthropicReasoningOptions(
+          requestBody,
+          providerConfig,
+          modelId,
+          requestBody.max_tokens as number,
+          modelParams
+        );
+        this.broadcastAgentStatus(
+          "compacting",
+          toolContext,
+          "Provider context limit reached; compacting and continuing..."
+        );
+        continue;
+      }
+
       const retryDelayMs = this.providerRetryDelayMs(
         response.status,
         response.headers,
@@ -310,19 +357,16 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
     }
 
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
-    const contextWindowTokens = resolveModelContextWindowTokens(
-      providerConfig,
-      providerId,
-      modelId
-    );
-    const contextGuard = resolveContextGuardBudgets(contextWindowTokens);
     const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
     let currentData = data;
 
-    const currentMessages: Record<string, unknown>[] = chatMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
+    const sentMessages = Array.isArray(requestBody.messages)
+      ? (requestBody.messages as Record<string, unknown>[])
+      : chatMessages;
+    const currentMessages: Record<string, unknown>[] = sentMessages.map((message) => ({
+      role: message.role,
+      content: message.content,
     }));
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
 

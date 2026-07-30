@@ -163,16 +163,7 @@ export function checkCircuit(
 }
 
 export function recordCircuitSuccess(service: string): void {
-  const state = circuitBreakers.get(service);
-  if (state) {
-    if (state.state === "half-open") {
-      state.successesSinceHalfOpen++;
-      if (state.successesSinceHalfOpen >= 3) {
-        circuitBreakers.delete(service);
-      }
-    }
-    state.failureCount = 0;
-  }
+  circuitBreakers.delete(service);
 }
 
 export function recordCircuitFailure(

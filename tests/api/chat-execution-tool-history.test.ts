@@ -1,10 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import { buildChatExecutionMessagesForAgent } from "../../src/api/chat-execution-messages";
+import { INTERRUPTED_RESPONSE } from "../../src/api/chat-interruption";
 import type { ChatMessage } from "../../src/api/chat-types";
 import { TOOL_RESULT_PROMPT_MAX_CHARS } from "../../src/core/chat-token-optimization";
 import { toAnthropicHistory } from "../../src/core/llm/provider-history";
 
 describe("chat execution tool history", () => {
+  test("keeps synthetic interrupted responses out of the next provider request", () => {
+    const messages: ChatMessage[] = [
+      { role: "user", content: "First attempt" },
+      {
+        role: "assistant",
+        content: INTERRUPTED_RESPONSE,
+        interrupted: true,
+      },
+      { role: "user", content: "Retry" },
+    ];
+
+    expect(buildChatExecutionMessagesForAgent(messages)).toEqual([
+      { role: "user", content: "First attempt" },
+      { role: "user", content: "Retry" },
+    ]);
+  });
+
   test("reconstructs persisted tool calls before their final assistant response", () => {
     const messages: ChatMessage[] = [
       { role: "user", content: "Inspect the manifest." },

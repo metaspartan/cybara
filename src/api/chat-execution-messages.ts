@@ -1,8 +1,5 @@
 import { type AgentMessage } from "../core/agent";
-import {
-  attributeInheritedAssistantContent,
-  buildAgentHandoffInstruction,
-} from "./chat-agent-handoff";
+import { buildAgentHandoffInstruction, stripAgentAttributionTag } from "./chat-agent-handoff";
 import { truncateToolResultContentForContext } from "../core/agent-context-guard";
 import {
   compactChatContentForPrompt,
@@ -10,6 +7,7 @@ import {
 } from "../core/chat-token-optimization";
 import { hydrateImageDataFromPath } from "../core/chat/attachments";
 import { getActiveGoalContextLine } from "../core/session-goals";
+import { INTERRUPTED_RESPONSE } from "./chat-interruption";
 import type { ChatMessage } from "./chat-types";
 export { stripThinkingTags } from "./chat-formatting";
 export {
@@ -44,13 +42,17 @@ export function buildChatExecutionMessagesForAgent(
     ? undefined
     : buildAgentHandoffInstruction(sessionMessages, options?.activeAgentId);
   const executionMessages: AgentMessage[] = executionSource.flatMap((sessionMessage) => {
+    if (
+      sessionMessage.role === "assistant" &&
+      sessionMessage.interrupted === true &&
+      !sessionMessage.tool_calls?.length &&
+      sessionMessage.content === INTERRUPTED_RESPONSE
+    ) {
+      return [];
+    }
     const compacted = compactChatContentForPrompt(sessionMessage);
-    const content = handoffInstruction
-      ? attributeInheritedAssistantContent(
-          { ...sessionMessage, content: compacted },
-          options?.activeAgentId
-        )
-      : compacted;
+    const content =
+      sessionMessage.role === "assistant" ? stripAgentAttributionTag(compacted) : compacted;
     const imageContext = sessionMessage.image_context?.trim();
     const message: AgentMessage = {
       role: sessionMessage.role,
