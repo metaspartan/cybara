@@ -18,7 +18,7 @@ import {
   resolveModelMaxOutputTokens,
   shouldPreferMaxCompletionTokens,
 } from "./agent-model-limits";
-import { executeAgentTool, type AgentToolExecutionResult } from "./agent-tool-execution";
+import { type AgentToolExecutionResult, executeAgentTool } from "./agent-tool-execution";
 import { config } from "./config";
 import type { Agent, Provider, ToolDefinition } from "./database";
 import { classifyApiError } from "./error-classifier";
@@ -27,9 +27,10 @@ import {
   callDevinAgentTransport,
   callGitLabDuoTransport,
 } from "./llm/agent-provider-transports";
-import { normalizeLlmTimeoutError, withLlmRequestTimeout } from "./llm/request-timeout";
-import { resolveProviderModelApiFamily } from "./llm/provider-model-transport";
+import { prepareAgentMessagesForProvider } from "./llm/provider-image-input";
 import { normalizeProviderMessages } from "./llm/provider-messages";
+import { resolveProviderModelApiFamily } from "./llm/provider-model-transport";
+import { normalizeLlmTimeoutError, withLlmRequestTimeout } from "./llm/request-timeout";
 import {
   getSessionTokenUsageSnapshot,
   trackEstimatedSessionTokenUsage,
@@ -45,8 +46,8 @@ import {
   compactOpenAIRequestMessagesForContext as compactOpenAIRequestMessages,
   isContextOverflowError,
 } from "./llm/tool-transcript";
-import { getPluginProviderContribution } from "./plugins/provider-registry";
 import { validatePublicHttpUrl } from "./outbound-url-policy";
+import { getPluginProviderContribution } from "./plugins/provider-registry";
 import {
   parseProviderRetryAfterMs,
   providerExceptionRetryDelayMs,
@@ -56,9 +57,9 @@ import {
 import {
   getDefaultModel,
   getProviderBaseUrl,
+  type ProviderType,
   providers as providerCatalog,
   providerManager,
-  type ProviderType,
 } from "./providers";
 import { recordRateLimit } from "./rate-limit-tracker";
 import { recordRateLimit as recordRouterRateLimit } from "./router";
@@ -500,6 +501,8 @@ export abstract class AgentProviderCommonRuntime {
     if (!provider) {
       throw new Error("Provider not found");
     }
+
+    messages = await prepareAgentMessagesForProvider(messages);
 
     const providerInfo = provider as {
       id?: string;

@@ -13,7 +13,7 @@ describe("agent reasoning runtime wiring", () => {
   });
 
   test("applies Anthropic reasoning options on every request path", () => {
-    expect(providerRuntimeSource.match(/applyAnthropicReasoningOptions\(/g)).toHaveLength(3);
+    expect(providerRuntimeSource.match(/applyAnthropicReasoningOptions\(/g)).toHaveLength(4);
   });
 
   test("uses model-aware Gemini thinking configuration", () => {
