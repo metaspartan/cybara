@@ -48,8 +48,12 @@ describe("provider retry policy", () => {
     expect(boundedPoolRetryDelayMs(3_000, 1_250)).toBe(3_000);
   });
 
-  test("gives Kimi coding sessions a longer bounded transient recovery budget", () => {
+  test("gives subscription coding sessions a longer bounded transient recovery budget", () => {
     expect(resolveProviderRetryPolicy("kimi-code-oauth")).toEqual({
+      maxRetries: 5,
+      maxDelayMs: 180_000,
+    });
+    expect(resolveProviderRetryPolicy("openai-codex")).toEqual({
       maxRetries: 5,
       maxDelayMs: 180_000,
     });

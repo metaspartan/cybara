@@ -1478,7 +1478,7 @@ describe("Agent provider Google and compatible routing", () => {
 
     expect(result.content).toBe("");
     expect(result.failure).toEqual({ category: "rate_limit", retryable: true });
-    expect(calls).toBe(4);
+    expect(calls).toBe(6);
     const availability = getProviderAvailability(provider.id);
     expect(availability.inCooldown).toBe(true);
     expect(availability.available).toBe(false);

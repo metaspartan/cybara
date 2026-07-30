@@ -17,11 +17,17 @@ const KIMI_PROVIDER_RETRY_POLICY: ProviderRetryPolicy = {
   maxDelayMs: 180_000,
 };
 
+const OPENAI_CODEX_PROVIDER_RETRY_POLICY: ProviderRetryPolicy = {
+  maxRetries: 5,
+  maxDelayMs: 180_000,
+};
+
 export function resolveProviderRetryPolicy(providerType?: string): ProviderRetryPolicy {
   const normalized = providerType?.trim().toLowerCase() || "";
   if (normalized === "kimi-code" || normalized === "kimi-code-oauth") {
     return KIMI_PROVIDER_RETRY_POLICY;
   }
+  if (normalized === "openai-codex") return OPENAI_CODEX_PROVIDER_RETRY_POLICY;
   return DEFAULT_PROVIDER_RETRY_POLICY;
 }
 
