@@ -24,6 +24,103 @@ afterEach(() => {
 });
 
 describe("Agent provider Google and compatible routing", () => {
+  test("keeps a generic live status active while an NVIDIA request retries", async () => {
+    const sessionId = `nvidia-retry-${crypto.randomUUID()}`;
+    const statuses: string[] = [];
+    const unsubscribe = onStatus((payload) => {
+      if (payload.sessionId === sessionId && payload.status === "generating") {
+        statuses.push(payload.detail || "");
+      }
+    });
+    let requestCount = 0;
+    globalThis.fetch = (async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response("temporarily unavailable", {
+          status: 503,
+          headers: { "Retry-After-Ms": "1" },
+        });
+      }
+      return Response.json({
+        id: "nvidia-retry-response",
+        object: "chat.completion",
+        model: "z-ai/glm-5.2",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "Recovered." },
+          },
+        ],
+        usage: { prompt_tokens: 4, completion_tokens: 1, total_tokens: 5 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "nvidia",
+      name: "NVIDIA Retry Status Provider",
+      api_key: "nvidia-retry-key",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "NVIDIA Retry Status Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "z-ai/glm-5.2",
+    });
+    createdAgentIds.push(agent.id);
+
+    try {
+      const result = await agentManager.execute(
+        agent.id,
+        [{ role: "user", content: "Respond after retrying." }],
+        { useTools: false, sessionId }
+      );
+
+      expect(result.content).toBe("Recovered.");
+      expect(requestCount).toBe(2);
+      expect(statuses).toEqual(["Generating response...", "Generating response..."]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  test("counts an exhausted NVIDIA retry batch as one circuit failure", async () => {
+    let requestCount = 0;
+    globalThis.fetch = (async () => {
+      requestCount += 1;
+      return new Response("rate limit reached", {
+        status: 429,
+        headers: { "Retry-After-Ms": "0" },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "nvidia",
+      name: "NVIDIA Logical Failure Provider",
+      api_key: "nvidia-logical-failure-key",
+    });
+    createdProviderIds.push(provider.id);
+    const credentialedProvider = providerManager.getWithCredentials(provider.id);
+    expect(credentialedProvider).toBeDefined();
+    if (!credentialedProvider) throw new Error("Expected credentialed NVIDIA provider");
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(
+        agentManager.callLLM(
+          credentialedProvider,
+          "z-ai/glm-5.2",
+          [{ role: "user", content: "Return a response." }],
+          [],
+          { sessionId: `nvidia-logical-failure-${attempt}` }
+        )
+      ).rejects.toThrow("rate limit reached");
+    }
+
+    expect(requestCount).toBe(8);
+    expect(getProviderAvailability(provider.id).circuitOpen).toBe(false);
+  });
+
   test("keeps MiniMax M3 thinking and tool choice valid through a complete tool loop", async () => {
     config.set("tool_approval_mode", "always_allow");
     const requestBodies: Record<string, unknown>[] = [];

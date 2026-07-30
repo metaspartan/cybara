@@ -62,7 +62,7 @@ import {
   providerManager,
 } from "./providers";
 import { recordRateLimit } from "./rate-limit-tracker";
-import { recordRateLimit as recordRouterRateLimit } from "./router";
+import { recordProviderFailure, recordProviderSuccess, setProviderCooldown } from "./router";
 import {
   type AgentStatus,
   broadcastStatus,
@@ -362,6 +362,15 @@ export abstract class AgentProviderCommonRuntime {
   ): void {
     const sessionId = streamContext?.sessionId?.trim() || "unscoped";
     console.warn(`[Agent] ${detail} [session=${sessionId}]`);
+    if (sessionId !== "unscoped") {
+      broadcastStatus({
+        status: "generating",
+        timestamp: Date.now(),
+        detail: "Generating response...",
+        sessionId,
+        agentId: streamContext?.agentId || undefined,
+      });
+    }
   }
 
   protected recordHttpRateLimit(
@@ -379,7 +388,7 @@ export abstract class AgentProviderCommonRuntime {
     for (const key of keys) {
       try {
         recordRateLimit(key, headers);
-        recordRouterRateLimit(key, retryAfterMs);
+        setProviderCooldown(key, Math.max(retryAfterMs, 10_000));
       } catch {
         continue;
       }
@@ -434,6 +443,10 @@ export abstract class AgentProviderCommonRuntime {
       provider && typeof provider === "object" && "provider" in provider
         ? String((provider as { provider?: unknown }).provider || "")
         : "";
+    const providerId =
+      provider && typeof provider === "object" && "id" in provider
+        ? String((provider as { id?: unknown }).id || "").trim()
+        : "";
     const hookContext = this.buildHookContext(providerName || undefined, model, toolContext);
 
     await emitAgentHook({
@@ -475,6 +488,7 @@ export abstract class AgentProviderCommonRuntime {
         toolNames: (sanitizedResult.tool_calls || []).map((toolCall) => toolCall.name),
         durationMs,
       });
+      if (providerId) recordProviderSuccess(providerId);
       return sanitizedResult;
     } catch (error) {
       await emitAgentHook({
@@ -483,6 +497,10 @@ export abstract class AgentProviderCommonRuntime {
         error: this.normalizeErrorMessage(error),
         durationMs: Math.round(performance.now() - startedAt),
       });
+      if (providerId) {
+        if (classifyApiError({ error }).retryable) recordProviderFailure(providerId);
+        else recordProviderSuccess(providerId);
+      }
       throw error;
     }
   }

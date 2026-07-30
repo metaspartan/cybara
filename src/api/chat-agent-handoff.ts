@@ -74,7 +74,6 @@ export function buildAgentHandoffInstruction(
       : "";
   return [
     `Some earlier assistant turns in this conversation were written by other agents: ${roster}.`,
-    `Those turns start with an author tag like "${AGENT_ATTRIBUTION_PREFIX_EXAMPLE}" so you can tell who wrote what. Untagged assistant turns are your own. Never write that tag yourself.`,
     latestLine,
     "You are the active agent now and you inherited that work as shared context.",
     "Build on it and treat its decisions as already made. Do not claim you personally produced it, do not re-introduce yourself, and do not redo or re-plan work that is already complete.",
@@ -84,8 +83,6 @@ export function buildAgentHandoffInstruction(
     .join("\n");
 }
 
-export const AGENT_ATTRIBUTION_PREFIX_EXAMPLE = "[written by Mini (MiniMax-M3)]";
-
 const ATTRIBUTION_TAG_PATTERN = /^\s*\[written by [^\]\n]{1,120}\]\s*\n?/;
 
 export function stripAgentAttributionTag(content: string): string {
@@ -94,24 +91,4 @@ export function stripAgentAttributionTag(content: string): string {
     stripped = stripped.replace(ATTRIBUTION_TAG_PATTERN, "");
   }
   return stripped;
-}
-
-export function agentAttributionPrefix(message: AgentHandoffMessage): string | undefined {
-  const agentName = normalized(message.agent_name);
-  if (!agentName) return undefined;
-  const model = normalized(message.model);
-  return model ? `[written by ${agentName} (${model})]` : `[written by ${agentName}]`;
-}
-
-export function attributeInheritedAssistantContent(
-  message: AgentHandoffMessage & { content: string },
-  activeAgentId?: string
-): string {
-  if (message.role !== "assistant") return message.content;
-  const content = stripAgentAttributionTag(message.content);
-  const activeId = normalized(activeAgentId);
-  const agentId = normalized(message.agent_id);
-  if (!activeId || !agentId || agentId === activeId) return content;
-  const prefix = agentAttributionPrefix(message);
-  return prefix ? `${prefix}\n${content}` : content;
 }

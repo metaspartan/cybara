@@ -60,12 +60,7 @@ import {
   isSessionStatusActive,
   type PendingChatMessageSnapshot,
 } from "../core/status";
-import {
-  checkCircuit,
-  checkRateLimit,
-  recordCircuitFailure,
-  recordCircuitSuccess,
-} from "../core/tools/index";
+import { checkRateLimit, recordCircuitFailure, recordCircuitSuccess } from "../core/tools/index";
 import { resolveAgentToolPolicy } from "../core/toolsets";
 import { stripAgentAttributionTag } from "./chat-agent-handoff";
 import {
@@ -1463,7 +1458,11 @@ async function handleChatTurn(
   let responseContent: string;
   let executionModelMetadata: SessionModelMetadata | null = null;
   let executionFailure: AgentExecutionFailure | undefined;
-  const thinkingContent: string = "";
+  const thinkingParts: string[] = [];
+  const appendThinking = (value?: string): void => {
+    const normalized = sanitizeProcessThoughtText(value || "");
+    if (normalized && thinkingParts.at(-1) !== normalized) thinkingParts.push(normalized);
+  };
   const allToolCalls: ToolCallInfo[] = [];
   const agentTransfers: AgentTransferEnvelope[] = [];
 
@@ -1471,11 +1470,6 @@ async function handleChatTurn(
     responseContent = imageRoutingError;
   } else if (provider && agent) {
     try {
-      const circuit = checkCircuit(`llm:${provider.id}`);
-      if (!circuit.allowed) {
-        throw new Error(`LLM circuit breaker open for provider ${provider.id}`);
-      }
-
       const capabilityMentions = await resolveChatCapabilityMentions(
         message,
         session.workspaceDir || undefined
@@ -1528,6 +1522,7 @@ async function handleChatTurn(
         requireToolUse: shouldRequireToolUse,
         requiredToolName,
       });
+      appendThinking(result.thinking);
       executionModelMetadata = executionMetadataFromResult(result);
       executionFailure = result.failure;
       let toolResults = result.tool_calls || [];
@@ -1577,15 +1572,6 @@ async function handleChatTurn(
           };
           break;
         }
-        const targetCircuit = checkCircuit(`llm:${provider.id}`);
-        if (!targetCircuit.allowed) {
-          result = {
-            ...result,
-            content: `${targetAgent.name} is temporarily unavailable. Choose another agent to continue.`,
-          };
-          break;
-        }
-
         activeModelOverride = undefined;
         activeSupportsImages = agentSupportsImages(targetAgent);
         allowedToolNames = tools
@@ -1628,6 +1614,7 @@ async function handleChatTurn(
           requireToolUse: shouldRequireToolUse,
           requiredToolName,
         });
+        appendThinking(result.thinking);
         executionModelMetadata = executionMetadataFromResult(result);
         executionFailure = result.failure;
         toolResults.push(...(result.tool_calls || []));
@@ -1656,6 +1643,7 @@ async function handleChatTurn(
         }
         if (recoveredResponse.result) {
           result = recoveredResponse.result;
+          appendThinking(recoveredResponse.result.thinking);
           executionModelMetadata = executionMetadataFromResult(recoveredResponse.result);
         }
         responseContent = recoveredResponse.responseContent;
@@ -1705,6 +1693,7 @@ async function handleChatTurn(
           abortSignal: turnAbortController.signal,
           agentId: agent.id,
           channel,
+          executionFailure,
           maxOutputTokens: request.maxOutputTokens,
           message,
           model: agent.model,
@@ -1719,7 +1708,7 @@ async function handleChatTurn(
       }
 
       if (provider) {
-        if (executionFailure) recordCircuitFailure(`llm:${provider.id}`);
+        if (executionFailure?.retryable) recordCircuitFailure(`llm:${provider.id}`);
         else recordCircuitSuccess(`llm:${provider.id}`);
       }
       log.info("LLM response received", {
@@ -1730,13 +1719,16 @@ async function handleChatTurn(
       if (isChatTurnInterrupted(error, turnAbortController.signal)) {
         return await finishAbortedTurn(agent);
       }
-      if (provider) recordCircuitFailure(`llm:${provider.id}`);
       log.error("LLM API error", {
         sessionId: session.id,
         error: (error as Error).message,
       });
       const normalizedFailure = normalizeAgentExecutionFailure(error);
       executionFailure = normalizedFailure.failure;
+      if (provider) {
+        if (normalizedFailure.failure.retryable) recordCircuitFailure(`llm:${provider.id}`);
+        else recordCircuitSuccess(`llm:${provider.id}`);
+      }
       responseContent = normalizedFailure.content;
     } finally {
       clearActiveChatTurnAbortController(session.id, turnAbortController);
@@ -1766,7 +1758,9 @@ async function handleChatTurn(
   const { content: extractedContent, thinking: extractedThinking } =
     stripThinkingTags(responseContent);
   const cleanContent = stripAgentAttributionTag(sanitizeAssistantContent(extractedContent));
-  const finalThinking = sanitizeProcessThoughtText(thinkingContent || extractedThinking);
+  const finalThinking = sanitizeProcessThoughtText(
+    thinkingParts.length > 0 ? thinkingParts.join("\n\n") : extractedThinking
+  );
 
   await maybeSaveAutomaticMemory({
     message,

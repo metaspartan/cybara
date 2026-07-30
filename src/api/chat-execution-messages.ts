@@ -1,8 +1,5 @@
 import { type AgentMessage } from "../core/agent";
-import {
-  attributeInheritedAssistantContent,
-  buildAgentHandoffInstruction,
-} from "./chat-agent-handoff";
+import { buildAgentHandoffInstruction, stripAgentAttributionTag } from "./chat-agent-handoff";
 import { truncateToolResultContentForContext } from "../core/agent-context-guard";
 import {
   compactChatContentForPrompt,
@@ -45,12 +42,8 @@ export function buildChatExecutionMessagesForAgent(
     : buildAgentHandoffInstruction(sessionMessages, options?.activeAgentId);
   const executionMessages: AgentMessage[] = executionSource.flatMap((sessionMessage) => {
     const compacted = compactChatContentForPrompt(sessionMessage);
-    const content = handoffInstruction
-      ? attributeInheritedAssistantContent(
-          { ...sessionMessage, content: compacted },
-          options?.activeAgentId
-        )
-      : compacted;
+    const content =
+      sessionMessage.role === "assistant" ? stripAgentAttributionTag(compacted) : compacted;
     const imageContext = sessionMessage.image_context?.trim();
     const message: AgentMessage = {
       role: sessionMessage.role,

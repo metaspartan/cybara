@@ -3,11 +3,17 @@ import { deleteSession, handleChat } from "../../src/api/chat";
 import { agentManager } from "../../src/core/agent";
 import { providerManager } from "../../src/core/providers";
 import { loadPersistedSession } from "../../src/core/session-context";
+import {
+  getCircuitState,
+  recordCircuitFailure,
+  recordCircuitSuccess,
+} from "../../src/core/tools/index";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
 const createdSessionIds: string[] = [];
 const originalExecute = agentManager.execute.bind(agentManager);
+const originalCallLLM = agentManager.callLLM.bind(agentManager);
 
 function createTestAgent(name: string, type: "main" | "planner" = "main"): string {
   const provider = providerManager.create({
@@ -30,12 +36,69 @@ function createTestAgent(name: string, type: "main" | "planner" = "main"): strin
 
 afterEach(async () => {
   agentManager.execute = originalExecute;
+  agentManager.callLLM = originalCallLLM;
   for (const sessionId of createdSessionIds.splice(0)) await deleteSession(sessionId);
   for (const agentId of createdAgentIds.splice(0)) agentManager.delete(agentId);
   for (const providerId of createdProviderIds.splice(0)) providerManager.delete(providerId);
 });
 
 describe("chat response recovery", () => {
+  test("persists reasoning returned separately from assistant content", async () => {
+    const agentId = createTestAgent("Separate Reasoning Agent");
+    const sessionId = `separate-reasoning-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+
+    agentManager.execute = (async () => ({
+      content: "The workspace is ready.",
+      thinking: "I inspected the provider response before answering.",
+    })) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Check the workspace.",
+      agentId,
+      sessionId,
+      tools: false,
+    });
+
+    expect(result.message.thinking).toBe("I inspected the provider response before answering.");
+    expect(result.thinking).toBe("I inspected the provider response before answering.");
+    expect((await loadPersistedSession(sessionId))?.messages.at(-1)?.thinking).toBe(
+      "I inspected the provider response before answering."
+    );
+  });
+
+  test("attempts an interactive turn even when provider health telemetry is open", async () => {
+    const agentId = createTestAgent("Recovered Provider Agent");
+    const providerId = agentManager.get(agentId)?.provider_id;
+    expect(typeof providerId).toBe("string");
+    const circuitKey = `llm:${providerId}`;
+    const sessionId = `open-provider-health-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    for (let index = 0; index < 5; index += 1) recordCircuitFailure(circuitKey);
+    expect(getCircuitState(circuitKey)?.state).toBe("open");
+    let callCount = 0;
+
+    agentManager.execute = (async () => {
+      callCount += 1;
+      return { content: "The provider recovered and answered this turn." };
+    }) as typeof agentManager.execute;
+
+    try {
+      const result = await handleChat({
+        message: "Try the provider again.",
+        agentId,
+        sessionId,
+        tools: false,
+      });
+
+      expect(callCount).toBe(1);
+      expect(result.message.content).toBe("The provider recovered and answered this turn.");
+      expect(getCircuitState(circuitKey)).toBeUndefined();
+    } finally {
+      recordCircuitSuccess(circuitKey);
+    }
+  });
+
   test("does not persist a transient provider failure as an assistant answer", async () => {
     const agentId = createTestAgent("Transient Provider Failure Agent");
     const sessionId = `transient-provider-failure-${crypto.randomUUID()}`;
@@ -77,6 +140,13 @@ describe("chat response recovery", () => {
         },
       ],
     })) as typeof agentManager.execute;
+    let synthesisCalls = 0;
+    agentManager.callLLM = (async (_provider, _model, messages) => {
+      if (messages.some((message) => message.content.includes("Tools completed:"))) {
+        synthesisCalls += 1;
+      }
+      return { content: "This redundant synthesis should not run." };
+    }) as typeof agentManager.callLLM;
 
     const result = await handleChat({
       message: "inspect the project",
@@ -89,7 +159,9 @@ describe("chat response recovery", () => {
     expect(result.failure).toEqual({ category: "overloaded", retryable: true });
     expect(result.message.interrupted).toBe(true);
     expect(result.message.content).not.toContain("overloaded");
+    expect(result.message.content).toContain("Completed 1 tool call");
     expect(result.message.tool_calls).toHaveLength(1);
+    expect(synthesisCalls).toBe(0);
     expect((await loadPersistedSession(sessionId))?.messages.at(-1)).toMatchObject({
       role: "assistant",
       interrupted: true,
