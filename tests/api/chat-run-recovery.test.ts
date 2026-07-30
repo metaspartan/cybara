@@ -181,4 +181,43 @@ describe("chat run recovery", () => {
       expect.objectContaining({ text: "Turn interrupted when the gateway stopped." })
     );
   });
+
+  test("does not duplicate an untagged durable assistant response", async () => {
+    const { sessionId, agentId } = createSession("completed-durable-run");
+    const timestamp = Date.now();
+    broadcastStatus({
+      status: "generating",
+      timestamp,
+      detail: "Generating response...",
+      sessionId,
+      agentId,
+    });
+    const assistantTimestamp = Date.now();
+    await upsertPersistedSessionMessage(
+      sessionId,
+      agentId,
+      {
+        role: "assistant",
+        content: "Completed successfully.",
+        timestamp: new Date(assistantTimestamp).toISOString(),
+      },
+      { stableKey: "durable-assistant-without-ledger-event" }
+    );
+    await Bun.sleep(2);
+    broadcastStatus({ status: "idle", timestamp: Date.now(), sessionId, agentId });
+
+    const persisted = await loadPersistedSession(sessionId);
+    const recovered = await recoverInterruptedSessionMessages(
+      sessionId,
+      agentId,
+      persisted?.messages || []
+    );
+
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toMatchObject({
+      role: "assistant",
+      content: "Completed successfully.",
+    });
+    expect(recovered[0]?.interrupted).toBeUndefined();
+  });
 });

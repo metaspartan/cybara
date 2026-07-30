@@ -186,6 +186,24 @@ function completedEmptyRunEvents(
   });
 }
 
+function hasDurableAssistantWithinRun(
+  messages: ChatMessage[],
+  events: SessionLedgerEvent[]
+): boolean {
+  const startedAt = events
+    .filter((event) => event.type === "run_started")
+    .reduce((earliest, event) => Math.min(earliest, eventTimestamp(event)), Infinity);
+  const completedAt = events
+    .filter((event) => event.type === "run_completed")
+    .reduce((latest, event) => Math.max(latest, eventTimestamp(event)), 0);
+  if (!Number.isFinite(startedAt) || completedAt < startedAt) return false;
+  return messages.some((message) => {
+    if (message.role !== "assistant") return false;
+    const timestamp = messageTimestamp(message);
+    return timestamp >= startedAt && timestamp <= completedAt;
+  });
+}
+
 export async function recoverInterruptedSessionMessages(
   sessionId: string,
   agentId: string,
@@ -216,7 +234,14 @@ export async function recoverInterruptedSessionMessages(
 
   for (const events of completedEmptyRunEvents(eventCache)) {
     const runId = events[0]?.runId;
-    if (!runId || runId === activeRunId || representedRunIds.has(runId)) continue;
+    if (
+      !runId ||
+      runId === activeRunId ||
+      representedRunIds.has(runId) ||
+      hasDurableAssistantWithinRun(hydrated, events)
+    ) {
+      continue;
+    }
     const timestamp = new Date(
       events.reduce((latest, event) => Math.max(latest, eventTimestamp(event)), 0) || Date.now()
     ).toISOString();
