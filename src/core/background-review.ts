@@ -23,6 +23,7 @@ export interface BackgroundReviewOptions {
   minIntervalMs?: number;
   timeoutSeconds?: number;
   disabled?: boolean;
+  spawn?: typeof handleSessionsSpawn;
 }
 
 function looksReviewable(lastAssistantText: string): boolean {
@@ -72,11 +73,15 @@ export async function maybeRunBackgroundReview(
   if (!release) return;
 
   try {
-    await handleSessionsSpawn(
+    const agentId = resolveBackgroundAgentId(context.agentId);
+    const model = agentId === context.agentId ? context.activeModel : undefined;
+    const spawn = options.spawn ?? handleSessionsSpawn;
+    await spawn(
       {
         task: prompt,
         label: "background-memory-review",
-        agentId: resolveBackgroundAgentId(context.agentId),
+        agentId,
+        model,
         _requesterSessionKey: context.sessionId,
         workspaceDir: context.workspaceDir,
         runTimeoutSeconds: options.timeoutSeconds ?? DEFAULT_REVIEW_TIMEOUT_S,
