@@ -5,6 +5,10 @@ import {
   sanitizeAssistantContent,
   stripTextToolCallMarkup,
 } from "../../src/core/llm/text-tool-calls";
+import {
+  MESSAGE_CONTENT_COMPACTION_NOTICE,
+  TOOL_RESULT_COMPACTION_NOTICE,
+} from "../../src/core/llm/tool-transcript";
 
 describe("text-form tool call parsing", () => {
   test("removes provider reply directives from final assistant text", () => {
@@ -18,6 +22,16 @@ describe("text-form tool call parsing", () => {
     expect(sanitizeAssistantContent("[[ reply_to: message-42 ]] Answer starts here.")).toBe(
       "Answer starts here."
     );
+  });
+
+  test("never exposes internal context compaction notices as assistant text", () => {
+    expect(sanitizeAssistantContent(MESSAGE_CONTENT_COMPACTION_NOTICE)).toBe("");
+    expect(sanitizeAssistantContent(TOOL_RESULT_COMPACTION_NOTICE)).toBe("");
+    expect(
+      sanitizeAssistantContent(
+        `${MESSAGE_CONTENT_COMPACTION_NOTICE}\n\nContinued with the preserved context.`
+      )
+    ).toBe("Continued with the preserved context.");
   });
 
   test("repairs unterminated fenced blocks in completed assistant text", () => {

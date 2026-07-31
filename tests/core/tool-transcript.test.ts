@@ -1,12 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import {
-  MESSAGE_CONTENT_COMPACTION_NOTICE,
-  TOOL_RESULT_COMPACTION_NOTICE,
   compactOpenAIChatTranscriptInPlace,
+  isContextCompactionOnlyContent,
   isContextOverflowError,
+  MESSAGE_CONTENT_COMPACTION_NOTICE,
+  stripContextCompactionNotices,
+  TOOL_RESULT_COMPACTION_NOTICE,
 } from "../../src/core/llm/tool-transcript";
 
 describe("LLM tool transcript compaction", () => {
+  test("recognizes and removes internal-only compaction responses", () => {
+    expect(isContextCompactionOnlyContent(MESSAGE_CONTENT_COMPACTION_NOTICE)).toBe(true);
+    expect(isContextCompactionOnlyContent(TOOL_RESULT_COMPACTION_NOTICE)).toBe(true);
+    expect(
+      isContextCompactionOnlyContent(
+        `${MESSAGE_CONTENT_COMPACTION_NOTICE}\nContinued with the task.`
+      )
+    ).toBe(false);
+    expect(
+      stripContextCompactionNotices(
+        `${MESSAGE_CONTENT_COMPACTION_NOTICE}\n\nContinued with the task.`
+      )
+    ).toBe("Continued with the task.");
+  });
+
   test("recognizes xAI prompt-length overflow errors", () => {
     expect(
       isContextOverflowError(

@@ -1,14 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { deleteSession, handleChat } from "../../src/api/chat";
 import { agentManager } from "../../src/core/agent";
+import { MESSAGE_CONTENT_COMPACTION_NOTICE } from "../../src/core/llm/tool-transcript";
 import { providerManager } from "../../src/core/providers";
 import { loadPersistedSession } from "../../src/core/session-context";
+import { listAllRunEvents } from "../../src/core/session-event-ledger";
 import {
   getCircuitState,
   recordCircuitFailure,
   recordCircuitSuccess,
 } from "../../src/core/tools/index";
-import { listAllRunEvents } from "../../src/core/session-event-ledger";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -731,5 +732,54 @@ describe("chat response recovery", () => {
     expect(result.message.content).toContain("Which data source should I use?");
     expect(result.message.content).toContain("**API**");
     expect(result.message.content).not.toBe("Asked.");
+  });
+
+  test("continues after a provider echoes an internal compaction marker", async () => {
+    const agentId = createTestAgent("Compaction Continuation Agent");
+    const sessionId = `compaction-continuation-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const executionMessages: Array<Array<{ role: string; content: string }>> = [];
+    let callCount = 0;
+
+    agentManager.execute = (async (_agentId, messages) => {
+      callCount += 1;
+      executionMessages.push(messages.map(({ role, content }) => ({ role, content })));
+      if (callCount === 1) {
+        return {
+          content: MESSAGE_CONTENT_COMPACTION_NOTICE,
+          tool_calls: [
+            {
+              name: "read",
+              args: { path: "/tmp/project.json" },
+              result: { path: "/tmp/project.json", content: "ready" },
+            },
+          ],
+        };
+      }
+      return {
+        content: "Continued after compaction and verified the project state.",
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "continue",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(2);
+    expect(executionMessages[1]?.at(-1)?.content).toContain(
+      "Earlier context was compacted successfully"
+    );
+    expect(JSON.stringify(executionMessages[1])).not.toContain(MESSAGE_CONTENT_COMPACTION_NOTICE);
+    expect(result.message.content).toBe(
+      "Continued after compaction and verified the project state."
+    );
+    expect(result.message.content).not.toContain("[compacted:");
+    expect(result.message.tool_calls).toHaveLength(1);
+    expect((await loadPersistedSession(sessionId))?.messages.at(-1)?.content).toBe(
+      result.message.content
+    );
   });
 });

@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import { compactOpenAILoopMessagesForContext } from "../../src/core/agent-context-guard";
 import {
   isMidLoopContextCompactionDetail,
   measureContextCompaction,
   recordMidLoopContextCompaction,
 } from "../../src/core/llm/context-pressure";
-import { onStatus, reduceSessionStatusSnapshot } from "../../src/core/status";
+import {
+  broadcastStatus,
+  getSessionStatusSnapshot,
+  onStatus,
+  reduceSessionStatusSnapshot,
+} from "../../src/core/status";
 
 describe("mid-loop context pressure", () => {
   test("measures the token reduction from compacted transcript characters", () => {
@@ -58,5 +64,37 @@ describe("mid-loop context pressure", () => {
       sessionId: "historical-context-pressure",
     });
     expect(snapshot?.activities).toEqual([]);
+  });
+
+  test("records automatic mid-loop compaction as a visible activity and continues thinking", () => {
+    const sessionId = `context-pressure-${crypto.randomUUID()}`;
+    const messages: Array<Record<string, unknown>> = [
+      { role: "system", content: "system" },
+      { role: "user", content: "inspect the project" },
+      { role: "assistant", content: "analysis ".repeat(500) },
+      { role: "tool", tool_call_id: "call-1", content: "result ".repeat(500) },
+      { role: "user", content: "continue" },
+      { role: "assistant", content: "recent" },
+      { role: "user", content: "keep going" },
+    ];
+
+    expect(
+      compactOpenAILoopMessagesForContext(messages, 800, false, {
+        model: "kimi-k3",
+        toolContext: { agentId: "agent-kimi", sessionId },
+      })
+    ).toBe(true);
+
+    const snapshot = getSessionStatusSnapshot(sessionId);
+    expect(snapshot?.status).toBe("thinking");
+    expect(snapshot?.activities).toContainEqual(
+      expect.objectContaining({
+        phase: "result",
+        text: "Context automatically compacted",
+        toolName: "__thought",
+      })
+    );
+
+    broadcastStatus({ status: "idle", sessionId, timestamp: Date.now() });
   });
 });
