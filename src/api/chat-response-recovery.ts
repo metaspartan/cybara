@@ -1,6 +1,7 @@
 import { type AgentExecutionResult, type AgentMessage, agentManager } from "../core/agent";
 import type { AgentToolCallResult } from "../core/agent-internals";
 import { sanitizeAssistantContent } from "../core/llm/text-tool-calls";
+import { isContextCompactionOnlyContent } from "../core/llm/tool-transcript";
 import { stripThinkingTags } from "./chat-formatting";
 import {
   buildNoUsableAssistantResponseMessage,
@@ -44,8 +45,12 @@ function visibleAssistantContent(content: string): string {
 function buildRetryInstruction(
   shouldRetryToolExecution: boolean,
   requiredToolName: string | undefined,
-  evidenceIssue: ReturnType<typeof findAssistantEvidenceIssue>
+  evidenceIssue: ReturnType<typeof findAssistantEvidenceIssue>,
+  compactionOnly: boolean
 ): string {
+  if (compactionOnly) {
+    return "Earlier context was compacted successfully. Continue the current task from the preserved context and tool results, then give the user a substantive response. Do not repeat an internal compaction marker.";
+  }
   if (evidenceIssue === "missing_clarification") {
     return "Your previous response said a question was asked, but no question was visible. Ask the actual concise question directly now, or use the clarify tool with the complete question and options. Do not say that you asked without including the question.";
   }
@@ -93,6 +98,7 @@ function appendRecoveryPrompt(
 export async function recoverAssistantResponse(
   params: AssistantResponseRecoveryParams
 ): Promise<AssistantResponseRecoveryResult> {
+  const initialCompactionOnly = isContextCompactionOnlyContent(params.responseContent);
   const successfulToolResults = params.toolResults.filter(isSuccessfulToolCall);
   const requireActionEvidence =
     params.toolsEnabled === true &&
@@ -103,11 +109,12 @@ export async function recoverAssistantResponse(
     : requireActionEvidence
       ? params.toolResults.some(isEvidenceToolCall)
       : successfulToolResults.length > 0;
-  const shouldRecoverCompletion = shouldRecoverNonSubstantiveAssistantCompletion(
-    params.userMessage,
-    visibleAssistantContent(params.responseContent),
-    successfulToolResults.length
-  );
+  const shouldRecoverCompletion =
+    shouldRecoverNonSubstantiveAssistantCompletion(
+      params.userMessage,
+      visibleAssistantContent(params.responseContent),
+      successfulToolResults.length
+    ) || initialCompactionOnly;
   const evidenceIssue = findAssistantEvidenceIssue(
     visibleAssistantContent(params.responseContent),
     params.toolResults,
@@ -134,6 +141,7 @@ export async function recoverAssistantResponse(
 
   const retryMessages = [...params.executionMessages];
   let latestContent = params.responseContent;
+  let latestCompactionOnly = initialCompactionOnly;
   let latestEvidenceIssue = evidenceIssue;
   let combinedToolCalls = [...params.toolResults];
   let lastError: string | undefined;
@@ -141,8 +149,13 @@ export async function recoverAssistantResponse(
   for (let attempt = 0; attempt < MAX_RESPONSE_RECOVERY_ATTEMPTS; attempt += 1) {
     appendRecoveryPrompt(
       retryMessages,
-      latestContent,
-      buildRetryInstruction(shouldRetryToolExecution, params.requiredToolName, latestEvidenceIssue)
+      visibleAssistantContent(latestContent),
+      buildRetryInstruction(
+        shouldRetryToolExecution,
+        params.requiredToolName,
+        latestEvidenceIssue,
+        latestCompactionOnly
+      )
     );
 
     try {
@@ -153,6 +166,7 @@ export async function recoverAssistantResponse(
         requiredToolName: shouldRetryToolExecution ? params.requiredToolName : undefined,
       });
       latestContent = retryResult.content;
+      latestCompactionOnly = isContextCompactionOnlyContent(latestContent);
       combinedToolCalls = [...combinedToolCalls, ...(retryResult.tool_calls || [])];
       const successfulCombinedToolCalls = combinedToolCalls.filter(isSuccessfulToolCall);
       const retryHasRequiredToolCall = params.requiredToolName
@@ -160,11 +174,13 @@ export async function recoverAssistantResponse(
         : requireActionEvidence
           ? combinedToolCalls.some(isEvidenceToolCall)
           : successfulCombinedToolCalls.length > 0;
-      const retryIsSubstantive = !shouldRecoverNonSubstantiveAssistantCompletion(
-        params.userMessage,
-        visibleAssistantContent(latestContent),
-        successfulCombinedToolCalls.length
-      );
+      const retryIsSubstantive =
+        !latestCompactionOnly &&
+        !shouldRecoverNonSubstantiveAssistantCompletion(
+          params.userMessage,
+          visibleAssistantContent(latestContent),
+          successfulCombinedToolCalls.length
+        );
       latestEvidenceIssue = findAssistantEvidenceIssue(
         visibleAssistantContent(latestContent),
         combinedToolCalls,

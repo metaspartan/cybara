@@ -1466,7 +1466,7 @@ async function handleChatTurn(
           sessionId: session.id,
           agentId: agent.id,
           timestamp: Date.now(),
-          detail: `Context compacted · ${Math.max(0, tokensBefore - tokensAfter).toLocaleString()} tokens freed`,
+          detail: "Context automatically compacted",
         });
       }
     }

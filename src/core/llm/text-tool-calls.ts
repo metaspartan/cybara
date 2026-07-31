@@ -1,3 +1,5 @@
+import { stripContextCompactionNotices } from "./tool-transcript";
+
 export interface TextToolCall {
   name: string;
   args: Record<string, unknown>;
@@ -821,10 +823,11 @@ export function toAnthropicReplayContentWithNormalizedToolUses(
 
 export function sanitizeAssistantContent(content: string): string {
   const sanitized = closeUnterminatedMarkdownFence(
-    stripTextToolCallMarkup(content)
-      .replace(REPLY_DIRECTIVE_LINE_PATTERN, "")
-      .replace(REPLY_DIRECTIVE_INLINE_PATTERN, "$1")
-      .trim()
+    stripContextCompactionNotices(
+      stripTextToolCallMarkup(content)
+        .replace(REPLY_DIRECTIVE_LINE_PATTERN, "")
+        .replace(REPLY_DIRECTIVE_INLINE_PATTERN, "$1")
+    )
   );
   return sanitized === "[SILENT]" ? "" : sanitized;
 }

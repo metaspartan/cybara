@@ -3,6 +3,28 @@ export const TOOL_RESULT_COMPACTION_NOTICE =
 export const MESSAGE_CONTENT_COMPACTION_NOTICE =
   "[compacted: earlier message content elided to free context]";
 
+const CONTEXT_COMPACTION_NOTICES = [
+  TOOL_RESULT_COMPACTION_NOTICE,
+  MESSAGE_CONTENT_COMPACTION_NOTICE,
+] as const;
+
+export function stripContextCompactionNotices(content: string): string {
+  let sanitized = content;
+  for (const notice of CONTEXT_COMPACTION_NOTICES) {
+    sanitized = sanitized.replaceAll(notice, "");
+  }
+  return sanitized.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+export function isContextCompactionOnlyContent(content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed) return false;
+  return (
+    CONTEXT_COMPACTION_NOTICES.some((notice) => trimmed.includes(notice)) &&
+    stripContextCompactionNotices(trimmed).length === 0
+  );
+}
+
 export interface ToolResultFormat<T> {
   isToolResult: (item: T) => boolean;
   estimateChars: (item: T) => number;

@@ -1,4 +1,3 @@
-import { config } from "./config";
 import {
   CONTEXT_CHARS_PER_TOKEN_ESTIMATE,
   CONTEXT_INPUT_HEADROOM_RATIO,
@@ -7,12 +6,14 @@ import {
   MAX_TOOL_RESULT_CONTEXT_SHARE,
   MIN_TOOL_RESULT_CHARS,
 } from "./agent-internals";
+import { config } from "./config";
 import { recordMidLoopContextCompaction } from "./llm/context-pressure";
 import { formatToolResultForModel } from "./llm/model-visible-format";
 import {
   compactOpenAIChatTranscriptInPlace,
   TOOL_RESULT_COMPACTION_NOTICE,
 } from "./llm/tool-transcript";
+import { broadcastStatus } from "./status";
 import { formatRecoverableToolOutputPreview } from "./tool-output-recovery";
 import type { ToolContext } from "./tools";
 
@@ -24,6 +25,37 @@ export interface ContextGuardBudgets {
 interface CompactionContext {
   model?: string;
   toolContext?: ToolContext;
+}
+
+function recordContextCompaction(
+  beforeChars: number,
+  afterChars: number,
+  messageCount: number,
+  context?: CompactionContext
+): void {
+  const measurement = recordMidLoopContextCompaction({
+    beforeChars,
+    afterChars,
+    messageCount,
+    model: context?.model,
+    toolContext: context?.toolContext,
+  });
+  const toolContext = context?.toolContext;
+  if (!measurement || !toolContext?.sessionId || toolContext.suppressStreaming) return;
+  broadcastStatus({
+    status: "compacting",
+    sessionId: toolContext.sessionId,
+    agentId: toolContext.agentId,
+    timestamp: Date.now(),
+    detail: "Compacting earlier context...",
+  });
+  broadcastStatus({
+    status: "thinking",
+    sessionId: toolContext.sessionId,
+    agentId: toolContext.agentId,
+    timestamp: Date.now(),
+    detail: "Context automatically compacted",
+  });
 }
 
 export function resolveContextGuardBudgets(contextWindowTokens: number): ContextGuardBudgets {
@@ -139,13 +171,7 @@ export function compactAnthropicLoopMessagesForContext(
     totalChars = estimateAnthropicContextChars(messages);
   }
   if (compacted) {
-    recordMidLoopContextCompaction({
-      beforeChars,
-      afterChars: totalChars,
-      messageCount: messages.length,
-      model: context?.model,
-      toolContext: context?.toolContext,
-    });
+    recordContextCompaction(beforeChars, totalChars, messages.length, context);
   }
   return compacted;
 }
@@ -159,13 +185,7 @@ export function compactOpenAILoopMessagesForContext(
   const beforeChars = JSON.stringify(messages).length;
   const elided = compactOpenAIChatTranscriptInPlace(messages, contextBudgetChars, { aggressive });
   if (elided > 0) {
-    recordMidLoopContextCompaction({
-      beforeChars,
-      afterChars: JSON.stringify(messages).length,
-      messageCount: messages.length,
-      model: context?.model,
-      toolContext: context?.toolContext,
-    });
+    recordContextCompaction(beforeChars, JSON.stringify(messages).length, messages.length, context);
   }
   return elided > 0;
 }
