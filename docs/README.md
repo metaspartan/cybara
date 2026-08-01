@@ -160,7 +160,7 @@ Built-in integrations cover popular providers including OpenAI, Anthropic, Googl
 Router strategies include weighted, round-robin, lowest-cost, priority, and mixture-of-agents. Provider plan monitoring can track local usage against coding-plan presets, manual limits, rolling 5-hour/week windows, monthly budgets, and router enforcement.
 
 ### Source Migration
-Legacy agent imports are available through `cybara migrate`, `/api/migrations/*`, Web/Tauri settings, and the native macOS settings surface. Dry runs preview memories, skills, providers, speech settings, and opt-in secret imports before writing.
+Supported agent imports, including OpenCode, are available through `cybara migrate`, `/api/migrations/*`, Web/Tauri settings, mobile settings, and native macOS settings. Dry runs preview conversations, memories, instructions, skills, providers, speech settings, and opt-in API-key imports before writing.
 
 ### Speech
 Shared speech settings cover local, operating-system, and cloud voices, native and provider-backed transcription, and managed or full-duplex hands-free conversation across Web/Tauri, mobile, native macOS, and the speech tools.

@@ -16,6 +16,7 @@ const DYNAMIC_IMPORT_ALLOWLIST = new Set([
   "src/core/local-speech.ts",
   "src/core/browser/playwright-loader.ts",
   "src/core/agent.ts",
+  "src/core/source-migration.ts",
   "ui/src/lib/desktopHost.ts",
   "ui/src/lib/tauriPet.ts",
   "ui/src/pages/PetOverlay.tsx",

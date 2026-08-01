@@ -221,7 +221,7 @@ async function rawMigrate(args: string[]): Promise<void> {
       );
       if (source.exists) {
         console.log(
-          `        memory=${source.detected.memoryFiles} skills=${source.detected.skillCount} config=${source.detected.configFiles}`,
+          `        memory=${source.detected.memoryFiles} skills=${source.detected.skillCount} chats=${source.detected.sessionCount} config=${source.detected.configFiles}`,
         );
       }
     }

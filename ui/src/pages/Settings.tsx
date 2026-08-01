@@ -243,8 +243,8 @@ function MigrationSettingsSection() {
             Import legacy agent data
           </CardTitle>
           <CardDescription>
-            Preview settings, memories, skills, workspace instructions, and optional provider keys
-            before anything is written.
+            Preview chats, settings, memories, skills, workspace instructions, and optional provider
+            keys before anything is written.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -273,6 +273,9 @@ function MigrationSettingsSection() {
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-400">
                     <span>{source.detected.memoryFiles} memories</span>
                     <span>{source.detected.skillCount} skills</span>
+                    {source.detected.sessionCount > 0 && (
+                      <span>{source.detected.sessionCount} chats</span>
+                    )}
                     <span>{source.detected.configFiles} config files</span>
                   </div>
                 </button>
@@ -289,6 +292,7 @@ function MigrationSettingsSection() {
                 { value: "hermes", label: "Hermes" },
                 { value: "codex", label: "Codex" },
                 { value: "claude-code", label: "Claude Code" },
+                { value: "opencode", label: "OpenCode" },
               ]}
               onChange={(value) => setSourceKind(value as MigrationSourceKind)}
             />

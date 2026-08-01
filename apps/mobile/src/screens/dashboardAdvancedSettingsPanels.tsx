@@ -94,7 +94,7 @@ function migrationStatusColor(status: string): string {
 }
 
 function migrationSourceDetail(source: MigrationSourceCandidate): string {
-  return `${source.detected.memoryFiles} memories - ${source.detected.skillCount} skills - ${source.detected.configFiles} configs`;
+  return `${source.detected.memoryFiles} memories - ${source.detected.skillCount} skills - ${source.detected.sessionCount} chats - ${source.detected.configFiles} configs`;
 }
 
 export function MigrationSettingsPanel({
@@ -206,8 +206,8 @@ export function MigrationSettingsPanel({
           <Text style={styles.settingsInfoTitle}>Import legacy agent data</Text>
         </View>
         <Text style={styles.settingsInfoText}>
-          Preview settings, memories, skills, workspace instructions, and optional provider keys
-          before anything is written on the gateway.
+          Preview chats, settings, memories, skills, workspace instructions, and optional provider
+          keys before anything is written on the gateway.
         </Text>
         {loading ? (
           <LoadingState label="Detecting sources" detail="Checking common gateway host paths." />
@@ -254,6 +254,7 @@ export function MigrationSettingsPanel({
             { label: "Hermes", value: "hermes" },
             { label: "Codex", value: "codex" },
             { label: "Claude Code", value: "claude-code" },
+            { label: "OpenCode", value: "opencode" },
           ]}
           selected={sourceKind}
           tone={accentColor}

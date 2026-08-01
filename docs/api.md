@@ -1015,6 +1015,9 @@ POST /api/migrations/run
 Migration routes import supported legacy agent data. `preview` always runs as a dry run; `run`
 applies the selected preset. Request fields include `sourceKind`, `sourcePath`, `preset`,
 `migrateSecrets`, `overwrite`, `skillConflict`, and `workspaceTarget`.
+Use `GET /api/migrations/sources` to obtain the supported `sourceKind` values. Source discovery
+includes a `sessionCount`; OpenCode run reports contain one `session` item for each imported or
+conflicting conversation.
 
 ## Logs
 

@@ -292,7 +292,7 @@ extension NativeSettingsScreen {
                             }
                             .controlSize(.small)
                         }
-                        Text("Preview memories, skills, persona, workspace instructions, and optional provider keys before applying changes.")
+                        Text("Preview chats, memories, skills, persona, workspace instructions, and optional provider keys before applying changes.")
                             .font(.system(size: 11, design: .rounded))
                             .foregroundStyle(.secondary)
 
@@ -307,7 +307,7 @@ extension NativeSettingsScreen {
                                             VStack(alignment: .leading, spacing: 3) {
                                                 Text(source.label)
                                                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                                Text("\(source.detected.memoryFiles) memories, \(source.detected.skillCount) skills, \(source.detected.configFiles) config files")
+                                                Text("\(source.detected.memoryFiles) memories, \(source.detected.skillCount) skills, \(source.detected.sessionCount ?? 0) chats, \(source.detected.configFiles) config files")
                                                     .font(.system(size: 11, design: .rounded))
                                                     .foregroundStyle(.secondary)
                                                 Text(source.path)
@@ -335,6 +335,7 @@ extension NativeSettingsScreen {
                             Text("Hermes").tag("hermes")
                             Text("Codex").tag("codex")
                             Text("Claude Code").tag("claude-code")
+                            Text("OpenCode").tag("opencode")
                         }
                         .pickerStyle(.segmented)
 
