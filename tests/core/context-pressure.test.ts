@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { compactOpenAILoopMessagesForContext } from "../../src/core/agent-context-guard";
+import { tables } from "../../src/core/database";
 import {
   isMidLoopContextCompactionDetail,
   measureContextCompaction,
@@ -66,7 +67,7 @@ describe("mid-loop context pressure", () => {
     expect(snapshot?.activities).toEqual([]);
   });
 
-  test("records automatic mid-loop compaction as a visible activity and continues thinking", () => {
+  test("keeps repeated mid-loop pruning out of the visible conversation timeline", () => {
     const sessionId = `context-pressure-${crypto.randomUUID()}`;
     const messages: Array<Record<string, unknown>> = [
       { role: "system", content: "system" },
@@ -78,23 +79,45 @@ describe("mid-loop context pressure", () => {
       { role: "user", content: "keep going" },
     ];
 
-    expect(
-      compactOpenAILoopMessagesForContext(messages, 800, false, {
-        model: "kimi-k3",
-        toolContext: { agentId: "agent-kimi", sessionId },
-      })
-    ).toBe(true);
+    const context = {
+      model: "kimi-k3",
+      toolContext: { agentId: "agent-kimi", sessionId },
+    };
+    expect(compactOpenAILoopMessagesForContext(messages, 800, false, context)).toBe(true);
+    expect(compactOpenAILoopMessagesForContext(messages, 800, false, context)).toBe(false);
 
     const snapshot = getSessionStatusSnapshot(sessionId);
-    expect(snapshot?.status).toBe("thinking");
-    expect(snapshot?.activities).toContainEqual(
-      expect.objectContaining({
-        phase: "result",
-        text: "Context automatically compacted",
-        toolName: "__thought",
-      })
-    );
+    expect(snapshot).toBeNull();
+    expect(tables.metrics.getCount("tool_transcript_compaction", sessionId)).toBe(1);
+    expect(tables.metrics.getCount("context_compaction", sessionId)).toBe(0);
 
     broadcastStatus({ status: "idle", sessionId, timestamp: Date.now() });
+  });
+
+  test("stabilizes after pruning multi-million-token cumulative transcripts", () => {
+    const turns = 200;
+    const estimatedInputTokensPerTurn = 10_000;
+    const estimatedOutputTokensPerTurn = 5_000;
+    const messages: Array<Record<string, unknown>> = [{ role: "system", content: "system" }];
+    for (let index = 0; index < turns; index += 1) {
+      messages.push({ role: "user", content: `input-${index}-${"i".repeat(40_000)}` });
+      messages.push({
+        role: "assistant",
+        content: `work-${index}`,
+        tool_calls: [{ id: `call-${index}`, function: { name: "read", arguments: "{}" } }],
+      });
+      messages.push({
+        role: "tool",
+        tool_call_id: `call-${index}`,
+        content: `output-${index}-${"o".repeat(20_000)}`,
+      });
+    }
+
+    expect(turns * estimatedInputTokensPerTurn).toBe(2_000_000);
+    expect(turns * estimatedOutputTokensPerTurn).toBe(1_000_000);
+    expect(compactOpenAILoopMessagesForContext(messages, 400_000)).toBe(true);
+    const stable = JSON.stringify(messages);
+    expect(compactOpenAILoopMessagesForContext(messages, 400_000)).toBe(false);
+    expect(JSON.stringify(messages)).toBe(stable);
   });
 });

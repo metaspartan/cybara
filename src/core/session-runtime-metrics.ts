@@ -1,4 +1,5 @@
 import db from "./database";
+import { SESSION_SUMMARY_COMPACTION_PREDICATE } from "./metrics";
 
 export interface SessionRuntimeMetricsRow {
   sessionId: string;
@@ -206,6 +207,7 @@ function loadSessionRuntimeTotals(): SessionRuntimeMetricsTotals {
          SELECT key AS sessionId, COUNT(*) AS compactionCount, SUM(value) AS compactedTokens
          FROM metrics
          WHERE type = 'context_compaction'
+           AND ${SESSION_SUMMARY_COMPACTION_PREDICATE}
          GROUP BY key
        )
        SELECT
@@ -291,6 +293,7 @@ export function listSessionRuntimeMetrics(page = 1, pageSize = 25): SessionRunti
          FROM metrics
          JOIN selected ON selected.sessionId = metrics.key
          WHERE metrics.type = 'context_compaction'
+           AND ${SESSION_SUMMARY_COMPACTION_PREDICATE}
          GROUP BY metrics.key
        )
        SELECT

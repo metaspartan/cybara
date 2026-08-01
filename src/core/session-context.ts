@@ -9,6 +9,7 @@ import { compactChatContentForPrompt } from "./chat-token-optimization";
 import db, { tables } from "./database";
 import { sanitizeAssistantContent } from "./llm/text-tool-calls";
 import { createLogger } from "./logger";
+import { SESSION_SUMMARY_COMPACTION_PREDICATE } from "./metrics";
 import { providerManager, providers } from "./providers";
 import { capSessionMessageMetadata } from "./session-message-metadata";
 import {
@@ -350,6 +351,7 @@ const MAX_HISTORY_SHARE = 0.5;
 const SUMMARY_RESERVE_TOKENS = 4000;
 const COMPACTION_SUMMARY_MAX_CHARS = 4000;
 const COMPACTION_CHUNK_SUMMARY_MAX_CHARS = 2400;
+const CONTEXT_SUMMARY_PREFIXES = ["[Context Summary:", "Previous conversation summary:"] as const;
 
 const BASE_CHUNK_RATIO = 0.4;
 const MIN_CHUNK_RATIO = 0.15;
@@ -548,14 +550,9 @@ export function estimateSessionContextUsage(
   const limitTokens = Math.max(1, getContextWindow(model));
   const remainingTokens = Math.max(0, limitTokens - usedTokens);
   const usedPercent = Math.min(100, Math.round((usedTokens / limitTokens) * 1000) / 10);
-  const persistedCompactedTokens =
-    typeof options?.sessionId === "string" && options.sessionId.trim()
-      ? Math.max(0, tables.metrics.getTotal("context_compaction", options.sessionId.trim()))
-      : 0;
-  const persistedCompactionCount =
-    typeof options?.sessionId === "string" && options.sessionId.trim()
-      ? Math.max(0, tables.metrics.getCount("context_compaction", options.sessionId.trim()))
-      : 0;
+  const persistedCompaction = loadSessionSummaryCompactionMetrics(options?.sessionId);
+  const persistedCompactedTokens = persistedCompaction.tokens;
+  const persistedCompactionCount = persistedCompaction.count;
   const compactionCount = Math.max(
     0,
     Number.isFinite(options?.compactionCount) ? Math.floor(options?.compactionCount ?? 0) : 0,
@@ -580,6 +577,31 @@ export function estimateSessionContextUsage(
     compactedTokens,
     source: "estimated",
   };
+}
+
+function loadSessionSummaryCompactionMetrics(sessionId?: string): {
+  count: number;
+  tokens: number;
+} {
+  const normalizedSessionId = sessionId?.trim();
+  if (!normalizedSessionId) return { count: 0, tokens: 0 };
+  try {
+    const row = db
+      .prepare(
+        `SELECT COUNT(*) AS count, COALESCE(SUM(value), 0) AS tokens
+         FROM metrics
+         WHERE type = 'context_compaction'
+           AND key = ?
+           AND ${SESSION_SUMMARY_COMPACTION_PREDICATE}`
+      )
+      .get(normalizedSessionId) as { count: number; tokens: number } | null;
+    return {
+      count: Math.max(0, Math.round(Number(row?.count || 0))),
+      tokens: Math.max(0, Math.round(Number(row?.tokens || 0))),
+    };
+  } catch {
+    return { count: 0, tokens: 0 };
+  }
 }
 
 export function computeAdaptiveChunkRatio(messages: ChatMessage[], contextWindow: number): number {
@@ -752,7 +774,11 @@ export async function compactContext(
   const contextWindow = getContextWindow(model);
   const maxHistoryTokens = Math.floor((contextWindow * MAX_HISTORY_SHARE) / CONTEXT_SAFETY_MARGIN);
 
-  const systemMessages = messages.filter((m) => m.role === "system");
+  const summaryMessages = messages.filter(isContextSummaryMessage);
+  const previousSummary = summaryMessages.map(extractContextSummary).filter(Boolean).join("\n\n");
+  const systemMessages = messages.filter(
+    (message) => message.role === "system" && !isContextSummaryMessage(message)
+  );
   const nonSystemMessages = messages.filter((m) => m.role !== "system");
 
   const minRecent = 4;
@@ -790,13 +816,18 @@ export async function compactContext(
   let summary: string;
   try {
     if (providerId) {
-      summary = await generateContextSummary(olderMessages, providerId, model);
+      summary = await generateContextSummary(
+        olderMessages,
+        providerId,
+        model,
+        previousSummary || undefined
+      );
     } else {
-      summary = createFallbackSummary(olderMessages);
+      summary = createFallbackSummary(olderMessages, previousSummary || undefined);
     }
   } catch (error) {
     log.exception("Summary generation failed, using fallback", error);
-    summary = createFallbackSummary(olderMessages);
+    summary = createFallbackSummary(olderMessages, previousSummary || undefined);
   }
 
   const summaryMessage: ChatMessage = {
@@ -819,23 +850,38 @@ export async function compactContext(
   };
 }
 
+function isContextSummaryMessage(message: ChatMessage): boolean {
+  const trimmed = message.content.trim();
+  return (
+    message.role === "system" &&
+    CONTEXT_SUMMARY_PREFIXES.some((prefix) => trimmed.startsWith(prefix))
+  );
+}
+
+function extractContextSummary(message: ChatMessage): string {
+  const trimmed = message.content.trim();
+  const prefix = CONTEXT_SUMMARY_PREFIXES.find((candidate) => trimmed.startsWith(candidate));
+  if (!prefix) return "";
+  return trimmed.slice(prefix.length).replace(/\]$/, "").trim();
+}
+
 function buildStructuredSummaryPrompt(conversationText: string, previousSummary?: string): string {
-  return `Summarize the conversation history below so work can continue without it. Be precise, not generic.
+  return `You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another agent that will resume the task.
 
-Use EXACTLY these markdown sections (omit a section if empty):
-## Decisions
-- Concrete decisions made (one per bullet).
-## Open TODOs
-- Outstanding tasks / next steps.
-## Constraints / Rules
-- Preferences, constraints, or requirements the user stated.
-## Pending user asks
-- Unanswered questions or requested follow-ups.
-## Exact identifiers
-- Literal file paths, URLs, IDs, ports, hashes, version numbers, function/symbol names that must be preserved verbatim. Do NOT paraphrase these.
+Use these markdown sections and omit empty sections:
+## Goal
+## Constraints and Preferences
+## Progress
+### Done
+### In Progress
+### Blocked
+## Key Decisions
+## Relevant Files and Exact Identifiers
+## Next Steps
+## Critical Context
 
-Keep each section tight. Total under 250 words. Do NOT include filler like "The user discussed...". Only durable facts.
-${previousSummary ? `\nA prior summary of even-older context exists; fold it in where relevant:\n<prior_summary>\n${previousSummary}\n</prior_summary>\n` : ""}
+Preserve literal file paths, URLs, IDs, ports, hashes, versions, errors, commands, and symbol names. Distinguish verified results from claims and unresolved work. Prefer the latest state when earlier details became obsolete. Keep the summary under 700 words and focused on continuing without repeating completed work.
+${previousSummary ? `\nA prior checkpoint covers even older context. Update it with the new history instead of stacking another independent summary:\n<prior_summary>\n${previousSummary}\n</prior_summary>\n` : ""}
 Conversation to summarize:
 ${conversationText}`;
 }
@@ -849,7 +895,8 @@ function messagesToConversationText(messages: ChatMessage[]): string {
 async function generateContextSummary(
   messages: ChatMessage[],
   providerId: string,
-  model?: string
+  model?: string,
+  priorSummary?: string
 ): Promise<string> {
   const provider = providerManager.getWithCredentials(providerId);
   if (!provider) {
@@ -860,7 +907,7 @@ async function generateContextSummary(
   const chunkCount = totalTokens > 8000 ? Math.min(4, Math.ceil(totalTokens / 4000)) : 1;
 
   if (chunkCount <= 1) {
-    const prompt = buildStructuredSummaryPrompt(messagesToConversationText(messages));
+    const prompt = buildStructuredSummaryPrompt(messagesToConversationText(messages), priorSummary);
     const response = await agentManager.callLLM(
       provider,
       model,
@@ -872,7 +919,7 @@ async function generateContextSummary(
 
   const chunks = splitMessagesByTokenShare(messages, chunkCount);
   const chunkSummaries: string[] = [];
-  let previousSummary: string | undefined;
+  let previousSummary = priorSummary;
   for (const chunk of chunks) {
     const prompt = buildStructuredSummaryPrompt(messagesToConversationText(chunk), previousSummary);
     const response = await agentManager.callLLM(
@@ -886,9 +933,9 @@ async function generateContextSummary(
     previousSummary = summary;
   }
 
-  const mergePrompt = `Merge these partial context summaries into one concise summary with these sections:
-## Decisions / ## Open TODOs / ## Constraints / ## Pending asks / ## Exact identifiers
-Deduplicate. Keep it under 250 words. Preserve all literal identifiers.
+  const mergePrompt = `Merge these partial checkpoint summaries into one handoff with these sections:
+## Goal / ## Constraints and Preferences / ## Progress / ## Key Decisions / ## Relevant Files and Exact Identifiers / ## Next Steps / ## Critical Context
+Deduplicate, prefer the latest state, distinguish completed from unresolved work, and preserve literal identifiers. Keep it under 700 words.
 
 Partial summaries:
 ${chunkSummaries.map((s, i) => `--- Part ${i + 1} ---\n${s}`).join("\n")}`;
@@ -901,9 +948,10 @@ ${chunkSummaries.map((s, i) => `--- Part ${i + 1} ---\n${s}`).join("\n")}`;
   return merged.content.slice(0, COMPACTION_SUMMARY_MAX_CHARS);
 }
 
-function createFallbackSummary(messages: ChatMessage[]): string {
+function createFallbackSummary(messages: ChatMessage[], previousSummary?: string): string {
   const transcript = messagesToConversationText(messages.slice(-12));
-  return `Earlier conversation (${messages.length} messages):\n${transcript}`.slice(
+  const prior = previousSummary ? `Prior checkpoint:\n${previousSummary}\n\n` : "";
+  return `${prior}Earlier conversation (${messages.length} messages):\n${transcript}`.slice(
     0,
     COMPACTION_SUMMARY_MAX_CHARS
   );

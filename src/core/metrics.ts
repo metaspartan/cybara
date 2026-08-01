@@ -2,6 +2,16 @@ import { tables } from "./database";
 import { redactSecrets } from "./redaction";
 import { recordExternalMetric } from "./external-telemetry";
 
+export const SESSION_SUMMARY_COMPACTION_PREDICATE = `CASE
+  WHEN metadata IS NULL OR json_valid(metadata) = 0 THEN 1
+  WHEN json_extract(metadata, '$.scope') = 'session_summary' THEN 1
+  WHEN json_extract(metadata, '$.scope') IS NOT NULL THEN 0
+  WHEN json_type(metadata, '$.messagesBefore') IS NULL THEN 1
+  WHEN json_type(metadata, '$.messagesAfter') IS NULL THEN 1
+  WHEN CAST(json_extract(metadata, '$.messagesAfter') AS REAL) < CAST(json_extract(metadata, '$.messagesBefore') AS REAL) THEN 1
+  ELSE 0
+END = 1`;
+
 function serializeMetricMetadata(metadata?: Record<string, unknown>): string | undefined {
   return metadata ? JSON.stringify(redactSecrets(metadata)) : undefined;
 }
@@ -184,6 +194,7 @@ export function trackContextCompaction(
 
     trackMetric("context_compaction", sessionId, reduction, {
       ...metadata,
+      scope: "session_summary",
       reductionPercent,
     });
 
@@ -194,6 +205,29 @@ export function trackContextCompaction(
       "messages",
       metadata.messagesBefore - metadata.messagesAfter
     );
+  } catch {
+    void 0;
+  }
+}
+
+export function trackToolTranscriptCompaction(
+  sessionId: string,
+  metadata: {
+    messagesBefore: number;
+    messagesAfter: number;
+    tokensBefore: number;
+    tokensAfter: number;
+    model?: string;
+  }
+): void {
+  try {
+    const reduction = Math.max(0, metadata.tokensBefore - metadata.tokensAfter);
+    if (reduction <= 0) return;
+    trackMetric("tool_transcript_compaction", sessionId, reduction, {
+      ...metadata,
+      scope: "tool_transcript",
+      reductionPercent: Math.round((reduction / Math.max(1, metadata.tokensBefore)) * 100),
+    });
   } catch {
     void 0;
   }

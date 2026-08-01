@@ -13,7 +13,6 @@ import {
   compactOpenAIChatTranscriptInPlace,
   TOOL_RESULT_COMPACTION_NOTICE,
 } from "./llm/tool-transcript";
-import { broadcastStatus } from "./status";
 import { formatRecoverableToolOutputPreview } from "./tool-output-recovery";
 import type { ToolContext } from "./tools";
 
@@ -33,28 +32,12 @@ function recordContextCompaction(
   messageCount: number,
   context?: CompactionContext
 ): void {
-  const measurement = recordMidLoopContextCompaction({
+  recordMidLoopContextCompaction({
     beforeChars,
     afterChars,
     messageCount,
     model: context?.model,
     toolContext: context?.toolContext,
-  });
-  const toolContext = context?.toolContext;
-  if (!measurement || !toolContext?.sessionId || toolContext.suppressStreaming) return;
-  broadcastStatus({
-    status: "compacting",
-    sessionId: toolContext.sessionId,
-    agentId: toolContext.agentId,
-    timestamp: Date.now(),
-    detail: "Compacting earlier context...",
-  });
-  broadcastStatus({
-    status: "thinking",
-    sessionId: toolContext.sessionId,
-    agentId: toolContext.agentId,
-    timestamp: Date.now(),
-    detail: "Context automatically compacted",
   });
 }
 
