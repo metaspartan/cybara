@@ -16,7 +16,7 @@ describe("agent web research budget", () => {
     expect(webResearchBudgetReached(DEFAULT_WEB_RESEARCH_TOOL_BUDGET - 1)).toBe(false);
     expect(webResearchBudgetReached(DEFAULT_WEB_RESEARCH_TOOL_BUDGET)).toBe(true);
     expect(WEB_RESEARCH_SYNTHESIS_INSTRUCTION).toContain(
-      "continue with available non-web tools"
+      "finish and verify every required deliverable"
     );
   });
 
@@ -29,10 +29,7 @@ describe("agent web research budget", () => {
     ];
 
     expect(toolsAfterWebResearchBudget(tools, false)).toEqual(tools);
-    expect(toolsAfterWebResearchBudget(tools, true)).toEqual([
-      { name: "exec" },
-      { name: "write" },
-    ]);
+    expect(toolsAfterWebResearchBudget(tools, true)).toEqual([{ name: "exec" }, { name: "write" }]);
   });
 
   test("clamps invalid custom budgets", () => {

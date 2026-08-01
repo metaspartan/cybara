@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { parse, join } from "path";
 import { homedir } from "os";
+import { pathToFileURL } from "url";
 import { createRoutesFixture } from "./routes.fixture";
 
 const fixture = createRoutesFixture();
@@ -881,6 +882,14 @@ describe("IDE & Git API", () => {
     expect(readRes.data.success).toBe(true);
     expect(readRes.data.content).toBe("initial-content");
 
+    const fileUrlReadRes = await fixture.api(
+      "GET",
+      `/api/ide/read?path=${encodeURIComponent(pathToFileURL(filePath).href)}`
+    );
+    expect(fileUrlReadRes.status).toBe(200);
+    expect(fileUrlReadRes.data.success).toBe(true);
+    expect(fileUrlReadRes.data.content).toBe("initial-content");
+
     const writeRes = await fixture.api("POST", "/api/ide/write", {
       path: filePath,
       content: "updated-content",
@@ -1081,6 +1090,7 @@ describe("IDE & Git API", () => {
     );
     expect(listRes.status).toBe(200);
     expect(listRes.data.success).toBe(true);
+    expect(listRes.data.is_repository).toBe(true);
     expect(listRes.data.current).toBe("main");
     expect(listRes.data.branches.map((branch: { name: string }) => branch.name)).toContain(
       "feature/ui"
@@ -1114,6 +1124,22 @@ describe("IDE & Git API", () => {
     expect(invalidRes.status).toBe(200);
     expect(invalidRes.data.success).toBe(false);
     expect(String(invalidRes.data.error)).toContain("Invalid branch name");
+  });
+
+  test("Git branch listing treats a non-repository workspace as an empty result", async () => {
+    const workspaceDir = mkdtempSync(join(fixture.testHome, "git-branch-empty-route-"));
+    const listRes = await fixture.api(
+      "GET",
+      `/api/git/branches?path=${encodeURIComponent(workspaceDir)}`
+    );
+
+    expect(listRes.status).toBe(200);
+    expect(listRes.data).toEqual({
+      success: true,
+      is_repository: false,
+      current: null,
+      branches: [],
+    });
   });
 });
 

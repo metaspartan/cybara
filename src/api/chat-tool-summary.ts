@@ -16,6 +16,7 @@ export interface ToolCallOutcome {
 }
 
 export type AssistantEvidenceIssue =
+  | "incomplete_plan"
   | "missing_clarification"
   | "missing_action_evidence"
   | "plan_only"
@@ -196,12 +197,42 @@ const COMPLETION_CLAIM_PATTERNS = [
   /#{1,4}\s+(?:what I (?:changed|fixed|implemented|shipped)|implemented|changes shipped)\b/i,
 ];
 
+const WHOLE_TASK_COMPLETION_CLAIM_PATTERNS = [
+  /^\s*(?:all\s+)?(?:done|finished)\b/im,
+  /\btask\s+(?:is\s+)?(?:complete|completed|done|finished)\b/i,
+  /\ball\s+(?:plan|task|todo)\s+items?\s+(?:are\s+)?(?:complete|completed|done|finished|satisfied)\b/i,
+  /\b(?:changes?|implementation|request|work)\s+(?:is|are|was|were)\s+(?:complete|completed|done|finished)\b/i,
+];
+
 const VERIFICATION_CLAIM_PATTERNS = [
   /\b(?:all\s+)?(?:builds?|checks?|tests?|typechecks?|lint(?:ing)?)\s+(?:(?:is|are|was|were|still)\s+)?(?:clean|green|pass(?:ed|ing)?)\b/i,
   /\b(?:verified|validated|confirmed|tested)\s+(?:end[- ]to[- ]end|successfully|the\s+(?:build|change|fix|result|simulator|implementation))\b/i,
   /\b\d[\d,]*\s*\/\s*\d[\d,]*\s+(?:checks?|tests?|invariants?|cases?)\s+(?:green|pass(?:ed)?)\b/i,
   /\b(?:build|check|test|typecheck|lint)\s*:\s*(?:clean|green|pass(?:ed)?)\b/i,
 ];
+
+function latestTodoHasIncompleteItems(toolCalls: ToolCallResultLike[]): boolean {
+  const latestTodo = [...toolCalls]
+    .reverse()
+    .find((toolCall) => toolCall.name === "todo" && isSuccessfulToolCall(toolCall));
+  if (!latestTodo) return false;
+  const result =
+    latestTodo.result && typeof latestTodo.result === "object" && !Array.isArray(latestTodo.result)
+      ? (latestTodo.result as Record<string, unknown>)
+      : undefined;
+  const items = Array.isArray(result?.items)
+    ? result.items
+    : Array.isArray(latestTodo.args?.items)
+      ? latestTodo.args.items
+      : [];
+  return items.some(
+    (item) =>
+      item !== null &&
+      typeof item === "object" &&
+      !Array.isArray(item) &&
+      (item as Record<string, unknown>).status !== "completed"
+  );
+}
 
 const EXECUTION_VERIFICATION_CLAIM_PATTERNS = [
   /\b(?:all\s+)?(?:builds?|checks?|tests?|typechecks?|lint(?:ing)?)\s+(?:(?:is|are|was|were|still)\s+)?(?:clean|green|pass(?:ed|ing)?)\b/i,
@@ -347,6 +378,12 @@ export function findAssistantEvidenceIssue(
     return "missing_action_evidence";
   }
   if (
+    hasPattern(visibleContent, WHOLE_TASK_COMPLETION_CLAIM_PATTERNS) &&
+    latestTodoHasIncompleteItems(toolCalls)
+  ) {
+    return "incomplete_plan";
+  }
+  if (
     hasPattern(visibleContent, COMPLETION_CLAIM_PATTERNS) &&
     !hasSuccessfulCompletionEvidence(visibleContent, toolCalls)
   ) {
@@ -395,6 +432,9 @@ export function extractVisibleClarification(toolCalls: ToolCallResultLike[]): st
 }
 
 export function buildUnsupportedAssistantClaimMessage(issue: AssistantEvidenceIssue): string {
+  if (issue === "incomplete_plan") {
+    return "I couldn't finish every planned item in this turn. Retry this turn or switch agents.";
+  }
   if (issue === "missing_clarification") {
     return "I couldn't produce the clarification needed to continue. Retry this turn or switch agents.";
   }

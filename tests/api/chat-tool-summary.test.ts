@@ -110,6 +110,39 @@ describe("chat tool summary utilities", () => {
     );
   });
 
+  test("rejects whole-task completion claims while the latest plan is unfinished", () => {
+    const unfinishedPlan = {
+      name: "todo",
+      result: {
+        items: [
+          { content: "Implement importer", status: "completed" },
+          { content: "Verify imported rows", status: "in_progress" },
+        ],
+      },
+    };
+    expect(
+      findAssistantEvidenceIssue("Done. Task complete and all plan items are satisfied.", [
+        { name: "edit", result: { filePath: "/tmp/import.ts" } },
+        unfinishedPlan,
+      ])
+    ).toBe("incomplete_plan");
+    expect(
+      findAssistantEvidenceIssue("Implementation is complete.", [
+        unfinishedPlan,
+        {
+          name: "todo",
+          result: {
+            items: [
+              { content: "Implement importer", status: "completed" },
+              { content: "Verify imported rows", status: "completed" },
+            ],
+          },
+        },
+        { name: "edit", result: { filePath: "/tmp/import.ts" } },
+      ])
+    ).toBeUndefined();
+  });
+
   test("distinguishes plan-only implementation replies from requested planning", () => {
     const plan = [
       "VibeMail - Next Phase Plan",

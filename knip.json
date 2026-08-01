@@ -7,6 +7,7 @@
         "src/index.ts",
         "src/main.ts",
         "scripts/*.ts",
+        "tests/fixtures/standalone-playwright-runtime.ts",
         "tests/**/*.test.{ts,tsx}"
       ],
       "project": ["src/**/*.{ts,tsx}", "scripts/*.ts", "tests/**/*.{ts,tsx}"],
@@ -15,6 +16,7 @@
         "@typescript/native",
         "@vtsls/language-server",
         "bash-language-server",
+        "chromium-bidi",
         "kokoro-js",
         "react-doctor",
         "typescript-language-server",

@@ -1508,7 +1508,11 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
 
   "GET /api/git/branches": async (_body, params) => {
     const path = resolveGitRoutePath(params?.path, "~");
-    return await getGitBranches(path);
+    const result = await getGitBranches(path);
+    if (!result.success && result.error === "Not a git repository") {
+      return { success: true, is_repository: false, current: null, branches: [] };
+    }
+    return result.success ? { ...result, is_repository: true } : result;
   },
 
   "POST /api/git/branch": async (body) => {

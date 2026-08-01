@@ -202,9 +202,8 @@ describe("app release surface wiring", () => {
     expect(tauriConfig).toContain('"bin/node_modules": "node_modules"');
     expect(tauriConfig).toContain('"bin/runtime": "runtime"');
     expect(sidecarBuilder).toContain("installBunRuntimeAt(packagedRuntimeDir, target.bunTarget)");
-    expect(sidecarBuilder).toContain(
-      'const playwrightPackages = ["playwright", "playwright-core"]'
-    );
+    expect(sidecarBuilder).toContain("PLAYWRIGHT_RUNTIME_PACKAGES");
+    expect(sidecarBuilder).toContain("for (const pkg of PLAYWRIGHT_RUNTIME_PACKAGES)");
   });
 
   test("CLI release binaries embed the UI for every supported OS and architecture", () => {

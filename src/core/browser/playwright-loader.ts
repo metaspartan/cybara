@@ -18,6 +18,7 @@ export function stripWindowsLongPathPrefix(value: string): string {
 
 function candidateRoots(): string[] {
   const seeds = [
+    process.env.CYBARA_PLAYWRIGHT_RESOURCE_DIR,
     process.env.CYBARA_RESOURCE_DIR,
     process.cwd(),
     (() => {

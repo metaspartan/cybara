@@ -470,9 +470,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
 
       const loopTools = toolsAfterWebResearchBudget(tools, webResearchExhausted);
       if (loopTools.length > 0) {
-        loopRequestBody.tools = loopTools.map((tool) =>
-          toOpenAICompatTool(tool, providerConfig)
-        );
+        loopRequestBody.tools = loopTools.map((tool) => toOpenAICompatTool(tool, providerConfig));
         loopRequestBody.tool_choice = "auto";
       }
 

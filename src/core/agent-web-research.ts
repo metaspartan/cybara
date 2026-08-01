@@ -22,4 +22,4 @@ export function toolsAfterWebResearchBudget<T extends { name: string }>(
 }
 
 export const WEB_RESEARCH_SYNTHESIS_INSTRUCTION =
-  "The web research budget for this turn is complete. Do not call web_search or web_fetch again. Use the strongest sources already collected, continue with available non-web tools to finish the task, and briefly note unresolved source limitations in the final response.";
+  "The web research budget for this turn is complete. Do not call web_search or web_fetch again. Use the strongest sources already collected, finish and verify every required deliverable with available non-web tools, and briefly note unresolved source limitations in the final response.";

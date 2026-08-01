@@ -17,7 +17,7 @@ import {
   getCuaDriverTarget,
   installCuaDriverAt,
 } from "../src/core/cua-driver-runtime";
-import { buildStandaloneCli } from "./build-standalone-cli";
+import { buildStandaloneCli, PLAYWRIGHT_RUNTIME_PACKAGES } from "./build-standalone-cli";
 
 const TAURI_BIN_DIR = join(import.meta.dirname, "..", "src-tauri", "bin");
 const RELEASE_DIR = join(import.meta.dirname, "..", "release");
@@ -782,8 +782,7 @@ export default instance.exports;
     );
   }
 
-  const playwrightPackages = ["playwright", "playwright-core"];
-  for (const pkg of playwrightPackages) {
+  for (const pkg of PLAYWRIGHT_RUNTIME_PACKAGES) {
     const source = join(NODE_MODULES_ROOT, pkg);
     if (!existsSync(source)) {
       console.warn(`  ⚠️ ${pkg} not found in node_modules — browser tools may be unavailable`);
