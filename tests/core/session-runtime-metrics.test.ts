@@ -55,6 +55,14 @@ describe("session runtime metrics", () => {
     ).run(crypto.randomUUID(), sessionId);
     db.prepare(
       `INSERT INTO metrics (id, type, key, value, metadata)
+       VALUES (?, 'context_compaction', ?, 900, ?)`
+    ).run(
+      crypto.randomUUID(),
+      sessionId,
+      JSON.stringify({ messagesBefore: 12, messagesAfter: 12 })
+    );
+    db.prepare(
+      `INSERT INTO metrics (id, type, key, value, metadata)
        VALUES (?, 'token_usage_by_session', ?, 0, ?)`
     ).run(
       crypto.randomUUID(),

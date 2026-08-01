@@ -1,4 +1,4 @@
-import { trackContextCompaction } from "../metrics";
+import { trackToolTranscriptCompaction } from "../metrics";
 import type { ToolContext } from "../tools";
 
 const CHARS_PER_TOKEN = 4;
@@ -47,7 +47,7 @@ export function recordMidLoopContextCompaction(input: {
 
   const sessionId = input.toolContext?.sessionId?.trim();
   if (sessionId) {
-    trackContextCompaction(sessionId, {
+    trackToolTranscriptCompaction(sessionId, {
       messagesBefore: input.messageCount,
       messagesAfter: input.messageCount,
       tokensBefore: measurement.beforeTokens,

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import db from "../../src/core/database";
 import {
   computeAdaptiveChunkRatio,
   compactContext,
@@ -87,6 +88,35 @@ describe("session-context chunking helpers", () => {
     expect(usage.source).toBe("estimated");
   });
 
+  test("counts summary checkpoints separately from legacy tool-output pruning metrics", () => {
+    const sessionId = `summary-metrics-${crypto.randomUUID()}`;
+    const insert = db.prepare(
+      `INSERT INTO metrics (id, type, key, value, metadata) VALUES (?, 'context_compaction', ?, ?, ?)`
+    );
+    insert.run(
+      crypto.randomUUID(),
+      sessionId,
+      500,
+      JSON.stringify({ messagesBefore: 20, messagesAfter: 6 })
+    );
+    insert.run(
+      crypto.randomUUID(),
+      sessionId,
+      900,
+      JSON.stringify({ messagesBefore: 12, messagesAfter: 12 })
+    );
+
+    try {
+      const usage = estimateSessionContextUsage([msg("user", "continue")], "mixtral", {
+        sessionId,
+      });
+      expect(usage.compactionCount).toBe(1);
+      expect(usage.compactedTokens).toBe(500);
+    } finally {
+      db.prepare("DELETE FROM metrics WHERE key = ?").run(sessionId);
+    }
+  });
+
   test("compaction checks do not need newContent after the turn is appended", () => {
     const content = "x".repeat(88_000);
     const messages = [msg("user", content)];
@@ -170,5 +200,28 @@ describe("session-context chunking helpers", () => {
     expect(result.wasCompacted).toBe(true);
     expect(result.summary).toContain("IDENTIFIER_");
     expect(result.messages.at(-1)).toEqual(messages.at(-1));
+  });
+
+  test("iterative compaction updates one checkpoint instead of stacking summaries", async () => {
+    const previousMarker = "PRESERVE_PREVIOUS_CHECKPOINT";
+    const messages = [
+      msg("system", "Keep this system instruction"),
+      msg("system", `[Context Summary: ${previousMarker}]`),
+      ...Array.from({ length: 10 }, (_, index) =>
+        msg(index % 2 === 0 ? "user" : "assistant", `new-turn-${index}-${"x".repeat(200)}`)
+      ),
+    ];
+    const result = await compactContext(messages, "mixtral", undefined, { force: true });
+    const summaries = result.messages.filter((message) =>
+      message.content.startsWith("[Context Summary:")
+    );
+
+    expect(result.wasCompacted).toBe(true);
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]?.content).toContain(previousMarker);
+    expect(
+      result.messages.some((message) => message.content === "Keep this system instruction")
+    ).toBe(true);
+    expect(shouldCompactContext(result.messages, "mixtral").needed).toBe(false);
   });
 });
