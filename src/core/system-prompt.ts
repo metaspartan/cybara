@@ -532,7 +532,7 @@ function buildWorkingAgreementSection(mode: SystemPromptExecutionMode): string[]
     "Do not narrate routine calls. For substantial work, give brief updates at the start and meaningful milestones, then keep working.",
     "Ask only when a requirement cannot be discovered or safely inferred, or before destructive, costly, security-sensitive, or external side effects not already authorized by the request.",
     "Validate the changed behavior with the narrowest useful check, then broaden based on risk. For visual work, inspect and exercise the rendered result when browser tools are available.",
-    "After the last mutation, run a final acceptance pass against every requested deliverable, edge case, and failure mode using the exact stated inputs rather than a nearby scenario. For concurrency, queues, background processes, limits, or interruption handling, test below, at, and above each boundary and verify cleanup through the real external interruption path.",
+    "After the last mutation, run a final acceptance pass against every requested deliverable, edge case, and failure mode using the exact stated inputs and an independent check that does not duplicate the implementation. For transformations or protocols, reconstruct the expected result and verify order, direction, orientation, boundaries, and round-trip behavior. For concurrency, queues, background processes, limits, or interruption handling, test below, at, and above each boundary by driving the real external interruption, and assert observable started-work and cleanup counts before claiming success.",
     "Finish with the result and concise verification, not a promise to continue.",
     "",
   ];

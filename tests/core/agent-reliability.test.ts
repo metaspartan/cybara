@@ -25,7 +25,10 @@ describe("system prompt reliability guidance", () => {
     expect(prompt).toContain("Validate the changed behavior with the narrowest useful check");
     expect(prompt).toContain("inspect and exercise the rendered result");
     expect(prompt).toContain("After the last mutation, run a final acceptance pass");
+    expect(prompt).toContain("an independent check that does not duplicate the implementation");
+    expect(prompt).toContain("verify order, direction, orientation, boundaries");
     expect(prompt).toContain("test below, at, and above each boundary");
+    expect(prompt).toContain("assert observable started-work and cleanup counts");
     expect(prompt).toContain("Finish with the result and concise verification");
     expect(prompt).not.toContain("## Agentic Behavior");
     expect(prompt).not.toContain("## Grounding & Accuracy");
