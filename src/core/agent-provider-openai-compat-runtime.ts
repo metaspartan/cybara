@@ -30,6 +30,7 @@ import {
 import { hasAgentTransferEnvelope } from "./agent-transfer";
 import {
   countWebResearchCalls,
+  toolsAfterWebResearchBudget,
   WEB_RESEARCH_SYNTHESIS_INSTRUCTION,
   webResearchBudgetReached,
 } from "./agent-web-research";
@@ -261,6 +262,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     let finalContent = "";
     let lastProgressThought = "";
     let webResearchToolCalls = 0;
+    let webResearchExhausted = false;
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
     const loopState: AgenticLoopState = {
       previousFingerprint: undefined,
@@ -401,7 +403,9 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       webResearchToolCalls += countWebResearchCalls(
         iterationToolCalls.map((toolCall) => toolCall.name)
       );
-      const forceResearchSynthesis = webResearchBudgetReached(webResearchToolCalls);
+      const reachedWebResearchBudget = webResearchBudgetReached(webResearchToolCalls);
+      const notifyWebResearchBudget = reachedWebResearchBudget && !webResearchExhausted;
+      webResearchExhausted ||= reachedWebResearchBudget;
 
       const noProgressStreak = updateNoProgressLoopState(loopState, iterationToolCalls);
       const loopEvaluation = evaluateNoProgressLoop(
@@ -437,7 +441,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
-      if (forceResearchSynthesis) {
+      if (notifyWebResearchBudget) {
         currentMessages.push({
           role: "user",
           content: WEB_RESEARCH_SYNTHESIS_INSTRUCTION,
@@ -464,8 +468,9 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         loopRequestBody.reasoning_split = true;
       }
 
-      if (!forceResearchSynthesis && tools && Array.isArray(tools) && tools.length > 0) {
-        loopRequestBody.tools = tools.map((tool) => toOpenAICompatTool(tool, providerConfig));
+      const loopTools = toolsAfterWebResearchBudget(tools, webResearchExhausted);
+      if (loopTools.length > 0) {
+        loopRequestBody.tools = loopTools.map((tool) => toOpenAICompatTool(tool, providerConfig));
         loopRequestBody.tool_choice = "auto";
       }
 

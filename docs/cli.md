@@ -240,13 +240,18 @@ cybara sessions           # List active chat sessions
 ```bash
 cybara migrate sources                         # Detect supported legacy sources
 cybara migrate --from <source>                 # Preview import
+cybara migrate opencode                       # Preview OpenCode chats and user data
 cybara migrate --from <source> --apply         # Apply default user-data preset
 cybara migrate --apply --preset full           # Include provider/speech categories
 cybara migrate --migrate-secrets --overwrite   # Opt into API-key import and conflicts
 ```
 
 The default migration run is a dry-run preview. Use `--apply` only after reviewing the report.
-Secrets are skipped unless `--migrate-secrets` is supplied.
+Use `cybara migrate sources` to list the supported source identifiers. OpenCode discovery resolves
+its separate XDG config and data directories and imports current SQLite chat
+history, including archived conversations, reasoning, tool calls, global instructions, skills, and
+commands. Secrets are skipped unless `--migrate-secrets` is supplied. OpenCode API keys can be
+imported explicitly; OAuth sessions remain with OpenCode and must be connected again in Cybara.
 
 ### Memory
 

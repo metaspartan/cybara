@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -35,6 +35,8 @@ describe("standalone CLI build", () => {
       expect(args).toContain("kokoro-js");
       expect(args).toContain("onnxruntime-node");
       expect(args).toContain("onnxruntime-web");
+      expect(args).toContain("playwright");
+      expect(args).toContain("playwright-core");
       expect(args).not.toContain("tiny-secp256k1");
     }
   });
@@ -50,17 +52,24 @@ describe("standalone CLI build", () => {
       const assetsModule = join(directory, ".cybara-assets.ts");
       const runtimeEntry = join(directory, ".cybara-runtime.js");
       const transformersWorker = join(directory, ".cybara-transformers-worker.mjs");
+      const playwrightRuntimeArchive = join(directory, ".cybara-playwright.json.gz");
+      writeFileSync(playwrightRuntimeArchive, "archive");
       const assetsSource = createStandaloneAssetsSource({
         cwd: directory,
         uiDir,
         runtimeEntry,
         transformersWorker,
+        playwrightRuntimeArchive,
+        playwrightRuntimeVersion: "runtime-v1",
       });
       expect(assetsSource).toContain('with { type: "file" }');
       expect(assetsSource).toContain('"/assets/app.js"');
       expect(assetsSource).toContain("__CYBARA_EMBEDDED_UI__");
       expect(assetsSource).toContain("__CYBARA_RUNTIME_ASSETS__");
       expect(assetsSource).toContain('import embeddedRuntimeEntry from "./.cybara-runtime.js"');
+      expect(assetsSource).toContain("installEmbeddedPlaywrightRuntime");
+      expect(assetsSource).toContain("CYBARA_PLAYWRIGHT_RESOURCE_DIR");
+      expect(assetsSource).toContain('"runtime-v1"');
       expect(assetsSource).toContain("await import(embeddedRuntimeEntry)");
 
       const source = createStandaloneEntrySource({
@@ -120,11 +129,12 @@ describe("standalone CLI build", () => {
         uiDir,
         entryModule: "runtime.ts",
         buildCommit: commit,
+        externalPackages: ["playwright"],
       });
       if (process.platform !== "win32") chmodSync(outfile, 0o755);
       const processHandle = Bun.spawn([outfile], {
         cwd: runDirectory,
-        env: {},
+        env: { CYBARA_HOME: join(directory, "home") },
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -138,4 +148,39 @@ describe("standalone CLI build", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   }, 30_000);
+
+  test("loads the embedded Playwright API outside the source checkout", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "cybara-standalone-playwright-"));
+    const uiDir = join(directory, "ui", "dist");
+    const runDirectory = join(directory, "run");
+    const outfile = join(directory, process.platform === "win32" ? "cybara.exe" : "cybara");
+    mkdirSync(uiDir, { recursive: true });
+    mkdirSync(runDirectory, { recursive: true });
+    writeFileSync(join(uiDir, "index.html"), "<main>Cybara</main>");
+
+    try {
+      await buildStandaloneCli({
+        target: currentBunTarget(),
+        outfile,
+        uiDir,
+        entryModule: "tests/fixtures/standalone-playwright-runtime.ts",
+      });
+      if (process.platform !== "win32") chmodSync(outfile, 0o755);
+      const processHandle = Bun.spawn([outfile], {
+        cwd: runDirectory,
+        env: { CYBARA_HOME: join(directory, "home") },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const stdoutPromise = new Response(processHandle.stdout).text();
+      const stderrPromise = new Response(processHandle.stderr).text();
+      const exitCode = await processHandle.exited;
+      const stderr = await stderrPromise;
+      expect(exitCode, stderr).toBe(0);
+      expect((await stdoutPromise).trim()).toBe("function");
+      expect(existsSync(join(directory, "home", "runtime", "playwright"))).toBeTrue();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

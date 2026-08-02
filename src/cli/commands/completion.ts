@@ -61,6 +61,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
   providers: ["list", "available", "add", "update", "delete", "models", "discover"],
   model: ["list", "provider"],
   models: ["list", "provider"],
+  migrate: ["sources", "openclaw", "hermes", "codex", "claude-code", "opencode"],
   mobile: ["connect", "devices", "list", "revoke", "remove"],
   devices: ["connect", "list", "revoke", "remove"],
   pair: ["list", "reject", "policy"],

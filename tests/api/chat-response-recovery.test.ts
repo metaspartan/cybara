@@ -568,6 +568,137 @@ describe("chat response recovery", () => {
     expect(result.message.tool_calls).toHaveLength(3);
   });
 
+  test("continues when a model admits a required deliverable is unfinished", async () => {
+    const agentId = createTestAgent("Unfinished Deliverable Recovery Agent");
+    const sessionId = `unfinished-deliverable-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const executionMessages: Array<Array<{ role: string; content: string }>> = [];
+    let callCount = 0;
+
+    agentManager.execute = (async (_agentId, messages) => {
+      callCount += 1;
+      executionMessages.push(messages.map(({ role, content }) => ({ role, content })));
+      if (callCount === 1) {
+        return {
+          content: [
+            "I have not yet designed or written the required output file.",
+            "Remaining steps: generate the final artifact and verify it.",
+            "Want me to proceed with writing it?",
+          ].join("\n\n"),
+          tool_calls: [
+            {
+              name: "read",
+              args: { path: "/tmp/input.json" },
+              result: { path: "/tmp/input.json", content: "ready" },
+            },
+          ],
+        };
+      }
+      return {
+        content: "Created the required output file and verified its contents.",
+        tool_calls: [
+          {
+            name: "write",
+            args: { path: "/tmp/output.json", content: "complete" },
+            result: { filePath: "/tmp/output.json" },
+          },
+          {
+            name: "read",
+            args: { path: "/tmp/output.json" },
+            result: { path: "/tmp/output.json", content: "complete" },
+          },
+        ],
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Create the required output file and verify it.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(2);
+    expect(executionMessages[1]?.at(-1)?.content).toContain("Continue immediately");
+    expect(result.message.content).toContain("verified its contents");
+    expect(result.message.content).not.toContain("Want me to proceed");
+    expect(result.message.tool_calls).toHaveLength(3);
+  });
+
+  test("reconciles an unfinished todo before accepting whole-task completion", async () => {
+    const agentId = createTestAgent("Incomplete Plan Recovery Agent");
+    const sessionId = `incomplete-plan-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    let callCount = 0;
+
+    agentManager.execute = (async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          content: "Done. Task complete and all required work is satisfied.",
+          tool_calls: [
+            {
+              name: "edit",
+              args: { path: "/tmp/app.ts" },
+              result: { filePath: "/tmp/app.ts" },
+            },
+            {
+              name: "todo",
+              args: {
+                items: [
+                  { content: "Implement change", status: "completed" },
+                  { content: "Verify behavior", status: "in_progress" },
+                ],
+              },
+              result: {
+                items: [
+                  { content: "Implement change", status: "completed" },
+                  { content: "Verify behavior", status: "in_progress" },
+                ],
+              },
+            },
+          ],
+        };
+      }
+      return {
+        content: "Implemented the change and verified the focused test passes.",
+        tool_calls: [
+          {
+            name: "exec",
+            args: { command: "bun test app.test.ts" },
+            result: { output: "1 pass", exitCode: 0 },
+          },
+          {
+            name: "todo",
+            args: {
+              items: [
+                { content: "Implement change", status: "completed" },
+                { content: "Verify behavior", status: "completed" },
+              ],
+            },
+            result: {
+              items: [
+                { content: "Implement change", status: "completed" },
+                { content: "Verify behavior", status: "completed" },
+              ],
+            },
+          },
+        ],
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Fix and verify the app.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(2);
+    expect(result.message.content).toContain("verified the focused test passes");
+    expect(result.message.tool_calls).toHaveLength(4);
+  });
+
   test("continues implementation when a newly selected agent returns only a plan", async () => {
     const firstAgentId = createTestAgent("Initial Project Agent");
     const kimiAgentId = createTestAgent("Kimi Project Agent");

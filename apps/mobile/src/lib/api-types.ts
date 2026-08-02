@@ -438,7 +438,7 @@ export interface GatewayRestartResponse {
   message: string;
 }
 
-export type MigrationSourceKind = "openclaw" | "hermes" | "codex" | "claude-code";
+export type MigrationSourceKind = "openclaw" | "hermes" | "codex" | "claude-code" | "opencode";
 export type MigrationPreset = "user-data" | "full";
 export type MigrationSkillConflictMode = "skip" | "overwrite" | "rename";
 export type MigrationItemStatus =
@@ -461,6 +461,7 @@ export interface MigrationSourceCandidate {
     skillCount: number;
     configFiles: number;
     envFiles: number;
+    sessionCount: number;
   };
 }
 

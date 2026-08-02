@@ -14,8 +14,21 @@ import type { ToolContext } from "../index";
 import { assertWritablePath, assertReadablePath } from "../path-policy";
 import { readFileLines } from "../file-read";
 import { searchFiles } from "../file-search";
+import { redactRootDestructiveCommands } from "../../destructive-content";
 
 const workspace = homeDir;
+
+const GENERATED_DOCUMENT_EXTENSIONS = new Set([".adoc", ".htm", ".html", ".md", ".rst", ".txt"]);
+
+function sanitizeGeneratedDocumentContent(
+  path: string,
+  content: string
+): { content: string; redactions: number } {
+  if (!GENERATED_DOCUMENT_EXTENSIONS.has(extname(path).toLowerCase())) {
+    return { content, redactions: 0 };
+  }
+  return redactRootDestructiveCommands(content);
+}
 
 function pathSegmentSimilarity(a: string, b: string): number {
   const lowerA = a.toLowerCase();
@@ -402,7 +415,12 @@ export async function handleRead(
 export async function handleWrite(
   args: Record<string, unknown>,
   context?: ToolContext
-): Promise<{ success: boolean; path: string; change: FileChangeMeta }> {
+): Promise<{
+  success: boolean;
+  path: string;
+  change: FileChangeMeta;
+  safetyRedactions?: number;
+}> {
   const rawPath = typeof args.path === "string" ? args.path : undefined;
   const path = assertWritablePath(expandTilde(rawPath), {
     workspaceRoot: context?.workspaceDir,
@@ -414,7 +432,8 @@ export async function handleWrite(
       'Validation error: path is required. Provide a file path (for example: {"path":"src/index.ts"}).'
     );
   }
-  const content = args.content as string;
+  const sanitized = sanitizeGeneratedDocumentContent(path, args.content as string);
+  const content = sanitized.content;
   const existed = existsSync(path);
   const before = existed ? readFileSync(path, "utf-8") : "";
 
@@ -432,6 +451,7 @@ export async function handleWrite(
   return {
     success: true,
     path,
+    ...(sanitized.redactions > 0 ? { safetyRedactions: sanitized.redactions } : {}),
     change: {
       path,
       type: existed ? "updated" : "created",
@@ -445,7 +465,12 @@ export async function handleWrite(
 export async function handleEdit(
   args: Record<string, unknown>,
   context?: ToolContext
-): Promise<{ success: boolean; path: string; change: FileChangeMeta }> {
+): Promise<{
+  success: boolean;
+  path: string;
+  change: FileChangeMeta;
+  safetyRedactions?: number;
+}> {
   const rawPath = typeof args.path === "string" ? args.path : undefined;
   const path = assertWritablePath(expandTilde(rawPath), {
     workspaceRoot: context?.workspaceDir,
@@ -458,7 +483,8 @@ export async function handleEdit(
     );
   }
   const oldText = args.oldText as string;
-  const newText = args.newText as string;
+  const sanitized = sanitizeGeneratedDocumentContent(path, args.newText as string);
+  const newText = sanitized.content;
 
   if (!existsSync(path)) {
     throw fileNotFoundError(path);
@@ -479,6 +505,7 @@ export async function handleEdit(
   return {
     success: true,
     path,
+    ...(sanitized.redactions > 0 ? { safetyRedactions: sanitized.redactions } : {}),
     change: {
       path,
       type: "updated",
@@ -1073,9 +1100,10 @@ async function applyFilePatch(
   }
 
   if (filePatch.isNew) {
-    const content = filePatch.hunks
+    const proposedContent = filePatch.hunks
       .flatMap((h) => h.lines.filter((l) => l.startsWith("+")).map((l) => l.slice(1)))
       .join("\n");
+    const content = sanitizeGeneratedDocumentContent(filePatch.path, proposedContent).content;
 
     if (!dryRun) {
       const dir = dirname(filePatch.path);
@@ -1107,7 +1135,12 @@ async function applyFilePatch(
       }
     }
 
-    lines.splice(startIdx, deleteCount, ...newLines);
+    const sanitizedNewLines =
+      newLines.length === 0
+        ? []
+        : sanitizeGeneratedDocumentContent(filePatch.path, newLines.join("\n")).content.split("\n");
+
+    lines.splice(startIdx, deleteCount, ...sanitizedNewLines);
   }
 
   const newContent = lines.join("\n");

@@ -16,6 +16,7 @@ export interface ToolCallOutcome {
 }
 
 export type AssistantEvidenceIssue =
+  | "incomplete_plan"
   | "missing_clarification"
   | "missing_action_evidence"
   | "plan_only"
@@ -196,12 +197,42 @@ const COMPLETION_CLAIM_PATTERNS = [
   /#{1,4}\s+(?:what I (?:changed|fixed|implemented|shipped)|implemented|changes shipped)\b/i,
 ];
 
+const WHOLE_TASK_COMPLETION_CLAIM_PATTERNS = [
+  /^\s*(?:all\s+)?(?:done|finished)\b/im,
+  /\btask\s+(?:is\s+)?(?:complete|completed|done|finished)\b/i,
+  /\ball\s+(?:plan|task|todo)\s+items?\s+(?:are\s+)?(?:complete|completed|done|finished|satisfied)\b/i,
+  /\b(?:changes?|implementation|request|work)\s+(?:is|are|was|were)\s+(?:complete|completed|done|finished)\b/i,
+];
+
 const VERIFICATION_CLAIM_PATTERNS = [
   /\b(?:all\s+)?(?:builds?|checks?|tests?|typechecks?|lint(?:ing)?)\s+(?:(?:is|are|was|were|still)\s+)?(?:clean|green|pass(?:ed|ing)?)\b/i,
   /\b(?:verified|validated|confirmed|tested)\s+(?:end[- ]to[- ]end|successfully|the\s+(?:build|change|fix|result|simulator|implementation))\b/i,
   /\b\d[\d,]*\s*\/\s*\d[\d,]*\s+(?:checks?|tests?|invariants?|cases?)\s+(?:green|pass(?:ed)?)\b/i,
   /\b(?:build|check|test|typecheck|lint)\s*:\s*(?:clean|green|pass(?:ed)?)\b/i,
 ];
+
+function latestTodoHasIncompleteItems(toolCalls: ToolCallResultLike[]): boolean {
+  const latestTodo = [...toolCalls]
+    .reverse()
+    .find((toolCall) => toolCall.name === "todo" && isSuccessfulToolCall(toolCall));
+  if (!latestTodo) return false;
+  const result =
+    latestTodo.result && typeof latestTodo.result === "object" && !Array.isArray(latestTodo.result)
+      ? (latestTodo.result as Record<string, unknown>)
+      : undefined;
+  const items = Array.isArray(result?.items)
+    ? result.items
+    : Array.isArray(latestTodo.args?.items)
+      ? latestTodo.args.items
+      : [];
+  return items.some(
+    (item) =>
+      item !== null &&
+      typeof item === "object" &&
+      !Array.isArray(item) &&
+      (item as Record<string, unknown>).status !== "completed"
+  );
+}
 
 const EXECUTION_VERIFICATION_CLAIM_PATTERNS = [
   /\b(?:all\s+)?(?:builds?|checks?|tests?|typechecks?|lint(?:ing)?)\s+(?:(?:is|are|was|were|still)\s+)?(?:clean|green|pass(?:ed|ing)?)\b/i,
@@ -218,6 +249,22 @@ const HIDDEN_CLARIFICATION_PATTERNS = [
 const UNFINISHED_EXECUTION_PATTERNS = [
   /\bnext\s+(?:concrete\s+)?(?:plan|steps?)\b[\s\S]{0,1600}\b(?:executing|fixing|continuing|working)\s+now\b/i,
   /\bI (?:have not|haven't) yet\b[\s\S]{0,1600}\b(?:executing|fixing|continuing|working)\s+now\b/i,
+  /\bI (?:have not|haven't|did not|didn't)\s+(?:yet\s+)?(?:build|complete|create|design|finish|generate|implement|produce|write)\b[\s\S]{0,1600}\b(?:remaining|outstanding|next)\s+(?:required\s+)?(?:steps?|tasks?|work|deliverables?)\b/i,
+];
+
+const PERMISSION_DEFERRAL_PATTERNS = [
+  /\b(?:do you want|want|would you like) me to\s+(?:continue|proceed|finish|implement|build|create|design|generate|write|complete)\b/i,
+  /\b(?:let me know|tell me)\s+(?:if|when)\s+(?:you want|you'd like|you would like) me to\s+(?:continue|proceed|finish|implement|build|create|design|generate|write|complete)\b/i,
+];
+
+const REPORTED_STOP_PATTERN =
+  /\b(?:I was asked|you asked me|as requested,? I)\s+(?:to\s+)?(?:stop|pause|wait)\b/i;
+
+const USER_DEFERRED_EXECUTION_PATTERNS = [
+  /\b(?:do not|don't)\s+(?:continue|proceed|implement|make changes?|modify|write)\b/i,
+  /\b(?:pause|stop|wait)\s+(?:here|before|after|until)\b/i,
+  /\b(?:ask me|wait for (?:my )?(?:approval|confirmation))\s+before\b/i,
+  /\b(?:only|just)\s+(?:analyze|audit|inspect|plan|review)\b/i,
 ];
 
 const IMPLEMENTATION_REQUEST_PATTERN =
@@ -270,6 +317,28 @@ function hasPattern(content: string, patterns: RegExp[]): boolean {
 
 function hasSuccessfulClarification(toolCalls: ToolCallResultLike[]): boolean {
   return successfulToolCalls(toolCalls).some((toolCall) => toolCall.name === "clarify");
+}
+
+function isPrematureExecutionStop(
+  userMessage: string | undefined,
+  assistantContent: string,
+  toolCalls: ToolCallResultLike[]
+): boolean {
+  const request = userMessage?.trim() || "";
+  if (!request || !requiresToolEvidenceForMessage(request)) return false;
+  if (
+    EXPLICIT_PLANNING_REQUEST_PATTERN.test(request) &&
+    !PLANNING_FOLLOW_THROUGH_PATTERN.test(request)
+  ) {
+    return false;
+  }
+  if (hasPattern(request, USER_DEFERRED_EXECUTION_PATTERNS)) return false;
+  if (hasSuccessfulClarification(toolCalls)) return false;
+  return (
+    hasPattern(assistantContent, PERMISSION_DEFERRAL_PATTERNS) ||
+    (REPORTED_STOP_PATTERN.test(assistantContent) &&
+      !hasPattern(request, USER_DEFERRED_EXECUTION_PATTERNS))
+  );
 }
 
 function hasSuccessfulCompletionEvidence(
@@ -333,6 +402,9 @@ export function findAssistantEvidenceIssue(
   if (hasPattern(visibleContent, UNFINISHED_EXECUTION_PATTERNS)) {
     return "unfinished_execution";
   }
+  if (isPrematureExecutionStop(context.userMessage, visibleContent, toolCalls)) {
+    return "unfinished_execution";
+  }
   if (
     context.allowPlanOnly !== true &&
     isPlanOnlyImplementationResponse(context.userMessage, visibleContent, toolCalls)
@@ -345,6 +417,12 @@ export function findAssistantEvidenceIssue(
     !visibleContent.includes("?")
   ) {
     return "missing_action_evidence";
+  }
+  if (
+    hasPattern(visibleContent, WHOLE_TASK_COMPLETION_CLAIM_PATTERNS) &&
+    latestTodoHasIncompleteItems(toolCalls)
+  ) {
+    return "incomplete_plan";
   }
   if (
     hasPattern(visibleContent, COMPLETION_CLAIM_PATTERNS) &&
@@ -395,6 +473,9 @@ export function extractVisibleClarification(toolCalls: ToolCallResultLike[]): st
 }
 
 export function buildUnsupportedAssistantClaimMessage(issue: AssistantEvidenceIssue): string {
+  if (issue === "incomplete_plan") {
+    return "I couldn't finish every planned item in this turn. Retry this turn or switch agents.";
+  }
   if (issue === "missing_clarification") {
     return "I couldn't produce the clarification needed to continue. Retry this turn or switch agents.";
   }

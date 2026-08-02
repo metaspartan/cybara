@@ -1,8 +1,9 @@
+import { ROOT_DESTRUCTIVE_COMMAND_PATTERNS } from "./destructive-content";
+
 const BLOCKED_TYPE_PATTERNS: readonly RegExp[] = [
   /(\||;|&&|\|\|)\s*(bash|sh|zsh)\b/i,
-  /\brm\s+(-[a-z]*r[a-z]*\s+)?\/(\s|$)/i,
+  ...ROOT_DESTRUCTIVE_COMMAND_PATTERNS,
   /\bsudo\s+rm\s+-[a-z]*r/i,
-  /:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;?\s*:/i,
   /\bmkfs\b/i,
   /\bdd\s+if=\/dev\//i,
   /\bpowershell(?:\.exe)?\b[^\r\n]*(?:-enc|-encodedcommand)\b/i,

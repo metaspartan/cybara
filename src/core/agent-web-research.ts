@@ -13,5 +13,13 @@ export function webResearchBudgetReached(
   return completedCalls >= Math.max(1, budget);
 }
 
+export function toolsAfterWebResearchBudget<T extends { name: string }>(
+  tools: T[],
+  budgetReached: boolean
+): T[] {
+  if (!budgetReached) return tools;
+  return tools.filter((tool) => !WEB_RESEARCH_TOOL_NAMES.has(tool.name));
+}
+
 export const WEB_RESEARCH_SYNTHESIS_INSTRUCTION =
-  "You have enough web research for this turn. Answer the user now from the strongest sources already collected. Do not call more tools. Briefly note any unresolved source limitation instead of retrying blocked or missing URLs.";
+  "The web research budget for this turn is complete. Do not call web_search or web_fetch again. Use the strongest sources already collected, finish and verify every required deliverable with available non-web tools, and briefly note unresolved source limitations in the final response.";

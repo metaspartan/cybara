@@ -29,6 +29,7 @@ import {
 import { hasAgentTransferEnvelope } from "./agent-transfer";
 import {
   countWebResearchCalls,
+  toolsAfterWebResearchBudget,
   WEB_RESEARCH_SYNTHESIS_INSTRUCTION,
   webResearchBudgetReached,
 } from "./agent-web-research";
@@ -121,6 +122,7 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
     let finalContent = message.content || "";
     let lastProgressThought = "";
     let webResearchToolCalls = 0;
+    let webResearchExhausted = false;
     const hookContext = this.buildHookContext("openai", modelId, toolContext);
     const loopState: AgenticLoopState = {
       previousFingerprint: undefined,
@@ -257,7 +259,9 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
       webResearchToolCalls += countWebResearchCalls(
         iterationToolCalls.map((toolCall) => toolCall.name)
       );
-      const forceResearchSynthesis = webResearchBudgetReached(webResearchToolCalls);
+      const reachedWebResearchBudget = webResearchBudgetReached(webResearchToolCalls);
+      const notifyWebResearchBudget = reachedWebResearchBudget && !webResearchExhausted;
+      webResearchExhausted ||= reachedWebResearchBudget;
 
       const noProgressStreak = updateNoProgressLoopState(loopState, iterationToolCalls);
       const loopEvaluation = evaluateNoProgressLoop(
@@ -289,7 +293,7 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
-      if (forceResearchSynthesis) {
+      if (notifyWebResearchBudget) {
         currentMessages.push({
           role: "user",
           content: WEB_RESEARCH_SYNTHESIS_INSTRUCTION,
@@ -310,8 +314,9 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
         max_tokens: maxOutputTokens,
       };
 
-      if (!forceResearchSynthesis && tools && Array.isArray(tools) && tools.length > 0) {
-        loopRequestBody.tools = tools.map((t) => ({
+      const loopTools = toolsAfterWebResearchBudget(tools, webResearchExhausted);
+      if (loopTools.length > 0) {
+        loopRequestBody.tools = loopTools.map((t) => ({
           type: "function",
           function: {
             name: t.name,

@@ -23,6 +23,10 @@ afterEach(() => {
 });
 
 describe("source migration", () => {
+  test("normalizes OpenCode as a migration source", () => {
+    expect(normalizeMigrationSourceKind("opencode")).toBe("opencode");
+  });
+
   test("previews OpenClaw user data without writing targets", async () => {
     const source = makeTempRoot("cybara-openclaw-source-");
     const target = makeTempRoot("cybara-openclaw-target-");

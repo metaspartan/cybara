@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { existsSync, readdirSync, readFileSync, rmSync } from "fs";
 import { basename, relative, resolve, sep } from "path";
 import { readGitCommit } from "../src/core/build-info";
@@ -18,6 +18,8 @@ interface StandaloneAssetsSourceOptions {
   uiDir: string;
   runtimeEntry?: string;
   transformersWorker?: string;
+  playwrightRuntimeArchive?: string;
+  playwrightRuntimeVersion?: string;
 }
 
 interface StandaloneEntrySourceOptions {
@@ -39,7 +41,17 @@ const EXTERNAL_PACKAGES = [
   "kokoro-js",
   "onnxruntime-node",
   "onnxruntime-web",
+  "playwright",
+  "playwright-core",
 ];
+
+export const PLAYWRIGHT_RUNTIME_PACKAGES = [
+  "playwright",
+  "playwright-core",
+  "chromium-bidi",
+  "devtools-protocol",
+  "mitt",
+] as const;
 
 const commitPattern = /^[0-9a-f]{7,64}$/i;
 
@@ -77,6 +89,9 @@ export function createStandaloneAssetsSource(options: StandaloneAssetsSourceOpti
     options.transformersWorker
       ? `import embeddedTransformersWorker from ${JSON.stringify(importPath(options.cwd, options.transformersWorker))} with { type: "file" };`
       : "",
+    options.playwrightRuntimeArchive
+      ? `import embeddedPlaywrightRuntimeArchive from ${JSON.stringify(importPath(options.cwd, options.playwrightRuntimeArchive))} with { type: "file" };`
+      : "",
   ].filter(Boolean);
   const assets = files
     .map((path, position) => ({ path, position }))
@@ -86,7 +101,40 @@ export function createStandaloneAssetsSource(options: StandaloneAssetsSourceOpti
         `  ${JSON.stringify(assetPath(options.uiDir, entry.path))}: embeddedUiAsset${entry.position},`
     );
 
+  const playwrightInstaller =
+    options.playwrightRuntimeArchive && options.playwrightRuntimeVersion
+      ? `import { existsSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
+
+async function installEmbeddedPlaywrightRuntime(): Promise<void> {
+  const home = process.env.CYBARA_HOME?.trim() || join(homedir(), ".cybara");
+  const root = join(home, "runtime", "playwright", ${JSON.stringify(options.playwrightRuntimeVersion)});
+  const marker = join(root, ".complete");
+  if (!existsSync(marker)) {
+    const compressed = new Uint8Array(await Bun.file(embeddedPlaywrightRuntimeArchive).arrayBuffer());
+    const decoded = new TextDecoder().decode(Bun.gunzipSync(compressed));
+    const archive = JSON.parse(decoded) as { files: Record<string, string> };
+    for (const [relativePath, encoded] of Object.entries(archive.files)) {
+      if (!relativePath || isAbsolute(relativePath)) throw new Error("Invalid Playwright runtime path");
+      const target = resolve(root, relativePath);
+      if (target !== root && !target.startsWith(root + sep)) {
+        throw new Error("Playwright runtime path escaped its install root");
+      }
+      mkdirSync(dirname(target), { recursive: true });
+      await Bun.write(target, Buffer.from(encoded, "base64"));
+    }
+    await Bun.write(marker, ${JSON.stringify(options.playwrightRuntimeVersion)});
+  }
+  process.env.CYBARA_PLAYWRIGHT_RESOURCE_DIR = root;
+}
+
+await installEmbeddedPlaywrightRuntime();
+`
+      : "";
+
   return `${[...uiImports, ...runtimeImports].join("\n")}
+${playwrightInstaller}
 
 const runtime = globalThis as typeof globalThis & {
   __CYBARA_EMBEDDED_UI__?: {
@@ -169,6 +217,7 @@ async function buildStandaloneRuntime(
   entryModule: string,
   externalPackages: readonly string[]
 ): Promise<StandaloneRuntimeBundle> {
+  const packages = [...new Set([...EXTERNAL_PACKAGES, ...externalPackages])];
   const processHandle = Bun.spawn(
     [
       process.execPath,
@@ -178,10 +227,7 @@ async function buildStandaloneRuntime(
       `--outdir=${directory}`,
       "--entry-naming=runtime.js",
       "--asset-naming=[name]-[hash].[ext]",
-      ...[...new Set([...EXTERNAL_PACKAGES, ...externalPackages])].flatMap((packageName) => [
-        "--external",
-        packageName,
-      ]),
+      ...packages.flatMap((packageName) => ["--external", packageName]),
     ],
     {
       cwd,
@@ -205,6 +251,25 @@ async function buildStandaloneRuntime(
       basename(path).startsWith("transformers-embedding-worker-")
     ),
   };
+}
+
+async function buildPlaywrightRuntimeArchive(cwd: string, archivePath: string): Promise<string> {
+  const files: Record<string, string> = {};
+  for (const packageName of PLAYWRIGHT_RUNTIME_PACKAGES) {
+    const packageRoot = resolve(cwd, "node_modules", packageName);
+    if (!existsSync(resolve(packageRoot, "package.json"))) {
+      throw new Error(`Playwright runtime package is unavailable: ${packageName}`);
+    }
+    for (const path of listFiles(packageRoot)) {
+      if (path.split(sep).includes(".local-browsers")) continue;
+      const relativePath = relative(cwd, path).split(sep).join("/");
+      files[relativePath] = readFileSync(path).toString("base64");
+    }
+  }
+  const compressed = Bun.gzipSync(Buffer.from(JSON.stringify({ files })), { level: 9 });
+  const version = createHash("sha256").update(compressed).digest("hex").slice(0, 20);
+  await Bun.write(archivePath, compressed);
+  return version;
 }
 
 export function standaloneCliBuildArgs(
@@ -237,7 +302,9 @@ export async function buildStandaloneCli(options: StandaloneCliBuildOptions): Pr
   const entrypoint = resolve(cwd, `.cybara-standalone-${buildId}.ts`);
   const assetsModule = resolve(cwd, `.cybara-standalone-assets-${buildId}.ts`);
   const runtimeDirectory = resolve(cwd, `.cybara-standalone-runtime-${buildId}`);
+  const playwrightRuntimeArchive = resolve(cwd, `.cybara-playwright-runtime-${buildId}.json.gz`);
   const buildCommit = await resolveStandaloneBuildCommit(cwd, options.buildCommit);
+  const embedsPlaywrightRuntime = !options.externalPackages?.includes("playwright");
 
   try {
     const runtime = await buildStandaloneRuntime(
@@ -246,6 +313,9 @@ export async function buildStandaloneCli(options: StandaloneCliBuildOptions): Pr
       options.entryModule ?? "src/main.ts",
       options.externalPackages ?? []
     );
+    const playwrightRuntimeVersion = embedsPlaywrightRuntime
+      ? await buildPlaywrightRuntimeArchive(cwd, playwrightRuntimeArchive)
+      : undefined;
     await Bun.write(
       assetsModule,
       createStandaloneAssetsSource({
@@ -253,6 +323,8 @@ export async function buildStandaloneCli(options: StandaloneCliBuildOptions): Pr
         uiDir,
         runtimeEntry: runtime.entry,
         transformersWorker: runtime.transformersWorker,
+        playwrightRuntimeArchive: playwrightRuntimeVersion ? playwrightRuntimeArchive : undefined,
+        playwrightRuntimeVersion,
       })
     );
     await Bun.write(
@@ -279,6 +351,7 @@ export async function buildStandaloneCli(options: StandaloneCliBuildOptions): Pr
   } finally {
     rmSync(entrypoint, { force: true });
     rmSync(assetsModule, { force: true });
+    rmSync(playwrightRuntimeArchive, { force: true });
     rmSync(runtimeDirectory, { recursive: true, force: true });
   }
 }

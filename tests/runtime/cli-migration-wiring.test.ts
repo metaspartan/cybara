@@ -20,7 +20,7 @@ describe("CLI migration wiring", () => {
     expect(cli).toContain('hasFlag(args, "--migrate-secrets")');
     expect(help).toContain("migrate     Import supported legacy agent data");
     expect(help).toContain("migrate sources");
-    expect(help).toContain("migrate codex|claude-code");
+    expect(help).toContain("openclaw|hermes|codex|claude-code|opencode");
     expect(help).toContain("migrate --migrate-secrets --overwrite");
   });
 });

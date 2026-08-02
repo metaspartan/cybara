@@ -30,6 +30,7 @@ import {
 import { hasAgentTransferEnvelope } from "./agent-transfer";
 import {
   countWebResearchCalls,
+  toolsAfterWebResearchBudget,
   WEB_RESEARCH_SYNTHESIS_INSTRUCTION,
   webResearchBudgetReached,
 } from "./agent-web-research";
@@ -374,6 +375,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
     let finalContent = currentData.content?.find((c) => c.type === "text")?.text || "";
     let lastProgressThought = "";
     let webResearchToolCalls = 0;
+    let webResearchExhausted = false;
     const thinkingParts = collectAnthropicThinkingText(currentData.content);
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
     const loopState: AgenticLoopState = {
@@ -580,7 +582,9 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
       webResearchToolCalls += countWebResearchCalls(
         iterationToolCalls.map((toolCall) => toolCall.name)
       );
-      const forceResearchSynthesis = webResearchBudgetReached(webResearchToolCalls);
+      const reachedWebResearchBudget = webResearchBudgetReached(webResearchToolCalls);
+      const notifyWebResearchBudget = reachedWebResearchBudget && !webResearchExhausted;
+      webResearchExhausted ||= reachedWebResearchBudget;
       const budgetWarning = consumeAgenticLoopBudgetWarning(
         loopPolicy,
         iterations,
@@ -608,7 +612,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         content: [
           ...toolResults,
           ...(steeringText ? [{ type: "text", text: steeringText }] : []),
-          ...(forceResearchSynthesis
+          ...(notifyWebResearchBudget
             ? [{ type: "text", text: WEB_RESEARCH_SYNTHESIS_INSTRUCTION }]
             : []),
         ],
@@ -640,13 +644,16 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         loopRequestBody.system = systemMessage.content;
       }
 
-      if (!forceResearchSynthesis && tools && Array.isArray(tools) && tools.length > 0) {
-        loopRequestBody.tools = tools.map((t) => ({
+      const loopTools = toolsAfterWebResearchBudget(tools, webResearchExhausted);
+      if (loopTools.length > 0) {
+        loopRequestBody.tools = loopTools.map((t) => ({
           name: t.name,
           description: t.description || "",
           input_schema: t.input_schema || { type: "object", properties: {} },
         }));
-        loopRequestBody.tool_choice = resolveAnthropicToolChoice(tools.map((tool) => tool.name));
+        loopRequestBody.tool_choice = resolveAnthropicToolChoice(
+          loopTools.map((tool) => tool.name)
+        );
       }
 
       const loopCached = applyAnthropicCacheControl(

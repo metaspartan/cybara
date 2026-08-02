@@ -14,10 +14,19 @@ import { createHash } from "crypto";
 import { config } from "./config";
 import { tables, type Provider } from "./database";
 import { cybaraDir, userSkillsDir } from "./paths";
-import { providerManager, providers, type ProviderType } from "./providers";
+import { providerManager, providers, resolveProviderType, type ProviderType } from "./providers";
 import { clearSkillsCache } from "./skills/index";
+import {
+  countOpenCodeSessions,
+  isOpenCodeMigrationSourceAvailable,
+  migrateOpenCodeSessions,
+  openCodeDefaultSourcePaths,
+  readOpenCodeSessions,
+  resolveOpenCodeMigrationRoots,
+  type OpenCodeSessionStore,
+} from "./source-migration-opencode";
 
-export type MigrationSourceKind = "openclaw" | "hermes" | "codex" | "claude-code";
+export type MigrationSourceKind = "openclaw" | "hermes" | "codex" | "claude-code" | "opencode";
 export type MigrationPreset = "user-data" | "full";
 export type MigrationSkillConflictMode = "skip" | "overwrite" | "rename";
 export type MigrationItemStatus =
@@ -40,6 +49,7 @@ export interface MigrationSourceCandidate {
     skillCount: number;
     configFiles: number;
     envFiles: number;
+    sessionCount: number;
   };
 }
 
@@ -57,6 +67,18 @@ export interface SourceMigrationRequest {
 export interface SourceMigrationRuntime {
   targetRoot?: string;
   now?: Date;
+  openCodeSessionStore?: OpenCodeSessionStore;
+}
+
+function readOnlyOpenCodeSessionStore(): OpenCodeSessionStore {
+  return {
+    async exists(sessionId: string): Promise<boolean> {
+      return Boolean(tables.chatSessions.get(sessionId));
+    },
+    async write(): Promise<void> {
+      throw new Error("Read-only migration preview cannot write sessions");
+    },
+  };
 }
 
 export interface MigrationItem {
@@ -70,6 +92,7 @@ export interface MigrationItem {
     | "speech"
     | "workspace"
     | "settings"
+    | "session"
     | "archive";
   name: string;
   source?: string;
@@ -161,12 +184,14 @@ function sourceLabel(kind: MigrationSourceKind): string {
     hermes: "Hermes",
     codex: "Codex",
     "claude-code": "Claude Code",
+    opencode: "OpenCode",
   };
   return labels[kind];
 }
 
 export function normalizeMigrationSourceKind(value: unknown): MigrationSourceKind | undefined {
-  if (value === "openclaw" || value === "hermes" || value === "codex") return value;
+  if (value === "openclaw" || value === "hermes" || value === "codex" || value === "opencode")
+    return value;
   if (value === "claude" || value === "claude-code") return "claude-code";
   return undefined;
 }
@@ -179,6 +204,7 @@ function sourceDefaultPaths(): Record<MigrationSourceKind, string[]> {
     hermes: ["~/.hermes"],
     codex: [...(codexHome ? [codexHome] : []), "~/.codex"],
     "claude-code": [...(claudeConfigDir ? [claudeConfigDir] : []), "~/.claude"],
+    opencode: openCodeDefaultSourcePaths(),
   };
 }
 
@@ -304,6 +330,13 @@ function parseConfigContent(raw: string, path: string): ConfigRecord {
       return {};
     }
   }
+  if (path.toLowerCase().endsWith(".jsonc")) {
+    try {
+      return asRecord(Bun.JSONC.parse(raw));
+    } catch {
+      return {};
+    }
+  }
   try {
     return asRecord(JSON.parse(raw));
   } catch {
@@ -329,6 +362,15 @@ function parseEnv(raw: string): ConfigRecord {
 }
 
 function configFilesFor(kind: MigrationSourceKind, root: string): string[] {
+  if (kind === "opencode") {
+    const roots = resolveOpenCodeMigrationRoots(root);
+    return [
+      join(roots.configRoot, "opencode.json"),
+      join(roots.configRoot, "opencode.jsonc"),
+      join(roots.configRoot, ".env"),
+      join(roots.dataRoot, "auth.json"),
+    ];
+  }
   const common = [join(root, "config.json"), join(root, ".env")];
   if (kind === "openclaw") {
     return [
@@ -440,11 +482,34 @@ function collectSecrets(records: ConfigRecord[], kind: MigrationSourceKind): Sec
       }
     }
   }
+  if (kind === "opencode") {
+    for (const record of records) {
+      for (const [providerId, authValue] of Object.entries(record)) {
+        const auth = asRecord(authValue);
+        if (auth.type !== "api" || typeof auth.key !== "string" || !auth.key.trim()) continue;
+        const provider = resolveProviderType(providerId);
+        if (!provider) continue;
+        append({
+          key: `${providerId}.key`,
+          provider,
+          field: "api_key",
+          label: providers[provider].name,
+          value: auth.key.trim(),
+        });
+      }
+    }
+  }
   return matches;
 }
 
 function inferSourceKind(root: string, requested?: MigrationSourceKind): MigrationSourceKind {
   if (requested) return requested;
+  if (
+    fileExists(join(root, "opencode.json")) ||
+    fileExists(join(root, "opencode.jsonc")) ||
+    fileExists(join(root, "opencode.db"))
+  )
+    return "opencode";
   if (
     basename(root) === ".codex" ||
     fileExists(join(root, "config.toml")) ||
@@ -464,16 +529,21 @@ function inferSourceKind(root: string, requested?: MigrationSourceKind): Migrati
 }
 
 function personaFilesFor(kind: MigrationSourceKind, root: string): string[] {
+  const openCodeConfigRoot =
+    kind === "opencode" ? resolveOpenCodeMigrationRoots(root).configRoot : root;
   const candidates: Record<MigrationSourceKind, string[]> = {
     openclaw: [join(root, "SOUL.md"), join(root, "workspace", "SOUL.md")],
     hermes: [join(root, "SOUL.md"), join(root, "persona.md")],
     codex: [join(root, "AGENTS.md")],
     "claude-code": [join(root, "CLAUDE.md")],
+    opencode: [join(openCodeConfigRoot, "AGENTS.md")],
   };
   return listExistingFiles(candidates[kind]);
 }
 
 function memoryFilesFor(kind: MigrationSourceKind, root: string): string[] {
+  const openCodeConfigRoot =
+    kind === "opencode" ? resolveOpenCodeMigrationRoots(root).configRoot : root;
   const candidates: Record<MigrationSourceKind, string[]> = {
     openclaw: [
       join(root, "MEMORY.md"),
@@ -504,11 +574,18 @@ function memoryFilesFor(kind: MigrationSourceKind, root: string): string[] {
       ...listMarkdownFiles(join(root, "memory")),
       ...listProjectMemoryFiles(root),
     ],
+    opencode: [
+      join(openCodeConfigRoot, "MEMORY.md"),
+      ...listMarkdownFiles(join(openCodeConfigRoot, "memory")),
+      ...listMarkdownFiles(join(openCodeConfigRoot, "memories")),
+    ],
   };
   return [...new Set(listExistingFiles(candidates[kind]))];
 }
 
 function skillSourcesFor(kind: MigrationSourceKind, root: string): string[] {
+  const openCodeConfigRoot =
+    kind === "opencode" ? resolveOpenCodeMigrationRoots(root).configRoot : root;
   const roots = [
     join(root, "skills"),
     join(root, "workspace", "skills"),
@@ -519,6 +596,13 @@ function skillSourcesFor(kind: MigrationSourceKind, root: string): string[] {
     roots.push(join(dirname(root), ".agents", "skills"));
   }
   if (kind === "claude-code") roots.push(join(root, "commands"));
+  if (kind === "opencode") {
+    roots.push(
+      join(openCodeConfigRoot, "skills"),
+      join(openCodeConfigRoot, "commands"),
+      join(openCodeConfigRoot, "agents")
+    );
+  }
   const skills: string[] = [];
   for (const skillsRoot of roots.map(normalizedPath)) {
     if (!dirExists(skillsRoot)) continue;
@@ -542,12 +626,29 @@ function skillSourcesFor(kind: MigrationSourceKind, root: string): string[] {
 
 function workspaceInstructionFilesFor(kind: MigrationSourceKind, root: string): string[] {
   if (kind === "claude-code") return listExistingFiles([join(root, "CLAUDE.md")]);
+  if (kind === "opencode") {
+    const configRoot = resolveOpenCodeMigrationRoots(root).configRoot;
+    return listExistingFiles([join(configRoot, "AGENTS.md")]);
+  }
   return listExistingFiles([join(root, "AGENTS.md"), join(root, "workspace", "AGENTS.md")]);
+}
+
+function sourceDirectoryExists(kind: MigrationSourceKind, root: string): boolean {
+  return kind === "opencode" ? isOpenCodeMigrationSourceAvailable(root) : dirExists(root);
+}
+
+function detectedOpenCodeSessionCount(kind: MigrationSourceKind, root: string): number {
+  if (kind !== "opencode") return 0;
+  try {
+    return countOpenCodeSessions(root);
+  } catch {
+    return 0;
+  }
 }
 
 function summarizeCandidate(kind: MigrationSourceKind, path: string): MigrationSourceCandidate {
   const root = normalizedPath(path);
-  const exists = dirExists(root);
+  const exists = sourceDirectoryExists(kind, root);
   const parsed = exists
     ? parseSourceConfig(kind, root)
     : { records: [], configFiles: [], envFiles: [] };
@@ -563,6 +664,7 @@ function summarizeCandidate(kind: MigrationSourceKind, path: string): MigrationS
       skillCount: exists ? skillSourcesFor(kind, root).length : 0,
       configFiles: parsed.configFiles.length,
       envFiles: parsed.envFiles.length,
+      sessionCount: exists ? detectedOpenCodeSessionCount(kind, root) : 0,
     },
   };
 }
@@ -1140,7 +1242,7 @@ export async function runSourceMigration(
   const items: MigrationItem[] = [];
   const warnings: string[] = [];
 
-  if (!dirExists(sourceRoot)) {
+  if (!sourceDirectoryExists(sourceKind, sourceRoot)) {
     items.push(
       item(
         "source",
@@ -1170,6 +1272,43 @@ export async function runSourceMigration(
     items.push(...importPersona(personaFiles, sourceKind, dryRun, overwrite));
     items.push(...writeMemoryImport(memoryFiles, targetRoot, sourceKind, dryRun));
     items.push(...importSkills(skills, targetRoot, sourceKind, dryRun, skillConflict));
+    if (sourceKind === "opencode") {
+      try {
+        const openCodeSessionStore =
+          runtime.openCodeSessionStore ||
+          (dryRun
+            ? readOnlyOpenCodeSessionStore()
+            : (
+                await import("./source-migration-opencode-store")
+              ).createCybaraOpenCodeSessionStore());
+        const sessionResults = await migrateOpenCodeSessions(readOpenCodeSessions(sourceRoot), {
+          dryRun,
+          overwrite,
+          store: openCodeSessionStore,
+        });
+        items.push(
+          ...sessionResults.map((result) =>
+            item(
+              "session",
+              result.title,
+              result.status,
+              result.detail,
+              result.sourceId,
+              result.sessionId
+            )
+          )
+        );
+      } catch (error) {
+        items.push(
+          item(
+            "session",
+            "OpenCode conversations",
+            "error",
+            error instanceof Error ? error.message : String(error)
+          )
+        );
+      }
+    }
     items.push(
       ...importWorkspaceInstructions(
         workspaceInstructions,

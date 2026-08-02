@@ -123,6 +123,7 @@ describe("UI page API wiring", () => {
     expect(source).toContain('useState<MigrationSourceKind>("openclaw")');
     expect(source).toContain('{ value: "codex", label: "Codex" }');
     expect(source).toContain('{ value: "claude-code", label: "Claude Code" }');
+    expect(source).toContain('{ value: "opencode", label: "OpenCode" }');
     expect(source).toContain("openDesktopFileDialog");
     expect(source).toContain("openDesktopDirectoryDialog");
     expect(source).toContain("Custom driver");

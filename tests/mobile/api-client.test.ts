@@ -964,6 +964,7 @@ describe("mobile API client", () => {
               detected: {
                 persona: true,
                 memoryFiles: 2,
+                sessionCount: 0,
                 skillCount: 4,
                 configFiles: 1,
                 envFiles: 1,
@@ -1025,6 +1026,7 @@ describe("mobile API client", () => {
             detected: {
               persona: true,
               memoryFiles: 2,
+              sessionCount: 0,
               skillCount: 4,
               configFiles: 1,
               envFiles: 1,

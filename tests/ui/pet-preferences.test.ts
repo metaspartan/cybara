@@ -26,6 +26,10 @@ const htmlSource = readFileSync(
   fileURLToPath(new URL("../../ui/index.html", import.meta.url)),
   "utf8"
 );
+const petWindowBootstrapSource = readFileSync(
+  fileURLToPath(new URL("../../ui/public/pet-window.js", import.meta.url)),
+  "utf8"
+);
 
 describe("pet preferences", () => {
   test("requires an explicit opt-in", () => {
@@ -63,6 +67,11 @@ describe("pet preferences", () => {
     expect(htmlSource).toContain("html.pet-window body");
     expect(htmlSource).toContain("html.pet-window body::before");
     expect(htmlSource).toContain("content: none !important");
+    expect(htmlSource).toContain('<script src="/pet-window.js"></script>');
+    expect(htmlSource).not.toContain("location.search.indexOf");
+    expect(petWindowBootstrapSource).toContain(
+      'document.documentElement.classList.add("pet-window")'
+    );
     expect(tauriPetSource).toContain('invoke<string>("get_gateway_url")');
     expect(tauriPetSource).toContain("url: `${gatewayUrl}/?pet=1`");
     expect(tauriPetSource).not.toContain("http://127.0.0.1:4269/?pet=1");

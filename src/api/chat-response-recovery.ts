@@ -57,6 +57,9 @@ function buildRetryInstruction(
   if (evidenceIssue === "unfinished_execution") {
     return "Your previous response stopped after describing work you said you were executing now. Continue immediately, use the available tools to finish and verify the request, and return only after the work is complete or a concrete blocker prevents further progress.";
   }
+  if (evidenceIssue === "incomplete_plan") {
+    return "Your previous response claimed the task was complete while the latest todo plan still contained unfinished items. Finish the remaining work or mark only genuinely completed items complete, verify the required deliverables, and then report the accurate result.";
+  }
   if (evidenceIssue === "missing_action_evidence") {
     return "Your previous response answered an actionable request without using the available tools. Use the tools now to inspect or perform the work, base every claim on the observed results, and return a concrete answer only after a real tool attempt.";
   }
@@ -128,6 +131,7 @@ export async function recoverAssistantResponse(
     (params.shouldRequireToolUse && (params.toolResults.length === 0 || !hasRequiredToolCall)) ||
     (params.toolsEnabled === true &&
       (evidenceIssue === "unfinished_execution" ||
+        evidenceIssue === "incomplete_plan" ||
         evidenceIssue === "missing_action_evidence" ||
         evidenceIssue === "plan_only" ||
         evidenceIssue === "unsupported_completion" ||

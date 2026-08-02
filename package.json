@@ -85,6 +85,7 @@
     "bip32": "5.0.1",
     "bitcoinjs-lib": "7.0.1",
     "bonjour-service": "1.4.3",
+    "chromium-bidi": "12.0.0",
     "discord.js": "14.26.4",
     "e2b": "2.32.0",
     "ecpair": "3.0.1",

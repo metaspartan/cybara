@@ -279,17 +279,24 @@ POST /api/speech/realtime/test
 
 ## Source Migration
 
-Cybara can import user data from supported legacy agent installations through the CLI, Web/Tauri
-settings, native macOS settings, or the API. The default `user-data` preset imports persona files, memories, skills, and
-workspace instructions while skipping secrets. The `full` preset can also import provider secrets
-and speech preferences when `migrateSecrets` is explicitly enabled.
+Cybara can import user data from supported agent installations, including OpenCode, through the
+CLI, Web/Tauri settings, mobile settings, native macOS settings, or the API. The default `user-data`
+preset imports persona files, memories, skills, workspace instructions, and supported conversation
+history while skipping secrets. The `full` preset can also import provider API keys and speech
+preferences when `migrateSecrets` is explicitly enabled. Provider OAuth sessions are not copied.
 
 ```bash
 cybara migrate sources
 cybara migrate --from <source>
+cybara migrate opencode
 cybara migrate --from <source> --apply --preset user-data
 cybara migrate --from <source> --apply --preset full --migrate-secrets --overwrite
 ```
+
+OpenCode migration reads `opencode.json` or `opencode.jsonc`, global `AGENTS.md`, skills, commands,
+API-key auth records, and the current `opencode.db` session store. Active and archived chats retain
+their message order, model/provider labels, visible reasoning, and tool-call payloads. Re-running an
+import uses deterministic destination IDs and reports conflicts unless overwrite is enabled.
 
 API routes:
 

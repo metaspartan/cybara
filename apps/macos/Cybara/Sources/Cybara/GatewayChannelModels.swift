@@ -144,6 +144,7 @@ struct GatewayMigrationDetected: Decodable, Hashable {
     let skillCount: Int
     let configFiles: Int
     let envFiles: Int
+    let sessionCount: Int?
 }
 
 struct GatewayMigrationReport: Decodable, Hashable {
