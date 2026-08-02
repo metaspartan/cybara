@@ -104,7 +104,6 @@ import {
 } from "./chat-provider-failure";
 import { appendToolImageReferences, maybeSaveAutomaticMemory } from "./chat-response-enrichment";
 import { recoverAssistantResponse } from "./chat-response-recovery";
-import { reviewAssistantAcceptance, shouldRunAcceptanceReview } from "./chat-acceptance-review";
 import {
   interruptActiveChatTurnForSteering,
   isChatTurnInterrupted,
@@ -1666,37 +1665,6 @@ async function handleChatTurn(
         }
         responseContent = recoveredResponse.responseContent;
         toolResults = recoveredResponse.toolResults;
-
-        if (!recoveredResponse.result) {
-          const acceptanceCandidate = {
-            agentId: agent.id,
-            allowPlanOnly: agent.type === "planner",
-            execute: agentManager.execute.bind(agentManager),
-            executeOptions: executionOptions(),
-            executionMessages,
-            responseContent,
-            toolResults,
-            toolsEnabled: tools,
-            userMessage: message,
-          };
-          if (shouldRunAcceptanceReview(acceptanceCandidate)) {
-            broadcastStatus({
-              status: "thinking",
-              sessionId: session.id,
-              agentId: agent.id,
-              timestamp: Date.now(),
-              detail: "Verifying completed work...",
-            });
-            const acceptanceReview = await reviewAssistantAcceptance(acceptanceCandidate);
-            if (acceptanceReview.result) {
-              result = acceptanceReview.result;
-              appendThinking(acceptanceReview.result.thinking);
-              executionModelMetadata = executionMetadataFromResult(acceptanceReview.result);
-            }
-            responseContent = acceptanceReview.responseContent;
-            toolResults = acceptanceReview.toolResults;
-          }
-        }
       }
 
       const memorySettings = config.getMemoryBehaviorSettings();

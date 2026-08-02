@@ -45,55 +45,6 @@ afterEach(async () => {
 });
 
 describe("chat response recovery", () => {
-  test("runs one acceptance review after apparently complete mutation-heavy work", async () => {
-    const agentId = createTestAgent("Acceptance Review Agent");
-    const sessionId = `acceptance-review-${crypto.randomUUID()}`;
-    createdSessionIds.push(sessionId);
-    const executionMessages: Array<Array<{ role: string; content: string }>> = [];
-    const executionOptions: Array<Parameters<typeof agentManager.execute>[2]> = [];
-    let callCount = 0;
-
-    agentManager.execute = (async (_agentId, messages, options) => {
-      callCount += 1;
-      executionMessages.push(messages.map(({ role, content }) => ({ role, content })));
-      executionOptions.push(options);
-      if (callCount === 1) {
-        return {
-          content: "Implemented the queue and verified the tests pass.",
-          tool_calls: [
-            { name: "read", result: { content: "source" } },
-            { name: "apply_patch", result: { success: true } },
-            { name: "exec", result: { exitCode: 0, output: "focused test passed" } },
-          ],
-        };
-      }
-      return {
-        content: "Corrected the cancellation boundary and verified the full suite passes.",
-        tool_calls: [
-          { name: "apply_patch", result: { success: true } },
-          { name: "exec", result: { exitCode: 0, output: "full suite passed" } },
-        ],
-      };
-    }) as typeof agentManager.execute;
-
-    const result = await handleChat({
-      message: "Implement the queue and verify cancellation boundaries.",
-      agentId,
-      sessionId,
-      tools: true,
-    });
-
-    expect(callCount).toBe(2);
-    expect(executionOptions[1]).toMatchObject({
-      maxToolCalls: 24,
-      requireToolUse: true,
-      useTools: true,
-    });
-    expect(executionMessages[1]?.at(-1)?.content).toContain("final acceptance review");
-    expect(result.message.content).toContain("Corrected the cancellation boundary");
-    expect(result.message.tool_calls).toHaveLength(5);
-  });
-
   test("persists reasoning returned separately from assistant content", async () => {
     const agentId = createTestAgent("Separate Reasoning Agent");
     const sessionId = `separate-reasoning-${crypto.randomUUID()}`;
