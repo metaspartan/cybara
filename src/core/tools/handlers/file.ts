@@ -1135,10 +1135,10 @@ async function applyFilePatch(
       }
     }
 
-    const sanitizedNewLines = sanitizeGeneratedDocumentContent(
-      filePatch.path,
-      newLines.join("\n")
-    ).content.split("\n");
+    const sanitizedNewLines =
+      newLines.length === 0
+        ? []
+        : sanitizeGeneratedDocumentContent(filePatch.path, newLines.join("\n")).content.split("\n");
 
     lines.splice(startIdx, deleteCount, ...sanitizedNewLines);
   }

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { handleEdit, handleWrite } from "../../src/core/tools/handlers/file";
+import { handleApplyPatch, handleEdit, handleWrite } from "../../src/core/tools/handlers/file";
 
 const roots: string[] = [];
 
@@ -52,5 +52,22 @@ describe("generated document safety", () => {
     expect(edit.safetyRedactions).toBe(1);
     expect(readFileSync(reportPath, "utf8")).toContain("deletes the root filesystem");
     expect(readFileSync(fixturePath, "utf8")).toContain("rm -rf /");
+  });
+
+  test("pure-removal patches do not insert an empty line", async () => {
+    const root = createRoot();
+    const path = join(root, "report.md");
+    const context = { agentId: "test", workspaceDir: root, confineToWorkspace: true };
+    writeFileSync(path, "first\nremove me\nthird\n");
+
+    const result = await handleApplyPatch(
+      {
+        patch: [`--- a/${path}`, `+++ b/${path}`, "@@ -2,1 +2,0 @@", "-remove me"].join("\n"),
+      },
+      context
+    );
+
+    expect(result.success).toBe(true);
+    expect(readFileSync(path, "utf8")).toBe("first\nthird\n");
   });
 });
