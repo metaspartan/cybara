@@ -29,6 +29,9 @@ describe("system prompt reliability guidance", () => {
     expect(prompt).toContain("verify order, direction, orientation, boundaries");
     expect(prompt).toContain("test below, at, and above each boundary");
     expect(prompt).toContain("assert observable started-work and cleanup counts");
+    expect(prompt).toContain("an internal acceptance ledger with one entry per requirement");
+    expect(prompt).toContain("the literal input or command, the observed result");
+    expect(prompt).toContain("Check what the real consumer parses");
     expect(prompt).toContain("Finish with the result and concise verification");
     expect(prompt).not.toContain("## Agentic Behavior");
     expect(prompt).not.toContain("## Grounding & Accuracy");
