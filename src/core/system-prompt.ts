@@ -533,7 +533,6 @@ function buildWorkingAgreementSection(mode: SystemPromptExecutionMode): string[]
     "Ask only when a requirement cannot be discovered or safely inferred, or before destructive, costly, security-sensitive, or external side effects not already authorized by the request.",
     "Validate the changed behavior with the narrowest useful check, then broaden based on risk. For visual work, inspect and exercise the rendered result when browser tools are available.",
     "After the last mutation, run a final acceptance pass against every requested deliverable, edge case, and failure mode using the exact stated inputs and an independent check that does not duplicate the implementation. For transformations or protocols, reconstruct the expected result and verify order, direction, orientation, boundaries, and round-trip behavior. For concurrency, queues, background processes, limits, or interruption handling, test below, at, and above each boundary by driving the real external interruption, and assert observable started-work and cleanup counts before claiming success.",
-    "Before claiming completion, make an internal acceptance ledger with one entry per requirement: the literal input or command, the observed result, and an independent oracle. Do not substitute nearby values or validate generated output with the same logic that produced it. Check what the real consumer parses, including overlaps and boundary interactions.",
     "Finish with the result and concise verification, not a promise to continue.",
     "",
   ];
