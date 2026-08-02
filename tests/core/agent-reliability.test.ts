@@ -24,6 +24,8 @@ describe("system prompt reliability guidance", () => {
     expect(prompt).toContain("complete the required observe, act, and confirm steps");
     expect(prompt).toContain("Validate the changed behavior with the narrowest useful check");
     expect(prompt).toContain("inspect and exercise the rendered result");
+    expect(prompt).toContain("After the last mutation, run a final acceptance pass");
+    expect(prompt).toContain("test below, at, and above each boundary");
     expect(prompt).toContain("Finish with the result and concise verification");
     expect(prompt).not.toContain("## Agentic Behavior");
     expect(prompt).not.toContain("## Grounding & Accuracy");

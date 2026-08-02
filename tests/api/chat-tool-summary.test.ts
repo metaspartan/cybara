@@ -183,6 +183,41 @@ describe("chat tool summary utilities", () => {
     ).toBe("plan_only");
   });
 
+  test("detects explicit unfinished deliverables and permission deferrals", () => {
+    const unfinished = [
+      "I have not yet designed or written the required output file.",
+      "Remaining steps: generate the final artifact and verify it.",
+      "Want me to proceed with writing it?",
+    ].join("\n\n");
+
+    expect(
+      findAssistantEvidenceIssue(unfinished, [], {
+        userMessage: "Build the required artifact and verify it.",
+      })
+    ).toBe("unfinished_execution");
+    expect(
+      findAssistantEvidenceIssue("I stopped here because I was asked to stop.", [], {
+        userMessage: "Continue and finish the implementation.",
+      })
+    ).toBe("unfinished_execution");
+  });
+
+  test("allows requested planning and explicit approval boundaries", () => {
+    const deferral =
+      "I mapped the remaining work. Would you like me to proceed with implementing it?";
+
+    expect(
+      findAssistantEvidenceIssue(deferral, [], {
+        userMessage: "Create an implementation plan for the importer.",
+      })
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue(deferral, [], {
+        userMessage: "Review the importer and wait for my approval before making changes.",
+      })
+    ).toBeUndefined();
+  });
+
   test("requires provider-neutral evidence for actionable work but not ordinary answers", () => {
     expect(requiresToolEvidenceForMessage("Fix the importer and test it.")).toBe(true);
     expect(requiresToolEvidenceForMessage("Could you please fix the importer?")).toBe(true);

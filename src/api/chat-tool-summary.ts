@@ -249,6 +249,22 @@ const HIDDEN_CLARIFICATION_PATTERNS = [
 const UNFINISHED_EXECUTION_PATTERNS = [
   /\bnext\s+(?:concrete\s+)?(?:plan|steps?)\b[\s\S]{0,1600}\b(?:executing|fixing|continuing|working)\s+now\b/i,
   /\bI (?:have not|haven't) yet\b[\s\S]{0,1600}\b(?:executing|fixing|continuing|working)\s+now\b/i,
+  /\bI (?:have not|haven't|did not|didn't)\s+(?:yet\s+)?(?:build|complete|create|design|finish|generate|implement|produce|write)\b[\s\S]{0,1600}\b(?:remaining|outstanding|next)\s+(?:required\s+)?(?:steps?|tasks?|work|deliverables?)\b/i,
+];
+
+const PERMISSION_DEFERRAL_PATTERNS = [
+  /\b(?:do you want|want|would you like) me to\s+(?:continue|proceed|finish|implement|build|create|design|generate|write|complete)\b/i,
+  /\b(?:let me know|tell me)\s+(?:if|when)\s+(?:you want|you'd like|you would like) me to\s+(?:continue|proceed|finish|implement|build|create|design|generate|write|complete)\b/i,
+];
+
+const REPORTED_STOP_PATTERN =
+  /\b(?:I was asked|you asked me|as requested,? I)\s+(?:to\s+)?(?:stop|pause|wait)\b/i;
+
+const USER_DEFERRED_EXECUTION_PATTERNS = [
+  /\b(?:do not|don't)\s+(?:continue|proceed|implement|make changes?|modify|write)\b/i,
+  /\b(?:pause|stop|wait)\s+(?:here|before|after|until)\b/i,
+  /\b(?:ask me|wait for (?:my )?(?:approval|confirmation))\s+before\b/i,
+  /\b(?:only|just)\s+(?:analyze|audit|inspect|plan|review)\b/i,
 ];
 
 const IMPLEMENTATION_REQUEST_PATTERN =
@@ -301,6 +317,28 @@ function hasPattern(content: string, patterns: RegExp[]): boolean {
 
 function hasSuccessfulClarification(toolCalls: ToolCallResultLike[]): boolean {
   return successfulToolCalls(toolCalls).some((toolCall) => toolCall.name === "clarify");
+}
+
+function isPrematureExecutionStop(
+  userMessage: string | undefined,
+  assistantContent: string,
+  toolCalls: ToolCallResultLike[]
+): boolean {
+  const request = userMessage?.trim() || "";
+  if (!request || !requiresToolEvidenceForMessage(request)) return false;
+  if (
+    EXPLICIT_PLANNING_REQUEST_PATTERN.test(request) &&
+    !PLANNING_FOLLOW_THROUGH_PATTERN.test(request)
+  ) {
+    return false;
+  }
+  if (hasPattern(request, USER_DEFERRED_EXECUTION_PATTERNS)) return false;
+  if (hasSuccessfulClarification(toolCalls)) return false;
+  return (
+    hasPattern(assistantContent, PERMISSION_DEFERRAL_PATTERNS) ||
+    (REPORTED_STOP_PATTERN.test(assistantContent) &&
+      !hasPattern(request, USER_DEFERRED_EXECUTION_PATTERNS))
+  );
 }
 
 function hasSuccessfulCompletionEvidence(
@@ -362,6 +400,9 @@ export function findAssistantEvidenceIssue(
     return "missing_clarification";
   }
   if (hasPattern(visibleContent, UNFINISHED_EXECUTION_PATTERNS)) {
+    return "unfinished_execution";
+  }
+  if (isPrematureExecutionStop(context.userMessage, visibleContent, toolCalls)) {
     return "unfinished_execution";
   }
   if (
