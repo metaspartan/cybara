@@ -298,6 +298,33 @@ The app icon should display automatically. If missing:
 1. Ensure `ui/dist/cybara.png` exists after building
 2. Rebuild: `bun run ui:build && bun run tauri:build`
 
+### Linux: "failed to start the gateway sidecar"
+
+The desktop shell launched fine, but the bundled gateway process it spawns
+exited. The gateway is a self-contained binary, so this is almost always the
+gateway itself erroring on startup rather than a missing system library.
+
+Get the real error. The failure now carries the gateway's own last output in
+the status message, and both of these logs capture it:
+
+- Desktop app log: `~/.local/share/com.cybara.desktop/logs/` (newest file)
+- Gateway log: `~/.cybara/logs/`
+
+Or run the app from a terminal with sidecar logging on to watch it live:
+
+```bash
+CYBARA_TAURI_LOG_SIDECAR=1 cybara-desktop
+```
+
+Also confirm the gateway runs on its own:
+
+```bash
+cybara start
+```
+
+If `cybara start` works but the desktop app does not, share the two logs above
+so the failing line can be identified.
+
 ### Build errors on macOS
 
 ```bash

@@ -211,6 +211,36 @@ fn bounded_sidecar_output(value: &str) -> String {
     value.trim().chars().take(64 * 1024).collect()
 }
 
+const SIDECAR_STDERR_TAIL_LINES: usize = 8;
+
+fn record_sidecar_stderr(buffer: &std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<String>>>, line: &str) {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    if let Ok(mut guard) = buffer.lock() {
+        guard.push_back(trimmed.chars().take(600).collect());
+        while guard.len() > SIDECAR_STDERR_TAIL_LINES {
+            guard.pop_front();
+        }
+    }
+}
+
+fn sidecar_failure_reason(
+    base: String,
+    buffer: &std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<String>>>,
+) -> String {
+    let tail = buffer
+        .lock()
+        .ok()
+        .map(|guard| guard.iter().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    if tail.is_empty() {
+        return base;
+    }
+    format!("{base} Gateway output:\n{}", tail.join("\n"))
+}
+
 fn set_gateway_startup_status(app: &tauri::AppHandle, status: GatewayStartupStatus) {
     if let Some(state) = app.try_state::<GatewayStartupState>()
         && let Ok(mut guard) = state.0.lock()
@@ -637,6 +667,9 @@ fn start_sidecar(app: tauri::AppHandle) {
     store_sidecar_child(&app, generation, child);
     let log_sidecar_output = should_log_sidecar_output();
     let output_app = app.clone();
+    let stderr_tail: std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<String>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::new()));
+    let stderr_tail_events = stderr_tail.clone();
     tauri::async_runtime::spawn(async move {
         use tauri_plugin_shell::process::CommandEvent;
         let mut port_sender = Some(port_sender);
@@ -666,9 +699,14 @@ fn start_sidecar(app: tauri::AppHandle) {
                         if is_browser_diagnostic_line(output) {
                             log::warn!(target: "cybara::browser", "{output}");
                         } else {
+                            record_sidecar_stderr(&stderr_tail_events, output);
                             log::warn!(target: "cybara::sidecar", "{output}");
                         }
                     }
+                }
+                CommandEvent::Error(message) => {
+                    record_sidecar_stderr(&stderr_tail_events, &message);
+                    log::warn!(target: "cybara::sidecar", "{message}");
                 }
                 CommandEvent::Terminated(payload) => {
                     log::warn!(
@@ -676,12 +714,13 @@ fn start_sidecar(app: tauri::AppHandle) {
                         payload.code
                     );
                     if clear_terminated_sidecar(&output_app, generation) {
+                        let base = match payload.code {
+                            Some(code) => format!("Gateway exited with code {code}."),
+                            None => "Gateway exited unexpectedly.".into(),
+                        };
                         schedule_sidecar_restart(
                             output_app.clone(),
-                            match payload.code {
-                                Some(code) => format!("Gateway exited with code {code}."),
-                                None => "Gateway exited unexpectedly.".into(),
-                            },
+                            sidecar_failure_reason(base, &stderr_tail_events),
                         );
                     }
                     return;
@@ -692,7 +731,10 @@ fn start_sidecar(app: tauri::AppHandle) {
         if clear_terminated_sidecar(&output_app, generation) {
             schedule_sidecar_restart(
                 output_app,
-                "Gateway process event stream closed unexpectedly.".into(),
+                sidecar_failure_reason(
+                    "Gateway process event stream closed unexpectedly.".into(),
+                    &stderr_tail,
+                ),
             );
         }
     });
