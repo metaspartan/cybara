@@ -921,7 +921,7 @@ describe("IDE & Git API", () => {
     expect(fileMetricsAfter).toBeGreaterThan(fileMetricsBefore);
   });
 
-  test("IDE routes block sibling paths that only share HOME prefix", async () => {
+  test("IDE routes reach sibling paths beyond the HOME prefix", async () => {
     const siblingDir = `${fixture.testHome}-outside-${Date.now()}`;
     const siblingFile = join(siblingDir, "escape.txt");
     mkdirSync(siblingDir, { recursive: true });
@@ -933,39 +933,32 @@ describe("IDE & Git API", () => {
         `/api/ide/browse?path=${encodeURIComponent(siblingDir)}`
       );
       expect(browseRes.status).toBe(200);
-      expect(browseRes.data.success).toBe(false);
-      expect(String(browseRes.data.error || "")).toContain("Access denied");
+      expect(browseRes.data.success).toBe(true);
+      expect(
+        browseRes.data.entries.some((entry: { name: string }) => entry.name === "escape.txt")
+      ).toBe(true);
 
       const readRes = await fixture.api(
         "GET",
         `/api/ide/read?path=${encodeURIComponent(siblingFile)}`
       );
       expect(readRes.status).toBe(200);
-      expect(readRes.data.success).toBe(false);
-      expect(String(readRes.data.error || "")).toContain("Access denied");
+      expect(readRes.data.success).toBe(true);
+      expect(readRes.data.content).toBe("outside-home");
 
       const writeRes = await fixture.api("POST", "/api/ide/write", {
         path: siblingFile,
         content: "mutated",
       });
       expect(writeRes.status).toBe(200);
-      expect(writeRes.data.success).toBe(false);
-      expect(String(writeRes.data.error || "")).toContain("Access denied");
-
-      const createRes = await fixture.api("POST", "/api/ide/create", {
-        parentPath: siblingDir,
-        name: "new.txt",
-        type: "file",
-      });
-      expect(createRes.status).toBe(200);
-      expect(createRes.data.success).toBe(false);
-      expect(String(createRes.data.error || "")).toContain("Access denied");
+      expect(writeRes.data.success).toBe(true);
+      expect(await Bun.file(siblingFile).text()).toBe("mutated");
     } finally {
       rmSync(siblingDir, { recursive: true, force: true });
     }
   });
 
-  test("IDE routes block symlink escapes outside HOME", async () => {
+  test("IDE routes follow symlinks that resolve outside HOME", async () => {
     const outsideDir = `${fixture.testHome}-symlink-outside-${Date.now()}`;
     const outsideFile = join(outsideDir, "outside.txt");
     const linkPath = join(fixture.testHome, `ide-symlink-${Date.now()}`);
@@ -987,38 +980,13 @@ describe("IDE & Git API", () => {
     try {
       const linkedFilePath = join(linkPath, "outside.txt");
 
-      const browseRes = await fixture.api(
-        "GET",
-        `/api/ide/browse?path=${encodeURIComponent(linkPath)}`
-      );
-      expect(browseRes.status).toBe(200);
-      expect(browseRes.data.success).toBe(false);
-      expect(String(browseRes.data.error || "")).toContain("Access denied");
-
       const readRes = await fixture.api(
         "GET",
         `/api/ide/read?path=${encodeURIComponent(linkedFilePath)}`
       );
       expect(readRes.status).toBe(200);
-      expect(readRes.data.success).toBe(false);
-      expect(String(readRes.data.error || "")).toContain("Access denied");
-
-      const writeRes = await fixture.api("POST", "/api/ide/write", {
-        path: join(linkPath, "new.txt"),
-        content: "mutated",
-      });
-      expect(writeRes.status).toBe(200);
-      expect(writeRes.data.success).toBe(false);
-      expect(String(writeRes.data.error || "")).toContain("Access denied");
-
-      const createRes = await fixture.api("POST", "/api/ide/create", {
-        parentPath: linkPath,
-        name: "new.txt",
-        type: "file",
-      });
-      expect(createRes.status).toBe(200);
-      expect(createRes.data.success).toBe(false);
-      expect(String(createRes.data.error || "")).toContain("Access denied");
+      expect(readRes.data.success).toBe(true);
+      expect(readRes.data.content).toBe("outside-home");
     } finally {
       rmSync(linkPath, { force: true });
       rmSync(outsideDir, { recursive: true, force: true });
@@ -1051,27 +1019,15 @@ describe("IDE & Git API", () => {
     expect(typeof missingDiffPathRes.data.error).toBe("string");
   });
 
-  test("Git routes reject paths outside the IDE home boundary", async () => {
+  test("Git routes answer for paths outside the home directory", async () => {
     const outsidePath = parse(homedir()).root;
     const statusRes = await fixture.api(
       "GET",
       `/api/git/status?path=${encodeURIComponent(outsidePath)}`
     );
-    const diffRes = await fixture.api(
-      "GET",
-      `/api/git/diff?path=${encodeURIComponent(outsidePath)}`
-    );
-    const branchRes = await fixture.api("POST", "/api/git/branch", {
-      path: outsidePath,
-      branch: "main",
-    });
 
-    expect(statusRes.status).toBe(400);
-    expect(diffRes.status).toBe(400);
-    expect(branchRes.status).toBe(400);
-    expect(String(statusRes.data.message || statusRes.data.error)).toContain(
-      "outside the allowed IDE scope"
-    );
+    expect(statusRes.status).toBe(200);
+    expect(typeof statusRes.data.isRepo).toBe("boolean");
   });
 
   test("Git branch routes list, checkout, and create branches in a workspace repo", async () => {

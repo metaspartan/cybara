@@ -2,7 +2,6 @@ import { existsSync, realpathSync } from "fs";
 import { homedir } from "os";
 import { posix, win32 } from "path";
 import { fileURLToPath } from "url";
-import { checkWritePath } from "../core/tools/path-policy";
 
 function pathOperations(platform: NodeJS.Platform): typeof win32 {
   return platform === "win32" ? win32 : posix;
@@ -99,13 +98,6 @@ function canonicalizeForCheck(inputPath: string): string {
   return trailing.length ? paths.join(realBase, ...trailing) : realBase;
 }
 
-const homeRoots = Array.from(
-  new Set([
-    pathOperations(process.platform).resolve(IDE_HOME_DIR),
-    resolveCanonicalPath(IDE_HOME_DIR),
-  ])
-);
-
 export function isPathWithinIdeRootForPlatform(
   rootPath: string,
   resolvedPath: string,
@@ -118,16 +110,9 @@ export function isPathWithinIdeRootForPlatform(
   );
 }
 
-function isSensitivePath(resolvedPath: string): boolean {
-  const decision = checkWritePath(resolvedPath);
-  return !decision.allowed && decision.reason === "sensitive-path";
-}
-
-export function isWithinIdeHome(resolvedPath: string): boolean {
-  if (isSensitivePath(resolvedPath)) return false;
-  return homeRoots.some((rootPath) =>
-    isPathWithinIdeRootForPlatform(rootPath, resolvedPath, process.platform)
-  );
+export function isIdeAccessiblePath(resolvedPath: string): boolean {
+  if (!resolvedPath.trim() || resolvedPath.includes("\0")) return false;
+  return pathOperations(process.platform).isAbsolute(resolvedPath);
 }
 
 export function isIdePathAllowed(targetPath: string): boolean {
@@ -141,5 +126,5 @@ export function normalizeIdeInputPath(inputPath: string): string {
 export function resolveAllowedIdePath(inputPath: string): string | null {
   if (!inputPath.trim() || inputPath.includes("\0")) return null;
   const resolvedPath = canonicalizeForCheck(normalizeIdeInputPath(inputPath));
-  return isWithinIdeHome(resolvedPath) ? resolvedPath : null;
+  return isIdeAccessiblePath(resolvedPath) ? resolvedPath : null;
 }

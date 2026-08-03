@@ -36,12 +36,11 @@ describe("IDE workspace open targets", () => {
     expect(new Set(result.targets.map((target) => target.id)).size).toBe(result.targets.length);
   });
 
-  test("rejects paths outside the allowed home workspace boundary", async () => {
+  test("lists open targets for workspaces outside the home directory", async () => {
     const result = await listWorkspaceOpenTargets("/etc");
 
-    expect(result.success).toBe(false);
-    expect(result.targets).toEqual([]);
-    expect(result.error).toContain("Access denied");
+    expect(result.success).toBe(true);
+    expect(result.targets.length).toBeGreaterThan(0);
   });
 
   test("opens the internal Cybara IDE target without spawning an external app", async () => {

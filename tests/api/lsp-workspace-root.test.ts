@@ -30,9 +30,8 @@ describe("LSP workspace root resolution", () => {
     }
   });
 
-  test("rejects paths outside the IDE home boundary", () => {
-    expect(() => resolveWorkspacePath(parse(homedir()).root)).toThrow(
-      "LSP path is outside the allowed IDE scope"
-    );
+  test("accepts paths outside the home directory", () => {
+    const root = parse(homedir()).root;
+    expect(resolveWorkspacePath(root)).toBe(root);
   });
 });

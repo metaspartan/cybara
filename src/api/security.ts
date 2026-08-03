@@ -872,8 +872,11 @@ export function routeRequiredScope(method: string, path: string): MobileScope | 
   }
   if (path.startsWith("/api/ide")) {
     if (path === "/api/ide/inline-completion") return "chat";
-    if (method === "GET") return "read";
-    return "manage";
+    if (path.startsWith("/api/ide/index") || path.startsWith("/api/ide/lsp")) {
+      if (method === "GET") return "read";
+      return "manage";
+    }
+    return "terminal";
   }
   if (path.startsWith("/api/lsp")) {
     if (method === "GET") return "read";
