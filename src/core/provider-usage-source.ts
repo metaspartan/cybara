@@ -2,6 +2,11 @@ import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 import { createHash } from "node:crypto";
 import { createInterface } from "readline";
 import { createLogger } from "./logger";
+import {
+  buildCommandCodeUsage,
+  parseCommandCodeCredits,
+  parseCommandCodeSubscription,
+} from "./provider-commandcode-usage";
 import { kimiCodeIdentityHeaders } from "./providers/kimi-code";
 
 const log = createLogger("ProviderUsage");
@@ -1351,6 +1356,58 @@ export function parseOpenCodeUsageResponse(body: unknown, now: number): LiveProv
   };
 }
 
+function commandCodeBillingOrigin(baseUrl?: string): string {
+  const fallback = "https://api.commandcode.ai";
+  try {
+    const parsed = new URL(baseUrl || fallback);
+    if (parsed.hostname.endsWith("commandcode.ai")) return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return fallback;
+  }
+  return fallback;
+}
+
+async function fetchCommandCodeBilling(
+  token: string,
+  origin: string,
+  path: string
+): Promise<unknown | null> {
+  const res = await fetch(`${origin}${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "User-Agent": "Cybara",
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as unknown;
+}
+
+async function fetchCommandCodeUsage(
+  token: string,
+  baseUrl?: string
+): Promise<LiveProviderUsage | null> {
+  const origin = commandCodeBillingOrigin(baseUrl);
+  const creditsBody = await fetchCommandCodeBilling(token, origin, "/internal/billing/credits");
+  const credits = parseCommandCodeCredits(creditsBody);
+  if (!credits) return null;
+  const subscriptionBody = await fetchCommandCodeBilling(
+    token,
+    origin,
+    "/internal/billing/subscriptions"
+  ).catch(() => null);
+  const subscription = parseCommandCodeSubscription(subscriptionBody);
+  const usage = buildCommandCodeUsage(credits, subscription);
+  if (!usage) return null;
+  return {
+    planLabel: usage.planLabel,
+    monthly: usage.monthly,
+    source: "provider_api",
+    fetchedAt: Date.now(),
+  };
+}
+
 async function fetchKimiUsage(token: string, baseUrl?: string): Promise<LiveProviderUsage | null> {
   const base = kimiBaseUrl(baseUrl);
   for (const suffix of ["usages", "usage"]) {
@@ -1424,6 +1481,8 @@ export async function fetchLiveProviderUsage(
           : await fetchGrokCliUsage();
       } else if (provider.providerType === "xai") {
         value = await fetchGrokCliUsage();
+      } else if (provider.providerType === "commandcode") {
+        value = await fetchCommandCodeUsage(credential, provider.baseUrl);
       }
     } catch (error) {
       log.debug(`live usage fetch failed for ${provider.providerType}: ${error}`);
