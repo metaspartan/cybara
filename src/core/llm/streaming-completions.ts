@@ -75,6 +75,7 @@ export async function consumeOpenAIChatStream(
     onDone: () => {
       completionMarkerSeen = true;
     },
+    onActivity: () => watchdog?.touch(),
   })) {
     const choices = event.choices as StreamedChoiceDelta[] | undefined;
     let madeProgress = false;

@@ -147,6 +147,24 @@ const server = Bun.serve({
       });
     }
 
+    if (model === "behave-reasoning-keepalive") {
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          for (let index = 0; index < 6; index += 1) {
+            controller.enqueue(encoder.encode(": keep-alive\n\n"));
+            await sleep(80);
+          }
+          controller.enqueue(encoder.encode(contentDelta("done reasoning")));
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        },
+      });
+      return new Response(stream, {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }
+
     if (model === "behave-scripted") {
       const turn = scriptedTurns.shift();
       if (!turn) {
@@ -287,6 +305,14 @@ describe("LLM stream watchdog (inactivity, not duration)", () => {
         stallMs: 150,
       })
     ).rejects.toThrow(/no first token/i);
+  });
+
+  test("SSE comment keep-alives during a long reasoning phase keep the stream alive", async () => {
+    const result = await fetchStreaming("behave-reasoning-keepalive", {
+      firstChunkMs: 200,
+      stallMs: 200,
+    });
+    expect(result.choices[0]!.message.content).toContain("done reasoning");
   });
 
   test("a mid-stream stall trips the stall timeout — the exact 07e1bb failure", async () => {
