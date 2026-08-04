@@ -189,7 +189,9 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
       return undefined;
     };
 
-    for await (const event of parseServerSentEvents(response.body)) {
+    for await (const event of parseServerSentEvents(response.body, {
+      onActivity: () => watchdog?.touch(),
+    })) {
       watchdog?.touch();
       const type = typeof event.type === "string" ? event.type : "";
       if (

@@ -340,9 +340,23 @@ export function parseToolArguments(raw: unknown): Record<string, unknown> {
   return repairJsonArguments(raw) ?? {};
 }
 
+function isSseKeepAlive(chunk: string): boolean {
+  let sawComment = false;
+  for (const rawLine of chunk.split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    if (line.length === 0) continue;
+    if (line.startsWith(":")) {
+      sawComment = true;
+      continue;
+    }
+    return false;
+  }
+  return sawComment;
+}
+
 export async function* parseServerSentEvents(
   body: ReadableStream<Uint8Array>,
-  options?: { onDone?: () => void }
+  options?: { onDone?: () => void; onActivity?: () => void }
 ): AsyncGenerator<Record<string, unknown>> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -377,7 +391,11 @@ export async function* parseServerSentEvents(
         const chunk = buffer.slice(0, delimiter.index);
         buffer = buffer.slice(delimiter.index + delimiter[0].length);
         const parsed = parseChunk(chunk);
-        if (parsed) yield parsed;
+        if (parsed) {
+          yield parsed;
+        } else if (isSseKeepAlive(chunk)) {
+          options?.onActivity?.();
+        }
         delimiter = buffer.match(/\r?\n\r?\n/);
       }
     }

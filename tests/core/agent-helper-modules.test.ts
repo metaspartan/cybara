@@ -20,6 +20,18 @@ describe("agent helper modules", () => {
     expect(
       formatLlmFailure(
         new Error(
+          'API error: 403 - {"error":{"message":"Your Go plan doesn\'t include API access. Upgrade to Provider or higher.","code":"upgrade_required"}}'
+        )
+      )
+    ).toBe(
+      "Provider rejected access (403): Your Go plan doesn't include API access. Upgrade to Provider or higher."
+    );
+    expect(formatLlmFailure(new Error("API error: 403 - forbidden"))).toBe(
+      "Provider rejected access (403). Verify account permissions and model access."
+    );
+    expect(
+      formatLlmFailure(
+        new Error(
           "API error: 429 - You've reached your usage limit for this period. Your quota will be refreshed in the next period."
         )
       )
