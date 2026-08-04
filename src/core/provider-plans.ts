@@ -165,6 +165,7 @@ const CODING_PLAN_PROVIDER_TYPES = new Set<string>([
   "opencode_zen",
   "opencode-go",
   "kilocode",
+  "commandcode",
   "xai",
   "xai-oauth",
 ]);
@@ -298,6 +299,11 @@ const EXTERNAL_PLAN_SOURCE_CATALOG: Record<string, ExternalPlanSourceInfo> = {
     mode: "provider_api",
     label: "Kilo Code usage API",
     hint: "Use Kilo account APIs or gateway credentials for plan usage.",
+  },
+  commandcode: {
+    mode: "provider_api",
+    label: "Command Code billing API",
+    hint: "Command Code monthly USD credits are read from its billing API using your Studio API key.",
   },
   openrouter: {
     mode: "provider_api",
@@ -512,6 +518,58 @@ const PROVIDER_PLAN_PRESETS: ProviderPlanPresetSuggestion[] = [
     sourceUrl: "https://github.com/zai-org/zai-coding-plugins",
     limitDescription:
       "Cybara reads Z.ai quota monitor usage when credentials are available; no manual plan caps are needed.",
+    externalSourceEnabled: true,
+  },
+  {
+    id: "commandcode-go",
+    providerTypes: ["commandcode"],
+    label: "Command Code Go",
+    planName: "Command Code Go",
+    description: "Entry Command Code subscription with a monthly USD credit allowance.",
+    confidence: "dynamic",
+    sourceMode: "provider_api",
+    sourceUrl: "https://commandcode.ai/pricing",
+    limitDescription:
+      "Cybara reads remaining monthly USD credits from the Command Code billing API when your Studio key is configured.",
+    externalSourceEnabled: true,
+  },
+  {
+    id: "commandcode-pro",
+    providerTypes: ["commandcode"],
+    label: "Command Code Pro",
+    planName: "Command Code Pro",
+    description: "Mid Command Code subscription with a larger monthly USD credit allowance.",
+    confidence: "dynamic",
+    sourceMode: "provider_api",
+    sourceUrl: "https://commandcode.ai/pricing",
+    limitDescription:
+      "Cybara reads remaining monthly USD credits from the Command Code billing API when your Studio key is configured.",
+    externalSourceEnabled: true,
+  },
+  {
+    id: "commandcode-max",
+    providerTypes: ["commandcode"],
+    label: "Command Code Max",
+    planName: "Command Code Max",
+    description: "High Command Code subscription with a large monthly USD credit allowance.",
+    confidence: "dynamic",
+    sourceMode: "provider_api",
+    sourceUrl: "https://commandcode.ai/pricing",
+    limitDescription:
+      "Cybara reads remaining monthly USD credits from the Command Code billing API when your Studio key is configured.",
+    externalSourceEnabled: true,
+  },
+  {
+    id: "commandcode-ultra",
+    providerTypes: ["commandcode"],
+    label: "Command Code Ultra",
+    planName: "Command Code Ultra",
+    description: "Top Command Code subscription with the largest monthly USD credit allowance.",
+    confidence: "dynamic",
+    sourceMode: "provider_api",
+    sourceUrl: "https://commandcode.ai/pricing",
+    limitDescription:
+      "Cybara reads remaining monthly USD credits from the Command Code billing API when your Studio key is configured.",
     externalSourceEnabled: true,
   },
 ];

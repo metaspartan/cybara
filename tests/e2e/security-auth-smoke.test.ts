@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { createServer } from "net";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
@@ -515,7 +515,7 @@ describe("Security auth e2e", () => {
     }
   });
 
-  test("production mode enforces API key on IDE routes and keeps HOME sandbox restrictions", async () => {
+  test("production mode enforces API key on IDE routes and serves paths beyond HOME", async () => {
     const apiKey = `cybara_e2e_key_${Date.now()}`;
     const port = await getFreePort();
     const baseUrl = `http://127.0.0.1:${port}`;
@@ -582,8 +582,10 @@ describe("Security auth e2e", () => {
         }
       );
       expect(browseOutside.status).toBe(200);
-      expect(browseOutside.data.success).toBe(false);
-      expect(String(browseOutside.data.error || "")).toContain("Access denied");
+      expect(browseOutside.data.success).toBe(true);
+      expect(
+        browseOutside.data.entries.some((entry: { name: string }) => entry.name === "outside.txt")
+      ).toBe(true);
 
       const readOutside = await request(
         baseUrl,
@@ -593,8 +595,8 @@ describe("Security auth e2e", () => {
         }
       );
       expect(readOutside.status).toBe(200);
-      expect(readOutside.data.success).toBe(false);
-      expect(String(readOutside.data.error || "")).toContain("Access denied");
+      expect(readOutside.data.success).toBe(true);
+      expect(readOutside.data.content).toContain("outside-home-file");
 
       const writeOutsideRes = await fetch(`${baseUrl}/api/ide/write`, {
         method: "POST",
@@ -604,13 +606,13 @@ describe("Security auth e2e", () => {
         },
         body: JSON.stringify({
           path: outsideFile,
-          content: "should-not-write",
+          content: "written-outside-home",
         }),
       });
       const writeOutside = (await writeOutsideRes.json()) as { success?: boolean; error?: string };
       expect(writeOutsideRes.status).toBe(200);
-      expect(writeOutside.success).toBe(false);
-      expect(String(writeOutside.error || "")).toContain("Access denied");
+      expect(writeOutside.success).toBe(true);
+      expect(readFileSync(outsideFile, "utf8")).toBe("written-outside-home");
 
       if (symlinkCreated) {
         const readViaSymlink = await request(
@@ -621,8 +623,8 @@ describe("Security auth e2e", () => {
           }
         );
         expect(readViaSymlink.status).toBe(200);
-        expect(readViaSymlink.data.success).toBe(false);
-        expect(String(readViaSymlink.data.error || "")).toContain("Access denied");
+        expect(readViaSymlink.data.success).toBe(true);
+        expect(readViaSymlink.data.content).toContain("written-outside-home");
       }
     } finally {
       await stopServer(proc);

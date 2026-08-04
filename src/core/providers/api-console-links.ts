@@ -51,6 +51,7 @@ const providerApiConsoleUrls: Readonly<Record<string, string>> = {
   gmi: "https://console.gmicloud.ai/user/api-key/manage",
   kilocode: "https://app.kilo.ai/",
   "opencode-go": "https://opencode.ai/auth",
+  commandcode: "https://commandcode.ai/studio",
   "ollama-cloud": "https://ollama.com/settings/keys",
   devin: "https://app.devin.ai/settings/api-keys",
 };

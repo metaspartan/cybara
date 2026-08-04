@@ -5,7 +5,7 @@ import type { RevealResult, WorkspaceOpenTarget, WorkspaceOpenTargetsResult } fr
 import {
   IDE_HOME_DIR as HOME_DIR,
   isIdePathAllowed as isPathAllowed,
-  isWithinIdeHome as isWithinHome,
+  isIdeAccessiblePath as isWithinHome,
   normalizeIdeInputPath as normalizePath,
   resolveCanonicalPath,
 } from "./ide-path-policy";
@@ -444,7 +444,7 @@ function validateWorkspaceOpenPath(
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
   if (!existsSync(targetPath)) {
@@ -459,7 +459,7 @@ function validateWorkspaceOpenPath(
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
   return { success: true, path: targetPath };
@@ -639,7 +639,7 @@ export async function revealInSystemExplorer(inputPath: string): Promise<RevealR
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -656,7 +656,7 @@ export async function revealInSystemExplorer(inputPath: string): Promise<RevealR
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -759,7 +759,7 @@ export async function openInSystemTerminal(inputPath: string): Promise<RevealRes
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
   if (!existsSync(targetPath)) {
@@ -775,7 +775,7 @@ export async function openInSystemTerminal(inputPath: string): Promise<RevealRes
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 

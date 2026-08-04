@@ -147,7 +147,7 @@ async function collectSearchFiles(dirPath: string, collector: SearchFileCollecto
     const entryPath = join(dirPath, entry.name);
     if (entry.isDirectory()) {
       if (SEARCH_IGNORED_DIRS.has(entry.name)) continue;
-      if (entry.name.startsWith(".") && entry.name !== ".cybara") continue;
+      if (entry.name === ".git" || entry.name === "node_modules") continue;
       await collectSearchFiles(entryPath, collector);
       continue;
     }
@@ -212,7 +212,7 @@ export async function searchWorkspace(
       filesScanned: 0,
       scanTruncated: false,
       files: [],
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -503,7 +503,7 @@ export async function listWorkspaceFiles(
       filesScanned: 0,
       scanTruncated: false,
       files: [],
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 

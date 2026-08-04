@@ -240,7 +240,7 @@ describe("route scope requirements", () => {
         "10.1.2.3"
       );
       expect(write.passed).toBe(false);
-      expect(write.error).toContain("'manage'");
+      expect(write.error).toContain("'terminal'");
       expect(approve.passed).toBe(false);
       expect(approve.error).toContain("'manage'");
       expect(browser.passed).toBe(false);
@@ -284,13 +284,13 @@ describe("route scope requirements", () => {
 
   test("narrow tokens cannot mutate local developer and agent state", () => {
     expect(routeRequiredScope("POST", "/api/tools/approvals/resolve")).toBe("manage");
-    expect(routeRequiredScope("POST", "/api/ide/write")).toBe("manage");
-    expect(routeRequiredScope("POST", "/api/ide/create")).toBe("manage");
-    expect(routeRequiredScope("POST", "/api/ide/replace")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/ide/write")).toBe("terminal");
+    expect(routeRequiredScope("POST", "/api/ide/create")).toBe("terminal");
+    expect(routeRequiredScope("POST", "/api/ide/replace")).toBe("terminal");
     expect(routeRequiredScope("POST", "/api/lsp/install")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/skills/install")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/memory")).toBe("manage");
-    expect(routeRequiredScope("GET", "/api/ide/read")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/ide/read")).toBe("terminal");
     expect(routeRequiredScope("GET", "/api/lsp/definition")).toBe("read");
     expect(routeRequiredScope("GET", "/api/skills")).toBe("read");
     expect(routeRequiredScope("GET", "/api/memory")).toBe("read");

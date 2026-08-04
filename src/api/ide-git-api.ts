@@ -5,7 +5,7 @@ import { getGitStatus } from "./git-api";
 import type { IdeBlameLine, IdeBlameResult, IdeUrlResult } from "./ide-api";
 import {
   isIdePathAllowed as isPathAllowed,
-  isWithinIdeHome as isWithinHome,
+  isIdeAccessiblePath as isWithinHome,
   normalizeIdeInputPath as normalizePath,
   resolveCanonicalPath,
 } from "./ide-path-policy";
@@ -237,7 +237,7 @@ export async function getFileBlame(
       isRepo: false,
       truncated: false,
       lines: [],
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -260,7 +260,7 @@ export async function getFileBlame(
       isRepo: false,
       truncated: false,
       lines: [],
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -362,7 +362,7 @@ export async function getFilePermalink(inputPath: string, line: number): Promise
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
   if (!existsSync(targetPath)) {
@@ -378,7 +378,7 @@ export async function getFilePermalink(inputPath: string, line: number): Promise
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -454,7 +454,7 @@ export async function getFileHistoryUrl(inputPath: string): Promise<IdeUrlResult
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
   if (!existsSync(targetPath)) {
@@ -470,7 +470,7 @@ export async function getFileHistoryUrl(inputPath: string): Promise<IdeUrlResult
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 

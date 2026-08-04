@@ -5,6 +5,7 @@ import {
   resolveAllowedIdePath,
   resolveIdeUserHome,
 } from "../../src/api/ide-path-policy";
+import { checkWritePath } from "../../src/core/tools/path-policy";
 
 describe("IDE path policy", () => {
   test("uses USERPROFILE for the Windows user boundary", () => {
@@ -64,5 +65,26 @@ describe("IDE path policy", () => {
   test("rejects empty and null-byte paths", () => {
     expect(resolveAllowedIdePath("")).toBeNull();
     expect(resolveAllowedIdePath(`${process.cwd()}\0suffix`)).toBeNull();
+  });
+
+  test("allows dotfiles like .env that the agent tool policy blocks", () => {
+    const envPath = `${process.cwd()}/.env`;
+    expect(resolveAllowedIdePath(envPath)).toBe(envPath);
+    expect(resolveAllowedIdePath(`${process.cwd()}/.env.local`)).toBe(
+      `${process.cwd()}/.env.local`
+    );
+  });
+
+  test("allows absolute paths outside the home directory", () => {
+    const hosts = resolveAllowedIdePath("/etc/hosts");
+    expect(hosts).not.toBeNull();
+    expect(hosts?.endsWith("/etc/hosts")).toBe(true);
+    expect(resolveAllowedIdePath("/tmp")).not.toBeNull();
+  });
+
+  test("the agent tool policy still refuses credential files", () => {
+    const decision = checkWritePath(`${process.cwd()}/.env`);
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toBe("sensitive-path");
   });
 });

@@ -6,7 +6,7 @@ import { isIdeBinaryExtension as isBinaryExtension } from "./ide-file-policy";
 import {
   IDE_HOME_DIR as HOME_DIR,
   isIdePathAllowed as isPathAllowed,
-  isWithinIdeHome as isWithinHome,
+  isIdeAccessiblePath as isWithinHome,
   normalizeIdeInputPath as normalizePath,
   resolveCanonicalPath,
 } from "./ide-path-policy";
@@ -172,7 +172,7 @@ export async function browseDirectory(inputPath?: string): Promise<BrowseResult>
       path: targetPath,
       parent: null,
       entries: [],
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -193,7 +193,7 @@ export async function browseDirectory(inputPath?: string): Promise<BrowseResult>
       path: targetPath,
       parent: null,
       entries: [],
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -233,7 +233,7 @@ export async function browseDirectory(inputPath?: string): Promise<BrowseResult>
     };
 
     for (const item of items) {
-      if (item.name.startsWith(".") && item.name !== ".cybara") continue;
+      if (item.name === ".git" || item.name === ".DS_Store") continue;
       if (item.name === "node_modules" || item.name === "__pycache__") continue;
       if (item.isSymbolicLink()) continue;
 
@@ -285,7 +285,7 @@ export async function readFileContent(inputPath: string): Promise<ReadResult> {
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -302,7 +302,7 @@ export async function readFileContent(inputPath: string): Promise<ReadResult> {
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -391,7 +391,7 @@ export async function writeFileContent(inputPath: string, content: string): Prom
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -409,7 +409,7 @@ export async function writeFileContent(inputPath: string, content: string): Prom
     return {
       success: false,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -474,7 +474,7 @@ export async function createItem(
       success: false,
       path: targetPath,
       type,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -493,7 +493,7 @@ export async function createItem(
       success: false,
       path: targetPath,
       type,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -555,7 +555,7 @@ export async function renameItem(inputPath: string, newName: string): Promise<Re
       success: false,
       oldPath: targetPath,
       path: targetPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -575,7 +575,7 @@ export async function renameItem(inputPath: string, newName: string): Promise<Re
       success: false,
       oldPath: targetPath,
       path: nextPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -594,7 +594,7 @@ export async function renameItem(inputPath: string, newName: string): Promise<Re
       success: false,
       oldPath: targetPath,
       path: nextPath,
-      error: "Access denied: Path outside home directory",
+      error: "Access denied: Invalid path",
     };
   }
 
@@ -605,7 +605,7 @@ export async function renameItem(inputPath: string, newName: string): Promise<Re
         success: false,
         oldPath: targetPath,
         path: nextPath,
-        error: "Access denied: Path outside home directory",
+        error: "Access denied: Invalid path",
       };
     }
   }
