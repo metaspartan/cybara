@@ -6,17 +6,17 @@ import { createLogger } from "../core/logger";
 import {
   authenticateMobileDeviceToken,
   isLoopbackMobileGatewayUrl,
-  type MobileScope,
   type MobileDeviceView,
+  type MobileScope,
   normalizeMobileGatewayUrl,
 } from "../core/mobile-devices";
-import { cybaraDir } from "../core/paths";
 import {
   isPrivateOrBlockedIp,
   PUBLIC_HTTP_BLOCKED_CIDRS,
   validatePublicHttpUrl,
 } from "../core/outbound-url-policy";
-import { isProductionRuntime } from "../core/runtime/runtime-mode";
+import { cybaraDir } from "../core/paths";
+import { isGatewayNetworkExposed, isHostedRuntime } from "../core/runtime/runtime-mode";
 
 const log = createLogger("Security");
 
@@ -222,9 +222,12 @@ function getEffectiveApiKey(): string {
   return cachedApiKey;
 }
 
+function isLocalhostAuthBypassForbidden(): boolean {
+  return process.env.CYBARA_REQUIRE_AUTH === "1" || isHostedRuntime() || isGatewayNetworkExposed();
+}
+
 function isLocalhostBypassAllowed(): boolean {
-  if (process.env.CYBARA_REQUIRE_AUTH === "1") return false;
-  if (isProductionRuntime()) return false;
+  if (isLocalhostAuthBypassForbidden()) return false;
   if (process.env.CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS === "1") return true;
   return readPersistedSecuritySettings().requireAuthForLocalhost === false;
 }
@@ -719,7 +722,7 @@ export interface GatewayAuthSettings {
 export function getGatewayAuthSettings(): GatewayAuthSettings {
   const envKey = process.env.CYBARA_API_KEY?.trim();
   const key = config.apiKey;
-  const requireForced = process.env.CYBARA_REQUIRE_AUTH === "1" || isProductionRuntime();
+  const requireForced = isLocalhostAuthBypassForbidden();
   return {
     apiKeyConfigured: Boolean(key),
     apiKeyPreview: key ? `••••${key.slice(-4)}` : null,
