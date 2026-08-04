@@ -64,6 +64,10 @@ export function formatLlmFailure(error: unknown, context?: LlmFailureContext): s
     return "Provider authentication failed (401). Verify your provider API key/token.";
   }
   if (lower.includes("403")) {
+    const detail = extractLlmErrorDetail(message);
+    if (detail && !/^\d+$/.test(detail) && detail.toLowerCase() !== "forbidden") {
+      return `Provider rejected access (403): ${detail}`;
+    }
     return "Provider rejected access (403). Verify account permissions and model access.";
   }
   if (lower.includes("too many requests")) {
