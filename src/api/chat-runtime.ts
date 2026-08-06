@@ -136,7 +136,7 @@ import {
   stoppedChatTurnControllers,
   upsertPersistedSessionIndex,
 } from "./chat-runtime-state";
-import { updateSessionTitle } from "./chat-session-api";
+import { applySessionTitleWithBackgroundUpgrade } from "./chat-session-title-upgrade";
 import {
   buildInterruptedToolCalls,
   collectAttachedProcessActivityIds,
@@ -1322,31 +1322,16 @@ async function handleChatTurn(
   }
 
   if (isNewSession && (!session.title || shouldRegenerateSessionTitle(session.title))) {
-    const derivedTitle = cleanGeneratedSessionTitle(
-      agent?.name,
-      deriveSessionTitleFromTurn(message)
-    );
-    session.title = derivedTitle;
-    if (request.source !== "dataset_generation") {
-      void generateSessionTitleViaModel({
-        provider,
-        agent,
-        sessionId: session.id,
-        userMessage: message,
-        channel,
-        userId,
-        workspaceDir: session.workspaceDir,
-        abortSignal: turnAbortController.signal,
-      })
-        .then(async (generatedTitle) => {
-          const upgradedTitle = cleanGeneratedSessionTitle(agent?.name, generatedTitle);
-          if (!upgradedTitle || upgradedTitle === session.title) return;
-          if (session.title && session.title !== derivedTitle) return;
-          session.title = upgradedTitle;
-          await updateSessionTitle(session.id, upgradedTitle);
-        })
-        .catch(() => undefined);
-    }
+    applySessionTitleWithBackgroundUpgrade({
+      session,
+      provider,
+      agent,
+      message,
+      channel,
+      userId,
+      abortSignal: turnAbortController.signal,
+      skipModelUpgrade: request.source === "dataset_generation",
+    });
   }
 
   if (agent && turnAbortController.signal.aborted) {
