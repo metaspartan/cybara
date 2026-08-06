@@ -8,7 +8,7 @@ export interface ProviderRetryPolicy {
 }
 
 const DEFAULT_PROVIDER_RETRY_POLICY: ProviderRetryPolicy = {
-  maxRetries: 3,
+  maxRetries: 5,
   maxDelayMs: MAX_RETRY_DELAY_MS,
 };
 
@@ -61,7 +61,8 @@ export function providerRetryDelayMs(
   attempt: number,
   random: () => number = Math.random
 ): number {
-  const fallbackMs = Math.min(1000 * 2 ** Math.max(0, attempt), 8000);
+  const fallbackCapMs = status === 429 ? 30_000 : 8_000;
+  const fallbackMs = Math.min(1000 * 2 ** Math.max(0, attempt), fallbackCapMs);
   const baseMs = status === 429 ? parseProviderRetryAfterMs(headers, fallbackMs) : fallbackMs;
   if (baseMs <= 0 || baseMs >= MAX_RETRY_DELAY_MS) return baseMs;
   const jitterRangeMs = Math.min(250, Math.ceil(baseMs * 0.2));
