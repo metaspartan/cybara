@@ -910,7 +910,7 @@ export abstract class AgentProviderCommonRuntime {
         : Math.max(requestedOutputTokens, DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS);
 
     const estimatedInputTokens = this.estimateOpenAIRequestInputTokens(requestBody);
-    const reserveTokens = Math.max(128, Math.floor(normalizedContextWindow * 0.01));
+    const reserveTokens = Math.max(256, Math.floor(normalizedContextWindow * 0.025));
     const availableOutputTokens = Math.max(
       1,
       normalizedContextWindow - estimatedInputTokens - reserveTokens
@@ -934,6 +934,22 @@ export abstract class AgentProviderCommonRuntime {
     }
     let nextLimit = Math.max(1, Math.floor(currentLimit * 0.8));
 
+    const providerCountsMatch = normalizedError.match(
+      /maximum context length is\s*(\d+)\s*tokens[\s\S]{0,200}?\((\d+)\s*in the messages,\s*(\d+)\s*in the completion\)/
+    );
+    if (providerCountsMatch) {
+      const limitValue = Number.parseInt(providerCountsMatch[1] || "", 10);
+      const messagesValue = Number.parseInt(providerCountsMatch[2] || "", 10);
+      if (Number.isFinite(limitValue) && Number.isFinite(messagesValue)) {
+        const margin = Math.max(256, Math.floor(limitValue * 0.001));
+        const exactAvailable = limitValue - messagesValue - margin;
+        if (exactAvailable < 1) {
+          return undefined;
+        }
+        nextLimit = Math.min(nextLimit, exactAvailable);
+      }
+    }
+
     const explicitLimitMatch = normalizedError.match(/limit:\s*(\d+)\s*\(requested:\s*(\d+)\)/i);
     if (explicitLimitMatch) {
       const limitValue = Number.parseInt(explicitLimitMatch[1] || "", 10);
@@ -944,7 +960,7 @@ export abstract class AgentProviderCommonRuntime {
         requestedValue > limitValue
       ) {
         const overflow = requestedValue - limitValue;
-        nextLimit = Math.max(1, currentLimit - overflow - 64);
+        nextLimit = Math.min(nextLimit, Math.max(1, currentLimit - overflow - 64));
       }
     }
 
