@@ -1,4 +1,4 @@
-export type SessionPlanItemStatus = "pending" | "in_progress" | "completed";
+export type SessionPlanItemStatus = "pending" | "in_progress" | "completed" | "cancelled";
 export type SessionPlanItemPriority = "high" | "medium" | "low";
 
 export interface SessionPlanItem {
@@ -12,6 +12,7 @@ export interface SessionPlanSummary {
   pending: number;
   inProgress: number;
   completed: number;
+  cancelled: number;
 }
 
 export interface SessionPlanSnapshot {
@@ -52,7 +53,8 @@ function parseRecord(value: unknown): Record<string, unknown> | null {
 }
 
 function normalizeStatus(value: unknown): SessionPlanItemStatus {
-  if (value === "in_progress" || value === "completed") return value;
+  if (value === "in_progress" || value === "completed" || value === "cancelled") return value;
+  if (value === "canceled") return "cancelled";
   return "pending";
 }
 
@@ -78,11 +80,13 @@ export function normalizeSessionPlanItems(value: unknown): SessionPlanItem[] {
 }
 
 export function summarizeSessionPlanItems(items: SessionPlanItem[]): SessionPlanSummary {
+  const cancelled = items.filter((item) => item.status === "cancelled").length;
   return {
-    total: items.length,
+    total: items.length - cancelled,
     pending: items.filter((item) => item.status === "pending").length,
     inProgress: items.filter((item) => item.status === "in_progress").length,
     completed: items.filter((item) => item.status === "completed").length,
+    cancelled,
   };
 }
 

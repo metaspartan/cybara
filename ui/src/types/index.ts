@@ -358,7 +358,7 @@ export interface ChatMessage {
   _tool_calls_total_count?: number;
 }
 
-export type SessionPlanItemStatus = "pending" | "in_progress" | "completed";
+export type SessionPlanItemStatus = "pending" | "in_progress" | "completed" | "cancelled";
 export type SessionPlanItemPriority = "high" | "medium" | "low";
 
 export interface SessionPlanItem {
@@ -372,6 +372,7 @@ export interface SessionPlanSummary {
   pending: number;
   inProgress: number;
   completed: number;
+  cancelled?: number;
 }
 
 export interface SessionPlanSnapshot {

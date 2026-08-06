@@ -924,7 +924,7 @@ ACTIONS:
   todo: {
     name: "todo",
     description:
-      "Create and update a task list for the current session. Use it for non-trivial multi-step work (3+ steps); skip it for trivial or single-step tasks. Send the FULL list each call (not a delta). Keep exactly ONE item in_progress at a time and mark items completed IMMEDIATELY as you finish them — don't batch completions. When the work is done, send a final update marking every finished item completed before answering.",
+      "Create and update a task list for the current session. Use it for non-trivial multi-step work (3+ steps); skip it for trivial or single-step tasks. Send the FULL list each call (not a delta). Keep exactly ONE item in_progress at a time and mark items completed IMMEDIATELY as you finish them — don't batch completions. Mark items cancelled when they become obsolete, out of scope, or superseded — never drop an unfinished item by omitting it. When the work is done, send a final update marking every remaining item completed or cancelled before answering.",
     category: "planning",
     input_schema: {
       type: "object",
@@ -938,8 +938,9 @@ ACTIONS:
               content: { type: "string", description: "Short description of the task" },
               status: {
                 type: "string",
-                enum: ["pending", "in_progress", "completed"],
-                description: "Current state of the task",
+                enum: ["pending", "in_progress", "completed", "cancelled"],
+                description:
+                  "Current state of the task. Use cancelled for work that is obsolete or no longer needed.",
               },
               priority: {
                 type: "string",

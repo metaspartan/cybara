@@ -38,7 +38,13 @@ describe("session plan snapshots", () => {
 
     expect(plan?.sessionId).toBe("session-plan-1");
     expect(plan?.updatedAt).toBe("2026-07-08T00:01:00.000Z");
-    expect(plan?.summary).toEqual({ total: 3, pending: 1, inProgress: 1, completed: 1 });
+    expect(plan?.summary).toEqual({
+      total: 3,
+      pending: 1,
+      inProgress: 1,
+      completed: 1,
+      cancelled: 0,
+    });
     expect(plan?.items.map((item) => item.content)).toEqual([
       "review route",
       "add UI card",
@@ -58,7 +64,13 @@ describe("session plan snapshots", () => {
     );
 
     expect(result?.items).toEqual([{ content: "ship", status: "pending", priority: "medium" }]);
-    expect(result?.summary).toEqual({ total: 1, pending: 1, inProgress: 0, completed: 0 });
+    expect(result?.summary).toEqual({
+      total: 1,
+      pending: 1,
+      inProgress: 0,
+      completed: 0,
+      cancelled: 0,
+    });
     expect(result?.note?.length).toBe(300);
   });
 

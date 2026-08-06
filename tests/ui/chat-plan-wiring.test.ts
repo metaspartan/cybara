@@ -269,18 +269,21 @@ describe("chat plan and artifact UI wiring", () => {
       pending: 1,
       inProgress: 1,
       completed: 1,
+      cancelled: 0,
     });
     expect(timeline[1]?.summary).toEqual({
       total: 4,
       pending: 1,
       inProgress: 1,
       completed: 2,
+      cancelled: 0,
     });
     expect(timeline[2]?.summary).toEqual({
       total: 4,
       pending: 0,
       inProgress: 0,
       completed: 4,
+      cancelled: 0,
     });
     const latestPlan = extractLatestPlanFromMessages(messages, "session-plan-ui");
     expect(latestPlan?.summary).toEqual({
@@ -288,6 +291,7 @@ describe("chat plan and artifact UI wiring", () => {
       pending: 0,
       inProgress: 0,
       completed: 4,
+      cancelled: 0,
     });
     expect(latestPlan?.items[3]?.content).toBe("Add xAI model");
   });

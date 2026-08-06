@@ -1,6 +1,6 @@
 import type { ToolContext } from "../index";
 
-export type TodoStatus = "pending" | "in_progress" | "completed";
+export type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
 export interface TodoItem {
   content: string;
@@ -36,12 +36,18 @@ export async function handleTodo(
   context?: ToolContext
 ): Promise<{
   items: TodoItem[];
-  summary: { total: number; pending: number; inProgress: number; completed: number };
+  summary: {
+    total: number;
+    pending: number;
+    inProgress: number;
+    completed: number;
+    cancelled: number;
+  };
   note?: string;
 }> {
   const rawItems = Array.isArray(args.items) ? (args.items as unknown[]) : [];
   const items: TodoItem[] = [];
-  const validStatuses: TodoStatus[] = ["pending", "in_progress", "completed"];
+  const validStatuses: TodoStatus[] = ["pending", "in_progress", "completed", "cancelled"];
   const validPriorities = ["high", "medium", "low"] as const;
 
   for (const raw of rawItems) {
@@ -49,8 +55,9 @@ export async function handleTodo(
     const obj = raw as Record<string, unknown>;
     const content = typeof obj.content === "string" ? obj.content.trim() : "";
     if (!content) continue;
-    const status = validStatuses.includes(obj.status as TodoStatus)
-      ? (obj.status as TodoStatus)
+    const rawStatus = obj.status === "canceled" ? "cancelled" : obj.status;
+    const status = validStatuses.includes(rawStatus as TodoStatus)
+      ? (rawStatus as TodoStatus)
       : "pending";
     const priority = (validPriorities as readonly string[]).includes(obj.priority as string)
       ? (obj.priority as TodoItem["priority"])
@@ -58,13 +65,15 @@ export async function handleTodo(
     items.push({ content, status, priority });
   }
 
+  const isSettled = (status: TodoStatus) => status === "completed" || status === "cancelled";
+
   const state = getState(context);
   const incomingContents = new Set(items.map((item) => item.content));
   const droppedIncomplete =
     items.length === 0
       ? []
       : state.items.filter(
-          (previous) => previous.status !== "completed" && !incomingContents.has(previous.content)
+          (previous) => !isSettled(previous.status) && !incomingContents.has(previous.content)
         );
   if (droppedIncomplete.length > 0) {
     const previousContents = new Set(state.items.map((previous) => previous.content));
@@ -72,7 +81,7 @@ export async function handleTodo(
     for (const previous of state.items) {
       const incoming = items.find((item) => item.content === previous.content);
       if (incoming) merged.push(incoming);
-      else if (previous.status !== "completed") merged.push(previous);
+      else if (!isSettled(previous.status)) merged.push(previous);
     }
     for (const item of items) {
       if (!previousContents.has(item.content)) merged.push(item);
@@ -95,22 +104,24 @@ export async function handleTodo(
   state.items = items;
   state.updatedAt = Date.now();
 
+  const cancelled = items.filter((i) => i.status === "cancelled").length;
   const summary = {
-    total: items.length,
+    total: items.length - cancelled,
     pending: items.filter((i) => i.status === "pending").length,
     inProgress: items.filter((i) => i.status === "in_progress").length,
     completed: items.filter((i) => i.status === "completed").length,
+    cancelled,
   };
 
   const restoredNote = droppedIncomplete.length
-    ? ` This update left out ${droppedIncomplete.length} unfinished item${droppedIncomplete.length === 1 ? "" : "s"} (${droppedIncomplete.map((item) => item.content).join("; ")}), which have been kept so the plan stays complete. Always send the full list; to drop work, mark it completed first.`
+    ? ` This update left out ${droppedIncomplete.length} unfinished item${droppedIncomplete.length === 1 ? "" : "s"} (${droppedIncomplete.map((item) => item.content).join("; ")}), which have been kept so the plan stays complete. Always send the full list; to drop work, first mark it completed (done) or cancelled (obsolete or no longer needed).`
     : "";
 
   return {
     items,
     summary,
     note:
-      "Task list updated. Keep at most one item in_progress at a time. Use this list to track multi-step work and avoid drift. When all work is done, send a final update with every item marked completed before giving your answer." +
+      "Task list updated. Keep at most one item in_progress at a time. Use this list to track multi-step work and avoid drift. Mark items cancelled when they become obsolete or out of scope. When all work is done, send a final update with every remaining item marked completed or cancelled before giving your answer." +
       restoredNote,
   };
 }

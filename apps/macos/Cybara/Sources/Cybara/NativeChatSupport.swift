@@ -193,6 +193,8 @@ struct NativeSessionPlanCard: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.content)
                                 .font(.system(size: 11.5, design: .rounded))
+                                .strikethrough(item.status == "cancelled")
+                                .foregroundStyle(item.status == "cancelled" ? .secondary : .primary)
                                 .lineLimit(3)
                             Text(item.priority.capitalized)
                                 .font(.system(size: 10, weight: .medium, design: .rounded))
@@ -654,10 +656,11 @@ func extractNativeSessionPlan(
             let fallbackItems = items.isEmpty ? nativePlanItems(from: tool.args.map(JSONValue.object)) : items
             guard !fallbackItems.isEmpty else { continue }
             let completed = fallbackItems.filter { $0.status == "completed" }.count
+            let cancelled = fallbackItems.filter { $0.status == "cancelled" }.count
             return NativeSessionPlanSnapshot(
                 items: fallbackItems,
                 completed: completed,
-                total: fallbackItems.count,
+                total: fallbackItems.count - cancelled,
                 updatedAt: message.timestamp
             )
         }
@@ -671,11 +674,17 @@ func nativePlanItems(from value: JSONValue?) -> [NativeSessionPlanItem] {
     return rawItems.compactMap { item in
         guard case .object(let itemObject) = item else { return nil }
         guard let content = nativeJSONString(itemObject, key: "content") else { return nil }
+        let rawStatus = nativeJSONString(itemObject, key: "status")
+        let status: String
+        switch rawStatus {
+        case "completed": status = "completed"
+        case "in_progress": status = "in_progress"
+        case "cancelled", "canceled": status = "cancelled"
+        default: status = "pending"
+        }
         return NativeSessionPlanItem(
             content: String(content.prefix(500)),
-            status: nativeJSONString(itemObject, key: "status") == "completed"
-                ? "completed"
-                : nativeJSONString(itemObject, key: "status") == "in_progress" ? "in_progress" : "pending",
+            status: status,
             priority: nativeJSONString(itemObject, key: "priority") ?? "medium"
         )
     }
@@ -685,6 +694,7 @@ func nativePlanItemIcon(_ status: String) -> String {
     switch status {
     case "completed": return "checkmark.circle.fill"
     case "in_progress": return "circle.dotted"
+    case "cancelled": return "slash.circle"
     default: return "circle"
     }
 }
@@ -693,6 +703,7 @@ func nativePlanItemTint(_ status: String) -> Color {
     switch status {
     case "completed": return .green
     case "in_progress": return .blue
+    case "cancelled": return .gray
     default: return .secondary
     }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { ToolContext } from "../../src/core/tools/index";
 import { handleTodo, readTodo } from "../../src/core/tools/handlers/todo";
+import type { ToolContext } from "../../src/core/tools/index";
 
 function context(sessionId: string): ToolContext {
   return { sessionId } as ToolContext;
@@ -103,6 +103,57 @@ describe("todo plan integrity", () => {
     );
 
     expect(readTodo(ctx).map((item) => item.content)).toEqual(["Brand new plan"]);
+  });
+
+  test("lets a model cancel stale work instead of resurrecting it forever", async () => {
+    const ctx = context("cancel-stale");
+    await handleTodo(
+      {
+        items: [
+          { content: "Build widget", status: "in_progress", priority: "high" },
+          { content: "Obsolete approach", status: "pending", priority: "medium" },
+        ],
+      },
+      ctx
+    );
+
+    const result = await handleTodo(
+      {
+        items: [
+          { content: "Build widget", status: "in_progress", priority: "high" },
+          { content: "Obsolete approach", status: "cancelled", priority: "medium" },
+        ],
+      },
+      ctx
+    );
+
+    expect(readTodo(ctx).map((item) => `${item.content}:${item.status}`)).toEqual([
+      "Build widget:in_progress",
+      "Obsolete approach:cancelled",
+    ]);
+    expect(result.summary.total).toBe(1);
+    expect(result.summary.cancelled).toBe(1);
+    expect(result.note).not.toContain("kept so the plan stays complete");
+  });
+
+  test("prunes a cancelled item once a later update omits it", async () => {
+    const ctx = context("prune-cancelled");
+    await handleTodo(
+      {
+        items: [
+          { content: "Keep me", status: "pending", priority: "high" },
+          { content: "Dead end", status: "cancelled", priority: "low" },
+        ],
+      },
+      ctx
+    );
+
+    await handleTodo(
+      { items: [{ content: "Keep me", status: "in_progress", priority: "high" }] },
+      ctx
+    );
+
+    expect(readTodo(ctx).map((item) => item.content)).toEqual(["Keep me"]);
   });
 
   test("still lets a model prune items it already finished", async () => {

@@ -1,10 +1,9 @@
 import {
   finalizeCompletedActivities,
+  type LiveActivityItem,
   mergeActivityLists,
   normalizeActivityTextForPhase,
-  type LiveActivityItem,
 } from "@/lib/chatActivities";
-import { isGenericChatStatusLabel } from "../../../../shared/chat-status";
 import type { PendingChatMessage } from "@/lib/status-stream";
 import type {
   AgentTransferInfo,
@@ -12,6 +11,7 @@ import type {
   SessionPlanItem,
   SessionPlanSnapshot,
 } from "@/types";
+import { isGenericChatStatusLabel } from "../../../../shared/chat-status";
 export interface ToolCall {
   id: string;
   name: string;
@@ -1371,7 +1371,8 @@ export function inferArtifactSummaries(
 }
 
 function normalizePlanStatus(value: unknown): SessionPlanItem["status"] {
-  if (value === "in_progress" || value === "completed") return value;
+  if (value === "in_progress" || value === "completed" || value === "cancelled") return value;
+  if (value === "canceled") return "cancelled";
   return "pending";
 }
 
@@ -1398,11 +1399,13 @@ export function normalizePlanItems(value: unknown): SessionPlanItem[] {
 }
 
 export function summarizePlanItems(items: SessionPlanItem[]): SessionPlanSnapshot["summary"] {
+  const cancelled = items.filter((item) => item.status === "cancelled").length;
   return {
-    total: items.length,
+    total: items.length - cancelled,
     pending: items.filter((item) => item.status === "pending").length,
     inProgress: items.filter((item) => item.status === "in_progress").length,
     completed: items.filter((item) => item.status === "completed").length,
+    cancelled,
   };
 }
 

@@ -749,11 +749,15 @@ export abstract class AgentProviderCommonRuntime {
 
     const normalized = errorText.toLowerCase();
     const mentionsToolChoice = normalized.includes("tool_choice");
-    const mentionsThinkingIncompatibility =
-      normalized.includes("thinking enabled") ||
-      normalized.includes("thinking is enabled") ||
-      normalized.includes("reasoning enabled") ||
-      (normalized.includes("incompatible") && normalized.includes("thinking"));
+    const mentionsThinkingMode =
+      normalized.includes("thinking") || normalized.includes("reasoning");
+    const mentionsRejection =
+      normalized.includes("enabled") ||
+      normalized.includes("incompatible") ||
+      normalized.includes("does not support") ||
+      normalized.includes("not supported") ||
+      normalized.includes("unsupported");
+    const mentionsThinkingIncompatibility = mentionsThinkingMode && mentionsRejection;
     const alreadyAuto =
       toolChoice === "auto" ||
       (typeof toolChoice === "object" &&
