@@ -1001,6 +1001,9 @@ export abstract class AgentProviderCommonRuntime {
     let transientRetryCount = 0;
     const retryPolicy = resolveProviderRetryPolicy(rateLimitContext?.providerType);
     const post = async (body: Record<string, unknown>): Promise<Response | OpenAIResponse> => {
+      if (signal?.aborted) {
+        throw new DOMException("Request aborted before dispatch", "AbortError");
+      }
       if (streamingDisabled) {
         try {
           return await fetch(`${baseUrl}/chat/completions`, {

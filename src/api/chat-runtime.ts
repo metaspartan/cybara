@@ -136,6 +136,7 @@ import {
   stoppedChatTurnControllers,
   upsertPersistedSessionIndex,
 } from "./chat-runtime-state";
+import { updateSessionTitle } from "./chat-session-api";
 import {
   buildInterruptedToolCalls,
   collectAttachedProcessActivityIds,
@@ -1321,22 +1322,30 @@ async function handleChatTurn(
   }
 
   if (isNewSession && (!session.title || shouldRegenerateSessionTitle(session.title))) {
-    const generatedTitle =
-      request.source === "dataset_generation"
-        ? null
-        : await generateSessionTitleViaModel({
-            provider,
-            agent,
-            sessionId: session.id,
-            userMessage: message,
-            channel,
-            userId,
-            workspaceDir: session.workspaceDir,
-            abortSignal: turnAbortController.signal,
-          });
-    session.title = cleanGeneratedSessionTitle(agent?.name, generatedTitle);
-    if (!session.title) {
-      session.title = cleanGeneratedSessionTitle(agent?.name, deriveSessionTitleFromTurn(message));
+    const derivedTitle = cleanGeneratedSessionTitle(
+      agent?.name,
+      deriveSessionTitleFromTurn(message)
+    );
+    session.title = derivedTitle;
+    if (request.source !== "dataset_generation") {
+      void generateSessionTitleViaModel({
+        provider,
+        agent,
+        sessionId: session.id,
+        userMessage: message,
+        channel,
+        userId,
+        workspaceDir: session.workspaceDir,
+        abortSignal: turnAbortController.signal,
+      })
+        .then(async (generatedTitle) => {
+          const upgradedTitle = cleanGeneratedSessionTitle(agent?.name, generatedTitle);
+          if (!upgradedTitle || upgradedTitle === session.title) return;
+          if (session.title && session.title !== derivedTitle) return;
+          session.title = upgradedTitle;
+          await updateSessionTitle(session.id, upgradedTitle);
+        })
+        .catch(() => undefined);
     }
   }
 
