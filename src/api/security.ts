@@ -229,7 +229,9 @@ function isLocalhostAuthBypassForbidden(): boolean {
 function isLocalhostBypassAllowed(): boolean {
   if (isLocalhostAuthBypassForbidden()) return false;
   if (process.env.CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS === "1") return true;
-  return readPersistedSecuritySettings().requireAuthForLocalhost !== true;
+  const settings = readPersistedSecuritySettings();
+  if (settings.gatewayPassword) return false;
+  return settings.requireAuthForLocalhost !== true;
 }
 
 const config = {

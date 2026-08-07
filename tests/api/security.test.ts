@@ -37,6 +37,18 @@ describe("API security module", () => {
     expect(result.authenticated).toBe(true);
   });
 
+  test("a configured gateway password disables the localhost auth bypass", () => {
+    security.setGatewayPassword("benchmark-password-123");
+    try {
+      const gated = security.authenticateRequest({ "sec-fetch-site": "same-origin" }, "127.0.0.1");
+      expect(gated.authenticated).toBe(false);
+    } finally {
+      security.clearGatewayPassword();
+    }
+    const restored = security.authenticateRequest({ "sec-fetch-site": "same-origin" }, "127.0.0.1");
+    expect(restored.authenticated).toBe(true);
+  });
+
   test("authenticateRequest allows an explicit development localhost bypass", () => {
     process.env.CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS = "1";
     const result = security.authenticateRequest({ "sec-fetch-site": "same-origin" }, "127.0.0.1");
