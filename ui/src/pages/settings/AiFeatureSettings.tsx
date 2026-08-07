@@ -1,15 +1,16 @@
+import { Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
-import { extractApiError, settingsApi } from "@/lib/api";
 import { useAgentSummaries } from "@/hooks/useApi";
+import { extractApiError, settingsApi } from "@/lib/api";
 import { useUIStore } from "@/stores/uiStore";
-import { Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
 
 export function AiFeatureSettings() {
   const [defaultAgentId, setDefaultAgentId] = useState("");
   const [backgroundAgentId, setBackgroundAgentId] = useState("");
+  const [subagentAgentId, setSubagentAgentId] = useState("");
   const [visionFallbackAgentId, setVisionFallbackAgentId] = useState("");
   const [selfImprovingSkills, setSelfImprovingSkills] = useState(true);
   const [skillLearningNudge, setSkillLearningNudge] = useState(false);
@@ -35,6 +36,9 @@ export function AiFeatureSettings() {
         );
         setVisionFallbackAgentId(
           typeof data?.vision_fallback_agent_id === "string" ? data.vision_fallback_agent_id : ""
+        );
+        setSubagentAgentId(
+          typeof data?.subagent_agent_id === "string" ? data.subagent_agent_id : ""
         );
         setSelfImprovingSkills(data?.self_improving_skills_enabled !== false);
         setSkillLearningNudge(data?.skill_learning_nudge_enabled === true);
@@ -70,6 +74,21 @@ export function AiFeatureSettings() {
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to update default agent");
       setDefaultAgentId(previous);
+    }
+  };
+
+  const saveSubagentAgent = async (agentId: string) => {
+    const previous = subagentAgentId;
+    setSubagentAgentId(agentId);
+    try {
+      const result = await settingsApi.updateConfig({ subagent_agent_id: agentId });
+      if (!result.success || !result.data?.success) {
+        throw new Error(extractApiError(result, "Config update failed"));
+      }
+      addToast("success", agentId ? "Sub-agent updated" : "Sub-agent reset to default");
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to update sub-agent");
+      setSubagentAgentId(previous);
     }
   };
 
@@ -220,6 +239,28 @@ export function AiFeatureSettings() {
             className="w-full sm:w-72 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
           >
             <option value="">First available agent (default)</option>
+            {(agents ?? []).map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+                {agent.model ? ` — ${agent.model}` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="py-3 border-b border-white/10">
+          <p className="text-sm text-white font-medium">Sub-agent</p>
+          <p className="text-xs text-gray-400 mt-0.5 mb-2">
+            Agent used for delegated sub-tasks when a spawn does not name one. Pick a fast, cheap
+            agent to keep parallel work inexpensive. Defaults to whichever agent is running.
+          </p>
+          <select
+            value={subagentAgentId}
+            disabled={loading}
+            onChange={(e) => void saveSubagentAgent(e.target.value)}
+            className="w-full sm:w-72 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+          >
+            <option value="">First running agent (default)</option>
             {(agents ?? []).map((agent) => (
               <option key={agent.id} value={agent.id}>
                 {agent.name}

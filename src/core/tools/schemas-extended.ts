@@ -316,7 +316,9 @@ SCHEDULE TYPES (schedule.kind):
 
 PAYLOAD TYPES (payload.kind):
 - "systemEvent": Injects text { kind: "systemEvent", text: "<message>" }
-- "agentTurn": Runs agent { kind: "agentTurn", message: "<prompt>" }`,
+- "agentTurn": Runs agent { kind: "agentTurn", message: "<prompt>" }
+
+BINDING: jobs always run as the scheduling agent in its workspace. agentId and workspaceDir are derived from the calling context and cannot be set on the job.`,
     category: "core",
     input_schema: {
       type: "object",
@@ -327,7 +329,11 @@ PAYLOAD TYPES (payload.kind):
           description: "Cron action to perform",
         },
         includeDisabled: { type: "boolean", description: "Include disabled jobs in list" },
-        job: { type: "object", description: "Job definition for add action" },
+        job: {
+          type: "object",
+          description:
+            "Job definition for add action. Ownership (agentId, workspaceDir) is taken from the calling context and ignored if supplied here.",
+        },
         jobId: { type: "string", description: "Job ID for update/remove/run/runs" },
         id: { type: "string", description: "Alias for jobId" },
         patch: { type: "object", description: "Patch object for update action" },

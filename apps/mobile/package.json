@@ -43,5 +43,8 @@
     "postcss": "8.5.23",
     "uuid": "11.1.1",
     "js-yaml": "4.3.1"
+  },
+  "patchedDependencies": {
+    "image-size@1.2.1": "patches/image-size@1.2.1.patch"
   }
 }

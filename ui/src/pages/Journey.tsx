@@ -1,7 +1,8 @@
+import { Brain, CalendarDays, LibraryBig, Network, Rows3, Search, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Brain, CalendarDays, LibraryBig, Search, Sparkles } from "lucide-react";
 import { PageLayout } from "@/components/layout";
 import { apiFetch } from "@/lib/auth";
+import { type GraphEdge, MemoryGraph } from "./journey/MemoryGraph";
 
 interface JourneyEvent {
   id: string;
@@ -16,12 +17,14 @@ interface JourneyEvent {
 
 interface JourneyResponse {
   events: JourneyEvent[];
+  edges?: GraphEdge[];
   counts: { skills: number; memories: number; total: number };
   firstAt: string | null;
   lastAt: string | null;
 }
 
 type JourneyFilter = "all" | JourneyEvent["kind"];
+type JourneyView = "graph" | "timeline";
 
 function relativeTime(ms: number): string {
   if (!ms) return "unknown";
@@ -64,6 +67,7 @@ export function Journey() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<JourneyFilter>("all");
   const [query, setQuery] = useState("");
+  const [view, setView] = useState<JourneyView>("graph");
 
   useEffect(() => {
     let mounted = true;
@@ -117,6 +121,24 @@ export function Journey() {
     return (data?.events ?? []).filter((event) => event.createdAtMs >= threshold).length;
   }, [data?.events]);
 
+  const graphNodes = useMemo(
+    () =>
+      filteredEvents.map((event) => ({
+        id: event.id,
+        kind: event.kind,
+        title: event.title,
+        category: event.category,
+      })),
+    [filteredEvents]
+  );
+
+  const graphEdges = useMemo(() => {
+    const visible = new Set(filteredEvents.map((event) => event.id));
+    return (data?.edges ?? []).filter(
+      (edge) => visible.has(edge.source) && visible.has(edge.target)
+    );
+  }, [data?.edges, filteredEvents]);
+
   return (
     <PageLayout title="Journey" subtitle="Skills and durable memories learned over time">
       <div className="space-y-6">
@@ -132,21 +154,46 @@ export function Journey() {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="inline-flex w-fit rounded-md bg-[var(--surface-raised)] p-1">
-            {(["all", "skill", "memory"] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setFilter(option)}
-                className={`rounded px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
-                  filter === option
-                    ? "bg-[rgb(var(--accent-primary))] text-white"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                }`}
-              >
-                {option}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="inline-flex w-fit rounded-md bg-[var(--surface-raised)] p-1">
+              {(
+                [
+                  ["graph", Network],
+                  ["timeline", Rows3],
+                ] as const
+              ).map(([option, Icon]) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setView(option)}
+                  aria-label={`${option} view`}
+                  className={`flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                    view === option
+                      ? "bg-[rgb(var(--accent-primary))] text-white"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {option}
+                </button>
+              ))}
+            </div>
+            <div className="inline-flex w-fit rounded-md bg-[var(--surface-raised)] p-1">
+              {(["all", "skill", "memory"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setFilter(option)}
+                  className={`rounded px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                    filter === option
+                      ? "bg-[rgb(var(--accent-primary))] text-white"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
           </div>
           <label className="flex h-9 w-full items-center gap-2 rounded-md border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 sm:max-w-xs">
             <Search className="h-4 w-4 text-[var(--icon-muted)]" />
@@ -158,6 +205,16 @@ export function Journey() {
             />
           </label>
         </div>
+
+        {view === "graph" && filteredEvents.length > 0 && !error ? (
+          <div className="space-y-2">
+            <MemoryGraph nodes={graphNodes} edges={graphEdges} />
+            <p className="text-center text-[11px] text-[var(--text-muted)]">
+              {graphNodes.length} nodes · {graphEdges.length} connections · hover a node to trace
+              how related skills and memories generalize together
+            </p>
+          </div>
+        ) : null}
 
         {error ? (
           <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
@@ -177,7 +234,7 @@ export function Journey() {
           </div>
         ) : null}
 
-        <div className="space-y-8">
+        <div className={`space-y-8 ${view === "graph" ? "hidden" : ""}`}>
           {grouped.map(([day, events]) => (
             <section key={day}>
               <div className="sticky top-0 z-10 mb-3 bg-[var(--surface-backdrop)] py-2">

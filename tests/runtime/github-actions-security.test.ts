@@ -67,12 +67,12 @@ describe("GitHub Actions security posture", () => {
   });
 
   test("OSV-scanned package roots pin the patched DOMPurify release", () => {
-    expect(read("package.json")).toContain('"dompurify": "3.4.12"');
-    expect(read("ui/package.json")).toContain('"dompurify": "3.4.12"');
+    expect(read("package.json")).toContain('"dompurify": "3.4.13"');
+    expect(read("ui/package.json")).toContain('"dompurify": "3.4.13"');
 
     for (const lockfile of ["bun.lock", "ui/bun.lock"]) {
       const contents = read(lockfile);
-      expect(contents).toContain("dompurify@3.4.12");
+      expect(contents).toContain("dompurify@3.4.13");
       expect(contents).not.toContain("dompurify@3.4.11");
     }
   });

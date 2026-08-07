@@ -1121,7 +1121,15 @@ export interface JourneyEvent {
   createdAtMs: number;
 }
 
+export interface JourneyEdge {
+  source: string;
+  target: string;
+  weight: number;
+  kind: "category" | "topic";
+}
+
 export interface JourneyResponse {
   events: JourneyEvent[];
+  edges?: JourneyEdge[];
   counts: { skills: number; memories: number; total: number };
 }

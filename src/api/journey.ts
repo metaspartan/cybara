@@ -13,11 +13,147 @@ export interface JourneyEvent {
   source: string;
 }
 
+export interface JourneyEdge {
+  source: string;
+  target: string;
+  weight: number;
+  kind: "category" | "topic";
+}
+
 export interface JourneyResponse {
   events: JourneyEvent[];
+  edges: JourneyEdge[];
   counts: { skills: number; memories: number; total: number };
   firstAt: string | null;
   lastAt: string | null;
+}
+
+const EDGE_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "that",
+  "this",
+  "from",
+  "into",
+  "your",
+  "you",
+  "are",
+  "was",
+  "were",
+  "has",
+  "have",
+  "had",
+  "will",
+  "not",
+  "but",
+  "can",
+  "use",
+  "using",
+  "used",
+  "when",
+  "how",
+  "why",
+  "what",
+  "which",
+  "them",
+  "they",
+  "its",
+  "our",
+  "out",
+  "get",
+  "set",
+  "run",
+  "new",
+  "one",
+  "all",
+  "any",
+  "per",
+  "via",
+  "add",
+  "via",
+  "a",
+  "an",
+  "of",
+  "to",
+  "in",
+  "on",
+  "at",
+  "is",
+  "it",
+  "or",
+  "as",
+  "be",
+  "by",
+  "do",
+  "if",
+  "so",
+  "up",
+  "we",
+  "me",
+  "my",
+  "no",
+]);
+
+const MAX_EDGES_PER_NODE = 4;
+const MIN_TOPIC_OVERLAP = 2;
+
+function significantTokens(text: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const raw of text.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (raw.length < 3 || EDGE_STOPWORDS.has(raw)) continue;
+    tokens.add(raw);
+  }
+  return tokens;
+}
+
+function normalizeCategory(category: string): string {
+  return category.trim().toLowerCase();
+}
+
+export function buildJourneyEdges(events: JourneyEvent[]): JourneyEdge[] {
+  const nodes = events.map((event) => ({
+    id: event.id,
+    category: normalizeCategory(event.category),
+    tokens: significantTokens(`${event.title} ${event.detail}`),
+  }));
+
+  const scored: Array<JourneyEdge & { score: number }> = [];
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      const a = nodes[i];
+      const b = nodes[j];
+      let overlap = 0;
+      for (const token of a.tokens) {
+        if (b.tokens.has(token)) overlap += 1;
+      }
+      const sameCategory =
+        a.category.length > 0 && a.category !== "note" && a.category === b.category;
+      if (!sameCategory && overlap < MIN_TOPIC_OVERLAP) continue;
+      const kind: JourneyEdge["kind"] = overlap >= MIN_TOPIC_OVERLAP ? "topic" : "category";
+      const score = overlap + (sameCategory ? 1.5 : 0);
+      scored.push({ source: a.id, target: b.id, weight: score, kind, score });
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  const degree = new Map<string, number>();
+  const edges: JourneyEdge[] = [];
+  for (const edge of scored) {
+    const sourceDegree = degree.get(edge.source) ?? 0;
+    const targetDegree = degree.get(edge.target) ?? 0;
+    if (sourceDegree >= MAX_EDGES_PER_NODE || targetDegree >= MAX_EDGES_PER_NODE) continue;
+    degree.set(edge.source, sourceDegree + 1);
+    degree.set(edge.target, targetDegree + 1);
+    edges.push({
+      source: edge.source,
+      target: edge.target,
+      weight: Math.round(edge.weight * 100) / 100,
+      kind: edge.kind,
+    });
+  }
+  return edges;
 }
 
 function fileCreatedMs(location: string): number {
@@ -95,6 +231,7 @@ export async function buildJourney(): Promise<JourneyResponse> {
 
   return {
     events,
+    edges: buildJourneyEdges(events),
     counts: { skills: skillsCount, memories: events.length - skillsCount, total: events.length },
     firstAt: withTime.length
       ? new Date(withTime[withTime.length - 1].createdAtMs).toISOString()

@@ -1,14 +1,14 @@
-import { agentManager, type AgentMessage } from "../core/agent";
+import { type AgentMessage, agentManager } from "../core/agent";
 import { KeyedMutex } from "../core/keyed-mutex";
 import { createLogger } from "../core/logger";
 import { providerManager } from "../core/providers";
 import {
   listPersistedSessions,
   loadPersistedSession,
+  type PersistedSessionListEntry,
   persistSession,
   persistSessionContextState,
   resolveSessionModelMetadata,
-  type PersistedSessionListEntry,
   type SessionContextUsage,
   type SessionModelMetadata,
   type SessionTokenUsage,
@@ -24,6 +24,7 @@ import { selectResidentChatSessionEvictions } from "./chat-runtime-stability";
 import type { ChatMessage, ChatRequest, ChatResponse } from "./chat-types";
 
 const log = createLogger("ChatState");
+
 export { stripThinkingTags } from "./chat-formatting";
 export {
   formatProcessActivityFromToolCall,
@@ -113,6 +114,38 @@ export interface PendingChatCompletion {
 }
 
 export const pendingChatQueues = new Map<string, PendingChatItem[]>();
+
+export function createPendingChatCompletion(id: string): void {
+  let resolveCompletion: ((response: ChatResponse) => void) | null = null;
+  let rejectCompletion: ((error: unknown) => void) | null = null;
+  const promise = new Promise<ChatResponse>((resolve, reject) => {
+    resolveCompletion = resolve;
+    rejectCompletion = reject;
+  });
+  if (!resolveCompletion || !rejectCompletion) {
+    throw new Error("Unable to initialize pending chat completion");
+  }
+  pendingChatCompletions.set(id, {
+    promise,
+    resolve: resolveCompletion,
+    reject: rejectCompletion,
+  });
+}
+
+export function resolvePendingChatCompletion(id: string, response: ChatResponse): void {
+  const completion = pendingChatCompletions.get(id);
+  if (!completion) return;
+  pendingChatCompletions.delete(id);
+  completion.resolve(response);
+}
+
+export function rejectPendingChatCompletion(id: string, error: unknown): void {
+  const completion = pendingChatCompletions.get(id);
+  if (!completion) return;
+  pendingChatCompletions.delete(id);
+  completion.reject(error);
+}
+
 export const pendingChatCompletions = new Map<string, PendingChatCompletion>();
 export const pendingChatDrainScheduled = new Set<string>();
 export const pendingChatDrainTimers = new Map<string, ReturnType<typeof setTimeout>>();

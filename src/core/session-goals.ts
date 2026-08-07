@@ -1,3 +1,5 @@
+import { config } from "./config";
+
 export type SessionGoalStatus = "active" | "paused" | "blocked" | "complete";
 
 export interface SessionGoal {
@@ -15,7 +17,60 @@ export interface SessionGoalCommandResult {
   goal?: SessionGoal | null;
 }
 
+const PERSISTED_GOALS_KEY = "session_goals";
+const MAX_PERSISTED_GOALS = 200;
+const COMPLETED_GOAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
 const goals = new Map<string, SessionGoal>();
+let goalsLoaded = false;
+
+function isSessionGoal(value: unknown): value is SessionGoal {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.sessionId === "string" &&
+    typeof candidate.objective === "string" &&
+    typeof candidate.status === "string" &&
+    typeof candidate.createdAt === "string" &&
+    typeof candidate.updatedAt === "string"
+  );
+}
+
+function loadGoals(): Map<string, SessionGoal> {
+  if (goalsLoaded) return goals;
+  goalsLoaded = true;
+  try {
+    const stored = config.get<unknown>(PERSISTED_GOALS_KEY);
+    if (Array.isArray(stored)) {
+      for (const entry of stored) {
+        if (isSessionGoal(entry)) goals.set(entry.sessionId, entry);
+      }
+    }
+  } catch {
+    void 0;
+  }
+  return goals;
+}
+
+function persistGoals(): void {
+  const cutoff = Date.now() - COMPLETED_GOAL_RETENTION_MS;
+  const retained = Array.from(goals.values())
+    .filter((goal) => {
+      if (goal.status !== "complete") return true;
+      const updated = Date.parse(goal.updatedAt);
+      return !Number.isFinite(updated) || updated >= cutoff;
+    })
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+    .slice(0, MAX_PERSISTED_GOALS);
+  for (const [sessionId, goal] of Array.from(goals.entries())) {
+    if (!retained.includes(goal)) goals.delete(sessionId);
+  }
+  try {
+    config.set(PERSISTED_GOALS_KEY, retained);
+  } catch {
+    void 0;
+  }
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -49,7 +104,8 @@ function setGoal(sessionId: string, objective: string): SessionGoal {
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-  goals.set(sessionId, goal);
+  loadGoals().set(sessionId, goal);
+  persistGoals();
   return goal;
 }
 
@@ -58,24 +114,27 @@ function updateGoal(
   status: SessionGoalStatus,
   note?: string
 ): SessionGoal | undefined {
-  const goal = goals.get(sessionId);
+  const goal = loadGoals().get(sessionId);
   if (!goal) return undefined;
   goal.status = status;
   goal.updatedAt = nowIso();
   goal.lastStatusNote = note ? cleanObjective(note) : goal.lastStatusNote;
+  persistGoals();
   return goal;
 }
 
 export function getSessionGoal(sessionId: string): SessionGoal | undefined {
-  return cloneGoal(goals.get(sessionId));
+  return cloneGoal(loadGoals().get(sessionId));
 }
 
 export function clearSessionGoal(sessionId: string): boolean {
-  return goals.delete(sessionId);
+  const deleted = loadGoals().delete(sessionId);
+  if (deleted) persistGoals();
+  return deleted;
 }
 
 export function getActiveGoalContextLine(sessionId: string): string | null {
-  const goal = goals.get(sessionId);
+  const goal = loadGoals().get(sessionId);
   if (!goal || goal.status !== "active") return null;
   return `Active goal: ${goal.objective} - advance it or update its status with /goal.`;
 }
@@ -92,7 +151,7 @@ export function handleSessionGoalCommand(
   const [rawAction = "", ...tail] = rest.split(/\s+/);
   const action = rawAction.toLowerCase();
   const args = tail.join(" ").trim();
-  const current = goals.get(sessionId);
+  const current = loadGoals().get(sessionId);
 
   if (!rest || action === "status" || action === "show") {
     return { handled: true, response: formatGoal(current), goal: cloneGoal(current) || null };
@@ -123,6 +182,7 @@ export function handleSessionGoalCommand(
     current.status = current.status === "complete" ? "active" : current.status;
     current.updatedAt = nowIso();
     current.lastStatusNote = undefined;
+    persistGoals();
     return {
       handled: true,
       response: `Goal updated: ${current.objective}`,
@@ -191,4 +251,12 @@ export function handleSessionGoalCommand(
 
 export function resetSessionGoalsForTests(): void {
   goals.clear();
+  goalsLoaded = true;
+  persistGoals();
+}
+
+export function reloadSessionGoalsFromStoreForTests(): void {
+  goals.clear();
+  goalsLoaded = false;
+  loadGoals();
 }

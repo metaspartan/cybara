@@ -1,17 +1,18 @@
-import { existsSync, readdirSync, statSync, mkdirSync } from "fs";
-import { join, dirname, basename, isAbsolute, resolve } from "path";
-import { homedir, hostname, platform, arch, release, cpus, totalmem, freemem, uptime } from "os";
+import { existsSync, mkdirSync, readdirSync, statSync } from "fs";
+import { arch, cpus, freemem, homedir, hostname, platform, release, totalmem, uptime } from "os";
+import { basename, dirname, isAbsolute, join, resolve } from "path";
 import { fileURLToPath } from "url";
-import type { CronJobCreate, CronJobPatch } from "../../cron/types";
-import { windowsOcrText } from "../../ocr-windows";
-import * as cron from "../../cron";
 import { agentManager } from "../../agent";
 import { getInboundMediaRootDir, saveInboundMediaFromUrl } from "../../channels/media";
+import * as cron from "../../cron";
+import type { CronJobCreate, CronJobPatch } from "../../cron/types";
+import { windowsOcrText } from "../../ocr-windows";
 import {
+  type SpeechSynthesisResult,
   synthesizeSpeech,
   synthesizeWithSystemVoice,
-  type SpeechSynthesisResult,
 } from "../../speech";
+import type { ToolContext } from "../index";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -477,7 +478,10 @@ export async function handleSystemTTS(
   };
 }
 
-export async function handleCron(args: Record<string, unknown>): Promise<{
+export async function handleCron(
+  args: Record<string, unknown>,
+  context?: ToolContext
+): Promise<{
   success: boolean;
   action: string;
   data?: unknown;
@@ -517,7 +521,16 @@ export async function handleCron(args: Record<string, unknown>): Promise<{
         throw new Error("job.sessionTarget is required (main or isolated)");
       }
 
-      const created = cron.createJob(job as CronJobCreate);
+      const {
+        agentId: _requestedAgentId,
+        workspaceDir: _requestedWorkspaceDir,
+        ...jobWithoutOwnership
+      } = job as CronJobCreate & { agentId?: unknown; workspaceDir?: unknown };
+      const created = cron.createJob({
+        ...(jobWithoutOwnership as CronJobCreate),
+        ...(context?.agentId ? { agentId: context.agentId } : {}),
+        ...(context?.workspaceDir ? { workspaceDir: context.workspaceDir } : {}),
+      });
       cron.scheduleJob(created);
 
       return {

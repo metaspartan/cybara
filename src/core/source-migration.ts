@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import {
   copyFileSync,
   existsSync,
@@ -8,23 +9,23 @@ import {
   rmSync,
   writeFileSync,
 } from "fs";
-import { basename, dirname, join, relative, resolve } from "path";
 import { homedir } from "os";
-import { createHash } from "crypto";
+import { basename, dirname, join, relative, resolve } from "path";
 import { config } from "./config";
-import { tables, type Provider } from "./database";
+import { type Provider, tables } from "./database";
 import { cybaraDir, userSkillsDir } from "./paths";
-import { providerManager, providers, resolveProviderType, type ProviderType } from "./providers";
+import { type ProviderType, providerManager, providers, resolveProviderType } from "./providers";
 import { clearSkillsCache } from "./skills/index";
 import {
   countOpenCodeSessions,
   isOpenCodeMigrationSourceAvailable,
   migrateOpenCodeSessions,
+  type OpenCodeSessionStore,
   openCodeDefaultSourcePaths,
   readOpenCodeSessions,
   resolveOpenCodeMigrationRoots,
-  type OpenCodeSessionStore,
 } from "./source-migration-opencode";
+import { countSourceSessions, readSourceSessions } from "./source-migration-sessions";
 
 export type MigrationSourceKind = "openclaw" | "hermes" | "codex" | "claude-code" | "opencode";
 export type MigrationPreset = "user-data" | "full";
@@ -638,9 +639,8 @@ function sourceDirectoryExists(kind: MigrationSourceKind, root: string): boolean
 }
 
 function detectedOpenCodeSessionCount(kind: MigrationSourceKind, root: string): number {
-  if (kind !== "opencode") return 0;
   try {
-    return countOpenCodeSessions(root);
+    return kind === "opencode" ? countOpenCodeSessions(root) : countSourceSessions(kind, root);
   } catch {
     return 0;
   }
@@ -1303,6 +1303,42 @@ export async function runSourceMigration(
           item(
             "session",
             "OpenCode conversations",
+            "error",
+            error instanceof Error ? error.message : String(error)
+          )
+        );
+      }
+    }
+    if (sourceKind !== "opencode") {
+      try {
+        const sessionStore =
+          runtime.openCodeSessionStore ||
+          (dryRun
+            ? readOnlyOpenCodeSessionStore()
+            : (await import("./source-migration-opencode-store")).createCybaraOpenCodeSessionStore(
+                sourceKind
+              ));
+        const sessionResults = await migrateOpenCodeSessions(
+          readSourceSessions(sourceKind, sourceRoot),
+          { dryRun, overwrite, store: sessionStore }
+        );
+        items.push(
+          ...sessionResults.map((result) =>
+            item(
+              "session",
+              result.title,
+              result.status,
+              result.detail,
+              result.sourceId,
+              result.sessionId
+            )
+          )
+        );
+      } catch (error) {
+        items.push(
+          item(
+            "session",
+            `${sourceLabel(sourceKind)} conversations`,
             "error",
             error instanceof Error ? error.message : String(error)
           )
