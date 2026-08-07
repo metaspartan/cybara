@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { config } from "../../src/core/config";
 import {
   clearSessionGoal,
   getActiveGoalContextLine,
   getSessionGoal,
   handleSessionGoalCommand,
+  reloadSessionGoalsFromStoreForTests,
   resetSessionGoalsForTests,
 } from "../../src/core/session-goals";
 
@@ -78,5 +80,30 @@ describe("session goal commands", () => {
   test("ignores non-goal commands", () => {
     expect(handleSessionGoalCommand("other-session", "/learn docs")).toEqual({ handled: false });
     expect(clearSessionGoal("missing")).toBe(false);
+  });
+});
+
+describe("session goal persistence", () => {
+  test("restores an active goal from persisted config after a restart", () => {
+    resetSessionGoalsForTests();
+    handleSessionGoalCommand("persist-session", "/goal start ship the release checklist");
+    expect(getSessionGoal("persist-session")?.status).toBe("active");
+
+    const persisted = config.get<unknown>("session_goals");
+    expect(Array.isArray(persisted)).toBe(true);
+
+    reloadSessionGoalsFromStoreForTests();
+    const restored = getSessionGoal("persist-session");
+    expect(restored?.objective).toBe("ship the release checklist");
+    expect(restored?.status).toBe("active");
+    expect(getActiveGoalContextLine("persist-session")).toContain("ship the release checklist");
+  });
+
+  test("a cleared goal stays cleared across a reload", () => {
+    resetSessionGoalsForTests();
+    handleSessionGoalCommand("clear-session", "/goal start temporary objective");
+    handleSessionGoalCommand("clear-session", "/goal clear");
+    reloadSessionGoalsFromStoreForTests();
+    expect(getSessionGoal("clear-session")).toBeUndefined();
   });
 });
