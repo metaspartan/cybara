@@ -271,18 +271,34 @@ function readHermesSession(path: string): ImportedSessionSnapshot | null {
   );
 }
 
+const TRANSCRIPT_SUBDIRS: Partial<Record<MigrationSourceKind, string>> = {
+  "claude-code": "projects",
+  codex: "sessions",
+  openclaw: "agents",
+  hermes: "sessions",
+};
+
+function collectTranscripts(kind: MigrationSourceKind, root: string, extension: string): string[] {
+  const subdir = TRANSCRIPT_SUBDIRS[kind];
+  const searchRoots = subdir ? [join(root, subdir), root] : [root];
+  const seen = new Set<string>();
+  for (const searchRoot of searchRoots) {
+    for (const path of listFilesRecursive(searchRoot, extension)) seen.add(path);
+    if (seen.size > 0) break;
+  }
+  return Array.from(seen);
+}
+
 function sessionFilesFor(kind: MigrationSourceKind, root: string): string[] {
-  if (kind === "claude-code") return listFilesRecursive(join(root, "projects"), ".jsonl");
-  if (kind === "codex") return listFilesRecursive(join(root, "sessions"), ".jsonl");
+  if (kind === "claude-code") return collectTranscripts(kind, root, ".jsonl");
+  if (kind === "codex") return collectTranscripts(kind, root, ".jsonl");
   if (kind === "openclaw") {
-    return listFilesRecursive(join(root, "agents"), ".jsonl").filter(
+    return collectTranscripts(kind, root, ".jsonl").filter(
       (path) => !path.includes(".trajectory") && !path.includes(".deleted")
     );
   }
   if (kind === "hermes") {
-    return listFilesRecursive(join(root, "sessions"), ".json").filter((path) =>
-      path.includes("session_")
-    );
+    return collectTranscripts(kind, root, ".json").filter((path) => path.includes("session_"));
   }
   return [];
 }

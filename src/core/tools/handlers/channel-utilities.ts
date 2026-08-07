@@ -521,13 +521,15 @@ export async function handleCron(
         throw new Error("job.sessionTarget is required (main or isolated)");
       }
 
-      const ownerAgentId = typeof job.agentId === "string" ? job.agentId : context?.agentId;
-      const ownerWorkspaceDir =
-        typeof job.workspaceDir === "string" ? job.workspaceDir : context?.workspaceDir;
+      const {
+        agentId: _requestedAgentId,
+        workspaceDir: _requestedWorkspaceDir,
+        ...jobWithoutOwnership
+      } = job as CronJobCreate & { agentId?: unknown; workspaceDir?: unknown };
       const created = cron.createJob({
-        ...(job as CronJobCreate),
-        ...(ownerAgentId ? { agentId: ownerAgentId } : {}),
-        ...(ownerWorkspaceDir ? { workspaceDir: ownerWorkspaceDir } : {}),
+        ...(jobWithoutOwnership as CronJobCreate),
+        ...(context?.agentId ? { agentId: context.agentId } : {}),
+        ...(context?.workspaceDir ? { workspaceDir: context.workspaceDir } : {}),
       });
       cron.scheduleJob(created);
 

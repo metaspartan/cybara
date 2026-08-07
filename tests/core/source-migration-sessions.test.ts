@@ -153,4 +153,20 @@ describe("source session import", () => {
     expect(readSourceSessions("opencode", root)).toEqual([]);
     expect(countSourceSessions("codex", root)).toBe(0);
   });
+  test("finds transcripts when the source path is already the transcript directory", () => {
+    const root = makeRoot();
+    const projects = join(root, "projects", "demo");
+    mkdirSync(projects, { recursive: true });
+    writeFileSync(
+      join(projects, "a.jsonl"),
+      JSON.stringify({
+        type: "user",
+        timestamp: "2026-01-01T00:00:00Z",
+        message: { role: "user", content: "hello" },
+      })
+    );
+    expect(readSourceSessions("claude-code", root)).toHaveLength(1);
+    expect(readSourceSessions("claude-code", join(root, "projects"))).toHaveLength(1);
+    expect(countSourceSessions("claude-code", join(root, "projects"))).toBe(1);
+  });
 });

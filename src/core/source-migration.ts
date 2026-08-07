@@ -1315,9 +1315,9 @@ export async function runSourceMigration(
           runtime.openCodeSessionStore ||
           (dryRun
             ? readOnlyOpenCodeSessionStore()
-            : (
-                await import("./source-migration-opencode-store")
-              ).createCybaraOpenCodeSessionStore());
+            : (await import("./source-migration-opencode-store")).createCybaraOpenCodeSessionStore(
+                sourceKind
+              ));
         const sessionResults = await migrateOpenCodeSessions(
           readSourceSessions(sourceKind, sourceRoot),
           { dryRun, overwrite, store: sessionStore }

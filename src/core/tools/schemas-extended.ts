@@ -318,7 +318,7 @@ PAYLOAD TYPES (payload.kind):
 - "systemEvent": Injects text { kind: "systemEvent", text: "<message>" }
 - "agentTurn": Runs agent { kind: "agentTurn", message: "<prompt>" }
 
-BINDING: jobs record the scheduling agent and workspace automatically. Set job.agentId or job.workspaceDir only to target a different agent or project directory.`,
+BINDING: jobs always run as the scheduling agent in its workspace. agentId and workspaceDir are derived from the calling context and cannot be set on the job.`,
     category: "core",
     input_schema: {
       type: "object",
@@ -332,7 +332,7 @@ BINDING: jobs record the scheduling agent and workspace automatically. Set job.a
         job: {
           type: "object",
           description:
-            "Job definition for add action. Supports optional agentId and workspaceDir to target a specific agent or project directory; both default to the scheduling agent and workspace.",
+            "Job definition for add action. Ownership (agentId, workspaceDir) is taken from the calling context and ignored if supplied here.",
         },
         jobId: { type: "string", description: "Job ID for update/remove/run/runs" },
         id: { type: "string", description: "Alias for jobId" },

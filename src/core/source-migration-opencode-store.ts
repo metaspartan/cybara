@@ -24,7 +24,9 @@ function sqliteTimestamp(value: number): string {
   return new Date(Math.max(0, value)).toISOString().replace("T", " ").replace("Z", "");
 }
 
-export function createCybaraOpenCodeSessionStore(): OpenCodeSessionStore {
+export function createCybaraOpenCodeSessionStore(
+  migrationSource = "opencode"
+): OpenCodeSessionStore {
   return {
     async exists(sessionId: string): Promise<boolean> {
       return Boolean(tables.chatSessions.get(sessionId));
@@ -49,7 +51,7 @@ export function createCybaraOpenCodeSessionStore(): OpenCodeSessionStore {
         await upsertPersistedSessionMessage(sessionId, agentId, message, {
           stableKey: `${snapshot.sourceId}:${index}`,
           metadata: {
-            migration_source: "opencode",
+            migration_source: migrationSource,
             migration_source_session_id: snapshot.sourceId,
             ...(persistedAttachments.length ? { attachments: persistedAttachments } : {}),
           },

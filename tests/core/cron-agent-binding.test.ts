@@ -10,9 +10,7 @@ describe("cron agent binding", () => {
   });
 
   test("newly scheduled jobs record the agent that created them", () => {
-    expect(cronToolSource).toContain(
-      'typeof job.agentId === "string" ? job.agentId : context?.agentId'
-    );
-    expect(cronToolSource).toContain("ownerAgentId ? { agentId: ownerAgentId } : {}");
+    expect(cronToolSource).toContain("context?.agentId ? { agentId: context.agentId }");
+    expect(cronToolSource).toContain("...jobWithoutOwnership");
   });
 });
