@@ -136,6 +136,7 @@ import {
   stoppedChatTurnControllers,
   upsertPersistedSessionIndex,
 } from "./chat-runtime-state";
+import { applySessionTitleWithBackgroundUpgrade } from "./chat-session-title-upgrade";
 import {
   buildInterruptedToolCalls,
   collectAttachedProcessActivityIds,
@@ -1321,23 +1322,16 @@ async function handleChatTurn(
   }
 
   if (isNewSession && (!session.title || shouldRegenerateSessionTitle(session.title))) {
-    const generatedTitle =
-      request.source === "dataset_generation"
-        ? null
-        : await generateSessionTitleViaModel({
-            provider,
-            agent,
-            sessionId: session.id,
-            userMessage: message,
-            channel,
-            userId,
-            workspaceDir: session.workspaceDir,
-            abortSignal: turnAbortController.signal,
-          });
-    session.title = cleanGeneratedSessionTitle(agent?.name, generatedTitle);
-    if (!session.title) {
-      session.title = cleanGeneratedSessionTitle(agent?.name, deriveSessionTitleFromTurn(message));
-    }
+    applySessionTitleWithBackgroundUpgrade({
+      session,
+      provider,
+      agent,
+      message,
+      channel,
+      userId,
+      abortSignal: turnAbortController.signal,
+      skipModelUpgrade: request.source === "dataset_generation",
+    });
   }
 
   if (agent && turnAbortController.signal.aborted) {

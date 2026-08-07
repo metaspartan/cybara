@@ -34,6 +34,22 @@ function normalizeSkillName(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+const MAX_TRACKED_SKILL_SESSIONS = 500;
+const loadedSkillsBySession = new Map<string, Set<string>>();
+
+function loadedSkillsFor(sessionId: string | undefined): Set<string> {
+  const key = sessionId || "__default__";
+  const existing = loadedSkillsBySession.get(key);
+  if (existing) return existing;
+  if (loadedSkillsBySession.size >= MAX_TRACKED_SKILL_SESSIONS) {
+    const oldest = loadedSkillsBySession.keys().next().value;
+    if (oldest !== undefined) loadedSkillsBySession.delete(oldest);
+  }
+  const created = new Set<string>();
+  loadedSkillsBySession.set(key, created);
+  return created;
+}
+
 export async function handleSkillLoad(
   args: Record<string, unknown>,
   context?: ToolContext
@@ -51,11 +67,22 @@ export async function handleSkillLoad(
       normalizeSkillName(candidate.skill.name) === requestedAlias
   );
   if (!entry) throw new Error(`Skill not found or unavailable: ${requested}`);
+  const loaded = loadedSkillsFor(context?.sessionId);
+  const loadedKey = normalizeSkillName(entry.skill.name);
+  if (loaded.has(loadedKey)) {
+    return {
+      name: entry.skill.name,
+      alreadyLoaded: true,
+      note: `Skill '${entry.skill.name}' is already loaded in this session. Do not call skill_load for it again — apply its instructions and continue with the task now.`,
+    };
+  }
+  loaded.add(loadedKey);
   return {
     name: entry.skill.name,
     description: entry.skill.description,
     instructions: entry.skill.instructions,
     source: entry.source,
+    note: "Skill loaded. Apply these instructions to the current task now; do not call skill_load again for this skill.",
   };
 }
 

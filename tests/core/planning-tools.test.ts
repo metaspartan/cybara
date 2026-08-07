@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { handleTodo, noteToolActivityForTodoReminder } from "../../src/core/tools/handlers/todo";
 import { handleClarify } from "../../src/core/tools/handlers/clarify";
+import { handleTodo, noteToolActivityForTodoReminder } from "../../src/core/tools/handlers/todo";
 
 describe("todo stale-plan reminder", () => {
   test("reminds after each tool result while a plan is incomplete", async () => {
@@ -77,7 +77,13 @@ describe("todo tool", () => {
       },
       { sessionId: "todo-counts" }
     );
-    expect(result.summary).toEqual({ total: 4, pending: 2, inProgress: 1, completed: 1 });
+    expect(result.summary).toEqual({
+      total: 4,
+      pending: 2,
+      inProgress: 1,
+      completed: 1,
+      cancelled: 0,
+    });
   });
 
   test("defaults unknown status/priority to pending/medium", async () => {

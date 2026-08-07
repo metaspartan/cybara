@@ -875,7 +875,7 @@ export interface SessionTokenUsage {
   source?: "metrics";
 }
 
-export type SessionPlanItemStatus = "pending" | "in_progress" | "completed";
+export type SessionPlanItemStatus = "pending" | "in_progress" | "completed" | "cancelled";
 export type SessionPlanItemPriority = "high" | "medium" | "low";
 
 export interface SessionPlanItemSummary {
@@ -889,6 +889,7 @@ export interface SessionPlanSummary {
   pending: number;
   inProgress: number;
   completed: number;
+  cancelled?: number;
 }
 
 export interface SessionPlanSnapshot {

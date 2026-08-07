@@ -182,6 +182,7 @@ const MUTATION_EVIDENCE_TOOLS = new Set([
   "pdf",
   "phone",
   "sandbox_run",
+  "skill_load",
   "skill_save",
   "telegram_media",
   "video_generate",

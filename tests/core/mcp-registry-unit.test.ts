@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
@@ -230,13 +230,16 @@ describe("mcpRegistry catalog surface", () => {
       expect(server.name.length).toBeGreaterThan(0);
       expect(server.description.length).toBeGreaterThan(0);
       expect(["smithery", "mcp.so", "npm", "official"]).toContain(server.registry);
-      expect(["bunx", "bun", "smithery", "remote", "uvx"]).toContain(server.installType);
+      expect(["bunx", "bun", "smithery", "remote", "uvx", "local"]).toContain(server.installType);
       if (server.installType === "remote") {
         expect(server.command).toBe("");
         expect(server.url).toStartWith("https://");
       } else if (server.installType === "uvx") {
         expect(server.command).toBe("uvx");
         expect(server.args).toContain(server.package);
+      } else if (server.installType === "local") {
+        expect(server.command).toBe(server.package);
+        expect((server.args || "").length).toBeGreaterThan(0);
       } else {
         expect(server.command).toBe("bunx");
         expect(server.args).toContain(

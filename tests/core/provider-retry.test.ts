@@ -32,6 +32,8 @@ describe("provider retry policy", () => {
     expect(providerRetryDelayMs(503, new Headers(), 0, () => 0)).toBe(1_000);
     expect(providerRetryDelayMs(503, new Headers(), 2, () => 1)).toBe(4_250);
     expect(providerRetryDelayMs(503, new Headers(), 10, () => 0)).toBe(8_000);
+    expect(providerRetryDelayMs(429, new Headers(), 5, () => 0)).toBe(30_000);
+    expect(providerRetryDelayMs(429, new Headers(), 10, () => 0)).toBe(30_000);
   });
 
   test("does not retry caller aborts or non-transient errors", () => {
@@ -58,7 +60,7 @@ describe("provider retry policy", () => {
       maxDelayMs: 180_000,
     });
     expect(resolveProviderRetryPolicy("openai")).toEqual({
-      maxRetries: 3,
+      maxRetries: 5,
       maxDelayMs: 120_000,
     });
     expect(

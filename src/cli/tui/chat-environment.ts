@@ -17,7 +17,7 @@ export interface TuiTokenUsage {
 
 export interface TuiPlanItem {
   content: string;
-  status: "pending" | "in_progress" | "completed";
+  status: "pending" | "in_progress" | "completed" | "cancelled";
 }
 
 export interface TuiPlanSummary {
@@ -112,6 +112,7 @@ function normalizeStatus(value: unknown): TuiPlanItem["status"] {
   const status = asString(value).toLowerCase();
   if (status === "completed" || status === "done" || status === "complete") return "completed";
   if (status === "in_progress" || status === "running" || status === "active") return "in_progress";
+  if (status === "cancelled" || status === "canceled") return "cancelled";
   return "pending";
 }
 
@@ -191,7 +192,8 @@ export function planFromDetail(detail: unknown): TuiPlan | null {
   const summaryRecord = isRecord(detail.plan.summary) ? detail.plan.summary : {};
   const completed =
     asNumber(summaryRecord.completed) || items.filter((item) => item.status === "completed").length;
-  const total = asNumber(summaryRecord.total) || items.length;
+  const total =
+    asNumber(summaryRecord.total) || items.filter((item) => item.status !== "cancelled").length;
   return { items, summary: { completed, total } };
 }
 
@@ -420,10 +422,11 @@ export function formatTokenUsageLine(usage: TuiTokenUsage | null): string {
 
 export function formatPlanLine(plan: TuiPlan | null): string {
   if (!plan) return "Plan: none";
+  const activeItems = plan.items.filter((item) => item.status !== "cancelled");
   const active =
-    plan.items.find((item) => item.status === "in_progress") ||
-    plan.items.find((item) => item.status === "pending") ||
-    plan.items[plan.items.length - 1];
+    activeItems.find((item) => item.status === "in_progress") ||
+    activeItems.find((item) => item.status === "pending") ||
+    activeItems[activeItems.length - 1];
   return `Plan: ${plan.summary.completed}/${plan.summary.total} complete${
     active ? ` · ${active.content}` : ""
   }`;

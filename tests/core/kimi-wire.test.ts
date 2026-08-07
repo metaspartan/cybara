@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   applyMoonshotRequestOptions,
-  normalizeKimiCompatibleAssistantToolMessage,
+  kimiThinkingParams,
   normalizeKimiAssistantToolMessage,
+  normalizeKimiCompatibleAssistantToolMessage,
   normalizeKimiToolSchema,
 } from "../../src/core/llm/kimi-wire";
 
@@ -108,5 +109,11 @@ describe("Kimi wire normalization", () => {
     expect(properties.variant?.type).toBeUndefined();
     expect(((properties.variant?.oneOf as Record<string, unknown>[])[0] || {}).type).toBe("string");
     expect((schema.properties.mode as Record<string, unknown>).type).toBeUndefined();
+  });
+
+  test("maps minimal effort to disabled thinking and keeps other efforts enabled", () => {
+    expect(kimiThinkingParams("minimal")).toEqual({ thinking: { type: "disabled" } });
+    expect(kimiThinkingParams("high")).toEqual({ thinking: { type: "enabled", effort: "high" } });
+    expect(kimiThinkingParams("low")).toEqual({ thinking: { type: "enabled", effort: "low" } });
   });
 });

@@ -203,6 +203,7 @@ export function applyMoonshotRequestOptions(
 }
 
 export function kimiThinkingParams(effort: ReasoningEffort): Record<string, unknown> {
+  if (effort === "minimal") return { thinking: { type: "disabled" } };
   return { thinking: { type: "enabled", effort } };
 }
 

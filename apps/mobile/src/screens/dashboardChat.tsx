@@ -1,16 +1,13 @@
 import {
-  Image,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-  type StyleProp,
-  type TextStyle,
-} from "react-native";
-import { useEffect, useState } from "react";
+  type ChatAppearanceSettings,
+  getChatCodeFontSizePixels,
+  getChatFontSizePixels,
+  getChatLineHeight,
+} from "cybara-shared/chat-appearance";
 import {
   AlertTriangle,
   ArrowRightLeft,
+  Ban,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -28,33 +25,37 @@ import {
   SquareTerminal,
   User,
 } from "lucide-react-native";
-import { colors } from "../theme/liquidGlass";
-import { styles } from "./dashboardStyles";
-import { relativeTimestamp } from "./dashboardHelpers";
-import { mobileMessageAuthorLabel } from "./dashboardMessageAuthors";
+import { useEffect, useState } from "react";
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  type StyleProp,
+  Text,
+  type TextStyle,
+  View,
+} from "react-native";
+import { MobileLiveStatusText, MobileThinkingOrb } from "../components/MobileThinkingOrb";
+import type { SessionDetailSummary, SessionMessageSummary, SessionPlanSnapshot } from "../lib/api";
 import {
   buildMobileWorkTimeline,
   extractMobileMarkdownImages,
   groupMobileActivities,
-  type MobileWorkActivity,
-  type MobileActivityGroupKind,
   hasUnicodeTextFallback,
-  parseMarkdownBlocks,
-  parseInlineMarkdown,
-  splitMessageContent,
   type MarkdownInline,
+  type MobileActivityGroupKind,
+  type MobileWorkActivity,
+  parseInlineMarkdown,
+  parseMarkdownBlocks,
+  splitMessageContent,
 } from "../lib/chat-format";
-import type { SessionDetailSummary, SessionMessageSummary, SessionPlanSnapshot } from "../lib/api";
 import { Clipboard } from "../lib/expoNativeModules";
 import { openAllowedExternalUrl } from "../lib/externalUrl";
-import { MobileLiveStatusText, MobileThinkingOrb } from "../components/MobileThinkingOrb";
+import { colors } from "../theme/liquidGlass";
+import { relativeTimestamp } from "./dashboardHelpers";
 import { mobileLiveStatusIndicatorState } from "./dashboardLiveChat";
-import {
-  getChatCodeFontSizePixels,
-  getChatFontSizePixels,
-  getChatLineHeight,
-  type ChatAppearanceSettings,
-} from "cybara-shared/chat-appearance";
+import { mobileMessageAuthorLabel } from "./dashboardMessageAuthors";
+import { styles } from "./dashboardStyles";
 
 const MOBILE_GROUP_ICONS: Record<MobileActivityGroupKind, typeof FileText> = {
   read: FileText,
@@ -440,10 +441,11 @@ function mobilePlanProgressLabel(plan: SessionPlanSnapshot): string {
 }
 
 function mobileCurrentPlanItem(plan: SessionPlanSnapshot): string {
+  const active = plan.items.filter((item) => item.status !== "cancelled");
   return (
-    plan.items.find((item) => item.status === "in_progress")?.content ||
-    plan.items.find((item) => item.status === "pending")?.content ||
-    plan.items[plan.items.length - 1]?.content ||
+    active.find((item) => item.status === "in_progress")?.content ||
+    active.find((item) => item.status === "pending")?.content ||
+    active[active.length - 1]?.content ||
     "No active task"
   );
 }
@@ -458,6 +460,9 @@ function MobilePlanStatusIcon({
   }
   if (status === "in_progress") {
     return <Loader2 color={colors.textMuted} size={13} strokeWidth={2.2} />;
+  }
+  if (status === "cancelled") {
+    return <Ban color={colors.textMuted} size={13} strokeWidth={2.2} />;
   }
   return <View style={styles.mobilePlanPendingDot} />;
 }
@@ -555,7 +560,8 @@ export function MobilePlanSummaryCard({ plan }: { plan: SessionPlanSnapshot }) {
                 selectable
                 style={[
                   styles.mobilePlanItemText,
-                  item.status === "completed" && styles.mobilePlanItemTextDone,
+                  (item.status === "completed" || item.status === "cancelled") &&
+                    styles.mobilePlanItemTextDone,
                 ]}
               >
                 {item.content}

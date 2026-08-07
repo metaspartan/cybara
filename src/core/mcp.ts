@@ -1,8 +1,7 @@
 import { ChildProcess, spawn } from "child_process";
 import { EventEmitter } from "events";
-import { type MCPServer, tables } from "./database";
-import { buildSubprocessEnvironment } from "./subprocess-env";
 import { validateUrl } from "../api/security";
+import { type MCPServer, tables } from "./database";
 import {
   decodeMcpOAuthEnvironment,
   isHttpMcpUrl,
@@ -11,6 +10,7 @@ import {
   refreshMcpOAuthCredential,
   replaceMcpOAuthEnvironment,
 } from "./mcp-http";
+import { buildHostSubprocessEnvironment } from "./subprocess-env";
 
 let mcpRequestSeq = 0;
 export function nextMcpRequestId(): number {
@@ -229,7 +229,7 @@ class MCPServerManager extends EventEmitter {
       const cmd = cmdParts[0];
       const cmdArgs = [...cmdParts.slice(1), ...(args?.split(/\s+/) || [])].filter(Boolean);
 
-      const env = buildSubprocessEnvironment();
+      const env = buildHostSubprocessEnvironment();
       if (instance.server.env) {
         try {
           const envPairs = instance.server.env.split(",").map((s) => s.trim());

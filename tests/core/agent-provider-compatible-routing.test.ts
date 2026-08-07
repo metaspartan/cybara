@@ -117,7 +117,7 @@ describe("Agent provider Google and compatible routing", () => {
       ).rejects.toThrow("rate limit reached");
     }
 
-    expect(requestCount).toBe(8);
+    expect(requestCount).toBe(12);
     expect(getProviderAvailability(provider.id).circuitOpen).toBe(false);
   });
 

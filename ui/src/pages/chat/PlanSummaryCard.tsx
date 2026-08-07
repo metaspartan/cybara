@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronDown, Circle, Clock3, ListChecks, X } from "lucide-react";
+import { Ban, CheckCircle2, ChevronDown, Circle, Clock3, ListChecks, X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { SessionPlanTimelineEntry, SessionPlanView } from "./chatModel";
@@ -11,10 +11,11 @@ export function sessionPlanProgressLabel(plan: PlanSummaryCardPlan): string {
 }
 
 export function sessionPlanCurrentTask(plan: PlanSummaryCardPlan): string {
+  const active = plan.items.filter((item) => item.status !== "cancelled");
   return (
-    plan.items.find((item) => item.status === "in_progress")?.content ||
-    plan.items.find((item) => item.status === "pending")?.content ||
-    plan.items[plan.items.length - 1]?.content ||
+    active.find((item) => item.status === "in_progress")?.content ||
+    active.find((item) => item.status === "pending")?.content ||
+    active[active.length - 1]?.content ||
     "No active task"
   );
 }
@@ -28,6 +29,7 @@ function planProgress(plan: PlanSummaryCardPlan): number {
 function planItemIcon(status: PlanSummaryCardPlan["items"][number]["status"]) {
   if (status === "completed") return <CheckCircle2 className="h-3 w-3" />;
   if (status === "in_progress") return <Clock3 className="h-3 w-3" />;
+  if (status === "cancelled") return <Ban className="h-3 w-3" />;
   return <Circle className="h-3 w-3" />;
 }
 
@@ -76,7 +78,8 @@ export function PlanSummaryCard({
               <span
                 className={cn(
                   "min-w-0 flex-1 leading-5 text-gray-300",
-                  item.status === "completed" && "text-gray-500"
+                  item.status === "completed" && "text-gray-500",
+                  item.status === "cancelled" && "text-gray-600 line-through"
                 )}
               >
                 {item.content}

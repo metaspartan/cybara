@@ -1,4 +1,36 @@
-import type { GatewayProfile } from "./connection";
+import type {
+  ActivityLogPage,
+  ActivitySummary,
+  AgentSummary,
+  AgentTransferSummary,
+  FeatureAvailability,
+  JourneyResponse,
+  MemoryEntrySummary,
+  MemoryListResponse,
+  MemorySearchResult,
+  MobileMessageImage,
+  MobilePendingChatMessage,
+  MobileSessionStatusResponse,
+  MobileStatusSessionSnapshot,
+  MobileStatusStreamEvent,
+  ProviderSummary,
+  RemoteItemSummary,
+  RouterConfig,
+  RouterRouteConfig,
+  RouterStatus,
+  RouterStrategy,
+  SessionContextUsage,
+  SessionDetailSummary,
+  SessionListPage,
+  SessionPlanItemPriority,
+  SessionPlanItemStatus,
+  SessionPlanItemSummary,
+  SessionPlanSnapshot,
+  SessionProcessActivitySummary,
+  SessionSummary,
+  SessionTokenUsage,
+  SessionToolCallSummary,
+} from "./api-types";
 import {
   asRecord,
   normalizeArrayResponse,
@@ -7,39 +39,7 @@ import {
   readString,
 } from "./apiNormalizeUtils";
 import { normalizeProviderPlanRouteConstraint } from "./apiProviderPlans";
-import type {
-  SessionSummary,
-  SessionListPage,
-  AgentSummary,
-  ProviderSummary,
-  MemoryEntrySummary,
-  MemoryListResponse,
-  MemorySearchResult,
-  RouterStrategy,
-  RouterRouteConfig,
-  RouterConfig,
-  RouterStatus,
-  FeatureAvailability,
-  RemoteItemSummary,
-  ActivitySummary,
-  ActivityLogPage,
-  SessionToolCallSummary,
-  MobileMessageImage,
-  SessionProcessActivitySummary,
-  MobilePendingChatMessage,
-  AgentTransferSummary,
-  SessionContextUsage,
-  SessionTokenUsage,
-  SessionPlanItemStatus,
-  SessionPlanItemPriority,
-  SessionPlanItemSummary,
-  SessionPlanSnapshot,
-  SessionDetailSummary,
-  MobileStatusSessionSnapshot,
-  MobileStatusStreamEvent,
-  MobileSessionStatusResponse,
-  JourneyResponse,
-} from "./api-types";
+import type { GatewayProfile } from "./connection";
 
 const MOBILE_SESSION_LIST_LIMIT = 100;
 const MOBILE_LOG_LIST_LIMIT = 150;
@@ -594,9 +594,11 @@ function normalizeSessionPlan(value: unknown): SessionPlanSnapshot | null {
       const status: SessionPlanItemStatus =
         rawStatus === "completed"
           ? "completed"
-          : rawStatus === "in_progress" || rawStatus === "active"
-            ? "in_progress"
-            : "pending";
+          : rawStatus === "cancelled" || rawStatus === "canceled"
+            ? "cancelled"
+            : rawStatus === "in_progress" || rawStatus === "active"
+              ? "in_progress"
+              : "pending";
       const rawPriority = readString(itemRecord, ["priority"]);
       const priority: SessionPlanItemPriority =
         rawPriority === "high" || rawPriority === "low" ? rawPriority : "medium";
@@ -610,11 +612,13 @@ function normalizeSessionPlan(value: unknown): SessionPlanSnapshot | null {
     .slice(0, 50);
   if (items.length === 0) return null;
   const summaryRecord = asRecord(record?.summary);
+  const cancelledCount = items.filter((item) => item.status === "cancelled").length;
   const computedSummary = {
-    total: items.length,
+    total: items.length - cancelledCount,
     pending: items.filter((item) => item.status === "pending").length,
     inProgress: items.filter((item) => item.status === "in_progress").length,
     completed: items.filter((item) => item.status === "completed").length,
+    cancelled: cancelledCount,
   };
   return {
     sessionId: readString(record, ["sessionId", "session_id"]) || "",
@@ -625,6 +629,7 @@ function normalizeSessionPlan(value: unknown): SessionPlanSnapshot | null {
       inProgress:
         readNumber(summaryRecord, ["inProgress", "in_progress"]) ?? computedSummary.inProgress,
       completed: readNumber(summaryRecord, ["completed"]) ?? computedSummary.completed,
+      cancelled: readNumber(summaryRecord, ["cancelled"]) ?? computedSummary.cancelled,
     },
     updatedAt: readString(record, ["updatedAt", "updated_at"]),
     source: readString(record, ["source"]),

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { agentManager } from "../../src/core/agent";
-import { providerManager } from "../../src/core/providers";
 import type { ToolDefinition } from "../../src/core/database";
 import { TOOL_RESULT_COMPACTION_NOTICE } from "../../src/core/llm/tool-transcript";
+import { providerManager } from "../../src/core/providers";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -570,6 +570,87 @@ describe("Agent tool allowlist guardrails", () => {
     );
 
     expect(result.content).toBe("ok-after-tool-choice-retry");
+    expect(requestBodies.length).toBe(2);
+    expect(requestBodies[0].tool_choice).toEqual({
+      type: "function",
+      function: { name: "artifacts" },
+    });
+    expect(requestBodies[1].tool_choice).toBe("auto");
+  });
+
+  test("retries with tool_choice auto for DeepSeek thinking-mode rejection wording", async () => {
+    const provider = providerManager.create({
+      provider: "deepseek",
+      name: "DeepSeek Thinking Tool Choice Provider",
+      api_key: "sk-test-deepseek-thinking",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "DeepSeek Thinking Tool Choice Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "deepseek-v4-flash",
+      tools: [
+        {
+          name: "artifacts",
+          description: "Manage session artifacts",
+          input_schema: {
+            type: "object",
+            properties: { action: { type: "string" } },
+            required: ["action"],
+          },
+        },
+      ],
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    const requestBodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      requestBodies.push(body as Record<string, unknown>);
+      if (requestBodies.length === 1) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "Thinking mode does not support this tool_choice",
+              type: "invalid_request_error",
+            },
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          id: "resp-deepseek-thinking-tool-choice",
+          object: "chat.completion",
+          model: "deepseek-v4-flash",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "ok-after-deepseek-retry" },
+            },
+          ],
+          usage: { prompt_tokens: 9, completion_tokens: 2, total_tokens: 11 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "create an artifact report" }],
+      {
+        useTools: true,
+        sessionId: "deepseek-thinking-tool-choice-session",
+        requireToolUse: true,
+        requiredToolName: "artifacts",
+      }
+    );
+
+    expect(result.content).toBe("ok-after-deepseek-retry");
     expect(requestBodies.length).toBe(2);
     expect(requestBodies[0].tool_choice).toEqual({
       type: "function",

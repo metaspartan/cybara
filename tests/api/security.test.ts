@@ -32,9 +32,21 @@ describe("API security module", () => {
     delete process.env.CYBARA_ALLOW_LOCALHOST_AUTH_BYPASS;
   });
 
-  test("authenticateRequest requires auth for localhost by default", () => {
+  test("authenticateRequest bypasses same-origin localhost browser requests by default", () => {
     const result = security.authenticateRequest({ "sec-fetch-site": "same-origin" }, "127.0.0.1");
-    expect(result.authenticated).toBe(false);
+    expect(result.authenticated).toBe(true);
+  });
+
+  test("a configured gateway password disables the localhost auth bypass", () => {
+    security.setGatewayPassword("benchmark-password-123");
+    try {
+      const gated = security.authenticateRequest({ "sec-fetch-site": "same-origin" }, "127.0.0.1");
+      expect(gated.authenticated).toBe(false);
+    } finally {
+      security.clearGatewayPassword();
+    }
+    const restored = security.authenticateRequest({ "sec-fetch-site": "same-origin" }, "127.0.0.1");
+    expect(restored.authenticated).toBe(true);
   });
 
   test("authenticateRequest allows an explicit development localhost bypass", () => {

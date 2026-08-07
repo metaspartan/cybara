@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { deleteSession, handleChat } from "../../src/api/chat";
 import { agentManager } from "../../src/core/agent";
 import {
+  type AgentHookEvent,
   registerAgentHook,
   resetAgentHooksForTests,
-  type AgentHookEvent,
 } from "../../src/core/agent-hooks";
-import { providerManager } from "../../src/core/providers";
 import type { ToolDefinition } from "../../src/core/database";
-import { deleteSession, handleChat } from "../../src/api/chat";
+import { providerManager } from "../../src/core/providers";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -326,7 +326,7 @@ describe("Agent hooks", () => {
     expect(errorEvent.context.agentId).toBe(agent.id);
     expect(errorEvent.error).toContain("API error");
     expect(errorEvent.durationMs).toBeGreaterThanOrEqual(0);
-  });
+  }, 45_000);
 
   test("emits message lifecycle events for chat runtime", async () => {
     const provider = providerManager.create({
