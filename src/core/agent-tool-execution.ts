@@ -15,6 +15,7 @@ import {
   getMissingRequiredToolArguments,
   hasTool,
 } from "./tools/handlers/index";
+import { noteSkillCaptureOpportunity } from "./tools/handlers/skill-capture";
 import { noteToolActivityForTodoReminder } from "./tools/handlers/todo";
 import { type ToolContext, toolSchemas } from "./tools/index";
 
@@ -164,9 +165,17 @@ async function executeAgentToolInternal(
       }
     );
     const result = await executeTool(toolName, args, toolContext);
+    const isPlainResult = result && typeof result === "object" && !Array.isArray(result);
     const todoReminder = noteToolActivityForTodoReminder(toolName, toolContext);
-    if (todoReminder && result && typeof result === "object" && !Array.isArray(result)) {
+    if (todoReminder && isPlainResult) {
       (result as Record<string, unknown>).system_reminder = todoReminder;
+    }
+    const skillCaptureReminder = noteSkillCaptureOpportunity(toolName, toolContext);
+    if (skillCaptureReminder && isPlainResult) {
+      const record = result as Record<string, unknown>;
+      record.system_reminder = record.system_reminder
+        ? `${record.system_reminder}\n${skillCaptureReminder}`
+        : skillCaptureReminder;
     }
     broadcastStatus(
       "tool_completed",

@@ -137,6 +137,7 @@ import {
   upsertPersistedSessionIndex,
 } from "./chat-runtime-state";
 import { applySessionTitleWithBackgroundUpgrade } from "./chat-session-title-upgrade";
+import { maybeCaptureSkillFromTurn } from "./chat-skill-capture";
 import {
   buildInterruptedToolCalls,
   collectAttachedProcessActivityIds,
@@ -1830,6 +1831,17 @@ async function handleChatTurn(
   appendAssistantMessage(session, assistantMessage);
   if (!session.title || shouldRegenerateSessionTitle(session.title)) {
     session.title = cleanGeneratedSessionTitle(agent?.name, deriveSessionTitleFromTurn(message));
+  }
+  if (provider && agent && !executionFailure) {
+    void maybeCaptureSkillFromTurn({
+      provider,
+      agent,
+      sessionId: session.id,
+      userMessage: message,
+      toolCalls: allToolCalls,
+      workspaceDir: session.workspaceDir,
+      abortSignal: turnAbortController.signal,
+    }).catch(() => undefined);
   }
   await logSessionMessage(session.id, "assistant", assistantMessage.content, {
     agentId: agent?.id,
