@@ -130,7 +130,13 @@ function hostExecutableDirectories(
       pathJoin(programData, "chocolatey", "bin")
     );
   } else {
-    candidates.push("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin");
+    candidates.push(
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+      pathJoin(home, ".local", "bin")
+    );
     const nvmRoot = pathJoin(home, ".nvm", "versions", "node");
     candidates.push(
       ...existingSubdirectories(nvmRoot).map((directory) => pathJoin(directory, "bin"))

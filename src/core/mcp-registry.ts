@@ -16,7 +16,7 @@ export interface MCPRegistryServer {
   stars?: number;
   categories?: string[];
   homepage?: string;
-  installType: "bunx" | "bun" | "smithery" | "remote" | "uvx";
+  installType: "bunx" | "bun" | "smithery" | "remote" | "uvx" | "local";
 }
 
 interface RegistryConfig {
@@ -33,6 +33,19 @@ function isSafeNpmPackageName(value: string): boolean {
 }
 
 const POPULAR_SERVERS: MCPRegistryServer[] = [
+  {
+    id: "mcp-cua-driver",
+    name: "Cua Driver (Background Computer Use)",
+    description:
+      "Drive native desktop apps and Chromium browsers in the background - click, type, and read accessibility state without stealing the user's cursor or focus. Requires the CuaDriver app installed locally with Accessibility and Screen Recording permissions (cua.ai/driver).",
+    registry: "official",
+    package: "cua-driver",
+    command: "cua-driver",
+    args: "mcp",
+    categories: ["computer-use", "browser", "desktop"],
+    homepage: "https://cua.ai",
+    installType: "local",
+  },
   {
     id: "mcp-filesystem",
     name: "Filesystem",
