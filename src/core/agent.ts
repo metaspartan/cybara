@@ -1,69 +1,69 @@
-import { tables, type Agent, type ToolDefinition } from "./database";
-import { AgentProviderRuntime } from "./agent-provider-runtime";
 import { truncateTextWithHeadAndTail } from "./agent-context-guard";
-import { config } from "./config";
+import { formatLlmFailure } from "./agent-error-format";
 import {
-  providerManager,
-  getDefaultModel,
-  providers as providerCatalog,
-  type ProviderType,
-} from "./providers";
-import { getToolSchemasForLLM, type ToolContext } from "./tools/index";
-import { registerCredentialsFromEnv } from "./credential-pool";
-import { registerShellHooks } from "./shell-hooks";
-import type { AgentImage } from "./llm/image-blocks";
-import { recallRelevantMemory } from "./memory/recall";
-import {
-  buildCompactedConversation,
-  conversationNeedsCompaction,
-  resolveCompactionTriggerRatio,
-  resolveKeepRecentMessages,
-  resolveMaxConversationMessages,
-  estimateConversationChars,
-  planCompactionCut,
-} from "./conversation-window";
-import {
-  getRouterRouteModel,
-  selectProvider,
-  selectProviderWithLiveUsage,
-  isModelRouterEnabled,
-  isMixtureOfAgentsRoutingActive,
-  getMixtureOfAgentsRoutingConfig,
-} from "./router";
-import {
-  buildSystemPrompt,
-  AGENT_TYPE_PROMPTS,
-  resolveModelAlias,
-  getDefaultSystemPrompt,
-} from "./system-prompt";
-import { getBootstrapContextFiles } from "./bootstrap-files";
-import { getSandboxPromptInfo } from "./sandbox";
-import {
+  type AgentToolCallResult,
   CONTEXT_CHARS_PER_TOKEN_ESTIMATE,
   CONVERSATION_KEEP_RECENT_MESSAGES,
   CONVERSATION_SUMMARY_MAX_CHARS,
   CONVERSATION_SUMMARY_PREFIX,
-  OPENAI_CODEX_OAUTH_MODEL_PREFIXES,
   normalizePermissionList,
+  OPENAI_CODEX_OAUTH_MODEL_PREFIXES,
   parseAgentConfig,
-  type AgentToolCallResult,
 } from "./agent-internals";
-import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
-import { resolveAgentToolPolicy } from "./toolsets";
-import { formatLlmFailure } from "./agent-error-format";
 import { resolveModelContextWindowTokens } from "./agent-model-limits";
+import { AgentProviderRuntime } from "./agent-provider-runtime";
+import { getBootstrapContextFiles } from "./bootstrap-files";
+import { config } from "./config";
 import {
-  classifyApiError,
+  buildCompactedConversation,
+  conversationNeedsCompaction,
+  estimateConversationChars,
+  planCompactionCut,
+  resolveCompactionTriggerRatio,
+  resolveKeepRecentMessages,
+  resolveMaxConversationMessages,
+} from "./conversation-window";
+import { registerCredentialsFromEnv } from "./credential-pool";
+import { type Agent, type ToolDefinition, tables } from "./database";
+import {
   type ApiErrorCategory,
   type ClassifiedApiError,
+  classifyApiError,
 } from "./error-classifier";
+import type { AgentImage } from "./llm/image-blocks";
+import { recallRelevantMemory } from "./memory/recall";
 import {
   getProviderAccountPool,
   markProviderAccountHealthy,
   markProviderAccountUnavailable,
-  parseProviderAccountPoolRouteId,
   type ProviderAccountFailure,
+  parseProviderAccountPoolRouteId,
 } from "./provider-account-pool";
+import {
+  getDefaultModel,
+  type ProviderType,
+  providers as providerCatalog,
+  providerManager,
+} from "./providers";
+import {
+  getMixtureOfAgentsRoutingConfig,
+  getRouterRouteModel,
+  isMixtureOfAgentsRoutingActive,
+  isModelRouterEnabled,
+  selectProvider,
+  selectProviderWithLiveUsage,
+} from "./router";
+import { getSandboxPromptInfo } from "./sandbox";
+import { registerShellHooks } from "./shell-hooks";
+import { createEligibilityContext, filterEligibleSkills, loadAllSkills } from "./skills";
+import {
+  AGENT_TYPE_PROMPTS,
+  buildSystemPrompt,
+  getDefaultSystemPrompt,
+  resolveModelAlias,
+} from "./system-prompt";
+import { getToolSchemasForLLM, type ToolContext } from "./tools/index";
+import { resolveAgentToolPolicy } from "./toolsets";
 
 export { resolveAgentToolSelection } from "./agent-tool-selection";
 
@@ -762,7 +762,11 @@ class AgentManager extends AgentProviderRuntime {
     return true;
   }
 
-  async message(id: string, content: string): Promise<{ response: string; thinking?: string }> {
+  async message(
+    id: string,
+    content: string,
+    options?: { workspaceDir?: string }
+  ): Promise<{ response: string; thinking?: string }> {
     let state = this.runningAgents.get(id);
     if (!state) {
       const started = await this.start(id);
@@ -800,7 +804,7 @@ class AgentManager extends AgentProviderRuntime {
 
     await this.maybeCompactConversation(state);
 
-    const result = await this.executeWithState(state);
+    const result = await this.executeWithState(state, options);
 
     state.messages.push({ role: "assistant", content: result.response });
 
@@ -918,7 +922,8 @@ class AgentManager extends AgentProviderRuntime {
   }
 
   private async executeWithState(
-    state: RunningAgentState
+    state: RunningAgentState,
+    options?: { workspaceDir?: string }
   ): Promise<{ response: string; thinking?: string }> {
     const { agent, messages } = state;
 
@@ -936,7 +941,7 @@ class AgentManager extends AgentProviderRuntime {
     if (supportsTools) {
       tools = this.getAgentTools(agent);
     }
-    const toolContext = this.buildToolExecutionContext(agent);
+    const toolContext = this.buildToolExecutionContext(agent, options);
     toolContext.routerRouteId = target.routeId;
 
     const routedModel = target.routeId ? getRouterRouteModel(target.routeId) : undefined;

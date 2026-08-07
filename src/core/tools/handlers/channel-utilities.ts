@@ -522,9 +522,12 @@ export async function handleCron(
       }
 
       const ownerAgentId = typeof job.agentId === "string" ? job.agentId : context?.agentId;
+      const ownerWorkspaceDir =
+        typeof job.workspaceDir === "string" ? job.workspaceDir : context?.workspaceDir;
       const created = cron.createJob({
         ...(job as CronJobCreate),
         ...(ownerAgentId ? { agentId: ownerAgentId } : {}),
+        ...(ownerWorkspaceDir ? { workspaceDir: ownerWorkspaceDir } : {}),
       });
       cron.scheduleJob(created);
 

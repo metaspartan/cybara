@@ -44,6 +44,7 @@ export type CronJobState = {
 export interface CronJob {
   id: string;
   agentId?: string;
+  workspaceDir?: string;
   name: string;
   description?: string;
   enabled: boolean;

@@ -102,6 +102,7 @@ export function createJob(input: CronJobCreate): CronJob {
     wakeMode: input.wakeMode || "next-heartbeat",
     payload: input.payload,
     agentId: input.agentId,
+    workspaceDir: input.workspaceDir,
     state: {
       ...input.state,
       nextRunAtMs: computeNextRun(input.schedule, now),

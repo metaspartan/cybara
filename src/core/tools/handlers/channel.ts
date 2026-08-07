@@ -1,29 +1,30 @@
 import { agentManager } from "../../agent";
-import type { ToolContext } from "../index";
+import type { AgentToolCallResult } from "../../agent-internals";
 import {
+  type AgentTransferEnvelope,
+  createAgentTransferEnvelope,
+  normalizeAgentTransferContextMode,
+} from "../../agent-transfer";
+import {
+  type ChannelAdapter,
+  type ChannelCapability,
+  type ChannelTarget,
+  type ChannelType,
   channels as channelDefinitions,
   channelManager,
   discordSessions,
   inspectChannelAdapter,
   slackSessions,
-  type ChannelAdapter,
-  type ChannelCapability,
-  type ChannelTarget,
-  type ChannelType,
 } from "../../channels";
-import type { Channel } from "../../database";
-import * as subagentRegistry from "../../subagent-registry";
-import type { SubagentRunRecord } from "../../subagent-registry";
 import { sendChannelRuntimeMessage } from "../../channels/chat-runtime";
+import { config } from "../../config";
+import type { Channel } from "../../database";
 import { providerManager } from "../../providers";
 import { getProviderAvailability } from "../../router";
 import { broadcastStatus, onStatus, type StatusPayload, type ToolStatusPhase } from "../../status";
-import type { AgentToolCallResult } from "../../agent-internals";
-import {
-  createAgentTransferEnvelope,
-  normalizeAgentTransferContextMode,
-  type AgentTransferEnvelope,
-} from "../../agent-transfer";
+import type { SubagentRunRecord } from "../../subagent-registry";
+import * as subagentRegistry from "../../subagent-registry";
+import type { ToolContext } from "../index";
 
 interface SubagentSession {
   id: string;
@@ -97,9 +98,19 @@ function resolveMaxActiveChildren(args: Record<string, unknown>): number | undef
 
 function resolveSubagentTargetAgent(requestedAgentId?: string) {
   const availableAgents = agentManager.list();
-  return typeof requestedAgentId === "string" && requestedAgentId.trim().length > 0
-    ? availableAgents.find((agent) => agent.id === requestedAgentId)
-    : availableAgents.find((agent) => agent.status === "running") || availableAgents[0];
+  if (typeof requestedAgentId === "string" && requestedAgentId.trim().length > 0) {
+    return availableAgents.find((agent) => agent.id === requestedAgentId);
+  }
+  const configuredId = config.get<unknown>("subagent_agent_id");
+  const configuredAgent =
+    typeof configuredId === "string" && configuredId.trim().length > 0
+      ? availableAgents.find((agent) => agent.id === configuredId.trim())
+      : undefined;
+  return (
+    configuredAgent ||
+    availableAgents.find((agent) => agent.status === "running") ||
+    availableAgents[0]
+  );
 }
 
 function getSubagentProviderBlockReason(requestedAgentId?: string): string | undefined {
