@@ -117,6 +117,7 @@ import {
   chatTurnMutex,
   cleanGeneratedSessionTitle,
   countVisibleSessionMessages,
+  createPendingChatCompletion,
   deferredSessionMessages,
   deletingChatSessionIds,
   generateSessionTitleViaModel,
@@ -132,6 +133,8 @@ import {
   pendingChatQueues,
   persistActiveSessionContext,
   persistChatSessionSnapshot,
+  rejectPendingChatCompletion,
+  resolvePendingChatCompletion,
   restorePersistedChatSessionForChat,
   stoppedChatTurnControllers,
   upsertPersistedSessionIndex,
@@ -179,37 +182,6 @@ export type {
   ChatResponse,
   SteerPendingChatMessageOptions,
 } from "./chat-types";
-
-function createPendingChatCompletion(id: string): void {
-  let resolveCompletion: ((response: ChatResponse) => void) | null = null;
-  let rejectCompletion: ((error: unknown) => void) | null = null;
-  const promise = new Promise<ChatResponse>((resolve, reject) => {
-    resolveCompletion = resolve;
-    rejectCompletion = reject;
-  });
-  if (!resolveCompletion || !rejectCompletion) {
-    throw new Error("Unable to initialize pending chat completion");
-  }
-  pendingChatCompletions.set(id, {
-    promise,
-    resolve: resolveCompletion,
-    reject: rejectCompletion,
-  });
-}
-
-function resolvePendingChatCompletion(id: string, response: ChatResponse): void {
-  const completion = pendingChatCompletions.get(id);
-  if (!completion) return;
-  pendingChatCompletions.delete(id);
-  completion.resolve(response);
-}
-
-function rejectPendingChatCompletion(id: string, error: unknown): void {
-  const completion = pendingChatCompletions.get(id);
-  if (!completion) return;
-  pendingChatCompletions.delete(id);
-  completion.reject(error);
-}
 
 export async function waitForPendingChatCompletion(id: string): Promise<ChatResponse> {
   const completion = pendingChatCompletions.get(id);

@@ -102,3 +102,13 @@ reason = "brace-expansion 5.0.8 is the only patched release and it breaks the pi
 id = "RUSTSEC-2026-0235"
 ignoreUntil = 2026-12-31
 reason = "rkyv 0.7 arrives only as an optional feature of rust_decimal via tauri-plugin-log/byte-unit; rust_decimal 1.42.1 is the latest release and still pins rkyv ^0.7 with no 0.8 upgrade path. The rkyv feature is not enabled in this build (rkyv is a lockfile-only entry, absent from the resolved graph), so no untrusted rkyv archives are validated."
+
+[[IgnoredVulns]]
+id = "GHSA-5p2g-fcmc-qvqq"
+ignoreUntil = 2026-12-31
+reason = "image-size reaches apps/mobile only as a transitive dependency of metro, the Expo/React Native bundler, which runs at build time on a developer machine and never parses untrusted images. Every published version through 2.0.2 is affected and no patched release exists, so there is nothing to upgrade to. Re-check when image-size ships a fix or metro drops the dependency."
+
+[[IgnoredVulns]]
+id = "GHSA-w3rx-r6r6-pgpr"
+ignoreUntil = 2026-12-31
+reason = "Same image-size ICNS parser denial of service reached only through metro build tooling in apps/mobile; all versions through 2.0.2 are affected with no patched release available."
