@@ -96,16 +96,24 @@ describe("compiled CLI startup", () => {
       expect(asset.headers.get("content-type")).toContain("application/javascript");
       expect(await asset.text()).toContain("cybaraEmbeddedUi");
 
-      const protectedResponse = await fetch(`http://127.0.0.1:${port}/api/config`, {
+      const sameOriginResponse = await fetch(`http://127.0.0.1:${port}/api/config`, {
         headers: { Origin: `http://127.0.0.1:${port}` },
       });
-      expect(protectedResponse.status).toBe(401);
+      expect(sameOriginResponse.status).toBe(200);
+
+      const crossOriginResponse = await fetch(`http://127.0.0.1:${port}/api/config`, {
+        headers: { Origin: "https://evil.example" },
+      });
+      expect(crossOriginResponse.status).toBe(401);
+
+      const headerlessResponse = await fetch(`http://127.0.0.1:${port}/api/config`);
+      expect(headerlessResponse.status).toBe(401);
     } finally {
       processHandle?.kill();
       if (processHandle) await processHandle.exited;
       const logs = `${stdoutPromise ? await stdoutPromise : ""}\n${stderrPromise ? await stderrPromise : ""}`;
       expect(logs).not.toContain("Failed to load UI index");
-      expect(logs).not.toContain("Localhost browser auth bypass is active for development");
+      expect(logs).toContain("Localhost browser auth bypass is active for development");
       rmSync(directory, { recursive: true, force: true });
     }
   }, 180_000);
