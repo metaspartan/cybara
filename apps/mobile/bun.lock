@@ -34,6 +34,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "image-size@1.2.1": "patches/image-size@1.2.1.patch",
+  },
   "overrides": {
     "brace-expansion": "5.0.9",
     "js-yaml": "4.3.1",
