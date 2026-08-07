@@ -66,7 +66,6 @@ import {
   zaloAdapter,
   zulipAdapter,
 } from "./core/channels";
-import { StatusStreamSender } from "./core/status-stream-sender";
 import { resolveChannelAgentRouting } from "./core/channels/agent-selection";
 import { configureChannelChatRuntime } from "./core/channels/chat-runtime";
 import {
@@ -105,6 +104,7 @@ import {
   onStatusStream,
   removeSSEClient,
 } from "./core/status";
+import { StatusStreamSender } from "./core/status-stream-sender";
 import { handleSessionsSpawn } from "./core/tools/handlers/channel";
 import {
   handleMemoryContext,
@@ -1174,8 +1174,17 @@ try {
 } catch {}
 
 setAgentHandler(async (job) => {
-  const agent = agentManager.list().find((a) => a.status === "running");
-  if (!agent) return { success: false, error: "No running agent available" };
+  const agent = job.agentId
+    ? agentManager.get(job.agentId)
+    : agentManager.list().find((a) => a.status === "running");
+  if (!agent) {
+    return {
+      success: false,
+      error: job.agentId
+        ? `Cron job agent ${job.agentId} no longer exists`
+        : "No running agent available",
+    };
+  }
 
   try {
     const message = job.payload.kind === "agentTurn" ? job.payload.message : String(job.payload);
