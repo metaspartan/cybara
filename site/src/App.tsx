@@ -21,6 +21,7 @@ import { FeaturesPage } from "./components/FeaturesPage";
 import { ProvidersPage } from "./components/ProvidersPage";
 import { ChannelsPage } from "./components/ChannelsPage";
 import { FaqPage } from "./components/FaqPage";
+import { PrivacyPage } from "./components/PrivacyPage";
 import { A, usePath } from "./lib/router";
 import { useDocumentHead } from "./lib/head";
 import { PAGE_HEADS } from "./pageMeta";
@@ -83,5 +84,6 @@ export function App(): React.ReactElement {
   if (path === "/providers") return <ProvidersPage />;
   if (path === "/channels") return <ChannelsPage />;
   if (path === "/faq") return <FaqPage />;
+  if (path === "/privacy") return <PrivacyPage />;
   return <LandingPage />;
 }
