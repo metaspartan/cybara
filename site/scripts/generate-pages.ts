@@ -100,6 +100,7 @@ function downloadContent(): string {
 <h1>Download Cybara</h1>
 <p>${esc(PAGE_HEADS.download.description)}</p>
 <p>Install with one line: <code>curl -fsSL https://cybara.ai/install.sh | bash</code> on macOS and Linux, or <code>irm https://cybara.ai/install.ps1 | iex</code> in PowerShell on Windows. Also available via npm (<code>npx cybara</code>), Bun (<code>bunx cybara</code>), Homebrew, Nix, and Docker. All builds are published on GitHub Releases: https://github.com/metaspartan/cybara/releases</p>
+<p>The Android app is on Google Play: https://play.google.com/store/apps/details?id=com.ck.cybara — a sideloadable signed APK is also published on GitHub Releases. The iOS app is coming soon.</p>
 ${PAGE_NAV}
 </main>`;
 }
