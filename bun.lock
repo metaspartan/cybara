@@ -65,6 +65,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "extract-zip@2.0.1": "patches/extract-zip@2.0.1.patch",
+  },
   "overrides": {
     "@discordjs/rest": "2.6.1",
     "adm-zip": "0.6.0",
