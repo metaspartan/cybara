@@ -69,6 +69,7 @@ import {
 import {
   boundedMobileComposerHeight,
   MOBILE_CHAT_COMPOSER,
+  mobileChatHorizontalPadding,
   MOBILE_NAV_CHROME,
   mobileComposerHeightForDraft,
   mobileFirstNonEmptyString,
@@ -173,17 +174,19 @@ export function SessionDetailPanel({
     config?.lab && typeof config.lab === "object" && !Array.isArray(config.lab)
       ? (config.lab as Record<string, unknown>)
       : {};
+  const chatAppearance = useEffectiveChatAppearance(
+    normalizeChatAppearanceSettings(config?.chat_appearance)
+  );
   const goldenTurnActionsEnabled =
     labConfig.enabled !== false && labConfig.goldenTurnsEnabled !== false;
   const navFootprint = insets.bottom + MOBILE_NAV_CHROME.floatingMargin + MOBILE_NAV_CHROME.height;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(showEvent, (event) => {
+    if (Platform.OS !== "ios") return;
+    const showSub = Keyboard.addListener("keyboardWillShow", (event) => {
       setKeyboardHeight(event.endCoordinates?.height ?? 0);
     });
-    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    const hideSub = Keyboard.addListener("keyboardWillHide", () => setKeyboardHeight(0));
     return () => {
       showSub.remove();
       hideSub.remove();
@@ -245,9 +248,12 @@ export function SessionDetailPanel({
     sending,
     setPinned,
     setPendingSessionAgentId,
-    scrollRef,
     onSessionUpdated: onSessionUpdated ?? ignoreSessionDetail,
   });
+
+  useEffect(() => {
+    followChatBottomRef.current = true;
+  }, [sessionId]);
 
   useEffect(() => {
     let active = true;
@@ -1398,10 +1404,6 @@ export function SessionDetailPanel({
   const waitingForAssistant = chatIsWaitingForAssistant(renderMessages, sending);
   const composerBottom =
     keyboardHeight > 0 ? keyboardHeight + spacing.xs : navFootprint + spacing.xs;
-  const chatAppearance = useEffectiveChatAppearance(
-    normalizeChatAppearanceSettings(config?.chat_appearance)
-  );
-
   return (
     <View style={styles.chatShell}>
       <MobileBranchPicker
@@ -1435,7 +1437,10 @@ export function SessionDetailPanel({
         ref={scrollRef}
         contentContainerStyle={[
           styles.chatContent,
-          { paddingBottom: composerBottom + composerBarHeight + spacing.md },
+          {
+            paddingBottom: composerBottom + composerBarHeight + spacing.md,
+            paddingHorizontal: mobileChatHorizontalPadding(chatAppearance.horizontalPadding),
+          },
         ]}
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => {

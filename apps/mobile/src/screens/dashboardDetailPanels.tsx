@@ -1,6 +1,7 @@
 import {
   chatCodeFontSizeOptions,
   chatFontSizeOptions,
+  chatHorizontalPaddingOptions,
   chatLineSpacingOptions,
   getChatCodeFontSizePixels,
   getChatFontSizePixels,
@@ -885,6 +886,22 @@ export function SettingsPanel({
                   value: option.value,
                 }))}
                 selected={chatAppearance.lineSpacing}
+                tone={accentColor}
+                variant="segmented"
+              />
+              <SettingSelector
+                disabled={savingConfigKey !== null}
+                label="Chat side padding"
+                onSelect={(value) => {
+                  void saveConfigPatch("chat_appearance", {
+                    chat_appearance: { ...configuredChatAppearance, horizontalPadding: value },
+                  });
+                }}
+                options={chatHorizontalPaddingOptions.map((option) => ({
+                  label: option.label,
+                  value: option.value,
+                }))}
+                selected={chatAppearance.horizontalPadding}
                 tone={accentColor}
                 variant="segmented"
               />

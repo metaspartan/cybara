@@ -1083,6 +1083,7 @@ export interface MobileStatusStreamOptions {
   heartbeatMs?: number;
   staleMs?: number;
   replayBufferedEvents?: boolean;
+  replaySessionId?: string;
   WebSocketImpl?: MobileWebSocketConstructor;
 }
 

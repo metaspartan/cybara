@@ -191,6 +191,19 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("GET", "/api/artifacts")).toBe("read");
     expect(routeRequiredScope("POST", "/api/artifacts")).toBe("chat");
     expect(routeRequiredScope("GET", "/api/logs/sessions/session-1/messages")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/media")).toBe("read");
+    expect(routeRequiredScope("POST", "/api/media")).toBe("root");
+  });
+
+  test("read-scoped mobile tokens can load authenticated chat media", () => {
+    const { token } = createMobileDevice({
+      baseUrl: "http://127.0.0.1:4269",
+      scopes: ["read"],
+    });
+    const headers = { authorization: `Bearer ${token}` };
+
+    expect(securityCheck("GET", "/api/media", headers, "10.1.2.3").passed).toBe(true);
+    expect(securityCheck("POST", "/api/media", headers, "10.1.2.3").passed).toBe(false);
   });
 
   test("custom scoped mobile tokens cannot mutate chat without the chat scope", () => {

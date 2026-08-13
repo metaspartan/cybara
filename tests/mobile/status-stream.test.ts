@@ -134,6 +134,24 @@ describe("mobile status stream", () => {
     expect(socket?.closed).toBe(true);
   });
 
+  test("replaying one chat retains buffered events for another chat", () => {
+    const buffer = new MobileStatusReplayBuffer();
+    const event = (sessionId: string, sequence: number): MobileStatusStreamEvent => ({
+      type: "assistant_token",
+      sessionId,
+      sequence,
+      delta: sessionId,
+      timestamp: sequence,
+    });
+    buffer.record(event("s1", 1), 1);
+    buffer.record(event("s2", 2), 2);
+
+    expect(buffer.consume(3, "s1")).toEqual([event("s1", 1)]);
+    expect(buffer.size).toBe(1);
+    expect(buffer.consume(3, "s2")).toEqual([event("s2", 2)]);
+    expect(buffer.size).toBe(0);
+  });
+
   test("reconnects an unexpectedly closed active stream", async () => {
     FakeMobileWebSocket.instances = [];
     const client = new MobileStatusStreamClient(() => "ws://gateway/status", normalizeEvent);

@@ -28,6 +28,23 @@ const pushBuildConstants = {
 };
 
 describe("mobile push notification helpers", () => {
+  test("does not bootstrap unsupported notifications before the Expo Go guard", () => {
+    const nativeModules = readFileSync(
+      new URL("../../apps/mobile/src/lib/expoNativeModules.native.ts", import.meta.url),
+      "utf8"
+    );
+    const pushSource = readFileSync(
+      new URL("../../apps/mobile/src/lib/pushNotifications.ts", import.meta.url),
+      "utf8"
+    );
+
+    expect(nativeModules).not.toContain('from "expo-notifications"');
+    expect(pushSource).toContain('await import("expo-notifications")');
+    expect(pushSource.indexOf("isExpoGoRuntime(options.constants)")).toBeLessThan(
+      pushSource.indexOf("await defaultNotifications()")
+    );
+  });
+
   test("registers an Expo token after permission is granted", async () => {
     const { api, calls } = createApi();
     const tokenOptions: unknown[] = [];

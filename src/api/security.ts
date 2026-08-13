@@ -823,6 +823,9 @@ export function routeRequiredScope(method: string, path: string): MobileScope | 
   if (path === "/api/system/restart") {
     return "manage";
   }
+  if (path === "/api/media") {
+    return method === "GET" ? "read" : "root";
+  }
   if (path.startsWith("/api/migrations")) {
     return "manage";
   }

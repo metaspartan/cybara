@@ -42,12 +42,6 @@ export const ImagePicker = {
   }),
 };
 
-export const Notifications = {
-  getPermissionsAsync: async () => ({ status: "denied" }),
-  requestPermissionsAsync: async () => ({ status: "denied" }),
-  getExpoPushTokenAsync: async () => ({ data: "" }),
-};
-
 export const Platform = {
   OS: "test",
   Version: "0",

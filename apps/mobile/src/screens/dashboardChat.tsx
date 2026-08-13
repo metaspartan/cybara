@@ -24,10 +24,12 @@ import {
   Search,
   SquareTerminal,
   User,
+  X,
 } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
   Image,
+  Modal,
   Pressable,
   ScrollView,
   type StyleProp,
@@ -398,6 +400,7 @@ function resolveUserImageUri(
 
 function ChatImage({ uri }: { uri: string }) {
   const [aspectRatio, setAspectRatio] = useState(4 / 3);
+  const [previewVisible, setPreviewVisible] = useState(false);
   useEffect(() => {
     let active = true;
     Image.getSize(
@@ -412,15 +415,35 @@ function ChatImage({ uri }: { uri: string }) {
     };
   }, [uri]);
   return (
-    <Pressable
-      accessibilityRole="imagebutton"
-      onPress={() => {
-        void openAllowedExternalUrl(uri).catch(() => {});
-      }}
-      style={styles.chatImageWrapper}
-    >
-      <Image resizeMode="cover" source={{ uri }} style={[styles.chatImage, { aspectRatio }]} />
-    </Pressable>
+    <>
+      <Pressable
+        accessibilityLabel="Preview image"
+        accessibilityRole="imagebutton"
+        onPress={() => setPreviewVisible(true)}
+        style={styles.chatImageWrapper}
+      >
+        <Image resizeMode="cover" source={{ uri }} style={[styles.chatImage, { aspectRatio }]} />
+      </Pressable>
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setPreviewVisible(false)}
+        statusBarTranslucent
+        transparent
+        visible={previewVisible}
+      >
+        <View style={styles.chatImagePreviewBackdrop}>
+          <Image resizeMode="contain" source={{ uri }} style={styles.chatImagePreview} />
+          <Pressable
+            accessibilityLabel="Close image preview"
+            accessibilityRole="button"
+            onPress={() => setPreviewVisible(false)}
+            style={styles.chatImagePreviewClose}
+          >
+            <X color={colors.text} size={22} strokeWidth={2.4} />
+          </Pressable>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -721,15 +744,17 @@ function MobileAgentTransferTimeline({
 
 export function WorkActivityIcon({
   phase,
+  reduceMotion,
   statusState,
   toolName,
 }: {
   phase: string;
+  reduceMotion?: boolean;
   statusState?: "composing" | "solving" | null;
   toolName?: string;
 }) {
   if (statusState) {
-    return <MobileThinkingOrb state={statusState} />;
+    return <MobileThinkingOrb reduceMotion={reduceMotion} state={statusState} />;
   }
   if (toolName === "__thought") {
     return <View style={styles.messageActivityDot} />;
@@ -738,7 +763,7 @@ export function WorkActivityIcon({
     return <ArrowRightLeft color={colors.textMuted} size={13} strokeWidth={2.2} />;
   }
   if (phase === "start") {
-    return <MobileThinkingOrb state="solving" />;
+    return <MobileThinkingOrb reduceMotion={reduceMotion} state="solving" />;
   }
   if (phase === "error") {
     return <AlertTriangle color={colors.textMuted} size={13} strokeWidth={2.2} />;
@@ -772,12 +797,15 @@ function MobileActivityRow({
       <View style={styles.messageActivityIcon}>
         <WorkActivityIcon
           phase={activity.phase}
+          reduceMotion={appearance.reduceMotion}
           statusState={statusState}
           toolName={activity.toolName}
         />
       </View>
       {statusState || activity.phase === "start" ? (
-        <MobileLiveStatusText style={textStyle}>{activity.text}</MobileLiveStatusText>
+        <MobileLiveStatusText reduceMotion={appearance.reduceMotion} style={textStyle}>
+          {activity.text}
+        </MobileLiveStatusText>
       ) : (
         <Text
           numberOfLines={activity.toolName === "__thought" ? 0 : 2}

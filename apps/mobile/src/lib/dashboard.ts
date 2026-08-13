@@ -165,6 +165,19 @@ export const MOBILE_CHAT_DETAIL_CHROME = {
   timelineMetadataBar: false,
 } as const;
 
+export function mobileChatHorizontalPadding(value: string): number {
+  switch (value) {
+    case "roomy":
+      return 20;
+    case "wide":
+      return 24;
+    case "maximum":
+      return 28;
+    default:
+      return 16;
+  }
+}
+
 export const MOBILE_RECENT_ACTIVITY_CHROME = {
   chatsOpenSession: true,
   showTerminalRows: false,
