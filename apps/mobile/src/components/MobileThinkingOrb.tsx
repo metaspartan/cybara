@@ -6,15 +6,18 @@ import { useTheme } from "../theme/ThemeContext";
 export type MobileThinkingOrbState = "composing" | "solving";
 
 export function MobileThinkingOrb({
+  reduceMotion: reduceMotionOverride,
   state,
   size = 14,
 }: {
+  reduceMotion?: boolean;
   state: MobileThinkingOrbState;
   size?: number;
 }) {
   const [progress] = useState(() => new Animated.Value(0));
   const colors = useTheme();
-  const { reduceMotion } = useSystemAccessibility();
+  const { reduceMotion: systemReduceMotion } = useSystemAccessibility();
+  const reduceMotion = reduceMotionOverride ?? systemReduceMotion;
 
   useEffect(() => {
     if (reduceMotion) {
@@ -107,13 +110,16 @@ export function MobileThinkingOrb({
 
 export function MobileLiveStatusText({
   children,
+  reduceMotion: reduceMotionOverride,
   style,
 }: {
   children: string;
+  reduceMotion?: boolean;
   style: StyleProp<TextStyle>;
 }) {
   const [progress] = useState(() => new Animated.Value(0.72));
-  const { reduceMotion } = useSystemAccessibility();
+  const { reduceMotion: systemReduceMotion } = useSystemAccessibility();
+  const reduceMotion = reduceMotionOverride ?? systemReduceMotion;
 
   useEffect(() => {
     if (reduceMotion) {

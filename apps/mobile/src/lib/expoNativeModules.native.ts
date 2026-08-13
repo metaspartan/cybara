@@ -8,7 +8,6 @@ import {
   isLiquidGlassAvailable,
 } from "expo-glass-effect";
 import * as ImagePicker from "expo-image-picker";
-import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
@@ -20,7 +19,6 @@ export {
   GlassContainer,
   GlassView,
   ImagePicker,
-  Notifications,
   Platform,
   SecureStore,
   isGlassEffectAPIAvailable,

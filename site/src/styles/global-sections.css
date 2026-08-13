@@ -1310,3 +1310,126 @@
     grid-template-columns: 1fr;
   }
 }
+
+.legal-page {
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.legal-updated {
+  margin: 0 0 4px;
+  font-size: 0.86rem;
+  color: var(--text-subtle, var(--text-dim));
+}
+
+.legal-block {
+  padding: 26px 28px;
+}
+
+.legal-heading {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 1.18rem;
+  margin: 0 0 12px;
+}
+
+.legal-text {
+  margin: 0 0 12px;
+  color: var(--text-dim);
+  font-size: 0.99rem;
+  line-height: 1.65;
+  max-width: 68ch;
+}
+
+.legal-text:last-child {
+  margin-bottom: 0;
+}
+
+.legal-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-dim);
+  font-size: 0.99rem;
+  line-height: 1.65;
+  max-width: 68ch;
+}
+
+.legal-list li + li {
+  margin-top: 8px;
+}
+
+.legal-link {
+  color: rgb(var(--accent-primary, 124 123 240));
+  text-decoration: none;
+}
+
+.legal-link:hover {
+  text-decoration: underline;
+}
+
+.legal-code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.9em;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.legal-table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.1));
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.legal-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.2fr 1.6fr;
+  gap: 14px;
+  padding: 12px 16px;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.legal-row + .legal-row {
+  border-top: 1px solid var(--surface-border, rgba(255, 255, 255, 0.08));
+}
+
+.legal-row--head {
+  font-weight: 600;
+  color: var(--text-primary, #f0f0f5);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.legal-cell-strong {
+  color: var(--text-primary, #f0f0f5);
+  font-weight: 500;
+}
+
+@media (max-width: 680px) {
+  .legal-block {
+    padding: 22px 18px;
+  }
+  .legal-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .legal-row--head {
+    display: none;
+  }
+}
+
+.download-btn--soon {
+  cursor: default;
+  opacity: 0.62;
+  color: var(--text-dim);
+}
+
+.download-btn--soon:hover {
+  border-color: inherit;
+}

@@ -39,7 +39,7 @@
     "deadcode:report": "knip --no-progress --reporter compact --no-exit-code",
     "profile:macos": "bun run scripts/profile-cybara-macos.ts",
     "benchmark:gateway": "bun run build && bun run scripts/benchmark-gateway.ts",
-    "audit:root": "bun audit --audit-level=moderate --ignore GHSA-mh99-v99m-4gvg",
+    "audit:root": "bun audit --audit-level=moderate --ignore GHSA-mh99-v99m-4gvg --ignore GHSA-jmr9-qjv8-65gv",
     "audit:ui": "cd ui && bun audit --audit-level=moderate",
     "audit:mobile": "cd apps/mobile && bun audit --audit-level=moderate --ignore GHSA-w3rx-r6r6-pgpr --ignore GHSA-5p2g-fcmc-qvqq",
     "audit:site": "cd site && bun audit --audit-level=moderate",
@@ -181,5 +181,8 @@
     "ignore": [
       "tests/fixtures/session-crash-recovery-worker.ts"
     ]
+  },
+  "patchedDependencies": {
+    "extract-zip@2.0.1": "patches/extract-zip@2.0.1.patch"
   }
 }

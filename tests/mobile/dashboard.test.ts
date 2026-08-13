@@ -38,6 +38,7 @@ import {
   MOBILE_TABS,
   mobileBackRouteForDetail,
   mobileComposerHeightForDraft,
+  mobileChatHorizontalPadding,
   mobileFirstNonEmptyString,
   mobileGatewayAuthStatus,
   mobileProviderAuthMode,
@@ -249,6 +250,17 @@ const summary: FeatureSummary = {
 };
 
 describe("mobile dashboard model", () => {
+  test("maps shared chat side-padding settings into native gutters", () => {
+    expect(mobileChatHorizontalPadding("default")).toBe(16);
+    expect(mobileChatHorizontalPadding("roomy")).toBe(20);
+    expect(mobileChatHorizontalPadding("wide")).toBe(24);
+    expect(mobileChatHorizontalPadding("maximum")).toBe(28);
+    expect(dashboardScreenSource).toContain('label="Chat side padding"');
+    expect(dashboardScreenSource).toContain(
+      "mobileChatHorizontalPadding(chatAppearance.horizontalPadding)"
+    );
+  });
+
   test("keeps recent activity first and exposes Settings as the last bottom tab", () => {
     expect(MOBILE_TABS.map((tab) => tab.key)).toEqual([
       "overview",
@@ -289,6 +301,7 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_NAV_CHROME.outerRadius).toBeGreaterThan(0);
     expect(MOBILE_NAV_CHROME.floatingMargin).toBeGreaterThan(0);
     expect(MOBILE_NAV_CHROME.height).toBeLessThanOrEqual(82);
+    expect(dashboardStylesSource).toContain("zIndex: 10");
     expect(MOBILE_CHAT_CHROME.composerPinnedAboveNav).toBe(true);
     expect(MOBILE_CHAT_CHROME.composerGapToNav).toBe(0);
     expect(MOBILE_CHAT_CHROME.composerHeight).toBeGreaterThanOrEqual(70);

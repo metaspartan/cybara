@@ -44,6 +44,8 @@ export const GITHUB_URL = "https://github.com/metaspartan/cybara";
 export const X_URL = "https://x.com/cybaraAI";
 export const CREATOR_X_URL = "https://x.com/carsenklock";
 export const RELEASES_URL = "https://github.com/metaspartan/cybara/releases/latest";
+export const PLAY_STORE_URL =
+  "https://play.google.com/store/apps/details?id=com.ck.cybara";
 export const INSTALL_COMMAND =
   "curl -fsSL https://cybara.ai/install.sh | bash";
 export const INSTALL_COMMAND_WINDOWS =
@@ -322,7 +324,8 @@ export const PLATFORMS: readonly Platform[] = [
   },
   {
     name: "Mobile companion",
-    detail: "A dark Liquid Glass React Native app for iOS and Android that pairs to any gateway.",
+    detail:
+      "A dark Liquid Glass React Native app that pairs to any gateway. On Google Play now; iOS coming soon.",
     icon: "mobile",
   },
   {
@@ -340,6 +343,8 @@ export interface DownloadClient {
   href: string;
   command?: string;
   assetPattern?: RegExp;
+  storeLabel?: string;
+  comingSoon?: boolean;
 }
 
 export interface DownloadGroup {
@@ -449,7 +454,15 @@ export const DOWNLOAD_GROUPS: readonly DownloadGroup[] = [
     clients: [
       {
         name: "Android",
-        platform: "Sideload APK",
+        platform: "Google Play",
+        format: "Auto-updating install",
+        icon: "android",
+        href: PLAY_STORE_URL,
+        storeLabel: "Get it on Google Play",
+      },
+      {
+        name: "Android APK",
+        platform: "Sideload",
         format: "signed .apk",
         icon: "android",
         href: RELEASES_URL,
@@ -457,7 +470,15 @@ export const DOWNLOAD_GROUPS: readonly DownloadGroup[] = [
       },
       {
         name: "iOS",
-        platform: "iPhone · iPad",
+        platform: "App Store",
+        format: "Submission in progress",
+        icon: "apple",
+        href: RELEASES_URL,
+        comingSoon: true,
+      },
+      {
+        name: "iOS IPA",
+        platform: "Sideload · iPhone · iPad",
         format: "signed .ipa",
         icon: "apple",
         href: RELEASES_URL,
@@ -657,7 +678,7 @@ export const FAQS: readonly Faq[] = [
   {
     question: "Which platforms does Cybara run on?",
     answer:
-      "Cybara ships desktop apps for macOS, Windows, and Linux, a native SwiftUI macOS app, mobile apps for iOS and Android, and command-line binaries for macOS, Windows, and Linux — plus a VS Code extension and an ACP server for editors — all built from the same Bun runtime and published on GitHub Releases.",
+      "Cybara ships desktop apps for macOS, Windows, and Linux, a native SwiftUI macOS app, an Android app on Google Play with the iOS app coming soon, and command-line binaries for macOS, Windows, and Linux — plus a VS Code extension and an ACP server for editors — all built from the same Bun runtime and published on GitHub Releases.",
   },
   {
     question: "Which messaging channels are supported?",

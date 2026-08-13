@@ -96,10 +96,12 @@ describe("chat live auto-scroll", () => {
     expect(source).toContain('proxy.scrollTo("thinking", anchor: .bottom)');
   });
 
-  test("mobile: scrolls to end as the live assistant message grows", () => {
+  test("mobile: follows live growth with one stable non-animated scroll owner", () => {
     const source = readMobileChatSource();
-    expect(source).toContain("scrollRef.current?.scrollToEnd({ animated: true });");
-    expect(source).toContain("liveAssistant?.content,");
-    expect(source).toContain("liveAssistant?.processActivities?.length,");
+    expect(source).toContain("onContentSizeChange={() => {");
+    expect(source).toContain("if (!followChatBottomRef.current) return;");
+    expect(source).toContain("if (!chatScrollGestureActiveRef.current) return;");
+    expect(source).toContain("scrollRef.current?.scrollToEnd({ animated: false });");
+    expect(source).not.toContain("scrollRef.current?.scrollToEnd({ animated: true });");
   });
 });

@@ -33,6 +33,8 @@ describe("chat follow parity", () => {
     expect(source).toContain("cybara-shared/chat-scroll-follow");
     expect(source).toContain("if (!followChatBottomRef.current) return;");
     expect(source).toContain("followChatBottomRef.current = isChatNearBottom(");
+    expect(source).toContain("if (!chatScrollGestureActiveRef.current) return;");
+    expect(source).toContain("onMomentumScrollEnd={(event) => {");
   });
 
   test("macos gates every transcript autoscroll on the follow state", () => {

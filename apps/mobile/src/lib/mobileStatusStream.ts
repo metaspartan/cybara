@@ -48,11 +48,21 @@ export class MobileStatusReplayBuffer {
     while (this.entries.length > this.maxEvents) this.removeFirst();
   }
 
-  consume(now = Date.now()): MobileStatusStreamEvent[] {
+  consume(now = Date.now(), sessionId?: string): MobileStatusStreamEvent[] {
     this.prune(now);
-    const events = this.entries.map(({ event }) => ({ ...event }));
-    this.entries.length = 0;
+    const matched: BufferedMobileStatusEvent[] = [];
+    const retained: BufferedMobileStatusEvent[] = [];
+    for (const entry of this.entries) {
+      if (!sessionId || ("sessionId" in entry.event && entry.event.sessionId === sessionId)) {
+        matched.push(entry);
+      } else retained.push(entry);
+    }
+    const events = matched.map(({ event }) => ({ ...event }));
+    this.entries.splice(0, this.entries.length, ...retained);
     this.dedupeKeys.clear();
+    for (const entry of retained) {
+      if (entry.dedupeKey) this.dedupeKeys.add(entry.dedupeKey);
+    }
     return events;
   }
 
@@ -110,7 +120,9 @@ export class MobileStatusStreamClient {
     this.clearCloseTimer();
     this.subscribers.add(handlers);
     if (options.replayBufferedEvents) {
-      for (const event of this.replayBuffer.consume()) handlers.onEvent(event);
+      for (const event of this.replayBuffer.consume(Date.now(), options.replaySessionId)) {
+        handlers.onEvent(event);
+      }
     }
     if (this.connected) handlers.onOpen?.();
     this.ensureConnected();

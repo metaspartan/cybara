@@ -92,15 +92,55 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("const existing = sessionRefreshInFlight.current");
     expect(screen).toContain("return existing.promise");
     expect(liveCache).toContain("mergeMobileLiveActivities(currentActivities, incomingActivities)");
-    expect(read("lib/mobileStatusStream.ts")).toContain("replayBuffer.consume()");
+    expect(read("lib/mobileStatusStream.ts")).toContain("replayBuffer.consume(");
     expect(read("screens/useMobileSessionRuntime.ts")).toContain("replayBufferedEvents: true");
-    expect(read("screens/dashboardChat.tsx")).toContain("<MobileThinkingOrb state={statusState}");
+    expect(read("screens/dashboardChat.tsx")).toContain(
+      "<MobileThinkingOrb reduceMotion={reduceMotion} state={statusState}"
+    );
     expect(read("screens/dashboardChat.tsx")).toContain(
       'statusState || activity.phase === "start"'
     );
     expect(liveCache).not.toContain("return next.slice(-12)");
     expect(optimisticTranscript).toContain("acknowledgedByPersistedHistory");
     expect(read("lib/api.ts")).not.toContain("calls.slice(0, 20)");
+    expect(read("screens/useMobileSessionRuntime.ts")).toContain("}, [loadSession, sessionId]);");
+    expect(read("screens/useMobileSessionRuntime.ts")).not.toContain(
+      "}, [loadSession, sessionId, sessionSummary]);"
+    );
+  });
+
+  test("live chat follows new content only while the reader remains near the bottom", () => {
+    const screen = read("screens/dashboardSessionDetail.tsx");
+    const runtime = read("screens/useMobileSessionRuntime.ts");
+
+    expect(screen).toContain("followChatBottomRef.current = true;");
+    expect(screen).toContain("if (!followChatBottomRef.current) return;");
+    expect(screen).toContain("if (!chatScrollGestureActiveRef.current) return;");
+    expect(screen).toContain("onScrollBeginDrag={() => {");
+    expect(screen).toContain("followChatBottomRef.current = false;");
+    expect(screen).toContain("Math.max(composerBarHeight, MOBILE_CHAT_CHROME.composerHeight)");
+    expect(runtime).not.toContain("scrollToEnd");
+    expect(runtime).not.toContain("requestAnimationFrame");
+  });
+
+  test("Android relies on the native resize layout instead of applying the keyboard height twice", () => {
+    const screen = read("screens/dashboardSessionDetail.tsx");
+
+    expect(screen).toContain('if (Platform.OS !== "ios") return;');
+    expect(screen).toContain('Keyboard.addListener("keyboardWillShow"');
+    expect(screen).toContain('Keyboard.addListener("keyboardWillHide"');
+    expect(screen).not.toContain('"keyboardDidShow"');
+    expect(screen).not.toContain('"keyboardDidHide"');
+  });
+
+  test("saved reduce-motion settings disable live indicators", () => {
+    const chat = read("screens/dashboardChat.tsx");
+    const runtime = read("screens/useMobileSessionRuntime.ts");
+    const indicator = read("components/MobileThinkingOrb.tsx");
+
+    expect(chat).toContain("reduceMotion={appearance.reduceMotion}");
+    expect(indicator).toContain("reduceMotionOverride ?? systemReduceMotion");
+    expect(runtime).not.toContain("animated: true");
   });
 
   test("persisted screenshot markdown uses the authenticated mobile media gallery", () => {
@@ -112,6 +152,16 @@ describe("mobile: chat management", () => {
     expect(chat).toContain("mediaUrl(image.filePath)");
     expect(chat).toContain("new Set([...markdownImageUris, ...toolImageUris])");
     expect(chat).toContain("content = markdown.content");
+  });
+
+  test("chat images open in an in-app preview without sending bearer URLs to another app", () => {
+    const chat = read("screens/dashboardChat.tsx");
+
+    expect(chat).toContain('accessibilityLabel="Preview image"');
+    expect(chat).toContain("setPreviewVisible(true)");
+    expect(chat).toContain('<Modal\n        animationType="fade"');
+    expect(chat).toContain('accessibilityLabel="Close image preview"');
+    expect(chat).not.toContain("openAllowedExternalUrl(uri)");
   });
 
   test("queued follow-ups stay above the composer instead of entering the message transcript", () => {

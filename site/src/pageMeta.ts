@@ -35,6 +35,12 @@ export const PAGE_HEADS = {
       "Download Cybara, the self-hosted open-source AI agent platform. Signed desktop apps for macOS, Windows, and Linux, native mobile apps for iOS and Android, and a CLI — every asset with a published SHA256 checksum.",
     canonical: "https://cybara.ai/download",
   },
+  privacy: {
+    title: "Privacy Policy — Cybara Mobile App",
+    description:
+      "Privacy policy for the Cybara mobile app. Cybara is self-hosted: the app connects to a gateway you run, collects no personal data, and ships with no analytics, advertising, or tracking SDKs.",
+    canonical: "https://cybara.ai/privacy",
+  },
   faq: {
     title: "FAQ — Cybara Self-Hosted AI Agent Platform",
     description:

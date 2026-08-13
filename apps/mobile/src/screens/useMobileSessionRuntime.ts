@@ -12,7 +12,6 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ScrollView } from "react-native";
 import type {
   CybaraMobileApi,
   MobilePendingChatMessage,
@@ -80,7 +79,6 @@ interface MobileSessionRuntimeOptions {
   sending: boolean;
   setPinned: Dispatch<SetStateAction<boolean>>;
   setPendingSessionAgentId: Dispatch<SetStateAction<string | null>>;
-  scrollRef: RefObject<ScrollView | null>;
   onSessionUpdated: (detail: SessionDetailSummary) => void;
 }
 
@@ -114,7 +112,6 @@ export function useMobileSessionRuntime({
   sending,
   setPinned,
   setPendingSessionAgentId,
-  scrollRef,
   onSessionUpdated,
 }: MobileSessionRuntimeOptions): MobileSessionRuntimeController {
   const [detail, setDetail] = useState<SessionDetailSummary | null>(() =>
@@ -391,7 +388,7 @@ export function useMobileSessionRuntime({
       current?.id === sessionId ? current : optimisticMobileSessionDetail(sessionId, sessionSummary)
     );
     void loadSession(true);
-  }, [loadSession, sessionId, sessionSummary]);
+  }, [loadSession, sessionId]);
 
   useEffect(() => {
     const disconnect = api.connectStatusStream(
@@ -517,7 +514,7 @@ export function useMobileSessionRuntime({
           }, event.timestamp);
         },
       },
-      { replayBufferedEvents: true }
+      { replayBufferedEvents: true, replaySessionId: sessionId }
     );
     return disconnect;
   }, [
@@ -562,18 +559,6 @@ export function useMobileSessionRuntime({
     const interval = setInterval(() => setLiveNowMs(Date.now()), 1000);
     return () => clearInterval(interval);
   }, [liveAssistant]);
-
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    });
-  }, [
-    detail?.messages.length,
-    liveAssistant?.content,
-    liveAssistant?.processActivities?.length,
-    pendingMessages.length,
-    sending,
-  ]);
 
   return {
     detail,

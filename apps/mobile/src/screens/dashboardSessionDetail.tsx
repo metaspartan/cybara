@@ -39,6 +39,8 @@ import {
   Image,
   Keyboard,
   Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -68,7 +70,9 @@ import {
 } from "../lib/chat-format";
 import {
   boundedMobileComposerHeight,
+  MOBILE_CHAT_CHROME,
   MOBILE_CHAT_COMPOSER,
+  mobileChatHorizontalPadding,
   MOBILE_NAV_CHROME,
   mobileComposerHeightForDraft,
   mobileFirstNonEmptyString,
@@ -173,17 +177,19 @@ export function SessionDetailPanel({
     config?.lab && typeof config.lab === "object" && !Array.isArray(config.lab)
       ? (config.lab as Record<string, unknown>)
       : {};
+  const chatAppearance = useEffectiveChatAppearance(
+    normalizeChatAppearanceSettings(config?.chat_appearance)
+  );
   const goldenTurnActionsEnabled =
     labConfig.enabled !== false && labConfig.goldenTurnsEnabled !== false;
   const navFootprint = insets.bottom + MOBILE_NAV_CHROME.floatingMargin + MOBILE_NAV_CHROME.height;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(showEvent, (event) => {
+    if (Platform.OS !== "ios") return;
+    const showSub = Keyboard.addListener("keyboardWillShow", (event) => {
       setKeyboardHeight(event.endCoordinates?.height ?? 0);
     });
-    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    const hideSub = Keyboard.addListener("keyboardWillHide", () => setKeyboardHeight(0));
     return () => {
       showSub.remove();
       hideSub.remove();
@@ -221,7 +227,22 @@ export function SessionDetailPanel({
   const [pendingToolApprovalMode, setPendingToolApprovalMode] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const followChatBottomRef = useRef(true);
+  const chatScrollGestureActiveRef = useRef(false);
   const headerActionRef = useRef<() => void>(() => {});
+  const updateChatFollowFromScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      followChatBottomRef.current = isChatNearBottom(
+        {
+          clientHeight: layoutMeasurement.height,
+          scrollHeight: contentSize.height,
+          scrollTop: contentOffset.y,
+        },
+        CHAT_FOLLOW_THRESHOLD_PX
+      );
+    },
+    []
+  );
   const {
     detail,
     setDetail,
@@ -245,9 +266,13 @@ export function SessionDetailPanel({
     sending,
     setPinned,
     setPendingSessionAgentId,
-    scrollRef,
     onSessionUpdated: onSessionUpdated ?? ignoreSessionDetail,
   });
+
+  useEffect(() => {
+    followChatBottomRef.current = true;
+    chatScrollGestureActiveRef.current = false;
+  }, [sessionId]);
 
   useEffect(() => {
     let active = true;
@@ -1398,10 +1423,7 @@ export function SessionDetailPanel({
   const waitingForAssistant = chatIsWaitingForAssistant(renderMessages, sending);
   const composerBottom =
     keyboardHeight > 0 ? keyboardHeight + spacing.xs : navFootprint + spacing.xs;
-  const chatAppearance = useEffectiveChatAppearance(
-    normalizeChatAppearanceSettings(config?.chat_appearance)
-  );
-
+  const composerReservedHeight = Math.max(composerBarHeight, MOBILE_CHAT_CHROME.composerHeight);
   return (
     <View style={styles.chatShell}>
       <MobileBranchPicker
@@ -1435,23 +1457,34 @@ export function SessionDetailPanel({
         ref={scrollRef}
         contentContainerStyle={[
           styles.chatContent,
-          { paddingBottom: composerBottom + composerBarHeight + spacing.md },
+          {
+            paddingBottom: composerBottom + composerReservedHeight + spacing.md,
+            paddingHorizontal: mobileChatHorizontalPadding(chatAppearance.horizontalPadding),
+          },
         ]}
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => {
           if (!followChatBottomRef.current) return;
           scrollRef.current?.scrollToEnd({ animated: false });
         }}
+        onMomentumScrollBegin={() => {
+          chatScrollGestureActiveRef.current = true;
+        }}
+        onMomentumScrollEnd={(event) => {
+          updateChatFollowFromScroll(event);
+          chatScrollGestureActiveRef.current = false;
+        }}
         onScroll={(event) => {
-          const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-          followChatBottomRef.current = isChatNearBottom(
-            {
-              clientHeight: layoutMeasurement.height,
-              scrollHeight: contentSize.height,
-              scrollTop: contentOffset.y,
-            },
-            CHAT_FOLLOW_THRESHOLD_PX
-          );
+          if (!chatScrollGestureActiveRef.current) return;
+          updateChatFollowFromScroll(event);
+        }}
+        onScrollBeginDrag={() => {
+          chatScrollGestureActiveRef.current = true;
+          followChatBottomRef.current = false;
+        }}
+        onScrollEndDrag={(event) => {
+          updateChatFollowFromScroll(event);
+          chatScrollGestureActiveRef.current = false;
         }}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}

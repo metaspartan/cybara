@@ -48,7 +48,7 @@ export function DownloadCard({
   const asset = resolveAsset(release, client.assetPattern);
   const fileSize = formatFileSize(asset?.size);
   const sha = asset?.sha256;
-  const showMeta = !client.command;
+  const showMeta = !client.command && !client.storeLabel && !client.comingSoon;
 
   return (
     <article className={recommended ? "glass download-card download-card--recommended" : "glass download-card"}>
@@ -62,11 +62,21 @@ export function DownloadCard({
           <p className="download-platform">{client.platform}</p>
           <p className="download-format">{client.format}</p>
         </div>
-        {client.command ? (
+        {client.comingSoon ? (
+          <span className="download-btn download-btn--soon" aria-disabled="true">
+            <Icon name="clock" className="btn-icon" />
+            <span>Coming soon</span>
+          </span>
+        ) : client.command ? (
           <button type="button" className="download-btn" onClick={copyCommand}>
             <Icon name="terminal" className="btn-icon" />
             <span>{copied ? "Copied" : "Copy install"}</span>
           </button>
+        ) : client.storeLabel ? (
+          <a className="download-btn" href={href} target="_blank" rel="noreferrer">
+            <Icon name={client.icon as IconName} className="btn-icon" />
+            <span>{client.storeLabel}</span>
+          </a>
         ) : (
           <a className="download-btn" href={href} target="_blank" rel="noreferrer">
             <Icon name="download" className="btn-icon" />

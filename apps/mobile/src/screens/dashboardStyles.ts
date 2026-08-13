@@ -1593,6 +1593,7 @@ const makeStyles = () =>
       overflow: "hidden",
       position: "absolute",
       right: MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding,
+      zIndex: 10,
     },
     tabBarPanel: {
       flex: 1,

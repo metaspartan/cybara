@@ -1,5 +1,5 @@
 import type { CybaraMobileApi } from "./api";
-import { Constants, Notifications, Platform } from "./expoNativeModules";
+import { Constants, Platform } from "./expoNativeModules";
 
 type PermissionStatus = "granted" | "denied" | "undetermined" | string;
 
@@ -49,8 +49,12 @@ export interface MobilePushRegistrationOptions {
   constants?: ConstantsLike | null;
 }
 
-function defaultNotifications(): NotificationsLike {
-  return Notifications as unknown as NotificationsLike;
+async function defaultNotifications(): Promise<NotificationsLike | null> {
+  try {
+    return (await import("expo-notifications")) as NotificationsLike;
+  } catch {
+    return null;
+  }
 }
 
 function defaultConstants(): ConstantsLike {
@@ -130,7 +134,7 @@ export async function configureMobileNotificationPresentation(
     return false;
   }
   const notifications =
-    options.notifications === undefined ? defaultNotifications() : options.notifications;
+    options.notifications === undefined ? await defaultNotifications() : options.notifications;
   if (!notifications?.setNotificationHandler) return false;
   try {
     notifications.setNotificationHandler({
@@ -163,7 +167,7 @@ export async function registerMobilePushNotifications(
     return { status: "unavailable", message: "Push notifications require iOS or Android." };
 
   const notifications =
-    options.notifications === undefined ? defaultNotifications() : options.notifications;
+    options.notifications === undefined ? await defaultNotifications() : options.notifications;
   if (!notifications) {
     return { status: "unavailable", message: "Expo notifications are unavailable." };
   }

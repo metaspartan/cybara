@@ -27,6 +27,9 @@ export function Footer(): React.ReactElement {
               {link.labelKey ? t(link.labelKey) : link.label}
             </A>
           ))}
+          <A href="/privacy" className="footer-link">
+            Privacy
+          </A>
           <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="footer-link">
             GitHub
           </a>

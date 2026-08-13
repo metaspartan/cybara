@@ -531,6 +531,13 @@ export function sortSessionSummaries(sessions: SessionSummary[]): SessionSummary
   );
 }
 
+export function latestSessionSummary(sessions: SessionSummary[]): SessionSummary | undefined {
+  return sessions.reduce<SessionSummary | undefined>((latest, session) => {
+    if (!latest) return session;
+    return sessionSortTimestampMs(session) > sessionSortTimestampMs(latest) ? session : latest;
+  }, undefined);
+}
+
 export function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDetailSummary {
   const record = asRecord(value);
   const rawMessages = normalizeArrayResponse(record?.messagesList, ["messagesList", "items"]);
