@@ -115,6 +115,10 @@ describe("mobile: chat management", () => {
 
     expect(screen).toContain("followChatBottomRef.current = true;");
     expect(screen).toContain("if (!followChatBottomRef.current) return;");
+    expect(screen).toContain("if (!chatScrollGestureActiveRef.current) return;");
+    expect(screen).toContain("onScrollBeginDrag={() => {");
+    expect(screen).toContain("followChatBottomRef.current = false;");
+    expect(screen).toContain("Math.max(composerBarHeight, MOBILE_CHAT_CHROME.composerHeight)");
     expect(runtime).not.toContain("scrollToEnd");
     expect(runtime).not.toContain("requestAnimationFrame");
   });

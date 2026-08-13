@@ -1588,11 +1588,13 @@ const makeStyles = () =>
       borderColor: colors.borderStrong,
       borderRadius: MOBILE_NAV_CHROME.outerRadius,
       borderWidth: 1,
+      elevation: 10,
       height: MOBILE_NAV_CHROME.height,
       left: MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding,
       overflow: "hidden",
       position: "absolute",
       right: MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding,
+      zIndex: 10,
     },
     tabBarPanel: {
       flex: 1,

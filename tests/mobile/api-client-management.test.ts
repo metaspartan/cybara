@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   CybaraMobileApi,
+  latestSessionSummary,
   normalizeActivityLogs,
   normalizeMemoryItems,
   normalizeMemoryList,
@@ -1855,5 +1856,26 @@ describe("mobile session sorting", () => {
         },
       ]).map((session) => session.id)
     ).toEqual(["new", "old"]);
+  });
+
+  test("finds the newest session independently of pinned-first list ordering", () => {
+    const sessions = sortSessionSummaries([
+      {
+        id: "older-pinned",
+        title: "older pinned",
+        message_count: 2,
+        pinned: true,
+        updated_at: "2026-07-25T11:56:41.000Z",
+      },
+      {
+        id: "newest",
+        title: "newest",
+        message_count: 2,
+        updated_at: "2026-08-13T10:52:07.000Z",
+      },
+    ]);
+
+    expect(sessions.map((session) => session.id)).toEqual(["older-pinned", "newest"]);
+    expect(latestSessionSummary(sessions)?.id).toBe("newest");
   });
 });

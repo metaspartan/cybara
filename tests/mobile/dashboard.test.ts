@@ -301,6 +301,8 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_NAV_CHROME.outerRadius).toBeGreaterThan(0);
     expect(MOBILE_NAV_CHROME.floatingMargin).toBeGreaterThan(0);
     expect(MOBILE_NAV_CHROME.height).toBeLessThanOrEqual(82);
+    expect(dashboardStylesSource).toContain("elevation: 10");
+    expect(dashboardStylesSource).toContain("zIndex: 10");
     expect(MOBILE_CHAT_CHROME.composerPinnedAboveNav).toBe(true);
     expect(MOBILE_CHAT_CHROME.composerGapToNav).toBe(0);
     expect(MOBILE_CHAT_CHROME.composerHeight).toBeGreaterThanOrEqual(70);

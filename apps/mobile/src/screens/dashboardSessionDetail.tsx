@@ -39,6 +39,8 @@ import {
   Image,
   Keyboard,
   Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -68,6 +70,7 @@ import {
 } from "../lib/chat-format";
 import {
   boundedMobileComposerHeight,
+  MOBILE_CHAT_CHROME,
   MOBILE_CHAT_COMPOSER,
   mobileChatHorizontalPadding,
   MOBILE_NAV_CHROME,
@@ -224,7 +227,22 @@ export function SessionDetailPanel({
   const [pendingToolApprovalMode, setPendingToolApprovalMode] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const followChatBottomRef = useRef(true);
+  const chatScrollGestureActiveRef = useRef(false);
   const headerActionRef = useRef<() => void>(() => {});
+  const updateChatFollowFromScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      followChatBottomRef.current = isChatNearBottom(
+        {
+          clientHeight: layoutMeasurement.height,
+          scrollHeight: contentSize.height,
+          scrollTop: contentOffset.y,
+        },
+        CHAT_FOLLOW_THRESHOLD_PX
+      );
+    },
+    []
+  );
   const {
     detail,
     setDetail,
@@ -253,6 +271,7 @@ export function SessionDetailPanel({
 
   useEffect(() => {
     followChatBottomRef.current = true;
+    chatScrollGestureActiveRef.current = false;
   }, [sessionId]);
 
   useEffect(() => {
@@ -1404,6 +1423,7 @@ export function SessionDetailPanel({
   const waitingForAssistant = chatIsWaitingForAssistant(renderMessages, sending);
   const composerBottom =
     keyboardHeight > 0 ? keyboardHeight + spacing.xs : navFootprint + spacing.xs;
+  const composerReservedHeight = Math.max(composerBarHeight, MOBILE_CHAT_CHROME.composerHeight);
   return (
     <View style={styles.chatShell}>
       <MobileBranchPicker
@@ -1438,7 +1458,7 @@ export function SessionDetailPanel({
         contentContainerStyle={[
           styles.chatContent,
           {
-            paddingBottom: composerBottom + composerBarHeight + spacing.md,
+            paddingBottom: composerBottom + composerReservedHeight + spacing.md,
             paddingHorizontal: mobileChatHorizontalPadding(chatAppearance.horizontalPadding),
           },
         ]}
@@ -1447,16 +1467,24 @@ export function SessionDetailPanel({
           if (!followChatBottomRef.current) return;
           scrollRef.current?.scrollToEnd({ animated: false });
         }}
+        onMomentumScrollBegin={() => {
+          chatScrollGestureActiveRef.current = true;
+        }}
+        onMomentumScrollEnd={(event) => {
+          updateChatFollowFromScroll(event);
+          chatScrollGestureActiveRef.current = false;
+        }}
         onScroll={(event) => {
-          const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-          followChatBottomRef.current = isChatNearBottom(
-            {
-              clientHeight: layoutMeasurement.height,
-              scrollHeight: contentSize.height,
-              scrollTop: contentOffset.y,
-            },
-            CHAT_FOLLOW_THRESHOLD_PX
-          );
+          if (!chatScrollGestureActiveRef.current) return;
+          updateChatFollowFromScroll(event);
+        }}
+        onScrollBeginDrag={() => {
+          chatScrollGestureActiveRef.current = true;
+          followChatBottomRef.current = false;
+        }}
+        onScrollEndDrag={(event) => {
+          updateChatFollowFromScroll(event);
+          chatScrollGestureActiveRef.current = false;
         }}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}

@@ -134,6 +134,7 @@ export {
   normalizeMemorySearchResults,
   normalizeMobileSessionStatusResponse,
   normalizeMobileStatusStreamEvent,
+  latestSessionSummary,
   normalizeRemoteItems,
   sessionSortTimestampMs,
   sortSessionSummaries,

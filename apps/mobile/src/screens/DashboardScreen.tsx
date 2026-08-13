@@ -113,6 +113,7 @@ import { NewTaskPanel } from "../components/NewTaskPanel";
 import { MobileBranchPicker } from "../components/MobileBranchPicker";
 import {
   CybaraMobileApi,
+  latestSessionSummary,
   sortSessionSummaries,
   type ActivitySummary,
   type AgentSummary,
@@ -1178,7 +1179,7 @@ function SessionsPanel({
     }
   };
 
-  const latest = sessions[0];
+  const latest = latestSessionSummary(sessions);
   const endpoint = summary?.availability.sessions;
   const totalChats = summary?.sessionTotal ?? sessions.length;
   const visibleSessionCount = Math.min(sessions.length, 20);

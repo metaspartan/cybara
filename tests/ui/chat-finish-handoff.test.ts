@@ -100,6 +100,7 @@ describe("chat live auto-scroll", () => {
     const source = readMobileChatSource();
     expect(source).toContain("onContentSizeChange={() => {");
     expect(source).toContain("if (!followChatBottomRef.current) return;");
+    expect(source).toContain("if (!chatScrollGestureActiveRef.current) return;");
     expect(source).toContain("scrollRef.current?.scrollToEnd({ animated: false });");
     expect(source).not.toContain("scrollRef.current?.scrollToEnd({ animated: true });");
   });
