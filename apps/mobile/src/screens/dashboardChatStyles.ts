@@ -410,13 +410,6 @@ export function createDashboardChatStyles() {
       marginTop: 1,
       width: 16,
     },
-    messageActivityDot: {
-      backgroundColor: colors.textMuted,
-      borderRadius: 3,
-      height: 6,
-      opacity: 0.75,
-      width: 6,
-    },
     messageAuthorRow: {
       alignItems: "flex-start",
       flexDirection: "row",
@@ -434,7 +427,10 @@ export function createDashboardChatStyles() {
       lineHeight: 18,
     },
     messageThoughtText: {
+      alignSelf: "stretch",
       color: colors.textMuted,
+      paddingHorizontal: 2,
+      paddingVertical: 2,
     },
     messageActivityGroupLabel: {
       color: colors.textMuted,

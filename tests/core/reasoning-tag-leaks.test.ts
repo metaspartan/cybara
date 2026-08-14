@@ -139,7 +139,8 @@ describe("reasoning tag tokens never leak into visible chat state", () => {
     const mobileChat = read("apps/mobile/src/screens/dashboardChat.tsx");
     const macTimeline = read("apps/macos/Cybara/Sources/Cybara/NativeToolTimeline.swift");
 
-    expect(mobileChat).toContain('numberOfLines={activity.toolName === "__thought" ? 0 : 2}');
+    expect(mobileChat).toContain("function MobileThoughtText");
+    expect(mobileChat).toContain("numberOfLines={0}");
     expect(macTimeline).toContain('.lineLimit(activity.toolName == "__thought" ? nil : 3)');
   });
 });

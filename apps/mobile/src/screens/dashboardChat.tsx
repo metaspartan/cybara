@@ -784,9 +784,6 @@ export function WorkActivityIcon({
   if (statusState) {
     return <MobileThinkingOrb reduceMotion={reduceMotion} state={statusState} />;
   }
-  if (toolName === "__thought") {
-    return <View style={styles.messageActivityDot} />;
-  }
   if (toolName === "sessions_transfer" || toolName === "__steering") {
     return <ArrowRightLeft color={colors.textMuted} size={13} strokeWidth={2.2} />;
   }
@@ -802,6 +799,32 @@ export function WorkActivityIcon({
   return <CheckCircle2 color={colors.textMuted} size={13} strokeWidth={2.2} />;
 }
 
+function MobileThoughtText({
+  activity,
+  appearance,
+}: {
+  activity: MobileWorkActivity;
+  appearance: ChatAppearanceSettings;
+}) {
+  const fontSize = getChatFontSizePixels(appearance.fontSize);
+  return (
+    <Text
+      numberOfLines={0}
+      selectable
+      style={[
+        styles.messageThoughtText,
+        {
+          color: appearance.highContrast ? colors.text : colors.textMuted,
+          fontSize,
+          lineHeight: Math.round(fontSize * getChatLineHeight(appearance.lineSpacing)),
+        },
+      ]}
+    >
+      <InlineMarkdown appearance={appearance} tokens={parseInlineMarkdown(activity.text)} />
+    </Text>
+  );
+}
+
 function MobileActivityRow({
   activity,
   appearance,
@@ -809,11 +832,13 @@ function MobileActivityRow({
   activity: MobileWorkActivity;
   appearance: ChatAppearanceSettings;
 }) {
+  if (activity.toolName === "__thought") {
+    return <MobileThoughtText activity={activity} appearance={appearance} />;
+  }
   const fontSize = Math.max(11, getChatFontSizePixels(appearance.fontSize) * 0.84);
   const statusState = mobileLiveStatusIndicatorState(activity.text);
   const textStyle = [
     styles.messageActivityText,
-    activity.toolName === "__thought" && styles.messageThoughtText,
     {
       color: appearance.highContrast ? colors.text : colors.textMuted,
       fontSize,
@@ -835,11 +860,7 @@ function MobileActivityRow({
           {activity.text}
         </MobileLiveStatusText>
       ) : (
-        <Text
-          numberOfLines={activity.toolName === "__thought" ? 0 : 2}
-          selectable
-          style={textStyle}
-        >
+        <Text numberOfLines={2} selectable style={textStyle}>
           <InlineMarkdown appearance={appearance} tokens={parseInlineMarkdown(activity.text)} />
         </Text>
       )}

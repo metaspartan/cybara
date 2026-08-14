@@ -374,9 +374,14 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).not.toContain("ImagePlus");
   });
 
-  test("formats chat activity thoughts with markdown and neutral icons", () => {
+  test("formats thoughts as desktop-like chat text without activity bullets", () => {
     expect(dashboardChatSource).toContain("parseInlineMarkdown(activity.text)");
-    expect(dashboardChatSource).toContain("styles.messageActivityDot");
+    expect(dashboardChatSource).toContain('if (activity.toolName === "__thought")');
+    expect(dashboardChatSource).toContain("<MobileThoughtText");
+    expect(dashboardChatSource).toContain(
+      "const fontSize = getChatFontSizePixels(appearance.fontSize);"
+    );
+    expect(dashboardChatSource).not.toContain("styles.messageActivityDot");
     expect(dashboardChatSource).toContain("CheckCircle2 color={colors.textMuted}");
     expect(dashboardChatSource).toContain("Loader2 color={colors.textMuted}");
     expect(dashboardChatSource).not.toContain("Sparkles");
@@ -385,9 +390,9 @@ describe("mobile dashboard model", () => {
     expect(dashboardChatSource).toContain("search: Search");
     expect(dashboardChatSource).toContain("command: SquareTerminal");
     expect(dashboardChatSource).toContain("MOBILE_GROUP_ICONS[entry.kind]");
-    expect(dashboardStylesSource).toContain("messageActivityDot");
-    expect(dashboardStylesSource).toContain("backgroundColor: colors.textMuted");
+    expect(dashboardStylesSource).not.toContain("messageActivityDot");
     expect(dashboardStylesSource).toContain("messageThoughtText");
+    expect(dashboardStylesSource).toContain('alignSelf: "stretch"');
     expect(dashboardChatSource).toContain("appearance.highContrast ? colors.text");
     expect(dashboardChatSource).toContain("getChatLineHeight(appearance.lineSpacing)");
     expect(dashboardChatSource).toContain("getChatCodeFontSizePixels(appearance.codeFontSize)");
