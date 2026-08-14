@@ -25,6 +25,7 @@ import {
 } from "lucide-react-native";
 import {
   type Dispatch,
+  type ReactNode,
   type SetStateAction,
   useCallback,
   useEffect,
@@ -38,6 +39,7 @@ import {
   Alert,
   Image,
   Keyboard,
+  KeyboardAvoidingView,
   Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -137,6 +139,27 @@ export interface ChatHeaderAction {
 const MOBILE_MODEL_ROUTER_SELECTOR_VALUE = "__model_router__";
 const ignoreSessionDetail = (_detail: SessionDetailSummary): void => {};
 
+function ChatKeyboardContainer({
+  children,
+  keyboardVerticalOffset,
+}: {
+  children: ReactNode;
+  keyboardVerticalOffset: number;
+}) {
+  if (Platform.OS === "android") {
+    return (
+      <KeyboardAvoidingView
+        behavior="height"
+        keyboardVerticalOffset={keyboardVerticalOffset}
+        style={styles.chatShell}
+      >
+        {children}
+      </KeyboardAvoidingView>
+    );
+  }
+  return <View style={styles.chatShell}>{children}</View>;
+}
+
 function pendingMessagesFromResponse(result: {
   pendingMessage?: MobilePendingChatMessage;
   pendingMessages?: MobilePendingChatMessage[];
@@ -183,13 +206,20 @@ export function SessionDetailPanel({
   const goldenTurnActionsEnabled =
     labConfig.enabled !== false && labConfig.goldenTurnsEnabled !== false;
   const navFootprint = insets.bottom + MOBILE_NAV_CHROME.floatingMargin + MOBILE_NAV_CHROME.height;
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(Keyboard.isVisible());
+  const [keyboardHeight, setKeyboardHeight] = useState(() => Keyboard.metrics()?.height ?? 0);
   useEffect(() => {
-    if (Platform.OS !== "ios") return;
-    const showSub = Keyboard.addListener("keyboardWillShow", (event) => {
-      setKeyboardHeight(event.endCoordinates?.height ?? 0);
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      const nextKeyboardHeight = event.endCoordinates.height;
+      setKeyboardVisible(nextKeyboardHeight > 0);
+      if (Platform.OS === "ios") setKeyboardHeight(nextKeyboardHeight);
     });
-    const hideSub = Keyboard.addListener("keyboardWillHide", () => setKeyboardHeight(0));
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardVisible(false);
+      if (Platform.OS === "ios") setKeyboardHeight(0);
+    });
     return () => {
       showSub.remove();
       hideSub.remove();
@@ -1421,11 +1451,11 @@ export function SessionDetailPanel({
     [renderMessages]
   );
   const waitingForAssistant = chatIsWaitingForAssistant(renderMessages, sending);
-  const composerBottom =
-    keyboardHeight > 0 ? keyboardHeight + spacing.xs : navFootprint + spacing.xs;
+  const keyboardOffset = Platform.OS === "ios" ? keyboardHeight : 0;
+  const composerBottom = keyboardVisible ? keyboardOffset + spacing.xs : navFootprint + spacing.xs;
   const composerReservedHeight = Math.max(composerBarHeight, MOBILE_CHAT_CHROME.composerHeight);
   return (
-    <View style={styles.chatShell}>
+    <ChatKeyboardContainer keyboardVerticalOffset={insets.top + spacing.xs}>
       <MobileBranchPicker
         branches={gitBranches}
         currentBranch={gitBranch}
@@ -1838,6 +1868,6 @@ export function SessionDetailPanel({
           </View>
         </View>
       </Modal>
-    </View>
+    </ChatKeyboardContainer>
   );
 }

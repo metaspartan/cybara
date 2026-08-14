@@ -285,7 +285,11 @@ describe("app release surface wiring", () => {
             NSAppTransportSecurity?: { NSAllowsLocalNetworking?: boolean };
           };
         };
-        android?: { package?: string; versionCode?: number };
+        android?: {
+          package?: string;
+          softwareKeyboardLayoutMode?: string;
+          versionCode?: number;
+        };
         plugins?: Array<string | [string, Record<string, unknown>]>;
         extra?: { gatewayContract?: string };
       };
@@ -317,6 +321,7 @@ describe("app release surface wiring", () => {
       true
     );
     expect(appJson.expo?.android?.package).toBe("com.ck.cybara");
+    expect(appJson.expo?.android?.softwareKeyboardLayoutMode).toBe("resize");
     expect(appJson.expo?.android?.versionCode).toBe(expectedVersionCode);
     expect(appJson.expo?.plugins).toContain("./plugins/with-android-lan-cleartext");
     expect(read("apps/mobile/plugins/with-android-lan-cleartext.js")).toContain(
