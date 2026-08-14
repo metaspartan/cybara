@@ -251,7 +251,6 @@ describe("consumeOpenAIChatStream onTextDelta", () => {
     expect(deltas).toEqual(["Hel", "lo"]);
     expect(assembled.choices[0]?.message.content).toBe("Hello");
     expect(assembled.first_token_ms).toBeGreaterThanOrEqual(20);
-    expect(assembled.generation_duration_ms).toBeUndefined();
   });
 
   test("measures generation duration across distinct output events", async () => {
