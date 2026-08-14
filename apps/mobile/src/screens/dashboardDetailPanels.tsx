@@ -668,6 +668,22 @@ export function SettingsPanel({
   const selfImprovingSkillsEnabled = summary?.config.self_improving_skills_enabled !== false;
   const skillLearningNudgeEnabled = summary?.config.skill_learning_nudge_enabled === true;
   const tokenOptimization = readMobileTokenOptimizationSettings(summary?.config);
+  const agentOptions = (summary?.agents ?? []).map((agent) => ({
+    label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
+    value: agent.id,
+  }));
+  const imageAgentOptions = (summary?.agents ?? []).reduce<typeof agentOptions>(
+    (options, agent) => {
+      if (agent.supports_images) {
+        options.push({
+          label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
+          value: agent.id,
+        });
+      }
+      return options;
+    },
+    []
+  );
   const toolApprovalMode = readMobileToolApprovalMode(summary?.config);
   const followUpBehaviorEnabled = readMobileFollowUpBehaviorEnabled(summary?.config);
   const reasoningEffort = readMobileReasoningEffort(summary?.config);
@@ -1316,10 +1332,7 @@ export function SettingsPanel({
                     }}
                     options={[
                       { label: "First available agent (default)", value: "" },
-                      ...(summary?.agents ?? []).map((agent) => ({
-                        label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
-                        value: agent.id,
-                      })),
+                      ...agentOptions,
                     ]}
                     selected={
                       typeof summary?.config?.default_agent_id === "string"
@@ -1341,10 +1354,7 @@ export function SettingsPanel({
                     }}
                     options={[
                       { label: "First running agent (default)", value: "" },
-                      ...(summary?.agents ?? []).map((agent) => ({
-                        label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
-                        value: agent.id,
-                      })),
+                      ...agentOptions,
                     ]}
                     selected={
                       typeof summary?.config?.subagent_agent_id === "string"
@@ -1369,10 +1379,7 @@ export function SettingsPanel({
                     }}
                     options={[
                       { label: "Same agent as the turn (default)", value: "" },
-                      ...(summary?.agents ?? []).map((agent) => ({
-                        label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
-                        value: agent.id,
-                      })),
+                      ...agentOptions,
                     ]}
                     selected={
                       typeof summary?.config?.background_agent_id === "string"
@@ -1395,15 +1402,7 @@ export function SettingsPanel({
                         "Image fallback setting failed"
                       );
                     }}
-                    options={[
-                      { label: "None", value: "" },
-                      ...(summary?.agents ?? [])
-                        .filter((agent) => agent.supports_images)
-                        .map((agent) => ({
-                          label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
-                          value: agent.id,
-                        })),
-                    ]}
+                    options={[{ label: "None", value: "" }, ...imageAgentOptions]}
                     selected={
                       typeof summary?.config?.vision_fallback_agent_id === "string"
                         ? summary.config.vision_fallback_agent_id
