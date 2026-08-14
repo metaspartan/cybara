@@ -84,6 +84,7 @@ import {
   mobileSpeechProviderOptions,
   objectRecord,
   readMobileSpeechSettings,
+  readMobileTokenOptimizationSettings,
 } from "./dashboardHelpers";
 import { JourneyPanel } from "./dashboardJourneyPanel";
 import { MobileMcpSettingsPanel } from "./dashboardMcpPanel";
@@ -665,6 +666,8 @@ export function SettingsPanel({
   const terminalEnabled = summary?.config.terminal_enabled === true;
   const acpEnabled = summary?.config.acp_enabled !== false;
   const selfImprovingSkillsEnabled = summary?.config.self_improving_skills_enabled !== false;
+  const skillLearningNudgeEnabled = summary?.config.skill_learning_nudge_enabled === true;
+  const tokenOptimization = readMobileTokenOptimizationSettings(summary?.config);
   const toolApprovalMode = readMobileToolApprovalMode(summary?.config);
   const followUpBehaviorEnabled = readMobileFollowUpBehaviorEnabled(summary?.config);
   const reasoningEffort = readMobileReasoningEffort(summary?.config);
@@ -1297,160 +1300,257 @@ export function SettingsPanel({
         {showPluginsSettings ? <MobilePluginsPanel accentColor={accentColor} api={api} /> : null}
         {showEvalsSettings ? <MobileEvalsPanel accentColor={accentColor} api={api} /> : null}
         {showAiSettings ? (
-          <SettingsSection title="AI">
-            {configAvailable ? (
-              <SettingSelector
-                disabled={savingConfigKey !== null}
-                label="Default agent"
-                onSelect={(value) => {
-                  void saveConfigPatch(
-                    "default_agent_id",
-                    { default_agent_id: value },
-                    "Default agent setting failed"
-                  );
-                }}
-                options={[
-                  { label: "First available agent (default)", value: "" },
-                  ...(summary?.agents ?? []).map((agent) => ({
-                    label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
-                    value: agent.id,
-                  })),
-                ]}
-                selected={
-                  typeof summary?.config?.default_agent_id === "string"
-                    ? summary.config.default_agent_id
-                    : ""
-                }
-                tone={accentColor}
-                variant="menu"
-              />
-            ) : null}
-            {configAvailable && MOBILE_SETTINGS_ROOT_CHROME.reasoningEffortSelector ? (
-              <SettingSelector
-                disabled={savingConfigKey !== null}
-                label="Reasoning effort"
-                onSelect={(value) => {
-                  void saveConfigPatch(
-                    "reasoning_effort",
-                    { reasoning_effort: value },
-                    "Reasoning effort setting failed"
-                  );
-                }}
-                options={MOBILE_REASONING_EFFORT_OPTIONS.map((option) => ({
-                  label: option.label,
-                  value: option.value,
-                }))}
-                selected={reasoningEffort}
-                tone={accentColor}
-                variant="menu"
-              />
-            ) : null}
-            {configAvailable ? (
-              <SettingToggle
-                busy={savingConfigKey === "follow_up_behavior_enabled"}
-                detail="Allow messages sent during an active response to queue or steer the current run."
-                disabled={savingConfigKey !== null}
-                label="Queue / Steer follow-ups"
-                onPress={() => {
-                  void saveConfigPatch(
-                    "follow_up_behavior_enabled",
-                    { follow_up_behavior_enabled: !followUpBehaviorEnabled },
-                    "Follow-up behavior setting failed"
-                  );
-                }}
-                tone={accentColor}
-                value={followUpBehaviorEnabled}
-              />
-            ) : null}
-            {configAvailable ? (
-              <SettingToggle
-                busy={savingConfigKey === "self_improving_skills_enabled"}
-                detail="Let agents save reusable skills after complex tasks."
-                disabled={savingConfigKey !== null}
-                label="Self-improving skills"
-                onPress={() => {
-                  void saveConfigPatch(
-                    "self_improving_skills_enabled",
-                    { self_improving_skills_enabled: !selfImprovingSkillsEnabled },
-                    "Self-improving skills setting failed"
-                  );
-                }}
-                tone={accentColor}
-                value={selfImprovingSkillsEnabled}
-              />
-            ) : null}
-            {configAvailable ? (
-              <SettingSelector
-                disabled={savingConfigKey !== null}
-                label="Image fallback agent"
-                onSelect={(value) => {
-                  void saveConfigPatch(
-                    "vision_fallback_agent_id",
-                    { vision_fallback_agent_id: value },
-                    "Image fallback setting failed"
-                  );
-                }}
-                options={[
-                  { label: "None", value: "" },
-                  ...(summary?.agents ?? [])
-                    .filter((agent) => agent.supports_images)
-                    .map((agent) => ({
-                      label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
-                      value: agent.id,
-                    })),
-                ]}
-                selected={
-                  typeof summary?.config?.vision_fallback_agent_id === "string"
-                    ? summary.config.vision_fallback_agent_id
-                    : ""
-                }
-                tone={accentColor}
-                variant="menu"
-              />
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              style={styles.settingsNavigationRow}
-              onPress={openSystemPrompt}
-            >
-              <View
-                style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}
-              >
-                <Sparkles color={accentColor} size={20} strokeWidth={2.1} />
-              </View>
-              <View style={styles.listText}>
-                <Text style={styles.listTitle}>System Prompt</Text>
-                <Text style={styles.listDetail} numberOfLines={1}>
-                  {systemPromptAvailable
-                    ? summary?.systemPrompt?.identity?.name
-                      ? `Identity: ${summary.systemPrompt.identity.name}`
-                      : "Identity, instructions, and behavior"
-                    : endpointStatusLabel(summary?.availability.systemPrompt)}
-                </Text>
-              </View>
-              <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
-            </Pressable>
-            {MOBILE_SETTINGS_ROOT_CHROME.modelRouterControls ? (
+          <>
+            <SettingsSection title="Agent defaults">
+              {configAvailable ? (
+                <>
+                  <SettingSelector
+                    disabled={savingConfigKey !== null}
+                    label="Default agent"
+                    onSelect={(value) => {
+                      void saveConfigPatch(
+                        "default_agent_id",
+                        { default_agent_id: value },
+                        "Default agent setting failed"
+                      );
+                    }}
+                    options={[
+                      { label: "First available agent (default)", value: "" },
+                      ...(summary?.agents ?? []).map((agent) => ({
+                        label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
+                        value: agent.id,
+                      })),
+                    ]}
+                    selected={
+                      typeof summary?.config?.default_agent_id === "string"
+                        ? summary.config.default_agent_id
+                        : ""
+                    }
+                    tone={accentColor}
+                    variant="menu"
+                  />
+                  <SettingSelector
+                    disabled={savingConfigKey !== null}
+                    label="Sub-agent"
+                    onSelect={(value) => {
+                      void saveConfigPatch(
+                        "subagent_agent_id",
+                        { subagent_agent_id: value },
+                        "Sub-agent setting failed"
+                      );
+                    }}
+                    options={[
+                      { label: "First running agent (default)", value: "" },
+                      ...(summary?.agents ?? []).map((agent) => ({
+                        label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
+                        value: agent.id,
+                      })),
+                    ]}
+                    selected={
+                      typeof summary?.config?.subagent_agent_id === "string"
+                        ? summary.config.subagent_agent_id
+                        : ""
+                    }
+                    tone={accentColor}
+                    variant="menu"
+                  />
+                  <Text style={styles.settingsFieldHelp}>
+                    Used for delegated tasks when a spawn does not name an agent.
+                  </Text>
+                  <SettingSelector
+                    disabled={savingConfigKey !== null}
+                    label="Background model"
+                    onSelect={(value) => {
+                      void saveConfigPatch(
+                        "background_agent_id",
+                        { background_agent_id: value },
+                        "Background model setting failed"
+                      );
+                    }}
+                    options={[
+                      { label: "Same agent as the turn (default)", value: "" },
+                      ...(summary?.agents ?? []).map((agent) => ({
+                        label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
+                        value: agent.id,
+                      })),
+                    ]}
+                    selected={
+                      typeof summary?.config?.background_agent_id === "string"
+                        ? summary.config.background_agent_id
+                        : ""
+                    }
+                    tone={accentColor}
+                    variant="menu"
+                  />
+                  <Text style={styles.settingsFieldHelp}>
+                    Handles background memory and skill review after turns.
+                  </Text>
+                  <SettingSelector
+                    disabled={savingConfigKey !== null}
+                    label="Image fallback agent"
+                    onSelect={(value) => {
+                      void saveConfigPatch(
+                        "vision_fallback_agent_id",
+                        { vision_fallback_agent_id: value },
+                        "Image fallback setting failed"
+                      );
+                    }}
+                    options={[
+                      { label: "None", value: "" },
+                      ...(summary?.agents ?? [])
+                        .filter((agent) => agent.supports_images)
+                        .map((agent) => ({
+                          label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
+                          value: agent.id,
+                        })),
+                    ]}
+                    selected={
+                      typeof summary?.config?.vision_fallback_agent_id === "string"
+                        ? summary.config.vision_fallback_agent_id
+                        : ""
+                    }
+                    tone={accentColor}
+                    variant="menu"
+                  />
+                  {MOBILE_SETTINGS_ROOT_CHROME.reasoningEffortSelector ? (
+                    <SettingSelector
+                      disabled={savingConfigKey !== null}
+                      label="Reasoning effort"
+                      onSelect={(value) => {
+                        void saveConfigPatch(
+                          "reasoning_effort",
+                          { reasoning_effort: value },
+                          "Reasoning effort setting failed"
+                        );
+                      }}
+                      options={MOBILE_REASONING_EFFORT_OPTIONS.map((option) => ({
+                        label: option.label,
+                        value: option.value,
+                      }))}
+                      selected={reasoningEffort}
+                      tone={accentColor}
+                      variant="menu"
+                    />
+                  ) : null}
+                </>
+              ) : null}
+            </SettingsSection>
+            <SettingsSection title="Agent behavior">
+              {configAvailable ? (
+                <>
+                  <SettingToggle
+                    busy={savingConfigKey === "follow_up_behavior_enabled"}
+                    detail="Allow messages sent during an active response to queue or steer the current run."
+                    disabled={savingConfigKey !== null}
+                    label="Queue / Steer follow-ups"
+                    onPress={() => {
+                      void saveConfigPatch(
+                        "follow_up_behavior_enabled",
+                        { follow_up_behavior_enabled: !followUpBehaviorEnabled },
+                        "Follow-up behavior setting failed"
+                      );
+                    }}
+                    tone={accentColor}
+                    value={followUpBehaviorEnabled}
+                  />
+                  <SettingToggle
+                    busy={savingConfigKey === "self_improving_skills_enabled"}
+                    detail="Let agents save reusable skills after complex tasks."
+                    disabled={savingConfigKey !== null}
+                    label="Self-improving skills"
+                    onPress={() => {
+                      void saveConfigPatch(
+                        "self_improving_skills_enabled",
+                        { self_improving_skills_enabled: !selfImprovingSkillsEnabled },
+                        "Self-improving skills setting failed"
+                      );
+                    }}
+                    tone={accentColor}
+                    value={selfImprovingSkillsEnabled}
+                  />
+                  <SettingToggle
+                    busy={savingConfigKey === "skill_learning_nudge_enabled"}
+                    detail="Prompt agents to save a reusable skill after complex, tool-heavy tasks."
+                    disabled={savingConfigKey !== null || !selfImprovingSkillsEnabled}
+                    label="Auto-learn after complex tasks"
+                    onPress={() => {
+                      void saveConfigPatch(
+                        "skill_learning_nudge_enabled",
+                        { skill_learning_nudge_enabled: !skillLearningNudgeEnabled },
+                        "Auto-learn setting failed"
+                      );
+                    }}
+                    tone={accentColor}
+                    value={skillLearningNudgeEnabled}
+                  />
+                  <SettingToggle
+                    busy={savingConfigKey === "token_optimization"}
+                    detail="Use TOON for structured tool output when it is smaller than compact JSON."
+                    disabled={savingConfigKey !== null}
+                    label="Compact structured results"
+                    onPress={() => {
+                      void saveConfigPatch(
+                        "token_optimization",
+                        {
+                          token_optimization: {
+                            ...tokenOptimization,
+                            toonStructuredDataEnabled: !tokenOptimization.toonStructuredDataEnabled,
+                          },
+                        },
+                        "Token optimization setting failed"
+                      );
+                    }}
+                    tone={accentColor}
+                    value={tokenOptimization.toonStructuredDataEnabled}
+                  />
+                </>
+              ) : null}
+            </SettingsSection>
+            <SettingsSection title="AI tools">
               <Pressable
                 accessibilityRole="button"
                 style={styles.settingsNavigationRow}
-                onPress={openModelRouter}
+                onPress={openSystemPrompt}
               >
                 <View
                   style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}
                 >
-                  <Network color={accentColor} size={20} strokeWidth={2.1} />
+                  <Sparkles color={accentColor} size={20} strokeWidth={2.1} />
                 </View>
                 <View style={styles.listText}>
-                  <Text style={styles.listTitle}>Model Router</Text>
+                  <Text style={styles.listTitle}>System Prompt</Text>
                   <Text style={styles.listDetail} numberOfLines={1}>
-                    Provider routing, fallback, and spend caps
+                    {systemPromptAvailable
+                      ? summary?.systemPrompt?.identity?.name
+                        ? `Identity: ${summary.systemPrompt.identity.name}`
+                        : "Identity, instructions, and behavior"
+                      : endpointStatusLabel(summary?.availability.systemPrompt)}
                   </Text>
                 </View>
                 <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
               </Pressable>
-            ) : null}
-          </SettingsSection>
+              {MOBILE_SETTINGS_ROOT_CHROME.modelRouterControls ? (
+                <Pressable
+                  accessibilityRole="button"
+                  style={styles.settingsNavigationRow}
+                  onPress={openModelRouter}
+                >
+                  <View
+                    style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}
+                  >
+                    <Network color={accentColor} size={20} strokeWidth={2.1} />
+                  </View>
+                  <View style={styles.listText}>
+                    <Text style={styles.listTitle}>Model Router</Text>
+                    <Text style={styles.listDetail} numberOfLines={1}>
+                      Provider routing, fallback, and spend caps
+                    </Text>
+                  </View>
+                  <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+                </Pressable>
+              ) : null}
+            </SettingsSection>
+          </>
         ) : null}
         {showMemorySettings ? (
           <SettingsSection title="Memory">

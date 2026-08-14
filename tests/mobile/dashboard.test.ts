@@ -317,6 +317,10 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_MAIN_TAB_CHROME.edgeToEdge).toBe(false);
     expect(MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding).toBeGreaterThan(0);
     expect(MOBILE_MAIN_TAB_CHROME.panelRadius).toBeGreaterThan(0);
+    expect(dashboardStylesSource).toContain('Platform.OS === "android"');
+    expect(dashboardStylesSource).toContain("? MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding");
+    expect(dashboardStylesSource).toContain('width: "48%"');
+    expect(dashboardStylesSource).toContain('width: "100%"');
     expect(dashboardScreenSource).toContain("accessibilityLabel={label}");
     expect(dashboardScreenSource).toContain("accessibilityHint={`Show ${label.toLowerCase()}`}");
     expect(dashboardScreenSource).toContain("Pinned & recent");
@@ -682,8 +686,12 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_SETTINGS_ROOT_CHROME.nativeGroupedSections).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.nativeSegmentedControls).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.nativeSwitchControls).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.subagentDefaultSelector).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.backgroundAgentSelector).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.skillLearningNudgeToggle).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.tokenOptimizationToggle).toBe(true);
     expect(dashboardScreenSource).toContain("readMobileTokenOptimizationSettings");
-    expect(dashboardScreenSource).toContain("token_optimization: next");
+    expect(dashboardScreenSource).toContain("...tokenOptimization");
     expect(readMobileTokenOptimizationSettings({}).toonStructuredDataEnabled).toBe(true);
     expect(
       readMobileTokenOptimizationSettings({
@@ -691,9 +699,16 @@ describe("mobile dashboard model", () => {
       }).toonStructuredDataEnabled
     ).toBe(false);
     expect(MOBILE_PLATFORM_SETTING_KEYS).toEqual([
+      "default_agent_id",
+      "subagent_agent_id",
+      "background_agent_id",
+      "vision_fallback_agent_id",
       "terminal_enabled",
       "tool_approval_mode",
       "follow_up_behavior_enabled",
+      "self_improving_skills_enabled",
+      "skill_learning_nudge_enabled",
+      "token_optimization",
       "chat_appearance",
       "reasoning_effort",
       "dangerous_tool_policy",
@@ -704,6 +719,15 @@ describe("mobile dashboard model", () => {
     expect(readMobileFollowUpBehaviorEnabled({})).toBe(true);
     expect(readMobileFollowUpBehaviorEnabled({ follow_up_behavior_enabled: false })).toBe(false);
     expect(dashboardScreenSource).toContain('label="Queue / Steer follow-ups"');
+    expect(dashboardScreenSource).toContain('label="Sub-agent"');
+    expect(dashboardScreenSource).toContain("{ subagent_agent_id: value }");
+    expect(dashboardScreenSource).toContain('label="Background model"');
+    expect(dashboardScreenSource).toContain("{ background_agent_id: value }");
+    expect(dashboardScreenSource).toContain('label="Auto-learn after complex tasks"');
+    expect(dashboardScreenSource).toContain(
+      "{ skill_learning_nudge_enabled: !skillLearningNudgeEnabled }"
+    );
+    expect(dashboardScreenSource).toContain('label="Compact structured results"');
     expect(dashboardScreenSource).toContain("chatBusy && !followUpBehaviorEnabled");
     expect(MOBILE_REASONING_EFFORT_OPTIONS.map((option) => option.value)).toEqual([
       "",

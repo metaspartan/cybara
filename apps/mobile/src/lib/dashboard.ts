@@ -226,6 +226,7 @@ export const MOBILE_SETTINGS_DETAIL_CHROME = {
 } as const;
 
 export const MOBILE_SETTINGS_ROOT_CHROME = {
+  backgroundAgentSelector: true,
   dangerousToolPolicyToggle: true,
   destructiveDisconnectButton: true,
   gatewayConnectionDetails: true,
@@ -237,19 +238,29 @@ export const MOBILE_SETTINGS_ROOT_CHROME = {
   reasoningEffortSelector: true,
   settingsEdgeToEdgeContent: true,
   sandboxRuntimeControls: true,
+  skillLearningNudgeToggle: true,
+  subagentDefaultSelector: true,
   systemPromptFeatureToggles: true,
   migrationControls: true,
   nativeCategoryRail: true,
   speechControls: true,
   terminalToggle: true,
+  tokenOptimizationToggle: true,
   toolApprovalModeSelector: true,
   walletAccessShortcut: true,
 } as const;
 
 export const MOBILE_PLATFORM_SETTING_KEYS = [
+  "default_agent_id",
+  "subagent_agent_id",
+  "background_agent_id",
+  "vision_fallback_agent_id",
   "terminal_enabled",
   "tool_approval_mode",
   "follow_up_behavior_enabled",
+  "self_improving_skills_enabled",
+  "skill_learning_nudge_enabled",
+  "token_optimization",
   "chat_appearance",
   "reasoning_effort",
   "dangerous_tool_policy",

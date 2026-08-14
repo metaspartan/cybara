@@ -250,7 +250,12 @@ const makeStyles = () =>
     },
     overviewInset: {
       gap: spacing.sm,
-      paddingHorizontal: MOBILE_HOME_CHROME.managementGridEdgeToEdge ? 0 : spacing.lg,
+      paddingHorizontal:
+        Platform.OS === "android"
+          ? MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding
+          : MOBILE_HOME_CHROME.managementGridEdgeToEdge
+            ? 0
+            : spacing.lg,
     },
     moduleGrid: {
       flexDirection: "row",
@@ -262,11 +267,12 @@ const makeStyles = () =>
       borderColor: colors.borderStrong,
       borderRadius: radius.lg,
       borderWidth: 1,
-      flexBasis: "48%",
+      flexBasis: "auto",
       flexGrow: 1,
       gap: spacing.sm,
       minHeight: 108,
       padding: spacing.md,
+      width: "48%",
     },
     moduleIcon: {
       alignItems: "center",
@@ -292,9 +298,10 @@ const makeStyles = () =>
     },
     monitorTile: {
       alignItems: "center",
-      flexBasis: "100%",
+      flexBasis: "auto",
       flexDirection: "row",
       minHeight: 72,
+      width: "100%",
     },
     monitorTilePrimary: {
       backgroundColor: colors.surface,
@@ -307,6 +314,8 @@ const makeStyles = () =>
       backgroundColor: colors.surface,
       borderColor: colors.borderStrong,
       gap: spacing.sm,
+      marginHorizontal:
+        Platform.OS === "android" ? MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding : 0,
     },
     panelHeader: {
       alignItems: "center",

@@ -30,14 +30,12 @@ import {
   readMobileLlmTimeoutSettings,
   readMobileMemoryBehaviorSettings,
   readMobileMemoryProviderSettings,
-  readMobileTokenOptimizationSettings,
   MOBILE_MEMORY_PROVIDER_CHOICES,
   type MobileIndexingSettings,
   type MobileLlmTimeoutSettings,
   type MobileMemoryBehaviorSettings,
   type MobileMemoryProviderChoice,
   type MobileMemoryProviderSettings,
-  type MobileTokenOptimizationSettings,
 } from "./dashboardHelpers";
 import {
   CybaraMobileApi,
@@ -460,13 +458,10 @@ export function MemorySettingsPanel({
   const memorySettings = readMobileMemoryBehaviorSettings(summary?.config);
   const providerSettings = readMobileMemoryProviderSettings(summary?.config);
   const indexingSettings = readMobileIndexingSettings(summary?.config);
-  const tokenOptimizationSettings = readMobileTokenOptimizationSettings(summary?.config);
   const [memoryDraft, setMemoryDraft] = useState(memorySettings);
   const [timeoutsDraft, setTimeoutsDraft] = useState(() =>
     readMobileLlmTimeoutSettings(summary?.config)
   );
-  const [tokenOptimizationDraft, setTokenOptimizationDraft] =
-    useState<MobileTokenOptimizationSettings>(tokenOptimizationSettings);
   const [providerDraft, setProviderDraft] = useState(providerSettings);
   const [indexingDraft, setIndexingDraft] = useState(indexingSettings);
   const [saving, setSaving] = useState(false);
@@ -477,7 +472,6 @@ export function MemorySettingsPanel({
     setMemoryDraft(memorySettings);
     setProviderDraft(providerSettings);
     setIndexingDraft(indexingSettings);
-    setTokenOptimizationDraft(tokenOptimizationSettings);
     setTimeoutsDraft(readMobileLlmTimeoutSettings(summary?.config));
   }, [configSignature, configAvailable]);
 
@@ -505,12 +499,6 @@ export function MemorySettingsPanel({
     const next = { ...timeoutsDraft, ...patch };
     setTimeoutsDraft(next);
     void persist({ llm_timeouts: next }, "Watchdog setting failed");
-  };
-
-  const saveTokenOptimization = (patch: Partial<MobileTokenOptimizationSettings>) => {
-    const next = { ...tokenOptimizationDraft, ...patch };
-    setTokenOptimizationDraft(next);
-    void persist({ token_optimization: next }, "Token optimization setting failed");
   };
 
   const saveProvider = (patch: Partial<MobileMemoryProviderSettings>) => {
@@ -666,47 +654,6 @@ export function MemorySettingsPanel({
           placeholder="1800"
           value={String(timeoutsDraft.nonStreamingSeconds || "")}
         />
-      </SettingsSection>
-      <SettingsSection title="Token optimization">
-        <SettingToggle
-          busy={saving}
-          detail="Use TOON for structured tool outputs when it is smaller than compact JSON."
-          label="Compact structured results"
-          onPress={() =>
-            saveTokenOptimization({
-              toonStructuredDataEnabled: !tokenOptimizationDraft.toonStructuredDataEnabled,
-            })
-          }
-          tone={accentColor}
-          value={tokenOptimizationDraft.toonStructuredDataEnabled}
-        />
-      </SettingsSection>
-      <SettingsSection title="Self-improvement">
-        <SettingSelector
-          disabled={saving}
-          label="Background model"
-          onSelect={(value) =>
-            void persist({ background_agent_id: value }, "Background model failed")
-          }
-          options={[
-            { label: "Same agent as the turn (default)", value: "" },
-            ...(summary?.agents ?? []).map((agent) => ({
-              label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
-              value: agent.id,
-            })),
-          ]}
-          selected={
-            typeof summary?.config?.background_agent_id === "string"
-              ? summary.config.background_agent_id
-              : ""
-          }
-          tone={accentColor}
-          variant="menu"
-        />
-        <Text style={styles.settingsFieldHelp}>
-          Memory and skill review run silently after most turns. Point them at a cheaper agent to
-          cut cost over time.
-        </Text>
       </SettingsSection>
       <SettingsSection title="Memory provider">
         <SettingSelector
