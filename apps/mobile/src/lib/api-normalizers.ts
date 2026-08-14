@@ -31,6 +31,7 @@ import type {
   SessionTokenUsage,
   SessionToolCallSummary,
 } from "./api-types";
+import { createWebSocketAuthProtocol } from "cybara-shared/websocket-auth";
 import {
   asRecord,
   normalizeArrayResponse,
@@ -951,9 +952,15 @@ export function buildMobileStatusStreamUrl(profile: GatewayProfile): string {
   const rootPath = url.pathname.replace(/\/+$/, "");
   url.pathname = `${rootPath}/api/ws/status`;
   url.search = "";
-  url.searchParams.set("token", profile.apiKey);
   url.hash = "";
   return url.toString();
+}
+
+export function buildMobileStatusStreamAuthProtocol(profile: GatewayProfile): string | null {
+  return createWebSocketAuthProtocol({
+    token: profile.apiKey,
+    password: profile.gatewayPassword,
+  });
 }
 
 function normalizeAgentConfig(value: unknown): Record<string, unknown> {

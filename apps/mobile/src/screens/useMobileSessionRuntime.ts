@@ -22,6 +22,7 @@ import { haptics } from "../lib/haptics";
 import {
   clearCachedMobileLiveAssistant,
   isMobileSessionSnapshotCurrent,
+  isMobileSessionStatusActive,
   liveActivityFromStatusEvent,
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
@@ -255,8 +256,7 @@ export function useMobileSessionRuntime({
       const status = await api.sessionStatus(sessionId);
       const snapshot =
         status.session || status.activeSessions.find((entry) => entry.sessionId === sessionId);
-      const serverReportsActive =
-        status.active === true || status.activeSessionIds.includes(sessionId);
+      const serverReportsActive = isMobileSessionStatusActive(sessionId, status);
       const snapshotFresh = isMobileSessionSnapshotCurrent(
         snapshot?.timestamp,
         serverReportsActive
@@ -272,15 +272,7 @@ export function useMobileSessionRuntime({
           return;
         }
       }
-      const snapshotStatus = String(snapshot?.status || "").toLowerCase();
-      const active =
-        !!snapshot &&
-        snapshotFresh &&
-        (serverReportsActive ||
-          snapshotStatus === "thinking" ||
-          snapshotStatus === "generating" ||
-          snapshotStatus === "tool_executing" ||
-          snapshotStatus === "compacting");
+      const active = serverReportsActive;
       setSessionActive(active);
       const snapshotPendingMessages = snapshot?.pendingMessages ?? [];
       const preserveOptimisticPending = shouldPreserveOptimisticPending();

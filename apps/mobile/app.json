@@ -30,6 +30,7 @@
     },
     "android": {
       "package": "com.ck.cybara",
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.POST_NOTIFICATIONS"
       ],

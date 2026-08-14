@@ -1,6 +1,7 @@
 import { isProviderRecoveryStatusLabel } from "cybara-shared/chat-status";
 import type { SessionEventIdentity } from "cybara-shared/session-event-order";
 import type {
+  MobileSessionStatusResponse,
   MobileStatusSessionSnapshot,
   MobileStatusStreamEvent,
   SessionDetailSummary,
@@ -116,6 +117,18 @@ export function isMobileSessionSnapshotCurrent(
 ): boolean {
   if (serverReportsActive) return true;
   return typeof timestamp === "number" && now - timestamp <= MOBILE_LIVE_ASSISTANT_STALE_MS;
+}
+
+export function isMobileSessionStatusActive(
+  sessionId: string | null | undefined,
+  status: MobileSessionStatusResponse
+): boolean {
+  const sessionKey = normalizeLiveSessionId(sessionId);
+  if (!sessionKey) return false;
+  if (status.active === true) return true;
+  return status.activeSessionIds.some(
+    (candidate) => normalizeLiveSessionId(candidate) === sessionKey
+  );
 }
 
 export function subscribeCachedMobileLiveAssistant(

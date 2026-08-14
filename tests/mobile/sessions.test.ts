@@ -123,14 +123,31 @@ describe("mobile: chat management", () => {
     expect(runtime).not.toContain("requestAnimationFrame");
   });
 
-  test("Android relies on the native resize layout instead of applying the keyboard height twice", () => {
+  test("chat composer uses measured keyboard avoidance on both mobile platforms", () => {
     const screen = read("screens/dashboardSessionDetail.tsx");
 
-    expect(screen).toContain('if (Platform.OS !== "ios") return;');
-    expect(screen).toContain('Keyboard.addListener("keyboardWillShow"');
-    expect(screen).toContain('Keyboard.addListener("keyboardWillHide"');
-    expect(screen).not.toContain('"keyboardDidShow"');
-    expect(screen).not.toContain('"keyboardDidHide"');
+    expect(screen).toContain("KeyboardAvoidingView");
+    expect(screen).toContain('if (Platform.OS === "android")');
+    expect(screen).toContain('behavior="height"');
+    expect(screen).toContain("keyboardVerticalOffset={keyboardVerticalOffset}");
+    expect(screen).toContain(
+      "<ChatKeyboardContainer keyboardVerticalOffset={insets.top + spacing.xs}>"
+    );
+    expect(screen).toContain("const [keyboardVisible, setKeyboardVisible]");
+    expect(screen).toContain("const [keyboardHeight, setKeyboardHeight]");
+    expect(screen).toContain(
+      'const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow"'
+    );
+    expect(screen).toContain(
+      'const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide"'
+    );
+    expect(screen).toContain("Keyboard.addListener(showEvent");
+    expect(screen).toContain("Keyboard.addListener(hideEvent");
+    expect(screen).toContain("setKeyboardVisible(nextKeyboardHeight > 0)");
+    expect(screen).toContain('"keyboardDidShow"');
+    expect(screen).toContain('"keyboardDidHide"');
+    expect(screen).toContain('const keyboardOffset = Platform.OS === "ios" ? keyboardHeight : 0');
+    expect(screen).toContain("keyboardOffset + spacing.xs");
   });
 
   test("saved reduce-motion settings disable live indicators", () => {
@@ -152,6 +169,18 @@ describe("mobile: chat management", () => {
     expect(chat).toContain("mediaUrl(image.filePath)");
     expect(chat).toContain("new Set([...markdownImageUris, ...toolImageUris])");
     expect(chat).toContain("content = markdown.content");
+  });
+
+  test("mobile code blocks match desktop metadata without stretching message bubbles", () => {
+    const chat = read("screens/dashboardChat.tsx");
+    const styles = readStyles();
+
+    expect(chat).toContain("mobileCodeLineCount(content)");
+    expect(chat).toContain('accessibilityLabel={copied ? "Code copied" : "Copy code"}');
+    expect(chat).toContain("style={styles.codeScroll}");
+    expect(styles).toContain("codeScroll:");
+    expect(styles).toContain("flexGrow: 0");
+    expect(styles).toContain("flexShrink: 1");
   });
 
   test("chat images open in an in-app preview without sending bearer URLs to another app", () => {
@@ -337,6 +366,7 @@ describe("mobile: chat management", () => {
 
   test("uses authoritative active state for queueing and live timing", () => {
     const detail = read("screens/dashboardSessionDetail.tsx");
+    const runtime = read("screens/useMobileSessionRuntime.ts");
     expect(detail).toContain(
       "const chatBusy = sending || sessionActive || pendingMessages.length > 0;"
     );
@@ -345,5 +375,7 @@ describe("mobile: chat management", () => {
     expect(detail).not.toContain(
       "const chatBusy = sending || !!liveAssistant || pendingMessages.length > 0;"
     );
+    expect(runtime).toContain("const active = serverReportsActive;");
+    expect(runtime).not.toContain("snapshotStatus ===");
   });
 });

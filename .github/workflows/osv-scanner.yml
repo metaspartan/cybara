@@ -25,5 +25,6 @@ jobs:
         --lockfile=bun.lock
         --lockfile=ui/bun.lock
         --lockfile=apps/mobile/bun.lock
+        --lockfile=site/bun.lock
         --lockfile=src-tauri/Cargo.lock
       fail-on-vuln: true

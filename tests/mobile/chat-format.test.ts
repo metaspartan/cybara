@@ -102,9 +102,14 @@ describe("mobile chat formatting", () => {
 
   test("splits long assistant text around fenced code blocks", () => {
     expect(splitMessageContent("Before\n```typescript\nconst ok = true;\n```\nAfter")).toEqual([
-      { type: "text", content: "Before\n" },
-      { type: "code", language: "typescript", content: "const ok = true;\n" },
-      { type: "text", content: "\nAfter" },
+      { type: "text", content: "Before\n", key: "text-0" },
+      {
+        type: "code",
+        language: "typescript",
+        content: "const ok = true;\n",
+        key: "code-7",
+      },
+      { type: "text", content: "\nAfter", key: "text-41" },
     ]);
   });
 

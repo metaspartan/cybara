@@ -30,6 +30,7 @@ import {
   formatMetricBytes,
   formatMetricNumber,
   hasDetailedMetrics,
+  hasMetricEndpoint,
   metricSuccessRate,
   modelTokenShareRows,
   providerTokenShareRows,
@@ -40,7 +41,7 @@ import {
   totalFileOperations,
   type MetricsSnapshot,
 } from "../lib/metrics";
-import type { CybaraMobileApi, ProviderPlanStatusResponse } from "../lib/api";
+import type { CybaraMobileApi, FeatureSummary, ProviderPlanStatusResponse } from "../lib/api";
 import {
   MOBILE_RECENT_ACTIVITY_CHROME,
   formatMobileValue,
@@ -52,10 +53,13 @@ import { StableDetailPanel } from "./dashboardControls";
 import { endpointStatusLabel, relativeTimestamp } from "./dashboardHelpers";
 import { styles } from "./dashboardStyles";
 import { EmptyState, LoadingState, SummaryTile, type IconGlyph } from "./dashboardPrimitives";
-import type { FeatureSummary } from "../lib/api";
 
 const USAGE_ORDER_KEY = "cybara.mobile.usageOrder";
 type MobileMetricsSection = "activity" | "usage" | "runtime" | "system";
+
+function MetricFeedUnavailable() {
+  return <Text style={styles.settingsInfoText}>Metric feed unavailable</Text>;
+}
 
 function mobileMetricLatency(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "--";
@@ -130,6 +134,8 @@ function MetricsOverviewSection({
   const health = summary?.health;
   const healthy = health?.status === "healthy";
   const overview = metrics?.overview ?? null;
+  const overviewAvailable = hasMetricEndpoint(metrics, "overview");
+  const storageAvailable = hasMetricEndpoint(metrics, "storage");
   const availableMetrics = metrics
     ? Object.values(metrics.availability).filter((endpoint) => endpoint.ok).length
     : 0;
@@ -152,21 +158,29 @@ function MetricsOverviewSection({
         <SummaryTile
           Icon={Cpu}
           label="Tokens"
-          value={formatMetricNumber(overview?.tokenUsage.total)}
-          detail={`${formatMetricNumber(overview?.agentActivity.totalMessages)} messages`}
+          value={overviewAvailable ? formatMetricNumber(overview?.tokenUsage.total) : "--"}
+          detail={
+            overviewAvailable
+              ? `${formatMetricNumber(overview?.agentActivity.totalMessages)} messages`
+              : "Feed unavailable"
+          }
           tone={accentColor}
         />
         <SummaryTile
           Icon={Zap}
           label="API"
-          value={metricSuccessRate(overview)}
-          detail={`${formatMetricNumber(overview?.apiCalls.totalCalls)} calls`}
+          value={overviewAvailable ? metricSuccessRate(overview) : "--"}
+          detail={
+            overviewAvailable
+              ? `${formatMetricNumber(overview?.apiCalls.totalCalls)} calls`
+              : "Feed unavailable"
+          }
           tone={colors.blueText}
         />
         <SummaryTile
           Icon={Database}
           label="Storage"
-          value={metrics?.storage ? formatMetricBytes(metrics.storage.totalBytes) : "--"}
+          value={storageAvailable ? formatMetricBytes(metrics?.storage?.totalBytes) : "--"}
           detail={`${availableMetrics}/${metricFeedCount} feeds`}
           tone={colors.green}
         />
@@ -178,10 +192,16 @@ function MetricsOverviewSection({
         <Text style={styles.subsectionTitle}>Token flow</Text>
         <View style={styles.inlineButtonRow}>
           {metricsRefreshing ? <ActivityIndicator color={accentColor} size="small" /> : null}
-          <Text style={styles.counterText}>{metricsRefreshing ? "Updating" : freshness}</Text>
+          <Text style={styles.metricFreshnessText}>
+            {metricsRefreshing ? "Updating" : freshness}
+          </Text>
         </View>
       </View>
-      <MetricBreakdown data={tokenBars} tone={accentColor} />
+      {overviewAvailable ? (
+        <MetricBreakdown data={tokenBars} tone={accentColor} />
+      ) : (
+        <MetricFeedUnavailable />
+      )}
     </>
   );
 }
@@ -286,8 +306,22 @@ export function MetricsPanel({
   ).slice(0, 8);
   const sessionMetrics = sessionRuntime ?? metrics?.sessions;
   const sessionPagination = sessionMetrics?.pagination;
+  const overviewAvailable = hasMetricEndpoint(metrics, "overview");
+  const timeSeriesAvailable = hasMetricEndpoint(metrics, "timeSeries");
+  const tokenAnalysisAvailable = hasMetricEndpoint(metrics, "tokenAnalysis");
+  const insightsAvailable = hasMetricEndpoint(metrics, "insights");
+  const providerEfficiencyAvailable = insightsAvailable || hasMetricEndpoint(metrics, "providers");
+  const providerPlansAvailable =
+    providerPlanStatus !== null || hasMetricEndpoint(metrics, "providerPlans");
+  const modelsAvailable =
+    hasMetricEndpoint(metrics, "models") ||
+    (tokenAnalysisAvailable && metrics?.tokenAnalysis?.modelThoughtProfiles !== undefined);
+  const sessionsAvailable = hasMetricEndpoint(metrics, "sessions");
+  const toolsAvailable = hasMetricEndpoint(metrics, "tools");
+  const filesAvailable = hasMetricEndpoint(metrics, "files");
+  const storageAvailable = hasMetricEndpoint(metrics, "storage");
 
-  if (!hasDetailedMetrics(metrics)) {
+  if (!hasDetailedMetrics(metrics) && metricsRefreshing && !metricsError) {
     return (
       <StableDetailPanel>
         <MetricsOverviewSection
@@ -325,6 +359,8 @@ export function MetricsPanel({
           return (
             <Pressable
               key={key}
+              accessibilityHint={`Show ${label.toLowerCase()} metrics`}
+              accessibilityLabel={label}
               accessibilityRole="tab"
               accessibilityState={{ selected }}
               onPress={() => setActiveMetricsSection(key as MobileMetricsSection)}
@@ -353,17 +389,23 @@ export function MetricsPanel({
       {activeMetricsSection === "activity" ? (
         <>
           <MetricSection
+            available={timeSeriesAvailable}
             title="Activity trend"
             detail="Last 14 days across tokens, tools, API, files, and messages"
           >
             <MetricBarChart data={activitySeries} tone={accentColor} />
           </MetricSection>
 
-          <MetricSection title="Token velocity" detail="Last 24 hours by token volume and calls">
+          <MetricSection
+            available={tokenAnalysisAvailable}
+            title="Token velocity"
+            detail="Last 24 hours by token volume and calls"
+          >
             <MetricAreaChart data={velocityRows} tone={accentColor} />
           </MetricSection>
 
           <MetricSection
+            available={tokenAnalysisAvailable}
             title="Token heatmap"
             detail={
               tokenAnalysis?.tokenHeatmap?.hottestHour
@@ -378,7 +420,11 @@ export function MetricsPanel({
 
       {activeMetricsSection === "usage" ? (
         <>
-          <MetricSection title="Prompt vs output" detail="Ratio, median, and response balance">
+          <MetricSection
+            available={tokenAnalysisAvailable}
+            title="Prompt vs output"
+            detail="Ratio, median, and response balance"
+          >
             <View style={styles.metricMicroGrid}>
               <MetricMicro
                 label="Input:Output"
@@ -409,28 +455,35 @@ export function MetricsPanel({
           </MetricSection>
 
           <MetricSection
+            available={insightsAvailable}
             title="Token insights"
-            detail={`${insights?.tokenTrend24h.changePct ?? 0}% 24h trend - ${insights?.cacheEfficiency.cacheSharePct ?? 0}% cache`}
+            detail={
+              insightsAvailable && insights
+                ? `${insights.tokenTrend24h.changePct}% 24h trend - ${insights.cacheEfficiency.cacheSharePct}% cache`
+                : "Feed unavailable"
+            }
           >
             <View style={styles.metricMicroGrid}>
               <MetricMicro
                 label="Top model share"
-                value={`${insights?.topModel?.sharePct ?? 0}%`}
+                value={insights?.topModel ? `${insights.topModel.sharePct}%` : "--"}
               />
               <MetricMicro
                 label="Tool success"
-                value={`${insights?.toolReliability.successRatePct ?? 100}%`}
+                value={insights ? `${insights.toolReliability.successRatePct}%` : "--"}
               />
               <MetricMicro
                 label="Context warnings"
-                value={String(
-                  insights?.contextHealth24h.warnings ?? overview?.contextHealth?.warnings ?? 0
-                )}
+                value={formatMetricNumber(insights?.contextHealth24h.warnings)}
               />
             </View>
           </MetricSection>
 
-          <MetricSection title="Provider efficiency" detail="Tokens per provider call">
+          <MetricSection
+            available={providerEfficiencyAvailable}
+            title="Provider efficiency"
+            detail="Tokens per provider call"
+          >
             <MetricShareRows rows={providerRows} tone={colors.blueText} />
           </MetricSection>
         </>
@@ -439,23 +492,33 @@ export function MetricsPanel({
       {activeMetricsSection === "runtime" ? (
         <>
           <MetricSection
+            available={providerPlansAvailable}
             title="Provider plans"
-            detail={`${providerPlanStatus?.summary?.configured ?? metrics?.providerPlans?.summary?.configured ?? 0} configured - ${
-              providerPlanStatus?.summary?.warnings ??
-              metrics?.providerPlans?.summary?.warnings ??
-              0
-            } warnings`}
+            detail={
+              providerPlansAvailable
+                ? `${providerPlanStatus?.summary?.configured ?? metrics?.providerPlans?.summary?.configured ?? 0} configured - ${providerPlanStatus?.summary?.warnings ?? metrics?.providerPlans?.summary?.warnings ?? 0} warnings`
+                : "Feed unavailable"
+            }
           >
             <ProviderPlanMetricsGrid plans={providerPlanRows} />
           </MetricSection>
 
-          <MetricSection title="Models" detail="Throughput, latency, and token share">
+          <MetricSection
+            available={modelsAvailable}
+            title="Models"
+            detail="Throughput, latency, and token share"
+          >
             <MetricShareRows rows={modelRows} tone={colors.amber} />
           </MetricSection>
 
           <MetricSection
+            available={sessionsAvailable}
             title="Chat runtime"
-            detail={`${formatMetricNumber(sessionMetrics?.totals.callCount)} provider calls across ${formatMetricNumber(sessionMetrics?.totals.sessions)} chats`}
+            detail={
+              sessionsAvailable
+                ? `${formatMetricNumber(sessionMetrics?.totals.callCount)} provider calls across ${formatMetricNumber(sessionMetrics?.totals.sessions)} chats`
+                : "Feed unavailable"
+            }
           >
             <View style={styles.metricMicroGrid}>
               <MetricMicro
@@ -535,8 +598,13 @@ export function MetricsPanel({
           </MetricSection>
 
           <MetricSection
+            available={toolsAvailable}
             title="Tools"
-            detail={`${formatMetricNumber(overview?.toolCalls.totalCalls)} calls - ${formatMetricNumber(insights?.toolReliability.totalErrors)} errors`}
+            detail={
+              toolsAvailable
+                ? `${overviewAvailable ? formatMetricNumber(overview?.toolCalls.totalCalls) : "--"} calls - ${insightsAvailable ? formatMetricNumber(insights?.toolReliability.totalErrors) : "--"} errors`
+                : "Feed unavailable"
+            }
           >
             <MetricShareRows
               rows={(metrics?.tools?.mostUsed || []).slice(0, 7).map((tool) => ({
@@ -559,8 +627,13 @@ export function MetricsPanel({
           </MetricSection>
 
           <MetricSection
+            available={filesAvailable}
             title="Files"
-            detail={`${formatMetricNumber(totalFileOperations(overview))} read/write/edit operations`}
+            detail={
+              filesAvailable
+                ? `${overviewAvailable ? formatMetricNumber(totalFileOperations(overview)) : "--"} read/write/edit/search operations`
+                : "Feed unavailable"
+            }
           >
             <MetricShareRows
               rows={(metrics?.files?.mostRead || []).slice(0, 4).map((file) => ({
@@ -591,7 +664,15 @@ export function MetricsPanel({
 
       {activeMetricsSection === "system" ? (
         <>
-          <MetricSection title="Storage" detail={formatMetricBytes(metrics?.storage?.totalBytes)}>
+          <MetricSection
+            available={storageAvailable}
+            title="Storage"
+            detail={
+              storageAvailable
+                ? formatMetricBytes(metrics?.storage?.totalBytes)
+                : "Feed unavailable"
+            }
+          >
             <MetricShareRows
               rows={storageRows.map((entry) => ({
                 label: entry.label,
@@ -604,6 +685,7 @@ export function MetricsPanel({
           </MetricSection>
 
           <MetricSection
+            available={tokenAnalysisAvailable}
             title="Token cloud"
             detail="Models, providers, tools, and recurring output terms"
           >

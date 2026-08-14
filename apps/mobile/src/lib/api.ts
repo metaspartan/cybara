@@ -10,6 +10,7 @@ import {
 import { MobileStatusStreamClient } from "./mobileStatusStream";
 import {
   buildMobileMediaUrl,
+  buildMobileStatusStreamAuthProtocol,
   buildMobileStatusStreamUrl,
   emptyAvailability,
   normalizeActivityLogPage,
@@ -125,6 +126,7 @@ export type {
 } from "./apiProviderPlans";
 export {
   buildMobileMediaUrl,
+  buildMobileStatusStreamAuthProtocol,
   buildMobileStatusStreamUrl,
   normalizeActivityLogs,
   normalizeJourney,
@@ -164,7 +166,8 @@ export class CybaraMobileApi {
     this.profile = profile;
     this.statusStreamClient = new MobileStatusStreamClient(
       () => this.statusStreamUrl(),
-      normalizeMobileStatusStreamEvent
+      normalizeMobileStatusStreamEvent,
+      () => buildMobileStatusStreamAuthProtocol(this.profile)
     );
   }
 
@@ -177,6 +180,7 @@ export class CybaraMobileApi {
     this.profile = gatewayPassword?.trim()
       ? { ...this.profile, gatewayPassword: gatewayPassword.trim() }
       : { ...this.profile, gatewayPassword: undefined };
+    this.statusStreamClient.reset();
   }
 
   private headers(): Headers {
@@ -360,9 +364,14 @@ export class CybaraMobileApi {
     });
   }
 
-  async sessionList(): Promise<SessionListPage> {
+  async sessionList(options: { limit?: number; offset?: number } = {}): Promise<SessionListPage> {
+    const limit = Math.min(
+      500,
+      Math.max(1, Math.floor(options.limit ?? MOBILE_SESSION_LIST_LIMIT))
+    );
+    const offset = Math.max(0, Math.floor(options.offset ?? 0));
     return normalizeSessionListPage(
-      await this.request<unknown>(`/api/sessions?limit=${MOBILE_SESSION_LIST_LIMIT}&includeTotal=1`)
+      await this.request<unknown>(`/api/sessions?limit=${limit}&offset=${offset}&includeTotal=1`)
     );
   }
 

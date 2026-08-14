@@ -342,25 +342,54 @@ export function mergeMetricsOverview(
   };
 }
 
+export function reconcileMetricsSnapshot(
+  current: MetricsSnapshot | null,
+  incoming: MetricsSnapshot,
+  overviewGenerationAtRequest: number,
+  currentOverviewGeneration: number
+): MetricsSnapshot {
+  if (
+    currentOverviewGeneration <= overviewGenerationAtRequest ||
+    !current?.overview ||
+    !current.availability.overview.ok
+  ) {
+    return incoming;
+  }
+  return {
+    ...incoming,
+    overview: current.overview,
+    availability: {
+      ...incoming.availability,
+      overview: current.availability.overview,
+    },
+  };
+}
+
+export function hasMetricEndpoint(
+  snapshot: MetricsSnapshot | null,
+  key: MetricsEndpointKey
+): boolean {
+  return snapshot?.availability[key].ok === true && snapshot[key] !== null;
+}
+
 export function hasDetailedMetrics(snapshot: MetricsSnapshot | null): boolean {
   if (!snapshot) return false;
-  return (
-    snapshot.availability.timeSeries.ok ||
-    snapshot.availability.tokenAnalysis.ok ||
-    snapshot.availability.sessions.ok ||
-    snapshot.availability.storage.ok
+  return (Object.keys(snapshot.availability) as MetricsEndpointKey[]).some(
+    (key) => key !== "overview" && hasMetricEndpoint(snapshot, key)
   );
 }
 
 export function formatMetricNumber(value: number | undefined): string {
-  const num = Number.isFinite(value) ? Number(value) : 0;
+  if (!Number.isFinite(value)) return "--";
+  const num = Number(value);
   if (Math.abs(num) >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
   if (Math.abs(num) >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
   return String(Math.round(num));
 }
 
 export function formatMetricBytes(value: number | undefined): string {
-  const bytes = Number.isFinite(value) ? Number(value) : 0;
+  if (!Number.isFinite(value)) return "--";
+  const bytes = Number(value);
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -376,6 +405,7 @@ export function formatStorageBytes(value: number | undefined): string {
 }
 
 export function metricSuccessRate(overview: MetricsOverview | null): string {
+  if (!overview) return "--";
   const total = overview?.apiCalls.totalCalls || 0;
   if (total <= 0) return "0%";
   return `${(((overview?.apiCalls.successfulCalls || 0) / total) * 100).toFixed(1)}%`;
@@ -385,7 +415,8 @@ export function totalFileOperations(overview: MetricsOverview | null): number {
   return (
     (overview?.fileOperations.filesRead || 0) +
     (overview?.fileOperations.filesWritten || 0) +
-    (overview?.fileOperations.filesEdited || 0)
+    (overview?.fileOperations.filesEdited || 0) +
+    (overview?.fileOperations.filesSearched || 0)
   );
 }
 
@@ -472,6 +503,11 @@ export function tokenFlowBars(
     { label: "Output", value: overview?.tokenUsage.output || 0 },
     { label: "Cache", value: overview?.tokenUsage.cache || 0 },
   ];
+}
+
+export function metricProgressPercent(value: number, total: number, minimumVisible = 0): number {
+  if (!Number.isFinite(value) || !Number.isFinite(total) || value <= 0 || total <= 0) return 0;
+  return Math.min(100, Math.max(minimumVisible, (value / total) * 100));
 }
 
 export function tokenVelocityAreaRows(

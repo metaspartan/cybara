@@ -43,6 +43,7 @@ import {
   mobileGatewayAuthStatus,
   mobileProviderAuthMode,
   mobileReasoningLabel,
+  mobileSessionIsActive,
   mobileSessionTitle,
   mobileSupportedReasoningEfforts,
   mobileSupportsXHighReasoning,
@@ -316,6 +317,19 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_MAIN_TAB_CHROME.edgeToEdge).toBe(false);
     expect(MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding).toBeGreaterThan(0);
     expect(MOBILE_MAIN_TAB_CHROME.panelRadius).toBeGreaterThan(0);
+    expect(dashboardStylesSource).toContain('Platform.OS === "android"');
+    expect(dashboardStylesSource).toContain("? MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding");
+    expect(dashboardStylesSource).toContain('width: "48%"');
+    expect(dashboardStylesSource).toContain('width: "100%"');
+    expect(dashboardScreenSource).toContain("accessibilityLabel={label}");
+    expect(dashboardScreenSource).toContain("accessibilityHint={`Show ${label.toLowerCase()}`}");
+    expect(dashboardScreenSource).toContain("Pinned & recent");
+    expect(dashboardScreenSource).toContain('accessibilityLabel="Search chats"');
+    expect(dashboardScreenSource).toContain('"Show more chats"');
+    expect(dashboardScreenSource).toContain('"Load older chats"');
+    expect(dashboardScreenSource).toContain("api.sessionList({");
+    expect(dashboardScreenSource).toContain("offset: currentSummary.sessions.length");
+    expect(dashboardScreenSource).toContain("<Pin color={colors.amber}");
   });
 
   test("keeps the chat composer compact, dynamic, and icon driven", () => {
@@ -360,9 +374,14 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).not.toContain("ImagePlus");
   });
 
-  test("formats chat activity thoughts with markdown and neutral icons", () => {
+  test("formats thoughts as desktop-like chat text without activity bullets", () => {
     expect(dashboardChatSource).toContain("parseInlineMarkdown(activity.text)");
-    expect(dashboardChatSource).toContain("styles.messageActivityDot");
+    expect(dashboardChatSource).toContain('if (activity.toolName === "__thought")');
+    expect(dashboardChatSource).toContain("<MobileThoughtText");
+    expect(dashboardChatSource).toContain(
+      "const fontSize = getChatFontSizePixels(appearance.fontSize);"
+    );
+    expect(dashboardChatSource).not.toContain("styles.messageActivityDot");
     expect(dashboardChatSource).toContain("CheckCircle2 color={colors.textMuted}");
     expect(dashboardChatSource).toContain("Loader2 color={colors.textMuted}");
     expect(dashboardChatSource).not.toContain("Sparkles");
@@ -371,9 +390,9 @@ describe("mobile dashboard model", () => {
     expect(dashboardChatSource).toContain("search: Search");
     expect(dashboardChatSource).toContain("command: SquareTerminal");
     expect(dashboardChatSource).toContain("MOBILE_GROUP_ICONS[entry.kind]");
-    expect(dashboardStylesSource).toContain("messageActivityDot");
-    expect(dashboardStylesSource).toContain("backgroundColor: colors.textMuted");
+    expect(dashboardStylesSource).not.toContain("messageActivityDot");
     expect(dashboardStylesSource).toContain("messageThoughtText");
+    expect(dashboardStylesSource).toContain('alignSelf: "stretch"');
     expect(dashboardChatSource).toContain("appearance.highContrast ? colors.text");
     expect(dashboardChatSource).toContain("getChatLineHeight(appearance.lineSpacing)");
     expect(dashboardChatSource).toContain("getChatCodeFontSizePixels(appearance.codeFontSize)");
@@ -513,6 +532,11 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain("styles.providerPlanUsageTrack");
     expect(dashboardScreenSource).toContain('label: "5h"');
     expect(dashboardScreenSource).toContain('label: "Weekly"');
+    expect(dashboardScreenSource).toContain("styles.metricFreshnessText");
+    expect(dashboardScreenSource).toContain(
+      "accessibilityHint={`Show ${label.toLowerCase()} metrics`}"
+    );
+    expect(dashboardStylesSource).toContain("metricFreshnessText");
   });
 
   test("does not fetch all metrics on initial dashboard load before metrics opens", () => {
@@ -530,10 +554,18 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain('accessibilityLabel="Loading metrics"');
     expect(dashboardScreenSource).toContain("metricSkeletonBlock");
     expect(dashboardScreenSource).toContain("Loading detailed metrics");
-    expect(dashboardScreenSource).toContain(
-      'metrics?.storage ? formatMetricBytes(metrics.storage.totalBytes) : "--"'
-    );
+    expect(dashboardScreenSource).toContain("storageAvailable");
+    expect(dashboardScreenSource).toContain("formatMetricBytes(metrics?.storage?.totalBytes)");
     expect(dashboardScreenSource).toContain("Live signals are still available from Logs.");
+  });
+
+  test("keeps partial metric failures and overlapping refreshes honest", () => {
+    expect(dashboardScreenSource).toContain("function MetricFeedUnavailable");
+    expect(dashboardScreenSource).toContain('hasMetricEndpoint(metrics, "insights")');
+    expect(dashboardScreenSource).toContain('hasMetricEndpoint(metrics, "sessions")');
+    expect(dashboardScreenSource).not.toContain("successRatePct ?? 100");
+    expect(dashboardScreenSource).toContain("metricsOverviewGenerationRef.current += 1");
+    expect(dashboardScreenSource).toContain("reconcileMetricsSnapshot(");
   });
 
   test("previews chat accessibility settings using the shared appearance contract", () => {
@@ -659,8 +691,12 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_SETTINGS_ROOT_CHROME.nativeGroupedSections).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.nativeSegmentedControls).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.nativeSwitchControls).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.subagentDefaultSelector).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.backgroundAgentSelector).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.skillLearningNudgeToggle).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.tokenOptimizationToggle).toBe(true);
     expect(dashboardScreenSource).toContain("readMobileTokenOptimizationSettings");
-    expect(dashboardScreenSource).toContain("token_optimization: next");
+    expect(dashboardScreenSource).toContain("...tokenOptimization");
     expect(readMobileTokenOptimizationSettings({}).toonStructuredDataEnabled).toBe(true);
     expect(
       readMobileTokenOptimizationSettings({
@@ -668,9 +704,16 @@ describe("mobile dashboard model", () => {
       }).toonStructuredDataEnabled
     ).toBe(false);
     expect(MOBILE_PLATFORM_SETTING_KEYS).toEqual([
+      "default_agent_id",
+      "subagent_agent_id",
+      "background_agent_id",
+      "vision_fallback_agent_id",
       "terminal_enabled",
       "tool_approval_mode",
       "follow_up_behavior_enabled",
+      "self_improving_skills_enabled",
+      "skill_learning_nudge_enabled",
+      "token_optimization",
       "chat_appearance",
       "reasoning_effort",
       "dangerous_tool_policy",
@@ -681,6 +724,15 @@ describe("mobile dashboard model", () => {
     expect(readMobileFollowUpBehaviorEnabled({})).toBe(true);
     expect(readMobileFollowUpBehaviorEnabled({ follow_up_behavior_enabled: false })).toBe(false);
     expect(dashboardScreenSource).toContain('label="Queue / Steer follow-ups"');
+    expect(dashboardScreenSource).toContain('label="Sub-agent"');
+    expect(dashboardScreenSource).toContain("{ subagent_agent_id: value }");
+    expect(dashboardScreenSource).toContain('label="Background model"');
+    expect(dashboardScreenSource).toContain("{ background_agent_id: value }");
+    expect(dashboardScreenSource).toContain('label="Auto-learn after complex tasks"');
+    expect(dashboardScreenSource).toContain(
+      "{ skill_learning_nudge_enabled: !skillLearningNudgeEnabled }"
+    );
+    expect(dashboardScreenSource).toContain('label="Compact structured results"');
     expect(dashboardScreenSource).toContain("chatBusy && !followUpBehaviorEnabled");
     expect(MOBILE_REASONING_EFFORT_OPTIONS.map((option) => option.value)).toEqual([
       "",
@@ -804,13 +856,18 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_RECENT_ACTIVITY_CHROME.chatsOpenSession).toBe(true);
     expect(MOBILE_RECENT_ACTIVITY_CHROME.truncateTitles).toBe(true);
     expect(MOBILE_RECENT_ACTIVITY_CHROME.useRecentStateForIdleChats).toBe(true);
-    expect(recentSessionStateLabel(summary.sessions[0])).toBe("Recent");
-    expect(
-      recentSessionStateLabel({
-        ...summary.sessions[0],
-        last_message: { role: "user", content: "continue" },
-      })
-    ).toBe("Working");
+    expect(recentSessionStateLabel(summary.sessions[0], [])).toBe("Recent");
+    const waitingSession = {
+      ...summary.sessions[0],
+      last_message: { role: "user", content: "continue" },
+    };
+    expect(recentSessionStateLabel(waitingSession, [])).toBe("Recent");
+    expect(mobileSessionIsActive(waitingSession, [])).toBe(false);
+    expect(recentSessionStateLabel(waitingSession, [` ${waitingSession.id} `])).toBe("Working");
+    expect(mobileSessionIsActive(waitingSession, [waitingSession.id])).toBe(true);
+    expect(dashboardScreenSource).toContain(".sessionStatus()");
+    expect(dashboardScreenSource).toContain("activeSessionIds={activeSessionIds}");
+    expect(dashboardScreenSource).toContain("mobileSessionIsActive(session, activeSessionIds)");
   });
 
   test("classifies stale mobile pairings as a pairing refresh instead of empty data", () => {

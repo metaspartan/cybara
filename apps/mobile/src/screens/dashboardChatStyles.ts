@@ -203,13 +203,35 @@ export function createDashboardChatStyles() {
       overflow: "hidden",
     },
     codeHeader: {
+      alignItems: "center",
       backgroundColor: colors.surfaceLift,
+      borderBottomColor: colors.border,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      flexDirection: "row",
+      gap: spacing.xs,
+      minHeight: 30,
+      paddingHorizontal: spacing.sm,
+    },
+    codeLanguage: {
       color: colors.textMuted,
       fontSize: typography.tiny,
       fontWeight: "900",
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 5,
       textTransform: "uppercase",
+    },
+    codeLineCount: {
+      color: colors.textDim,
+      flex: 1,
+      fontSize: 10,
+    },
+    codeCopyButton: {
+      alignItems: "center",
+      height: 28,
+      justifyContent: "center",
+      width: 28,
+    },
+    codeScroll: {
+      flexGrow: 0,
+      flexShrink: 1,
     },
     codeText: {
       color: colors.text,
@@ -218,7 +240,11 @@ export function createDashboardChatStyles() {
       padding: spacing.sm,
     },
     codeTextMonospace: {
-      fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+      fontFamily: Platform.select({
+        ios: "Menlo",
+        android: "monospace",
+        default: "monospace",
+      }),
     },
     mdBlocks: {
       gap: spacing.sm,
@@ -264,7 +290,11 @@ export function createDashboardChatStyles() {
     mdInlineCode: {
       backgroundColor: colors.scrim,
       color: colors.text,
-      fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+      fontFamily: Platform.select({
+        ios: "Menlo",
+        android: "monospace",
+        default: "monospace",
+      }),
       fontSize: 13,
     },
     mdListRow: {
@@ -278,6 +308,20 @@ export function createDashboardChatStyles() {
       fontSize: typography.body,
       lineHeight: 22,
       minWidth: 18,
+    },
+    mdTaskCheckbox: {
+      alignItems: "center",
+      borderColor: colors.textMuted,
+      borderRadius: 4,
+      borderWidth: 1,
+      height: 16,
+      justifyContent: "center",
+      marginTop: 3,
+      width: 16,
+    },
+    mdTaskCheckboxChecked: {
+      backgroundColor: colors.cyan,
+      borderColor: colors.cyan,
     },
     mdListText: {
       color: colors.text,
@@ -366,13 +410,6 @@ export function createDashboardChatStyles() {
       marginTop: 1,
       width: 16,
     },
-    messageActivityDot: {
-      backgroundColor: colors.textMuted,
-      borderRadius: 3,
-      height: 6,
-      opacity: 0.75,
-      width: 6,
-    },
     messageAuthorRow: {
       alignItems: "flex-start",
       flexDirection: "row",
@@ -390,7 +427,10 @@ export function createDashboardChatStyles() {
       lineHeight: 18,
     },
     messageThoughtText: {
+      alignSelf: "stretch",
       color: colors.textMuted,
+      paddingHorizontal: 2,
+      paddingVertical: 2,
     },
     messageActivityGroupLabel: {
       color: colors.textMuted,

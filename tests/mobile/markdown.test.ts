@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { parseInlineMarkdown, parseMarkdownBlocks } from "../../apps/mobile/src/lib/chat-format";
+import {
+  mobileCodeLineCount,
+  parseInlineMarkdown,
+  parseMarkdownBlocks,
+} from "../../apps/mobile/src/lib/chat-format";
 
 describe("parseInlineMarkdown", () => {
   test("plain text is a single text token", () => {
@@ -13,7 +17,10 @@ describe("parseInlineMarkdown", () => {
       { type: "text", text: " c" },
     ]);
     expect(parseInlineMarkdown("*x*")).toEqual([{ type: "italic", text: "x" }]);
-    expect(parseInlineMarkdown("use `code` here")[1]).toEqual({ type: "code", text: "code" });
+    expect(parseInlineMarkdown("use `code` here")[1]).toEqual({
+      type: "code",
+      text: "code",
+    });
     expect(parseInlineMarkdown("~~gone~~")).toEqual([{ type: "strike", text: "gone" }]);
   });
 
@@ -52,6 +59,33 @@ describe("parseMarkdownBlocks", () => {
     expect(ordered).toBeDefined();
   });
 
+  test("GFM task lists expose checked state without rendering raw markers", () => {
+    const blocks = parseMarkdownBlocks("- [x] shipped\n- [ ] pending\n- ordinary");
+    expect(blocks).toEqual([
+      {
+        type: "listItem",
+        ordered: false,
+        marker: "•",
+        inline: [{ type: "text", text: "shipped" }],
+        checked: true,
+      },
+      {
+        type: "listItem",
+        ordered: false,
+        marker: "•",
+        inline: [{ type: "text", text: "pending" }],
+        checked: false,
+      },
+      {
+        type: "listItem",
+        ordered: false,
+        marker: "•",
+        inline: [{ type: "text", text: "ordinary" }],
+        checked: undefined,
+      },
+    ]);
+  });
+
   test("GFM table with header + rows", () => {
     const blocks = parseMarkdownBlocks(
       "| Layer | Stack |\n| --- | --- |\n| CLI | TSX |\n| Desktop | Tauri |"
@@ -70,5 +104,13 @@ describe("parseMarkdownBlocks", () => {
   test("does not treat a lone pipe line as a table without a separator", () => {
     const blocks = parseMarkdownBlocks("a | b is just text");
     expect(blocks[0].type).toBe("paragraph");
+  });
+});
+
+describe("mobileCodeLineCount", () => {
+  test("matches desktop code metadata for trailing fenced newlines", () => {
+    expect(mobileCodeLineCount("const ok = true;\n")).toBe(1);
+    expect(mobileCodeLineCount("one\r\ntwo\r\nthree")).toBe(3);
+    expect(mobileCodeLineCount("")).toBe(0);
   });
 });

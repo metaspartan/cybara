@@ -7,6 +7,7 @@ import type {
 type MobileWebSocketConstructor = NonNullable<MobileStatusStreamOptions["WebSocketImpl"]>;
 type MobileWebSocket = InstanceType<MobileWebSocketConstructor>;
 type MobileStatusEventNormalizer = (value: unknown) => MobileStatusStreamEvent | null;
+type MobileStatusAuthProtocolProvider = () => string | null;
 
 interface BufferedMobileStatusEvent {
   event: MobileStatusStreamEvent;
@@ -109,7 +110,8 @@ export class MobileStatusStreamClient {
 
   constructor(
     private readonly getUrl: () => string,
-    private readonly normalizeEvent: MobileStatusEventNormalizer
+    private readonly normalizeEvent: MobileStatusEventNormalizer,
+    private readonly getAuthProtocol: MobileStatusAuthProtocolProvider = () => null
   ) {}
 
   subscribe(
@@ -170,7 +172,10 @@ export class MobileStatusStreamClient {
     const generation = ++this.socketGeneration;
     let socket: MobileWebSocket;
     try {
-      socket = new this.WebSocketImpl(this.getUrl());
+      const authProtocol = this.getAuthProtocol();
+      socket = authProtocol
+        ? new this.WebSocketImpl(this.getUrl(), authProtocol)
+        : new this.WebSocketImpl(this.getUrl());
       this.socket = socket;
     } catch {
       this.notifyError();
