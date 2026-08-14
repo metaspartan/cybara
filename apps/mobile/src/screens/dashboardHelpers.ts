@@ -11,7 +11,6 @@ import type {
   FeatureSummary,
   ProviderSummary,
   RemoteItemSummary,
-  SessionSummary,
   SystemMonitorSnapshot,
 } from "../lib/api";
 
@@ -420,10 +419,6 @@ export function surfaceCount(
   if (!endpoint.ok) return endpoint.status ? `Unavailable (${endpoint.status})` : "Unavailable";
   if (count === 0) return empty;
   return `${count} ${count === 1 ? singularSuffix : suffix}`;
-}
-
-export function sessionMayBeInProgress(session: SessionSummary): boolean {
-  return session.last_message?.role === "user";
 }
 
 export function displayFields(

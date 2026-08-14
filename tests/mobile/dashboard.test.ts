@@ -43,6 +43,7 @@ import {
   mobileGatewayAuthStatus,
   mobileProviderAuthMode,
   mobileReasoningLabel,
+  mobileSessionIsActive,
   mobileSessionTitle,
   mobileSupportedReasoningEfforts,
   mobileSupportsXHighReasoning,
@@ -316,6 +317,15 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_MAIN_TAB_CHROME.edgeToEdge).toBe(false);
     expect(MOBILE_MAIN_TAB_CHROME.outerHorizontalPadding).toBeGreaterThan(0);
     expect(MOBILE_MAIN_TAB_CHROME.panelRadius).toBeGreaterThan(0);
+    expect(dashboardScreenSource).toContain("accessibilityLabel={label}");
+    expect(dashboardScreenSource).toContain("accessibilityHint={`Show ${label.toLowerCase()}`}");
+    expect(dashboardScreenSource).toContain("Pinned & recent");
+    expect(dashboardScreenSource).toContain('accessibilityLabel="Search chats"');
+    expect(dashboardScreenSource).toContain('"Show more chats"');
+    expect(dashboardScreenSource).toContain('"Load older chats"');
+    expect(dashboardScreenSource).toContain("api.sessionList({");
+    expect(dashboardScreenSource).toContain("offset: currentSummary.sessions.length");
+    expect(dashboardScreenSource).toContain("<Pin color={colors.amber}");
   });
 
   test("keeps the chat composer compact, dynamic, and icon driven", () => {
@@ -513,6 +523,11 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain("styles.providerPlanUsageTrack");
     expect(dashboardScreenSource).toContain('label: "5h"');
     expect(dashboardScreenSource).toContain('label: "Weekly"');
+    expect(dashboardScreenSource).toContain("styles.metricFreshnessText");
+    expect(dashboardScreenSource).toContain(
+      "accessibilityHint={`Show ${label.toLowerCase()} metrics`}"
+    );
+    expect(dashboardStylesSource).toContain("metricFreshnessText");
   });
 
   test("does not fetch all metrics on initial dashboard load before metrics opens", () => {
@@ -530,10 +545,18 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain('accessibilityLabel="Loading metrics"');
     expect(dashboardScreenSource).toContain("metricSkeletonBlock");
     expect(dashboardScreenSource).toContain("Loading detailed metrics");
-    expect(dashboardScreenSource).toContain(
-      'metrics?.storage ? formatMetricBytes(metrics.storage.totalBytes) : "--"'
-    );
+    expect(dashboardScreenSource).toContain("storageAvailable");
+    expect(dashboardScreenSource).toContain("formatMetricBytes(metrics?.storage?.totalBytes)");
     expect(dashboardScreenSource).toContain("Live signals are still available from Logs.");
+  });
+
+  test("keeps partial metric failures and overlapping refreshes honest", () => {
+    expect(dashboardScreenSource).toContain("function MetricFeedUnavailable");
+    expect(dashboardScreenSource).toContain('hasMetricEndpoint(metrics, "insights")');
+    expect(dashboardScreenSource).toContain('hasMetricEndpoint(metrics, "sessions")');
+    expect(dashboardScreenSource).not.toContain("successRatePct ?? 100");
+    expect(dashboardScreenSource).toContain("metricsOverviewGenerationRef.current += 1");
+    expect(dashboardScreenSource).toContain("reconcileMetricsSnapshot(");
   });
 
   test("previews chat accessibility settings using the shared appearance contract", () => {
@@ -804,13 +827,18 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_RECENT_ACTIVITY_CHROME.chatsOpenSession).toBe(true);
     expect(MOBILE_RECENT_ACTIVITY_CHROME.truncateTitles).toBe(true);
     expect(MOBILE_RECENT_ACTIVITY_CHROME.useRecentStateForIdleChats).toBe(true);
-    expect(recentSessionStateLabel(summary.sessions[0])).toBe("Recent");
-    expect(
-      recentSessionStateLabel({
-        ...summary.sessions[0],
-        last_message: { role: "user", content: "continue" },
-      })
-    ).toBe("Working");
+    expect(recentSessionStateLabel(summary.sessions[0], [])).toBe("Recent");
+    const waitingSession = {
+      ...summary.sessions[0],
+      last_message: { role: "user", content: "continue" },
+    };
+    expect(recentSessionStateLabel(waitingSession, [])).toBe("Recent");
+    expect(mobileSessionIsActive(waitingSession, [])).toBe(false);
+    expect(recentSessionStateLabel(waitingSession, [` ${waitingSession.id} `])).toBe("Working");
+    expect(mobileSessionIsActive(waitingSession, [waitingSession.id])).toBe(true);
+    expect(dashboardScreenSource).toContain(".sessionStatus()");
+    expect(dashboardScreenSource).toContain("activeSessionIds={activeSessionIds}");
+    expect(dashboardScreenSource).toContain("mobileSessionIsActive(session, activeSessionIds)");
   });
 
   test("classifies stale mobile pairings as a pairing refresh instead of empty data", () => {

@@ -607,6 +607,8 @@ export function SettingsPanel({
   openMemory,
   openMigration,
   openJourney,
+  selectedSettingsTab,
+  onSelectSettingsTab,
 }: {
   accentColor: string;
   accentKey: AccentKey;
@@ -625,11 +627,12 @@ export function SettingsPanel({
   openMemory: () => void;
   openMigration: () => void;
   openJourney: () => void;
+  selectedSettingsTab: MobileSettingsTab;
+  onSelectSettingsTab: (tab: MobileSettingsTab) => void;
 }) {
   const counts = summarizeFeatureCounts(summary);
   const { mode: appearanceMode, setMode: setAppearanceMode } = useThemeControls();
   const { enabled: hapticsEnabled, setEnabled: setHapticsEnabled } = useHapticsControls();
-  const [selectedSettingsTab, setSelectedSettingsTab] = useState<MobileSettingsTab>("general");
   const [savingAccent, setSavingAccent] = useState<AccentKey | null>(null);
   const [savingConfigKey, setSavingConfigKey] = useState<string | null>(null);
   const [savingAgentAccess, setSavingAgentAccess] = useState(false);
@@ -764,7 +767,7 @@ export function SettingsPanel({
         <SettingsTabRail
           onSelect={(value) => {
             if (MOBILE_SETTINGS_TABS.some((option) => option.value === value)) {
-              setSelectedSettingsTab(value as MobileSettingsTab);
+              onSelectSettingsTab(value as MobileSettingsTab);
             }
           }}
           options={MOBILE_SETTINGS_TABS}

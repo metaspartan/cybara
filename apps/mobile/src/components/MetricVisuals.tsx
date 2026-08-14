@@ -1,13 +1,35 @@
 import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { formatMetricNumber, type MetricsAvailability, type MetricsSnapshot } from "../lib/metrics";
+import {
+  formatMetricNumber,
+  metricProgressPercent,
+  type MetricsAvailability,
+  type MetricsSnapshot,
+} from "../lib/metrics";
 import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 
+function MetricProgressFill({ percent, tone }: { percent: number; tone: string }) {
+  if (percent <= 0) return null;
+  return (
+    <View
+      style={[
+        styles.trackFill,
+        {
+          backgroundColor: tone,
+          width: `${percent}%`,
+        },
+      ]}
+    />
+  );
+}
+
 export function MetricSection({
+  available = true,
   children,
   detail,
   title,
 }: {
+  available?: boolean;
   children: ReactNode;
   detail?: string;
   title: string;
@@ -22,7 +44,7 @@ export function MetricSection({
           </Text>
         ) : null}
       </View>
-      {children}
+      {available ? children : <Text style={styles.detail}>Metric feed unavailable</Text>}
     </View>
   );
 }
@@ -58,14 +80,9 @@ export function MetricBreakdown({
             <Text style={styles.detail}>{formatMetricNumber(entry.value)}</Text>
           </View>
           <View style={styles.track}>
-            <View
-              style={[
-                styles.trackFill,
-                {
-                  backgroundColor: tone,
-                  width: `${Math.max(2, (entry.value / total) * 100)}%`,
-                },
-              ]}
+            <MetricProgressFill
+              percent={metricProgressPercent(entry.value, total, 2)}
+              tone={tone}
             />
           </View>
         </View>
@@ -86,15 +103,17 @@ export function MetricBarChart({
     <View style={styles.barChart}>
       {data.map((entry) => (
         <View key={entry.label} style={styles.barSlot}>
-          <View
-            style={[
-              styles.bar,
-              {
-                backgroundColor: tone,
-                height: Math.max(3, (entry.value / max) * 58),
-              },
-            ]}
-          />
+          {entry.value > 0 ? (
+            <View
+              style={[
+                styles.bar,
+                {
+                  backgroundColor: tone,
+                  height: Math.max(3, (entry.value / max) * 58),
+                },
+              ]}
+            />
+          ) : null}
           <Text numberOfLines={1} style={styles.barLabel}>
             {entry.label}
           </Text>
@@ -120,16 +139,18 @@ export function MetricAreaChart({
       <View style={styles.areaColumns}>
         {data.map((entry, index) => (
           <View key={`${entry.label}-${index}`} style={styles.areaSlot}>
-            <View
-              style={[
-                styles.areaColumn,
-                {
-                  backgroundColor: tone,
-                  height: Math.max(5, (entry.value / max) * 82),
-                  opacity: 0.16 + Math.min(0.68, (entry.value / max) * 0.68),
-                },
-              ]}
-            />
+            {entry.value > 0 ? (
+              <View
+                style={[
+                  styles.areaColumn,
+                  {
+                    backgroundColor: tone,
+                    height: Math.max(5, (entry.value / max) * 82),
+                    opacity: 0.16 + Math.min(0.68, (entry.value / max) * 0.68),
+                  },
+                ]}
+              />
+            ) : null}
           </View>
         ))}
       </View>
@@ -214,14 +235,13 @@ export function MetricShareRows({
           <View style={styles.shareValue}>
             <Text style={[styles.counter, { color: row.tone ?? tone }]}>{row.value}</Text>
             <View style={styles.trackSmall}>
-              <View
-                style={[
-                  styles.trackFill,
-                  {
-                    backgroundColor: row.tone ?? tone,
-                    width: `${Math.max(4, row.progress ?? (row.amount / max) * 100)}%`,
-                  },
-                ]}
+              <MetricProgressFill
+                percent={metricProgressPercent(
+                  row.progress ?? row.amount,
+                  row.progress === undefined ? max : 100,
+                  4
+                )}
+                tone={row.tone ?? tone}
               />
             </View>
           </View>

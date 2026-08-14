@@ -87,9 +87,11 @@ import {
   Network,
   Paperclip,
   Pencil,
+  Pin,
   Plus,
   Play,
   RefreshCw,
+  Search,
   Save,
   Send,
   Settings,
@@ -179,7 +181,9 @@ import {
   mobileBackRouteForDetail,
   mobileFirstNonEmptyString,
   mobileGatewayAuthStatus,
+  mobileSettingsTabForSurface,
   mobileProviderAuthMode,
+  mobileSessionIsActive,
   mergeSessionDetailIntoSummary,
   mobileSessionTitle,
   mobileThemeConfigPayload,
@@ -201,6 +205,7 @@ import {
   formatMetricBytes,
   formatStorageBytes,
   mergeMetricsOverview,
+  reconcileMetricsSnapshot,
   type MetricsSnapshot,
 } from "../lib/metrics";
 import { accentPalette, colors, spacing, type AccentKey } from "../theme/liquidGlass";
@@ -228,7 +233,6 @@ import {
   remoteItemEnabled,
   remoteTaskRunning,
   resolveAccentKey,
-  sessionMayBeInProgress,
   surfaceCount,
   type EndpointState,
   type MobileSpeechSettings,
@@ -310,8 +314,10 @@ export function DashboardScreen({
     null
   );
   const [providerPlanError, setProviderPlanError] = useState<string | null>(null);
+  const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<MobileTabKey>("overview");
+  const [selectedSettingsTab, setSelectedSettingsTab] = useState<MobileSettingsTab>("general");
   const [detailRoute, setDetailRoute] = useState<DetailRoute | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [metricsError, setMetricsError] = useState<string | null>(null);
@@ -328,13 +334,17 @@ export function DashboardScreen({
     hasMore: false,
   });
   const [loadingMoreLogs, setLoadingMoreLogs] = useState(false);
+  const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
+  const [sessionPageError, setSessionPageError] = useState<string | null>(null);
   const [logPageError, setLogPageError] = useState<string | null>(null);
   const refreshInFlight = useRef(false);
   const metricsRefreshInFlight = useRef(false);
   const metricsOverviewRefreshInFlight = useRef(false);
+  const metricsOverviewGenerationRef = useRef(0);
   const metricsLastLoadedAtRef = useRef(0);
   const metricsOverviewLastLoadedAtRef = useRef(0);
   const logPageInFlight = useRef(false);
+  const sessionPageInFlight = useRef(false);
   const appStateRef = useRef(AppState.currentState);
   const activeSurface =
     detailRoute?.kind === "surface" || detailRoute?.kind === "item" ? detailRoute.surface : null;
@@ -362,7 +372,7 @@ export function DashboardScreen({
     if (showRefreshing) setRefreshing(true);
     setError(null);
     try {
-      const [nextSummary, nextProviderPlans] = await Promise.all([
+      const [nextSummary, nextProviderPlans, nextActiveSessionIds] = await Promise.all([
         api.featureSummary(),
         api
           .providerPlanStatus()
@@ -371,11 +381,17 @@ export function DashboardScreen({
             data: null,
             error: providerError instanceof Error ? providerError.message : String(providerError),
           })),
+        api
+          .sessionStatus()
+          .then((status) => status.activeSessionIds)
+          .catch(() => []),
       ]);
       setSummary(nextSummary);
+      setActiveSessionIds(nextActiveSessionIds);
       if (nextProviderPlans.data) setProviderPlanStatus(nextProviderPlans.data);
       setProviderPlanError(nextProviderPlans.error);
     } catch (refreshError) {
+      setActiveSessionIds([]);
       setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
     } finally {
       refreshInFlight.current = false;
@@ -395,6 +411,7 @@ export function DashboardScreen({
     metricsOverviewRefreshInFlight.current = true;
     try {
       const overview = await api.metricsOverview();
+      metricsOverviewGenerationRef.current += 1;
       setMetrics((current) => mergeMetricsOverview(current, overview));
       metricsOverviewLastLoadedAtRef.current = Date.now();
       setMetricsUpdatedAt(Date.now());
@@ -420,10 +437,19 @@ export function DashboardScreen({
       return;
     }
     metricsRefreshInFlight.current = true;
+    const overviewGenerationAtRequest = metricsOverviewGenerationRef.current;
     setMetricsRefreshing(true);
     setMetricsError(null);
     try {
-      setMetrics(await api.metricsSnapshot());
+      const snapshot = await api.metricsSnapshot();
+      setMetrics((current) =>
+        reconcileMetricsSnapshot(
+          current,
+          snapshot,
+          overviewGenerationAtRequest,
+          metricsOverviewGenerationRef.current
+        )
+      );
       metricsLastLoadedAtRef.current = Date.now();
       metricsOverviewLastLoadedAtRef.current = Date.now();
       setMetricsUpdatedAt(Date.now());
@@ -474,6 +500,38 @@ export function DashboardScreen({
     } finally {
       logPageInFlight.current = false;
       setLoadingMoreLogs(false);
+    }
+  };
+
+  const loadMoreSessions = async () => {
+    const currentSummary = summary;
+    const total = currentSummary?.sessionTotal ?? currentSummary?.sessions.length ?? 0;
+    if (sessionPageInFlight.current || !currentSummary || currentSummary.sessions.length >= total) {
+      return;
+    }
+    sessionPageInFlight.current = true;
+    setLoadingMoreSessions(true);
+    setSessionPageError(null);
+    try {
+      const page = await api.sessionList({
+        limit: 100,
+        offset: currentSummary.sessions.length,
+      });
+      setSummary((current) => {
+        if (!current) return current;
+        const sessionsById = new Map(current.sessions.map((session) => [session.id, session]));
+        for (const session of page.sessions) sessionsById.set(session.id, session);
+        return {
+          ...current,
+          sessions: sortSessionSummaries([...sessionsById.values()]),
+          sessionTotal: page.total,
+        };
+      });
+    } catch (loadError) {
+      setSessionPageError(loadError instanceof Error ? loadError.message : String(loadError));
+    } finally {
+      sessionPageInFlight.current = false;
+      setLoadingMoreSessions(false);
     }
   };
 
@@ -601,38 +659,48 @@ export function DashboardScreen({
   const openSurface = (surface: MobileSurfaceKey) => {
     setChatHeaderAction(null);
     setActiveTab("settings");
+    if (activeTab !== "settings") {
+      const settingsTab = mobileSettingsTabForSurface(surface);
+      if (settingsTab) setSelectedSettingsTab(settingsTab);
+    }
     setDetailRoute({ kind: "surface", surface });
   };
 
   const openSystemPrompt = () => {
     setChatHeaderAction(null);
     setActiveTab("settings");
+    setSelectedSettingsTab("ai");
     setDetailRoute({ kind: "systemPrompt" });
   };
 
   const openSpeech = () => {
     setChatHeaderAction(null);
     setActiveTab("settings");
+    setSelectedSettingsTab("voice");
     setDetailRoute({ kind: "speech" });
   };
   const openMemory = () => {
     setChatHeaderAction(null);
     setActiveTab("settings");
+    setSelectedSettingsTab("memory");
     setDetailRoute({ kind: "memory" });
   };
   const openMigration = () => {
     setChatHeaderAction(null);
     setActiveTab("settings");
+    setSelectedSettingsTab("migration");
     setDetailRoute({ kind: "migration" });
   };
   const openJourney = () => {
     setChatHeaderAction(null);
     setActiveTab("settings");
+    setSelectedSettingsTab("general");
     setDetailRoute({ kind: "journey" });
   };
   const openModelRouter = () => {
     setChatHeaderAction(null);
     setActiveTab("settings");
+    setSelectedSettingsTab("router");
     setDetailRoute({ kind: "modelRouter" });
   };
 
@@ -745,7 +813,6 @@ export function DashboardScreen({
           <View style={styles.headerText}>
             <Text
               ellipsizeMode="tail"
-              maxFontSizeMultiplier={1.05}
               numberOfLines={1}
               style={[styles.title, detailRoute && styles.detailTitle]}
             >
@@ -832,6 +899,7 @@ export function DashboardScreen({
           ) : activeTab === "overview" ? (
             <OverviewPanel
               accentColor={accentColor}
+              activeSessionIds={activeSessionIds}
               modules={modules}
               sessions={orderedSessions}
               logs={summary?.logs ?? []}
@@ -843,6 +911,7 @@ export function DashboardScreen({
           ) : null}
           {!detailRoute && activeTab === "sessions" ? (
             <SessionsPanel
+              activeSessionIds={activeSessionIds}
               sessions={orderedSessions}
               summary={summary}
               openSession={openSessionRoute}
@@ -851,6 +920,9 @@ export function DashboardScreen({
                 await api.deleteSession(id);
                 await refresh(false);
               }}
+              loadMoreSessions={loadMoreSessions}
+              loadingMoreSessions={loadingMoreSessions}
+              sessionPageError={sessionPageError}
               accentColor={accentColor}
             />
           ) : null}
@@ -902,6 +974,8 @@ export function DashboardScreen({
               openMemory={openMemory}
               openMigration={openMigration}
               openJourney={openJourney}
+              selectedSettingsTab={selectedSettingsTab}
+              onSelectSettingsTab={setSelectedSettingsTab}
             />
           ) : null}
         </ScrollView>
@@ -919,6 +993,8 @@ export function DashboardScreen({
             return (
               <Pressable
                 key={key}
+                accessibilityHint={`Show ${label.toLowerCase()}`}
+                accessibilityLabel={label}
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
                 onPress={() => selectTab(key)}
@@ -939,7 +1015,6 @@ export function DashboardScreen({
                   strokeWidth={2.2}
                 />
                 <Text
-                  maxFontSizeMultiplier={1.05}
                   numberOfLines={1}
                   style={[styles.tabLabel, selected && { color: accentColor }]}
                 >
@@ -956,6 +1031,7 @@ export function DashboardScreen({
 
 function OverviewPanel({
   accentColor,
+  activeSessionIds,
   modules,
   sessions,
   logs,
@@ -965,6 +1041,7 @@ function OverviewPanel({
   openSession,
 }: {
   accentColor: string;
+  activeSessionIds: readonly string[];
   modules: ModuleCard[];
   sessions: SessionSummary[];
   logs: ActivitySummary[];
@@ -976,7 +1053,7 @@ function OverviewPanel({
   const activityRows =
     sessions.length > 0
       ? sessions.slice(0, 3).map((session) => {
-          const state = recentSessionStateLabel(session);
+          const state = recentSessionStateLabel(session, activeSessionIds);
           return {
             id: session.id,
             Icon: MessageCircle,
@@ -1130,19 +1207,29 @@ function ActivityRow({
 
 function SessionsPanel({
   accentColor,
+  activeSessionIds,
   createChat,
   sessions,
   summary,
   openSession,
   deleteSession,
+  loadMoreSessions,
+  loadingMoreSessions,
+  sessionPageError,
 }: {
   accentColor: string;
+  activeSessionIds: readonly string[];
   createChat: () => void;
   sessions: SessionSummary[];
   summary: FeatureSummary | null;
   openSession: (id: string) => void;
   deleteSession: (id: string) => Promise<void>;
+  loadMoreSessions: () => Promise<void>;
+  loadingMoreSessions: boolean;
+  sessionPageError: string | null;
 }) {
+  const [query, setQuery] = useState("");
+  const [visibleCount, setVisibleCount] = useState(20);
   const runDelete = async (session: SessionSummary) => {
     try {
       haptics.warning();
@@ -1182,9 +1269,20 @@ function SessionsPanel({
   const latest = latestSessionSummary(sessions);
   const endpoint = summary?.availability.sessions;
   const totalChats = summary?.sessionTotal ?? sessions.length;
-  const visibleSessionCount = Math.min(sessions.length, 20);
-  const pageDetail =
-    totalChats > visibleSessionCount ? `showing ${visibleSessionCount} recent` : "total";
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredSessions = normalizedQuery
+    ? sessions.filter((session) =>
+        [
+          mobileSessionTitle(session),
+          sessionProviderModelLabel(session),
+          session.last_message?.content ?? "",
+        ].some((value) => value.toLowerCase().includes(normalizedQuery))
+      )
+    : sessions;
+  const visibleSessionCount = Math.min(filteredSessions.length, visibleCount);
+  const hasMoreLoadedSessions = visibleSessionCount < filteredSessions.length;
+  const hasMoreRemoteSessions = sessions.length < totalChats;
+  const pageDetail = totalChats > visibleSessionCount ? `showing ${visibleSessionCount}` : "total";
 
   return (
     <StableDetailPanel>
@@ -1205,7 +1303,7 @@ function SessionsPanel({
         />
       </View>
       <View style={styles.subsectionHeader}>
-        <Text style={styles.subsectionTitle}>Recent chats</Text>
+        <Text style={styles.subsectionTitle}>Pinned & recent</Text>
         <Pressable
           accessibilityRole="button"
           style={({ pressed }) => [
@@ -1224,7 +1322,36 @@ function SessionsPanel({
           <Text style={[styles.newChatButtonText, { color: accentColor }]}>New Chat</Text>
         </Pressable>
       </View>
-      {sessions.slice(0, visibleSessionCount).map((session) => (
+      <View style={styles.sessionSearchField}>
+        <Search color={colors.textMuted} size={18} strokeWidth={2.1} />
+        <TextInput
+          accessibilityLabel="Search chats"
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="Search loaded chats"
+          placeholderTextColor={colors.textDim}
+          style={styles.sessionSearchInput}
+          value={query}
+          onChangeText={(value) => {
+            setQuery(value);
+            setVisibleCount(20);
+          }}
+        />
+        {query ? (
+          <Pressable
+            accessibilityLabel="Clear chat search"
+            accessibilityRole="button"
+            hitSlop={10}
+            onPress={() => {
+              setQuery("");
+              setVisibleCount(20);
+            }}
+          >
+            <X color={colors.textMuted} size={18} strokeWidth={2.2} />
+          </Pressable>
+        ) : null}
+      </View>
+      {filteredSessions.slice(0, visibleSessionCount).map((session) => (
         <Pressable
           key={session.id}
           style={styles.listRow}
@@ -1233,7 +1360,7 @@ function SessionsPanel({
           accessibilityHint="Long press to delete"
         >
           <View style={styles.listIcon}>
-            {sessionMayBeInProgress(session) ? (
+            {mobileSessionIsActive(session, activeSessionIds) ? (
               <ActivityIndicator color={accentColor} size="small" />
             ) : (
               <MessageCircle color={accentColor} size={20} strokeWidth={2.1} />
@@ -1243,7 +1370,7 @@ function SessionsPanel({
             <View style={styles.sessionTitleRow}>
               {session.pinned ? (
                 <View style={styles.sessionPinnedDot}>
-                  <ShieldCheck color={colors.amber} size={12} strokeWidth={2.4} />
+                  <Pin color={colors.amber} size={12} strokeWidth={2.4} />
                 </View>
               ) : null}
               <Text numberOfLines={2} style={[styles.listTitle, styles.sessionListTitle]}>
@@ -1264,6 +1391,29 @@ function SessionsPanel({
           <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
         </Pressable>
       ))}
+      {hasMoreLoadedSessions || hasMoreRemoteSessions ? (
+        <Pressable
+          accessibilityRole="button"
+          disabled={loadingMoreSessions}
+          style={[styles.loadMoreButton, loadingMoreSessions && styles.loadMoreButtonDisabled]}
+          onPress={() => {
+            if (hasMoreLoadedSessions) {
+              setVisibleCount((current) => current + 20);
+              return;
+            }
+            void loadMoreSessions();
+          }}
+        >
+          {loadingMoreSessions ? <ActivityIndicator color={accentColor} size="small" /> : null}
+          <Text style={styles.loadMoreButtonText}>
+            {hasMoreLoadedSessions ? "Show more chats" : "Load older chats"}
+          </Text>
+        </Pressable>
+      ) : null}
+      {sessionPageError ? <Text style={styles.errorText}>{sessionPageError}</Text> : null}
+      {normalizedQuery && filteredSessions.length === 0 ? (
+        <EmptyState label="No matching chats" detail="Try another title, model, or message." />
+      ) : null}
       {sessions.length === 0 ? (
         !summary ? (
           <LoadingState label="Loading chats" detail="Fetching sessions from the gateway." />

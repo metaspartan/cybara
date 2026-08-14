@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { parseWebSocketAuthProtocol } from "../../shared/websocket-auth";
 import {
   buildMobileStatusStreamUrl,
   CybaraMobileApi,
@@ -196,9 +197,7 @@ describe("mobile API client", () => {
   });
 
   test("builds and normalizes the authenticated mobile status stream", () => {
-    expect(buildMobileStatusStreamUrl(profile)).toBe(
-      "ws://127.0.0.1:4269/api/ws/status?token=cybara_mobile_test"
-    );
+    expect(buildMobileStatusStreamUrl(profile)).toBe("ws://127.0.0.1:4269/api/ws/status");
     expect(
       normalizeMobileStatusStreamEvent({
         type: "snapshot",
@@ -317,7 +316,10 @@ describe("mobile API client", () => {
       onerror: (() => void) | null = null;
       onmessage: ((event: { data: unknown }) => void) | null = null;
 
-      constructor(public url: string) {
+      constructor(
+        public url: string,
+        public protocols?: string | string[]
+      ) {
         FakeWebSocket.instances.push(this);
       }
 
@@ -335,8 +337,11 @@ describe("mobile API client", () => {
       { closeGraceMs: 0, WebSocketImpl: FakeWebSocket as never }
     );
 
-    expect(FakeWebSocket.instances[0]?.url).toBe(
-      "ws://127.0.0.1:4269/api/ws/status?token=cybara_mobile_test"
+    expect(FakeWebSocket.instances[0]?.url).toBe("ws://127.0.0.1:4269/api/ws/status");
+    expect(parseWebSocketAuthProtocol(String(FakeWebSocket.instances[0]?.protocols))).toMatchObject(
+      {
+        token: "cybara_mobile_test",
+      }
     );
     FakeWebSocket.instances[0]?.onmessage?.({
       data: JSON.stringify({
@@ -365,6 +370,57 @@ describe("mobile API client", () => {
         durationMs: undefined,
       },
     ]);
+  });
+
+  test("reconnects the status stream with token and gateway password authentication", () => {
+    class CapturedWebSocket {
+      static instances: CapturedWebSocket[] = [];
+      onopen: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onmessage: ((event: { data: unknown }) => void) | null = null;
+      closed = false;
+
+      constructor(
+        readonly url: string,
+        readonly protocols?: string | string[]
+      ) {
+        CapturedWebSocket.instances.push(this);
+      }
+
+      close(): void {
+        if (this.closed) return;
+        this.closed = true;
+        this.onclose?.();
+      }
+    }
+
+    const api = new CybaraMobileApi(profile);
+    const disconnect = api.connectStatusStream(
+      { onEvent: () => {} },
+      { closeGraceMs: 0, heartbeatMs: 0, WebSocketImpl: CapturedWebSocket }
+    );
+
+    expect(CapturedWebSocket.instances).toHaveLength(1);
+    expect(parseWebSocketAuthProtocol(String(CapturedWebSocket.instances[0]?.protocols))).toEqual({
+      protocol: CapturedWebSocket.instances[0]?.protocols,
+      token: "cybara_mobile_test",
+      password: undefined,
+    });
+
+    api.setGatewayPassword(" manual-profile-password ");
+
+    expect(CapturedWebSocket.instances).toHaveLength(2);
+    expect(CapturedWebSocket.instances[0]?.closed).toBe(true);
+    expect(CapturedWebSocket.instances[1]?.url).toBe("ws://127.0.0.1:4269/api/ws/status");
+    expect(parseWebSocketAuthProtocol(String(CapturedWebSocket.instances[1]?.protocols))).toEqual({
+      protocol: CapturedWebSocket.instances[1]?.protocols,
+      token: "cybara_mobile_test",
+      password: "manual-profile-password",
+    });
+
+    disconnect();
+    expect(CapturedWebSocket.instances[1]?.closed).toBe(true);
   });
 
   test("sends bearer auth to gateway requests", async () => {

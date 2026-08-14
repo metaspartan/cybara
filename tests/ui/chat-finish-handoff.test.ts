@@ -44,7 +44,9 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
       "prunePersistedMobileLiveAssistant(current, reconciledDetail.messages)"
     );
     expect(source).toContain("const cached = readCachedMobileLiveAssistant(sessionId);");
-    expect(source).toContain('snapshotStatus === "compacting"');
+    expect(source).toContain("isMobileSessionStatusActive(sessionId, status)");
+    expect(source).toContain("const active = serverReportsActive;");
+    expect(source).not.toContain('snapshotStatus === "compacting"');
     expect(source).not.toContain('snapshotStatus === "tool_completed"');
     expect(source).not.toMatch(
       /if \(event\.status === "idle"\) \{\s*\n\s*if \(!sendingRef\.current\) \{\s*\n\s*commitLiveAssistant\(\(\) => null, event\.timestamp\);/

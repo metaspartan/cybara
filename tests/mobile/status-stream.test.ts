@@ -18,7 +18,10 @@ class FakeMobileWebSocket {
   sent: string[] = [];
   closed = false;
 
-  constructor(readonly url: string) {
+  constructor(
+    readonly url: string,
+    readonly protocols?: string | string[]
+  ) {
     FakeMobileWebSocket.instances.push(this);
   }
 
@@ -150,6 +153,63 @@ describe("mobile status stream", () => {
     expect(buffer.size).toBe(1);
     expect(buffer.consume(3, "s2")).toEqual([event("s2", 2)]);
     expect(buffer.size).toBe(0);
+  });
+
+  test("session subscribers consume only their buffered events from the shared socket", () => {
+    FakeMobileWebSocket.instances = [];
+    const client = new MobileStatusStreamClient(() => "ws://gateway/status", normalizeEvent);
+    const firstEvents: MobileStatusStreamEvent[] = [];
+    const secondEvents: MobileStatusStreamEvent[] = [];
+    const disconnectInitial = client.subscribe({ onEvent: () => {} }, streamOptions());
+    const socket = FakeMobileWebSocket.instances[0];
+    socket?.open();
+    disconnectInitial();
+    socket?.emit({
+      type: "assistant_token",
+      sessionId: "s1",
+      sequence: 1,
+      delta: "first",
+      timestamp: 1,
+    });
+    socket?.emit({
+      type: "assistant_token",
+      sessionId: "s2",
+      sequence: 2,
+      delta: "second",
+      timestamp: 2,
+    });
+
+    const disconnectFirst = client.subscribe(
+      { onEvent: (event) => firstEvents.push(event) },
+      streamOptions({ replayBufferedEvents: true, replaySessionId: "s1" })
+    );
+    const disconnectSecond = client.subscribe(
+      { onEvent: (event) => secondEvents.push(event) },
+      streamOptions({ closeGraceMs: 0, replayBufferedEvents: true, replaySessionId: "s2" })
+    );
+
+    expect(FakeMobileWebSocket.instances).toHaveLength(1);
+    expect(firstEvents).toEqual([
+      {
+        type: "assistant_token",
+        sessionId: "s1",
+        sequence: 1,
+        delta: "first",
+        timestamp: 1,
+      },
+    ]);
+    expect(secondEvents).toEqual([
+      {
+        type: "assistant_token",
+        sessionId: "s2",
+        sequence: 2,
+        delta: "second",
+        timestamp: 2,
+      },
+    ]);
+    disconnectFirst();
+    disconnectSecond();
+    expect(socket?.closed).toBe(true);
   });
 
   test("reconnects an unexpectedly closed active stream", async () => {

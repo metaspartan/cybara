@@ -927,7 +927,7 @@ describe("mobile API client", () => {
         duration: "1.2s",
       });
       expect(calls.map((call) => `${call.method} ${call.path}${call.search}`)).toEqual([
-        "GET /api/sessions?limit=100&includeTotal=1",
+        "GET /api/sessions?limit=100&offset=0&includeTotal=1",
         "GET /api/sessions/s1",
         "POST /api/chat",
         "PUT /api/sessions/s1/agent",
@@ -1323,19 +1323,22 @@ describe("mobile API client", () => {
 
   test("keeps the mobile session list bounded while preserving the gateway total", async () => {
     const originalFetch = globalThis.fetch;
+    const sessionQueries: string[] = [];
     globalThis.fetch = (async (url) => {
       const parsedUrl = new URL(String(url));
       if (parsedUrl.pathname === "/api/sessions") {
+        sessionQueries.push(parsedUrl.search);
+        const offset = Number(parsedUrl.searchParams.get("offset") ?? 0);
         return Response.json({
           sessions: Array.from({ length: 100 }, (_, index) => ({
-            id: `s${index + 1}`,
-            title: `Session ${index + 1}`,
+            id: `s${offset + index + 1}`,
+            title: `Session ${offset + index + 1}`,
             message_count: index + 1,
             updated_at: `2026-06-30T08:${String(index % 60).padStart(2, "0")}:00.000Z`,
           })),
           total: 3407,
           limit: 100,
-          offset: 0,
+          offset,
           hasMore: true,
         });
       }
@@ -1345,13 +1348,20 @@ describe("mobile API client", () => {
     try {
       const api = new CybaraMobileApi(profile);
       const page = await api.sessionList();
+      const olderPage = await api.sessionList({ limit: 100, offset: 100 });
       const summary = await api.featureSummary();
 
       expect(page.sessions).toHaveLength(100);
       expect(page.total).toBe(3407);
       expect(page.hasMore).toBe(true);
+      expect(olderPage.sessions.some((session) => session.id === "s101")).toBe(true);
       expect(summary.sessions).toHaveLength(100);
       expect(summary.sessionTotal).toBe(3407);
+      expect(sessionQueries).toEqual([
+        "?limit=100&offset=0&includeTotal=1",
+        "?limit=100&offset=100&includeTotal=1",
+        "?limit=100&offset=0&includeTotal=1",
+      ]);
     } finally {
       globalThis.fetch = originalFetch;
     }

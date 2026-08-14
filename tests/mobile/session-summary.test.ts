@@ -67,4 +67,33 @@ describe("mobile session summary reconciliation", () => {
     expect(mergeSessionDetailIntoSummary(null, detail)).toBeNull();
     expect(mergeSessionDetailIntoSummary(summary, detail)).toBe(summary);
   });
+
+  test("preserves summary identity when hydrated detail has no visible changes", () => {
+    const summary = {
+      sessions: [
+        {
+          id: "session-1",
+          title: "Complete",
+          message_count: 1,
+          updated_at: "2026-08-13T12:00:00.000Z",
+          last_message: { role: "assistant", content: "Done" },
+        },
+      ],
+    } as FeatureSummary;
+    const detail = {
+      id: "session-1",
+      title: "Complete",
+      updatedAt: "2026-08-13T12:00:00.000Z",
+      messages: [
+        {
+          id: "message-1",
+          role: "assistant",
+          content: "Done",
+          timestamp: "2026-08-13T12:00:00.000Z",
+        },
+      ],
+    } as SessionDetailSummary;
+
+    expect(mergeSessionDetailIntoSummary(summary, detail)).toBe(summary);
+  });
 });

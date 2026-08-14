@@ -1074,7 +1074,10 @@ interface MobileWebSocket {
   close: () => void;
 }
 
-type MobileWebSocketConstructor = new (url: string) => MobileWebSocket;
+type MobileWebSocketConstructor = new (
+  url: string,
+  protocols?: string | string[]
+) => MobileWebSocket;
 
 export interface MobileStatusStreamOptions {
   reconnectDelayMs?: number;

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import type { MobileSessionStatusResponse } from "../../apps/mobile/src/lib/api";
 import {
   clearCachedMobileLiveAssistant,
   isMobileSessionSnapshotCurrent,
+  isMobileSessionStatusActive,
   liveActivityFromStatusEvent,
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
@@ -71,6 +73,36 @@ describe("mobile live chat cache", () => {
     expect(isMobileSessionSnapshotCurrent(oldTimestamp, true, now)).toBe(true);
     expect(isMobileSessionSnapshotCurrent(oldTimestamp, false, now)).toBe(false);
     expect(isMobileSessionSnapshotCurrent(now - 5_000, false, now)).toBe(true);
+  });
+
+  test("does not treat a recent stale generating snapshot as an active run", () => {
+    const sessionId = "completed-session";
+    const inactiveStatus = {
+      active: false,
+      activeSessionIds: [],
+      activeSessions: [],
+      count: 0,
+      session: {
+        sessionId,
+        status: "generating",
+        timestamp: Date.now(),
+        activities: [],
+      },
+    } satisfies MobileSessionStatusResponse;
+
+    expect(isMobileSessionStatusActive(sessionId, inactiveStatus)).toBe(false);
+    expect(
+      isMobileSessionStatusActive(sessionId, {
+        ...inactiveStatus,
+        activeSessionIds: [` ${sessionId} `],
+      })
+    ).toBe(true);
+    expect(
+      isMobileSessionStatusActive(sessionId, {
+        ...inactiveStatus,
+        active: true,
+      })
+    ).toBe(true);
   });
 
   test("replaces active compaction with its completed result", () => {

@@ -4,11 +4,14 @@ import {
   formatMetricNumber,
   formatStorageBytes,
   hasDetailedMetrics,
+  hasMetricEndpoint,
   mergeMetricsOverview,
+  metricProgressPercent,
   metricSuccessRate,
   metricsOverviewSnapshot,
   modelTokenShareRows,
   providerTokenShareRows,
+  reconcileMetricsSnapshot,
   storageCategoryEntries,
   timeSeriesTotals,
   tokenFlowBars,
@@ -21,7 +24,7 @@ import {
 
 const overview: MetricsOverview = {
   tokenUsage: { total: 1500, input: 900, output: 500, cache: 100 },
-  fileOperations: { filesRead: 4, filesWritten: 3, filesEdited: 2 },
+  fileOperations: { filesRead: 4, filesWritten: 3, filesEdited: 2, filesSearched: 5 },
   toolCalls: { totalCalls: 8 },
   apiCalls: { totalCalls: 10, successfulCalls: 9, failedCalls: 1 },
   agentActivity: { totalExecutions: 5, totalMessages: 6 },
@@ -39,15 +42,25 @@ const storage: MetricsStorage = {
 describe("mobile metrics helpers", () => {
   test("formats core web metrics for compact native cards", () => {
     expect(formatMetricNumber(1500)).toBe("1.5K");
+    expect(formatMetricNumber(undefined)).toBe("--");
     expect(formatMetricBytes(2048)).toBe("2.0 KB");
+    expect(formatMetricBytes(undefined)).toBe("--");
     expect(formatStorageBytes(77_279_809_536)).toBe("77.28 GB");
     expect(metricSuccessRate(overview)).toBe("90.0%");
-    expect(totalFileOperations(overview)).toBe(9);
+    expect(metricSuccessRate(null)).toBe("--");
+    expect(totalFileOperations(overview)).toBe(14);
     expect(tokenFlowBars(overview)).toEqual([
       { label: "Input", value: 900 },
       { label: "Output", value: 500 },
       { label: "Cache", value: 100 },
     ]);
+  });
+
+  test("keeps zero-value chart bars visually empty", () => {
+    expect(metricProgressPercent(0, 100, 4)).toBe(0);
+    expect(metricProgressPercent(1, 100, 4)).toBe(4);
+    expect(metricProgressPercent(150, 100, 4)).toBe(100);
+    expect(metricProgressPercent(Number.NaN, 100, 4)).toBe(0);
   });
 
   test("builds and refreshes a lightweight overview without losing detailed metrics", () => {
@@ -74,6 +87,51 @@ describe("mobile metrics helpers", () => {
     expect(refreshed.storage).toBe(storage);
     expect(refreshed.availability.storage.ok).toBe(true);
     expect(hasDetailedMetrics(refreshed)).toBe(true);
+  });
+
+  test("keeps partial metric endpoint failures unavailable instead of treating them as zero", () => {
+    const partial = {
+      ...metricsOverviewSnapshot(overview),
+      tools: {
+        mostUsed: [],
+        mostErrors: [],
+        recentCalls: [],
+      },
+      availability: {
+        ...metricsOverviewSnapshot(overview).availability,
+        tools: { ok: true },
+        insights: { ok: false, error: "insights offline" },
+        sessions: { ok: false, error: "sessions offline" },
+      },
+    } satisfies MetricsSnapshot;
+
+    expect(hasMetricEndpoint(partial, "tools")).toBe(true);
+    expect(hasMetricEndpoint(partial, "insights")).toBe(false);
+    expect(hasMetricEndpoint(partial, "sessions")).toBe(false);
+    expect(hasDetailedMetrics(partial)).toBe(true);
+  });
+
+  test("preserves an overview completed after an older full snapshot request began", () => {
+    const incoming = {
+      ...metricsOverviewSnapshot(overview),
+      storage,
+      availability: {
+        ...metricsOverviewSnapshot(overview).availability,
+        storage: { ok: true },
+      },
+    } satisfies MetricsSnapshot;
+    const newerOverview = {
+      ...overview,
+      tokenUsage: { ...overview.tokenUsage, total: 2400 },
+    };
+    const current = mergeMetricsOverview(incoming, newerOverview);
+
+    const reconciled = reconcileMetricsSnapshot(current, incoming, 4, 5);
+    expect(reconciled.overview?.tokenUsage.total).toBe(2400);
+    expect(reconciled.storage).toBe(storage);
+
+    const withoutOverlap = reconcileMetricsSnapshot(current, incoming, 5, 5);
+    expect(withoutOverlap.overview?.tokenUsage.total).toBe(1500);
   });
 
   test("builds storage and time-series chart rows deterministically", () => {

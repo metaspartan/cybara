@@ -354,6 +354,7 @@ describe("mobile: chat management", () => {
 
   test("uses authoritative active state for queueing and live timing", () => {
     const detail = read("screens/dashboardSessionDetail.tsx");
+    const runtime = read("screens/useMobileSessionRuntime.ts");
     expect(detail).toContain(
       "const chatBusy = sending || sessionActive || pendingMessages.length > 0;"
     );
@@ -362,5 +363,7 @@ describe("mobile: chat management", () => {
     expect(detail).not.toContain(
       "const chatBusy = sending || !!liveAssistant || pendingMessages.length > 0;"
     );
+    expect(runtime).toContain("const active = serverReportsActive;");
+    expect(runtime).not.toContain("snapshotStatus ===");
   });
 });

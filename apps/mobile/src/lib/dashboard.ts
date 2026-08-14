@@ -86,6 +86,15 @@ export function mergeSessionDetailIntoSummary(
       ? { role: lastMessage.role, content: lastMessage.content }
       : current.last_message,
   };
+  if (
+    nextSession.title === current.title &&
+    nextSession.message_count === current.message_count &&
+    nextSession.updated_at === current.updated_at &&
+    nextSession.last_message?.role === current.last_message?.role &&
+    nextSession.last_message?.content === current.last_message?.content
+  ) {
+    return summary;
+  }
   const sessions = [...summary.sessions];
   sessions[sessionIndex] = nextSession;
   return { ...summary, sessions };
@@ -130,6 +139,23 @@ export const MOBILE_SETTINGS_TABS: Array<{
   { label: "System", value: "system" },
   { label: "Logs", value: "logs" },
 ];
+
+const MOBILE_SETTINGS_TAB_BY_SURFACE: Partial<Record<MobileSurfaceKey, MobileSettingsTab>> = {
+  agents: "agents",
+  approvals: "safety",
+  channels: "channels",
+  logs: "logs",
+  memory: "memory",
+  monitor: "system",
+  providers: "providers",
+  skills: "skills",
+  tools: "tools",
+  wallet: "wallet",
+};
+
+export function mobileSettingsTabForSurface(surface: MobileSurfaceKey): MobileSettingsTab | null {
+  return MOBILE_SETTINGS_TAB_BY_SURFACE[surface] ?? null;
+}
 
 export const MOBILE_HOME_CHROME = {
   firstSection: "recent_activity" as const,
@@ -669,8 +695,20 @@ export function mobileProviderAuthMode(
   return "api_key";
 }
 
-export function recentSessionStateLabel(session: SessionSummary): "Working" | "Recent" {
-  return session.last_message?.role === "user" ? "Working" : "Recent";
+export function mobileSessionIsActive(
+  session: Pick<SessionSummary, "id">,
+  activeSessionIds: readonly string[]
+): boolean {
+  const sessionId = session.id.trim();
+  if (!sessionId) return false;
+  return activeSessionIds.some((candidate) => candidate.trim() === sessionId);
+}
+
+export function recentSessionStateLabel(
+  session: SessionSummary,
+  activeSessionIds: readonly string[]
+): "Working" | "Recent" {
+  return mobileSessionIsActive(session, activeSessionIds) ? "Working" : "Recent";
 }
 
 export function lastUpdatedLabel(session: SessionSummary, nowMs = Date.now()): string {

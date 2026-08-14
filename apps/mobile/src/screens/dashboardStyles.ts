@@ -372,6 +372,24 @@ const makeStyles = () =>
       fontSize: typography.label,
       fontWeight: "900",
     },
+    sessionSearchField: {
+      alignItems: "center",
+      backgroundColor: colors.inset,
+      borderColor: colors.borderStrong,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: spacing.sm,
+      minHeight: 46,
+      paddingHorizontal: spacing.md,
+    },
+    sessionSearchInput: {
+      color: colors.text,
+      flex: 1,
+      fontSize: typography.body,
+      minHeight: 44,
+      paddingVertical: spacing.sm,
+    },
     logPageFooter: {
       alignItems: "center",
       borderTopColor: colors.border,
@@ -555,12 +573,17 @@ const makeStyles = () =>
       borderRadius: radius.md,
       borderWidth: 1,
       flex: 1,
-      minHeight: 34,
+      minHeight: 44,
       justifyContent: "center",
       paddingHorizontal: spacing.xs,
     },
     metricSectionTabText: {
       fontSize: typography.tiny,
+      fontWeight: "700",
+    },
+    metricFreshnessText: {
+      color: colors.textMuted,
+      fontSize: typography.label,
       fontWeight: "700",
     },
     metricSkeletonHero: {
