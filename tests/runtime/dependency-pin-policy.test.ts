@@ -48,4 +48,16 @@ describe("JavaScript dependency pin policy", () => {
 
     expect(violations).toEqual([]);
   });
+
+  test("web and mobile lockfiles resolve the patched Nano ID release", () => {
+    for (const directory of ["ui", "apps/mobile"] as const) {
+      const pkg = readJson(`${directory}/package.json`);
+      const overrides = pkg.overrides as Record<string, unknown>;
+      const lockfile = readFileSync(join(ROOT_DIR, directory, "bun.lock"), "utf8");
+
+      expect(overrides.nanoid).toBe("3.3.18");
+      expect(lockfile).toContain('"nanoid": ["nanoid@3.3.18"');
+      expect(lockfile).not.toContain('"nanoid": ["nanoid@3.3.17"');
+    }
+  });
 });
