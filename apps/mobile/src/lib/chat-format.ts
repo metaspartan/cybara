@@ -29,8 +29,8 @@ export function mobileMediaSummaryLabel(images: MobileMessageImage[], maxImages:
 }
 
 export type MessageContentPart =
-  | { type: "text"; content: string }
-  | { type: "code"; language: string; content: string };
+  | { type: "text"; content: string; key: string }
+  | { type: "code"; language: string; content: string; key: string };
 
 export type UnicodeTextRun = {
   type: "text" | "emoji" | "unicode";
@@ -106,19 +106,24 @@ export function splitMessageContent(content: string): MessageContentPart[] {
   let match: RegExpExecArray | null;
   while ((match = regex.exec(content))) {
     if (match.index > cursor) {
-      parts.push({ type: "text", content: content.slice(cursor, match.index) });
+      parts.push({
+        type: "text",
+        content: content.slice(cursor, match.index),
+        key: `text-${cursor}`,
+      });
     }
     parts.push({
       type: "code",
       language: match[1]?.trim() || "code",
       content: match[2] || "",
+      key: `code-${match.index}`,
     });
     cursor = match.index + match[0].length;
   }
   if (cursor < content.length) {
-    parts.push({ type: "text", content: content.slice(cursor) });
+    parts.push({ type: "text", content: content.slice(cursor), key: `text-${cursor}` });
   }
-  return parts.length > 0 ? parts : [{ type: "text", content }];
+  return parts.length > 0 ? parts : [{ type: "text", content, key: "text-0" }];
 }
 
 const REASONING_MARKUP_TOKEN_PATTERN =
@@ -525,7 +530,13 @@ export type MarkdownInline =
 export type MarkdownBlock =
   | { type: "heading"; level: number; inline: MarkdownInline[] }
   | { type: "paragraph"; inline: MarkdownInline[] }
-  | { type: "listItem"; ordered: boolean; marker: string; inline: MarkdownInline[] }
+  | {
+      type: "listItem";
+      ordered: boolean;
+      marker: string;
+      inline: MarkdownInline[];
+      checked?: boolean;
+    }
   | { type: "quote"; inline: MarkdownInline[] }
   | { type: "rule" }
   | { type: "table"; header: MarkdownInline[][]; rows: MarkdownInline[][][] };
@@ -580,7 +591,10 @@ export function extractMobileMarkdownImages(input: string): MobileMarkdownImageE
 export function parseInlineMarkdown(input: string): MarkdownInline[] {
   const tokens: MarkdownInline[] = [];
   let rest = input;
-  const patterns: Array<{ re: RegExp; make: (m: RegExpExecArray) => MarkdownInline }> = [
+  const patterns: Array<{
+    re: RegExp;
+    make: (m: RegExpExecArray) => MarkdownInline;
+  }> = [
     { re: /`([^`]+)`/, make: (m) => ({ type: "code", text: m[1] }) },
     {
       re: /\[([^\]]+)\]\(([^)\s]+)[^)]*\)/,
@@ -589,8 +603,14 @@ export function parseInlineMarkdown(input: string): MarkdownInline[] {
     { re: /\*\*([^*]+)\*\*/, make: (m) => ({ type: "bold", text: m[1] }) },
     { re: /__([^_]+)__/, make: (m) => ({ type: "bold", text: m[1] }) },
     { re: /~~([^~]+)~~/, make: (m) => ({ type: "strike", text: m[1] }) },
-    { re: /(?<![*\w])\*([^*\n]+)\*(?![*\w])/, make: (m) => ({ type: "italic", text: m[1] }) },
-    { re: /(?<![_\w])_([^_\n]+)_(?![_\w])/, make: (m) => ({ type: "italic", text: m[1] }) },
+    {
+      re: /(?<![*\w])\*([^*\n]+)\*(?![*\w])/,
+      make: (m) => ({ type: "italic", text: m[1] }),
+    },
+    {
+      re: /(?<![_\w])_([^_\n]+)_(?![_\w])/,
+      make: (m) => ({ type: "italic", text: m[1] }),
+    },
   ];
 
   let guard = 0;
@@ -697,11 +717,13 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
     const unordered = /^[-*+]\s+(.*)$/.exec(trimmed);
     if (unordered) {
       flushParagraph();
+      const task = /^\[([ xX])\]\s+(.*)$/.exec(unordered[1]);
       blocks.push({
         type: "listItem",
         ordered: false,
         marker: "•",
-        inline: parseInlineMarkdown(unordered[1]),
+        inline: parseInlineMarkdown(task?.[2] || unordered[1]),
+        checked: task ? task[1].toLowerCase() === "x" : undefined,
       });
       continue;
     }
@@ -710,6 +732,11 @@ export function parseMarkdownBlocks(input: string): MarkdownBlock[] {
   }
   flushParagraph();
   return blocks;
+}
+
+export function mobileCodeLineCount(content: string): number {
+  const normalized = content.replace(/\r\n/g, "\n").replace(/\n$/, "");
+  return normalized ? normalized.split("\n").length : 0;
 }
 
 const STREAM_REASONING_TAG =

@@ -44,6 +44,7 @@ import {
   extractMobileMarkdownImages,
   groupMobileActivities,
   hasUnicodeTextFallback,
+  mobileCodeLineCount,
   type MarkdownInline,
   type MobileActivityGroupKind,
   type MobileWorkActivity,
@@ -76,7 +77,10 @@ interface MobileFileChangeItem {
   removed: number;
 }
 
-function mobileFilePathDisplay(path: string): { fileName: string; parentPath: string | null } {
+function mobileFilePathDisplay(path: string): {
+  fileName: string;
+  parentPath: string | null;
+} {
   const normalized = path.trim().replace(/\\/g, "/").replace(/\/+/g, "/");
   const segments = normalized.split("/").filter(Boolean);
   const fileName = segments.pop() || normalized || "file";
@@ -111,9 +115,11 @@ function mobileActivityFileChange(text: string, phase: string): MobileFileChange
   };
 }
 
-function collectMobileFileChanges(
-  message: SessionDetailSummary["messages"][number]
-): { files: MobileFileChangeItem[]; totalAdded: number; totalRemoved: number } | null {
+function collectMobileFileChanges(message: SessionDetailSummary["messages"][number]): {
+  files: MobileFileChangeItem[];
+  totalAdded: number;
+  totalRemoved: number;
+} | null {
   const byPath = new Map<string, MobileFileChangeItem>();
   for (const activity of message.processActivities || []) {
     const parsed = mobileActivityFileChange(activity.text || "", activity.phase || "result");
@@ -203,7 +209,9 @@ function InlineMarkdown({
                 selectable={selectable}
                 style={[
                   styles.mdInlineCode,
-                  { fontSize: getChatCodeFontSizePixels(appearance.codeFontSize) },
+                  {
+                    fontSize: getChatCodeFontSizePixels(appearance.codeFontSize),
+                  },
                 ]}
               >
                 {token.text}
@@ -216,7 +224,9 @@ function InlineMarkdown({
                 selectable={selectable}
                 style={[
                   styles.mdLink,
-                  { textDecorationLine: appearance.underlineLinks ? "underline" : "none" },
+                  {
+                    textDecorationLine: appearance.underlineLinks ? "underline" : "none",
+                  },
                 ]}
                 onPress={() => {
                   void openAllowedExternalUrl(token.href).catch(() => {});
@@ -259,7 +269,9 @@ function MarkdownText({
                 selectable
                 style={[
                   block.level === 1 ? styles.mdH1 : block.level === 2 ? styles.mdH2 : styles.mdH3,
-                  { fontSize: fontSize + (block.level === 1 ? 8 : block.level === 2 ? 5 : 2) },
+                  {
+                    fontSize: fontSize + (block.level === 1 ? 8 : block.level === 2 ? 5 : 2),
+                  },
                 ]}
               >
                 <InlineMarkdown appearance={appearance} tokens={block.inline} />
@@ -268,9 +280,21 @@ function MarkdownText({
           case "listItem":
             return (
               <View key={index} style={styles.mdListRow}>
-                <Text selectable style={[styles.mdListMarker, bodyStyle]}>
-                  {block.marker}
-                </Text>
+                {block.checked === undefined ? (
+                  <Text selectable style={[styles.mdListMarker, bodyStyle]}>
+                    {block.marker}
+                  </Text>
+                ) : (
+                  <View
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: block.checked }}
+                    style={[styles.mdTaskCheckbox, block.checked && styles.mdTaskCheckboxChecked]}
+                  >
+                    {block.checked ? (
+                      <Check color={colors.background} size={11} strokeWidth={3} />
+                    ) : null}
+                  </View>
+                )}
                 <Text selectable style={[styles.mdListText, bodyStyle]}>
                   <InlineMarkdown appearance={appearance} tokens={block.inline} />
                 </Text>
@@ -493,7 +517,11 @@ function MobilePlanStatusIcon({
 function MobileFileChangesCard({
   summary,
 }: {
-  summary: { files: MobileFileChangeItem[]; totalAdded: number; totalRemoved: number };
+  summary: {
+    files: MobileFileChangeItem[];
+    totalAdded: number;
+    totalRemoved: number;
+  };
 }) {
   return (
     <View style={styles.mobileFileChangesCard}>
@@ -944,33 +972,79 @@ export function MessageContent({
 }) {
   return (
     <View style={styles.messageContent}>
-      {splitMessageContent(content).map((part, index) =>
+      {splitMessageContent(content).map((part) =>
         part.type === "code" ? (
-          <View key={`code-${index}`} style={styles.codeBlock}>
-            <Text selectable style={styles.codeHeader}>
-              {part.language}
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator>
-              <UnicodeText
-                content={part.content}
-                style={[
-                  styles.codeText,
-                  !hasUnicodeTextFallback(part.content) && styles.codeTextMonospace,
-                  {
-                    fontSize: getChatCodeFontSizePixels(appearance.codeFontSize),
-                    lineHeight: Math.round(
-                      getChatCodeFontSizePixels(appearance.codeFontSize) *
-                        getChatLineHeight(appearance.lineSpacing)
-                    ),
-                  },
-                ]}
-              />
-            </ScrollView>
-          </View>
+          <MobileCodeBlock
+            key={part.key}
+            appearance={appearance}
+            content={part.content}
+            language={part.language}
+          />
         ) : part.content.trim().length > 0 ? (
-          <MarkdownText key={`text-${index}`} appearance={appearance} content={part.content} />
+          <MarkdownText key={part.key} appearance={appearance} content={part.content} />
         ) : null
       )}
+    </View>
+  );
+}
+
+function MobileCodeBlock({
+  appearance,
+  content,
+  language,
+}: {
+  appearance: ChatAppearanceSettings;
+  content: string;
+  language: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const lineCount = mobileCodeLineCount(content);
+  return (
+    <View style={styles.codeBlock}>
+      <View style={styles.codeHeader}>
+        <Text selectable style={styles.codeLanguage}>
+          {language}
+        </Text>
+        <Text style={styles.codeLineCount}>
+          {lineCount} {lineCount === 1 ? "line" : "lines"}
+        </Text>
+        <Pressable
+          accessibilityLabel={copied ? "Code copied" : "Copy code"}
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => {
+            void Clipboard.setStringAsync(content)
+              .then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              })
+              .catch(() => {});
+          }}
+          style={styles.codeCopyButton}
+        >
+          {copied ? (
+            <Check color={colors.green} size={13} strokeWidth={2.2} />
+          ) : (
+            <Copy color={colors.textMuted} size={13} strokeWidth={2.2} />
+          )}
+        </Pressable>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator style={styles.codeScroll}>
+        <UnicodeText
+          content={content}
+          style={[
+            styles.codeText,
+            !hasUnicodeTextFallback(content) && styles.codeTextMonospace,
+            {
+              fontSize: getChatCodeFontSizePixels(appearance.codeFontSize),
+              lineHeight: Math.round(
+                getChatCodeFontSizePixels(appearance.codeFontSize) *
+                  getChatLineHeight(appearance.lineSpacing)
+              ),
+            },
+          ]}
+        />
+      </ScrollView>
     </View>
   );
 }

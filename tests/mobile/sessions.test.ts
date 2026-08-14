@@ -171,6 +171,18 @@ describe("mobile: chat management", () => {
     expect(chat).toContain("content = markdown.content");
   });
 
+  test("mobile code blocks match desktop metadata without stretching message bubbles", () => {
+    const chat = read("screens/dashboardChat.tsx");
+    const styles = readStyles();
+
+    expect(chat).toContain("mobileCodeLineCount(content)");
+    expect(chat).toContain('accessibilityLabel={copied ? "Code copied" : "Copy code"}');
+    expect(chat).toContain("style={styles.codeScroll}");
+    expect(styles).toContain("codeScroll:");
+    expect(styles).toContain("flexGrow: 0");
+    expect(styles).toContain("flexShrink: 1");
+  });
+
   test("chat images open in an in-app preview without sending bearer URLs to another app", () => {
     const chat = read("screens/dashboardChat.tsx");
 
