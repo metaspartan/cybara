@@ -63,6 +63,7 @@ describe("GitHub Actions security posture", () => {
     expect(workflow).toContain("--lockfile=bun.lock");
     expect(workflow).toContain("--lockfile=ui/bun.lock");
     expect(workflow).toContain("--lockfile=apps/mobile/bun.lock");
+    expect(workflow).toContain("--lockfile=site/bun.lock");
     expect(workflow).toContain("--lockfile=src-tauri/Cargo.lock");
   });
 
