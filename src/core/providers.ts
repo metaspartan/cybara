@@ -689,7 +689,7 @@ export function getDefaultModel(providerType: string): string {
     venice: "zai-org-glm-5",
     "z.ai": "glm-5.2",
     zai: "glm-5.2",
-    "z.ai-coding": "glm-5.2",
+    "z.ai-coding": "glm-5.3",
     xiaomi: "mimo-v2.5-pro",
     opencode_zen: "claude-opus-5",
     commandcode: "claude-opus-5",

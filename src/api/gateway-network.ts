@@ -37,6 +37,20 @@ export function readRuntimeGatewayHost(): string {
   return readConfiguredGatewayHost();
 }
 
+function validGatewayPort(value: unknown): number | undefined {
+  const port = Number(value);
+  return Number.isInteger(port) && port > 0 && port < 65536 ? port : undefined;
+}
+
+export function readRuntimeGatewayPort(): number {
+  return (
+    validGatewayPort(process.env.CYBARA_RUNTIME_PORT) ??
+    validGatewayPort(process.env.PORT) ??
+    validGatewayPort(config.get<unknown>("port")) ??
+    4269
+  );
+}
+
 export function normalizeGatewayBindHost(value: unknown): string {
   if (typeof value !== "string") {
     throw new Error("host must be a string");
@@ -73,7 +87,7 @@ export function gatewayAuthSettingsResponse() {
     success: true,
     ...getGatewayAuthSettings(),
     ...gatewayNetworkSettings(),
-    port: Number(process.env.PORT) || config.get<number>("port") || 4269,
+    port: readRuntimeGatewayPort(),
     configuredPort: config.get<number>("port") || 4269,
     portForced: Boolean(Number(process.env.PORT)),
   };
@@ -299,7 +313,7 @@ export function updateGatewayHostSetting(
     hostApplyError: apply.error,
     gatewayFirewall: ensureWindowsGatewayFirewallRule({
       host: nextHost,
-      port: options.port || Number(process.env.PORT) || config.get<number>("port") || 4269,
+      port: options.port || readRuntimeGatewayPort(),
     }),
   };
 }

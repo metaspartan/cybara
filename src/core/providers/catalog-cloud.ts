@@ -8,6 +8,14 @@ const XAI_GROK_PROXY_BASE_URL = "https://cli-chat-proxy.grok.com/v1";
 
 const QWEN_TOKEN_PLAN_MODELS = [
   {
+    id: "qwen3.8-max",
+    name: "Qwen3.8 Max",
+    context: 1000000,
+    maxTokens: 65536,
+    reasoning: true,
+    input: ["text", "image"],
+  },
+  {
     id: "qwen3.7-max",
     name: "Qwen3.7 Max",
     context: 1000000,
