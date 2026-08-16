@@ -113,6 +113,11 @@ interface CliProcessActivity {
 interface CliChatResponse {
   sessionId?: string;
   queued?: boolean;
+  interrupted?: boolean;
+  failure?: {
+    category?: string;
+    retryable?: boolean;
+  };
   agent?: { id?: string };
   message?: {
     content?: unknown;
@@ -619,10 +624,21 @@ export async function rawAgent(rawArgs: string[]): Promise<void> {
 
   const content = extractTextContent(res.message?.content || "");
   if (json) {
-    console.log(JSON.stringify({ sessionId: res.sessionId, content }));
+    const toolCalls = collectToolCalls(res);
+    const processActivities = collectActivities(res);
+    console.log(
+      JSON.stringify({
+        sessionId: res.sessionId,
+        content,
+        ...(toolCalls.length > 0 ? { toolCalls } : {}),
+        ...(processActivities.length > 0 ? { processActivities } : {}),
+        ...(res.interrupted === true ? { interrupted: true, failure: res.failure ?? null } : {}),
+      })
+    );
   } else {
     console.log(formatMarkdownForTerminal(content));
   }
+  if (res.interrupted === true) process.exitCode = 1;
 }
 
 async function rawChatPendingCommand(rawArgs: string[]): Promise<boolean> {
