@@ -1,5 +1,8 @@
 import React from "react";
-import { isProviderRecoveryStatusLabel } from "../../../../shared/chat-status";
+import {
+  isDelegatedWaitStatusLabel,
+  isProviderRecoveryStatusLabel,
+} from "../../../../shared/chat-status";
 import {
   maintainTUIStatusStream,
   reconcileTUIStreamingText,
@@ -114,6 +117,7 @@ export function useInteractiveChatStatus({
       setStreamDetail(
         event.detail && !isProviderRecoveryStatusLabel(event.detail) ? event.detail : ""
       );
+      if (isDelegatedWaitStatusLabel(event.detail)) setStreamingText("");
       if (!event.toolPhase && !event.toolName) return;
       const phase = event.toolPhase || (event.status === "error" ? "error" : "result");
       const id = event.toolCallId || `${event.toolName || "activity"}-${event.timestamp}`;

@@ -9,6 +9,7 @@ import {
   formatTokenUsageLine,
   lspServersFromResponse,
   subagentsFromResponse,
+  subagentListPath,
   tasksForSession,
   tasksFromResponse,
 } from "../../src/cli/tui/chat-environment";
@@ -68,6 +69,38 @@ describe("CLI TUI environment helpers", () => {
     expect(formatTokenUsageLine(snapshot.tokenUsage)).toContain("18.25 tok/s");
     expect(formatPlanLine(snapshot.plan)).toContain("1/3 complete");
     expect(formatFileChangeLine(snapshot.fileChanges)).toContain("2 files");
+  });
+
+  test("normalizes the gateway context usage field names", () => {
+    const snapshot = environmentSnapshotFromDetail({
+      contextUsage: {
+        usedTokens: 40_143,
+        limitTokens: 128_000,
+        usedPercent: 31.4,
+        compacted: true,
+        compactionCount: 1,
+        compactedTokens: 81_082,
+      },
+    });
+
+    expect(snapshot.contextUsage).toEqual({
+      tokensUsed: 40_143,
+      contextWindow: 128_000,
+      percentage: 31,
+      compacted: true,
+      compactionCount: 1,
+      compactedTokens: 81_082,
+    });
+    expect(formatContextUsageLine(snapshot.contextUsage)).toBe(
+      "Context: 31% · 40k / 128k tokens · compacted 1x (81k summarized)"
+    );
+  });
+
+  test("scopes subagent lists to the active session", () => {
+    expect(subagentListPath(" session/with spaces ")).toBe(
+      "/api/subagents?sessionId=session%2Fwith%20spaces"
+    );
+    expect(subagentListPath(undefined)).toBe("/api/subagents");
   });
 
   test("extracts file changes from structured tool results", () => {

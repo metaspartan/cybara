@@ -29,7 +29,7 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("litellm")).toBe("gpt-4o");
     expect(getDefaultModel("z.ai")).toBe("glm-5.2");
     expect(getDefaultModel("zai")).toBe("glm-5.2");
-    expect(getDefaultModel("z.ai-coding")).toBe("glm-5.2");
+    expect(getDefaultModel("z.ai-coding")).toBe("glm-5.3");
     expect(getDefaultModel("antigravity")).toBe("gemini-3.1-pro-preview");
     expect(getDefaultModel("google-antigravity")).toBe("gemini-3.1-pro-preview");
     expect(getDefaultModel("google-gemini-cli")).toBe("gemini-3.1-pro-preview");
@@ -453,7 +453,13 @@ describe("Provider model defaults and API-family parity", () => {
   });
 
   test("keeps Qwen Token Plan regions and supported models distinct", () => {
-    const expectedIds = ["qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.6-flash"];
+    const expectedIds = [
+      "qwen3.8-max",
+      "qwen3.7-max",
+      "qwen3.7-plus",
+      "qwen3.6-plus",
+      "qwen3.6-flash",
+    ];
 
     expect(providers["qwen-token-plan"].baseUrl).toBe(
       "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
@@ -464,6 +470,26 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers["qwen-token-plan"].models.map((model) => model.id)).toEqual(expectedIds);
     expect(providers["qwen-token-plan-cn"].models.map((model) => model.id)).toEqual(expectedIds);
     expect(providers["qwen-token-plan"].authType).toBe("api_key");
+    expect(providers["qwen-token-plan"].models[0]).toMatchObject({
+      id: "qwen3.8-max",
+      context: 1000000,
+      reasoning: true,
+      input: ["text", "image"],
+    });
+  });
+
+  test("advertises GLM-5.3 only on the Z.AI Coding Plan endpoint", () => {
+    const apiIds = providers["z.ai"].models.map((model) => model.id);
+    const codingIds = providers["z.ai-coding"].models.map((model) => model.id);
+
+    expect(codingIds[0]).toBe("glm-5.3");
+    expect(apiIds).not.toContain("glm-5.3");
+    expect(providers["z.ai-coding"].models[0]).toMatchObject({
+      context: 1000000,
+      maxTokens: 131072,
+      reasoning: true,
+      code: true,
+    });
   });
 
   test("does not advertise non-interactive portal credentials as OAuth", () => {

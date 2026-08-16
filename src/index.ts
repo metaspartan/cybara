@@ -11,7 +11,10 @@ import {
   stopActiveChatTurn,
 } from "./api/chat";
 import { getClientIp } from "./api/client-ip";
-import { setGatewayHostApplyHandler } from "./api/gateway-network";
+import {
+  ensureWindowsGatewayFirewallRule,
+  setGatewayHostApplyHandler,
+} from "./api/gateway-network";
 import { gatewayRequestIdleTimeoutSeconds } from "./api/gateway-request-timeout";
 import { createLivenessPayload, isLivenessProbe } from "./api/health-probe";
 import { classifyRequestBodyReadFailure, readRequestText } from "./api/request-body";
@@ -1059,6 +1062,14 @@ function createInitialGatewayServer(hostname: string): ReturnType<typeof Bun.ser
 }
 
 let gatewayServer = createInitialGatewayServer(runtimeHost);
+const startupGatewayFirewall = ensureWindowsGatewayFirewallRule({ host: runtimeHost, port: PORT });
+if (startupGatewayFirewall.required) {
+  const method = startupGatewayFirewall.configured ? console.log : console.warn;
+  method(`[Gateway] ${startupGatewayFirewall.message}`);
+  if (!startupGatewayFirewall.configured && startupGatewayFirewall.command) {
+    console.warn(`[Gateway] Run as Administrator: ${startupGatewayFirewall.command}`);
+  }
+}
 if (process.env.CYBARA_GATEWAY_PORT_SIGNAL === "stdout") {
   console.log(gatewayPortSignal(PORT));
 }

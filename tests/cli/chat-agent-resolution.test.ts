@@ -21,7 +21,11 @@ test("one-shot chat resolves an agent display name before sending the turn", asy
           : {};
         return {
           sessionId: "session-id",
-          message: { content: "done" },
+          message: {
+            content: "done",
+            tool_calls: [{ id: "tool-1", name: "write", status: "completed" }],
+            process_activities: [{ id: "activity-1", phase: "tool_result", text: "wrote file" }],
+          },
         } as T;
       }
       return null;
@@ -30,7 +34,8 @@ test("one-shot chat resolves an agent display name before sending the turn", asy
   });
 
   const originalLog = console.log;
-  console.log = () => undefined;
+  const output: string[] = [];
+  console.log = (...values: unknown[]) => output.push(values.join(" "));
   try {
     await rawAgent(["Inspect the project", "--json", "--agent", "Kimi"]);
   } finally {
@@ -40,6 +45,10 @@ test("one-shot chat resolves an agent display name before sending the turn", asy
   expect(requestBody.agentId).toBe("kimi-agent-id");
   expect(requestBody.message).toBe("Inspect the project");
   expect(requestBody.sessionId).toBeString();
+  expect(JSON.parse(output.at(-1) || "{}")).toMatchObject({
+    toolCalls: [{ id: "tool-1", name: "write", status: "completed" }],
+    processActivities: [{ id: "activity-1", phase: "tool_result", text: "wrote file" }],
+  });
 });
 
 test("one-shot chat recovers the gateway-owned result after its request disconnects", async () => {
@@ -81,4 +90,44 @@ test("one-shot chat recovers the gateway-owned result after its request disconne
     sessionId,
     content: "Built and verified.",
   });
+});
+
+test("one-shot JSON chat reports interrupted provider failures with a failing exit code", async () => {
+  configureChatCli({
+    apiBase: "http://127.0.0.1:4269",
+    fetchAPI: async <T>(endpoint: string): Promise<T | null> => {
+      if (endpoint === "/api/chat") {
+        return {
+          sessionId: "session-rate-limited",
+          interrupted: true,
+          failure: { category: "rate_limit", retryable: true },
+          message: {
+            content: "Response interrupted before completion. Send the message again to retry.",
+          },
+        } as T;
+      }
+      return null;
+    },
+    withAuthHeaders: (headers?: HeadersInit): Headers => new Headers(headers),
+  });
+
+  const output: string[] = [];
+  const originalLog = console.log;
+  const originalExitCode = process.exitCode;
+  console.log = (...values: unknown[]) => output.push(values.join(" "));
+  try {
+    process.exitCode = 0;
+    await rawAgent(["Run the task", "--json"]);
+
+    expect(process.exitCode).toBe(1);
+    expect(JSON.parse(output.at(-1) || "{}")).toEqual({
+      sessionId: "session-rate-limited",
+      content: "Response interrupted before completion. Send the message again to retry.",
+      interrupted: true,
+      failure: { category: "rate_limit", retryable: true },
+    });
+  } finally {
+    process.exitCode = originalExitCode ?? 0;
+    console.log = originalLog;
+  }
 });

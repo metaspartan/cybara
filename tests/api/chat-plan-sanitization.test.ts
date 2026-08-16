@@ -21,7 +21,7 @@ describe("chat plan API sanitization", () => {
                 { content: "inspect", status: "completed", priority: "high" },
                 { content: "test", status: "pending", priority: "medium" },
               ],
-              summary: { total: 2, pending: 1, inProgress: 0, completed: 1 },
+              summary: { total: 2, pending: 1, inProgress: 0, completed: 1, cancelled: 0 },
               note: "Task list updated",
             },
           },
@@ -36,7 +36,7 @@ describe("chat plan API sanitization", () => {
         { content: "inspect", status: "completed", priority: "high" },
         { content: "test", status: "pending", priority: "medium" },
       ],
-      summary: { total: 2, pending: 1, inProgress: 0, completed: 1 },
+      summary: { total: 2, pending: 1, inProgress: 0, completed: 1, cancelled: 0 },
       note: "Task list updated",
     });
   });

@@ -372,9 +372,7 @@ const routes: Record<string, RouteHandler> = {
     }
 
     if (data.host !== undefined) {
-      const hostApply = updateGatewayHostSetting(data.host, data.applyHostNow, {
-        port: Number(process.env.PORT) || config.get<number>("port") || 4269,
-      });
+      const hostApply = updateGatewayHostSetting(data.host, data.applyHostNow);
       if (data.applyHostNow === true) return { ...gatewayAuthSettingsResponse(), ...hostApply };
     }
 

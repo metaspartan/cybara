@@ -11,6 +11,11 @@ export function isProviderRecoveryStatusLabel(value: unknown): boolean {
   return PROVIDER_RECOVERY_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
+export function isDelegatedWaitStatusLabel(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  return /^waiting for \d+ delegated tasks?\.\.\.$/i.test(value.trim());
+}
+
 export function isVisibleActivityText(value: unknown): value is string {
   return (
     typeof value === "string" &&

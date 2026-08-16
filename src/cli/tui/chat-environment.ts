@@ -133,6 +133,11 @@ export function shortPath(path: string, max = 42): string {
   return tail.length <= max - 2 ? `…/${tail}` : `…${tail.slice(-(max - 1))}`;
 }
 
+export function subagentListPath(sessionId?: string): string {
+  const key = sessionId?.trim();
+  return key ? `/api/subagents?sessionId=${encodeURIComponent(key)}` : "/api/subagents";
+}
+
 export function contextUsageFromDetail(detail: unknown): TuiContextUsage | null {
   if (!isRecord(detail) || !isRecord(detail.contextUsage)) return null;
   const usage = detail.contextUsage;
@@ -141,10 +146,12 @@ export function contextUsageFromDetail(detail: unknown): TuiContextUsage | null 
   const contextWindow =
     asNumber(usage.contextWindow) ||
     asNumber(usage.contextWindowTokens) ||
+    asNumber(usage.limitTokens) ||
     asNumber(usage.maxTokens);
   const percentage =
     asNumber(usage.percentage) ||
     asNumber(usage.percent) ||
+    asNumber(usage.usedPercent) ||
     (contextWindow > 0 ? Math.round((tokensUsed / contextWindow) * 100) : 0);
   return {
     tokensUsed,

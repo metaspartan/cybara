@@ -415,12 +415,18 @@ export async function handleSessionsWait(
     .filter((run): run is SubagentRunRecord => Boolean(run));
   const pendingRunIds = completedRuns.filter((run) => !run.endedAt).map((run) => run.runId);
   const finishedCount = completedRuns.length - pendingRunIds.length;
-  return {
+  const result = {
     status: pendingRunIds.length === 0 ? "completed" : finishedCount > 0 ? "partial" : "timeout",
     runs: completedRuns.map(subagentWaitResult),
     pendingRunIds,
     elapsedMs: Date.now() - startedAt,
-  };
+  } as const;
+  if (pendingRunIds.length === 0) {
+    for (const run of completedRuns) {
+      if (run.cleanup === "delete") subagentRegistry.releaseSubagentRun(run.runId);
+    }
+  }
+  return result;
 }
 
 function buildSubagentSystemPrompt(

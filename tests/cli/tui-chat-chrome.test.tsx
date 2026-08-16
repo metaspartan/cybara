@@ -169,6 +169,23 @@ describe("CLI TUI chat chrome", () => {
     expect(output).toContain("Inspection thought 7");
   });
 
+  test("renders an automatic delegated wait as active terminal work", () => {
+    const output = renderToString(
+      <LiveRunView
+        activities={[]}
+        content=""
+        detail="Waiting for 1 delegated task..."
+        maxColumns={72}
+        colorScheme="dark"
+        palette={tuiChatPalette("dark")}
+      />,
+      { columns: 80 },
+    );
+
+    expect(output).toContain("Cybara");
+    expect(output).toContain("Waiting for 1 delegated task...");
+  });
+
   test("sweeps a bounded highlight across live terminal status text", () => {
     expect(tuiShineSegments("Running tests", 0)).toEqual({
       before: "",

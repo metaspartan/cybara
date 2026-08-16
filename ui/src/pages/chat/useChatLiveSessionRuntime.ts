@@ -14,6 +14,7 @@ import {
   type StatusStreamStatusEvent,
   type StatusStreamTokenEvent,
 } from "@/lib/status-stream";
+import { isDelegatedWaitStatusLabel } from "../../../../shared/chat-status";
 import type { SessionContextUsage, SessionTokenUsage } from "@/types";
 import {
   type Dispatch,
@@ -1051,6 +1052,7 @@ export function useChatLiveSessionRuntime({
           if (!payload.toolName) {
             const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
             const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+            if (isDelegatedWaitStatusLabel(detail)) setStreamingContent(null);
             const eventTimestamp =
               typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
                 ? payload.timestamp

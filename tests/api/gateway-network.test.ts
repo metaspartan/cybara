@@ -3,6 +3,7 @@ import {
   buildWindowsGatewayFirewallCommand,
   ensureWindowsGatewayFirewallRule,
   normalizeGatewayBindHost,
+  readRuntimeGatewayPort,
   requestGatewayHostApply,
   setGatewayHostApplyHandler,
   updateGatewayHostSetting,
@@ -10,6 +11,8 @@ import {
 import { config } from "../../src/core/config";
 
 const originalCybaraHost = process.env.CYBARA_HOST;
+const originalRuntimePort = process.env.CYBARA_RUNTIME_PORT;
+const originalPort = process.env.PORT;
 
 describe("gateway network settings", () => {
   afterEach(() => {
@@ -17,6 +20,10 @@ describe("gateway network settings", () => {
     config.set("host", "127.0.0.1");
     if (originalCybaraHost === undefined) delete process.env.CYBARA_HOST;
     else process.env.CYBARA_HOST = originalCybaraHost;
+    if (originalRuntimePort === undefined) delete process.env.CYBARA_RUNTIME_PORT;
+    else process.env.CYBARA_RUNTIME_PORT = originalRuntimePort;
+    if (originalPort === undefined) delete process.env.PORT;
+    else process.env.PORT = originalPort;
   });
 
   test("normalizes safe bind hosts and rejects URLs", () => {
@@ -58,6 +65,28 @@ describe("gateway network settings", () => {
 
   test("builds a Windows firewall command that works across firewall profiles", () => {
     expect(buildWindowsGatewayFirewallCommand(4269)).toContain("-Profile Any");
+  });
+
+  test("uses the live fallback port for gateway settings and firewall rules", () => {
+    process.env.CYBARA_RUNTIME_PORT = "4271";
+    process.env.PORT = "4269";
+
+    expect(readRuntimeGatewayPort()).toBe(4271);
+
+    const calls: string[][] = [];
+    const result = ensureWindowsGatewayFirewallRule({
+      host: "0.0.0.0",
+      port: readRuntimeGatewayPort(),
+      platform: "win32",
+      runner: (cmd) => {
+        calls.push(cmd);
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    expect(result.ruleName).toBe("Cybara Gateway 4271");
+    expect(result.command).toContain("-LocalPort 4271");
+    expect(calls).toHaveLength(1);
   });
 
   test("does not touch Windows firewall when the host is local-only", () => {
