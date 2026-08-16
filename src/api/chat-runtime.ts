@@ -104,6 +104,7 @@ import {
 } from "./chat-provider-failure";
 import { appendToolImageReferences, maybeSaveAutomaticMemory } from "./chat-response-enrichment";
 import { recoverAssistantResponse } from "./chat-response-recovery";
+import { awaitSpawnedSubagentResults } from "./chat-subagent-completion";
 import {
   interruptActiveChatTurnForSteering,
   isChatTurnInterrupted,
@@ -1632,6 +1633,28 @@ async function handleChatTurn(
         }
         responseContent = recoveredResponse.responseContent;
         toolResults = recoveredResponse.toolResults;
+      }
+
+      if (!executionFailure) {
+        const automaticWait = await awaitSpawnedSubagentResults({
+          abortSignal: turnAbortController.signal,
+          agentId: agent.id,
+          sessionId: session.id,
+          toolResults,
+          onWaiting: (pendingCount) => {
+            broadcastStatus({
+              status: "thinking",
+              timestamp: Date.now(),
+              detail: `Waiting for ${pendingCount} delegated ${pendingCount === 1 ? "task" : "tasks"}...`,
+              sessionId: session.id,
+              agentId: agent?.id,
+            });
+          },
+        });
+        if (automaticWait) {
+          toolResults = [...toolResults, automaticWait];
+          responseContent = "";
+        }
       }
 
       const memorySettings = config.getMemoryBehaviorSettings();

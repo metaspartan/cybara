@@ -1,11 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import {
+  isDelegatedWaitStatusLabel,
   isGenericChatStatusLabel,
   isProviderRecoveryStatusLabel,
   isVisibleActivityText,
 } from "../../shared/chat-status";
 
 describe("chat status labels", () => {
+  test("recognizes delegated wait lifecycle labels", () => {
+    expect(isDelegatedWaitStatusLabel("Waiting for 1 delegated task...")).toBe(true);
+    expect(isDelegatedWaitStatusLabel("Waiting for 3 delegated tasks...")).toBe(true);
+    expect(isDelegatedWaitStatusLabel("Waiting for task...")).toBe(false);
+    expect(isDelegatedWaitStatusLabel("Generating response...")).toBe(false);
+  });
+
   test("classifies transient provider recovery as internal status", () => {
     for (const value of [
       "Provider connection interrupted; retrying (1/5)...",
