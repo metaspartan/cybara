@@ -12,6 +12,7 @@ import {
   registerSubagentRun,
   releaseSubagentRun,
 } from "../../src/core/subagent-registry";
+import { getActiveSessionRunId } from "../../src/core/session-event-ledger";
 import { onStatusStream } from "../../src/core/status";
 
 const createdAgentIds: string[] = [];
@@ -40,6 +41,14 @@ function spawnToolCall(runId: string): AgentToolCallResult {
       task: "inspect lifecycle",
     },
   };
+}
+
+async function waitForCondition(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("Timed out waiting for condition");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
 }
 
 describe("chat subagent completion", () => {
@@ -142,10 +151,22 @@ describe("chat subagent completion", () => {
         sessionId,
         tools: true,
       });
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      let responseSettled = false;
+      void responsePromise.then(() => {
+        responseSettled = true;
+      });
+      await waitForCondition(() => statusDetails.at(-1) === "Waiting for 1 delegated task...");
+
+      expect(responseSettled).toBe(false);
+      expect(getActiveSessionRunId(sessionId)).toBeDefined();
+      expect(statusDetails.at(-1)).toBe("Waiting for 1 delegated task...");
+      expect(executionCount).toBe(1);
+
       markRunCompleted(run.runId, "CHILD_RESULT=verified");
       const response = await responsePromise;
 
+      expect(responseSettled).toBe(true);
+      expect(getActiveSessionRunId(sessionId)).toBeUndefined();
       expect(response.message.content).toBe("The delegated check finished: CHILD_RESULT=verified");
       expect(response.message.tool_calls?.map((toolCall) => toolCall.name)).toEqual([
         "sessions_spawn",
