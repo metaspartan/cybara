@@ -10,6 +10,7 @@ import {
   formatTokenUsageLine,
   shortPath,
   subagentsFromResponse,
+  subagentListPath,
   tasksFromResponse,
 } from "../tui/chat-environment";
 import { resolveAgentIdentifier } from "./agent-resolution";
@@ -795,7 +796,7 @@ async function printEnvironment(sessionId: string): Promise<void> {
   const [snapshot, taskResponse, subagentResponse] = await Promise.all([
     fetchSessionEnvironment(sessionId),
     chatContext().fetchAPI<unknown>("/api/tasks"),
-    chatContext().fetchAPI<unknown>("/api/subagents"),
+    chatContext().fetchAPI<unknown>(subagentListPath(sessionId)),
   ]);
   const tasks = tasksFromResponse(taskResponse);
   const subagents = subagentsFromResponse(subagentResponse);
@@ -1213,7 +1214,7 @@ async function rawChat(options: CliChatOptions): Promise<void> {
     if (command === "subagent" || command === "subagents") {
       const [subcommand, ...subRest] = rest;
       if (subcommand !== "spawn") {
-        const response = await chatContext().fetchAPI<unknown>("/api/subagents");
+        const response = await chatContext().fetchAPI<unknown>(subagentListPath(sessionId));
         const subagents = subagentsFromResponse(response);
         if (subagents.length === 0) {
           console.log("  No subagents");
@@ -1239,6 +1240,7 @@ async function rawChat(options: CliChatOptions): Promise<void> {
         body: JSON.stringify({
           task,
           agentId,
+          requesterSessionId: sessionId,
           model: useModelRouter ? undefined : modelOverride,
           workspaceDir,
           cleanup: "keep",

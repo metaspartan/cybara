@@ -383,7 +383,7 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("resolveTerminalChatInspector");
     expect(cliTuiInteractiveChatSource).toContain('variant="sidebar"');
     expect(cliTuiInteractiveChatSource).toContain("environmentSidebarVisible");
-    expect(cliTuiInteractiveChatSource).toContain("?sessionId=");
+    expect(cliTuiInteractiveChatSource).toContain("subagentListPath(targetSessionId)");
     expect(cliTuiInteractiveChatSource).toContain("environmentSnapshotFromDetail");
     expect(cliTuiInteractiveChatSource).toContain("formatContextUsageLine");
     expect(cliTuiInteractiveChatSource).toContain("formatTokenUsageLine");
@@ -523,6 +523,10 @@ describe("CLI TUI source wiring", () => {
     expect(cliChatSource).toContain("formatAgentLine");
     expect(cliChatSource).toContain("printEnvironment");
     expect(cliChatSource).toContain("fetchSessionEnvironment");
+    expect(cliChatSource).toContain("requesterSessionId: sessionId");
+    expect(cliTuiInteractiveChatSource).toContain(
+      "requesterSessionId: localSessionId || undefined"
+    );
     expect(cliChatSource).toContain("environmentSnapshotFromDetail");
     expect(cliChatSource).toContain("/api/chat/sessions/${encodeURIComponent(sessionId)}/stop");
   });

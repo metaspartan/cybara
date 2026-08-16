@@ -8,6 +8,7 @@ import { agentManager } from "../../src/core/agent";
 import type { AgentToolCallResult } from "../../src/core/agent-internals";
 import { providerManager } from "../../src/core/providers";
 import {
+  getRun,
   markRunCompleted,
   registerSubagentRun,
   releaseSubagentRun,
@@ -39,6 +40,26 @@ function spawnToolCall(runId: string): AgentToolCallResult {
       childSessionKey: `agent:child:subagent:${runId}`,
       runId,
       task: "inspect lifecycle",
+    },
+  };
+}
+
+function todoToolCall(status: "in_progress" | "completed"): AgentToolCallResult {
+  return {
+    id: `todo-${status}`,
+    name: "todo",
+    args: {
+      items: [{ content: "Inspect delegated lifecycle", status, priority: "high" }],
+    },
+    result: {
+      items: [{ content: "Inspect delegated lifecycle", status, priority: "high" }],
+      summary: {
+        total: 1,
+        pending: 0,
+        inProgress: status === "in_progress" ? 1 : 0,
+        completed: status === "completed" ? 1 : 0,
+        cancelled: 0,
+      },
     },
   };
 }
@@ -76,6 +97,7 @@ describe("chat subagent completion", () => {
       childSessionKey: `agent:child:subagent:${crypto.randomUUID()}`,
       requesterSessionKey: sessionId,
       task: "inspect lifecycle",
+      cleanup: "delete",
     });
     createdRunIds.push(run.runId);
     const waitingCounts: number[] = [];
@@ -99,6 +121,7 @@ describe("chat subagent completion", () => {
         runs: [expect.objectContaining({ result: "CHILD_RESULT=ready", status: "completed" })],
       })
     );
+    expect(getRun(run.runId)).toBeUndefined();
   });
 
   test("keeps the chat active until its child finishes and synthesizes the child result", async () => {
@@ -178,5 +201,73 @@ describe("chat subagent completion", () => {
     } finally {
       unsubscribe();
     }
+  });
+
+  test("reconciles an unfinished plan after automatically waiting for delegated work", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Automatic Plan Reconciliation Provider",
+      api_key: "automatic-plan-reconciliation-key",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Automatic Plan Reconciliation Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "glm-5.3",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+    const sessionId = `automatic-plan-reconciliation-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const run = registerSubagentRun({
+      childSessionKey: `agent:child:subagent:${crypto.randomUUID()}`,
+      requesterSessionKey: sessionId,
+      task: "inspect lifecycle",
+      cleanup: "delete",
+    });
+    createdRunIds.push(run.runId);
+    let executionCount = 0;
+    agentManager.execute = (async (_agentId, _messages, options) => {
+      executionCount += 1;
+      if (executionCount === 1) {
+        return {
+          content: "The delegated lifecycle check is accepted.",
+          tool_calls: [todoToolCall("in_progress"), spawnToolCall(run.runId)],
+        };
+      }
+      expect(options?.useTools).toBe(true);
+      expect(options?.allowedToolNames).toEqual(["todo"]);
+      expect(options?.requireToolUse).toBe(true);
+      expect(options?.requiredToolName).toBe("todo");
+      return {
+        content: "The delegated lifecycle check finished successfully.",
+        tool_calls: [todoToolCall("completed")],
+      };
+    }) as typeof agentManager.execute;
+
+    setTimeout(() => markRunCompleted(run.runId, "CHILD_RESULT=verified"), 20);
+    const response = await handleChat({
+      message: "Plan, delegate, and complete this lifecycle check",
+      agentId: agent.id,
+      sessionId,
+      tools: true,
+    });
+
+    expect(response.message.content).toBe("The delegated lifecycle check finished successfully.");
+    expect(response.message.tool_calls?.map((toolCall) => toolCall.name)).toEqual([
+      "todo",
+      "sessions_spawn",
+      "sessions_wait",
+      "todo",
+    ]);
+    expect(response.plan?.summary).toEqual({
+      total: 1,
+      pending: 0,
+      inProgress: 0,
+      completed: 1,
+      cancelled: 0,
+    });
+    expect(getRun(run.runId)).toBeUndefined();
   });
 });

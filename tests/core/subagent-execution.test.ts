@@ -86,6 +86,21 @@ describe("Subagent execution wiring", () => {
     });
 
     expect(run.runTimeoutSeconds).toBe(0);
+    expect(run.archiveAtMs).toBeUndefined();
+  });
+
+  test("starts the archive window only after a subagent becomes terminal", () => {
+    const run = registerSubagentRun({
+      childSessionKey: `child-archive-window-${process.pid}`,
+      requesterSessionKey: `parent-archive-window-${process.pid}`,
+      task: "Keep working beyond the retention window",
+    });
+
+    expect(run.archiveAtMs).toBeUndefined();
+    markRunCompleted(run.runId, "finished");
+
+    const completed = getRun(run.runId);
+    expect(completed?.archiveAtMs).toBeGreaterThan(completed?.endedAt ?? Number.MAX_SAFE_INTEGER);
   });
 
   test("closes restored active runs as interrupted while retaining partial details", () => {
@@ -536,6 +551,25 @@ describe("Subagent execution wiring", () => {
     expect(result.status).toBe("timeout");
     expect(result.pendingRunIds).toEqual([run.runId]);
     expect(result.runs[0]?.status).toBe("running");
+  });
+
+  test("cleanup delete keeps a completed result until the requester consumes it", async () => {
+    const run = registerSubagentRun({
+      childSessionKey: "agent:cleanup:subagent:result",
+      requesterSessionKey: "parent-cleanup",
+      task: "return a disposable result",
+      cleanup: "delete",
+    });
+
+    markRunCompleted(run.runId, "DISPOSABLE_RESULT=verified");
+
+    expect(getRun(run.runId)?.outcome?.result).toBe("DISPOSABLE_RESULT=verified");
+    const waited = await handleSessionsWait(
+      { runIds: [run.runId], timeoutSeconds: 0 },
+      { agentId: "parent-agent", sessionId: "parent-cleanup" }
+    );
+    expect(waited.runs[0]?.result).toBe("DISPOSABLE_RESULT=verified");
+    expect(getRun(run.runId)).toBeUndefined();
   });
 
   test("keeps the completed child result in the registry without announcing it", async () => {

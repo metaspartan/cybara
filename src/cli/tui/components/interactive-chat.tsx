@@ -22,6 +22,7 @@ import {
   formatTokenUsageLine,
   messagesFromDetail,
   subagentsFromResponse,
+  subagentListPath,
   tasksForSession,
   type TuiEnvironmentSnapshot,
   type TuiLspSummary,
@@ -337,9 +338,7 @@ export function InteractiveChatTUI({
       setSubagents([]);
       return [];
     }
-    const response = await fetchAPI<unknown>(
-      "/api/subagents?sessionId=" + encodeURIComponent(targetSessionId),
-    );
+    const response = await fetchAPI<unknown>(subagentListPath(targetSessionId));
     const next = subagentsFromResponse(response);
     setSubagents(next);
     return next;
@@ -1011,7 +1010,7 @@ export function InteractiveChatTUI({
               task,
               agentId: selectedAgentId || undefined,
               model: useModelRouter ? undefined : modelOverride || undefined,
-              sessionId: localSessionId || undefined,
+              requesterSessionId: localSessionId || undefined,
             }),
           });
           const spawnedId =

@@ -1,10 +1,11 @@
 import { randomUUID } from "crypto";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
-import { homedir, tmpdir } from "os";
+import { tmpdir } from "os";
 import { EventEmitter } from "events";
 import { redactSecrets, redactSecretText } from "./redaction";
 import { formatRecoverableToolOutputPreview } from "./tool-output-recovery";
+import { cybaraDir } from "./paths";
 
 export interface SubagentActivity {
   id: string;
@@ -78,7 +79,7 @@ interface SubagentConfig {
 const defaultPersistPath =
   process.env.NODE_ENV === "test"
     ? join(tmpdir(), `cybara-subagent-registry-${process.pid}.json`)
-    : join(homedir(), ".cybara", "subagent-registry.json");
+    : join(cybaraDir, "subagent-registry.json");
 
 const DEFAULT_CONFIG: SubagentConfig = {
   archiveAfterMinutes: 60,
@@ -248,6 +249,12 @@ function resolveRunTimeoutMs(runTimeoutSeconds: number | undefined): number | un
   return Math.floor(seconds) * 1000;
 }
 
+function scheduleRunArchive(entry: SubagentRunRecord, endedAt: number): void {
+  const archiveAfterMs = resolveArchiveAfterMs();
+  entry.archiveAtMs = archiveAfterMs ? endedAt + archiveAfterMs : undefined;
+  if (entry.archiveAtMs) startSweeper();
+}
+
 function startSweeper(): void {
   if (sweeper) return;
   sweeper = setInterval(() => {
@@ -327,6 +334,7 @@ function ensureListener(): void {
     if (evt.type === "end" || evt.type === "error") {
       const endedAt = typeof evt.data?.endedAt === "number" ? evt.data.endedAt : Date.now();
       entry.endedAt = endedAt;
+      scheduleRunArchive(entry, endedAt);
 
       if (evt.type === "error") {
         const error = typeof evt.data?.error === "string" ? evt.data.error : undefined;
@@ -341,7 +349,7 @@ function ensureListener(): void {
 
       persistSubagentRuns();
 
-      if (beginSubagentCleanup(evt.runId)) {
+      if (entry.cleanup === "keep" && beginSubagentCleanup(evt.runId)) {
         finalizeSubagentCleanup(evt.runId, entry.cleanup);
       }
     }
@@ -394,16 +402,13 @@ function restoreSubagentRunsOnce(): void {
         entry.cleanupHandled = true;
         entry.cleanupCompletedAt = restoredAt;
       }
-      if (entry.cleanup === "delete") continue;
+      scheduleRunArchive(entry, entry.endedAt);
       if (!subagentRuns.has(runId)) {
         subagentRuns.set(runId, entry);
       }
     }
 
     ensureListener();
-    if ([...subagentRuns.values()].some((e) => e.archiveAtMs)) {
-      startSweeper();
-    }
     persistSubagentRuns();
 
     console.log(`[Subagent] Restored ${restored.size} runs from disk`);
@@ -463,8 +468,6 @@ export function registerSubagentRun(params: {
 }): SubagentRunRecord {
   const runId = params.runId || randomUUID();
   const now = Date.now();
-  const archiveAfterMs = resolveArchiveAfterMs();
-  const archiveAtMs = archiveAfterMs ? now + archiveAfterMs : undefined;
   const timeoutMs = resolveRunTimeoutMs(params.runTimeoutSeconds);
 
   const run: SubagentRunRecord = {
@@ -482,17 +485,12 @@ export function registerSubagentRun(params: {
     silent: params.silent === true,
     createdAt: now,
     startedAt: now,
-    archiveAtMs,
     cleanupHandled: false,
   };
 
   subagentRuns.set(runId, run);
   ensureListener();
   persistSubagentRuns();
-
-  if (archiveAfterMs) {
-    startSweeper();
-  }
 
   if (timeoutMs) {
     void waitForSubagentCompletion(runId, timeoutMs);
@@ -581,6 +579,7 @@ export function markRunKilled(runId: string): boolean {
 
   entry.endedAt = Date.now();
   entry.outcome = { status: "killed" };
+  scheduleRunArchive(entry, entry.endedAt);
   persistSubagentRuns();
 
   const timer = runTimers.get(runId);

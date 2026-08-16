@@ -1634,7 +1634,7 @@ async function handleChatTurn(
         responseContent = recoveredResponse.responseContent;
         toolResults = recoveredResponse.toolResults;
       }
-
+      let automaticWaitCompleted = false;
       if (!executionFailure) {
         const automaticWait = await awaitSpawnedSubagentResults({
           abortSignal: turnAbortController.signal,
@@ -1654,6 +1654,7 @@ async function handleChatTurn(
         if (automaticWait) {
           toolResults = [...toolResults, automaticWait];
           responseContent = "";
+          automaticWaitCompleted = true;
         }
       }
 
@@ -1675,8 +1676,27 @@ async function handleChatTurn(
           timeoutSeconds: memorySettings.backgroundReviewTimeoutSeconds,
         }
       ).catch(() => undefined);
-
       if (toolResults.length > 0) {
+        const resolvedToolResponse = await resolveToolResponseContent({
+          abortSignal: turnAbortController.signal,
+          agentId: agent.id,
+          channel,
+          executionFailure,
+          executionMessages,
+          maxOutputTokens: request.maxOutputTokens,
+          message,
+          modelOverride: activeModelOverride,
+          modelParamsOverride: request.modelParamsOverride,
+          responseContent,
+          reconcileTodo: automaticWaitCompleted,
+          sessionId: session.id,
+          toolResults,
+          useModelRouter,
+          userId,
+          workspaceDir: session.workspaceDir || undefined,
+        });
+        responseContent = resolvedToolResponse.responseContent;
+        toolResults.push(...resolvedToolResponse.toolResults);
         for (const tc of toolResults) {
           const timelineIndex = allToolCalls.length;
           const outcome = classifyToolCallResult(tc.result);
@@ -1700,23 +1720,6 @@ async function handleChatTurn(
             timeline_index: timelineIndex,
           });
         }
-        responseContent = await resolveToolResponseContent({
-          abortSignal: turnAbortController.signal,
-          agentId: agent.id,
-          channel,
-          executionFailure,
-          executionMessages,
-          maxOutputTokens: request.maxOutputTokens,
-          message,
-          modelOverride: activeModelOverride,
-          modelParamsOverride: request.modelParamsOverride,
-          responseContent,
-          sessionId: session.id,
-          toolResults,
-          useModelRouter,
-          userId,
-          workspaceDir: session.workspaceDir || undefined,
-        });
       }
 
       if (provider) {
