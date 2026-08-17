@@ -55,4 +55,36 @@ describe("LLM tool transcript compaction", () => {
     expect(messages[5].content).toBe("recent summary");
     expect(messages[6].content).toBe("current question");
   });
+
+  test("compacts large tool transcripts in linear time", () => {
+    const messages: Array<Record<string, unknown>> = [];
+    for (let index = 0; index < 400; index += 1) {
+      messages.push({ role: "user", content: `question ${index}` });
+      messages.push({
+        role: "assistant",
+        content: "",
+        tool_calls: Array.from({ length: 6 }, (_, callIndex) => ({
+          id: `call-${index}-${callIndex}`,
+          name: "edit",
+          arguments: { path: "src/planner.py", content: "x".repeat(2000) },
+        })),
+      });
+      for (let callIndex = 0; callIndex < 6; callIndex += 1) {
+        messages.push({
+          role: "tool",
+          tool_call_id: `call-${index}-${callIndex}`,
+          content: JSON.stringify({ success: true, diff: "y".repeat(3000) }),
+        });
+      }
+    }
+    messages.push({ role: "user", content: "current question" });
+
+    const started = performance.now();
+    const elided = compactOpenAIChatTranscriptInPlace(messages, 8000);
+    const durationMs = performance.now() - started;
+
+    expect(elided).toBeGreaterThan(100);
+    expect(messages[messages.length - 1].content).toBe("current question");
+    expect(durationMs).toBeLessThan(2000);
+  });
 });

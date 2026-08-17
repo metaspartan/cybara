@@ -85,10 +85,6 @@ function estimateAnthropicMessageChars(message: Record<string, unknown>): number
   return total;
 }
 
-function estimateAnthropicContextChars(messages: Record<string, unknown>[]): number {
-  return messages.reduce((sum, message) => sum + estimateAnthropicMessageChars(message) + 64, 0);
-}
-
 function truncateTextToContextBudget(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   const suffix = `\n${CONTEXT_LIMIT_TRUNCATION_NOTICE}`;
@@ -127,7 +123,8 @@ export function compactAnthropicLoopMessagesForContext(
   aggressive = false,
   context?: CompactionContext
 ): boolean {
-  const beforeChars = estimateAnthropicContextChars(messages);
+  const estimates = messages.map((message) => estimateAnthropicMessageChars(message));
+  const beforeChars = estimates.reduce((sum, value) => sum + value + 64, 0);
   let totalChars = beforeChars;
   if (totalChars <= contextBudgetChars && !aggressive) return false;
   const minRecentMessagesToKeep = aggressive ? 0 : 6;
@@ -149,9 +146,12 @@ export function compactAnthropicLoopMessagesForContext(
     });
     if (!changed) continue;
     message.content = nextContent;
+    const previousEstimate = estimates[index];
+    const nextEstimate = estimateAnthropicMessageChars(message);
+    estimates[index] = nextEstimate;
+    totalChars = totalChars - previousEstimate + nextEstimate;
     compacted = true;
     forceCompaction = false;
-    totalChars = estimateAnthropicContextChars(messages);
   }
   if (compacted) {
     recordContextCompaction(beforeChars, totalChars, messages.length, context);

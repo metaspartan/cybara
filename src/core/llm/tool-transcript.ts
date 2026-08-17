@@ -44,9 +44,8 @@ export function compactToolTranscriptInPlace<T>(
   options: CompactionOptions = {}
 ): number {
   const protectRecent = options.aggressive ? 0 : (options.protectRecent ?? 8);
-  const total = () => items.reduce((sum, item) => sum + format.estimateChars(item), 0);
-
-  let running = total();
+  const estimates = items.map((item) => format.estimateChars(item));
+  let running = estimates.reduce((sum, value) => sum + value, 0);
   if (running <= budgetChars && !options.aggressive) return 0;
 
   let elided = 0;
@@ -60,10 +59,13 @@ export function compactToolTranscriptInPlace<T>(
     const item = items[index];
     if (!format.isToolResult(item) || format.isElided(item)) continue;
 
+    const previousEstimate = estimates[index];
     format.elide(item);
+    const nextEstimate = format.estimateChars(item);
+    estimates[index] = nextEstimate;
+    running = running - previousEstimate + nextEstimate;
     elided += 1;
     force = false;
-    running = total();
   }
 
   return elided;
@@ -132,8 +134,6 @@ export function compactOpenAIChatTranscriptInPlace(
   budgetChars: number,
   options: CompactionOptions = {}
 ): number {
-  const total = () =>
-    messages.reduce((sum, message) => sum + estimateOpenAIChatMessageChars(message), 0);
   const defaultProtectRecent =
     options.protectRecent ?? Math.min(8, Math.max(2, Math.floor(messages.length / 3)));
   const toolElided = compactToolTranscriptInPlace(
@@ -150,7 +150,8 @@ export function compactOpenAIChatTranscriptInPlace(
     { ...options, protectRecent: defaultProtectRecent }
   );
 
-  let running = total();
+  const estimates = messages.map((message) => estimateOpenAIChatMessageChars(message));
+  let running = estimates.reduce((sum, value) => sum + value, 0);
   if (running <= budgetChars && !options.aggressive) return toolElided;
 
   const protectRecent = options.aggressive ? 2 : defaultProtectRecent;
@@ -169,9 +170,12 @@ export function compactOpenAIChatTranscriptInPlace(
     if (index === firstUserIndex) continue;
     if (!elideOpenAIMessageContent(message)) continue;
 
+    const previousEstimate = estimates[index];
+    const nextEstimate = estimateOpenAIChatMessageChars(message);
+    estimates[index] = nextEstimate;
+    running = running - previousEstimate + nextEstimate;
     messageElided += 1;
     force = false;
-    running = total();
   }
 
   return toolElided + messageElided;
