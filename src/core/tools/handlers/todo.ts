@@ -127,8 +127,7 @@ export async function handleTodo(
     items.length === 0
       ? []
       : state.items.filter(
-          (previous) =>
-            !isSettled(previous.status) && !incoming.has(identityKey(previous.content))
+          (previous) => !isSettled(previous.status) && !incoming.has(identityKey(previous.content))
         );
   const restored = droppedIncomplete.filter(
     (previous) => !state.restoredKeys.has(identityKey(previous.content))

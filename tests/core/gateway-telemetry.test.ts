@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readSubprocessStreamAsText } from "../../src/core/subprocess-output";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -86,7 +87,7 @@ describe("gateway telemetry storage", () => {
         stderr: "ignore",
       });
       const [stdout, exitCode] = await Promise.all([
-        new Response(child.stdout).text(),
+        readSubprocessStreamAsText(child.stdout),
         child.exited,
       ]);
       expect(exitCode).toBe(0);

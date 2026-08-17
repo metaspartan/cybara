@@ -1,6 +1,7 @@
 import { stat } from "fs/promises";
 import { platform as osPlatform } from "os";
 import { commandExists } from "./platform";
+import { readSubprocessStreamAsText } from "./subprocess-output";
 
 export interface NativeFolderDialogOptions {
   defaultPath?: string;
@@ -124,8 +125,8 @@ export async function openNativeFolderDialog(
   });
   const [exitCode, stdout] = await Promise.all([
     child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
+    readSubprocessStreamAsText(child.stdout),
+    readSubprocessStreamAsText(child.stderr),
   ]);
   const path = cleanValue(stdout, 4096);
   return {

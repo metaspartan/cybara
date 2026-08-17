@@ -18,6 +18,7 @@ import {
   iosSimulatorAutomationEnv,
   type IosSimulatorAutomationStatus,
 } from "./mobile-simulator-idb";
+import { readSubprocessStream } from "./subprocess-output";
 
 export type MobileSimulatorPlatform = "ios" | "android";
 export type MobileSimulatorState = "booted" | "shutdown" | "offline";
@@ -246,8 +247,8 @@ async function runCommand(
     stdout: "pipe",
     stderr: "pipe",
   });
-  const stdoutPromise = new Response(processHandle.stdout).arrayBuffer();
-  const stderrPromise = new Response(processHandle.stderr).text();
+  const stdoutPromise = readSubprocessStream(processHandle.stdout);
+  const stderrPromise = readSubprocessStream(processHandle.stderr);
   const timeoutMs = options.timeoutMs ?? COMMAND_TIMEOUT_MS;
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
@@ -262,7 +263,7 @@ async function runCommand(
       }),
     ]);
     const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
-    return { stdout: Buffer.from(stdout), stderr: stderr.trim(), exitCode };
+    return { stdout, stderr: stderr.toString("utf8").trim(), exitCode };
   } catch (error) {
     processHandle.kill();
     await processHandle.exited.catch(() => undefined);

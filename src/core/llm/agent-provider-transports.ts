@@ -2,6 +2,7 @@ import type { AgentMessage } from "../agent";
 import type { Provider } from "../database";
 import { commandExists } from "../platform";
 import { readDevinProviderSettings } from "../provider-settings";
+import { readSubprocessStreamAsText } from "../subprocess-output";
 import type { ToolContext } from "../tools";
 
 export interface AgentProviderTransportResult {
@@ -39,8 +40,8 @@ const defaultCursorDependencies: CursorTransportDependencies = {
       signal: options.signal,
     });
     const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+      readSubprocessStreamAsText(proc.stdout),
+      readSubprocessStreamAsText(proc.stderr),
       proc.exited,
     ]);
     return { stdout, stderr, exitCode };

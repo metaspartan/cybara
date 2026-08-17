@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isCybaraProfileProcess } from "../../scripts/cybara-process-match";
+import { readSubprocessStreamAsText } from "../../src/core/subprocess-output";
 
 const ROOT_DIR = join(import.meta.dir, "..", "..");
 
@@ -44,8 +45,8 @@ describe("macOS performance profiler", () => {
       stderr: "pipe",
     });
     const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+      readSubprocessStreamAsText(proc.stdout),
+      readSubprocessStreamAsText(proc.stderr),
       proc.exited,
     ]);
     expect(stderr.trim()).toBe("");

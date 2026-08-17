@@ -1,6 +1,7 @@
 import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { readSubprocessStreamAsText } from "../subprocess-output";
 
 export const SANDBOX_BROWSER_IMAGE = "cybara-sandbox-browser:bookworm-slim";
 export const SANDBOX_BROWSER_CONTAINER = "cybara-sandbox-browser";
@@ -159,7 +160,7 @@ export async function buildSandboxImage(opts?: SandboxBrowserOptions): Promise<v
   });
   const code = await proc.exited;
   if (code !== 0) {
-    const err = await new Response(proc.stderr).text();
+    const err = await readSubprocessStreamAsText(proc.stderr);
     throw new Error(`Failed to build sandbox browser image: ${err.trim() || `exit ${code}`}`);
   }
 }
@@ -205,7 +206,7 @@ export async function startSandboxBrowser(
   });
   const code = await proc.exited;
   if (code !== 0) {
-    const err = await new Response(proc.stderr).text();
+    const err = await readSubprocessStreamAsText(proc.stderr);
     throw new Error(`Failed to start sandbox browser: ${err.trim() || `exit ${code}`}`);
   }
   const ready = await waitForCdp(params.cdpPort, 30_000);

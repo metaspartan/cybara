@@ -178,16 +178,16 @@ describe("mobile simulator discovery", () => {
   });
 
   test("downsamples Android emulator PNG fallbacks with explicit native dimensions", () => {
-    const source = new PNG({ width: 1080, height: 2400 });
+    const source = new PNG({ width: 721, height: 400 });
     source.data.fill(255);
     const preview = encodeAndroidPngPreview(PNG.sync.write(source));
     expect(preview?.width).toBe(720);
-    expect(preview?.height).toBe(1600);
-    expect(preview?.sourceWidth).toBe(1080);
-    expect(preview?.sourceHeight).toBe(2400);
+    expect(preview?.height).toBe(399);
+    expect(preview?.sourceWidth).toBe(721);
+    expect(preview?.sourceHeight).toBe(400);
     const encoded = preview ? PNG.sync.read(preview.bytes) : null;
     expect(encoded?.width).toBe(720);
-    expect(encoded?.height).toBe(1600);
+    expect(encoded?.height).toBe(399);
   });
 
   test("summarizes running devices without sending the full inventory to agents", () => {

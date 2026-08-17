@@ -271,7 +271,12 @@ function* decideWindowsGatewayFirewallRule(input: {
         ruleName,
         command,
         message: `Windows needs administrator approval to allow inbound TCP ${input.port}. Run the firewall command once, or apply the LAN host again from Settings to trigger the elevation prompt.`,
-        error: (direct.stderr || direct.stdout || verifyDirect.stderr || verifyDirect.stdout).trim(),
+        error: (
+          direct.stderr ||
+          direct.stdout ||
+          verifyDirect.stderr ||
+          verifyDirect.stdout
+        ).trim(),
       };
     }
     const elevated = yield powerShellCommand(buildElevatedWindowsFirewallScript(input.port));

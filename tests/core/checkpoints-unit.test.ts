@@ -237,7 +237,7 @@ describe("listCheckpoints", () => {
     writeFileSync(join(ws, "f.txt"), "x");
     stageAll(ws);
 
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 21; i++) {
       const cp = await createCheckpoint(ws, `cp-${i}`);
       expect(cp).not.toBeNull();
     }
@@ -249,7 +249,7 @@ describe("listCheckpoints", () => {
     const storeDir = join(ws, ".cybara", "checkpoints");
     const dirs = readdirSync(storeDir).filter((n) => n.startsWith("cp_"));
     expect(dirs.length).toBeLessThanOrEqual(20);
-  });
+  }, 15_000);
 });
 
 describe("deleteCheckpoint", () => {

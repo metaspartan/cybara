@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { readSubprocessStreamAsText } from "../../src/core/subprocess-output";
 import { join } from "path";
 
 const root = join(import.meta.dir, "..", "..");
@@ -19,8 +20,8 @@ test("repository test runner isolates persistent Cybara state before imports", a
   );
   const [exitCode, stdout, stderr] = await Promise.all([
     child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
+    readSubprocessStreamAsText(child.stdout),
+    readSubprocessStreamAsText(child.stderr),
   ]);
   expect(exitCode, `${stdout}\n${stderr}`).toBe(0);
 });

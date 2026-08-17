@@ -1,4 +1,5 @@
 import { findBunRuntime } from "../../bun-runtime";
+import { readSubprocessStreamAsText } from "../../subprocess-output";
 import { executeTool, toolSchemas } from "./index";
 import type { ToolContext } from "../index";
 
@@ -263,7 +264,7 @@ async function runInChild(
 
   const stderr = processHandle.stderr;
   if (stderr && typeof stderr !== "number") {
-    void new Response(stderr).text().then((text) => {
+    void readSubprocessStreamAsText(stderr).then((text) => {
       const trimmed = text.trim();
       if (trimmed) appendOutput(stdout, trimmed);
     });

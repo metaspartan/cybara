@@ -33,31 +33,42 @@ describe("sandbox browser launcher", () => {
   });
 
   test("resolves source and bundled sandbox contexts by Dockerfile presence", async () => {
-    const root = mkdtempSync("/tmp/cybara-sandbox-context-");
+    const savedResourceDir = process.env.CYBARA_RESOURCE_DIR;
+    const savedConfiguredDir = process.env.CYBARA_SANDBOX_BROWSER_DIR;
+    delete process.env.CYBARA_RESOURCE_DIR;
+    delete process.env.CYBARA_SANDBOX_BROWSER_DIR;
     try {
-      const sourceContext = `${root}/checkout/docker/sandbox-browser`;
-      const bundledContext = `${root}/bundle/docker/sandbox-browser`;
-      mkdirSync(sourceContext, { recursive: true });
-      mkdirSync(bundledContext, { recursive: true });
-      await Bun.write(`${sourceContext}/Dockerfile`, "FROM scratch\n");
-      await Bun.write(`${bundledContext}/Dockerfile`, "FROM scratch\n");
+      const root = mkdtempSync("/tmp/cybara-sandbox-context-");
+      try {
+        const sourceContext = `${root}/checkout/docker/sandbox-browser`;
+        const bundledContext = `${root}/bundle/docker/sandbox-browser`;
+        mkdirSync(sourceContext, { recursive: true });
+        mkdirSync(bundledContext, { recursive: true });
+        await Bun.write(`${sourceContext}/Dockerfile`, "FROM scratch\n");
+        await Bun.write(`${bundledContext}/Dockerfile`, "FROM scratch\n");
 
-      expect(
-        resolveSandboxContextDir({
-          cwd: `${root}/checkout`,
-          execDir: `${root}/bin`,
-          moduleDir: `${root}/checkout/src/core/browser`,
-        })
-      ).toBe(sourceContext);
-      expect(
-        resolveSandboxContextDir({
-          cwd: `${root}/elsewhere`,
-          execDir: `${root}/bin`,
-          moduleDir: `${root}/bundle/dist`,
-        })
-      ).toBe(bundledContext);
+        expect(
+          resolveSandboxContextDir({
+            cwd: `${root}/checkout`,
+            execDir: `${root}/bin`,
+            moduleDir: `${root}/checkout/src/core/browser`,
+          })
+        ).toBe(sourceContext);
+        expect(
+          resolveSandboxContextDir({
+            cwd: `${root}/elsewhere`,
+            execDir: `${root}/bin`,
+            moduleDir: `${root}/bundle/dist`,
+          })
+        ).toBe(bundledContext);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      if (savedResourceDir === undefined) delete process.env.CYBARA_RESOURCE_DIR;
+      else process.env.CYBARA_RESOURCE_DIR = savedResourceDir;
+      if (savedConfiguredDir === undefined) delete process.env.CYBARA_SANDBOX_BROWSER_DIR;
+      else process.env.CYBARA_SANDBOX_BROWSER_DIR = savedConfiguredDir;
     }
   });
 });

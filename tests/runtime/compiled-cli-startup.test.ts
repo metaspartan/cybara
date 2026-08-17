@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { buildStandaloneCli } from "../../scripts/build-standalone-cli";
+import { readSubprocessStreamAsText } from "../../src/core/subprocess-output";
 
 function currentBunTarget(): string {
   const platform = process.platform === "win32" ? "windows" : process.platform;
@@ -61,6 +62,8 @@ describe("compiled CLI startup", () => {
       const environment = { ...process.env };
       delete environment.NODE_ENV;
       delete environment.CYBARA_REQUIRE_AUTH;
+      delete environment.CYBARA_RESOURCE_DIR;
+      delete environment.CYBARA_SANDBOX_BROWSER_DIR;
       environment.HOME = home;
       environment.USERPROFILE = home;
       environment.CYBARA_HOME = cybaraHome;
@@ -85,8 +88,8 @@ describe("compiled CLI startup", () => {
         stdout: "pipe",
         stderr: "pipe",
       });
-      stdoutPromise = new Response(processHandle.stdout).text();
-      stderrPromise = new Response(processHandle.stderr).text();
+      stdoutPromise = readSubprocessStreamAsText(processHandle.stdout);
+      stderrPromise = readSubprocessStreamAsText(processHandle.stderr);
 
       const dashboard = await waitForDashboard(`http://127.0.0.1:${port}/`);
       expect(await dashboard.text()).toContain('id="compiled-ui-marker"');
