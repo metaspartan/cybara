@@ -6,6 +6,8 @@ import { getGatewayAuthSettings } from "./security";
 type GatewayHostApplyHandler = (host: string) => void;
 type FirewallCommandResult = { exitCode: number; stdout: string; stderr: string };
 type FirewallCommandRunner = (cmd: string[]) => FirewallCommandResult;
+type AsyncFirewallCommandRunner = (cmd: string[]) => Promise<FirewallCommandResult>;
+type FirewallDecision = Generator<string[], GatewayFirewallResult, FirewallCommandResult>;
 
 export interface GatewayFirewallResult {
   platform: NodeJS.Platform;
@@ -110,8 +112,14 @@ function encodePowerShell(script: string): string {
   return Buffer.from(script, "utf16le").toString("base64");
 }
 
+const FIREWALL_COMMAND_TIMEOUT_MS = 30_000;
+
 function defaultFirewallRunner(cmd: string[]): FirewallCommandResult {
-  const result = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe" });
+  const result = Bun.spawnSync(cmd, {
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: FIREWALL_COMMAND_TIMEOUT_MS,
+  });
   return {
     exitCode: result.exitCode ?? 1,
     stdout: new TextDecoder().decode(result.stdout),
@@ -119,8 +127,22 @@ function defaultFirewallRunner(cmd: string[]): FirewallCommandResult {
   };
 }
 
-function runPowerShell(script: string, runner: FirewallCommandRunner): FirewallCommandResult {
-  return runner([
+async function defaultAsyncFirewallRunner(cmd: string[]): Promise<FirewallCommandResult> {
+  const child = Bun.spawn(cmd, {
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: FIREWALL_COMMAND_TIMEOUT_MS,
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { exitCode: exitCode ?? 1, stdout, stderr };
+}
+
+function powerShellCommand(script: string): string[] {
+  return [
     "powershell.exe",
     "-NoProfile",
     "-NonInteractive",
@@ -128,7 +150,7 @@ function runPowerShell(script: string, runner: FirewallCommandRunner): FirewallC
     "Bypass",
     "-EncodedCommand",
     encodePowerShell(script),
-  ]);
+  ];
 }
 
 function buildWindowsFirewallEnsureScript(port: number): string {
@@ -187,12 +209,12 @@ function isElevationError(result: FirewallCommandResult): boolean {
   );
 }
 
-export function ensureWindowsGatewayFirewallRule(input: {
+function* decideWindowsGatewayFirewallRule(input: {
   host: string;
   port: number;
   platform?: NodeJS.Platform;
-  runner?: FirewallCommandRunner;
-}): GatewayFirewallResult {
+  allowElevation?: boolean;
+}): FirewallDecision {
   const platform = input.platform || process.platform;
   const ruleName = ruleNameForPort(input.port);
   const command = buildWindowsGatewayFirewallCommand(input.port);
@@ -209,8 +231,7 @@ export function ensureWindowsGatewayFirewallRule(input: {
     };
   }
 
-  const runner = input.runner || defaultFirewallRunner;
-  const check = runPowerShell(buildWindowsFirewallCheckScript(input.port), runner);
+  const check = yield powerShellCommand(buildWindowsFirewallCheckScript(input.port));
   if (check.exitCode === 0) {
     return {
       platform,
@@ -224,8 +245,8 @@ export function ensureWindowsGatewayFirewallRule(input: {
     };
   }
 
-  const direct = runPowerShell(buildWindowsFirewallEnsureScript(input.port), runner);
-  const verifyDirect = runPowerShell(buildWindowsFirewallCheckScript(input.port), runner);
+  const direct = yield powerShellCommand(buildWindowsFirewallEnsureScript(input.port));
+  const verifyDirect = yield powerShellCommand(buildWindowsFirewallCheckScript(input.port));
   if (direct.exitCode === 0 && verifyDirect.exitCode === 0) {
     return {
       platform,
@@ -240,8 +261,21 @@ export function ensureWindowsGatewayFirewallRule(input: {
   }
 
   if (isElevationError(direct) || isElevationError(verifyDirect)) {
-    const elevated = runPowerShell(buildElevatedWindowsFirewallScript(input.port), runner);
-    const verifyElevated = runPowerShell(buildWindowsFirewallCheckScript(input.port), runner);
+    if (input.allowElevation !== true) {
+      return {
+        platform,
+        required: true,
+        attempted: true,
+        configured: false,
+        state: "requires_admin",
+        ruleName,
+        command,
+        message: `Windows needs administrator approval to allow inbound TCP ${input.port}. Run the firewall command once, or apply the LAN host again from Settings to trigger the elevation prompt.`,
+        error: (direct.stderr || direct.stdout || verifyDirect.stderr || verifyDirect.stdout).trim(),
+      };
+    }
+    const elevated = yield powerShellCommand(buildElevatedWindowsFirewallScript(input.port));
+    const verifyElevated = yield powerShellCommand(buildWindowsFirewallCheckScript(input.port));
     if (elevated.exitCode === 0 && verifyElevated.exitCode === 0) {
       return {
         platform,
@@ -280,6 +314,38 @@ export function ensureWindowsGatewayFirewallRule(input: {
   };
 }
 
+export function ensureWindowsGatewayFirewallRule(input: {
+  host: string;
+  port: number;
+  platform?: NodeJS.Platform;
+  runner?: FirewallCommandRunner;
+  allowElevation?: boolean;
+}): GatewayFirewallResult {
+  const runner = input.runner || defaultFirewallRunner;
+  const decision = decideWindowsGatewayFirewallRule(input);
+  let step = decision.next();
+  while (!step.done) {
+    step = decision.next(runner(step.value));
+  }
+  return step.value;
+}
+
+export async function ensureWindowsGatewayFirewallRuleAsync(input: {
+  host: string;
+  port: number;
+  platform?: NodeJS.Platform;
+  runner?: AsyncFirewallCommandRunner;
+  allowElevation?: boolean;
+}): Promise<GatewayFirewallResult> {
+  const runner = input.runner || defaultAsyncFirewallRunner;
+  const decision = decideWindowsGatewayFirewallRule(input);
+  let step = decision.next();
+  while (!step.done) {
+    step = decision.next(await runner(step.value));
+  }
+  return step.value;
+}
+
 export function setGatewayHostApplyHandler(handler: GatewayHostApplyHandler | null): void {
   gatewayHostApplyHandler = handler;
 }
@@ -298,7 +364,7 @@ export function requestGatewayHostApply(host: string): {
 export function updateGatewayHostSetting(
   value: unknown,
   applyNow: unknown,
-  options: { port?: number } = {}
+  options: { port?: number; platform?: NodeJS.Platform; runner?: FirewallCommandRunner } = {}
 ): {
   hostApplyScheduled?: boolean;
   hostApplyError?: string;
@@ -314,6 +380,9 @@ export function updateGatewayHostSetting(
     gatewayFirewall: ensureWindowsGatewayFirewallRule({
       host: nextHost,
       port: options.port || readRuntimeGatewayPort(),
+      platform: options.platform,
+      runner: options.runner,
+      allowElevation: true,
     }),
   };
 }

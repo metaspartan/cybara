@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   buildWindowsGatewayFirewallCommand,
   ensureWindowsGatewayFirewallRule,
+  ensureWindowsGatewayFirewallRuleAsync,
   normalizeGatewayBindHost,
   readRuntimeGatewayPort,
   requestGatewayHostApply,
@@ -55,7 +56,7 @@ describe("gateway network settings", () => {
       requested.push(host);
     });
 
-    expect(updateGatewayHostSetting("0.0.0.0", true)).toMatchObject({
+    expect(updateGatewayHostSetting("0.0.0.0", true, { platform: "darwin" })).toMatchObject({
       hostApplyScheduled: true,
       gatewayFirewall: { required: false, configured: true, state: "not_required" },
     });
@@ -139,6 +140,7 @@ describe("gateway network settings", () => {
       host: "0.0.0.0",
       port: 4269,
       platform: "win32",
+      allowElevation: true,
       runner: (cmd) => {
         calls.push(cmd);
         return results.shift() || { exitCode: 1, stdout: "", stderr: "unexpected call" };
@@ -149,6 +151,45 @@ describe("gateway network settings", () => {
     expect(result.attempted).toBe(true);
     expect(result.state).toBe("configured");
     expect(calls).toHaveLength(5);
+  });
+
+  test("never blocks startup on an interactive elevation prompt", () => {
+    const results = [
+      { exitCode: 2, stdout: "", stderr: "" },
+      { exitCode: 1, stdout: "", stderr: "Access is denied." },
+      { exitCode: 2, stdout: "", stderr: "Access is denied." },
+    ];
+    const calls: string[][] = [];
+    const result = ensureWindowsGatewayFirewallRule({
+      host: "0.0.0.0",
+      port: 4269,
+      platform: "win32",
+      runner: (cmd) => {
+        calls.push(cmd);
+        return results.shift() || { exitCode: 1, stdout: "", stderr: "unexpected call" };
+      },
+    });
+
+    expect(result.state).toBe("requires_admin");
+    expect(result.configured).toBe(false);
+    expect(calls).toHaveLength(3);
+  });
+
+  test("resolves the firewall rule without blocking the event loop", async () => {
+    const calls: string[][] = [];
+    const result = await ensureWindowsGatewayFirewallRuleAsync({
+      host: "0.0.0.0",
+      port: 4271,
+      platform: "win32",
+      runner: async (cmd) => {
+        calls.push(cmd);
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    expect(result.state).toBe("configured");
+    expect(result.ruleName).toBe("Cybara Gateway 4271");
+    expect(calls).toHaveLength(1);
   });
 
   test("surfaces administrator approval when elevated firewall update is declined", () => {

@@ -156,6 +156,83 @@ describe("todo plan integrity", () => {
     expect(readTodo(ctx).map((item) => item.content)).toEqual(["Keep me"]);
   });
 
+  test("treats a reformatted item as the same entry", async () => {
+    const ctx = context("reformatted");
+    await handleTodo(
+      { items: [{ content: "Write  the Migration", status: "pending", priority: "high" }] },
+      ctx
+    );
+
+    await handleTodo(
+      { items: [{ content: "write the migration.", status: "completed", priority: "high" }] },
+      ctx
+    );
+
+    expect(readTodo(ctx).map((item) => `${item.content}:${item.status}`)).toEqual([
+      "write the migration.:completed",
+    ]);
+  });
+
+  test("collapses progress-annotated rewrites instead of stacking duplicates", async () => {
+    const ctx = context("progress-rewrites");
+    await handleTodo(
+      {
+        items: [
+          { content: "Monitor training run", status: "in_progress", priority: "high" },
+          { content: "Close residual gap", status: "pending", priority: "medium" },
+        ],
+      },
+      ctx
+    );
+
+    for (const step of [1000, 1500, 2000, 2500]) {
+      await handleTodo(
+        {
+          items: [
+            {
+              content: `Monitor training run (step ${step}/6000)`,
+              status: "in_progress",
+              priority: "high",
+            },
+            { content: "Close residual gap", status: "pending", priority: "medium" },
+          ],
+        },
+        ctx
+      );
+    }
+
+    expect(readTodo(ctx).map((item) => item.content)).toEqual([
+      "Close residual gap",
+      "Monitor training run (step 2500/6000)",
+    ]);
+  });
+
+  test("drops an unfinished item the model omits a second time", async () => {
+    const ctx = context("omitted-twice");
+    await handleTodo(
+      {
+        items: [
+          { content: "Keep me", status: "in_progress", priority: "high" },
+          { content: "Stale backlog entry", status: "pending", priority: "low" },
+        ],
+      },
+      ctx
+    );
+
+    const first = await handleTodo(
+      { items: [{ content: "Keep me", status: "in_progress", priority: "high" }] },
+      ctx
+    );
+    expect(readTodo(ctx).map((item) => item.content)).toEqual(["Keep me", "Stale backlog entry"]);
+    expect(first.note).toContain("Stale backlog entry");
+
+    await handleTodo(
+      { items: [{ content: "Keep me", status: "in_progress", priority: "high" }] },
+      ctx
+    );
+    expect(readTodo(ctx).map((item) => item.content)).toEqual(["Keep me"]);
+  });
+
   test("still lets a model prune items it already finished", async () => {
     const ctx = context("prune-completed");
     await handleTodo(
