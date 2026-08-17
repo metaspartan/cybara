@@ -747,9 +747,10 @@ export function getContextWindow(model?: string): number {
 export function shouldCompactContext(
   messages: ChatMessage[],
   model?: string,
-  newContent?: string
+  newContent?: string,
+  contextWindowTokens?: number
 ): { needed: boolean; currentTokens: number; maxTokens: number; availableTokens: number } {
-  const contextWindow = getContextWindow(model);
+  const contextWindow = contextWindowTokens ?? getContextWindow(model);
   const currentTokens = estimateMessagesTokens(messages);
   const newContentTokens = newContent ? estimateTokens(newContent) : 0;
   const totalTokens = currentTokens + newContentTokens;
@@ -769,9 +770,9 @@ export async function compactContext(
   messages: ChatMessage[],
   model?: string,
   providerId?: string,
-  options?: { force?: boolean }
+  options?: { force?: boolean; contextWindowTokens?: number }
 ): Promise<{ messages: ChatMessage[]; summary?: string; wasCompacted: boolean }> {
-  const contextWindow = getContextWindow(model);
+  const contextWindow = options?.contextWindowTokens ?? getContextWindow(model);
   const maxHistoryTokens = Math.floor((contextWindow * MAX_HISTORY_SHARE) / CONTEXT_SAFETY_MARGIN);
 
   const summaryMessages = messages.filter(isContextSummaryMessage);

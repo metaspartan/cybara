@@ -589,11 +589,9 @@ export abstract class AgentProviderCommonRuntime {
       requestedMaxOutputTokens > 0
         ? Math.min(resolvedModelMaxOutputTokens, Math.floor(requestedMaxOutputTokens))
         : resolvedModelMaxOutputTokens;
-    const modelContextWindowTokens = resolveModelContextWindowTokens(
-      providerConfig,
-      providerInfo.id,
-      modelId
-    );
+    const modelContextWindowTokens =
+      toolContext?.maxContextTokens ??
+      resolveModelContextWindowTokens(providerConfig, providerInfo.id, modelId);
 
     if (apiFamily === "cursor-agent") {
       return callCursorAgentTransport(providerInfo as Provider, modelId, messages, toolContext);

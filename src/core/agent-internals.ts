@@ -272,6 +272,17 @@ export function parseAgentConfig(config: unknown, agentId?: string): Record<stri
   return {};
 }
 
+export function readAgentContextWindowTokens(config: unknown): number | undefined {
+  const parsed = parseAgentConfig(config);
+  const raw =
+    parsed.max_context_tokens ??
+    parsed.maxContextTokens ??
+    parsed.context_window_tokens ??
+    parsed.contextWindowTokens;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) return undefined;
+  return Math.max(1, Math.floor(raw));
+}
+
 function asPlainObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
