@@ -387,7 +387,7 @@ export function estimateMessageTranscriptTokens(message: ChatMessage): number {
     : 0;
   const processActivityTokens = message.process_activities
     ? message.process_activities.reduce(
-        (sum, activity) => sum + estimateTokens(JSON.stringify(activity)),
+        (sum, activity) => sum + estimateTokens(safeJsonStringify(activity)),
         0
       )
     : 0;

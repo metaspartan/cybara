@@ -8,6 +8,7 @@ import {
 import {
   compactContext,
   estimateMessagesRequestVisibleTokens,
+  estimateMessagesTranscriptTokens,
   estimateSessionContextUsage,
   shouldCompactContext,
   type ChatMessage,
@@ -151,6 +152,33 @@ describe("system prompt truncation under a small window", () => {
     expect(
       messages.some((m) => String(m.content).includes(MESSAGE_CONTENT_COMPACTION_NOTICE))
     ).toBe(true);
+  });
+});
+
+describe("process activity estimation safety", () => {
+  test("does not throw on circular process_activities", () => {
+    const circular: Record<string, unknown> = { phase: "result", text: "read a file" };
+    circular.self = circular;
+    const messages = [
+      {
+        role: "assistant",
+        content: "Done.",
+        process_activities: [circular],
+      },
+    ] as ChatMessage[];
+    expect(() => estimateMessagesTranscriptTokens(messages)).not.toThrow();
+  });
+
+  test("estimates process_activities tokens normally", () => {
+    const messages = [
+      {
+        role: "assistant",
+        content: "Done.",
+        process_activities: [{ phase: "result", text: "read a file", timestamp: Date.now() }],
+      },
+    ] as ChatMessage[];
+    const estimate = estimateMessagesTranscriptTokens(messages);
+    expect(estimate).toBeGreaterThan(0);
   });
 });
 
