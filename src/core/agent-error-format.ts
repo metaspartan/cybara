@@ -1,5 +1,5 @@
 function extractLlmErrorDetail(message: string): string | undefined {
-  const afterDash = message.replace(/^API error:\s*\d+\s*-\s*/i, "");
+  const afterDash = message.replace(/^API error[^:]*:\s*\d+\s*-\s*/i, "");
   const candidate = afterDash !== message ? afterDash : message;
   const trimmed = candidate.trim();
   if (!trimmed) return undefined;
@@ -34,6 +34,10 @@ export function formatLlmFailure(error: unknown, context?: LlmFailureContext): s
       ? String((error as { message?: unknown }).message || "")
       : String(error || "");
   const lower = message.toLowerCase();
+  const extractedStatus = (() => {
+    const match = /api error[^:]*:\s*(\d{3})/i.exec(message);
+    return match ? Number(match[1]) : undefined;
+  })();
 
   if (lower.includes("invalid_api_key") || lower.includes("incorrect api key")) {
     return "OpenAI API key was rejected. Update your OpenAI provider key in Providers.";
@@ -82,9 +86,10 @@ export function formatLlmFailure(error: unknown, context?: LlmFailureContext): s
 
   const detail = extractLlmErrorDetail(message);
   if (lower.includes("400") || lower.includes("unsupported") || lower.includes("invalid")) {
+    const status = extractedStatus ?? 400;
     return detail
-      ? `Provider rejected the request (400): ${detail}`
-      : "Provider rejected the request (400). The model may not support a sent parameter.";
+      ? `Provider rejected the request (${status}): ${detail}`
+      : `Provider rejected the request (${status}). The model may not support a sent parameter.`;
   }
   if (lower.includes("404")) {
     return detail
