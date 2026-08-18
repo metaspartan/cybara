@@ -29,6 +29,7 @@ import {
   handleMemorySearch,
 } from "../api/memory/memory-api";
 import { agentManager, getBuiltinTools } from "../core/agent";
+import { resolveTurnContextWindow } from "./chat-turn-context";
 import { forkSession } from "../core/agent-eval";
 import { cancelAgentLoopRun, getAgentLoopRun, listAgentLoopRuns } from "../core/agent-loop";
 import { deleteArtifact, listAllArtifacts, listArtifacts, readArtifact } from "../core/artifacts";
@@ -211,6 +212,16 @@ import {
 } from "./subagents";
 
 const log = createLogger("API");
+
+function sessionAgentContextWindowTokens(
+  agentId: string | undefined,
+  model: string | undefined
+): number | undefined {
+  if (!agentId) return undefined;
+  const agent = agentManager.get(agentId);
+  if (!agent) return undefined;
+  return resolveTurnContextWindow(agent, model).contextWindowTokens;
+}
 
 function pluginSummary(plugin: ReturnType<typeof listInstalledPlugins>[number]) {
   return {
@@ -1304,6 +1315,10 @@ const routes: Record<string, RouteHandler> = {
           "compactionCount" in session && typeof session.compactionCount === "number"
             ? session.compactionCount
             : 0,
+        contextWindowTokens: sessionAgentContextWindowTokens(
+          session.agentId,
+          detailModelMetadata.model
+        ),
       }),
       tokenUsage: summarizeSessionTokenUsage(session.id),
       plan: extractLatestSessionPlan(session.id, messages),

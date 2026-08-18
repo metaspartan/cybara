@@ -24,6 +24,7 @@ import { getRunBySessionKey } from "../core/subagent-registry";
 import { getSubagentSession } from "../core/tools/handlers/index";
 import { getRateLimitStatus } from "../core/tools/index";
 import { applyActiveAgentToSession } from "./chat-agent-prompt";
+import { resolveTurnContextWindow } from "./chat-turn-context";
 import { recoverInterruptedSessionMessages } from "./chat-run-recovery";
 import {
   activeChatTurnAbortControllers,
@@ -246,6 +247,7 @@ export async function updateSessionAgent(
   persistActiveSessionContext(session);
 
   const modelMetadata = resolveSessionModelMetadata(agent.id);
+  const { contextWindowTokens } = resolveTurnContextWindow(agent, agent.model);
   upsertPersistedSessionIndex({
     id: session.id,
     agentId: session.agentId,
@@ -272,6 +274,7 @@ export async function updateSessionAgent(
     contextUsage: estimateSessionContextUsage(session.messages, agent.model, {
       sessionId: session.id,
       compactionCount: session.compactionCount || 0,
+      contextWindowTokens,
     }),
     tokenUsage: summarizeSessionTokenUsage(session.id),
   };

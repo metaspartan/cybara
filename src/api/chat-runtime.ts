@@ -132,7 +132,7 @@ import {
 } from "./chat-runtime-state";
 import { applySessionTitleWithBackgroundUpgrade } from "./chat-session-title-upgrade";
 import { maybeCaptureSkillFromTurn } from "./chat-skill-capture";
-import { prepareTurnContext } from "./chat-turn-context";
+import { prepareTurnContext, resolveTurnContextWindow } from "./chat-turn-context";
 import {
   buildInterruptedToolCalls,
   collectAttachedProcessActivityIds,
@@ -1785,6 +1785,9 @@ async function handleChatTurn(
     agentId: agent?.id,
   });
 
+  const responseContextWindowTokens = agent
+    ? resolveTurnContextWindow(agent, requestedModelOverride || agent.model).contextWindowTokens
+    : undefined;
   const response: ChatResponse = {
     sessionId: session.id,
     workspaceDir: session.workspaceDir ?? null,
@@ -1794,6 +1797,7 @@ async function handleChatTurn(
       {
         sessionId: session.id,
         compactionCount: session.compactionCount || 0,
+        contextWindowTokens: responseContextWindowTokens,
       }
     ),
     tokenUsage: summarizeSessionTokenUsage(session.id),

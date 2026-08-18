@@ -585,11 +585,12 @@ export function estimateSessionContextUsage(
   options?: {
     sessionId?: string;
     compactionCount?: number;
+    contextWindowTokens?: number;
   }
 ): SessionContextUsage {
   const usedTokens = Math.max(0, estimateMessagesTokens(messages));
   const transcriptTokens = Math.max(usedTokens, estimateMessagesTranscriptTokens(messages));
-  const limitTokens = Math.max(1, getContextWindow(model));
+  const limitTokens = Math.max(1, options?.contextWindowTokens ?? getContextWindow(model));
   const remainingTokens = Math.max(0, limitTokens - usedTokens);
   const usedPercent = Math.min(100, Math.round((usedTokens / limitTokens) * 1000) / 10);
   const persistedCompaction = loadSessionSummaryCompactionMetrics(options?.sessionId);
