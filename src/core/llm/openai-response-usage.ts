@@ -9,6 +9,7 @@ export interface OpenAIResponseUsageContext {
   durationMs: number;
   sessionId?: string;
   routerRouteId?: string;
+  inputTokens?: number;
 }
 
 function estimateResponseOutputTokens(response: OpenAIResponse): number {
@@ -62,14 +63,18 @@ export function trackOpenAIResponseUsage(
   }
 
   const outputTokens = estimateResponseOutputTokens(response);
+  const inputTokens =
+    typeof context.inputTokens === "number" && Number.isFinite(context.inputTokens)
+      ? Math.max(0, Math.floor(context.inputTokens))
+      : 0;
   const hasTiming = firstTokenMs !== undefined || generationDurationMs !== undefined;
-  if (outputTokens <= 0 && !hasTiming) return false;
+  if (outputTokens <= 0 && inputTokens <= 0 && !hasTiming) return false;
 
   trackTokenUsage(
     context.model,
     context.provider,
     context.providerUrl,
-    0,
+    inputTokens,
     outputTokens,
     context.durationMs,
     {

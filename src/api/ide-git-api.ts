@@ -2,6 +2,7 @@ import { existsSync } from "fs";
 import { readFile, stat } from "fs/promises";
 import { dirname, relative } from "path";
 import { getGitStatus } from "./git-api";
+import { readSubprocessStreamAsText } from "../core/subprocess-output";
 import type { IdeBlameLine, IdeBlameResult, IdeUrlResult } from "./ide-api";
 import {
   isIdePathAllowed as isPathAllowed,
@@ -304,8 +305,8 @@ export async function getFileBlame(
       }
     );
     const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+      readSubprocessStreamAsText(proc.stdout),
+      readSubprocessStreamAsText(proc.stderr),
       proc.exited,
     ]);
     if (exitCode !== 0) {

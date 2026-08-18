@@ -240,6 +240,8 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     trackOpenAIResponseUsage(data, {
       model: modelId,
       provider: providerConfig || "openai-compat",
+      inputTokens: this.estimateOpenAIRequestInputTokens(requestBody),
+
       providerUrl: baseUrl,
       durationMs,
       sessionId: sessionIdForVisibleTokenUsage(toolContext),
@@ -535,6 +537,8 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       trackOpenAIResponseUsage(loopData, {
         model: modelId,
         provider: providerConfig || "openai-compat",
+        inputTokens: this.estimateOpenAIRequestInputTokens(loopRequestBody),
+
         providerUrl: baseUrl,
         durationMs: Math.round(performance.now() - loopRequestStartedAt),
         sessionId: sessionIdForVisibleTokenUsage(toolContext),
@@ -590,6 +594,8 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         trackOpenAIResponseUsage(nudgeData, {
           model: modelId,
           provider: providerConfig || "openai-compat",
+          inputTokens: this.estimateOpenAIRequestInputTokens(nudgeBody),
+
           providerUrl: baseUrl,
           durationMs: Math.round(performance.now() - nudgeStartedAt),
           sessionId: sessionIdForVisibleTokenUsage(toolContext),

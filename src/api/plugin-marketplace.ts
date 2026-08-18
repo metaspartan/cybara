@@ -19,6 +19,7 @@ import {
   installLocalPluginFromPath,
   listInstalledPlugins,
 } from "../core/plugins";
+import { readSubprocessStreamAsText } from "../core/subprocess-output";
 
 const MARKETPLACE_ID = "official-community";
 const MARKETPLACE_MANIFEST_URL =
@@ -429,7 +430,7 @@ async function runGit(args: string[], cwd: string): Promise<void> {
   try {
     const exitCode = await Promise.race([process.exited, timeout]);
     if (exitCode !== 0) {
-      const error = (await new Response(process.stderr).text()).trim();
+      const error = (await readSubprocessStreamAsText(process.stderr)).trim();
       throw new Error(error || "Plugin repository download failed");
     }
   } finally {

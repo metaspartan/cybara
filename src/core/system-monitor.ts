@@ -1,5 +1,6 @@
 import { readFileSync, statfsSync } from "fs";
 import { arch, cpus, freemem, loadavg, platform, release, totalmem } from "os";
+import { readSubprocessStreamAsText } from "./subprocess-output";
 
 export interface SystemByteUsage {
   totalBytes: number;
@@ -79,7 +80,10 @@ async function runSystemCommand(
       stderr: "ignore",
     });
     const timer = setTimeout(() => child.kill(), timeout);
-    const [exitCode, output] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+    const [exitCode, output] = await Promise.all([
+      child.exited,
+      readSubprocessStreamAsText(child.stdout),
+    ]);
     clearTimeout(timer);
     return exitCode === 0 ? output : null;
   } catch {
