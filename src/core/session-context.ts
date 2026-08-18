@@ -588,7 +588,7 @@ export function estimateSessionContextUsage(
     contextWindowTokens?: number;
   }
 ): SessionContextUsage {
-  const usedTokens = Math.max(0, estimateMessagesTokens(messages));
+  const usedTokens = Math.max(0, estimateMessagesRequestVisibleTokens(messages));
   const transcriptTokens = Math.max(usedTokens, estimateMessagesTranscriptTokens(messages));
   const limitTokens = Math.max(1, options?.contextWindowTokens ?? getContextWindow(model));
   const remainingTokens = Math.max(0, limitTokens - usedTokens);
