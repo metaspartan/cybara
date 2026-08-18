@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readSubprocessStreamAsText } from "../../src/core/subprocess-output";
 import { existsSync, mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -22,7 +23,7 @@ describe("subagent registry storage", () => {
         stderr: "pipe",
       });
       const exitCode = await child.exited;
-      const stderr = await new Response(child.stderr).text();
+      const stderr = await readSubprocessStreamAsText(child.stderr);
 
       expect(exitCode).toBe(0);
       expect(stderr).toBe("");

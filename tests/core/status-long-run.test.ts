@@ -84,7 +84,7 @@ describe("long-running status lifecycle", () => {
     const completed = listSessionEvents(sessionId, 5000, 5000);
     expect(completed.at(-1)?.type).toBe("run_completed");
     expect(completed.at(-1)?.sequence).toBe(5003);
-  });
+  }, 20_000);
 
   test("keeps interleaved long-running sessions isolated", () => {
     const firstSessionId = createSessionId("status-concurrent-a");

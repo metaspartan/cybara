@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { join } from "node:path";
 import { ensureBunRuntime, findBunRuntime } from "../bun-runtime";
 import { resolveCybaraHome } from "../cybara-home";
+import { readSubprocessStreamAsText } from "../subprocess-output";
 
 export const MANAGED_TRANSFORMERS_VERSION = "4.2.0";
 export const MANAGED_ONNX_NODE_VERSION = "1.24.3";
@@ -80,8 +81,8 @@ async function defaultInstaller(
   });
   const [exitCode, stdout, stderr] = await Promise.all([
     processHandle.exited,
-    new Response(processHandle.stdout).text(),
-    new Response(processHandle.stderr).text(),
+    readSubprocessStreamAsText(processHandle.stdout),
+    readSubprocessStreamAsText(processHandle.stderr),
   ]);
   return { exitCode, stdout, stderr };
 }

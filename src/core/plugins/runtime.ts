@@ -4,6 +4,7 @@ import { registerAgentHook, type AgentHookDecision, type AgentHookEvent } from "
 import { mcpManager } from "../mcp";
 import { validatePublicHttpUrlShape } from "../outbound-url-policy";
 import { redactSecrets } from "../redaction";
+import { readSubprocessStreamAsText } from "../subprocess-output";
 import { toolSchemas, type Tool, type ToolContext } from "../tools";
 import { registerToolHandler, unregisterToolHandler } from "../tools/handlers";
 import { buildSubprocessEnvironment } from "../subprocess-env";
@@ -119,8 +120,8 @@ async function runPluginCommand(
       env: buildSubprocessEnvironment({ CYBARA_PLUGIN_ID: plugin.manifest.id }),
     }
   );
-  const stdoutPromise = new Response(proc.stdout).text();
-  const stderrPromise = new Response(proc.stderr).text();
+  const stdoutPromise = readSubprocessStreamAsText(proc.stdout);
+  const stderrPromise = readSubprocessStreamAsText(proc.stderr);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {

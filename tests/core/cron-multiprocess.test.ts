@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { readSubprocessStreamAsText } from "../../src/core/subprocess-output";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
@@ -87,8 +88,8 @@ async function runWorker(
   });
   const [exitCode, stdout, stderr] = await Promise.all([
     child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
+    readSubprocessStreamAsText(child.stdout),
+    readSubprocessStreamAsText(child.stderr),
   ]);
   return { exitCode, stdout, stderr };
 }

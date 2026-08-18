@@ -11,6 +11,7 @@ import {
 } from "fs";
 import { isAbsolute, join, relative, resolve } from "path";
 import { buildSubprocessEnvironment } from "./subprocess-env";
+import { readSubprocessStreamAsText } from "./subprocess-output";
 
 const CHECKPOINT_DIR = ".cybara";
 const CHECKPOINT_STORE = "checkpoints";
@@ -67,8 +68,8 @@ async function execGit(args: string[], cwd: string, env?: Record<string, string>
     env: buildSubprocessEnvironment(env),
   });
   const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
+    readSubprocessStreamAsText(proc.stdout),
+    readSubprocessStreamAsText(proc.stderr),
     proc.exited,
   ]);
   if (exitCode === 0) return stdout.trim();

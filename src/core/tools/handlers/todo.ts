@@ -11,6 +11,7 @@ export interface TodoItem {
 export interface TodoState {
   items: TodoItem[];
   updatedAt: number;
+  restoredKeys: Set<string>;
 }
 
 type SessionTodos = Record<string, TodoState>;
@@ -26,9 +27,31 @@ function keyFor(context?: ToolContext): string {
 function getState(context?: ToolContext): TodoState {
   const key = keyFor(context);
   if (!sessionTodos[key]) {
-    sessionTodos[key] = { items: [], updatedAt: Date.now() };
+    sessionTodos[key] = { items: [], updatedAt: Date.now(), restoredKeys: new Set() };
   }
   return sessionTodos[key];
+}
+
+function identityKey(content: string): string {
+  return content
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const REWORD_SIMILARITY_THRESHOLD = 0.6;
+
+function tokenSet(content: string): Set<string> {
+  return new Set(identityKey(content).split(" ").filter(Boolean));
+}
+
+function similarity(left: Set<string>, right: Set<string>): number {
+  if (left.size === 0 || right.size === 0) return 0;
+  let shared = 0;
+  for (const token of left) {
+    if (right.has(token)) shared += 1;
+  }
+  return shared / (left.size + right.size - shared);
 }
 
 export async function handleTodo(
@@ -68,27 +91,72 @@ export async function handleTodo(
   const isSettled = (status: TodoStatus) => status === "completed" || status === "cancelled";
 
   const state = getState(context);
-  const incomingContents = new Set(items.map((item) => item.content));
+  const effectiveKey = new Map<TodoItem, string>();
+  const incoming = new Map<string, TodoItem>();
+  for (const item of items) {
+    const key = identityKey(item.content);
+    effectiveKey.set(item, key);
+    incoming.set(key, item);
+  }
+
+  const previousKeys = new Set(state.items.map((previous) => identityKey(previous.content)));
+  const claimed = new Set<TodoItem>();
+  for (const previous of state.items) {
+    const previousKey = identityKey(previous.content);
+    if (incoming.has(previousKey)) continue;
+    const previousTokens = tokenSet(previous.content);
+    let best: TodoItem | undefined;
+    let bestScore = REWORD_SIMILARITY_THRESHOLD;
+    for (const candidate of items) {
+      if (claimed.has(candidate)) continue;
+      if (previousKeys.has(effectiveKey.get(candidate) as string)) continue;
+      const score = similarity(previousTokens, tokenSet(candidate.content));
+      if (score > bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+    if (!best) continue;
+    claimed.add(best);
+    incoming.delete(effectiveKey.get(best) as string);
+    effectiveKey.set(best, previousKey);
+    incoming.set(previousKey, best);
+  }
+
   const droppedIncomplete =
     items.length === 0
       ? []
       : state.items.filter(
-          (previous) => !isSettled(previous.status) && !incomingContents.has(previous.content)
+          (previous) => !isSettled(previous.status) && !incoming.has(identityKey(previous.content))
         );
-  if (droppedIncomplete.length > 0) {
-    const previousContents = new Set(state.items.map((previous) => previous.content));
-    const merged: TodoItem[] = [];
-    for (const previous of state.items) {
-      const incoming = items.find((item) => item.content === previous.content);
-      if (incoming) merged.push(incoming);
-      else if (!isSettled(previous.status)) merged.push(previous);
+  const restored = droppedIncomplete.filter(
+    (previous) => !state.restoredKeys.has(identityKey(previous.content))
+  );
+  const restoredKeys = new Set(restored.map((previous) => identityKey(previous.content)));
+
+  const merged: TodoItem[] = [];
+  const emitted = new Set<string>();
+  for (const previous of state.items) {
+    const key = identityKey(previous.content);
+    if (emitted.has(key)) continue;
+    const update = incoming.get(key);
+    if (update) {
+      merged.push(update);
+      emitted.add(key);
+    } else if (restoredKeys.has(key)) {
+      merged.push(previous);
+      emitted.add(key);
     }
-    for (const item of items) {
-      if (!previousContents.has(item.content)) merged.push(item);
-    }
-    items.length = 0;
-    items.push(...merged);
   }
+  for (const item of items) {
+    const key = effectiveKey.get(item) as string;
+    if (emitted.has(key)) continue;
+    merged.push(item);
+    emitted.add(key);
+  }
+  items.length = 0;
+  items.push(...merged);
+  state.restoredKeys = restoredKeys;
 
   let inProgressSeen = false;
   for (const item of items) {
@@ -113,8 +181,8 @@ export async function handleTodo(
     cancelled,
   };
 
-  const restoredNote = droppedIncomplete.length
-    ? ` This update left out ${droppedIncomplete.length} unfinished item${droppedIncomplete.length === 1 ? "" : "s"} (${droppedIncomplete.map((item) => item.content).join("; ")}), which have been kept so the plan stays complete. Always send the full list; to drop work, first mark it completed (done) or cancelled (obsolete or no longer needed).`
+  const restoredNote = restored.length
+    ? ` This update left out ${restored.length} unfinished item${restored.length === 1 ? "" : "s"} (${restored.map((item) => item.content).join("; ")}), kept this once in case the omission was accidental. Send the full list; to retire work, mark it completed (done) or cancelled (obsolete or no longer needed). If you omit these again on the next update they will be dropped.`
     : "";
 
   return {

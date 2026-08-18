@@ -108,11 +108,9 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
   }> {
     const systemMessage = messages.find((m) => m.role === "system");
     const chatMessages = toAnthropicHistory(messages);
-    const contextWindowTokens = resolveModelContextWindowTokens(
-      providerConfig,
-      providerId,
-      modelId
-    );
+    const contextWindowTokens =
+      toolContext?.maxContextTokens ??
+      resolveModelContextWindowTokens(providerConfig, providerId, modelId);
     const contextGuard = resolveContextGuardBudgets(contextWindowTokens);
 
     const anthropicEndpoint = anthropicEndpointPath(modelId, vertex);

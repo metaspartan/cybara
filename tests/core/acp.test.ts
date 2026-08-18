@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readSubprocessStreamAsText } from "../../src/core/subprocess-output";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -294,8 +295,8 @@ describe("ACP stdio server", () => {
       child.stdin.write(input);
       child.stdin.end();
       const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
+        readSubprocessStreamAsText(child.stdout),
+        readSubprocessStreamAsText(child.stderr),
         child.exited,
       ]);
       if (exitCode !== 0 || !stdout.trim()) {

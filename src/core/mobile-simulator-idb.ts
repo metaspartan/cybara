@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { resolveCybaraHome } from "./cybara-home";
+import { readSubprocessStreamAsText } from "./subprocess-output";
 
 export const IDB_CLIENT_VERSION = "1.1.7";
 export const IDB_PYTHON_VERSION = "3.11.14";
@@ -172,8 +173,8 @@ async function defaultCommandRunner(
     stdout: "pipe",
     stderr: "pipe",
   });
-  const stdoutPromise = new Response(handle.stdout).text();
-  const stderrPromise = new Response(handle.stderr).text();
+  const stdoutPromise = readSubprocessStreamAsText(handle.stdout);
+  const stderrPromise = readSubprocessStreamAsText(handle.stderr);
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
     const exitCode = await Promise.race([

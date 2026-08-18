@@ -9,6 +9,7 @@ import {
   normalizePermissionList,
   OPENAI_CODEX_OAUTH_MODEL_PREFIXES,
   parseAgentConfig,
+  readAgentContextWindowTokens,
 } from "./agent-internals";
 import { resolveModelContextWindowTokens } from "./agent-model-limits";
 import { AgentProviderRuntime } from "./agent-provider-runtime";
@@ -825,11 +826,9 @@ class AgentManager extends AgentProviderRuntime {
       const activeModel = resolved.model;
       const providerConfig = String((activeProvider as { provider?: unknown }).provider || "");
       const providerId = (activeProvider as { id?: string }).id;
-      const contextWindowTokens = resolveModelContextWindowTokens(
-        providerConfig,
-        providerId,
-        activeModel || ""
-      );
+      const contextWindowTokens =
+        readAgentContextWindowTokens(state.agent.config) ??
+        resolveModelContextWindowTokens(providerConfig, providerId, activeModel || "");
       const compactTokens = Math.max(1024, Math.floor(contextWindowTokens));
       const compactRatio = resolveCompactionTriggerRatio(
         compactTokens,
@@ -1279,6 +1278,7 @@ class AgentManager extends AgentProviderRuntime {
       useModelRouter: options?.useModelRouter === true,
       maxToolCalls: options?.maxToolCalls,
       maxOutputTokens: options?.maxOutputTokens,
+      maxContextTokens: readAgentContextWindowTokens(agent.config),
       confineToWorkspace: true,
       consumeSteeringMessages: options?.consumeSteeringMessages,
       executionState: { nextToolCallOrder: 0, toolCallsStarted: 0, toolCalls: [] },

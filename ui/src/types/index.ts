@@ -41,6 +41,7 @@ export interface AgentSummary {
   reasoning_mode?: "adaptive" | "binary" | "effort";
   reasoning_efforts?: AgentReasoningEffort[];
   tool_profile?: string;
+  max_context_tokens?: number | null;
   supports_images?: boolean;
 }
 

@@ -1,7 +1,7 @@
 import { handleChat } from "../api/chat";
 import { agentManager } from "../core/agent";
 import { agentImageSupportById } from "../core/agent-image-capabilities";
-import { parseAgentConfig } from "../core/agent-internals";
+import { parseAgentConfig, readAgentContextWindowTokens } from "../core/agent-internals";
 import { listAgentLoopRuns, startAgentLoop } from "../core/agent-loop";
 import {
   parseAgentReasoningSetting,
@@ -60,6 +60,7 @@ export const agentRoutes: Record<string, RouteHandler> = {
         reasoning_mode: mode,
         reasoning_efforts: supportedReasoningEfforts(provider, agent.model),
         tool_profile: typeof toolProfile === "string" ? toolProfile : "full",
+        max_context_tokens: readAgentContextWindowTokens(agent.config) ?? null,
         supports_images: imageSupport.get(agent.id) ?? false,
       };
     });

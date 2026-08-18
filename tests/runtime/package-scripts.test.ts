@@ -68,7 +68,10 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["check:ci"]).toContain("bun run doctor");
     expect(pkg.scripts?.["format"]).toBe("biome format --write");
     expect(pkg.scripts?.["format:check"]).toBe("biome format");
-    expect(pkg.scripts?.["deadcode"]).toBe("knip --no-progress");
+    expect(pkg.scripts?.["deadcode"]).toBe("bash scripts/run-knip.sh --no-progress");
+    expect(pkg.scripts?.["deadcode:report"]).toBe(
+      "bash scripts/run-knip.sh --no-progress --reporter compact --no-exit-code"
+    );
     expect(pkg.scripts?.["check:ci"]).toContain("bun run format:check");
     expect(pkg.scripts?.["check:ci"]).toContain("bun run deadcode");
     expect(pkg.devDependencies?.["@biomejs/biome"]).toMatch(/^\d+\.\d+\.\d+/);

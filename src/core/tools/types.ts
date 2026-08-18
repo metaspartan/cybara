@@ -38,6 +38,7 @@ export interface ToolContext {
   activeProviderName?: string;
   maxToolCalls?: number;
   maxOutputTokens?: number;
+  maxContextTokens?: number;
   suppressStreaming?: boolean;
   denyWritePrefixes?: string[];
   confineToWorkspace?: boolean;

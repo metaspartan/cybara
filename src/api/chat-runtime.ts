@@ -14,32 +14,22 @@ import {
   applyChatCapabilityInstruction,
   resolveChatCapabilityMentions,
 } from "../core/chat/capability-mentions";
-import { buildMemoryFlushMessages } from "../core/chat-token-optimization";
 import { stopComputerUseTrajectoryForSession } from "../core/computer-use";
 import { config } from "../core/config";
 import { hasImages, sanitizeAgentImages } from "../core/llm/image-blocks";
 import { sanitizeAssistantContent } from "../core/llm/text-tool-calls";
 import { createLogger } from "../core/logger";
 import { logAgentActivity, logSessionMessage } from "../core/logging";
-import { resolveMemoryFlushSettings, shouldRunMemoryFlush } from "../core/memory/flush";
-import {
-  trackContextCompaction,
-  trackMemoryFlush,
-  trackSessionEvent,
-  trackSessionTokens,
-} from "../core/metrics";
+import { trackSessionEvent } from "../core/metrics";
 import { expandPromptCommand } from "../core/prompt-commands";
 import {
-  compactContext,
   estimateMessagesTokens,
   estimateSessionContextUsage,
-  getContextWindow,
   normalizeSessionWorkspaceDir,
   persistSession,
   resolveSessionModelMetadata,
   type SessionModelMetadata,
   setPersistedSessionAgent,
-  shouldCompactContext,
   summarizeSessionTokenUsage,
   upsertPersistedSessionMessage,
 } from "../core/session-context";
@@ -142,6 +132,7 @@ import {
 } from "./chat-runtime-state";
 import { applySessionTitleWithBackgroundUpgrade } from "./chat-session-title-upgrade";
 import { maybeCaptureSkillFromTurn } from "./chat-skill-capture";
+import { prepareTurnContext } from "./chat-turn-context";
 import {
   buildInterruptedToolCalls,
   collectAttachedProcessActivityIds,
@@ -1317,127 +1308,16 @@ async function handleChatTurn(
 
   if (!imageRoutingError && provider && agent) {
     const effectiveModel = requestedModelOverride || agent.model;
-    const contextWindow = getContextWindow(effectiveModel);
-    const currentTokens = estimateMessagesTokens(session.messages);
-    const flushSettings = resolveMemoryFlushSettings();
-
-    trackSessionTokens(session.id, currentTokens, contextWindow, effectiveModel, {
-      messageCount: session.messages.length,
+    await prepareTurnContext({
+      session,
+      agent,
+      provider,
+      effectiveModel,
+      channel,
+      userId,
+      maxOutputTokens: request.maxOutputTokens,
+      modelParamsOverride: request.modelParamsOverride,
     });
-
-    if (
-      flushSettings &&
-      shouldRunMemoryFlush({
-        totalTokens: currentTokens,
-        contextWindowTokens: contextWindow,
-        softThresholdTokens: flushSettings.softThresholdTokens,
-        lastFlushCompactionCount: session.lastFlushCompactionCount,
-        currentCompactionCount: session.compactionCount || 0,
-      })
-    ) {
-      log.info("Running pre-compaction memory flush", {
-        sessionId: session.id,
-        currentTokens,
-        contextWindow,
-      });
-      const flushStartTime = Date.now();
-
-      try {
-        const flushMessages = buildMemoryFlushMessages(session.messages, flushSettings.prompt);
-
-        const flushResult = await agentManager.callLLM(
-          provider,
-          effectiveModel,
-          flushMessages,
-          [],
-          {
-            agentId: agent.id,
-            sessionId: session.id,
-            channel,
-            userId,
-            workspaceDir: session.workspaceDir || undefined,
-            suppressStreaming: true,
-            maxOutputTokens: request.maxOutputTokens,
-            modelParamsOverride: request.modelParamsOverride,
-          }
-        );
-
-        session.lastFlushCompactionCount = session.compactionCount || 0;
-
-        trackMemoryFlush(session.id, true, {
-          tokensBeforeFlush: currentTokens,
-          compactionCount: session.compactionCount || 0,
-          durationMs: Date.now() - flushStartTime,
-        });
-        trackSessionEvent(session.id, "memory_flushed", {
-          model: effectiveModel,
-        });
-
-        log.info("Memory flush completed", {
-          sessionId: session.id,
-          preview: flushResult.content.substring(0, 100),
-        });
-      } catch (flushError) {
-        log.exception("Memory flush failed", flushError, {
-          sessionId: session.id,
-        });
-        trackMemoryFlush(session.id, false, {
-          tokensBeforeFlush: currentTokens,
-          compactionCount: session.compactionCount || 0,
-        });
-      }
-    }
-
-    const contextCheck = shouldCompactContext(session.messages, effectiveModel);
-
-    if (contextCheck.needed) {
-      log.info("Context compaction needed", {
-        sessionId: session.id,
-        currentTokens: contextCheck.currentTokens,
-        maxTokens: contextCheck.maxTokens,
-      });
-      const compactionStart = Date.now();
-      const messagesBefore = session.messages.length;
-      const tokensBefore = estimateMessagesTokens(session.messages);
-
-      broadcastStatus({
-        status: "compacting",
-        sessionId: session.id,
-        agentId: agent.id,
-        timestamp: Date.now(),
-        detail: "Summarizing earlier conversation to continue...",
-      });
-
-      const compaction = await compactContext(session.messages, effectiveModel, agent.provider_id);
-      if (compaction.wasCompacted) {
-        session.messages = compaction.messages;
-        session.compactionCount = (session.compactionCount || 0) + 1;
-        persistActiveSessionContext(session);
-
-        const tokensAfter = estimateMessagesTokens(session.messages);
-        trackContextCompaction(session.id, {
-          messagesBefore,
-          messagesAfter: session.messages.length,
-          tokensBefore,
-          tokensAfter,
-          model: agent.model,
-          durationMs: Date.now() - compactionStart,
-        });
-        trackSessionEvent(session.id, "compacted", { model: effectiveModel });
-
-        log.info("Context compacted", {
-          sessionId: session.id,
-          summaryPreview: compaction.summary?.slice(0, 100),
-        });
-        broadcastStatus({
-          status: "thinking",
-          sessionId: session.id,
-          agentId: agent.id,
-          timestamp: Date.now(),
-          detail: "Context automatically compacted",
-        });
-      }
-    }
   }
 
   let responseContent: string;

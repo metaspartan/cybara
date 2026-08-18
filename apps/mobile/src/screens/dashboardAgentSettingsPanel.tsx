@@ -53,6 +53,11 @@ export function AgentSettingsPanel({
   const [toolProfile, setToolProfile] = useState(
     typeof agent.config?.tool_profile === "string" ? agent.config.tool_profile : "full"
   );
+  const [maxContextTokens, setMaxContextTokens] = useState(
+    typeof agent.config?.max_context_tokens === "number"
+      ? String(agent.config.max_context_tokens)
+      : ""
+  );
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const providerOptions = summary?.providers ?? [];
@@ -91,6 +96,11 @@ export function AgentSettingsPanel({
     setToolProfile(
       typeof agent.config?.tool_profile === "string" ? agent.config.tool_profile : "full"
     );
+    setMaxContextTokens(
+      typeof agent.config?.max_context_tokens === "number"
+        ? String(agent.config.max_context_tokens)
+        : ""
+    );
   }, [
     agent.id,
     agent.model,
@@ -110,13 +120,20 @@ export function AgentSettingsPanel({
     }
     setSaving(true);
     try {
+      const nextConfig: Record<string, unknown> = { ...(agent.config ?? {}) };
+      const contextTokens = Number.parseInt(maxContextTokens.trim(), 10);
+      if (Number.isFinite(contextTokens) && contextTokens > 0) {
+        nextConfig.max_context_tokens = Math.max(1, Math.floor(contextTokens));
+      } else {
+        delete nextConfig.max_context_tokens;
+      }
       const updated = await api.updateAgent(agent.id, {
         name: trimmedName,
         type,
         provider_id: providerId || undefined,
         model: model.trim() || undefined,
         system_prompt: systemPrompt,
-        config: { ...(agent.config ?? {}), tool_profile: toolProfile },
+        config: { ...nextConfig, tool_profile: toolProfile },
       });
       setAgent(updated);
       await refreshSummary();
@@ -219,6 +236,14 @@ export function AgentSettingsPanel({
             ]}
             selected={toolProfile}
             onSelect={setToolProfile}
+          />
+          <SettingsTextField
+            help="Leave empty to use the model default."
+            keyboardType="numeric"
+            label="Max context length (tokens)"
+            onChangeText={setMaxContextTokens}
+            placeholder="e.g. 128000"
+            value={maxContextTokens}
           />
           <SettingsTextField
             help="Used as this agent's operating instructions."

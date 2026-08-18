@@ -15,6 +15,28 @@ export {
   type ProcessActivityInfo,
   type ToolCallInfo,
 } from "./chat-process-activities";
+interface ReplayableToolCall {
+  id: string;
+  name: string;
+  args?: unknown;
+  result?: unknown;
+  error?: unknown;
+}
+
+const toolResultPreviewCache = new WeakMap<object, string>();
+
+function previewToolResult(toolCall: ReplayableToolCall, sessionId?: string): string {
+  const cached = toolResultPreviewCache.get(toolCall);
+  if (cached !== undefined) return cached;
+  const preview = truncateToolResultContentForContext(
+    toolCall.result ?? { error: toolCall.error },
+    TOOL_RESULT_PROMPT_MAX_CHARS,
+    sessionId ? { sessionId, toolName: toolCall.name, toolCallId: toolCall.id } : undefined
+  );
+  toolResultPreviewCache.set(toolCall, preview);
+  return preview;
+}
+
 export function buildChatExecutionMessagesForAgent(
   sessionMessages: ChatMessage[],
   options?: {
@@ -91,10 +113,7 @@ export function buildChatExecutionMessagesForAgent(
     };
     const toolResults: AgentMessage[] = replayableToolCalls.map((toolCall) => ({
       role: "tool",
-      content: truncateToolResultContentForContext(
-        toolCall.result ?? { error: toolCall.error },
-        TOOL_RESULT_PROMPT_MAX_CHARS
-      ),
+      content: previewToolResult(toolCall, options?.sessionId),
       tool_call_id: toolCall.id,
     }));
     return message.content.trim()

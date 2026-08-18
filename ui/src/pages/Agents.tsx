@@ -79,7 +79,21 @@ function buildConfig(formData: FormData, existing?: unknown): Record<string, unk
     delete config.model_params;
   }
   config.tool_profile = (formData.get("tool_profile") as string) || "full";
+  const contextTokensRaw = (formData.get("max_context_tokens") as string) || "";
+  const contextTokens = Number.parseInt(contextTokensRaw, 10);
+  if (Number.isFinite(contextTokens) && contextTokens > 0) {
+    config.max_context_tokens = Math.max(1, Math.floor(contextTokens));
+  } else {
+    delete config.max_context_tokens;
+  }
   return config;
+}
+
+function formatContextTokens(tokens: number | null | undefined): string {
+  if (!tokens || tokens <= 0) return "Default";
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1000) return `${Math.round(tokens / 1000)}k`;
+  return String(tokens);
 }
 
 export function Agents() {
@@ -369,6 +383,10 @@ function AgentCard({
             <span className="text-gray-300 capitalize">{agent.tool_profile || "full"}</span>
           </div>
           <div className="flex justify-between">
+            <span className="text-gray-500">Context</span>
+            <span className="text-gray-300">{formatContextTokens(agent.max_context_tokens)}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-gray-500">Created</span>
             <span className="text-gray-300">
               {agent.created_at ? new Date(agent.created_at).toLocaleDateString() : "Unknown"}
@@ -588,6 +606,22 @@ function AgentModal({
             name="tool_profile"
             defaultValue={initialData ? agentToolProfile(initialData) : "full"}
             options={toolProfiles}
+          />
+
+          <Input
+            label="Max Context Length (tokens)"
+            name="max_context_tokens"
+            type="number"
+            min={1024}
+            step={1024}
+            placeholder="Leave empty to use the model default"
+            defaultValue={
+              initialData
+                ? ((parseAgentConfig(initialData.config).max_context_tokens as
+                    | number
+                    | undefined) ?? "")
+                : ""
+            }
           />
 
           <Textarea

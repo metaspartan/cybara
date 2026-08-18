@@ -5,7 +5,10 @@ import { isAbsolute, resolve } from "path";
 import type { ChatMessage } from "../api/chat";
 import { agentManager } from "./agent";
 import { attachmentsToImages } from "./chat/attachments";
-import { compactChatContentForPrompt } from "./chat-token-optimization";
+import {
+  compactChatContentForPrompt,
+  TOOL_RESULT_PROMPT_MAX_CHARS,
+} from "./chat-token-optimization";
 import db, { tables } from "./database";
 import { sanitizeAssistantContent } from "./llm/text-tool-calls";
 import { createLogger } from "./logger";
@@ -372,7 +375,7 @@ export function estimateMessagesTokens(messages: ChatMessage[]): number {
 }
 
 function estimateRawMessageTokens(message: ChatMessage): number {
-  const contentTokens = estimateTokens(message.content);
+  const contentTokens = estimateTokens(message.content ?? "");
   const imageTokens = Array.isArray(message.images) ? message.images.length * 768 : 0;
   return contentTokens + imageTokens + 50;
 }
@@ -393,6 +396,37 @@ export function estimateMessageTranscriptTokens(message: ChatMessage): number {
 
 export function estimateMessagesTranscriptTokens(messages: ChatMessage[]): number {
   return messages.reduce((sum, msg) => sum + estimateMessageTranscriptTokens(msg), 0);
+}
+
+function requestVisibleToolResultChars(value: unknown): string {
+  if (typeof value === "string") {
+    return value.length <= TOOL_RESULT_PROMPT_MAX_CHARS
+      ? value
+      : value.slice(0, TOOL_RESULT_PROMPT_MAX_CHARS);
+  }
+  const serialized = JSON.stringify(value);
+  if (serialized.length <= TOOL_RESULT_PROMPT_MAX_CHARS) return serialized;
+  return serialized.slice(0, TOOL_RESULT_PROMPT_MAX_CHARS);
+}
+
+function estimateRequestVisibleMessageTokens(message: ChatMessage): number {
+  const thinkingTokens = message.thinking ? estimateTokens(message.thinking) : 0;
+  const toolTokens = message.tool_calls
+    ? message.tool_calls.reduce((sum, toolCall) => {
+        const hasReplayableResult = toolCall.result !== undefined || Boolean(toolCall.error);
+        if (!hasReplayableResult) return sum;
+        const argsTokens = estimateTokens(JSON.stringify(toolCall.args ?? {}));
+        const resultTokens = estimateTokens(
+          requestVisibleToolResultChars(toolCall.result ?? { error: toolCall.error })
+        );
+        return sum + argsTokens + resultTokens;
+      }, 0)
+    : 0;
+  return estimateRawMessageTokens(message) + thinkingTokens + toolTokens;
+}
+
+export function estimateMessagesRequestVisibleTokens(messages: ChatMessage[]): number {
+  return messages.reduce((sum, msg) => sum + estimateRequestVisibleMessageTokens(msg), 0);
 }
 
 export interface SessionContextUsage {
@@ -747,10 +781,11 @@ export function getContextWindow(model?: string): number {
 export function shouldCompactContext(
   messages: ChatMessage[],
   model?: string,
-  newContent?: string
+  newContent?: string,
+  contextWindowTokens?: number
 ): { needed: boolean; currentTokens: number; maxTokens: number; availableTokens: number } {
-  const contextWindow = getContextWindow(model);
-  const currentTokens = estimateMessagesTokens(messages);
+  const contextWindow = contextWindowTokens ?? getContextWindow(model);
+  const currentTokens = estimateMessagesRequestVisibleTokens(messages);
   const newContentTokens = newContent ? estimateTokens(newContent) : 0;
   const totalTokens = currentTokens + newContentTokens;
 
@@ -769,9 +804,9 @@ export async function compactContext(
   messages: ChatMessage[],
   model?: string,
   providerId?: string,
-  options?: { force?: boolean }
+  options?: { force?: boolean; contextWindowTokens?: number }
 ): Promise<{ messages: ChatMessage[]; summary?: string; wasCompacted: boolean }> {
-  const contextWindow = getContextWindow(model);
+  const contextWindow = options?.contextWindowTokens ?? getContextWindow(model);
   const maxHistoryTokens = Math.floor((contextWindow * MAX_HISTORY_SHARE) / CONTEXT_SAFETY_MARGIN);
 
   const summaryMessages = messages.filter(isContextSummaryMessage);
@@ -783,12 +818,12 @@ export async function compactContext(
 
   const minRecent = 4;
   let recentCount = Math.min(nonSystemMessages.length, minRecent);
-  const systemTokens = estimateMessagesTokens(systemMessages);
+  const systemTokens = estimateMessagesRequestVisibleTokens(systemMessages);
   const reserveForSummaryAndSystem = systemTokens + SUMMARY_RESERVE_TOKENS;
   if (!options?.force) {
     for (let n = recentCount + 1; n <= nonSystemMessages.length; n += 1) {
       const candidateRecent = nonSystemMessages.slice(-n);
-      const candidateTokens = estimateMessagesTokens(candidateRecent);
+      const candidateTokens = estimateMessagesRequestVisibleTokens(candidateRecent);
       if (candidateTokens > (maxHistoryTokens - reserveForSummaryAndSystem) * 0.4) break;
       recentCount = n;
     }
@@ -800,10 +835,10 @@ export async function compactContext(
     return { messages, wasCompacted: false };
   }
 
-  const recentTokens = estimateMessagesTokens(recentMessages);
+  const recentTokens = estimateMessagesRequestVisibleTokens(recentMessages);
   const availableForOlder = maxHistoryTokens - recentTokens - reserveForSummaryAndSystem;
 
-  const olderTokens = estimateMessagesTokens(olderMessages);
+  const olderTokens = estimateMessagesRequestVisibleTokens(olderMessages);
   if (!options?.force && olderTokens <= availableForOlder) {
     return { messages, wasCompacted: false };
   }

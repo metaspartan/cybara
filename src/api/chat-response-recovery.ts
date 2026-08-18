@@ -8,6 +8,7 @@ import {
   buildUnsupportedAssistantClaimMessage,
   findAssistantEvidenceIssue,
   isEvidenceToolCall,
+  isSubstantiveAssistantResponse,
   isSuccessfulToolCall,
   requiresToolEvidenceForMessage,
   shouldRecoverNonSubstantiveAssistantCompletion,
@@ -142,6 +143,23 @@ export async function recoverAssistantResponse(
       toolResults: params.toolResults,
     };
   }
+  const initialContent = visibleAssistantContent(params.responseContent);
+  const establishedConversation = params.executionMessages.some(
+    (message) =>
+      message.role === "assistant" &&
+      Array.isArray(message.tool_calls) &&
+      message.tool_calls.length > 0
+  );
+  if (
+    isSubstantiveAssistantResponse(initialContent) &&
+    establishedConversation &&
+    !params.shouldRequireToolUse
+  ) {
+    return {
+      responseContent: params.responseContent,
+      toolResults: params.toolResults,
+    };
+  }
 
   const retryMessages = [...params.executionMessages];
   let latestContent = params.responseContent;
@@ -211,6 +229,14 @@ export async function recoverAssistantResponse(
     }
   }
 
+  const finalContent = visibleAssistantContent(latestContent);
+  if (isSubstantiveAssistantResponse(finalContent)) {
+    return {
+      error: lastError,
+      responseContent: latestContent,
+      toolResults: combinedToolCalls,
+    };
+  }
   return {
     error: lastError,
     responseContent: latestEvidenceIssue

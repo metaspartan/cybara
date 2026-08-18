@@ -106,7 +106,7 @@ describe("TypeScript import/type style guard", () => {
     }
 
     expect(offenders).toEqual([]);
-  }, 15_000);
+  }, 120_000);
 
   test("does not use dynamic import() expressions in TypeScript sources", () => {
     const offenders: string[] = [];

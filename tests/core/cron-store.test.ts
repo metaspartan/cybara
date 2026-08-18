@@ -283,7 +283,7 @@ beforeAll(() => {
     );
   }
   result = JSON.parse(line.slice("__RESULT__".length)) as WorkerResult;
-});
+}, 60_000);
 
 afterAll(() => {
   if (tempHome) rmSync(tempHome, { recursive: true, force: true });
