@@ -312,6 +312,16 @@ export function requiresToolEvidenceForMessage(message: string): boolean {
   return EVIDENCE_REQUEST_PATTERN.test(request) && EVIDENCE_REQUEST_TARGET_PATTERN.test(request);
 }
 
+const SUBSTANTIVE_RESPONSE_MIN_CHARS = 160;
+
+export function isSubstantiveAssistantResponse(content: string): boolean {
+  const compact = content.replace(/\s+/g, " ").trim();
+  if (compact.length < SUBSTANTIVE_RESPONSE_MIN_CHARS) return false;
+  const sentenceCount = (compact.match(/[.!?]+(?:\s|$)/g) || []).length;
+  if (sentenceCount >= 2) return true;
+  return /(^|\n)(?:#{1,4}\s|[-*]\s|\d+\.\s|```)/.test(content);
+}
+
 function hasPattern(content: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(content));
 }
@@ -415,7 +425,8 @@ export function findAssistantEvidenceIssue(
   if (
     context.requireActionEvidence === true &&
     !toolCalls.some(isEvidenceToolCall) &&
-    !visibleContent.includes("?")
+    !visibleContent.includes("?") &&
+    !isSubstantiveAssistantResponse(visibleContent)
   ) {
     return "missing_action_evidence";
   }

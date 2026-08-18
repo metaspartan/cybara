@@ -321,6 +321,20 @@ describe("chat tool summary utilities", () => {
     expect(requiredDirectToolForMessage("How does a Discord channel work?")).toBeUndefined();
   });
 
+  test("does not flag substantive answers as missing action evidence", () => {
+    const substantive =
+      "Here is where things stand. The training run reached step 2300 with the planner fix " +
+      "applied, and the binder suite is green again. I also re-ran the live evals and the " +
+      "regression set; both are back to baseline with zero paired regressions, so the " +
+      "change is safe to keep. The remaining work is tracked on the todo list for the next pass.";
+    expect(
+      findAssistantEvidenceIssue(substantive, [], { requireActionEvidence: true })
+    ).toBeUndefined();
+    expect(findAssistantEvidenceIssue("Done.", [], { requireActionEvidence: true })).toBe(
+      "missing_action_evidence"
+    );
+  });
+
   test("detects artifact-focused prompts for artifact-preferred tool execution", () => {
     expect(
       shouldPreferArtifactsForMessage("audit this codebase and create an artifact report when done")

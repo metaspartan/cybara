@@ -71,6 +71,64 @@ describe("OpenAI-compatible response usage", () => {
     });
   });
 
+  test("tracks estimated output tokens and real timing when the provider omits usage", () => {
+    const sessionId = `no-usage-provider-${crypto.randomUUID()}`;
+    trackOpenAIResponseUsage(
+      {
+        id: "response-no-usage",
+        object: "chat.completion",
+        model: "custom-model",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: "The importer now handles 4 rows and the schema matches the fixture.",
+            },
+            finish_reason: "stop",
+          },
+        ],
+        first_token_ms: 320,
+        generation_duration_ms: 1250,
+      },
+      {
+        model: "custom-model",
+        provider: "custom-provider",
+        providerUrl: "https://custom.test/v1",
+        durationMs: 2000,
+        sessionId,
+      }
+    );
+
+    const usage = summarizeSessionTokenUsage(sessionId);
+    expect(usage.outputTokens).toBeGreaterThan(0);
+    expect(usage.totalTokens).toBeGreaterThan(0);
+    expect(usage.tokensPerSecond).toBeGreaterThan(0);
+    expect(usage.firstTokenMs).toBe(320);
+  });
+
+  test("does not fabricate rows for empty responses without usage or timing", () => {
+    const sessionId = `empty-no-usage-${crypto.randomUUID()}`;
+    const tracked = trackOpenAIResponseUsage(
+      {
+        id: "response-empty",
+        object: "chat.completion",
+        model: "custom-model",
+        choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "stop" }],
+      },
+      {
+        model: "custom-model",
+        provider: "custom-provider",
+        providerUrl: "https://custom.test/v1",
+        durationMs: 500,
+        sessionId,
+      }
+    );
+
+    expect(tracked).toBe(false);
+    expect(summarizeSessionTokenUsage(sessionId).totalTokens).toBe(0);
+  });
+
   test("adds Anthropic-style cache fields without fabricating streaming metrics", () => {
     const sessionId = `anthropic-compatible-usage-${crypto.randomUUID()}`;
     trackOpenAIResponseUsage(
