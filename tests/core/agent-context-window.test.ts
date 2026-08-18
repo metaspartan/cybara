@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readAgentContextWindowTokens } from "../../src/core/agent-internals";
 import { resolveTurnContextWindow } from "../../src/api/chat-turn-context";
-import { shouldCompactContext, type ChatMessage } from "../../src/core/session-context";
+import {
+  estimateMessagesRequestVisibleTokens,
+  shouldCompactContext,
+  type ChatMessage,
+} from "../../src/core/session-context";
+import { tables } from "../../src/core/database";
 
 describe("agent max context window config", () => {
   test("reads snake_case and camelCase max context token keys", () => {
@@ -38,6 +43,80 @@ describe("agent max context window config", () => {
 });
 
 describe("turn context window resolution", () => {
+  test("uses the provider-scoped model window when the provider lists the model", () => {
+    const providerId = `provider-window-${crypto.randomUUID()}`;
+    const modelId = "custom-flash-0731";
+    try {
+      tables.providers.create({
+        id: providerId,
+        provider: "inference",
+        name: "Test Inference",
+        base_url: "https://test.invalid/v1",
+        is_default: false,
+      });
+      tables.providerModels.upsert({
+        id: `pm-${crypto.randomUUID()}`,
+        provider_id: providerId,
+        model_id: modelId,
+        model_name: modelId,
+        context_window: 786432,
+        max_tokens: 65536,
+        reasoning: false,
+        input_types: ["text"],
+        cost_input: 0,
+        cost_output: 0,
+        cost_cache_read: 0,
+        cost_cache_write: 0,
+      });
+      const resolved = resolveTurnContextWindow(
+        { config: {}, provider_id: providerId, model: modelId },
+        modelId
+      );
+      expect(resolved.contextWindow).toBe(786432);
+      expect(resolved.contextWindowTokens).toBe(786432);
+    } finally {
+      tables.providerModels.deleteByProvider(providerId);
+      tables.providers.delete(providerId);
+    }
+  });
+
+  test("ignores provider_models rows without a matching model", () => {
+    const providerId = `provider-nomatch-${crypto.randomUUID()}`;
+    try {
+      tables.providers.create({
+        id: providerId,
+        provider: "inference",
+        name: "Test Inference",
+        base_url: "https://test.invalid/v1",
+        is_default: false,
+      });
+      tables.providerModels.upsert({
+        id: `pm-${crypto.randomUUID()}`,
+        provider_id: providerId,
+        model_id: "some-other-model",
+        model_name: "some-other-model",
+        context_window: 999999,
+        max_tokens: 65536,
+        reasoning: false,
+        input_types: ["text"],
+        cost_input: 0,
+        cost_output: 0,
+        cost_cache_read: 0,
+        cost_cache_write: 0,
+      });
+      const resolved = resolveTurnContextWindow(
+        { config: {}, provider_id: providerId, model: "deepseek-v4-flash" },
+        "deepseek-v4-flash"
+      );
+      expect(resolved.contextWindowTokens).toBeUndefined();
+      expect(resolved.contextWindow).toBeGreaterThan(0);
+      expect(resolved.contextWindow).not.toBe(999999);
+    } finally {
+      tables.providerModels.deleteByProvider(providerId);
+      tables.providers.delete(providerId);
+    }
+  });
+
   test("uses the agent max context when set", () => {
     const resolved = resolveTurnContextWindow(
       { config: { max_context_tokens: 32000 } },
@@ -58,6 +137,53 @@ describe("turn context window resolution", () => {
     const resolved = resolveTurnContextWindow(undefined, "deepseek-v4-flash");
     expect(resolved.contextWindowTokens).toBeUndefined();
     expect(resolved.contextWindow).toBeGreaterThan(0);
+  });
+});
+
+describe("request-visible context estimation", () => {
+  test("caps historical tool results at the prompt truncation limit", () => {
+    const messages = [
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          {
+            id: "t1",
+            name: "read",
+            args: { path: "/tmp/x.ts" },
+            status: "completed",
+            result: "x".repeat(40_000),
+          },
+        ],
+      },
+    ] as ChatMessage[];
+    const estimate = estimateMessagesRequestVisibleTokens(messages);
+    expect(estimate).toBeGreaterThan(50);
+    expect(estimate).toBeLessThan(2000);
+  });
+
+  test("excludes tool calls without replayable results", () => {
+    const messages = [
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [{ id: "t1", name: "read", args: { path: "/tmp/x.ts" }, status: "pending" }],
+      },
+    ] as ChatMessage[];
+    expect(estimateMessagesRequestVisibleTokens(messages)).toBeLessThan(100);
+  });
+
+  test("compaction decision accounts for replayed tool results", () => {
+    const toolCalls = Array.from({ length: 1500 }, (_, index) => ({
+      id: `t-${index}`,
+      name: "exec",
+      args: { command: "echo hi" },
+      status: "completed",
+      result: "y".repeat(4000),
+    }));
+    const messages = [{ role: "assistant", content: "", tool_calls: toolCalls }] as ChatMessage[];
+    const check = shouldCompactContext(messages, "deepseek-v4-flash", undefined, 786432);
+    expect(check.needed).toBe(true);
   });
 });
 

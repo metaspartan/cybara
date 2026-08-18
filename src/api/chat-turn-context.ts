@@ -10,6 +10,7 @@ import {
   trackSessionEvent,
   trackSessionTokens,
 } from "../core/metrics";
+import { providerManager } from "../core/providers";
 import {
   compactContext,
   estimateMessagesTokens,
@@ -21,13 +22,44 @@ import { persistActiveSessionContext, type InMemoryChatSession } from "./chat-ru
 
 const log = createLogger("ChatTurnContext");
 
+function providerScopedContextWindow(
+  agent: Pick<Agent, "config" | "provider_id" | "model"> | undefined,
+  effectiveModel: string | undefined
+): number | undefined {
+  if (!agent?.provider_id) return undefined;
+  const modelId = (effectiveModel ?? agent.model ?? "").trim().toLowerCase();
+  if (!modelId) return undefined;
+  const providerModels = providerManager.getModels(agent.provider_id) as Array<{
+    model_id?: string | null;
+    model_name?: string | null;
+    context_window?: number | null;
+  }>;
+  const match = providerModels.find((entry) =>
+    [entry.model_id, entry.model_name].some(
+      (value) => typeof value === "string" && value.trim().toLowerCase() === modelId
+    )
+  );
+  const contextWindow = match?.context_window;
+  if (typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0) {
+    return Math.max(1, Math.floor(contextWindow));
+  }
+  return undefined;
+}
+
 export function resolveTurnContextWindow(
-  agent: Pick<Agent, "config"> | undefined,
+  agent: Pick<Agent, "config" | "provider_id" | "model"> | undefined,
   effectiveModel: string | undefined
 ): { contextWindow: number; contextWindowTokens: number | undefined } {
-  const contextWindowTokens = agent ? readAgentContextWindowTokens(agent.config) : undefined;
-  const contextWindow = contextWindowTokens ?? getContextWindow(effectiveModel);
-  return { contextWindow, contextWindowTokens };
+  const explicitTokens = agent ? readAgentContextWindowTokens(agent.config) : undefined;
+  if (explicitTokens !== undefined) {
+    return { contextWindow: explicitTokens, contextWindowTokens: explicitTokens };
+  }
+  const providerWindow = providerScopedContextWindow(agent, effectiveModel);
+  if (providerWindow !== undefined) {
+    return { contextWindow: providerWindow, contextWindowTokens: providerWindow };
+  }
+  const contextWindow = getContextWindow(effectiveModel);
+  return { contextWindow, contextWindowTokens: undefined };
 }
 
 export async function prepareTurnContext(input: {
