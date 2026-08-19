@@ -105,7 +105,7 @@ export function GoalPanel({
       }
       return (
         <div className={cn("chat-goal-bar", chatHorizontalPaddingClassName(horizontalPadding))}>
-          <div className="new-chat-workspace-bar mx-4 flex h-9 min-w-0 items-center gap-2 rounded-t-[18px] border border-b-0 px-3 text-[12px]">
+          <div className="new-chat-workspace-bar flex h-9 min-w-0 items-center gap-2 rounded-t-[18px] border border-b-0 px-3 text-[12px]">
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--icon-muted)]" />
             <span className="text-[var(--text-muted)]">Loading goal...</span>
           </div>
@@ -211,7 +211,7 @@ export function GoalPanel({
 
   return (
     <div className={cn("chat-goal-bar", chatHorizontalPaddingClassName(horizontalPadding))}>
-      <div className="new-chat-workspace-bar mx-4 flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1.5 rounded-t-[18px] border border-b-0 px-3 py-1.5 text-[12px]">
+      <div className="new-chat-workspace-bar flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1.5 rounded-t-[18px] border border-b-0 px-3 py-1.5 text-[12px]">
         <div className="flex min-w-0 items-center gap-2">
           <Target className="h-3.5 w-3.5 shrink-0 text-[var(--icon-muted)]" />
           <span
