@@ -1,6 +1,7 @@
 import { isIP } from "net";
 import { Buffer } from "buffer";
 import { config } from "../core/config";
+import { readSubprocessStreamAsText } from "../core/subprocess-output";
 import { getGatewayAuthSettings } from "./security";
 
 type GatewayHostApplyHandler = (host: string) => void;
@@ -134,8 +135,8 @@ async function defaultAsyncFirewallRunner(cmd: string[]): Promise<FirewallComman
     timeout: FIREWALL_COMMAND_TIMEOUT_MS,
   });
   const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
+    readSubprocessStreamAsText(child.stdout),
+    readSubprocessStreamAsText(child.stderr),
     child.exited,
   ]);
   return { exitCode: exitCode ?? 1, stdout, stderr };

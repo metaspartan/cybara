@@ -343,6 +343,11 @@ function printChatHelp(): void {
   console.log("    /context                   Show context and compaction state");
   console.log("    /usage                     Show token usage for this session");
   console.log("    /plan                      Show latest plan progress");
+  console.log(
+    "    /goal <objective>          Set a persistent goal (agent keeps working; /loop alias)"
+  );
+  console.log("    /goal status               Show the current goal");
+  console.log("    /goal pause|resume|complete|clear");
   console.log("    /diffs                     Show detected file changes");
   console.log("    /tasks                     Show current tasks");
   console.log("    /subagents                 Show current subagents");

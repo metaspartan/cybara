@@ -103,6 +103,8 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
     trackOpenAIResponseUsage(data, {
       model: modelId,
       provider: "openai",
+      inputTokens: this.estimateOpenAIRequestInputTokens(requestBody),
+
       providerUrl: baseUrl,
       durationMs,
       sessionId: sessionIdForVisibleTokenUsage(toolContext),
@@ -369,6 +371,8 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
       trackOpenAIResponseUsage(loopData, {
         model: modelId,
         provider: "openai",
+        inputTokens: this.estimateOpenAIRequestInputTokens(loopRequestBody),
+
         providerUrl: baseUrl,
         durationMs: Math.round(performance.now() - loopRequestStartedAt),
         sessionId: sessionIdForVisibleTokenUsage(toolContext),
@@ -410,6 +414,8 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
         trackOpenAIResponseUsage(closingData, {
           model: modelId,
           provider: "openai",
+          inputTokens: this.estimateOpenAIRequestInputTokens(closingBody),
+
           providerUrl: baseUrl,
           durationMs: Math.round(performance.now() - closingStartedAt),
           sessionId: sessionIdForVisibleTokenUsage(toolContext),

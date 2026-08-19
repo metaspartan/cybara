@@ -178,7 +178,40 @@ export function compactOpenAIChatTranscriptInPlace(
     force = false;
   }
 
+  if (running > budgetChars) {
+    const systemIndexes = messages
+      .map((message, index) => (message.role === "system" ? index : -1))
+      .filter((index) => index >= 0)
+      .sort(
+        (a, b) =>
+          estimateOpenAIChatMessageChars(messages[b]) - estimateOpenAIChatMessageChars(messages[a])
+      );
+    for (const index of systemIndexes) {
+      if (running <= budgetChars) break;
+      const message = messages[index];
+      if (typeof message.content !== "string" || message.content.length === 0) continue;
+      const currentEstimate = estimates[index];
+      const maxChars = Math.max(256, currentEstimate - (running - budgetChars));
+      if (message.content.length <= maxChars) continue;
+      message.content = truncateSystemMessageText(message.content, maxChars);
+      const nextEstimate = estimateOpenAIChatMessageChars(message);
+      estimates[index] = nextEstimate;
+      running = running - currentEstimate + nextEstimate;
+      messageElided += 1;
+    }
+  }
+
   return toolElided + messageElided;
+}
+
+function truncateSystemMessageText(text: string, maxChars: number): string {
+  const notice = "\n[compacted: system prompt truncated to fit context window]\n";
+  if (maxChars <= notice.length + 64) {
+    return text.slice(0, Math.max(1, maxChars - notice.length)) + notice;
+  }
+  const headChars = Math.floor(maxChars * 0.65);
+  const tailChars = maxChars - headChars - notice.length;
+  return text.slice(0, headChars) + notice + text.slice(text.length - tailChars);
 }
 
 export function compactOpenAIRequestMessagesForContext(

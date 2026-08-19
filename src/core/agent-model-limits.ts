@@ -9,6 +9,22 @@ function normalizePositiveInt(value: unknown): number | undefined {
   return Math.max(1, Math.floor(value));
 }
 
+function isGenericFallbackRow(entry: {
+  model_id?: string | null;
+  model_name?: string | null;
+  context_window?: number | null;
+  max_tokens?: number | null;
+}): boolean {
+  const modelId = entry.model_id?.trim().toLowerCase() ?? "";
+  const modelName = entry.model_name?.trim().toLowerCase() ?? "";
+  return (
+    modelId.length > 0 &&
+    modelName === modelId &&
+    entry.context_window === 128000 &&
+    entry.max_tokens === 8192
+  );
+}
+
 function modelIdsMatch(entry: { model_id?: string | null; model_name?: string | null }) {
   const candidateIds = [entry.model_id, entry.model_name].filter(
     (value): value is string => typeof value === "string" && value.trim().length > 0
@@ -87,8 +103,11 @@ export function resolveModelContextWindowTokens(
       model_id?: string | null;
       model_name?: string | null;
       context_window?: number | null;
+      max_tokens?: number | null;
     }>;
-    const providerMatch = providerModels.find((entry) => modelIdsMatch(entry)(normalizedModelId));
+    const providerMatch = providerModels.find(
+      (entry) => !isGenericFallbackRow(entry) && modelIdsMatch(entry)(normalizedModelId)
+    );
     const contextLimit = normalizePositiveInt(providerMatch?.context_window);
     if (contextLimit) return contextLimit;
   }

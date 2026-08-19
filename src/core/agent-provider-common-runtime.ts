@@ -43,6 +43,10 @@ import {
 import { coalesceSystemMessages } from "./llm/system-messages";
 import { hasTextToolCallMarkup, sanitizeAssistantContent } from "./llm/text-tool-calls";
 import {
+  shouldRetryByRemovingToolChoice,
+  toNoToolChoiceRequestBody,
+} from "./llm/tool-choice-compat";
+import {
   compactOpenAIRequestMessagesForContext as compactOpenAIRequestMessages,
   isContextOverflowError,
 } from "./llm/tool-transcript";
@@ -778,6 +782,20 @@ export abstract class AgentProviderCommonRuntime {
     return nextBody;
   }
 
+  protected shouldRetryByRemovingToolChoice(
+    status: number,
+    errorText: string,
+    requestBody: Record<string, unknown>
+  ): boolean {
+    return shouldRetryByRemovingToolChoice(status, errorText, requestBody);
+  }
+
+  protected toNoToolChoiceRequestBody(
+    requestBody: Record<string, unknown>
+  ): Record<string, unknown> {
+    return toNoToolChoiceRequestBody(requestBody);
+  }
+
   protected hasReasoningRequestControls(requestBody: Record<string, unknown>): boolean {
     return ["reasoning_effort", "reasoning", "thinking", "reasoning_split", "enable_thinking"].some(
       (key) => requestBody[key] !== undefined
@@ -1115,6 +1133,7 @@ export abstract class AgentProviderCommonRuntime {
     let attemptedMaxCompletionRetry = false;
     let attemptedForcedToolChoiceReasoningRetry = false;
     let attemptedToolChoiceCompatibilityRetry = false;
+    let attemptedToolChoiceRemovalRetry = false;
     let contextRetryCount = 0;
     let attemptedOAuthRefresh = false;
     const maxTransientRetries = retryPolicy.maxRetries;
@@ -1228,6 +1247,18 @@ export abstract class AgentProviderCommonRuntime {
           "[Agent] Retrying OpenAI request with tool_choice=auto due to thinking/tool_choice incompatibility"
         );
         currentBody = this.toAutoToolChoiceRequestBody(currentBody);
+        continue;
+      }
+
+      if (
+        !attemptedToolChoiceRemovalRetry &&
+        this.shouldRetryByRemovingToolChoice(response.status, errorText, currentBody)
+      ) {
+        attemptedToolChoiceRemovalRetry = true;
+        console.log(
+          "[Agent] Retrying OpenAI request without tool_choice due to thinking-mode incompatibility"
+        );
+        currentBody = this.toNoToolChoiceRequestBody(currentBody);
         continue;
       }
 

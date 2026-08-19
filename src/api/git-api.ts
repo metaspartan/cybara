@@ -1,5 +1,6 @@
 import { spawn } from "bun";
 import { dirname } from "path";
+import { readSubprocessStreamAsText } from "../core/subprocess-output";
 
 export interface GitStatus {
   isRepo: boolean;
@@ -77,8 +78,8 @@ async function runGit(
     }, GIT_COMMAND_TIMEOUT_MS);
 
     const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+      readSubprocessStreamAsText(proc.stdout),
+      readSubprocessStreamAsText(proc.stderr),
       proc.exited,
     ]).finally(() => clearTimeout(timeoutId));
 

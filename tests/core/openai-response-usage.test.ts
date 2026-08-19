@@ -107,6 +107,66 @@ describe("OpenAI-compatible response usage", () => {
     expect(usage.firstTokenMs).toBe(320);
   });
 
+  test("records estimated input tokens for no-usage providers", () => {
+    const sessionId = `no-usage-input-${crypto.randomUUID()}`;
+    trackOpenAIResponseUsage(
+      {
+        id: "response-no-usage-input",
+        object: "chat.completion",
+        model: "custom-model",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: "The migration is applied." },
+            finish_reason: "stop",
+          },
+        ],
+        first_token_ms: 250,
+        generation_duration_ms: 900,
+      },
+      {
+        model: "custom-model",
+        provider: "custom-provider",
+        providerUrl: "https://custom.test/v1",
+        durationMs: 1500,
+        sessionId,
+        inputTokens: 52000,
+      }
+    );
+
+    const usage = summarizeSessionTokenUsage(sessionId);
+    expect(usage.inputTokens).toBe(52000);
+    expect(usage.outputTokens).toBeGreaterThan(0);
+    expect(usage.totalTokens).toBeGreaterThan(52000);
+    expect(usage.tokensPerSecond).toBeGreaterThan(0);
+  });
+
+  test("tracks known input tokens for empty responses so usage is not lost", () => {
+    const sessionId = `empty-with-input-${crypto.randomUUID()}`;
+    const tracked = trackOpenAIResponseUsage(
+      {
+        id: "response-empty-input",
+        object: "chat.completion",
+        model: "custom-model",
+        choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "stop" }],
+      },
+      {
+        model: "custom-model",
+        provider: "custom-provider",
+        providerUrl: "https://custom.test/v1",
+        durationMs: 500,
+        sessionId,
+        inputTokens: 1200,
+      }
+    );
+
+    expect(tracked).toBe(true);
+    const usage = summarizeSessionTokenUsage(sessionId);
+    expect(usage.inputTokens).toBe(1200);
+    expect(usage.outputTokens).toBe(0);
+    expect(usage.totalTokens).toBe(1200);
+  });
+
   test("does not fabricate rows for empty responses without usage or timing", () => {
     const sessionId = `empty-no-usage-${crypto.randomUUID()}`;
     const tracked = trackOpenAIResponseUsage(

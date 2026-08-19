@@ -33,13 +33,25 @@ function providerScopedContextWindow(
     model_id?: string | null;
     model_name?: string | null;
     context_window?: number | null;
+    max_tokens?: number | null;
   }>;
-  const match = providerModels.find((entry) =>
-    [entry.model_id, entry.model_name].some(
-      (value) => typeof value === "string" && value.trim().toLowerCase() === modelId
-    )
+  const matches = providerModels.filter(
+    (entry) =>
+      [entry.model_id, entry.model_name].some(
+        (value) => typeof value === "string" && value.trim().toLowerCase() === modelId
+      ) &&
+      !(
+        (entry.model_name?.trim().toLowerCase() ?? "") ===
+          (entry.model_id?.trim().toLowerCase() ?? "") &&
+        entry.context_window === 128000 &&
+        entry.max_tokens === 8192
+      )
   );
-  const contextWindow = match?.context_window;
+  const best = matches.reduce<{ context_window?: number | null } | undefined>((chosen, entry) => {
+    const chosenWindow = chosen?.context_window ?? 0;
+    return Number(entry.context_window ?? 0) > chosenWindow ? entry : chosen;
+  }, undefined);
+  const contextWindow = best?.context_window;
   if (typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0) {
     return Math.max(1, Math.floor(contextWindow));
   }

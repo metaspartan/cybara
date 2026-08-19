@@ -398,6 +398,19 @@ export interface SessionContextUsage {
   source?: "estimated";
 }
 
+export type SessionGoalStatus = "active" | "paused" | "blocked" | "complete";
+
+export interface SessionGoal {
+  sessionId: string;
+  objective: string;
+  status: SessionGoalStatus;
+  createdAt: string;
+  updatedAt: string;
+  lastStatusNote?: string;
+  activeMs?: number;
+  lastResumedAt?: string;
+}
+
 export interface SessionTokenUsage {
   inputTokens: number;
   outputTokens: number;

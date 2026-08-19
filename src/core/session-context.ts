@@ -383,11 +383,11 @@ function estimateRawMessageTokens(message: ChatMessage): number {
 export function estimateMessageTranscriptTokens(message: ChatMessage): number {
   const thinkingTokens = message.thinking ? estimateTokens(message.thinking) : 0;
   const toolTokens = message.tool_calls
-    ? message.tool_calls.reduce((sum, tc) => sum + estimateTokens(JSON.stringify(tc)), 0)
+    ? message.tool_calls.reduce((sum, tc) => sum + estimateTokens(safeJsonStringify(tc)), 0)
     : 0;
   const processActivityTokens = message.process_activities
     ? message.process_activities.reduce(
-        (sum, activity) => sum + estimateTokens(JSON.stringify(activity)),
+        (sum, activity) => sum + estimateTokens(safeJsonStringify(activity)),
         0
       )
     : 0;
@@ -398,13 +398,21 @@ export function estimateMessagesTranscriptTokens(messages: ChatMessage[]): numbe
   return messages.reduce((sum, msg) => sum + estimateMessageTranscriptTokens(msg), 0);
 }
 
+function safeJsonStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function requestVisibleToolResultChars(value: unknown): string {
   if (typeof value === "string") {
     return value.length <= TOOL_RESULT_PROMPT_MAX_CHARS
       ? value
       : value.slice(0, TOOL_RESULT_PROMPT_MAX_CHARS);
   }
-  const serialized = JSON.stringify(value);
+  const serialized = safeJsonStringify(value);
   if (serialized.length <= TOOL_RESULT_PROMPT_MAX_CHARS) return serialized;
   return serialized.slice(0, TOOL_RESULT_PROMPT_MAX_CHARS);
 }
@@ -577,11 +585,12 @@ export function estimateSessionContextUsage(
   options?: {
     sessionId?: string;
     compactionCount?: number;
+    contextWindowTokens?: number;
   }
 ): SessionContextUsage {
-  const usedTokens = Math.max(0, estimateMessagesTokens(messages));
+  const usedTokens = Math.max(0, estimateMessagesRequestVisibleTokens(messages));
   const transcriptTokens = Math.max(usedTokens, estimateMessagesTranscriptTokens(messages));
-  const limitTokens = Math.max(1, getContextWindow(model));
+  const limitTokens = Math.max(1, options?.contextWindowTokens ?? getContextWindow(model));
   const remainingTokens = Math.max(0, limitTokens - usedTokens);
   const usedPercent = Math.min(100, Math.round((usedTokens / limitTokens) * 1000) / 10);
   const persistedCompaction = loadSessionSummaryCompactionMetrics(options?.sessionId);
@@ -697,39 +706,61 @@ export function splitMessagesByTokenShare(
   return chunks;
 }
 
+function isGenericFallbackModelRow(row: {
+  model_id?: string | null;
+  model_name?: string | null;
+  context_window?: number | null;
+  max_tokens?: number | null;
+}): boolean {
+  const modelId = row.model_id?.trim().toLowerCase() ?? "";
+  const modelName = row.model_name?.trim().toLowerCase() ?? "";
+  return (
+    modelId.length > 0 &&
+    modelName === modelId &&
+    row.context_window === 128000 &&
+    row.max_tokens === 8192
+  );
+}
+
+function resolveLargestModelContextWindow(model: string): number | undefined {
+  const modelLower = model.toLowerCase();
+  const matches = (
+    tables.providerModels.all() as Array<{
+      model_id?: string | null;
+      model_name?: string | null;
+      context_window?: number | null;
+      max_tokens?: number | null;
+    }>
+  ).filter((row) => {
+    if (isGenericFallbackModelRow(row)) return false;
+    const ids = [row.model_id, row.model_name].filter(
+      (value): value is string => typeof value === "string"
+    );
+    return ids.some((value) => value.trim().toLowerCase() === modelLower);
+  });
+  if (matches.length === 0) return undefined;
+  const largest = matches.reduce((chosen, row) => {
+    const chosenWindow = chosen?.context_window ?? 0;
+    return Number(row.context_window ?? 0) > chosenWindow ? row : chosen;
+  }, matches[0]);
+  const contextWindow = largest?.context_window;
+  if (typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0) {
+    return Math.max(1, Math.floor(contextWindow));
+  }
+  return undefined;
+}
+
 export function getContextWindow(model?: string): number {
   if (!model) return DEFAULT_CONTEXT_TOKENS;
 
-  const modelLower = model.toLowerCase();
-
   try {
-    const dbModel = tables.providerModels.getByModelId(model);
-    const dbModelIsGenericFallback =
-      dbModel?.model_name?.trim().toLowerCase() === dbModel?.model_id?.trim().toLowerCase() &&
-      dbModel?.context_window === 128000 &&
-      dbModel?.max_tokens === 8192;
-    if (dbModel?.context_window && dbModel.context_window > 0 && !dbModelIsGenericFallback) {
-      return dbModel.context_window;
-    }
-    if (model !== modelLower) {
-      const dbModelLower = tables.providerModels.getByModelId(modelLower);
-      const dbModelLowerIsGenericFallback =
-        dbModelLower?.model_name?.trim().toLowerCase() ===
-          dbModelLower?.model_id?.trim().toLowerCase() &&
-        dbModelLower?.context_window === 128000 &&
-        dbModelLower?.max_tokens === 8192;
-      if (
-        dbModelLower?.context_window &&
-        dbModelLower.context_window > 0 &&
-        !dbModelLowerIsGenericFallback
-      ) {
-        return dbModelLower.context_window;
-      }
-    }
+    const resolved = resolveLargestModelContextWindow(model);
+    if (resolved !== undefined) return resolved;
   } catch {
     void 0;
   }
 
+  const modelLower = model.toLowerCase();
   for (const provider of Object.values(providers)) {
     const modelConfig = provider.models?.find(
       (m: { id: string; context?: number }) => m.id.toLowerCase() === modelLower

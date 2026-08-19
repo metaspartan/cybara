@@ -8,8 +8,10 @@ import {
   listChannelRuntimePending,
   listChannelRuntimeSessions,
   queueChannelRuntimeMessage,
+  sendChannelRuntimeMessage,
   steerChannelRuntimeMessage,
   stopChannelRuntimeMessage,
+  type ChannelRuntimeMessage,
   type ChannelRuntimePendingMessage,
 } from "./chat-runtime";
 import { handleSessionGoalCommand } from "../session-goals";
@@ -436,7 +438,16 @@ export async function handleChannelManagementCommand(
       return "Goal mode needs an active session in this channel context. Use /new first.";
     }
     const commandText = `/${command}${joinedArgs ? ` ${joinedArgs}` : ""}`;
-    return handleSessionGoalCommand(sessionId, commandText).response || "Goal command handled.";
+    const result = handleSessionGoalCommand(sessionId, commandText);
+    if (result.goal?.status === "active") {
+      const kickoff: ChannelRuntimeMessage = {
+        role: "user",
+        content: result.goal.objective,
+        timestamp: new Date().toISOString(),
+      };
+      sendChannelRuntimeMessage(sessionId, kickoff);
+    }
+    return result.response || "Goal command handled.";
   }
 
   if (command === "pending") {
