@@ -95,15 +95,20 @@ export function GoalPanel({
 
   if (!goal) {
     if (loading) {
-      return layout === "new-chat" ? (
-        <div className="new-chat-workspace-bar mx-4 flex h-9 min-w-0 items-center gap-2 rounded-t-[18px] border border-b-0 px-3 text-[12px]">
-          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--icon-muted)]" />
-          <span className="text-[var(--text-muted)]">Loading goal...</span>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 px-4 py-2 text-xs text-[var(--text-muted)]">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Loading goal...
+      if (layout === "new-chat") {
+        return (
+          <div className="new-chat-workspace-bar mx-4 flex h-9 min-w-0 items-center gap-2 rounded-t-[18px] border border-b-0 px-3 text-[12px]">
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--icon-muted)]" />
+            <span className="text-[var(--text-muted)]">Loading goal...</span>
+          </div>
+        );
+      }
+      return (
+        <div className={cn("chat-goal-bar", chatHorizontalPaddingClassName(horizontalPadding))}>
+          <div className="new-chat-workspace-bar mx-4 flex h-9 min-w-0 items-center gap-2 rounded-t-[18px] border border-b-0 px-3 text-[12px]">
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--icon-muted)]" />
+            <span className="text-[var(--text-muted)]">Loading goal...</span>
+          </div>
         </div>
       );
     }
@@ -205,15 +210,10 @@ export function GoalPanel({
   }
 
   return (
-    <div className="border-t border-[var(--surface-border)] bg-[var(--surface-panel)] py-2">
-      <div
-        className={cn(
-          "flex flex-wrap items-center gap-x-3 gap-y-1.5",
-          chatHorizontalPaddingClassName(horizontalPadding)
-        )}
-      >
+    <div className={cn("chat-goal-bar", chatHorizontalPaddingClassName(horizontalPadding))}>
+      <div className="new-chat-workspace-bar mx-4 flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1.5 rounded-t-[18px] border border-b-0 px-3 py-1.5 text-[12px]">
         <div className="flex min-w-0 items-center gap-2">
-          <Target className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+          <Target className="h-3.5 w-3.5 shrink-0 text-[var(--icon-muted)]" />
           <span
             className="truncate text-xs font-medium text-[var(--text-primary)]"
             title={goal.objective}
@@ -223,7 +223,7 @@ export function GoalPanel({
         </div>
         <span
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+            "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
             STATUS_STYLE[goal.status]
           )}
         >
@@ -231,14 +231,14 @@ export function GoalPanel({
           {STATUS_LABEL[goal.status]}
         </span>
         <span
-          className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-muted)] tabular-nums"
+          className="inline-flex shrink-0 items-center gap-1 font-mono text-[11px] text-[var(--text-muted)] tabular-nums"
           title="Elapsed working time"
         >
           <Clock className="h-3 w-3" />
           {formatElapsed(elapsedMs)}
         </span>
         {looping ? (
-          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-300/80">
+          <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-emerald-300/80">
             <Loader2 className="h-3 w-3 animate-spin" />
             Looping…
           </span>
@@ -251,7 +251,7 @@ export function GoalPanel({
             {goal.lastStatusNote}
           </span>
         ) : null}
-        <span className="ml-auto flex items-center gap-1.5">{renderActions()}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">{renderActions()}</span>
       </div>
     </div>
   );
