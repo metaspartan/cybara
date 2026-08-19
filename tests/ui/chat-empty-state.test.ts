@@ -24,7 +24,8 @@ describe("chat empty state", () => {
     expect(chat).toContain("sessionId && showEnvironmentOverview && !showWorkspacePanel");
     expect(chat).toContain("<ChatEmptyState");
     expect(chat).toContain('layout="new-chat"');
-    expect(chat).toContain("typedMessages.length > 0 ? <ChatComposer");
+    expect(chat).toContain("typedMessages.length > 0 ? (");
+    expect(chat).toContain("<ChatComposer {...chatComposerProps} />");
     expect(emptyState).toContain("w-[min(100%,40rem)]");
     expect(emptyState).toContain('data-chat-empty-state="true"');
     expect(emptyState).toContain("mx-auto mt-4 w-full");
