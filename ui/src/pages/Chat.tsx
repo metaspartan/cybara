@@ -42,6 +42,8 @@ import { parseTimestampMs } from "./chat/assistantMetaModel";
 import { MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
 import { ChatComposer, type ChatComposerProps } from "./chat/ChatComposer";
 import { ChatEmptyState } from "./chat/ChatEmptyState";
+import { GoalPanel } from "./chat/GoalPanel";
+import { useSessionGoal } from "./chat/useSessionGoal";
 import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFollowUpControls";
 import { ChatImageLightbox } from "./chat/ChatImageLightbox";
 import { chatHorizontalPaddingClassName } from "./chat/chatAppearanceLayout";
@@ -131,6 +133,7 @@ export function Chat() {
     setWorkspaceDir,
     revertToMessage,
   } = useChat(chatAgentId, { useModelRouter });
+  const goalController = useSessionGoal(sessionId || undefined);
   const { data: environmentSubagents = [] } = useSubagents(sessionId);
   const typedMessages = messages as ChatMessage[];
   const turnStartedAtMsByIndex = useMemo(() => {
@@ -1086,7 +1089,11 @@ export function Chat() {
 
   const handleSend = async () => {
     suppressAutoRestoreRef.current = false;
-    const currentMessageWouldQueue = canQueueCurrentMessage() || pendingMessages.length > 0;
+    const trimmedInput = input.trim();
+    const isGoalCommand =
+      /^\/(?:goal|loop)\b/i.test(trimmedInput) || /^\/(?:goal|loop)\s+/i.test(trimmedInput);
+    const currentMessageWouldQueue =
+      !isGoalCommand && (canQueueCurrentMessage() || pendingMessages.length > 0);
     const requestedQueueMode =
       followUpBehaviorEnabled && currentMessageWouldQueue ? "queue" : undefined;
     const requestSessionId = requestedQueueMode
@@ -1151,6 +1158,9 @@ export function Chat() {
           previous.filter((pending) => pending.id !== optimisticPendingMessageId)
         );
       }
+      if (isGoalCommand) {
+        await goalController.refresh();
+      }
       if (response && typeof response === "object" && "agent" in response) {
         const responseRecord = response as Record<string, unknown>;
         const responseAgent =
@@ -1174,6 +1184,9 @@ export function Chat() {
         setPendingMessages((previous) =>
           previous.filter((pending) => pending.id !== optimisticPendingMessageId)
         );
+      }
+      if (isGoalCommand) {
+        await goalController.refresh();
       }
       throw error;
     }
@@ -1200,6 +1213,25 @@ export function Chat() {
     setSessionContextUsage,
     setSessionTokenUsage,
   });
+
+  const handleSetGoalDraft = useCallback(() => {
+    setInput("/goal ");
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }, [setInput]);
+
+  const handleGoalStatus = useCallback(
+    async (action: "pause" | "resume" | "complete" | "clear") => {
+      if (!sessionId) return;
+      try {
+        await goalController.updateStatus(action);
+      } catch (error) {
+        useUIStore
+          .getState()
+          .addToast("error", error instanceof Error ? error.message : "Failed to update goal");
+      }
+    },
+    [sessionId, goalController]
+  );
 
   useEffect(() => {
     if (!streamingContent || isLoading) return;
@@ -1686,6 +1718,18 @@ export function Chat() {
                       onSelectWorkspace={() => void handleSelectWorkspace()}
                       onSwitchGitBranch={environmentGit.checkout}
                     >
+                      {sessionId ? (
+                        <GoalPanel
+                          goal={goalController.goal}
+                          loading={goalController.loading}
+                          working={currentSessionIsWorking}
+                          onPause={() => void handleGoalStatus("pause")}
+                          onResume={() => void handleGoalStatus("resume")}
+                          onComplete={() => void handleGoalStatus("complete")}
+                          onClear={() => void handleGoalStatus("clear")}
+                          onSetGoal={handleSetGoalDraft}
+                        />
+                      ) : null}
                       <ChatComposer {...chatComposerProps} layout="new-chat" />
                     </ChatEmptyState>
                   )
@@ -1731,7 +1775,23 @@ export function Chat() {
                 </button>
               )}
 
-              {typedMessages.length > 0 ? <ChatComposer {...chatComposerProps} /> : null}
+              {typedMessages.length > 0 ? (
+                <>
+                  {sessionId ? (
+                    <GoalPanel
+                      goal={goalController.goal}
+                      loading={goalController.loading}
+                      working={currentSessionIsWorking}
+                      onPause={() => void handleGoalStatus("pause")}
+                      onResume={() => void handleGoalStatus("resume")}
+                      onComplete={() => void handleGoalStatus("complete")}
+                      onClear={() => void handleGoalStatus("clear")}
+                      onSetGoal={handleSetGoalDraft}
+                    />
+                  ) : null}
+                  <ChatComposer {...chatComposerProps} />
+                </>
+              ) : null}
             </>
           )}
         </div>

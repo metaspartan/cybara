@@ -1,4 +1,5 @@
 import { config } from "./config";
+import { registerGoalLoopStart, resetGoalLoop } from "./session-goal-loop";
 
 export type SessionGoalStatus = "active" | "paused" | "blocked" | "complete";
 
@@ -9,12 +10,15 @@ export interface SessionGoal {
   createdAt: string;
   updatedAt: string;
   lastStatusNote?: string;
+  activeMs?: number;
+  lastResumedAt?: string;
 }
 
 export interface SessionGoalCommandResult {
   handled: boolean;
   response?: string;
   goal?: SessionGoal | null;
+  action?: "start" | "edit" | "pause" | "resume" | "complete" | "block" | "clear" | "status";
 }
 
 const PERSISTED_GOALS_KEY = "session_goals";
@@ -103,6 +107,8 @@ function setGoal(sessionId: string, objective: string): SessionGoal {
     status: "active",
     createdAt: timestamp,
     updatedAt: timestamp,
+    activeMs: 0,
+    lastResumedAt: timestamp,
   };
   loadGoals().set(sessionId, goal);
   persistGoals();
@@ -116,11 +122,32 @@ function updateGoal(
 ): SessionGoal | undefined {
   const goal = loadGoals().get(sessionId);
   if (!goal) return undefined;
+  const previousStatus = goal.status;
+  const now = Date.now();
+  if (previousStatus === "active" && status !== "active") {
+    const resumedAt = goal.lastResumedAt ?? goal.createdAt;
+    const resumedMs = Date.parse(resumedAt);
+    goal.activeMs =
+      (goal.activeMs ?? 0) + (Number.isFinite(resumedMs) ? Math.max(0, now - resumedMs) : 0);
+    goal.lastResumedAt = undefined;
+  } else if (previousStatus !== "active" && status === "active") {
+    goal.lastResumedAt = new Date(now).toISOString();
+  }
   goal.status = status;
   goal.updatedAt = nowIso();
   goal.lastStatusNote = note ? cleanObjective(note) : goal.lastStatusNote;
   persistGoals();
   return goal;
+}
+
+export function sessionGoalElapsedMs(goal: SessionGoal, nowMs = Date.now()): number {
+  const accumulated =
+    typeof goal.activeMs === "number" && Number.isFinite(goal.activeMs) ? goal.activeMs : 0;
+  if (goal.status !== "active") return accumulated;
+  const resumedAt = goal.lastResumedAt ?? goal.createdAt;
+  const resumedMs = Date.parse(resumedAt);
+  if (!Number.isFinite(resumedMs)) return accumulated;
+  return accumulated + Math.max(0, nowMs - resumedMs);
 }
 
 export function getSessionGoal(sessionId: string): SessionGoal | undefined {
@@ -154,7 +181,12 @@ export function handleSessionGoalCommand(
   const current = loadGoals().get(sessionId);
 
   if (!rest || action === "status" || action === "show") {
-    return { handled: true, response: formatGoal(current), goal: cloneGoal(current) || null };
+    return {
+      handled: true,
+      response: formatGoal(current),
+      goal: cloneGoal(current) || null,
+      action: "status",
+    };
   }
 
   if (["start", "set", "create"].includes(action)) {
@@ -171,7 +203,13 @@ export function handleSessionGoalCommand(
       };
     }
     const goal = setGoal(sessionId, objective);
-    return { handled: true, response: `Goal started: ${goal.objective}`, goal: cloneGoal(goal) };
+    registerGoalLoopStart(sessionId);
+    return {
+      handled: true,
+      response: `Goal started: ${goal.objective}`,
+      goal: cloneGoal(goal),
+      action: "start",
+    };
   }
 
   if (action === "edit") {
@@ -183,55 +221,67 @@ export function handleSessionGoalCommand(
     current.updatedAt = nowIso();
     current.lastStatusNote = undefined;
     persistGoals();
+    if (current.status === "active") registerGoalLoopStart(sessionId);
     return {
       handled: true,
       response: `Goal updated: ${current.objective}`,
       goal: cloneGoal(current),
+      action: "edit",
     };
   }
 
   if (action === "pause") {
+    resetGoalLoop(sessionId);
     const goal = updateGoal(sessionId, "paused", args);
     return {
       handled: true,
       response: goal ? `Goal paused: ${goal.objective}` : "No goal is set for this session.",
       goal: cloneGoal(goal),
+      action: "pause",
     };
   }
 
   if (action === "resume") {
     const goal = updateGoal(sessionId, "active", args);
+    if (goal) registerGoalLoopStart(sessionId);
     return {
       handled: true,
       response: goal ? `Goal resumed: ${goal.objective}` : "No goal is set for this session.",
       goal: cloneGoal(goal),
+      action: "resume",
     };
   }
 
   if (action === "complete" || action === "done") {
+    resetGoalLoop(sessionId);
     const goal = updateGoal(sessionId, "complete", args);
     return {
       handled: true,
       response: goal ? `Goal completed: ${goal.objective}` : "No goal is set for this session.",
       goal: cloneGoal(goal),
+      action: "complete",
     };
   }
 
   if (action === "block" || action === "blocked") {
+    resetGoalLoop(sessionId);
     const goal = updateGoal(sessionId, "blocked", args);
     return {
       handled: true,
       response: goal ? `Goal blocked: ${goal.objective}` : "No goal is set for this session.",
       goal: cloneGoal(goal),
+      action: "block",
     };
   }
 
   if (action === "clear") {
+    resetGoalLoop(sessionId);
     const cleared = clearSessionGoal(sessionId);
     return {
       handled: true,
       response: cleared ? "Goal cleared." : "No goal is set for this session.",
       goal: null,
+      action: "clear",
     };
   }
 
@@ -246,7 +296,12 @@ export function handleSessionGoalCommand(
     };
   }
   const goal = setGoal(sessionId, objective);
-  return { handled: true, response: `Goal started: ${goal.objective}`, goal: cloneGoal(goal) };
+  return {
+    handled: true,
+    response: `Goal started: ${goal.objective}`,
+    goal: cloneGoal(goal),
+    action: "start",
+  };
 }
 
 export function resetSessionGoalsForTests(): void {

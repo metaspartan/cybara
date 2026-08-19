@@ -37,7 +37,23 @@ import {
   getActiveSessionRunId,
   getActiveSessionRunStartedAtMs,
 } from "../core/session-event-ledger";
-import { handleSessionGoalCommand } from "../core/session-goals";
+import {
+  handleSessionGoalCommand,
+  getSessionGoal,
+  type SessionGoalCommandResult,
+} from "../core/session-goals";
+import {
+  bumpGoalLoopIteration,
+  decideNextGoalIteration,
+  getGoalLoopState,
+  goalIterationPrompt,
+  goalResponseSignalsDone,
+  GOAL_LOOP_SOURCE,
+  isGoalIterationMessage,
+  readGoalLoopLimits,
+  registerGoalLoopStart,
+  resetGoalLoop,
+} from "../core/session-goal-loop";
 import { extractLatestSessionPlan } from "../core/session-plan";
 import {
   deriveSessionTitleFromMessages,
@@ -699,9 +715,107 @@ function runChatTurnWithQueueDrain(
     .finally(() => {
       flushDeferredSessionMessages(effectiveSessionId);
       schedulePendingChatDrain(effectiveSessionId);
+      maybeScheduleGoalIteration(effectiveSessionId);
     })
     .catch(() => undefined);
   return finalized;
+}
+
+export function applyGoalCommandSideEffects(
+  sessionId: string,
+  goalAction: SessionGoalCommandResult["action"],
+  goal: SessionGoalCommandResult["goal"]
+): void {
+  if (goalAction === "pause" || goalAction === "block" || goalAction === "clear") {
+    void stopActiveChatTurn(sessionId).catch(() => undefined);
+    return;
+  }
+  if (
+    (goalAction === "start" || goalAction === "resume" || goalAction === "edit") &&
+    goal?.status === "active"
+  ) {
+    kickOffGoalLoop(sessionId, goal);
+  }
+}
+
+function kickOffGoalLoop(sessionId: string, goal: { objective: string }): void {
+  try {
+    const session = getResidentChatSession(sessionId);
+    const sessionLocked = chatTurnMutex.isLocked(sessionId);
+    const hasPending = hasPendingChatMessages(sessionId);
+    if (session && (sessionLocked || hasPending)) {
+      enqueuePendingChatMessage(
+        { message: goal.objective, sessionId, source: GOAL_LOOP_SOURCE, queueMode: "queue" },
+        sessionId,
+        "queued"
+      );
+      schedulePendingChatDrain(sessionId);
+      return;
+    }
+    void runChatTurnWithQueueDrain(
+      { message: goal.objective, sessionId, source: GOAL_LOOP_SOURCE, queueMode: "queue" },
+      sessionId
+    );
+  } catch (error) {
+    log.exception("Goal loop kickoff failed", error, { sessionId });
+  }
+}
+
+function maybeScheduleGoalIteration(sessionId: string): void {
+  try {
+    const goal = getSessionGoal(sessionId);
+    let state = getGoalLoopState(sessionId);
+    if (!goal || goal.status !== "active") {
+      resetGoalLoop(sessionId);
+      return;
+    }
+    if (!state) {
+      state = registerGoalLoopStart(sessionId);
+    }
+    const session = getResidentChatSession(sessionId);
+    const lastAssistant = session?.messages
+      ? [...session.messages].reverse().find((message) => message.role === "assistant")
+      : undefined;
+    if (lastAssistant?.content && goalResponseSignalsDone(lastAssistant.content)) {
+      handleSessionGoalCommand(sessionId, "/goal complete done");
+      resetGoalLoop(sessionId);
+      return;
+    }
+    if (hasPendingChatMessages(sessionId)) {
+      return;
+    }
+    const queuedIteration = (pendingChatQueues.get(sessionId) || []).some((item) =>
+      isGoalIterationMessage(item.content)
+    );
+    if (queuedIteration) {
+      return;
+    }
+    const decision = decideNextGoalIteration({
+      goal,
+      state,
+      limits: readGoalLoopLimits(),
+    });
+    if (!decision.schedule) {
+      resetGoalLoop(sessionId);
+      return;
+    }
+    bumpGoalLoopIteration(sessionId);
+    const iterationPrompt = decision.prompt ?? goalIterationPrompt(goal, state.iterations + 1);
+    const iterationRequest: ChatRequest = {
+      message: iterationPrompt,
+      sessionId,
+      source: GOAL_LOOP_SOURCE,
+      queueMode: "queue",
+    };
+    if (chatTurnMutex.isLocked(sessionId)) {
+      enqueuePendingChatMessage(iterationRequest, sessionId, "queued");
+      schedulePendingChatDrain(sessionId);
+    } else {
+      void runChatTurnWithQueueDrain(iterationRequest, sessionId);
+    }
+  } catch (error) {
+    log.exception("Goal loop iteration scheduling failed", error, { sessionId });
+  }
 }
 
 export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
@@ -728,6 +842,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
 
   const goalCommand = handleSessionGoalCommand(effectiveSessionId, request.message);
   if (goalCommand.handled) {
+    applyGoalCommandSideEffects(effectiveSessionId, goalCommand.action, goalCommand.goal);
     return {
       sessionId: effectiveSessionId,
       message: {

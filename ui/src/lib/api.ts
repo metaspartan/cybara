@@ -18,6 +18,7 @@ import type {
   ProviderPlanMonitoringConfig,
   ProviderPlanStatusResponse,
   SessionContextUsage,
+  SessionGoal,
   SessionPlanSnapshot,
   SessionTokenUsage,
   Skill,
@@ -1377,6 +1378,35 @@ export const chatApi = {
     }),
   getSessionPlan: (id: string) =>
     fetchApi<{ sessionId: string; plan: SessionPlanSnapshot | null }>("/sessions/" + id + "/plan"),
+  getSessionGoal: (sessionId: string) =>
+    fetchApi<{ success: boolean; sessionId: string; goal: SessionGoal | null }>(
+      "/sessions/" + sessionId + "/goal"
+    ),
+  setSessionGoal: (sessionId: string, objective: string) =>
+    fetchApi<{
+      success: boolean;
+      error?: string;
+      goal: SessionGoal | null;
+      response?: string;
+    }>("/sessions/" + sessionId + "/goal", {
+      method: "POST",
+      body: JSON.stringify({ objective }),
+    }),
+  updateSessionGoalStatus: (
+    sessionId: string,
+    action: "pause" | "resume" | "complete" | "clear",
+    note?: string
+  ) =>
+    fetchApi<{
+      success: boolean;
+      error?: string;
+      goal: SessionGoal | null;
+      response?: string;
+      cleared?: boolean;
+    }>("/sessions/" + sessionId + "/goal/" + action, {
+      method: "POST",
+      ...(note ? { body: JSON.stringify({ note }) } : {}),
+    }),
   updateSessionAgent: (id: string, agentId?: string, useModelRouter = false) =>
     fetchApi<{
       success: boolean;

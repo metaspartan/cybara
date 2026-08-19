@@ -6,30 +6,79 @@ import {
   handleChat,
   type ChatMessage,
 } from "../../src/api/chat";
+import { agentManager } from "../../src/core/agent";
+import { config } from "../../src/core/config";
+import { providerManager } from "../../src/core/providers";
+import { resetGoalLoopsForTests } from "../../src/core/session-goal-loop";
 import { handleSessionGoalCommand, resetSessionGoalsForTests } from "../../src/core/session-goals";
 
 const createdSessionIds: string[] = [];
+const agentIds: string[] = [];
+const providerIds: string[] = [];
+const originalExecute = agentManager.execute.bind(agentManager);
+
+async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMs) throw new Error("Timed out waiting for condition");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 afterEach(async () => {
+  agentManager.execute = originalExecute;
   resetSessionGoalsForTests();
+  resetGoalLoopsForTests();
+  config.set("goal_loop_max_iterations", 1);
+  config.set("goal_loop_max_duration_seconds", 60);
+  for (const agentId of agentIds.splice(0)) agentManager.delete(agentId);
+  for (const providerId of providerIds.splice(0)) providerManager.delete(providerId);
   for (const sessionId of createdSessionIds.splice(0)) await deleteSession(sessionId);
 });
 
 describe("chat goal commands", () => {
-  test("/goal is handled locally without persisting chat text", async () => {
+  test("/goal is handled locally and kicks off work on the objective", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Goal Kickoff Provider",
+      api_key: "test-key",
+      base_url: "https://api.openai.com/v1",
+    });
+    providerIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Goal Kickoff Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-goal-kickoff",
+      memory_enabled: false,
+    });
+    agentIds.push(agent.id);
     const sessionId = `goal-local-${Date.now()}`;
     createdSessionIds.push(sessionId);
+
+    const executed: Array<{ messages: Array<{ role: string; content: string }> }> = [];
+    agentManager.execute = (async (_agentId, messages, _options) => {
+      executed.push({ messages: messages as never });
+      return { content: "On it — reviewing CI now." };
+    }) as typeof agentManager.execute;
+    config.set("goal_loop_max_iterations", 1);
 
     const result = await handleChat({
       message: "/goal start fix CI",
       sessionId,
+      agentId: agent.id,
       tools: false,
     });
 
     expect(result.sessionId).toBe(sessionId);
     expect(result.message.role).toBe("assistant");
     expect(result.message.content).toBe("Goal started: fix CI");
-    expect(await getSessionMessages(sessionId)).toEqual([]);
+    await waitFor(() => executed.length > 0);
+    const kickoffMessages = executed[0]?.messages ?? [];
+    expect(kickoffMessages.some((message) => message.content === "fix CI")).toBe(true);
+    expect(kickoffMessages.some((message) => message.content.includes("Active goal: fix CI"))).toBe(
+      true
+    );
   });
 
   test("active goals are injected into execution context without mutating chat messages", () => {

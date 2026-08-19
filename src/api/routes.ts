@@ -30,6 +30,7 @@ import {
 } from "../api/memory/memory-api";
 import { agentManager, getBuiltinTools } from "../core/agent";
 import { resolveTurnContextWindow } from "./chat-turn-context";
+import { sessionGoalRoutes } from "./session-goal-routes";
 import { forkSession } from "../core/agent-eval";
 import { cancelAgentLoopRun, getAgentLoopRun, listAgentLoopRuns } from "../core/agent-loop";
 import { deleteArtifact, listAllArtifacts, listArtifacts, readArtifact } from "../core/artifacts";
@@ -89,6 +90,7 @@ import {
 import { openUrlInBrowser } from "../core/runtime/open-url";
 import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbox";
 import { taskScheduler } from "../core/scheduler";
+import { getSessionGoal } from "../core/session-goals";
 import { estimateSessionContextUsage, summarizeSessionTokenUsage } from "../core/session-context";
 import { extractLatestSessionPlan } from "../core/session-plan";
 import { searchSessionMessages } from "../core/session-search";
@@ -1321,6 +1323,7 @@ const routes: Record<string, RouteHandler> = {
         ),
       }),
       tokenUsage: summarizeSessionTokenUsage(session.id),
+      goal: getSessionGoal(session.id) ?? null,
       plan: extractLatestSessionPlan(session.id, messages),
       messagesList: sanitizedMessages,
     };
@@ -1335,6 +1338,7 @@ const routes: Record<string, RouteHandler> = {
       plan: extractLatestSessionPlan(sessionId, messages),
     };
   },
+  ...sessionGoalRoutes,
   "POST /api/sessions/:sessionId/fork": async (body, params) => {
     const data = (body || {}) as {
       throughMessageIndex?: number;
