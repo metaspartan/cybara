@@ -1,4 +1,4 @@
-import { useState, type ReactElement, type ReactNode } from "react";
+import { useState, type ReactElement } from "react";
 import type { GitBranchOption } from "./GitBranchSelector";
 import { NewChatWorkspaceBar, workspaceFolderName } from "./NewChatWorkspaceBar";
 
@@ -16,7 +16,6 @@ function randomEmptyWorkspacePrompt(): (typeof EMPTY_WORKSPACE_PROMPTS)[number] 
 }
 
 interface ChatEmptyStateProps {
-  children: ReactNode;
   onClearWorkspace: () => void;
   onSelectWorkspace: () => void;
   workspaceDir: string | null;
@@ -32,7 +31,6 @@ interface ChatEmptyStateProps {
 }
 
 export function ChatEmptyState({
-  children,
   onClearWorkspace,
   onSelectWorkspace,
   workspaceDir,
@@ -97,7 +95,6 @@ export function ChatEmptyState({
           workspaceDir={workspaceDir}
           workspaceSaving={workspaceSaving}
         />
-        {children}
       </div>
     </div>
   );

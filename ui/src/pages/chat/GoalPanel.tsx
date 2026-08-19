@@ -61,7 +61,6 @@ interface GoalPanelProps {
   onResume: () => void;
   onComplete: () => void;
   onClear: () => void;
-  onSetGoal: () => void;
 }
 
 export function GoalPanel({
@@ -72,7 +71,6 @@ export function GoalPanel({
   onResume,
   onComplete,
   onClear,
-  onSetGoal,
 }: GoalPanelProps) {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const elapsedMs = useGoalElapsed(goal);
@@ -92,34 +90,13 @@ export function GoalPanel({
   if (!goal) {
     if (loading) {
       return (
-        <div className="flex items-center gap-2 px-4 py-2 text-xs text-white/40">
+        <div className="flex items-center gap-2 px-4 py-2 text-xs text-[var(--text-muted)]">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Loading goal...
         </div>
       );
     }
-    return (
-      <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-[#0a0c13]/95 px-4 py-2 backdrop-blur-md">
-        <Target className="h-3.5 w-3.5 shrink-0 text-white/35" />
-        <span className="text-xs text-white/45">
-          Loop mode: type{" "}
-          <code className="rounded bg-white/10 px-1 py-0.5 text-[11px] text-white/70">
-            /goal objective
-          </code>{" "}
-          or{" "}
-          <code className="rounded bg-white/10 px-1 py-0.5 text-[11px] text-white/70">/loop</code>{" "}
-          to set a persistent goal, or
-        </span>
-        <button
-          type="button"
-          onClick={onSetGoal}
-          className="inline-flex h-6 items-center gap-1 rounded-md border border-white/15 bg-white/5 px-2 text-[11px] font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white cursor-pointer"
-        >
-          <Target className="h-3 w-3" />
-          Set a goal
-        </button>
-      </div>
-    );
+    return null;
   }
 
   const isActive = goal.status === "active";
@@ -129,11 +106,14 @@ export function GoalPanel({
   const looping = isActive && working;
 
   return (
-    <div className="border-t border-white/10 bg-[#0a0c13]/95 px-4 py-2 backdrop-blur-md">
+    <div className="border-t border-[var(--surface-border)] bg-[var(--surface-panel)] px-4 py-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <div className="flex min-w-0 items-center gap-2">
-          <Target className="h-3.5 w-3.5 shrink-0 text-white/40" />
-          <span className="truncate text-xs font-medium text-white/85" title={goal.objective}>
+          <Target className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+          <span
+            className="truncate text-xs font-medium text-[var(--text-primary)]"
+            title={goal.objective}
+          >
             {goal.objective}
           </span>
         </div>
@@ -147,7 +127,7 @@ export function GoalPanel({
           {STATUS_LABEL[goal.status]}
         </span>
         <span
-          className="inline-flex items-center gap-1 font-mono text-[11px] text-white/50 tabular-nums"
+          className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-muted)] tabular-nums"
           title="Elapsed working time"
         >
           <Clock className="h-3 w-3" />
@@ -160,7 +140,10 @@ export function GoalPanel({
           </span>
         ) : null}
         {goal.lastStatusNote ? (
-          <span className="min-w-0 truncate text-[11px] text-white/40" title={goal.lastStatusNote}>
+          <span
+            className="min-w-0 truncate text-[11px] text-[var(--text-muted)]"
+            title={goal.lastStatusNote}
+          >
             {goal.lastStatusNote}
           </span>
         ) : null}
@@ -170,7 +153,7 @@ export function GoalPanel({
               type="button"
               disabled={actionDisabled}
               onClick={() => void runAction("pause", onPause)}
-              className="inline-flex h-6 items-center gap-1 rounded-md border border-white/15 bg-white/5 px-2 text-[11px] font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50 cursor-pointer"
+              className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--surface-border)] bg-[var(--surface-raised)] px-2 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:opacity-50 cursor-pointer"
               title="Pause the goal loop"
             >
               <Pause className="h-3 w-3" />
@@ -194,7 +177,7 @@ export function GoalPanel({
               type="button"
               disabled={actionDisabled}
               onClick={() => void runAction("complete", onComplete)}
-              className="inline-flex h-6 items-center gap-1 rounded-md border border-white/15 bg-white/5 px-2 text-[11px] font-medium text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50 cursor-pointer"
+              className="inline-flex h-6 items-center gap-1 rounded-md border border-[var(--surface-border)] bg-[var(--surface-raised)] px-2 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:opacity-50 cursor-pointer"
               title="Mark the goal complete"
             >
               <Check className="h-3 w-3" />
