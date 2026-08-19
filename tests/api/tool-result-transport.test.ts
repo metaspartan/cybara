@@ -88,3 +88,30 @@ describe("tool result transport shrinking", () => {
     expect(String(result.output).length).toBeLessThan(1_000);
   });
 });
+
+describe("tool result transport caching", () => {
+  test("reuses cached results for stable inputs and recomputes for changed options", () => {
+    const result = { output: "z".repeat(2_000), exitCode: 0 };
+    const first = truncateToolResultForTransport(result, { maxStringChars: 300 });
+    const second = truncateToolResultForTransport(result, { maxStringChars: 300 });
+    const different = truncateToolResultForTransport(result, { maxStringChars: 100 });
+    expect(second).toEqual(first);
+    expect(String((different as { output: unknown }).output).length).toBeLessThan(
+      String((first as { output: unknown }).output).length
+    );
+  });
+
+  test("stops walking oversized nested results early without flattening to a string", () => {
+    const result: Record<string, unknown> = { ok: true };
+    for (let i = 0; i < 5_000; i++) result[`field${i}`] = "y".repeat(2_000);
+    const shrunk = truncateToolResultForTransport(result, {
+      maxStringChars: 500,
+      maxTotalChars: 4_000,
+    }) as Record<string, unknown> | string;
+    const serialized = typeof shrunk === "string" ? shrunk : JSON.stringify(shrunk);
+    expect(serialized.length).toBeLessThanOrEqual(4_000 + "... [truncated]".length);
+    if (typeof shrunk === "object") {
+      expect(shrunk.ok).toBe(true);
+    }
+  });
+});

@@ -380,7 +380,44 @@ function estimateRawMessageTokens(message: ChatMessage): number {
   return contentTokens + imageTokens + 50;
 }
 
+interface PerMessageEstimateCacheEntry {
+  refs: unknown[];
+  estimate: number;
+}
+
+const transcriptEstimateCache = new WeakMap<object, PerMessageEstimateCacheEntry>();
+const requestVisibleEstimateCache = new WeakMap<object, PerMessageEstimateCacheEntry>();
+
+function cachedPerMessageEstimate(
+  cache: WeakMap<object, PerMessageEstimateCacheEntry>,
+  message: ChatMessage,
+  compute: (message: ChatMessage) => number
+): number {
+  const refs: unknown[] = [
+    message.content,
+    message.thinking,
+    message.images,
+    message.tool_calls,
+    message.process_activities,
+  ];
+  const cached = cache.get(message as unknown as object);
+  if (
+    cached &&
+    cached.refs.length === refs.length &&
+    cached.refs.every((reference, index) => reference === refs[index])
+  ) {
+    return cached.estimate;
+  }
+  const estimate = compute(message);
+  cache.set(message as unknown as object, { refs, estimate });
+  return estimate;
+}
+
 export function estimateMessageTranscriptTokens(message: ChatMessage): number {
+  return cachedPerMessageEstimate(transcriptEstimateCache, message, computeTranscriptEstimate);
+}
+
+function computeTranscriptEstimate(message: ChatMessage): number {
   const thinkingTokens = message.thinking ? estimateTokens(message.thinking) : 0;
   const toolTokens = message.tool_calls
     ? message.tool_calls.reduce((sum, tc) => sum + estimateTokens(safeJsonStringify(tc)), 0)
@@ -418,12 +455,20 @@ function requestVisibleToolResultChars(value: unknown): string {
 }
 
 function estimateRequestVisibleMessageTokens(message: ChatMessage): number {
+  return cachedPerMessageEstimate(
+    requestVisibleEstimateCache,
+    message,
+    computeRequestVisibleEstimate
+  );
+}
+
+function computeRequestVisibleEstimate(message: ChatMessage): number {
   const thinkingTokens = message.thinking ? estimateTokens(message.thinking) : 0;
   const toolTokens = message.tool_calls
     ? message.tool_calls.reduce((sum, toolCall) => {
         const hasReplayableResult = toolCall.result !== undefined || Boolean(toolCall.error);
         if (!hasReplayableResult) return sum;
-        const argsTokens = estimateTokens(JSON.stringify(toolCall.args ?? {}));
+        const argsTokens = estimateTokens(safeJsonStringify(toolCall.args ?? {}));
         const resultTokens = estimateTokens(
           requestVisibleToolResultChars(toolCall.result ?? { error: toolCall.error })
         );

@@ -1,4 +1,4 @@
-import { tables } from "./database";
+import db, { tables } from "./database";
 import { redactSecrets } from "./redaction";
 
 export type SessionEventType =
@@ -240,10 +240,27 @@ export function listSessionEvents(
   ).map(toLedgerEvent);
 }
 
+const sessionEventsFingerprintStatement = db.prepare(
+  "SELECT COUNT(*) AS count, COALESCE(MAX(sequence), 0) AS maxSeq, COALESCE(MAX(created_at), '') AS maxCreated FROM session_events WHERE session_id = ?"
+);
+const sessionEventsCache = new Map<string, { fingerprint: string; events: SessionLedgerEvent[] }>();
+
+export function sessionEventsFingerprint(sessionId: string): string {
+  const row = sessionEventsFingerprintStatement.get(sessionId.trim()) as {
+    count: number;
+    maxSeq: number;
+    maxCreated: string;
+  };
+  return `${row.count}:${row.maxSeq}:${row.maxCreated}`;
+}
+
 export function listAllSessionEvents(sessionId: string, pageSize = 5000): SessionLedgerEvent[] {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) return [];
   flushBufferedAssistantDeltas(normalizedSessionId);
+  const fingerprint = sessionEventsFingerprint(normalizedSessionId);
+  const cached = sessionEventsCache.get(normalizedSessionId);
+  if (cached?.fingerprint === fingerprint) return cached.events;
   const boundedPageSize = Number.isFinite(pageSize)
     ? Math.min(5000, Math.max(1, Math.floor(pageSize)))
     : 5000;
@@ -263,8 +280,15 @@ export function listAllSessionEvents(sessionId: string, pageSize = 5000): Sessio
     if (nextSequence <= afterSequence) break;
     afterSequence = nextSequence;
   }
+  if (sessionEventsCache.size >= 256) sessionEventsCache.clear();
+  sessionEventsCache.set(normalizedSessionId, { fingerprint, events });
   return events;
 }
+
+const runEventsFingerprintStatement = db.prepare(
+  "SELECT COUNT(*) AS count, COALESCE(MAX(sequence), 0) AS maxSeq FROM session_events WHERE run_id = ?"
+);
+const runEventsCache = new Map<string, { fingerprint: string; events: SessionLedgerEvent[] }>();
 
 export function listRunEvents(runId: string, limit = 1000): SessionLedgerEvent[] {
   const normalizedRunId = runId.trim();
@@ -273,12 +297,22 @@ export function listRunEvents(runId: string, limit = 1000): SessionLedgerEvent[]
     flushBufferedAssistantDeltas(pending.sessionId, normalizedRunId);
     break;
   }
+  const fingerprintRow = runEventsFingerprintStatement.get(normalizedRunId) as {
+    count: number;
+    maxSeq: number;
+  };
+  const fingerprint = `${fingerprintRow.count}:${fingerprintRow.maxSeq}`;
+  const cached = runEventsCache.get(normalizedRunId);
+  if (cached?.fingerprint === fingerprint) return cached.events;
   const boundedLimit = Number.isFinite(limit)
     ? Math.min(5000, Math.max(1, Math.floor(limit)))
     : 1000;
-  return (tables.sessionEvents.byRun(runId.trim(), boundedLimit) as StoredSessionEvent[]).map(
-    toLedgerEvent
-  );
+  const events = (
+    tables.sessionEvents.byRun(normalizedRunId, boundedLimit) as StoredSessionEvent[]
+  ).map(toLedgerEvent);
+  if (runEventsCache.size >= 512) runEventsCache.clear();
+  runEventsCache.set(normalizedRunId, { fingerprint, events });
+  return events;
 }
 
 export function listAllRunEvents(runId: string, pageSize = 5000): SessionLedgerEvent[] {

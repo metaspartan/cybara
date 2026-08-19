@@ -47,7 +47,25 @@ function viewportValue(value: unknown): { width: number; height: number } | unde
   return { width: Math.round(width), height: Math.round(height) };
 }
 
+function screenshotPathFromRawJson(value: string): Record<string, unknown> | undefined {
+  const pathMatch = value.match(
+    /"(?:filePath|file_path|path)"\s*:\s*"([^"]*screenshots[^"]*\.(?:png|jpe?g|gif|webp))"/i
+  );
+  if (!pathMatch) return undefined;
+  const payload: Record<string, unknown> = { filePath: pathMatch[1] };
+  const actionMatch = value.match(/"action"\s*:\s*"([^"]+)"/i);
+  if (actionMatch) payload.action = actionMatch[1];
+  const mimeMatch = value.match(
+    /"(?:screenshotMime|mimeType|mime_type|contentType|content_type)"\s*:\s*"([^"]+)"/i
+  );
+  if (mimeMatch) payload.contentType = mimeMatch[1];
+  return payload;
+}
+
 export function sanitizeToolMediaResult(result: unknown): Record<string, unknown> | undefined {
+  if (typeof result === "string" && result.length > 20_000) {
+    return screenshotPathFromRawJson(result);
+  }
   const record = parsedResult(result);
   if (!record) return undefined;
   const filePath = stringField(record, ["filePath", "file_path", "path"]);

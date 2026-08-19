@@ -126,6 +126,10 @@ export function sanitizeProcessThoughtText(content: string): string {
   const withoutToolMarkup = hasTextToolCallMarkup(trimmed)
     ? stripTextToolCallMarkup(trimmed).trim()
     : trimmed;
+  if (withoutToolMarkup.length <= 400 && !withoutToolMarkup.includes("\n")) {
+    if (isMidLoopContextCompactionDetail(withoutToolMarkup)) return "";
+    return withoutToolMarkup.trim();
+  }
   const lines = withoutToolMarkup.split(/\r?\n|\u2028|\u2029/);
   const result: string[] = [];
   let previousText = "";

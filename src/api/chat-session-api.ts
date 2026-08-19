@@ -1,4 +1,5 @@
 import { agentManager } from "../core/agent";
+import db from "../core/database";
 import { logSessionMessage } from "../core/logging";
 import {
   clearSessionContextState,
@@ -58,6 +59,34 @@ export {
   type ProcessActivityInfo,
   type ToolCallInfo,
 } from "./chat-process-activities";
+
+interface PersistedSessionMemoEntry {
+  fingerprint: string;
+  loaded: Awaited<ReturnType<typeof loadPersistedSession>>;
+}
+
+const persistedSessionLoadMemo = new Map<string, PersistedSessionMemoEntry>();
+const persistedSessionFingerprintStatement = db.prepare(
+  "SELECT COUNT(*) AS count, COALESCE(SUM(length(metadata)), 0) AS metaBytes, COALESCE(SUM(length(content)), 0) AS contentBytes, COALESCE(MAX(created_at), '') AS maxCreated FROM session_messages WHERE session_id = ?"
+);
+
+async function loadPersistedSessionMemoized(
+  sessionId: string
+): Promise<Awaited<ReturnType<typeof loadPersistedSession>>> {
+  const row = persistedSessionFingerprintStatement.get(sessionId) as {
+    count: number;
+    metaBytes: number;
+    contentBytes: number;
+    maxCreated: string;
+  };
+  const fingerprint = `${row.count}:${row.metaBytes}:${row.contentBytes}:${row.maxCreated}`;
+  const existing = persistedSessionLoadMemo.get(sessionId);
+  if (existing?.fingerprint === fingerprint) return existing.loaded;
+  const loaded = await loadPersistedSession(sessionId);
+  if (persistedSessionLoadMemo.size >= 256) persistedSessionLoadMemo.clear();
+  persistedSessionLoadMemo.set(sessionId, { fingerprint, loaded });
+  return loaded;
+}
 
 export async function getSession(sessionId: string) {
   const session = getResidentChatSession(sessionId);
@@ -147,7 +176,7 @@ export async function getSession(sessionId: string) {
   }
 
   const indexed = persistedSessionIndex.get(sessionId);
-  const persisted = await loadPersistedSession(sessionId);
+  const persisted = await loadPersistedSessionMemoized(sessionId);
   if (persisted) {
     const recoveredMessages = await recoverInterruptedSessionMessages(
       sessionId,
@@ -284,7 +313,7 @@ export async function getSessionMessages(sessionId: string): Promise<ChatMessage
   const session = await getSession(sessionId);
   if (!session) return [];
   if ("isSubagent" in session && session.isSubagent === true) return session.messages || [];
-  const persisted = await loadPersistedSession(sessionId);
+  const persisted = await loadPersistedSessionMemoized(sessionId);
   if (!persisted) return session.messages || [];
   const recoveredMessages = await recoverInterruptedSessionMessages(
     sessionId,
@@ -448,6 +477,7 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
     const persistedDeleted = await deletePersistedSession(key);
     if (memoryDeleted || persistedDeleted) {
       removePersistedSessionIndex(key);
+      persistedSessionLoadMemo.delete(key);
     }
     return memoryDeleted || persistedDeleted;
   } finally {

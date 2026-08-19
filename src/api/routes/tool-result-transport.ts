@@ -19,20 +19,35 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function shrink(
+interface ShrinkState {
+  used: number;
+  aborted: boolean;
+}
+
+function shrinkBounded(
   value: unknown,
   depth: number,
-  options: Required<ToolResultTransportOptions>
+  options: Required<ToolResultTransportOptions>,
+  state: ShrinkState
 ): unknown {
-  if (typeof value === "string") return truncateString(value, options.maxStringChars);
+  if (state.aborted) return TRUNCATION_MARKER;
+  if (typeof value === "string") {
+    const kept = truncateString(value, options.maxStringChars);
+    state.used += kept.length;
+    if (state.used > options.maxTotalChars) state.aborted = true;
+    return kept;
+  }
   if (value === null || typeof value !== "object") return value;
   if (depth >= options.maxDepth) {
-    return truncateString(JSON.stringify(value) ?? "", options.maxStringChars);
+    const kept = truncateString(JSON.stringify(value) ?? "", options.maxStringChars);
+    state.used += kept.length;
+    if (state.used > options.maxTotalChars) state.aborted = true;
+    return kept;
   }
   if (Array.isArray(value)) {
     const kept = value
       .slice(0, options.maxArrayItems)
-      .map((item) => shrink(item, depth + 1, options));
+      .map((item) => shrinkBounded(item, depth + 1, options, state));
     return value.length > options.maxArrayItems
       ? [...kept, `${TRUNCATION_MARKER} ${value.length - options.maxArrayItems} more item(s)`]
       : kept;
@@ -40,10 +55,17 @@ function shrink(
   if (!isPlainRecord(value)) return value;
   const shrunk: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
-    shrunk[key] = shrink(entry, depth + 1, options);
+    if (state.aborted) {
+      shrunk[key] = TRUNCATION_MARKER;
+      break;
+    }
+    state.used += key.length;
+    shrunk[key] = shrinkBounded(entry, depth + 1, options, state);
   }
   return shrunk;
 }
+
+const transportTruncateCache = new WeakMap<object, { key: string; result: unknown }>();
 
 export function truncateToolResultForTransport(
   result: unknown,
@@ -59,16 +81,25 @@ export function truncateToolResultForTransport(
   if (typeof result === "string") return truncateString(result, resolved.maxStringChars);
   if (result === null || typeof result !== "object") return result;
 
-  let shrunk = shrink(result, 0, resolved);
+  const cacheKey = `${resolved.maxStringChars}:${resolved.maxArrayItems}:${resolved.maxTotalChars}:${resolved.maxDepth}`;
+  const cached = transportTruncateCache.get(result as object);
+  if (cached?.key === cacheKey) return cached.result;
+  let shrunk = shrinkBounded(result, 0, resolved, { used: 0, aborted: false });
   let serialized = JSON.stringify(shrunk);
   for (const stringCap of [200, 80, 24]) {
-    if (typeof serialized !== "string" || serialized.length <= resolved.maxTotalChars) break;
+    if (serialized.length <= resolved.maxTotalChars) break;
     if (stringCap >= resolved.maxStringChars) continue;
-    shrunk = shrink(result, 0, { ...resolved, maxStringChars: stringCap });
+    shrunk = shrinkBounded(
+      result,
+      0,
+      { ...resolved, maxStringChars: stringCap },
+      { used: 0, aborted: false }
+    );
     serialized = JSON.stringify(shrunk);
   }
-  if (typeof serialized === "string" && serialized.length > resolved.maxTotalChars) {
+  if (serialized.length > resolved.maxTotalChars) {
     return truncateString(serialized, resolved.maxTotalChars);
   }
+  transportTruncateCache.set(result as object, { key: cacheKey, result: shrunk });
   return shrunk;
 }

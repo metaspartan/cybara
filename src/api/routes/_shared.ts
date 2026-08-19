@@ -945,11 +945,21 @@ function isTodoToolCall(toolCall: unknown): boolean {
   return typeof toolCall.name === "string" && toolCall.name.toLowerCase() === "todo";
 }
 
+const processActivitiesSanitizeCache = new WeakMap<
+  object,
+  { key: string; length: number; result: SessionMessageView["process_activities"] | undefined }
+>();
+
 export function sanitizeProcessActivities(
   activities: unknown,
   options?: { maxItems?: number; maxTextLength?: number }
 ): SessionMessageView["process_activities"] | undefined {
   if (!Array.isArray(activities)) return undefined;
+  const cacheKey = `${options?.maxItems ?? ""}:${options?.maxTextLength ?? ""}`;
+  const cached = processActivitiesSanitizeCache.get(activities as unknown as object);
+  if (cached && cached.key === cacheKey && cached.length === activities.length) {
+    return cached.result;
+  }
   const maxItems =
     typeof options?.maxItems === "number" && Number.isFinite(options.maxItems)
       ? Math.max(0, Math.floor(options.maxItems))
@@ -1005,6 +1015,12 @@ export function sanitizeProcessActivities(
     });
   }
 
+  processActivitiesSanitizeCache.set(activities as unknown as object, {
+    key: cacheKey,
+    length: activities.length,
+    result: sanitized,
+  });
+
   return sanitized.length > 0 ? sanitized : undefined;
 }
 
@@ -1024,6 +1040,9 @@ export function sanitizeSessionMessages(
       : DEFAULT_MAX_TOOL_CALLS;
 
   return messages.map((msg) => {
+    if (truncateLargeFields && typeof msg?.thinking === "string" && msg.thinking.length > 1500) {
+      msg = { ...msg, thinking: `${msg.thinking.slice(0, 1500)}... [truncated]` };
+    }
     const content =
       msg?.role === "assistant" && typeof msg.content === "string"
         ? sanitizeAssistantContent(msg.content)
@@ -1102,6 +1121,7 @@ export function sanitizeSessionMessages(
               } => !!entry
             );
 
+    const recoveredScreenshotPath = extractScreenshotPathFromText(content);
     const sanitizedToolCalls = selectedToolCalls.map(({ toolCall: tc, sourceIndex }) => {
       const sanitized = { ...tc };
       if (
@@ -1118,7 +1138,6 @@ export function sanitizeSessionMessages(
               ? sanitizeArtifactToolResult(tc.result)
               : undefined;
           const todoResult = isTodoToolCall(tc) ? sanitizeTodoToolResult(tc.result) : undefined;
-          const recoveredScreenshotPath = extractScreenshotPathFromText(content);
           const toolArgs = isObjectRecord(tc.args) ? tc.args : undefined;
           const isCaptureTool =
             tc.name === "screenshot" ||
@@ -1156,6 +1175,13 @@ export function sanitizeSessionMessages(
         tc.error.length > MAX_ERROR_SIZE
       ) {
         sanitized.error = tc.error.slice(0, MAX_ERROR_SIZE) + "...";
+      }
+
+      if (truncateLargeFields && tc.args !== undefined) {
+        sanitized.args = truncateToolResultForTransport(tc.args, {
+          maxStringChars: 800,
+          maxTotalChars: 4000,
+        }) as Record<string, unknown>;
       }
 
       return sanitized;
