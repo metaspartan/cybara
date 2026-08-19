@@ -1,7 +1,7 @@
-import type { Agent, ToolDefinition } from "./database";
 import { parseAgentConfig } from "./agent-internals";
 import { isLegacyBuiltinSnapshot, normalizeExplicitAgentTools } from "./agent-tool-normalization";
 import { resolveAgentToolSelection } from "./agent-tool-selection";
+import type { Agent, ToolDefinition } from "./database";
 import { getToolSchemasForLLM, isToolEnabledForAgent } from "./tools/index";
 
 export const TOOL_PROFILE_IDS = ["full", "coding", "research", "safe"] as const;
@@ -260,7 +260,9 @@ export function resolveAgentToolPolicy(
   }
 
   const explicitSelection =
-    selection.kind === "explicit" && !isLegacyBuiltinSnapshot(selection.tools);
+    selection.kind === "explicit" &&
+    selection.tools.length > 0 &&
+    !isLegacyBuiltinSnapshot(selection.tools);
   const selectedToolsets = Array.from(
     new Set([...profileToolsets[profile], ...(configuredToolsets ?? []).filter(isToolsetId)])
   ).filter((toolset) => !(disabledToolsets ?? []).includes(toolset));
