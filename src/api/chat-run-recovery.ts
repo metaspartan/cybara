@@ -6,6 +6,7 @@ import {
   listAllSessionEvents,
   listAllRunEvents,
   listIncompleteSessionRuns,
+  sessionEventsFingerprint,
   type SessionLedgerEvent,
 } from "../core/session-event-ledger";
 import {
@@ -250,6 +251,11 @@ function hasDurableAssistantWithinRun(
   });
 }
 
+const interruptedRecoveryHydrationCache = new Map<
+  string,
+  { key: string; messages: ChatMessage[] }
+>();
+
 export async function recoverInterruptedSessionMessages(
   sessionId: string,
   agentId: string,
@@ -273,15 +279,31 @@ export async function recoverInterruptedSessionMessages(
     eventCache.set(runId, events);
     return events;
   };
-  const hydrated = messages.map((message) => {
-    const runId = typeof message.run_id === "string" ? message.run_id.trim() : "";
-    return runId ? hydrateRunMessage(message, eventsForRun(runId)) : message;
-  });
+  const activeRunId = getActiveSessionRunId(sessionId);
+  const lastTimestamp = messages.length ? (messages[messages.length - 1]?.timestamp ?? "") : "";
+  const hydrationKey = `${sessionEventsFingerprint(sessionId)}:${activeRunId || ""}:${messages.length}:${lastTimestamp}`;
+  const cachedHydration = interruptedRecoveryHydrationCache.get(sessionId);
+  const hydrated =
+    cachedHydration?.key === hydrationKey
+      ? [...cachedHydration.messages]
+      : (() => {
+          const hydratedMessages = messages.map((message) => {
+            const runId = typeof message.run_id === "string" ? message.run_id.trim() : "";
+            return runId ? hydrateRunMessage(message, eventsForRun(runId)) : message;
+          });
+          if (interruptedRecoveryHydrationCache.size >= 256) {
+            interruptedRecoveryHydrationCache.clear();
+          }
+          interruptedRecoveryHydrationCache.set(sessionId, {
+            key: hydrationKey,
+            messages: [...hydratedMessages],
+          });
+          return hydratedMessages;
+        })();
   const representedRunIds = new Set(
     hydrated.map((message) => message.run_id?.trim()).filter((runId): runId is string => !!runId)
   );
   let recoveredRunAdded = false;
-  const activeRunId = getActiveSessionRunId(sessionId);
 
   for (const events of completedEmptyRunEvents(eventCache)) {
     const runId = events[0]?.runId;

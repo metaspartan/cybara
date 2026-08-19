@@ -225,3 +225,34 @@ describe("session-context chunking helpers", () => {
     expect(shouldCompactContext(result.messages, "mixtral").needed).toBe(false);
   });
 });
+
+describe("per-message estimate caching", () => {
+  test("returns the same estimate for an unchanged message object", () => {
+    const message = {
+      role: "assistant",
+      content: "done",
+      tool_calls: [
+        { id: "t1", name: "read", args: {}, status: "completed", result: "x".repeat(5000) },
+      ],
+    } as ChatMessage;
+    const first = estimateMessageTranscriptTokens(message);
+    const second = estimateMessageTranscriptTokens(message);
+    expect(second).toBe(first);
+  });
+
+  test("recomputes when the tool_calls reference changes", () => {
+    const message = {
+      role: "assistant",
+      content: "done",
+      tool_calls: [
+        { id: "t1", name: "read", args: {}, status: "completed", result: "x".repeat(5000) },
+      ],
+    } as ChatMessage;
+    const before = estimateMessageTranscriptTokens(message);
+    message.tool_calls = [
+      { id: "t1", name: "read", args: {}, status: "completed", result: "y".repeat(50_000) },
+    ];
+    const after = estimateMessageTranscriptTokens(message);
+    expect(after).toBeGreaterThan(before);
+  });
+});

@@ -821,7 +821,11 @@ export function toAnthropicReplayContentWithNormalizedToolUses(
   return replayBlocks;
 }
 
+const sanitizeAssistantContentCache = new Map<string, string>();
+
 export function sanitizeAssistantContent(content: string): string {
+  const cached = sanitizeAssistantContentCache.get(content);
+  if (cached !== undefined) return cached;
   const sanitized = closeUnterminatedMarkdownFence(
     stripContextCompactionNotices(
       stripTextToolCallMarkup(content)
@@ -829,7 +833,10 @@ export function sanitizeAssistantContent(content: string): string {
         .replace(REPLY_DIRECTIVE_INLINE_PATTERN, "$1")
     )
   );
-  return sanitized === "[SILENT]" ? "" : sanitized;
+  const result = sanitized === "[SILENT]" ? "" : sanitized;
+  if (sanitizeAssistantContentCache.size >= 1024) sanitizeAssistantContentCache.clear();
+  sanitizeAssistantContentCache.set(content, result);
+  return result;
 }
 
 export function shouldUseMiniMaxReasoningSplit(

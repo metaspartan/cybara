@@ -7,6 +7,7 @@ import {
 } from "../core/chat-token-optimization";
 import { hydrateImageDataFromPath } from "../core/chat/attachments";
 import { getActiveGoalContextLine } from "../core/session-goals";
+import { resolveActionAuthorizationInstruction } from "../core/llm/action-authorization";
 import { INTERRUPTED_RESPONSE } from "./chat-interruption";
 import type { ChatMessage } from "./chat-types";
 export { stripThinkingTags } from "./chat-formatting";
@@ -152,6 +153,19 @@ export function buildChatExecutionMessagesForAgent(
       executionMessages.splice(1, 0, goalInstruction);
     } else {
       executionMessages.unshift(goalInstruction);
+    }
+  }
+
+  const lastUserMessage = [...sessionMessages].reverse().find((message) => message.role === "user");
+  const autonomyInstruction = lastUserMessage
+    ? resolveActionAuthorizationInstruction(String(lastUserMessage.content ?? ""))
+    : null;
+  if (autonomyInstruction) {
+    const authorizationMessage: AgentMessage = { role: "system", content: autonomyInstruction };
+    if (executionMessages[0]?.role === "system") {
+      executionMessages.splice(1, 0, authorizationMessage);
+    } else {
+      executionMessages.unshift(authorizationMessage);
     }
   }
 

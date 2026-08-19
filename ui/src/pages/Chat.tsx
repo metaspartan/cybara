@@ -1214,11 +1214,6 @@ export function Chat() {
     setSessionTokenUsage,
   });
 
-  const handleSetGoalDraft = useCallback(() => {
-    setInput("/goal ");
-    window.requestAnimationFrame(() => inputRef.current?.focus());
-  }, [setInput]);
-
   const handleGoalStatus = useCallback(
     async (action: "pause" | "resume" | "complete" | "clear") => {
       if (!sessionId) return;
@@ -1705,6 +1700,19 @@ export function Chat() {
                     <ChatSessionLoadingState />
                   ) : (
                     <ChatEmptyState
+                      banner={
+                        sessionId ? (
+                          <GoalPanel
+                            goal={goalController.goal}
+                            loading={goalController.loading}
+                            working={currentSessionIsWorking}
+                            onPause={() => void handleGoalStatus("pause")}
+                            onResume={() => void handleGoalStatus("resume")}
+                            onComplete={() => void handleGoalStatus("complete")}
+                            onClear={() => void handleGoalStatus("clear")}
+                          />
+                        ) : null
+                      }
                       gitBranch={environmentGit.currentBranch}
                       gitBranchChanging={environmentGit.changingBranch}
                       gitBranchError={environmentGit.error}
@@ -1718,18 +1726,6 @@ export function Chat() {
                       onSelectWorkspace={() => void handleSelectWorkspace()}
                       onSwitchGitBranch={environmentGit.checkout}
                     >
-                      {sessionId ? (
-                        <GoalPanel
-                          goal={goalController.goal}
-                          loading={goalController.loading}
-                          working={currentSessionIsWorking}
-                          onPause={() => void handleGoalStatus("pause")}
-                          onResume={() => void handleGoalStatus("resume")}
-                          onComplete={() => void handleGoalStatus("complete")}
-                          onClear={() => void handleGoalStatus("clear")}
-                          onSetGoal={handleSetGoalDraft}
-                        />
-                      ) : null}
                       <ChatComposer {...chatComposerProps} layout="new-chat" />
                     </ChatEmptyState>
                   )
@@ -1786,7 +1782,6 @@ export function Chat() {
                       onResume={() => void handleGoalStatus("resume")}
                       onComplete={() => void handleGoalStatus("complete")}
                       onClear={() => void handleGoalStatus("clear")}
-                      onSetGoal={handleSetGoalDraft}
                     />
                   ) : null}
                   <ChatComposer {...chatComposerProps} />
