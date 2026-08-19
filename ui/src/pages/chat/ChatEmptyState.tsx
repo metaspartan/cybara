@@ -16,7 +16,7 @@ function randomEmptyWorkspacePrompt(): (typeof EMPTY_WORKSPACE_PROMPTS)[number] 
 }
 
 interface ChatEmptyStateProps {
-  banner?: ReactNode;
+  goalPanel?: ReactNode;
   children: ReactNode;
   onClearWorkspace: () => void;
   onSelectWorkspace: () => void;
@@ -33,7 +33,7 @@ interface ChatEmptyStateProps {
 }
 
 export function ChatEmptyState({
-  banner,
+  goalPanel,
   children,
   onClearWorkspace,
   onSelectWorkspace,
@@ -53,7 +53,6 @@ export function ChatEmptyState({
 
   return (
     <div data-chat-empty-state="true" className="flex w-full flex-col items-center">
-      {banner}
       <div className="mx-auto flex w-[min(100%,40rem)] -translate-y-[3vh] flex-col items-center">
         <div className="text-center">
           <span className="chat-empty-state-logo mx-auto mb-4 block h-16 w-16" aria-hidden="true">
@@ -84,6 +83,7 @@ export function ChatEmptyState({
           </p>
         </div>
         <div className="mx-auto mt-4 w-full text-left">
+          {goalPanel}
           <NewChatWorkspaceBar
             branches={gitBranches}
             changingBranch={gitBranchChanging}
@@ -97,6 +97,7 @@ export function ChatEmptyState({
             onSwitchBranch={onSwitchGitBranch}
             workspaceDir={workspaceDir}
             workspaceSaving={workspaceSaving}
+            className={goalPanel ? "rounded-none border-t-0" : undefined}
           />
           {children}
         </div>
