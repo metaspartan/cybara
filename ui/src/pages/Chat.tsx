@@ -1700,6 +1700,19 @@ export function Chat() {
                     <ChatSessionLoadingState />
                   ) : (
                     <ChatEmptyState
+                      banner={
+                        sessionId ? (
+                          <GoalPanel
+                            goal={goalController.goal}
+                            loading={goalController.loading}
+                            working={currentSessionIsWorking}
+                            onPause={() => void handleGoalStatus("pause")}
+                            onResume={() => void handleGoalStatus("resume")}
+                            onComplete={() => void handleGoalStatus("complete")}
+                            onClear={() => void handleGoalStatus("clear")}
+                          />
+                        ) : null
+                      }
                       gitBranch={environmentGit.currentBranch}
                       gitBranchChanging={environmentGit.changingBranch}
                       gitBranchError={environmentGit.error}
@@ -1712,7 +1725,9 @@ export function Chat() {
                       onRefreshGitBranches={environmentGit.refresh}
                       onSelectWorkspace={() => void handleSelectWorkspace()}
                       onSwitchGitBranch={environmentGit.checkout}
-                    />
+                    >
+                      <ChatComposer {...chatComposerProps} layout="new-chat" />
+                    </ChatEmptyState>
                   )
                 ) : (
                   <ChatMessageTimeline
@@ -1756,24 +1771,22 @@ export function Chat() {
                 </button>
               )}
 
-              {sessionId && (typedMessages.length > 0 || !restoringInitialSession) ? (
-                <GoalPanel
-                  goal={goalController.goal}
-                  loading={goalController.loading}
-                  working={currentSessionIsWorking}
-                  onPause={() => void handleGoalStatus("pause")}
-                  onResume={() => void handleGoalStatus("resume")}
-                  onComplete={() => void handleGoalStatus("complete")}
-                  onClear={() => void handleGoalStatus("clear")}
-                />
+              {typedMessages.length > 0 ? (
+                <>
+                  {sessionId ? (
+                    <GoalPanel
+                      goal={goalController.goal}
+                      loading={goalController.loading}
+                      working={currentSessionIsWorking}
+                      onPause={() => void handleGoalStatus("pause")}
+                      onResume={() => void handleGoalStatus("resume")}
+                      onComplete={() => void handleGoalStatus("complete")}
+                      onClear={() => void handleGoalStatus("clear")}
+                    />
+                  ) : null}
+                  <ChatComposer {...chatComposerProps} />
+                </>
               ) : null}
-              {typedMessages.length === 0 ? (
-                restoringInitialSession ? null : (
-                  <ChatComposer {...chatComposerProps} layout="new-chat" />
-                )
-              ) : (
-                <ChatComposer {...chatComposerProps} />
-              )}
             </>
           )}
         </div>

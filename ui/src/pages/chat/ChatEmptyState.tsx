@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import type { GitBranchOption } from "./GitBranchSelector";
 import { NewChatWorkspaceBar, workspaceFolderName } from "./NewChatWorkspaceBar";
 
@@ -16,6 +16,8 @@ function randomEmptyWorkspacePrompt(): (typeof EMPTY_WORKSPACE_PROMPTS)[number] 
 }
 
 interface ChatEmptyStateProps {
+  banner?: ReactNode;
+  children: ReactNode;
   onClearWorkspace: () => void;
   onSelectWorkspace: () => void;
   workspaceDir: string | null;
@@ -31,6 +33,8 @@ interface ChatEmptyStateProps {
 }
 
 export function ChatEmptyState({
+  banner,
+  children,
   onClearWorkspace,
   onSelectWorkspace,
   workspaceDir,
@@ -48,53 +52,54 @@ export function ChatEmptyState({
   const workspaceName = workspaceDir ? workspaceFolderName(workspaceDir) : null;
 
   return (
-    <div
-      data-chat-empty-state="true"
-      className="mx-auto flex w-[min(100%,40rem)] -translate-y-[3vh] flex-col items-center"
-    >
-      <div className="text-center">
-        <span className="chat-empty-state-logo mx-auto mb-4 block h-16 w-16" aria-hidden="true">
-          <img src="/cybara.png" alt="" className="h-full w-full object-contain" />
-        </span>
-        <p className="text-xl font-medium text-[var(--text-primary)]">
-          {workspaceName ? (
-            <>
-              What should we build in{" "}
-              <button
-                type="button"
-                onClick={onSelectWorkspace}
-                disabled={workspaceSaving}
-                className="rounded-sm font-semibold text-[var(--text-primary)] underline decoration-[var(--text-muted)] underline-offset-4 transition-colors hover:text-[rgb(var(--accent-primary))] disabled:cursor-not-allowed disabled:opacity-60"
-                title={workspaceDir || undefined}
-                aria-label={`Change workspace from ${workspaceName}`}
-              >
-                {workspaceName}
-              </button>
-              ?
-            </>
-          ) : (
-            emptyWorkspacePrompt
-          )}
-        </p>
-        <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
-          Ask questions, get help with code, or chat with your agents
-        </p>
-      </div>
-      <div className="mx-auto mt-4 w-full text-left">
-        <NewChatWorkspaceBar
-          branches={gitBranches}
-          changingBranch={gitBranchChanging}
-          currentBranch={gitBranch}
-          error={gitBranchError}
-          loading={gitBranchLoading}
-          onCreateBranch={onCreateGitBranch}
-          onClearWorkspace={onClearWorkspace}
-          onRefreshBranches={onRefreshGitBranches}
-          onSelectWorkspace={onSelectWorkspace}
-          onSwitchBranch={onSwitchGitBranch}
-          workspaceDir={workspaceDir}
-          workspaceSaving={workspaceSaving}
-        />
+    <div data-chat-empty-state="true" className="flex w-full flex-col items-center">
+      {banner}
+      <div className="mx-auto flex w-[min(100%,40rem)] -translate-y-[3vh] flex-col items-center">
+        <div className="text-center">
+          <span className="chat-empty-state-logo mx-auto mb-4 block h-16 w-16" aria-hidden="true">
+            <img src="/cybara.png" alt="" className="h-full w-full object-contain" />
+          </span>
+          <p className="text-xl font-medium text-[var(--text-primary)]">
+            {workspaceName ? (
+              <>
+                What should we build in{" "}
+                <button
+                  type="button"
+                  onClick={onSelectWorkspace}
+                  disabled={workspaceSaving}
+                  className="rounded-sm font-semibold text-[var(--text-primary)] underline decoration-[var(--text-muted)] underline-offset-4 transition-colors hover:text-[rgb(var(--accent-primary))] disabled:cursor-not-allowed disabled:opacity-60"
+                  title={workspaceDir || undefined}
+                  aria-label={`Change workspace from ${workspaceName}`}
+                >
+                  {workspaceName}
+                </button>
+                ?
+              </>
+            ) : (
+              emptyWorkspacePrompt
+            )}
+          </p>
+          <p className="mt-1.5 text-[12px] text-[var(--text-muted)]">
+            Ask questions, get help with code, or chat with your agents
+          </p>
+        </div>
+        <div className="mx-auto mt-4 w-full text-left">
+          <NewChatWorkspaceBar
+            branches={gitBranches}
+            changingBranch={gitBranchChanging}
+            currentBranch={gitBranch}
+            error={gitBranchError}
+            loading={gitBranchLoading}
+            onCreateBranch={onCreateGitBranch}
+            onClearWorkspace={onClearWorkspace}
+            onRefreshBranches={onRefreshGitBranches}
+            onSelectWorkspace={onSelectWorkspace}
+            onSwitchBranch={onSwitchGitBranch}
+            workspaceDir={workspaceDir}
+            workspaceSaving={workspaceSaving}
+          />
+          {children}
+        </div>
       </div>
     </div>
   );
