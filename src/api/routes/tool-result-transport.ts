@@ -19,6 +19,20 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function safeJsonStringify(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function jsonSafeScalar(value: unknown): unknown {
+  if (typeof value === "bigint" || typeof value === "symbol") return String(value);
+  if (typeof value === "function") return `[Function ${value.name || "anonymous"}]`;
+  return value;
+}
+
 interface ShrinkState {
   used: number;
   aborted: boolean;
@@ -37,9 +51,9 @@ function shrinkBounded(
     if (state.used > options.maxTotalChars) state.aborted = true;
     return kept;
   }
-  if (value === null || typeof value !== "object") return value;
+  if (value === null || typeof value !== "object") return jsonSafeScalar(value);
   if (depth >= options.maxDepth) {
-    const kept = truncateString(JSON.stringify(value) ?? "", options.maxStringChars);
+    const kept = truncateString(safeJsonStringify(value) ?? "", options.maxStringChars);
     state.used += kept.length;
     if (state.used > options.maxTotalChars) state.aborted = true;
     return kept;
@@ -79,13 +93,13 @@ export function truncateToolResultForTransport(
   };
   if (result === undefined) return result;
   if (typeof result === "string") return truncateString(result, resolved.maxStringChars);
-  if (result === null || typeof result !== "object") return result;
+  if (result === null || typeof result !== "object") return jsonSafeScalar(result);
 
   const cacheKey = `${resolved.maxStringChars}:${resolved.maxArrayItems}:${resolved.maxTotalChars}:${resolved.maxDepth}`;
   const cached = transportTruncateCache.get(result as object);
   if (cached?.key === cacheKey) return cached.result;
   let shrunk = shrinkBounded(result, 0, resolved, { used: 0, aborted: false });
-  let serialized = JSON.stringify(shrunk);
+  let serialized = safeJsonStringify(shrunk) ?? "";
   for (const stringCap of [200, 80, 24]) {
     if (serialized.length <= resolved.maxTotalChars) break;
     if (stringCap >= resolved.maxStringChars) continue;
@@ -95,7 +109,7 @@ export function truncateToolResultForTransport(
       { ...resolved, maxStringChars: stringCap },
       { used: 0, aborted: false }
     );
-    serialized = JSON.stringify(shrunk);
+    serialized = safeJsonStringify(shrunk) ?? "";
   }
   if (serialized.length > resolved.maxTotalChars) {
     return truncateString(serialized, resolved.maxTotalChars);

@@ -89,6 +89,68 @@ describe("tool result transport shrinking", () => {
   });
 });
 
+describe("tool result transport non-serializable values", () => {
+  test("BigInt values in tool args do not crash truncation", () => {
+    const result = {
+      id: "call-1",
+      startedAt: 1787108052873n,
+      args: { timestamp: 1700000000000n, label: "x".repeat(2_000) },
+    };
+    const shrunk = truncateToolResultForTransport(result, {
+      maxStringChars: 500,
+      maxTotalChars: 4_000,
+    });
+    const serialized = JSON.stringify(shrunk);
+    expect(serialized).toBeTypeOf("string");
+    expect(serialized).toContain("1700000000000");
+    expect(serialized.length).toBeLessThanOrEqual(4_000 + "... [truncated]".length);
+  });
+
+  test("Symbol and Function values are converted instead of producing undefined", () => {
+    const result = {
+      ok: true,
+      marker: Symbol("session"),
+      handler: () => 42,
+      nested: { secret: Symbol("s") },
+    };
+    const shrunk = truncateToolResultForTransport(result, { maxTotalChars: 4_000 });
+    expect(JSON.stringify(shrunk)).toBeTypeOf("string");
+    expect(JSON.stringify(shrunk)).toContain("Symbol(session)");
+    expect(JSON.stringify(shrunk)).toContain("[Function handler]");
+  });
+
+  test("circular references do not crash truncation", () => {
+    const result: Record<string, unknown> = { ok: true };
+    result.self = result;
+    const shrunk = truncateToolResultForTransport(result, {
+      maxStringChars: 500,
+      maxTotalChars: 4_000,
+    });
+    expect(JSON.stringify(shrunk)).toBeTypeOf("string");
+  });
+
+  test("sanitizeSessionMessages keeps working when tool args hold BigInt values", () => {
+    const [message] = sanitizeSessionMessages([
+      {
+        role: "assistant",
+        content: "ran",
+        tool_calls: [
+          {
+            id: "call-bigint",
+            name: "exec",
+            args: { ts: 1700000000000n, cmd: "bun test" },
+            result: { output: "ok", exitCode: 0 },
+          },
+        ],
+      },
+    ]);
+    expect(message.tool_calls?.[0]?.args).toEqual({
+      ts: "1700000000000",
+      cmd: "bun test",
+    });
+  });
+});
+
 describe("tool result transport caching", () => {
   test("reuses cached results for stable inputs and recomputes for changed options", () => {
     const result = { output: "z".repeat(2_000), exitCode: 0 };
