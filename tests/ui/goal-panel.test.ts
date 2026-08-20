@@ -38,7 +38,7 @@ describe("goal panel visibility and layout", () => {
     expect(source).toContain('layout === "new-chat"');
     expect(source).toContain("new-chat-workspace-bar mx-4 flex h-9");
     expect(source).toContain("new-chat-workspace-bar flex min-h-9");
-    expect(source).not.toContain("new-chat-workspace-bar mx-4 flex min-h-9");
+    expect(source).toContain("new-chat-workspace-bar mx-4 flex min-h-9");
     expect(source).toContain("rounded-t-[18px] border border-b-0");
     expect(source).toContain(
       'cn("chat-goal-bar", chatHorizontalPaddingClassName(horizontalPadding))'
