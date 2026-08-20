@@ -1,5 +1,5 @@
 import { stat } from "fs/promises";
-import { Client, type ClientChannel, type ConnectConfig, type SFTPWrapper } from "ssh2";
+import type { Client, ClientChannel, ConnectConfig, SFTPWrapper } from "ssh2";
 
 export interface SshConnectionOptions {
   host: string;
@@ -93,6 +93,7 @@ export async function runSshCommand(
   connection: SshConnectionOptions,
   options: SshCommandOptions
 ): Promise<SshCommandResult> {
+  const { Client } = await import("ssh2");
   const client = new Client();
   const deadlineMs = options.timeoutMs ?? 60_000;
   let settled = false;
@@ -173,6 +174,7 @@ export async function copySshFile(
   connection: SshConnectionOptions,
   options: SshCopyOptions
 ): Promise<SshCopyResult> {
+  const { Client } = await import("ssh2");
   const client = new Client();
   const timeoutMs = options.timeoutMs ?? 60_000;
   let settled = false;
