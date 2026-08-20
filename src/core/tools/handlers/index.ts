@@ -72,6 +72,7 @@ import {
 } from "./kanban";
 import { handleClipboard } from "./clipboard";
 import { handleHttp } from "./http";
+import { handleScp, handleSsh } from "./ssh";
 import { handleData } from "./data";
 import { handleAccountConnectorRead, handleAccountConnectorWrite } from "./account-connectors";
 import { handleCalc, handleConvert } from "./calc";
@@ -132,6 +133,7 @@ export * from "./channel";
 export * from "./skill";
 export * from "./clipboard";
 export * from "./http";
+export * from "./ssh";
 export * from "./data";
 export * from "./calc";
 export * from "./env";
@@ -164,6 +166,8 @@ const toolHandlers: Record<
   exec: handleExec,
   process: handleProcess,
   git: handleGit,
+  ssh: handleSsh,
+  scp: handleScp,
   mactop: async (args: Record<string, unknown>) => {
     const count = normalizeMactopSampleCount(args.seconds, 3, 10);
 

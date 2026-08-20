@@ -63,7 +63,18 @@ const exactToolsets: Partial<Record<ToolsetId, string[]>> = {
     "kanban_unblock",
     "kanban_link",
   ],
-  platform: ["nodes", "clipboard", "http", "data", "env", "gateway", "phone", "voice_call"],
+  platform: [
+    "nodes",
+    "clipboard",
+    "http",
+    "data",
+    "env",
+    "gateway",
+    "phone",
+    "voice_call",
+    "ssh",
+    "scp",
+  ],
 };
 
 const categoryToolsets: Partial<Record<ToolsetId, string>> = {

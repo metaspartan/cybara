@@ -163,6 +163,58 @@ export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
     permissions: ["exec:manage"],
   },
 
+  ssh: {
+    name: "ssh",
+    description:
+      "Run a command on a remote host over SSH using password authentication. Works headless on any platform (Windows, macOS, Linux) - no sshpass, plink, or paramiko needed. Prefer this over shelling out to `sshpass ssh` / `ssh`. Use scp to transfer files.",
+    category: "process",
+    input_schema: {
+      type: "object",
+      properties: {
+        host: { type: "string", description: "Remote host address" },
+        port: { type: "number", description: "SSH port (default 22)" },
+        username: { type: "string", description: "Remote username" },
+        password: { type: "string", description: "Remote password" },
+        command: { type: "string", description: "Command to run on the remote host" },
+        timeout_seconds: { type: "number", description: "Timeout in seconds (default 60)" },
+        strict_host_key: {
+          type: "boolean",
+          description: "Verify the remote host key against known_hosts (default false)",
+        },
+      },
+      required: ["host", "username", "password", "command"],
+    },
+    permissions: ["exec:run"],
+  },
+  scp: {
+    name: "scp",
+    description:
+      "Transfer a file to or from a remote host over SSH/SFTP using password authentication. Works headless on any platform (Windows, macOS, Linux) - no sshpass/pscp needed.",
+    category: "process",
+    input_schema: {
+      type: "object",
+      properties: {
+        host: { type: "string", description: "Remote host address" },
+        port: { type: "number", description: "SSH port (default 22)" },
+        username: { type: "string", description: "Remote username" },
+        password: { type: "string", description: "Remote password" },
+        direction: {
+          type: "string",
+          enum: ["upload", "download"],
+          description: "upload: local to remote, download: remote to local",
+        },
+        local_path: { type: "string", description: "Path on this machine" },
+        remote_path: { type: "string", description: "Path on the remote host" },
+        timeout_seconds: { type: "number", description: "Timeout in seconds (default 120)" },
+        strict_host_key: {
+          type: "boolean",
+          description: "Verify the remote host key against known_hosts (default false)",
+        },
+      },
+      required: ["host", "username", "password", "direction", "local_path", "remote_path"],
+    },
+    permissions: ["exec:run"],
+  },
   browser: {
     name: "browser",
     description: [
