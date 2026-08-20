@@ -82,7 +82,10 @@ const LABELED_TOOL_JSON_PATTERN =
 const HARMONY_TOOL_CALL_PATTERN =
   /(?:<[\uFF5C|]channel[\uFF5C|]>)?\s*commentary\s+to=([A-Za-z_][A-Za-z0-9_.:-]{0,119})\s+code(?:<[\uFF5C|]message[\uFF5C|]>)?\s*([\s\S]*?)(?:<[\uFF5C|]call[\uFF5C|]>|$)/gi;
 const DSML_TOOL_BLOCK_PATTERN =
-  /<[\uFF5C|]DSML[\uFF5C|](?:tool_calls|tool_call|function_calls|tool_use_error)>[\s\S]*?<\/[\uFF5C|]DSML[\uFF5C|](?:tool_calls|tool_call|function_calls|tool_use_error)>/gi;
+  /<[\uFF5C|]DSML[\uFF5C|][a-z_][\w.-]*>[\s\S]*?<\/[\uFF5C|]DSML[\uFF5C|][a-z_][\w.-]*>/gi;
+const DSML_TOOL_BLOCK_DANGLING_PATTERN =
+  /(?:^|\n)[ \t]*<[\uFF5C|]DSML[\uFF5C|][a-z_][\w.-]*>[\s\S]*$/i;
+const DSML_TAG_PATTERN = /<\/?[\uFF5C|]DSML[\uFF5C|]\b[^>]*>/gi;
 const TOOL_CALL_TAG_PATTERN =
   /<\/?(?:function_calls?|tool_calls?|tool_result|function_response|function|invoke|parameter|param)\b[^>]*>/gi;
 const DANGLING_TOOL_CALL_LINE_PATTERN =
@@ -613,6 +616,8 @@ export function stripTextToolCallMarkup(content: string): string {
   if (DIRECT_NAMED_XML_TOOL_PATTERN.test(normalized)) return "";
   const stripped = stripLeadingBareCommandJsonMarkup(normalized)
     .replace(DSML_TOOL_BLOCK_PATTERN, "")
+    .replace(DSML_TOOL_BLOCK_DANGLING_PATTERN, "")
+    .replace(DSML_TAG_PATTERN, "")
     .replace(TOOL_CALL_RESULT_BLOCK_PATTERN, "")
     .replace(TOOL_CALL_CONTAINER_PATTERN, "")
     .replace(LEGACY_BRACKET_TOOL_CALL_PATTERN, "")
@@ -642,7 +647,7 @@ export function hasTextToolCallMarkup(content: string | null | undefined): boole
     /<invoke\b/i.test(content) ||
     DIRECT_NAMED_XML_TOOL_PATTERN.test(normalizeProviderTextMarkers(content)) ||
     /\[\s*TOOL_CALL\s*\]/i.test(content) ||
-    /<[\uFF5C|]DSML[\uFF5C|](?:tool_calls|tool_call|function_calls)/i.test(content) ||
+    /<[\uFF5C|]DSML[\uFF5C|][a-z_]/i.test(content) ||
     MINIMAX_TEXT_SEGMENT_MARKER_QUICK_PATTERN.test(content) ||
     findLeadingBareCommandJsonBlock(normalizeProviderTextMarkers(content)) !== undefined ||
     findTrailingJsonToolCallBlock(normalizeProviderTextMarkers(content)) !== undefined

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   extractTextToolCalls,
+  hasTextToolCallMarkup,
   sanitizeAssistantContent,
   stripTextToolCallMarkup,
 } from "../../src/core/llm/text-tool-calls";
@@ -215,5 +216,29 @@ describe("text-form tool call parsing", () => {
     );
 
     expect(cleaned).toBe("Opening it now.");
+  });
+});
+
+describe("leaked DSML block cleanup", () => {
+  test("strips DSML tool blocks of any type from assistant text", () => {
+    const raw = `<｜DSML｜tool_exec>
+<command>sleep 90</command>
+<timeout>120</timeout>
+</｜DSML｜tool_exec>`;
+
+    expect(stripTextToolCallMarkup(raw)).toBe("");
+    expect(hasTextToolCallMarkup(raw)).toBe(true);
+  });
+
+  test("removes a dangling unclosed DSML block but keeps preceding prose", () => {
+    const raw = `Opening the runner now.
+<｜DSML｜tool_exec>
+<command>nvidia-smi</command>`;
+
+    expect(stripTextToolCallMarkup(raw)).toBe("Opening the runner now.");
+  });
+
+  test("removes stray DSML closing tags from otherwise-final text", () => {
+    expect(stripTextToolCallMarkup("All done.</｜DSML｜tool_exec>")).toBe("All done.");
   });
 });
