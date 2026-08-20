@@ -9,7 +9,7 @@ const boundedTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs >= 5000 ? timeo
 
 try {
   const child = Bun.spawn(
-    [process.execPath, "test", "--timeout", String(boundedTimeoutMs), ...process.argv.slice(2)],
+    [process.execPath, "test", "--parallel", "--timeout", String(boundedTimeoutMs), ...process.argv.slice(2)],
     {
       cwd: process.cwd(),
       env: {
