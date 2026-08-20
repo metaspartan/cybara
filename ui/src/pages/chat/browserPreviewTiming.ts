@@ -3,6 +3,7 @@ export const BROWSER_PREVIEW_ACTIVE_POLL_MS = 250;
 export const BROWSER_PREVIEW_IDLE_POLL_MS = 2_500;
 export const BROWSER_PREVIEW_MAX_WIDTH = 1_600;
 export const BROWSER_PREVIEW_MAX_HEIGHT = 1_200;
+export const BROWSER_PREVIEW_MIN_PAINT_GAP_MS = 500;
 
 export function browserPreviewViewport(
   width: number,

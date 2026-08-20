@@ -9,6 +9,7 @@ export class LatestBrowserFrameDecoder<DecodedFrame> {
   private queued: Blob | null = null;
   private decoding = false;
   private disposed = false;
+  private version = 0;
 
   constructor(
     private readonly decode: (frame: Blob) => Promise<DecodedFrame>,
@@ -18,6 +19,7 @@ export class LatestBrowserFrameDecoder<DecodedFrame> {
 
   enqueue(frame: Blob): void {
     if (this.disposed) return;
+    this.version += 1;
     this.queued = frame;
     void this.drain();
   }
@@ -31,12 +33,13 @@ export class LatestBrowserFrameDecoder<DecodedFrame> {
     if (this.decoding || this.disposed) return;
     const frame = this.queued;
     if (!frame) return;
+    const frameVersion = this.version;
     this.queued = null;
     this.decoding = true;
     void this.decode(frame)
       .then(
         (source) => {
-          if (this.disposed) this.discard(source);
+          if (this.disposed || this.version !== frameVersion) this.discard(source);
           else this.present(source);
         },
         () => undefined

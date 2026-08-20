@@ -4,7 +4,11 @@ import {
   type BrowserPreviewStreamSender,
   LatestBrowserFrameDecoder,
 } from "./browserPreviewStreamClient";
-import { BROWSER_PREVIEW_MAX_HEIGHT, BROWSER_PREVIEW_MAX_WIDTH } from "./browserPreviewTiming";
+import {
+  BROWSER_PREVIEW_MAX_HEIGHT,
+  BROWSER_PREVIEW_MAX_WIDTH,
+  BROWSER_PREVIEW_MIN_PAINT_GAP_MS,
+} from "./browserPreviewTiming";
 
 interface BrowserPreviewImageProps {
   pageId: string | null;
@@ -98,6 +102,13 @@ export function BrowserPreviewImage({
   const connectionChangeRef = useRef(onConnectionChange);
   const framePresentedRef = useRef(onFramePresented);
   const streamErrorRef = useRef(onStreamError);
+  const lastPresentedValueRef = useRef(false);
+
+  const notifyFramePresented = (presented: boolean): void => {
+    if (lastPresentedValueRef.current === presented) return;
+    lastPresentedValueRef.current = presented;
+    framePresentedRef.current(presented);
+  };
 
   useEffect(() => {
     connectionChangeRef.current = onConnectionChange;
@@ -108,10 +119,11 @@ export function BrowserPreviewImage({
   useEffect(() => {
     fallbackSourceRef.current = fallbackSource;
     if (connectedRef.current) return;
+    if (lastPresentedValueRef.current) return;
     const image = imageRef.current;
     if (!image) return;
     applyFallbackSource(image, fallbackSource);
-    framePresentedRef.current(Boolean(fallbackSource));
+    notifyFramePresented(Boolean(fallbackSource));
   }, [fallbackSource]);
 
   useEffect(() => {
@@ -125,6 +137,8 @@ export function BrowserPreviewImage({
     let streamFrameVersion = 0;
     let pendingFrame: DecodedBrowserFrame | null = null;
     let paintHandle: number | null = null;
+    let paintTimer: number | null = null;
+    let lastPaintAt = 0;
     const clearStreamFrame = (): void => {
       const canvas = canvasRef.current;
       const context = canvasContextRef.current;
@@ -160,29 +174,42 @@ export function BrowserPreviewImage({
           fallbackTimer = null;
           canvas.style.visibility = "visible";
         }
-        framePresentedRef.current(Boolean(context));
+        notifyFramePresented(Boolean(context));
       } finally {
         frame.release();
+      }
+    };
+    const scheduleStreamPaint = (): void => {
+      if (paintHandle !== null || paintTimer !== null) return;
+      const delay = Math.max(0, BROWSER_PREVIEW_MIN_PAINT_GAP_MS - (Date.now() - lastPaintAt));
+      const paint = (): void => {
+        paintHandle = null;
+        lastPaintAt = Date.now();
+        const next = pendingFrame;
+        pendingFrame = null;
+        if (next) paintStreamFrame(next);
+      };
+      if (delay <= 0) {
+        paintHandle = window.requestAnimationFrame(paint);
+      } else {
+        paintTimer = window.setTimeout(() => {
+          paintTimer = null;
+          scheduleStreamPaint();
+        }, delay);
       }
     };
     const presentStreamFrame = (frame: DecodedBrowserFrame): void => {
       pendingFrame?.release();
       pendingFrame = frame;
-      if (paintHandle !== null) return;
-      paintHandle = window.requestAnimationFrame(() => {
-        paintHandle = null;
-        const next = pendingFrame;
-        pendingFrame = null;
-        if (next) paintStreamFrame(next);
-      });
+      scheduleStreamPaint();
     };
     const presentFallback = (): void => {
       const fallback = fallbackSourceRef.current;
       applyFallbackSource(imageRef.current, fallback);
-      framePresentedRef.current(Boolean(fallback));
+      notifyFramePresented(Boolean(fallback));
     };
     clearStreamFrame();
-    framePresentedRef.current(false);
+    notifyFramePresented(false);
     if (!visible || !pageId) {
       inputSenderRef.current = null;
       connectedRef.current = false;
@@ -218,6 +245,11 @@ export function BrowserPreviewImage({
         reconnectAttempt = 0;
         connectedRef.current = true;
         connectionChangeRef.current(true);
+        const image = imageRef.current;
+        if (image) {
+          image.removeAttribute("src");
+          image.style.visibility = "hidden";
+        }
         const sender: BrowserPreviewStreamSender = (input) => {
           if (socket?.readyState !== WebSocket.OPEN || socket.bufferedAmount > 512_000)
             return false;
@@ -278,6 +310,8 @@ export function BrowserPreviewImage({
       active = false;
       if (paintHandle !== null) window.cancelAnimationFrame(paintHandle);
       paintHandle = null;
+      if (paintTimer !== null) window.clearTimeout(paintTimer);
+      paintTimer = null;
       pendingFrame?.release();
       pendingFrame = null;
       decoder.dispose();
@@ -290,6 +324,7 @@ export function BrowserPreviewImage({
       socket?.close();
       clearStreamFrame();
       presentFallback();
+      lastPresentedValueRef.current = false;
     };
   }, [inputSenderRef, pageId, quality, visible]);
 

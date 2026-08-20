@@ -108,6 +108,7 @@ describe("chat workspace panel", () => {
   test("browser preview shares the chat session and fills the workspace panel", () => {
     expect(chatSource).toContain("sessionId={sessionId}");
     expect(chatSource).toContain('key={`${instance.id}:${sessionId || "new-chat"}`}');
+    expect(chatSource).toContain('sessionId || "new-chat"');
     expect(chatSource).toContain("pageKey={instance.pageKey}");
     expect(browserSource).toContain("viewportWidth");
     expect(browserSource).toContain("ResizeObserver");
@@ -157,7 +158,9 @@ describe("chat workspace panel", () => {
     );
     expect(browserImageSource).toContain("context?.drawImage");
     expect(browserImageSource).not.toContain("setStreamSource");
-    expect(browserImageSource).toContain("framePresentedRef.current(false)");
+    expect(browserImageSource).toContain("notifyFramePresented(false)");
+    expect(browserImageSource).toContain("lastPresentedValueRef.current === presented");
+    expect(browserImageSource).toContain("BROWSER_PREVIEW_MIN_PAINT_GAP_MS");
     expect(browserStreamClientSource).toContain("class LatestBrowserFrameDecoder");
     expect(browserImageSource).toContain("everyNthFrame");
     expect(browserSource).toContain("streamConnectedRef.current");
