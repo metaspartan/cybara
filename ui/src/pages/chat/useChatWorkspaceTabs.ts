@@ -48,17 +48,15 @@ export function useChatWorkspaceTabs({
   useEffect(() => {
     if (previousSessionIdRef.current === sessionId) return;
     previousSessionIdRef.current = sessionId;
-    const detailTabIds = new Set(
-      tabs
-        .filter((instance) => instance.kind === "subagents" && instance.pageKey)
-        .map((instance) => instance.id)
-    );
-    if (detailTabIds.size === 0) return;
-    const next = tabs.filter((instance) => !detailTabIds.has(instance.id));
-    if (activeTabId && detailTabIds.has(activeTabId)) {
+    setTabs((current) => {
+      const next = current.filter(
+        (instance) => !(instance.kind === "subagents" && instance.pageKey)
+      );
+      if (next.length === current.length) return current;
+      if (activeTabId && next.some((instance) => instance.id === activeTabId)) return next;
       selectTab(next[0]?.id ?? null);
-    }
-    setTabs(next);
+      return next;
+    });
   }, [activeTabId, sessionId, tabs]);
 
   const openTab = useCallback(
