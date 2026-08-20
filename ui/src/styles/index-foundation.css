@@ -911,6 +911,15 @@ textarea[data-chat-composer-input="true"]::placeholder {
   color: var(--text-secondary);
 }
 
+.chat-goal-bar + .chat-composer-responsive {
+  border-top: none;
+  padding-top: 0;
+}
+
+.chat-goal-bar + .chat-composer-responsive .chat-composer-surface {
+  margin-top: -1px;
+}
+
 .chat-reasoning-popover {
   background: var(--context-tooltip-bg);
   border-color: var(--context-tooltip-border);

@@ -48,14 +48,9 @@ export function useChatWorkspaceTabs({
   useEffect(() => {
     if (previousSessionIdRef.current === sessionId) return;
     previousSessionIdRef.current = sessionId;
-    const detailTabIds = new Set(
-      tabs
-        .filter((instance) => instance.kind === "subagents" && instance.pageKey)
-        .map((instance) => instance.id)
-    );
-    if (detailTabIds.size === 0) return;
-    const next = tabs.filter((instance) => !detailTabIds.has(instance.id));
-    if (activeTabId && detailTabIds.has(activeTabId)) {
+    const next = tabs.filter((instance) => !(instance.kind === "subagents" && instance.pageKey));
+    if (next.length === tabs.length) return;
+    if (!(activeTabId && next.some((instance) => instance.id === activeTabId))) {
       selectTab(next[0]?.id ?? null);
     }
     setTabs(next);

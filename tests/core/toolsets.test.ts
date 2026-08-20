@@ -2,13 +2,13 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { agentManager } from "../../src/core/agent";
 import type { Agent } from "../../src/core/database";
 import { providerManager } from "../../src/core/providers";
-import { resolveAgentToolPolicy } from "../../src/core/toolsets";
+import { handleExecuteCode } from "../../src/core/tools/handlers/execute-code";
 import {
   handleToolCall,
   handleToolDescribe,
   handleToolSearch,
 } from "../../src/core/tools/handlers/tool-discovery";
-import { handleExecuteCode } from "../../src/core/tools/handlers/execute-code";
+import { resolveAgentToolPolicy } from "../../src/core/toolsets";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -145,6 +145,16 @@ describe("agent toolsets", () => {
     expect(policy.allowedToolNames.sort()).toEqual(["calc", "read"]);
     expect(policy.offeredTools.map((tool) => tool.name).sort()).toEqual(["calc", "read"]);
     expect(policy.allowDynamicTools).toBe(false);
+  });
+
+  test("falls back to the profile when the explicit tool list is empty", () => {
+    const stored = resolveAgentToolPolicy(agent({ tools: "[]", config: { tool_profile: "full" } }));
+    const inherited = resolveAgentToolPolicy(agent({ config: { tool_profile: "full" } }));
+    expect(stored.offeredTools.length).toBeGreaterThan(0);
+    expect(stored.allowedToolNames.sort()).toEqual(inherited.allowedToolNames.sort());
+    expect(
+      resolveAgentToolPolicy(agent({ tools: [], config: { tool_profile: "safe" } })).profile
+    ).toBe("safe");
   });
 
   test("fails closed for malformed profiles and toolsets", () => {

@@ -23,6 +23,7 @@ describe("browser preview image", () => {
     });
     const decoded: string[] = [];
     const presented: string[] = [];
+    const discarded: string[] = [];
     const decoder = new LatestBrowserFrameDecoder(
       async (frame) => {
         const value = await frame.text();
@@ -31,7 +32,7 @@ describe("browser preview image", () => {
         return value;
       },
       (source) => presented.push(source),
-      () => undefined
+      (source) => discarded.push(source)
     );
 
     decoder.enqueue(new Blob(["frame-1"]));
@@ -42,7 +43,8 @@ describe("browser preview image", () => {
     await Bun.sleep(5);
 
     expect(decoded).toEqual(["frame-1", "frame-3"]);
-    expect(presented).toEqual(["frame-1", "frame-3"]);
+    expect(discarded).toEqual(["frame-1"]);
+    expect(presented).toEqual(["frame-3"]);
     decoder.dispose();
   });
 

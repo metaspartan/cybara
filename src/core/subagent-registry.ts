@@ -1,11 +1,11 @@
 import { randomUUID } from "crypto";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
-import { join } from "path";
-import { tmpdir } from "os";
 import { EventEmitter } from "events";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { dirname, join } from "path";
+import { cybaraDir } from "./paths";
 import { redactSecrets, redactSecretText } from "./redaction";
 import { formatRecoverableToolOutputPreview } from "./tool-output-recovery";
-import { cybaraDir } from "./paths";
 
 export interface SubagentActivity {
   id: string;
@@ -208,7 +208,7 @@ const lifecycleEmitter = new EventEmitter();
 
 function persistSubagentRuns(): void {
   try {
-    const dir = config.persistPath.substring(0, config.persistPath.lastIndexOf("/"));
+    const dir = dirname(config.persistPath);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }

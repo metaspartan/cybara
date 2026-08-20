@@ -1700,7 +1700,7 @@ export function Chat() {
                     <ChatSessionLoadingState />
                   ) : (
                     <ChatEmptyState
-                      banner={
+                      goalPanel={
                         sessionId ? (
                           <GoalPanel
                             goal={goalController.goal}
@@ -1710,6 +1710,8 @@ export function Chat() {
                             onResume={() => void handleGoalStatus("resume")}
                             onComplete={() => void handleGoalStatus("complete")}
                             onClear={() => void handleGoalStatus("clear")}
+                            layout="new-chat"
+                            horizontalPadding={chatAppearance.horizontalPadding}
                           />
                         ) : null
                       }
@@ -1782,6 +1784,7 @@ export function Chat() {
                       onResume={() => void handleGoalStatus("resume")}
                       onComplete={() => void handleGoalStatus("complete")}
                       onClear={() => void handleGoalStatus("clear")}
+                      horizontalPadding={chatAppearance.horizontalPadding}
                     />
                   ) : null}
                   <ChatComposer {...chatComposerProps} />
