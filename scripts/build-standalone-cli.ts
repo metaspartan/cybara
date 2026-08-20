@@ -43,6 +43,9 @@ const EXTERNAL_PACKAGES = [
   "onnxruntime-web",
   "playwright",
   "playwright-core",
+  "ssh2",
+  "cpu-features",
+  "nan",
 ];
 
 export const PLAYWRIGHT_RUNTIME_PACKAGES = [
