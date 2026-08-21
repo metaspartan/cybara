@@ -59,7 +59,7 @@ function createTrajectory(run: AgentDatasetRun, item: AgentDatasetItem): string 
   return trajectory.id;
 }
 
-describe("agent dataset generation", () => {
+describe.serial("agent dataset generation", () => {
   test("runs prompt samples concurrently and aggregates durable usage", async () => {
     const sessionIds: string[] = [];
     registerDatasetItemExecutor(async (run, item) => {

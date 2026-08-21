@@ -6,8 +6,8 @@ const root = mkdtempSync(join(tmpdir(), "cybara-tests-"));
 const cybaraHome = join(root, ".cybara");
 const timeoutMs = Number.parseInt(process.env.CYBARA_TEST_TIMEOUT_MS ?? "15000", 10);
 const boundedTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs >= 5000 ? timeoutMs : 15000;
-const testFlags = ["test", "--timeout", String(boundedTimeoutMs)];
-if (process.env.CYBARA_TEST_PARALLEL === "1") testFlags.splice(1, 0, "--parallel");
+const testFlags = ["test", "--parallel", "--timeout", String(boundedTimeoutMs)];
+if (process.env.CYBARA_TEST_SERIAL === "1") testFlags.splice(1, 1);
 
 try {
   const child = Bun.spawn([process.execPath, ...testFlags, ...process.argv.slice(2)], {
