@@ -5,6 +5,7 @@ import {
   getGoalLoopState,
   goalIterationPrompt,
   goalResponseSignalBlocked,
+  goalResponseSignalsContinuation,
   goalResponseSignalsDone,
   isGoalIterationMessage,
   markGoalLoopStopped,
@@ -225,6 +226,17 @@ describe("goal loop helpers", () => {
     expect(goalResponseSignalsDone("Verified the release.\nDONE: all checks passed")).toBe(true);
     expect(goalResponseSignalsDone("The instructions mention DONE:\nStill working")).toBe(false);
     expect(goalResponseSignalsDone("Still working on it")).toBe(false);
+  });
+
+  test("keeps explicit continuation statements from being judged complete", () => {
+    expect(
+      goalResponseSignalsContinuation(
+        "Goal remains open (parity is continuous) — not DONE; continuing in the next segment."
+      )
+    ).toBe(true);
+    expect(goalResponseSignalsContinuation("This is not yet done.")).toBe(true);
+    expect(goalResponseSignalsContinuation("The goal is still incomplete.")).toBe(true);
+    expect(goalResponseSignalsContinuation("DONE: all requested work is verified.")).toBe(false);
   });
 
   test("detects BLOCKED: markers and returns the reason", () => {

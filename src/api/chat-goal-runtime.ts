@@ -4,6 +4,7 @@ import {
   getGoalLoopState,
   goalIterationPrompt,
   goalResponseSignalBlocked,
+  goalResponseSignalsContinuation,
   goalResponseSignalsDone,
   GOAL_LOOP_SOURCE,
   isGoalIterationMessage,
@@ -132,7 +133,7 @@ async function scheduleGoalIterationAfterJudgment(sessionId: string): Promise<vo
         return;
       }
       if ((pendingChatQueues.get(sessionId)?.length ?? 0) > 0) return;
-      if (judgment.verdict === "done") {
+      if (judgment.verdict === "done" && !goalResponseSignalsContinuation(lastAssistant.content)) {
         handleSessionGoalCommand(
           sessionId,
           `/goal complete ${judgment.reason || "Completion verified by the goal judge"}`
