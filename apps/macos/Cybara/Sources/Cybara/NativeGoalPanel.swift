@@ -22,7 +22,7 @@ extension ChatScreen {
                     Text("It \(iterations)")
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(.secondary)
-                        .help("Autonomous iterations completed in the current loop run")
+                        .help("Autonomous iterations started in the current loop run")
                 }
 
                 if goalLoopAtCheckpoint(goal) {

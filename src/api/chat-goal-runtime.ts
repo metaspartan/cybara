@@ -1,6 +1,5 @@
 import { createLogger } from "../core/logger";
 import {
-  bumpGoalLoopIteration,
   decideNextGoalIteration,
   getGoalLoopState,
   goalIterationPrompt,
@@ -12,6 +11,7 @@ import {
   readGoalLoopLimits,
   recordGoalIterationOutcome,
   registerGoalLoopStart,
+  reserveGoalLoopIteration,
   resetGoalLoop,
   type GoalLoopStopReason,
 } from "../core/session-goal-loop";
@@ -40,7 +40,7 @@ export function kickOffGoalLoop(sessionId: string, goal: SessionGoal): void {
   try {
     const state = getGoalLoopState(sessionId) ?? registerGoalLoopStart(sessionId);
     const iterationPrompt = goalIterationPrompt(goal, state.iterations + 1, readGoalLoopLimits());
-    bumpGoalLoopIteration(sessionId);
+    reserveGoalLoopIteration(sessionId);
     const request: ChatRequest = {
       message: iterationPrompt,
       sessionId,
@@ -159,7 +159,7 @@ async function scheduleGoalIterationAfterJudgment(sessionId: string): Promise<vo
       return;
     }
     const iterationPrompt = decision.prompt;
-    bumpGoalLoopIteration(sessionId);
+    reserveGoalLoopIteration(sessionId);
     const iterationRequest: ChatRequest = {
       message: iterationPrompt,
       sessionId,

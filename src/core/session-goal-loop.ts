@@ -144,7 +144,7 @@ export function getGoalLoopState(sessionId: string): GoalLoopState | undefined {
   return loadPersistedStates().get(sessionId);
 }
 
-export function bumpGoalLoopIteration(sessionId: string): number {
+export function reserveGoalLoopIteration(sessionId: string): number {
   const state = loadPersistedStates().get(sessionId);
   if (!state) return 0;
   state.iterations += 1;

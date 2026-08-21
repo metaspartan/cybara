@@ -208,7 +208,7 @@ export function GoalPanel({
         {loopIterations ? (
           <span
             className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-[var(--text-secondary)] tabular-nums"
-            title="Autonomous iterations completed in the current loop run"
+            title="Autonomous iterations started in the current loop run"
           >
             It {loopIterations}
           </span>
@@ -263,7 +263,7 @@ export function GoalPanel({
         {loopIterations ? (
           <span
             className="inline-flex shrink-0 items-center gap-1 font-mono text-[11px] text-[var(--text-secondary)] tabular-nums"
-            title="Autonomous iterations completed in the current loop run"
+            title="Autonomous iterations started in the current loop run"
           >
             It {loopIterations}
           </span>

@@ -188,11 +188,16 @@ describe("chat goal commands", () => {
     const sessionId = `goal-failure-${Date.now()}`;
     createdSessionIds.push(sessionId);
     config.set("goal_loop_max_iterations", 25);
+    const iterationPrompts: string[] = [];
 
-    agentManager.execute = async () => ({
-      content: "",
-      failure: { category: "overloaded", retryable: true },
-    });
+    agentManager.execute = (async (_agentId, messages) => {
+      const prompt = messages.at(-1)?.content || "";
+      if (prompt.startsWith("[autonomous goal iteration")) iterationPrompts.push(prompt);
+      return {
+        content: "",
+        failure: { category: "overloaded", retryable: true },
+      };
+    }) as typeof agentManager.execute;
 
     await handleChat({
       message: "/goal start finish the provider-backed task",
@@ -203,6 +208,13 @@ describe("chat goal commands", () => {
     });
 
     await waitFor(() => getSessionGoal(sessionId)?.status === "paused");
+    expect(iterationPrompts).toHaveLength(3);
+    expect(iterationPrompts.map((prompt) => prompt.split("\n", 1)[0])).toEqual([
+      "[autonomous goal iteration 1]",
+      "[autonomous goal iteration 2]",
+      "[autonomous goal iteration 3]",
+    ]);
+    expect(getGoalLoopState(sessionId)?.iterations).toBe(3);
     expect(getGoalLoopState(sessionId)?.consecutiveFailures).toBe(3);
     expect(getGoalLoopState(sessionId)?.stopReason).toBe("error");
     expect(getSessionGoal(sessionId)?.lastStatusNote).toContain("repeated failures");
