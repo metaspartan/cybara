@@ -15,5 +15,7 @@ describe("gateway authentication gate", () => {
     expect(app).toContain("<GatewayAuthGate>");
     expect(gate).toContain('if (access.status === "ready" && !checking) return <>{children}</>');
     expect(gate).toContain("Connecting to Cybara");
+    expect(gate).toContain("gatewayAccessRetryDelay");
+    expect(gate).toContain("Reconnecting automatically…");
   });
 });

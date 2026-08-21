@@ -813,14 +813,14 @@ fn start_sidecar(app: tauri::AppHandle) {
     });
 
     std::thread::spawn(move || {
-        let port = match port_receiver.recv_timeout(Duration::from_secs(10)) {
+        let port = match port_receiver.recv_timeout(Duration::from_secs(30)) {
             Ok(port) => port,
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                 stop_sidecar_generation(&app, generation);
                 schedule_sidecar_restart(
                     app,
-                    "Gateway did not report its listening port within 10 seconds.".into(),
+                    "Gateway did not report its listening port within 30 seconds.".into(),
                 );
                 return;
             }
@@ -865,12 +865,16 @@ fn start_gateway_watchdog(app: tauri::AppHandle) {
                 continue;
             }
             let endpoint = gateway_endpoint(&app);
-            let healthy = gateway::is_gateway_live_at(&endpoint.addr);
+            let liveness = gateway::gateway_liveness_at(&endpoint.addr);
             let should_restart = app
                 .try_state::<GatewaySupervisionState>()
                 .and_then(|state| {
                     state.0.lock().ok().map(|mut guard| {
-                        if healthy {
+                        if matches!(
+                            liveness,
+                            gateway::GatewayLivenessStatus::Live
+                                | gateway::GatewayLivenessStatus::Busy
+                        ) {
                             guard.record_healthy();
                             false
                         } else {

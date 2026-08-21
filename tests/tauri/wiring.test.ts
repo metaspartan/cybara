@@ -132,7 +132,7 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("wait_for_existing_gateway(app, generation, preferred)");
     expect(mainRs).not.toContain("const CYBARA_FALLBACK_PORT_COUNT");
     expect(mainRs).toContain("GatewayPortSignalParser::default()");
-    expect(mainRs).toContain("port_receiver.recv_timeout(Duration::from_secs(10))");
+    expect(mainRs).toContain("port_receiver.recv_timeout(Duration::from_secs(30))");
     expect(mainRs).not.toContain("select_launch_endpoint");
     expect(mainRs).toContain("ManagedSidecar::default()");
     expect(mainRs).toContain("store_sidecar_child(&app, generation, child)");
@@ -141,7 +141,8 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("start_gateway_watchdog(app.handle().clone())");
     expect(mainRs).toContain("schedule_sidecar_restart(");
     expect(mainRs).toContain('.env("CYBARA_NATIVE_APP", "1")');
-    expect(mainRs).toContain("gateway::is_gateway_live_at(&endpoint.addr)");
+    expect(mainRs).toContain("gateway::gateway_liveness_at(&endpoint.addr)");
+    expect(mainRs).toContain("gateway::GatewayLivenessStatus::Busy");
     expect(gatewayRs).toContain('http_get_with_timeout(addr, "/api/health/live"');
     const supervisionRs = readFileSync(
       join(ROOT_DIR, "src-tauri", "src", "gateway_supervision.rs"),

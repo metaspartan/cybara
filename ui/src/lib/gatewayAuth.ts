@@ -10,6 +10,13 @@ export type GatewayAccessFetcher = (
   init?: RequestInit
 ) => Promise<Response>;
 
+export function gatewayAccessRetryDelay(
+  status: GatewayAccessCheck["status"],
+  desktopRuntime: boolean
+): number | false {
+  return desktopRuntime && status === "unavailable" ? 1_000 : false;
+}
+
 export function shouldDiscardGatewayCredentials(result: GatewayAccessCheck): boolean {
   return result.status === "required";
 }
