@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  BUN_VERSION: "1.3.14"
+  BUN_VERSION: "1.4.0"
   PUPPETEER_SKIP_DOWNLOAD: "true"
   SKIP_SPAWN_TESTS: "1"
   # On a tagged release the ref name IS the version (e.g. v1.0.476). version:sync

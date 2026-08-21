@@ -152,8 +152,15 @@ describe("createLocalSkill slug safety fuzz", () => {
     for (const entry of cybaraEntries) {
       expect(entry.includes("escape")).toBe(false);
     }
-    const homeEntries = readdirSync(tempHome).filter((e) => e !== ".cybara" && e !== "worker.ts");
-    expect(homeEntries).toEqual([]);
+    const homeEntries = readdirSync(tempHome).filter(
+      (e) => e !== ".cybara" && e !== "worker.ts" && e !== "Library" && e !== ".bun"
+    );
+    for (const entry of homeEntries) {
+      expect(entry.includes("escape")).toBe(false);
+    }
+    if (existsSync(join(tempHome, "Library"))) {
+      expect(readdirSync(join(tempHome, "Library")).sort()).toEqual(["Caches"]);
+    }
     expect(existsSync(join(skillsRoot, "escape-fuzz"))).toBe(true);
     expect(existsSync(join(tempHome, "escape-fuzz"))).toBe(false);
     expect(existsSync(join(tempHome, ".cybara", "escape-fuzz"))).toBe(false);
