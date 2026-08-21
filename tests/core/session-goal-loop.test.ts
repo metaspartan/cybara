@@ -215,6 +215,8 @@ describe("goal loop decision", () => {
 describe("goal loop helpers", () => {
   test("detects DONE: and [done] markers", () => {
     expect(goalResponseSignalsDone("DONE: shipped the release")).toBe(true);
+    expect(goalResponseSignalsDone("**DONE: shipped the release.**")).toBe(true);
+    expect(goalResponseSignalsDone("_DONE: shipped the release._")).toBe(true);
     expect(goalResponseSignalsDone("done: finished")).toBe(true);
     expect(goalResponseSignalsDone("Worked on it [done]")).toBe(true);
     expect(goalResponseSignalsDone("<done>true</done>")).toBe(true);

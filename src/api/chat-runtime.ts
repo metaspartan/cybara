@@ -70,11 +70,7 @@ import {
   sanitizeProcessThoughtText,
   stripThinkingTags,
 } from "./chat-formatting";
-import {
-  kickOffGoalLoop,
-  maybeScheduleGoalIteration,
-  resumePersistedActiveGoalLoops,
-} from "./chat-goal-runtime";
+import { kickOffGoalLoop, maybeScheduleGoalIteration } from "./chat-goal-runtime";
 import { settlePendingChatFailure } from "./chat-pending-failure";
 import {
   appendAssistantMessage,
@@ -1088,11 +1084,6 @@ export async function steerPendingChatMessage(
     pendingMessages,
   };
 }
-
-setTimeout(() => {
-  restorePersistedPendingChatQueues();
-}, 1200);
-setTimeout(() => resumePersistedActiveGoalLoops(), 5000);
 
 async function handleChatTurn(
   request: ChatRequest,

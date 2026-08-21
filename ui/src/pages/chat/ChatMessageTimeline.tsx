@@ -27,6 +27,7 @@ import {
 import { MessageContent } from "./MessageContent";
 import { observeDeferredMessage } from "./deferredMessageVisibility";
 import { loadDeferredMessageMetadata } from "./deferredMessageMetadata";
+import { goalIterationNumber } from "./goalLoopPresentation";
 import { shouldDeferRichMessageContent } from "./messageRenderBudget";
 
 interface VisibleMessageEntry {
@@ -113,6 +114,21 @@ export function ChatMessageTimeline({
   return (
     <>
       {entries.map((entry, visibleIndex) => {
+        const goalIteration = goalIterationNumber(entry.message);
+        const key = `${entry.message.timestamp || "msg"}-${entry.originalIndex}`;
+        if (goalIteration !== null) {
+          return (
+            <div
+              key={key}
+              className="flex items-center gap-3 py-1 text-[11px] text-gray-500"
+              role="status"
+            >
+              <div className="h-px flex-1 bg-white/5" />
+              <span>Goal iteration {goalIteration}</span>
+              <div className="h-px flex-1 bg-white/5" />
+            </div>
+          );
+        }
         const rowProps: ChatMessageRowProps = {
           compact,
           copiedMessageIndex,
@@ -134,7 +150,6 @@ export function ChatMessageTimeline({
           onRevert,
           onSaveGolden,
         };
-        const key = `${entry.message.timestamp || "msg"}-${entry.originalIndex}`;
         return shouldDeferRichMessageContent(visibleIndex, entries.length) ? (
           <DeferredChatMessageRow key={key} {...rowProps} />
         ) : (

@@ -8,6 +8,7 @@ import {
   listPendingChatMessages,
   type ChatMessage,
 } from "../../src/api/chat";
+import { schedulePersistedChatRuntimeRecovery } from "../../src/api/chat-runtime-recovery";
 import { removePendingChatQueueItem } from "../../src/api/chat-pending-state";
 import { getResidentChatSession, pendingChatQueues } from "../../src/api/chat-runtime-state";
 import { agentManager } from "../../src/core/agent";
@@ -52,6 +53,22 @@ afterEach(async () => {
 });
 
 describe("chat goal commands", () => {
+  test("startup recovery is explicitly scheduled in pending-then-goal order", () => {
+    const scheduled: Array<{ callback: () => void; delayMs: number }> = [];
+    const calls: string[] = [];
+
+    schedulePersistedChatRuntimeRecovery(
+      (callback, delayMs) => scheduled.push({ callback, delayMs }),
+      () => calls.push("pending"),
+      () => calls.push("goals")
+    );
+
+    expect(scheduled.map((entry) => entry.delayMs)).toEqual([1200, 5000]);
+    expect(calls).toEqual([]);
+    for (const entry of scheduled) entry.callback();
+    expect(calls).toEqual(["pending", "goals"]);
+  });
+
   test("startup reschedules persisted active goals without restarting paused goals", () => {
     const activeSessionId = `goal-startup-active-${Date.now()}`;
     const pausedSessionId = `goal-startup-paused-${Date.now()}`;

@@ -265,10 +265,10 @@ export function goalIterationPrompt(
 
 export function goalResponseSignalsDone(response: string): boolean {
   const content = response.trim();
-  const donePrefix = content.match(/^done:\s*/i);
+  const donePrefix = content.match(/^(?:\*{1,2}|_{1,2})?done:\s*/i);
   if (donePrefix) return true;
   const finalLine = content.split(/\r?\n/).at(-1)?.trim() || "";
-  if (/^done:\s*/i.test(finalLine)) return true;
+  if (/^(?:\*{1,2}|_{1,2})?done:\s*/i.test(finalLine)) return true;
   if (/\[done\]/i.test(content) || /<done>\s*true\s*<\/done>/i.test(content)) return true;
   return false;
 }
