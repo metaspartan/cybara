@@ -273,6 +273,14 @@ export function goalResponseSignalsDone(response: string): boolean {
   return false;
 }
 
+export function goalResponseSignalsContinuation(response: string): boolean {
+  const content = response.trim();
+  return (
+    /\b(?:not|isn't|is not)\s+(?:yet\s+)?(?:fully\s+)?done\b/i.test(content) ||
+    /\bgoal\s+(?:remains|is still)\s+(?:open|active|incomplete)\b/i.test(content)
+  );
+}
+
 export function goalResponseSignalBlocked(response: string): string | null {
   const content = response.trim();
   const blockedPrefix = content.match(/^blocked:\s*([\s\S]*)$/i);

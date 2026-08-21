@@ -48,6 +48,8 @@ describe("native macOS shell wiring", () => {
     expect(sidecarCore).toContain('bundledSidecar.appendingPathComponent("cybara").path');
     expect(sidecarManager).toContain("gatewayMode = .managed");
     expect(sidecarManager).toContain("gatewayMode = .attached");
+    expect(sidecarManager).toContain("Refused to launch a second gateway");
+    expect(sidecarManager).not.toContain("fallbackPortDecision");
   });
 
   test("sidecar shutdown suspends while waiting for managed processes and app termination", () => {

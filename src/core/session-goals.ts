@@ -190,17 +190,8 @@ export function handleSessionGoalCommand(
   const args = tail.join(" ").trim();
   const current = loadGoals().get(sessionId);
 
-  if (!rest || action === "status" || action === "show") {
-    return {
-      handled: true,
-      response: formatGoal(current),
-      goal: cloneGoal(current) || null,
-      action: "status",
-    };
-  }
-
-  if (["start", "set", "create"].includes(action)) {
-    const objective = cleanObjective(args);
+  const startGoal = (objectiveInput: string): SessionGoalCommandResult => {
+    const objective = cleanObjective(objectiveInput);
     if (!objective) {
       return { handled: true, response: "Goal objective is required." };
     }
@@ -220,6 +211,23 @@ export function handleSessionGoalCommand(
       goal: cloneGoal(goal),
       action: "start",
     };
+  };
+
+  if (!rest || action === "status" || action === "show") {
+    return {
+      handled: true,
+      response: formatGoal(current),
+      goal: cloneGoal(current) || null,
+      action: "status",
+    };
+  }
+
+  if (["start", "set", "create"].includes(action)) {
+    return startGoal(args);
+  }
+
+  if ((!current || current.status === "complete") && args) {
+    return startGoal(rest);
   }
 
   if (action === "edit") {
@@ -295,24 +303,7 @@ export function handleSessionGoalCommand(
     };
   }
 
-  const objective = cleanObjective(rest);
-  if (!objective) return { handled: true, response: "Goal objective is required." };
-  if (current && current.status !== "complete") {
-    return {
-      handled: true,
-      response:
-        "A goal already exists for this session. Use `/goal edit`, `/goal complete`, or `/goal clear` first.",
-      goal: cloneGoal(current),
-    };
-  }
-  const goal = setGoal(sessionId, objective);
-  registerGoalLoopStart(sessionId);
-  return {
-    handled: true,
-    response: `Goal started: ${goal.objective}`,
-    goal: cloneGoal(goal),
-    action: "start",
-  };
+  return startGoal(rest);
 }
 
 export function resetSessionGoalsForTests(): void {

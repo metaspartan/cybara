@@ -15,7 +15,6 @@ mod gateway_supervision;
 mod tray;
 
 const CYBARA_DEFAULT_PORT: u16 = 4269;
-const CYBARA_FALLBACK_PORT_COUNT: u16 = 10;
 const MAX_NATIVE_RECORDING_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone, serde::Serialize)]
@@ -213,7 +212,10 @@ fn bounded_sidecar_output(value: &str) -> String {
 
 const SIDECAR_STDERR_TAIL_LINES: usize = 8;
 
-fn record_sidecar_stderr(buffer: &std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<String>>>, line: &str) {
+fn record_sidecar_stderr(
+    buffer: &std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<String>>>,
+    line: &str,
+) {
     let trimmed = line.trim();
     if trimmed.is_empty() {
         return;
@@ -501,6 +503,18 @@ fn release_sidecar_launch(app: &tauri::AppHandle, generation: u64) {
     }
 }
 
+fn is_sidecar_launch_current(app: &tauri::AppHandle, generation: u64) -> bool {
+    app.try_state::<SidecarState>()
+        .and_then(|state| {
+            state
+                .0
+                .lock()
+                .ok()
+                .map(|guard| guard.generation == generation && guard.launching)
+        })
+        .unwrap_or(false)
+}
+
 fn store_sidecar_child(
     app: &tauri::AppHandle,
     generation: u64,
@@ -610,25 +624,87 @@ fn schedule_sidecar_restart(app: tauri::AppHandle, reason: String) {
     }
 }
 
+fn attach_existing_gateway(
+    app: &tauri::AppHandle,
+    generation: u64,
+    endpoint: gateway::GatewayEndpoint,
+) {
+    release_sidecar_launch(app, generation);
+    set_gateway_endpoint(app, endpoint);
+    record_gateway_healthy(app);
+    set_gateway_startup_status(app, GatewayStartupStatus::ready());
+    navigate_after_ready(app);
+}
+
+fn wait_for_existing_gateway(
+    app: tauri::AppHandle,
+    generation: u64,
+    endpoint: gateway::GatewayEndpoint,
+) {
+    set_gateway_startup_status(
+        &app,
+        GatewayStartupStatus::restarting(
+            "The existing Cybara gateway is busy. Waiting for it to respond.",
+        ),
+    );
+    std::thread::spawn(move || {
+        while is_sidecar_launch_current(&app, generation) {
+            match gateway::probe_gateway_at(&endpoint.addr, env!("CARGO_PKG_VERSION")) {
+                gateway::GatewayProbeStatus::Compatible => {
+                    attach_existing_gateway(&app, generation, endpoint);
+                    return;
+                }
+                gateway::GatewayProbeStatus::Occupied => {
+                    std::thread::sleep(Duration::from_millis(500));
+                }
+                gateway::GatewayProbeStatus::Available => {
+                    release_sidecar_launch(&app, generation);
+                    start_sidecar(app);
+                    return;
+                }
+                gateway::GatewayProbeStatus::Incompatible => {
+                    release_sidecar_launch(&app, generation);
+                    set_gateway_startup_status(
+                        &app,
+                        GatewayStartupStatus::failed(
+                            "Port 4269 is occupied by an incompatible service. Stop it before starting Cybara.",
+                        ),
+                    );
+                    return;
+                }
+            }
+        }
+    });
+}
+
 fn start_sidecar(app: tauri::AppHandle) {
     let Some(generation) = reserve_sidecar_launch(&app) else {
         return;
     };
     let preferred = gateway::GatewayEndpoint::loopback(CYBARA_DEFAULT_PORT);
-    if gateway::is_compatible_gateway_at(&preferred.addr, env!("CARGO_PKG_VERSION")) {
-        release_sidecar_launch(&app, generation);
-        set_gateway_endpoint(&app, preferred);
-        record_gateway_healthy(&app);
-        set_gateway_startup_status(&app, GatewayStartupStatus::ready());
-        navigate_after_ready(&app);
-        return;
+    match gateway::probe_gateway_at(&preferred.addr, env!("CARGO_PKG_VERSION")) {
+        gateway::GatewayProbeStatus::Compatible => {
+            attach_existing_gateway(&app, generation, preferred);
+            return;
+        }
+        gateway::GatewayProbeStatus::Occupied => {
+            wait_for_existing_gateway(app, generation, preferred);
+            return;
+        }
+        gateway::GatewayProbeStatus::Incompatible => {
+            release_sidecar_launch(&app, generation);
+            set_gateway_startup_status(
+                &app,
+                GatewayStartupStatus::failed(
+                    "Port 4269 is occupied by an incompatible service. Stop it before starting Cybara.",
+                ),
+            );
+            return;
+        }
+        gateway::GatewayProbeStatus::Available => {}
     }
 
-    log::info!(
-        "Starting Cybara gateway sidecar on ports {}-{}",
-        CYBARA_DEFAULT_PORT,
-        CYBARA_DEFAULT_PORT + CYBARA_FALLBACK_PORT_COUNT
-    );
+    log::info!("Starting Cybara gateway sidecar on port {CYBARA_DEFAULT_PORT}");
     let Ok(mut sidecar) = app.shell().sidecar("cybara") else {
         release_sidecar_launch(&app, generation);
         schedule_sidecar_restart(
@@ -647,10 +723,7 @@ fn start_sidecar(app: tauri::AppHandle) {
     }
     sidecar = sidecar
         .env("PORT", CYBARA_DEFAULT_PORT.to_string())
-        .env(
-            "CYBARA_PORT_FALLBACK_COUNT",
-            CYBARA_FALLBACK_PORT_COUNT.to_string(),
-        )
+        .env("CYBARA_PORT_FALLBACK_COUNT", "0")
         .env("CYBARA_GATEWAY_PORT_SIGNAL", "stdout")
         .env("CYBARA_NATIVE_APP", "1")
         .env("CYBARA_NATIVE_PARENT_PID", std::process::id().to_string());
