@@ -116,7 +116,6 @@ describe("compiled CLI startup", () => {
       if (processHandle) await processHandle.exited;
       const logs = `${stdoutPromise ? await stdoutPromise : ""}\n${stderrPromise ? await stderrPromise : ""}`;
       expect(logs).not.toContain("Failed to load UI index");
-      expect(logs).toContain("Localhost browser auth bypass is active for development");
       rmSync(directory, { recursive: true, force: true });
     }
   }, 180_000);

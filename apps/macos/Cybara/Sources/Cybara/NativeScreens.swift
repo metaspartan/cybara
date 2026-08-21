@@ -563,6 +563,8 @@ struct ChatScreen: View {
     @State var goldenTurnsEnabled = true
     @State var chatAppearance = NativeChatAppearanceSettings()
     @State var pendingApprovals: [GatewayPendingApproval] = []
+    @State var sessionGoal: GatewaySessionGoal?
+    @State var goalActionBusy = false
     @State var expandedApprovalID: String?
     @State var showContextPopover = false
     @State var showReasoningPopover = false
@@ -647,7 +649,8 @@ struct ChatScreen: View {
             }
             async let messagesLoad: Void = loadMessages(selectedSessionID)
             async let statusLoad: Void = hydrateStatus(selectedSessionID)
-            _ = await (messagesLoad, statusLoad)
+            async let goalLoad: Void = loadSessionGoal()
+            _ = await (messagesLoad, statusLoad, goalLoad)
             await loadSubagents()
             await loadNearbyShare()
         }

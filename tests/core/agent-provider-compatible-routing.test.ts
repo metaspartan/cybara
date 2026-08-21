@@ -1704,6 +1704,99 @@ describe("Agent provider Google and compatible routing", () => {
     expect(JSON.stringify(secondMessages)).not.toContain("<function_calls>");
   });
 
+  test("executes DeepSeek DSML tool calls and returns the final response", async () => {
+    const requestBodies: Array<Record<string, unknown>> = [];
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const requestBody = init?.body
+        ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+        : {};
+      requestBodies.push(requestBody);
+
+      if (requestBodies.length === 1) {
+        return Response.json({
+          id: "resp-deepseek-dsml-1",
+          object: "chat.completion",
+          model: "deepseek-v4-flash-0731",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: [
+                  "I will calculate it now.",
+                  "<｜｜DSML｜｜tool_calls>",
+                  '<｜｜DSML｜｜invoke name="calc">',
+                  '<｜｜DSML｜｜parameter name="expression" string="true">6 * 7</｜｜DSML｜｜parameter>',
+                  "</｜｜DSML｜｜invoke>",
+                  "</｜｜DSML｜｜tool_calls>",
+                ].join("\n"),
+              },
+            },
+          ],
+          usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+        });
+      }
+
+      return Response.json({
+        id: "resp-deepseek-dsml-2",
+        object: "chat.completion",
+        model: "deepseek-v4-flash-0731",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "The result is 42." },
+          },
+        ],
+        usage: { prompt_tokens: 18, completion_tokens: 5, total_tokens: 23 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "inference",
+      name: "Inference DSML Provider",
+      api_key: "deepseek-dsml-test-key",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "DeepSeek DSML Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "deepseek-v4-flash-0731",
+      tools: [
+        {
+          name: "calc",
+          description: "Safely evaluate mathematical expressions",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "What is 6 * 7?" }],
+      { useTools: true, sessionId: "deepseek-dsml-session" }
+    );
+
+    expect(result.content).toBe("The result is 42.");
+    expect(result.tool_calls).toHaveLength(1);
+    expect(result.tool_calls?.[0]?.name).toBe("calc");
+    expect(result.tool_calls?.[0]?.result).toEqual({ result: 42, expression: "6 * 7" });
+    expect(requestBodies).toHaveLength(2);
+    expect(requestBodies[0]?.tools).toBeDefined();
+    expect(requestBodies.map((body) => body.tool_choice)).toEqual([undefined, undefined]);
+    const replayMessages = (requestBodies[1]?.messages || []) as Array<Record<string, unknown>>;
+    expect(JSON.stringify([result.content, replayMessages])).not.toContain("DSML");
+    expect(JSON.stringify(replayMessages)).toContain("cybara-text-tool-1-1");
+  });
+
   test("executes trailing JSON text tool envelopes from OpenAI-compatible providers", async () => {
     const requestBodies: Array<Record<string, unknown>> = [];
 

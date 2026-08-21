@@ -94,7 +94,10 @@ moves. `--alt-screen` and `--mouse` explicitly restore either mode. Use `/scroll
 change and persist the wheel step.
 `/goal start <objective>` creates persistent long-running work for the session, with `/loop` as an
 alias; goal status, pause, resume, completion, blocking, editing, and clearing use the shared chat
-runtime behavior.
+runtime behavior. Active goals continue automatically for up to 25 continuation turns or one hour
+per run by default. Reaching either checkpoint pauses the goal without clearing it; `/goal resume`
+starts a fresh run budget. Goal and loop progress survive gateway restarts, and three consecutive
+failed turns pause the loop instead of spending the remaining run budget.
 `Ctrl+F`, `/search`, and `/find` search the current transcript and jump directly to a matching turn.
 `Ctrl+P` opens the slash-command palette. `/copy [n]` copies the latest or numbered assistant
 response, `/export [path]` writes the conversation as portable Markdown, and `/terminal-info`

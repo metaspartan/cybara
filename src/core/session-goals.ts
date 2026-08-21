@@ -154,6 +154,10 @@ export function getSessionGoal(sessionId: string): SessionGoal | undefined {
   return cloneGoal(loadGoals().get(sessionId));
 }
 
+export function pauseSessionGoal(sessionId: string, note: string): SessionGoal | undefined {
+  return updateGoal(sessionId, "paused", note);
+}
+
 export function clearSessionGoal(sessionId: string): boolean {
   const deleted = loadGoals().delete(sessionId);
   if (deleted) persistGoals();
@@ -163,7 +167,7 @@ export function clearSessionGoal(sessionId: string): boolean {
 export function getActiveGoalContextLine(sessionId: string): string | null {
   const goal = loadGoals().get(sessionId);
   if (!goal || goal.status !== "active") return null;
-  return `Active goal: ${goal.objective} - advance it or update its status with /goal.`;
+  return `Active goal: ${goal.objective} — advance it; keep it active until fully achieved; reply DONE: only after concrete verification, or BLOCKED: <reason> only when user input is required.`;
 }
 
 export function handleSessionGoalCommand(
@@ -241,7 +245,7 @@ export function handleSessionGoalCommand(
     };
   }
 
-  if (action === "resume") {
+  if (action === "resume" || action === "continue") {
     const goal = updateGoal(sessionId, "active", args);
     if (goal) registerGoalLoopStart(sessionId);
     return {
@@ -296,6 +300,7 @@ export function handleSessionGoalCommand(
     };
   }
   const goal = setGoal(sessionId, objective);
+  registerGoalLoopStart(sessionId);
   return {
     handled: true,
     response: `Goal started: ${goal.objective}`,

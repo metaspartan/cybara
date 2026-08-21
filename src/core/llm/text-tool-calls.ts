@@ -81,11 +81,16 @@ const LABELED_TOOL_JSON_PATTERN =
   /(?:^|\n)\s*\[\s*tool\s*:\s*([A-Za-z_][A-Za-z0-9_.:-]{0,119})\s*\]\s*([\s\S]*?)(?=\r?\n|$)/gi;
 const HARMONY_TOOL_CALL_PATTERN =
   /(?:<[\uFF5C|]channel[\uFF5C|]>)?\s*commentary\s+to=([A-Za-z_][A-Za-z0-9_.:-]{0,119})\s+code(?:<[\uFF5C|]message[\uFF5C|]>)?\s*([\s\S]*?)(?:<[\uFF5C|]call[\uFF5C|]>|$)/gi;
+const DSML_INVOKE_PATTERN =
+  /<[\uFF5C|]+DSML[\uFF5C|]+invoke\b([^>]*)>([\s\S]*?)<\/[\uFF5C|]+DSML[\uFF5C|]+invoke>/gi;
+const DSML_PARAMETER_PATTERN =
+  /<[\uFF5C|]+DSML[\uFF5C|]+parameter\b([^>]*)>([\s\S]*?)<\/[\uFF5C|]+DSML[\uFF5C|]+parameter>/gi;
+const DSML_DIRECT_TOOL_PATTERN =
+  /<[\uFF5C|]+DSML[\uFF5C|]+tool_([A-Za-z_][A-Za-z0-9_.:-]{0,119})\b[^>]*>([\s\S]*?)<\/[\uFF5C|]+DSML[\uFF5C|]+tool_\1>/gi;
 const DSML_TOOL_BLOCK_PATTERN =
-  /<[\uFF5C|]DSML[\uFF5C|][a-z_][\w.-]*>[\s\S]*?<\/[\uFF5C|]DSML[\uFF5C|][a-z_][\w.-]*>/gi;
-const DSML_TOOL_BLOCK_DANGLING_PATTERN =
-  /(?:^|\n)[ \t]*<[\uFF5C|]DSML[\uFF5C|][a-z_][\w.-]*>[\s\S]*$/i;
-const DSML_TAG_PATTERN = /<\/?[\uFF5C|]DSML[\uFF5C|]\b[^>]*>/gi;
+  /<[\uFF5C|]+DSML[\uFF5C|]+[a-z_][\w.-]*(?:\s[^>]*)?>[\s\S]*?<\/[\uFF5C|]+DSML[\uFF5C|]+[a-z_][\w.-]*>/gi;
+const DSML_TOOL_BLOCK_DANGLING_PATTERN = /(?:^|\n)[ \t]*<[\uFF5C|]+DSML[\uFF5C|]+[\s\S]*$/i;
+const DSML_TAG_PATTERN = /<\/?[\uFF5C|]+DSML[\uFF5C|]+[^>]*>/gi;
 const TOOL_CALL_TAG_PATTERN =
   /<\/?(?:function_calls?|tool_calls?|tool_result|function_response|function|invoke|parameter|param)\b[^>]*>/gi;
 const DANGLING_TOOL_CALL_LINE_PATTERN =
@@ -498,6 +503,40 @@ function parsePlainTextToolCalls(raw: string): TextToolCall[] {
   return calls;
 }
 
+function getDsmlAttribute(attrs: string, name: string): string | undefined {
+  const match = new RegExp(`\\b${name}=(?:(["'])([^"']+)\\1|([^\\s>]+))`, "i").exec(attrs);
+  return decodeMarkupEntities(match?.[2] || match?.[3] || "").trim() || undefined;
+}
+
+function parseDsmlParameters(body: string): Record<string, unknown> {
+  const args = parseXmlFields(body);
+  DSML_PARAMETER_PATTERN.lastIndex = 0;
+  for (const match of body.matchAll(DSML_PARAMETER_PATTERN)) {
+    const name = getDsmlAttribute(match[1] || "", "name");
+    if (!name) continue;
+    args[name] = coerceXmlValue(match[2] || "");
+  }
+  return args;
+}
+
+function parseDsmlToolCalls(raw: string): TextToolCall[] {
+  const calls: TextToolCall[] = [];
+  DSML_INVOKE_PATTERN.lastIndex = 0;
+  for (const match of raw.matchAll(DSML_INVOKE_PATTERN)) {
+    const name = getDsmlAttribute(match[1] || "", "name");
+    if (!name) continue;
+    calls.push({ name, args: parseDsmlParameters(match[2] || "") });
+  }
+
+  DSML_DIRECT_TOOL_PATTERN.lastIndex = 0;
+  for (const match of raw.matchAll(DSML_DIRECT_TOOL_PATTERN)) {
+    const name = match[1]?.trim();
+    if (!name) continue;
+    calls.push({ name, args: parseDsmlParameters(match[2] || "") });
+  }
+  return calls;
+}
+
 function parseTrailingJsonToolCalls(raw: string): TextToolCall[] {
   const block = findTrailingJsonToolCallBlock(raw);
   return block ? parseJsonToolCalls(block.raw) : [];
@@ -574,6 +613,7 @@ export function extractTextToolCalls(
     ...parseFunctionEqualsToolCalls(normalizedContent),
     ...parseLegacyBracketToolCalls(normalizedContent),
     ...parsePlainTextToolCalls(normalizedContent),
+    ...parseDsmlToolCalls(normalizedContent),
     ...parseBareCommandJsonToolCalls(normalizedContent),
     ...parseTrailingJsonToolCalls(normalizedContent),
     ...parseDirectNamedXmlToolCall(normalizedContent, allowedToolNames)
@@ -647,7 +687,7 @@ export function hasTextToolCallMarkup(content: string | null | undefined): boole
     /<invoke\b/i.test(content) ||
     DIRECT_NAMED_XML_TOOL_PATTERN.test(normalizeProviderTextMarkers(content)) ||
     /\[\s*TOOL_CALL\s*\]/i.test(content) ||
-    /<[\uFF5C|]DSML[\uFF5C|][a-z_]/i.test(content) ||
+    /<[\uFF5C|]+DSML[\uFF5C|]+/i.test(content) ||
     MINIMAX_TEXT_SEGMENT_MARKER_QUICK_PATTERN.test(content) ||
     findLeadingBareCommandJsonBlock(normalizeProviderTextMarkers(content)) !== undefined ||
     findTrailingJsonToolCallBlock(normalizeProviderTextMarkers(content)) !== undefined

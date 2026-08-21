@@ -400,6 +400,12 @@ export interface SessionContextUsage {
 
 export type SessionGoalStatus = "active" | "paused" | "blocked" | "complete";
 
+export interface SessionGoalLoopInfo {
+  iterations: number;
+  stopped_reason: string | null;
+  consecutive_failures: number;
+}
+
 export interface SessionGoal {
   sessionId: string;
   objective: string;
@@ -409,6 +415,7 @@ export interface SessionGoal {
   lastStatusNote?: string;
   activeMs?: number;
   lastResumedAt?: string;
+  loop?: SessionGoalLoopInfo | null;
 }
 
 export interface SessionTokenUsage {
