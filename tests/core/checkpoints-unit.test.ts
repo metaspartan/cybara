@@ -144,7 +144,7 @@ describe("createCheckpoint + restoreCheckpoint round trip", () => {
   });
 });
 
-describe("checkpoint edge cases", () => {
+describe.serial("checkpoint edge cases", () => {
   test("checkpoint of an empty git workspace is created and listable", async () => {
     const ws = join(baseDir, "empty-repo");
     mkdirSync(ws, { recursive: true });
