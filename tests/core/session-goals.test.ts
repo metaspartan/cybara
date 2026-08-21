@@ -77,6 +77,24 @@ describe("session goal commands", () => {
     expect(getSessionGoal("locked-session")?.objective).toBe("first objective");
   });
 
+  test("starts a missing goal when its natural-language objective begins with an action word", () => {
+    const sessionId = "action-word-objective-session";
+    const objective = "Continue improving Horus intelligence and eval performance";
+
+    expect(handleSessionGoalCommand(sessionId, `/goal ${objective}`)).toMatchObject({
+      handled: true,
+      response: `Goal started: ${objective}`,
+      action: "start",
+    });
+    expect(getSessionGoal(sessionId)?.objective).toBe(objective);
+
+    handleSessionGoalCommand(sessionId, "/goal complete verified");
+    expect(handleSessionGoalCommand(sessionId, "/goal Complete the next benchmark")).toMatchObject({
+      response: "Goal started: Complete the next benchmark",
+      action: "start",
+    });
+  });
+
   test("ignores non-goal commands", () => {
     expect(handleSessionGoalCommand("other-session", "/learn docs")).toEqual({ handled: false });
     expect(clearSessionGoal("missing")).toBe(false);
