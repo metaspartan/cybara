@@ -169,6 +169,15 @@ describe("text-form tool call parsing", () => {
     expect(stripTextToolCallMarkup(raw)).toBe("I'll open the repository.");
   });
 
+  test("preserves final JSON data objects that contain a name field", () => {
+    const raw = '{"name":"Ada","score":97,"passed":true}';
+
+    expect(extractTextToolCalls(raw, new Set(["Ada"]))).toEqual([]);
+    expect(stripTextToolCallMarkup(raw)).toBe(raw);
+    expect(sanitizeAssistantContent(raw)).toBe(raw);
+    expect(hasTextToolCallMarkup(raw)).toBe(false);
+  });
+
   test("extracts standalone bare command JSON as exec", () => {
     const raw = '{"command":"cat package.json","cwd":"/Users/carsen/Documents/GitHub/cybara"}';
 

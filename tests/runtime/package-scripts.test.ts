@@ -11,6 +11,7 @@ const REACT_DOCTOR_SCRIPT = join(ROOT_DIR, "scripts", "react-doctor.ts");
 const SMOKE_TEST_SCRIPT = join(ROOT_DIR, "scripts", "run-smoke-tests.ts");
 const TAURI_SIDECAR_SMOKE_SCRIPT = join(ROOT_DIR, "scripts", "smoke-tauri-sidecar-ui.ts");
 const KNIP_CONFIG = join(ROOT_DIR, "knip.json");
+const UI_PACKAGE = join(ROOT_DIR, "ui", "package.json");
 
 describe("package.json script wiring", () => {
   test("exposes cybara CLI bin and expected build/dev scripts", () => {
@@ -138,5 +139,15 @@ describe("package.json script wiring", () => {
     expect(source).toContain("rm -rf node_modules");
     expect(source).toContain('if [ "$i" -ge "$attempts" ]; then');
     expect(source).toContain("bun pm cache rm || true");
+  });
+
+  test("runs Vite through Bun", () => {
+    const pkg = JSON.parse(readFileSync(UI_PACKAGE, "utf8")) as {
+      scripts?: Record<string, string>;
+    };
+
+    expect(pkg.scripts?.dev).toBe("bunx --bun vite");
+    expect(pkg.scripts?.build).toContain("bunx --bun vite build");
+    expect(pkg.scripts?.preview).toBe("bunx --bun vite preview");
   });
 });

@@ -24,6 +24,8 @@ import {
 
 afterEach(() => {
   resetGoalLoopsForTests();
+  config.set("goal_loop_max_iterations", null);
+  config.set("goal_loop_max_duration_seconds", null);
 });
 
 function activeGoal(overrides: Partial<SessionGoal> = {}): SessionGoal {
@@ -249,14 +251,31 @@ describe("goal loop helpers", () => {
 
   test("reads configurable limits with sane defaults", () => {
     const defaults = readGoalLoopLimits();
-    expect(defaults.maxIterations).toBeGreaterThan(0);
-    expect(defaults.maxDurationSeconds).toBeGreaterThan(0);
+    expect(defaults).toEqual({ maxIterations: null, maxDurationSeconds: null });
   });
 
-  test("defaults to a continuation budget above the old eight-turn limit", () => {
+  test("defaults to an uncapped continuation loop", () => {
     config.set("goal_loop_max_iterations", null);
     config.set("goal_loop_max_duration_seconds", null);
-    expect(readGoalLoopLimits()).toEqual({ maxIterations: 25, maxDurationSeconds: 3600 });
+    expect(readGoalLoopLimits()).toEqual({ maxIterations: null, maxDurationSeconds: null });
+    const decision = decideNextGoalIteration({
+      goal: activeGoal(),
+      state: loopState({
+        iterations: 50_000,
+        startedAtMs: Date.parse("2020-01-01T00:00:00.000Z"),
+      }),
+      limits: readGoalLoopLimits(),
+      nowMs: Date.parse("2026-08-18T00:00:00.000Z"),
+    });
+    expect(decision.schedule).toBe(true);
+    if (!decision.schedule) throw new Error("Expected an uncapped goal iteration");
+    expect(decision.prompt).toContain("until the goal is complete, blocked, or paused by the user");
+  });
+
+  test("keeps explicit operator safety limits", () => {
+    config.set("goal_loop_max_iterations", 40);
+    config.set("goal_loop_max_duration_seconds", 7200);
+    expect(readGoalLoopLimits()).toEqual({ maxIterations: 40, maxDurationSeconds: 7200 });
   });
 
   test("persists loop progress across an in-memory reload", () => {

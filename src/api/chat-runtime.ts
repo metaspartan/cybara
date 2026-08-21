@@ -65,7 +65,11 @@ import {
 } from "./chat-agent-prompt";
 import { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 import { executionMetadataFromResult } from "./chat-execution-metadata";
-import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
+import {
+  normalizeRequestedAssistantResponse,
+  sanitizeProcessThoughtText,
+  stripThinkingTags,
+} from "./chat-formatting";
 import { kickOffGoalLoop, maybeScheduleGoalIteration } from "./chat-goal-runtime";
 import { settlePendingChatFailure } from "./chat-pending-failure";
 import {
@@ -1606,6 +1610,7 @@ async function handleChatTurn(
         responseContent = recoveredResponse.responseContent;
         toolResults = recoveredResponse.toolResults;
       }
+      responseContent = normalizeRequestedAssistantResponse(message, responseContent);
       let automaticWaitCompleted = false;
       if (!executionFailure) {
         const automaticWait = await awaitSpawnedSubagentResults({
