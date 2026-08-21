@@ -16,6 +16,7 @@ import {
   ensureSessionRunId,
   listSessionEvents,
 } from "../../src/core/session-event-ledger";
+import { PROVIDER_PROTOCOL_RECOVERY_MESSAGE } from "../../shared/provider-protocol";
 
 const sessionIds: string[] = [];
 
@@ -24,6 +25,27 @@ afterEach(async () => {
 });
 
 describe("persisted active session context", () => {
+  test("hydrates malformed provider protocol as a retryable response", async () => {
+    const sessionId = `context-provider-protocol-${crypto.randomUUID()}`;
+    sessionIds.push(sessionId);
+    const message: ChatMessage = {
+      role: "assistant",
+      content: "<｜DSML｜tool:string:1400 malformed transport payload",
+    };
+
+    await upsertPersistedSessionMessage(sessionId, "context-agent", message, {
+      stableKey: "provider-protocol-assistant",
+    });
+
+    const persisted = await loadPersistedSession(sessionId);
+    const hydrated = await loadPersistedSessionMessage(
+      sessionId,
+      persisted?.messages[0]?.message_id || ""
+    );
+    expect(persisted?.messages[0]?.content).toBe(PROVIDER_PROTOCOL_RECOVERY_MESSAGE);
+    expect(hydrated?.content).toBe(PROVIDER_PROTOCOL_RECOVERY_MESSAGE);
+  });
+
   test("restores the authoritative worked duration", async () => {
     const sessionId = `context-duration-${crypto.randomUUID()}`;
     sessionIds.push(sessionId);

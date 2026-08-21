@@ -15,6 +15,7 @@ import { createLogger } from "./logger";
 import { SESSION_SUMMARY_COMPACTION_PREDICATE } from "./metrics";
 import { providerManager, providers } from "./providers";
 import { capSessionMessageMetadata } from "./session-message-metadata";
+import { presentProviderProtocolText } from "../../shared/provider-protocol";
 import {
   clearSessionEventLedger,
   reconcileRecoveredSessionRunCompletion,
@@ -24,7 +25,12 @@ import { deriveSessionTitleFromMessages, normalizeSessionTitle } from "./session
 const log = createLogger("Session");
 
 function sanitizePersistedMessageContent(role: string, content: string): string {
-  return role === "assistant" ? sanitizeAssistantContent(content) : content;
+  if (role !== "assistant") return content;
+  const sanitized = sanitizeAssistantContent(content);
+  const protocolPresentation = presentProviderProtocolText(content);
+  return sanitized || !protocolPresentation.protocolRemoved
+    ? sanitized
+    : protocolPresentation.content;
 }
 
 interface PersistedSessionMessage {

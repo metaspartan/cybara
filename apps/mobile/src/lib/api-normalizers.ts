@@ -10,6 +10,8 @@ import type {
   MemorySearchResult,
   MobileMessageImage,
   MobilePendingChatMessage,
+  MobileSessionGoal,
+  MobileSessionGoalStatus,
   MobileSessionStatusResponse,
   MobileStatusSessionSnapshot,
   MobileStatusStreamEvent,
@@ -44,6 +46,13 @@ import type { GatewayProfile } from "./connection";
 
 const MOBILE_SESSION_LIST_LIMIT = 100;
 const MOBILE_LOG_LIST_LIMIT = 150;
+
+const MOBILE_SESSION_GOAL_STATUSES: MobileSessionGoalStatus[] = [
+  "active",
+  "paused",
+  "blocked",
+  "complete",
+];
 
 export function emptyAvailability(): FeatureAvailability {
   return {
@@ -587,6 +596,51 @@ export function normalizeSessionDetail(value: unknown, fallbackId: string): Sess
     tokenUsage: normalizeSessionTokenUsage(record?.tokenUsage ?? record?.token_usage),
     plan: normalizeSessionPlan(record?.plan),
     messages,
+  };
+}
+
+export function normalizeMobileSessionGoal(value: unknown): MobileSessionGoal | null {
+  const response = asRecord(value);
+  const record = asRecord(response?.goal ?? value);
+  if (!record) return null;
+  const sessionId = readString(record, ["sessionId", "session_id"]);
+  const objective = readString(record, ["objective"])?.trim();
+  const statusValue = readString(record, ["status"]);
+  const createdAt = readString(record, ["createdAt", "created_at"]);
+  const updatedAt = readString(record, ["updatedAt", "updated_at"]);
+  if (
+    !sessionId ||
+    !objective ||
+    !statusValue ||
+    !MOBILE_SESSION_GOAL_STATUSES.includes(statusValue as MobileSessionGoalStatus) ||
+    !createdAt ||
+    !updatedAt
+  ) {
+    return null;
+  }
+  const loopRecord = asRecord(record.loop);
+  const iterations = readNumber(loopRecord, ["iterations"]);
+  const consecutiveFailures = readNumber(loopRecord, [
+    "consecutiveFailures",
+    "consecutive_failures",
+  ]);
+  return {
+    sessionId,
+    objective,
+    status: statusValue as MobileSessionGoalStatus,
+    createdAt,
+    updatedAt,
+    lastStatusNote: readString(record, ["lastStatusNote", "last_status_note"]),
+    activeMs: readNumber(record, ["activeMs", "active_ms"]),
+    lastResumedAt: readString(record, ["lastResumedAt", "last_resumed_at"]),
+    loop:
+      loopRecord && iterations !== undefined && consecutiveFailures !== undefined
+        ? {
+            iterations: Math.max(0, Math.floor(iterations)),
+            stoppedReason: readString(loopRecord, ["stoppedReason", "stopped_reason"]) ?? null,
+            consecutiveFailures: Math.max(0, Math.floor(consecutiveFailures)),
+          }
+        : null,
   };
 }
 

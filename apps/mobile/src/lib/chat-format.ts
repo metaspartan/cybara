@@ -121,7 +121,11 @@ export function splitMessageContent(content: string): MessageContentPart[] {
     cursor = match.index + match[0].length;
   }
   if (cursor < content.length) {
-    parts.push({ type: "text", content: content.slice(cursor), key: `text-${cursor}` });
+    parts.push({
+      type: "text",
+      content: content.slice(cursor),
+      key: `text-${cursor}`,
+    });
   }
   return parts.length > 0 ? parts : [{ type: "text", content, key: "text-0" }];
 }
@@ -485,6 +489,16 @@ export function buildMobileWorkTimeline(
 
 export function visibleChatMessages(messages: SessionMessageSummary[]): SessionMessageSummary[] {
   return messages.filter((message) => message.role !== "system");
+}
+
+export function mobileGoalIterationNumber(
+  message: Pick<SessionMessageSummary, "role" | "content">
+): number | null {
+  if (message.role !== "user") return null;
+  const match = message.content.trimStart().match(/^\[autonomous goal iteration (\d+)\]/i);
+  if (!match) return null;
+  const iteration = Number.parseInt(match[1] || "", 10);
+  return Number.isFinite(iteration) && iteration > 0 ? iteration : null;
 }
 
 export function latestVisibleChatMessages(

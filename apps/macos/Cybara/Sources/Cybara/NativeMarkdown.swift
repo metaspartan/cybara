@@ -338,10 +338,16 @@ enum NativeMarkdown {
 
     private static func stripTextToolCallMarkup(_ raw: String) -> String {
         var working = raw
+        let containedToolProtocol = raw.range(
+            of: #"<[|\x{FF5C}]+DSML[|\x{FF5C}]+"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
         let patterns = [
             #"\]?<\]minimax\[\>\[?"#,
             "<[|\\x{FF5C}][^|\\x{FF5C}]*[|\\x{FF5C}]>",
-            "<[|\\x{FF5C}]DSML[|\\x{FF5C}](?:tool_calls|tool_call|function_calls|tool_use_error)>[\\s\\S]*?</[|\\x{FF5C}]DSML[|\\x{FF5C}](?:tool_calls|tool_call|function_calls|tool_use_error)>",
+            "<[|\\x{FF5C}]+DSML[|\\x{FF5C}]+[a-z_][\\w.:-]*(?:\\s[^>]*)?>[\\s\\S]*?</[|\\x{FF5C}]+DSML[|\\x{FF5C}]+[a-z_][\\w.:-]*>",
+            "(?:^|\\n)[ \\t]*<[|\\x{FF5C}]+DSML[|\\x{FF5C}]+[\\s\\S]*$",
+            "</?[|\\x{FF5C}]+DSML[|\\x{FF5C}]+[^>]*>",
             #"<(?:function_response|tool_result)\b[^>]*>[\s\S]*?</(?:function_response|tool_result)>"#,
             #"<(?:function_calls|function_call|tool_calls|tool_call)\b[^>]*>[\s\S]*?</(?:function_calls|function_call|tool_calls|tool_call)>"#,
             #"\[\s*TOOL_CALL\s*\][\s\S]*?(?:\[\s*/\s*TOOL_CALL\s*\]|$)"#,
@@ -361,7 +367,11 @@ enum NativeMarkdown {
             )
         }
 
-        return collapseBlankLines(working)
+        let visible = collapseBlankLines(working)
+        if containedToolProtocol, visible.isEmpty {
+            return "The provider returned an invalid tool-call response for this turn. Retry the message to get a usable answer."
+        }
+        return visible
     }
 
     private static func regexMatches(_ pattern: String, in raw: String) -> [[String]] {

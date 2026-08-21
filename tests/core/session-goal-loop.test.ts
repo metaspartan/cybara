@@ -12,12 +12,14 @@ import {
   recordGoalIterationOutcome,
   registerGoalLoopStart,
   reloadGoalLoopsFromStoreForTests,
+  reserveGoalLoopIteration,
   resetGoalLoop,
   resetGoalLoopsForTests,
   type GoalLoopState,
 } from "../../src/core/session-goal-loop";
 import {
   handleSessionGoalCommand,
+  pauseSessionGoal,
   sessionGoalElapsedMs,
   type SessionGoal,
 } from "../../src/core/session-goals";
@@ -350,6 +352,23 @@ describe("goal elapsed time tracking", () => {
     expect(result.handled).toBe(true);
     expect(result.action).toBe("resume");
     expect(getGoalForTest("continue-session")?.status).toBe("active");
+  });
+
+  test("resume starts a fresh iteration budget after a checkpoint", () => {
+    const sessionId = "checkpoint-resume-session";
+    handleSessionGoalCommand(sessionId, "/goal start verify the release");
+    reserveGoalLoopIteration(sessionId);
+    reserveGoalLoopIteration(sessionId);
+    pauseSessionGoal(sessionId, "Loop checkpoint reached");
+    markGoalLoopStopped(sessionId, "max_iterations");
+
+    expect(getGoalLoopState(sessionId)?.iterations).toBe(2);
+    handleSessionGoalCommand(sessionId, "/goal resume");
+    expect(getGoalLoopState(sessionId)).toEqual({
+      iterations: 0,
+      startedAtMs: expect.any(Number),
+      consecutiveFailures: 0,
+    });
   });
 
   test("shorthand goal creation initializes durable loop state", () => {

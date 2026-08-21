@@ -1,5 +1,6 @@
 import { User } from "lucide-react";
 import { type ReactElement, useEffect, useRef, useState } from "react";
+import { presentProviderProtocolText } from "../../../../shared/provider-protocol";
 import {
   buildActivitiesFromToolCalls,
   enrichActivitiesWithToolCallDetails,
@@ -245,6 +246,10 @@ function ChatMessageRow({
   onRevert,
   onSaveGolden,
 }: ChatMessageRowProps): ReactElement {
+  const presentedContent =
+    message.role === "assistant"
+      ? presentProviderProtocolText(message.content).content
+      : message.content;
   const persistedProcessActivities = getMessageProcessActivities(
     messageProcessMap,
     sessionId,
@@ -321,7 +326,7 @@ function ChatMessageRow({
             <div
               className={cn(
                 "flex flex-wrap gap-2",
-                message.content && "mb-2",
+                presentedContent && "mb-2",
                 message.role === "user" && "justify-end"
               )}
             >
@@ -345,7 +350,7 @@ function ChatMessageRow({
             </div>
           ) : null}
           <MessageContent
-            content={message.content}
+            content={presentedContent}
             onOpenImage={onOpenImage}
             onOpenLink={onOpenLink}
           />
@@ -370,7 +375,7 @@ function ChatMessageRow({
         </div>
         <ChatMessageActionRow
           compact={compact}
-          content={message.content}
+          content={presentedContent}
           copiedMessageIndex={copiedMessageIndex}
           forkingMessageIndex={forkingMessageIndex}
           goldenTurnsEnabled={goldenTurnsEnabled}
@@ -386,7 +391,7 @@ function ChatMessageRow({
           onRevert={(index) =>
             onRevert({
               index,
-              content: message.content,
+              content: presentedContent,
               timestamp: message.timestamp,
             })
           }

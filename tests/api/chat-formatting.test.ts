@@ -6,6 +6,7 @@ import {
   stripThinkingTags,
 } from "../../src/api/chat-formatting";
 import { sanitizeSessionMessages } from "../../src/api/routes/_shared";
+import { PROVIDER_PROTOCOL_RECOVERY_MESSAGE } from "../../shared/provider-protocol";
 
 describe("chat response formatting", () => {
   test("removes a valid JSON fence when the user requires strict JSON", () => {
@@ -144,6 +145,17 @@ describe("chat response formatting", () => {
     expect(message.process_activities?.map((activity) => activity.text)).toEqual([
       "Inspecting the repository structure.",
     ]);
+  });
+
+  test("replaces protocol-only stored assistant turns with a retry message", () => {
+    const [message] = sanitizeSessionMessages([
+      {
+        role: "assistant",
+        content: "<｜DSML｜tool:string:1400 malformed transport payload",
+      },
+    ]);
+
+    expect(message.content).toBe(PROVIDER_PROTOCOL_RECOVERY_MESSAGE);
   });
 
   test("repairs malformed completed responses when sessions are loaded", () => {

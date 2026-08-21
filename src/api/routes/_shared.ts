@@ -3,6 +3,7 @@ import { readdir, stat } from "fs/promises";
 import { join } from "path";
 import { getArtifactsRootDir } from "../../core/artifacts";
 import { sanitizeAssistantContent } from "../../core/llm/text-tool-calls";
+import { presentProviderProtocolText } from "../../../shared/provider-protocol";
 import { cybaraDir, dataDir, logsDir, memoryDir, secureDir, userSkillsDir } from "../../core/paths";
 import {
   type ProviderType,
@@ -1043,10 +1044,15 @@ export function sanitizeSessionMessages(
     if (truncateLargeFields && typeof msg?.thinking === "string" && msg.thinking.length > 1500) {
       msg = { ...msg, thinking: `${msg.thinking.slice(0, 1500)}... [truncated]` };
     }
-    const content =
-      msg?.role === "assistant" && typeof msg.content === "string"
-        ? sanitizeAssistantContent(msg.content)
-        : msg?.content;
+    let content = msg?.content;
+    if (msg?.role === "assistant" && typeof msg.content === "string") {
+      const sanitized = sanitizeAssistantContent(msg.content);
+      const protocolPresentation = presentProviderProtocolText(msg.content);
+      content =
+        sanitized || !protocolPresentation.protocolRemoved
+          ? sanitized
+          : protocolPresentation.content;
+    }
     const sanitizedProcessActivities = sanitizeProcessActivities(
       msg.process_activities,
       PROCESS_OPTIONS
