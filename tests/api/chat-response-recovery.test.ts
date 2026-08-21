@@ -311,6 +311,29 @@ describe("chat response recovery", () => {
     expect(result.message.content).toBe("Completed.");
   });
 
+  test("preserves a direct arithmetic response without forcing a tool retry", async () => {
+    const agentId = createTestAgent("Arithmetic Response Agent");
+    const sessionId = `arithmetic-response-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    let callCount = 0;
+
+    agentManager.execute = (async () => {
+      callCount += 1;
+      return { content: "10" };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Add 10 to your running total. What is the total now? Reply with only the number.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(1);
+    expect(result.message.content).toBe("10");
+    expect(result.message.tool_calls).toBeUndefined();
+  });
+
   test("reports an honest failure after bounded empty-response recovery", async () => {
     const agentId = createTestAgent("Empty Completion Agent");
     const sessionId = `empty-completion-${crypto.randomUUID()}`;

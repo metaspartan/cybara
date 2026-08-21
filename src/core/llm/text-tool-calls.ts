@@ -200,7 +200,7 @@ function parseXmlFields(body: string): Record<string, unknown> {
   return args;
 }
 
-function parseJsonToolCalls(raw: string): TextToolCall[] {
+function parseJsonToolCalls(raw: string, allowNameOnly = false): TextToolCall[] {
   const trimmed = decodeMarkupEntities(raw).trim();
   if (!trimmed) return [];
 
@@ -221,6 +221,16 @@ function parseJsonToolCalls(raw: string): TextToolCall[] {
       record.function && typeof record.function === "object" && !Array.isArray(record.function)
         ? (record.function as Record<string, unknown>)
         : undefined;
+    const hasArgumentEnvelope = [
+      record.arguments,
+      record.args,
+      record.parameters,
+      record.input,
+      functionRecord?.arguments,
+    ].some((value) => value !== undefined);
+    const hasExplicitToolName =
+      record.tool_name !== undefined || record.tool !== undefined || functionRecord !== undefined;
+    if (!allowNameOnly && !hasArgumentEnvelope && !hasExplicitToolName) continue;
     const rawName = record.tool_name ?? record.name ?? record.tool ?? functionRecord?.name;
     const name = typeof rawName === "string" ? rawName.trim() : "";
     if (!name) continue;
@@ -462,7 +472,7 @@ function parseLegacyBracketToolCalls(raw: string): TextToolCall[] {
 
   for (const match of raw.matchAll(LEGACY_BRACKET_TOOL_CALL_PATTERN)) {
     const payload = match[1] || "";
-    calls.push(...parseJsonToolCalls(payload));
+    calls.push(...parseJsonToolCalls(payload, true));
 
     const toolName =
       /\btool\s*=>\s*["']([A-Za-z_][A-Za-z0-9_.:-]{0,119})["']/i.exec(payload)?.[1] ||
@@ -557,7 +567,7 @@ function parseWrappedToolCallContainers(raw: string, depth = 0): TextToolCall[] 
   for (const match of raw.matchAll(containerPattern)) {
     const body = match[2] || "";
     calls.push(
-      ...parseJsonToolCalls(body),
+      ...parseJsonToolCalls(body, true),
       ...parseXmlInvokeToolCalls(body),
       ...parseFunctionXmlToolCalls(body),
       ...parseFunctionEqualsToolCalls(body),

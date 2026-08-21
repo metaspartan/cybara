@@ -1,9 +1,28 @@
 import { describe, expect, test } from "bun:test";
 
-import { sanitizeProcessThoughtText, stripThinkingTags } from "../../src/api/chat-formatting";
+import {
+  normalizeRequestedAssistantResponse,
+  sanitizeProcessThoughtText,
+  stripThinkingTags,
+} from "../../src/api/chat-formatting";
 import { sanitizeSessionMessages } from "../../src/api/routes/_shared";
 
 describe("chat response formatting", () => {
+  test("removes a valid JSON fence when the user requires strict JSON", () => {
+    expect(
+      normalizeRequestedAssistantResponse(
+        "Fetch the fixture and reply as strict JSON with keys quote and source only.",
+        '```json\n{"quote":"Aurora","source":"fixture://article"}\n```'
+      )
+    ).toBe('{"quote":"Aurora","source":"fixture://article"}');
+    expect(normalizeRequestedAssistantResponse("Explain this JSON.", "```json\n{}\n```")).toBe(
+      "```json\n{}\n```"
+    );
+    expect(
+      normalizeRequestedAssistantResponse("Reply as strict JSON.", "```json\n{bad}\n```")
+    ).toBe("```json\n{bad}\n```");
+  });
+
   test("extracts thinking and shows only final content", () => {
     const result = stripThinkingTags(
       "<think>Check the files first.</think>\n<final>Done with the fix.</final>"

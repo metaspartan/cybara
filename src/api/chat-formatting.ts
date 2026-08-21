@@ -26,6 +26,21 @@ const REASONING_OPEN_LINE_PATTERN = new RegExp(`^<(?:${REASONING_TAG_NAME_PATTER
 const REASONING_CLOSE_LINE_PATTERN = new RegExp(`^<\\/(?:${REASONING_TAG_NAME_PATTERN})>`, "i");
 
 const FINAL_BLOCK_PATTERN = /<final\b[^>]*>([\s\S]*?)<\/final>/gi;
+const STRICT_JSON_REQUEST_PATTERN =
+  /\b(?:strict\s+JSON|(?:output|reply|respond|return|emit)\s+(?:only\s+)?(?:a\s+)?JSON|JSON[\s\S]{0,120}no\s+markdown)\b/i;
+const JSON_FENCE_PATTERN = /^\s*```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/i;
+
+export function normalizeRequestedAssistantResponse(userMessage: string, content: string): string {
+  if (!STRICT_JSON_REQUEST_PATTERN.test(userMessage)) return content;
+  const fenced = content.match(JSON_FENCE_PATTERN)?.[1]?.trim();
+  if (!fenced) return content;
+  try {
+    JSON.parse(fenced);
+    return fenced;
+  } catch {
+    return content;
+  }
+}
 
 export function stripThinkingTags(content: string): StripThinkingTagsResult {
   const thinkingMatches: string[] = [];

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
@@ -157,7 +156,7 @@ export async function installBunRuntimeAt(
   const response = await fetcher(url, { redirect: "follow" });
   if (!response.ok) throw new Error(`Bun runtime download failed: ${response.status}`);
   const archive = Buffer.from(await response.arrayBuffer());
-  const digest = createHash("sha256").update(archive).digest("hex");
+  const digest = new Bun.CryptoHasher("sha256").update(archive).digest("hex");
   if (digest !== release.sha256) throw new Error("Bun runtime checksum verification failed");
 
   const temporaryDir = mkdtempSync(join(tmpdir(), "cybara-bun-runtime-"));

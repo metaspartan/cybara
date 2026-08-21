@@ -236,6 +236,11 @@ describe("chat tool summary utilities", () => {
     );
     expect(requiresToolEvidenceForMessage("What is dependency injection?")).toBe(false);
     expect(requiresToolEvidenceForMessage("Respond with exactly Completed.")).toBe(false);
+    expect(
+      requiresToolEvidenceForMessage(
+        "Add 10 to your running total. What is the total now? Reply with only the number."
+      )
+    ).toBe(false);
   });
 
   test("detects actionable answers backed only by non-evidence tools", () => {

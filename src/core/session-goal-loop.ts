@@ -2,12 +2,12 @@ import type { SessionGoal } from "./session-goals";
 import { config } from "./config";
 
 export interface GoalLoopLimits {
-  maxIterations: number;
-  maxDurationSeconds: number;
+  maxIterations: number | null;
+  maxDurationSeconds: number | null;
 }
 
-const GOAL_LOOP_MAX_ITERATIONS_DEFAULT = 25;
-const GOAL_LOOP_MAX_DURATION_SECONDS_DEFAULT = 3600;
+const GOAL_LOOP_MAX_ITERATIONS_LIMIT = 10_000;
+const GOAL_LOOP_MAX_DURATION_SECONDS_LIMIT = 7 * 24 * 60 * 60;
 const GOAL_LOOP_MAX_CONSECUTIVE_FAILURES = 3;
 const LOOP_STATE_PERSIST_KEY = "session_goal_loop_state";
 const MAX_PERSISTED_LOOP_STATES = 200;
@@ -116,13 +116,15 @@ export function readGoalLoopLimits(): GoalLoopLimits {
   const maxDurationRaw = config.get<unknown>("goal_loop_max_duration_seconds");
 
   const maxIterations =
-    typeof maxIterationsRaw === "number" && Number.isFinite(maxIterationsRaw)
-      ? Math.max(1, Math.min(50, Math.floor(maxIterationsRaw)))
-      : GOAL_LOOP_MAX_ITERATIONS_DEFAULT;
+    typeof maxIterationsRaw === "number" &&
+    Number.isFinite(maxIterationsRaw) &&
+    maxIterationsRaw > 0
+      ? Math.max(1, Math.min(GOAL_LOOP_MAX_ITERATIONS_LIMIT, Math.floor(maxIterationsRaw)))
+      : null;
   const maxDurationSeconds =
-    typeof maxDurationRaw === "number" && Number.isFinite(maxDurationRaw)
-      ? Math.max(30, Math.min(3600, Math.floor(maxDurationRaw)))
-      : GOAL_LOOP_MAX_DURATION_SECONDS_DEFAULT;
+    typeof maxDurationRaw === "number" && Number.isFinite(maxDurationRaw) && maxDurationRaw > 0
+      ? Math.max(30, Math.min(GOAL_LOOP_MAX_DURATION_SECONDS_LIMIT, Math.floor(maxDurationRaw)))
+      : null;
 
   return { maxIterations, maxDurationSeconds };
 }
@@ -225,11 +227,11 @@ export function decideNextGoalIteration(input: {
   if (state.consecutiveFailures >= GOAL_LOOP_MAX_CONSECUTIVE_FAILURES) {
     return { schedule: false, reason: "error", checkpoint: true };
   }
-  if (state.iterations >= limits.maxIterations) {
+  if (limits.maxIterations !== null && state.iterations >= limits.maxIterations) {
     return { schedule: false, reason: "max_iterations", checkpoint: true };
   }
   const elapsedSeconds = (now - state.startedAtMs) / 1000;
-  if (elapsedSeconds > limits.maxDurationSeconds) {
+  if (limits.maxDurationSeconds !== null && elapsedSeconds > limits.maxDurationSeconds) {
     return { schedule: false, reason: "max_duration", checkpoint: true };
   }
   return {
@@ -245,9 +247,12 @@ export function goalIterationPrompt(
   iteration: number,
   limits?: GoalLoopLimits
 ): string {
-  const budgetLine = limits
-    ? `This run may continue for up to ${limits.maxIterations} iterations before the loop pauses for a checkpoint.`
-    : "The loop continues automatically after each turn.";
+  const budgetLine =
+    limits?.maxIterations !== null && limits?.maxIterations !== undefined
+      ? `This run may continue for up to ${limits.maxIterations} iterations before the loop pauses for a checkpoint.`
+      : limits?.maxDurationSeconds !== null && limits?.maxDurationSeconds !== undefined
+        ? `This run may continue for up to ${limits.maxDurationSeconds} seconds before the loop pauses for a checkpoint.`
+        : "The loop continues automatically after each turn until the goal is complete, blocked, or paused by the user.";
   return [
     `[autonomous goal iteration ${iteration}]`,
     `Continue working toward the active goal: ${goal.objective}`,

@@ -98,8 +98,8 @@ Key-value settings are stored in the `config` table and exposed via `GET/PUT /ap
 - `reasoning_effort`: default model reasoning effort
 - `self_improving_skills_enabled`: boolean toggle for `skill_save`
 - `provider_plan_monitoring`: coding-plan usage limits and router enforcement
-- `goal_loop_max_iterations`: continuation turns per active goal run (default `25`, range `1..50`)
-- `goal_loop_max_duration_seconds`: active wall-clock time per goal run (default `3600`, range `30..3600`)
+- `goal_loop_max_iterations`: optional continuation-turn safety limit per active goal run (unlimited by default, range `1..10000` when set)
+- `goal_loop_max_duration_seconds`: optional active wall-clock safety limit per goal run (unlimited by default, range `30..604800` when set)
 
 `computer_use.driverCommand` is the persisted Web/Tauri settings override for the Cua Driver
 executable. `CYBARA_CUA_DRIVER_CMD` still takes precedence for scripts and operator-managed
