@@ -77,6 +77,21 @@ describe("goal loop decision", () => {
     expect(decision.checkpoint).toBe(false);
   });
 
+  test("keeps the scheduled prompt bound to the decision snapshot", () => {
+    const state = loopState({ iterations: 2 });
+    const decision = decideNextGoalIteration({
+      goal: activeGoal(),
+      state,
+      limits,
+      nowMs: Date.parse("2026-08-18T00:01:00.000Z"),
+    });
+    state.iterations += 1;
+    expect(decision.schedule).toBe(true);
+    if (!decision.schedule) throw new Error("Expected a scheduled goal iteration");
+    expect(decision.prompt).toContain("iteration 3");
+    expect(decision.prompt).not.toContain("iteration 4");
+  });
+
   test("stops at max iterations with a checkpoint flag", () => {
     const state = loopState({ iterations: 4 });
     const decision = decideNextGoalIteration({

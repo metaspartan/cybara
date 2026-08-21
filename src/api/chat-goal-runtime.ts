@@ -147,8 +147,7 @@ async function scheduleGoalIterationAfterJudgment(sessionId: string): Promise<vo
     });
     if (!decision.schedule) {
       if (decision.checkpoint) {
-        const stopReason: GoalLoopStopReason =
-          decision.reason === "scheduled" ? "blocked" : decision.reason;
+        const stopReason: GoalLoopStopReason = decision.reason;
         const checkpointNote =
           stopReason === "error"
             ? `Loop paused after repeated failures. Resume or send /goal resume to continue.`
@@ -159,8 +158,8 @@ async function scheduleGoalIterationAfterJudgment(sessionId: string): Promise<vo
       }
       return;
     }
+    const iterationPrompt = decision.prompt;
     bumpGoalLoopIteration(sessionId);
-    const iterationPrompt = decision.prompt ?? goalIterationPrompt(goal, state.iterations + 1);
     const iterationRequest: ChatRequest = {
       message: iterationPrompt,
       sessionId,

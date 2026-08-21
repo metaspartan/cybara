@@ -176,12 +176,18 @@ export function resetGoalLoop(sessionId: string): void {
   persistLoopState();
 }
 
-export interface GoalIterationDecision {
-  schedule: boolean;
-  reason: GoalLoopStopReason | "scheduled";
-  prompt?: string;
-  checkpoint: boolean;
-}
+export type GoalIterationDecision =
+  | {
+      schedule: true;
+      reason: "scheduled";
+      prompt: string;
+      checkpoint: false;
+    }
+  | {
+      schedule: false;
+      reason: GoalLoopStopReason;
+      checkpoint: boolean;
+    };
 
 export function decideNextGoalIteration(input: {
   goal: SessionGoal | undefined;
