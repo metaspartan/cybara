@@ -28,6 +28,7 @@ const createdSessionIds: string[] = [];
 const agentIds: string[] = [];
 const providerIds: string[] = [];
 const originalExecute = agentManager.execute.bind(agentManager);
+const originalCallLLM = agentManager.callLLM.bind(agentManager);
 
 async function waitFor(predicate: () => boolean, timeoutMs = 8000): Promise<void> {
   const started = Date.now();
@@ -39,6 +40,7 @@ async function waitFor(predicate: () => boolean, timeoutMs = 8000): Promise<void
 
 afterEach(async () => {
   agentManager.execute = originalExecute;
+  agentManager.callLLM = originalCallLLM;
   resetSessionGoalsForTests();
   resetGoalLoopsForTests();
   config.set("goal_loop_max_iterations", 1);
@@ -204,6 +206,56 @@ describe("chat goal commands", () => {
     expect(getGoalLoopState(sessionId)?.consecutiveFailures).toBe(3);
     expect(getGoalLoopState(sessionId)?.stopReason).toBe("error");
     expect(getSessionGoal(sessionId)?.lastStatusNote).toContain("repeated failures");
+  });
+
+  test("runs exactly the configured number of autonomous iterations", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Goal Iteration Limit Provider",
+      api_key: "test-key",
+      base_url: "https://api.openai.com/v1",
+    });
+    providerIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Goal Iteration Limit Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-goal-iteration-limit",
+      memory_enabled: false,
+    });
+    agentIds.push(agent.id);
+    const sessionId = `goal-iteration-limit-${Date.now()}`;
+    createdSessionIds.push(sessionId);
+    config.set("goal_loop_max_iterations", 2);
+    const iterationPrompts: string[] = [];
+
+    agentManager.callLLM = (async () => ({
+      content: '{"verdict":"continue","reason":"checkpoint not reached"}',
+    })) as typeof agentManager.callLLM;
+    agentManager.execute = (async (_agentId, messages) => {
+      const prompt = messages.at(-1)?.content || "";
+      if (prompt.startsWith("[autonomous goal iteration")) iterationPrompts.push(prompt);
+      return {
+        content:
+          "Progress remains intentionally partial at this checkpoint. The loop should continue to the next configured turn without claiming completion, stopping, or requesting user input. More bounded work remains.",
+      };
+    }) as typeof agentManager.execute;
+
+    await handleChat({
+      message: "/goal start exercise the exact iteration limit",
+      sessionId,
+      agentId: agent.id,
+      tools: false,
+      source: "dataset_generation",
+    });
+
+    await waitFor(() => getSessionGoal(sessionId)?.status === "paused");
+    expect(iterationPrompts).toHaveLength(2);
+    expect(iterationPrompts[0]).toContain("[autonomous goal iteration 1]");
+    expect(iterationPrompts[1]).toContain("[autonomous goal iteration 2]");
+    expect(getGoalLoopState(sessionId)?.iterations).toBe(2);
+    expect(getGoalLoopState(sessionId)?.stopReason).toBe("max_iterations");
+    expect(pendingChatQueues.get(sessionId) || []).toHaveLength(0);
   });
 
   test("active goals are injected into execution context without mutating chat messages", () => {
