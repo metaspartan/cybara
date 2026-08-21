@@ -120,7 +120,6 @@ final class SidecarManager: ObservableObject {
     private var outputHandle: FileHandle?
     private var readinessTask: Task<Void, Never>?
     private var healthMonitorTask: Task<Void, Never>?
-    private let allowsAutomaticPortFallback: Bool
     private var userInitiatedStop = false
     private var restartAttempts = 0
     private var consecutiveHealthFailures = 0
@@ -129,8 +128,6 @@ final class SidecarManager: ObservableObject {
     init() {
         let configuredPort = ProcessInfo.processInfo.environment["CYBARA_NATIVE_PORT"]
         port = SidecarCore.port(fromEnv: configuredPort)
-        allowsAutomaticPortFallback =
-            configuredPort?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
     }
 
     deinit {
@@ -416,7 +413,23 @@ final class SidecarManager: ObservableObject {
     }
 
     private func resolveExistingGateway() async -> ExistingGatewayResolution {
-        guard let probe = await gatewayProbe() else { return .launch }
+        var resolvedProbe = await gatewayProbe()
+        if resolvedProbe == nil, !isPortAvailable(port) {
+            appendLog("Existing gateway is busy at \(serverURL.absoluteString); waiting for it.")
+            let deadline = Date().addingTimeInterval(60)
+            while resolvedProbe == nil, !isPortAvailable(port), Date() < deadline {
+                try? await Task.sleep(for: .milliseconds(500))
+                resolvedProbe = await gatewayProbe()
+            }
+        }
+        guard let probe = resolvedProbe else {
+            if isPortAvailable(port) { return .launch }
+            status = .failed(
+                "Port \(port) is occupied by an unresponsive service. Stop it before starting Cybara."
+            )
+            appendLog("Refused to launch a second gateway while port \(port) is occupied.")
+            return .blocked
+        }
         if SidecarCore.isGatewayVersionCompatible(
             gatewayVersion: probe.version,
             minimumVersion: minimumGatewayVersion
@@ -429,45 +442,6 @@ final class SidecarManager: ObservableObject {
         if await terminateStaleNativeGateway(probe) {
             appendLog("Stopped incompatible native gateway and will launch the bundled gateway.")
             return .launch
-        }
-
-        let occupiedURL = serverURL
-        if allowsAutomaticPortFallback {
-            let candidates = SidecarCore.fallbackPorts(after: port)
-            var compatiblePorts = Set<Int>()
-            var availablePorts = Set<Int>()
-            for candidate in candidates {
-                if let candidateProbe = await gatewayProbe(port: candidate, timeoutInterval: 0.25),
-                   SidecarCore.isGatewayVersionCompatible(
-                    gatewayVersion: candidateProbe.version,
-                    minimumVersion: minimumGatewayVersion
-                   )
-                {
-                    compatiblePorts.insert(candidate)
-                } else if isPortAvailable(candidate) {
-                    availablePorts.insert(candidate)
-                }
-            }
-            switch SidecarCore.fallbackPortDecision(
-                candidates: candidates,
-                compatiblePorts: compatiblePorts,
-                availablePorts: availablePorts
-            ) {
-            case .attach(let fallbackPort):
-                port = fallbackPort
-                gatewayMode = .attached
-                markGatewayReady("Attached to compatible Cybara gateway at \(serverURL.absoluteString)")
-                return .attached
-            case .launch(let fallbackPort):
-                port = fallbackPort
-                gatewayMode = .idle
-                appendLog(
-                    "Gateway at \(occupiedURL.absoluteString) is incompatible; launching the bundled gateway at \(serverURL.absoluteString)."
-                )
-                return .launch
-            case nil:
-                break
-            }
         }
 
         let runningVersion = probe.version.map { "v\($0)" } ?? "an unknown version"

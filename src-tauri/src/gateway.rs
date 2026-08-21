@@ -7,6 +7,14 @@ const PROBE_TIMEOUT: Duration = Duration::from_millis(900);
 const LIVENESS_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const GATEWAY_PORT_SIGNAL_PREFIX: &str = "CYBARA_GATEWAY_PORT=";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GatewayProbeStatus {
+    Available,
+    Occupied,
+    Incompatible,
+    Compatible,
+}
+
 #[derive(Clone)]
 pub struct GatewayEndpoint {
     pub addr: String,
@@ -71,23 +79,43 @@ fn ui_response(addr: &str) -> Option<HttpResponse> {
     http_get(addr, path)
 }
 
-pub fn is_compatible_gateway_at(addr: &str, expected_version: &str) -> bool {
+pub fn probe_gateway_at(addr: &str, expected_version: &str) -> GatewayProbeStatus {
     let Some(health) = http_get(addr, "/api/health") else {
-        return false;
+        return if port_accepts_connections(addr) {
+            GatewayProbeStatus::Occupied
+        } else {
+            GatewayProbeStatus::Available
+        };
     };
     if !is_matching_health_response(&health, expected_version) {
-        return false;
+        return GatewayProbeStatus::Incompatible;
     }
     let Some(ui) = ui_response(addr) else {
-        return false;
+        return GatewayProbeStatus::Occupied;
     };
     if ui.status != 200 {
-        return false;
+        return GatewayProbeStatus::Incompatible;
     }
     let normalized = ui.body.to_ascii_lowercase();
-    normalized.contains("<!doctype html")
+    if normalized.contains("<!doctype html")
         && normalized.contains("/assets/")
         && !normalized.contains("ui not built")
+    {
+        GatewayProbeStatus::Compatible
+    } else {
+        GatewayProbeStatus::Incompatible
+    }
+}
+
+pub fn is_compatible_gateway_at(addr: &str, expected_version: &str) -> bool {
+    probe_gateway_at(addr, expected_version) == GatewayProbeStatus::Compatible
+}
+
+fn port_accepts_connections(addr: &str) -> bool {
+    let Ok(address) = addr.parse() else {
+        return false;
+    };
+    TcpStream::connect_timeout(&address, Duration::from_millis(250)).is_ok()
 }
 
 pub fn is_gateway_live_at(addr: &str) -> bool {
@@ -150,8 +178,8 @@ impl GatewayPortSignalParser {
 #[cfg(test)]
 mod tests {
     use super::{
-        GatewayEndpoint, GatewayPortSignalParser, is_compatible_gateway_at, is_gateway_live_at,
-        parse_gateway_port_signal,
+        GatewayEndpoint, GatewayPortSignalParser, GatewayProbeStatus, is_compatible_gateway_at,
+        is_gateway_live_at, parse_gateway_port_signal, probe_gateway_at,
     };
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -191,6 +219,36 @@ mod tests {
         ]);
         assert!(is_compatible_gateway_at(&endpoint.addr, "1.2.3"));
         handle.join().expect("join test gateway");
+    }
+
+    #[test]
+    fn classifies_busy_gateway_without_treating_its_port_as_available() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind busy gateway");
+        let port = listener.local_addr().expect("read busy address").port();
+        let handle = thread::spawn(move || {
+            let _ = listener.accept().expect("accept health probe");
+            thread::sleep(Duration::from_millis(1_100));
+            let _ = listener.accept().expect("accept occupancy probe");
+        });
+        assert_eq!(
+            probe_gateway_at(&format!("127.0.0.1:{port}"), "1.2.3"),
+            GatewayProbeStatus::Occupied
+        );
+        handle.join().expect("join busy gateway");
+    }
+
+    #[test]
+    fn classifies_released_port_as_available() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind available port");
+        let port = listener
+            .local_addr()
+            .expect("read available address")
+            .port();
+        drop(listener);
+        assert_eq!(
+            probe_gateway_at(&format!("127.0.0.1:{port}"), "1.2.3"),
+            GatewayProbeStatus::Available
+        );
     }
 
     #[test]
