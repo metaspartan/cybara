@@ -288,6 +288,9 @@ export function listAllSessionEvents(sessionId: string, pageSize = 5000): Sessio
 const runEventsFingerprintStatement = db.prepare(
   "SELECT COUNT(*) AS count, COALESCE(MAX(sequence), 0) AS maxSeq FROM session_events WHERE run_id = ?"
 );
+const latestSessionRunStatement = db.prepare(
+  "SELECT run_id AS runId FROM session_events WHERE session_id = ? ORDER BY sequence DESC LIMIT 1"
+);
 const runEventsCache = new Map<string, { fingerprint: string; events: SessionLedgerEvent[] }>();
 
 export function listRunEvents(runId: string, limit = 1000): SessionLedgerEvent[] {
@@ -355,6 +358,15 @@ export function listIncompleteSessionRuns(sessionId: string): IncompleteSessionR
     firstSequence: run.firstSequence,
     lastSequence: run.lastSequence,
   }));
+}
+
+export function latestSessionRunId(sessionId: string): string | undefined {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) return undefined;
+  const row = latestSessionRunStatement.get(normalizedSessionId) as {
+    runId?: string;
+  } | null;
+  return typeof row?.runId === "string" && row.runId.trim() ? row.runId.trim() : undefined;
 }
 
 export function latestSessionEventSequence(sessionId: string): number {

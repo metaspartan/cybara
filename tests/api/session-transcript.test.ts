@@ -70,6 +70,44 @@ describe("session transcript separation", () => {
     expect(merged[2]?.content).toBe("Also check tests");
   });
 
+  test("preserves deferred persisted metadata while appending an unpersisted live tail", () => {
+    const persisted: ChatMessage[] = [
+      {
+        role: "assistant",
+        content: "Historical result",
+        timestamp: "2026-07-09 01:01:00.000",
+        metadata_deferred: true,
+      },
+    ];
+    const active: ChatMessage[] = [
+      {
+        role: "assistant",
+        content: "Historical result",
+        timestamp: "2026-07-09T01:01:00.000Z",
+        thinking: "Large resident reasoning",
+        tool_calls: [{ id: "read-1", name: "read", status: "completed" }],
+      },
+      {
+        role: "user",
+        content: "Live follow-up",
+        timestamp: "2026-07-09T01:02:00.000Z",
+      },
+    ];
+
+    const merged = mergeSessionTranscriptMessages(persisted, active, {
+      preservePersistedMetadata: true,
+    });
+
+    expect(merged).toHaveLength(2);
+    expect(merged[0]).toMatchObject({
+      content: "Historical result",
+      metadata_deferred: true,
+    });
+    expect(merged[0]?.thinking).toBeUndefined();
+    expect(merged[0]?.tool_calls).toBeUndefined();
+    expect(merged[1]?.content).toBe("Live follow-up");
+  });
+
   test("preserves repeated identical messages by occurrence count", () => {
     const repeated: ChatMessage = { role: "user", content: "Continue" };
     const merged = mergeSessionTranscriptMessages(

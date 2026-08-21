@@ -154,6 +154,12 @@ export function getSessionGoal(sessionId: string): SessionGoal | undefined {
   return cloneGoal(loadGoals().get(sessionId));
 }
 
+export function listActiveSessionGoals(): SessionGoal[] {
+  return Array.from(loadGoals().values())
+    .filter((goal) => goal.status === "active")
+    .map((goal) => ({ ...goal }));
+}
+
 export function pauseSessionGoal(sessionId: string, note: string): SessionGoal | undefined {
   return updateGoal(sessionId, "paused", note);
 }

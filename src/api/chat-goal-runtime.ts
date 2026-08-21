@@ -18,6 +18,7 @@ import {
 import {
   getSessionGoal,
   handleSessionGoalCommand,
+  listActiveSessionGoals,
   pauseSessionGoal,
   type SessionGoal,
 } from "../core/session-goals";
@@ -189,4 +190,12 @@ export function maybeScheduleGoalIteration(sessionId: string): void {
       maybeScheduleGoalIteration(sessionId);
     }
   });
+}
+
+export function resumePersistedActiveGoalLoops(
+  schedule: (sessionId: string) => void = maybeScheduleGoalIteration
+): number {
+  const activeGoals = listActiveSessionGoals();
+  for (const goal of activeGoals) schedule(goal.sessionId);
+  return activeGoals.length;
 }

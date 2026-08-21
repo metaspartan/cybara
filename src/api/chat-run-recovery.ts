@@ -3,6 +3,7 @@ import { upsertPersistedSessionMessage } from "../core/session-context";
 import {
   appendSessionEvent,
   getActiveSessionRunId,
+  latestSessionRunId,
   listAllSessionEvents,
   listAllRunEvents,
   listIncompleteSessionRuns,
@@ -22,6 +23,7 @@ import type { ChatMessage } from "./chat-types";
 const LEGACY_RUN_RECOVERY_SETTLE_MS = 30_000;
 
 export interface ChatRunRecoveryOptions {
+  hydrateExistingRuns?: boolean;
   now?: number;
   processAlive?: (processId: number) => boolean;
 }
@@ -263,14 +265,17 @@ export async function recoverInterruptedSessionMessages(
   recoveryOptions: ChatRunRecoveryOptions = {}
 ): Promise<ChatMessage[]> {
   const options: Required<ChatRunRecoveryOptions> = {
+    hydrateExistingRuns: recoveryOptions.hydrateExistingRuns ?? true,
     now: recoveryOptions.now ?? Date.now(),
     processAlive: recoveryOptions.processAlive ?? processIsAlive,
   };
   const eventCache = new Map<string, SessionLedgerEvent[]>();
-  for (const event of listAllSessionEvents(sessionId)) {
-    const events = eventCache.get(event.runId) || [];
-    events.push(event);
-    eventCache.set(event.runId, events);
+  if (options.hydrateExistingRuns) {
+    for (const event of listAllSessionEvents(sessionId)) {
+      const events = eventCache.get(event.runId) || [];
+      events.push(event);
+      eventCache.set(event.runId, events);
+    }
   }
   const eventsForRun = (runId: string): SessionLedgerEvent[] => {
     const cached = eventCache.get(runId);
@@ -281,7 +286,7 @@ export async function recoverInterruptedSessionMessages(
   };
   const activeRunId = getActiveSessionRunId(sessionId);
   const lastTimestamp = messages.length ? (messages[messages.length - 1]?.timestamp ?? "") : "";
-  const hydrationKey = `${sessionEventsFingerprint(sessionId)}:${activeRunId || ""}:${messages.length}:${lastTimestamp}`;
+  const hydrationKey = `${sessionEventsFingerprint(sessionId)}:${activeRunId || ""}:${messages.length}:${lastTimestamp}:${options.hydrateExistingRuns ? "full" : "deferred"}`;
   const cachedHydration = interruptedRecoveryHydrationCache.get(sessionId);
   const hydrated =
     cachedHydration?.key === hydrationKey
@@ -289,7 +294,9 @@ export async function recoverInterruptedSessionMessages(
       : (() => {
           const hydratedMessages = messages.map((message) => {
             const runId = typeof message.run_id === "string" ? message.run_id.trim() : "";
-            return runId ? hydrateRunMessage(message, eventsForRun(runId)) : message;
+            return options.hydrateExistingRuns && runId
+              ? hydrateRunMessage(message, eventsForRun(runId))
+              : message;
           });
           if (interruptedRecoveryHydrationCache.size >= 256) {
             interruptedRecoveryHydrationCache.clear();
@@ -305,6 +312,10 @@ export async function recoverInterruptedSessionMessages(
   );
   let recoveredRunAdded = false;
 
+  const latestRunId = latestSessionRunId(sessionId);
+  if (!options.hydrateExistingRuns && latestRunId && !eventCache.has(latestRunId)) {
+    eventCache.set(latestRunId, eventsForRun(latestRunId));
+  }
   for (const events of completedEmptyRunEvents(eventCache)) {
     const runId = events[0]?.runId;
     if (

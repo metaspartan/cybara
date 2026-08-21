@@ -18,6 +18,7 @@ import {
   GOAL_LOOP_SOURCE,
   resetGoalLoopsForTests,
 } from "../../src/core/session-goal-loop";
+import { resumePersistedActiveGoalLoops } from "../../src/api/chat-goal-runtime";
 import {
   getSessionGoal,
   handleSessionGoalCommand,
@@ -51,6 +52,21 @@ afterEach(async () => {
 });
 
 describe("chat goal commands", () => {
+  test("startup reschedules persisted active goals without restarting paused goals", () => {
+    const activeSessionId = `goal-startup-active-${Date.now()}`;
+    const pausedSessionId = `goal-startup-paused-${Date.now()}`;
+    handleSessionGoalCommand(activeSessionId, "/goal audit startup recovery");
+    handleSessionGoalCommand(pausedSessionId, "/goal audit paused recovery");
+    handleSessionGoalCommand(pausedSessionId, "/goal pause waiting for user");
+    const scheduled: string[] = [];
+
+    expect(resumePersistedActiveGoalLoops((sessionId) => scheduled.push(sessionId))).toBe(
+      scheduled.length
+    );
+    expect(scheduled).toContain(activeSessionId);
+    expect(scheduled).not.toContain(pausedSessionId);
+  });
+
   test("/goal is handled locally and injects the goal into execution context", async () => {
     const provider = providerManager.create({
       provider: "openai",

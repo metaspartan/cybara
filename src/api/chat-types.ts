@@ -15,6 +15,8 @@ export {
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  message_id?: string;
+  metadata_deferred?: boolean;
   timestamp?: string;
   provider?: string;
   provider_id?: string;

@@ -347,6 +347,8 @@ export interface AgentTransferInfo {
 export interface ChatMessage {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
+  message_id?: string;
+  metadata_deferred?: boolean;
   timestamp?: string;
   thinking?: string;
   tool_calls?: ToolCallInfo[];

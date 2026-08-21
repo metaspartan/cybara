@@ -60,7 +60,41 @@ type SessionMessageMetadata = Partial<
 
 interface PersistedSessionMessageMetadata extends SessionMessageMetadata {
   source?: string;
+  metadata_deferred?: boolean;
 }
+
+export interface PersistedSessionLoadOptions {
+  deferHistoricalMetadata?: boolean;
+}
+
+const RICH_SESSION_MESSAGE_THRESHOLD = 60;
+const RICH_SESSION_MESSAGE_TAIL = 8;
+const compactSessionMessagesStatement = db.prepare(
+  `SELECT id, role, content, created_at, agent_id,
+     CASE
+       WHEN (SELECT COUNT(*) FROM session_messages WHERE session_id = ?1) <= ?2
+         OR rowid IN (
+           SELECT rowid FROM session_messages
+           WHERE session_id = ?1
+           ORDER BY rowid DESC
+           LIMIT ?3
+         )
+       THEN metadata
+       ELSE CASE
+         WHEN json_valid(metadata) THEN json_set(
+           json_remove(metadata, '$.thinking', '$.tool_calls', '$.process_activities'),
+           '$.metadata_deferred', json('true')
+         )
+         ELSE json_object('metadata_deferred', json('true'))
+       END
+     END AS metadata
+   FROM session_messages
+   WHERE session_id = ?1
+   ORDER BY rowid ASC`
+);
+const persistedSessionMessageStatement = db.prepare(
+  "SELECT id, role, content, created_at, agent_id, metadata FROM session_messages WHERE session_id = ? AND id = ?"
+);
 
 const RECOVERY_MESSAGE_SOURCES = new Set([
   "completed_empty_run_recovery",
@@ -138,7 +172,11 @@ export async function upsertPersistedSessionMessage(
   sessionId: string,
   agentId: string,
   message: ChatMessage,
-  options?: { stableKey?: string; createdAtOffsetMs?: number; metadata?: Record<string, unknown> }
+  options?: {
+    stableKey?: string;
+    createdAtOffsetMs?: number;
+    metadata?: Record<string, unknown>;
+  }
 ): Promise<void> {
   tables.chatSessions.ensure(sessionId, agentId);
   if (
@@ -147,7 +185,10 @@ export async function upsertPersistedSessionMessage(
     typeof message.run_id === "string" &&
     message.run_id.trim()
   ) {
-    deleteRecoveryMessagesForRun(sessionId, message.run_id.trim());
+    const runId = message.run_id.trim();
+    if (deleteRecoveryMessagesForRun(sessionId, runId)) {
+      reconcileRecoveredSessionRunCompletion(sessionId, runId);
+    }
   }
   const id = sessionMessageStableId([
     sessionId,
@@ -189,14 +230,31 @@ function parseSessionMessageMetadata(metadata?: string): PersistedSessionMessage
   }
 }
 
-function deleteRecoveryMessagesForRun(sessionId: string, runId: string): void {
-  db.prepare(
-    `DELETE FROM session_messages
+function toPersistedChatMessage(message: PersistedSessionMessage): ChatMessage {
+  const parsed = parseSessionMessageMetadata(message.metadata);
+  const images = attachmentsToImages((parsed as Record<string, unknown>).attachments);
+  return {
+    role: message.role as ChatMessage["role"],
+    content: sanitizePersistedMessageContent(message.role, message.content),
+    message_id: message.id,
+    timestamp: normalizePersistedMessageTimestamp(message.created_at),
+    ...parsed,
+    ...(images.length ? { images } : {}),
+  };
+}
+
+function deleteRecoveryMessagesForRun(sessionId: string, runId: string): boolean {
+  return (
+    db
+      .prepare(
+        `DELETE FROM session_messages
      WHERE session_id = ?
        AND role = 'assistant'
        AND json_extract(metadata, '$.run_id') = ?
        AND json_extract(metadata, '$.source') IN ('completed_empty_run_recovery', 'gateway_crash_recovery')`
-  ).run(sessionId, runId);
+      )
+      .run(sessionId, runId).changes > 0
+  );
 }
 
 function reconcilePersistedRecoveryMessages(
@@ -219,8 +277,19 @@ function reconcilePersistedRecoveryMessages(
       .map(({ metadata }) => metadata.run_id?.trim())
       .filter((runId): runId is string => !!runId)
   );
+  const recoveredRunIds = new Set(
+    parsed
+      .filter(
+        ({ metadata }) =>
+          typeof metadata.run_id === "string" &&
+          typeof metadata.source === "string" &&
+          RECOVERY_MESSAGE_SOURCES.has(metadata.source)
+      )
+      .map(({ metadata }) => metadata.run_id?.trim())
+      .filter((runId): runId is string => !!runId)
+  );
   for (const runId of completedRunIds) {
-    reconcileRecoveredSessionRunCompletion(sessionId, runId);
+    if (recoveredRunIds.has(runId)) reconcileRecoveredSessionRunCompletion(sessionId, runId);
   }
   const supersededIds = parsed
     .filter(
@@ -1206,7 +1275,10 @@ export function clearSessionContextState(sessionId: string): boolean {
   }
 }
 
-export async function loadPersistedSession(sessionId: string): Promise<{
+export async function loadPersistedSession(
+  sessionId: string,
+  options: PersistedSessionLoadOptions = {}
+): Promise<{
   agentId: string;
   useModelRouter: boolean;
   messages: ChatMessage[];
@@ -1216,8 +1288,13 @@ export async function loadPersistedSession(sessionId: string): Promise<{
   title: string | null;
 } | null> {
   try {
-    const storedSessionMessages =
-      (tables.sessionMessages?.getBySession(sessionId) as PersistedSessionMessage[]) || [];
+    const storedSessionMessages = options.deferHistoricalMetadata
+      ? (compactSessionMessagesStatement.all(
+          sessionId,
+          RICH_SESSION_MESSAGE_THRESHOLD,
+          RICH_SESSION_MESSAGE_TAIL
+        ) as PersistedSessionMessage[])
+      : (tables.sessionMessages?.getBySession(sessionId) as PersistedSessionMessage[]) || [];
 
     const sessionMessages = reconcilePersistedRecoveryMessages(sessionId, storedSessionMessages);
 
@@ -1225,17 +1302,7 @@ export async function loadPersistedSession(sessionId: string): Promise<{
       return null;
     }
 
-    const messages: ChatMessage[] = sessionMessages.map((m) => {
-      const parsed = parseSessionMessageMetadata(m.metadata);
-      const images = attachmentsToImages((parsed as Record<string, unknown>).attachments);
-      return {
-        role: m.role as ChatMessage["role"],
-        content: sanitizePersistedMessageContent(m.role, m.content),
-        timestamp: normalizePersistedMessageTimestamp(m.created_at),
-        ...parsed,
-        ...(images.length ? { images } : {}),
-      };
-    });
+    const messages = sessionMessages.map(toPersistedChatMessage);
 
     const session = db
       .prepare(
@@ -1274,6 +1341,20 @@ export async function loadPersistedSession(sessionId: string): Promise<{
     log.exception("Failed to load persisted session", error, { sessionId });
     return null;
   }
+}
+
+export async function loadPersistedSessionMessage(
+  sessionId: string,
+  messageId: string
+): Promise<ChatMessage | null> {
+  const normalizedSessionId = sessionId.trim();
+  const normalizedMessageId = messageId.trim();
+  if (!normalizedSessionId || !normalizedMessageId) return null;
+  const stored = persistedSessionMessageStatement.get(
+    normalizedSessionId,
+    normalizedMessageId
+  ) as PersistedSessionMessage | null;
+  return stored ? toPersistedChatMessage(stored) : null;
 }
 
 export interface PersistedSessionListEntry {

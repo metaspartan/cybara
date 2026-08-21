@@ -135,6 +135,7 @@ describe("chat run recovery", () => {
     completeSessionRun(sessionId);
 
     const recovered = await recoverInterruptedSessionMessages(sessionId, agentId, [], {
+      hydrateExistingRuns: false,
       processAlive: () => false,
     });
 
@@ -164,6 +165,7 @@ describe("chat run recovery", () => {
     broadcastStatus({ status: "idle", timestamp: timestamp + 2, sessionId, agentId });
 
     const firstRecovery = await recoverInterruptedSessionMessages(sessionId, agentId, [], {
+      hydrateExistingRuns: false,
       now: Date.now() + 31_000,
     });
     const secondRecovery = await recoverInterruptedSessionMessages(

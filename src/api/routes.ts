@@ -183,6 +183,7 @@ import {
 } from "./routes/request-runtime";
 import { runtimeRoutes } from "./routes/runtime-routes";
 import { sessionEventRoutes } from "./routes/session-events";
+import { sessionMessageDetailRoutes } from "./routes/session-message-details";
 import {
   latestSessionModelMetadata,
   type SessionModelMetadata,
@@ -247,6 +248,7 @@ function pluginSummary(plugin: ReturnType<typeof listInstalledPlugins>[number]) 
 }
 
 const routes: Record<string, RouteHandler> = {
+  ...sessionMessageDetailRoutes,
   ...walletRoutes,
   ...mobileRoutes,
   ...mobileSimulatorRoutes,
@@ -1269,13 +1271,14 @@ const routes: Record<string, RouteHandler> = {
     return (await listSessions(pageOptions)).map(toApiSession);
   },
   "GET /api/sessions/:sessionId": async (_body, params) => {
-    const session = await getSession(params!.sessionId);
-    if (!session) return { error: "Session not found" };
-    const messages = await getSessionMessages(params!.sessionId);
     const includeFullToolCalls =
       params?.includeFullToolCalls === "1" ||
       params?.includeFullToolCalls === "true" ||
       params?.includeFullToolCalls === "yes";
+    const loadOptions = { deferHistoricalMetadata: !includeFullToolCalls };
+    const session = await getSession(params!.sessionId, loadOptions);
+    if (!session) return { error: "Session not found" };
+    const messages = await getSessionMessages(params!.sessionId, loadOptions);
     const sanitizedMessages = sanitizeSessionMessages(messages, {
       ...(includeFullToolCalls ? { maxToolCalls: 0 } : {}),
       includeFullToolCalls,
