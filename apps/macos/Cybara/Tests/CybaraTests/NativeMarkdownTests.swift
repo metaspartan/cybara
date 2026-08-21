@@ -3,6 +3,14 @@ import XCTest
 @testable import Cybara
 
 final class NativeMarkdownTests: XCTestCase {
+    func testMalformedToolProtocolUsesRetryMessage() {
+        let raw = "<｜DSML｜tool:string:1400 malformed transport payload"
+        XCTAssertEqual(
+            NativeMarkdown.preprocess(raw),
+            "The provider returned an invalid tool-call response for this turn. Retry the message to get a usable answer."
+        )
+    }
+
     func testPreprocessStripsGatewayContextAndTimestampPrefix() {
         let raw = """
         [Thu 2026-07-02 14:30:00 UTC] Conversation info (untrusted metadata):

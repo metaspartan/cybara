@@ -42,18 +42,7 @@ import {
   getSessionGoal,
   type SessionGoalCommandResult,
 } from "../core/session-goals";
-import {
-  bumpGoalLoopIteration,
-  decideNextGoalIteration,
-  getGoalLoopState,
-  goalIterationPrompt,
-  goalResponseSignalsDone,
-  GOAL_LOOP_SOURCE,
-  isGoalIterationMessage,
-  readGoalLoopLimits,
-  registerGoalLoopStart,
-  resetGoalLoop,
-} from "../core/session-goal-loop";
+import { GOAL_LOOP_SOURCE, recordGoalIterationOutcome } from "../core/session-goal-loop";
 import { extractLatestSessionPlan } from "../core/session-plan";
 import {
   deriveSessionTitleFromMessages,
@@ -76,7 +65,12 @@ import {
 } from "./chat-agent-prompt";
 import { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 import { executionMetadataFromResult } from "./chat-execution-metadata";
-import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
+import {
+  normalizeRequestedAssistantResponse,
+  sanitizeProcessThoughtText,
+  stripThinkingTags,
+} from "./chat-formatting";
+import { kickOffGoalLoop, maybeScheduleGoalIteration } from "./chat-goal-runtime";
 import { settlePendingChatFailure } from "./chat-pending-failure";
 import {
   appendAssistantMessage,
@@ -88,6 +82,7 @@ import {
   pendingChatSnapshot,
   pendingChatSnapshots,
   preparePendingMessage,
+  removePendingChatMessagesBySource,
   removePendingChatQueueItem,
   resolveQueuedTurnRouting,
   restorePendingChatQueueState,
@@ -368,12 +363,15 @@ async function finishAbortedChatTurn(
   return response;
 }
 
-function enqueuePendingChatMessage(
+export function enqueuePendingChatMessage(
   request: ChatRequest,
   sessionId: string,
   mode: "queued" | "steering"
 ): ChatResponse {
   const now = Date.now();
+  if (request.source !== GOAL_LOOP_SOURCE) {
+    removePendingChatMessagesBySource(sessionId, GOAL_LOOP_SOURCE);
+  }
   const queue = pendingChatQueues.get(sessionId) || [];
   const clientPendingId =
     typeof request.clientPendingId === "string" && request.clientPendingId.trim().length > 0
@@ -460,7 +458,7 @@ function consumeSteeringMessages(session: InMemoryChatSession): Array<{
   }));
 }
 
-function schedulePendingChatDrain(sessionId: string, delayMs = 0): void {
+export function schedulePendingChatDrain(sessionId: string, delayMs = 0): void {
   if (pendingChatDrainScheduled.has(sessionId)) return;
   pendingChatDrainScheduled.add(sessionId);
   const timer = setTimeout(() => {
@@ -607,6 +605,7 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
       sessionId,
       message: completedPendingResponse,
     });
+    maybeScheduleGoalIteration(sessionId);
     schedulePendingChatDrain(sessionId);
     return;
   }
@@ -669,6 +668,7 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
       schedulePendingChatDrain(sessionId, 1000);
     }
     resolvePendingChatCompletion(next.id, response);
+    maybeScheduleGoalIteration(sessionId);
   } catch (error) {
     log.exception("Queued chat turn failed", error, { sessionId });
     try {
@@ -687,12 +687,15 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
   }
 }
 
-function runChatTurnWithQueueDrain(
+export function runChatTurnWithQueueDrain(
   request: ChatRequest,
-  effectiveSessionId: string
+  effectiveSessionId: string,
+  goalCommand?: SessionGoalCommandResult,
+  goalCommandSideEffectsApplied = false
 ): Promise<ChatResponse> {
+  const isGoalIteration = request.source === GOAL_LOOP_SOURCE;
   const result = chatTurnMutex.run(effectiveSessionId, () =>
-    handleChatTurn(request, effectiveSessionId)
+    handleChatTurn(request, effectiveSessionId, goalCommand, goalCommandSideEffectsApplied)
   );
   const finalized = result.then(
     async (response) => {
@@ -711,6 +714,12 @@ function runChatTurnWithQueueDrain(
       throw error;
     }
   );
+  if (isGoalIteration) {
+    void finalized.then(
+      (response) => recordGoalIterationOutcome(effectiveSessionId, !response.failure),
+      () => recordGoalIterationOutcome(effectiveSessionId, false)
+    );
+  }
   void finalized
     .finally(() => {
       flushDeferredSessionMessages(effectiveSessionId);
@@ -726,7 +735,13 @@ export function applyGoalCommandSideEffects(
   goalAction: SessionGoalCommandResult["action"],
   goal: SessionGoalCommandResult["goal"]
 ): void {
-  if (goalAction === "pause" || goalAction === "block" || goalAction === "clear") {
+  if (
+    goalAction === "pause" ||
+    goalAction === "block" ||
+    goalAction === "complete" ||
+    goalAction === "clear"
+  ) {
+    removePendingChatMessagesBySource(sessionId, GOAL_LOOP_SOURCE);
     void stopActiveChatTurn(sessionId).catch(() => undefined);
     return;
   }
@@ -735,86 +750,6 @@ export function applyGoalCommandSideEffects(
     goal?.status === "active"
   ) {
     kickOffGoalLoop(sessionId, goal);
-  }
-}
-
-function kickOffGoalLoop(sessionId: string, goal: { objective: string }): void {
-  try {
-    const session = getResidentChatSession(sessionId);
-    const sessionLocked = chatTurnMutex.isLocked(sessionId);
-    const hasPending = hasPendingChatMessages(sessionId);
-    if (session && (sessionLocked || hasPending)) {
-      enqueuePendingChatMessage(
-        { message: goal.objective, sessionId, source: GOAL_LOOP_SOURCE, queueMode: "queue" },
-        sessionId,
-        "queued"
-      );
-      schedulePendingChatDrain(sessionId);
-      return;
-    }
-    void runChatTurnWithQueueDrain(
-      { message: goal.objective, sessionId, source: GOAL_LOOP_SOURCE, queueMode: "queue" },
-      sessionId
-    );
-  } catch (error) {
-    log.exception("Goal loop kickoff failed", error, { sessionId });
-  }
-}
-
-function maybeScheduleGoalIteration(sessionId: string): void {
-  try {
-    const goal = getSessionGoal(sessionId);
-    let state = getGoalLoopState(sessionId);
-    if (!goal || goal.status !== "active") {
-      resetGoalLoop(sessionId);
-      return;
-    }
-    if (!state) {
-      state = registerGoalLoopStart(sessionId);
-    }
-    const session = getResidentChatSession(sessionId);
-    const lastAssistant = session?.messages
-      ? [...session.messages].reverse().find((message) => message.role === "assistant")
-      : undefined;
-    if (lastAssistant?.content && goalResponseSignalsDone(lastAssistant.content)) {
-      handleSessionGoalCommand(sessionId, "/goal complete done");
-      resetGoalLoop(sessionId);
-      return;
-    }
-    if (hasPendingChatMessages(sessionId)) {
-      return;
-    }
-    const queuedIteration = (pendingChatQueues.get(sessionId) || []).some((item) =>
-      isGoalIterationMessage(item.content)
-    );
-    if (queuedIteration) {
-      return;
-    }
-    const decision = decideNextGoalIteration({
-      goal,
-      state,
-      limits: readGoalLoopLimits(),
-    });
-    if (!decision.schedule) {
-      resetGoalLoop(sessionId);
-      return;
-    }
-    bumpGoalLoopIteration(sessionId);
-    const iterationPrompt = decision.prompt ?? goalIterationPrompt(goal, state.iterations + 1);
-    const iterationRequest: ChatRequest = {
-      message: iterationPrompt,
-      sessionId,
-      source: GOAL_LOOP_SOURCE,
-      queueMode: "queue",
-    };
-    if (chatTurnMutex.isLocked(sessionId)) {
-      enqueuePendingChatMessage(iterationRequest, sessionId, "queued");
-      schedulePendingChatDrain(sessionId);
-    } else {
-      void runChatTurnWithQueueDrain(iterationRequest, sessionId);
-    }
-  } catch (error) {
-    log.exception("Goal loop iteration scheduling failed", error, { sessionId });
   }
 }
 
@@ -842,15 +777,20 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
 
   const goalCommand = handleSessionGoalCommand(effectiveSessionId, request.message);
   if (goalCommand.handled) {
-    applyGoalCommandSideEffects(effectiveSessionId, goalCommand.action, goalCommand.goal);
-    return {
-      sessionId: effectiveSessionId,
-      message: {
-        role: "assistant",
-        content: goalCommand.response || "",
-        timestamp: new Date().toISOString(),
-      },
-    };
+    const shouldStopImmediately =
+      goalCommand.action === "pause" ||
+      goalCommand.action === "block" ||
+      goalCommand.action === "complete" ||
+      goalCommand.action === "clear";
+    if (shouldStopImmediately) {
+      applyGoalCommandSideEffects(effectiveSessionId, goalCommand.action, goalCommand.goal);
+    }
+    return runChatTurnWithQueueDrain(
+      request,
+      effectiveSessionId,
+      goalCommand,
+      shouldStopImmediately
+    );
   }
 
   const expandedCommand = expandPromptCommand(request.message);
@@ -1145,11 +1085,11 @@ export async function steerPendingChatMessage(
   };
 }
 
-setTimeout(() => restorePersistedPendingChatQueues(), 1200);
-
 async function handleChatTurn(
   request: ChatRequest,
-  effectiveSessionId: string
+  effectiveSessionId: string,
+  goalCommand?: SessionGoalCommandResult,
+  goalCommandSideEffectsApplied = false
 ): Promise<ChatResponse> {
   const { message, agentId, tools = true, channel, userId, source, workspaceDir } = request;
   let useModelRouter = request.useModelRouter === true;
@@ -1329,6 +1269,45 @@ async function handleChatTurn(
   await persistUserMessage();
   persistActiveSessionContext(session);
   await persistChatSessionSnapshot(session, userMessage);
+
+  if (goalCommand) {
+    clearActiveChatTurnAbortController(session.id, turnAbortController);
+    const assistantMessage: ChatMessage = {
+      role: "assistant",
+      content: goalCommand.response || "",
+      timestamp: new Date().toISOString(),
+    };
+    appendAssistantMessage(session, assistantMessage);
+    if (!session.title || shouldRegenerateSessionTitle(session.title)) {
+      session.title = cleanGeneratedSessionTitle(
+        agent?.name,
+        deriveSessionTitleFromTurn(goalCommand.goal?.objective || message)
+      );
+    }
+    await logSessionMessage(session.id, "assistant", assistantMessage.content, {
+      agentId: agent?.id,
+      createdAt: assistantMessage.timestamp,
+      metadata: { source: "chat_goal_command" },
+    });
+    session.persisted = await persistChatSessionSnapshot(session, assistantMessage);
+    if (!goalCommandSideEffectsApplied) {
+      applyGoalCommandSideEffects(session.id, goalCommand.action, goalCommand.goal);
+    }
+    broadcastStatus({
+      status: "idle",
+      timestamp: Date.now(),
+      detail: "Idle",
+      sessionId: session.id,
+      agentId: agent?.id,
+    });
+    return {
+      sessionId: session.id,
+      workspaceDir: session.workspaceDir ?? null,
+      plan: extractLatestSessionPlan(session.id, session.messages),
+      message: assistantMessage,
+      agent: agent ? { id: agent.id, name: agent.name } : undefined,
+    };
+  }
 
   broadcastStatus({
     status: "thinking",
@@ -1629,6 +1608,7 @@ async function handleChatTurn(
         responseContent = recoveredResponse.responseContent;
         toolResults = recoveredResponse.toolResults;
       }
+      responseContent = normalizeRequestedAssistantResponse(message, responseContent);
       let automaticWaitCompleted = false;
       if (!executionFailure) {
         const automaticWait = await awaitSpawnedSubagentResults({

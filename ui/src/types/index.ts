@@ -347,6 +347,8 @@ export interface AgentTransferInfo {
 export interface ChatMessage {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
+  message_id?: string;
+  metadata_deferred?: boolean;
   timestamp?: string;
   thinking?: string;
   tool_calls?: ToolCallInfo[];
@@ -400,6 +402,12 @@ export interface SessionContextUsage {
 
 export type SessionGoalStatus = "active" | "paused" | "blocked" | "complete";
 
+export interface SessionGoalLoopInfo {
+  iterations: number;
+  stopped_reason: string | null;
+  consecutive_failures: number;
+}
+
 export interface SessionGoal {
   sessionId: string;
   objective: string;
@@ -409,6 +417,7 @@ export interface SessionGoal {
   lastStatusNote?: string;
   activeMs?: number;
   lastResumedAt?: string;
+  loop?: SessionGoalLoopInfo | null;
 }
 
 export interface SessionTokenUsage {

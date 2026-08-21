@@ -8,6 +8,8 @@ describe("goal panel visibility and layout", () => {
     expect(source).not.toContain("Loop mode:");
     expect(source).not.toContain("Set a goal");
     expect(source).not.toContain("onSetGoal");
+    expect(source).toContain("Autonomous iterations started in the current loop run");
+    expect(source).not.toContain("Autonomous iterations completed in the current loop run");
   });
 
   test("uses theme tokens instead of the hardcoded dark palette", async () => {

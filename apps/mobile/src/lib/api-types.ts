@@ -900,6 +900,28 @@ export interface SessionPlanSnapshot {
   source?: string;
 }
 
+export type MobileSessionGoalStatus = "active" | "paused" | "blocked" | "complete";
+
+export interface MobileSessionGoalLoop {
+  iterations: number;
+  stoppedReason: string | null;
+  consecutiveFailures: number;
+}
+
+export interface MobileSessionGoal {
+  sessionId: string;
+  objective: string;
+  status: MobileSessionGoalStatus;
+  createdAt: string;
+  updatedAt: string;
+  lastStatusNote?: string;
+  activeMs?: number;
+  lastResumedAt?: string;
+  loop: MobileSessionGoalLoop | null;
+}
+
+export type MobileSessionGoalAction = "pause" | "resume" | "complete" | "clear";
+
 export interface SessionDetailSummary {
   id: string;
   title: string | null;

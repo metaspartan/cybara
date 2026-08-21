@@ -5,22 +5,46 @@ import {
   handleSessionGoalCommand,
   type SessionGoal,
 } from "../core/session-goals";
+import { getGoalLoopState, type GoalLoopStopReason } from "../core/session-goal-loop";
 import type { RouteHandler } from "./routes/_shared";
+
+interface SessionGoalWithLoop extends SessionGoal {
+  loop: {
+    iterations: number;
+    stopped_reason: GoalLoopStopReason | null;
+    consecutive_failures: number;
+  } | null;
+}
 
 function goalNote(body: unknown): string {
   const data = (body || {}) as { note?: unknown };
   return typeof data.note === "string" ? data.note.trim() : "";
 }
 
+function goalWithLoop(goal: SessionGoal | null | undefined): SessionGoalWithLoop | null {
+  if (!goal) return null;
+  const loop = getGoalLoopState(goal.sessionId);
+  return {
+    ...goal,
+    loop: loop
+      ? {
+          iterations: loop.iterations,
+          stopped_reason: loop.stopReason ?? null,
+          consecutive_failures: loop.consecutiveFailures,
+        }
+      : null,
+  };
+}
+
 function goalMutationResult(result: {
   handled: boolean;
   response?: string;
   goal?: SessionGoal | null;
-}): { success: boolean; error?: string; goal: SessionGoal | null; response?: string } {
+}): { success: boolean; error?: string; goal: SessionGoalWithLoop | null; response?: string } {
   return {
     success: result.handled,
     error: result.handled ? undefined : "Session goal operation failed.",
-    goal: result.goal ?? null,
+    goal: goalWithLoop(result.goal),
     response: result.response,
   };
 }
@@ -28,7 +52,7 @@ function goalMutationResult(result: {
 export const sessionGoalRoutes: Record<string, RouteHandler> = {
   "GET /api/sessions/:sessionId/goal": async (_body, params) => {
     const sessionId = params!.sessionId;
-    return { success: true, sessionId, goal: getSessionGoal(sessionId) ?? null };
+    return { success: true, sessionId, goal: goalWithLoop(getSessionGoal(sessionId)) };
   },
   "POST /api/sessions/:sessionId/goal": async (body, params) => {
     const sessionId = params!.sessionId;
@@ -40,7 +64,7 @@ export const sessionGoalRoutes: Record<string, RouteHandler> = {
     return {
       success: result.handled,
       error: result.handled ? undefined : "Failed to set goal.",
-      goal: result.goal ?? null,
+      goal: goalWithLoop(result.goal),
       response: result.response,
     };
   },

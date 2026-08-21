@@ -42,6 +42,8 @@ export interface SessionPlanTimelineEntry extends SessionPlanSnapshot {
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  message_id?: string;
+  metadata_deferred?: boolean;
   timestamp?: string;
   worked_duration_ms?: number;
   tool_calls?: ToolCall[];

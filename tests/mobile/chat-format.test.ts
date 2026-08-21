@@ -10,6 +10,7 @@ import {
   formatMobileWorkedDuration,
   hasUnicodeTextFallback,
   latestVisibleChatMessages,
+  mobileGoalIterationNumber,
   shouldUseSelectableNativeText,
   splitMessageContent,
   splitUnicodeTextRuns,
@@ -60,6 +61,22 @@ describe("mobile chat formatting", () => {
 
   test("hides system messages without changing gateway message order", () => {
     expect(visibleChatMessages(messages)).toEqual([messages[1]]);
+  });
+
+  test("recognizes autonomous goal prompts for compact native iteration rows", () => {
+    expect(
+      mobileGoalIterationNumber({
+        role: "user",
+        content: "  [autonomous goal iteration 19]\nContinue working on the objective.",
+      })
+    ).toBe(19);
+    expect(mobileGoalIterationNumber({ role: "user", content: "Continue working" })).toBeNull();
+    expect(
+      mobileGoalIterationNumber({
+        role: "assistant",
+        content: "[autonomous goal iteration 2]",
+      })
+    ).toBeNull();
   });
 
   test("keeps only the latest visible chat messages for mobile rendering", () => {
@@ -244,8 +261,18 @@ describe("mobile chat formatting", () => {
       role: "assistant",
       content: "Done",
       toolCalls: [
-        { id: "read-1", name: "read", status: "completed", args: { path: "a.ts" } },
-        { id: "read-2", name: "read", status: "completed", args: { path: "a.ts" } },
+        {
+          id: "read-1",
+          name: "read",
+          status: "completed",
+          args: { path: "a.ts" },
+        },
+        {
+          id: "read-2",
+          name: "read",
+          status: "completed",
+          args: { path: "a.ts" },
+        },
       ],
     });
 

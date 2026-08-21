@@ -101,6 +101,7 @@ import {
   writeCachedMobileOptimisticTranscriptMessage,
 } from "./dashboardOptimisticTranscript";
 import { mobileTranscriptHasMixedAuthors } from "./dashboardMessageAuthors";
+import { MobileGoalCard } from "./dashboardGoal";
 import {
   clearCachedMobileOptimisticPendingMessages,
   mergeMobilePendingMessages,
@@ -1529,6 +1530,7 @@ export function SessionDetailPanel({
         {loadError ? <EmptyState label="Session unavailable" detail={loadError} /> : null}
         {detail ? (
           <>
+            <MobileGoalCard api={api} sessionId={sessionId} working={sessionActive} />
             {sessionActive && detail.plan ? <MobilePlanSummaryCard plan={detail.plan} /> : null}
             {visibleMessages.map((message, index) => (
               <ChatMessageRow

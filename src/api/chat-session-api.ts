@@ -22,6 +22,7 @@ import {
   stripSessionTitleAgentPrefix,
 } from "../core/session-title";
 import { getRunBySessionKey } from "../core/subagent-registry";
+import { getActiveSessionRunId } from "../core/session-event-ledger";
 import { getSubagentSession } from "../core/tools/handlers/index";
 import { getRateLimitStatus } from "../core/tools/index";
 import { applyActiveAgentToSession } from "./chat-agent-prompt";
@@ -63,6 +64,11 @@ export {
 interface PersistedSessionMemoEntry {
   fingerprint: string;
   loaded: Awaited<ReturnType<typeof loadPersistedSession>>;
+  recoveredMessages?: ChatMessage[];
+}
+
+export interface ChatSessionLoadOptions {
+  deferHistoricalMetadata?: boolean;
 }
 
 const persistedSessionLoadMemo = new Map<string, PersistedSessionMemoEntry>();
@@ -71,8 +77,9 @@ const persistedSessionFingerprintStatement = db.prepare(
 );
 
 async function loadPersistedSessionMemoized(
-  sessionId: string
-): Promise<Awaited<ReturnType<typeof loadPersistedSession>>> {
+  sessionId: string,
+  options: ChatSessionLoadOptions = {}
+): Promise<PersistedSessionMemoEntry> {
   const row = persistedSessionFingerprintStatement.get(sessionId) as {
     count: number;
     metaBytes: number;
@@ -80,15 +87,38 @@ async function loadPersistedSessionMemoized(
     maxCreated: string;
   };
   const fingerprint = `${row.count}:${row.metaBytes}:${row.contentBytes}:${row.maxCreated}`;
-  const existing = persistedSessionLoadMemo.get(sessionId);
-  if (existing?.fingerprint === fingerprint) return existing.loaded;
-  const loaded = await loadPersistedSession(sessionId);
+  const memoKey = `${sessionId}:${options.deferHistoricalMetadata ? "deferred" : "full"}`;
+  const existing = persistedSessionLoadMemo.get(memoKey);
+  if (existing?.fingerprint === fingerprint) return existing;
+  const loaded = await loadPersistedSession(sessionId, {
+    deferHistoricalMetadata: options.deferHistoricalMetadata,
+  });
   if (persistedSessionLoadMemo.size >= 256) persistedSessionLoadMemo.clear();
-  persistedSessionLoadMemo.set(sessionId, { fingerprint, loaded });
-  return loaded;
+  const entry = { fingerprint, loaded };
+  persistedSessionLoadMemo.set(memoKey, entry);
+  return entry;
 }
 
-export async function getSession(sessionId: string) {
+async function recoverPersistedSessionMemoized(
+  sessionId: string,
+  entry: PersistedSessionMemoEntry,
+  options: ChatSessionLoadOptions = {}
+): Promise<ChatMessage[]> {
+  const persisted = entry.loaded;
+  if (!persisted) return [];
+  const activeRunId = getActiveSessionRunId(sessionId);
+  if (!activeRunId && entry.recoveredMessages) return entry.recoveredMessages;
+  const recoveredMessages = await recoverInterruptedSessionMessages(
+    sessionId,
+    persisted.agentId,
+    persisted.messages,
+    { hydrateExistingRuns: !options.deferHistoricalMetadata }
+  );
+  if (!getActiveSessionRunId(sessionId)) entry.recoveredMessages = recoveredMessages;
+  return recoveredMessages;
+}
+
+export async function getSession(sessionId: string, options: ChatSessionLoadOptions = {}) {
   const session = getResidentChatSession(sessionId);
   if (session) {
     const modelMetadata = resolveSessionModelMetadata(session.agentId);
@@ -176,12 +206,13 @@ export async function getSession(sessionId: string) {
   }
 
   const indexed = persistedSessionIndex.get(sessionId);
-  const persisted = await loadPersistedSessionMemoized(sessionId);
+  const persistedEntry = await loadPersistedSessionMemoized(sessionId, options);
+  const persisted = persistedEntry.loaded;
   if (persisted) {
-    const recoveredMessages = await recoverInterruptedSessionMessages(
+    const recoveredMessages = await recoverPersistedSessionMemoized(
       sessionId,
-      persisted.agentId,
-      persisted.messages
+      persistedEntry,
+      options
     );
     const modelMetadata = indexed?.modelMetadata ?? resolveSessionModelMetadata(persisted.agentId);
     const resolvedTitle = shouldRegenerateSessionTitle(persisted.title)
@@ -309,18 +340,24 @@ export async function updateSessionAgent(
   };
 }
 
-export async function getSessionMessages(sessionId: string): Promise<ChatMessage[]> {
-  const session = await getSession(sessionId);
+export async function getSessionMessages(
+  sessionId: string,
+  options: ChatSessionLoadOptions = {}
+): Promise<ChatMessage[]> {
+  const session = await getSession(sessionId, options);
   if (!session) return [];
   if ("isSubagent" in session && session.isSubagent === true) return session.messages || [];
-  const persisted = await loadPersistedSessionMemoized(sessionId);
+  const persistedEntry = await loadPersistedSessionMemoized(sessionId, options);
+  const persisted = persistedEntry.loaded;
   if (!persisted) return session.messages || [];
-  const recoveredMessages = await recoverInterruptedSessionMessages(
+  const recoveredMessages = await recoverPersistedSessionMemoized(
     sessionId,
-    persisted.agentId,
-    persisted.messages
+    persistedEntry,
+    options
   );
-  return mergeSessionTranscriptMessages(recoveredMessages, session.messages || []);
+  return mergeSessionTranscriptMessages(recoveredMessages, session.messages || [], {
+    preservePersistedMetadata: options.deferHistoricalMetadata,
+  });
 }
 
 function normalizeSessionPageOptions(options?: { limit?: number; offset?: number }): {

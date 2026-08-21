@@ -22,6 +22,10 @@ console.log("transformers-worker-asset-ok");
         { cwd: process.cwd() }
       );
       expect(build.exitCode).toBe(0);
+      if (process.platform === "darwin") {
+        const sign = Bun.spawnSync(["codesign", "--force", "--sign", "-", binary]);
+        expect(sign.exitCode).toBe(0);
+      }
       const run = Bun.spawnSync([binary], { cwd: directory });
       expect(run.exitCode).toBe(0);
       expect(run.stdout.toString()).toContain("transformers-worker-asset-ok");

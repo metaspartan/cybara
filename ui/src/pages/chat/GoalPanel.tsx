@@ -120,6 +120,13 @@ export function GoalPanel({
   const canPause = isActive;
   const canComplete = goal.status !== "complete";
   const looping = isActive && working;
+  const loopIterations =
+    typeof goal.loop?.iterations === "number" && goal.loop.iterations > 0
+      ? goal.loop.iterations
+      : null;
+  const checkpointStopped =
+    !!goal.loop?.stopped_reason &&
+    ["max_iterations", "max_duration", "error"].includes(goal.loop.stopped_reason);
 
   const renderActions = () => (
     <>
@@ -198,6 +205,22 @@ export function GoalPanel({
           <Clock className="h-3 w-3" />
           {formatElapsed(elapsedMs)}
         </span>
+        {loopIterations ? (
+          <span
+            className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-[var(--text-secondary)] tabular-nums"
+            title="Autonomous iterations started in the current loop run"
+          >
+            It {loopIterations}
+          </span>
+        ) : null}
+        {checkpointStopped ? (
+          <span
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-400/25 bg-amber-400/10 px-1.5 py-px text-[10px] font-medium text-amber-300"
+            title="The loop paused for a checkpoint; press Resume to keep working"
+          >
+            Checkpoint
+          </span>
+        ) : null}
         {looping ? (
           <span className="inline-flex shrink-0 items-center gap-1 text-[10px] text-emerald-300/80">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -237,6 +260,22 @@ export function GoalPanel({
           <Clock className="h-3 w-3" />
           {formatElapsed(elapsedMs)}
         </span>
+        {loopIterations ? (
+          <span
+            className="inline-flex shrink-0 items-center gap-1 font-mono text-[11px] text-[var(--text-secondary)] tabular-nums"
+            title="Autonomous iterations started in the current loop run"
+          >
+            It {loopIterations}
+          </span>
+        ) : null}
+        {checkpointStopped ? (
+          <span
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-400/25 bg-amber-400/10 px-1.5 py-px text-[10px] font-medium text-amber-300"
+            title="The loop paused for a checkpoint; press Resume to keep working"
+          >
+            Checkpoint
+          </span>
+        ) : null}
         {looping ? (
           <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-emerald-300/80">
             <Loader2 className="h-3 w-3 animate-spin" />

@@ -9,6 +9,78 @@ import {
 import { profile, systemPromptFixture } from "./api-client.fixture";
 
 describe("mobile API client", () => {
+  test("reads and controls persistent session goals through scoped routes", async () => {
+    const calls: Array<{ method: string; path: string }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input, init) => {
+      const url = new URL(String(input));
+      const method = init?.method || "GET";
+      calls.push({ method, path: url.pathname });
+      if (url.pathname.endsWith("/pause")) {
+        return Response.json({
+          success: true,
+          goal: {
+            session_id: "goal/session",
+            objective: "Ship mobile goal parity",
+            status: "paused",
+            created_at: "2026-08-21T10:00:00.000Z",
+            updated_at: "2026-08-21T10:03:00.000Z",
+            active_ms: 180000,
+            last_status_note: "waiting",
+            loop: {
+              iterations: 12,
+              stopped_reason: "paused",
+              consecutive_failures: 0,
+            },
+          },
+        });
+      }
+      if (url.pathname.endsWith("/clear")) {
+        return Response.json({ success: true, goal: null });
+      }
+      return Response.json({
+        success: true,
+        goal: {
+          sessionId: "goal/session",
+          objective: "Ship mobile goal parity",
+          status: "active",
+          createdAt: "2026-08-21T10:00:00.000Z",
+          updatedAt: "2026-08-21T10:02:00.000Z",
+          activeMs: 120000,
+          lastResumedAt: "2026-08-21T10:01:00.000Z",
+          loop: {
+            iterations: 12,
+            stopped_reason: null,
+            consecutive_failures: 0,
+          },
+        },
+      });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.sessionGoal("goal/session")).resolves.toMatchObject({
+        sessionId: "goal/session",
+        status: "active",
+        loop: { iterations: 12, stoppedReason: null, consecutiveFailures: 0 },
+      });
+      await expect(api.updateSessionGoal("goal/session", "pause")).resolves.toMatchObject({
+        status: "paused",
+        activeMs: 180000,
+        lastStatusNote: "waiting",
+        loop: { stoppedReason: "paused" },
+      });
+      await expect(api.updateSessionGoal("goal/session", "clear")).resolves.toBeNull();
+      expect(calls).toEqual([
+        { method: "GET", path: "/api/sessions/goal%2Fsession/goal" },
+        { method: "POST", path: "/api/sessions/goal%2Fsession/goal/pause" },
+        { method: "POST", path: "/api/sessions/goal%2Fsession/goal/clear" },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("preserves every persisted tool call in a long chat response", async () => {
     const originalFetch = globalThis.fetch;
     const toolCalls = Array.from({ length: 32 }, (_, index) => ({

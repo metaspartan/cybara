@@ -165,7 +165,8 @@ describe("mobile: chat management", () => {
     const formatter = read("lib/chat-format.ts");
 
     expect(formatter).toContain("export function extractMobileMarkdownImages");
-    expect(chat).toContain("const markdown = extractMobileMarkdownImages(message.content");
+    expect(chat).toContain('presentProviderProtocolText(message.content || "").content');
+    expect(chat).toContain("const markdown = extractMobileMarkdownImages(presentedContent)");
     expect(chat).toContain("mediaUrl(image.filePath)");
     expect(chat).toContain("new Set([...markdownImageUris, ...toolImageUris])");
     expect(chat).toContain("content = markdown.content");

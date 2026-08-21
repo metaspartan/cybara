@@ -290,6 +290,8 @@ const EVIDENCE_REQUEST_PATTERN = new RegExp(
 );
 const EVIDENCE_REQUEST_TARGET_PATTERN =
   /\b(?:app|application|build|chat|cli|code|codebase|file|gateway|implementation|project|provider|repo|repository|session|site|system|test|tool|tui|ui|workspace)\b|https?:\/\//i;
+const SELF_CONTAINED_ARITHMETIC_REQUEST_PATTERN =
+  /\b(?:add|subtract|multiply|divide)\s+-?\d+(?:\.\d+)?\b[\s\S]*\b(?:number|sum|total)\b/i;
 
 function successfulToolCalls(toolCalls: ToolCallResultLike[]): ToolCallResultLike[] {
   return toolCalls.filter(isSuccessfulToolCall);
@@ -302,6 +304,7 @@ export function isEvidenceToolCall(toolCall: ToolCallResultLike): boolean {
 export function requiresToolEvidenceForMessage(message: string): boolean {
   const request = message.trim();
   if (!request || LITERAL_COMPLETION_REQUEST_PATTERN.test(request)) return false;
+  if (SELF_CONTAINED_ARITHMETIC_REQUEST_PATTERN.test(request)) return false;
   if (
     EXPLICIT_PLANNING_REQUEST_PATTERN.test(request) &&
     !PLANNING_FOLLOW_THROUGH_PATTERN.test(request)

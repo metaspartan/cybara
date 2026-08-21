@@ -4,11 +4,11 @@
   "version": "1.0.2175",
   "type": "module",
   "scripts": {
-    "dev": "bunx vite",
+    "dev": "bunx --bun vite",
     "lint": "bun eslint --quiet \"src/**/*.{ts,tsx}\"",
     "typecheck": "bun ./node_modules/@typescript/native/bin/tsc -b",
-    "build": "bun ./node_modules/@typescript/native/bin/tsc -b && bunx vite build",
-    "preview": "bunx vite preview"
+    "build": "bun ./node_modules/@typescript/native/bin/tsc -b && bunx --bun vite build",
+    "preview": "bunx --bun vite preview"
   },
   "dependencies": {
     "@tanstack/react-query": "5.101.2",

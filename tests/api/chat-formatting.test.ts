@@ -1,9 +1,29 @@
 import { describe, expect, test } from "bun:test";
 
-import { sanitizeProcessThoughtText, stripThinkingTags } from "../../src/api/chat-formatting";
+import {
+  normalizeRequestedAssistantResponse,
+  sanitizeProcessThoughtText,
+  stripThinkingTags,
+} from "../../src/api/chat-formatting";
 import { sanitizeSessionMessages } from "../../src/api/routes/_shared";
+import { PROVIDER_PROTOCOL_RECOVERY_MESSAGE } from "../../shared/provider-protocol";
 
 describe("chat response formatting", () => {
+  test("removes a valid JSON fence when the user requires strict JSON", () => {
+    expect(
+      normalizeRequestedAssistantResponse(
+        "Fetch the fixture and reply as strict JSON with keys quote and source only.",
+        '```json\n{"quote":"Aurora","source":"fixture://article"}\n```'
+      )
+    ).toBe('{"quote":"Aurora","source":"fixture://article"}');
+    expect(normalizeRequestedAssistantResponse("Explain this JSON.", "```json\n{}\n```")).toBe(
+      "```json\n{}\n```"
+    );
+    expect(
+      normalizeRequestedAssistantResponse("Reply as strict JSON.", "```json\n{bad}\n```")
+    ).toBe("```json\n{bad}\n```");
+  });
+
   test("extracts thinking and shows only final content", () => {
     const result = stripThinkingTags(
       "<think>Check the files first.</think>\n<final>Done with the fix.</final>"
@@ -125,6 +145,17 @@ describe("chat response formatting", () => {
     expect(message.process_activities?.map((activity) => activity.text)).toEqual([
       "Inspecting the repository structure.",
     ]);
+  });
+
+  test("replaces protocol-only stored assistant turns with a retry message", () => {
+    const [message] = sanitizeSessionMessages([
+      {
+        role: "assistant",
+        content: "<｜DSML｜tool:string:1400 malformed transport payload",
+      },
+    ]);
+
+    expect(message.content).toBe(PROVIDER_PROTOCOL_RECOVERY_MESSAGE);
   });
 
   test("repairs malformed completed responses when sessions are loaded", () => {

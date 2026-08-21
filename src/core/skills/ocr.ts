@@ -1,5 +1,7 @@
 import { windowsOcrText } from "../ocr-windows";
 
+const OCR_PROCESS_TIMEOUT_MS = 5_000;
+
 export async function handleOcr(args: Record<string, unknown>): Promise<unknown> {
   const path = args.path as string;
   const language = (args.language as string) || "eng";
@@ -17,6 +19,7 @@ export async function handleOcr(args: Record<string, unknown>): Promise<unknown>
     const result = Bun.spawnSync(["tesseract", path, "stdout", "-l", language], {
       stdout: "pipe",
       stderr: "pipe",
+      timeout: OCR_PROCESS_TIMEOUT_MS,
     });
 
     if (result.exitCode === 0) {
@@ -57,6 +60,7 @@ export async function handleOcr(args: Record<string, unknown>): Promise<unknown>
     const result = Bun.spawnSync(["osascript", "-e", script, path], {
       stdout: "pipe",
       stderr: "pipe",
+      timeout: OCR_PROCESS_TIMEOUT_MS,
     });
 
     if (result.exitCode === 0) {
@@ -107,6 +111,7 @@ print(extract_text(sys.argv[1]))
     const result = Bun.spawnSync(["python3", "-c", pythonScript, path], {
       stdout: "pipe",
       stderr: "pipe",
+      timeout: OCR_PROCESS_TIMEOUT_MS,
     });
 
     if (result.exitCode === 0) {

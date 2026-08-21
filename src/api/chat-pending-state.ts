@@ -4,6 +4,7 @@ import {
   setSessionPendingChatMessages,
 } from "../core/status";
 import { hasImages } from "../core/llm/image-blocks";
+import { GOAL_LOOP_SOURCE } from "../core/session-goal-loop";
 import {
   deletePersistedPendingChatItem,
   loadPersistedPendingChatItems,
@@ -12,6 +13,7 @@ import {
   type InMemoryChatSession,
   parseIsoTimestampMs,
   pendingChatQueues,
+  rejectPendingChatCompletion,
   type PendingChatItem,
 } from "./chat-runtime-state";
 import type { ChatMessage } from "./chat-types";
@@ -75,7 +77,7 @@ export function pendingChatSnapshot(item: PendingChatItem): PendingChatMessageSn
 
 export function pendingChatSnapshots(sessionId: string): PendingChatMessageSnapshot[] {
   return (pendingChatQueues.get(sessionId) || [])
-    .filter((item) => item.materialized !== true)
+    .filter((item) => item.materialized !== true && item.request.source !== GOAL_LOOP_SOURCE)
     .map(pendingChatSnapshot);
 }
 
@@ -132,6 +134,21 @@ export function removePendingChatQueueItem(
   if (remaining.length > 0) pendingChatQueues.set(sessionId, remaining);
   else pendingChatQueues.delete(sessionId);
   return syncPendingChatStatus(sessionId);
+}
+
+export function removePendingChatMessagesBySource(sessionId: string, source: string): number {
+  const queue = pendingChatQueues.get(sessionId) || [];
+  const removed = queue.filter((item) => item.request.source === source);
+  if (removed.length === 0) return 0;
+  const remaining = queue.filter((item) => item.request.source !== source);
+  if (remaining.length > 0) pendingChatQueues.set(sessionId, remaining);
+  else pendingChatQueues.delete(sessionId);
+  for (const item of removed) {
+    deletePersistedPendingChatItem(item.id);
+    rejectPendingChatCompletion(item.id, new Error("Pending chat message was superseded"));
+  }
+  syncPendingChatStatus(sessionId);
+  return removed.length;
 }
 
 export function preparePendingMessage(

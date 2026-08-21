@@ -4,6 +4,7 @@ import {
   getChatFontSizePixels,
   getChatLineHeight,
 } from "cybara-shared/chat-appearance";
+import { presentProviderProtocolText } from "cybara-shared/provider-protocol";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -45,6 +46,7 @@ import {
   groupMobileActivities,
   hasUnicodeTextFallback,
   mobileCodeLineCount,
+  mobileGoalIterationNumber,
   type MarkdownInline,
   type MobileActivityGroupKind,
   type MobileWorkActivity,
@@ -647,7 +649,25 @@ export function ChatMessageRow({
   onRevert?: (message: SessionDetailSummary["messages"][number]) => void;
   mediaUrl?: (filePath: string) => string;
 }) {
-  const markdown = extractMobileMarkdownImages(message.content || "");
+  const goalIteration = mobileGoalIterationNumber(message);
+  if (goalIteration !== null) {
+    return (
+      <View
+        accessibilityLabel={`Goal iteration ${goalIteration}`}
+        accessible
+        style={styles.goalIterationRow}
+      >
+        <View style={styles.goalIterationLine} />
+        <Text style={styles.goalIterationText}>Goal iteration {goalIteration}</Text>
+        <View style={styles.goalIterationLine} />
+      </View>
+    );
+  }
+  const presentedContent =
+    message.role === "user"
+      ? message.content || ""
+      : presentProviderProtocolText(message.content || "").content;
+  const markdown = extractMobileMarkdownImages(presentedContent);
   const markdownImageUris = markdown.images.flatMap((image) => {
     const uri = image.filePath && mediaUrl ? mediaUrl(image.filePath) : image.source;
     return uri ? [uri] : [];
@@ -700,7 +720,7 @@ export function ChatMessageRow({
         ) : null}
         {fileChanges ? <MobileFileChangesCard summary={fileChanges} /> : null}
         <MessageActionsRow
-          content={message.content || ""}
+          content={presentedContent}
           onAddToChat={onAddToChat}
           timestampLabel={message.timestamp ? relativeTimestamp(message.timestamp) : null}
         />
@@ -725,7 +745,7 @@ export function ChatMessageRow({
         </View>
         <MessageActionsRow
           alignEnd
-          content={message.content || ""}
+          content={presentedContent}
           onAddToChat={onAddToChat}
           timestampLabel={message.timestamp ? relativeTimestamp(message.timestamp) : null}
           onRevert={onRevert ? () => onRevert(message) : undefined}

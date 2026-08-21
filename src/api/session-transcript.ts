@@ -1,5 +1,9 @@
 import type { ChatMessage } from "./chat";
 
+export interface SessionTranscriptMergeOptions {
+  preservePersistedMetadata?: boolean;
+}
+
 function messageIdentity(message: ChatMessage): string {
   return `${message.role}\u0000${message.run_id || ""}\u0000${message.content}`;
 }
@@ -35,7 +39,8 @@ function removeSupersededInterruptedMessages(
 
 export function mergeSessionTranscriptMessages(
   persistedMessages: ChatMessage[],
-  activeMessages: ChatMessage[]
+  activeMessages: ChatMessage[],
+  options: SessionTranscriptMergeOptions = {}
 ): ChatMessage[] {
   const reconciled = removeSupersededInterruptedMessages(persistedMessages, activeMessages);
   if (reconciled.persisted.length === 0) return reconciled.active;
@@ -43,8 +48,12 @@ export function mergeSessionTranscriptMessages(
   const compacted = reconciled.active.some(
     (message) => message.role === "system" && message.content.includes("Context Summary")
   );
-  if (compacted) {
-    return mergePersistedFirst(reconciled.persisted, reconciled.active);
+  if (compacted || options.preservePersistedMetadata) {
+    return mergePersistedFirst(
+      reconciled.persisted,
+      reconciled.active,
+      options.preservePersistedMetadata === true
+    );
   }
 
   return mergeActiveFirst(reconciled.persisted, reconciled.active);
@@ -52,7 +61,8 @@ export function mergeSessionTranscriptMessages(
 
 function mergePersistedFirst(
   persistedMessages: ChatMessage[],
-  activeMessages: ChatMessage[]
+  activeMessages: ChatMessage[],
+  preservePersistedMetadata = false
 ): ChatMessage[] {
   const activeByIdentity = new Map<string, ChatMessage[]>();
   for (const message of activeMessages) {
@@ -67,6 +77,20 @@ function mergePersistedFirst(
     const matches = activeByIdentity.get(messageIdentity(persisted));
     const active = matches?.shift();
     if (!active) return persisted;
+    if (preservePersistedMetadata) {
+      const merged = {
+        ...active,
+        ...persisted,
+        content: persisted.content,
+        timestamp: persisted.timestamp || active.timestamp,
+      };
+      if (persisted.metadata_deferred) {
+        delete merged.thinking;
+        delete merged.tool_calls;
+        delete merged.process_activities;
+      }
+      return merged;
+    }
     return {
       ...persisted,
       ...active,

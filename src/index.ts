@@ -10,6 +10,7 @@ import {
   steerPendingChatMessage,
   stopActiveChatTurn,
 } from "./api/chat";
+import { startPersistedChatRuntimeRecovery } from "./api/chat-runtime-recovery";
 import { getClientIp } from "./api/client-ip";
 import {
   ensureWindowsGatewayFirewallRuleAsync,
@@ -1062,6 +1063,7 @@ function createInitialGatewayServer(hostname: string): ReturnType<typeof Bun.ser
 }
 
 let gatewayServer = createInitialGatewayServer(runtimeHost);
+startPersistedChatRuntimeRecovery();
 if (process.env.CYBARA_GATEWAY_PORT_SIGNAL === "stdout") {
   console.log(gatewayPortSignal(PORT));
 }

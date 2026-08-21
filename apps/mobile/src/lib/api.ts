@@ -23,6 +23,7 @@ import {
   normalizeMemorySearchResults,
   normalizeMessageImages,
   normalizeMessageToolCalls,
+  normalizeMobileSessionGoal,
   normalizeMobileSessionStatusResponse,
   normalizeMobileStatusStreamEvent,
   normalizePendingChatMessages,
@@ -96,6 +97,8 @@ import type {
   MobileMessageImage,
   MobileSteerPendingMessageOptions,
   MobilePendingChatMessage,
+  MobileSessionGoal,
+  MobileSessionGoalAction,
   SessionMessageSummary,
   SessionContextUsage,
   SessionTokenUsage,
@@ -422,6 +425,27 @@ export class CybaraMobileApi {
       await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}`),
       id
     );
+  }
+
+  async sessionGoal(id: string): Promise<MobileSessionGoal | null> {
+    return normalizeMobileSessionGoal(
+      await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}/goal`)
+    );
+  }
+
+  async updateSessionGoal(
+    id: string,
+    action: MobileSessionGoalAction
+  ): Promise<MobileSessionGoal | null> {
+    const response = await this.request<unknown>(
+      `/api/sessions/${encodeURIComponent(id)}/goal/${action}`,
+      { method: "POST" }
+    );
+    const record = asRecord(response);
+    if (record?.success === false) {
+      throw new Error(readString(record, ["error"]) || `Unable to ${action} goal`);
+    }
+    return normalizeMobileSessionGoal(response);
   }
 
   async sessionStatus(id?: string): Promise<MobileSessionStatusResponse> {

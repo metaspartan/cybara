@@ -362,6 +362,42 @@ struct GatewayClient: Sendable {
         try await request("api/mobile/devices/\(id)", method: "DELETE")
     }
 
+    func getSessionGoal(_ sessionId: String) async throws -> GatewaySessionGoalResponse {
+        let data = try await request("api/sessions/" + pathSegment(sessionId) + "/goal")
+        return try JSONDecoder().decode(GatewaySessionGoalResponse.self, from: data)
+    }
+
+    func setSessionGoal(
+        _ sessionId: String,
+        objective: String
+    ) async throws -> GatewayGoalMutationResponse {
+        let payload: [String: Any] = ["objective": objective]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let data = try await request(
+            "api/sessions/" + pathSegment(sessionId) + "/goal",
+            method: "POST",
+            body: body
+        )
+        return try JSONDecoder().decode(GatewayGoalMutationResponse.self, from: data)
+    }
+
+    func updateSessionGoalStatus(
+        _ sessionId: String,
+        action: String,
+        note: String? = nil
+    ) async throws -> GatewayGoalMutationResponse {
+        var body: Data?
+        if let note, !note.isEmpty {
+            body = try JSONSerialization.data(withJSONObject: ["note": note])
+        }
+        let data = try await request(
+            "api/sessions/" + pathSegment(sessionId) + "/goal/" + action,
+            method: "POST",
+            body: body
+        )
+        return try JSONDecoder().decode(GatewayGoalMutationResponse.self, from: data)
+    }
+
     func sendChat(
         message: String,
         sessionId: String?,

@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ChatMessage } from "../../src/api/chat";
-import { tables } from "../../src/core/database";
+import db, { tables } from "../../src/core/database";
 import {
   clearSessionContextState,
   deletePersistedSession,
   listPersistedSessions,
   loadPersistedSession,
+  loadPersistedSessionMessage,
   persistSession,
   persistSessionContextState,
   upsertPersistedSessionMessage,
@@ -15,6 +16,7 @@ import {
   ensureSessionRunId,
   listSessionEvents,
 } from "../../src/core/session-event-ledger";
+import { PROVIDER_PROTOCOL_RECOVERY_MESSAGE } from "../../shared/provider-protocol";
 
 const sessionIds: string[] = [];
 
@@ -23,6 +25,27 @@ afterEach(async () => {
 });
 
 describe("persisted active session context", () => {
+  test("hydrates malformed provider protocol as a retryable response", async () => {
+    const sessionId = `context-provider-protocol-${crypto.randomUUID()}`;
+    sessionIds.push(sessionId);
+    const message: ChatMessage = {
+      role: "assistant",
+      content: "<｜DSML｜tool:string:1400 malformed transport payload",
+    };
+
+    await upsertPersistedSessionMessage(sessionId, "context-agent", message, {
+      stableKey: "provider-protocol-assistant",
+    });
+
+    const persisted = await loadPersistedSession(sessionId);
+    const hydrated = await loadPersistedSessionMessage(
+      sessionId,
+      persisted?.messages[0]?.message_id || ""
+    );
+    expect(persisted?.messages[0]?.content).toBe(PROVIDER_PROTOCOL_RECOVERY_MESSAGE);
+    expect(hydrated?.content).toBe(PROVIDER_PROTOCOL_RECOVERY_MESSAGE);
+  });
+
   test("restores the authoritative worked duration", async () => {
     const sessionId = `context-duration-${crypto.randomUUID()}`;
     sessionIds.push(sessionId);
@@ -184,5 +207,65 @@ describe("persisted active session context", () => {
     const summary = (await listPersistedSessions()).find((session) => session.id === sessionId);
     expect(summary?.lastMessageRole).toBe("assistant");
     expect(summary?.lastMessageContent).toBe("Finished the steered task");
+  });
+
+  test("defers heavy historical metadata while retaining full message text and lazy detail", async () => {
+    const sessionId = `context-deferred-metadata-${crypto.randomUUID()}`;
+    sessionIds.push(sessionId);
+    for (let index = 0; index < 61; index += 1) {
+      await upsertPersistedSessionMessage(
+        sessionId,
+        "context-agent",
+        {
+          role: "assistant",
+          content: `Complete response ${index}`,
+          thinking: `Reasoning ${index}`,
+          process_activities: [
+            {
+              id: `activity-${index}`,
+              phase: "result",
+              text: `Finished work ${index}`,
+              timestamp: index,
+              toolName: "read",
+            },
+          ],
+        },
+        { stableKey: `deferred-message-${index}` }
+      );
+    }
+    db.prepare(
+      "UPDATE session_messages SET metadata = '{malformed' WHERE session_id = ? AND content = ?"
+    ).run(sessionId, "Complete response 1");
+
+    const compact = await loadPersistedSession(sessionId, {
+      deferHistoricalMetadata: true,
+    });
+    const first = compact?.messages[0];
+    expect(compact?.messages).toHaveLength(61);
+    expect(first).toMatchObject({
+      content: "Complete response 0",
+      metadata_deferred: true,
+    });
+    expect(first?.thinking).toBeUndefined();
+    expect(first?.process_activities).toBeUndefined();
+    expect(compact?.messages[1]).toMatchObject({
+      content: "Complete response 1",
+      metadata_deferred: true,
+    });
+    expect(compact?.messages[52]?.metadata_deferred).toBe(true);
+    expect(compact?.messages[53]?.thinking).toBe("Reasoning 53");
+
+    const hydrated = await loadPersistedSessionMessage(sessionId, first?.message_id || "");
+    expect(hydrated).toMatchObject({
+      content: "Complete response 0",
+      thinking: "Reasoning 0",
+      process_activities: [
+        {
+          id: "activity-0",
+          text: "Finished work 0",
+        },
+      ],
+    });
+    expect(hydrated?.metadata_deferred).toBeUndefined();
   });
 });

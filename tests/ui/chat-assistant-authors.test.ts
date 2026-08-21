@@ -41,6 +41,6 @@ describe("assistant author attribution", () => {
     expect(chat).toContain("hasMixedAssistantAuthors(typedMessages)");
     expect(chat).toContain("showAuthorAttribution={transcriptHasMixedAgents}");
     expect(multi).toContain("showAuthorAttribution={hasMixedAssistantAuthors(displayMessages)}");
-    expect(timeline).toContain("showAuthorAttribution && (");
+    expect(timeline).toContain('message.role !== "user" && showAuthorAttribution ? (');
   });
 });

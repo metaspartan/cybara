@@ -1376,6 +1376,11 @@ export const chatApi = {
     }>("/sessions/" + id + (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : ""), {
       signal: options?.signal,
     }),
+  getSessionMessage: (sessionId: string, messageId: string, signal?: AbortSignal) =>
+    fetchApi<ChatMessage>(
+      `/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}`,
+      { signal }
+    ),
   getSessionPlan: (id: string) =>
     fetchApi<{ sessionId: string; plan: SessionPlanSnapshot | null }>("/sessions/" + id + "/plan"),
   getSessionGoal: (sessionId: string) =>
