@@ -2,11 +2,16 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { config } from "../../src/core/config";
 import {
   decideNextGoalIteration,
+  getGoalLoopState,
   goalIterationPrompt,
+  goalResponseSignalBlocked,
   goalResponseSignalsDone,
   isGoalIterationMessage,
+  markGoalLoopStopped,
   readGoalLoopLimits,
+  recordGoalIterationOutcome,
   registerGoalLoopStart,
+  reloadGoalLoopsFromStoreForTests,
   resetGoalLoop,
   resetGoalLoopsForTests,
   type GoalLoopState,
@@ -34,6 +39,15 @@ function activeGoal(overrides: Partial<SessionGoal> = {}): SessionGoal {
   };
 }
 
+function loopState(overrides: Partial<GoalLoopState> = {}): GoalLoopState {
+  return {
+    iterations: 0,
+    startedAtMs: Date.parse("2026-08-18T00:00:00.000Z"),
+    consecutiveFailures: 0,
+    ...overrides,
+  };
+}
+
 describe("goal loop decision", () => {
   const limits = { maxIterations: 4, maxDurationSeconds: 600 };
 
@@ -46,13 +60,12 @@ describe("goal loop decision", () => {
     });
     expect(decision.schedule).toBe(true);
     expect(decision.prompt).toContain("review the repo");
+    expect(decision.prompt).toContain("iteration 1");
+    expect(decision.checkpoint).toBe(false);
   });
 
   test("schedules while active and within caps", () => {
-    const state: GoalLoopState = {
-      iterations: 2,
-      startedAtMs: Date.parse("2026-08-18T00:00:00.000Z"),
-    };
+    const state = loopState({ iterations: 2 });
     const decision = decideNextGoalIteration({
       goal: activeGoal(),
       state,
@@ -61,66 +74,124 @@ describe("goal loop decision", () => {
     });
     expect(decision.schedule).toBe(true);
     expect(decision.prompt).toContain("iteration 3");
+    expect(decision.checkpoint).toBe(false);
   });
 
-  test("stops at max iterations", () => {
-    const state: GoalLoopState = {
-      iterations: 4,
-      startedAtMs: Date.parse("2026-08-18T00:00:00.000Z"),
-    };
+  test("stops at max iterations with a checkpoint flag", () => {
+    const state = loopState({ iterations: 4 });
     const decision = decideNextGoalIteration({
       goal: activeGoal(),
       state,
       limits,
       nowMs: Date.parse("2026-08-18T00:01:00.000Z"),
     });
-    expect(decision).toEqual({ schedule: false, reason: "max_iterations" });
+    expect(decision).toEqual({
+      schedule: false,
+      reason: "max_iterations",
+      checkpoint: true,
+    });
   });
 
-  test("stops past max duration", () => {
-    const state: GoalLoopState = {
-      iterations: 1,
-      startedAtMs: Date.parse("2026-08-18T00:00:00.000Z"),
-    };
+  test("stops past max duration with a checkpoint flag", () => {
+    const state = loopState({ iterations: 1 });
     const decision = decideNextGoalIteration({
       goal: activeGoal(),
       state,
       limits,
       nowMs: Date.parse("2026-08-18T00:20:00.000Z"),
     });
-    expect(decision).toEqual({ schedule: false, reason: "max_duration" });
+    expect(decision).toEqual({
+      schedule: false,
+      reason: "max_duration",
+      checkpoint: true,
+    });
   });
 
   test("stops when the goal is paused, blocked, or complete", () => {
-    const state: GoalLoopState = {
-      iterations: 0,
-      startedAtMs: Date.parse("2026-08-18T00:00:00.000Z"),
-    };
+    const state = loopState();
     expect(
       decideNextGoalIteration({
         goal: activeGoal({ status: "paused" }),
         state,
         limits,
       })
-    ).toEqual({ schedule: false, reason: "paused" });
+    ).toEqual({ schedule: false, reason: "paused", checkpoint: false });
     expect(
       decideNextGoalIteration({
         goal: activeGoal({ status: "blocked" }),
         state,
         limits,
       })
-    ).toEqual({ schedule: false, reason: "blocked" });
+    ).toEqual({ schedule: false, reason: "blocked", checkpoint: false });
     expect(
       decideNextGoalIteration({
         goal: activeGoal({ status: "complete" }),
         state,
         limits,
       })
-    ).toEqual({ schedule: false, reason: "complete" });
+    ).toEqual({ schedule: false, reason: "complete", checkpoint: false });
     expect(decideNextGoalIteration({ goal: undefined, state, limits })).toEqual({
       schedule: false,
       reason: "no_goal",
+      checkpoint: false,
     });
+  });
+
+  test("respects a recorded stop reason until the loop is reset", () => {
+    const registered = registerGoalLoopStart("s1");
+    registered.iterations = 3;
+    markGoalLoopStopped("s1", "max_iterations");
+    const decision = decideNextGoalIteration({
+      goal: activeGoal(),
+      state: getGoalLoopState("s1"),
+      limits,
+    });
+    expect(decision).toEqual({
+      schedule: false,
+      reason: "max_iterations",
+      checkpoint: true,
+    });
+    const fresh = registerGoalLoopStart("s1");
+    const active = decideNextGoalIteration({
+      goal: activeGoal(),
+      state: fresh,
+      limits,
+      nowMs: Date.parse("2026-08-18T00:01:00.000Z"),
+    });
+    expect(active.schedule).toBe(true);
+  });
+
+  test("stops with a checkpoint after repeated consecutive failures", () => {
+    registerGoalLoopStart("s1");
+    recordGoalIterationOutcome("s1", false);
+    recordGoalIterationOutcome("s1", false);
+    recordGoalIterationOutcome("s1", false);
+    const state = getGoalLoopState("s1");
+    expect(state).toBeDefined();
+    const decision = decideNextGoalIteration({
+      goal: activeGoal(),
+      state,
+      limits,
+    });
+    expect(decision.schedule).toBe(false);
+    expect(decision.reason).toBe("error");
+    expect(decision.checkpoint).toBe(true);
+  });
+
+  test("resets the failure streak on a successful iteration", () => {
+    registerGoalLoopStart("s1");
+    recordGoalIterationOutcome("s1", false);
+    recordGoalIterationOutcome("s1", false);
+    recordGoalIterationOutcome("s1", true);
+    recordGoalIterationOutcome("s1", false);
+    const state = getGoalLoopState("s1");
+    const decision = decideNextGoalIteration({
+      goal: activeGoal(),
+      state,
+      limits,
+    });
+    expect(decision.schedule).toBe(true);
+    expect(state?.consecutiveFailures).toBe(1);
   });
 });
 
@@ -130,7 +201,30 @@ describe("goal loop helpers", () => {
     expect(goalResponseSignalsDone("done: finished")).toBe(true);
     expect(goalResponseSignalsDone("Worked on it [done]")).toBe(true);
     expect(goalResponseSignalsDone("<done>true</done>")).toBe(true);
+    expect(goalResponseSignalsDone("Verified the release.\nDONE: all checks passed")).toBe(true);
+    expect(goalResponseSignalsDone("The instructions mention DONE:\nStill working")).toBe(false);
     expect(goalResponseSignalsDone("Still working on it")).toBe(false);
+  });
+
+  test("detects BLOCKED: markers and returns the reason", () => {
+    expect(goalResponseSignalBlocked("BLOCKED: need API credentials")).toBe("need API credentials");
+    expect(goalResponseSignalBlocked("blocked: waiting on the user")).toBe("waiting on the user");
+    expect(goalResponseSignalBlocked("Cannot proceed [blocked]")).toBe("blocked by the agent");
+    expect(goalResponseSignalBlocked("Still making progress")).toBeNull();
+    expect(goalResponseSignalBlocked("DONE: finished")).toBeNull();
+  });
+
+  test("goal iteration prompt includes budget and control tokens", () => {
+    const prompt = goalIterationPrompt(activeGoal(), 4, {
+      maxIterations: 25,
+      maxDurationSeconds: 3600,
+    });
+    expect(prompt).toContain("[autonomous goal iteration 4]");
+    expect(prompt).toContain("up to 25 iterations");
+    expect(prompt).toContain("use tools only when they help");
+    expect(prompt).not.toContain("progress with tools");
+    expect(prompt).toContain("Reply DONE:");
+    expect(prompt).toContain("Reply BLOCKED:");
   });
 
   test("identifies goal iteration messages", () => {
@@ -142,6 +236,24 @@ describe("goal loop helpers", () => {
     const defaults = readGoalLoopLimits();
     expect(defaults.maxIterations).toBeGreaterThan(0);
     expect(defaults.maxDurationSeconds).toBeGreaterThan(0);
+  });
+
+  test("defaults to a continuation budget above the old eight-turn limit", () => {
+    config.set("goal_loop_max_iterations", null);
+    config.set("goal_loop_max_duration_seconds", null);
+    expect(readGoalLoopLimits()).toEqual({ maxIterations: 25, maxDurationSeconds: 3600 });
+  });
+
+  test("persists loop progress across an in-memory reload", () => {
+    registerGoalLoopStart("persisted-loop", 1000);
+    recordGoalIterationOutcome("persisted-loop", false);
+    reloadGoalLoopsFromStoreForTests();
+    expect(getGoalLoopState("persisted-loop")).toEqual({
+      iterations: 0,
+      startedAtMs: 1000,
+      consecutiveFailures: 1,
+      lastIterationAtMs: expect.any(Number),
+    });
   });
 
   test("loop state resets and registers", () => {
@@ -191,6 +303,27 @@ describe("goal elapsed time tracking", () => {
     expect(sessionGoalElapsedMs(resumed!, Date.parse("2099-01-01T00:00:00.000Z"))).toBeGreaterThan(
       frozenElapsed
     );
+  });
+
+  test("/goal continue resumes a paused goal like resume", () => {
+    handleSessionGoalCommand("continue-session", "/goal start refactor the router");
+    handleSessionGoalCommand("continue-session", "/goal pause waiting");
+    const paused = getGoalForTest("continue-session");
+    expect(paused?.status).toBe("paused");
+    const result = handleSessionGoalCommand("continue-session", "/goal continue");
+    expect(result.handled).toBe(true);
+    expect(result.action).toBe("resume");
+    expect(getGoalForTest("continue-session")?.status).toBe("active");
+  });
+
+  test("shorthand goal creation initializes durable loop state", () => {
+    const sessionId = "shorthand-loop-session";
+    handleSessionGoalCommand(sessionId, "/goal refactor the router");
+    expect(getGoalLoopState(sessionId)).toEqual({
+      iterations: 0,
+      startedAtMs: expect.any(Number),
+      consecutiveFailures: 0,
+    });
   });
 });
 

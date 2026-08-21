@@ -45,7 +45,10 @@ import {
 import { normalizeModelToolCalls } from "./llm/model-dialect";
 import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
 import { toOpenAIChatHistory } from "./llm/provider-history";
-import { supportsForcedToolChoice } from "./llm/provider-model-transport";
+import {
+  supportsExplicitToolChoice,
+  supportsForcedToolChoice,
+} from "./llm/provider-model-transport";
 import {
   coerceReasoningEffort,
   normalizeReasoningEffort,
@@ -160,7 +163,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
               function: { name: requiredToolName },
             }
           : "required";
-      } else {
+      } else if (supportsExplicitToolChoice(providerConfig)) {
         requestBody.tool_choice = "auto";
       }
     }
@@ -473,7 +476,9 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       const loopTools = toolsAfterWebResearchBudget(tools, webResearchExhausted);
       if (loopTools.length > 0) {
         loopRequestBody.tools = loopTools.map((tool) => toOpenAICompatTool(tool, providerConfig));
-        loopRequestBody.tool_choice = "auto";
+        if (supportsExplicitToolChoice(providerConfig)) {
+          loopRequestBody.tool_choice = "auto";
+        }
       }
 
       this.compactOpenAIRequestMessagesForContext(loopRequestBody, contextWindowTokens);

@@ -55,6 +55,7 @@ import {
 import type { ChatLightboxImage } from "./ChatImageLightbox";
 import { ChatImageLightbox } from "./ChatImageLightbox";
 import { ChatMessageTimeline } from "./ChatMessageTimeline";
+import { isVisibleChatTranscriptMessage } from "./goalLoopPresentation";
 import { ChatReasoningControl } from "./ChatReasoningControl";
 import type { ChatMessage } from "./chatModel";
 import {
@@ -363,14 +364,19 @@ function MultiChatPane({
     0,
     displayMessages.length - MULTI_CHAT_RENDERED_MESSAGE_LIMIT
   );
-  const visibleEntries = useMemo(
-    () =>
-      displayMessages.slice(firstRenderedIndex).map((message, offset) => ({
-        message: message as ChatMessage,
-        originalIndex: firstRenderedIndex + offset,
-      })),
-    [displayMessages, firstRenderedIndex]
-  );
+  const visibleEntries = useMemo(() => {
+    const entries: Array<{ message: ChatMessage; originalIndex: number }> = [];
+    for (
+      let originalIndex = firstRenderedIndex;
+      originalIndex < displayMessages.length;
+      originalIndex += 1
+    ) {
+      const message = displayMessages[originalIndex] as ChatMessage | undefined;
+      if (!message || !isVisibleChatTranscriptMessage(message)) continue;
+      entries.push({ message, originalIndex });
+    }
+    return entries;
+  }, [displayMessages, firstRenderedIndex]);
 
   useEffect(() => {
     if (!autoFollow) return;

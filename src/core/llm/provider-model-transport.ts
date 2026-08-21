@@ -15,5 +15,14 @@ export function resolveProviderModelApiFamily(
 
 export function supportsForcedToolChoice(providerId: string | undefined): boolean {
   const normalized = (providerId || "").trim().toLowerCase();
-  return normalized !== "opencode-go" && normalized !== "opencode-go-zen";
+  return (
+    supportsExplicitToolChoice(providerId) &&
+    normalized !== "opencode-go" &&
+    normalized !== "opencode-go-zen"
+  );
+}
+
+export function supportsExplicitToolChoice(providerId: string | undefined): boolean {
+  const normalized = (providerId || "").trim().toLowerCase();
+  return normalized !== "inference";
 }

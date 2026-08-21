@@ -81,6 +81,8 @@ extension ChatScreen {
                 }
             }
 
+            goalPanel
+
             composer
         }
     }

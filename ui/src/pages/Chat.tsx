@@ -43,6 +43,7 @@ import { MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
 import { ChatComposer, type ChatComposerProps } from "./chat/ChatComposer";
 import { ChatEmptyState } from "./chat/ChatEmptyState";
 import { GoalPanel } from "./chat/GoalPanel";
+import { isVisibleChatTranscriptMessage } from "./chat/goalLoopPresentation";
 import { useSessionGoal } from "./chat/useSessionGoal";
 import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFollowUpControls";
 import { ChatImageLightbox } from "./chat/ChatImageLightbox";
@@ -151,17 +152,23 @@ export function Chat() {
     }
     return lookup;
   }, [typedMessages]);
-  const visibleMessageEntries = useMemo(
-    () =>
-      typedMessages
-        .map((message, originalIndex) => ({
-          message,
-          originalIndex,
-          turnStartedAtMs: turnStartedAtMsByIndex.get(originalIndex),
-        }))
-        .filter((entry) => entry.message.role !== "system"),
-    [typedMessages, turnStartedAtMsByIndex]
-  );
+  const visibleMessageEntries = useMemo(() => {
+    const entries: Array<{
+      message: ChatMessage;
+      originalIndex: number;
+      turnStartedAtMs: number | undefined;
+    }> = [];
+    for (let originalIndex = 0; originalIndex < typedMessages.length; originalIndex += 1) {
+      const message = typedMessages[originalIndex];
+      if (!message || !isVisibleChatTranscriptMessage(message)) continue;
+      entries.push({
+        message,
+        originalIndex,
+        turnStartedAtMs: turnStartedAtMsByIndex.get(originalIndex),
+      });
+    }
+    return entries;
+  }, [typedMessages, turnStartedAtMsByIndex]);
   const loadSessionMutation = useLoadSession();
   const updateSessionAgent = useUpdateSessionAgent();
   const refreshSessionMessagesRef = useRef<

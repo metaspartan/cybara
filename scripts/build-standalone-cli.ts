@@ -351,6 +351,18 @@ export async function buildStandaloneCli(options: StandaloneCliBuildOptions): Pr
     );
     const exitCode = await processHandle.exited;
     if (exitCode !== 0) throw new Error(`Standalone CLI build failed with exit code ${exitCode}`);
+    if (process.platform === "darwin" && options.target.includes("darwin")) {
+      const signProcess = Bun.spawn(["codesign", "--force", "--sign", "-", options.outfile], {
+        cwd,
+        stdout: "ignore",
+        stderr: "pipe",
+      });
+      const signExitCode = await signProcess.exited;
+      if (signExitCode !== 0) {
+        const detail = await new Response(signProcess.stderr).text();
+        throw new Error(`Standalone CLI signing failed: ${detail.trim()}`);
+      }
+    }
   } finally {
     rmSync(entrypoint, { force: true });
     rmSync(assetsModule, { force: true });

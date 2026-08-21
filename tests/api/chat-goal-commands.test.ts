@@ -2,15 +2,27 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   buildChatExecutionMessagesForAgent,
   deleteSession,
+  enqueuePendingChatMessage,
   getSessionMessages,
   handleChat,
+  listPendingChatMessages,
   type ChatMessage,
 } from "../../src/api/chat";
+import { removePendingChatQueueItem } from "../../src/api/chat-pending-state";
+import { getResidentChatSession, pendingChatQueues } from "../../src/api/chat-runtime-state";
 import { agentManager } from "../../src/core/agent";
 import { config } from "../../src/core/config";
 import { providerManager } from "../../src/core/providers";
-import { resetGoalLoopsForTests } from "../../src/core/session-goal-loop";
-import { handleSessionGoalCommand, resetSessionGoalsForTests } from "../../src/core/session-goals";
+import {
+  getGoalLoopState,
+  GOAL_LOOP_SOURCE,
+  resetGoalLoopsForTests,
+} from "../../src/core/session-goal-loop";
+import {
+  getSessionGoal,
+  handleSessionGoalCommand,
+  resetSessionGoalsForTests,
+} from "../../src/core/session-goals";
 
 const createdSessionIds: string[] = [];
 const agentIds: string[] = [];
@@ -56,17 +68,142 @@ describe("chat goal commands", () => {
     const sessionId = `goal-local-${Date.now()}`;
     createdSessionIds.push(sessionId);
     config.set("goal_loop_max_iterations", 1);
+    agentManager.execute = async () => ({
+      content:
+        "The goal kickoff retained its selected agent and created a durable session with the requested execution context. The verification is complete and no additional work remains.\nDONE: kickoff verified",
+    });
 
     const result = await handleChat({
       message: "/goal start fix CI",
       sessionId,
       agentId: agent.id,
       tools: false,
+      source: "dataset_generation",
     });
 
     expect(result.sessionId).toBe(sessionId);
     expect(result.message.role).toBe("assistant");
     expect(result.message.content).toBe("Goal started: fix CI");
+    await waitFor(() => getSessionGoal(sessionId)?.status === "complete");
+  });
+
+  test("persists goal commands and preserves the selected workspace across reloads", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Goal Persistence Provider",
+      api_key: "test-key",
+      base_url: "https://api.openai.com/v1",
+    });
+    providerIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Goal Persistence Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-goal-persistence",
+      memory_enabled: false,
+    });
+    agentIds.push(agent.id);
+    const sessionId = `goal-persistence-${Date.now()}`;
+    createdSessionIds.push(sessionId);
+    const workspaceDir = process.cwd();
+
+    agentManager.execute = async () => ({
+      content:
+        "The goal command and acknowledgement were persisted in the session while the selected workspace and agent remained attached to the autonomous turn. The verification is complete and no additional work remains.\nDONE: persistence verified",
+    });
+
+    const result = await handleChat({
+      message: "/goal start verify command persistence",
+      sessionId,
+      agentId: agent.id,
+      workspaceDir,
+      tools: false,
+      source: "dataset_generation",
+    });
+
+    expect(result.workspaceDir).toBe(workspaceDir);
+    await waitFor(() => getSessionGoal(sessionId)?.status === "complete");
+    const persistedMessages = await getSessionMessages(sessionId);
+    expect(persistedMessages.map((message) => message.content)).toContain(
+      "/goal start verify command persistence"
+    );
+    expect(persistedMessages.map((message) => message.content)).toContain(
+      "Goal started: verify command persistence"
+    );
+    expect(getResidentChatSession(sessionId)?.workspaceDir).toBe(workspaceDir);
+    expect(getResidentChatSession(sessionId)?.agentId).toBe(agent.id);
+  });
+
+  test("hides autonomous pending turns and replaces them when a user follows up", () => {
+    const sessionId = `goal-pending-${Date.now()}`;
+    createdSessionIds.push(sessionId);
+    enqueuePendingChatMessage(
+      {
+        message: "[autonomous goal iteration 2]\nContinue working",
+        sessionId,
+        source: GOAL_LOOP_SOURCE,
+      },
+      sessionId,
+      "queued"
+    );
+
+    expect(listPendingChatMessages(sessionId)).toEqual([]);
+    expect(pendingChatQueues.get(sessionId)).toHaveLength(1);
+
+    enqueuePendingChatMessage(
+      { message: "Use the exact test counts in the report", sessionId },
+      sessionId,
+      "queued"
+    );
+
+    expect(listPendingChatMessages(sessionId).map((item) => item.content)).toEqual([
+      "Use the exact test counts in the report",
+    ]);
+    expect(pendingChatQueues.get(sessionId)?.map((item) => item.content)).toEqual([
+      "Use the exact test counts in the report",
+    ]);
+    for (const item of pendingChatQueues.get(sessionId) || []) {
+      removePendingChatQueueItem(sessionId, item.id);
+    }
+  });
+
+  test("pauses after three resolved provider failures instead of burning the full budget", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Goal Failure Provider",
+      api_key: "test-key",
+      base_url: "https://api.openai.com/v1",
+    });
+    providerIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Goal Failure Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-goal-failure",
+      memory_enabled: false,
+    });
+    agentIds.push(agent.id);
+    const sessionId = `goal-failure-${Date.now()}`;
+    createdSessionIds.push(sessionId);
+    config.set("goal_loop_max_iterations", 25);
+
+    agentManager.execute = async () => ({
+      content: "",
+      failure: { category: "overloaded", retryable: true },
+    });
+
+    await handleChat({
+      message: "/goal start finish the provider-backed task",
+      sessionId,
+      agentId: agent.id,
+      tools: false,
+      source: "dataset_generation",
+    });
+
+    await waitFor(() => getSessionGoal(sessionId)?.status === "paused");
+    expect(getGoalLoopState(sessionId)?.consecutiveFailures).toBe(3);
+    expect(getGoalLoopState(sessionId)?.stopReason).toBe("error");
+    expect(getSessionGoal(sessionId)?.lastStatusNote).toContain("repeated failures");
   });
 
   test("active goals are injected into execution context without mutating chat messages", () => {
@@ -90,7 +227,7 @@ describe("chat goal commands", () => {
       {
         role: "system",
         content:
-          "Active goal: finish the security audit - advance it or update its status with /goal.",
+          "Active goal: finish the security audit — advance it; keep it active until fully achieved; reply DONE: only after concrete verification, or BLOCKED: <reason> only when user input is required.",
       },
       { role: "user", content: "continue" },
     ]);
@@ -188,7 +325,7 @@ describe("chat goal commands", () => {
       {
         role: "system",
         content:
-          "Active goal: audit cross-client chat parity - advance it or update its status with /goal.",
+          "Active goal: audit cross-client chat parity — advance it; keep it active until fully achieved; reply DONE: only after concrete verification, or BLOCKED: <reason> only when user input is required.",
       },
       {
         role: "user",

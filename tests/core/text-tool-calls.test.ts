@@ -220,13 +220,33 @@ describe("text-form tool call parsing", () => {
 });
 
 describe("leaked DSML block cleanup", () => {
-  test("strips DSML tool blocks of any type from assistant text", () => {
+  test("extracts direct DSML tool calls and strips them from assistant text", () => {
     const raw = `<｜DSML｜tool_exec>
 <command>sleep 90</command>
 <timeout>120</timeout>
 </｜DSML｜tool_exec>`;
 
+    expect(extractTextToolCalls(raw, new Set(["exec"]))).toEqual([
+      { name: "exec", args: { command: "sleep 90", timeout: 120 } },
+    ]);
     expect(stripTextToolCallMarkup(raw)).toBe("");
+    expect(hasTextToolCallMarkup(raw)).toBe(true);
+  });
+
+  test("extracts doubled-separator DSML invoke calls from stored DeepSeek output", () => {
+    const raw = `All five fixes landed cleanly. Verifying now.
+
+<｜｜DSML｜｜tool_calls>
+<｜｜DSML｜｜invoke name="exec">
+<｜｜DSML｜｜parameter name="command" string="true">bun test tests/core</｜｜DSML｜｜parameter>
+<｜｜DSML｜｜parameter name="timeout" string="false">120</｜｜DSML｜｜parameter>
+</｜｜DSML｜｜invoke>
+</｜｜DSML｜｜tool_calls>`;
+
+    expect(extractTextToolCalls(raw, new Set(["exec"]))).toEqual([
+      { name: "exec", args: { command: "bun test tests/core", timeout: 120 } },
+    ]);
+    expect(stripTextToolCallMarkup(raw)).toBe("All five fixes landed cleanly. Verifying now.");
     expect(hasTextToolCallMarkup(raw)).toBe(true);
   });
 
@@ -240,5 +260,11 @@ describe("leaked DSML block cleanup", () => {
 
   test("removes stray DSML closing tags from otherwise-final text", () => {
     expect(stripTextToolCallMarkup("All done.</｜DSML｜tool_exec>")).toBe("All done.");
+  });
+
+  test("removes malformed DSML tails without exposing provider protocol text", () => {
+    expect(stripTextToolCallMarkup("Working on it.\n<｜DSML｜tool we have: users")).toBe(
+      "Working on it."
+    );
   });
 });
