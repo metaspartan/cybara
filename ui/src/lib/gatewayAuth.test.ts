@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   checkGatewayAccess,
+  gatewayAccessRetryDelay,
   type GatewayAccessFetcher,
   shouldDiscardGatewayCredentials,
 } from "./gatewayAuth";
@@ -47,5 +48,12 @@ describe("gateway browser authentication", () => {
       false
     );
     expect(shouldDiscardGatewayCredentials({ message: "", status: "ready" })).toBe(false);
+  });
+
+  test("retries temporary desktop gateway outages without polling browser clients", () => {
+    expect(gatewayAccessRetryDelay("unavailable", true)).toBe(1_000);
+    expect(gatewayAccessRetryDelay("unavailable", false)).toBe(false);
+    expect(gatewayAccessRetryDelay("ready", true)).toBe(false);
+    expect(gatewayAccessRetryDelay("required", true)).toBe(false);
   });
 });

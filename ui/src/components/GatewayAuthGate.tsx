@@ -8,12 +8,15 @@ import {
 } from "@/lib/auth";
 import {
   checkGatewayAccess,
+  gatewayAccessRetryDelay,
   type GatewayAccessCheck,
   shouldDiscardGatewayCredentials,
 } from "@/lib/gatewayAuth";
+import { isTauriDesktopRuntime } from "@/lib/desktopHost";
 import { ensureUpdatePolling } from "@/lib/updateStore";
 
 export function GatewayAuthGate({ children }: { children: ReactNode }) {
+  const desktopRuntime = isTauriDesktopRuntime();
   const [access, setAccess] = useState<GatewayAccessCheck>({
     message: "",
     status: "unavailable",
@@ -22,11 +25,11 @@ export function GatewayAuthGate({ children }: { children: ReactNode }) {
   const [apiKey, setApiKey] = useState("");
   const [gatewayPassword, setGatewayPassword] = useState("");
 
-  const verify = useCallback(async () => {
-    setChecking(true);
+  const verify = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setChecking(true);
     const result = await checkGatewayAccess();
     setAccess(result);
-    setChecking(false);
+    if (showSpinner) setChecking(false);
     return result;
   }, []);
 
@@ -37,6 +40,20 @@ export function GatewayAuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (access.status === "ready") ensureUpdatePolling();
   }, [access.status]);
+
+  useEffect(() => {
+    const delay = gatewayAccessRetryDelay(access.status, desktopRuntime);
+    if (checking || delay === false) return;
+    let disposed = false;
+    let timer = window.setTimeout(async function retryGateway(): Promise<void> {
+      await verify(false);
+      if (!disposed) timer = window.setTimeout(retryGateway, delay);
+    }, delay);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+    };
+  }, [access.status, checking, desktopRuntime, verify]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -121,6 +138,9 @@ export function GatewayAuthGate({ children }: { children: ReactNode }) {
           <div>
             <h1 className="text-lg font-semibold text-gray-100">Gateway unavailable</h1>
             <p className="mt-1 text-sm text-gray-500">{access.message}</p>
+            {desktopRuntime ? (
+              <p className="mt-2 text-xs text-gray-600">Reconnecting automatically…</p>
+            ) : null}
           </div>
           <button
             className="flex h-9 items-center gap-2 rounded-md border border-white/10 px-3 text-sm text-gray-300 hover:bg-white/[0.05]"

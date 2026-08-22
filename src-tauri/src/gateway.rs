@@ -15,6 +15,14 @@ pub enum GatewayProbeStatus {
     Compatible,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GatewayLivenessStatus {
+    Live,
+    Busy,
+    Unhealthy,
+    Unreachable,
+}
+
 #[derive(Clone)]
 pub struct GatewayEndpoint {
     pub addr: String,
@@ -118,18 +126,27 @@ fn port_accepts_connections(addr: &str) -> bool {
     TcpStream::connect_timeout(&address, Duration::from_millis(250)).is_ok()
 }
 
-pub fn is_gateway_live_at(addr: &str) -> bool {
+pub fn gateway_liveness_at(addr: &str) -> GatewayLivenessStatus {
     let Some(response) = http_get_with_timeout(addr, "/api/health/live", LIVENESS_PROBE_TIMEOUT)
     else {
-        return false;
+        return if port_accepts_connections(addr) {
+            GatewayLivenessStatus::Busy
+        } else {
+            GatewayLivenessStatus::Unreachable
+        };
     };
     if response.status != 200 {
-        return false;
+        return GatewayLivenessStatus::Unhealthy;
     }
-    serde_json::from_str::<serde_json::Value>(&response.body)
+    if serde_json::from_str::<serde_json::Value>(&response.body)
         .ok()
         .and_then(|value| value.get("live").and_then(serde_json::Value::as_bool))
         == Some(true)
+    {
+        GatewayLivenessStatus::Live
+    } else {
+        GatewayLivenessStatus::Unhealthy
+    }
 }
 
 fn is_matching_health_response(response: &HttpResponse, expected_version: &str) -> bool {
@@ -178,8 +195,8 @@ impl GatewayPortSignalParser {
 #[cfg(test)]
 mod tests {
     use super::{
-        GatewayEndpoint, GatewayPortSignalParser, GatewayProbeStatus, is_compatible_gateway_at,
-        is_gateway_live_at, parse_gateway_port_signal, probe_gateway_at,
+        GatewayEndpoint, GatewayLivenessStatus, GatewayPortSignalParser, GatewayProbeStatus,
+        gateway_liveness_at, is_compatible_gateway_at, parse_gateway_port_signal, probe_gateway_at,
     };
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -267,14 +284,10 @@ mod tests {
     }
 
     #[test]
-    fn liveness_probe_accepts_only_live_payloads() {
+    fn liveness_probe_accepts_live_payload() {
         let (live, live_handle) = serve(vec![r#"{"live":true}"#.into()]);
-        assert!(is_gateway_live_at(&live.addr));
+        assert_eq!(gateway_liveness_at(&live.addr), GatewayLivenessStatus::Live);
         live_handle.join().expect("join live gateway");
-
-        let (not_live, not_live_handle) = serve(vec![r#"{"live":false}"#.into()]);
-        assert!(!is_gateway_live_at(&not_live.addr));
-        not_live_handle.join().expect("join non-live gateway");
     }
 
     #[test]
@@ -295,12 +308,15 @@ mod tests {
                 .write_all(response.as_bytes())
                 .expect("write delayed response");
         });
-        assert!(is_gateway_live_at(&format!("127.0.0.1:{port}")));
+        assert_eq!(
+            gateway_liveness_at(&format!("127.0.0.1:{port}")),
+            GatewayLivenessStatus::Live
+        );
         handle.join().expect("join delayed gateway");
     }
 
     #[test]
-    fn stalled_liveness_probe_fails_within_timeout() {
+    fn stalled_liveness_probe_is_busy_and_not_dead() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind stalled gateway");
         let port = listener.local_addr().expect("read stalled address").port();
         let handle = thread::spawn(move || {
@@ -308,9 +324,30 @@ mod tests {
             thread::sleep(Duration::from_secs(3));
         });
         let started = std::time::Instant::now();
-        assert!(!is_gateway_live_at(&format!("127.0.0.1:{port}")));
+        assert_eq!(
+            gateway_liveness_at(&format!("127.0.0.1:{port}")),
+            GatewayLivenessStatus::Busy
+        );
         assert!(started.elapsed() < Duration::from_millis(2_500));
         handle.join().expect("join stalled gateway");
+    }
+
+    #[test]
+    fn liveness_probe_distinguishes_unhealthy_and_unreachable_gateways() {
+        let (not_live, not_live_handle) = serve(vec![r#"{"live":false}"#.into()]);
+        assert_eq!(
+            gateway_liveness_at(&not_live.addr),
+            GatewayLivenessStatus::Unhealthy
+        );
+        not_live_handle.join().expect("join unhealthy gateway");
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind unreachable port");
+        let port = listener.local_addr().expect("read unreachable port").port();
+        drop(listener);
+        assert_eq!(
+            gateway_liveness_at(&format!("127.0.0.1:{port}")),
+            GatewayLivenessStatus::Unreachable
+        );
     }
 
     #[test]
