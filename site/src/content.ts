@@ -44,6 +44,12 @@ export const GITHUB_URL = "https://github.com/metaspartan/cybara";
 export const X_URL = "https://x.com/cybaraAI";
 export const CREATOR_X_URL = "https://x.com/carsenklock";
 export const RELEASES_URL = "https://github.com/metaspartan/cybara/releases/latest";
+export const CYB_TOKEN = {
+  symbol: "CYB",
+  network: "Solana",
+  address: "J2hyZSVokSTuy3bG85A5xfs3umCeGtqZZEdKtGTTpump",
+  url: "https://pump.fun/coin/J2hyZSVokSTuy3bG85A5xfs3umCeGtqZZEdKtGTTpump",
+} as const;
 export const PLAY_STORE_URL =
   "https://play.google.com/store/apps/details?id=com.ck.cybara";
 export const INSTALL_COMMAND =
