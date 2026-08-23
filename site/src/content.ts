@@ -51,7 +51,7 @@ export const CYB_TOKEN = {
   url: "https://pump.fun/coin/J2hyZSVokSTuy3bG85A5xfs3umCeGtqZZEdKtGTTpump",
 } as const;
 export const PLAY_STORE_URL =
-  "https://play.google.com/store/apps/details?id=com.ck.cybara";
+  "https://play.google.com/store/apps/details?id=com.ck.cybara&hl=en_US";
 export const INSTALL_COMMAND =
   "curl -fsSL https://cybara.ai/install.sh | bash";
 export const INSTALL_COMMAND_WINDOWS =

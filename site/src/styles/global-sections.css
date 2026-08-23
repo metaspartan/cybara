@@ -1115,6 +1115,25 @@
   text-decoration: none;
 }
 
+.download-all-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.download-play-btn {
+  border-color: rgba(110, 231, 183, 0.24);
+  background: rgba(34, 197, 94, 0.08);
+  color: rgba(236, 253, 245, 0.92);
+  text-decoration: none;
+}
+
+.download-play-btn:hover {
+  border-color: rgba(110, 231, 183, 0.42);
+  background: rgba(34, 197, 94, 0.14);
+}
+
 .download-all-note {
   color: var(--text-faint);
   font-size: 0.86rem;
@@ -1159,7 +1178,7 @@
   max-width: 920px;
   margin: 0 auto 42px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border-block: 1px solid var(--glass-border);
 }
 
