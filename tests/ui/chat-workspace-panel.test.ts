@@ -307,6 +307,7 @@ describe("chat workspace panel", () => {
     expect(panelSource).not.toContain("if (!isOpen) return null");
     expect(panelSource).toContain("aria-hidden={!isOpen}");
     expect(panelSource).toContain('isOpen ? "flex" : "hidden"');
+    expect(panelSource).toContain('maxWidth: "calc(100% - min(320px, 35%))"');
   });
 
   test("native workspace tools remain mounted while switching tabs", () => {

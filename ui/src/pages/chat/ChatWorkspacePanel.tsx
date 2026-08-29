@@ -106,7 +106,7 @@ export function ChatWorkspacePanel({
         isOpen ? "flex" : "hidden"
       )}
       data-testid="chat-workspace-panel"
-      style={{ width }}
+      style={{ width, maxWidth: "calc(100% - min(320px, 35%))" }}
     >
       <div
         aria-label="Resize workspace panel"

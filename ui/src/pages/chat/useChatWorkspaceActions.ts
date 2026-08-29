@@ -196,9 +196,11 @@ export function useChatWorkspaceActions({
       event.preventDefault();
       diffPanelResizeCleanupRef.current?.();
       diffPanelResizeCleanupRef.current = null;
+      const panelElement = event.currentTarget.parentElement;
+      const availableWidth = panelElement?.parentElement?.getBoundingClientRect().width;
       diffPanelResizeStateRef.current = {
         startX: event.clientX,
-        startWidth: diffPanelWidth,
+        startWidth: panelElement?.getBoundingClientRect().width ?? diffPanelWidth,
       };
       const previousCursor = document.body.style.cursor;
       const previousUserSelect = document.body.style.userSelect;
@@ -209,7 +211,7 @@ export function useChatWorkspaceActions({
         const state = diffPanelResizeStateRef.current;
         if (!state) return;
         const delta = state.startX - moveEvent.clientX;
-        setDiffPanelWidth(clampDiffPanelWidth(state.startWidth + delta));
+        setDiffPanelWidth(clampDiffPanelWidth(state.startWidth + delta, availableWidth));
       };
 
       const handleMouseUp = () => {

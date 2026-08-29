@@ -314,7 +314,8 @@ export const SESSION_ACTIVITY_STALE_MS = 30_000;
 export const PENDING_CAPTURE_TIMEOUT_MS = 90_000;
 export const DIFF_PANEL_DEFAULT_WIDTH = 560;
 export const DIFF_PANEL_MIN_WIDTH = 380;
-export const DIFF_PANEL_MAX_WIDTH = 1120;
+export const DIFF_PANEL_MAX_WIDTH = 10_000;
+export const CHAT_CONTENT_MIN_WIDTH = 320;
 
 export function getMessageProcessKey(
   sessionKey: string | null,
@@ -495,8 +496,16 @@ export function readPersistedSessionId(): string | null {
   }
 }
 
-export function clampDiffPanelWidth(value: number): number {
-  return Math.max(DIFF_PANEL_MIN_WIDTH, Math.min(DIFF_PANEL_MAX_WIDTH, value));
+export function clampDiffPanelWidth(value: number, availableWidth?: number): number {
+  const reservedChatWidth =
+    typeof availableWidth === "number" && Number.isFinite(availableWidth)
+      ? Math.min(CHAT_CONTENT_MIN_WIDTH, Math.max(0, availableWidth * 0.35))
+      : 0;
+  const availablePanelWidth =
+    typeof availableWidth === "number" && Number.isFinite(availableWidth)
+      ? Math.max(DIFF_PANEL_MIN_WIDTH, Math.floor(availableWidth - reservedChatWidth))
+      : DIFF_PANEL_MAX_WIDTH;
+  return Math.max(DIFF_PANEL_MIN_WIDTH, Math.min(DIFF_PANEL_MAX_WIDTH, availablePanelWidth, value));
 }
 
 export function readPersistedDiffPanelWidth(): number {
