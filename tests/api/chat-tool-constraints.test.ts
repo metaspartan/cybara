@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { constrainToolsForMessage } from "../../src/api/chat-tool-constraints";
+import {
+  constrainToolsForMessage,
+  messageDisallowsAllTools,
+} from "../../src/api/chat-tool-constraints";
 
 const tools = [
   "browser",
@@ -82,5 +85,22 @@ describe("chat tool constraints", () => {
       "sessions_spawn",
       "read",
     ]);
+  });
+
+  test("detects explicit whole-turn tool prohibitions", () => {
+    expect(messageDisallowsAllTools("Keep marker COPPER-271. Do not use tools yet.")).toBe(true);
+    expect(messageDisallowsAllTools("Answer in one sentence and don't call any tools.")).toBe(true);
+    expect(messageDisallowsAllTools("Respond from the supplied context without using tools.")).toBe(
+      true
+    );
+  });
+
+  test("does not confuse scoped or descriptive tool wording with a full prohibition", () => {
+    expect(messageDisallowsAllTools("Do not use shell commands. Use the browser instead.")).toBe(
+      false
+    );
+    expect(messageDisallowsAllTools("Explain why some agents do not use tools correctly.")).toBe(
+      false
+    );
   });
 });

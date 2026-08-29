@@ -45,6 +45,28 @@ afterEach(async () => {
 });
 
 describe("chat response recovery", () => {
+  test("disables tools for a turn when the user explicitly forbids them", async () => {
+    const agentId = createTestAgent("No Tools Turn Agent");
+    const sessionId = `no-tools-turn-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+
+    agentManager.execute = (async (_agentId, _messages, options) => {
+      expect(options?.useTools).toBe(false);
+      expect(options?.requireToolUse).toBe(false);
+      return { content: "The release check is ready." };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Give me one release check. Do not use tools yet.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(result.message.content).toBe("The release check is ready.");
+    expect(result.message.tool_calls).toBeUndefined();
+  });
+
   test("persists reasoning returned separately from assistant content", async () => {
     const agentId = createTestAgent("Separate Reasoning Agent");
     const sessionId = `separate-reasoning-${crypto.randomUUID()}`;

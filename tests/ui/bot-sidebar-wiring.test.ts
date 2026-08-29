@@ -18,6 +18,8 @@ describe("bot sidebar wiring", () => {
     const source = readFileSync(resolve(root, "ui/src/pages/chat/BotSidebar.tsx"), "utf8");
     expect(source).toContain("botsApi.ensureSession");
     expect(source).toContain("buildSessionChatPath(sessionId)");
+    expect(source).toContain("navigate(buildFreshChatPath())");
+    expect(source).not.toContain('navigate("/chat")');
     expect(source).not.toContain("ChatInput");
   });
 

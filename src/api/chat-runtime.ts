@@ -157,7 +157,7 @@ import {
   materializeInterruptedAssistantBeforeSteering,
   sanitizeObservedProcessActivities,
 } from "./chat-steering-activities";
-import { constrainToolsForMessage } from "./chat-tool-constraints";
+import { constrainToolsForMessage, messageDisallowsAllTools } from "./chat-tool-constraints";
 import { resolveToolResponseContent } from "./chat-tool-response";
 import {
   buildNoUsableAssistantResponseMessage,
@@ -1098,6 +1098,7 @@ async function handleChatTurn(
   goalCommandSideEffectsApplied = false
 ): Promise<ChatResponse> {
   const { message, agentId, tools = true, channel, userId, source, workspaceDir } = request;
+  const toolsEnabled = tools && !messageDisallowsAllTools(message);
   let useModelRouter = request.useModelRouter === true;
   const requestedModelOverride =
     typeof request.modelOverride === "string" && request.modelOverride.trim()
@@ -1105,7 +1106,7 @@ async function handleChatTurn(
       : undefined;
   const requestedWorkspaceDir =
     workspaceDir !== undefined ? normalizeSessionWorkspaceDir(workspaceDir) : undefined;
-  const agentPromptOptions = { useTools: tools, runtimeChannel: channel };
+  const agentPromptOptions = { useTools: toolsEnabled, runtimeChannel: channel };
 
   let session = getResidentChatSession(effectiveSessionId);
   if (!session) {
@@ -1445,8 +1446,8 @@ async function handleChatTurn(
         message,
         session.workspaceDir || undefined
       );
-      const shouldPreferArtifacts = tools && shouldPreferArtifactsForMessage(message);
-      const directToolCandidate = tools ? requiredDirectToolForMessage(message) : undefined;
+      const shouldPreferArtifacts = toolsEnabled && shouldPreferArtifactsForMessage(message);
+      const directToolCandidate = toolsEnabled ? requiredDirectToolForMessage(message) : undefined;
       const selectedSkill = capabilityMentions.mentions.some((mention) => mention.kind === "skill");
       let activeModelOverride = requestedModelOverride;
       const subagentSpawnLimit = resolveExplicitSubagentSpawnLimit(message);
@@ -1464,7 +1465,7 @@ async function handleChatTurn(
         }),
         capabilityMentions.instruction
       );
-      let allowedToolNames = tools
+      let allowedToolNames = toolsEnabled
         ? constrainToolsForMessage(message, resolveAgentToolPolicy(agent).allowedToolNames)
         : undefined;
       let requiredDirectToolName =
@@ -1475,7 +1476,7 @@ async function handleChatTurn(
         ? "artifacts"
         : requiredDirectToolName || (selectedSkill ? "skill_load" : undefined);
       let shouldRequireToolUse = Boolean(
-        tools &&
+        toolsEnabled &&
           (shouldPreferArtifacts ||
             requiredDirectToolName ||
             selectedSkill ||
@@ -1495,7 +1496,7 @@ async function handleChatTurn(
       });
       let result = await agentManager.execute(agent.id, executionMessages, {
         ...executionOptions(),
-        useTools: tools,
+        useTools: toolsEnabled,
         requireToolUse: shouldRequireToolUse,
         requiredToolName,
       });
@@ -1536,7 +1537,7 @@ async function handleChatTurn(
           agentId: targetAgent.id,
         });
         await applyActiveAgentToSession(session, targetAgent, session.messages, {
-          useTools: tools,
+          useTools: toolsEnabled,
         });
         await setPersistedSessionAgent(session.id, targetAgent.id);
         persistActiveSessionContext(session);
@@ -1551,7 +1552,7 @@ async function handleChatTurn(
         }
         activeModelOverride = undefined;
         activeSupportsImages = agentSupportsImages(targetAgent);
-        allowedToolNames = tools
+        allowedToolNames = toolsEnabled
           ? constrainToolsForMessage(message, resolveAgentToolPolicy(targetAgent).allowedToolNames)
           : undefined;
         requiredDirectToolName =
@@ -1563,7 +1564,7 @@ async function handleChatTurn(
           ? "artifacts"
           : requiredDirectToolName || (selectedSkill ? "skill_load" : undefined);
         shouldRequireToolUse = Boolean(
-          tools &&
+          toolsEnabled &&
             (shouldPreferArtifacts ||
               requiredDirectToolName ||
               selectedSkill ||
@@ -1587,7 +1588,7 @@ async function handleChatTurn(
         );
         result = await agentManager.execute(targetAgent.id, executionMessages, {
           ...executionOptions(),
-          useTools: tools,
+          useTools: toolsEnabled,
           requireToolUse: shouldRequireToolUse,
           requiredToolName,
         });
@@ -1609,7 +1610,7 @@ async function handleChatTurn(
           responseContent,
           shouldRequireToolUse,
           toolResults,
-          toolsEnabled: tools,
+          toolsEnabled,
           userMessage: message,
         });
         if (recoveredResponse.error) {

@@ -25,7 +25,7 @@ import { botsApi, extractApiError } from "@/lib/api";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import type { BotRosterItem } from "@/types";
 import { BotAvatar } from "./BotAvatar";
-import { buildSessionChatPath } from "./chatRoute";
+import { buildFreshChatPath, buildSessionChatPath } from "./chatRoute";
 import { buildMultiChatPath, MULTI_CHAT_MAX_PANES } from "./multiChatLayout";
 
 interface BotSidebarProps {
@@ -200,7 +200,7 @@ export function BotSidebar({
       setDeletingBot(null);
       setActionBotId(null);
       refreshBots();
-      if (currentSessionId === bot.session_id) navigate("/chat");
+      if (currentSessionId === bot.session_id) navigate(buildFreshChatPath());
     },
   });
   const openTeam = useMutation({

@@ -120,6 +120,10 @@ describe("bot routes", () => {
     expect(createdAgent?.system_prompt).toContain("Use concise evidence.");
     expect(createdAgent?.system_prompt).toContain("You are Atlas Lead, a persistent Cybara bot.");
     expect(createdAgent?.system_prompt).toContain("never publish without approval");
+    expect(createdAgent?.system_prompt).toContain(
+      "Honor the latest user request when it limits or forbids tool use."
+    );
+    expect(createdAgent?.system_prompt).toContain("this bot's own conversation");
 
     const updated = (await update?.(
       {
