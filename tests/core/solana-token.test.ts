@@ -8,6 +8,7 @@ import {
   createTransferCheckedInstruction,
   getAssociatedTokenAddressSync,
   getMintDecimals,
+  getMintDetails,
 } from "../../src/core/solana-token";
 
 describe("local Solana SPL token helpers", () => {
@@ -79,6 +80,34 @@ describe("local Solana SPL token helpers", () => {
     };
 
     await expect(getMintDecimals(connection as never, mint, "confirmed")).resolves.toBe(9);
+  });
+
+  test("supports Token-2022 mint metadata and program-specific accounts", async () => {
+    const mint = new PublicKey("J2hyZSVokSTuy3bG85A5xfs3umCeGtqZZEdKtGTTpump");
+    const owner = Keypair.fromSeed(new Uint8Array(32).fill(9)).publicKey;
+    const data = Buffer.alloc(407);
+    data[44] = 6;
+    const connection = {
+      getAccountInfo: async () => ({ owner: TOKEN_2022_PROGRAM_ID, data }),
+    };
+
+    await expect(getMintDetails(connection as never, mint, "confirmed")).resolves.toEqual({
+      decimals: 6,
+      programId: TOKEN_2022_PROGRAM_ID,
+    });
+    const classicAta = getAssociatedTokenAddressSync(mint, owner);
+    const token2022Ata = getAssociatedTokenAddressSync(mint, owner, false, TOKEN_2022_PROGRAM_ID);
+    expect(token2022Ata.equals(classicAta)).toBe(false);
+    const transfer = createTransferCheckedInstruction(
+      token2022Ata,
+      mint,
+      token2022Ata,
+      owner,
+      1n,
+      6,
+      TOKEN_2022_PROGRAM_ID
+    );
+    expect(transfer.programId.equals(TOKEN_2022_PROGRAM_ID)).toBe(true);
   });
 
   test("rejects unsupported mint owners and out-of-range transfer amounts", async () => {

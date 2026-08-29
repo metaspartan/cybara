@@ -371,10 +371,7 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
 
     case "swap_quote":
       return await walletManager.swapForAgent({
-        venue: String(args.venue || "uniswap_v3").toLowerCase() as
-          | "uniswap_v2"
-          | "uniswap_v3"
-          | "jupiter",
+        venue: String(args.venue || "uniswap_v3").toLowerCase(),
         tokenOut:
           typeof args.tokenOut === "string"
             ? args.tokenOut
@@ -397,15 +394,14 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
         wrapUnwrapSol: parseOptionalBoolean(args.wrapUnwrapSol),
         computeUnitPriceMicroLamports: parseOptionalNumber(args.computeUnitPriceMicroLamports),
         skipPreflight: parseBoolean(args.skipPreflight),
+        frontRunningProtection: parseBoolean(args.frontRunningProtection),
+        tipAmount: parseOptionalNumber(args.tipAmount),
         dryRun: true,
       });
 
     case "swap_execute":
       return await walletManager.swapForAgent({
-        venue: String(args.venue || "uniswap_v3").toLowerCase() as
-          | "uniswap_v2"
-          | "uniswap_v3"
-          | "jupiter",
+        venue: String(args.venue || "uniswap_v3").toLowerCase(),
         tokenOut:
           typeof args.tokenOut === "string"
             ? args.tokenOut
@@ -428,6 +424,8 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
         wrapUnwrapSol: parseOptionalBoolean(args.wrapUnwrapSol),
         computeUnitPriceMicroLamports: parseOptionalNumber(args.computeUnitPriceMicroLamports),
         skipPreflight: parseBoolean(args.skipPreflight),
+        frontRunningProtection: parseBoolean(args.frontRunningProtection),
+        tipAmount: parseOptionalNumber(args.tipAmount),
         dryRun: false,
       });
 
@@ -435,10 +433,7 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
       const explicitDryRun = parseOptionalBoolean(args.dryRun);
       const execute = parseBoolean(args.execute) || parseBoolean(args.broadcast);
       return await walletManager.swapForAgent({
-        venue: String(args.venue || "uniswap_v3").toLowerCase() as
-          | "uniswap_v2"
-          | "uniswap_v3"
-          | "jupiter",
+        venue: String(args.venue || "uniswap_v3").toLowerCase(),
         tokenOut:
           typeof args.tokenOut === "string"
             ? args.tokenOut
@@ -461,6 +456,8 @@ export async function handleWallet(args: Record<string, unknown>): Promise<unkno
         wrapUnwrapSol: parseOptionalBoolean(args.wrapUnwrapSol),
         computeUnitPriceMicroLamports: parseOptionalNumber(args.computeUnitPriceMicroLamports),
         skipPreflight: parseBoolean(args.skipPreflight),
+        frontRunningProtection: parseBoolean(args.frontRunningProtection),
+        tipAmount: parseOptionalNumber(args.tipAmount),
         dryRun: explicitDryRun ?? !execute,
       });
     }

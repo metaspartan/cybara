@@ -84,6 +84,7 @@ export const walletRoutes: Record<string, RouteHandler> = {
         allowEthContractWrite: data.allowEthContractWrite,
         allowSolProgramInstruction: data.allowSolProgramInstruction,
         allowEthSwaps: data.allowEthSwaps,
+        allowSolSwaps: data.allowSolSwaps,
         allowDappInteraction: data.allowDappInteraction,
         allowX402Payments: data.allowX402Payments,
         allowedEthContracts: Array.isArray(data.allowedEthContracts)
@@ -481,6 +482,8 @@ export const walletRoutes: Record<string, RouteHandler> = {
           wrapUnwrapSol: typeof data.wrapUnwrapSol === "boolean" ? data.wrapUnwrapSol : undefined,
           computeUnitPriceMicroLamports: parseOptionalNumber(data.computeUnitPriceMicroLamports),
           skipPreflight: data.skipPreflight === true,
+          frontRunningProtection: data.frontRunningProtection === true,
+          tipAmount: parseOptionalNumber(data.tipAmount),
           dryRun: explicitDryRun ?? !execute,
         })
     );

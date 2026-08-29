@@ -368,6 +368,7 @@ describe("UI page API wiring", () => {
   test("Wallet page uses shared walletApi helpers", () => {
     const source = readPage("Wallet.tsx");
     const overview = readPage("wallet/WalletOverview.tsx");
+    const swapPanel = readPage("wallet/WalletSwapPanel.tsx");
 
     expect(source).toContain("import {");
     expect(source).toContain("walletApi");
@@ -381,11 +382,18 @@ describe("UI page API wiring", () => {
     expect(source).toContain("walletApi.send(");
     expect(source).toContain("walletApi.sendToken(");
     expect(source).toContain("WalletOverview");
+    expect(source).toContain("WalletSwapPanel");
     expect(source).toContain("border-[var(--surface-border)]");
     expect(source).not.toContain("via-[#0f1220]");
     expect(overview).toContain('aria-label="Wallet actions"');
     expect(overview).toContain("bg-[var(--surface-panel)]");
     expect(overview).toContain("text-[var(--text-primary)]");
+    expect(overview).toContain('{ id: "swap", label: "Swap"');
+    expect(swapPanel).toContain('useState<SwapVenue>("pump_swap")');
+    expect(swapPanel).toContain("walletApi.swap({");
+    expect(swapPanel).toContain("CYB_SOL_MINT");
+    expect(swapPanel).toContain("Get quote");
+    expect(swapPanel).toContain("Review swap");
     expect(source).not.toContain("globalThis.confirm");
     expect(source).not.toContain("globalThis.prompt");
     expect(source).not.toContain("apiFetch(");

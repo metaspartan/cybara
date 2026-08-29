@@ -22,6 +22,8 @@ import {
   JUPITER_SWAP_API_BASE,
   MEMO_PROGRAM_ID,
   PYTH_HERMES_API_BASE,
+  PUMP_SWAP_API_BASE,
+  PUMP_SWAP_PROGRAM_ID,
   SOL_MINT,
   SOL_RPC_CONFIG_KEY,
   UNISWAP_PERMIT2_ETH,
@@ -47,11 +49,17 @@ import {
 import { WalletOperations } from "./wallet-operations";
 import {
   assertAmountWithinCap,
+  assertAgentSwapVenueAllowed,
   assertRecipientAllowed,
   assertSendWithinPolicy,
 } from "./wallet-policy";
 import { checkWalletRpcStatus } from "./wallet-rpc-health";
-import { fetchWalletJson } from "./wallet-runtime";
+import { fetchWalletJson, normalizeWalletSwapVenue } from "./wallet-runtime";
+import {
+  CYB_SOL_MINT,
+  DEFAULT_SOLANA_TOKENS,
+  getSolanaTokenMetadata,
+} from "./wallet-token-catalog";
 import {
   type AccountsQuery,
   type EthContractCallInput,
@@ -271,6 +279,7 @@ class WalletManager extends WalletOperations {
         allowSolProgramInstruction:
           input.allowSolProgramInstruction ?? current.allowSolProgramInstruction,
         allowEthSwaps: input.allowEthSwaps ?? current.allowEthSwaps,
+        allowSolSwaps: input.allowSolSwaps ?? current.allowSolSwaps,
         allowDappInteraction: input.allowDappInteraction ?? current.allowDappInteraction,
         allowX402Payments: input.allowX402Payments ?? current.allowX402Payments,
         allowedEthContracts: input.allowedEthContracts ?? current.allowedEthContracts,
@@ -608,9 +617,8 @@ class WalletManager extends WalletOperations {
       }
       case "swap": {
         const dryRun = payload.dryRun === true;
-        if (!dryRun && !policy.allowEthSwaps) {
-          throw new Error("Validation error: Agent swaps are disabled by wallet policy");
-        }
+        const venue = String(payload.venue || "uniswap_v3");
+        if (!dryRun) this.assertAgentSwapAllowed(venue, policy);
         if (!dryRun) {
           this.assertAgentRecipientAllowed(
             typeof payload.recipient === "string" ? payload.recipient : undefined,
@@ -626,7 +634,7 @@ class WalletManager extends WalletOperations {
           );
         }
         return await this.swap({
-          venue: String(payload.venue || "uniswap_v3"),
+          venue,
           tokenOut: typeof payload.tokenOut === "string" ? payload.tokenOut : undefined,
           amountEth: typeof payload.amountEth === "string" ? payload.amountEth : undefined,
           percent: parseOptionalNumber(payload.percent),
@@ -645,6 +653,8 @@ class WalletManager extends WalletOperations {
             typeof payload.wrapUnwrapSol === "boolean" ? payload.wrapUnwrapSol : undefined,
           computeUnitPriceMicroLamports: parseOptionalNumber(payload.computeUnitPriceMicroLamports),
           skipPreflight: payload.skipPreflight === true,
+          frontRunningProtection: payload.frontRunningProtection === true,
+          tipAmount: parseOptionalNumber(payload.tipAmount),
           dryRun,
         });
       }
@@ -706,13 +716,16 @@ class WalletManager extends WalletOperations {
     this.assertAgentAccessEnabled();
     if (input.dryRun !== true) {
       const policy = this.getAgentPolicy();
-      if (!policy.allowEthSwaps) {
-        throw new Error("Validation error: Agent swaps are disabled by wallet policy");
-      }
+      this.assertAgentSwapAllowed(String(input.venue || ""), policy);
       this.assertAgentRecipientAllowed(input.recipient, policy);
       this.assertAgentAmountWithinCap(input.amountEth ?? input.amount, policy);
     }
     return await this.swap(input);
+  }
+
+  private assertAgentSwapAllowed(venueInput: string, policy: WalletAgentPolicy): void {
+    const venue = normalizeWalletSwapVenue(venueInput);
+    assertAgentSwapVenueAllowed(venue, policy);
   }
 
   getEndpointDirectory(): WalletEndpointDirectory {
@@ -740,6 +753,7 @@ class WalletManager extends WalletOperations {
           SOL: SOL_MINT,
           USDC: USDC_SOL_MINT,
           USDT: "Es9vMFrzaCERmJfr8j7Xw4eE3f7zQht4p59SJ4f5kL7Q",
+          CYB: CYB_SOL_MINT,
         },
         programs: {
           systemProgram: SystemProgram.programId.toBase58(),
@@ -747,6 +761,7 @@ class WalletManager extends WalletOperations {
           token2022Program: TOKEN_2022_PROGRAM_ID.toBase58(),
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID.toBase58(),
           memoProgram: MEMO_PROGRAM_ID.toBase58(),
+          pumpSwapProgram: PUMP_SWAP_PROGRAM_ID,
         },
       },
       services: {
@@ -754,6 +769,7 @@ class WalletManager extends WalletOperations {
         jupiterPriceApi: JUPITER_PRICE_API_BASE,
         jupiterSwapApi: JUPITER_SWAP_API_BASE,
         jupiterProgramLabelsApi: JUPITER_PROGRAM_LABELS_API,
+        pumpSwapApi: PUMP_SWAP_API_BASE,
       },
     };
   }
@@ -784,7 +800,7 @@ class WalletManager extends WalletOperations {
           adapter: "swap",
           chain: "multi",
           write: true,
-          description: "Dynamic swap routing via Uniswap v2/v3 and Jupiter",
+          description: "Dynamic swap routing via Uniswap v2/v3, Jupiter, and Pump",
         },
         {
           adapter: "price",
@@ -948,13 +964,16 @@ class WalletManager extends WalletOperations {
     }
 
     const connection = new Connection(this.getSolRpc(), "confirmed");
-    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
-      new PublicKey(account.address),
-      { programId: TOKEN_PROGRAM_ID },
-      "confirmed"
+    const owner = new PublicKey(account.address);
+    const tokenAccountGroups = await Promise.all(
+      [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].map(
+        async (programId) =>
+          await connection.getParsedTokenAccountsByOwner(owner, { programId }, "confirmed")
+      )
     );
+    const tokenAccounts = tokenAccountGroups.flatMap((group) => group.value);
 
-    return tokenAccounts.value
+    const balances: WalletTokenBalance[] = tokenAccounts
       .map((entry) => {
         const parsed = entry.account.data.parsed;
         const info = parsed?.info as {
@@ -969,7 +988,8 @@ class WalletManager extends WalletOperations {
         const decimals = Number(info?.tokenAmount?.decimals || 0);
         const raw = String(info?.tokenAmount?.amount || "0");
         const rawValue = BigInt(raw);
-        const symbol = mint ? `SPL-${mint.slice(0, 4).toUpperCase()}` : "SPL";
+        const metadata = getSolanaTokenMetadata(mint);
+        const symbol = metadata?.symbol || (mint ? `SPL-${mint.slice(0, 4).toUpperCase()}` : "SPL");
 
         return {
           chain: "sol" as const,
@@ -977,14 +997,33 @@ class WalletManager extends WalletOperations {
           address: account.address,
           tokenAddress: mint,
           symbol,
-          name: mint ? `SPL Token ${mint.slice(0, 6)}...` : "SPL Token",
-          decimals,
+          name: metadata?.name || (mint ? `SPL Token ${mint.slice(0, 6)}...` : "SPL Token"),
+          decimals: metadata?.decimals ?? decimals,
           amount: formatUnits(rawValue, decimals),
           raw,
           tokenAccount: entry.pubkey.toBase58(),
+          defaultAsset: metadata?.defaultAsset,
         };
       })
       .filter((item) => item.tokenAddress && (includeZero || BigInt(item.raw) > 0n));
+
+    const presentMints = new Set(balances.map((balance) => balance.tokenAddress));
+    for (const token of DEFAULT_SOLANA_TOKENS) {
+      if (presentMints.has(token.mint)) continue;
+      balances.unshift({
+        chain: "sol",
+        index: account.index,
+        address: account.address,
+        tokenAddress: token.mint,
+        symbol: token.symbol,
+        name: token.name,
+        decimals: token.decimals,
+        amount: "0",
+        raw: "0",
+        defaultAsset: token.defaultAsset,
+      });
+    }
+    return balances;
   }
 
   async getTokenTransactions(query: TokenTransactionsQuery): Promise<WalletTokenTransaction[]> {

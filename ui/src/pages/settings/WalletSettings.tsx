@@ -185,6 +185,7 @@ export function WalletSettings() {
         allowEthContractWrite: agentPolicy.allowEthContractWrite,
         allowSolProgramInstruction: agentPolicy.allowSolProgramInstruction,
         allowEthSwaps: agentPolicy.allowEthSwaps,
+        allowSolSwaps: agentPolicy.allowSolSwaps,
         allowDappInteraction: agentPolicy.allowDappInteraction,
         allowX402Payments: agentPolicy.allowX402Payments,
         allowedEthContracts: parseWalletAllowlistInput(ethAllowlistInput),
@@ -247,7 +248,16 @@ export function WalletSettings() {
         label: "Solana program instructions",
         description: "Program calls",
       },
-      { key: "allowEthSwaps", label: "Swaps", description: "Uniswap and Jupiter swaps" },
+      {
+        key: "allowEthSwaps",
+        label: "Ethereum swaps",
+        description: "Uniswap swap execution",
+      },
+      {
+        key: "allowSolSwaps",
+        label: "Solana swaps",
+        description: "Jupiter and Pump swap execution",
+      },
       {
         key: "allowDappInteraction",
         label: "Dapp interaction",

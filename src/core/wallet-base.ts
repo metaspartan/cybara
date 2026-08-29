@@ -37,6 +37,7 @@ import {
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
   getAssociatedTokenAddressSync,
+  getMintDetails,
   getMintDecimals,
   TOKEN_PROGRAM_ID,
 } from "./solana-token";
@@ -78,6 +79,7 @@ import {
   type WalletX402SettlementResponse,
 } from "./wallet-types";
 import { assertPublicHttpUrl } from "./wallet-url-guard";
+import { getSolanaTokenMetadata, resolveSolanaTokenAlias } from "./wallet-token-catalog";
 import { validateWalletMnemonic, WALLET_VERSION, writeWalletVault } from "./wallet-vault";
 
 let bitcoin: typeof bitcoinImport | null = null;
@@ -119,6 +121,8 @@ export const PYTH_HERMES_API_BASE = "https://hermes.pyth.network/v2";
 export const JUPITER_PRICE_API_BASE = "https://lite-api.jup.ag/price/v3";
 export const JUPITER_SWAP_API_BASE = "https://lite-api.jup.ag/swap/v1";
 export const JUPITER_PROGRAM_LABELS_API = "https://lite-api.jup.ag/swap/v1/program-id-to-label";
+export const PUMP_SWAP_API_BASE = "https://fun-block.pump.fun";
+export const PUMP_SWAP_PROGRAM_ID = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 export const SOL_MINT = "So11111111111111111111111111111111111111112";
 export const USDC_SOL_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
@@ -314,7 +318,9 @@ export abstract class WalletBase {
     );
     const signer = this.deriveSolKeypair(input.mnemonic, input.index);
 
-    const mintDecimals = await getMintDecimals(connection, mint, "confirmed");
+    const mintDetails = await getMintDetails(connection, mint, "confirmed");
+    const mintDecimals = mintDetails.decimals;
+    const tokenProgramId = mintDetails.programId;
     const decimals =
       typeof input.decimals === "number" && Number.isFinite(input.decimals)
         ? Math.max(0, Math.floor(input.decimals))
@@ -329,7 +335,7 @@ export abstract class WalletBase {
       mint,
       signer.publicKey,
       false,
-      TOKEN_PROGRAM_ID,
+      tokenProgramId,
       ASSOCIATED_TOKEN_PROGRAM_ID
     );
     const senderTokenAccountInfo = await connection.getAccountInfo(senderTokenAccount, "confirmed");
@@ -341,7 +347,7 @@ export abstract class WalletBase {
       mint,
       destinationOwner,
       false,
-      TOKEN_PROGRAM_ID,
+      tokenProgramId,
       ASSOCIATED_TOKEN_PROGRAM_ID
     );
     const destinationTokenAccountInfo = await connection.getAccountInfo(
@@ -357,7 +363,7 @@ export abstract class WalletBase {
           destinationTokenAccount,
           destinationOwner,
           mint,
-          TOKEN_PROGRAM_ID,
+          tokenProgramId,
           ASSOCIATED_TOKEN_PROGRAM_ID
         )
       );
@@ -371,7 +377,7 @@ export abstract class WalletBase {
         signer.publicKey,
         amountBaseUnits,
         decimals,
-        TOKEN_PROGRAM_ID
+        tokenProgramId
       )
     );
 
@@ -770,11 +776,20 @@ export abstract class WalletBase {
       USDT: "Es9vMFrzaCERmJfr8j7Xw4eE3f7zQht4p59SJ4f5kL7Q",
     };
 
-    const mint = commonMints[upper] || normalized;
+    const mint = commonMints[upper] || resolveSolanaTokenAlias(normalized) || normalized;
     try {
       return new PublicKey(mint).toBase58();
     } catch {
       throw new Error(`Validation error: Invalid Solana mint '${input}'`);
+    }
+  }
+
+  protected canResolveSolMint(input: string): boolean {
+    try {
+      this.resolveSolMint(input);
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -841,6 +856,8 @@ export abstract class WalletBase {
     if (normalizedMint === SOL_MINT) {
       return 9;
     }
+    const metadata = getSolanaTokenMetadata(normalizedMint);
+    if (metadata) return metadata.decimals;
     return await getMintDecimals(connection, new PublicKey(normalizedMint), "confirmed");
   }
 
@@ -895,11 +912,14 @@ export abstract class WalletBase {
     if (normalizedInputMint === SOL_MINT) {
       balanceRaw = BigInt(await input.connection.getBalance(input.owner, "confirmed"));
     } else {
+      const inputMint = new PublicKey(normalizedInputMint);
+      const tokenProgramId = (await getMintDetails(input.connection, inputMint, "confirmed"))
+        .programId;
       const ata = getAssociatedTokenAddressSync(
-        new PublicKey(normalizedInputMint),
+        inputMint,
         input.owner,
         false,
-        TOKEN_PROGRAM_ID,
+        tokenProgramId,
         ASSOCIATED_TOKEN_PROGRAM_ID
       );
       try {
@@ -1096,6 +1116,7 @@ export abstract class WalletBase {
       allowEthContractWrite: false,
       allowSolProgramInstruction: false,
       allowEthSwaps: false,
+      allowSolSwaps: false,
       allowDappInteraction: false,
       allowX402Payments: false,
       allowedEthContracts: [],
@@ -1120,6 +1141,7 @@ export abstract class WalletBase {
     const allowEthContractWrite = source.allowEthContractWrite === true;
     const allowSolProgramInstruction = source.allowSolProgramInstruction === true;
     const allowEthSwaps = source.allowEthSwaps === true;
+    const allowSolSwaps = source.allowSolSwaps === true;
     const allowDappInteraction = source.allowDappInteraction === true;
     const allowX402Payments = source.allowX402Payments === true;
 
@@ -1212,6 +1234,7 @@ export abstract class WalletBase {
       allowEthContractWrite,
       allowSolProgramInstruction,
       allowEthSwaps,
+      allowSolSwaps,
       allowDappInteraction,
       allowX402Payments,
       allowedEthContracts: [...new Set(allowedEthContracts)],

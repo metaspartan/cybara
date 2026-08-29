@@ -1055,6 +1055,8 @@ describe("Wallet route contracts (mocked manager)", () => {
         wrapUnwrapSol: undefined,
         computeUnitPriceMicroLamports: undefined,
         skipPreflight: true,
+        frontRunningProtection: false,
+        tipAmount: undefined,
         dryRun: true,
       },
       {
@@ -1076,6 +1078,8 @@ describe("Wallet route contracts (mocked manager)", () => {
         wrapUnwrapSol: undefined,
         computeUnitPriceMicroLamports: undefined,
         skipPreflight: false,
+        frontRunningProtection: false,
+        tipAmount: undefined,
         dryRun: false,
       },
     ]);
