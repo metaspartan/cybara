@@ -56,6 +56,24 @@ function browserSessionId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function browserPointerCoordinates(body: unknown): { x: number; y: number } | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const { x, y } = body as { x?: unknown; y?: unknown };
+  if (
+    typeof x !== "number" ||
+    typeof y !== "number" ||
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    x < 0 ||
+    y < 0 ||
+    x > 10_000 ||
+    y > 10_000
+  ) {
+    return null;
+  }
+  return { x, y };
+}
+
 function buildRestartCommand(argv: string[], cwd: string): string[] {
   if (isWindows()) {
     const powerShell = commandExists("pwsh")
@@ -324,13 +342,34 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     return { success: true, message: "Clicked element" };
   },
   "POST /api/browser/tabs/:id/pointer/click": async (body, params) => {
-    const { x, y } = body as { x?: unknown; y?: unknown };
-    if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x + y)) {
+    const point = browserPointerCoordinates(body);
+    if (!point) {
       return { error: "Finite pointer coordinates are required" };
     }
-    await pwManager.clickAt(params!.id, x, y);
+    await pwManager.clickAt(params!.id, point.x, point.y);
     invalidateBrowserPreview(params!.id);
     return { success: true, message: "Clicked page" };
+  },
+  "POST /api/browser/tabs/:id/pointer/move": async (body, params) => {
+    const point = browserPointerCoordinates(body);
+    if (!point) return { error: "Finite pointer coordinates are required" };
+    await pwManager.movePointerAt(params!.id, point.x, point.y);
+    invalidateBrowserPreview(params!.id);
+    return { success: true, message: "Moved pointer" };
+  },
+  "POST /api/browser/tabs/:id/pointer/down": async (body, params) => {
+    const point = browserPointerCoordinates(body);
+    if (!point) return { error: "Finite pointer coordinates are required" };
+    await pwManager.pointerDownAt(params!.id, point.x, point.y);
+    invalidateBrowserPreview(params!.id);
+    return { success: true, message: "Pressed pointer" };
+  },
+  "POST /api/browser/tabs/:id/pointer/up": async (body, params) => {
+    const point = browserPointerCoordinates(body);
+    if (!point) return { error: "Finite pointer coordinates are required" };
+    await pwManager.pointerUpAt(params!.id, point.x, point.y);
+    invalidateBrowserPreview(params!.id);
+    return { success: true, message: "Released pointer" };
   },
   "POST /api/browser/tabs/:id/scroll": async (body, params) => {
     const { deltaX, deltaY } = body as { deltaX?: unknown; deltaY?: unknown };
@@ -351,6 +390,15 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     await pwManager.sendKey(params!.id, key);
     invalidateBrowserPreview(params!.id);
     return { success: true, message: "Sent key" };
+  },
+  "POST /api/browser/tabs/:id/text": async (body, params) => {
+    const { text } = body as { text?: unknown };
+    if (typeof text !== "string" || text.length === 0 || text.length > 1_000) {
+      return { error: "Valid text is required" };
+    }
+    await pwManager.sendText(params!.id, text);
+    invalidateBrowserPreview(params!.id);
+    return { success: true, message: "Inserted text" };
   },
   "POST /api/browser/tabs/:id/type": async (body, params) => {
     const type = pwManager.type;

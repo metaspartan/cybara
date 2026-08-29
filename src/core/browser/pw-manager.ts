@@ -840,12 +840,43 @@ export async function click(
 export async function clickAt(pageId: string, x: number, y: number): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
+  const target = boundedPointerPosition(page, x, y);
+  await movePagePointer(pageId, page, target.x, target.y, "user");
+  await page.mouse.click(target.x, target.y);
+  setPointerAction(pageId, "click", "user");
+}
+
+function boundedPointerPosition(page: Page, x: number, y: number): { x: number; y: number } {
   const viewport = page.viewportSize();
   if (!viewport) throw new Error("Browser viewport is unavailable");
-  const targetX = Math.min(viewport.width - 1, Math.max(0, Math.round(x)));
-  const targetY = Math.min(viewport.height - 1, Math.max(0, Math.round(y)));
-  await movePointer(pageId, page, targetX, targetY, "user");
-  await page.mouse.click(targetX, targetY);
+  return {
+    x: Math.min(viewport.width - 1, Math.max(0, Math.round(x))),
+    y: Math.min(viewport.height - 1, Math.max(0, Math.round(y))),
+  };
+}
+
+export async function movePointerAt(pageId: string, x: number, y: number): Promise<void> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) throw new Error(`Page ${pageId} not found`);
+  const target = boundedPointerPosition(page, x, y);
+  await movePagePointer(pageId, page, target.x, target.y, "user");
+}
+
+export async function pointerDownAt(pageId: string, x: number, y: number): Promise<void> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) throw new Error(`Page ${pageId} not found`);
+  const target = boundedPointerPosition(page, x, y);
+  await movePagePointer(pageId, page, target.x, target.y, "user");
+  await page.mouse.down();
+  setPointerAction(pageId, "click", "user");
+}
+
+export async function pointerUpAt(pageId: string, x: number, y: number): Promise<void> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) throw new Error(`Page ${pageId} not found`);
+  const target = boundedPointerPosition(page, x, y);
+  await movePagePointer(pageId, page, target.x, target.y, "user");
+  await page.mouse.up();
   setPointerAction(pageId, "click", "user");
 }
 
@@ -863,6 +894,13 @@ export async function sendKey(pageId: string, key: string): Promise<void> {
   } else {
     await page.keyboard.press(key);
   }
+  setPointerAction(pageId, "type", "user");
+}
+
+export async function sendText(pageId: string, text: string): Promise<void> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) throw new Error(`Page ${pageId} not found`);
+  await page.keyboard.insertText(text);
   setPointerAction(pageId, "type", "user");
 }
 
@@ -1023,10 +1061,10 @@ async function movePointerToLocator(pageId: string, page: Page, locator: Locator
   if (!box) return;
   const x = Math.round(box.x + box.width / 2);
   const y = Math.round(box.y + box.height / 2);
-  await movePointer(pageId, page, x, y, "agent");
+  await movePagePointer(pageId, page, x, y, "agent");
 }
 
-async function movePointer(
+async function movePagePointer(
   pageId: string,
   page: Page,
   x: number,

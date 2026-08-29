@@ -1030,7 +1030,7 @@ function createGatewayServer(
             }
             return;
           }
-          if (Buffer.byteLength(text) > 2_048) return;
+          if (Buffer.byteLength(text) > 8_192) return;
           let parsed: unknown;
           try {
             parsed = JSON.parse(text);

@@ -44,8 +44,12 @@ const browserMockState = {
   viewportMode: null as "responsive" | "mobile" | "desktop" | null,
   clickCalls: [] as ClickCall[],
   coordinateClickCalls: [] as Array<{ id: string; x: number; y: number }>,
+  pointerMoveCalls: [] as Array<{ id: string; x: number; y: number }>,
+  pointerDownCalls: [] as Array<{ id: string; x: number; y: number }>,
+  pointerUpCalls: [] as Array<{ id: string; x: number; y: number }>,
   scrollCalls: [] as Array<{ id: string; deltaX: number; deltaY: number }>,
   keyCalls: [] as Array<{ id: string; key: string }>,
+  textCalls: [] as Array<{ id: string; text: string }>,
   typeCalls: [] as TypeCall[],
   closeAllCalls: 0,
 };
@@ -132,11 +136,23 @@ mock.module("../../src/core/browser/pw-manager", () => ({
   clickAt: async (id: string, x: number, y: number) => {
     browserMockState.coordinateClickCalls.push({ id, x, y });
   },
+  movePointerAt: async (id: string, x: number, y: number) => {
+    browserMockState.pointerMoveCalls.push({ id, x, y });
+  },
+  pointerDownAt: async (id: string, x: number, y: number) => {
+    browserMockState.pointerDownCalls.push({ id, x, y });
+  },
+  pointerUpAt: async (id: string, x: number, y: number) => {
+    browserMockState.pointerUpCalls.push({ id, x, y });
+  },
   scrollPage: async (id: string, deltaX: number, deltaY: number) => {
     browserMockState.scrollCalls.push({ id, deltaX, deltaY });
   },
   sendKey: async (id: string, key: string) => {
     browserMockState.keyCalls.push({ id, key });
+  },
+  sendText: async (id: string, text: string) => {
+    browserMockState.textCalls.push({ id, text });
   },
   type: async (
     id: string,
@@ -174,8 +190,12 @@ function resetState() {
   browserMockState.viewportMode = null;
   browserMockState.clickCalls = [];
   browserMockState.coordinateClickCalls = [];
+  browserMockState.pointerMoveCalls = [];
+  browserMockState.pointerDownCalls = [];
+  browserMockState.pointerUpCalls = [];
   browserMockState.scrollCalls = [];
   browserMockState.keyCalls = [];
+  browserMockState.textCalls = [];
   browserMockState.typeCalls = [];
   browserMockState.closeAllCalls = 0;
 }
@@ -512,19 +532,31 @@ describe("Browser route contracts (mocked manager)", () => {
     ]);
   });
 
-  test("browser preview pointer, wheel, and keyboard routes forward user input", async () => {
+  test("browser preview pointer, wheel, keyboard, and text routes forward user input", async () => {
     const click = await api("POST", "/api/browser/tabs/tab-1/pointer/click", { x: 80, y: 120 });
+    const move = await api("POST", "/api/browser/tabs/tab-1/pointer/move", { x: 81, y: 121 });
+    const down = await api("POST", "/api/browser/tabs/tab-1/pointer/down", { x: 82, y: 122 });
+    const up = await api("POST", "/api/browser/tabs/tab-1/pointer/up", { x: 83, y: 123 });
     const scroll = await api("POST", "/api/browser/tabs/tab-1/scroll", {
       deltaX: 0,
       deltaY: 9000,
     });
     const key = await api("POST", "/api/browser/tabs/tab-1/keyboard", { key: "Enter" });
+    const text = await api("POST", "/api/browser/tabs/tab-1/text", { text: "pasted text" });
     expect(click.body).toEqual({ success: true, message: "Clicked page" });
+    expect(move.body).toEqual({ success: true, message: "Moved pointer" });
+    expect(down.body).toEqual({ success: true, message: "Pressed pointer" });
+    expect(up.body).toEqual({ success: true, message: "Released pointer" });
     expect(scroll.body).toEqual({ success: true, message: "Scrolled page" });
     expect(key.body).toEqual({ success: true, message: "Sent key" });
+    expect(text.body).toEqual({ success: true, message: "Inserted text" });
     expect(browserMockState.coordinateClickCalls).toEqual([{ id: "tab-1", x: 80, y: 120 }]);
+    expect(browserMockState.pointerMoveCalls).toEqual([{ id: "tab-1", x: 81, y: 121 }]);
+    expect(browserMockState.pointerDownCalls).toEqual([{ id: "tab-1", x: 82, y: 122 }]);
+    expect(browserMockState.pointerUpCalls).toEqual([{ id: "tab-1", x: 83, y: 123 }]);
     expect(browserMockState.scrollCalls).toEqual([{ id: "tab-1", deltaX: 0, deltaY: 4000 }]);
     expect(browserMockState.keyCalls).toEqual([{ id: "tab-1", key: "Enter" }]);
+    expect(browserMockState.textCalls).toEqual([{ id: "tab-1", text: "pasted text" }]);
   });
 
   test("POST /api/browser/tabs/:id/type validates input and forwards options", async () => {

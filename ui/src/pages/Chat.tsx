@@ -81,6 +81,8 @@ import { buildMultiChatPath } from "./chat/multiChatLayout";
 import { parseInitialChatRoute } from "./chat/chatRoute";
 import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
+import { FloatingBrowserPreview } from "./chat/FloatingBrowserPreview";
+import { shouldShowFloatingBrowserPreview } from "./chat/floatingBrowserPreviewModel";
 import { hasMixedAssistantAuthors } from "./chat/assistantAuthors";
 import { clearCachedLiveSessionState, isLiveSessionRunning } from "./chat/liveSessionState";
 import { NearbyShareModal } from "./chat/NearbyShareModal";
@@ -471,6 +473,39 @@ export function Chat() {
     const sessionActive = !!sessionId && activeSessionIds.includes(sessionId);
     return isAgentUsingBrowser(liveActivities, sessionActive);
   }, [activeSessionIds, liveActivities, sessionId]);
+  const [browserPreviewSeenSessionId, setBrowserPreviewSeenSessionId] = useState<string | null>(
+    null
+  );
+  useEffect(() => {
+    if (!sessionId) {
+      setBrowserPreviewSeenSessionId(null);
+      return;
+    }
+    if (agentUsingBrowser) setBrowserPreviewSeenSessionId(sessionId);
+  }, [agentUsingBrowser, sessionId]);
+  const floatingBrowserTab = useMemo(
+    () =>
+      workspaceTabs.find((instance) => instance.kind === "browser" && !instance.pageKey) ??
+      workspaceTabs.find((instance) => instance.kind === "browser"),
+    [workspaceTabs]
+  );
+  const floatingBrowserAvailable =
+    !!floatingBrowserTab || browserPreviewSeenSessionId === sessionId || agentUsingBrowser;
+  const floatingBrowserVisible = shouldShowFloatingBrowserPreview({
+    activeWorkspaceKind,
+    artifactOpen: !!artifactViewerTarget,
+    available: floatingBrowserAvailable,
+    sessionId,
+    workspacePanelOpen: showWorkspacePanel,
+  });
+  const expandFloatingBrowser = useCallback((): void => {
+    if (floatingBrowserTab) {
+      setActiveWorkspaceTab(floatingBrowserTab.id);
+      setShowWorkspacePanel(true);
+      return;
+    }
+    openWorkspaceTab("browser");
+  }, [floatingBrowserTab, openWorkspaceTab, setActiveWorkspaceTab, setShowWorkspacePanel]);
   const resolveSelectableSessionAgentId = useCallback(
     (agentId?: string | null): string | undefined => {
       if (typeof agentId !== "string") return undefined;
@@ -1822,6 +1857,14 @@ export function Chat() {
               ) : null}
             </>
           )}
+          {floatingBrowserVisible && sessionId ? (
+            <FloatingBrowserPreview
+              bottomInset={Math.max(82, composerHeight + 18)}
+              pageKey={floatingBrowserTab?.pageKey}
+              sessionId={sessionId}
+              onExpand={expandFloatingBrowser}
+            />
+          ) : null}
         </div>
 
         {sessionId && showEnvironmentOverview && !showWorkspacePanel ? (
