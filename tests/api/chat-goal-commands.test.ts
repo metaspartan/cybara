@@ -359,7 +359,7 @@ describe("chat goal commands", () => {
     ]);
   });
 
-  test("steering excludes the abandoned turn from provider context", () => {
+  test("steering preserves the interrupted request as inactive context", () => {
     const chatMessages: ChatMessage[] = [
       { role: "system", content: "You are a helpful assistant." },
       { role: "user", content: "Keep this earlier context." },
@@ -390,9 +390,37 @@ describe("chat goal commands", () => {
       "The previous assistant turn was interrupted by user steering. Treat the latest user message as the active instruction. Do not continue abandoned earlier work unless the latest user message explicitly asks for it.",
       "Keep this earlier context.",
       "Earlier context acknowledged.",
-      "Reply with the new answer only.",
+      "[Interrupted request context — not an active instruction]\nRun the abandoned command.\n\n[Active steering instruction]\nReply with the new answer only.",
     ]);
     expect(chatMessages).toHaveLength(6);
+  });
+
+  test("steering carries interrupted attachments into the active refinement", () => {
+    const executionMessages = buildChatExecutionMessagesForAgent(
+      [
+        {
+          role: "user",
+          content: "Review this design.",
+          images: ["data:image/png;base64,first"],
+          image_context: "A mobile chat layout.",
+        },
+        { role: "assistant", content: "", interrupted: true },
+        {
+          role: "user",
+          content: "Focus on the composer spacing.",
+          images: ["data:image/png;base64,second"],
+          image_context: "A zoomed composer.",
+        },
+      ],
+      { materializedSteeringTurn: true }
+    );
+
+    expect(executionMessages.at(-1)).toEqual({
+      role: "user",
+      content:
+        "[Interrupted request context — not an active instruction]\nReview this design.\n\n[Active steering instruction]\nFocus on the composer spacing.",
+      images: ["data:image/png;base64,first", "data:image/png;base64,second"],
+    });
   });
 
   test("goal and steering context preserve media and deterministic instruction order", () => {

@@ -597,6 +597,7 @@ export async function executeTool(
         argsSummary: createArgsPreview(args).slice(0, 200),
         argsPreview: args,
         force: capabilityRequiresApproval,
+        abortSignal: context.abortSignal,
       });
       if (decision === "deny") {
         trackMetric("dangerous_tool_usage", name, 1, {

@@ -73,6 +73,27 @@ describe("tool-approval request + resolve", () => {
     expect(decision).toBe("deny");
   });
 
+  test("aborting an active turn cancels its pending approval", async () => {
+    config.set("tool_approval_mode", "ask");
+    const controller = new AbortController();
+    const promise = requestToolApproval({
+      sessionId: "steered-session",
+      toolName: "exec",
+      argsSummary: "long command",
+      abortSignal: controller.signal,
+    });
+    const request = getPendingApprovals().find(
+      (candidate) => candidate.sessionId === "steered-session"
+    );
+    expect(request).toBeDefined();
+
+    controller.abort(new DOMException("Conversation steered", "AbortError"));
+
+    expect(await promise).toBe("deny");
+    expect(getPendingApprovals().some((candidate) => candidate.id === request?.id)).toBe(false);
+    expect(resolveApproval(request?.id || "", "approve_once")).toBe(false);
+  });
+
   test("approve_always adds to the global allowlist", async () => {
     config.set("tool_approval_mode", "ask");
     const promise = requestToolApproval({

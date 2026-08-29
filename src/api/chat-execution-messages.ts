@@ -26,6 +26,26 @@ interface ReplayableToolCall {
 
 const toolResultPreviewCache = new WeakMap<object, string>();
 
+function mergeSteeringContext(
+  interruptedRequest: ChatMessage,
+  steeringMessage: ChatMessage
+): ChatMessage {
+  const interruptedContent = compactChatContentForPrompt(interruptedRequest).trim();
+  const steeringContent = compactChatContentForPrompt(steeringMessage).trim();
+  const interruptedImageContext = interruptedRequest.image_context?.trim();
+  const steeringImageContext = steeringMessage.image_context?.trim();
+  const images = [...(interruptedRequest.images || []), ...(steeringMessage.images || [])];
+  const imageContext = [interruptedImageContext, steeringImageContext].filter(Boolean).join("\n\n");
+  return {
+    ...steeringMessage,
+    content: `[Interrupted request context — not an active instruction]\n${
+      interruptedContent || "[No text; see the attached context]"
+    }\n\n[Active steering instruction]\n${steeringContent}`,
+    ...(images.length > 0 ? { images } : {}),
+    ...(imageContext ? { image_context: imageContext } : {}),
+  };
+}
+
 function previewToolResult(toolCall: ReplayableToolCall, sessionId?: string): string {
   const cached = toolResultPreviewCache.get(toolCall);
   if (cached !== undefined) return cached;
@@ -56,7 +76,13 @@ export function buildChatExecutionMessagesForAgent(
     options?.materializedSteeringTurn &&
     previousUserIndex >= 0 &&
     latestUserIndex > previousUserIndex
-      ? [...sessionMessages.slice(0, previousUserIndex), ...sessionMessages.slice(latestUserIndex)]
+      ? [
+          ...sessionMessages.slice(0, previousUserIndex),
+          mergeSteeringContext(
+            sessionMessages[previousUserIndex],
+            sessionMessages[latestUserIndex]
+          ),
+        ]
       : sessionMessages;
   const latestTransfer = sessionMessages
     .flatMap((sessionMessage) => sessionMessage.agent_transfers || [])

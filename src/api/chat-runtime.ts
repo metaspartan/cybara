@@ -1903,6 +1903,7 @@ async function handleChatTurn(
     : undefined;
   const response: ChatResponse = {
     sessionId: session.id,
+    session_agent_id: session.agentId,
     workspaceDir: session.workspaceDir ?? null,
     contextUsage: estimateSessionContextUsage(
       session.messages,

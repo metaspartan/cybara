@@ -139,9 +139,14 @@ export async function requestToolApproval(params: {
   argsPreview?: Record<string, unknown>;
   approvalKey?: string;
   force?: boolean;
+  abortSignal?: AbortSignal;
 }): Promise<ApprovalDecision> {
   const { sessionId, agentId, toolName, argsSummary, argsPreview } = params;
   const approvalKey = params.approvalKey ?? buildApprovalKey(toolName, argsPreview);
+
+  if (params.abortSignal?.aborted) {
+    return "deny";
+  }
 
   if (isToolApproved(sessionId, approvalKey)) {
     return "approve_session";
@@ -175,6 +180,7 @@ export async function requestToolApproval(params: {
   });
 
   return new Promise<ApprovalDecision>((resolve) => {
+    const abort = () => resolveApproval(id, "deny");
     const timer = setTimeout(() => {
       if (request.status === "pending") {
         resolveApproval(id, "deny");
@@ -183,8 +189,11 @@ export async function requestToolApproval(params: {
 
     resolvers.set(id, (decision) => {
       clearTimeout(timer);
+      params.abortSignal?.removeEventListener("abort", abort);
       resolve(decision);
     });
+    params.abortSignal?.addEventListener("abort", abort, { once: true });
+    if (params.abortSignal?.aborted) abort();
   });
 }
 

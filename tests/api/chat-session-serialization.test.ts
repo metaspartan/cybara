@@ -1511,16 +1511,15 @@ describe("handleChat per-session serialization", () => {
             message.content.includes("previous assistant turn was interrupted by user steering")
         )
       ).toBe(true);
-      expect(
-        [
-          ...((secondExecutionMessages || []) as Array<{
-            role: string;
-            content: string;
-          }>),
-        ]
-          .reverse()
-          .find((message) => message.role === "user")?.content
-      ).toBe("steer after command");
+      const steeredUserMessage = [
+        ...((secondExecutionMessages || []) as Array<{
+          role: string;
+          content: string;
+        }>),
+      ]
+        .reverse()
+        .find((message) => message.role === "user")?.content;
+      expect(steeredUserMessage).toContain("steer after command");
       expect(messages.map((message) => message.role)).toEqual([
         "user",
         "assistant",
