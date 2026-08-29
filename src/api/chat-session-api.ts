@@ -76,6 +76,11 @@ const persistedSessionFingerprintStatement = db.prepare(
   "SELECT COUNT(*) AS count, COALESCE(SUM(length(metadata)), 0) AS metaBytes, COALESCE(SUM(length(content)), 0) AS contentBytes, COALESCE(MAX(created_at), '') AS maxCreated FROM session_messages WHERE session_id = ?"
 );
 
+function clearPersistedSessionLoadMemo(sessionId: string): void {
+  persistedSessionLoadMemo.delete(`${sessionId}:full`);
+  persistedSessionLoadMemo.delete(`${sessionId}:deferred`);
+}
+
 async function loadPersistedSessionMemoized(
   sessionId: string,
   options: ChatSessionLoadOptions = {}
@@ -515,7 +520,7 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
     const persistedDeleted = await deletePersistedSession(key);
     if (memoryDeleted || persistedDeleted) {
       removePersistedSessionIndex(key);
-      persistedSessionLoadMemo.delete(key);
+      clearPersistedSessionLoadMemo(key);
     }
     clearTodoState(key);
     return memoryDeleted || persistedDeleted;

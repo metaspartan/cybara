@@ -229,12 +229,25 @@ export const botsApi = {
     }),
   update: (
     id: string,
-    input: { name?: string; title?: string; description?: string; hidden?: boolean }
+    input: {
+      name?: string;
+      title?: string;
+      description?: string;
+      hidden?: boolean;
+      pinned?: boolean;
+    }
   ) =>
     fetchApi<{ bot: BotRosterItem }>(`/bots/${id}`, {
       method: "PUT",
       body: JSON.stringify(input),
     }),
+  duplicate: (id: string, name?: string) =>
+    fetchApi<{ bot: BotRosterItem; session_id: string }>(`/bots/${id}/duplicate`, {
+      method: "POST",
+      body: JSON.stringify(name ? { name } : {}),
+    }),
+  delete: (id: string) =>
+    fetchApi<{ success: boolean; bot_id: string }>(`/bots/${id}`, { method: "DELETE" }),
   ensureSession: (id: string) =>
     fetchApi<{ bot_id: string; session_id: string }>(`/bots/${id}/session`, {
       method: "POST",

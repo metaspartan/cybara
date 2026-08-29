@@ -51,6 +51,7 @@ export interface BotRosterItem {
   title: string;
   description: string;
   hidden: boolean;
+  pinned: boolean;
   model?: string;
   provider?: string;
   provider_id?: string;

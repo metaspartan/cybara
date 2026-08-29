@@ -40,6 +40,7 @@ import type { SidebarDestinationId, SidebarPrimaryItemId } from "@/lib/sidebarNa
 import { cn } from "@/lib/utils";
 import { SessionsPanel } from "@/pages/chat/SessionSidebar";
 import { BotSidebar } from "@/pages/chat/BotSidebar";
+import { readPersistedSessionId } from "@/pages/chat/chatModel";
 import { buildFreshChatPath } from "@/pages/chat/chatRoute";
 import { buildMultiChatPath, isMultiChatSearch } from "@/pages/chat/multiChatLayout";
 import type { TranslationKey } from "../../../../shared/i18n/catalog";
@@ -196,7 +197,9 @@ export function Sidebar() {
     setSessionSearchOpen(false);
   }, [sidebarMode]);
 
-  const currentSessionId = onChatPage ? new URLSearchParams(location.search).get("session") : null;
+  const currentSessionId = onChatPage
+    ? new URLSearchParams(location.search).get("session") || readPersistedSessionId()
+    : null;
   const multiChatActive = onChatPage && isMultiChatSearch(location.search);
   const activeSettingsSection =
     resolveSettingsSectionId(new URLSearchParams(location.search).get("section")) ?? "general";

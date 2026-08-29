@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router";
 import {
   Clock,
   Plus,
@@ -67,8 +68,11 @@ const schedulePresets = [
 ];
 
 export function Tasks() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialAgentId = searchParams.get("agent")?.trim() || "";
+  const initialSessionId = searchParams.get("session")?.trim() || "";
   const [searchQuery, setSearchQuery] = useState("");
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(searchParams.get("new") === "1");
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -130,6 +134,7 @@ export function Tasks() {
       addToast("success", editingTask ? "Task updated successfully" : "Task created successfully");
       setIsCreateModalOpen(false);
       setEditingTask(null);
+      if (searchParams.get("new") === "1") setSearchParams({}, { replace: true });
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to create task");
     }
@@ -466,6 +471,8 @@ export function Tasks() {
           agents={agents || []}
           sessions={sessions}
           task={editingTask}
+          defaultAgentId={initialAgentId}
+          defaultSessionId={initialSessionId}
           isLoading={createTask.isPending || updateTask.isPending}
         />
 
@@ -492,6 +499,8 @@ interface TaskModalProps {
   agents: AgentSummary[];
   sessions: Array<{ id: string; title?: string | null }>;
   task: Task | null;
+  defaultAgentId: string;
+  defaultSessionId: string;
   isLoading: boolean;
 }
 
@@ -503,6 +512,8 @@ function TaskModal({
   agents,
   sessions,
   task,
+  defaultAgentId,
+  defaultSessionId,
   isLoading,
 }: TaskModalProps) {
   const taskSchedule = task?.schedule || "0 * * * *";
@@ -548,18 +559,20 @@ function TaskModal({
         />
 
         <Select
+          key={`agent:${task?.id ?? "new"}:${defaultAgentId}:${agents.length}`}
           name="agent_id"
           label="Agent"
           options={agentOptions}
-          defaultValue={task?.agent_id || ""}
+          defaultValue={task?.agent_id || defaultAgentId}
         />
 
         <Select
+          key={`session:${task?.id ?? "new"}:${defaultSessionId}:${sessions.length}`}
           name="session_id"
           label="Chat context (optional)"
           helperText="Continue in an existing chat or create a separate chat for every run."
           options={sessionOptions}
-          defaultValue={task?.session_id || ""}
+          defaultValue={task?.session_id || defaultSessionId}
         />
 
         <Textarea

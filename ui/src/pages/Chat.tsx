@@ -8,7 +8,7 @@ import {
   useUpdateSessionAgent,
 } from "@/hooks/useChat";
 import { canShareNearbySession, useNearbyStatus } from "@/hooks/useNearbyStatus";
-import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
+import { botsApi, chatApi, extractApiError, providerPlansApi, settingsApi } from "@/lib/api";
 import {
   APP_HOTKEY_EVENT,
   type AppHotkeyActionId,
@@ -26,9 +26,14 @@ import { useI18n } from "@/lib/i18n";
 import { type PendingChatMessage, type StatusSessionSnapshot } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
-import type { ProviderPlanStatusResponse, SessionContextUsage, SessionTokenUsage } from "@/types";
+import type {
+  BotRosterItem,
+  ProviderPlanStatusResponse,
+  SessionContextUsage,
+  SessionTokenUsage,
+} from "@/types";
 import { openExternal } from "@/utils/openExternal";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, Loader2, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -110,6 +115,18 @@ export function Chat() {
   const { data: agents = [] } = useAgentSummaries();
   const updateAgentReasoning = useUpdateAgentReasoning();
   const { data: info } = useInfo();
+  const { data: botRoster = [] } = useQuery<BotRosterItem[]>({
+    queryKey: ["bots"],
+    queryFn: async () => {
+      const response = await botsApi.list();
+      if (!response.success || !response.data) {
+        throw new Error(extractApiError(response, "Could not load bots"));
+      }
+      return response.data.bots;
+    },
+    staleTime: 5_000,
+    refetchInterval: 10_000,
+  });
   const [initialChatRoute] = useState(() => parseInitialChatRoute(window.location.search));
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(
     initialChatRoute.agentId ?? undefined
@@ -137,6 +154,10 @@ export function Chat() {
   const goalController = useSessionGoal(sessionId || undefined);
   const { data: environmentSubagents = [] } = useSubagents(sessionId);
   const typedMessages = messages as ChatMessage[];
+  const currentBot = useMemo(
+    () => botRoster.find((bot) => bot.session_id === sessionId) ?? null,
+    [botRoster, sessionId]
+  );
   const turnStartedAtMsByIndex = useMemo(() => {
     const lookup = new Map<number, number | undefined>();
     let latestUserTimestampMs: number | undefined;
@@ -1660,6 +1681,7 @@ export function Chat() {
             tokenUsage: sessionTokenUsage,
             appVersion: info?.version,
             onDeleted: () => resetChatSession({ resetAgentSelection: false }),
+            bot: currentBot,
           }}
           subagentsActive={showWorkspacePanel && activeWorkspaceKind === "subagents"}
           workspaceMenu={{
@@ -1707,6 +1729,7 @@ export function Chat() {
                     <ChatSessionLoadingState />
                   ) : (
                     <ChatEmptyState
+                      bot={currentBot}
                       goalPanel={
                         sessionId ? (
                           <GoalPanel

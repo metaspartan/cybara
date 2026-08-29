@@ -1,12 +1,32 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Loader2, Plus, Search, Sparkles, X } from "lucide-react";
+import {
+  Bot,
+  Check,
+  Clock3,
+  Copy,
+  Eye,
+  EyeOff,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Search,
+  Sparkles,
+  Trash2,
+  UsersRound,
+  X,
+} from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { Button, Input, Modal, Textarea } from "@/components/ui";
+import { Button, ConfirmDialog, Input, Modal, Textarea } from "@/components/ui";
 import { botsApi, extractApiError } from "@/lib/api";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import type { BotRosterItem } from "@/types";
+import { BotAvatar } from "./BotAvatar";
 import { buildSessionChatPath } from "./chatRoute";
+import { buildMultiChatPath, MULTI_CHAT_MAX_PANES } from "./multiChatLayout";
 
 interface BotSidebarProps {
   activeSessionIds: string[];
@@ -17,43 +37,19 @@ interface BotSidebarProps {
   onCreateOpenChange: (open: boolean) => void;
 }
 
-const BOT_COLORS = [
-  ["#a855f7", "#6d28d9"],
-  ["#06b6d4", "#0e7490"],
-  ["#f43f5e", "#be123c"],
-  ["#22c55e", "#15803d"],
-  ["#f59e0b", "#b45309"],
-  ["#3b82f6", "#1d4ed8"],
-] as const;
-
-function botColorIndex(id: string): number {
-  let hash = 0;
-  for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-  return hash % BOT_COLORS.length;
-}
-
-function BotAvatar({ bot, active }: { bot: BotRosterItem; active: boolean }) {
-  const colors = BOT_COLORS[botColorIndex(bot.id)];
-  return (
-    <span
-      className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-white/15 text-sm font-semibold text-white shadow-lg"
-      style={{ background: `linear-gradient(145deg, ${colors[0]}, ${colors[1]})` }}
-      aria-hidden="true"
-    >
-      {bot.name.trim().slice(0, 2).toUpperCase() || <Bot className="h-4 w-4" />}
-      <span
-        className={cn(
-          "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[var(--surface-primary)]",
-          active ? "bg-emerald-400" : "bg-gray-600"
-        )}
-      />
-    </span>
-  );
+interface BotProfileDraft {
+  name: string;
+  title: string;
+  description: string;
 }
 
 function previewForBot(bot: BotRosterItem): string {
   const message = bot.session?.last_message?.content?.trim();
   return message || bot.description || bot.title;
+}
+
+function profileDraft(bot: BotRosterItem): BotProfileDraft {
+  return { name: bot.name, title: bot.title, description: bot.description };
 }
 
 export function BotSidebar({
@@ -72,6 +68,13 @@ export function BotSidebar({
   const [description, setDescription] = useState("");
   const [baseAgentId, setBaseAgentId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const [actionBotId, setActionBotId] = useState<string | null>(null);
+  const [editingBot, setEditingBot] = useState<BotRosterItem | null>(null);
+  const [editDraft, setEditDraft] = useState<BotProfileDraft | null>(null);
+  const [deletingBot, setDeletingBot] = useState<BotRosterItem | null>(null);
+  const [teamOpen, setTeamOpen] = useState(false);
+  const [teamBotIds, setTeamBotIds] = useState<string[]>([]);
   const deferredQuery = useDeferredValue(query);
   const activeIds = useMemo(() => new Set(activeSessionIds), [activeSessionIds]);
   const botsQuery = useQuery({
@@ -83,24 +86,34 @@ export function BotSidebar({
       }
       return response.data.bots;
     },
-    staleTime: 15_000,
-    refetchInterval: 30_000,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
   });
-  const bots = useMemo(() => {
+  const allBots = botsQuery.data ?? [];
+  const hiddenCount = allBots.filter((bot) => bot.hidden).length;
+  const visibleBots = useMemo(() => {
     const normalized = deferredQuery.trim().toLowerCase();
-    if (!normalized) return botsQuery.data ?? [];
-    return (botsQuery.data ?? []).filter((bot) =>
-      [bot.name, bot.title, bot.description, previewForBot(bot), bot.model]
+    return allBots.filter((bot) => {
+      if (bot.hidden && !showHidden) return false;
+      if (!normalized) return true;
+      return [bot.name, bot.title, bot.description, previewForBot(bot), bot.model]
         .filter((value): value is string => typeof value === "string")
         .join(" ")
         .toLowerCase()
-        .includes(normalized)
-    );
-  }, [botsQuery.data, deferredQuery]);
+        .includes(normalized);
+    });
+  }, [allBots, deferredQuery, showHidden]);
   const activeBots = useMemo(
-    () => (botsQuery.data ?? []).filter((bot) => activeIds.has(bot.session_id)),
-    [activeIds, botsQuery.data]
+    () => allBots.filter((bot) => !bot.hidden && activeIds.has(bot.session_id)),
+    [activeIds, allBots]
   );
+
+  const refreshBots = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ["bots"] });
+    void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    void queryClient.invalidateQueries({ queryKey: ["agents"] });
+  };
+
   const openBot = useMutation({
     mutationFn: async (id: string) => {
       const response = await botsApi.ensureSession(id);
@@ -110,8 +123,7 @@ export function BotSidebar({
       return response.data.session_id;
     },
     onSuccess: (sessionId) => {
-      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      void queryClient.invalidateQueries({ queryKey: ["bots"] });
+      refreshBots();
       navigate(buildSessionChatPath(sessionId));
     },
   });
@@ -135,26 +147,148 @@ export function BotSidebar({
       setBaseAgentId("");
       setError(null);
       onCreateOpenChange(false);
-      void queryClient.invalidateQueries({ queryKey: ["bots"] });
-      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      void queryClient.invalidateQueries({ queryKey: ["agents"] });
+      refreshBots();
       navigate(buildSessionChatPath(data.session_id));
     },
     onError: (cause) => setError(cause instanceof Error ? cause.message : "Could not create bot"),
   });
+  const updateBot = useMutation({
+    mutationFn: async ({
+      id,
+      updates,
+    }: {
+      id: string;
+      updates: Parameters<typeof botsApi.update>[1];
+    }) => {
+      const response = await botsApi.update(id, updates);
+      if (!response.success || !response.data) {
+        throw new Error(extractApiError(response, "Could not update bot"));
+      }
+      return response.data.bot;
+    },
+    onSuccess: () => {
+      setEditingBot(null);
+      setEditDraft(null);
+      setActionBotId(null);
+      refreshBots();
+    },
+    onError: (cause) => setError(cause instanceof Error ? cause.message : "Could not update bot"),
+  });
+  const duplicateBot = useMutation({
+    mutationFn: async (bot: BotRosterItem) => {
+      const response = await botsApi.duplicate(bot.id);
+      if (!response.success || !response.data) {
+        throw new Error(extractApiError(response, "Could not duplicate bot"));
+      }
+      return response.data;
+    },
+    onSuccess: (data) => {
+      setActionBotId(null);
+      refreshBots();
+      navigate(buildSessionChatPath(data.session_id));
+    },
+  });
+  const deleteBot = useMutation({
+    mutationFn: async (bot: BotRosterItem) => {
+      const response = await botsApi.delete(bot.id);
+      if (!response.success || !response.data?.success) {
+        throw new Error(extractApiError(response, "Could not delete bot"));
+      }
+      return bot;
+    },
+    onSuccess: (bot) => {
+      setDeletingBot(null);
+      setActionBotId(null);
+      refreshBots();
+      if (currentSessionId === bot.session_id) navigate("/chat");
+    },
+  });
+  const openTeam = useMutation({
+    mutationFn: async () => {
+      const selected = teamBotIds.slice(0, MULTI_CHAT_MAX_PANES);
+      const sessions = await Promise.all(
+        selected.map(async (id) => {
+          const response = await botsApi.ensureSession(id);
+          if (!response.success || !response.data) {
+            throw new Error(extractApiError(response, "Could not prepare team workspace"));
+          }
+          return response.data.session_id;
+        })
+      );
+      return sessions;
+    },
+    onSuccess: (sessions) => {
+      setTeamOpen(false);
+      refreshBots();
+      navigate(buildMultiChatPath(sessions));
+    },
+  });
+
+  const beginEdit = (bot: BotRosterItem): void => {
+    setError(null);
+    setEditingBot(bot);
+    setEditDraft(profileDraft(bot));
+    setActionBotId(null);
+  };
+
+  const beginTeam = (): void => {
+    const defaults = allBots
+      .filter((bot) => !bot.hidden)
+      .slice(0, Math.min(2, MULTI_CHAT_MAX_PANES))
+      .map((bot) => bot.id);
+    setTeamBotIds(defaults);
+    setTeamOpen(true);
+  };
+
+  const toggleTeamBot = (id: string): void => {
+    setTeamBotIds((current) => {
+      if (current.includes(id)) return current.filter((value) => value !== id);
+      if (current.length >= MULTI_CHAT_MAX_PANES) return current;
+      return [...current, id];
+    });
+  };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col text-[var(--text-primary)]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--surface-border)] px-2 py-2">
+        <button
+          type="button"
+          onClick={beginTeam}
+          disabled={allBots.filter((bot) => !bot.hidden).length < 2}
+          className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-raised)] px-2 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <UsersRound className="h-3.5 w-3.5" />
+          Team workspace
+        </button>
+        {hiddenCount > 0 ? (
+          <button
+            type="button"
+            onClick={() => setShowHidden((value) => !value)}
+            className={cn(
+              "theme-muted-icon-button relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+              showHidden && "bg-[var(--surface-hover)] text-[var(--text-primary)]"
+            )}
+            aria-label={showHidden ? "Hide hidden bots" : `Show ${hiddenCount} hidden bots`}
+            title={showHidden ? "Hide hidden bots" : `Show ${hiddenCount} hidden bots`}
+          >
+            {showHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {!showHidden ? (
+              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-[rgb(var(--accent-primary))]" />
+            ) : null}
+          </button>
+        ) : null}
+      </div>
+
       {searchOpen ? (
-        <div className="flex shrink-0 items-center gap-1.5 border-b border-white/5 px-2 pb-2">
-          <Search className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--surface-border)] px-2 pb-2 pt-1">
+          <Search className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
           <input
             autoFocus
             aria-label="Search bots"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search bots"
-            className="min-w-0 flex-1 bg-transparent py-1.5 text-xs text-white outline-none placeholder:text-gray-600"
+            placeholder="Search bots and roles"
+            className="min-w-0 flex-1 bg-transparent py-1.5 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-subtle)]"
           />
           <button
             type="button"
@@ -171,8 +305,8 @@ export function BotSidebar({
       ) : null}
 
       {activeBots.length > 0 ? (
-        <div className="shrink-0 border-b border-white/5 px-2 py-2.5">
-          <div className="mb-2 flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500">
+        <div className="shrink-0 border-b border-[var(--surface-border)] px-2 py-2.5">
+          <div className="mb-2 flex items-center gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
             <Sparkles className="h-3 w-3 text-emerald-400" />
             Active now
           </div>
@@ -182,11 +316,13 @@ export function BotSidebar({
                 key={bot.id}
                 type="button"
                 onClick={() => openBot.mutate(bot.id)}
-                className="flex w-14 shrink-0 flex-col items-center gap-1 rounded-xl p-1.5 transition-colors hover:bg-white/5"
+                className="flex w-14 shrink-0 flex-col items-center gap-1 rounded-xl p-1.5 transition-colors hover:bg-[var(--surface-hover)]"
                 title={bot.name}
               >
                 <BotAvatar bot={bot} active />
-                <span className="w-full truncate text-[10px] text-gray-400">{bot.name}</span>
+                <span className="w-full truncate text-[10px] text-[var(--text-muted)]">
+                  {bot.name}
+                </span>
               </button>
             ))}
           </div>
@@ -194,65 +330,174 @@ export function BotSidebar({
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-1.5">
-        <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-600">
-          Bots
+        <div className="flex items-center justify-between px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-subtle)]">
+          <span>{showHidden ? "Bots and hidden" : "Bots"}</span>
+          <span>{visibleBots.length}</span>
         </div>
         {botsQuery.isLoading ? (
-          <div className="flex flex-1 items-center justify-center text-gray-600">
+          <div className="flex flex-1 items-center justify-center text-[var(--text-subtle)]">
             <Loader2 className="h-4 w-4 animate-spin" />
           </div>
-        ) : bots.length === 0 ? (
+        ) : visibleBots.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center px-5 text-center">
-            <Bot className="mb-3 h-8 w-8 text-gray-700" />
-            <p className="text-xs font-medium text-gray-400">
+            <Bot className="mb-3 h-8 w-8 text-[var(--text-subtle)]" />
+            <p className="text-xs font-medium text-[var(--text-muted)]">
               {query ? "No matching bots" : "Create a bot for a persistent agent workspace"}
             </p>
           </div>
         ) : (
           <div className="space-y-1">
-            {bots.map((bot) => {
+            {visibleBots.map((bot) => {
               const active = activeIds.has(bot.session_id);
               const selected = currentSessionId === bot.session_id;
+              const actionsOpen = actionBotId === bot.id;
               return (
-                <button
-                  key={bot.id}
-                  type="button"
-                  onClick={() => openBot.mutate(bot.id)}
-                  disabled={openBot.isPending && openBot.variables === bot.id}
-                  className={cn(
-                    "group flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-all",
-                    selected
-                      ? "border border-white/10 bg-white/10 shadow-sm"
-                      : "border border-transparent hover:bg-white/5"
-                  )}
-                >
-                  <BotAvatar bot={bot} active={active} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-gray-200">
-                        {bot.name}
-                      </span>
-                      {bot.session?.updated_at ? (
-                        <span className="shrink-0 text-[10px] text-gray-600">
-                          {formatRelativeTime(bot.session.updated_at).replace(" ago", "")}
+                <div key={bot.id} className={cn("rounded-xl", bot.hidden && "opacity-55")}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openBot.mutate(bot.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") openBot.mutate(bot.id);
+                    }}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setActionBotId(actionsOpen ? null : bot.id);
+                    }}
+                    className={cn(
+                      "group flex w-full cursor-pointer items-center gap-2.5 rounded-xl border px-2 py-2 text-left transition-all",
+                      selected
+                        ? "border-[rgba(var(--accent-primary),0.32)] bg-[rgba(var(--accent-primary),0.12)] shadow-sm"
+                        : "border-transparent hover:bg-[var(--surface-hover)]"
+                    )}
+                  >
+                    <BotAvatar bot={bot} active={active} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        {bot.pinned ? (
+                          <Pin className="h-3 w-3 shrink-0 text-[var(--text-subtle)]" />
+                        ) : null}
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--text-primary)]">
+                          {bot.name}
                         </span>
-                      ) : null}
+                        {bot.session?.updated_at ? (
+                          <span className="shrink-0 text-[10px] text-[var(--text-subtle)]">
+                            {formatRelativeTime(bot.session.updated_at).replace(" ago", "")}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">
+                        {previewForBot(bot)}
+                      </span>
                     </span>
-                    <span className="mt-0.5 block truncate text-[11px] text-gray-500">
-                      {previewForBot(bot)}
-                    </span>
-                  </span>
-                  {openBot.isPending && openBot.variables === bot.id ? (
-                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-gray-500" />
+                    {openBot.isPending && openBot.variables === bot.id ? (
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--text-muted)]" />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setActionBotId(actionsOpen ? null : bot.id);
+                        }}
+                        className={cn(
+                          "theme-muted-icon-button flex h-7 w-7 shrink-0 items-center justify-center rounded-lg opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
+                          actionsOpen && "bg-[var(--surface-hover)] opacity-100"
+                        )}
+                        aria-label={`Actions for ${bot.name}`}
+                        aria-expanded={actionsOpen}
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  {actionsOpen ? (
+                    <div className="mx-1 mb-1 mt-0.5 grid grid-cols-2 gap-1 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] p-1 shadow-lg">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateBot.mutate({ id: bot.id, updates: { pinned: !bot.pinned } })
+                        }
+                        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                      >
+                        {bot.pinned ? (
+                          <PinOff className="h-3.5 w-3.5" />
+                        ) : (
+                          <Pin className="h-3.5 w-3.5" />
+                        )}
+                        {bot.pinned ? "Unpin" : "Pin"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => beginEdit(bot)}
+                        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Edit profile
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => duplicateBot.mutate(bot)}
+                        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                        Duplicate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate(
+                            `/tasks?new=1&agent=${encodeURIComponent(bot.id)}&session=${encodeURIComponent(bot.session_id)}`
+                          )
+                        }
+                        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                      >
+                        <Clock3 className="h-3.5 w-3.5" />
+                        Add routine
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateBot.mutate({ id: bot.id, updates: { hidden: !bot.hidden } })
+                        }
+                        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+                      >
+                        {bot.hidden ? (
+                          <Eye className="h-3.5 w-3.5" />
+                        ) : (
+                          <EyeOff className="h-3.5 w-3.5" />
+                        )}
+                        {bot.hidden ? "Unhide" : "Hide"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeletingBot(bot)}
+                        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] text-red-400 hover:bg-red-500/10"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </button>
+                    </div>
                   ) : null}
-                </button>
+                </div>
               );
             })}
           </div>
         )}
-        {botsQuery.error || openBot.error ? (
+        {botsQuery.error ||
+        openBot.error ||
+        updateBot.error ||
+        duplicateBot.error ||
+        openTeam.error ? (
           <p className="px-2 py-3 text-xs text-red-400">
-            {(botsQuery.error || openBot.error)?.message}
+            {
+              (
+                botsQuery.error ||
+                openBot.error ||
+                updateBot.error ||
+                duplicateBot.error ||
+                openTeam.error
+              )?.message
+            }
           </p>
         ) : null}
       </div>
@@ -261,7 +506,7 @@ export function BotSidebar({
         isOpen={createOpen}
         onClose={() => onCreateOpenChange(false)}
         title="New bot"
-        description="Create a persistent agent with its own conversation and memory."
+        description="Give a durable teammate a clear job, working style, and approval boundary."
         size="sm"
       >
         <form
@@ -278,33 +523,35 @@ export function BotSidebar({
             value={name}
             maxLength={80}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Research lead"
+            placeholder="Atlas"
             required
           />
           <Input
-            label="Role"
+            label="Job title"
             value={title}
             maxLength={80}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="Research and synthesis"
+            placeholder="Release coordinator"
           />
           <Textarea
-            label="Description"
+            label="Standing instructions"
             value={description}
-            maxLength={240}
+            maxLength={2000}
+            rows={5}
             onChange={(event) => setDescription(event.target.value)}
-            placeholder="What this bot owns and how it should help"
+            placeholder="Own release readiness, coordinate specialists, cite evidence, and never publish without approval."
+            helperText="Use this for responsibilities and boundaries that should remain true."
           />
-          {botsQuery.data && botsQuery.data.length > 0 ? (
+          {allBots.length > 0 ? (
             <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              Agent configuration
+              Start from
               <select
                 value={baseAgentId}
                 onChange={(event) => setBaseAgentId(event.target.value)}
                 className="themed-form-control mt-1.5 w-full rounded-xl border px-4 py-2.5"
               >
-                <option value="">Use the current default</option>
-                {botsQuery.data.map((bot) => (
+                <option value="">Current default configuration</option>
+                {allBots.map((bot) => (
                   <option key={bot.id} value={bot.id}>
                     {bot.name}
                     {bot.model ? ` · ${bot.model}` : ""}
@@ -313,6 +560,10 @@ export function BotSidebar({
               </select>
             </label>
           ) : null}
+          <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--text-muted)]">
+            This bot gets one continuous conversation, persistent memory, its own model
+            configuration, tools, and background work.
+          </div>
           {error ? <p className="text-sm text-red-400">{error}</p> : null}
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="ghost" onClick={() => onCreateOpenChange(false)}>
@@ -329,6 +580,172 @@ export function BotSidebar({
           </div>
         </form>
       </Modal>
+
+      <Modal
+        isOpen={Boolean(editingBot && editDraft)}
+        onClose={() => {
+          setEditingBot(null);
+          setEditDraft(null);
+        }}
+        title="Edit bot profile"
+        description="Durable role details shape how this bot works in every conversation."
+        size="sm"
+      >
+        {editingBot && editDraft ? (
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setError(null);
+              updateBot.mutate({ id: editingBot.id, updates: editDraft });
+            }}
+          >
+            <div className="flex items-center gap-3 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] p-3">
+              <BotAvatar
+                bot={{ ...editingBot, name: editDraft.name || editingBot.name }}
+                showPresence={false}
+              />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
+                  {editDraft.name || "Unnamed bot"}
+                </p>
+                <p className="truncate text-xs text-[var(--text-muted)]">
+                  {editingBot.model || "Inherited model"}
+                </p>
+              </div>
+            </div>
+            <Input
+              data-autofocus
+              label="Name"
+              value={editDraft.name}
+              maxLength={80}
+              onChange={(event) =>
+                setEditDraft((current) =>
+                  current ? { ...current, name: event.target.value } : current
+                )
+              }
+              required
+            />
+            <Input
+              label="Job title"
+              value={editDraft.title}
+              maxLength={80}
+              onChange={(event) =>
+                setEditDraft((current) =>
+                  current ? { ...current, title: event.target.value } : current
+                )
+              }
+            />
+            <Textarea
+              label="Standing instructions"
+              value={editDraft.description}
+              maxLength={2000}
+              rows={5}
+              onChange={(event) =>
+                setEditDraft((current) =>
+                  current ? { ...current, description: event.target.value } : current
+                )
+              }
+              helperText="Keep durable responsibilities and approval boundaries here; use chat for the current task."
+            />
+            {error ? <p className="text-sm text-red-400">{error}</p> : null}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="ghost" onClick={() => setEditingBot(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                isLoading={updateBot.isPending}
+                disabled={!editDraft.name.trim()}
+              >
+                Save profile
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
+
+      <Modal
+        isOpen={teamOpen}
+        onClose={() => setTeamOpen(false)}
+        title="Open team workspace"
+        description={`Work with up to ${MULTI_CHAT_MAX_PANES} bots side by side. Use @mentions in each chat to delegate to another specialist.`}
+        size="sm"
+      >
+        <div className="space-y-3">
+          <div className="max-h-72 space-y-1 overflow-y-auto">
+            {allBots
+              .filter((bot) => !bot.hidden)
+              .map((bot) => {
+                const selected = teamBotIds.includes(bot.id);
+                return (
+                  <button
+                    key={bot.id}
+                    type="button"
+                    onClick={() => toggleTeamBot(bot.id)}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                      selected
+                        ? "border-[rgba(var(--accent-primary),0.38)] bg-[rgba(var(--accent-primary),0.12)]"
+                        : "border-[var(--surface-border)] hover:bg-[var(--surface-hover)]"
+                    )}
+                  >
+                    <BotAvatar bot={bot} active={activeIds.has(bot.session_id)} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-[var(--text-primary)]">
+                        {bot.name}
+                      </span>
+                      <span className="block truncate text-xs text-[var(--text-muted)]">
+                        {bot.title}
+                      </span>
+                    </span>
+                    <span
+                      className={cn(
+                        "flex h-5 w-5 items-center justify-center rounded-full border",
+                        selected
+                          ? "border-[rgb(var(--accent-primary))] bg-[rgb(var(--accent-primary))] text-white"
+                          : "border-[var(--surface-border)] text-transparent"
+                      )}
+                    >
+                      <Check className="h-3 w-3" />
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">
+            {teamBotIds.length} selected · each bot keeps its own canonical history and background
+            run state.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setTeamOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              leftIcon={<UsersRound className="h-4 w-4" />}
+              onClick={() => openTeam.mutate()}
+              isLoading={openTeam.isPending}
+              disabled={teamBotIds.length < 2}
+            >
+              Open workspace
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        isOpen={Boolean(deletingBot)}
+        onClose={() => setDeletingBot(null)}
+        onConfirm={() => {
+          if (deletingBot) deleteBot.mutate(deletingBot);
+        }}
+        title="Delete bot"
+        description={`Delete ${deletingBot?.name || "this bot"}, its canonical conversation, agent configuration, and assigned routines?`}
+        confirmText="Delete bot"
+        isLoading={deleteBot.isPending}
+        variant="danger"
+      />
     </div>
   );
 }
