@@ -9,7 +9,8 @@ import {
   resolveGatewayHealthStatus,
   resolveProviderConfigurationStatus,
 } from "../health-status";
-import { makeRawHttpResponse, type RouteHandler } from "./_shared";
+import type { RouteHandler } from "./_shared";
+import { makeRawHttpResponse } from "./raw-http-response";
 
 interface ProcessMemoryUsage {
   heapUsed: number;

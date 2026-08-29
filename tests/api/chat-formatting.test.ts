@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  isInvalidRequestedJsonResponse,
   normalizeRequestedAssistantResponse,
   sanitizeProcessThoughtText,
   stripThinkingTags,
@@ -9,6 +10,19 @@ import { sanitizeSessionMessages } from "../../src/api/routes/_shared";
 import { PROVIDER_PROTOCOL_RECOVERY_MESSAGE } from "../../shared/provider-protocol";
 
 describe("chat response formatting", () => {
+  test("detects malformed responses when the user explicitly requires JSON", () => {
+    const request = "Output ONLY a JSON array containing exactly 3 objects. No markdown.";
+
+    expect(isInvalidRequestedJsonResponse(request, '[{"color":"red"}')).toBe(false);
+    expect(isInvalidRequestedJsonResponse(request, '[{"color":"red}]')).toBe(true);
+    expect(isInvalidRequestedJsonResponse(request, '[{"color":"red"}]')).toBe(false);
+    expect(isInvalidRequestedJsonResponse(request, '```json\n[{"color":"red"}]\n```')).toBe(false);
+    expect(isInvalidRequestedJsonResponse("Explain this JSON.", "not JSON")).toBe(false);
+    expect(normalizeRequestedAssistantResponse(request, '[{"color":"red"}')).toBe(
+      '[{"color":"red"}]'
+    );
+  });
+
   test("removes a valid JSON fence when the user requires strict JSON", () => {
     expect(
       normalizeRequestedAssistantResponse(
@@ -22,6 +36,21 @@ describe("chat response formatting", () => {
     expect(
       normalizeRequestedAssistantResponse("Reply as strict JSON.", "```json\n{bad}\n```")
     ).toBe("```json\n{bad}\n```");
+  });
+
+  test("keeps only the explicitly requested plain-text result line", () => {
+    expect(
+      normalizeRequestedAssistantResponse(
+        "After both tasks finish, return exactly one plain-text line with no code fence or additional prose:\nRESULT alpha=1 beta=2",
+        "Both tasks completed.\n\nRESULT alpha=1 beta=2"
+      )
+    ).toBe("RESULT alpha=1 beta=2");
+    expect(
+      normalizeRequestedAssistantResponse(
+        "Return exactly one plain-text line with no additional prose:\nRESULT expected",
+        "RESULT different"
+      )
+    ).toBe("RESULT different");
   });
 
   test("extracts thinking and shows only final content", () => {

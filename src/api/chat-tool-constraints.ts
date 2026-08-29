@@ -1,7 +1,7 @@
 import {
   COMPUTER_USE_ACTION_TOOL_ALIASES,
   COMPUTER_USE_COMPAT_TOOL_ALIASES,
-} from "../core/computer-use";
+} from "../core/computer-use-actions";
 
 const computerUseToolNames = new Set([
   "computer_use",

@@ -14,7 +14,7 @@ import {
   applyChatCapabilityInstruction,
   resolveChatCapabilityMentions,
 } from "../core/chat/capability-mentions";
-import { stopComputerUseTrajectoryForSession } from "../core/computer-use";
+import { stopRegisteredComputerUseTrajectory } from "../core/computer-use-lifecycle";
 import { config } from "../core/config";
 import { hasImages, sanitizeAgentImages } from "../core/llm/image-blocks";
 import { sanitizeAssistantContent } from "../core/llm/text-tool-calls";
@@ -55,7 +55,11 @@ import {
   isSessionStatusActive,
   type PendingChatMessageSnapshot,
 } from "../core/status";
-import { checkRateLimit, recordCircuitFailure, recordCircuitSuccess } from "../core/tools/index";
+import {
+  checkRateLimit,
+  recordCircuitFailure,
+  recordCircuitSuccess,
+} from "../core/tools/runtime-guards";
 import { resolveAgentToolPolicy } from "../core/toolsets";
 import { stripAgentAttributionTag } from "./chat-agent-handoff";
 import {
@@ -106,6 +110,7 @@ import {
 import { appendToolImageReferences, maybeSaveAutomaticMemory } from "./chat-response-enrichment";
 import { recoverAssistantResponse } from "./chat-response-recovery";
 import { awaitSpawnedSubagentResults } from "./chat-subagent-completion";
+import { resolveExplicitSubagentSpawnLimit } from "./chat-subagent-budget";
 import {
   interruptActiveChatTurnForSteering,
   isChatTurnInterrupted,
@@ -699,14 +704,14 @@ export function runChatTurnWithQueueDrain(
   );
   const finalized = result.then(
     async (response) => {
-      await stopComputerUseTrajectoryForSession(
+      await stopRegisteredComputerUseTrajectory(
         effectiveSessionId,
         response.interrupted ? "interrupted" : "completed"
       );
       return response;
     },
     async (error: unknown) => {
-      await stopComputerUseTrajectoryForSession(
+      await stopRegisteredComputerUseTrajectory(
         effectiveSessionId,
         "error",
         error instanceof Error ? error.message : String(error)
@@ -1437,6 +1442,11 @@ async function handleChatTurn(
       const directToolCandidate = tools ? requiredDirectToolForMessage(message) : undefined;
       const selectedSkill = capabilityMentions.mentions.some((mention) => mention.kind === "skill");
       let activeModelOverride = requestedModelOverride;
+      const subagentSpawnLimit = resolveExplicitSubagentSpawnLimit(message);
+      const orchestrationState = {
+        subagentSpawnsStarted: 0,
+        subagentSpawnLimit,
+      };
       let activeSupportsImages = supportsImages;
       let executionMessages = applyChatCapabilityInstruction(
         buildChatExecutionMessagesForAgent(session.messages, {
@@ -1474,6 +1484,7 @@ async function handleChatTurn(
         allowedToolNames,
         maxOutputTokens: request.maxOutputTokens,
         modelParamsOverride: request.modelParamsOverride,
+        orchestrationState,
       });
       let result = await agentManager.execute(agent.id, executionMessages, {
         ...executionOptions(),

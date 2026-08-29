@@ -21,6 +21,8 @@ export interface ContextGuardBudgets {
   maxSingleToolResultChars: number;
 }
 
+const MATERIALIZATION_CONTEXT_BUDGET_CHARS = 120_000;
+
 interface CompactionContext {
   model?: string;
   toolContext?: ToolContext;
@@ -57,6 +59,10 @@ export function resolveContextGuardBudgets(contextWindowTokens: number): Context
     )
   );
   return { contextBudgetChars, maxSingleToolResultChars };
+}
+
+export function resolveMaterializationContextBudgetChars(contextBudgetChars: number): number {
+  return Math.max(4096, Math.min(contextBudgetChars, MATERIALIZATION_CONTEXT_BUDGET_CHARS));
 }
 
 function estimateAnthropicMessageChars(message: Record<string, unknown>): number {

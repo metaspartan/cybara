@@ -1,5 +1,5 @@
 import type { AgentToolCallResult } from "../core/agent-internals";
-import { handleSessionsWait } from "../core/tools/handlers/channel";
+import type { handleSessionsWait } from "../core/tools/handlers/channel";
 
 interface SpawnResult {
   runId?: unknown;
@@ -75,10 +75,11 @@ export async function awaitSpawnedSubagentResults(
   const startedAt = Date.now();
   let pendingRunIds = runIds;
   let result: Awaited<ReturnType<typeof handleSessionsWait>> | undefined;
+  const channelTools = await import("../core/tools/handlers/channel");
 
   while (pendingRunIds.length > 0) {
     options.onWaiting(pendingRunIds.length);
-    result = await handleSessionsWait(
+    result = await channelTools.handleSessionsWait(
       { runIds, timeoutSeconds: 60 },
       {
         abortSignal: options.abortSignal,

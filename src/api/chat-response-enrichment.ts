@@ -1,5 +1,4 @@
 import { createLogger } from "../core/logger";
-import { handleMemorySave } from "../core/tools/handlers/memory";
 import type { ToolCallInfo } from "./chat-process-activities";
 
 const log = createLogger("Chat");
@@ -40,6 +39,7 @@ export async function maybeSaveAutomaticMemory(input: {
   const content = extractAutomaticMemoryContent(input.message);
   if (!content) return false;
   try {
+    const { handleMemorySave } = await import("../core/tools/handlers/memory");
     await handleMemorySave({ content, type: "context", tags: ["auto-saved"] });
     log.info("Auto-saved memory", {
       sessionId: input.sessionId,

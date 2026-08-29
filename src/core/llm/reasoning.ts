@@ -60,6 +60,17 @@ export function openAICompatReasoningParams(
   }
 }
 
+export function openAICompatClosingReasoningParams(model?: string | null): Record<string, unknown> {
+  const modelId = normalizeReasoningModelId(model);
+  if (/^minimax-m3(?:$|[-/])/.test(modelId)) {
+    return { reasoning_split: true, thinking: { type: "disabled" } };
+  }
+  if (/^glm-5(?:\.3)?(?:$|[-/])/.test(modelId)) {
+    return { reasoning_effort: "low" };
+  }
+  return {};
+}
+
 const BUDGET: Record<ReasoningEffort, number> = {
   minimal: 1024,
   low: 2048,

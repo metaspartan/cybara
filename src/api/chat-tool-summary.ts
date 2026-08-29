@@ -193,6 +193,7 @@ const MUTATION_EVIDENCE_TOOLS = new Set([
 
 const COMPLETION_CLAIM_PATTERNS = [
   /^\s*(?:all\s+)?(?:done|shipped|fixed|implemented|resolved)\b/im,
+  /^\s*(?:layer|phase|round|step)\s+\d+(?:\s+of\s+\d+)?\s+(?:is\s+)?(?:complete|completed|done|fixed)\b/im,
   /\bI(?:'ve| have)\s+(?:added|changed|completed|created|fixed|implemented|refactored|removed|renamed|resolved|shipped|updated|wired)\b/i,
   /\b(?:changes?|cleanup|fix(?:es)?|implementation|refactor)\s+(?:is|are|was|were)\s+(?:complete|completed|done|finished|implemented|shipped)\b/i,
   /#{1,4}\s+(?:what I (?:changed|fixed|implemented|shipped)|implemented|changes shipped)\b/i,
@@ -206,7 +207,7 @@ const WHOLE_TASK_COMPLETION_CLAIM_PATTERNS = [
 ];
 
 const VERIFICATION_CLAIM_PATTERNS = [
-  /\b(?:all\s+)?(?:builds?|checks?|tests?|typechecks?|lint(?:ing)?)\s+(?:(?:is|are|was|were|still)\s+)?(?:clean|green|pass(?:ed|ing)?)\b/i,
+  /\b(?:all\s+)?(?:builds?|checks?|tests?|typechecks?|lint(?:ing)?|validation)\s+(?:(?:is|are|was|were|still)\s+)?(?:clean|green|pass(?:ed|ing)?)\b/i,
   /\b(?:verified|validated|confirmed|tested)\s+(?:end[- ]to[- ]end|successfully|the\s+(?:build|change|fix|result|simulator|implementation))\b/i,
   /\b\d[\d,]*\s*\/\s*\d[\d,]*\s+(?:checks?|tests?|invariants?|cases?)\s+(?:green|pass(?:ed)?)\b/i,
   /\b(?:build|check|test|typecheck|lint)\s*:\s*(?:clean|green|pass(?:ed)?)\b/i,
@@ -236,7 +237,7 @@ function latestTodoHasIncompleteItems(toolCalls: ToolCallResultLike[]): boolean 
 }
 
 const EXECUTION_VERIFICATION_CLAIM_PATTERNS = [
-  /\b(?:all\s+)?(?:builds?|checks?|tests?|typechecks?|lint(?:ing)?)\s+(?:(?:is|are|was|were|still)\s+)?(?:clean|green|pass(?:ed|ing)?)\b/i,
+  /\b(?:all\s+)?(?:builds?|checks?|tests?|typechecks?|lint(?:ing)?|validation)\s+(?:(?:is|are|was|were|still)\s+)?(?:clean|green|pass(?:ed|ing)?)\b/i,
   /\b\d[\d,]*\s*\/\s*\d[\d,]*\s+(?:checks?|tests?|invariants?|cases?)\s+(?:green|pass(?:ed)?)\b/i,
   /\b(?:build|check|test|typecheck|lint)\s*:\s*(?:clean|green|pass(?:ed)?)\b/i,
 ];
@@ -547,7 +548,7 @@ export function requiredDirectToolForMessage(message: string): string | undefine
 }
 
 const ARTIFACT_INTENT_PATTERNS = [
-  /\bartifact(?:s)?\b/i,
+  /\b(?:artifact|artifacts)\s+tool\b/i,
   /\.md\.resolved\b/i,
   /\bimplementation\.md\b/i,
   /\bwalkthrough\.md\b/i,

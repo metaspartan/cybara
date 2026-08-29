@@ -9,8 +9,13 @@ import {
   createAgenticLoopRuntimeTracker,
   evaluateNoProgressLoop,
   pauseAgenticLoopRuntime,
+  requestedDeliverableMaterializationPrompt,
+  resolveInspectionToolRoundTokenLimit,
+  resolveRequestedDeliverableFinalContent,
+  resolveRequestedDeliverableToolChoice,
   resolveAgenticLoopLimit,
   resumeAgenticLoopRuntime,
+  toolsAfterMaterializationCheckpoint,
   updateNoProgressLoopState,
 } from "../../src/core/agent-loop-runtime";
 
@@ -97,7 +102,9 @@ describe("agent loop runtime", () => {
 
   test("warns once at each budget pressure level", () => {
     const tracker = createAgenticLoopRuntimeTracker(1_000);
-    expect(consumeAgenticLoopBudgetWarning(policy, 3, tracker, 2_000)).toBeUndefined();
+    expect(consumeAgenticLoopBudgetWarning(policy, 3, tracker, 2_000)).toContain(
+      "create a valid version now"
+    );
     expect(consumeAgenticLoopBudgetWarning(policy, 4, tracker, 2_000)).toContain(
       "Start consolidating"
     );
@@ -106,6 +113,70 @@ describe("agent loop runtime", () => {
       "complete user-facing response"
     );
     expect(consumeAgenticLoopBudgetWarning(policy, 5, tracker, 2_000)).toBeUndefined();
+  });
+
+  test("checkpoints long inspection loops before the configured budget is nearly spent", () => {
+    const tracker = createAgenticLoopRuntimeTracker(1_000);
+    expect(consumeAgenticLoopBudgetWarning(policy, 3, tracker, 2_000)).toContain(
+      "create a valid version now"
+    );
+    expect(consumeAgenticLoopBudgetWarning(policy, 5, tracker, 2_000)).toContain(
+      "complete user-facing response"
+    );
+  });
+
+  test("requires materialization after four inspection iterations and restores all tools after it", () => {
+    const tools = [{ name: "read" }, { name: "grep" }, { name: "write" }, { name: "edit" }];
+    expect(toolsAfterMaterializationCheckpoint(tools, 0, false)).toEqual(tools);
+    expect(toolsAfterMaterializationCheckpoint(tools, 1, false)).toEqual([
+      { name: "write" },
+      { name: "edit" },
+    ]);
+    expect(toolsAfterMaterializationCheckpoint(tools, 3, false, true)).toEqual([
+      { name: "read" },
+      { name: "grep" },
+    ]);
+    expect(toolsAfterMaterializationCheckpoint(tools, 4, false, true)).toEqual([
+      { name: "write" },
+      { name: "edit" },
+    ]);
+    expect(toolsAfterMaterializationCheckpoint(tools, 5, true, true)).toEqual(tools);
+    expect(toolsAfterMaterializationCheckpoint(tools, 8, false)).toEqual([
+      { name: "write" },
+      { name: "edit" },
+    ]);
+    expect(toolsAfterMaterializationCheckpoint(tools, 8, true)).toEqual([]);
+    expect(requestedDeliverableMaterializationPrompt(["output/report.md"])).toContain("exact path");
+    expect(requestedDeliverableMaterializationPrompt(["output/report.md"])).toContain(
+      "output/report.md"
+    );
+    expect(requestedDeliverableMaterializationPrompt(["report.md"], true)).toContain(
+      "do not claim inspection or read access was unavailable"
+    );
+  });
+
+  test("finishes a successful requested file without another provider round trip", () => {
+    expect(resolveRequestedDeliverableFinalContent("", ["output/report.md"], true)).toBe(
+      "Completed and saved the requested deliverable: output/report.md."
+    );
+    expect(resolveRequestedDeliverableFinalContent("Finished.", ["output/report.md"], true)).toBe(
+      "Finished."
+    );
+    expect(resolveRequestedDeliverableFinalContent("", ["output/report.md"], false)).toBe("");
+  });
+
+  test("requires a mutation tool for ordinary deliverables while preserving evidence inspection", () => {
+    const mutationTools = [{ name: "write" }, { name: "edit" }];
+    expect(resolveRequestedDeliverableToolChoice(mutationTools, true, false)).toBe("required");
+    expect(resolveRequestedDeliverableToolChoice(mutationTools, true, true)).toBe("auto");
+    expect(resolveRequestedDeliverableToolChoice(mutationTools, false, false)).toBe("auto");
+    expect(resolveRequestedDeliverableToolChoice([{ name: "read" }], true, false)).toBe("auto");
+  });
+
+  test("bounds inspection output without reducing artifact-generation capacity", () => {
+    expect(resolveInspectionToolRoundTokenLimit(16_384, true)).toBe(2048);
+    expect(resolveInspectionToolRoundTokenLimit(1024, true)).toBe(1024);
+    expect(resolveInspectionToolRoundTokenLimit(16_384, false)).toBe(16_384);
   });
 
   test("builds a tool-disabled closing instruction for either safety boundary", () => {

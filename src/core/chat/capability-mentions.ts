@@ -2,7 +2,7 @@ import { mcpManager } from "../mcp";
 import { listPromptCommands } from "../prompt-commands";
 import { createEligibilityContext, filterEligibleSkills, loadAllSkills } from "../skills";
 import { tables } from "../database";
-import { toolSchemas } from "../tools";
+import { toolSchemas } from "../tools/registry";
 import { listAccountConnectorStatuses } from "../account-connectors/store";
 
 export type ChatCapabilityKind =

@@ -23,8 +23,7 @@ import {
 } from "../core/session-title";
 import { getRunBySessionKey } from "../core/subagent-registry";
 import { getActiveSessionRunId } from "../core/session-event-ledger";
-import { getSubagentSession } from "../core/tools/handlers/index";
-import { getRateLimitStatus } from "../core/tools/index";
+import { getRateLimitStatus } from "../core/tools/runtime-guards";
 import { applyActiveAgentToSession } from "./chat-agent-prompt";
 import { resolveTurnContextWindow } from "./chat-turn-context";
 import { recoverInterruptedSessionMessages } from "./chat-run-recovery";
@@ -136,6 +135,7 @@ export async function getSession(sessionId: string, options: ChatSessionLoadOpti
     return session;
   }
 
+  const { getSubagentSession } = await import("../core/tools/handlers/channel");
   const subagentSession = getSubagentSession(sessionId);
   if (subagentSession) {
     return {

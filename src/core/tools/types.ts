@@ -16,6 +16,11 @@ export interface ToolExecutionState {
   toolCalls: ToolExecutionRecord[];
 }
 
+export interface ToolOrchestrationState {
+  subagentSpawnsStarted: number;
+  subagentSpawnLimit?: number;
+}
+
 export interface ToolContext {
   agentId: string;
   sessionId?: string;
@@ -27,6 +32,7 @@ export interface ToolContext {
   enforcePermissions?: boolean;
   allowDangerousTools?: boolean;
   requireToolUse?: boolean;
+  deferredContinuation?: boolean;
   requiredToolName?: string;
   allowedToolNames?: string[];
   allowDynamicTools?: boolean;
@@ -44,6 +50,7 @@ export interface ToolContext {
   confineToWorkspace?: boolean;
   consumeSteeringMessages?: () => Array<{ id: string; content: string; createdAt: number }>;
   executionState?: ToolExecutionState;
+  orchestrationState?: ToolOrchestrationState;
 }
 
 export interface Tool {

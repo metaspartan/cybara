@@ -2,7 +2,7 @@ import { type AgentExecutionResult, type AgentMessage, agentManager } from "../c
 import type { AgentToolCallResult } from "../core/agent-internals";
 import { sanitizeAssistantContent } from "../core/llm/text-tool-calls";
 import { isContextCompactionOnlyContent } from "../core/llm/tool-transcript";
-import { stripThinkingTags } from "./chat-formatting";
+import { isInvalidRequestedJsonResponse, stripThinkingTags } from "./chat-formatting";
 import {
   buildNoUsableAssistantResponseMessage,
   buildUnsupportedAssistantClaimMessage,
@@ -47,10 +47,14 @@ function buildRetryInstruction(
   shouldRetryToolExecution: boolean,
   requiredToolName: string | undefined,
   evidenceIssue: ReturnType<typeof findAssistantEvidenceIssue>,
-  compactionOnly: boolean
+  compactionOnly: boolean,
+  invalidRequestedJson: boolean
 ): string {
   if (compactionOnly) {
     return "Earlier context was compacted successfully. Continue the current task from the preserved context and tool results, then give the user a substantive response. Do not repeat an internal compaction marker.";
+  }
+  if (invalidRequestedJson) {
+    return "Your previous response was not complete valid JSON even though the user explicitly required JSON-only output. Return one complete valid JSON value that satisfies the requested structure, with no Markdown fence or explanatory prose.";
   }
   if (evidenceIssue === "missing_clarification") {
     return "Your previous response said a question was asked, but no question was visible. Ask the actual concise question directly now, or use the clarify tool with the complete question and options. Do not say that you asked without including the question.";
@@ -103,6 +107,11 @@ export async function recoverAssistantResponse(
   params: AssistantResponseRecoveryParams
 ): Promise<AssistantResponseRecoveryResult> {
   const initialCompactionOnly = isContextCompactionOnlyContent(params.responseContent);
+  const initialVisibleContent = visibleAssistantContent(params.responseContent);
+  const initialInvalidRequestedJson = isInvalidRequestedJsonResponse(
+    params.userMessage,
+    initialVisibleContent
+  );
   const successfulToolResults = params.toolResults.filter(isSuccessfulToolCall);
   const requireActionEvidence =
     params.toolsEnabled === true &&
@@ -116,18 +125,14 @@ export async function recoverAssistantResponse(
   const shouldRecoverCompletion =
     shouldRecoverNonSubstantiveAssistantCompletion(
       params.userMessage,
-      visibleAssistantContent(params.responseContent),
+      initialVisibleContent,
       successfulToolResults.length
     ) || initialCompactionOnly;
-  const evidenceIssue = findAssistantEvidenceIssue(
-    visibleAssistantContent(params.responseContent),
-    params.toolResults,
-    {
-      allowPlanOnly: params.allowPlanOnly,
-      requireActionEvidence,
-      userMessage: params.userMessage,
-    }
-  );
+  const evidenceIssue = findAssistantEvidenceIssue(initialVisibleContent, params.toolResults, {
+    allowPlanOnly: params.allowPlanOnly,
+    requireActionEvidence,
+    userMessage: params.userMessage,
+  });
   const shouldRetryToolExecution =
     (params.shouldRequireToolUse && (params.toolResults.length === 0 || !hasRequiredToolCall)) ||
     (params.toolsEnabled === true &&
@@ -137,33 +142,23 @@ export async function recoverAssistantResponse(
         evidenceIssue === "plan_only" ||
         evidenceIssue === "unsupported_completion" ||
         evidenceIssue === "unsupported_verification"));
-  if (!shouldRetryToolExecution && !shouldRecoverCompletion && !evidenceIssue) {
-    return {
-      responseContent: params.responseContent,
-      toolResults: params.toolResults,
-    };
-  }
-  const initialContent = visibleAssistantContent(params.responseContent);
-  const establishedConversation = params.executionMessages.some(
-    (message) =>
-      message.role === "assistant" &&
-      Array.isArray(message.tool_calls) &&
-      message.tool_calls.length > 0
-  );
   if (
-    isSubstantiveAssistantResponse(initialContent) &&
-    establishedConversation &&
-    !params.shouldRequireToolUse
+    !shouldRetryToolExecution &&
+    !shouldRecoverCompletion &&
+    !evidenceIssue &&
+    !initialInvalidRequestedJson
   ) {
     return {
       responseContent: params.responseContent,
       toolResults: params.toolResults,
     };
   }
+  const initialContent = initialVisibleContent;
 
   const retryMessages = [...params.executionMessages];
   let latestContent = params.responseContent;
   let latestCompactionOnly = initialCompactionOnly;
+  let latestInvalidRequestedJson = initialInvalidRequestedJson;
   let latestEvidenceIssue = evidenceIssue;
   let combinedToolCalls = [...params.toolResults];
   let lastError: string | undefined;
@@ -176,7 +171,8 @@ export async function recoverAssistantResponse(
         shouldRetryToolExecution,
         params.requiredToolName,
         latestEvidenceIssue,
-        latestCompactionOnly
+        latestCompactionOnly,
+        latestInvalidRequestedJson
       )
     );
 
@@ -189,6 +185,10 @@ export async function recoverAssistantResponse(
       });
       latestContent = retryResult.content;
       latestCompactionOnly = isContextCompactionOnlyContent(latestContent);
+      latestInvalidRequestedJson = isInvalidRequestedJsonResponse(
+        params.userMessage,
+        visibleAssistantContent(latestContent)
+      );
       combinedToolCalls = [...combinedToolCalls, ...(retryResult.tool_calls || [])];
       const successfulCombinedToolCalls = combinedToolCalls.filter(isSuccessfulToolCall);
       const retryHasRequiredToolCall = params.requiredToolName
@@ -214,6 +214,7 @@ export async function recoverAssistantResponse(
       );
       if (
         !latestEvidenceIssue &&
+        !latestInvalidRequestedJson &&
         ((shouldRetryToolExecution && retryHasRequiredToolCall) ||
           (!shouldRetryToolExecution && retryIsSubstantive))
       ) {

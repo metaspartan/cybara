@@ -4,6 +4,7 @@ import { join } from "path";
 import { homedir } from "os";
 import { PNG } from "pngjs";
 import { config } from "./config";
+import { setComputerUseTrajectoryStopHandler } from "./computer-use-lifecycle";
 import { CUA_DRIVER_VERSION, ensureManagedCuaDriver, isExecutableFile } from "./cua-driver-runtime";
 import {
   CUA_DRIVER_CMD_ENV,
@@ -1056,6 +1057,8 @@ export async function stopComputerUseTrajectoryForSession(
   });
   return stopped;
 }
+
+setComputerUseTrajectoryStopHandler(stopComputerUseTrajectoryForSession);
 
 export async function stopComputerUseTrajectoryCapture(): Promise<void> {
   await queueTrajectoryLifecycle(() => stopActiveComputerUseTrajectory("completed"));

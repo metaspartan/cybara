@@ -66,32 +66,38 @@ describe("standalone CLI build", () => {
       expect(assetsSource).toContain('"/assets/app.js"');
       expect(assetsSource).toContain("__CYBARA_EMBEDDED_UI__");
       expect(assetsSource).toContain("__CYBARA_RUNTIME_ASSETS__");
-      expect(assetsSource).toContain('import embeddedRuntimeEntry from "./.cybara-runtime.js"');
       expect(assetsSource).toContain("installEmbeddedPlaywrightRuntime");
       expect(assetsSource).toContain("CYBARA_PLAYWRIGHT_RESOURCE_DIR");
       expect(assetsSource).toContain('"runtime-v1"');
-      expect(assetsSource).toContain("await import(embeddedRuntimeEntry)");
+      expect(assetsSource).toContain("__CYBARA_INSTALL_PLAYWRIGHT_RUNTIME__");
+      expect(assetsSource).not.toContain("await installEmbeddedPlaywrightRuntime()");
 
       const source = createStandaloneEntrySource({
         cwd: directory,
+        agentEntry: join(directory, "src", "cli", "agent-entry.ts"),
         assetsModule,
+        runtimeEntry,
         version: "1.2.3",
         buildCommit: "0123456789ABCDEF0123456789ABCDEF01234567",
       });
       expect(source).toContain('command === "--version"');
       expect(source).toContain('"1.2.3"');
-      expect(source).toContain('await import("./.cybara-assets.ts")');
+      expect(source).toContain('if (serverCommand) await import("./.cybara-assets.ts")');
+      expect(source).toContain('command === "agent" &&');
+      expect(source).toContain('await import("./src/cli/agent-entry.ts")');
+      expect(source).toContain('import embeddedRuntimeEntry from "./.cybara-runtime.js"');
+      expect(source).toContain("await import(embeddedRuntimeEntry)");
       expect(source).toContain(
         'Object.assign(globalThis, { __CYBARA_BUILD_COMMIT__: "0123456789abcdef0123456789abcdef01234567" })'
       );
-      expect(source).not.toContain('with { type: "file" }');
+      expect(source).toContain('with { type: "file" }');
 
       const sidecarAssetsSource = createStandaloneAssetsSource({
         cwd: directory,
         uiDir,
         runtimeEntry: join(directory, "src", "index.js"),
       });
-      expect(sidecarAssetsSource).toContain('from "./src/index.js"');
+      expect(sidecarAssetsSource).not.toContain('from "./src/index.js"');
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

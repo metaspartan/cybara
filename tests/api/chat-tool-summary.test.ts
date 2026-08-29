@@ -99,6 +99,9 @@ describe("chat tool summary utilities", () => {
         { name: "exec", result: { output: "18 pass", exitCode: 0 } },
       ])
     ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue("Validation passes (exit code 0).\n\nLayer 2 fixed", [])
+    ).toBe("unsupported_completion");
     expect(findAssistantEvidenceIssue("I asked. Waiting for your answer.", [])).toBe(
       "missing_clarification"
     );
@@ -349,6 +352,9 @@ describe("chat tool summary utilities", () => {
         "make an implementation.md.resolved and walkthrough.md.resolved"
       )
     ).toBe(true);
+    expect(
+      shouldPreferArtifactsForMessage("write deterministic artifacts under the output directory")
+    ).toBe(false);
     expect(shouldPreferArtifactsForMessage("hello what can you do")).toBe(false);
   });
 

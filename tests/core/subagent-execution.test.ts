@@ -21,12 +21,14 @@ import {
   registerSubagentRun,
   resetSubagentRegistryForTests,
   configureSubagentRegistry,
+  cleanupOldRuns,
 } from "../../src/core/subagent-registry";
 import {
   configureChannelChatRuntime,
   resetChannelChatRuntime,
 } from "../../src/core/channels/chat-runtime";
 import {
+  getAllSubagentSessions,
   getSubagentSession,
   handleSessionsSend,
   handleSessionsSpawn,
@@ -554,22 +556,152 @@ describe("Subagent execution wiring", () => {
   });
 
   test("cleanup delete keeps a completed result until the requester consumes it", async () => {
-    const run = registerSubagentRun({
-      childSessionKey: "agent:cleanup:subagent:result",
-      requesterSessionKey: "parent-cleanup",
-      task: "return a disposable result",
-      cleanup: "delete",
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Disposable Subagent Provider",
+      api_key: "disposable-subagent-key",
+    });
+    createdProviderIds.push(provider.id);
+    const targetAgent = agentManager.create({
+      name: "Disposable Subagent",
+      type: "subagent",
+      provider_id: provider.id,
+      model: "disposable-model",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async () => ({
+      content: "DISPOSABLE_RESULT=verified",
     });
 
-    markRunCompleted(run.runId, "DISPOSABLE_RESULT=verified");
+    const spawned = await handleSessionsSpawn({
+      task: "return a disposable result",
+      agentId: targetAgent.id,
+      cleanup: "delete",
+      _requesterSessionKey: "parent-cleanup",
+    });
+    await waitFor(() => getRun(spawned.runId)?.outcome?.status === "ok", 2000);
+    expect(getSubagentSession(spawned.childSessionKey)).toBeDefined();
 
-    expect(getRun(run.runId)?.outcome?.result).toBe("DISPOSABLE_RESULT=verified");
-    const waited = await handleSessionsWait(
-      { runIds: [run.runId], timeoutSeconds: 0 },
-      { agentId: "parent-agent", sessionId: "parent-cleanup" }
-    );
-    expect(waited.runs[0]?.result).toBe("DISPOSABLE_RESULT=verified");
-    expect(getRun(run.runId)).toBeUndefined();
+    try {
+      expect(getRun(spawned.runId)?.outcome?.result).toBe("DISPOSABLE_RESULT=verified");
+      const waited = await handleSessionsWait(
+        { runIds: [spawned.runId], timeoutSeconds: 0 },
+        { agentId: "parent-agent", sessionId: "parent-cleanup" }
+      );
+      expect(waited.runs[0]?.result).toBe("DISPOSABLE_RESULT=verified");
+      expect(getRun(spawned.runId)).toBeUndefined();
+      expect(getSubagentSession(spawned.childSessionKey)).toBeUndefined();
+    } finally {
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
+  });
+
+  test("completes one hundred disposable subagents with bounded concurrency and no retained runs", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Subagent Scale Provider",
+      api_key: "subagent-scale-key",
+    });
+    createdProviderIds.push(provider.id);
+    const targetAgent = agentManager.create({
+      name: "Subagent Scale Agent",
+      type: "subagent",
+      provider_id: provider.id,
+      model: "model-scale",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+
+    let active = 0;
+    let peakActive = 0;
+    let completed = 0;
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    const originalLog = console.log;
+    console.log = () => undefined;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async () => {
+      active += 1;
+      peakActive = Math.max(peakActive, active);
+      await Bun.sleep(2);
+      active -= 1;
+      completed += 1;
+      return { content: "SCALE_RESULT=verified" };
+    };
+
+    try {
+      for (let offset = 0; offset < 100; offset += 3) {
+        const batchSize = Math.min(3, 100 - offset);
+        const spawned = await Promise.all(
+          Array.from({ length: batchSize }, (_value, index) =>
+            handleSessionsSpawn({
+              task: `scale task ${offset + index + 1}`,
+              agentId: targetAgent.id,
+              cleanup: "delete",
+              _requesterSessionKey: "parent-scale",
+            })
+          )
+        );
+        await waitFor(
+          () => spawned.every((run) => getRun(run.runId)?.outcome?.status === "ok"),
+          1000,
+          2
+        );
+        const waited = await handleSessionsWait(
+          { runIds: spawned.map((run) => run.runId), timeoutSeconds: 0 },
+          { agentId: "parent-agent", sessionId: "parent-scale" }
+        );
+        expect(waited.status).toBe("completed");
+        expect(waited.runs.every((run) => run.result === "SCALE_RESULT=verified")).toBe(true);
+      }
+
+      expect(completed).toBe(100);
+      expect(peakActive).toBe(3);
+      expect(getRunsByRequester("parent-scale")).toHaveLength(0);
+      expect(getAllSubagentSessions()).toHaveLength(0);
+    } finally {
+      console.log = originalLog;
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
+  });
+
+  test("removes resident child sessions when completed runs are archived", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Subagent Archive Provider",
+      api_key: "subagent-archive-key",
+    });
+    createdProviderIds.push(provider.id);
+    const targetAgent = agentManager.create({
+      name: "Subagent Archive Agent",
+      type: "subagent",
+      provider_id: provider.id,
+      model: "model-archive",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async () => ({
+      content: "ARCHIVE_RESULT=verified",
+    });
+
+    try {
+      const spawned = await handleSessionsSpawn({
+        task: "return an archivable result",
+        agentId: targetAgent.id,
+        _requesterSessionKey: "parent-archive",
+      });
+      await waitFor(() => getRun(spawned.runId)?.outcome?.status === "ok", 2000);
+      expect(getSubagentSession(spawned.childSessionKey)).toBeDefined();
+
+      const run = getRun(spawned.runId);
+      if (run) run.endedAt = Date.now() - 10_000;
+      expect(cleanupOldRuns(1)).toBe(1);
+      expect(getRun(spawned.runId)).toBeUndefined();
+      expect(getSubagentSession(spawned.childSessionKey)).toBeUndefined();
+    } finally {
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
   });
 
   test("keeps the completed child result in the registry without announcing it", async () => {
@@ -781,6 +913,58 @@ describe("Subagent execution wiring", () => {
       expect(run?.model).toBe("model-no-timeout");
       expect(run?.workspaceDir).toBe(workspaceDir);
       expect(run?.outcome).toBeUndefined();
+    } finally {
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
+  });
+
+  test("aborts timed-out executions and preserves the timeout outcome", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Subagent Timeout Provider",
+      api_key: "subagent-timeout-key",
+    });
+    createdProviderIds.push(provider.id);
+    const targetAgent = agentManager.create({
+      name: "Subagent Timeout Agent",
+      type: "subagent",
+      provider_id: provider.id,
+      model: "model-timeout",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+
+    let capturedSignal: AbortSignal | undefined;
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async (
+      _agentId,
+      _messages,
+      options
+    ) => {
+      capturedSignal = options?.abortSignal;
+      return await new Promise<never>((_resolve, reject) => {
+        const signal = options?.abortSignal;
+        if (!signal) return;
+        const abort = () => reject(signal.reason || new Error("aborted"));
+        if (signal.aborted) abort();
+        else signal.addEventListener("abort", abort, { once: true });
+      });
+    };
+
+    try {
+      const spawned = await handleSessionsSpawn({
+        task: "remain active until timeout",
+        agentId: targetAgent.id,
+        runTimeoutSeconds: 1,
+        _requesterSessionKey: "parent-timeout",
+      });
+      await waitFor(() => getRun(spawned.runId)?.outcome?.status === "timeout", 2000);
+      await waitFor(() => getSubagentSession(spawned.childSessionKey)?.status === "failed", 2000);
+
+      expect(capturedSignal?.aborted).toBe(true);
+      expect(getRun(spawned.runId)?.outcome?.status).toBe("timeout");
+      expect(getRun(spawned.runId)?.outcome?.error).toBe("Timed out after 1s");
+      expect(getSubagentSession(spawned.childSessionKey)?.error).toBe("Timed out after 1s");
     } finally {
       (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
     }
