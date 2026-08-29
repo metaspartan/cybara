@@ -42,6 +42,7 @@ export const NAV_LINKS: readonly NavLink[] = [
 
 export const GITHUB_URL = "https://github.com/metaspartan/cybara";
 export const X_URL = "https://x.com/cybaraAI";
+export const DISCORD_URL = "https://discord.gg/zqz3nZj2pJ";
 export const CREATOR_X_URL = "https://x.com/carsenklock";
 export const RELEASES_URL = "https://github.com/metaspartan/cybara/releases/latest";
 export const CYB_TOKEN = {

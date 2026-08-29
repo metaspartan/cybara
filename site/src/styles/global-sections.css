@@ -761,7 +761,7 @@
   gap: 10px;
 }
 
-.footer-github {
+.footer-social-link {
   display: grid;
   place-items: center;
   width: 40px;
@@ -773,12 +773,12 @@
   transition: color 0.2s ease, border-color 0.2s ease;
 }
 
-.footer-github:hover {
+.footer-social-link:hover {
   color: var(--text);
   border-color: var(--glass-border-strong);
 }
 
-.footer-github-svg {
+.footer-social-icon {
   width: 20px;
   height: 20px;
 }

@@ -26,7 +26,7 @@ export function Token(): React.ReactElement {
       <SectionHeading
         eyebrow="Community token"
         title="Meet $CYB"
-        description="The Cybara token on Solana, with one clear place to verify the contract and find the official market page."
+        description="Cybara's community meme token on Solana, with one clear place to verify the contract and find the official market page."
       />
       <div className="glass token-card">
         <div className="token-story">
@@ -38,10 +38,11 @@ export function Token(): React.ReactElement {
             <span className="token-symbol">${CYB_TOKEN.symbol}</span>
             <span className="token-network">{CYB_TOKEN.network}</span>
           </div>
-          <h3 className="token-title">The token for the Cybara community.</h3>
+          <h3 className="token-title">The meme token for the Cybara community.</h3>
           <p className="token-description">
             Use the official contract shown here and verify the address before interacting with
-            the token anywhere else.
+            the token anywhere else. Trading fees support the continued development of the Cybara
+            project.
           </p>
         </div>
         <div className="token-details">
@@ -64,7 +65,8 @@ export function Token(): React.ReactElement {
             </a>
           </div>
           <p className="token-note">
-            Always verify the contract address. Digital assets can be volatile.
+            Meme tokens are highly volatile and speculative. Verify the contract address, trade
+            responsibly, and never risk more than you can afford to lose.
           </p>
         </div>
       </div>

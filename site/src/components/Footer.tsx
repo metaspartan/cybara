@@ -1,5 +1,5 @@
 import { Icon } from "./Icon";
-import { GITHUB_URL, X_URL, CREATOR_X_URL, NAV_LINKS } from "../content";
+import { CREATOR_X_URL, DISCORD_URL, GITHUB_URL, NAV_LINKS, X_URL } from "../content";
 import { useSiteI18n } from "../i18n";
 import { A } from "../lib/router";
 
@@ -36,22 +36,31 @@ export function Footer(): React.ReactElement {
         </nav>
         <div className="footer-social">
           <a
-            className="footer-github"
+            className="footer-social-link"
+            href={DISCORD_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Join the Cybara Discord"
+          >
+            <Icon name="discord" className="footer-social-icon" />
+          </a>
+          <a
+            className="footer-social-link"
             href={X_URL}
             target="_blank"
             rel="noreferrer"
             aria-label="Cybara on X"
           >
-            <Icon name="x" className="footer-github-svg" />
+            <Icon name="x" className="footer-social-icon" />
           </a>
           <a
-            className="footer-github"
+            className="footer-social-link"
             href={GITHUB_URL}
             target="_blank"
             rel="noreferrer"
             aria-label="Cybara on GitHub"
           >
-            <Icon name="github" className="footer-github-svg" />
+            <Icon name="github" className="footer-social-icon" />
           </a>
         </div>
       </div>
