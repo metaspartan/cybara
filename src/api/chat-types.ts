@@ -67,6 +67,7 @@ export interface SteerPendingChatMessageOptions {
 
 export interface ChatResponse {
   sessionId: string;
+  session_agent_id?: string;
   message: ChatMessage;
   workspaceDir?: string | null;
   contextUsage?: SessionContextUsage;

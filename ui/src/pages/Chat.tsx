@@ -1224,14 +1224,18 @@ export function Chat() {
       if (isGoalCommand) {
         await goalController.refresh();
       }
-      if (response && typeof response === "object" && "agent" in response) {
+      if (response && typeof response === "object") {
         const responseRecord = response as Record<string, unknown>;
         const responseAgent =
           responseRecord.agent && typeof responseRecord.agent === "object"
             ? (responseRecord.agent as Record<string, unknown>)
             : null;
         const resolvedAgentId =
-          responseAgent && typeof responseAgent.id === "string" ? responseAgent.id : null;
+          typeof responseRecord.session_agent_id === "string" && responseRecord.session_agent_id
+            ? responseRecord.session_agent_id
+            : responseAgent && typeof responseAgent.id === "string"
+              ? responseAgent.id
+              : null;
         syncSessionAgentSelection(resolvedAgentId);
       }
       if (response && typeof response === "object" && "contextUsage" in response) {

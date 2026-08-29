@@ -106,6 +106,14 @@ export function getBuiltinTools(): ToolDefinition[] {
   }));
 }
 
+export function shouldInjectAutomaticMemoryRecall(
+  agent: Pick<Agent, "memory_enabled" | "config">
+): boolean {
+  if (!agent.memory_enabled) return false;
+  const botMode = parseAgentConfig(agent.config).bot_mode;
+  return !botMode || typeof botMode !== "object" || Array.isArray(botMode);
+}
+
 export const AGENT_TYPES = {
   main: {
     description: "General-purpose assistant",
@@ -1360,7 +1368,7 @@ class AgentManager extends AgentProviderRuntime {
     messages: AgentMessage[],
     agent: Agent
   ): Promise<AgentMessage[]> {
-    if (!agent.memory_enabled) return messages;
+    if (!shouldInjectAutomaticMemoryRecall(agent)) return messages;
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     const query = typeof lastUser?.content === "string" ? lastUser.content.trim() : "";
     if (!query) return messages;

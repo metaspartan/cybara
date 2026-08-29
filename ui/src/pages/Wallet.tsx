@@ -294,7 +294,6 @@ export function Wallet() {
     } finally {
       setLoading(false);
     }
-    void refreshPrices();
   }
 
   useEffect(() => {
@@ -309,15 +308,22 @@ export function Wallet() {
       tick(() => void refreshStatus().catch(() => {})),
       15_000
     );
-    const priceTimer = window.setInterval(
-      tick(() => void refreshPrices()),
-      60_000
-    );
     return () => {
       window.clearInterval(statusTimer);
-      window.clearInterval(priceTimer);
     };
   }, []);
+
+  useEffect(() => {
+    if (!status?.exists) {
+      setPrices({});
+      return;
+    }
+    void refreshPrices();
+    const priceTimer = window.setInterval(() => {
+      if (!document.hidden) void refreshPrices();
+    }, 60_000);
+    return () => window.clearInterval(priceTimer);
+  }, [status?.exists]);
 
   useEffect(() => {
     if (!status?.unlocked) return;

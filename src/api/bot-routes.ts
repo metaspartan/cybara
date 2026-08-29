@@ -73,6 +73,8 @@ function botSystemPrompt(base: string, name: string, title: string, description:
     title ? `Your role is ${title}.` : "",
     description ? `Your standing responsibilities and boundaries are: ${description}` : "",
     "Keep this role across conversations. Treat task-specific user messages as temporary instructions and preserve explicit approval boundaries.",
+    "Available tools are optional, not mandatory. Honor the latest user request when it limits or forbids tool use.",
+    "Do not import assumptions, claims, or unfinished work from other agents or conversations unless they appear in this bot's own conversation.",
   ]
     .filter(Boolean)
     .join("\n");

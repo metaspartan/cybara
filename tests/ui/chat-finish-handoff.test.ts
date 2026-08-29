@@ -20,6 +20,14 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
     expect(runtimeSource).toContain("use_model_router === true");
   });
 
+  test("web: completed responses retain a newer in-flight agent selection", () => {
+    const source = read("ui/src/pages/Chat.tsx");
+    const sessionAgentIndex = source.indexOf("responseRecord.session_agent_id");
+    const responseAuthorIndex = source.indexOf("responseAgent && typeof responseAgent.id");
+    expect(sessionAgentIndex).toBeGreaterThan(-1);
+    expect(responseAuthorIndex).toBeGreaterThan(sessionAgentIndex);
+  });
+
   test("web: idle event refreshes the open session before clearing live state", () => {
     const source = readChatUiSource();
     expect(source).toContain("refreshSessionMessagesRef");
