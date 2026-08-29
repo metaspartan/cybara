@@ -52,8 +52,7 @@ describe("goal panel visibility and layout", () => {
     expect(styles).toContain("margin-top: -1px;");
     expect(emptyState).toContain("goalPanel?: ReactNode;");
     expect(emptyState).toContain("{goalPanel}");
-    expect(emptyState).toContain('className={goalPanel ? "mt-2" : undefined}');
-    expect(emptyState).not.toContain("rounded-none border-t-0");
+    expect(emptyState).toContain('bot ? "mt-2" : "rounded-none border-t-0"');
     expect(emptyState).toContain("w-[min(100%,40rem)]");
     expect(chat).toContain("goalPanel={");
     expect(chat).toContain('layout="new-chat"');

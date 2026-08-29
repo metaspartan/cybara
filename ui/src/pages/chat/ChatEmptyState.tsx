@@ -123,6 +123,7 @@ export function ChatEmptyState({
         <div className="mx-auto mt-4 w-full text-left">
           {goalPanel}
           <NewChatWorkspaceBar
+            appearance={bot ? "bot" : "session"}
             branches={gitBranches}
             changingBranch={gitBranchChanging}
             currentBranch={gitBranch}
@@ -135,7 +136,7 @@ export function ChatEmptyState({
             onSwitchBranch={onSwitchGitBranch}
             workspaceDir={workspaceDir}
             workspaceSaving={workspaceSaving}
-            className={goalPanel ? "mt-2" : undefined}
+            className={goalPanel ? (bot ? "mt-2" : "rounded-none border-t-0") : undefined}
           />
           {children}
         </div>

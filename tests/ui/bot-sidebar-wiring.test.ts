@@ -43,6 +43,7 @@ describe("bot sidebar wiring", () => {
     expect(sidebar).toContain("var(--surface-hover)");
     expect(emptyState).toContain("Message <span");
     expect(emptyState).toContain("Persistent memory");
+    expect(emptyState).toContain('appearance={bot ? "bot" : "session"}');
     expect(workspaceBar).toContain("rounded-2xl border");
     expect(workspaceBar).toContain("Choose a project folder for this chat");
     expect(workspaceBar).toContain("FolderOpen");
