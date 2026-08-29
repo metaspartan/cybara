@@ -43,7 +43,7 @@ import {
   type SessionGoalCommandResult,
 } from "../core/session-goals";
 import { GOAL_LOOP_SOURCE, recordGoalIterationOutcome } from "../core/session-goal-loop";
-import { extractLatestSessionPlan } from "../core/session-plan";
+import { extractLatestSessionPlan, extractLatestSessionPlanState } from "../core/session-plan";
 import {
   deriveSessionTitleFromMessages,
   deriveSessionTitleFromTurn,
@@ -55,6 +55,7 @@ import {
   isSessionStatusActive,
   type PendingChatMessageSnapshot,
 } from "../core/status";
+import { hydrateTodoState } from "../core/tools/handlers/todo";
 import {
   checkRateLimit,
   recordCircuitFailure,
@@ -1197,6 +1198,12 @@ async function handleChatTurn(
   }
 
   let agent = agentManager.get(session.agentId);
+  const persistedPlanState = extractLatestSessionPlanState(session.id, session.messages);
+  hydrateTodoState(
+    session.id,
+    persistedPlanState?.plan.items ?? [],
+    persistedPlanState?.writerAgentId
+  );
   if (agent && !isNewSession) {
     await refreshSessionAgentSystemPromptIfNeeded(
       session,

@@ -23,6 +23,7 @@ import {
 } from "../core/session-title";
 import { getRunBySessionKey } from "../core/subagent-registry";
 import { getActiveSessionRunId } from "../core/session-event-ledger";
+import { clearTodoState } from "../core/tools/handlers/todo";
 import { getRateLimitStatus } from "../core/tools/runtime-guards";
 import { applyActiveAgentToSession } from "./chat-agent-prompt";
 import { resolveTurnContextWindow } from "./chat-turn-context";
@@ -516,6 +517,7 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
       removePersistedSessionIndex(key);
       persistedSessionLoadMemo.delete(key);
     }
+    clearTodoState(key);
     return memoryDeleted || persistedDeleted;
   } finally {
     deletingChatSessionIds.delete(key);
@@ -722,6 +724,7 @@ export async function revertSessionToMessage(
   }
 
   if (removedCount > 0) {
+    clearTodoState(sessionId);
     clearSessionContextState(sessionId);
     await deletePersistedSession(sessionId);
     await persistSession(sessionId, agentId, keptMessages, workspaceDir, sessionTitle);

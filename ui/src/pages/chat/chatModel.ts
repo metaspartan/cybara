@@ -1425,7 +1425,15 @@ export function shouldShowSessionPlanInComposer(
   sessionWorking: boolean,
   runStartedAtMs: number | null
 ): boolean {
-  if (!plan || !sessionWorking || isSessionPlanComplete(plan)) return false;
+  if (
+    !plan ||
+    plan.items.length === 0 ||
+    plan.summary.total === 0 ||
+    !sessionWorking ||
+    isSessionPlanComplete(plan)
+  ) {
+    return false;
+  }
   if (!runStartedAtMs || !Number.isFinite(runStartedAtMs) || !plan.updatedAt) return true;
   const planUpdatedAtMs = Date.parse(plan.updatedAt);
   if (!Number.isFinite(planUpdatedAtMs)) return true;
@@ -1441,9 +1449,11 @@ export function parsePlanFromToolCall(
   const result = tryParseJsonRecord(tool.result);
   const resultRecord = isRecord(result) ? result : null;
   const args = tool.arguments || tool.args || {};
-  const resultItems = normalizePlanItems(resultRecord?.items);
-  const items = resultItems.length ? resultItems : normalizePlanItems(args.items);
-  if (items.length === 0) return null;
+  const hasResultItems = Array.isArray(resultRecord?.items);
+  const items = hasResultItems
+    ? normalizePlanItems(resultRecord?.items)
+    : normalizePlanItems(args.items);
+  if (!hasResultItems && items.length === 0) return null;
   const planSessionId =
     (resultRecord && typeof resultRecord.sessionId === "string" ? resultRecord.sessionId : "") ||
     (typeof sessionId === "string" ? sessionId : "");

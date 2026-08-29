@@ -227,13 +227,11 @@ function latestTodoHasIncompleteItems(toolCalls: ToolCallResultLike[]): boolean 
     : Array.isArray(latestTodo.args?.items)
       ? latestTodo.args.items
       : [];
-  return items.some(
-    (item) =>
-      item !== null &&
-      typeof item === "object" &&
-      !Array.isArray(item) &&
-      (item as Record<string, unknown>).status !== "completed"
-  );
+  return items.some((item) => {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) return false;
+    const status = (item as Record<string, unknown>).status;
+    return status !== "completed" && status !== "cancelled" && status !== "canceled";
+  });
 }
 
 const EXECUTION_VERIFICATION_CLAIM_PATTERNS = [
@@ -282,11 +280,11 @@ const PLANNED_ACTION_PATTERN =
 const REQUEST_CLAUSE_BOUNDARY = String.raw`(?:^|[.!?;,\n]\s*)`;
 const REQUEST_COURTESY_PREFIX = String.raw`(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?`;
 const ACTION_EXECUTION_REQUEST_PATTERN = new RegExp(
-  `${REQUEST_CLAUSE_BOUNDARY}${REQUEST_COURTESY_PREFIX}(?:let'?s\s+)?(?:continue|proceed|go\\s+ahead|do\\s+it|keep\\s+going|finish|implement|build|create|add|fix|update|improve|integrate|deploy|set\\s*up|configure|change|refactor|install|remove|delete|move|copy|import|paste|push|publish)\\b`,
+  `${REQUEST_CLAUSE_BOUNDARY}${REQUEST_COURTESY_PREFIX}(?:let'?s\\s+)?(?:continue|proceed|go\\s+ahead|do\\s+it|keep\\s+going|finish|implement|build|create|add|fix|update|improve|integrate|deploy|set\\s*up|configure|change|refactor|install|remove|delete|move|copy|import|paste|push|publish)\\b`,
   "i"
 );
 const EVIDENCE_REQUEST_PATTERN = new RegExp(
-  `${REQUEST_CLAUSE_BOUNDARY}${REQUEST_COURTESY_PREFIX}(?:let'?s\s+)?(?:review|audit|inspect|investigate|diagnose|test|verify|run|research|search|look\\s+into|analyze|check|compare)\\b`,
+  `${REQUEST_CLAUSE_BOUNDARY}${REQUEST_COURTESY_PREFIX}(?:let'?s\\s+)?(?:review|audit|inspect|investigate|diagnose|test|verify|run|research|search|look\\s+into|analyze|check|compare)\\b`,
   "i"
 );
 const EVIDENCE_REQUEST_TARGET_PATTERN =
@@ -490,7 +488,7 @@ export function extractVisibleClarification(toolCalls: ToolCallResultLike[]): st
 
 export function buildUnsupportedAssistantClaimMessage(issue: AssistantEvidenceIssue): string {
   if (issue === "incomplete_plan") {
-    return "I couldn't finish every planned item in this turn. Retry this turn or switch agents.";
+    return "I couldn't reconcile every planned item in this turn. Continue the session to finish remaining work or mark obsolete items cancelled.";
   }
   if (issue === "missing_clarification") {
     return "I couldn't produce the clarification needed to continue. Retry this turn or switch agents.";

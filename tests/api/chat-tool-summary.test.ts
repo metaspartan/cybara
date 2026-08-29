@@ -144,6 +144,24 @@ describe("chat tool summary utilities", () => {
         { name: "edit", result: { filePath: "/tmp/import.ts" } },
       ])
     ).toBeUndefined();
+
+    expect(
+      findAssistantEvidenceIssue("Done. Task complete and all plan items are satisfied.", [
+        {
+          name: "todo",
+          result: {
+            items: [
+              { content: "Implement importer", status: "completed" },
+              { content: "Obsolete migration", status: "cancelled" },
+            ],
+          },
+        },
+        { name: "edit", result: { filePath: "/tmp/import.ts" } },
+      ])
+    ).toBeUndefined();
+    const fallback = buildUnsupportedAssistantClaimMessage("incomplete_plan");
+    expect(fallback).toContain("mark obsolete items cancelled");
+    expect(fallback).not.toContain("switch agents");
   });
 
   test("distinguishes plan-only implementation replies from requested planning", () => {
@@ -232,7 +250,9 @@ describe("chat tool summary utilities", () => {
       true
     );
     expect(requiresToolEvidenceForMessage("Continue")).toBe(true);
+    expect(requiresToolEvidenceForMessage("Let's fix the importer.")).toBe(true);
     expect(requiresToolEvidenceForMessage("Review and audit this codebase.")).toBe(true);
+    expect(requiresToolEvidenceForMessage("Let's inspect this codebase.")).toBe(true);
     expect(requiresToolEvidenceForMessage("Look into the gateway crash.")).toBe(true);
     expect(requiresToolEvidenceForMessage("Create an implementation plan for the importer.")).toBe(
       false

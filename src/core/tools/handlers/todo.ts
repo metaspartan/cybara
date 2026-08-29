@@ -12,6 +12,7 @@ export interface TodoState {
   items: TodoItem[];
   updatedAt: number;
   restoredKeys: Set<string>;
+  lastWriterAgentId?: string;
 }
 
 type SessionTodos = Record<string, TodoState>;
@@ -30,6 +31,26 @@ function getState(context?: ToolContext): TodoState {
     sessionTodos[key] = { items: [], updatedAt: Date.now(), restoredKeys: new Set() };
   }
   return sessionTodos[key];
+}
+
+export function hydrateTodoState(
+  sessionId: string,
+  items: TodoItem[],
+  lastWriterAgentId?: string
+): void {
+  const key = sessionId.trim();
+  if (!key || sessionTodos[key]) return;
+  sessionTodos[key] = {
+    items: items.map((item) => ({ ...item })),
+    updatedAt: Date.now(),
+    restoredKeys: new Set(),
+    ...(lastWriterAgentId?.trim() ? { lastWriterAgentId: lastWriterAgentId.trim() } : {}),
+  };
+}
+
+export function clearTodoState(sessionId: string): void {
+  const key = sessionId.trim();
+  if (key) delete sessionTodos[key];
 }
 
 function identityKey(content: string): string {
@@ -91,6 +112,12 @@ export async function handleTodo(
   const isSettled = (status: TodoStatus) => status === "completed" || status === "cancelled";
 
   const state = getState(context);
+  const activeAgentId = context?.agentId?.trim() || undefined;
+  const writerChanged = Boolean(
+    activeAgentId && state.lastWriterAgentId && activeAgentId !== state.lastWriterAgentId
+  );
+  const previousItems = writerChanged ? [] : state.items;
+  const replacedPreviousPlan = writerChanged && state.items.length > 0;
   const effectiveKey = new Map<TodoItem, string>();
   const incoming = new Map<string, TodoItem>();
   for (const item of items) {
@@ -99,9 +126,9 @@ export async function handleTodo(
     incoming.set(key, item);
   }
 
-  const previousKeys = new Set(state.items.map((previous) => identityKey(previous.content)));
+  const previousKeys = new Set(previousItems.map((previous) => identityKey(previous.content)));
   const claimed = new Set<TodoItem>();
-  for (const previous of state.items) {
+  for (const previous of previousItems) {
     const previousKey = identityKey(previous.content);
     if (incoming.has(previousKey)) continue;
     const previousTokens = tokenSet(previous.content);
@@ -126,7 +153,7 @@ export async function handleTodo(
   const droppedIncomplete =
     items.length === 0
       ? []
-      : state.items.filter(
+      : previousItems.filter(
           (previous) => !isSettled(previous.status) && !incoming.has(identityKey(previous.content))
         );
   const restored = droppedIncomplete.filter(
@@ -136,7 +163,7 @@ export async function handleTodo(
 
   const merged: TodoItem[] = [];
   const emitted = new Set<string>();
-  for (const previous of state.items) {
+  for (const previous of previousItems) {
     const key = identityKey(previous.content);
     if (emitted.has(key)) continue;
     const update = incoming.get(key);
@@ -157,6 +184,7 @@ export async function handleTodo(
   items.length = 0;
   items.push(...merged);
   state.restoredKeys = restoredKeys;
+  state.lastWriterAgentId = activeAgentId ?? state.lastWriterAgentId;
 
   let inProgressSeen = false;
   for (const item of items) {
@@ -184,12 +212,16 @@ export async function handleTodo(
   const restoredNote = restored.length
     ? ` This update left out ${restored.length} unfinished item${restored.length === 1 ? "" : "s"} (${restored.map((item) => item.content).join("; ")}), kept this once in case the omission was accidental. Send the full list; to retire work, mark it completed (done) or cancelled (obsolete or no longer needed). If you omit these again on the next update they will be dropped.`
     : "";
+  const handoffNote = replacedPreviousPlan
+    ? " Active agent changed, so this full list replaced the previous plan without restoring omitted work."
+    : "";
 
   return {
     items,
     summary,
     note:
       "Task list updated. Keep at most one item in_progress at a time. Use this list to track multi-step work and avoid drift. Mark items cancelled when they become obsolete or out of scope. When all work is done, send a final update with every remaining item marked completed or cancelled before giving your answer." +
+      handoffNote +
       restoredNote,
   };
 }
