@@ -374,6 +374,12 @@ describe("UI page API wiring", () => {
     expect(source).toContain("walletApi");
     expect(source).toContain("walletApi.status()");
     expect(source).toContain("walletApi.priceQuote(");
+    expect(source).toContain("if (!status?.exists)");
+    const refreshAllSource = source.match(
+      /async function refreshAll\(\)[\s\S]*?\n  }\n\n  useEffect/
+    );
+    expect(refreshAllSource).not.toBeNull();
+    expect(refreshAllSource?.[0]).not.toContain("refreshPrices");
     expect(source).toContain("walletApi.accounts(");
     expect(source).toContain("walletApi.balances(");
     expect(source).toContain("walletApi.tokenBalances(");
