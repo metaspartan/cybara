@@ -2,12 +2,17 @@ import { describe, expect, test } from "bun:test";
 import {
   buildAgentChatPath,
   buildFreshChatPath,
+  buildSessionChatPath,
   parseInitialChatRoute,
 } from "../../ui/src/pages/chat/chatRoute";
 
 describe("chat route state", () => {
   test("builds a fresh chat link with the selected agent", () => {
     expect(buildAgentChatPath("agent/one")).toBe("/chat?agent=agent%2Fone&fresh=1");
+  });
+
+  test("builds a restorable bot session link", () => {
+    expect(buildSessionChatPath("bot:agent/one")).toBe("/chat?session=bot%3Aagent%2Fone");
   });
 
   test("builds distinct fresh chat routes that retain workspace selection", () => {

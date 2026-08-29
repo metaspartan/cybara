@@ -3,6 +3,7 @@ import type { PendingChatMessage, StatusSessionSnapshot } from "@/lib/status-str
 import type {
   Agent,
   AgentSummary,
+  BotRosterItem,
   ApiResponse,
   Channel,
   ChatImageAttachment,
@@ -216,6 +217,27 @@ export const agentsApi = {
         ...(images && images.length ? { images } : {}),
       }),
       signal,
+    }),
+};
+
+export const botsApi = {
+  list: () => fetchApi<{ bots: BotRosterItem[] }>("/bots"),
+  create: (input: { name: string; title?: string; description?: string; base_agent_id?: string }) =>
+    fetchApi<{ bot: BotRosterItem; session_id: string }>("/bots", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  update: (
+    id: string,
+    input: { name?: string; title?: string; description?: string; hidden?: boolean }
+  ) =>
+    fetchApi<{ bot: BotRosterItem }>(`/bots/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  ensureSession: (id: string) =>
+    fetchApi<{ bot_id: string; session_id: string }>(`/bots/${id}/session`, {
+      method: "POST",
     }),
 };
 

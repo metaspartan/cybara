@@ -45,6 +45,25 @@ export interface AgentSummary {
   supports_images?: boolean;
 }
 
+export interface BotRosterItem {
+  id: string;
+  name: string;
+  title: string;
+  description: string;
+  hidden: boolean;
+  model?: string;
+  provider?: string;
+  provider_id?: string;
+  status?: Agent["status"];
+  session_id: string;
+  session: {
+    title?: string | null;
+    updated_at?: string;
+    message_count?: number;
+    last_message?: { role: string; content: string } | null;
+  } | null;
+}
+
 export type AgentReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface AgentMessage {

@@ -139,6 +139,7 @@ import {
 import { checkForUpdate, isUpdateCheckDisabled } from "../core/update-check";
 import { workspaceIndexer } from "../core/workspace-indexer";
 import { agentRoutes } from "./agent-routes";
+import { botRoutes } from "./bot-routes";
 import { channelRoutes } from "./channel-routes";
 import { getClientIp } from "./client-ip";
 import { getCybaraDataDirConfigInfo, getCybaraDataDirInfo } from "./data-dir-info";
@@ -271,6 +272,7 @@ const routes: Record<string, RouteHandler> = {
   ...providerRoutes,
   ...channelRoutes,
   ...agentRoutes,
+  ...botRoutes,
   "GET /api/metrics": () => ({
     requestCount: requestLogs.length,
     recentRequests: requestLogs.slice(0, 100),
