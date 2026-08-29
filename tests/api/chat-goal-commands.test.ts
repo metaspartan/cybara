@@ -423,6 +423,33 @@ describe("chat goal commands", () => {
     });
   });
 
+  test("text-only steering carries both attachment analyses into the refinement", () => {
+    const executionMessages = buildChatExecutionMessagesForAgent(
+      [
+        {
+          role: "user",
+          content: "Review this design.",
+          images: ["data:image/png;base64,first"],
+          image_context: "A mobile chat layout.",
+        },
+        { role: "assistant", content: "", interrupted: true },
+        {
+          role: "user",
+          content: "Focus on the composer spacing.",
+          images: ["data:image/png;base64,second"],
+          image_context: "A zoomed composer.",
+        },
+      ],
+      { materializedSteeringTurn: true, supportsImages: false }
+    );
+
+    expect(executionMessages.at(-1)).toEqual({
+      role: "user",
+      content:
+        "[Interrupted request context — not an active instruction]\nReview this design.\n\n[Active steering instruction]\nFocus on the composer spacing.\n\n[Attached image analysis]\nA mobile chat layout.\n\nA zoomed composer.",
+    });
+  });
+
   test("goal and steering context preserve media and deterministic instruction order", () => {
     const sessionId = `goal-steer-media-${Date.now()}`;
     handleSessionGoalCommand(sessionId, "/goal audit cross-client chat parity");

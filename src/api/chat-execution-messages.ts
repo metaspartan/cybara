@@ -28,7 +28,8 @@ const toolResultPreviewCache = new WeakMap<object, string>();
 
 function mergeSteeringContext(
   interruptedRequest: ChatMessage,
-  steeringMessage: ChatMessage
+  steeringMessage: ChatMessage,
+  retainImageContext: boolean
 ): ChatMessage {
   const interruptedContent = compactChatContentForPrompt(interruptedRequest).trim();
   const steeringContent = compactChatContentForPrompt(steeringMessage).trim();
@@ -42,7 +43,7 @@ function mergeSteeringContext(
       interruptedContent || "[No text; see the attached context]"
     }\n\n[Active steering instruction]\n${steeringContent}`,
     ...(images.length > 0 ? { images } : {}),
-    ...(imageContext ? { image_context: imageContext } : {}),
+    ...(retainImageContext && imageContext ? { image_context: imageContext } : {}),
   };
 }
 
@@ -80,7 +81,8 @@ export function buildChatExecutionMessagesForAgent(
           ...sessionMessages.slice(0, previousUserIndex),
           mergeSteeringContext(
             sessionMessages[previousUserIndex],
-            sessionMessages[latestUserIndex]
+            sessionMessages[latestUserIndex],
+            !supportsImages
           ),
         ]
       : sessionMessages;
