@@ -136,7 +136,6 @@ export function ChatEmptyState({
             onSwitchBranch={onSwitchGitBranch}
             workspaceDir={workspaceDir}
             workspaceSaving={workspaceSaving}
-            className={goalPanel ? (bot ? "mt-2" : "rounded-none border-t-0") : undefined}
           />
           {children}
         </div>
