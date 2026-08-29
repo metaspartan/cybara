@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   AudioLines,
   BarChart3,
+  Bot,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -38,6 +39,8 @@ import { readLabSettings } from "@/lib/labSettings";
 import type { SidebarDestinationId, SidebarPrimaryItemId } from "@/lib/sidebarNavigation";
 import { cn } from "@/lib/utils";
 import { SessionsPanel } from "@/pages/chat/SessionSidebar";
+import { BotSidebar } from "@/pages/chat/BotSidebar";
+import { readPersistedSessionId } from "@/pages/chat/chatModel";
 import { buildFreshChatPath } from "@/pages/chat/chatRoute";
 import { buildMultiChatPath, isMultiChatSearch } from "@/pages/chat/multiChatLayout";
 import type { TranslationKey } from "../../../../shared/i18n/catalog";
@@ -152,6 +155,10 @@ export function Sidebar() {
   const { collapsed, setCollapsed, width, setWidth, mobileOpen, setMobileOpen } = useSidebar();
   const [moreOpen, setMoreOpen] = useState(false);
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+  const [sidebarMode, setSidebarMode] = useState<"sessions" | "bots">(() =>
+    localStorage.getItem("cybara.sidebar.mode") === "bots" ? "bots" : "sessions"
+  );
+  const [createBotOpen, setCreateBotOpen] = useState(false);
   const [labEnabled, setLabEnabled] = useState(true);
   const { layout: navigationLayout } = useSidebarNavigationLayout();
 
@@ -185,7 +192,14 @@ export function Sidebar() {
     setMobileOpen(false);
   }, [location.pathname, setMobileOpen]);
 
-  const currentSessionId = onChatPage ? new URLSearchParams(location.search).get("session") : null;
+  useEffect(() => {
+    localStorage.setItem("cybara.sidebar.mode", sidebarMode);
+    setSessionSearchOpen(false);
+  }, [sidebarMode]);
+
+  const currentSessionId = onChatPage
+    ? new URLSearchParams(location.search).get("session") || readPersistedSessionId()
+    : null;
   const multiChatActive = onChatPage && isMultiChatSearch(location.search);
   const activeSettingsSection =
     resolveSettingsSectionId(new URLSearchParams(location.search).get("section")) ?? "general";
@@ -427,8 +441,8 @@ export function Sidebar() {
                       type="button"
                       onClick={() => setSessionSearchOpen(true)}
                       className="theme-muted-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                      aria-label="Search chats"
-                      title="Search chats"
+                      aria-label={sidebarMode === "bots" ? "Search bots" : "Search chats"}
+                      title={sidebarMode === "bots" ? "Search bots" : "Search chats"}
                     >
                       <Search className="h-4 w-4" />
                     </button>
@@ -438,20 +452,68 @@ export function Sidebar() {
 
               <nav className="flex min-h-0 flex-1 flex-col p-2 pb-3">
                 <div className="min-h-[108px] shrink-0 space-y-0.5 overflow-y-auto pb-2">
+                  {!collapsed ? (
+                    <div
+                      role="tablist"
+                      aria-label="Conversation mode"
+                      className="mb-1.5 grid grid-cols-2 gap-1 rounded-xl border border-white/5 bg-black/10 p-1"
+                    >
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={sidebarMode === "sessions"}
+                        onClick={() => setSidebarMode("sessions")}
+                        className={cn(
+                          "rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-all",
+                          sidebarMode === "sessions"
+                            ? "bg-white/10 text-white shadow-sm"
+                            : "text-gray-500 hover:bg-white/5 hover:text-gray-300"
+                        )}
+                      >
+                        Sessions
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={sidebarMode === "bots"}
+                        onClick={() => setSidebarMode("bots")}
+                        className={cn(
+                          "rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-all",
+                          sidebarMode === "bots"
+                            ? "bg-white/10 text-white shadow-sm"
+                            : "text-gray-500 hover:bg-white/5 hover:text-gray-300"
+                        )}
+                      >
+                        Bots
+                      </button>
+                    </div>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={() => navigate(buildFreshChatPath())}
+                    onClick={() => {
+                      if (sidebarMode === "bots" && !collapsed) {
+                        setCreateBotOpen(true);
+                        return;
+                      }
+                      navigate(buildFreshChatPath());
+                    }}
                     title={collapsed ? t("chat.sidebar.newChat") : undefined}
-                    aria-disabled={!hasAgents}
+                    aria-disabled={sidebarMode === "sessions" && !hasAgents}
                     className={cn(
                       "flex w-full items-center gap-2.5 rounded-lg text-[13px] font-medium text-gray-400 transition-all duration-200 hover:bg-white/5 hover:text-white !ring-0 !border-transparent",
                       collapsed ? "justify-center px-3 py-2.5" : "px-3.5 py-1.5",
-                      !hasAgents && "pointer-events-none opacity-45"
+                      sidebarMode === "sessions" && !hasAgents && "pointer-events-none opacity-45"
                     )}
                   >
-                    <MessageSquarePlus className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                    {sidebarMode === "bots" && !collapsed ? (
+                      <Bot className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                    ) : (
+                      <MessageSquarePlus className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                    )}
                     {!collapsed ? (
-                      <span className="truncate">{t("chat.sidebar.newChat")}</span>
+                      <span className="truncate">
+                        {sidebarMode === "bots" ? "New Bot" : t("chat.sidebar.newChat")}
+                      </span>
                     ) : null}
                   </button>
                   {navigationLayout.primary.map(renderOrderedNavigationItem)}
@@ -498,21 +560,32 @@ export function Sidebar() {
                           : chatHistoryMaxHeight,
                       }}
                     >
-                      <SessionsPanel
-                        isOpen
-                        placement="main"
-                        showNewChatButton={false}
-                        searchOpen={sessionSearchOpen}
-                        onSearchOpenChange={setSessionSearchOpen}
-                        currentSessionId={currentSessionId}
-                        activeSessionIds={activeSessionIds}
-                        currentSessionLoading={false}
-                        onClose={() => undefined}
-                        onLoadSession={() => undefined}
-                        onNewSession={(workspaceDir) => {
-                          navigate(buildFreshChatPath(workspaceDir));
-                        }}
-                      />
+                      {sidebarMode === "sessions" ? (
+                        <SessionsPanel
+                          isOpen
+                          placement="main"
+                          showNewChatButton={false}
+                          searchOpen={sessionSearchOpen}
+                          onSearchOpenChange={setSessionSearchOpen}
+                          currentSessionId={currentSessionId}
+                          activeSessionIds={activeSessionIds}
+                          currentSessionLoading={false}
+                          onClose={() => undefined}
+                          onLoadSession={() => undefined}
+                          onNewSession={(workspaceDir) => {
+                            navigate(buildFreshChatPath(workspaceDir));
+                          }}
+                        />
+                      ) : (
+                        <BotSidebar
+                          activeSessionIds={activeSessionIds}
+                          currentSessionId={currentSessionId}
+                          searchOpen={sessionSearchOpen}
+                          onSearchOpenChange={setSessionSearchOpen}
+                          createOpen={createBotOpen}
+                          onCreateOpenChange={setCreateBotOpen}
+                        />
+                      )}
                     </div>
                   </>
                 ) : null}

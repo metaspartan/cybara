@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   extractLatestSessionPlan,
+  extractLatestSessionPlanState,
   normalizeSessionPlanItems,
   sanitizeTodoToolResult,
 } from "../../src/core/session-plan";
@@ -52,6 +53,25 @@ describe("session plan snapshots", () => {
     ]);
   });
 
+  test("extracts the agent that wrote the persisted plan", () => {
+    const state = extractLatestSessionPlanState("session-plan-writer", [
+      {
+        agent_id: "agent-a",
+        tool_calls: [
+          {
+            name: "todo",
+            result: {
+              items: [{ content: "inherited", status: "in_progress", priority: "high" }],
+            },
+          },
+        ],
+      },
+    ]);
+
+    expect(state?.writerAgentId).toBe("agent-a");
+    expect(state?.plan.items[0]?.content).toBe("inherited");
+  });
+
   test("sanitizes serialized todo results and defaults invalid fields", () => {
     const result = sanitizeTodoToolResult(
       JSON.stringify({
@@ -93,6 +113,41 @@ describe("session plan snapshots", () => {
       content: "from args",
       status: "pending",
       priority: "high",
+    });
+  });
+
+  test("treats an explicit empty todo result as the latest cleared plan", () => {
+    const plan = extractLatestSessionPlan("session-plan-cleared", [
+      {
+        timestamp: "2026-07-08T00:01:00.000Z",
+        tool_calls: [
+          {
+            name: "todo",
+            result: {
+              items: [{ content: "obsolete", status: "in_progress", priority: "high" }],
+            },
+          },
+        ],
+      },
+      {
+        timestamp: "2026-07-08T00:02:00.000Z",
+        tool_calls: [
+          {
+            name: "todo",
+            result: { items: [], summary: { total: 0 } },
+          },
+        ],
+      },
+    ]);
+
+    expect(plan?.updatedAt).toBe("2026-07-08T00:02:00.000Z");
+    expect(plan?.items).toEqual([]);
+    expect(plan?.summary).toEqual({
+      total: 0,
+      pending: 0,
+      inProgress: 0,
+      completed: 0,
+      cancelled: 0,
     });
   });
 

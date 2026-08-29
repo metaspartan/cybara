@@ -93,6 +93,13 @@ describe("classifyApiError", () => {
       }).category
     ).toBe("network");
     expect(classifyApiError({ error: new Error("Operation timed out") }).retryable).toBe(true);
+    expect(
+      classifyApiError({ error: new Error("chat.completions produced no output (no first token)") })
+        .retryable
+    ).toBe(true);
+    expect(classifyApiError({ error: new Error("chat.completions stream stalled") }).category).toBe(
+      "timeout"
+    );
   });
 
   test("classifies 4xx (non-auth) as bad_request, not retryable", () => {

@@ -46,6 +46,7 @@ import type { SessionContextUsage, SessionTokenUsage, Task } from "@/types";
 import type { ChatMessage } from "./chatModel";
 import { sessionDisplayTitle, sessionPreviewText, sessionRouteLabel } from "./chatModel";
 import { MULTI_CHAT_DRAG_TYPE } from "./multiChatLayout";
+import { isBotSessionId } from "../../../../shared/bot-mode";
 import {
   type ChatSidebarSession,
   type ChatSidebarSessionGroup,
@@ -306,8 +307,12 @@ export function SessionsPanel({
   const sessionsRefreshTimerRef = useRef<number | null>(null);
   const sessionLoadSequenceRef = useRef(0);
   const collapsedGroupsInitializedRef = useRef(false);
+  const regularSessions = useMemo(
+    () => (sessions ?? []).filter((session) => !isBotSessionId(session.id)),
+    [sessions]
+  );
   const sessionGroups = useMemo(() => {
-    const groups = groupSessionsForSidebar(sessions, "");
+    const groups = groupSessionsForSidebar(regularSessions, "");
     return [...groups].sort((a, b) => {
       if (a.kind === "pinned") return -1;
       if (b.kind === "pinned") return 1;
@@ -316,7 +321,7 @@ export function SessionsPanel({
       if (aPinned !== bPinned) return aPinned ? -1 : 1;
       return 0;
     });
-  }, [sessions, pinnedWorkspaceGroupIds]);
+  }, [regularSessions, pinnedWorkspaceGroupIds]);
   const visibleCollapsedGroupIds = collapsedGroupsInitializedRef.current
     ? collapsedGroupIds
     : defaultCollapsedSessionGroupIds(sessionGroups, currentSessionId);
@@ -338,7 +343,7 @@ export function SessionsPanel({
   }, [tasks]);
   const searchResults = useMemo(() => {
     const query = deferredSearchQuery.trim().toLowerCase();
-    return (sessions ?? [])
+    return regularSessions
       .filter((session) => {
         if (!query) return true;
         const record = session as unknown as Record<string, unknown>;
@@ -354,7 +359,7 @@ export function SessionsPanel({
         return searchable.includes(query);
       })
       .slice(0, 12);
-  }, [deferredSearchQuery, sessions]);
+  }, [deferredSearchQuery, regularSessions]);
   const hasPinnedGroup = sessionGroups.some((group) => group.kind === "pinned");
 
   useEffect(() => {

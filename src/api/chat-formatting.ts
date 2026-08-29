@@ -29,17 +29,71 @@ const FINAL_BLOCK_PATTERN = /<final\b[^>]*>([\s\S]*?)<\/final>/gi;
 const STRICT_JSON_REQUEST_PATTERN =
   /\b(?:strict\s+JSON|(?:output|reply|respond|return|emit)\s+(?:only\s+)?(?:a\s+)?JSON|JSON[\s\S]{0,120}no\s+markdown)\b/i;
 const JSON_FENCE_PATTERN = /^\s*```(?:json)?\s*\n?([\s\S]*?)\n?```\s*$/i;
+const EXACT_PLAIN_TEXT_LINE_PATTERN =
+  /\breturn\s+exactly\s+one\s+plain-text\s+line\s+with\s+no[\s\S]{0,160}?additional\s+prose\s*:\s*\n([^\r\n]+)/i;
+
+function strictJsonPayload(content: string): string {
+  return content.match(JSON_FENCE_PATTERN)?.[1]?.trim() || content.trim();
+}
+
+function isValidJson(content: string): boolean {
+  try {
+    JSON.parse(content);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function repairTruncatedJson(content: string): string | null {
+  const closingDelimiters: string[] = [];
+  let inString = false;
+  let escaped = false;
+  for (const character of content) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === "{") {
+      closingDelimiters.push("}");
+    } else if (character === "[") {
+      closingDelimiters.push("]");
+    } else if (character === "}" || character === "]") {
+      if (closingDelimiters.pop() !== character) return null;
+    }
+  }
+  if (inString || closingDelimiters.length === 0) return null;
+  const repaired = `${content}${closingDelimiters.reverse().join("")}`;
+  return isValidJson(repaired) ? repaired : null;
+}
+
+export function isInvalidRequestedJsonResponse(userMessage: string, content: string): boolean {
+  if (!STRICT_JSON_REQUEST_PATTERN.test(userMessage)) return false;
+  const payload = strictJsonPayload(content);
+  return !isValidJson(payload) && repairTruncatedJson(payload) === null;
+}
 
 export function normalizeRequestedAssistantResponse(userMessage: string, content: string): string {
-  if (!STRICT_JSON_REQUEST_PATTERN.test(userMessage)) return content;
-  const fenced = content.match(JSON_FENCE_PATTERN)?.[1]?.trim();
-  if (!fenced) return content;
-  try {
-    JSON.parse(fenced);
-    return fenced;
-  } catch {
-    return content;
+  const expectedLine = userMessage.match(EXACT_PLAIN_TEXT_LINE_PATTERN)?.[1]?.trim();
+  if (expectedLine) {
+    const matchingLine = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line === expectedLine);
+    if (matchingLine) return matchingLine;
   }
+  if (!STRICT_JSON_REQUEST_PATTERN.test(userMessage)) return content;
+  const payload = strictJsonPayload(content);
+  if (isValidJson(payload)) return payload;
+  return repairTruncatedJson(payload) || content;
 }
 
 export function stripThinkingTags(content: string): StripThinkingTagsResult {

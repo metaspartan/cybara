@@ -8,6 +8,12 @@ const TS_FILE_PATTERN = /\.(ts|tsx)$/;
 const EXCLUDED_FILES = new Set(["tests/runtime/import-style-guard.test.ts"]);
 const DYNAMIC_IMPORT_ALLOWLIST = new Set([
   "src/main.ts",
+  "src/index.ts",
+  "src/api/chat-response-enrichment.ts",
+  "src/api/chat-session-api.ts",
+  "src/api/chat-subagent-completion.ts",
+  "src/core/agent-provider-common-runtime.ts",
+  "src/core/tools/index.ts",
   "src/core/tools/handlers/wallet.ts",
   "src/api/routes.ts",
   "src/api/routes/wallet.ts",

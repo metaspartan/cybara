@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { handleTodo, readTodo } from "../../src/core/tools/handlers/todo";
+import { handleTodo, hydrateTodoState, readTodo } from "../../src/core/tools/handlers/todo";
 import type { ToolContext } from "../../src/core/tools/index";
 
 function context(sessionId: string): ToolContext {
@@ -251,5 +251,64 @@ describe("todo plan integrity", () => {
     );
 
     expect(readTodo(ctx).map((item) => item.content)).toEqual(["Live thing"]);
+  });
+
+  test("lets a newly selected agent replace the inherited plan without restoring stale work", async () => {
+    const sessionId = "agent-plan-handoff";
+    await handleTodo(
+      {
+        items: [
+          { content: "Old active work", status: "in_progress", priority: "high" },
+          { content: "Old stale work", status: "pending", priority: "low" },
+        ],
+      },
+      { ...context(sessionId), agentId: "agent-a" }
+    );
+
+    const result = await handleTodo(
+      {
+        items: [
+          { content: "Obsolete inherited approach", status: "cancelled", priority: "low" },
+          { content: "Replacement work", status: "completed", priority: "high" },
+        ],
+      },
+      { ...context(sessionId), agentId: "agent-b" }
+    );
+
+    expect(readTodo(context(sessionId)).map((item) => `${item.content}:${item.status}`)).toEqual([
+      "Obsolete inherited approach:cancelled",
+      "Replacement work:completed",
+    ]);
+    expect(result.note).toContain("Active agent changed");
+    expect(result.note).not.toContain("Old stale work");
+  });
+
+  test("preserves plan-writer identity across hydration before an agent handoff", async () => {
+    const sessionId = "hydrated-agent-plan-handoff";
+    hydrateTodoState(
+      sessionId,
+      [
+        { content: "Old active work", status: "in_progress", priority: "high" },
+        { content: "Run full project tests", status: "completed", priority: "high" },
+      ],
+      "agent-a"
+    );
+
+    const result = await handleTodo(
+      {
+        items: [
+          { content: "Inspect inherited files", status: "completed", priority: "high" },
+          { content: "Run full project tests", status: "completed", priority: "high" },
+        ],
+      },
+      { ...context(sessionId), agentId: "agent-b" }
+    );
+
+    expect(readTodo(context(sessionId)).map((item) => item.content)).toEqual([
+      "Inspect inherited files",
+      "Run full project tests",
+    ]);
+    expect(result.note).toContain("Active agent changed");
+    expect(result.note).not.toContain("Old active work");
   });
 });

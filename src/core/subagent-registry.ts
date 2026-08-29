@@ -201,12 +201,30 @@ export function configureSubagentRegistry(cfg: Partial<SubagentConfig>): void {
 
 const subagentRuns = new Map<string, SubagentRunRecord>();
 let sweeper: ReturnType<typeof setInterval> | null = null;
-let listenerStarted = false;
+let persistenceTimer: ReturnType<typeof setTimeout> | null = null;
 let restoreAttempted = false;
 
 const lifecycleEmitter = new EventEmitter();
+const archiveCallbacks = new Set<(childSessionKey: string) => void>();
+
+export function onSubagentArchive(callback: (childSessionKey: string) => void): () => void {
+  archiveCallbacks.add(callback);
+  return () => archiveCallbacks.delete(callback);
+}
+
+function emitSubagentArchive(childSessionKey: string): void {
+  for (const callback of archiveCallbacks) {
+    try {
+      callback(childSessionKey);
+    } catch {}
+  }
+}
 
 function persistSubagentRuns(): void {
+  if (persistenceTimer) {
+    clearTimeout(persistenceTimer);
+    persistenceTimer = null;
+  }
   try {
     const dir = dirname(config.persistPath);
     if (!existsSync(dir)) {
@@ -217,6 +235,15 @@ function persistSubagentRuns(): void {
   } catch (err) {
     console.error("[Subagent] Failed to persist registry:", err);
   }
+}
+
+function scheduleSubagentRunsPersistence(): void {
+  if (persistenceTimer) return;
+  persistenceTimer = setTimeout(() => {
+    persistenceTimer = null;
+    persistSubagentRuns();
+  }, 100);
+  persistenceTimer.unref?.();
 }
 
 function loadSubagentRegistryFromDisk(): Map<string, SubagentRunRecord> {
@@ -255,6 +282,13 @@ function scheduleRunArchive(entry: SubagentRunRecord, endedAt: number): void {
   if (entry.archiveAtMs) startSweeper();
 }
 
+function finalizeRunRetention(entry: SubagentRunRecord, endedAt: number): void {
+  scheduleRunArchive(entry, endedAt);
+  if (entry.cleanup !== "keep" || entry.cleanupCompletedAt) return;
+  entry.cleanupHandled = true;
+  entry.cleanupCompletedAt = endedAt;
+}
+
 function startSweeper(): void {
   if (sweeper) return;
   sweeper = setInterval(() => {
@@ -284,10 +318,7 @@ async function sweepSubagentRuns(): Promise<void> {
     mutated = true;
     console.log(`[Subagent] Archived run ${runId} (child: ${entry.childSessionKey})`);
 
-    lifecycleEmitter.emit("archive", {
-      runId,
-      childSessionKey: entry.childSessionKey,
-    });
+    emitSubagentArchive(entry.childSessionKey);
   }
 
   if (mutated) {
@@ -317,71 +348,6 @@ function emitLifecycle(event: LifecycleEvent): void {
   lifecycleEmitter.emit("lifecycle", event);
 }
 
-function ensureListener(): void {
-  if (listenerStarted) return;
-  listenerStarted = true;
-
-  lifecycleEmitter.on("lifecycle", (evt: LifecycleEvent) => {
-    const entry = subagentRuns.get(evt.runId);
-    if (!entry) return;
-
-    if (evt.type === "start") {
-      const startedAt = typeof evt.data?.startedAt === "number" ? evt.data.startedAt : Date.now();
-      entry.startedAt = startedAt;
-      persistSubagentRuns();
-    }
-
-    if (evt.type === "end" || evt.type === "error") {
-      const endedAt = typeof evt.data?.endedAt === "number" ? evt.data.endedAt : Date.now();
-      entry.endedAt = endedAt;
-      scheduleRunArchive(entry, endedAt);
-
-      if (evt.type === "error") {
-        const error = typeof evt.data?.error === "string" ? evt.data.error : undefined;
-        entry.outcome = { status: "error", error };
-      } else {
-        const result = normalizeSubagentResult(evt.data?.result, {
-          requesterSessionKey: entry.requesterSessionKey,
-          runId: entry.runId,
-        });
-        entry.outcome = { status: "ok", result };
-      }
-
-      persistSubagentRuns();
-
-      if (entry.cleanup === "keep" && beginSubagentCleanup(evt.runId)) {
-        finalizeSubagentCleanup(evt.runId, entry.cleanup);
-      }
-    }
-  });
-}
-
-function beginSubagentCleanup(runId: string): boolean {
-  const entry = subagentRuns.get(runId);
-  if (!entry) return false;
-  if (entry.cleanupCompletedAt) return false;
-  if (entry.cleanupHandled) return false;
-
-  entry.cleanupHandled = true;
-  persistSubagentRuns();
-  return true;
-}
-
-function finalizeSubagentCleanup(runId: string, cleanup: "delete" | "keep"): void {
-  const entry = subagentRuns.get(runId);
-  if (!entry) return;
-
-  if (cleanup === "delete") {
-    subagentRuns.delete(runId);
-    persistSubagentRuns();
-    console.log(`[Subagent] Deleted run ${runId} (cleanup=delete)`);
-    return;
-  }
-
-  entry.cleanupCompletedAt = Date.now();
-  persistSubagentRuns();
-}
-
 function restoreSubagentRunsOnce(): void {
   if (restoreAttempted) return;
   restoreAttempted = true;
@@ -408,7 +374,6 @@ function restoreSubagentRunsOnce(): void {
       }
     }
 
-    ensureListener();
     persistSubagentRuns();
 
     console.log(`[Subagent] Restored ${restored.size} runs from disk`);
@@ -419,6 +384,43 @@ function restoreSubagentRunsOnce(): void {
 
 const runTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+function completeRunTimeout(runId: string, timeoutMs: number): boolean {
+  const entry = subagentRuns.get(runId);
+  if (!entry || entry.endedAt) return false;
+
+  entry.endedAt = Date.now();
+  entry.outcome = {
+    status: "timeout",
+    error: `Timed out after ${Math.round(timeoutMs / 1000)}s`,
+  };
+  finalizeRunRetention(entry, entry.endedAt);
+  persistSubagentRuns();
+
+  emitLifecycle({
+    runId,
+    type: "error",
+    data: {
+      endedAt: entry.endedAt,
+      error: entry.outcome.error,
+    },
+  });
+
+  const timer = runTimers.get(runId);
+  if (timer) {
+    clearTimeout(timer);
+    runTimers.delete(runId);
+  }
+  return true;
+}
+
+export function markRunTimedOut(runId: string): boolean {
+  const entry = subagentRuns.get(runId);
+  if (!entry) return false;
+  const timeoutMs = resolveRunTimeoutMs(entry.runTimeoutSeconds);
+  if (!timeoutMs) return false;
+  return completeRunTimeout(runId, timeoutMs);
+}
+
 async function waitForSubagentCompletion(runId: string, timeoutMs: number): Promise<void> {
   const existingTimer = runTimers.get(runId);
   if (existingTimer) {
@@ -426,27 +428,7 @@ async function waitForSubagentCompletion(runId: string, timeoutMs: number): Prom
   }
 
   const timer = setTimeout(() => {
-    const entry = subagentRuns.get(runId);
-    if (!entry) return;
-    if (entry.endedAt) return;
-
-    entry.endedAt = Date.now();
-    entry.outcome = {
-      status: "timeout",
-      error: `Timed out after ${Math.round(timeoutMs / 1000)}s`,
-    };
-    persistSubagentRuns();
-
-    emitLifecycle({
-      runId,
-      type: "error",
-      data: {
-        endedAt: entry.endedAt,
-        error: entry.outcome.error,
-      },
-    });
-
-    runTimers.delete(runId);
+    completeRunTimeout(runId, timeoutMs);
   }, timeoutMs);
 
   runTimers.set(runId, timer);
@@ -489,7 +471,6 @@ export function registerSubagentRun(params: {
   };
 
   subagentRuns.set(runId, run);
-  ensureListener();
   persistSubagentRuns();
 
   if (timeoutMs) {
@@ -531,7 +512,7 @@ export function updateRunDetails(runId: string, details: SubagentRunDetails): bo
       runId: entry.runId,
     });
   }
-  persistSubagentRuns();
+  scheduleSubagentRunsPersistence();
   return true;
 }
 
@@ -555,6 +536,7 @@ export function markRunCompleted(
     requesterSessionKey: entry.requesterSessionKey,
     runId: entry.runId,
   });
+  finalizeRunRetention(entry, entry.endedAt);
   persistSubagentRuns();
 
   const timer = runTimers.get(runId);
@@ -579,7 +561,7 @@ export function markRunKilled(runId: string): boolean {
 
   entry.endedAt = Date.now();
   entry.outcome = { status: "killed" };
-  scheduleRunArchive(entry, entry.endedAt);
+  finalizeRunRetention(entry, entry.endedAt);
   persistSubagentRuns();
 
   const timer = runTimers.get(runId);
@@ -597,6 +579,7 @@ export function markRunFailed(runId: string, error: string): boolean {
 
   entry.endedAt = Date.now();
   entry.outcome = { status: "error", error };
+  finalizeRunRetention(entry, entry.endedAt);
   persistSubagentRuns();
 
   const timer = runTimers.get(runId);
@@ -636,9 +619,11 @@ export function getRunsByRequester(requesterSessionKey: string): SubagentRunReco
 export function countActiveRunsForRequester(requesterSessionKey: string): number {
   const key = requesterSessionKey.trim();
   if (!key) return 0;
-  return [...subagentRuns.values()].filter(
-    (run) => run.requesterSessionKey === key && (!run.endedAt || run.endedAt === 0)
-  ).length;
+  let count = 0;
+  for (const run of subagentRuns.values()) {
+    if (run.requesterSessionKey === key && (!run.endedAt || run.endedAt === 0)) count += 1;
+  }
+  return count;
 }
 
 export function listActiveRuns(): SubagentRunRecord[] {
@@ -694,6 +679,7 @@ export function cleanupOldRuns(maxAgeMs: number = 3600000): number {
   for (const [runId, run] of subagentRuns.entries()) {
     if (run.endedAt && now - run.endedAt > maxAgeMs) {
       subagentRuns.delete(runId);
+      emitSubagentArchive(run.childSessionKey);
       cleaned++;
     }
   }
@@ -702,6 +688,8 @@ export function cleanupOldRuns(maxAgeMs: number = 3600000): number {
     persistSubagentRuns();
     console.log(`[Subagent] Cleaned up ${cleaned} old runs`);
   }
+
+  if (subagentRuns.size === 0) stopSweeper();
 
   return cleaned;
 }
@@ -733,10 +721,13 @@ export function initSubagentRegistry(): void {
 }
 
 export function resetSubagentRegistryForTests(): void {
+  if (persistenceTimer) {
+    clearTimeout(persistenceTimer);
+    persistenceTimer = null;
+  }
   subagentRuns.clear();
   stopSweeper();
   restoreAttempted = false;
-  listenerStarted = false;
 
   for (const timer of runTimers.values()) {
     clearTimeout(timer);

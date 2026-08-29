@@ -75,7 +75,7 @@ export async function consumeOpenAIChatStream(
     onDone: () => {
       completionMarkerSeen = true;
     },
-    onActivity: () => watchdog?.touch(),
+    onActivity: () => watchdog?.heartbeat(),
   })) {
     const choices = event.choices as StreamedChoiceDelta[] | undefined;
     let madeProgress = false;
@@ -86,7 +86,7 @@ export async function consumeOpenAIChatStream(
     }
     const choice = choices?.[0];
     if (!choice) {
-      if (madeProgress) watchdog?.touch();
+      if (madeProgress) watchdog?.heartbeat();
       continue;
     }
 
@@ -97,7 +97,7 @@ export async function consumeOpenAIChatStream(
     }
     const delta = choice.delta;
     if (!delta) {
-      if (madeProgress) watchdog?.touch();
+      if (madeProgress) watchdog?.heartbeat();
       continue;
     }
 
@@ -132,8 +132,12 @@ export async function consumeOpenAIChatStream(
       }
       toolCalls.set(index, existing);
     }
-    if (madeOutputProgress) markOutputProgress();
-    if (madeProgress) watchdog?.touch();
+    if (madeOutputProgress) {
+      markOutputProgress();
+      watchdog?.touch();
+    } else if (madeProgress) {
+      watchdog?.heartbeat();
+    }
   }
 
   if (!completionMarkerSeen) {

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { compactOpenAILoopMessagesForContext } from "../../src/core/agent-context-guard";
+import {
+  compactOpenAILoopMessagesForContext,
+  resolveMaterializationContextBudgetChars,
+} from "../../src/core/agent-context-guard";
 import { tables } from "../../src/core/database";
 import {
   isMidLoopContextCompactionDetail,
@@ -14,6 +17,12 @@ import {
 } from "../../src/core/status";
 
 describe("mid-loop context pressure", () => {
+  test("bounds deliverable-stage context without expanding smaller model budgets", () => {
+    expect(resolveMaterializationContextBudgetChars(4_000_000)).toBe(120_000);
+    expect(resolveMaterializationContextBudgetChars(80_000)).toBe(80_000);
+    expect(resolveMaterializationContextBudgetChars(1_000)).toBe(4096);
+  });
+
   test("measures the token reduction from compacted transcript characters", () => {
     expect(measureContextCompaction(40_000, 10_000)).toEqual({
       beforeTokens: 10_000,

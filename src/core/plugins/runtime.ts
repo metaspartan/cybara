@@ -5,8 +5,9 @@ import { mcpManager } from "../mcp";
 import { validatePublicHttpUrlShape } from "../outbound-url-policy";
 import { redactSecrets } from "../redaction";
 import { readSubprocessStreamAsText } from "../subprocess-output";
-import { toolSchemas, type Tool, type ToolContext } from "../tools";
-import { registerToolHandler, unregisterToolHandler } from "../tools/handlers";
+import { toolSchemas } from "../tools/registry";
+import { registerToolHandler, unregisterToolHandler } from "../tools/handlers/registry";
+import type { Tool, ToolContext } from "../tools/types";
 import { buildSubprocessEnvironment } from "../subprocess-env";
 import type { InstalledCybaraPlugin } from "./types";
 import {

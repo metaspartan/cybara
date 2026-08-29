@@ -139,9 +139,11 @@ import {
 import { checkForUpdate, isUpdateCheckDisabled } from "../core/update-check";
 import { workspaceIndexer } from "../core/workspace-indexer";
 import { agentRoutes } from "./agent-routes";
+import { botRoutes } from "./bot-routes";
 import { channelRoutes } from "./channel-routes";
 import { getClientIp } from "./client-ip";
 import { getCybaraDataDirConfigInfo, getCybaraDataDirInfo } from "./data-dir-info";
+import { classifyApiRequestError } from "./request-error";
 import { gatewayAuthSettingsResponse, updateGatewayHostSetting } from "./gateway-network";
 import { buildJourney } from "./journey";
 import { mobileRoutes } from "./mobile";
@@ -270,6 +272,7 @@ const routes: Record<string, RouteHandler> = {
   ...providerRoutes,
   ...channelRoutes,
   ...agentRoutes,
+  ...botRoutes,
   "GET /api/metrics": () => ({
     requestCount: requestLogs.length,
     recentRequests: requestLogs.slice(0, 100),
@@ -1903,58 +1906,9 @@ export async function handleRequest(req: {
 
     console.error(`[API Error] ${method} ${path}:`, error);
 
-    let userMessage = "An unexpected error occurred";
-    let errorCode = "INTERNAL_ERROR";
-    let statusCode = 500;
-
-    if (errorMessage.includes("No API credentials")) {
-      userMessage = "API credentials not configured. Please add a provider with valid API keys.";
-      errorCode = "MISSING_CREDENTIALS";
-      statusCode = 400;
-    } else if (errorMessage.includes("Rate limit")) {
-      userMessage = "Rate limit exceeded. Please try again later.";
-      errorCode = "RATE_LIMITED";
-      statusCode = 429;
-    } else if (errorMessage.includes("circuit breaker")) {
-      userMessage = "Service temporarily unavailable. Please try again shortly.";
-      errorCode = "SERVICE_UNAVAILABLE";
-      statusCode = 503;
-    } else if (errorMessage.includes("Agent is not running")) {
-      userMessage = "Agent is not running. Start the agent and try again.";
-      errorCode = "AGENT_NOT_RUNNING";
-      statusCode = 409;
-    } else if (errorMessage.includes("LLM API error")) {
-      userMessage = `AI service error: ${errorMessage}`;
-      errorCode = "LLM_ERROR";
-      statusCode = 502;
-    } else if (errorMessage.includes("not found")) {
-      userMessage = errorMessage;
-      errorCode = "NOT_FOUND";
-      statusCode = 404;
-    } else if (errorMessage.includes("already exists")) {
-      userMessage = errorMessage;
-      errorCode = "CONFLICT";
-      statusCode = 409;
-    } else if (
-      errorMessage.includes("Validation") ||
-      errorMessage.includes("required") ||
-      errorMessage.startsWith("Refused:") ||
-      errorMessage.startsWith("Invalid ")
-    ) {
-      userMessage = errorMessage;
-      errorCode = "VALIDATION_ERROR";
-      statusCode = 400;
-    } else if (
-      errorMessage.includes("Failed to launch browser") ||
-      errorMessage.includes("Unable to launch a browser") ||
-      errorMessage.includes("playwright chromium runtime is unavailable")
-    ) {
-      userMessage = errorMessage;
-      errorCode = "BROWSER_UNAVAILABLE";
-      statusCode = 503;
-    } else {
-      userMessage = "An error occurred while processing your request.";
-    }
+    const classified = classifyApiRequestError(errorMessage);
+    let { userMessage } = classified;
+    const { errorCode, statusCode } = classified;
 
     if (process.env.NODE_ENV !== "development") {
       userMessage = userMessage.replace(

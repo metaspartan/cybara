@@ -1,4 +1,5 @@
 import { sessionDisplayTitle, sessionPreviewText, sessionRouteLabel } from "./chatModel";
+import { isBotSessionId } from "../../../../shared/bot-mode";
 
 export interface ChatSidebarSession {
   id: string;
@@ -62,7 +63,9 @@ export function groupSessionsForSidebar(
   searchQuery: string
 ): ChatSidebarSessionGroup[] {
   const query = searchQuery.trim().toLowerCase();
-  const filtered = (sessions || []).filter((session) => sessionMatchesQuery(session, query));
+  const filtered = (sessions || []).filter(
+    (session) => !isBotSessionId(session.id) && sessionMatchesQuery(session, query)
+  );
   const pinned = sortSessionsByRecent(filtered.filter((session) => session.pinned === true));
   const unpinned = filtered.filter((session) => session.pinned !== true);
   const groups: ChatSidebarSessionGroup[] = [];

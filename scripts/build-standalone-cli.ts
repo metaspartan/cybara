@@ -24,7 +24,9 @@ interface StandaloneAssetsSourceOptions {
 
 interface StandaloneEntrySourceOptions {
   cwd: string;
+  agentEntry?: string;
   assetsModule?: string;
+  runtimeEntry?: string;
   version?: string;
   buildCommit?: string;
 }
@@ -86,9 +88,6 @@ export function createStandaloneAssetsSource(options: StandaloneAssetsSourceOpti
       `import embeddedUiAsset${position} from ${JSON.stringify(importPath(options.cwd, path))} with { type: "file" };`
   );
   const runtimeImports = [
-    options.runtimeEntry
-      ? `import embeddedRuntimeEntry from ${JSON.stringify(importPath(options.cwd, options.runtimeEntry))} with { type: "file" };`
-      : "",
     options.transformersWorker
       ? `import embeddedTransformersWorker from ${JSON.stringify(importPath(options.cwd, options.transformersWorker))} with { type: "file" };`
       : "",
@@ -110,7 +109,7 @@ export function createStandaloneAssetsSource(options: StandaloneAssetsSourceOpti
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 
-async function installEmbeddedPlaywrightRuntime(): Promise<void> {
+async function installEmbeddedPlaywrightRuntime(): Promise<string> {
   const home = process.env.CYBARA_HOME?.trim() || join(homedir(), ".cybara");
   const root = join(home, "runtime", "playwright", ${JSON.stringify(options.playwrightRuntimeVersion)});
   const marker = join(root, ".complete");
@@ -130,9 +129,8 @@ async function installEmbeddedPlaywrightRuntime(): Promise<void> {
     await Bun.write(marker, ${JSON.stringify(options.playwrightRuntimeVersion)});
   }
   process.env.CYBARA_PLAYWRIGHT_RESOURCE_DIR = root;
+  return root;
 }
-
-await installEmbeddedPlaywrightRuntime();
 `
       : "";
 
@@ -147,6 +145,7 @@ const runtime = globalThis as typeof globalThis & {
   __CYBARA_RUNTIME_ASSETS__?: {
     transformersEmbeddingWorker?: string;
   };
+  __CYBARA_INSTALL_PLAYWRIGHT_RUNTIME__?: () => Promise<string>;
 };
 
 runtime.__CYBARA_EMBEDDED_UI__ = {
@@ -156,7 +155,7 @@ ${assets.join("\n")}
   },
 };
 ${options.transformersWorker ? `runtime.__CYBARA_RUNTIME_ASSETS__ = { transformersEmbeddingWorker: embeddedTransformersWorker };` : ""}
-${options.runtimeEntry ? "await import(embeddedRuntimeEntry);" : ""}
+${options.playwrightRuntimeArchive && options.playwrightRuntimeVersion ? "runtime.__CYBARA_INSTALL_PLAYWRIGHT_RUNTIME__ = installEmbeddedPlaywrightRuntime;" : ""}
 `;
 }
 
@@ -167,19 +166,30 @@ export function createStandaloneEntrySource(options: StandaloneEntrySourceOption
   );
   const version = options.version?.trim() || "unknown";
   const buildCommit = options.buildCommit?.trim();
+  const runtimeEntry = options.runtimeEntry
+    ? `import embeddedRuntimeEntry from ${JSON.stringify(importPath(options.cwd, options.runtimeEntry))} with { type: "file" };\n`
+    : "";
+  const agentCommand = options.agentEntry
+    ? `} else if (command === "agent" && !process.argv.slice(3).some((arg) => arg === "--help" || arg === "-h")) {
+  const { runAgentCli } = await import(${JSON.stringify(importPath(options.cwd, options.agentEntry))});
+  await runAgentCli(process.argv.slice(3));
+`
+    : "";
   const buildStamp =
     buildCommit && commitPattern.test(buildCommit)
       ? `Object.assign(globalThis, { __CYBARA_BUILD_COMMIT__: ${JSON.stringify(buildCommit.toLowerCase())} });\n`
       : "";
 
-  return `${buildStamp}const command = process.argv[2]?.trim().toLowerCase();
+  return `${buildStamp}${runtimeEntry}const command = process.argv[2]?.trim().toLowerCase();
 const versionCommand = command === "version" || command === "--version" || command === "-v";
+const serverCommand = !command || command === "start" || command === "server";
 
 if (versionCommand) {
   const version = process.env.CYBARA_VERSION?.trim() || ${JSON.stringify(version)};
   console.log(\`cybara v\${version}\`);
-} else {
-  await import(${JSON.stringify(assetsModule)});
+${agentCommand}} else {
+  if (serverCommand) await import(${JSON.stringify(assetsModule)});
+  ${options.runtimeEntry ? "await import(embeddedRuntimeEntry);" : `await import(${JSON.stringify(assetsModule)});`}
 }
 `;
 }
@@ -334,7 +344,9 @@ export async function buildStandaloneCli(options: StandaloneCliBuildOptions): Pr
       entrypoint,
       createStandaloneEntrySource({
         cwd,
+        agentEntry: options.entryModule ? undefined : resolve(cwd, "src", "cli", "agent-entry.ts"),
         assetsModule,
+        runtimeEntry: runtime.entry,
         version: readStandaloneVersion(cwd),
         buildCommit,
       })

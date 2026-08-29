@@ -1303,13 +1303,6 @@ export async function loadPersistedSession(
       : (tables.sessionMessages?.getBySession(sessionId) as PersistedSessionMessage[]) || [];
 
     const sessionMessages = reconcilePersistedRecoveryMessages(sessionId, storedSessionMessages);
-
-    if (sessionMessages.length === 0) {
-      return null;
-    }
-
-    const messages = sessionMessages.map(toPersistedChatMessage);
-
     const session = db
       .prepare(
         "SELECT agent_id, use_model_router, workspace_dir, title, context_state FROM chat_sessions WHERE id = ?"
@@ -1321,6 +1314,9 @@ export async function loadPersistedSession(
       title?: string | null;
       context_state?: string | null;
     } | null;
+    if (!session) return null;
+
+    const messages = sessionMessages.map(toPersistedChatMessage);
     const agentId =
       (typeof session?.agent_id === "string" && session.agent_id.trim()
         ? session.agent_id.trim()

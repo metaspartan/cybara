@@ -311,6 +311,33 @@ describe("chat response recovery", () => {
     expect(result.message.content).toBe("Completed.");
   });
 
+  test("retries malformed JSON when the user explicitly requires JSON-only output", async () => {
+    const agentId = createTestAgent("Strict JSON Recovery Agent");
+    const sessionId = `strict-json-recovery-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const executionMessages: Array<Array<{ role: string; content: string }>> = [];
+    let callCount = 0;
+
+    agentManager.execute = (async (_agentId, messages) => {
+      callCount += 1;
+      executionMessages.push(messages.map(({ role, content }) => ({ role, content })));
+      return callCount === 1
+        ? { content: '[{"color":"red","hex":"#ff0000}]' }
+        : { content: '[{"color":"red","hex":"#ff0000"}]' };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Output ONLY a JSON array of color objects. No markdown or explanation.",
+      agentId,
+      sessionId,
+      tools: false,
+    });
+
+    expect(callCount).toBe(2);
+    expect(executionMessages[1]?.at(-1)?.content).toContain("not complete valid JSON");
+    expect(result.message.content).toBe('[{"color":"red","hex":"#ff0000"}]');
+  });
+
   test("preserves a direct arithmetic response without forcing a tool retry", async () => {
     const agentId = createTestAgent("Arithmetic Response Agent");
     const sessionId = `arithmetic-response-${crypto.randomUUID()}`;
@@ -407,6 +434,66 @@ describe("chat response recovery", () => {
     expect(executionOptions[1]?.requireToolUse).toBe(true);
     expect(result.message.content).toContain("verified 4 focused tests pass");
     expect(result.message.tool_calls).toHaveLength(2);
+  });
+
+  test("requires current-turn evidence after an earlier turn used tools", async () => {
+    const agentId = createTestAgent("Multi Round Evidence Recovery Agent");
+    const sessionId = `multi-round-evidence-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const executionOptions: Array<Parameters<typeof agentManager.execute>[2]> = [];
+    let callCount = 0;
+
+    agentManager.execute = (async (_agentId, _messages, options) => {
+      callCount += 1;
+      executionOptions.push(options);
+      if (callCount === 1) {
+        return {
+          content: "Created the initial state file.",
+          tool_calls: [
+            {
+              name: "write",
+              args: { path: "/tmp/state.json", content: "{}" },
+              result: { success: true, path: "/tmp/state.json" },
+            },
+          ],
+        };
+      }
+      if (callCount === 2) {
+        return {
+          content:
+            "Round 2 complete. Resumed from the saved state, updated the state, processed every pending item, and wrote the final result and audit files. The final output now contains every requested field and the audit records each applied change.",
+        };
+      }
+      return {
+        content: "Updated and verified the final state and audit files.",
+        tool_calls: [
+          {
+            name: "write",
+            args: { path: "/tmp/final.json", content: "{}" },
+            result: { success: true, path: "/tmp/final.json" },
+          },
+        ],
+      };
+    }) as typeof agentManager.execute;
+
+    await handleChat({
+      message: "Create the initial state file.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+    const result = await handleChat({
+      message: "Update the state and create the final result and audit files.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(3);
+    expect(executionOptions[2]?.requireToolUse).toBe(true);
+    expect(result.message.content).toContain("Updated and verified");
+    expect(result.message.tool_calls).toHaveLength(1);
+    expect(result.message.tool_calls?.[0]?.name).toBe("write");
   });
 
   test("retries a substantive audit answer that has no tool evidence", async () => {

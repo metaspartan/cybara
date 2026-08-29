@@ -59,6 +59,7 @@ export interface WalletTokenBalance {
   amount: string;
   raw: string;
   tokenAccount?: string;
+  defaultAsset?: boolean;
 }
 
 export interface WalletInstructionAccount {
@@ -113,6 +114,7 @@ export interface WalletAgentPolicy {
   allowEthContractWrite: boolean;
   allowSolProgramInstruction: boolean;
   allowEthSwaps: boolean;
+  allowSolSwaps: boolean;
   allowDappInteraction: boolean;
   allowX402Payments: boolean;
   allowedEthContracts: string[];
@@ -122,6 +124,33 @@ export interface WalletAgentPolicy {
   x402MaxAmountAtomic: string;
   allowedSendRecipients: string[];
   maxSendAmount: string;
+}
+
+export interface WalletSwapResult {
+  venue: "uniswap_v2" | "uniswap_v3" | "jupiter" | "pump_swap";
+  chain: "eth" | "sol";
+  from: string;
+  inputToken: string;
+  outputToken: string;
+  amountIn: string;
+  amountInRaw: string;
+  quotedAmountOut: string;
+  quotedAmountOutRaw: string;
+  minAmountOut: string;
+  minAmountOutRaw: string;
+  slippageBps: number;
+  dryRun: boolean;
+  route?: string;
+  routePlan?: Array<{
+    label?: string;
+    ammKey?: string;
+    inputMint?: string;
+    outputMint?: string;
+    inAmount?: string;
+    outAmount?: string;
+  }>;
+  txid?: string;
+  explorerUrl?: string;
 }
 
 export interface WalletSwapEthUniswapResult {
@@ -353,7 +382,7 @@ export const walletApi = {
       body: JSON.stringify(payload),
     }),
   swap: (payload: {
-    venue: "uniswap_v2" | "uniswap_v3" | "jupiter" | "uniswap" | "jup" | string;
+    venue: "uniswap_v2" | "uniswap_v3" | "jupiter" | "pump_swap" | "uniswap" | "jup" | string;
     tokenOut?: string;
     tokenAddress?: string;
     amountEth?: string;
@@ -372,36 +401,13 @@ export const walletApi = {
     wrapUnwrapSol?: boolean;
     computeUnitPriceMicroLamports?: number;
     skipPreflight?: boolean;
+    frontRunningProtection?: boolean;
+    tipAmount?: number;
     dryRun?: boolean;
     execute?: boolean;
     broadcast?: boolean;
   }) =>
-    fetchApi<{
-      venue: "uniswap_v2" | "uniswap_v3" | "jupiter";
-      chain: "eth" | "sol";
-      from: string;
-      inputToken: string;
-      outputToken: string;
-      amountIn: string;
-      amountInRaw: string;
-      quotedAmountOut: string;
-      quotedAmountOutRaw: string;
-      minAmountOut: string;
-      minAmountOutRaw: string;
-      slippageBps: number;
-      dryRun: boolean;
-      route?: string;
-      routePlan?: Array<{
-        label?: string;
-        ammKey?: string;
-        inputMint?: string;
-        outputMint?: string;
-        inAmount?: string;
-        outAmount?: string;
-      }>;
-      txid?: string;
-      explorerUrl?: string;
-    }>("/wallet/swap", {
+    fetchApi<WalletSwapResult>("/wallet/swap", {
       method: "POST",
       body: JSON.stringify(payload),
     }),

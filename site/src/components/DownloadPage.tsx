@@ -6,7 +6,12 @@ import { DownloadCard } from "./DownloadCard";
 import { Icon, type IconName } from "./Icon";
 import { useDocumentHead } from "../lib/head";
 import { clientMatchesOS, osLabel, useDetectedOS, type DetectedOS } from "../lib/os";
-import { DOWNLOAD_EXPERIENCES, DOWNLOAD_GROUPS, type DownloadClient } from "../content";
+import {
+  DOWNLOAD_EXPERIENCES,
+  DOWNLOAD_GROUPS,
+  PLAY_STORE_URL,
+  type DownloadClient,
+} from "../content";
 import { InstallTabs } from "./InstallTabs";
 import { formatDownloadTotal, useDownloadTotal, useLatestRelease } from "../hooks/useLatestRelease";
 import { PAGE_HEADS } from "../pageMeta";
@@ -94,8 +99,8 @@ export function DownloadPage(): React.ReactElement {
           <div className="download-page-head">
             <h1 className="download-page-title">Download Cybara</h1>
             <p className="download-page-subtitle">
-              Choose the graphical desktop app or the terminal-based CLI + TUI. {osLabel(os)} is
-              prioritized below, and every download resolves to the newest signed GitHub release.
+              Choose the graphical desktop app, install Cybara for Android from Google Play, or use
+              the terminal-based CLI + TUI. {osLabel(os)} is prioritized below.
             </p>
             {release && release.version ? (
               <div className="release-badge">
@@ -128,6 +133,21 @@ export function DownloadPage(): React.ReactElement {
               <span className="download-experience-copy">
                 <strong>{DOWNLOAD_EXPERIENCES.cli.title}</strong>
                 <span>{DOWNLOAD_EXPERIENCES.cli.description}</span>
+              </span>
+              <Icon name="arrow" className="download-experience-arrow" />
+            </a>
+            <a
+              className="download-experience-link"
+              href={PLAY_STORE_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="download-experience-icon">
+                <Icon name="android" className="download-experience-icon-svg" />
+              </span>
+              <span className="download-experience-copy">
+                <strong>Android app</strong>
+                <span>Install from Google Play and receive updates automatically.</span>
               </span>
               <Icon name="arrow" className="download-experience-arrow" />
             </a>

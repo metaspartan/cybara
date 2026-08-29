@@ -193,6 +193,7 @@ const MUTATION_EVIDENCE_TOOLS = new Set([
 
 const COMPLETION_CLAIM_PATTERNS = [
   /^\s*(?:all\s+)?(?:done|shipped|fixed|implemented|resolved)\b/im,
+  /^\s*(?:layer|phase|round|step)\s+\d+(?:\s+of\s+\d+)?\s+(?:is\s+)?(?:complete|completed|done|fixed)\b/im,
   /\bI(?:'ve| have)\s+(?:added|changed|completed|created|fixed|implemented|refactored|removed|renamed|resolved|shipped|updated|wired)\b/i,
   /\b(?:changes?|cleanup|fix(?:es)?|implementation|refactor)\s+(?:is|are|was|were)\s+(?:complete|completed|done|finished|implemented|shipped)\b/i,
   /#{1,4}\s+(?:what I (?:changed|fixed|implemented|shipped)|implemented|changes shipped)\b/i,
@@ -206,7 +207,7 @@ const WHOLE_TASK_COMPLETION_CLAIM_PATTERNS = [
 ];
 
 const VERIFICATION_CLAIM_PATTERNS = [
-  /\b(?:all\s+)?(?:builds?|checks?|tests?|typechecks?|lint(?:ing)?)\s+(?:(?:is|are|was|were|still)\s+)?(?:clean|green|pass(?:ed|ing)?)\b/i,
+  /\b(?:all\s+)?(?:builds?|checks?|tests?|typechecks?|lint(?:ing)?|validation)\s+(?:(?:is|are|was|were|still)\s+)?(?:clean|green|pass(?:ed|ing)?)\b/i,
   /\b(?:verified|validated|confirmed|tested)\s+(?:end[- ]to[- ]end|successfully|the\s+(?:build|change|fix|result|simulator|implementation))\b/i,
   /\b\d[\d,]*\s*\/\s*\d[\d,]*\s+(?:checks?|tests?|invariants?|cases?)\s+(?:green|pass(?:ed)?)\b/i,
   /\b(?:build|check|test|typecheck|lint)\s*:\s*(?:clean|green|pass(?:ed)?)\b/i,
@@ -226,17 +227,15 @@ function latestTodoHasIncompleteItems(toolCalls: ToolCallResultLike[]): boolean 
     : Array.isArray(latestTodo.args?.items)
       ? latestTodo.args.items
       : [];
-  return items.some(
-    (item) =>
-      item !== null &&
-      typeof item === "object" &&
-      !Array.isArray(item) &&
-      (item as Record<string, unknown>).status !== "completed"
-  );
+  return items.some((item) => {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) return false;
+    const status = (item as Record<string, unknown>).status;
+    return status !== "completed" && status !== "cancelled" && status !== "canceled";
+  });
 }
 
 const EXECUTION_VERIFICATION_CLAIM_PATTERNS = [
-  /\b(?:all\s+)?(?:builds?|checks?|tests?|typechecks?|lint(?:ing)?)\s+(?:(?:is|are|was|were|still)\s+)?(?:clean|green|pass(?:ed|ing)?)\b/i,
+  /\b(?:all\s+)?(?:builds?|checks?|tests?|typechecks?|lint(?:ing)?|validation)\s+(?:(?:is|are|was|were|still)\s+)?(?:clean|green|pass(?:ed|ing)?)\b/i,
   /\b\d[\d,]*\s*\/\s*\d[\d,]*\s+(?:checks?|tests?|invariants?|cases?)\s+(?:green|pass(?:ed)?)\b/i,
   /\b(?:build|check|test|typecheck|lint)\s*:\s*(?:clean|green|pass(?:ed)?)\b/i,
 ];
@@ -281,11 +280,11 @@ const PLANNED_ACTION_PATTERN =
 const REQUEST_CLAUSE_BOUNDARY = String.raw`(?:^|[.!?;,\n]\s*)`;
 const REQUEST_COURTESY_PREFIX = String.raw`(?:(?:can|could|would)\s+you\s+)?(?:please\s+)?`;
 const ACTION_EXECUTION_REQUEST_PATTERN = new RegExp(
-  `${REQUEST_CLAUSE_BOUNDARY}${REQUEST_COURTESY_PREFIX}(?:let'?s\s+)?(?:continue|proceed|go\\s+ahead|do\\s+it|keep\\s+going|finish|implement|build|create|add|fix|update|improve|integrate|deploy|set\\s*up|configure|change|refactor|install|remove|delete|move|copy|import|paste|push|publish)\\b`,
+  `${REQUEST_CLAUSE_BOUNDARY}${REQUEST_COURTESY_PREFIX}(?:let'?s\\s+)?(?:continue|proceed|go\\s+ahead|do\\s+it|keep\\s+going|finish|implement|build|create|add|fix|update|improve|integrate|deploy|set\\s*up|configure|change|refactor|install|remove|delete|move|copy|import|paste|push|publish)\\b`,
   "i"
 );
 const EVIDENCE_REQUEST_PATTERN = new RegExp(
-  `${REQUEST_CLAUSE_BOUNDARY}${REQUEST_COURTESY_PREFIX}(?:let'?s\s+)?(?:review|audit|inspect|investigate|diagnose|test|verify|run|research|search|look\\s+into|analyze|check|compare)\\b`,
+  `${REQUEST_CLAUSE_BOUNDARY}${REQUEST_COURTESY_PREFIX}(?:let'?s\\s+)?(?:review|audit|inspect|investigate|diagnose|test|verify|run|research|search|look\\s+into|analyze|check|compare)\\b`,
   "i"
 );
 const EVIDENCE_REQUEST_TARGET_PATTERN =
@@ -489,7 +488,7 @@ export function extractVisibleClarification(toolCalls: ToolCallResultLike[]): st
 
 export function buildUnsupportedAssistantClaimMessage(issue: AssistantEvidenceIssue): string {
   if (issue === "incomplete_plan") {
-    return "I couldn't finish every planned item in this turn. Retry this turn or switch agents.";
+    return "I couldn't reconcile every planned item in this turn. Continue the session to finish remaining work or mark obsolete items cancelled.";
   }
   if (issue === "missing_clarification") {
     return "I couldn't produce the clarification needed to continue. Retry this turn or switch agents.";
@@ -547,7 +546,7 @@ export function requiredDirectToolForMessage(message: string): string | undefine
 }
 
 const ARTIFACT_INTENT_PATTERNS = [
-  /\bartifact(?:s)?\b/i,
+  /\b(?:artifact|artifacts)\s+tool\b/i,
   /\.md\.resolved\b/i,
   /\bimplementation\.md\b/i,
   /\bwalkthrough\.md\b/i,

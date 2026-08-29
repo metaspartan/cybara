@@ -110,7 +110,10 @@ export function classifyApiError(input: {
       message,
     };
   }
-  if (status === 408 || /timeout|timed? ?out|aborted/.test(text)) {
+  if (
+    status === 408 ||
+    /timeout|timed? ?out|aborted|produced no output|no first token|stream stalled/.test(text)
+  ) {
     return {
       category: "timeout",
       retryable: true,

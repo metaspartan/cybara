@@ -66,12 +66,12 @@ function recoveryParams(executionMessages: unknown[]) {
 }
 
 describe("assistant response recovery", () => {
-  test("ships a substantive response in an established conversation without retrying", async () => {
-    stubExecute("unused");
+  test("retries current-turn claims even when an earlier turn used tools", async () => {
+    stubExecute(substantiveClaim);
     const result = await recoverAssistantResponse(recoveryParams(establishedExecutionMessages));
 
     expect(result.responseContent).toBe(substantiveClaim);
-    expect(executeCallCount).toBe(0);
+    expect(executeCallCount).toBeGreaterThan(0);
     expect(result.responseContent).not.toContain("couldn't");
   });
 

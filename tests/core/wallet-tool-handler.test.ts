@@ -62,6 +62,8 @@ const walletToolMockState = {
     computeUnitLimit?: number;
     computeUnitPriceMicroLamports?: number;
     skipPreflight?: boolean;
+    frontRunningProtection?: boolean;
+    tipAmount?: number;
   }>,
   swapCalls: [] as Array<{
     tokenOut: string;
@@ -252,6 +254,8 @@ mock.module("../../src/core/wallet", () => ({
       computeUnitLimit?: number;
       computeUnitPriceMicroLamports?: number;
       skipPreflight?: boolean;
+      frontRunningProtection?: boolean;
+      tipAmount?: number;
     }) => {
       walletToolMockState.solInstructionCalls.push(input);
       return { txid: "sol-tx" };
@@ -698,6 +702,8 @@ describe("Wallet tool handler", () => {
         wrapUnwrapSol: undefined,
         computeUnitPriceMicroLamports: undefined,
         skipPreflight: false,
+        frontRunningProtection: false,
+        tipAmount: undefined,
         dryRun: true,
       },
       {
@@ -719,6 +725,8 @@ describe("Wallet tool handler", () => {
         wrapUnwrapSol: true,
         computeUnitPriceMicroLamports: undefined,
         skipPreflight: true,
+        frontRunningProtection: false,
+        tipAmount: undefined,
         dryRun: false,
       },
     ]);

@@ -31,6 +31,7 @@ import {
 } from "@/lib/api";
 import { useUIStore } from "@/stores/uiStore";
 import { WalletOverview, type WalletSection } from "@/pages/wallet/WalletOverview";
+import { WalletSwapPanel } from "@/pages/wallet/WalletSwapPanel";
 
 const CHAIN_OPTIONS: Array<{ value: WalletChain; label: string; symbol: string }> = [
   { value: "eth", label: "Ethereum", symbol: "ETH" },
@@ -133,7 +134,7 @@ export function Wallet() {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<WalletSection>("receive");
 
-  const [tokenChain, setTokenChain] = useState<WalletTokenChain>("eth");
+  const [tokenChain, setTokenChain] = useState<WalletTokenChain>("sol");
   const [tokenIndexInput, setTokenIndexInput] = useState("0");
   const [tokenIncludeZero, setTokenIncludeZero] = useState(false);
 
@@ -852,6 +853,7 @@ export function Wallet() {
               status={status}
               totalLabel={portfolio.hasAnyPrice ? formatUsd(portfolio.totalUsd) : "Portfolio"}
               chains={portfolio.chains}
+              tokens={tokenBalances.filter((token) => token.chain === "sol")}
               activeSection={activeTab}
               busy={busy}
               formatUsd={formatUsd}
@@ -861,6 +863,14 @@ export function Wallet() {
               onLock={() => void handleLock()}
               onSettings={() => navigate("/settings?section=wallet")}
             />
+
+            {activeTab === "swap" && (
+              <WalletSwapPanel
+                onCompleted={async () => {
+                  await Promise.all([refreshPortfolio(), refreshTokenBalances()]);
+                }}
+              />
+            )}
 
             {activeTab === "receive" && (
               <Card

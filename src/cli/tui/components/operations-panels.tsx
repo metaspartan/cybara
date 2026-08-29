@@ -38,6 +38,7 @@ interface WalletPolicy {
   allowNativeSend?: boolean;
   allowTokenSend?: boolean;
   allowEthSwaps?: boolean;
+  allowSolSwaps?: boolean;
   allowDappInteraction?: boolean;
   allowX402Payments?: boolean;
 }
@@ -158,7 +159,8 @@ export function TUIWalletCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }): Reac
             <Text bold>Agent policy</Text>
             <Text>Native sends · {formatPolicy(policy.allowNativeSend)}</Text>
             <Text>Token sends · {formatPolicy(policy.allowTokenSend)}</Text>
-            <Text>Swaps · {formatPolicy(policy.allowEthSwaps)}</Text>
+            <Text>ETH swaps · {formatPolicy(policy.allowEthSwaps)}</Text>
+            <Text>SOL swaps · {formatPolicy(policy.allowSolSwaps)}</Text>
             <Text>Dapps · {formatPolicy(policy.allowDappInteraction)}</Text>
             <Text>x402 payments · {formatPolicy(policy.allowX402Payments)}</Text>
           </Box>

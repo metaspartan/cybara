@@ -1,6 +1,7 @@
 import type { AgentMessage } from "./agent";
 import {
   compactOpenAILoopMessagesForContext,
+  resolveMaterializationContextBudgetChars,
   resolveContextGuardBudgets,
   truncateToolResultContentForContext,
 } from "./agent-context-guard";
@@ -19,14 +20,34 @@ import {
   consumeAgenticLoopBudgetWarning,
   createAgenticLoopRuntimeTracker,
   evaluateNoProgressLoop,
+  requestedDeliverableMaterializationPrompt,
+  requiresRequestedDeliverableMaterialization,
+  resolveInspectionToolRoundTokenLimit,
+  resolveRequestedDeliverableFinalContent,
+  resolveRequestedDeliverableToolChoice,
   resolveAgenticLoopLimit,
+  toolsAfterMaterializationCheckpoint,
   updateNoProgressLoopState,
 } from "./agent-loop-runtime";
+import {
+  redactExposedCredentials,
+  requestedDeliverableNeedsInspection,
+  requestedDeliverableNeedsExtendedEvidence,
+  requestedDeliverablePathsFromMessages,
+  toolCallContainsExposedCredential,
+  toolCallContainsPlaceholder,
+  toolCallProducedPath,
+  toolsForInitialDeliverableInspection,
+} from "./agent-deferred-continuation";
 import {
   AgentProviderCommonRuntime,
   appendAgentBudgetWarning,
   sessionIdForVisibleTokenUsage,
 } from "./agent-provider-common-runtime";
+import {
+  openAIImageToolFollowup,
+  supportsOpenAICompatibleImageToolFollowup,
+} from "./agent-tool-images";
 import { hasAgentTransferEnvelope } from "./agent-transfer";
 import {
   countWebResearchCalls,
@@ -44,6 +65,7 @@ import {
 } from "./llm/kimi-wire";
 import { normalizeModelToolCalls } from "./llm/model-dialect";
 import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
+import { canRunToolsInParallel } from "./llm/parallel-tools";
 import { toOpenAIChatHistory } from "./llm/provider-history";
 import {
   supportsExplicitToolChoice,
@@ -52,6 +74,7 @@ import {
 import {
   coerceReasoningEffort,
   normalizeReasoningEffort,
+  openAICompatClosingReasoningParams,
   openAICompatReasoningParams,
 } from "./llm/reasoning";
 import {
@@ -60,8 +83,14 @@ import {
   toOpenAIReplayMessageWithNormalizedToolCalls,
 } from "./llm/text-tool-calls";
 import { isContextOverflowError } from "./llm/tool-transcript";
-import { providers as providerCatalog, type ProviderType } from "./providers";
+import { type ProviderType, providers as providerCatalog } from "./providers";
 import type { ToolContext } from "./tools/index";
+
+const MATERIALIZATION_TOOL_NAMES = new Set(["write", "edit", "apply_patch"]);
+
+export function canPreStartOpenAIToolCall(toolName: string): boolean {
+  return !MATERIALIZATION_TOOL_NAMES.has(toolName);
+}
 
 function toOpenAICompatTool(
   tool: ToolDefinition,
@@ -123,6 +152,11 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     const contextGuard = resolveContextGuardBudgets(
       contextWindowTokens ?? DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS
     );
+    const requestedPaths = requestedDeliverablePathsFromMessages(messages);
+    const extendedDeliverableEvidence = requestedDeliverableNeedsExtendedEvidence(messages);
+    const initialInspectionRequired =
+      requestedPaths.length > 0 && requestedDeliverableNeedsInspection(messages);
+    const initialTools = toolsForInitialDeliverableInspection(tools, initialInspectionRequired);
     const requestBody: Record<string, unknown> = {
       model: modelId,
       messages: toOpenAIChatHistory(messages, providerConfig, modelId),
@@ -148,21 +182,26 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     if (shouldUseMiniMaxReasoningSplit(providerConfig, modelId)) {
       requestBody.reasoning_split = true;
     }
+    if (toolContext?.deferredContinuation || initialInspectionRequired) {
+      Object.assign(requestBody, openAICompatClosingReasoningParams(modelId));
+    }
 
-    if (tools && Array.isArray(tools) && tools.length > 0) {
-      requestBody.tools = tools.map((tool) => toOpenAICompatTool(tool, providerConfig));
+    if (initialTools.length > 0) {
+      requestBody.tools = initialTools.map((tool) => toOpenAICompatTool(tool, providerConfig));
       if (toolContext?.requireToolUse === true && supportsForcedToolChoice(providerConfig)) {
         const requiredToolName = toolContext.requiredToolName?.trim();
         const hasRequiredTool =
           typeof requiredToolName === "string" &&
           requiredToolName.length > 0 &&
-          tools.some((tool) => tool.name === requiredToolName);
+          initialTools.some((tool) => tool.name === requiredToolName);
         requestBody.tool_choice = hasRequiredTool
           ? {
               type: "function",
               function: { name: requiredToolName },
             }
           : "required";
+      } else if (supportsForcedToolChoice(providerConfig)) {
+        requestBody.tool_choice = requestedPaths.length > 0 ? "required" : "auto";
       } else if (supportsExplicitToolChoice(providerConfig)) {
         requestBody.tool_choice = "auto";
       }
@@ -171,10 +210,9 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     applyMoonshotRequestOptions(requestBody, providerConfig, modelId);
 
     this.compactOpenAIRequestMessagesForContext(requestBody, contextWindowTokens);
-    const initialTokenLimit = this.resolveOpenAIRequestTokenLimit(
-      requestBody,
-      maxOutputTokens,
-      contextWindowTokens
+    const initialTokenLimit = resolveInspectionToolRoundTokenLimit(
+      this.resolveOpenAIRequestTokenLimit(requestBody, maxOutputTokens, contextWindowTokens),
+      initialInspectionRequired
     );
     this.applyOpenAITokenLimit(requestBody, preferMaxCompletionTokens, initialTokenLimit);
 
@@ -261,7 +299,6 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     const currentMessages = (requestBody.messages as Record<string, unknown>[]).map((message) => ({
       ...message,
     }));
-    const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const allToolCalls: AgentToolCallResult[] = [];
     const thinkingParts: string[] = [];
     let finalContent = "";
@@ -275,6 +312,20 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       warningBucket: -1,
     };
     let limitReason: "maxIterations" | "runtime" | undefined;
+    let materializationPrompted = false;
+    const requestedDeliverableMaterialized = (): boolean =>
+      requestedPaths.length > 0
+        ? requestedPaths.every((path) =>
+            path.startsWith("output/")
+              ? allToolCalls.some((toolCall) => toolCallProducedPath(toolCall, path))
+              : allToolCalls
+                  .filter((toolCall) => toolCallProducedPath(toolCall, path))
+                  .reduce(
+                    (size, toolCall) => size + JSON.stringify(toolCall.args ?? {}).length,
+                    0
+                  ) >= 600
+          )
+        : allToolCalls.some((toolCall) => MATERIALIZATION_TOOL_NAMES.has(toolCall.name));
 
     while (true) {
       const reasoningContent = openAIReasoningContent(message);
@@ -282,6 +333,17 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         thinkingParts.push(reasoningContent);
       }
       const nextIteration = iterations + 1;
+      const availableTools = initialInspectionRequired && iterations === 0 ? initialTools : tools;
+      const iterationTools =
+        requestedPaths.length > 0
+          ? toolsAfterMaterializationCheckpoint(
+              availableTools,
+              iterations,
+              requestedDeliverableMaterialized(),
+              extendedDeliverableEvidence
+            )
+          : availableTools;
+      const allowedToolNames = new Set(iterationTools.map((tool) => tool.name));
       const normalizedToolCalls = normalizeModelToolCalls({
         provider: providerConfig || "openai-compatible",
         model: modelId,
@@ -291,6 +353,9 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       });
       if (normalizedToolCalls.length === 0) {
         finalContent = typeof message.content === "string" ? message.content : "";
+        if (!finalContent.trim() && reasoningContent) {
+          currentMessages.push(toOpenAIReplayMessageWithNormalizedToolCalls(message, []));
+        }
         break;
       }
       limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
@@ -315,6 +380,35 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         content: string;
       }> = [];
       const iterationToolCalls: AgentToolCallResult[] = [];
+      const exactPathMaterializationRequired =
+        requestedPaths.length > 0 &&
+        requiresRequestedDeliverableMaterialization(
+          iterations,
+          requestedDeliverableMaterialized(),
+          extendedDeliverableEvidence
+        );
+
+      const preStarted = new Map<string, ReturnType<typeof this.executeToolWithHooks>>();
+      if (
+        !exactPathMaterializationRequired &&
+        canRunToolsInParallel(normalizedToolCalls.map((toolCall) => toolCall.name))
+      ) {
+        for (const toolCall of normalizedToolCalls) {
+          if (toolCall.id && toolCall.name && canPreStartOpenAIToolCall(toolCall.name)) {
+            preStarted.set(
+              toolCall.id,
+              this.executeToolWithHooks(
+                toolCall.name,
+                toolCall.args,
+                allowedToolNames,
+                toolContext,
+                hookContext,
+                loopRuntimeTracker
+              )
+            );
+          }
+        }
+      }
 
       for (const toolCall of normalizedToolCalls) {
         const toolName = toolCall.name;
@@ -344,14 +438,80 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
           });
           continue;
         }
-        const executed = await this.executeToolWithHooks(
-          toolName,
-          args,
-          allowedToolNames,
-          toolContext,
-          hookContext,
-          loopRuntimeTracker
-        );
+        if (
+          exactPathMaterializationRequired &&
+          MATERIALIZATION_TOOL_NAMES.has(toolName) &&
+          !requestedPaths.some((path) => JSON.stringify(args).includes(path))
+        ) {
+          const missingPathPayload = {
+            error: `Write final evidence-backed deliverable content to the requested path now: ${requestedPaths.join(", ")}. Do not put a helper script, placeholder, TODO, or pending scaffold in that path.`,
+          };
+          iterationToolCalls.push({
+            id: toolCallId,
+            name: toolName,
+            args,
+            result: missingPathPayload,
+          });
+          toolResults.push({
+            tool_call_id: toolCallId,
+            role: "tool",
+            content: JSON.stringify(missingPathPayload),
+          });
+          continue;
+        }
+        if (
+          MATERIALIZATION_TOOL_NAMES.has(toolName) &&
+          requestedPaths.some((path) => JSON.stringify(args).includes(path)) &&
+          toolCallContainsPlaceholder({ args })
+        ) {
+          const placeholderPayload = {
+            error:
+              "The requested deliverable is only a placeholder or empty scaffold. Write complete evidence-backed content to the exact path now.",
+          };
+          iterationToolCalls.push({
+            id: toolCallId,
+            name: toolName,
+            args,
+            result: placeholderPayload,
+          });
+          toolResults.push({
+            tool_call_id: toolCallId,
+            role: "tool",
+            content: JSON.stringify(placeholderPayload),
+          });
+          continue;
+        }
+        if (
+          MATERIALIZATION_TOOL_NAMES.has(toolName) &&
+          requestedPaths.some((path) => JSON.stringify(args).includes(path)) &&
+          toolCallContainsExposedCredential({ args })
+        ) {
+          const exposedCredentialPayload = {
+            error:
+              "The requested deliverable contains a credential-like value. Replace every sensitive value with a clearly redacted form, then write the file again.",
+          };
+          iterationToolCalls.push({
+            id: toolCallId,
+            name: toolName,
+            args,
+            result: exposedCredentialPayload,
+          });
+          toolResults.push({
+            tool_call_id: toolCallId,
+            role: "tool",
+            content: JSON.stringify(exposedCredentialPayload),
+          });
+          continue;
+        }
+        const executed = await (preStarted.get(toolCallId) ??
+          this.executeToolWithHooks(
+            toolName,
+            args,
+            allowedToolNames,
+            toolContext,
+            hookContext,
+            loopRuntimeTracker
+          ));
         const resultPayload =
           executed.result === undefined
             ? { error: `Tool execution skipped for ${toolName}` }
@@ -404,6 +564,10 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         finalContent = "";
         break;
       }
+      if (requestedPaths.length > 0 && requestedDeliverableMaterialized()) {
+        finalContent = resolveRequestedDeliverableFinalContent("", requestedPaths, true);
+        break;
+      }
 
       webResearchToolCalls += countWebResearchCalls(
         iterationToolCalls.map((toolCall) => toolCall.name)
@@ -446,6 +610,10 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
+      const imageFollowup = supportsOpenAICompatibleImageToolFollowup(modelId)
+        ? await openAIImageToolFollowup(iterationToolCalls)
+        : undefined;
+      if (imageFollowup) currentMessages.push(imageFollowup);
       if (notifyWebResearchBudget) {
         currentMessages.push({
           role: "user",
@@ -456,15 +624,43 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       if (steeringText) {
         currentMessages.push({ role: "user", content: steeringText });
       }
-      compactOpenAILoopMessagesForContext(currentMessages, contextGuard.contextBudgetChars, false, {
-        model: modelId,
-        toolContext,
-      });
+      const materializationRequired =
+        requestedPaths.length > 0 &&
+        requiresRequestedDeliverableMaterialization(
+          iterations,
+          requestedDeliverableMaterialized(),
+          extendedDeliverableEvidence
+        );
+      if (materializationRequired && !materializationPrompted) {
+        currentMessages.push({
+          role: "user",
+          content: requestedDeliverableMaterializationPrompt(
+            requestedPaths,
+            extendedDeliverableEvidence
+          ),
+        });
+        materializationPrompted = true;
+      }
+      compactOpenAILoopMessagesForContext(
+        currentMessages,
+        materializationRequired
+          ? resolveMaterializationContextBudgetChars(contextGuard.contextBudgetChars)
+          : contextGuard.contextBudgetChars,
+        false,
+        {
+          model: modelId,
+          toolContext,
+        }
+      );
 
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
         messages: currentMessages,
         ...reasoningParams,
+        ...(toolContext?.deferredContinuation ||
+        (requestedPaths.length > 0 && !requestedDeliverableMaterialized())
+          ? openAICompatClosingReasoningParams(modelId)
+          : {}),
       };
       if (isKimiCodeProvider(providerConfig) && toolContext?.sessionId) {
         loopRequestBody.prompt_cache_key = toolContext.sessionId;
@@ -473,19 +669,38 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         loopRequestBody.reasoning_split = true;
       }
 
-      const loopTools = toolsAfterWebResearchBudget(tools, webResearchExhausted);
+      const budgetedTools = toolsAfterWebResearchBudget(tools, webResearchExhausted);
+      const loopTools =
+        requestedPaths.length > 0
+          ? toolsAfterMaterializationCheckpoint(
+              budgetedTools,
+              iterations,
+              requestedDeliverableMaterialized(),
+              extendedDeliverableEvidence
+            )
+          : budgetedTools;
       if (loopTools.length > 0) {
         loopRequestBody.tools = loopTools.map((tool) => toOpenAICompatTool(tool, providerConfig));
         if (supportsExplicitToolChoice(providerConfig)) {
-          loopRequestBody.tool_choice = "auto";
+          loopRequestBody.tool_choice =
+            supportsForcedToolChoice(providerConfig) &&
+            requestedPaths.length > 0 &&
+            !requestedDeliverableMaterialized()
+              ? "required"
+              : supportsForcedToolChoice(providerConfig)
+                ? resolveRequestedDeliverableToolChoice(
+                    loopTools,
+                    materializationRequired,
+                    extendedDeliverableEvidence
+                  )
+                : "auto";
         }
       }
 
       this.compactOpenAIRequestMessagesForContext(loopRequestBody, contextWindowTokens);
-      const loopTokenLimit = this.resolveOpenAIRequestTokenLimit(
-        loopRequestBody,
-        maxOutputTokens,
-        contextWindowTokens
+      const loopTokenLimit = resolveInspectionToolRoundTokenLimit(
+        this.resolveOpenAIRequestTokenLimit(loopRequestBody, maxOutputTokens, contextWindowTokens),
+        extendedDeliverableEvidence && !materializationRequired
       );
       this.applyOpenAITokenLimit(loopRequestBody, preferMaxCompletionTokens, loopTokenLimit);
 
@@ -558,6 +773,12 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       }
     }
 
+    finalContent = resolveRequestedDeliverableFinalContent(
+      finalContent,
+      requestedPaths,
+      requestedDeliverableMaterialized()
+    );
+
     if (
       (!finalContent.trim() || Boolean(limitReason)) &&
       allToolCalls.length > 0 &&
@@ -575,6 +796,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
           model: modelId,
           messages: currentMessages,
           ...reasoningParams,
+          ...openAICompatClosingReasoningParams(modelId),
         };
         if (isKimiCodeProvider(providerConfig) && toolContext?.sessionId) {
           nudgeBody.prompt_cache_key = toolContext.sessionId;
@@ -582,7 +804,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         this.compactOpenAIRequestMessagesForContext(nudgeBody, contextWindowTokens);
         const limit = this.resolveOpenAIRequestTokenLimit(
           nudgeBody,
-          maxOutputTokens,
+          Math.min(maxOutputTokens, DEFAULT_MODEL_MAX_OUTPUT_TOKENS),
           contextWindowTokens
         );
         this.applyOpenAITokenLimit(nudgeBody, preferMaxCompletionTokens, limit);
@@ -623,7 +845,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
     }
 
     return {
-      content: sanitizeAssistantContent(finalContent),
+      content: sanitizeAssistantContent(redactExposedCredentials(finalContent)),
       thinking: thinkingParts.length > 0 ? thinkingParts.join("\n\n") : undefined,
       tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
     };

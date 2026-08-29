@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { registerAgentHook } from "../../src/core/agent-hooks";
 import { executeAgentTool } from "../../src/core/agent-tool-execution";
 import type { AgentStatus } from "../../src/core/status";
-import { registerToolHandler, unregisterToolHandler } from "../../src/core/tools/handlers/index";
+import {
+  getToolHandler,
+  registerToolHandler,
+  unregisterToolHandler,
+} from "../../src/core/tools/handlers/index";
 
 describe("agent tool execution", () => {
   test("rejects unknown and disabled tools before execution", async () => {
@@ -214,6 +218,83 @@ describe("agent tool execution", () => {
     } finally {
       hook.unregister();
       unregisterToolHandler(toolName);
+    }
+  });
+
+  test("enforces the explicit per-turn sub-agent spawn budget", async () => {
+    const toolName = "sessions_spawn";
+    const originalHandler = getToolHandler(toolName);
+    let executions = 0;
+    const orchestrationState = { subagentSpawnsStarted: 0, subagentSpawnLimit: 2 };
+    registerToolHandler(toolName, async () => {
+      executions += 1;
+      await Bun.sleep(10);
+      return { status: "accepted" };
+    });
+    try {
+      const results = await Promise.all(
+        ["alpha", "beta", "gamma"].map((task) =>
+          executeAgentTool({
+            toolName,
+            args: { task },
+            allowedToolNames: new Set([toolName]),
+            hookContext: { agentId: "agent-spawn-budget" },
+            toolContext: { agentId: "agent-spawn-budget", orchestrationState },
+            broadcastStatus: () => undefined,
+          })
+        )
+      );
+      const accepted = results.filter(
+        (result) =>
+          result.result &&
+          typeof result.result === "object" &&
+          !Array.isArray(result.result) &&
+          (result.result as { status?: unknown }).status === "accepted"
+      );
+      const blocked = results.filter(
+        (result) =>
+          result.result &&
+          typeof result.result === "object" &&
+          !Array.isArray(result.result) &&
+          (result.result as { blocked?: unknown }).blocked === true
+      );
+
+      expect(accepted).toHaveLength(2);
+      expect(blocked).toHaveLength(1);
+      expect(executions).toBe(2);
+      expect(orchestrationState.subagentSpawnsStarted).toBe(2);
+    } finally {
+      if (originalHandler) registerToolHandler(toolName, originalHandler);
+      else unregisterToolHandler(toolName);
+    }
+  });
+
+  test("releases rejected sub-agent spawn reservations", async () => {
+    const toolName = "sessions_spawn";
+    const originalHandler = getToolHandler(toolName);
+    let executions = 0;
+    const orchestrationState = { subagentSpawnsStarted: 0, subagentSpawnLimit: 1 };
+    registerToolHandler(toolName, async () => {
+      executions += 1;
+      return { status: executions === 1 ? "forbidden" : "accepted" };
+    });
+    const execute = (task: string) =>
+      executeAgentTool({
+        toolName,
+        args: { task },
+        allowedToolNames: new Set([toolName]),
+        hookContext: { agentId: "agent-spawn-release" },
+        toolContext: { agentId: "agent-spawn-release", orchestrationState },
+        broadcastStatus: () => undefined,
+      });
+    try {
+      expect((await execute("first")).result).toEqual({ status: "forbidden" });
+      expect(orchestrationState.subagentSpawnsStarted).toBe(0);
+      expect((await execute("second")).result).toEqual({ status: "accepted" });
+      expect(orchestrationState.subagentSpawnsStarted).toBe(1);
+    } finally {
+      if (originalHandler) registerToolHandler(toolName, originalHandler);
+      else unregisterToolHandler(toolName);
     }
   });
 });

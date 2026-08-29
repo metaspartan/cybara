@@ -2,7 +2,7 @@ import { Icon, type IconName } from "./Icon";
 import { SectionHeading } from "./SectionHeading";
 import { DownloadCard } from "./DownloadCard";
 import { A } from "../lib/router";
-import { DOWNLOAD_EXPERIENCES, DOWNLOAD_GROUPS } from "../content";
+import { DOWNLOAD_EXPERIENCES, DOWNLOAD_GROUPS, PLAY_STORE_URL } from "../content";
 import { formatDownloadTotal, useDownloadTotal, useLatestRelease } from "../hooks/useLatestRelease";
 import { clientMatchesOS, osLabel, useDetectedOS } from "../lib/os";
 import { useSiteI18n } from "../i18n";
@@ -22,7 +22,7 @@ export function Downloads(): React.ReactElement {
       <SectionHeading
         eyebrow={t("site.download.eyebrow")}
         title={t("site.download.title")}
-        description="Choose the full desktop GUI for macOS, Windows, or Linux. Prefer a terminal? The separate CLI + TUI installers provide commands and a full-screen text interface without installing the desktop app."
+        description="Get the full desktop GUI for macOS, Windows, or Linux, install the Android app from Google Play, or choose the separate CLI + TUI for a complete terminal experience."
       />
       {release && release.version ? (
         <div className="release-badge">
@@ -56,13 +56,24 @@ export function Downloads(): React.ReactElement {
       ) : null}
 
       <div className="download-all-cta">
-        <A className="btn btn--primary download-all-btn" href="/download">
-          <Icon name={"download" as IconName} className="btn-icon" />
-          <span>Desktop GUI &amp; CLI downloads</span>
-        </A>
+        <div className="download-all-actions">
+          <A className="btn btn--primary download-all-btn" href="/download">
+            <Icon name={"download" as IconName} className="btn-icon" />
+            <span>Desktop GUI &amp; CLI downloads</span>
+          </A>
+          <a
+            className="btn download-play-btn"
+            href={PLAY_STORE_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Icon name="android" className="btn-icon" />
+            <span>Get it on Google Play</span>
+          </a>
+        </div>
         <p className="download-all-note">
-          {DOWNLOAD_EXPERIENCES.desktop.title} installers and {DOWNLOAD_EXPERIENCES.cli.title}
-          commands are clearly separated by experience.
+          Desktop installers, the Android app, and {DOWNLOAD_EXPERIENCES.cli.title} commands are
+          clearly separated by experience.
         </p>
       </div>
     </section>

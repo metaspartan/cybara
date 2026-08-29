@@ -8,7 +8,7 @@ import {
   useUpdateSessionAgent,
 } from "@/hooks/useChat";
 import { canShareNearbySession, useNearbyStatus } from "@/hooks/useNearbyStatus";
-import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
+import { botsApi, chatApi, extractApiError, providerPlansApi, settingsApi } from "@/lib/api";
 import {
   APP_HOTKEY_EVENT,
   type AppHotkeyActionId,
@@ -26,9 +26,14 @@ import { useI18n } from "@/lib/i18n";
 import { type PendingChatMessage, type StatusSessionSnapshot } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
-import type { ProviderPlanStatusResponse, SessionContextUsage, SessionTokenUsage } from "@/types";
+import type {
+  BotRosterItem,
+  ProviderPlanStatusResponse,
+  SessionContextUsage,
+  SessionTokenUsage,
+} from "@/types";
 import { openExternal } from "@/utils/openExternal";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, Loader2, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -76,6 +81,8 @@ import { buildMultiChatPath } from "./chat/multiChatLayout";
 import { parseInitialChatRoute } from "./chat/chatRoute";
 import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
+import { FloatingBrowserPreview } from "./chat/FloatingBrowserPreview";
+import { shouldShowFloatingBrowserPreview } from "./chat/floatingBrowserPreviewModel";
 import { hasMixedAssistantAuthors } from "./chat/assistantAuthors";
 import { clearCachedLiveSessionState, isLiveSessionRunning } from "./chat/liveSessionState";
 import { NearbyShareModal } from "./chat/NearbyShareModal";
@@ -110,6 +117,18 @@ export function Chat() {
   const { data: agents = [] } = useAgentSummaries();
   const updateAgentReasoning = useUpdateAgentReasoning();
   const { data: info } = useInfo();
+  const { data: botRoster = [] } = useQuery<BotRosterItem[]>({
+    queryKey: ["bots"],
+    queryFn: async () => {
+      const response = await botsApi.list();
+      if (!response.success || !response.data) {
+        throw new Error(extractApiError(response, "Could not load bots"));
+      }
+      return response.data.bots;
+    },
+    staleTime: 5_000,
+    refetchInterval: 10_000,
+  });
   const [initialChatRoute] = useState(() => parseInitialChatRoute(window.location.search));
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(
     initialChatRoute.agentId ?? undefined
@@ -137,6 +156,10 @@ export function Chat() {
   const goalController = useSessionGoal(sessionId || undefined);
   const { data: environmentSubagents = [] } = useSubagents(sessionId);
   const typedMessages = messages as ChatMessage[];
+  const currentBot = useMemo(
+    () => botRoster.find((bot) => bot.session_id === sessionId) ?? null,
+    [botRoster, sessionId]
+  );
   const turnStartedAtMsByIndex = useMemo(() => {
     const lookup = new Map<number, number | undefined>();
     let latestUserTimestampMs: number | undefined;
@@ -450,6 +473,39 @@ export function Chat() {
     const sessionActive = !!sessionId && activeSessionIds.includes(sessionId);
     return isAgentUsingBrowser(liveActivities, sessionActive);
   }, [activeSessionIds, liveActivities, sessionId]);
+  const [browserPreviewSeenSessionId, setBrowserPreviewSeenSessionId] = useState<string | null>(
+    null
+  );
+  useEffect(() => {
+    if (!sessionId) {
+      setBrowserPreviewSeenSessionId(null);
+      return;
+    }
+    if (agentUsingBrowser) setBrowserPreviewSeenSessionId(sessionId);
+  }, [agentUsingBrowser, sessionId]);
+  const floatingBrowserTab = useMemo(
+    () =>
+      workspaceTabs.find((instance) => instance.kind === "browser" && !instance.pageKey) ??
+      workspaceTabs.find((instance) => instance.kind === "browser"),
+    [workspaceTabs]
+  );
+  const floatingBrowserAvailable =
+    !!floatingBrowserTab || browserPreviewSeenSessionId === sessionId || agentUsingBrowser;
+  const floatingBrowserVisible = shouldShowFloatingBrowserPreview({
+    activeWorkspaceKind,
+    artifactOpen: !!artifactViewerTarget,
+    available: floatingBrowserAvailable,
+    sessionId,
+    workspacePanelOpen: showWorkspacePanel,
+  });
+  const expandFloatingBrowser = useCallback((): void => {
+    if (floatingBrowserTab) {
+      setActiveWorkspaceTab(floatingBrowserTab.id);
+      setShowWorkspacePanel(true);
+      return;
+    }
+    openWorkspaceTab("browser");
+  }, [floatingBrowserTab, openWorkspaceTab, setActiveWorkspaceTab, setShowWorkspacePanel]);
   const resolveSelectableSessionAgentId = useCallback(
     (agentId?: string | null): string | undefined => {
       if (typeof agentId !== "string") return undefined;
@@ -1660,6 +1716,7 @@ export function Chat() {
             tokenUsage: sessionTokenUsage,
             appVersion: info?.version,
             onDeleted: () => resetChatSession({ resetAgentSelection: false }),
+            bot: currentBot,
           }}
           subagentsActive={showWorkspacePanel && activeWorkspaceKind === "subagents"}
           workspaceMenu={{
@@ -1707,6 +1764,7 @@ export function Chat() {
                     <ChatSessionLoadingState />
                   ) : (
                     <ChatEmptyState
+                      bot={currentBot}
                       goalPanel={
                         sessionId ? (
                           <GoalPanel
@@ -1799,6 +1857,14 @@ export function Chat() {
               ) : null}
             </>
           )}
+          {floatingBrowserVisible && sessionId ? (
+            <FloatingBrowserPreview
+              bottomInset={Math.max(82, composerHeight + 18)}
+              pageKey={floatingBrowserTab?.pageKey}
+              sessionId={sessionId}
+              onExpand={expandFloatingBrowser}
+            />
+          ) : null}
         </div>
 
         {sessionId && showEnvironmentOverview && !showWorkspacePanel ? (

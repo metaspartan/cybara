@@ -1,5 +1,5 @@
 import type { ToolDefinition } from "./database";
-import { getToolSchemasForLLM, toolSchemas } from "./tools/index";
+import { getToolSchemasForLLM, toolSchemas } from "./tools/registry";
 
 const legacyBuiltinSnapshotMarkers = [
   "read",

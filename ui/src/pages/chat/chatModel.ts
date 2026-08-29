@@ -314,7 +314,8 @@ export const SESSION_ACTIVITY_STALE_MS = 30_000;
 export const PENDING_CAPTURE_TIMEOUT_MS = 90_000;
 export const DIFF_PANEL_DEFAULT_WIDTH = 560;
 export const DIFF_PANEL_MIN_WIDTH = 380;
-export const DIFF_PANEL_MAX_WIDTH = 1120;
+export const DIFF_PANEL_MAX_WIDTH = 10_000;
+export const CHAT_CONTENT_MIN_WIDTH = 320;
 
 export function getMessageProcessKey(
   sessionKey: string | null,
@@ -495,8 +496,16 @@ export function readPersistedSessionId(): string | null {
   }
 }
 
-export function clampDiffPanelWidth(value: number): number {
-  return Math.max(DIFF_PANEL_MIN_WIDTH, Math.min(DIFF_PANEL_MAX_WIDTH, value));
+export function clampDiffPanelWidth(value: number, availableWidth?: number): number {
+  const reservedChatWidth =
+    typeof availableWidth === "number" && Number.isFinite(availableWidth)
+      ? Math.min(CHAT_CONTENT_MIN_WIDTH, Math.max(0, availableWidth * 0.35))
+      : 0;
+  const availablePanelWidth =
+    typeof availableWidth === "number" && Number.isFinite(availableWidth)
+      ? Math.max(DIFF_PANEL_MIN_WIDTH, Math.floor(availableWidth - reservedChatWidth))
+      : DIFF_PANEL_MAX_WIDTH;
+  return Math.max(DIFF_PANEL_MIN_WIDTH, Math.min(DIFF_PANEL_MAX_WIDTH, availablePanelWidth, value));
 }
 
 export function readPersistedDiffPanelWidth(): number {
@@ -1425,7 +1434,15 @@ export function shouldShowSessionPlanInComposer(
   sessionWorking: boolean,
   runStartedAtMs: number | null
 ): boolean {
-  if (!plan || !sessionWorking || isSessionPlanComplete(plan)) return false;
+  if (
+    !plan ||
+    plan.items.length === 0 ||
+    plan.summary.total === 0 ||
+    !sessionWorking ||
+    isSessionPlanComplete(plan)
+  ) {
+    return false;
+  }
   if (!runStartedAtMs || !Number.isFinite(runStartedAtMs) || !plan.updatedAt) return true;
   const planUpdatedAtMs = Date.parse(plan.updatedAt);
   if (!Number.isFinite(planUpdatedAtMs)) return true;
@@ -1441,9 +1458,11 @@ export function parsePlanFromToolCall(
   const result = tryParseJsonRecord(tool.result);
   const resultRecord = isRecord(result) ? result : null;
   const args = tool.arguments || tool.args || {};
-  const resultItems = normalizePlanItems(resultRecord?.items);
-  const items = resultItems.length ? resultItems : normalizePlanItems(args.items);
-  if (items.length === 0) return null;
+  const hasResultItems = Array.isArray(resultRecord?.items);
+  const items = hasResultItems
+    ? normalizePlanItems(resultRecord?.items)
+    : normalizePlanItems(args.items);
+  if (!hasResultItems && items.length === 0) return null;
   const planSessionId =
     (resultRecord && typeof resultRecord.sessionId === "string" ? resultRecord.sessionId : "") ||
     (typeof sessionId === "string" ? sessionId : "");

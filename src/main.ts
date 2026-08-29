@@ -294,6 +294,9 @@ async function main() {
     await runAcpCommand(args.slice(1));
     await new Promise<void>((resolve) => process.stdout.end(resolve));
     process.exit(0);
+  } else if (command === "agent" && !args.some((arg) => arg === "--help" || arg === "-h")) {
+    const { runAgentCli } = await import("./cli/agent-entry");
+    await runAgentCli(args.slice(1));
   } else if (isCliCommand) {
     await import("./cli/index");
   } else {

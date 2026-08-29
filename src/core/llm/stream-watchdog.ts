@@ -10,6 +10,7 @@ export interface StreamWatchdogOptions {
 
 export interface StreamWatchdog {
   signal: AbortSignal;
+  heartbeat(): void;
   touch(): void;
   dispose(): void;
   timedOutReason(): string | null;
@@ -114,6 +115,9 @@ export function createStreamWatchdog(options: StreamWatchdogOptions = {}): Strea
 
   return {
     signal: controller.signal,
+    heartbeat() {
+      if (sawFirstChunk) armIdleTimer();
+    },
     touch() {
       sawFirstChunk = true;
       armIdleTimer();

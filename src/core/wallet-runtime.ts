@@ -66,8 +66,17 @@ export function normalizeWalletSwapVenue(input: string): WalletSwapVenue {
   if (venue === "jupiter" || venue === "jup") {
     return "jupiter";
   }
+  if (
+    venue === "pump_swap" ||
+    venue === "pump-swap" ||
+    venue === "pumpswap" ||
+    venue === "pump" ||
+    venue === "pump_fun"
+  ) {
+    return "pump_swap";
+  }
   throw new Error(
-    "Validation error: Unsupported swap venue. Use uniswap_v2, uniswap_v3, or jupiter"
+    "Validation error: Unsupported swap venue. Use uniswap_v2, uniswap_v3, jupiter, or pump_swap"
   );
 }
 

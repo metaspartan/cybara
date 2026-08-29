@@ -34,7 +34,10 @@ describe("chat empty state", () => {
     expect(workspaceBar).toContain("workspaceFolderName(workspaceDir)");
     expect(workspaceBar).toContain('<X className="h-2.5 w-2.5"');
     expect(workspaceBar).toContain('aria-label="Clear workspace"');
-    expect(workspaceBar).toContain("rounded-full bg-[var(--icon-muted)]");
+    expect(workspaceBar).toContain("rounded-t-[18px] border border-b-0");
+    expect(workspaceBar).toContain('appearance?: "bot" | "session"');
+    expect(emptyState).toContain('appearance={bot ? "bot" : "session"}');
+    expect(emptyState).not.toContain("rounded-none border-t-0");
     expect(workspaceBar).not.toContain("pb-1");
     expect(emptyState).toContain("onClearWorkspace={onClearWorkspace}");
     expect(chat).toContain("setWorkspaceFallbackSuppressed(true)");

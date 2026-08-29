@@ -69,6 +69,7 @@ import {
   type WalletX402RequestResult,
 } from "./wallet-types";
 import { assertPublicHttpUrl, assertResolvedPublicHttpUrl } from "./wallet-url-guard";
+import { buildPumpSwapTransaction } from "./pump-swap";
 
 export abstract class WalletOperations extends WalletBase {
   async send(input: WalletSendInput): Promise<WalletSendResult> {
@@ -153,7 +154,7 @@ export abstract class WalletOperations extends WalletBase {
 
     return await this.sendSolToken({
       mnemonic: unlocked.mnemonic,
-      tokenAddress,
+      tokenAddress: this.resolveSolMint(tokenAddress),
       to,
       amount,
       index,
@@ -454,7 +455,9 @@ export abstract class WalletOperations extends WalletBase {
       attempts.push(tryChainlink);
     }
     attempts.push(tryPyth);
-    attempts.push(tryJupiter);
+    if (this.canResolveSolMint(String(input.mint || "").trim() || base)) {
+      attempts.push(tryJupiter);
+    }
 
     let lastError: Error | null = null;
     for (const attempt of attempts) {
@@ -508,8 +511,11 @@ export abstract class WalletOperations extends WalletBase {
     if (venue === "jupiter") {
       return await this.swapOnJupiter(input);
     }
+    if (venue === "pump_swap") {
+      return await this.swapOnPump(input);
+    }
     throw new Error(
-      "Validation error: Unsupported swap venue. Use uniswap_v2, uniswap_v3, or jupiter"
+      "Validation error: Unsupported swap venue. Use uniswap_v2, uniswap_v3, jupiter, or pump_swap"
     );
   }
 
@@ -835,6 +841,101 @@ export abstract class WalletOperations extends WalletBase {
     });
     await connection.confirmTransaction(signature, "confirmed");
 
+    return {
+      ...baseResult,
+      dryRun: false,
+      txid: signature,
+      explorerUrl: `https://solscan.io/tx/${signature}`,
+    };
+  }
+
+  private async swapOnPump(input: WalletSwapInput): Promise<WalletSwapResult> {
+    const inputMint = this.resolveSolMint(String(input.inputMint || SOL_MINT));
+    if (!input.outputMint) {
+      throw new Error("Validation error: outputMint is required for pump_swap swaps");
+    }
+    const outputMint = this.resolveSolMint(input.outputMint);
+    if (inputMint === outputMint) {
+      throw new Error("Validation error: Pump swap input and output mints must differ");
+    }
+    if (inputMint !== SOL_MINT && outputMint !== SOL_MINT) {
+      throw new Error("Validation error: Pump swaps must buy with SOL or sell to SOL");
+    }
+
+    const index = normalizeStartIndex(input.index);
+    const dryRun = input.dryRun === true;
+    const slippageBps =
+      typeof input.slippageBps === "number" && Number.isFinite(input.slippageBps)
+        ? Math.min(5_000, Math.max(10, Math.floor(input.slippageBps)))
+        : 200;
+    const unlocked = this.requireUnlocked();
+    const connection = new Connection(
+      this.resolveRpcUrl(input.rpcUrl, this.getSolRpc()),
+      "confirmed"
+    );
+    const signer = this.deriveSolKeypair(unlocked.mnemonic, index);
+    const from = signer.publicKey.toBase58();
+    const inputDecimals = await this.getSolMintDecimals(connection, inputMint);
+    const outputDecimals = await this.getSolMintDecimals(connection, outputMint);
+    const amountRaw = await this.resolveJupiterAmountRaw({
+      connection,
+      owner: signer.publicKey,
+      inputMint,
+      inputAmount: input.amount,
+      inputAmountRaw: input.amountRaw,
+      inputPercent: input.percent,
+      inputDecimals,
+    });
+
+    if (input.frontRunningProtection === true && !dryRun) {
+      throw new Error(
+        "Validation error: Pump front-running protection requires a Jito submission route"
+      );
+    }
+
+    const pumpSwap = await buildPumpSwapTransaction({
+      inputMint,
+      outputMint,
+      amountRaw: amountRaw.toString(),
+      user: from,
+      slippageBps,
+      frontRunningProtection: input.frontRunningProtection === true,
+      tipAmount:
+        typeof input.tipAmount === "number" && Number.isFinite(input.tipAmount)
+          ? Math.min(0.1, Math.max(0, input.tipAmount))
+          : 0,
+    });
+    const quotedAmountOutRaw = BigInt(pumpSwap.expectedOutAmount);
+    const minAmountOutRaw = (quotedAmountOutRaw * BigInt(10_000 - slippageBps)) / 10_000n;
+    const route = pumpSwap.hasGraduated ? "pump_swap_amm" : "pump_bonding";
+    const baseResult: WalletSwapResult = {
+      venue: "pump_swap",
+      chain: "sol",
+      from,
+      inputToken: inputMint,
+      outputToken: outputMint,
+      amountIn: formatUnits(amountRaw, inputDecimals),
+      amountInRaw: amountRaw.toString(),
+      quotedAmountOut: formatUnits(quotedAmountOutRaw, outputDecimals),
+      quotedAmountOutRaw: quotedAmountOutRaw.toString(),
+      minAmountOut: formatUnits(minAmountOutRaw, outputDecimals),
+      minAmountOutRaw: minAmountOutRaw.toString(),
+      slippageBps,
+      dryRun,
+      route,
+      routePlan: [{ label: route, inputMint, outputMint }],
+    };
+    if (dryRun) return baseResult;
+
+    const versionedTx = VersionedTransaction.deserialize(
+      Buffer.from(pumpSwap.transaction, "base64")
+    );
+    versionedTx.sign([signer]);
+    const signature = await connection.sendRawTransaction(versionedTx.serialize(), {
+      skipPreflight: input.skipPreflight === true,
+      maxRetries: 3,
+    });
+    await connection.confirmTransaction(signature, "confirmed");
     return {
       ...baseResult,
       dryRun: false,

@@ -33,6 +33,55 @@ function modelIdsMatch(entry: { model_id?: string | null; model_name?: string | 
     candidateIds.some((value) => value.trim().toLowerCase() === normalizedModelId);
 }
 
+interface CatalogModelLimits {
+  id?: string;
+  context?: number;
+  maxTokens?: number;
+}
+
+const CUSTOM_COMPATIBLE_MAX_OUTPUT_TOKENS = 32_768;
+
+function mostCommonLimit(values: Array<number | undefined>): number | undefined {
+  const counts = new Map<number, number>();
+  for (const value of values) {
+    if (value === undefined) continue;
+    counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  return [...counts.entries()].sort(
+    ([leftValue, leftCount], [rightValue, rightCount]) =>
+      rightCount - leftCount || rightValue - leftValue
+  )[0]?.[0];
+}
+
+function catalogModelLimits(
+  providerConfig: string,
+  modelId: string
+): CatalogModelLimits | undefined {
+  const normalizedModelId = modelId.trim().toLowerCase();
+  const configuredProvider = providerCatalog[providerConfig as ProviderType];
+  const configuredMatch = configuredProvider?.models?.find(
+    (entry: { id?: string }) =>
+      typeof entry.id === "string" && entry.id.trim().toLowerCase() === normalizedModelId
+  ) as CatalogModelLimits | undefined;
+  if (configuredMatch || providerConfig !== "custom") return configuredMatch;
+
+  const matches = Object.values(providerCatalog).flatMap((provider) =>
+    (provider.models || []).filter((entry) => entry.id.trim().toLowerCase() === normalizedModelId)
+  );
+  if (matches.length === 0) return undefined;
+  const catalogMaxTokens = mostCommonLimit(
+    matches.map((entry) => normalizePositiveInt(entry.maxTokens))
+  );
+  return {
+    id: modelId,
+    context: mostCommonLimit(matches.map((entry) => normalizePositiveInt(entry.context))),
+    maxTokens:
+      catalogMaxTokens === undefined
+        ? undefined
+        : Math.min(catalogMaxTokens, CUSTOM_COMPATIBLE_MAX_OUTPUT_TOKENS),
+  };
+}
+
 export function shouldPreferMaxCompletionTokens(providerConfig?: string): boolean {
   const provider = (providerConfig || "").trim().toLowerCase();
   return (
@@ -69,7 +118,7 @@ export function resolveModelMaxOutputTokens(
       max_tokens?: number | null;
     }>;
     const providerMatch = providerModels.find((entry) => modelIdsMatch(entry)(normalizedModelId));
-    if (providerMatch) {
+    if (providerMatch && !isGenericFallbackRow(providerMatch)) {
       const outputLimit = normalizePositiveInt(providerMatch.max_tokens);
       const contextLimit = normalizePositiveInt(providerMatch.context_window);
       const resolved = clampToContextWindow(outputLimit, contextLimit);
@@ -77,11 +126,7 @@ export function resolveModelMaxOutputTokens(
     }
   }
 
-  const staticProvider = providerCatalog[providerConfig as ProviderType];
-  const staticModel = staticProvider?.models?.find(
-    (entry: { id?: string }) =>
-      typeof entry.id === "string" && entry.id.trim().toLowerCase() === normalizedModelId
-  ) as { maxTokens?: number; context?: number } | undefined;
+  const staticModel = catalogModelLimits(providerConfig, normalizedModelId);
   if (staticModel) {
     const outputLimit = normalizePositiveInt(staticModel.maxTokens);
     const contextLimit = normalizePositiveInt(staticModel.context);
@@ -112,11 +157,7 @@ export function resolveModelContextWindowTokens(
     if (contextLimit) return contextLimit;
   }
 
-  const staticProvider = providerCatalog[providerConfig as ProviderType];
-  const staticModel = staticProvider?.models?.find(
-    (entry: { id?: string }) =>
-      typeof entry.id === "string" && entry.id.trim().toLowerCase() === normalizedModelId
-  ) as { context?: number } | undefined;
+  const staticModel = catalogModelLimits(providerConfig, normalizedModelId);
   const staticContextLimit = normalizePositiveInt(staticModel?.context);
   if (staticContextLimit) {
     return staticContextLimit;

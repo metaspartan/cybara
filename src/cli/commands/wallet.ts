@@ -115,6 +115,7 @@ interface CliWalletAgentPolicy {
   allowEthContractWrite: boolean;
   allowSolProgramInstruction: boolean;
   allowEthSwaps: boolean;
+  allowSolSwaps: boolean;
   allowDappInteraction: boolean;
   allowX402Payments: boolean;
   allowedEthContracts: string[];
@@ -168,6 +169,7 @@ export async function rawWalletStatus(): Promise<void> {
   console.log(`agent_native_send: ${policy.allowNativeSend ? "enabled" : "disabled"}`);
   console.log(`agent_token_send: ${policy.allowTokenSend ? "enabled" : "disabled"}`);
   console.log(`agent_eth_swaps: ${policy.allowEthSwaps ? "enabled" : "disabled"}`);
+  console.log(`agent_sol_swaps: ${policy.allowSolSwaps ? "enabled" : "disabled"}`);
   console.log(`agent_dapp: ${policy.allowDappInteraction ? "enabled" : "disabled"}`);
   console.log(`agent_x402: ${policy.allowX402Payments ? "enabled" : "disabled"}`);
   console.log(`unlock_expires: ${formatWalletTimestamp(status.unlockExpiresAt)}`);
@@ -1232,6 +1234,7 @@ export async function rawWalletAgentPolicy(subCmd?: string, args: string[] = [])
       `allow_sol_program_instruction: ${policy.allowSolProgramInstruction ? "yes" : "no"}`
     );
     console.log(`allow_eth_swaps: ${policy.allowEthSwaps ? "yes" : "no"}`);
+    console.log(`allow_sol_swaps: ${policy.allowSolSwaps ? "yes" : "no"}`);
     console.log(`allow_dapp_interaction: ${policy.allowDappInteraction ? "yes" : "no"}`);
     console.log(`allow_x402_payments: ${policy.allowX402Payments ? "yes" : "no"}`);
     console.log(

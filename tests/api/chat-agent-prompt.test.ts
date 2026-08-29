@@ -82,6 +82,8 @@ describe("chat agent prompt tool mode", () => {
     expect(prompt).toContain("## Execution Mode");
     expect(prompt).toContain("Plans and todos are working state");
     expect(prompt).toContain("Use tools for concrete workspace, coding, research");
+    expect(prompt).toContain("Repeat timing-sensitive checks with varied trigger timing");
+    expect(prompt).toContain("asynchronous setup and cleanup can yield");
     expect(prompt).toContain("Do not invent files, state, results, or tool output");
   });
 

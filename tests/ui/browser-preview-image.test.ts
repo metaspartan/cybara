@@ -43,8 +43,8 @@ describe("browser preview image", () => {
     await Bun.sleep(5);
 
     expect(decoded).toEqual(["frame-1", "frame-3"]);
-    expect(discarded).toEqual(["frame-1"]);
-    expect(presented).toEqual(["frame-3"]);
+    expect(discarded).toEqual([]);
+    expect(presented).toEqual(["frame-1", "frame-3"]);
     decoder.dispose();
   });
 

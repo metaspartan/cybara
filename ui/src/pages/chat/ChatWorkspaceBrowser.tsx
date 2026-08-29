@@ -8,8 +8,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 import {
+  type ClipboardEvent,
   type KeyboardEvent,
-  type MouseEvent,
+  type PointerEvent,
+  type ReactElement,
   useCallback,
   useEffect,
   useMemo,
@@ -29,7 +31,9 @@ import { routeChatLink } from "./chatLinkRouting";
 import {
   BROWSER_PREVIEW_REFRESH_MS,
   BrowserFramePresenter,
+  BrowserPointerMoveBatcher,
   BrowserScrollBatcher,
+  browserPreviewKeyboardKey,
   decodeBrowserPreviewImage,
   normalizeBrowserWheelDelta,
 } from "./browserPreviewInteraction";
@@ -83,7 +87,7 @@ interface PendingBrowserPage {
 
 const BROWSER_START_TIMEOUT_MS = 90_000;
 const BROWSER_REQUEST_TIMEOUT_MS = 12_000;
-const BROWSER_PREVIEW_QUALITY = 78;
+const BROWSER_PREVIEW_QUALITY = 82;
 
 interface BrowserLaunchStatus {
   phase: "idle" | "starting" | "running" | "failed";
@@ -246,20 +250,26 @@ async function resizeBrowserPage(
 }
 
 export function ChatWorkspaceBrowser({
+  compact = false,
+  thumbnail = false,
   visible,
   sessionId,
   pageKey,
   navigationRequest,
   navigationUrl,
+  onConnectionChange,
   onTitleChange,
 }: {
+  compact?: boolean;
+  thumbnail?: boolean;
   visible: boolean;
   sessionId?: string | null;
   pageKey?: string;
   navigationRequest?: number;
   navigationUrl?: string;
+  onConnectionChange?: (connected: boolean) => void;
   onTitleChange?: (title: string) => void;
-}) {
+}): ReactElement {
   const baseSessionId = sessionId?.trim() || "preview-new-chat";
   const browserSessionId = pageKey?.trim() ? `${baseSessionId}::${pageKey.trim()}` : baseSessionId;
   const [page, setPage] = useState<BrowserPage | null>(null);
@@ -280,6 +290,9 @@ export function ChatWorkspaceBrowser({
   const previewRefreshTimerRef = useRef<number | null>(null);
   const previewRefreshPageRef = useRef<BrowserPage | null>(null);
   const scrollBatcherRef = useRef<BrowserScrollBatcher | null>(null);
+  const pointerMoveBatcherRef = useRef<BrowserPointerMoveBatcher | null>(null);
+  const pointerPressedRef = useRef(false);
+  const lastPointerPointRef = useRef<{ x: number; y: number } | null>(null);
   const streamConnectedRef = useRef(false);
   const streamInputRef = useRef<BrowserPreviewStreamSender | null>(null);
   const framePresenterRef = useRef<BrowserFramePresenter<BrowserPreview> | null>(null);
@@ -697,7 +710,7 @@ export function ChatWorkspaceBrowser({
         if (
           event.type !== "status" ||
           event.sessionId !== activeSessionId ||
-          event.toolName !== "browser"
+          !event.toolName.toLowerCase().includes("browser")
         ) {
           return;
         }
@@ -789,13 +802,27 @@ export function ChatWorkspaceBrowser({
       lastInteractionAtRef.current = Date.now();
       if (streamConnectedRef.current && streamInputRef.current?.(input)) return;
       try {
-        const action = input.type === "pointer_click" ? "pointer/click" : input.type;
-        const body =
+        const action =
           input.type === "pointer_click"
+            ? "pointer/click"
+            : input.type === "pointer_move"
+              ? "pointer/move"
+              : input.type === "pointer_down"
+                ? "pointer/down"
+                : input.type === "pointer_up"
+                  ? "pointer/up"
+                  : input.type;
+        const body =
+          input.type === "pointer_click" ||
+          input.type === "pointer_move" ||
+          input.type === "pointer_down" ||
+          input.type === "pointer_up"
             ? { x: input.x, y: input.y }
             : input.type === "scroll"
               ? { deltaX: input.deltaX, deltaY: input.deltaY }
-              : { key: input.key };
+              : input.type === "keyboard"
+                ? { key: input.key }
+                : { text: input.text };
         const response = await apiFetch(
           `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/${action}`,
           {
@@ -833,18 +860,73 @@ export function ChatWorkspaceBrowser({
     };
   }, [page, sendPageInput]);
 
-  const handlePreviewClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (!page || !preview?.viewport) return;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const point = containerPointToPreview(
-      { width: bounds.width, height: bounds.height },
-      preview.viewport,
-      { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
-    );
-    if (!point) return;
-    event.currentTarget.focus();
-    void sendPageInput(page, { type: "pointer_click", x: point.x, y: point.y });
-  };
+  useEffect(() => {
+    pointerMoveBatcherRef.current?.dispose();
+    if (!page) {
+      pointerMoveBatcherRef.current = null;
+      return;
+    }
+    const batcher = new BrowserPointerMoveBatcher(async (point) => {
+      await sendPageInput(page, { type: "pointer_move", ...point }, false);
+    });
+    pointerMoveBatcherRef.current = batcher;
+    return () => {
+      batcher.dispose();
+      if (pointerMoveBatcherRef.current === batcher) pointerMoveBatcherRef.current = null;
+    };
+  }, [page, sendPageInput]);
+
+  const previewPoint = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!page || !preview?.viewport) return;
+      const surface = previewSurfaceRef.current;
+      if (!surface) return;
+      const bounds = surface.getBoundingClientRect();
+      return containerPointToPreview(
+        { width: bounds.width, height: bounds.height },
+        preview.viewport,
+        { x: clientX - bounds.left, y: clientY - bounds.top }
+      );
+    },
+    [page, preview?.viewport]
+  );
+
+  const handlePreviewPointerMove = useCallback(
+    (event: PointerEvent<HTMLDivElement>): void => {
+      const point = previewPoint(event.clientX, event.clientY);
+      if (!point) return;
+      lastPointerPointRef.current = point;
+      pointerMoveBatcherRef.current?.enqueue(point);
+    },
+    [previewPoint]
+  );
+
+  const handlePreviewPointerDown = useCallback(
+    (event: PointerEvent<HTMLDivElement>): void => {
+      if (!page || event.button !== 0) return;
+      const point = previewPoint(event.clientX, event.clientY);
+      if (!point) return;
+      event.preventDefault();
+      event.currentTarget.focus();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      pointerPressedRef.current = true;
+      lastPointerPointRef.current = point;
+      void sendPageInput(page, { type: "pointer_down", x: point.x, y: point.y });
+    },
+    [page, previewPoint, sendPageInput]
+  );
+
+  const handlePreviewPointerUp = useCallback(
+    (event: PointerEvent<HTMLDivElement>): void => {
+      if (!page || !pointerPressedRef.current) return;
+      pointerPressedRef.current = false;
+      const point = previewPoint(event.clientX, event.clientY) ?? lastPointerPointRef.current;
+      if (!point) return;
+      lastPointerPointRef.current = point;
+      void sendPageInput(page, { type: "pointer_up", x: point.x, y: point.y });
+    },
+    [page, previewPoint, sendPageInput]
+  );
 
   const handlePreviewWheel = useCallback(
     (event: globalThis.WheelEvent): void => {
@@ -873,26 +955,18 @@ export function ChatWorkspaceBrowser({
 
   const handlePreviewKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!page) return;
-    const modifier = event.metaKey ? "Meta" : event.ctrlKey ? "Control" : null;
-    const key = modifier ? `${modifier}+${event.key.toUpperCase()}` : event.key;
-    const supportedNamedKeys = new Set([
-      "Backspace",
-      "Delete",
-      "Enter",
-      "Escape",
-      "Tab",
-      "ArrowUp",
-      "ArrowDown",
-      "ArrowLeft",
-      "ArrowRight",
-      "Home",
-      "End",
-      "PageUp",
-      "PageDown",
-    ]);
-    if (!modifier && event.key.length !== 1 && !supportedNamedKeys.has(event.key)) return;
+    const key = browserPreviewKeyboardKey(event);
+    if (!key) return;
     event.preventDefault();
     void sendPageInput(page, { type: "keyboard", key });
+  };
+
+  const handlePreviewPaste = (event: ClipboardEvent<HTMLDivElement>): void => {
+    if (!page) return;
+    const text = event.clipboardData.getData("text/plain").slice(0, 1_000);
+    if (!text) return;
+    event.preventDefault();
+    void sendPageInput(page, { type: "text", text });
   };
 
   const cursorStyle = (() => {
@@ -904,8 +978,7 @@ export function ChatWorkspaceBrowser({
     const point = previewPointToContainer(previewSurfaceSize, viewport, cursor);
     if (!point) return null;
     return {
-      left: `${point.x}px`,
-      top: `${point.y}px`,
+      transform: `translate3d(${point.x - 2}px, ${point.y - 1}px, 0)`,
     };
   })();
 
@@ -914,66 +987,79 @@ export function ChatWorkspaceBrowser({
       className="flex h-full min-h-0 flex-col bg-[var(--chat-environment-panel-bg)]"
       data-browser-session-id={browserSessionId}
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-white/10 px-2">
-        <button
-          type="button"
-          onClick={() => void runPageAction("back")}
-          disabled={!page || loading}
-          className="workspace-browser-nav-button"
-          aria-label="Go back"
+      {thumbnail ? null : (
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-1 border-b border-white/10",
+            compact ? "h-9 px-1.5" : "h-10 px-2"
+          )}
         >
-          <ArrowLeft className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={() => void runPageAction("forward")}
-          disabled={!page || loading}
-          className="workspace-browser-nav-button"
-          aria-label="Go forward"
-        >
-          <ArrowRight className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={() => void runPageAction("reload")}
-          disabled={!page || loading}
-          className="workspace-browser-nav-button"
-          aria-label="Reload page"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-        </button>
-        <input
-          ref={addressRef}
-          value={address}
-          onChange={(event) => setAddress(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") void navigate();
-          }}
-          className="h-7 min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-center text-[11px] text-gray-200 outline-none focus:border-white/20 focus:shadow-none"
-          placeholder="Search or enter address"
-          aria-label="Browser address"
-        />
-        <BrowserViewportModeControl mode={viewportMode} onChange={selectViewportMode} />
-        <button
-          type="button"
-          onClick={() => {
-            const target = page?.url?.trim() || address.trim();
-            const route = routeChatLink(target, { external: true });
-            if (route.kind === "external") void openExternal(route.url);
-          }}
-          disabled={!page?.url && !address.trim()}
-          className="workspace-browser-nav-button"
-          title="Open in system browser"
-          aria-label="Open in system browser"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => void runPageAction("back")}
+            disabled={!page || loading}
+            className="workspace-browser-nav-button"
+            aria-label="Go back"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => void runPageAction("forward")}
+            disabled={!page || loading}
+            className="workspace-browser-nav-button"
+            aria-label="Go forward"
+          >
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => void runPageAction("reload")}
+            disabled={!page || loading}
+            className="workspace-browser-nav-button"
+            aria-label="Reload page"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+          </button>
+          <input
+            ref={addressRef}
+            value={address}
+            onChange={(event) => setAddress(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void navigate();
+            }}
+            className="h-7 min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-center text-[11px] text-gray-200 outline-none focus:border-white/20 focus:shadow-none"
+            placeholder="Search or enter address"
+            aria-label="Browser address"
+          />
+          {compact ? null : (
+            <BrowserViewportModeControl mode={viewportMode} onChange={selectViewportMode} />
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              const target = page?.url?.trim() || address.trim();
+              const route = routeChatLink(target, { external: true });
+              if (route.kind === "external") void openExternal(route.url);
+            }}
+            disabled={!page?.url && !address.trim()}
+            className="workspace-browser-nav-button"
+            title="Open in system browser"
+            aria-label="Open in system browser"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
       <div
         ref={previewSurfaceRef}
         className="relative min-h-0 flex-1 touch-none cursor-default overflow-hidden overscroll-contain bg-[var(--surface-backdrop)] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[rgb(var(--accent-primary))]"
-        onClick={handlePreviewClick}
         onKeyDown={handlePreviewKeyDown}
+        onPaste={handlePreviewPaste}
+        onPointerDown={handlePreviewPointerDown}
+        onPointerMove={handlePreviewPointerMove}
+        onPointerUp={handlePreviewPointerUp}
+        onPointerCancel={handlePreviewPointerUp}
         role="application"
         tabIndex={0}
         aria-label="Interactive browser preview"
@@ -989,6 +1075,7 @@ export function ChatWorkspaceBrowser({
           inputSenderRef={streamInputRef}
           onConnectionChange={(connected) => {
             streamConnectedRef.current = connected;
+            onConnectionChange?.(connected);
             if (!connected && page) schedulePreviewRefresh(page, true);
           }}
           onFramePresented={setStreamFrameVisible}
@@ -1008,7 +1095,7 @@ export function ChatWorkspaceBrowser({
         ) : null}
         {cursorStyle ? (
           <div
-            className="pointer-events-none absolute z-20 -translate-x-[2px] -translate-y-[1px] transition-[left,top] duration-150 ease-out"
+            className="pointer-events-none absolute left-0 top-0 z-20 transition-transform duration-75 ease-out motion-reduce:transition-none"
             style={cursorStyle}
             data-testid="browser-agent-cursor"
           >
@@ -1026,26 +1113,28 @@ export function ChatWorkspaceBrowser({
         {error ? (
           <div className="absolute bottom-2 left-2 right-2 z-30 flex items-center gap-3 rounded-md border border-red-400/20 bg-red-950/95 px-3 py-2 text-[11px] text-red-200 shadow-xl">
             <span className="min-w-0 flex-1">{error}</span>
-            <button
-              type="button"
-              className="shrink-0 rounded-md border border-red-300/20 px-2 py-1 font-medium hover:bg-red-300/10"
-              onClick={() => {
-                setError(null);
-                setPage(null);
-                clearPreview();
-                setLoading(true);
-                void ensurePage()
-                  .then(loadPreview)
-                  .catch((reason: unknown) => {
-                    setError(
-                      reason instanceof Error ? reason.message : "Failed to start browser preview"
-                    );
-                  })
-                  .finally(() => setLoading(false));
-              }}
-            >
-              Retry
-            </button>
+            {thumbnail ? null : (
+              <button
+                type="button"
+                className="shrink-0 rounded-md border border-red-300/20 px-2 py-1 font-medium hover:bg-red-300/10"
+                onClick={() => {
+                  setError(null);
+                  setPage(null);
+                  clearPreview();
+                  setLoading(true);
+                  void ensurePage()
+                    .then(loadPreview)
+                    .catch((reason: unknown) => {
+                      setError(
+                        reason instanceof Error ? reason.message : "Failed to start browser preview"
+                      );
+                    })
+                    .finally(() => setLoading(false));
+                }}
+              >
+                Retry
+              </button>
+            )}
           </div>
         ) : null}
       </div>

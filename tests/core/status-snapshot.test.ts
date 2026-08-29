@@ -4,11 +4,41 @@ import {
   broadcastStatus,
   getSessionStatusSnapshot,
   listSessionStatusSnapshots,
+  onSessionStatus,
   setSessionStatusLivenessResolver,
 } from "../../src/core/status";
 import { isSessionStatusActive } from "../../src/api/routes/_shared";
 
 describe("session status snapshots", () => {
+  test("routes status updates only to subscribers for the matching session", () => {
+    const counts = Array.from({ length: 100 }, () => 0);
+    const sessionIds = counts.map((_count, index) => `targeted-status-${Date.now()}-${index}`);
+    const targetSessionId = sessionIds[42] ?? `targeted-status-${Date.now()}-target`;
+    const unsubscribes = sessionIds.map((sessionId, index) =>
+      onSessionStatus(sessionId, () => {
+        counts[index] = (counts[index] || 0) + 1;
+      })
+    );
+
+    try {
+      broadcastStatus({
+        status: "thinking",
+        timestamp: Date.now(),
+        sessionId: targetSessionId,
+        detail: "Targeted update",
+      });
+      expect(counts.reduce((sum, count) => sum + count, 0)).toBe(1);
+      expect(counts[42]).toBe(1);
+    } finally {
+      for (const unsubscribe of unsubscribes) unsubscribe();
+      broadcastStatus({
+        status: "idle",
+        timestamp: Date.now(),
+        sessionId: targetSessionId,
+      });
+    }
+  });
+
   test("keeps a turn active through tool results and errors until idle", () => {
     expect(isSessionStatusActive("thinking")).toBe(true);
     expect(isSessionStatusActive("generating")).toBe(true);

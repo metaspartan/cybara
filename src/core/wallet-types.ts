@@ -54,6 +54,7 @@ export interface WalletTokenBalance {
   amount: string;
   raw: string;
   tokenAccount?: string;
+  defaultAsset?: boolean;
 }
 
 export interface WalletTransaction {
@@ -152,6 +153,7 @@ export interface WalletAgentPolicy {
   allowEthContractWrite: boolean;
   allowSolProgramInstruction: boolean;
   allowEthSwaps: boolean;
+  allowSolSwaps: boolean;
   allowDappInteraction: boolean;
   allowX402Payments: boolean;
   allowedEthContracts: string[];
@@ -363,7 +365,7 @@ export interface WalletPriceQuoteResult {
   mint?: string;
 }
 
-export type WalletSwapVenue = "uniswap_v2" | "uniswap_v3" | "jupiter";
+export type WalletSwapVenue = "uniswap_v2" | "uniswap_v3" | "jupiter" | "pump_swap";
 
 export interface WalletSwapInput {
   venue: WalletSwapVenue | string;
@@ -385,6 +387,8 @@ export interface WalletSwapInput {
   wrapUnwrapSol?: boolean;
   computeUnitPriceMicroLamports?: number;
   skipPreflight?: boolean;
+  frontRunningProtection?: boolean;
+  tipAmount?: number;
 }
 
 export interface WalletSwapResult {
@@ -441,6 +445,7 @@ export interface WalletEndpointDirectory {
       token2022Program: string;
       associatedTokenProgram: string;
       memoProgram: string;
+      pumpSwapProgram: string;
     };
   };
   services: {
@@ -448,6 +453,7 @@ export interface WalletEndpointDirectory {
     jupiterPriceApi: string;
     jupiterSwapApi: string;
     jupiterProgramLabelsApi: string;
+    pumpSwapApi: string;
   };
 }
 

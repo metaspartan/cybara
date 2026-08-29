@@ -32,6 +32,10 @@ const browserStreamClientSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/chat/browserPreviewStreamClient.ts", import.meta.url)),
   "utf8"
 );
+const floatingBrowserSource = readFileSync(
+  fileURLToPath(new URL("../../ui/src/pages/chat/FloatingBrowserPreview.tsx", import.meta.url)),
+  "utf8"
+);
 const computerSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/chat/ChatWorkspaceComputer.tsx", import.meta.url)),
   "utf8"
@@ -105,6 +109,18 @@ describe("chat workspace panel", () => {
     expect(chatSource).toContain("previewTabs: Array.from(");
   });
 
+  test("keeps browser work visible outside the full workspace panel", () => {
+    expect(chatSource).toContain("FloatingBrowserPreview");
+    expect(chatSource).toContain("shouldShowFloatingBrowserPreview");
+    expect(floatingBrowserSource).toContain('aria-label="Open live browser preview"');
+    expect(floatingBrowserSource).toContain('role="button"');
+    expect(floatingBrowserSource).not.toContain("Resize floating browser preview");
+    expect(floatingBrowserSource).not.toContain("workspace-browser-nav-button");
+    expect(floatingBrowserSource).toContain("<ChatWorkspaceBrowser");
+    expect(floatingBrowserSource).toContain("thumbnail");
+    expect(browserSource).toContain("thumbnail ? null");
+  });
+
   test("browser preview shares the chat session and fills the workspace panel", () => {
     expect(chatSource).toContain("sessionId={sessionId}");
     expect(chatSource).toContain('key={`${instance.id}:${sessionId || "new-chat"}`}');
@@ -115,13 +131,13 @@ describe("chat workspace panel", () => {
     expect(browserSource).not.toContain("refreshSessionPreview");
     expect(browserSource).toContain("browserPreviewPollDelay");
     expect(browserSource).toContain("connectStatusStream");
-    expect(browserSource).toContain('event.toolName !== "browser"');
+    expect(browserSource).toContain('event.toolName.toLowerCase().includes("browser")');
     expect(browserSource).toContain("pendingPageRef");
     expect(browserSource).toContain("pending?.sessionId === browserSessionId");
     expect(browserSource).toContain("if (queuedFreshPageRef.current) return;");
     expect(browserSource).toContain("if (!target) return;");
     expect(browserSource).not.toContain("if (!target || loading) return;");
-    expect(browserSource).toContain("const BROWSER_PREVIEW_QUALITY = 78");
+    expect(browserSource).toContain("const BROWSER_PREVIEW_QUALITY = 82");
     expect(browserSource).not.toContain("BROWSER_STATE_POLL_MS");
     expect(browserSource).toContain('format: "jpeg"');
     expect(browserSource).toContain('document.visibilityState === "visible"');
@@ -186,10 +202,12 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("const BROWSER_START_TIMEOUT_MS = 90_000");
     expect(browserSource).toContain('apiFetch("/api/browser/status"');
     expect(browserSource).toContain("browserStartupLabel(status)");
-    expect(browserSource).toContain('sendPageInput(page, { type: "pointer_click"');
+    expect(browserSource).toContain('sendPageInput(page, { type: "pointer_move"');
+    expect(browserSource).toContain('sendPageInput(page, { type: "pointer_down"');
+    expect(browserSource).toContain('sendPageInput(page, { type: "pointer_up"');
     expect(browserSource).toContain('sendPageInput(page, { type: "scroll"');
     expect(browserSource).toContain('sendPageInput(page, { type: "keyboard"');
-    expect(browserSource).toContain("transition-[left,top] duration-150");
+    expect(browserSource).toContain("transition-transform duration-75");
     expect(browserSource).not.toContain(">\n              Agent\n");
     expect(browserImageSource).toContain("absolute inset-0 h-full w-full");
     expect(browserImageSource).toContain("object-contain");
@@ -289,6 +307,7 @@ describe("chat workspace panel", () => {
     expect(panelSource).not.toContain("if (!isOpen) return null");
     expect(panelSource).toContain("aria-hidden={!isOpen}");
     expect(panelSource).toContain('isOpen ? "flex" : "hidden"');
+    expect(panelSource).toContain('maxWidth: "calc(100% - min(320px, 35%))"');
   });
 
   test("native workspace tools remain mounted while switching tabs", () => {

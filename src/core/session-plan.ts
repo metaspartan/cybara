@@ -32,7 +32,13 @@ interface ToolCallLike {
 
 interface MessageLike {
   timestamp?: unknown;
+  agent_id?: unknown;
   tool_calls?: unknown;
+}
+
+export interface ExtractedSessionPlanState {
+  plan: SessionPlanSnapshot;
+  writerAgentId?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -114,19 +120,19 @@ function planFromToolCall(
   sessionId: string,
   toolCall: ToolCallLike,
   updatedAt?: string
-): SessionPlanSnapshot | null {
-  if (String(toolCall.name || "").toLowerCase() !== "todo") return null;
-  const resultPlan = sanitizeTodoToolResult(toolCall.result);
+): SessionPlanSnapshot | undefined {
+  if (String(toolCall.name || "").toLowerCase() !== "todo") return undefined;
+  const resultRecord = parseRecord(toolCall.result);
+  const resultPlan = Array.isArray(resultRecord?.items)
+    ? sanitizeTodoToolResult(resultRecord)
+    : null;
   const args = isRecord(toolCall.args)
     ? toolCall.args
     : isRecord(toolCall.arguments)
       ? toolCall.arguments
       : null;
-  const items =
-    resultPlan && resultPlan.items.length > 0
-      ? resultPlan.items
-      : normalizeSessionPlanItems(args?.items);
-  if (items.length === 0) return null;
+  const items = resultPlan ? resultPlan.items : normalizeSessionPlanItems(args?.items);
+  if (!resultPlan && items.length === 0) return undefined;
   return {
     sessionId,
     items,
@@ -136,10 +142,10 @@ function planFromToolCall(
   };
 }
 
-export function extractLatestSessionPlan(
+export function extractLatestSessionPlanState(
   sessionId: string,
   messages: MessageLike[]
-): SessionPlanSnapshot | null {
+): ExtractedSessionPlanState | null {
   for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
     const message = messages[messageIndex];
     if (!message || !Array.isArray(message.tool_calls)) continue;
@@ -151,8 +157,24 @@ export function extractLatestSessionPlan(
         rawTool,
         typeof message.timestamp === "string" ? message.timestamp : undefined
       );
-      if (snapshot) return snapshot;
+      if (snapshot) {
+        const writerAgentId =
+          typeof message.agent_id === "string" && message.agent_id.trim()
+            ? message.agent_id.trim()
+            : undefined;
+        return {
+          plan: snapshot,
+          ...(writerAgentId ? { writerAgentId } : {}),
+        };
+      }
     }
   }
   return null;
+}
+
+export function extractLatestSessionPlan(
+  sessionId: string,
+  messages: MessageLike[]
+): SessionPlanSnapshot | null {
+  return extractLatestSessionPlanState(sessionId, messages)?.plan ?? null;
 }

@@ -69,7 +69,7 @@ describe("chat session sidebar layout", () => {
     const source = chatSource();
     expect(source).toContain('aria-label="Search sessions"');
     expect(source).toContain('aria-label="Clear session search"');
-    expect(source).toContain('title="Search chats"');
+    expect(source).toContain('sidebarMode === "bots" ? "Search bots" : "Search chats"');
     expect(source).toContain("searchResults.map");
     expect(source).toContain("data-autofocus");
     expect(source).toContain('surface="bare"');
@@ -154,7 +154,7 @@ describe("chat session sidebar layout", () => {
 
   test("groups chat sessions into pinned and workspace sections", () => {
     const source = chatSource();
-    expect(source).toContain('groupSessionsForSidebar(sessions, "")');
+    expect(source).toContain('groupSessionsForSidebar(regularSessions, "")');
     expect(source).toContain('label: "Pinned"');
     expect(source).toContain("workspaceSidebarLabel(session.workspace_dir)");
     expect(source).toContain('group.kind === "pinned"');

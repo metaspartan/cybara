@@ -68,7 +68,9 @@ describe("main sidebar sizing", () => {
     );
     expect(sidebar).toContain("moreOpen ? navigationLayout.more.length : 0");
     expect(sidebar).toContain("transition-[height,min-height,max-height]");
-    expect(sidebar).toContain('aria-label="Search chats"');
+    expect(sidebar).toContain(
+      'aria-label={sidebarMode === "bots" ? "Search bots" : "Search chats"}'
+    );
     expect(sidebar).toContain("searchOpen={sessionSearchOpen}");
     expect(sidebar).toContain('collapsed ? "px-3 py-2.5 justify-center" : "px-3.5 py-1.5"');
     expect(sidebar).not.toContain('t("app.tagline")');

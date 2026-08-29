@@ -23,8 +23,8 @@ import {
 } from "../core/session-title";
 import { getRunBySessionKey } from "../core/subagent-registry";
 import { getActiveSessionRunId } from "../core/session-event-ledger";
-import { getSubagentSession } from "../core/tools/handlers/index";
-import { getRateLimitStatus } from "../core/tools/index";
+import { clearTodoState } from "../core/tools/handlers/todo";
+import { getRateLimitStatus } from "../core/tools/runtime-guards";
 import { applyActiveAgentToSession } from "./chat-agent-prompt";
 import { resolveTurnContextWindow } from "./chat-turn-context";
 import { recoverInterruptedSessionMessages } from "./chat-run-recovery";
@@ -75,6 +75,11 @@ const persistedSessionLoadMemo = new Map<string, PersistedSessionMemoEntry>();
 const persistedSessionFingerprintStatement = db.prepare(
   "SELECT COUNT(*) AS count, COALESCE(SUM(length(metadata)), 0) AS metaBytes, COALESCE(SUM(length(content)), 0) AS contentBytes, COALESCE(MAX(created_at), '') AS maxCreated FROM session_messages WHERE session_id = ?"
 );
+
+function clearPersistedSessionLoadMemo(sessionId: string): void {
+  persistedSessionLoadMemo.delete(`${sessionId}:full`);
+  persistedSessionLoadMemo.delete(`${sessionId}:deferred`);
+}
 
 async function loadPersistedSessionMemoized(
   sessionId: string,
@@ -136,6 +141,7 @@ export async function getSession(sessionId: string, options: ChatSessionLoadOpti
     return session;
   }
 
+  const { getSubagentSession } = await import("../core/tools/handlers/channel");
   const subagentSession = getSubagentSession(sessionId);
   if (subagentSession) {
     return {
@@ -514,8 +520,9 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
     const persistedDeleted = await deletePersistedSession(key);
     if (memoryDeleted || persistedDeleted) {
       removePersistedSessionIndex(key);
-      persistedSessionLoadMemo.delete(key);
+      clearPersistedSessionLoadMemo(key);
     }
+    clearTodoState(key);
     return memoryDeleted || persistedDeleted;
   } finally {
     deletingChatSessionIds.delete(key);
@@ -722,6 +729,7 @@ export async function revertSessionToMessage(
   }
 
   if (removedCount > 0) {
+    clearTodoState(sessionId);
     clearSessionContextState(sessionId);
     await deletePersistedSession(sessionId);
     await persistSession(sessionId, agentId, keptMessages, workspaceDir, sessionTitle);

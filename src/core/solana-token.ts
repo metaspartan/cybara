@@ -22,17 +22,25 @@ export async function getMintDecimals(
   address: PublicKey,
   commitment?: Commitment
 ): Promise<number> {
+  return (await getMintDetails(connection, address, commitment)).decimals;
+}
+
+export async function getMintDetails(
+  connection: Connection,
+  address: PublicKey,
+  commitment?: Commitment
+): Promise<{ decimals: number; programId: PublicKey }> {
   const info = await connection.getAccountInfo(address, commitment);
   if (!info) {
     throw new Error("SPL token mint account not found");
   }
-  if (!info.owner.equals(TOKEN_PROGRAM_ID)) {
+  if (!info.owner.equals(TOKEN_PROGRAM_ID) && !info.owner.equals(TOKEN_2022_PROGRAM_ID)) {
     throw new Error("SPL token mint account has an unsupported owner");
   }
   if (info.data.length < MINT_ACCOUNT_SIZE) {
     throw new Error("Invalid SPL token mint account");
   }
-  return info.data[MINT_DECIMALS_OFFSET];
+  return { decimals: info.data[MINT_DECIMALS_OFFSET], programId: info.owner };
 }
 
 export function getAssociatedTokenAddressSync(

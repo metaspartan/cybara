@@ -27,6 +27,8 @@ describe("wallet runtime normalization", () => {
     expect(normalizeWalletSwapVenue("v2")).toBe("uniswap_v2");
     expect(normalizeWalletSwapVenue("uniswap")).toBe("uniswap_v3");
     expect(normalizeWalletSwapVenue("jup")).toBe("jupiter");
+    expect(normalizeWalletSwapVenue("pumpswap")).toBe("pump_swap");
+    expect(normalizeWalletSwapVenue("pump_fun")).toBe("pump_swap");
     expect(() => normalizeWalletSwapVenue("unknown")).toThrow("Unsupported swap venue");
   });
 

@@ -27,10 +27,11 @@ describe("goal panel visibility and layout", () => {
     expect(source).toContain("text-[var(--text-secondary)]");
     expect(source).toContain("bg-[var(--surface-raised)]");
     expect(styles).toContain(".new-chat-workspace-bar {");
-    expect(styles).toContain("color-mix(in srgb, var(--surface-panel) 88%, var(--surface-raised))");
+    expect(styles).toContain("color-mix(in srgb, var(--surface-raised) 86%, transparent)");
+    expect(styles).toContain("backdrop-filter: blur(18px)");
   });
 
-  test("both layouts use the rounded workspace-bar styling and the message view fuses to the composer", async () => {
+  test("new-chat controls are standalone rounded surfaces while the message view stays fused", async () => {
     const source = await Bun.file("ui/src/pages/chat/GoalPanel.tsx").text();
     const styles = await Bun.file("ui/src/styles/index-foundation.css").text();
     const emptyState = await Bun.file("ui/src/pages/chat/ChatEmptyState.tsx").text();
@@ -38,8 +39,9 @@ describe("goal panel visibility and layout", () => {
 
     expect(source).toContain('layout?: "default" | "new-chat";');
     expect(source).toContain('layout === "new-chat"');
-    expect(source).toContain("new-chat-workspace-bar mx-4 flex h-9");
+    expect(source).toContain("new-chat-workspace-bar mx-3 mb-2 flex min-h-10");
     expect(source).toContain("new-chat-workspace-bar mx-4 flex min-h-9");
+    expect(source).toContain("rounded-2xl border");
     expect(source).toContain("rounded-t-[18px] border border-b-0");
     expect(source).toContain(
       'cn("chat-goal-bar", chatHorizontalPaddingClassName(horizontalPadding))'
@@ -50,7 +52,7 @@ describe("goal panel visibility and layout", () => {
     expect(styles).toContain("margin-top: -1px;");
     expect(emptyState).toContain("goalPanel?: ReactNode;");
     expect(emptyState).toContain("{goalPanel}");
-    expect(emptyState).toContain("rounded-none border-t-0");
+    expect(emptyState).not.toContain("rounded-none border-t-0");
     expect(emptyState).toContain("w-[min(100%,40rem)]");
     expect(chat).toContain("goalPanel={");
     expect(chat).toContain('layout="new-chat"');

@@ -115,13 +115,19 @@ import {
   checkToolPermissions,
   getToolRequiredPermissions,
   isDangerousTool,
-  handleTelegramMedia,
   toolSchemas as toolSchemaRegistry,
   type ToolContext,
 } from "../index";
+import { handleTelegramMedia } from "./telegram-media";
 import { createLogger } from "../../logger";
 import { requestToolApproval } from "../../tool-approval";
 import { resolveToolCapabilityDecision } from "../../tool-capability-policy";
+import {
+  getRegisteredToolHandler,
+  registerToolHandler,
+  registeredToolHandlers,
+  unregisterToolHandler,
+} from "./registry";
 
 const log = createLogger("Tools");
 
@@ -143,6 +149,7 @@ export * from "./transcribe";
 export * from "./artifacts";
 export * from "./workspace-index";
 export * from "./phone";
+export { handleTelegramMedia } from "./telegram-media";
 
 export {
   checkToolPermissions,
@@ -151,10 +158,7 @@ export {
   toolSchemas,
 } from "../index";
 
-const toolHandlers: Record<
-  string,
-  (args: Record<string, unknown>, context?: ToolContext) => Promise<unknown>
-> = {
+Object.assign(registeredToolHandlers, {
   read: handleRead,
   write: handleWrite,
   edit: handleEdit,
@@ -312,7 +316,9 @@ const toolHandlers: Record<
   ocr: handleOcr,
   pdf: handlePdf,
   telegram_media: handleTelegramMedia,
-};
+});
+
+const toolHandlers = registeredToolHandlers;
 
 for (const action of COMPUTER_USE_ACTION_TOOL_ALIASES) {
   toolHandlers[action] = async (args: Record<string, unknown>, context?: ToolContext) =>
@@ -689,21 +695,10 @@ export function getToolNames(): string[] {
   return Object.keys(toolHandlers);
 }
 
-export function registerToolHandler(
-  name: string,
-  handler: (args: Record<string, unknown>, context?: ToolContext) => Promise<unknown>
-): void {
-  toolHandlers[name] = handler;
-}
-
-export function unregisterToolHandler(name: string): boolean {
-  if (!(name in toolHandlers)) return false;
-  delete toolHandlers[name];
-  return true;
-}
-
 export function getToolHandler(
   name: string
 ): ((args: Record<string, unknown>, context?: ToolContext) => Promise<unknown>) | undefined {
-  return toolHandlers[name];
+  return getRegisteredToolHandler(name);
 }
+
+export { registerToolHandler, unregisterToolHandler };

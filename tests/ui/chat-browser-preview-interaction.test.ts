@@ -3,7 +3,9 @@ import {
   BROWSER_SCROLL_DELTA_LIMIT,
   BROWSER_SCROLL_FRAME_MS,
   BrowserFramePresenter,
+  BrowserPointerMoveBatcher,
   BrowserScrollBatcher,
+  browserPreviewKeyboardKey,
   mergeBrowserScrollDelta,
   normalizeBrowserWheelDelta,
   type BrowserScrollDelta,
@@ -18,6 +20,49 @@ describe("browser preview interactions", () => {
     expect(normalizeBrowserWheelDelta(2, 3, 0, 640)).toEqual({ deltaX: 2, deltaY: 3 });
     expect(normalizeBrowserWheelDelta(2, 3, 1, 640)).toEqual({ deltaX: 32, deltaY: 48 });
     expect(normalizeBrowserWheelDelta(0, 1, 2, 640)).toEqual({ deltaX: 0, deltaY: 640 });
+  });
+
+  test("preserves printable input and builds complete shortcut chords", () => {
+    expect(
+      browserPreviewKeyboardKey({
+        altKey: false,
+        ctrlKey: false,
+        key: "A",
+        metaKey: false,
+        shiftKey: true,
+      })
+    ).toBe("A");
+    expect(
+      browserPreviewKeyboardKey({
+        altKey: true,
+        ctrlKey: true,
+        key: "k",
+        metaKey: false,
+        shiftKey: true,
+      })
+    ).toBe("Control+Alt+Shift+K");
+    expect(
+      browserPreviewKeyboardKey({
+        altKey: false,
+        ctrlKey: false,
+        key: "Shift",
+        metaKey: false,
+        shiftKey: true,
+      })
+    ).toBeNull();
+  });
+
+  test("coalesces pointer hover updates to the latest point", async () => {
+    const points: Array<{ x: number; y: number }> = [];
+    const batcher = new BrowserPointerMoveBatcher(async (point) => {
+      points.push(point);
+    }, 0);
+    batcher.enqueue({ x: 1, y: 2 });
+    batcher.enqueue({ x: 3, y: 4 });
+    batcher.enqueue({ x: 5, y: 6 });
+    await Bun.sleep(5);
+    expect(points).toEqual([{ x: 5, y: 6 }]);
+    batcher.dispose();
   });
 
   test("bounds merged trackpad bursts to the route contract", () => {

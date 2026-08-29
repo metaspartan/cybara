@@ -7,7 +7,21 @@ export interface BrowserPreviewFrameSource {
   screenshot: string;
 }
 
+export interface BrowserPointerPoint {
+  x: number;
+  y: number;
+}
+
+export interface BrowserKeyboardEventLike {
+  altKey: boolean;
+  ctrlKey: boolean;
+  key: string;
+  metaKey: boolean;
+  shiftKey: boolean;
+}
+
 export const BROWSER_SCROLL_FRAME_MS = 8;
+export const BROWSER_POINTER_FRAME_MS = 16;
 export const BROWSER_PREVIEW_REFRESH_MS = 90;
 export const BROWSER_SCROLL_DELTA_LIMIT = 4_000;
 
@@ -37,6 +51,94 @@ export function mergeBrowserScrollDelta(
     deltaX: boundedDelta(current.deltaX + incoming.deltaX),
     deltaY: boundedDelta(current.deltaY + incoming.deltaY),
   };
+}
+
+const BROWSER_NAMED_KEYS = new Set([
+  "Backspace",
+  "Delete",
+  "Enter",
+  "Escape",
+  "Tab",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+  "Insert",
+]);
+
+export function browserPreviewKeyboardKey(event: BrowserKeyboardEventLike): string | null {
+  if (["Alt", "Control", "Meta", "Shift"].includes(event.key)) return null;
+  const commandModifier = event.metaKey || event.ctrlKey || event.altKey;
+  const supportedKey =
+    event.key.length === 1 ||
+    BROWSER_NAMED_KEYS.has(event.key) ||
+    /^F(?:[1-9]|1[0-2])$/.test(event.key);
+  if (!supportedKey) return null;
+  if (!commandModifier) return event.key;
+  const modifiers = [
+    event.metaKey ? "Meta" : "",
+    event.ctrlKey ? "Control" : "",
+    event.altKey ? "Alt" : "",
+    event.shiftKey ? "Shift" : "",
+  ].filter(Boolean);
+  const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
+  return [...modifiers, key].join("+");
+}
+
+export class BrowserPointerMoveBatcher {
+  private pending: BrowserPointerPoint | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private active = false;
+  private disposed = false;
+
+  constructor(
+    private readonly handler: (point: BrowserPointerPoint) => Promise<void>,
+    private readonly frameMs = BROWSER_POINTER_FRAME_MS,
+    private readonly onError: (error: unknown) => void = () => undefined
+  ) {}
+
+  enqueue(point: BrowserPointerPoint): void {
+    if (this.disposed) return;
+    this.pending = point;
+    this.schedule();
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.pending = null;
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  private schedule(): void {
+    if (this.active || this.timer !== null || !this.pending) return;
+    this.timer = setTimeout(
+      () => {
+        this.timer = null;
+        void this.flush();
+      },
+      Math.max(0, this.frameMs)
+    );
+  }
+
+  private async flush(): Promise<void> {
+    if (this.active || this.disposed || !this.pending) return;
+    const point = this.pending;
+    this.pending = null;
+    this.active = true;
+    try {
+      await this.handler(point);
+    } catch (error) {
+      this.onError(error);
+    } finally {
+      this.active = false;
+      if (!this.disposed && this.pending) this.schedule();
+    }
+  }
 }
 
 export class BrowserScrollBatcher {

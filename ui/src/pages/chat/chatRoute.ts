@@ -25,6 +25,11 @@ export function buildAgentChatPath(agentId: string): string {
   return `/chat?${params.toString()}`;
 }
 
+export function buildSessionChatPath(sessionId: string): string {
+  const params = new URLSearchParams({ session: sessionId.trim() });
+  return `/chat?${params.toString()}`;
+}
+
 export function buildFreshChatPath(workspaceDir?: string | null, requestId?: string): string {
   const params = new URLSearchParams({
     fresh: "1",

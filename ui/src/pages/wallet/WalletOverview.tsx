@@ -1,8 +1,16 @@
-import { ArrowDownLeft, ArrowUpRight, History, Lock, Settings, ShieldCheck } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  History,
+  Lock,
+  Repeat2,
+  Settings,
+  ShieldCheck,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import type { WalletChain, WalletStatus } from "@/lib/api";
+import type { WalletChain, WalletStatus, WalletTokenBalance } from "@/lib/api";
 
-export type WalletSection = "receive" | "send" | "history";
+export type WalletSection = "receive" | "send" | "swap" | "history";
 
 export interface WalletPortfolioChain {
   value: WalletChain;
@@ -24,6 +32,7 @@ interface WalletOverviewProps {
   status: WalletStatus;
   totalLabel: string;
   chains: WalletPortfolioChain[];
+  tokens: WalletTokenBalance[];
   activeSection: WalletSection;
   busy: boolean;
   formatUsd: (value: number) => string;
@@ -41,6 +50,7 @@ const sections: Array<{
 }> = [
   { id: "receive", label: "Receive", icon: ArrowDownLeft },
   { id: "send", label: "Send", icon: ArrowUpRight },
+  { id: "swap", label: "Swap", icon: Repeat2 },
   { id: "history", label: "Activity", icon: History },
 ];
 
@@ -65,6 +75,7 @@ export function WalletOverview({
   status,
   totalLabel,
   chains,
+  tokens,
   activeSection,
   busy,
   formatUsd,
@@ -76,8 +87,8 @@ export function WalletOverview({
 }: WalletOverviewProps) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <section className="overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]">
-        <div className="flex flex-col gap-6 px-5 py-6 sm:px-6">
+      <section className="overflow-hidden rounded-[28px] border border-[var(--surface-border)] bg-[var(--surface-panel)] shadow-[0_24px_80px_rgba(0,0,0,0.14)]">
+        <div className="flex flex-col gap-6 bg-gradient-to-br from-[rgba(var(--accent-primary),0.12)] via-transparent to-transparent px-5 py-6 sm:px-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <p className="text-sm font-medium text-[var(--text-muted)]">Total balance</p>
@@ -171,11 +182,42 @@ export function WalletOverview({
                 </p>
               </div>
             ))}
+            {tokens.map((token) => (
+              <div
+                key={`${token.chain}-${token.tokenAddress}`}
+                className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-5 py-3 transition-colors hover:bg-[var(--surface-hover)] sm:px-6"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[rgba(var(--accent-primary),0.14)] text-xs font-semibold text-[rgb(var(--accent-primary))]">
+                    {token.symbol.slice(0, 1)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium text-[var(--text-primary)]">
+                        {token.name || token.symbol}
+                      </p>
+                      {token.defaultAsset ? (
+                        <span className="rounded-full bg-[rgba(var(--accent-primary),0.12)] px-2 py-0.5 text-[10px] font-semibold text-[rgb(var(--accent-primary))]">
+                          Default
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="truncate text-xs text-[var(--text-muted)]">Solana token</p>
+                  </div>
+                </div>
+                <p className="whitespace-nowrap text-right text-sm font-medium tabular-nums text-[var(--text-primary)]">
+                  {token.amount} {token.symbol}
+                </p>
+                <p className="hidden min-w-24 whitespace-nowrap text-right text-sm tabular-nums text-[var(--text-muted)] sm:block">
+                  —
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      <aside className="flex flex-col rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]">
+      <aside className="flex flex-col rounded-[28px] border border-[var(--surface-border)] bg-[var(--surface-panel)] shadow-[0_24px_80px_rgba(0,0,0,0.1)]">
         <div className="flex items-start gap-3 border-b border-[var(--surface-border)] p-4">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]">
             <ShieldCheck className="h-4 w-4" />

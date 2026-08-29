@@ -295,4 +295,43 @@ describe("chat plan and artifact UI wiring", () => {
     });
     expect(latestPlan?.items[3]?.content).toBe("Add xAI model");
   });
+
+  test("uses an explicit empty todo result instead of reviving an older UI plan", () => {
+    const messages: ChatMessage[] = [
+      {
+        role: "assistant",
+        content: "",
+        timestamp: "2026-07-08T20:00:00.000Z",
+        tool_calls: [
+          {
+            id: "plan-active",
+            name: "todo",
+            status: "completed",
+            result: {
+              items: [{ content: "Old task", status: "in_progress", priority: "high" }],
+            },
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        content: "Done.",
+        timestamp: "2026-07-08T20:01:00.000Z",
+        tool_calls: [
+          {
+            id: "plan-cleared",
+            name: "todo",
+            status: "completed",
+            result: { items: [], summary: { total: 0 } },
+          },
+        ],
+      },
+    ];
+
+    const latestPlan = extractLatestPlanFromMessages(messages, "session-plan-cleared-ui");
+    expect(latestPlan?.updatedAt).toBe("2026-07-08T20:01:00.000Z");
+    expect(latestPlan?.items).toEqual([]);
+    expect(latestPlan?.summary.total).toBe(0);
+    expect(shouldShowSessionPlanInComposer(latestPlan, true, null)).toBe(false);
+  });
 });

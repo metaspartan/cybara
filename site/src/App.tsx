@@ -12,6 +12,7 @@ import { Principles } from "./components/Principles";
 import { Downloads } from "./components/Downloads";
 import { Migrate } from "./components/Migrate";
 import { Control } from "./components/Control";
+import { Token } from "./components/Token";
 import { Faq } from "./components/Faq";
 import { CallToAction } from "./components/CallToAction";
 import { Footer } from "./components/Footer";
@@ -67,6 +68,7 @@ function LandingPage(): React.ReactElement {
         <Downloads />
         <Migrate />
         <Control />
+        <Token />
         <Faq />
         <SectionMore href="/faq" label="Read the full FAQ" />
         <CallToAction />

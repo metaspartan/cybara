@@ -78,6 +78,17 @@ describe("chat session sidebar grouping", () => {
     expect(workspaceSidebarLabel(null)).toBe("No Workspace");
   });
 
+  test("keeps canonical bot conversations out of regular session groups", () => {
+    const groups = groupSessionsForSidebar(
+      [session({ id: "bot:agent-one", pinned: true }), session({ id: "regular-chat" })],
+      ""
+    );
+
+    expect(groups.flatMap((group) => group.sessions.map((item) => item.id))).toEqual([
+      "regular-chat",
+    ]);
+  });
+
   test("starts with only the selected workspace and pinned chats expanded", () => {
     const groups = groupSessionsForSidebar(
       [

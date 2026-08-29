@@ -99,6 +99,9 @@ describe("chat tool summary utilities", () => {
         { name: "exec", result: { output: "18 pass", exitCode: 0 } },
       ])
     ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue("Validation passes (exit code 0).\n\nLayer 2 fixed", [])
+    ).toBe("unsupported_completion");
     expect(findAssistantEvidenceIssue("I asked. Waiting for your answer.", [])).toBe(
       "missing_clarification"
     );
@@ -141,6 +144,24 @@ describe("chat tool summary utilities", () => {
         { name: "edit", result: { filePath: "/tmp/import.ts" } },
       ])
     ).toBeUndefined();
+
+    expect(
+      findAssistantEvidenceIssue("Done. Task complete and all plan items are satisfied.", [
+        {
+          name: "todo",
+          result: {
+            items: [
+              { content: "Implement importer", status: "completed" },
+              { content: "Obsolete migration", status: "cancelled" },
+            ],
+          },
+        },
+        { name: "edit", result: { filePath: "/tmp/import.ts" } },
+      ])
+    ).toBeUndefined();
+    const fallback = buildUnsupportedAssistantClaimMessage("incomplete_plan");
+    expect(fallback).toContain("mark obsolete items cancelled");
+    expect(fallback).not.toContain("switch agents");
   });
 
   test("distinguishes plan-only implementation replies from requested planning", () => {
@@ -229,7 +250,9 @@ describe("chat tool summary utilities", () => {
       true
     );
     expect(requiresToolEvidenceForMessage("Continue")).toBe(true);
+    expect(requiresToolEvidenceForMessage("Let's fix the importer.")).toBe(true);
     expect(requiresToolEvidenceForMessage("Review and audit this codebase.")).toBe(true);
+    expect(requiresToolEvidenceForMessage("Let's inspect this codebase.")).toBe(true);
     expect(requiresToolEvidenceForMessage("Look into the gateway crash.")).toBe(true);
     expect(requiresToolEvidenceForMessage("Create an implementation plan for the importer.")).toBe(
       false
@@ -349,6 +372,9 @@ describe("chat tool summary utilities", () => {
         "make an implementation.md.resolved and walkthrough.md.resolved"
       )
     ).toBe(true);
+    expect(
+      shouldPreferArtifactsForMessage("write deterministic artifacts under the output directory")
+    ).toBe(false);
     expect(shouldPreferArtifactsForMessage("hello what can you do")).toBe(false);
   });
 

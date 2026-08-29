@@ -489,8 +489,22 @@ If Cybara saves you time, consider supporting its development:
 ## Community
 
 - Website: [cybara.ai](https://cybara.ai)
+- Discord: [Join the Cybara community](https://discord.gg/zqz3nZj2pJ)
 - X: [@cybaraAI](https://x.com/cybaraAI)
 - Creator: [Carsen Klock](https://x.com/carsenklock)
+
+### $CYB Community Meme Token
+
+$CYB is Cybara's community meme token on Solana.
+
+- Contract address: `J2hyZSVokSTuy3bG85A5xfs3umCeGtqZZEdKtGTTpump`
+- Official market page: [View $CYB on Pump](https://pump.fun/coin/J2hyZSVokSTuy3bG85A5xfs3umCeGtqZZEdKtGTTpump)
+
+Trading fees support the continued development of the Cybara project.
+
+Meme tokens are highly volatile and speculative. Verify the contract address, trade responsibly,
+and never risk more than you can afford to lose. $CYB does not represent equity, ownership, or a
+claim on Cybara software or revenue.
 
 ## Contributing
 

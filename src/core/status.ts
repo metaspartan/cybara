@@ -117,6 +117,7 @@ type StatusCallback = (data: StatusPayload) => void;
 type StatusStreamCallback = (event: StatusStreamEvent) => void;
 
 const statusCallbacks = new Set<StatusCallback>();
+const sessionStatusCallbacks = new Map<string, Set<StatusCallback>>();
 const statusStreamCallbacks = new Set<StatusStreamCallback>();
 const log = createLogger("Status");
 
@@ -505,6 +506,18 @@ export function onStatus(callback: StatusCallback): () => void {
   };
 }
 
+export function onSessionStatus(sessionId: string, callback: StatusCallback): () => void {
+  const key = sessionId.trim();
+  if (!key) return () => undefined;
+  const callbacks = sessionStatusCallbacks.get(key) || new Set<StatusCallback>();
+  callbacks.add(callback);
+  sessionStatusCallbacks.set(key, callbacks);
+  return () => {
+    callbacks.delete(callback);
+    if (callbacks.size === 0) sessionStatusCallbacks.delete(key);
+  };
+}
+
 export function onStatusStream(callback: StatusStreamCallback): () => void {
   statusStreamCallbacks.add(callback);
   return () => {
@@ -587,6 +600,14 @@ export function broadcastStatus(status: StatusPayload): void {
     } catch {}
   }
 
+  if (sessionId) {
+    for (const callback of sessionStatusCallbacks.get(sessionId) || []) {
+      try {
+        callback(sequencedStatus);
+      } catch {}
+    }
+  }
+
   emitStatusStreamEvent({ ...sequencedStatus, type: "status" });
 
   if (sessionId && sequencedStatus.status === "idle") {
@@ -609,6 +630,7 @@ export function broadcastStatus(status: StatusPayload): void {
   log.debug("Broadcast status", {
     status: status.status,
     callbacks: statusCallbacks.size,
+    sessionCallbacks: sessionStatusCallbacks.size,
     streamCallbacks: statusStreamCallbacks.size,
     sseClients: sseClients.size,
   });

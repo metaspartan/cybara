@@ -17,7 +17,8 @@ import { createPortal } from "react-dom";
 import { useDeleteSession, usePinSession, useRenameSession, useSessions } from "@/hooks/useChat";
 import { chatApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { ChatMessage, SessionContextUsage, SessionTokenUsage } from "@/types";
+import type { BotRosterItem, ChatMessage, SessionContextUsage, SessionTokenUsage } from "@/types";
+import { BotAvatar } from "./BotAvatar";
 
 interface ChatHeaderTitleMenuProps {
   sessionId: string;
@@ -29,6 +30,7 @@ interface ChatHeaderTitleMenuProps {
   tokenUsage: SessionTokenUsage | null;
   appVersion?: string;
   onDeleted: () => void;
+  bot?: BotRosterItem | null;
 }
 
 const MENU_WIDTH = 256;
@@ -66,6 +68,7 @@ export function ChatHeaderTitleMenu({
   tokenUsage,
   appVersion,
   onDeleted,
+  bot,
 }: ChatHeaderTitleMenuProps) {
   const { data: sessionsList } = useSessions();
   const renameSession = useRenameSession();
@@ -96,7 +99,7 @@ export function ChatHeaderTitleMenu({
     return null;
   }, [currentSummary, messages]);
 
-  const title = derivedTitle ?? "Untitled chat";
+  const title = bot?.name ?? derivedTitle ?? "Untitled chat";
 
   const updateMenuPosition = useCallback(() => {
     const rect = rootRef.current?.getBoundingClientRect();
@@ -167,6 +170,7 @@ export function ChatHeaderTitleMenu({
         createdAt: currentSummary?.created_at ?? null,
         updatedAt: currentSummary?.updated_at ?? null,
         messageCount: messages.length,
+        bot: bot ? { id: bot.id, name: bot.name, title: bot.title } : null,
       },
       context: contextUsage ?? null,
       tokenUsage: tokenUsage ?? null,
@@ -200,6 +204,7 @@ export function ChatHeaderTitleMenu({
     contextUsage,
     tokenUsage,
     messages,
+    bot,
     flashCopy,
   ]);
 
@@ -326,26 +331,30 @@ export function ChatHeaderTitleMenu({
           </span>
         </button>
         <div className="my-1 h-px bg-white/10" />
-        <button
-          type="button"
-          onClick={() => void handleTogglePin()}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
-        >
-          {currentSummary?.pinned ? (
-            <PinOff className="w-3.5 h-3.5 text-gray-400" />
-          ) : (
-            <Pin className="w-3.5 h-3.5 text-gray-400" />
-          )}
-          {currentSummary?.pinned ? "Unpin" : "Pin"}
-        </button>
-        <button
-          type="button"
-          onClick={beginRename}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
-        >
-          <Pencil className="w-3.5 h-3.5 text-gray-400" />
-          Rename
-        </button>
+        {!bot ? (
+          <>
+            <button
+              type="button"
+              onClick={() => void handleTogglePin()}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
+            >
+              {currentSummary?.pinned ? (
+                <PinOff className="w-3.5 h-3.5 text-gray-400" />
+              ) : (
+                <Pin className="w-3.5 h-3.5 text-gray-400" />
+              )}
+              {currentSummary?.pinned ? "Unpin" : "Pin"}
+            </button>
+            <button
+              type="button"
+              onClick={beginRename}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
+            >
+              <Pencil className="w-3.5 h-3.5 text-gray-400" />
+              Rename
+            </button>
+          </>
+        ) : null}
         <button
           type="button"
           onClick={() => void handleCopyLink()}
@@ -398,15 +407,19 @@ export function ChatHeaderTitleMenu({
           <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
           Open in new window
         </button>
-        <div className="my-1 h-px bg-white/10" />
-        <button
-          type="button"
-          onClick={() => void handleDelete()}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-red-400 transition-colors hover:bg-red-500/10"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-          Delete chat
-        </button>
+        {!bot ? (
+          <>
+            <div className="my-1 h-px bg-white/10" />
+            <button
+              type="button"
+              onClick={() => void handleDelete()}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-red-400 transition-colors hover:bg-red-500/10"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete chat
+            </button>
+          </>
+        ) : null}
       </div>,
       document.body
     );
@@ -432,6 +445,23 @@ export function ChatHeaderTitleMenu({
             className="w-40 sm:w-64 bg-white/5 border border-white/15 rounded-md px-2 py-1 text-sm font-semibold text-white outline-none focus:border-white/30"
             placeholder="Chat title"
           />
+        ) : bot ? (
+          <div className="flex min-w-0 items-center gap-2">
+            <BotAvatar
+              bot={bot}
+              active={false}
+              className="h-8 w-8 rounded-[11px] text-[10px]"
+              showPresence={false}
+            />
+            <span className="flex min-w-0 flex-col">
+              <span className="max-w-[8rem] truncate text-sm font-semibold text-[var(--text-primary)] sm:max-w-xs">
+                {bot.name}
+              </span>
+              <span className="hidden max-w-xs truncate text-[10px] text-[var(--text-muted)] sm:block">
+                {bot.title}
+              </span>
+            </span>
+          </div>
         ) : (
           <button
             type="button"

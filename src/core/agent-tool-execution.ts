@@ -54,6 +54,17 @@ function normalizeErrorMessage(error: unknown): string {
   return String(error || "Unknown error");
 }
 
+function isAcceptedSubagentSpawn(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return (value as { status?: unknown }).status === "accepted";
+}
+
+function releaseSubagentSpawnReservation(toolContext?: ToolContext): void {
+  const state = toolContext?.orchestrationState;
+  if (!state) return;
+  state.subagentSpawnsStarted = Math.max(0, state.subagentSpawnsStarted - 1);
+}
+
 async function executeAgentToolInternal(
   options: AgentToolExecutionOptions
 ): Promise<AgentToolExecutionOutcome> {
@@ -151,6 +162,31 @@ async function executeAgentToolInternal(
     return { skipped: false, result: { error: reason } };
   }
 
+  const orchestrationState = toolContext?.orchestrationState;
+  const configuredSpawnLimit = orchestrationState?.subagentSpawnLimit;
+  let reservedSubagentSpawn = false;
+  if (
+    toolName === "sessions_spawn" &&
+    orchestrationState &&
+    typeof configuredSpawnLimit === "number" &&
+    Number.isFinite(configuredSpawnLimit)
+  ) {
+    const spawnLimit = Math.max(0, Math.floor(configuredSpawnLimit));
+    if (orchestrationState.subagentSpawnsStarted >= spawnLimit) {
+      const reason = `Sub-agent spawn budget reached (${spawnLimit}) for this turn; wait for the existing delegated tasks and return the requested final response.`;
+      await emitAgentHook({
+        type: "tool_blocked",
+        context: hookContext,
+        toolName,
+        args,
+        reason,
+      });
+      return { skipped: false, result: { error: reason, blocked: true } };
+    }
+    orchestrationState.subagentSpawnsStarted += 1;
+    reservedSubagentSpawn = true;
+  }
+
   const toolCallId = createAgentToolCallStatusId(toolName);
   try {
     const startedAt = Date.now();
@@ -165,6 +201,10 @@ async function executeAgentToolInternal(
       }
     );
     const result = await executeTool(toolName, args, toolContext);
+    if (reservedSubagentSpawn) {
+      if (!isAcceptedSubagentSpawn(result)) releaseSubagentSpawnReservation(toolContext);
+      reservedSubagentSpawn = false;
+    }
     const isPlainResult = result && typeof result === "object" && !Array.isArray(result);
     const todoReminder = noteToolActivityForTodoReminder(toolName, toolContext);
     if (todoReminder && isPlainResult) {
@@ -198,6 +238,7 @@ async function executeAgentToolInternal(
     });
     return { skipped: false, result };
   } catch (error) {
+    if (reservedSubagentSpawn) releaseSubagentSpawnReservation(toolContext);
     const errorMessage = sanitizeToolErrorMessage(normalizeErrorMessage(error));
     const blocked = isToolPolicyBlockedMessage(errorMessage);
     const phase = blocked ? "blocked" : "error";

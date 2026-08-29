@@ -18,9 +18,28 @@ describe("browser preview stream input", () => {
       x: 120.5,
       y: 64,
     });
+    expect(parseBrowserPreviewInput({ type: "pointer_move", x: 9, y: 10 })).toEqual({
+      type: "pointer_move",
+      x: 9,
+      y: 10,
+    });
+    expect(parseBrowserPreviewInput({ type: "pointer_down", x: 11, y: 12 })).toEqual({
+      type: "pointer_down",
+      x: 11,
+      y: 12,
+    });
+    expect(parseBrowserPreviewInput({ type: "pointer_up", x: 13, y: 14 })).toEqual({
+      type: "pointer_up",
+      x: 13,
+      y: 14,
+    });
     expect(parseBrowserPreviewInput({ type: "keyboard", key: "Meta+K" })).toEqual({
       type: "keyboard",
       key: "Meta+K",
+    });
+    expect(parseBrowserPreviewInput({ type: "text", text: "pasted text" })).toEqual({
+      type: "text",
+      text: "pasted text",
     });
   });
 
@@ -34,6 +53,8 @@ describe("browser preview stream input", () => {
     expect(parseBrowserPreviewInput({ type: "pointer_click", x: 10_001, y: 2 })).toBeNull();
     expect(parseBrowserPreviewInput({ type: "keyboard", key: "" })).toBeNull();
     expect(parseBrowserPreviewInput({ type: "keyboard", key: "x".repeat(33) })).toBeNull();
+    expect(parseBrowserPreviewInput({ type: "text", text: "" })).toBeNull();
+    expect(parseBrowserPreviewInput({ type: "text", text: "x".repeat(1_001) })).toBeNull();
     expect(parseBrowserPreviewInput({ type: "unknown" })).toBeNull();
   });
 
@@ -46,8 +67,20 @@ describe("browser preview stream input", () => {
       async click(pageId, x, y) {
         calls.push(`click:${pageId}:${x}:${y}`);
       },
+      async move(pageId, x, y) {
+        calls.push(`move:${pageId}:${x}:${y}`);
+      },
+      async pointerDown(pageId, x, y) {
+        calls.push(`down:${pageId}:${x}:${y}`);
+      },
+      async pointerUp(pageId, x, y) {
+        calls.push(`up:${pageId}:${x}:${y}`);
+      },
       async keyboard(pageId, key) {
         calls.push(`keyboard:${pageId}:${key}`);
+      },
+      async text(pageId, text) {
+        calls.push(`text:${pageId}:${text}`);
       },
       invalidate(pageId) {
         calls.push(`invalidate:${pageId}`);
@@ -56,14 +89,26 @@ describe("browser preview stream input", () => {
 
     await executeBrowserPreviewInput("page-1", { type: "scroll", deltaX: 4, deltaY: 8 }, handlers);
     await executeBrowserPreviewInput("page-1", { type: "pointer_click", x: 10, y: 20 }, handlers);
+    await executeBrowserPreviewInput("page-1", { type: "pointer_move", x: 11, y: 21 }, handlers);
+    await executeBrowserPreviewInput("page-1", { type: "pointer_down", x: 12, y: 22 }, handlers);
+    await executeBrowserPreviewInput("page-1", { type: "pointer_up", x: 13, y: 23 }, handlers);
     await executeBrowserPreviewInput("page-1", { type: "keyboard", key: "Enter" }, handlers);
+    await executeBrowserPreviewInput("page-1", { type: "text", text: "hello" }, handlers);
 
     expect(calls).toEqual([
       "scroll:page-1:4:8",
       "invalidate:page-1",
       "click:page-1:10:20",
       "invalidate:page-1",
+      "move:page-1:11:21",
+      "invalidate:page-1",
+      "down:page-1:12:22",
+      "invalidate:page-1",
+      "up:page-1:13:23",
+      "invalidate:page-1",
       "keyboard:page-1:Enter",
+      "invalidate:page-1",
+      "text:page-1:hello",
       "invalidate:page-1",
     ]);
   });
@@ -80,8 +125,10 @@ describe("browser preview stream input", () => {
         if (executed.length === 1) await firstPending;
       } else if (input.type === "pointer_click") {
         executed.push(`click:${input.x}:${input.y}`);
-      } else {
+      } else if (input.type === "keyboard") {
         executed.push(`keyboard:${input.key}`);
+      } else {
+        executed.push(input.type);
       }
     });
 
@@ -102,6 +149,40 @@ describe("browser preview stream input", () => {
       "click:40:50",
       "scroll:0:130",
       "keyboard:Enter",
+    ]);
+    queue.dispose();
+  });
+
+  test("coalesces pointer movement without crossing press boundaries", async () => {
+    let releaseFirst: (() => void) | null = null;
+    const firstPending = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const executed: string[] = [];
+    const queue = new BrowserPreviewInputQueue(async (input) => {
+      if (input.type === "pointer_move") {
+        executed.push(`move:${input.x}:${input.y}`);
+        if (executed.length === 1) await firstPending;
+      } else if (input.type === "pointer_down" || input.type === "pointer_up") {
+        executed.push(`${input.type}:${input.x}:${input.y}`);
+      }
+    });
+    queue.enqueue({ type: "pointer_move", x: 1, y: 1 });
+    await Bun.sleep(0);
+    queue.enqueue({ type: "pointer_move", x: 2, y: 2 });
+    queue.enqueue({ type: "pointer_move", x: 3, y: 3 });
+    queue.enqueue({ type: "pointer_down", x: 3, y: 3 });
+    queue.enqueue({ type: "pointer_move", x: 4, y: 4 });
+    queue.enqueue({ type: "pointer_move", x: 5, y: 5 });
+    queue.enqueue({ type: "pointer_up", x: 5, y: 5 });
+    releaseFirst?.();
+    await queue.whenIdle();
+    expect(executed).toEqual([
+      "move:1:1",
+      "move:3:3",
+      "pointer_down:3:3",
+      "move:5:5",
+      "pointer_up:5:5",
     ]);
     queue.dispose();
   });

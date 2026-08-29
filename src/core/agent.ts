@@ -1,4 +1,10 @@
 import { truncateTextWithHeadAndTail } from "./agent-context-guard";
+import {
+  DEFERRED_EXECUTION_CONTINUATION_PROMPT,
+  requestedDeliverablePathsFromMessages,
+  shouldContinueDeferredExecution,
+  toolsForDeferredDeliverable,
+} from "./agent-deferred-continuation";
 import { formatLlmFailure } from "./agent-error-format";
 import {
   type AgentToolCallResult,
@@ -38,7 +44,6 @@ import {
   markProviderAccountHealthy,
   markProviderAccountUnavailable,
   type ProviderAccountFailure,
-  parseProviderAccountPoolRouteId,
 } from "./provider-account-pool";
 import {
   getDefaultModel,
@@ -63,7 +68,8 @@ import {
   getDefaultSystemPrompt,
   resolveModelAlias,
 } from "./system-prompt";
-import { getToolSchemasForLLM, type ToolContext } from "./tools/index";
+import { getToolSchemasForLLM } from "./tools/registry";
+import type { ToolContext, ToolOrchestrationState } from "./tools/types";
 import { resolveAgentToolPolicy } from "./toolsets";
 
 export { resolveAgentToolSelection } from "./agent-tool-selection";
@@ -172,6 +178,7 @@ interface AgentExecutionOptions {
   modelParamsOverride?: Record<string, unknown>;
   maxToolCalls?: number;
   maxOutputTokens?: number;
+  orchestrationState?: ToolOrchestrationState;
 }
 
 interface RunningAgentState {
@@ -209,6 +216,57 @@ export interface AgentExecutionFailure {
 
 class AgentManager extends AgentProviderRuntime {
   private runningAgents: Map<string, RunningAgentState> = new Map();
+
+  private async callLLMWithDeferredContinuation(
+    provider: ResolvedProvider,
+    model: string | undefined,
+    messages: AgentMessage[],
+    tools: ToolDefinition[],
+    toolContext?: ToolContext
+  ): Promise<AgentExecutionResult> {
+    const combinedToolCalls: AgentToolCallResult[] = [];
+    const thinkingParts: string[] = [];
+    let currentMessages = [...messages];
+    let result: AgentExecutionResult = { content: "" };
+    const requestedPaths = requestedDeliverablePathsFromMessages(messages);
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const continuationTools = toolsForDeferredDeliverable(tools, attempt, requestedPaths);
+      const continuationToolContext = toolContext
+        ? {
+            ...toolContext,
+            requireToolUse: attempt > 0 || toolContext.requireToolUse === true,
+            deferredContinuation: attempt > 0,
+          }
+        : undefined;
+      result = await this.callLLM(
+        provider,
+        model,
+        currentMessages,
+        continuationTools,
+        continuationToolContext
+      );
+      if (result.tool_calls?.length) combinedToolCalls.push(...result.tool_calls);
+      if (result.thinking?.trim()) thinkingParts.push(result.thinking.trim());
+      if (
+        attempt >= 3 ||
+        !shouldContinueDeferredExecution(currentMessages, result.content, result.tool_calls)
+      ) {
+        break;
+      }
+      currentMessages = [
+        ...currentMessages,
+        { role: "assistant", content: result.content },
+        { role: "user", content: DEFERRED_EXECUTION_CONTINUATION_PROMPT },
+      ];
+    }
+
+    return {
+      ...result,
+      thinking: thinkingParts.length > 0 ? thinkingParts.join("\n\n") : result.thinking,
+      tool_calls: combinedToolCalls.length > 0 ? combinedToolCalls : result.tool_calls,
+    };
+  }
 
   private formatProviderFailure(error: unknown, provider: ResolvedProvider): string {
     const catalogEntry = providerCatalog[provider.provider as ProviderType];
@@ -304,7 +362,13 @@ class AgentManager extends AgentProviderRuntime {
     for (const candidate of candidates) {
       const toolCallsBefore = toolContext?.executionState?.toolCallsStarted ?? 0;
       try {
-        const result = await this.callLLM(candidate, model, messages, tools, toolContext);
+        const result = await this.callLLMWithDeferredContinuation(
+          candidate,
+          model,
+          messages,
+          tools,
+          toolContext
+        );
         markProviderAccountHealthy(candidate.id);
         return {
           ...result,
@@ -328,7 +392,13 @@ class AgentManager extends AgentProviderRuntime {
           });
           if (refreshed) {
             try {
-              const result = await this.callLLM(refreshed, model, messages, tools, toolContext);
+              const result = await this.callLLMWithDeferredContinuation(
+                refreshed,
+                model,
+                messages,
+                tools,
+                toolContext
+              );
               markProviderAccountHealthy(candidate.id);
               return {
                 ...result,
@@ -1148,7 +1218,7 @@ class AgentManager extends AgentProviderRuntime {
     toolContext.routerRouteId = target.routeId;
 
     const routerActive = options?.useModelRouter === true && !!provider;
-    const routedToDifferentProvider = routerActive && provider!.id !== agent.provider_id;
+    const routedToDifferentProvider = routerActive && provider.id !== agent.provider_id;
     const routedModel =
       routerActive && target.routeId ? getRouterRouteModel(target.routeId) : undefined;
     const overrideModel =
@@ -1159,7 +1229,7 @@ class AgentManager extends AgentProviderRuntime {
       routedModel ||
       overrideModel ||
       (routedToDifferentProvider
-        ? this.resolveModelForRoutedProvider(provider!, agent.model)
+        ? this.resolveModelForRoutedProvider(provider, agent.model)
         : agent.model);
 
     const resolvedExecution = this.resolveProviderModelForExecution(provider, selectedModel);
@@ -1282,6 +1352,7 @@ class AgentManager extends AgentProviderRuntime {
       confineToWorkspace: true,
       consumeSteeringMessages: options?.consumeSteeringMessages,
       executionState: { nextToolCallOrder: 0, toolCallsStarted: 0, toolCalls: [] },
+      orchestrationState: options?.orchestrationState,
     };
   }
 

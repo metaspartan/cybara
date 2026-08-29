@@ -27,6 +27,7 @@ import {
   sessionIdForVisibleTokenUsage,
 } from "./agent-provider-common-runtime";
 import { hasAgentTransferEnvelope } from "./agent-transfer";
+import { openAIImageToolFollowup } from "./agent-tool-images";
 import {
   countWebResearchCalls,
   toolsAfterWebResearchBudget,
@@ -36,6 +37,7 @@ import {
 import type { ToolDefinition } from "./database";
 import { normalizeModelToolCalls } from "./llm/model-dialect";
 import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
+import { canRunToolsInParallel } from "./llm/parallel-tools";
 import { toOpenAIChatHistory } from "./llm/provider-history";
 import {
   sanitizeAssistantContent,
@@ -169,6 +171,25 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
       }> = [];
       const iterationToolCalls: AgentToolCallResult[] = [];
 
+      const preStarted = new Map<string, ReturnType<typeof this.executeToolWithHooks>>();
+      if (canRunToolsInParallel(normalizedToolCalls.map((toolCall) => toolCall.name))) {
+        for (const toolCall of normalizedToolCalls) {
+          if (toolCall.id && toolCall.name) {
+            preStarted.set(
+              toolCall.id,
+              this.executeToolWithHooks(
+                toolCall.name,
+                toolCall.args,
+                allowedToolNames,
+                toolContext,
+                hookContext,
+                loopRuntimeTracker
+              )
+            );
+          }
+        }
+      }
+
       for (const toolCall of normalizedToolCalls) {
         const toolName = toolCall.name;
         const toolCallId = toolCall.id;
@@ -197,14 +218,15 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
           });
           continue;
         }
-        const executed = await this.executeToolWithHooks(
-          toolName,
-          args,
-          allowedToolNames,
-          toolContext,
-          hookContext,
-          loopRuntimeTracker
-        );
+        const executed = await (preStarted.get(toolCallId) ??
+          this.executeToolWithHooks(
+            toolName,
+            args,
+            allowedToolNames,
+            toolContext,
+            hookContext,
+            loopRuntimeTracker
+          ));
         const resultPayload =
           executed.result === undefined
             ? { error: `Tool execution skipped for ${toolName}` }
@@ -295,6 +317,8 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
+      const imageFollowup = await openAIImageToolFollowup(iterationToolCalls);
+      if (imageFollowup) currentMessages.push(imageFollowup);
       if (notifyWebResearchBudget) {
         currentMessages.push({
           role: "user",

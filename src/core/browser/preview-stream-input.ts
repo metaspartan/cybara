@@ -4,12 +4,20 @@ import { invalidateBrowserPreview } from "./preview-cache";
 export type BrowserPreviewInput =
   | { type: "scroll"; deltaX: number; deltaY: number }
   | { type: "pointer_click"; x: number; y: number }
-  | { type: "keyboard"; key: string };
+  | { type: "pointer_move"; x: number; y: number }
+  | { type: "pointer_down"; x: number; y: number }
+  | { type: "pointer_up"; x: number; y: number }
+  | { type: "keyboard"; key: string }
+  | { type: "text"; text: string };
 
 export interface BrowserPreviewInputHandlers {
   scroll(pageId: string, deltaX: number, deltaY: number): Promise<void>;
   click(pageId: string, x: number, y: number): Promise<void>;
+  move(pageId: string, x: number, y: number): Promise<void>;
+  pointerDown(pageId: string, x: number, y: number): Promise<void>;
+  pointerUp(pageId: string, x: number, y: number): Promise<void>;
   keyboard(pageId: string, key: string): Promise<void>;
+  text(pageId: string, text: string): Promise<void>;
   invalidate(pageId: string): void;
 }
 
@@ -46,6 +54,8 @@ export class BrowserPreviewInputQueue {
     const last = this.queue.at(-1);
     if (last?.type === "scroll" && input.type === "scroll") {
       this.queue[this.queue.length - 1] = mergeScrollInput(last, input);
+    } else if (last?.type === "pointer_move" && input.type === "pointer_move") {
+      this.queue[this.queue.length - 1] = input;
     } else {
       this.queue.push(input);
     }
@@ -88,7 +98,11 @@ export class BrowserPreviewInputQueue {
 const defaultHandlers: BrowserPreviewInputHandlers = {
   scroll: pwManager.scrollPage,
   click: pwManager.clickAt,
+  move: pwManager.movePointerAt,
+  pointerDown: pwManager.pointerDownAt,
+  pointerUp: pwManager.pointerUpAt,
   keyboard: pwManager.sendKey,
+  text: pwManager.sendText,
   invalidate: invalidateBrowserPreview,
 };
 
@@ -109,16 +123,25 @@ export function parseBrowserPreviewInput(value: unknown): BrowserPreviewInput | 
       deltaY: boundedScrollDelta(deltaY),
     };
   }
-  if (input.type === "pointer_click") {
+  if (
+    input.type === "pointer_click" ||
+    input.type === "pointer_move" ||
+    input.type === "pointer_down" ||
+    input.type === "pointer_up"
+  ) {
     const x = finiteNumber(input.x);
     const y = finiteNumber(input.y);
     return x === null || y === null || x < 0 || y < 0 || x > 10_000 || y > 10_000
       ? null
-      : { type: "pointer_click", x, y };
+      : { type: input.type, x, y };
   }
   if (input.type === "keyboard") {
     const key = typeof input.key === "string" ? input.key : "";
     return key.length > 0 && key.length <= 32 ? { type: "keyboard", key } : null;
+  }
+  if (input.type === "text") {
+    const text = typeof input.text === "string" ? input.text : "";
+    return text.length > 0 && text.length <= 1_000 ? { type: "text", text } : null;
   }
   return null;
 }
@@ -130,6 +153,10 @@ export async function executeBrowserPreviewInput(
 ): Promise<void> {
   if (input.type === "scroll") await handlers.scroll(pageId, input.deltaX, input.deltaY);
   else if (input.type === "pointer_click") await handlers.click(pageId, input.x, input.y);
-  else await handlers.keyboard(pageId, input.key);
+  else if (input.type === "pointer_move") await handlers.move(pageId, input.x, input.y);
+  else if (input.type === "pointer_down") await handlers.pointerDown(pageId, input.x, input.y);
+  else if (input.type === "pointer_up") await handlers.pointerUp(pageId, input.x, input.y);
+  else if (input.type === "keyboard") await handlers.keyboard(pageId, input.key);
+  else await handlers.text(pageId, input.text);
   handlers.invalidate(pageId);
 }

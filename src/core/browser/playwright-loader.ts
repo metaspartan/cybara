@@ -6,6 +6,13 @@ type ChromiumApi = typeof import("playwright")["chromium"];
 
 let cached: ChromiumApi | null = null;
 
+async function installEmbeddedPlaywrightRuntime(): Promise<void> {
+  const runtime = globalThis as typeof globalThis & {
+    __CYBARA_INSTALL_PLAYWRIGHT_RUNTIME__?: () => Promise<string>;
+  };
+  await runtime.__CYBARA_INSTALL_PLAYWRIGHT_RUNTIME__?.();
+}
+
 async function importModule(specifier: string): Promise<Record<string, unknown>> {
   return (await import(specifier)) as Record<string, unknown>;
 }
@@ -108,6 +115,7 @@ function resolveChromium(mod: Record<string, unknown>): ChromiumApi | undefined 
 export async function getChromium(): Promise<ChromiumApi> {
   if (cached) return cached;
 
+  await installEmbeddedPlaywrightRuntime();
   configureHermeticPlaywrightBrowserPath();
 
   const failures: string[] = [];

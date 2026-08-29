@@ -2,7 +2,7 @@ import { parseAgentConfig } from "./agent-internals";
 import { isLegacyBuiltinSnapshot, normalizeExplicitAgentTools } from "./agent-tool-normalization";
 import { resolveAgentToolSelection } from "./agent-tool-selection";
 import type { Agent, ToolDefinition } from "./database";
-import { getToolSchemasForLLM, isToolEnabledForAgent } from "./tools/index";
+import { getToolSchemasForLLM, isToolEnabledForAgent } from "./tools/registry";
 
 export const TOOL_PROFILE_IDS = ["full", "coding", "research", "safe"] as const;
 export type ToolProfileId = (typeof TOOL_PROFILE_IDS)[number];
@@ -163,6 +163,7 @@ const directToolNames = new Set([
   "browser",
   "computer_use",
   "mobile_simulator",
+  "image",
   "web_fetch",
   "web_search",
   "memory_search",

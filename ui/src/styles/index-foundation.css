@@ -906,9 +906,10 @@ textarea[data-chat-composer-input="true"]::placeholder {
 }
 
 .new-chat-workspace-bar {
-  background: color-mix(in srgb, var(--surface-panel) 88%, var(--surface-raised));
+  background: color-mix(in srgb, var(--surface-raised) 86%, transparent);
   border-color: var(--surface-border);
   color: var(--text-secondary);
+  backdrop-filter: blur(18px);
 }
 
 .chat-goal-bar + .chat-composer-responsive {

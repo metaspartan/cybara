@@ -3,7 +3,6 @@ import { agentManager } from "../../src/core/agent";
 import { config } from "../../src/core/config";
 import { providerManager } from "../../src/core/providers";
 import { getProviderAvailability, resetRouterForTests } from "../../src/core/router";
-import { summarizeSessionTokenUsage } from "../../src/core/session-context";
 import { onStatus } from "../../src/core/status";
 
 const createdAgentIds: string[] = [];

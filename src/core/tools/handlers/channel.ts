@@ -21,7 +21,12 @@ import { config } from "../../config";
 import type { Channel } from "../../database";
 import { providerManager } from "../../providers";
 import { getProviderAvailability } from "../../router";
-import { broadcastStatus, onStatus, type StatusPayload, type ToolStatusPhase } from "../../status";
+import {
+  broadcastStatus,
+  onSessionStatus,
+  type StatusPayload,
+  type ToolStatusPhase,
+} from "../../status";
 import type { SubagentRunRecord } from "../../subagent-registry";
 import * as subagentRegistry from "../../subagent-registry";
 import type { ToolContext } from "../index";
@@ -53,6 +58,8 @@ interface SubagentSession {
 const sessions = new Map<string, SubagentSession>();
 const subagentAbortControllers = new Map<string, AbortController>();
 const DEFAULT_SUBAGENT_MAX_ACTIVE_CHILDREN = 3;
+const SUBAGENT_MAX_ACTIVITIES = 300;
+const SUBAGENT_MAX_TOOL_CALLS = 100;
 
 export function getSubagentSession(sessionKey: string): SubagentSession | undefined {
   return sessions.get(sessionKey);
@@ -423,7 +430,10 @@ export async function handleSessionsWait(
   } as const;
   if (pendingRunIds.length === 0) {
     for (const run of completedRuns) {
-      if (run.cleanup === "delete") subagentRegistry.releaseSubagentRun(run.runId);
+      if (run.cleanup === "delete") {
+        subagentRegistry.releaseSubagentRun(run.runId);
+        clearSubagentSession(run.childSessionKey);
+      }
     }
   }
   return result;
@@ -499,6 +509,9 @@ function recordSubagentActivity(
     };
     if (matchingIndex >= 0) activities[matchingIndex] = activity;
     else activities.push(activity);
+    if (activities.length > SUBAGENT_MAX_ACTIVITIES) {
+      activities.splice(0, activities.length - SUBAGENT_MAX_ACTIVITIES);
+    }
     return true;
   }
 
@@ -520,6 +533,9 @@ function recordSubagentActivity(
     timestamp: payload.timestamp,
     toolName: "__thought",
   });
+  if (activities.length > SUBAGENT_MAX_ACTIVITIES) {
+    activities.splice(0, activities.length - SUBAGENT_MAX_ACTIVITIES);
+  }
   return true;
 }
 
@@ -542,6 +558,9 @@ function recordSubagentToolCall(
   };
   if (existingIndex >= 0) toolCalls[existingIndex] = next;
   else toolCalls.push(next);
+  if (toolCalls.length > SUBAGENT_MAX_TOOL_CALLS) {
+    toolCalls.splice(0, toolCalls.length - SUBAGENT_MAX_TOOL_CALLS);
+  }
   return true;
 }
 
@@ -558,8 +577,14 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
   const liveToolCalls: subagentRegistry.SubagentToolCall[] = [];
   const abortController = new AbortController();
   subagentAbortControllers.set(sessionId, abortController);
-  const stopStatusCapture = onStatus((payload) => {
-    if (payload.sessionId !== sessionId) return;
+  const executionTimeout = session.timeout
+    ? setTimeout(() => {
+        if (run) subagentRegistry.markRunTimedOut(run.runId);
+        abortController.abort(new Error(`Subagent timed out after ${session.timeout}s`));
+      }, session.timeout * 1000)
+    : undefined;
+  executionTimeout?.unref?.();
+  const stopStatusCapture = onSessionStatus(sessionId, (payload) => {
     const activityChanged = recordSubagentActivity(activities, payload);
     const toolCallChanged = recordSubagentToolCall(liveToolCalls, payload);
     if ((activityChanged || toolCallChanged) && run) {
@@ -624,9 +649,11 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
     );
   } catch (error) {
     if (abortController.signal.aborted) {
-      session.status = "killed";
+      const timedOut = run && subagentRegistry.getRun(run.runId)?.outcome?.status === "timeout";
+      session.status = timedOut ? "failed" : "killed";
+      session.error = timedOut ? subagentRegistry.getRun(run.runId)?.outcome?.error : undefined;
       session.completedAt = new Date().toISOString();
-      if (run && subagentRegistry.getRun(run.runId)?.outcome?.status !== "killed") {
+      if (run && !timedOut && subagentRegistry.getRun(run.runId)?.outcome?.status !== "killed") {
         subagentRegistry.markRunKilled(run.runId);
       }
       return;
@@ -641,6 +668,7 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
 
     console.error(`[Subagent] Session ${sessionId} failed:`, error);
   } finally {
+    if (executionTimeout) clearTimeout(executionTimeout);
     broadcastStatus({
       status: "idle",
       sessionId,
@@ -672,6 +700,8 @@ export function clearSubagentSession(sessionKey: string): void {
   subagentAbortControllers.delete(sessionKey);
   sessions.delete(sessionKey);
 }
+
+subagentRegistry.onSubagentArchive(clearSubagentSession);
 
 export async function handleSessionsSend(
   args: Record<string, unknown>,

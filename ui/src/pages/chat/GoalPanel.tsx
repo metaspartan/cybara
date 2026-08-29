@@ -97,7 +97,7 @@ export function GoalPanel({
     if (loading) {
       if (layout === "new-chat") {
         return (
-          <div className="new-chat-workspace-bar mx-4 flex h-9 min-w-0 items-center gap-2 rounded-t-[18px] border border-b-0 px-3 text-[12px]">
+          <div className="new-chat-workspace-bar mx-3 mb-2 flex min-h-10 min-w-0 items-center gap-2 rounded-2xl border px-3 py-1.5 text-[12px] shadow-sm">
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--icon-muted)]" />
             <span className="text-[var(--text-muted)]">Loading goal...</span>
           </div>
@@ -181,7 +181,7 @@ export function GoalPanel({
 
   if (layout === "new-chat") {
     return (
-      <div className="new-chat-workspace-bar mx-4 flex h-9 min-w-0 items-center gap-2 rounded-t-[18px] border border-b-0 px-3 text-[12px]">
+      <div className="new-chat-workspace-bar mx-3 mb-2 flex min-h-10 min-w-0 items-center gap-2 rounded-2xl border px-3 py-1.5 text-[12px] shadow-sm">
         <Target className="h-3.5 w-3.5 shrink-0 text-[var(--icon-muted)]" />
         <span
           className="min-w-0 flex-1 truncate font-medium text-[var(--text-primary)]"

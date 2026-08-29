@@ -18,8 +18,8 @@ import {
 } from "./api/gateway-network";
 import { gatewayRequestIdleTimeoutSeconds } from "./api/gateway-request-timeout";
 import { createLivenessPayload, isLivenessProbe } from "./api/health-probe";
+import { createLazyApiRouteHandler } from "./api/lazy-route-handler";
 import { classifyRequestBodyReadFailure, readRequestText } from "./api/request-body";
-import { handleRequest } from "./api/routes";
 import {
   getGatewayAuthSettings,
   getGatewayBasePath,
@@ -115,9 +115,24 @@ import {
   handleMemoryList,
   handleMemorySearch,
 } from "./core/tools/handlers/memory";
-import { toolSchemas } from "./core/tools/index";
+import { toolSchemas } from "./core/tools/registry";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const handleApiRequest = createLazyApiRouteHandler(async () => {
+  const apiRoutes = await import("./api/routes");
+  return apiRoutes.handleRequest;
+});
+
+const handleHealthApiRequest = createLazyApiRouteHandler(async () => {
+  const healthApi = await import("./api/health-request-handler");
+  return healthApi.handleLightweightHealthRequest;
+});
+
+const handleChatApiRequest = createLazyApiRouteHandler(async () => {
+  const chatApi = await import("./api/chat-request-handler");
+  return chatApi.handleLightweightChatRequest;
+});
 
 installGatewayLogCapture({ environment: process.env });
 startNativeParentWatch();
@@ -680,7 +695,7 @@ function createGatewayServer(
             ? undefined
             : securityCheck(req.method, pathname, requestHeaders, clientIp);
         if (preflightSecurity && !preflightSecurity.passed) {
-          const response = await handleRequest({
+          const response = await handleApiRequest({
             method: req.method,
             url: basePath ? `${url.origin}${pathname}${url.search}` : req.url,
             headers: requestHeaders,
@@ -751,7 +766,18 @@ function createGatewayServer(
             }
           );
         }
-        const response = await handleRequest({
+        const isHealthRequest =
+          req.method === "GET" &&
+          (pathname === "/api/health" ||
+            pathname === "/api/health/ready" ||
+            pathname === "/api/providers/health");
+        const requestHandler =
+          req.method === "POST" && pathname === "/api/chat"
+            ? handleChatApiRequest
+            : isHealthRequest
+              ? handleHealthApiRequest
+              : handleApiRequest;
+        const response = await requestHandler({
           method: req.method,
           url: basePath ? `${url.origin}${pathname}${url.search}` : req.url,
           headers: requestHeaders,
@@ -1004,7 +1030,7 @@ function createGatewayServer(
             }
             return;
           }
-          if (Buffer.byteLength(text) > 2_048) return;
+          if (Buffer.byteLength(text) > 8_192) return;
           let parsed: unknown;
           try {
             parsed = JSON.parse(text);

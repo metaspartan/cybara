@@ -852,7 +852,7 @@ The child result is not inserted into the parent transcript automatically. Call 
   wallet: {
     name: "wallet",
     description:
-      "Use the local encrypted multi-chain wallet (ETH, BTC, SOL). Read-only actions include status, addresses, accounts, native/token balances, transaction history, receive addresses, direct RPC reads, price quotes (Chainlink/Pyth/Jupiter), endpoint discovery, dapp capabilities, and dry-run swap quotes. Fund-moving or signing actions include sends, message signing, ERC-20/SPL transfers, ETH contract writes, Solana program instructions, swap execution (Uniswap v2/v3, Jupiter), dapp adapter writes, and x402 paid HTTP requests; those require explicit user intent, wallet agent access, policy approval, and an unlocked wallet.",
+      "Use the local encrypted multi-chain wallet (ETH, BTC, SOL). Read-only actions include status, addresses, accounts, native/token balances, transaction history, receive addresses, direct RPC reads, price quotes (Chainlink/Pyth/Jupiter), endpoint discovery, dapp capabilities, and dry-run swap quotes. Fund-moving or signing actions include sends, message signing, ERC-20/SPL transfers, ETH contract writes, Solana program instructions, swap execution (Uniswap v2/v3, Jupiter, Pump), dapp adapter writes, and x402 paid HTTP requests; those require explicit user intent, wallet agent access, policy approval, and an unlocked wallet.",
     category: "core",
     input_schema: {
       type: "object",
@@ -934,7 +934,7 @@ The child result is not inserted into the parent transcript automatically. Call 
         tokenAddress: {
           type: "string",
           description:
-            "ERC-20 contract address (ETH) or SPL mint address (SOL) for send_token/token_transactions",
+            "ERC-20 contract address (ETH) or SPL/Token-2022 mint address or known symbol such as CYB (SOL) for send_token/token_transactions",
         },
         mint: {
           type: "string",
@@ -1070,7 +1070,15 @@ The child result is not inserted into the parent transcript automatically. Call 
         },
         skipPreflight: {
           type: "boolean",
-          description: "Optional Solana skipPreflight flag for sol_program_instruction",
+          description: "Optional Solana skipPreflight flag for instructions and swap execution",
+        },
+        frontRunningProtection: {
+          type: "boolean",
+          description: "Request protected Pump transaction construction for dry-run quotes",
+        },
+        tipAmount: {
+          type: "number",
+          description: "Optional protected Pump route tip in SOL",
         },
         tokenOut: {
           type: "string",
@@ -1149,7 +1157,7 @@ The child result is not inserted into the parent transcript automatically. Call 
         },
         venue: {
           type: "string",
-          enum: ["uniswap_v2", "uniswap_v3", "jupiter"],
+          enum: ["uniswap_v2", "uniswap_v3", "jupiter", "pump_swap"],
           description: "Swap venue for swap/swap_quote/swap_execute",
         },
         feeTier: {
@@ -1158,11 +1166,11 @@ The child result is not inserted into the parent transcript automatically. Call 
         },
         inputMint: {
           type: "string",
-          description: "Solana input mint for Jupiter swap actions",
+          description: "Solana input mint or symbol for Jupiter and Pump swap actions",
         },
         outputMint: {
           type: "string",
-          description: "Solana output mint for Jupiter swap actions",
+          description: "Solana output mint or symbol for Jupiter and Pump swap actions",
         },
         amountRaw: {
           type: "string",

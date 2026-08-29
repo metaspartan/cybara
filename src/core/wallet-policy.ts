@@ -3,6 +3,11 @@ export interface WalletAgentLimits {
   maxSendAmount: string;
 }
 
+export interface WalletAgentSwapLimits {
+  allowEthSwaps: boolean;
+  allowSolSwaps: boolean;
+}
+
 export function assertRecipientAllowed(
   recipient: string | undefined,
   limits: WalletAgentLimits
@@ -36,4 +41,19 @@ export function assertSendWithinPolicy(
 ): void {
   assertRecipientAllowed(recipient, limits);
   assertAmountWithinCap(amount, limits);
+}
+
+export function assertAgentSwapVenueAllowed(
+  venue: "uniswap_v2" | "uniswap_v3" | "jupiter" | "pump_swap",
+  limits: WalletAgentSwapLimits
+): void {
+  if (venue === "uniswap_v2" || venue === "uniswap_v3") {
+    if (!limits.allowEthSwaps) {
+      throw new Error("Validation error: Agent Ethereum swaps are disabled by wallet policy");
+    }
+    return;
+  }
+  if (!limits.allowSolSwaps) {
+    throw new Error("Validation error: Agent Solana swaps are disabled by wallet policy");
+  }
 }

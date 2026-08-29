@@ -11,6 +11,7 @@ export type AgenticLoopLimit = "maxIterations" | "runtime";
 export interface AgenticLoopRuntimeTracker {
   activeToolCount: number;
   budgetWarningLevel: number;
+  checkpointWarned: boolean;
   pausedAt?: number;
   pausedMs: number;
   startedAt: number;
@@ -21,10 +22,94 @@ export interface LoopEvaluation {
   message?: string;
 }
 
+const MATERIALIZATION_TOOLS = new Set(["write", "edit", "apply_patch"]);
+const EVIDENCE_INSPECTION_EXCLUDED_TOOLS = new Set([...MATERIALIZATION_TOOLS, "todo"]);
+const MATERIALIZATION_CHECKPOINT_ITERATIONS = 3;
+const MATERIALIZATION_REQUIRED_ITERATIONS = 4;
+const MATERIALIZATION_CLOSING_ITERATIONS = 8;
+const INSPECTION_TOOL_ROUND_MAX_TOKENS = 2048;
+
+export function resolveInspectionToolRoundTokenLimit(
+  tokenLimit: number,
+  inspectionRequired: boolean
+): number {
+  return inspectionRequired ? Math.min(tokenLimit, INSPECTION_TOOL_ROUND_MAX_TOKENS) : tokenLimit;
+}
+
+export function requiresRequestedDeliverableMaterialization(
+  completedIterations: number,
+  materialized: boolean,
+  extendedEvidenceRequired = false
+): boolean {
+  const requiredIterations = extendedEvidenceRequired ? MATERIALIZATION_REQUIRED_ITERATIONS : 1;
+  return completedIterations >= requiredIterations && !materialized;
+}
+
+export function requestedDeliverableMaterializationPrompt(
+  paths: string[],
+  inspectedEvidence = false
+): string {
+  const evidenceContext = inspectedEvidence
+    ? " Prior inspection tool results are already in the conversation. The current mutation-only tool list is deliberate; use that evidence and do not claim inspection or read access was unavailable."
+    : "";
+  return `Write the complete evidence-backed deliverable to ${paths.join(", ")} now. Use the write tool with the exact path. Do not write a placeholder, scaffold, helper script, or promise to finish later.${evidenceContext}`;
+}
+
+export function resolveRequestedDeliverableFinalContent(
+  content: string,
+  paths: string[],
+  materialized: boolean
+): string {
+  if (content.trim() || paths.length === 0 || !materialized) return content;
+  return `Completed and saved the requested deliverable${paths.length === 1 ? "" : "s"}: ${paths.join(", ")}.`;
+}
+
+export function resolveRequestedDeliverableToolChoice(
+  tools: Array<{ name: string }>,
+  materializationRequired: boolean,
+  extendedEvidenceRequired: boolean
+): "auto" | "required" {
+  const canMaterialize = tools.some((tool) => MATERIALIZATION_TOOLS.has(tool.name));
+  return materializationRequired && !extendedEvidenceRequired && canMaterialize
+    ? "required"
+    : "auto";
+}
+
+export function toolsAfterMaterializationCheckpoint<T extends { name: string }>(
+  tools: T[],
+  completedIterations: number,
+  materialized: boolean,
+  extendedEvidenceRequired = false
+): T[] {
+  if (completedIterations >= MATERIALIZATION_CLOSING_ITERATIONS && materialized) return [];
+  if (
+    extendedEvidenceRequired &&
+    !materialized &&
+    completedIterations < MATERIALIZATION_REQUIRED_ITERATIONS
+  ) {
+    const inspectionTools = tools.filter(
+      (tool) => !EVIDENCE_INSPECTION_EXCLUDED_TOOLS.has(tool.name)
+    );
+    return inspectionTools.length > 0 ? inspectionTools : tools;
+  }
+  if (
+    !requiresRequestedDeliverableMaterialization(
+      completedIterations,
+      materialized,
+      extendedEvidenceRequired
+    )
+  ) {
+    return tools;
+  }
+  const materializationTools = tools.filter((tool) => MATERIALIZATION_TOOLS.has(tool.name));
+  return materializationTools.length > 0 ? materializationTools : tools;
+}
+
 export function createAgenticLoopRuntimeTracker(now = Date.now()): AgenticLoopRuntimeTracker {
   return {
     activeToolCount: 0,
     budgetWarningLevel: 0,
+    checkpointWarned: false,
     pausedMs: 0,
     startedAt: now,
   };
@@ -51,6 +136,14 @@ export function consumeAgenticLoopBudgetWarning(
       : 0;
   const pressure = Math.max(iterationRatio, runtimeRatio);
   const nextLevel = pressure >= 0.9 ? 2 : pressure >= 0.7 ? 1 : 0;
+  if (
+    nextLevel === 0 &&
+    completedIterations >= MATERIALIZATION_CHECKPOINT_ITERATIONS &&
+    !tracker.checkpointWarned
+  ) {
+    tracker.checkpointWarned = true;
+    return "[AGENT CHECKPOINT: Three tool iterations are complete. If the user requested a file, artifact, or structured output, create a valid version now before further inspection. Consolidate known facts and use targeted search instead of sequential reads for long files. Continue enrichment only after the required deliverable exists.]";
+  }
   if (nextLevel === 0 || nextLevel <= tracker.budgetWarningLevel) return undefined;
   tracker.budgetWarningLevel = nextLevel;
   if (nextLevel === 2) {

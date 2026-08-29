@@ -42,6 +42,94 @@ function createOpenAiToolAgent(tool: ToolDefinition) {
 }
 
 describe("tool dispatch robustness", () => {
+  test("continues after a tool-backed response promises execution on the next turn", async () => {
+    const grepTool: ToolDefinition = {
+      name: "grep",
+      description: "Search files",
+      input_schema: {
+        type: "object",
+        properties: { pattern: { type: "string" } },
+        required: ["pattern"],
+      },
+    };
+    const agent = createOpenAiToolAgent(grepTool);
+    const requestedPatterns: string[] = [];
+    registerAgentHook((event) => {
+      if (event.type !== "tool_before" || event.toolName !== "grep") return undefined;
+      const pattern = typeof event.args.pattern === "string" ? event.args.pattern : "";
+      requestedPatterns.push(pattern);
+      return { block: true, reason: "blocked by test" };
+    });
+
+    const responses = [
+      {
+        finish_reason: "tool_calls",
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "inspect-call",
+              type: "function",
+              function: { name: "grep", arguments: JSON.stringify({ pattern: "schema" }) },
+            },
+          ],
+        },
+      },
+      {
+        finish_reason: "stop",
+        message: {
+          role: "assistant",
+          content: "Ready to proceed — implementing the migration next.",
+        },
+      },
+      {
+        finish_reason: "tool_calls",
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "implementation-call",
+              type: "function",
+              function: { name: "grep", arguments: JSON.stringify({ pattern: "migration" }) },
+            },
+          ],
+        },
+      },
+      {
+        finish_reason: "stop",
+        message: { role: "assistant", content: "Migration implemented and verified." },
+      },
+    ];
+    let call = 0;
+    globalThis.fetch = (async () => {
+      const choice = responses[call];
+      call += 1;
+      if (!choice) throw new Error("Unexpected provider call");
+      return new Response(
+        JSON.stringify({
+          id: `deferred-${call}`,
+          object: "chat.completion",
+          model: "gpt-tool-robustness",
+          choices: [{ index: 0, ...choice }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Implement the schema migration and verify it." }],
+      { useTools: true, sessionId: `deferred-continuation-${crypto.randomUUID()}` }
+    );
+
+    expect(result.content).toBe("Migration implemented and verified.");
+    expect(result.tool_calls).toHaveLength(2);
+    expect(requestedPatterns).toEqual(["schema", "migration"]);
+    expect(call).toBe(4);
+  });
+
   test("coerces schema-shaped tool arguments before dispatch", () => {
     const normalized = coerceToolArguments(
       "example",

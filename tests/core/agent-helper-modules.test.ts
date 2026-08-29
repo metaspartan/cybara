@@ -9,8 +9,18 @@ import {
   DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
   DEFAULT_MODEL_MAX_OUTPUT_TOKENS,
 } from "../../src/core/agent-internals";
+import { canPreStartOpenAIToolCall } from "../../src/core/agent-provider-openai-compat-runtime";
+import { openAICompatClosingReasoningParams } from "../../src/core/llm/reasoning";
 
 describe("agent helper modules", () => {
+  test("prestarts independent reads but validates mutations before execution", () => {
+    expect(canPreStartOpenAIToolCall("read")).toBe(true);
+    expect(canPreStartOpenAIToolCall("exec")).toBe(true);
+    expect(canPreStartOpenAIToolCall("write")).toBe(false);
+    expect(canPreStartOpenAIToolCall("edit")).toBe(false);
+    expect(canPreStartOpenAIToolCall("apply_patch")).toBe(false);
+  });
+
   test("formats common provider failures into user-facing messages", () => {
     expect(formatLlmFailure(new Error("invalid_api_key"))).toContain("OpenAI API key");
     expect(
@@ -87,5 +97,21 @@ describe("agent helper modules", () => {
     expect(resolveModelContextWindowTokens("kimi-code-oauth", undefined, "kimi-for-coding")).toBe(
       262_144
     );
+  });
+
+  test("uses known model limits for custom compatible endpoints", () => {
+    expect(resolveModelContextWindowTokens("custom", undefined, "MiniMax-M3")).toBe(1_000_000);
+    expect(resolveModelMaxOutputTokens("custom", undefined, "MiniMax-M3")).toBe(32_768);
+  });
+
+  test("disables MiniMax M3 thinking for a forced closing response", () => {
+    expect(openAICompatClosingReasoningParams("MiniMax-M3")).toEqual({
+      reasoning_split: true,
+      thinking: { type: "disabled" },
+    });
+    expect(openAICompatClosingReasoningParams("MiniMax-M2.7")).toEqual({});
+    expect(openAICompatClosingReasoningParams("GLM-5.3")).toEqual({
+      reasoning_effort: "low",
+    });
   });
 });
