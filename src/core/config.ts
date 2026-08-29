@@ -45,8 +45,8 @@ export interface LlmTimeoutSettings {
 }
 
 export const DEFAULT_LLM_TIMEOUT_SETTINGS: LlmTimeoutSettings = {
-  firstTokenSeconds: 20,
-  stallSeconds: 60,
+  firstTokenSeconds: 300,
+  stallSeconds: 300,
   totalSeconds: 0,
   nonStreamingSeconds: 1800,
 };
