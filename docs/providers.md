@@ -95,6 +95,7 @@ sent.
 
 | Provider ID | Name | Auth |
 |-------------|------|------|
+| `atlascloud` | Atlas Cloud | API key |
 | `openai` | OpenAI | API key |
 | `meta` | Meta AI | API key |
 | `elevenlabs` | ElevenLabs | API key |

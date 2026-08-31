@@ -197,6 +197,38 @@ const XAI_GROK_OAUTH_MODELS = [
 ] as const;
 
 export const cloudProviderCatalog = {
+  atlascloud: {
+    name: "Atlas Cloud",
+    baseUrl: "https://api.atlascloud.ai/v1",
+    api: "openai-completions",
+    authType: "api_key",
+    models: [
+      {
+        id: "qwen/qwen3.5-397b-a17b",
+        name: "Qwen3.5 397B A17B",
+        context: 262144,
+        maxTokens: 65536,
+        reasoning: true,
+        input: ["text", "image", "video"],
+      },
+      {
+        id: "deepseek-ai/deepseek-v4-flash",
+        name: "DeepSeek V4 Flash",
+        context: 1048576,
+        maxTokens: 393216,
+        reasoning: false,
+        input: ["text"],
+      },
+      {
+        id: "moonshotai/kimi-k2.6",
+        name: "Kimi K2.6",
+        context: 262144,
+        maxTokens: 262144,
+        reasoning: true,
+        input: ["text", "image", "video"],
+      },
+    ],
+  },
   ds4: {
     name: "ds4",
     baseUrl: "http://127.0.0.1:18000/v1",
