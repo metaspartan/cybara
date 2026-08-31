@@ -27,6 +27,13 @@ describe("Model alias compatibility", () => {
     expect(resolveModelAlias("fast")).toBe("MiniMax-M2.5-highspeed");
   });
 
+  test("maps Qwen 3.8 Flash Next names to provider-compatible IDs", () => {
+    expect(resolveModelAlias("qwen3.8-next-flash", "alibaba")).toBe("qwen3.8-flash");
+    expect(resolveModelAlias("qwen3.8-next-flash", "qwen-token-plan")).toBe("qwen3.8-flash");
+    expect(resolveModelAlias("qwen3.8-flash-next", "qwen-token-plan-cn")).toBe("qwen3.8-flash");
+    expect(resolveModelAlias("qwen3.8-next-flash", "custom")).toBe("Qwen/Qwen3.8-Flash-Next");
+  });
+
   test("keeps unknown models unchanged", () => {
     expect(resolveModelAlias("custom-provider-model")).toBe("custom-provider-model");
   });

@@ -27,6 +27,31 @@ describe("agent image capabilities", () => {
     expect(agentSupportsImages({ provider_id: provider.id, model: "glm-5.3" })).toBe(false);
   });
 
+  test("recognizes new Qwen and DeepSeek vision catalog models", () => {
+    const qwenProvider = providerManager.create({
+      name: "Qwen image capability test",
+      provider: "qwen-token-plan",
+      api_key: "test-key",
+    });
+    const deepSeekProvider = providerManager.create({
+      name: "DeepSeek image capability test",
+      provider: "deepseek",
+      api_key: "test-key",
+    });
+    expect(agentSupportsImages({ provider_id: qwenProvider.id, model: "qwen3.8-flash" })).toBe(
+      true
+    );
+    expect(
+      agentSupportsImages({
+        provider_id: deepSeekProvider.id,
+        model: "deepseek-v4-flash-vision-exp",
+      })
+    ).toBe(true);
+    expect(
+      agentSupportsImages({ provider_id: deepSeekProvider.id, model: "deepseek-v4-flash" })
+    ).toBe(false);
+  });
+
   test("allows explicit image capability for custom and local models", () => {
     const provider = providerManager.create({
       name: "Custom image capability test",

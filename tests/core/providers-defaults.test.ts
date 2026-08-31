@@ -434,16 +434,23 @@ describe("Provider model defaults and API-family parity", () => {
     ]);
   });
 
-  test("keeps Qwen 3.7 models on compatible cloud endpoints", () => {
+  test("keeps Qwen models on compatible cloud endpoints", () => {
     const standardModels = providers.alibaba.models;
     const codingPlanModels = providers["alibaba-coding-plan"].models;
     const standardIds = standardModels.map((model) => model.id);
     const codingPlanIds = codingPlanModels.map((model) => model.id);
 
     expect(standardIds).toEqual(
-      expect.arrayContaining(["qwen3.7-max", "qwen3.7-plus", "qwen3.6-flash"])
+      expect.arrayContaining(["qwen3.8-flash", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-flash"])
     );
+    expect(standardModels.find((model) => model.id === "qwen3.8-flash")).toMatchObject({
+      context: 1000000,
+      maxTokens: 131072,
+      reasoning: true,
+      input: ["text", "image", "video"],
+    });
     expect(codingPlanIds).toContain("qwen3.7-plus");
+    expect(codingPlanIds).not.toContain("qwen3.8-flash");
     expect(codingPlanIds).not.toContain("qwen3.7-max");
     expect(standardModels.find((model) => model.id === "qwen3.7-max")?.input).toEqual(["text"]);
     expect(codingPlanModels.find((model) => model.id === "qwen3.7-plus")?.input).toEqual([
@@ -454,6 +461,7 @@ describe("Provider model defaults and API-family parity", () => {
 
   test("keeps Qwen Token Plan regions and supported models distinct", () => {
     const expectedIds = [
+      "qwen3.8-flash",
       "qwen3.8-max",
       "qwen3.7-max",
       "qwen3.7-plus",
@@ -471,8 +479,20 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers["qwen-token-plan-cn"].models.map((model) => model.id)).toEqual(expectedIds);
     expect(providers["qwen-token-plan"].authType).toBe("api_key");
     expect(providers["qwen-token-plan"].models[0]).toMatchObject({
-      id: "qwen3.8-max",
+      id: "qwen3.8-flash",
       context: 1000000,
+      maxTokens: 131072,
+      reasoning: true,
+      input: ["text", "image", "video"],
+    });
+  });
+
+  test("advertises DeepSeek V4 Flash Vision with native image input", () => {
+    expect(
+      providers.deepseek.models.find((model) => model.id === "deepseek-v4-flash-vision-exp")
+    ).toMatchObject({
+      context: 1000000,
+      maxTokens: 384000,
       reasoning: true,
       input: ["text", "image"],
     });

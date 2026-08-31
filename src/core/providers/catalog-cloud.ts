@@ -1,53 +1,11 @@
 import { getAppVersion } from "../build-info";
+import { QWEN_TOKEN_PLAN_MODELS } from "./catalog-qwen";
 
 const XAI_OAUTH_DISCOVERY_URL = "https://auth.x.ai/.well-known/openid-configuration";
 const XAI_OAUTH_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
 const XAI_OAUTH_SCOPE =
   "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write";
 const XAI_GROK_PROXY_BASE_URL = "https://cli-chat-proxy.grok.com/v1";
-
-const QWEN_TOKEN_PLAN_MODELS = [
-  {
-    id: "qwen3.8-max",
-    name: "Qwen3.8 Max",
-    context: 1000000,
-    maxTokens: 65536,
-    reasoning: true,
-    input: ["text", "image"],
-  },
-  {
-    id: "qwen3.7-max",
-    name: "Qwen3.7 Max",
-    context: 1000000,
-    maxTokens: 65536,
-    reasoning: true,
-    input: ["text"],
-  },
-  {
-    id: "qwen3.7-plus",
-    name: "Qwen3.7 Plus",
-    context: 1000000,
-    maxTokens: 65536,
-    reasoning: true,
-    input: ["text", "image"],
-  },
-  {
-    id: "qwen3.6-plus",
-    name: "Qwen3.6 Plus",
-    context: 1000000,
-    maxTokens: 65536,
-    reasoning: true,
-    input: ["text", "image"],
-  },
-  {
-    id: "qwen3.6-flash",
-    name: "Qwen3.6 Flash",
-    context: 1000000,
-    maxTokens: 65536,
-    reasoning: true,
-    input: ["text", "image"],
-  },
-] as const;
 
 const XAI_GROK_MODELS = [
   {
@@ -551,6 +509,14 @@ export const cloudProviderCatalog = {
     authType: "api_key",
     models: [
       {
+        id: "deepseek-v4-flash-vision-exp",
+        name: "DeepSeek V4 Flash Vision Experimental",
+        context: 1000000,
+        maxTokens: 384000,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
         id: "deepseek-v4-pro",
         name: "DeepSeek V4 Pro",
         context: 1000000,
@@ -590,6 +556,14 @@ export const cloudProviderCatalog = {
     api: "openai-completions",
     authType: "api_key",
     models: [
+      {
+        id: "qwen3.8-flash",
+        name: "Qwen3.8 Flash",
+        context: 1000000,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image", "video"],
+      },
       {
         id: "qwen3.7-max",
         name: "Qwen3.7 Max",

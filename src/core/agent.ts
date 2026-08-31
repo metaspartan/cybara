@@ -54,6 +54,7 @@ import {
   type ProviderType,
   providers as providerCatalog,
   providerManager,
+  resolveProviderType,
 } from "./providers";
 import {
   getMixtureOfAgentsRoutingConfig,
@@ -626,10 +627,6 @@ class AgentManager extends AgentProviderRuntime {
 
     const typeConfig = definition.type ? AGENT_TYPES[definition.type] : undefined;
 
-    const resolvedModel = definition.model
-      ? resolveModelAlias(definition.model, undefined)
-      : typeConfig?.defaultModel;
-
     const systemPrompt =
       definition.system_prompt || typeConfig?.systemPrompt || AGENT_TYPE_PROMPTS.main;
 
@@ -647,6 +644,12 @@ class AgentManager extends AgentProviderRuntime {
       providerManager.resolveProviderId(definition.provider_id || definition.provider) ||
       poolProviderId ||
       definition.provider_id;
+    const resolvedProviderType =
+      providerManager.get(resolvedProviderId || "")?.provider ||
+      resolveProviderType(definition.provider || definition.provider_id || resolvedProviderId);
+    const resolvedModel = definition.model
+      ? resolveModelAlias(definition.model, resolvedProviderType)
+      : typeConfig?.defaultModel;
     const resolvedFallbackProviderId =
       providerManager.resolveProviderId(
         definition.fallback_provider_id || definition.fallback_provider
@@ -723,11 +726,6 @@ class AgentManager extends AgentProviderRuntime {
     const existing = this.get(id);
     if (!existing) return null;
 
-    let resolvedModel = updates.model;
-    if (resolvedModel) {
-      resolvedModel = resolveModelAlias(resolvedModel, undefined);
-    }
-
     const existingConfig = parseAgentConfig(existing.config, id);
     const updatedConfig = updates.config ? { ...updates.config } : { ...existingConfig };
     const poolSelectionChanged = updates.provider_pool_id !== undefined;
@@ -758,6 +756,20 @@ class AgentManager extends AgentProviderRuntime {
             (updates.provider_id as string | undefined) || (updates.provider as string | undefined)
           )
         : undefined);
+    const effectiveProviderId =
+      providerSelectionChanged || poolSelectionChanged
+        ? (resolvedProviderId ?? existing.provider_id)
+        : existing.provider_id;
+    const effectiveProviderType =
+      providerManager.get(effectiveProviderId || "")?.provider ||
+      resolveProviderType(
+        (updates.provider as string | undefined) ||
+          (updates.provider_id as string | undefined) ||
+          existing.provider_type
+      );
+    const resolvedModel = updates.model
+      ? resolveModelAlias(updates.model, effectiveProviderType)
+      : undefined;
     const resolvedFallbackProviderId =
       updates.fallback_provider_id !== undefined || updates.fallback_provider !== undefined
         ? providerManager.resolveProviderId(
@@ -770,10 +782,7 @@ class AgentManager extends AgentProviderRuntime {
       name: updates.name || existing.name,
       type: updates.type || existing.type,
       model: resolvedModel || existing.model,
-      provider_id:
-        providerSelectionChanged || poolSelectionChanged
-          ? (resolvedProviderId ?? existing.provider_id)
-          : existing.provider_id,
+      provider_id: effectiveProviderId,
       fallback_provider_id:
         updates.fallback_provider_id !== undefined || updates.fallback_provider !== undefined
           ? (resolvedFallbackProviderId ?? existing.fallback_provider_id)
