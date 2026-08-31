@@ -757,7 +757,7 @@ export async function handleBrowser(
           filePath: filePath,
           filename: filename,
           contentType: mimeType,
-          message: `Screenshot saved to ${filePath}. To read text from the screenshot, use ocr({path: "${filePath}"})`,
+          message: `Screenshot saved to ${filePath}. Vision-capable agents receive it automatically; use ocr({path: "${filePath}"}) only for text extraction.`,
         };
       }
 
@@ -808,7 +808,7 @@ export async function handleBrowser(
         filePath: filePath,
         filename: filename,
         contentType: mimeType,
-        message: `Screenshot saved to ${filePath}. To read text from the screenshot, use ocr({path: "${filePath}"})`,
+        message: `Screenshot saved to ${filePath}. Vision-capable agents receive it automatically; use ocr({path: "${filePath}"}) only for text extraction.`,
       };
     }
 

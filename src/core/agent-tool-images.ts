@@ -1,4 +1,8 @@
 import { extname } from "node:path";
+import {
+  COMPUTER_USE_ACTION_TOOL_ALIASES,
+  COMPUTER_USE_COMPAT_TOOL_ALIASES,
+} from "./computer-use-actions";
 import type { AgentToolCallResult } from "./agent-internals";
 import { type AgentImage, MAX_INLINE_IMAGE_BYTES, toOpenAIImageBlock } from "./llm/image-blocks";
 
@@ -10,11 +14,22 @@ const imageMediaTypes = new Map([
   [".webp", "image/webp"],
 ]);
 
+const visualToolNames = new Set([
+  "image",
+  "browser",
+  "browser_screenshot",
+  "computer_use",
+  "mobile_simulator",
+  ...COMPUTER_USE_ACTION_TOOL_ALIASES,
+  ...Object.keys(COMPUTER_USE_COMPAT_TOOL_ALIASES),
+]);
+
 function imagePathFromToolCall(toolCall: AgentToolCallResult): string | undefined {
-  if (toolCall.name !== "image") return undefined;
+  if (!visualToolNames.has(toolCall.name)) return undefined;
   if (!toolCall.result || typeof toolCall.result !== "object") return undefined;
-  const image = (toolCall.result as Record<string, unknown>).image;
-  return typeof image === "string" && image.trim() ? image : undefined;
+  const result = toolCall.result as Record<string, unknown>;
+  const path = toolCall.name === "image" ? result.image : result.filePath;
+  return typeof path === "string" && path.trim() ? path : undefined;
 }
 
 export async function loadToolResultImages(
@@ -46,8 +61,4 @@ export async function openAIImageToolFollowup(
       ...images.map(toOpenAIImageBlock),
     ],
   };
-}
-
-export function supportsOpenAICompatibleImageToolFollowup(model: string): boolean {
-  return /(?:^|\/)minimax-m3(?:$|[-:])/.test(model.trim().toLowerCase());
 }

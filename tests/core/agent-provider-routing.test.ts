@@ -14,6 +14,38 @@ import {
 const { createdAgentIds, createdProviderIds } = createProviderRoutingFixture();
 
 describe("Agent provider API-family routing", () => {
+  test("resolves Qwen 3.8 Flash Next aliases against the selected provider", () => {
+    const qwenProvider = providerManager.create({
+      provider: "qwen-token-plan",
+      name: "Qwen Alias Provider",
+      api_key: "qwen-alias-key",
+    });
+    const customProvider = providerManager.create({
+      provider: "custom",
+      name: "Local Qwen Alias Provider",
+      api_key: "local-qwen-alias-key",
+      base_url: "http://127.0.0.1:8000/v1",
+    });
+    createdProviderIds.push(qwenProvider.id, customProvider.id);
+    const agent = agentManager.create({
+      name: "Qwen Alias Agent",
+      provider_id: qwenProvider.id,
+      model: "qwen3.8-next-flash",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    expect(agent.model).toBe("qwen3.8-flash");
+
+    const updated = agentManager.update(agent.id, {
+      provider_id: customProvider.id,
+      model: "qwen3.8-next-flash",
+    });
+
+    expect(updated?.model).toBe("Qwen/Qwen3.8-Flash-Next");
+    expect(updated?.provider_id).toBe(customProvider.id);
+  });
+
   test("orders automatic coding-plan accounts by tracked remaining usage", async () => {
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       const authorization = new Headers(init?.headers).get("Authorization") || "";

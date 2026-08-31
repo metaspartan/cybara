@@ -442,6 +442,7 @@ private struct AgentEditorSheet: View {
     @State private var model: String
     @State private var reasoningEffort: String
     @State private var toolProfile: String
+    @State private var imageInput: String
     @State private var systemPrompt: String
     @State private var providerModels: [GatewayProviderModel] = []
     @State private var saving = false
@@ -467,6 +468,7 @@ private struct AgentEditorSheet: View {
         _model = State(initialValue: agent?.model ?? "")
         _reasoningEffort = State(initialValue: agent?.reasoningEffort ?? "")
         _toolProfile = State(initialValue: agent?.toolProfile ?? "full")
+        _imageInput = State(initialValue: agent?.imageInputMode ?? "auto")
         _systemPrompt = State(initialValue: agent?.system_prompt ?? "")
     }
 
@@ -505,6 +507,11 @@ private struct AgentEditorSheet: View {
                     Text("Coding").tag("coding")
                     Text("Research").tag("research")
                     Text("Read only").tag("safe")
+                }
+                Picker("Image input", selection: $imageInput) {
+                    Text("Auto (model metadata)").tag("auto")
+                    Text("Enabled").tag("enabled")
+                    Text("Disabled").tag("disabled")
                 }
                 .onChange(of: providerID) { _, _ in
                     if !nativeSupportedReasoningEfforts(provider: selectedProviderType, model: model)
@@ -597,6 +604,11 @@ private struct AgentEditorSheet: View {
             config["model_params"] = modelParams
         }
         config["tool_profile"] = toolProfile
+        if imageInput == "auto" {
+            config.removeValue(forKey: "image_input")
+        } else {
+            config["image_input"] = imageInput
+        }
 
         var payload: [String: Any] = [
             "name": name,

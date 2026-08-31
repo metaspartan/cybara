@@ -1022,6 +1022,15 @@ export function resolveModelAlias(modelId: string, provider?: string): string {
     "gemini-3-pro": "gemini-3-pro-preview",
     "gemini-3-flash": "gemini-3-flash-preview",
 
+    "alibaba/qwen3.8-next-flash": "qwen3.8-flash",
+    "alibaba/qwen3.8-flash-next": "qwen3.8-flash",
+    "qwen-token-plan/qwen3.8-next-flash": "qwen3.8-flash",
+    "qwen-token-plan/qwen3.8-flash-next": "qwen3.8-flash",
+    "qwen-token-plan-cn/qwen3.8-next-flash": "qwen3.8-flash",
+    "qwen-token-plan-cn/qwen3.8-flash-next": "qwen3.8-flash",
+    "qwen3.8-next-flash": "Qwen/Qwen3.8-Flash-Next",
+    "qwen3.8-flash-next": "Qwen/Qwen3.8-Flash-Next",
+
     default: "MiniMax-M2.5",
     fast: "MiniMax-M2.5-highspeed",
     smart: "claude-opus-5",

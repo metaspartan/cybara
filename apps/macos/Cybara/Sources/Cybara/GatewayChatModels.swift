@@ -96,6 +96,13 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
         return value
     }
 
+    var imageInputMode: String {
+        guard case .string(let value)? = config?["image_input"],
+              value == "enabled" || value == "disabled"
+        else { return "auto" }
+        return value
+    }
+
     var autostart: Bool {
         guard case .bool(let value)? = config?["autostart"] else { return false }
         return value

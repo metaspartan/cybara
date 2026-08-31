@@ -21,6 +21,11 @@ import { styles } from "./dashboardStyles";
 
 const agentTypeOptions = ["main", "research", "coder", "planner", "ops", "worker"] as const;
 
+function agentImageInputMode(agent: AgentSummary): string {
+  const value = agent.config?.image_input;
+  return value === "enabled" || value === "disabled" ? value : "auto";
+}
+
 export function AgentSettingsPanel({
   api,
   closeDetail,
@@ -53,6 +58,7 @@ export function AgentSettingsPanel({
   const [toolProfile, setToolProfile] = useState(
     typeof agent.config?.tool_profile === "string" ? agent.config.tool_profile : "full"
   );
+  const [imageInput, setImageInput] = useState(agentImageInputMode(agent));
   const [maxContextTokens, setMaxContextTokens] = useState(
     typeof agent.config?.max_context_tokens === "number"
       ? String(agent.config.max_context_tokens)
@@ -96,6 +102,7 @@ export function AgentSettingsPanel({
     setToolProfile(
       typeof agent.config?.tool_profile === "string" ? agent.config.tool_profile : "full"
     );
+    setImageInput(agentImageInputMode(agent));
     setMaxContextTokens(
       typeof agent.config?.max_context_tokens === "number"
         ? String(agent.config.max_context_tokens)
@@ -126,6 +133,11 @@ export function AgentSettingsPanel({
         nextConfig.max_context_tokens = Math.max(1, Math.floor(contextTokens));
       } else {
         delete nextConfig.max_context_tokens;
+      }
+      if (imageInput === "enabled" || imageInput === "disabled") {
+        nextConfig.image_input = imageInput;
+      } else {
+        delete nextConfig.image_input;
       }
       const updated = await api.updateAgent(agent.id, {
         name: trimmedName,
@@ -236,6 +248,17 @@ export function AgentSettingsPanel({
             ]}
             selected={toolProfile}
             onSelect={setToolProfile}
+          />
+          <SettingSelector
+            label="Image input"
+            variant="menu"
+            options={[
+              { label: "Auto (model metadata)", value: "auto" },
+              { label: "Enabled", value: "enabled" },
+              { label: "Disabled", value: "disabled" },
+            ]}
+            selected={imageInput}
+            onSelect={setImageInput}
           />
           <SettingsTextField
             help="Leave empty to use the model default."

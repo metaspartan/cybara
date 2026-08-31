@@ -926,6 +926,15 @@ export const codingProviderCatalog = {
     authType: "api_key",
     models: [
       {
+        id: "glm-5.3-flash",
+        name: "GLM-5.3 Flash",
+        context: 1000000,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image", "video", "pdf"],
+        code: true,
+      },
+      {
         id: "glm-5.3",
         name: "GLM-5.3 (Coding)",
         context: 1000000,

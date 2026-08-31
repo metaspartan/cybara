@@ -44,10 +44,7 @@ import {
   appendAgentBudgetWarning,
   sessionIdForVisibleTokenUsage,
 } from "./agent-provider-common-runtime";
-import {
-  openAIImageToolFollowup,
-  supportsOpenAICompatibleImageToolFollowup,
-} from "./agent-tool-images";
+import { openAIImageToolFollowup } from "./agent-tool-images";
 import { hasAgentTransferEnvelope } from "./agent-transfer";
 import {
   countWebResearchCalls,
@@ -610,9 +607,10 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
-      const imageFollowup = supportsOpenAICompatibleImageToolFollowup(modelId)
-        ? await openAIImageToolFollowup(iterationToolCalls)
-        : undefined;
+      const imageFollowup =
+        toolContext?.supportsImages === true
+          ? await openAIImageToolFollowup(iterationToolCalls)
+          : undefined;
       if (imageFollowup) currentMessages.push(imageFollowup);
       if (notifyWebResearchBudget) {
         currentMessages.push({
