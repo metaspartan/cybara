@@ -54,6 +54,11 @@ function agentToolProfile(agent: Pick<Agent, "config">): string {
   return typeof value === "string" && value ? value : "full";
 }
 
+function agentImageInputMode(config: unknown): string {
+  const value = parseAgentConfig(config).image_input;
+  return value === "enabled" || value === "disabled" ? value : "auto";
+}
+
 function agentReasoningLabel(agent: AgentSummary): string {
   return reasoningEffortLabel(
     agent.reasoning_effort ?? null,
@@ -79,6 +84,12 @@ function buildConfig(formData: FormData, existing?: unknown): Record<string, unk
     delete config.model_params;
   }
   config.tool_profile = (formData.get("tool_profile") as string) || "full";
+  const imageInput = (formData.get("image_input") as string) || "auto";
+  if (imageInput === "enabled" || imageInput === "disabled") {
+    config.image_input = imageInput;
+  } else {
+    delete config.image_input;
+  }
   const contextTokensRaw = (formData.get("max_context_tokens") as string) || "";
   const contextTokens = Number.parseInt(contextTokensRaw, 10);
   if (Number.isFinite(contextTokens) && contextTokens > 0) {
@@ -450,6 +461,7 @@ function AgentModal({
   const [selectedModel, setSelectedModel] = useState(initialData?.model || "");
   const [customModel, setCustomModel] = useState("");
   const [useCustomModel, setUseCustomModel] = useState(false);
+  const [imageInputMode, setImageInputMode] = useState(agentImageInputMode(initialData?.config));
   const { data: models, isLoading: modelsLoading } = useProviderModels(selectedProvider);
 
   const providerChangedRef = useRef(false);
@@ -472,6 +484,7 @@ function AgentModal({
       setSelectedModel(initialData?.model || "");
       setCustomModel("");
       setUseCustomModel(false);
+      setImageInputMode(agentImageInputMode(initialData?.config));
       providerChangedRef.current = false;
     }
   }, [isOpen, initialData, providers]);
@@ -607,6 +620,24 @@ function AgentModal({
             defaultValue={initialData ? agentToolProfile(initialData) : "full"}
             options={toolProfiles}
           />
+
+          <div className="space-y-1.5">
+            <Select
+              label="Image Input"
+              name="image_input"
+              value={imageInputMode}
+              onChange={setImageInputMode}
+              options={[
+                { value: "auto", label: "Auto (model metadata)" },
+                { value: "enabled", label: "Enabled" },
+                { value: "disabled", label: "Disabled" },
+              ]}
+            />
+            <p className="text-xs text-gray-500">
+              Enable this for custom or local vision models whose endpoint omits capability
+              metadata.
+            </p>
+          </div>
 
           <Input
             label="Max Context Length (tokens)"

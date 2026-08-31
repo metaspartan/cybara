@@ -42,6 +42,7 @@ export interface ToolContext {
   activeModel?: string;
   activeProviderId?: string;
   activeProviderName?: string;
+  supportsImages?: boolean;
   maxToolCalls?: number;
   maxOutputTokens?: number;
   maxContextTokens?: number;

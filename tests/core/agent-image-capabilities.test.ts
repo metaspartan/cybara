@@ -17,6 +17,39 @@ describe("agent image capabilities", () => {
     expect(agentSupportsImages({ provider_id: provider.id, model: "MiniMax-M2.7" })).toBe(false);
   });
 
+  test("recognizes GLM-5.3 Flash as multimodal on the Z.AI Coding Plan", () => {
+    const provider = providerManager.create({
+      name: "Z.AI image capability test",
+      provider: "z.ai-coding",
+      api_key: "test-key",
+    });
+    expect(agentSupportsImages({ provider_id: provider.id, model: "glm-5.3-flash" })).toBe(true);
+    expect(agentSupportsImages({ provider_id: provider.id, model: "glm-5.3" })).toBe(false);
+  });
+
+  test("allows explicit image capability for custom and local models", () => {
+    const provider = providerManager.create({
+      name: "Custom image capability test",
+      provider: "custom",
+      api_key: "test-key",
+      base_url: "http://127.0.0.1:8000/v1",
+    });
+    expect(
+      agentSupportsImages({
+        provider_id: provider.id,
+        model: "local-vision-model",
+        config: { image_input: "enabled" },
+      })
+    ).toBe(true);
+    expect(
+      agentSupportsImages({
+        provider_id: provider.id,
+        model: "local-vision-model",
+        config: { image_input: "disabled" },
+      })
+    ).toBe(false);
+  });
+
   test("resolves multiple agent capabilities through the batch model lookup", () => {
     const provider = providerManager.create({
       name: "Batch image capability test",
@@ -26,10 +59,17 @@ describe("agent image capabilities", () => {
     const support = agentImageSupportById([
       { id: "vision", provider_id: provider.id, model: "MiniMax-M3" },
       { id: "text", provider_id: provider.id, model: "MiniMax-M2.7" },
+      {
+        id: "override",
+        provider_id: provider.id,
+        model: "MiniMax-M2.7",
+        config: { supports_images: true },
+      },
       { id: "missing-provider", provider_id: "", model: "MiniMax-M3" },
     ]);
     expect(support.get("vision")).toBe(true);
     expect(support.get("text")).toBe(false);
+    expect(support.get("override")).toBe(true);
     expect(support.get("missing-provider")).toBe(false);
   });
 

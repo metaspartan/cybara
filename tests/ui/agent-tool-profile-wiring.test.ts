@@ -7,6 +7,9 @@ const mobileSource = await Bun.file(
 const nativeSource = await Bun.file(
   "apps/macos/Cybara/Sources/Cybara/NativeAgentsScreen.swift"
 ).text();
+const nativeModelsSource = await Bun.file(
+  "apps/macos/Cybara/Sources/Cybara/GatewayChatModels.swift"
+).text();
 
 describe("agent tool profile surfaces", () => {
   test("web and Tauri persist agent tool profiles", () => {
@@ -21,5 +24,15 @@ describe("agent tool profile surfaces", () => {
     expect(mobileSource).toContain("tool_profile: toolProfile");
     expect(nativeSource).toContain('Picker("Tool profile"');
     expect(nativeSource).toContain('config["tool_profile"] = toolProfile');
+  });
+
+  test("all agent editors persist explicit image input capability overrides", () => {
+    expect(webSource).toContain('name="image_input"');
+    expect(webSource).toContain("config.image_input = imageInput");
+    expect(mobileSource).toContain('label="Image input"');
+    expect(mobileSource).toContain("nextConfig.image_input = imageInput");
+    expect(nativeSource).toContain('Picker("Image input"');
+    expect(nativeSource).toContain('config["image_input"] = imageInput');
+    expect(nativeModelsSource).toContain("var imageInputMode: String");
   });
 });

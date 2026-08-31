@@ -478,16 +478,18 @@ describe("Provider model defaults and API-family parity", () => {
     });
   });
 
-  test("advertises GLM-5.3 only on the Z.AI Coding Plan endpoint", () => {
+  test("advertises the GLM-5.3 family only on the Z.AI Coding Plan endpoint", () => {
     const apiIds = providers["z.ai"].models.map((model) => model.id);
     const codingIds = providers["z.ai-coding"].models.map((model) => model.id);
 
-    expect(codingIds[0]).toBe("glm-5.3");
+    expect(codingIds.slice(0, 2)).toEqual(["glm-5.3-flash", "glm-5.3"]);
     expect(apiIds).not.toContain("glm-5.3");
+    expect(apiIds).not.toContain("glm-5.3-flash");
     expect(providers["z.ai-coding"].models[0]).toMatchObject({
       context: 1000000,
       maxTokens: 131072,
       reasoning: true,
+      input: ["text", "image", "video", "pdf"],
       code: true,
     });
   });

@@ -7,6 +7,10 @@ import {
 } from "./agent-deferred-continuation";
 import { formatLlmFailure } from "./agent-error-format";
 import {
+  providerModelSupportsImages,
+  readAgentImageSupportOverride,
+} from "./agent-image-capabilities";
+import {
   type AgentToolCallResult,
   CONTEXT_CHARS_PER_TOKEN_ESTIMATE,
   CONVERSATION_KEEP_RECENT_MESSAGES,
@@ -1033,6 +1037,9 @@ class AgentManager extends AgentProviderRuntime {
     toolContext.activeModel = activeModel;
     toolContext.activeProviderId = activeProvider.id;
     toolContext.activeProviderName = activeProvider.name;
+    toolContext.supportsImages =
+      readAgentImageSupportOverride(agent.config) ??
+      providerModelSupportsImages(activeProvider.id, activeModel || "");
     const activePoolId = activeProvider.provider === provider.provider ? target.poolId : undefined;
     const toolCallsBeforePrimary = toolContext.executionState?.toolCalls.length ?? 0;
 
@@ -1246,6 +1253,9 @@ class AgentManager extends AgentProviderRuntime {
     toolContext.activeModel = activeModel;
     toolContext.activeProviderId = activeProvider.id;
     toolContext.activeProviderName = activeProvider.name;
+    toolContext.supportsImages =
+      readAgentImageSupportOverride(agent.config) ??
+      providerModelSupportsImages(activeProvider.id, activeModel || "");
     const activePoolId = activeProvider.provider === provider.provider ? target.poolId : undefined;
     const toolCallsBeforePrimary = toolContext.executionState?.toolCalls.length ?? 0;
 
