@@ -3,13 +3,22 @@ import { Constants, Platform } from "./expoNativeModules";
 
 type PermissionStatus = "granted" | "denied" | "undetermined" | string;
 
+interface PermissionResponseLike {
+  status: PermissionStatus;
+  canAskAgain?: boolean;
+}
+
+interface NotificationSubscriptionLike {
+  remove: () => void;
+}
+
 interface NotificationsLike {
   AndroidImportance?: {
     HIGH?: number;
     MAX?: number;
   };
-  getPermissionsAsync: () => Promise<{ status: PermissionStatus }>;
-  requestPermissionsAsync: () => Promise<{ status: PermissionStatus }>;
+  getPermissionsAsync: () => Promise<PermissionResponseLike>;
+  requestPermissionsAsync: () => Promise<PermissionResponseLike>;
   getExpoPushTokenAsync: (options?: { projectId?: string }) => Promise<{ data: string }>;
   setNotificationChannelAsync?: (
     channelId: string,
@@ -19,10 +28,16 @@ interface NotificationsLike {
       lightColor: string;
       name: string;
       showBadge: boolean;
+      sound: string;
       vibrationPattern: number[];
     }
   ) => Promise<unknown>;
   setNotificationHandler?: (handler: unknown) => void;
+  addNotificationResponseReceivedListener?: (
+    listener: (response: unknown) => void
+  ) => NotificationSubscriptionLike;
+  getLastNotificationResponseAsync?: () => Promise<unknown>;
+  clearLastNotificationResponseAsync?: () => Promise<void>;
 }
 
 interface ConstantsLike {
@@ -47,6 +62,21 @@ export interface MobilePushRegistrationOptions {
   platform?: string;
   notifications?: NotificationsLike | null;
   constants?: ConstantsLike | null;
+}
+
+export interface MobilePushPermissionState {
+  status: "granted" | "denied" | "undetermined" | "unavailable" | "misconfigured";
+  canAskAgain: boolean;
+  message?: string;
+}
+
+export type MobileNotificationTarget =
+  | { kind: "session"; sessionId: string }
+  | { kind: "tasks"; taskId?: string };
+
+export interface MobileNotificationNavigationRequest {
+  requestId: number;
+  target: MobileNotificationTarget;
 }
 
 async function defaultNotifications(): Promise<NotificationsLike | null> {
@@ -110,6 +140,117 @@ function mobilePushRegistrationError(error: unknown): string {
   return message;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function notificationResponseData(response: unknown): Record<string, unknown> | null {
+  const responseRecord = record(response);
+  const notification = record(responseRecord?.notification);
+  const request = record(notification?.request);
+  const content = record(request?.content);
+  return record(content?.data);
+}
+
+function notificationResponseIdentifier(response: unknown): string | null {
+  const responseRecord = record(response);
+  const notification = record(responseRecord?.notification);
+  const request = record(notification?.request);
+  return typeof request?.identifier === "string" ? request.identifier : null;
+}
+
+export function mobileNotificationTarget(response: unknown): MobileNotificationTarget | null {
+  const data = notificationResponseData(response);
+  if (!data || typeof data.type !== "string") return null;
+  if (data.type === "chat_completed" && typeof data.sessionId === "string") {
+    const sessionId = data.sessionId.trim();
+    return sessionId ? { kind: "session", sessionId } : null;
+  }
+  if (data.type === "task_completed" || data.type === "task_failed") {
+    const taskId = typeof data.taskId === "string" ? data.taskId.trim() : "";
+    return taskId ? { kind: "tasks", taskId } : { kind: "tasks" };
+  }
+  return null;
+}
+
+export async function inspectMobilePushNotifications(
+  options: MobilePushRegistrationOptions = {}
+): Promise<MobilePushPermissionState> {
+  if (options.notifications === undefined && isExpoGoRuntime(options.constants)) {
+    return {
+      status: "unavailable",
+      canAskAgain: false,
+      message: "Push notifications require a development build.",
+    };
+  }
+  const platform = nativePushPlatform(options.platform ?? Platform.OS);
+  if (!platform) {
+    return {
+      status: "unavailable",
+      canAskAgain: false,
+      message: "Push notifications require iOS or Android.",
+    };
+  }
+  const constants = options.constants === undefined ? defaultConstants() : options.constants;
+  const buildIssue = mobilePushBuildIssue(constants);
+  if (buildIssue) {
+    return { status: "misconfigured", canAskAgain: false, message: buildIssue };
+  }
+  const notifications =
+    options.notifications === undefined ? await defaultNotifications() : options.notifications;
+  if (!notifications) {
+    return {
+      status: "unavailable",
+      canAskAgain: false,
+      message: "Expo notifications are unavailable.",
+    };
+  }
+  try {
+    const permission = await notifications.getPermissionsAsync();
+    const status =
+      permission.status === "granted" ||
+      permission.status === "denied" ||
+      permission.status === "undetermined"
+        ? permission.status
+        : "undetermined";
+    return { status, canAskAgain: permission.canAskAgain !== false };
+  } catch (error) {
+    return {
+      status: "unavailable",
+      canAskAgain: false,
+      message: mobilePushRegistrationError(error),
+    };
+  }
+}
+
+export async function subscribeMobileNotificationResponses(
+  onTarget: (target: MobileNotificationTarget) => void,
+  options: MobilePushRegistrationOptions = {}
+): Promise<() => void> {
+  if (options.notifications === undefined && isExpoGoRuntime(options.constants)) return () => {};
+  const notifications =
+    options.notifications === undefined ? await defaultNotifications() : options.notifications;
+  if (!notifications) return () => {};
+  const handled = new Set<string>();
+  const handle = (response: unknown): void => {
+    const identifier = notificationResponseIdentifier(response);
+    if (identifier && handled.has(identifier)) return;
+    const target = mobileNotificationTarget(response);
+    if (!target) return;
+    if (identifier) handled.add(identifier);
+    onTarget(target);
+  };
+  const subscription = notifications.addNotificationResponseReceivedListener?.(handle);
+  try {
+    const previous = await notifications.getLastNotificationResponseAsync?.();
+    if (previous) handle(previous);
+    await notifications.clearLastNotificationResponseAsync?.();
+  } catch {
+    return () => subscription?.remove();
+  }
+  return () => subscription?.remove();
+}
+
 async function configureAndroidNotificationChannel(
   notifications: NotificationsLike,
   platform: "ios" | "android"
@@ -121,8 +262,9 @@ async function configureAndroidNotificationChannel(
     description: "Chat and task completion notifications",
     importance,
     lightColor: "#f97316",
-    name: "Cybara activity",
+    name: "Agent activity",
     showBadge: true,
+    sound: "default",
     vibrationPattern: [0, 200, 100, 200],
   });
 }
@@ -141,7 +283,7 @@ export async function configureMobileNotificationPresentation(
       handleNotification: async () => ({
         shouldShowBanner: true,
         shouldShowList: true,
-        shouldPlaySound: false,
+        shouldPlaySound: true,
         shouldSetBadge: false,
       }),
     });

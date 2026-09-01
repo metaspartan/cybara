@@ -35,6 +35,7 @@
     },
   },
   "patchedDependencies": {
+    "@react-native/gradle-plugin@0.85.3": "patches/@react-native%2Fgradle-plugin@0.85.3.patch",
     "image-size@1.2.1": "patches/image-size@1.2.1.patch",
   },
   "overrides": {

@@ -843,11 +843,14 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain("registerMobilePushNotifications(api");
     expect(dashboardScreenSource).toContain("clearMobilePushNotifications(api)");
     expect(dashboardScreenSource).toContain("api.sendTestPush()");
-    expect(dashboardScreenSource).toContain("api.currentMobileDevice()");
+    expect(dashboardScreenSource).toContain(".currentMobileDevice()");
     expect(dashboardScreenSource).toContain("api.updatePushPreferences");
+    expect(dashboardScreenSource).toContain("inspectMobilePushNotifications()");
+    expect(dashboardScreenSource).toContain("Blocked in system notification settings");
     expect(dashboardScreenSource).toContain('label="Enable"');
     expect(dashboardScreenSource).toContain('label="Test"');
     expect(dashboardScreenSource).toContain('label="Disable"');
+    expect(dashboardScreenSource).toContain('label="System Settings"');
     expect(dashboardScreenSource).toContain('label="Chat completions"');
     expect(dashboardScreenSource).toContain('label="Task completions"');
   });

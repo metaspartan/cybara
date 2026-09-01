@@ -35,7 +35,8 @@
         "android.permission.POST_NOTIFICATIONS"
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/cybara.png",
+        "foregroundImage": "./assets/cybara-adaptive-foreground.png",
+        "monochromeImage": "./assets/cybara-adaptive-monochrome.png",
         "backgroundColor": "#071016"
       },
       "versionCode": 1001719

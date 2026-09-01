@@ -69,7 +69,7 @@ export async function sendMobilePushNotification(
     body: message.body,
     data: message.data ?? {},
     sound: "default",
-    priority: "default",
+    priority: target.platform === "android" ? "high" : "default",
     ...(target.platform === "android" ? { channelId: "cybara" } : {}),
   }));
 

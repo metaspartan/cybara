@@ -64,6 +64,7 @@ describe("mobile push notifications", () => {
         to: expoToken,
         title: "Cybara finished",
         channelId: "cybara",
+        priority: "high",
         data: { type: "chat_completed", sessionId: "s1" },
       });
     } finally {

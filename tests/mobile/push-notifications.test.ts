@@ -5,7 +5,10 @@ import type { CybaraMobileApi } from "../../apps/mobile/src/lib/api";
 import {
   clearMobilePushNotifications,
   configureMobileNotificationPresentation,
+  inspectMobilePushNotifications,
+  mobileNotificationTarget,
   registerMobilePushNotifications,
+  subscribeMobileNotificationResponses,
 } from "../../apps/mobile/src/lib/pushNotifications";
 
 function createApi() {
@@ -123,7 +126,11 @@ describe("mobile push notification helpers", () => {
     expect(channelCalls).toEqual([
       {
         channelId: "cybara",
-        channel: expect.objectContaining({ importance: 5, name: "Cybara activity" }),
+        channel: expect.objectContaining({
+          importance: 5,
+          name: "Agent activity",
+          sound: "default",
+        }),
       },
     ]);
     expect(calls).toHaveLength(1);
@@ -193,7 +200,104 @@ describe("mobile push notification helpers", () => {
     await expect(clearMobilePushNotifications(api)).resolves.toEqual({ status: "cleared" });
     expect(configured).toBe(true);
     expect(handler).toBeTruthy();
+    const foregroundHandler = handler as {
+      handleNotification: () => Promise<{ shouldPlaySound: boolean }>;
+    };
+    await expect(foregroundHandler.handleNotification()).resolves.toMatchObject({
+      shouldPlaySound: true,
+    });
     expect(calls).toEqual([{ method: "clear" }]);
+  });
+
+  test("reports native permission state separately from gateway registration", async () => {
+    await expect(
+      inspectMobilePushNotifications({
+        platform: "android",
+        constants: pushBuildConstants,
+        notifications: {
+          getPermissionsAsync: async () => ({ status: "denied", canAskAgain: false }),
+          requestPermissionsAsync: async () => ({ status: "denied" }),
+          getExpoPushTokenAsync: async () => ({ data: "unused" }),
+        },
+      })
+    ).resolves.toEqual({ status: "denied", canAskAgain: false });
+
+    await expect(
+      inspectMobilePushNotifications({
+        platform: "android",
+        constants: null,
+        notifications: {
+          getPermissionsAsync: async () => ({ status: "granted" }),
+          requestPermissionsAsync: async () => ({ status: "granted" }),
+          getExpoPushTokenAsync: async () => ({ data: "unused" }),
+        },
+      })
+    ).resolves.toMatchObject({ status: "misconfigured", canAskAgain: false });
+  });
+
+  test("routes notification responses into their mobile destination", () => {
+    const response = (data: Record<string, unknown>, identifier = "response-1") => ({
+      notification: { request: { identifier, content: { data } } },
+    });
+    expect(
+      mobileNotificationTarget(
+        response({ type: "chat_completed", sessionId: "session-notification" })
+      )
+    ).toEqual({ kind: "session", sessionId: "session-notification" });
+    expect(
+      mobileNotificationTarget(response({ type: "task_failed", taskId: "task-notification" }))
+    ).toEqual({ kind: "tasks", taskId: "task-notification" });
+    expect(mobileNotificationTarget(response({ type: "test_notification" }))).toBeNull();
+  });
+
+  test("opens the last notification once and handles later notification taps", async () => {
+    const targets: unknown[] = [];
+    let listener: ((response: unknown) => void) | null = null;
+    let removed = false;
+    let cleared = false;
+    const last = {
+      notification: {
+        request: {
+          identifier: "last-response",
+          content: { data: { type: "chat_completed", sessionId: "last-session" } },
+        },
+      },
+    };
+    const stop = await subscribeMobileNotificationResponses((target) => targets.push(target), {
+      notifications: {
+        getPermissionsAsync: async () => ({ status: "granted" }),
+        requestPermissionsAsync: async () => ({ status: "granted" }),
+        getExpoPushTokenAsync: async () => ({ data: "unused" }),
+        addNotificationResponseReceivedListener: (next) => {
+          listener = next;
+          return {
+            remove: () => {
+              removed = true;
+            },
+          };
+        },
+        getLastNotificationResponseAsync: async () => last,
+        clearLastNotificationResponseAsync: async () => {
+          cleared = true;
+        },
+      },
+    });
+    listener?.(last);
+    listener?.({
+      notification: {
+        request: {
+          identifier: "new-response",
+          content: { data: { type: "task_completed", taskId: "task-2" } },
+        },
+      },
+    });
+    expect(targets).toEqual([
+      { kind: "session", sessionId: "last-session" },
+      { kind: "tasks", taskId: "task-2" },
+    ]);
+    expect(cleared).toBe(true);
+    stop();
+    expect(removed).toBe(true);
   });
 
   test("notification presentation setup is non-fatal when the native module rejects", async () => {
