@@ -659,6 +659,7 @@ export function getProviderBaseUrl(providerType: string): string {
 
 export function getDefaultModel(providerType: string): string {
   const defaults: Record<string, string> = {
+    atlascloud: "qwen/qwen3.5-397b-a17b",
     openai: "gpt-5.6-sol",
     meta: "muse-spark-1.1",
     elevenlabs: "eleven_multilingual_v2",

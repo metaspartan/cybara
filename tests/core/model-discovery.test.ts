@@ -12,6 +12,40 @@ afterEach(() => {
 });
 
 describe("provider model discovery", () => {
+  test("persists OpenAI-compatible endpoint metadata", async () => {
+    const provider = providerManager.create({
+      provider: "atlascloud",
+      name: "Atlas Cloud Discovery Test",
+      api_key: "atlas-test-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const result = await discoverProviderModels(provider.id, {
+      request: async () =>
+        Response.json({
+          data: [
+            {
+              id: "qwen/qwen3.5-397b-a17b",
+              name: "Qwen3.5 397BA17B",
+              context_length: 262144,
+              max_output_length: 65536,
+              input_modalities: ["text", "image", "video"],
+              supported_features: ["json_mode", "structured_outputs", "tools", "reasoning"],
+            },
+          ],
+        }),
+      discoverCatalog: async () => [],
+    });
+
+    expect(result.source).toBe("endpoint");
+    const discovered = providerManager.getModels(provider.id)[0];
+    expect(discovered?.model_name).toBe("Qwen3.5 397BA17B");
+    expect(discovered?.context_window).toBe(262144);
+    expect(discovered?.max_tokens).toBe(65536);
+    expect(Boolean(discovered?.reasoning)).toBe(true);
+    expect(discovered?.input_types).toBe('["text","image","video"]');
+  });
+
   test("reads the context window a vLLM endpoint reports as max_model_len", async () => {
     const provider = providerManager.create({
       provider: "custom",

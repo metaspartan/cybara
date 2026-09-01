@@ -1,4 +1,5 @@
 const providerApiConsoleUrls: Readonly<Record<string, string>> = {
+  atlascloud: "https://www.atlascloud.ai/console",
   openai: "https://platform.openai.com/api-keys",
   elevenlabs: "https://elevenlabs.io/app/settings/api-keys",
   meta: "https://llama.developer.meta.com/",

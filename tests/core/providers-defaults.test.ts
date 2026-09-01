@@ -11,6 +11,7 @@ import {
 
 describe("Provider model defaults and API-family parity", () => {
   test("uses updated defaults for newly added providers", () => {
+    expect(getDefaultModel("atlascloud")).toBe("qwen/qwen3.5-397b-a17b");
     expect(getDefaultModel("openai")).toBe("gpt-5.6-sol");
     expect(getDefaultModel("meta")).toBe("muse-spark-1.1");
     expect(getDefaultModel("ds4")).toBe("deepseek-v4-flash");
@@ -78,6 +79,7 @@ describe("Provider model defaults and API-family parity", () => {
   });
 
   test("declares expected API-family names for compatibility methods", () => {
+    expect(providers.atlascloud.api).toBe("openai-completions");
     expect(providers.ollama.api).toBe("ollama");
     expect(providers["openai-codex"].api).toBe("openai-codex-responses");
     expect(providers.vllm.api).toBe("openai-completions");
