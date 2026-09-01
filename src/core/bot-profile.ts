@@ -20,7 +20,15 @@ function botModeRecord(config: unknown): Record<string, unknown> | null {
 }
 
 export function isBotProfileConfig(config: unknown): boolean {
-  return botModeRecord(config) !== null;
+  const record = botModeRecord(config);
+  if (!record) return false;
+  return (
+    typeof record.title === "string" ||
+    typeof record.description === "string" ||
+    typeof record.hidden === "boolean" ||
+    typeof record.pinned === "boolean" ||
+    typeof record.base_system_prompt === "string"
+  );
 }
 
 export function readBotProfileMetadata(config: unknown): BotProfileMetadata {
