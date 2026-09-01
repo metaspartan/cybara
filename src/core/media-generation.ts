@@ -1,4 +1,8 @@
-import { registerOpenAIImageProvider, registerFalProviders } from "./media-providers";
+import {
+  registerFalProviders,
+  registerMuapiProviders,
+  registerOpenAIImageProvider,
+} from "./media-providers";
 
 type MediaKind = "image" | "video" | "music";
 
@@ -153,3 +157,4 @@ export function isConfigured(provider: AnyProvider): boolean {
 
 registerOpenAIImageProvider();
 registerFalProviders();
+registerMuapiProviders();

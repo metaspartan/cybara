@@ -1,11 +1,11 @@
 import {
-  registerImageProvider,
-  registerVideoProvider,
-  registerMusicProvider,
   type GenerationResult,
   type ImageGenerationRequest,
-  type VideoGenerationRequest,
   type MusicGenerationRequest,
+  registerImageProvider,
+  registerMusicProvider,
+  registerVideoProvider,
+  type VideoGenerationRequest,
 } from "./media-generation";
 
 const POLL_INTERVAL_MS = 5000;
@@ -21,6 +21,198 @@ function openaiApiKey(): string | undefined {
 
 function falApiKey(): string | undefined {
   return getEnv("FAL_KEY") || getEnv("FAL_API_KEY");
+}
+
+const MUAPI_API_BASE = "https://api.muapi.ai/api/v1";
+const MUAPI_API_ORIGIN = new URL(MUAPI_API_BASE).origin;
+const MUAPI_POLL_INTERVAL_MS = 5000;
+const MUAPI_DEFAULT_TIMEOUT_MS = 120_000;
+const MUAPI_IMAGE_MODELS = ["nano-banana", "nano-banana-pro"];
+const MUAPI_VIDEO_MODELS = [
+  "wan3.0-text-to-video",
+  "wan3.0-prime-text-to-video",
+  "seedance-2.5-text-to-video",
+];
+const MUAPI_MUSIC_MODELS = ["minimax-music-3.0"];
+
+type JsonObject = Record<string, unknown>;
+
+function muapiApiKey(): string | undefined {
+  return getEnv("MUAPI_API_KEY");
+}
+
+function asJsonObject(value: unknown): JsonObject | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return value as JsonObject;
+}
+
+function muapiRecords(response: JsonObject): JsonObject[] {
+  const records = [response];
+  for (const key of ["data", "output", "result"]) {
+    const nested = asJsonObject(response[key]);
+    if (nested && !records.includes(nested)) records.push(nested);
+  }
+  return records;
+}
+
+function muapiValue(response: JsonObject, keys: string[]): unknown {
+  for (const record of muapiRecords(response)) {
+    for (const key of keys) {
+      const value = record[key];
+      if (value !== undefined && value !== null && value !== "") return value;
+    }
+  }
+  return undefined;
+}
+
+function muapiString(response: JsonObject, keys: string[]): string | undefined {
+  const value = muapiValue(response, keys);
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function muapiHeaders(key: string, includeJson = false): Record<string, string> {
+  return {
+    "x-api-key": key,
+    Accept: "application/json",
+    ...(includeJson ? { "Content-Type": "application/json" } : {}),
+  };
+}
+
+function muapiError(response: JsonObject): string {
+  const value = muapiValue(response, ["error", "message", "detail"]);
+  return typeof value === "string" && value ? value.slice(0, 500) : "request failed";
+}
+
+function muapiResultUrl(response: JsonObject, requestId: string): string {
+  for (const record of muapiRecords(response)) {
+    const urls = asJsonObject(record.urls);
+    const candidate = urls?.get;
+    if (candidate === undefined) continue;
+    if (typeof candidate !== "string" || !candidate) {
+      throw new Error("MuAPI returned an invalid result URL");
+    }
+
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol !== "https:" || parsed.origin !== MUAPI_API_ORIGIN) {
+        throw new Error("invalid origin");
+      }
+    } catch {
+      throw new Error("MuAPI returned an invalid result URL");
+    }
+    return candidate;
+  }
+
+  return `${MUAPI_API_BASE}/predictions/${encodeURIComponent(requestId)}/result`;
+}
+
+function muapiMediaUrls(value: unknown): string[] {
+  if (typeof value === "string" && /^https?:\/\//i.test(value)) return [value];
+  if (Array.isArray(value)) return value.flatMap(muapiMediaUrls);
+
+  const object = asJsonObject(value);
+  if (!object) return [];
+  return [
+    "url",
+    "image_url",
+    "video_url",
+    "audio_url",
+    "outputs",
+    "images",
+    "videos",
+    "media",
+  ].flatMap((key) => muapiMediaUrls(object[key]));
+}
+
+function muapiOutputUrls(response: JsonObject): string[] {
+  const urls = muapiRecords(response).flatMap((record) =>
+    ["outputs", "output", "media", "image", "video", "audio"].flatMap((key) =>
+      muapiMediaUrls(record[key])
+    )
+  );
+  return [...new Set(urls)];
+}
+
+async function muapiJson(url: string, init: RequestInit, operation: string): Promise<JsonObject> {
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    throw new Error(`MuAPI ${operation} failed: ${response.status} ${await safeText(response)}`);
+  }
+  const data: unknown = await response.json();
+  const object = asJsonObject(data);
+  if (!object) throw new Error(`MuAPI ${operation} returned an invalid response`);
+  return object;
+}
+
+function muapiTimeout(timeoutMs: number | undefined): number {
+  return typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? timeoutMs
+    : MUAPI_DEFAULT_TIMEOUT_MS;
+}
+
+async function waitForMuapiResult(
+  creation: JsonObject,
+  requestId: string,
+  key: string,
+  timeoutMs: number
+): Promise<JsonObject> {
+  const resultUrl = muapiResultUrl(creation, requestId);
+  const deadline = Date.now() + timeoutMs;
+  let current = creation;
+
+  while (true) {
+    const status = String(muapiValue(current, ["status"]) || "").toLowerCase();
+    if (["completed", "succeeded", "success"].includes(status)) return current;
+    if (["failed", "error", "timeout", "canceled", "cancelled"].includes(status)) {
+      throw new Error(`MuAPI generation ${status}: ${muapiError(current)}`);
+    }
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error("MuAPI generation timed out while polling");
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, Math.min(MUAPI_POLL_INTERVAL_MS, remaining))
+    );
+    current = await muapiJson(
+      resultUrl,
+      {
+        headers: muapiHeaders(key),
+        signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+      },
+      "result polling"
+    );
+  }
+}
+
+async function generateWithMuapi(
+  model: string,
+  payload: JsonObject,
+  mimeType: string,
+  timeoutMs: number | undefined
+): Promise<GenerationResult> {
+  const key = muapiApiKey();
+  if (!key) throw new Error("MUAPI_API_KEY is not configured for media generation.");
+  const timeout = muapiTimeout(timeoutMs);
+  const creation = await muapiJson(
+    `${MUAPI_API_BASE}/${model}`,
+    {
+      method: "POST",
+      headers: muapiHeaders(key, true),
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(timeout),
+    },
+    "generation submission"
+  );
+  const requestId = muapiString(creation, ["request_id", "id"]);
+  if (!requestId) throw new Error("MuAPI did not return a request ID");
+
+  const completed = await waitForMuapiResult(creation, requestId, key, timeout);
+  const urls = muapiOutputUrls(completed);
+  if (!urls.length) throw new Error("MuAPI completed without a media output URL");
+
+  return {
+    assets: urls.map((url) => ({ url, mimeType })),
+    model,
+  };
 }
 
 export function registerOpenAIImageProvider(): void {
@@ -230,5 +422,66 @@ export function registerFalProviders(): void {
         model,
       };
     },
+  });
+}
+
+export function registerMuapiProviders(): void {
+  const isConfigured = (ctx: { env?: Record<string, string | undefined> }) =>
+    !!muapiApiKey() || !!ctx.env?.MUAPI_API_KEY;
+
+  registerImageProvider({
+    id: "muapi",
+    label: "MuAPI",
+    models: MUAPI_IMAGE_MODELS,
+    isConfigured,
+    generate: (req: ImageGenerationRequest): Promise<GenerationResult> =>
+      generateWithMuapi(
+        req.model || MUAPI_IMAGE_MODELS[0],
+        {
+          prompt: req.prompt,
+          ...(req.aspectRatio ? { aspect_ratio: req.aspectRatio } : {}),
+          ...(req.providerOptions ?? {}),
+        },
+        "image/png",
+        req.timeoutMs
+      ),
+  });
+
+  registerVideoProvider({
+    id: "muapi",
+    label: "MuAPI",
+    models: MUAPI_VIDEO_MODELS,
+    isConfigured,
+    generate: (req: VideoGenerationRequest): Promise<GenerationResult> =>
+      generateWithMuapi(
+        req.model || MUAPI_VIDEO_MODELS[0],
+        {
+          prompt: req.prompt,
+          ...(req.durationSeconds !== undefined ? { duration: req.durationSeconds } : {}),
+          ...(req.audio !== undefined ? { enable_audio: req.audio } : {}),
+          ...(req.providerOptions ?? {}),
+        },
+        "video/mp4",
+        req.timeoutMs
+      ),
+  });
+
+  registerMusicProvider({
+    id: "muapi",
+    label: "MuAPI",
+    models: MUAPI_MUSIC_MODELS,
+    isConfigured,
+    generate: (req: MusicGenerationRequest): Promise<GenerationResult> =>
+      generateWithMuapi(
+        req.model || MUAPI_MUSIC_MODELS[0],
+        {
+          prompt: req.prompt,
+          ...(req.lyrics ? { lyrics: req.lyrics } : {}),
+          ...(req.instrumental !== undefined ? { is_instrumental: req.instrumental } : {}),
+          ...(req.providerOptions ?? {}),
+        },
+        "audio/mpeg",
+        req.timeoutMs
+      ),
   });
 }

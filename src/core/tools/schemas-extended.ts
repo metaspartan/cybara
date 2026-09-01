@@ -1135,7 +1135,7 @@ ACTIONS:
   image_generate: {
     name: "image_generate",
     description:
-      "Generate images from a text prompt (OpenAI DALL-E / gpt-image or fal.ai). Generated files are saved to the workspace and their paths returned. Set OPENAI_API_KEY or FAL_KEY/FAL_API_KEY to enable.",
+      "Generate images from a text prompt (OpenAI, fal.ai, or MuAPI). Generated files are saved to the workspace and their paths returned. Set OPENAI_API_KEY, FAL_KEY/FAL_API_KEY, or MUAPI_API_KEY to enable.",
     category: "media",
     input_schema: {
       type: "object",
@@ -1143,11 +1143,11 @@ ACTIONS:
         prompt: { type: "string", description: "Text description of the image to generate" },
         provider: {
           type: "string",
-          description: "Provider id: 'openai' or 'fal'. Defaults to the configured one.",
+          description: "Provider id: 'openai', 'fal', or 'muapi'. Defaults to the configured one.",
         },
         model: {
           type: "string",
-          description: "Model id (e.g. gpt-image-1, dall-e-3, fal-ai/flux/schnell).",
+          description: "Model id (e.g. gpt-image-1, fal-ai/flux/schnell, nano-banana).",
         },
         size: { type: "string", description: "Image size (e.g. '1024x1024'). Provider-dependent." },
         quality: {
@@ -1156,6 +1156,11 @@ ACTIONS:
           description: "Quality. Default standard.",
         },
         count: { type: "number", description: "Number of images. Default 1." },
+        providerOptions: {
+          type: "object",
+          description:
+            "Optional provider-specific fields such as MuAPI aspect_ratio or resolution.",
+        },
         timeoutMs: { type: "number", description: "Timeout in ms." },
       },
       required: ["prompt"],
@@ -1165,16 +1170,27 @@ ACTIONS:
   video_generate: {
     name: "video_generate",
     description:
-      "Generate video from a text prompt (fal.ai: minimax, kling, veo3). Async job; the tool waits for completion. Set FAL_KEY/FAL_API_KEY to enable. Output saved to the workspace.",
+      "Generate video from a text prompt (fal.ai or MuAPI). Async job; the tool waits for completion. Set FAL_KEY/FAL_API_KEY or MUAPI_API_KEY to enable. Output saved to the workspace.",
     category: "media",
     input_schema: {
       type: "object",
       properties: {
         prompt: { type: "string", description: "Text description of the video to generate" },
-        provider: { type: "string", description: "Provider id. Defaults to 'fal'." },
-        model: { type: "string", description: "Model id (e.g. fal-ai/minimax/video-01)." },
+        provider: {
+          type: "string",
+          description: "Provider id: 'fal' or 'muapi'. Defaults to the configured one.",
+        },
+        model: {
+          type: "string",
+          description: "Model id (e.g. fal-ai/minimax/video-01 or wan3.0-text-to-video).",
+        },
         durationSeconds: { type: "number", description: "Target video length in seconds." },
         audio: { type: "boolean", description: "Generate output audio. Default false." },
+        providerOptions: {
+          type: "object",
+          description:
+            "Optional provider-specific fields such as MuAPI resolution or aspect_ratio.",
+        },
         timeoutMs: { type: "number", description: "Timeout in ms. Default 120000." },
       },
       required: ["prompt"],
@@ -1184,14 +1200,20 @@ ACTIONS:
   music_generate: {
     name: "music_generate",
     description:
-      "Generate music/audio from a text prompt (fal.ai: minimax-music, ace-step, stable-audio). Set FAL_KEY/FAL_API_KEY to enable. Output saved to the workspace.",
+      "Generate music/audio from a text prompt (fal.ai or MuAPI). Set FAL_KEY/FAL_API_KEY or MUAPI_API_KEY to enable. Output saved to the workspace.",
     category: "media",
     input_schema: {
       type: "object",
       properties: {
         prompt: { type: "string", description: "Style/genre/mood description" },
-        provider: { type: "string", description: "Provider id. Defaults to 'fal'." },
-        model: { type: "string", description: "Model id (e.g. fal-ai/minimax-music/v2.6)." },
+        provider: {
+          type: "string",
+          description: "Provider id: 'fal' or 'muapi'. Defaults to the configured one.",
+        },
+        model: {
+          type: "string",
+          description: "Model id (e.g. fal-ai/minimax-music/v2.6 or minimax-music-3.0).",
+        },
         lyrics: { type: "string", description: "Optional lyrics for vocal tracks." },
         instrumental: {
           type: "boolean",
@@ -1202,6 +1224,10 @@ ACTIONS:
           type: "string",
           enum: ["mp3", "wav"],
           description: "Output format. Default mp3.",
+        },
+        providerOptions: {
+          type: "object",
+          description: "Optional provider-specific fields such as MuAPI bitrate or sample_rate.",
         },
         timeoutMs: { type: "number", description: "Timeout in ms." },
       },
