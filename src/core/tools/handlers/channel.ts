@@ -1,5 +1,6 @@
 import { agentManager } from "../../agent";
 import type { AgentToolCallResult } from "../../agent-internals";
+import { isBotProfileConfig } from "../../bot-profile";
 import {
   type AgentTransferEnvelope,
   createAgentTransferEnvelope,
@@ -106,11 +107,12 @@ function resolveMaxActiveChildren(args: Record<string, unknown>): number | undef
 
 function resolveSubagentTargetAgent(requestedAgentId?: string) {
   const availableAgents = agentManager.list();
+  const ordinaryAgents = availableAgents.filter((agent) => !isBotProfileConfig(agent.config));
   if (typeof requestedAgentId === "string" && requestedAgentId.trim().length > 0) {
     const requested = requestedAgentId.trim();
     const byId = availableAgents.find((agent) => agent.id === requested);
     if (byId) return byId;
-    const byName = availableAgents.filter(
+    const byName = ordinaryAgents.filter(
       (agent) => agent.name.trim().toLowerCase() === requested.toLowerCase()
     );
     return byName.length === 1 ? byName[0] : undefined;
@@ -118,12 +120,12 @@ function resolveSubagentTargetAgent(requestedAgentId?: string) {
   const configuredId = config.get<unknown>("subagent_agent_id");
   const configuredAgent =
     typeof configuredId === "string" && configuredId.trim().length > 0
-      ? availableAgents.find((agent) => agent.id === configuredId.trim())
+      ? ordinaryAgents.find((agent) => agent.id === configuredId.trim())
       : undefined;
   return (
     configuredAgent ||
-    availableAgents.find((agent) => agent.status === "running") ||
-    availableAgents[0]
+    ordinaryAgents.find((agent) => agent.status === "running") ||
+    ordinaryAgents[0]
   );
 }
 
