@@ -513,27 +513,33 @@ Use this to collapse many tool round-trips into one call for data processing, lo
 
 Image, video, and music generation via a swappable provider registry (`src/core/media-generation.ts`).
 Set `OPENAI_API_KEY` for OpenAI images or `FAL_KEY`/`FAL_API_KEY` for fal.ai
-image/video/music. The bundled `fal.ai` skill becomes eligible when either fal
-key is present and routes agents through these same media tools. Generated files
-are saved to `<workspace>/.cybara/media/` and their paths returned.
+image/video/music, or `MUAPI_API_KEY` for MuAPI images, videos, and music. The
+bundled `fal.ai` skill becomes eligible when either fal key is present and routes
+agents through these same media tools. Generated files are saved to
+`<workspace>/.cybara/media/` and their paths returned.
+
+MuAPI uses an asynchronous submit-and-poll workflow. The built-in provider
+supports `nano-banana` images, `wan3.0-text-to-video`/`seedance-2.5-text-to-video`
+videos, and `minimax-music-3.0` audio. See the [Nano Banana](https://muapi.ai/nano-banana),
+[Wan 3.0](https://muapi.ai/wan-3), and [Seedance 2.5](https://muapi.ai/seedance-2.5)
+model pages for model-specific options; pass those options through `providerOptions`.
 
 ### image_generate
 Generate images from a text prompt.
 ```json
-{"name": "image_generate", "args": { "prompt": "a serene mountain lake at dawn", "provider": "openai", "model": "gpt-image-1", "size": "1024x1024" }}
+{"name": "image_generate", "args": { "prompt": "a serene mountain lake at dawn", "provider": "muapi", "model": "nano-banana", "providerOptions": { "aspect_ratio": "16:9" } }}
 ```
 
 ### video_generate
-Generate video from a text prompt (fal.ai: minimax, kling, veo3). Async job; the tool waits for
-completion.
+Generate video from a text prompt (fal.ai or MuAPI). Async job; the tool waits for completion.
 ```json
-{"name": "video_generate", "args": { "prompt": "a drone shot over a forest", "model": "fal-ai/minimax/video-01", "durationSeconds": 5 }}
+{"name": "video_generate", "args": { "prompt": "a drone shot over a forest", "provider": "muapi", "model": "wan3.0-text-to-video", "durationSeconds": 5, "providerOptions": { "resolution": "720p", "aspect_ratio": "16:9" } }}
 ```
 
 ### music_generate
-Generate music/audio from a text prompt (fal.ai: minimax-music, ace-step, stable-audio).
+Generate music/audio from a text prompt (fal.ai or MuAPI).
 ```json
-{"name": "music_generate", "args": { "prompt": "upbeat synthwave, 120bpm", "durationSeconds": 30, "format": "mp3" }}
+{"name": "music_generate", "args": { "prompt": "upbeat synthwave, 120bpm", "provider": "muapi", "model": "minimax-music-3.0", "providerOptions": { "bitrate": 256000 } }}
 ```
 
 ## Desktop Control

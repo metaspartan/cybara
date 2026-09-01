@@ -1,12 +1,12 @@
+import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { basename, join } from "path";
-import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { validateUrl } from "../../../api/security";
 import {
   getMediaProvider,
-  resolveDefaultProvider,
   type ImageGenerationRequest,
-  type VideoGenerationRequest,
   type MusicGenerationRequest,
+  resolveDefaultProvider,
+  type VideoGenerationRequest,
 } from "../../media-generation";
 import { fetchPublicHttpUrl, type PublicHttpFetcher } from "../../outbound-url-policy";
 import type { ToolContext } from "../index";
@@ -108,7 +108,7 @@ export async function handleImageGenerate(
     : resolveDefaultProvider("image");
   if (!provider)
     throw new Error(
-      "No image generation provider is configured (set OPENAI_API_KEY or FAL_KEY/FAL_API_KEY)."
+      "No image generation provider is configured (set OPENAI_API_KEY, FAL_KEY/FAL_API_KEY, or MUAPI_API_KEY)."
     );
   const req: ImageGenerationRequest = {
     provider: provider.id,
@@ -143,7 +143,9 @@ export async function handleVideoGenerate(
     ? getMediaProvider("video", providerId)
     : resolveDefaultProvider("video");
   if (!provider)
-    throw new Error("No video generation provider is configured (set FAL_KEY/FAL_API_KEY).");
+    throw new Error(
+      "No video generation provider is configured (set FAL_KEY/FAL_API_KEY or MUAPI_API_KEY)."
+    );
   const req: VideoGenerationRequest = {
     provider: provider.id,
     model: typeof args.model === "string" ? args.model : undefined,
@@ -176,7 +178,9 @@ export async function handleMusicGenerate(
     ? getMediaProvider("music", providerId)
     : resolveDefaultProvider("music");
   if (!provider)
-    throw new Error("No music generation provider is configured (set FAL_KEY/FAL_API_KEY).");
+    throw new Error(
+      "No music generation provider is configured (set FAL_KEY/FAL_API_KEY or MUAPI_API_KEY)."
+    );
   const req: MusicGenerationRequest = {
     provider: provider.id,
     model: typeof args.model === "string" ? args.model : undefined,

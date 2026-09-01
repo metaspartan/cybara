@@ -5,7 +5,11 @@ import {
   listMediaProviders,
   resolveDefaultProvider,
 } from "../../src/core/media-generation";
-import { registerFalProviders, registerOpenAIImageProvider } from "../../src/core/media-providers";
+import {
+  registerFalProviders,
+  registerMuapiProviders,
+  registerOpenAIImageProvider,
+} from "../../src/core/media-providers";
 
 const MEDIA_ENV_KEYS = [
   "OPENAI_API_KEY",
@@ -13,6 +17,7 @@ const MEDIA_ENV_KEYS = [
   "OPENAI_BASE_URL",
   "FAL_KEY",
   "FAL_API_KEY",
+  "MUAPI_API_KEY",
 ];
 
 const saved: Record<string, string | undefined> = {};
@@ -24,6 +29,7 @@ beforeEach(() => {
   }
   registerOpenAIImageProvider();
   registerFalProviders();
+  registerMuapiProviders();
 });
 
 afterEach(() => {
@@ -35,9 +41,9 @@ afterEach(() => {
 
 describe("media provider registration + listing", () => {
   test("built-in providers are registered for each kind", () => {
-    expect(listMediaProviders("image")).toEqual(expect.arrayContaining(["openai", "fal"]));
-    expect(listMediaProviders("video")).toEqual(expect.arrayContaining(["fal"]));
-    expect(listMediaProviders("music")).toEqual(expect.arrayContaining(["fal"]));
+    expect(listMediaProviders("image")).toEqual(expect.arrayContaining(["openai", "fal", "muapi"]));
+    expect(listMediaProviders("video")).toEqual(expect.arrayContaining(["fal", "muapi"]));
+    expect(listMediaProviders("music")).toEqual(expect.arrayContaining(["fal", "muapi"]));
   });
 });
 
@@ -45,8 +51,11 @@ describe("media provider selection", () => {
   test("getMediaProvider resolves canonical ids", () => {
     expect(getMediaProvider("image", "openai").id).toBe("openai");
     expect(getMediaProvider("image", "fal").id).toBe("fal");
+    expect(getMediaProvider("image", "muapi").id).toBe("muapi");
     expect(getMediaProvider("video", "fal").id).toBe("fal");
+    expect(getMediaProvider("video", "muapi").id).toBe("muapi");
     expect(getMediaProvider("music", "fal").id).toBe("fal");
+    expect(getMediaProvider("music", "muapi").id).toBe("muapi");
   });
 
   test("id resolution is case-insensitive and trims whitespace", () => {
@@ -94,12 +103,25 @@ describe("media provider config resolution (isConfigured)", () => {
     expect(isConfigured(getMediaProvider("music", "fal"))).toBe(false);
   });
 
+  test("muapi is not configured without a key", () => {
+    expect(isConfigured(getMediaProvider("image", "muapi"))).toBe(false);
+    expect(isConfigured(getMediaProvider("video", "muapi"))).toBe(false);
+    expect(isConfigured(getMediaProvider("music", "muapi"))).toBe(false);
+  });
+
   test("fal becomes configured with FAL_KEY or FAL_API_KEY", () => {
     process.env.FAL_KEY = "fal-test";
     expect(isConfigured(getMediaProvider("image", "fal"))).toBe(true);
     delete process.env.FAL_KEY;
     process.env.FAL_API_KEY = "fal-alt";
     expect(isConfigured(getMediaProvider("video", "fal"))).toBe(true);
+  });
+
+  test("muapi becomes configured with MUAPI_API_KEY", () => {
+    process.env.MUAPI_API_KEY = "muapi-test";
+    expect(isConfigured(getMediaProvider("image", "muapi"))).toBe(true);
+    expect(isConfigured(getMediaProvider("video", "muapi"))).toBe(true);
+    expect(isConfigured(getMediaProvider("music", "muapi"))).toBe(true);
   });
 });
 

@@ -18,6 +18,7 @@
 | `BRAVE_API_KEY` | - | Brave web search |
 | `SEARXNG_URL` | - | Self-hosted SearXNG search endpoint |
 | `FAL_KEY` / `FAL_API_KEY` | - | fal.ai media generation key for images, videos, music, and the bundled `fal.ai` skill |
+| `MUAPI_API_KEY` | - | MuAPI media generation key for images, videos, and music |
 | `LOG_LEVEL` | info | Logging verbosity |
 | `LOG_FORMAT` | pretty | Log output format (`pretty` or `json`) |
 | `CYBARA_RESOURCE_DIR` | - | Sidecar resource root used by packaged Tauri/native apps for bundled UI, `node_modules`, `secp256k1.wasm`, and ONNX runtime assets |
