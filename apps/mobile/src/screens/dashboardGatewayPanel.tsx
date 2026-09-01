@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Text, View } from "react-native";
+import { Alert, Linking, Text, View } from "react-native";
 import {
   Bell,
   BellOff,
@@ -12,6 +12,7 @@ import {
   Save,
   Send,
   Server,
+  Settings,
   ShieldAlert,
   ShieldCheck,
   Trash2,
@@ -19,6 +20,8 @@ import {
 import { Clipboard } from "../lib/expoNativeModules";
 import {
   clearMobilePushNotifications,
+  inspectMobilePushNotifications,
+  type MobilePushPermissionState,
   registerMobilePushNotifications,
 } from "../lib/pushNotifications";
 import { saveProfile } from "../lib/storage";
@@ -63,6 +66,17 @@ const remoteAccessProviderOptions: Array<{
   { label: "Custom proxy", value: "custom" },
 ];
 
+async function openNotificationSettings(): Promise<void> {
+  try {
+    await Linking.openSettings();
+  } catch (error) {
+    Alert.alert(
+      "Settings unavailable",
+      gatewayActionError(error, "Open Cybara in system settings to manage notifications.")
+    );
+  }
+}
+
 export function GatewayManagementPanel({
   api,
   openLogs,
@@ -95,6 +109,7 @@ export function GatewayManagementPanel({
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [dataDirBusy, setDataDirBusy] = useState(false);
   const [mobilePush, setMobilePush] = useState<MobilePushDeviceSummary | null>(null);
+  const [localPush, setLocalPush] = useState<MobilePushPermissionState | null>(null);
   const [pushStatusLoading, setPushStatusLoading] = useState(false);
   const pushBusy =
     pushStatusLoading ||
@@ -108,15 +123,24 @@ export function GatewayManagementPanel({
     chatCompletions: true,
     taskCompletions: true,
   };
-  const pushStatusLabel = pushConfigured
-    ? [
-        mobilePush?.provider || "expo",
-        mobilePush?.platform || "unknown",
-        mobilePush?.lastSentAt ? `last sent ${absoluteTimestampLabel(mobilePush.lastSentAt)}` : "",
-      ]
-        .filter(Boolean)
-        .join(" - ")
-    : "Off on this device";
+  const pushStatusLabel = pushStatusLoading
+    ? "Checking device and gateway..."
+    : localPush?.status === "misconfigured" || localPush?.status === "unavailable"
+      ? localPush.message || "Notifications are unavailable in this build."
+      : localPush?.status === "denied"
+        ? "Blocked in system notification settings"
+        : localPush?.status === "undetermined"
+          ? "Device permission required"
+          : mobilePush?.lastError
+            ? `Delivery issue: ${mobilePush.lastError}`
+            : pushConfigured
+              ? [
+                  `Ready on ${mobilePush?.platform || "this device"}`,
+                  mobilePush?.lastSentAt
+                    ? `last accepted ${absoluteTimestampLabel(mobilePush.lastSentAt)}`
+                    : "waiting for first delivery",
+                ].join(" - ")
+              : "Off on this device";
   const configuredDefaultWorkspaceDir =
     typeof summary?.config.default_workspace_dir === "string"
       ? summary.config.default_workspace_dir
@@ -170,10 +194,15 @@ export function GatewayManagementPanel({
   const loadMobilePushStatus = useCallback(async () => {
     setPushStatusLoading(true);
     try {
-      const result = await api.currentMobileDevice();
-      setMobilePush(result.device?.push ?? null);
-    } catch {
-      setMobilePush(null);
+      const [gatewayPush, devicePush] = await Promise.all([
+        api
+          .currentMobileDevice()
+          .then((result) => result.device?.push ?? null)
+          .catch(() => null),
+        inspectMobilePushNotifications(),
+      ]);
+      setMobilePush(gatewayPush);
+      setLocalPush(devicePush);
     } finally {
       setPushStatusLoading(false);
     }
@@ -398,7 +427,10 @@ export function GatewayManagementPanel({
         throw new Error(result.message || `Notification setup returned ${result.status}.`);
       }
       await loadMobilePushStatus();
-      Alert.alert("Notifications enabled", "Cybara can notify this device when chats finish.");
+      Alert.alert(
+        "Notifications ready",
+        "Cybara can notify this device when chats or background tasks finish."
+      );
     } catch (error) {
       Alert.alert("Notifications failed", gatewayActionError(error, "Notification setup failed."));
     } finally {
@@ -415,7 +447,10 @@ export function GatewayManagementPanel({
         throw new Error(errors || "Gateway could not send a test notification.");
       }
       await loadMobilePushStatus();
-      Alert.alert("Test sent", "A Cybara notification was sent to this device.");
+      Alert.alert(
+        "Test accepted",
+        "The push service accepted the test. It should arrive through the Agent activity channel."
+      );
     } catch (error) {
       Alert.alert("Test failed", gatewayActionError(error, "Test notification failed."));
     } finally {
@@ -576,6 +611,16 @@ export function GatewayManagementPanel({
               }}
               tone={colors.red}
             />
+            {localPush?.status === "denied" ? (
+              <DetailActionButton
+                Icon={Settings}
+                disabled={pushBusy}
+                label="System Settings"
+                onPress={() => {
+                  void openNotificationSettings();
+                }}
+              />
+            ) : null}
           </View>
           <SettingToggle
             busy={busyAction === "push-chat"}

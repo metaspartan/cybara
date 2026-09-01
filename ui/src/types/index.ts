@@ -43,6 +43,7 @@ export interface AgentSummary {
   tool_profile?: string;
   max_context_tokens?: number | null;
   supports_images?: boolean;
+  is_bot?: boolean;
 }
 
 export interface BotRosterItem {
@@ -56,6 +57,13 @@ export interface BotRosterItem {
   provider?: string;
   provider_id?: string;
   status?: Agent["status"];
+  mention_handle?: string;
+  tools?: string[];
+  tool_count?: number;
+  memory_enabled?: boolean;
+  routine_count?: number;
+  active_routine_count?: number;
+  next_routine_at?: string | null;
   session_id: string;
   session: {
     title?: string | null;

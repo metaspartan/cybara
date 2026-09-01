@@ -222,7 +222,14 @@ export const agentsApi = {
 
 export const botsApi = {
   list: () => fetchApi<{ bots: BotRosterItem[] }>("/bots"),
-  create: (input: { name: string; title?: string; description?: string; base_agent_id?: string }) =>
+  create: (input: {
+    name: string;
+    title?: string;
+    description?: string;
+    base_agent_id?: string;
+    model?: string;
+    provider_id?: string;
+  }) =>
     fetchApi<{ bot: BotRosterItem; session_id: string }>("/bots", {
       method: "POST",
       body: JSON.stringify(input),
@@ -235,6 +242,8 @@ export const botsApi = {
       description?: string;
       hidden?: boolean;
       pinned?: boolean;
+      model?: string;
+      provider_id?: string;
     }
   ) =>
     fetchApi<{ bot: BotRosterItem }>(`/bots/${id}`, {
@@ -1115,7 +1124,7 @@ export const skillsApi = {
 };
 
 export interface ChatCapabilityOption {
-  kind: "skill" | "mcp_server" | "mcp" | "agent" | "tool" | "connector" | "command";
+  kind: "skill" | "mcp_server" | "mcp" | "bot" | "agent" | "tool" | "connector" | "command";
   token: string;
   name: string;
   description: string;
@@ -1123,10 +1132,15 @@ export interface ChatCapabilityOption {
 }
 
 export const chatApi = {
-  capabilities: (workspaceDir?: string | null) =>
-    fetchApi<{ capabilities: ChatCapabilityOption[] }>(
-      `/chat/capabilities${workspaceDir ? `?workspaceDir=${encodeURIComponent(workspaceDir)}` : ""}`
-    ),
+  capabilities: (workspaceDir?: string | null, sessionId?: string | null) => {
+    const params = new URLSearchParams();
+    if (workspaceDir) params.set("workspaceDir", workspaceDir);
+    if (sessionId) params.set("sessionId", sessionId);
+    const query = params.toString();
+    return fetchApi<{ capabilities: ChatCapabilityOption[] }>(
+      `/chat/capabilities${query ? `?${query}` : ""}`
+    );
+  },
   send: (
     message: string,
     agentId?: string,

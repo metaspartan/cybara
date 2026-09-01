@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
 import type { AgentSummary } from "@/types";
 import { openExternal } from "@/utils/openExternal";
+import { isBotSessionId } from "../../../../shared/bot-mode";
 import { hasMixedAssistantAuthors } from "./assistantAuthors";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./ChatAgentControls";
 import { ChatComposerAttachments } from "./ChatComposerAttachments";
@@ -274,6 +275,13 @@ function MultiChatPane({
   const isDraft = sessionId.startsWith(MULTI_CHAT_DRAFT_PREFIX);
   const detailQuery = useSessionDetail(sessionId, !isDraft);
   const detail = detailQuery.data;
+  const selectableAgents = useMemo(
+    () =>
+      isBotSessionId(sessionId)
+        ? agents.filter((agent) => agent.id === detail?.agent_id)
+        : agents.filter((agent) => !agent.is_bot),
+    [agents, detail?.agent_id, sessionId]
+  );
   const updateSessionAgent = useUpdateSessionAgent();
   const updateAgentReasoning = useUpdateAgentReasoning();
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
@@ -775,13 +783,14 @@ function MultiChatPane({
               updating={approvalUpdating}
             />
             <ChatAgentControls
-              agents={agents}
+              agents={selectableAgents}
               selectedAgentId={selectedAgentId || detail?.agent_id}
               modelRouterEnabled={modelRouterEnabled}
               useModelRouter={useModelRouter}
               contextUsage={detail?.contextUsage}
               onSelectAgent={(agentId) => void handleSelectAgent(agentId)}
               updating={updateSessionAgent.isPending}
+              locked={isBotSessionId(sessionId)}
               controlId={`multi-chat-agent-selector-${index}`}
             />
             <span className="min-w-0 flex-1" />

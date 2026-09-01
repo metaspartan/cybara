@@ -194,14 +194,18 @@ export function surfaceRows(
   if (!summary) return [];
   switch (surface) {
     case "agents":
-      return summary.agents.map((agent) =>
-        itemFromRecord(
-          agent.id,
-          agent.name,
-          [agent.status, agent.model, agent.type].filter(Boolean).join(" - ") || "Configured",
-          agent as unknown as Record<string, unknown>
-        )
-      );
+      return summary.agents.reduce<RemoteItemSummary[]>((rows, agent) => {
+        if (agent.is_bot) return rows;
+        rows.push(
+          itemFromRecord(
+            agent.id,
+            agent.name,
+            [agent.status, agent.model, agent.type].filter(Boolean).join(" - ") || "Configured",
+            agent as unknown as Record<string, unknown>
+          )
+        );
+        return rows;
+      }, []);
     case "providers":
       return summary.providers.map((provider) =>
         itemFromRecord(

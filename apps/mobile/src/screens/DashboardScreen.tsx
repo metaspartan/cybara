@@ -149,6 +149,7 @@ import {
   formatBytes,
 } from "../lib/chat-format";
 import type { GatewayProfile } from "../lib/connection";
+import type { MobileNotificationNavigationRequest } from "../lib/pushNotifications";
 import {
   MOBILE_NAV_CHROME,
   MOBILE_CHAT_COMPOSER,
@@ -296,10 +297,12 @@ const tabIcons: Record<MobileTabKey, IconGlyph> = {
 };
 
 export function DashboardScreen({
+  notificationRequest,
   profile,
   onDisconnect,
   onProfileUpdated,
 }: {
+  notificationRequest?: MobileNotificationNavigationRequest | null;
   profile: GatewayProfile;
   onDisconnect: () => void;
   onProfileUpdated?: (profile: GatewayProfile) => void | Promise<void>;
@@ -361,6 +364,19 @@ export function DashboardScreen({
     setDetailRoute({ kind: "session", id });
     void persistLastOpenedSessionId(id);
   };
+
+  useEffect(() => {
+    if (!notificationRequest) return;
+    setChatHeaderAction(null);
+    if (notificationRequest.target.kind === "session") {
+      setActiveTab("sessions");
+      setDetailRoute({ kind: "session", id: notificationRequest.target.sessionId });
+      void persistLastOpenedSessionId(notificationRequest.target.sessionId);
+      return;
+    }
+    setActiveTab("tasks");
+    setDetailRoute(null);
+  }, [notificationRequest, profile.id]);
 
   const syncSessionSummary = useCallback((detail: SessionDetailSummary) => {
     setSummary((current) => mergeSessionDetailIntoSummary(current, detail));

@@ -14,6 +14,7 @@ import {
   applyChatCapabilityInstruction,
   resolveChatCapabilityMentions,
 } from "../core/chat/capability-mentions";
+import { isBotProfileConfig } from "../core/bot-profile";
 import { stopRegisteredComputerUseTrajectory } from "../core/computer-use-lifecycle";
 import { config } from "../core/config";
 import { hasImages, sanitizeAgentImages } from "../core/llm/image-blocks";
@@ -1437,14 +1438,14 @@ async function handleChatTurn(
   };
   const allToolCalls: ToolCallInfo[] = [];
   const agentTransfers: AgentTransferEnvelope[] = [];
-
   if (imageRoutingError) {
     responseContent = imageRoutingError;
   } else if (provider && agent) {
     try {
       const capabilityMentions = await resolveChatCapabilityMentions(
         message,
-        session.workspaceDir || undefined
+        session.workspaceDir || undefined,
+        isBotProfileConfig(agent.config) ? "bots" : "all"
       );
       const shouldPreferArtifacts = toolsEnabled && shouldPreferArtifactsForMessage(message);
       const directToolCandidate = toolsEnabled ? requiredDirectToolForMessage(message) : undefined;

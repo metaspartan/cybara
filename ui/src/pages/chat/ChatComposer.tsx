@@ -30,6 +30,7 @@ export interface ChatComposerProps {
   activeAgent?: AgentSummary;
   agents: AgentSummary[];
   agentUpdating: boolean;
+  agentLocked?: boolean;
   approvalMode: ToolApprovalMode;
   approvalUpdating: boolean;
   capabilityPicker: ReturnType<typeof useChatCapabilityPicker>;
@@ -95,6 +96,7 @@ export function ChatComposer({
   activeAgent,
   agents,
   agentUpdating,
+  agentLocked,
   approvalMode,
   approvalUpdating,
   capabilityPicker,
@@ -266,6 +268,7 @@ export function ChatComposer({
             providerPlan={providerPlan}
             onSelectAgent={onSelectAgent}
             updating={agentUpdating}
+            locked={agentLocked}
             fastMode={codexFastMode}
             fastModeUpdating={codexFastModeUpdating}
             onFastModeChange={onCodexFastModeChange}

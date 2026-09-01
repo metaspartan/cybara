@@ -22,6 +22,7 @@ interface UseChatCapabilityPickerOptions {
   setInput: Dispatch<SetStateAction<string>>;
   inputRef: RefObject<HTMLTextAreaElement | null>;
   workspaceDir?: string | null;
+  sessionId?: string | null;
   onSend: () => void | Promise<void>;
 }
 
@@ -30,6 +31,7 @@ export function useChatCapabilityPicker({
   setInput,
   inputRef,
   workspaceDir,
+  sessionId,
   onSend,
 }: UseChatCapabilityPickerOptions) {
   const [cursor, setCursor] = useState<number | null>(null);
@@ -39,9 +41,9 @@ export function useChatCapabilityPicker({
     [cursor, input]
   );
   const query = useQuery({
-    queryKey: ["chat-capabilities", workspaceDir],
+    queryKey: ["chat-capabilities", workspaceDir, sessionId],
     queryFn: async () => {
-      const response = await chatApi.capabilities(workspaceDir);
+      const response = await chatApi.capabilities(workspaceDir, sessionId);
       if (!response.success || !response.data) {
         throw new Error(response.error || "Failed to load chat capabilities");
       }

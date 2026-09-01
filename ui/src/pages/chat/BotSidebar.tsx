@@ -13,14 +13,17 @@ import {
   PinOff,
   Plus,
   Search,
+  ShieldCheck,
   Sparkles,
   Trash2,
   UsersRound,
+  Wrench,
   X,
 } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Button, ConfirmDialog, Input, Modal, Textarea } from "@/components/ui";
+import { useProviders } from "@/hooks/useApi";
 import { botsApi, extractApiError } from "@/lib/api";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import type { BotRosterItem } from "@/types";
@@ -41,6 +44,8 @@ interface BotProfileDraft {
   name: string;
   title: string;
   description: string;
+  model: string;
+  providerId: string;
 }
 
 function previewForBot(bot: BotRosterItem): string {
@@ -49,7 +54,13 @@ function previewForBot(bot: BotRosterItem): string {
 }
 
 function profileDraft(bot: BotRosterItem): BotProfileDraft {
-  return { name: bot.name, title: bot.title, description: bot.description };
+  return {
+    name: bot.name,
+    title: bot.title,
+    description: bot.description,
+    model: bot.model ?? "",
+    providerId: bot.provider_id ?? "",
+  };
 }
 
 export function BotSidebar({
@@ -62,11 +73,14 @@ export function BotSidebar({
 }: BotSidebarProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { data: providers = [] } = useProviders();
   const [query, setQuery] = useState("");
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [baseAgentId, setBaseAgentId] = useState("");
+  const [model, setModel] = useState("");
+  const [providerId, setProviderId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [actionBotId, setActionBotId] = useState<string | null>(null);
@@ -134,6 +148,8 @@ export function BotSidebar({
         title,
         description,
         base_agent_id: baseAgentId || undefined,
+        model: model || undefined,
+        provider_id: providerId || undefined,
       });
       if (!response.success || !response.data) {
         throw new Error(extractApiError(response, "Could not create bot"));
@@ -145,6 +161,8 @@ export function BotSidebar({
       setTitle("");
       setDescription("");
       setBaseAgentId("");
+      setModel("");
+      setProviderId("");
       setError(null);
       onCreateOpenChange(false);
       refreshBots();
@@ -229,6 +247,26 @@ export function BotSidebar({
     setEditingBot(bot);
     setEditDraft(profileDraft(bot));
     setActionBotId(null);
+  };
+
+  const providerModels = (selectedProviderId: string): string[] =>
+    providers.find((provider) => provider.id === selectedProviderId)?.models ?? [];
+
+  const changeCreateProvider = (nextProviderId: string): void => {
+    setProviderId(nextProviderId);
+    setModel(providerModels(nextProviderId)[0] ?? "");
+  };
+
+  const changeEditProvider = (nextProviderId: string): void => {
+    setEditDraft((current) =>
+      current
+        ? {
+            ...current,
+            providerId: nextProviderId,
+            model: providerModels(nextProviderId)[0] ?? "",
+          }
+        : current
+    );
   };
 
   const beginTeam = (): void => {
@@ -354,53 +392,55 @@ export function BotSidebar({
               return (
                 <div key={bot.id} className={cn("rounded-xl", bot.hidden && "opacity-55")}>
                   <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openBot.mutate(bot.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") openBot.mutate(bot.id);
-                    }}
                     onContextMenu={(event) => {
                       event.preventDefault();
                       setActionBotId(actionsOpen ? null : bot.id);
                     }}
                     className={cn(
-                      "group flex w-full cursor-pointer items-center gap-2.5 rounded-xl border px-2 py-2 text-left transition-all",
+                      "group flex w-full items-center rounded-xl border text-left transition-all",
                       selected
                         ? "border-[rgba(var(--accent-primary),0.32)] bg-[rgba(var(--accent-primary),0.12)] shadow-sm"
                         : "border-transparent hover:bg-[var(--surface-hover)]"
                     )}
                   >
-                    <BotAvatar bot={bot} active={active} />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5">
-                        {bot.pinned ? (
-                          <Pin className="h-3 w-3 shrink-0 text-[var(--text-subtle)]" />
-                        ) : null}
-                        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--text-primary)]">
-                          {bot.name}
-                        </span>
-                        {bot.session?.updated_at ? (
-                          <span className="shrink-0 text-[10px] text-[var(--text-subtle)]">
-                            {formatRelativeTime(bot.session.updated_at).replace(" ago", "")}
+                    <button
+                      type="button"
+                      onClick={() => openBot.mutate(bot.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(var(--accent-primary),0.45)]"
+                    >
+                      <BotAvatar bot={bot} active={active} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          {bot.pinned ? (
+                            <Pin className="h-3 w-3 shrink-0 text-[var(--text-subtle)]" />
+                          ) : null}
+                          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--text-primary)]">
+                            {bot.name}
                           </span>
-                        ) : null}
+                          {bot.session?.updated_at ? (
+                            <span className="shrink-0 text-[10px] text-[var(--text-subtle)]">
+                              {formatRelativeTime(bot.session.updated_at).replace(" ago", "")}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+                          <span className="min-w-0 flex-1 truncate">{previewForBot(bot)}</span>
+                          {(bot.routine_count ?? 0) > 0 ? (
+                            <span className="shrink-0 rounded-full border border-[var(--surface-border)] px-1.5 py-0.5 text-[9px] text-[var(--text-subtle)]">
+                              {bot.active_routine_count ?? 0}/{bot.routine_count}
+                            </span>
+                          ) : null}
+                        </span>
                       </span>
-                      <span className="mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">
-                        {previewForBot(bot)}
-                      </span>
-                    </span>
+                    </button>
                     {openBot.isPending && openBot.variables === bot.id ? (
-                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--text-muted)]" />
+                      <Loader2 className="mr-2 h-3.5 w-3.5 shrink-0 animate-spin text-[var(--text-muted)]" />
                     ) : (
                       <button
                         type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setActionBotId(actionsOpen ? null : bot.id);
-                        }}
+                        onClick={() => setActionBotId(actionsOpen ? null : bot.id)}
                         className={cn(
-                          "theme-muted-icon-button flex h-7 w-7 shrink-0 items-center justify-center rounded-lg opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
+                          "theme-muted-icon-button mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
                           actionsOpen && "bg-[var(--surface-hover)] opacity-100"
                         )}
                         aria-label={`Actions for ${bot.name}`}
@@ -444,15 +484,16 @@ export function BotSidebar({
                       </button>
                       <button
                         type="button"
-                        onClick={() =>
+                        onClick={() => {
+                          setActionBotId(null);
                           navigate(
-                            `/tasks?new=1&agent=${encodeURIComponent(bot.id)}&session=${encodeURIComponent(bot.session_id)}`
-                          )
-                        }
+                            `/tasks?agent=${encodeURIComponent(bot.id)}&session=${encodeURIComponent(bot.session_id)}`
+                          );
+                        }}
                         className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
                       >
                         <Clock3 className="h-3.5 w-3.5" />
-                        Add routine
+                        Routines
                       </button>
                       <button
                         type="button"
@@ -508,8 +549,25 @@ export function BotSidebar({
         title="New bot"
         description="Give a durable teammate a clear job, working style, and approval boundary."
         size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => onCreateOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              form="create-bot-form"
+              type="submit"
+              isLoading={createBot.isPending}
+              disabled={!name.trim()}
+              leftIcon={<Plus className="h-4 w-4" />}
+            >
+              Create bot
+            </Button>
+          </div>
+        }
       >
         <form
+          id="create-bot-form"
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
@@ -560,24 +618,66 @@ export function BotSidebar({
               </select>
             </label>
           ) : null}
-          <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--text-muted)]">
-            This bot gets one continuous conversation, persistent memory, its own model
-            configuration, tools, and background work.
+          <details className="group rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-raised)]">
+            <summary className="cursor-pointer list-none rounded-2xl px-3.5 py-3 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]">
+              Model and provider
+              <span className="float-right text-xs text-[var(--text-subtle)] group-open:hidden">
+                Optional
+              </span>
+            </summary>
+            <div className="space-y-3 border-t border-[var(--surface-border)] px-3.5 pb-3.5 pt-3">
+              <label className="block text-sm font-medium text-[var(--text-secondary)]">
+                Provider
+                <select
+                  value={providerId}
+                  onChange={(event) => changeCreateProvider(event.target.value)}
+                  className="themed-form-control mt-1.5 w-full rounded-xl border px-4 py-2.5"
+                >
+                  <option value="">Inherit default provider</option>
+                  {providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Input
+                label="Model"
+                value={model}
+                list="create-bot-models"
+                maxLength={200}
+                onChange={(event) => setModel(event.target.value)}
+                placeholder="Inherit provider default"
+                helperText="Each bot can pin its own provider and model."
+              />
+              <datalist id="create-bot-models">
+                {providerModels(providerId).map((providerModel) => (
+                  <option key={providerModel} value={providerModel} />
+                ))}
+              </datalist>
+            </div>
+          </details>
+          <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-raised)] p-3.5">
+            <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
+              <ShieldCheck className="h-4 w-4 text-[rgb(var(--accent-primary))]" />
+              Access and safety
+            </div>
+            <div className="mt-2 grid gap-2 text-xs text-[var(--text-muted)] sm:grid-cols-2">
+              <span className="flex items-center gap-2 rounded-xl bg-[var(--surface-hover)] px-2.5 py-2">
+                <Wrench className="h-3.5 w-3.5 shrink-0" />
+                Inherited tools
+              </span>
+              <span className="flex items-center gap-2 rounded-xl bg-[var(--surface-hover)] px-2.5 py-2">
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                Persistent memory
+              </span>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-[var(--text-muted)]">
+              Protected actions follow the gateway approval policy. Choose a workspace in chat when
+              this bot needs project access.
+            </p>
           </div>
           {error ? <p className="text-sm text-red-400">{error}</p> : null}
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="ghost" onClick={() => onCreateOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              isLoading={createBot.isPending}
-              disabled={!name.trim()}
-              leftIcon={<Plus className="h-4 w-4" />}
-            >
-              Create bot
-            </Button>
-          </div>
         </form>
       </Modal>
 
@@ -590,14 +690,41 @@ export function BotSidebar({
         title="Edit bot profile"
         description="Durable role details shape how this bot works in every conversation."
         size="sm"
+        footer={
+          editingBot && editDraft ? (
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setEditingBot(null)}>
+                Cancel
+              </Button>
+              <Button
+                form="edit-bot-form"
+                type="submit"
+                isLoading={updateBot.isPending}
+                disabled={!editDraft.name.trim()}
+              >
+                Save profile
+              </Button>
+            </div>
+          ) : null
+        }
       >
         {editingBot && editDraft ? (
           <form
+            id="edit-bot-form"
             className="space-y-4"
             onSubmit={(event) => {
               event.preventDefault();
               setError(null);
-              updateBot.mutate({ id: editingBot.id, updates: editDraft });
+              updateBot.mutate({
+                id: editingBot.id,
+                updates: {
+                  name: editDraft.name,
+                  title: editDraft.title,
+                  description: editDraft.description,
+                  model: editDraft.model,
+                  provider_id: editDraft.providerId,
+                },
+              });
             }}
           >
             <div className="flex items-center gap-3 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] p-3">
@@ -648,19 +775,63 @@ export function BotSidebar({
               }
               helperText="Keep durable responsibilities and approval boundaries here; use chat for the current task."
             />
-            {error ? <p className="text-sm text-red-400">{error}</p> : null}
-            <div className="flex justify-end gap-2 pt-1">
-              <Button type="button" variant="ghost" onClick={() => setEditingBot(null)}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                isLoading={updateBot.isPending}
-                disabled={!editDraft.name.trim()}
-              >
-                Save profile
-              </Button>
+            <details className="group rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-raised)]">
+              <summary className="cursor-pointer list-none rounded-2xl px-3.5 py-3 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]">
+                Model and provider
+                <span className="float-right truncate pl-3 text-xs text-[var(--text-subtle)] group-open:hidden">
+                  {editDraft.model || "Automatic"}
+                </span>
+              </summary>
+              <div className="space-y-3 border-t border-[var(--surface-border)] px-3.5 pb-3.5 pt-3">
+                <label className="block text-sm font-medium text-[var(--text-secondary)]">
+                  Provider
+                  <select
+                    value={editDraft.providerId}
+                    onChange={(event) => changeEditProvider(event.target.value)}
+                    className="themed-form-control mt-1.5 w-full rounded-xl border px-4 py-2.5"
+                  >
+                    <option value="">Automatic provider</option>
+                    {providers.map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Input
+                  label="Model"
+                  value={editDraft.model}
+                  list="edit-bot-models"
+                  maxLength={200}
+                  onChange={(event) =>
+                    setEditDraft((current) =>
+                      current ? { ...current, model: event.target.value } : current
+                    )
+                  }
+                  placeholder="Provider default"
+                />
+                <datalist id="edit-bot-models">
+                  {providerModels(editDraft.providerId).map((providerModel) => (
+                    <option key={providerModel} value={providerModel} />
+                  ))}
+                </datalist>
+              </div>
+            </details>
+            <div className="grid gap-2 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-raised)] p-3 text-xs text-[var(--text-muted)] sm:grid-cols-3">
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5" /> Gateway approvals
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Wrench className="h-3.5 w-3.5" />
+                {(editingBot.tool_count ?? 0) > 0
+                  ? `${editingBot.tool_count} tools`
+                  : "Inherited tools"}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Clock3 className="h-3.5 w-3.5" /> {editingBot.routine_count ?? 0} routines
+              </span>
             </div>
+            {error ? <p className="text-sm text-red-400">{error}</p> : null}
           </form>
         ) : null}
       </Modal>

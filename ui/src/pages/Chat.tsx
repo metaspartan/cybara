@@ -160,6 +160,13 @@ export function Chat() {
     () => botRoster.find((bot) => bot.session_id === sessionId) ?? null,
     [botRoster, sessionId]
   );
+  const composerAgents = useMemo(
+    () =>
+      currentBot
+        ? agents.filter((agent) => agent.id === currentBot.id)
+        : agents.filter((agent) => !agent.is_bot),
+    [agents, currentBot]
+  );
   const turnStartedAtMsByIndex = useMemo(() => {
     const lookup = new Map<number, number | undefined>();
     let latestUserTimestampMs: number | undefined;
@@ -1396,6 +1403,7 @@ export function Chat() {
     setInput,
     inputRef,
     workspaceDir: effectiveWorkspaceDir,
+    sessionId,
     onSend: handleSend,
   });
 
@@ -1579,8 +1587,9 @@ export function Chat() {
     );
   const chatComposerProps: ChatComposerProps = {
     activeAgent: activeAgentForPlan,
-    agents,
+    agents: composerAgents,
     agentUpdating: updateSessionAgent.isPending,
+    agentLocked: currentBot !== null,
     approvalMode: toolApprovalMode,
     approvalUpdating: savingToolApprovalMode,
     capabilityPicker,

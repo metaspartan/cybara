@@ -54,6 +54,15 @@ export function ChatEmptyState({
 }: ChatEmptyStateProps): ReactElement {
   const [emptyWorkspacePrompt] = useState(randomEmptyWorkspacePrompt);
   const workspaceName = workspaceDir ? workspaceFolderName(workspaceDir) : null;
+  const routineCount = bot?.routine_count ?? 0;
+  const activeRoutineCount = bot?.active_routine_count ?? 0;
+  const mentionHandle =
+    bot?.mention_handle ??
+    bot?.name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
 
   return (
     <div data-chat-empty-state="true" className="flex w-full flex-col items-center">
@@ -104,13 +113,15 @@ export function ChatEmptyState({
               ) : null}
               <div className="mt-3 flex flex-wrap justify-center gap-1.5 text-[10px] font-medium text-[var(--text-muted)]">
                 <span className="rounded-full border border-[var(--surface-border)] bg-[var(--surface-raised)] px-2 py-1">
-                  Persistent memory
+                  {bot.memory_enabled !== false ? "Persistent memory" : "Session memory"}
                 </span>
                 <span className="rounded-full border border-[var(--surface-border)] bg-[var(--surface-raised)] px-2 py-1">
-                  Background work
+                  {routineCount > 0
+                    ? `${activeRoutineCount} active · ${routineCount} routine${routineCount === 1 ? "" : "s"}`
+                    : "Background work ready"}
                 </span>
                 <span className="rounded-full border border-[var(--surface-border)] bg-[var(--surface-raised)] px-2 py-1">
-                  @{bot.name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-")}
+                  @{mentionHandle}
                 </span>
               </div>
             </div>

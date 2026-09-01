@@ -23,7 +23,8 @@ describe("responsive layout contracts", () => {
     expect(pageLayoutSource).toContain("max-sm:w-full sm:justify-end");
     expect(tasksSource).toContain("grid w-full grid-cols-2 gap-2");
     expect(tasksSource).toContain("lg:flex-row lg:items-start lg:justify-between");
-    expect(tasksSource).toContain('className="w-full sm:w-auto"');
+    expect(tasksSource).toContain("task-action-grid grid w-full grid-cols-2 gap-2");
+    expect(tasksSource).toContain('className="w-full lg:w-auto"');
   });
 
   test("IDE uses a single-pane composition on mobile", () => {

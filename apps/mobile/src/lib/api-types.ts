@@ -171,6 +171,7 @@ export interface AgentSummary {
   reasoning_mode?: "adaptive" | "binary" | "effort";
   reasoning_efforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh" | "max">;
   supports_images?: boolean;
+  is_bot?: boolean;
   config?: Record<string, unknown>;
 }
 

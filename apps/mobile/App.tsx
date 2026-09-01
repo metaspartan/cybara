@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Linking, StatusBar, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { SystemAccessibilityProvider } from "./src/accessibility/SystemAccessibilityContext";
@@ -15,7 +15,9 @@ import {
 import { DeepLinkAttemptTracker } from "./src/lib/deepLinkAttempts";
 import {
   configureMobileNotificationPresentation,
+  type MobileNotificationNavigationRequest,
   registerMobilePushNotifications,
+  subscribeMobileNotificationResponses,
 } from "./src/lib/pushNotifications";
 import { clearActiveProfile, getActiveProfile, saveProfile } from "./src/lib/storage";
 import { ConnectScreen } from "./src/screens/ConnectScreen";
@@ -28,6 +30,9 @@ function AppShell() {
   const { scheme } = useThemeControls();
   const [profile, setProfile] = useState<GatewayProfile | null>(null);
   const [ready, setReady] = useState(false);
+  const [notificationRequest, setNotificationRequest] =
+    useState<MobileNotificationNavigationRequest | null>(null);
+  const notificationRequestId = useRef(0);
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   useEffect(() => {
@@ -87,6 +92,24 @@ function AppShell() {
     void registerMobilePushNotifications(api, { requestPermission: false });
   }, [profile]);
 
+  useEffect(() => {
+    if (!profile) return;
+    let active = true;
+    let stop = (): void => {};
+    void subscribeMobileNotificationResponses((target) => {
+      if (!active) return;
+      notificationRequestId.current += 1;
+      setNotificationRequest({ requestId: notificationRequestId.current, target });
+    }).then((cleanup) => {
+      if (active) stop = cleanup;
+      else cleanup();
+    });
+    return () => {
+      active = false;
+      stop();
+    };
+  }, [profile]);
+
   const connect = async (nextProfile: GatewayProfile) => {
     const saved = { ...nextProfile, lastConnectedAt: new Date().toISOString() };
     await saveProfile(saved);
@@ -109,6 +132,7 @@ function AppShell() {
       <View style={styles.content}>
         {ready && profile ? (
           <DashboardScreen
+            notificationRequest={notificationRequest}
             profile={profile}
             onDisconnect={disconnect}
             onProfileUpdated={updateProfile}

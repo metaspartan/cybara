@@ -37,6 +37,7 @@ import { deleteArtifact, listAllArtifacts, listArtifacts, readArtifact } from ".
 import { getAppVersion, getBuildProvenance, getReleaseRepositoryUrl } from "../core/build-info";
 import { channelManager } from "../core/channels";
 import { listChatCapabilities, listChatCommands } from "../core/chat/capability-mentions";
+import { isBotSessionId } from "../../shared/bot-mode";
 import {
   createCheckpoint,
   deleteCheckpoint,
@@ -780,7 +781,10 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/chat/capabilities": async (_body, params) => ({
     capabilities: [
-      ...(await listChatCapabilities(normalizeOptionalString(params?.workspaceDir))),
+      ...(await listChatCapabilities(
+        normalizeOptionalString(params?.workspaceDir),
+        isBotSessionId(normalizeOptionalString(params?.sessionId) || "") ? "bots" : "all"
+      )),
       ...listChatCommands(),
     ],
   }),

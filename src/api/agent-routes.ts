@@ -2,6 +2,7 @@ import { handleChat } from "../api/chat";
 import { agentManager } from "../core/agent";
 import { agentImageSupportById } from "../core/agent-image-capabilities";
 import { parseAgentConfig, readAgentContextWindowTokens } from "../core/agent-internals";
+import { isBotProfileConfig } from "../core/bot-profile";
 import { listAgentLoopRuns, startAgentLoop } from "../core/agent-loop";
 import {
   parseAgentReasoningSetting,
@@ -62,6 +63,7 @@ export const agentRoutes: Record<string, RouteHandler> = {
         tool_profile: typeof toolProfile === "string" ? toolProfile : "full",
         max_context_tokens: readAgentContextWindowTokens(agent.config) ?? null,
         supports_images: imageSupport.get(agent.id) ?? false,
+        is_bot: isBotProfileConfig(agent.config),
       };
     });
   },

@@ -3,6 +3,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { agentManager } from "../../src/core/agent";
+import { withBotProfileMetadata } from "../../src/core/bot-profile";
 import { providerManager } from "../../src/core/providers";
 import {
   getProviderAvailability,
@@ -46,6 +47,7 @@ type ExecuteShape = (
     channel?: string;
     userId?: string;
     modelOverride?: string;
+    modelParamsOverride?: Record<string, unknown>;
     abortSignal?: AbortSignal;
   }
 ) => Promise<{ content: string; thinking?: string; tool_calls?: AgentToolCallResult[] }>;
@@ -1093,6 +1095,84 @@ describe("Subagent execution wiring", () => {
     expect(result.status).toBe("forbidden");
     expect(result.warning).toContain("temporarily unavailable");
     expect(result.warning).toContain("Rate-limit cooldown");
+  });
+
+  test("resolves a unique exact agent name for natural delegation", async () => {
+    const targetAgent = agentManager.create({
+      name: "Natural Delegation Specialist",
+      type: "subagent",
+      model: "test-model",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    let capturedModelParams: Record<string, unknown> | undefined;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async (
+      _agentId,
+      _messages,
+      options
+    ) => {
+      capturedModelParams = options?.modelParamsOverride;
+      return { content: "delegation complete" };
+    };
+
+    try {
+      const result = await handleSessionsSpawn({
+        task: "Review the launch notes",
+        agentId: "natural delegation specialist",
+        maxToolIterations: 8,
+        _requesterSessionKey: "natural-name-parent",
+      });
+      expect(result.status).toBe("accepted");
+      await waitFor(() => getSubagentSession(result.childSessionKey)?.status === "completed", 2000);
+      expect(getSubagentSession(result.childSessionKey)?.agentId).toBe(targetAgent.id);
+      expect(capturedModelParams).toEqual({ max_tool_iterations: 8 });
+    } finally {
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
+  });
+
+  test("keeps natural delegation on ordinary agents while exact bot ids remain addressable", async () => {
+    const bot = agentManager.create({
+      name: "Release Bot Teammate",
+      type: "subagent",
+      model: "test-model",
+      tools: [],
+      config: withBotProfileMetadata({}, { title: "Release owner", pinned: true }),
+    });
+    createdAgentIds.push(bot.id);
+
+    const nameResult = await handleSessionsSpawn({
+      task: "Review the release notes",
+      agentId: "release bot teammate",
+      _requesterSessionKey: "bot-name-boundary-parent",
+    });
+    expect(nameResult.status).toBe("forbidden");
+    expect(nameResult.warning).toContain("was not found");
+
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    let executedAgentId: string | undefined;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async (agentId) => {
+      executedAgentId = agentId;
+      return { content: "bot delegation complete" };
+    };
+
+    try {
+      const idResult = await handleSessionsSpawn({
+        task: "Review the release notes",
+        agentId: bot.id,
+        _requesterSessionKey: "bot-id-boundary-parent",
+      });
+      expect(idResult.status).toBe("accepted");
+      expect(idResult.childSessionKey).toStartWith(`agent:${bot.id}:subagent:`);
+      await waitFor(
+        () => getSubagentSession(idResult.childSessionKey)?.status === "completed",
+        2000
+      );
+      expect(executedAgentId).toBe(bot.id);
+    } finally {
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
   });
 
   test("propagates requester session/workspace from tool context when args omit them", async () => {

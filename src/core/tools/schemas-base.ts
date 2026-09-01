@@ -631,7 +631,8 @@ The child result is not inserted into the parent transcript automatically. Call 
         },
         agentId: {
           type: "string",
-          description: "Optional agent ID to use for the sub-agent (defaults to current agent)",
+          description:
+            "Optional agent ID or exact unique agent name to use for the sub-agent (defaults to current agent)",
         },
         model: {
           type: "string",
@@ -640,6 +641,11 @@ The child result is not inserted into the parent transcript automatically. Call 
         thinking: {
           type: "string",
           description: "Optional thinking level override (off, minimal, low, medium, high, max)",
+        },
+        maxToolIterations: {
+          type: "number",
+          description:
+            "Optional maximum tool iterations for this child run (1-100). Use a small bound for focused review or lookup work.",
         },
         runTimeoutSeconds: {
           type: "number",

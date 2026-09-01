@@ -1052,6 +1052,10 @@ textarea[data-chat-composer-input="true"]::placeholder {
   .grid-cols-4:not([role="tablist"]) {
     grid-template-columns: 1fr !important;
   }
+
+  .grid.task-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
 }
 
 @media (min-width: 769px) and (max-width: 1024px) {
