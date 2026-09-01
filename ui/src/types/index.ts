@@ -57,6 +57,13 @@ export interface BotRosterItem {
   provider?: string;
   provider_id?: string;
   status?: Agent["status"];
+  mention_handle?: string;
+  tools?: string[];
+  tool_count?: number;
+  memory_enabled?: boolean;
+  routine_count?: number;
+  active_routine_count?: number;
+  next_routine_at?: string | null;
   session_id: string;
   session: {
     title?: string | null;

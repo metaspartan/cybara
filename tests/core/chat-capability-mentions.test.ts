@@ -88,6 +88,44 @@ describe("chat capability mentions", () => {
     }
   });
 
+  test("keeps legacy bot mentions addressable when normalized names collide", async () => {
+    const first = agentManager.create({
+      name: "Launch Lead",
+      type: "main",
+      model: "test-model",
+      config: withBotProfileMetadata({}, { title: "Launch owner" }),
+    });
+    const second = agentManager.create({
+      name: "Launch  Lead!",
+      type: "main",
+      model: "test-model",
+      config: withBotProfileMetadata({}, { title: "Release owner" }),
+    });
+    try {
+      const capabilities = (await listChatCapabilities(process.cwd(), "bots")).filter(
+        (capability) => capability.name === first.name || capability.name === second.name
+      );
+      expect(capabilities).toHaveLength(2);
+      expect(new Set(capabilities.map((capability) => capability.token)).size).toBe(2);
+      expect(capabilities.every((capability) => capability.token.startsWith("@launch-lead-"))).toBe(
+        true
+      );
+
+      for (const capability of capabilities) {
+        const expectedId = capability.name === first.name ? first.id : second.id;
+        const resolved = await resolveChatCapabilityMentions(
+          `${capability.token} inspect the release`,
+          process.cwd(),
+          "bots"
+        );
+        expect(resolved.instruction).toContain(`agentId ${JSON.stringify(expectedId)}`);
+      }
+    } finally {
+      agentManager.delete(second.id);
+      agentManager.delete(first.id);
+    }
+  });
+
   test("lists goal, loop, and prompt commands for composer discovery", () => {
     const commands = listChatCommands();
     expect(commands.map((command) => command.token)).toEqual(

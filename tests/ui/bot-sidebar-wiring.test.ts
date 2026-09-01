@@ -43,7 +43,11 @@ describe("bot sidebar wiring", () => {
     expect(sidebar).toContain("botsApi.delete");
     expect(sidebar).toContain("Team workspace");
     expect(sidebar).toContain("buildMultiChatPath(sessions)");
-    expect(sidebar).toContain("Add routine");
+    expect(sidebar).toContain("Routines");
+    expect(sidebar).toContain("setActionBotId(null)");
+    expect(sidebar).toContain("Access and safety");
+    expect(sidebar).toContain("bot.routine_count");
+    expect(sidebar).not.toContain('role="button"');
     expect(sidebar).toContain("assigned routines");
     expect(sidebar).toContain("maxLength={2000}");
     expect(sidebar).toContain("pinned: !bot.pinned");
@@ -59,6 +63,10 @@ describe("bot sidebar wiring", () => {
     expect(workspaceBar).toContain("FolderOpen");
     expect(tasks).toContain('searchParams.get("agent")');
     expect(tasks).toContain('searchParams.get("session")');
+    expect(tasks).toContain("Scheduled work and recent runs for this bot");
+    expect(tasks).toContain("View all tasks");
+    expect(tasks).toContain("Back to bot");
+    expect(tasks).toContain("task-action-grid grid w-full grid-cols-2 gap-2 lg:flex");
     expect(tasks).toContain(
       'key={`agent:${task?.id ?? "new"}:${defaultAgentId}:${agents.length}`}'
     );

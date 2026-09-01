@@ -6,6 +6,7 @@ import { toolSchemas } from "../tools/registry";
 import { listAccountConnectorStatuses } from "../account-connectors/store";
 import { isBotProfileConfig } from "../bot-profile";
 import { normalizeCapabilityAlias } from "./capability-alias";
+import { uniqueCapabilityHandles } from "./capability-handles";
 
 export { normalizeCapabilityAlias } from "./capability-alias";
 
@@ -90,29 +91,29 @@ function agentCapabilities(scope: ChatAgentCapabilityScope): ResolvedChatCapabil
       type?: string;
       config?: unknown;
     }>;
-    return agents
-      .filter(
-        (agent) =>
-          typeof agent.id === "string" &&
-          agent.id.trim().length > 0 &&
-          typeof agent.name === "string" &&
-          agent.name.trim().length > 0 &&
-          (scope === "all" || isBotProfileConfig(agent.config))
-      )
-      .map((agent) => {
-        const name = agent.name as string;
-        const agentId = agent.id as string;
-        const bot = isBotProfileConfig(agent.config);
-        const token = `@${normalizeCapabilityAlias(name)}`;
-        return {
-          kind: bot ? ("bot" as const) : ("agent" as const),
-          token,
-          name,
-          description: bot ? `Hand work to ${name}` : `Delegate to the ${name} agent`,
-          source: bot ? "Bot teammate" : "Agent",
-          instruction: `For ${token}, delegate only the user's requested scope to ${JSON.stringify(name)} using sessions_spawn with agentId ${JSON.stringify(agentId)} and maxToolIterations 12, preserve explicit limits such as read-only or keep-it-tight in the child task, call sessions_wait with the returned runId, and incorporate the result.`,
-        };
-      });
+    const eligibleAgents = agents.filter(
+      (agent) =>
+        typeof agent.id === "string" &&
+        agent.id.trim().length > 0 &&
+        typeof agent.name === "string" &&
+        agent.name.trim().length > 0 &&
+        (scope === "all" || isBotProfileConfig(agent.config))
+    ) as Array<{ id: string; name: string; type?: string; config?: unknown }>;
+    const handles = uniqueCapabilityHandles(eligibleAgents);
+    return eligibleAgents.map((agent) => {
+      const name = agent.name;
+      const agentId = agent.id;
+      const bot = isBotProfileConfig(agent.config);
+      const token = `@${handles.get(agentId) ?? normalizeCapabilityAlias(name)}`;
+      return {
+        kind: bot ? ("bot" as const) : ("agent" as const),
+        token,
+        name,
+        description: bot ? `Hand work to ${name}` : `Delegate to the ${name} agent`,
+        source: bot ? "Bot teammate" : "Agent",
+        instruction: `For ${token}, delegate only the user's requested scope to ${JSON.stringify(name)} using sessions_spawn with agentId ${JSON.stringify(agentId)} and maxToolIterations 12, preserve explicit limits such as read-only or keep-it-tight in the child task, call sessions_wait with the returned runId, and incorporate the result.`,
+      };
+    });
   } catch {
     return [];
   }

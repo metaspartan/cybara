@@ -10,6 +10,7 @@ import { taskScheduler } from "../core/scheduler";
 import { persistSession } from "../core/session-context";
 import { providerManager } from "../core/providers";
 import { normalizeCapabilityAlias } from "../core/chat/capability-alias";
+import { uniqueCapabilityHandles } from "../core/chat/capability-handles";
 import { botSessionId } from "../../shared/bot-mode";
 import type { RouteHandler } from "./routes/_shared";
 
@@ -26,6 +27,13 @@ interface BotInput {
 
 const BOT_AGENT_TYPES = new Set(["main", "research", "coder", "planner", "ops"]);
 const BOT_TEAMMATE_DESCRIPTION_MAX = 320;
+const BOT_NAME_MAX = 80;
+
+interface BotRoutineSummary {
+  routine_count: number;
+  active_routine_count: number;
+  next_routine_at: string | null;
+}
 
 function requiredAgentId(params: Record<string, string> | undefined): string {
   const value = params?.id?.trim();
@@ -49,17 +57,68 @@ function isBotAgent(agent: ReturnType<typeof agentManager.list>[number]): boolea
   return BOT_AGENT_TYPES.has(agent.type || "main") && isBotProfileConfig(agent.config);
 }
 
+function botAgents(): ReturnType<typeof agentManager.list> {
+  return agentManager.list().filter(isBotAgent);
+}
+
+function botHandleConflict(name: string, excludedId?: string): string | null {
+  const handle = normalizeCapabilityAlias(name);
+  if (!handle) return null;
+  const conflict = botAgents().find(
+    (agent) => agent.id !== excludedId && normalizeCapabilityAlias(agent.name) === handle
+  );
+  return conflict ? `Validation error: @${handle} is already used by ${conflict.name}` : null;
+}
+
+function validatedBotName(value: unknown, excludedId?: string): string {
+  const name = boundedText(value, BOT_NAME_MAX);
+  if (!name) throw new Error("Validation error: Bot name is required");
+  const conflict = botHandleConflict(name, excludedId);
+  if (conflict) throw new Error(conflict);
+  return name;
+}
+
+function availableBotCopyName(sourceName: string): string {
+  for (let copyNumber = 1; copyNumber < 10_000; copyNumber += 1) {
+    const suffix = copyNumber === 1 ? " copy" : ` copy ${copyNumber}`;
+    const prefix = sourceName.slice(0, BOT_NAME_MAX - suffix.length).trim();
+    const candidate = `${prefix}${suffix}`;
+    if (!botHandleConflict(candidate)) return candidate;
+  }
+  throw new Error("Could not create a unique bot copy name");
+}
+
+function botRoutineSummary(
+  id: string,
+  tasks: ReturnType<typeof taskScheduler.list> = taskScheduler.list()
+): BotRoutineSummary {
+  const sessionId = botSessionId(id);
+  const owned = tasks.filter((task) => task.agent_id === id || task.session_id === sessionId);
+  const active = owned.filter((task) => task.status === "pending" || task.status === "running");
+  const nextRun = owned
+    .map((task) => task.next_run)
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .sort((left, right) => Date.parse(left) - Date.parse(right))[0];
+  return {
+    routine_count: owned.length,
+    active_routine_count: active.length,
+    next_routine_at: nextRun ?? null,
+  };
+}
+
 function botTeammates(
   excludedId: string,
   bots: ReturnType<typeof agentManager.list> = agentManager.list().filter(isBotAgent)
 ): string {
+  const handles = uniqueCapabilityHandles(bots);
   const teammates = bots
     .filter((agent) => agent.id !== excludedId)
     .map((agent) => {
       const metadata = readBotProfileMetadata(agent.config);
       const description = metadata.description.slice(0, BOT_TEAMMATE_DESCRIPTION_MAX);
       const role = [metadata.title, description].filter(Boolean).join(": ");
-      return `- @${normalizeCapabilityAlias(agent.name)} — ${agent.name} (agentId: ${agent.id})${role ? ` — ${role}` : ""}`;
+      const handle = handles.get(agent.id) ?? normalizeCapabilityAlias(agent.name);
+      return `- @${handle} — ${agent.name} (agentId: ${agent.id})${role ? ` — ${role}` : ""}`;
     });
   if (teammates.length === 0) return "You currently have no other bot teammates.";
   return [
@@ -86,7 +145,10 @@ function refreshBotSystemPrompts(): void {
 
 function serializeBot(
   agent: ReturnType<typeof agentManager.list>[number],
-  session: Awaited<ReturnType<typeof listSessions>>[number] | undefined
+  session: Awaited<ReturnType<typeof listSessions>>[number] | undefined,
+  mentionHandle = uniqueCapabilityHandles([agent]).get(agent.id) ??
+    normalizeCapabilityAlias(agent.name),
+  routines = botRoutineSummary(agent.id)
 ) {
   const metadata = readBotProfileMetadata(agent.config);
   return {
@@ -100,6 +162,11 @@ function serializeBot(
     provider: agent.provider,
     provider_id: agent.provider_id,
     status: agent.status,
+    mention_handle: mentionHandle,
+    tools: agent.tools ?? [],
+    tool_count: agent.tools?.length ?? 0,
+    memory_enabled: agent.memory_enabled !== false,
+    ...routines,
     session_id: botSessionId(agent.id),
     session: session
       ? {
@@ -115,10 +182,18 @@ function serializeBot(
 async function botRoster() {
   const sessions = await listSessions();
   const sessionsById = new Map(sessions.map((session) => [session.id, session]));
-  return agentManager
-    .list()
-    .filter(isBotAgent)
-    .map((agent) => serializeBot(agent, sessionsById.get(botSessionId(agent.id))))
+  const bots = botAgents();
+  const handles = uniqueCapabilityHandles(bots);
+  const tasks = taskScheduler.list();
+  return bots
+    .map((agent) =>
+      serializeBot(
+        agent,
+        sessionsById.get(botSessionId(agent.id)),
+        handles.get(agent.id),
+        botRoutineSummary(agent.id, tasks)
+      )
+    )
     .sort((left, right) => {
       if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
       const leftTime = Date.parse(left.session?.updated_at || "");
@@ -182,8 +257,7 @@ export const botRoutes: Record<string, RouteHandler> = {
   "GET /api/bots": async () => ({ bots: await botRoster() }),
   "POST /api/bots": async (body) => {
     const input = (body || {}) as BotInput;
-    const name = boundedText(input.name, 80);
-    if (!name) throw new Error("Validation error: Bot name is required");
+    const name = validatedBotName(input.name);
     const baseId = boundedText(input.base_agent_id, 100);
     const base = baseId
       ? agentManager.get(baseId)
@@ -225,8 +299,7 @@ export const botRoutes: Record<string, RouteHandler> = {
     const agent = agentManager.get(id);
     if (!agent || !isBotAgent(agent)) throw new Error("Bot not found");
     const input = (body || {}) as BotInput;
-    const name = input.name === undefined ? agent.name : boundedText(input.name, 80);
-    if (!name) throw new Error("Validation error: Bot name is required");
+    const name = input.name === undefined ? agent.name : validatedBotName(input.name, id);
     const metadata = readBotProfileMetadata(agent.config);
     const title = input.title === undefined ? metadata.title : boundedText(input.title, 80);
     const description =
@@ -267,7 +340,10 @@ export const botRoutes: Record<string, RouteHandler> = {
     if (!source || !isBotAgent(source)) throw new Error("Bot not found");
     const input = (body || {}) as BotInput;
     const metadata = readBotProfileMetadata(source.config);
-    const name = boundedText(input.name, 80) || `${source.name} copy`;
+    const requestedName = boundedText(input.name, BOT_NAME_MAX);
+    const name = requestedName
+      ? validatedBotName(requestedName)
+      : availableBotCopyName(source.name);
     const title = metadata.title;
     const description = metadata.description;
     const baseSystemPrompt = metadata.baseSystemPrompt;

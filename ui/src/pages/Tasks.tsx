@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import {
+  ArrowLeft,
+  Bot,
   Clock,
   Plus,
   Play,
@@ -45,6 +47,8 @@ import { useTaskNotifications } from "../hooks/useNotifications";
 import { useSessions } from "../hooks/useChat";
 import { useQuery } from "@tanstack/react-query";
 import { tasksApi } from "@/lib/api";
+import { buildSessionChatPath } from "./chat/chatRoute";
+import { taskMatchesScope } from "./taskScope";
 
 interface TaskRun {
   id: string;
@@ -68,6 +72,7 @@ const schedulePresets = [
 ];
 
 export function Tasks() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialAgentId = searchParams.get("agent")?.trim() || "";
   const initialSessionId = searchParams.get("session")?.trim() || "";
@@ -77,12 +82,15 @@ export function Tasks() {
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
-  const { permission, requestPermission, connected } = useTaskNotifications();
+  const { permission, requestPermission } = useTaskNotifications();
 
   const { data: tasks, isLoading } = useTasks();
   const { data: agents } = useAgentSummaries();
   const { data: sessions = [] } = useSessions({ limit: 200 });
   const { addToast } = useUIStore();
+  const scopeAgent = agents?.find((agent) => agent.id === initialAgentId);
+  const botScope = scopeAgent?.is_bot === true;
+  const scopeSessionId = initialSessionId;
 
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
@@ -103,11 +111,31 @@ export function Tasks() {
     refetchInterval: 5000, // Auto-refresh every 5 seconds when expanded
   });
 
-  const filteredTasks = tasks?.filter(
-    (task) =>
-      task.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (task.action || "").toLowerCase().includes(searchQuery.toLowerCase())
+  const scopedTasks = tasks?.filter((task) =>
+    taskMatchesScope(task, initialAgentId, scopeSessionId)
   );
+  const filteredTasks = scopedTasks?.filter((task) => {
+    const normalizedSearch = searchQuery.toLowerCase();
+    return (
+      task.name.toLowerCase().includes(normalizedSearch) ||
+      (task.action || "").toLowerCase().includes(normalizedSearch)
+    );
+  });
+  const scopeTaskCount = scopedTasks?.length ?? 0;
+  const activeScopeTaskCount = scopedTasks?.filter((task) => task.enabled).length ?? 0;
+
+  const clearNewTaskParam = (): void => {
+    if (searchParams.get("new") !== "1") return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  };
+
+  const closeTaskModal = (): void => {
+    setIsCreateModalOpen(false);
+    setEditingTask(null);
+    clearNewTaskParam();
+  };
 
   const handleSave = async (formData: FormData) => {
     try {
@@ -132,9 +160,7 @@ export function Tasks() {
         await createTask.mutateAsync(payload);
       }
       addToast("success", editingTask ? "Task updated successfully" : "Task created successfully");
-      setIsCreateModalOpen(false);
-      setEditingTask(null);
-      if (searchParams.get("new") === "1") setSearchParams({}, { replace: true });
+      closeTaskModal();
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to create task");
     }
@@ -186,10 +212,22 @@ export function Tasks() {
 
   return (
     <PageLayout
-      title="Tasks"
-      subtitle="Schedule automated agent tasks"
+      title={botScope && scopeAgent ? `${scopeAgent.name} routines` : "Tasks"}
+      subtitle={
+        botScope ? "Scheduled work and recent runs for this bot" : "Schedule automated agent tasks"
+      }
       actions={
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {botScope && scopeSessionId ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              leftIcon={<ArrowLeft className="h-4 w-4" />}
+              onClick={() => navigate(buildSessionChatPath(scopeSessionId))}
+            >
+              Back to bot
+            </Button>
+          ) : null}
           <Button
             variant={permission === "granted" ? "secondary" : "ghost"}
             size="sm"
@@ -212,12 +250,34 @@ export function Tasks() {
               setIsCreateModalOpen(true);
             }}
           >
-            Create Task
+            {botScope ? "Create Routine" : "Create Task"}
           </Button>
         </div>
       }
     >
       <div className="space-y-6">
+        {botScope && scopeAgent ? (
+          <div className="flex flex-col gap-3 rounded-2xl border border-[rgba(var(--accent-primary),0.24)] bg-[rgba(var(--accent-primary),0.08)] p-4 sm:flex-row sm:items-center">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[rgba(var(--accent-primary),0.16)] text-[rgb(var(--accent-primary))]">
+              <Bot className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
+                {scopeAgent.name}
+              </p>
+              <p className="text-xs text-[var(--text-muted)]">
+                {activeScopeTaskCount} active · {scopeTaskCount} total
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSearchParams({}, { replace: true })}
+            >
+              View all tasks
+            </Button>
+          </div>
+        ) : null}
         <div className="flex gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
@@ -245,9 +305,17 @@ export function Tasks() {
           <Card>
             <CardContent className="py-12 text-center">
               <Clock className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-white mb-2">No tasks found</h3>
-              <p className="text-gray-400 mb-4">Create your first scheduled task</p>
-              <Button onClick={() => setIsCreateModalOpen(true)}>Create Task</Button>
+              <h3 className="mb-2 text-lg font-medium text-[var(--text-primary)]">
+                {botScope ? "No routines yet" : "No tasks found"}
+              </h3>
+              <p className="mb-4 text-[var(--text-muted)]">
+                {botScope
+                  ? `Give ${scopeAgent?.name ?? "this bot"} recurring or scheduled work.`
+                  : "Create your first scheduled task"}
+              </p>
+              <Button onClick={() => setIsCreateModalOpen(true)}>
+                {botScope ? "Create Routine" : "Create Task"}
+              </Button>
             </CardContent>
           </Card>
         ) : (
@@ -298,7 +366,7 @@ export function Tasks() {
                       </div>
                     </div>
 
-                    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
+                    <div className="task-action-grid grid w-full grid-cols-2 gap-2 lg:flex lg:w-auto lg:flex-wrap lg:items-center lg:justify-end">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -307,7 +375,7 @@ export function Tasks() {
                           setEditingTask(task);
                           setIsCreateModalOpen(true);
                         }}
-                        className="w-full sm:w-auto"
+                        className="w-full lg:w-auto"
                       >
                         Edit
                       </Button>
@@ -317,7 +385,7 @@ export function Tasks() {
                         leftIcon={<Zap className="w-4 h-4" />}
                         onClick={() => handleTrigger(task)}
                         isLoading={triggerTask.isPending}
-                        className="w-full sm:w-auto"
+                        className="w-full lg:w-auto"
                       >
                         Run Now
                       </Button>
@@ -332,7 +400,7 @@ export function Tasks() {
                           )
                         }
                         onClick={() => handleToggle(task)}
-                        className="w-full sm:w-auto"
+                        className="w-full lg:w-auto"
                       >
                         {task.enabled ? "Pause" : "Resume"}
                       </Button>
@@ -349,7 +417,7 @@ export function Tasks() {
                         onClick={() =>
                           setExpandedTaskId(expandedTaskId === task.id ? null : task.id)
                         }
-                        className="w-full sm:w-auto"
+                        className="w-full lg:w-auto"
                       >
                         History
                       </Button>
@@ -358,7 +426,7 @@ export function Tasks() {
                         size="sm"
                         leftIcon={<Trash2 className="w-4 h-4" />}
                         onClick={() => setDeletingTask(task)}
-                        className="w-full sm:w-auto"
+                        className="w-full lg:w-auto"
                       >
                         Delete
                       </Button>
@@ -462,12 +530,9 @@ export function Tasks() {
         <TaskModal
           key={editingTask?.id || "new-task"}
           isOpen={isCreateModalOpen}
-          onClose={() => {
-            setIsCreateModalOpen(false);
-            setEditingTask(null);
-          }}
+          onClose={closeTaskModal}
           onSubmit={handleSave}
-          title={editingTask ? "Edit Task" : "Create Task"}
+          title={editingTask ? "Edit Task" : botScope ? "Create Routine" : "Create Task"}
           agents={agents || []}
           sessions={sessions}
           task={editingTask}

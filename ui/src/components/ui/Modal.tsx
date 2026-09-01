@@ -12,6 +12,7 @@ interface ModalProps {
   size?: "sm" | "md" | "lg" | "xl";
   surface?: "default" | "bare";
   backdrop?: "default" | "subtle";
+  footer?: React.ReactNode;
 }
 
 export function Modal({
@@ -23,6 +24,7 @@ export function Modal({
   size = "md",
   surface = "default",
   backdrop = "default",
+  footer,
 }: ModalProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -180,6 +182,16 @@ export function Modal({
         >
           {children}
         </div>
+        {footer ? (
+          <div
+            className={cn(
+              "relative shrink-0 border-t border-[var(--surface-border)]",
+              surface === "default" ? "bg-[var(--surface-raised)] px-6 py-4" : "p-0"
+            )}
+          >
+            {footer}
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body
