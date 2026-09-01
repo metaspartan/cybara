@@ -23,6 +23,7 @@ import {
 } from "./agent-internals";
 import { resolveModelContextWindowTokens } from "./agent-model-limits";
 import { AgentProviderRuntime } from "./agent-provider-runtime";
+import { isBotProfileConfig } from "./bot-profile";
 import { getBootstrapContextFiles } from "./bootstrap-files";
 import { config } from "./config";
 import {
@@ -115,8 +116,7 @@ export function shouldInjectAutomaticMemoryRecall(
   agent: Pick<Agent, "memory_enabled" | "config">
 ): boolean {
   if (!agent.memory_enabled) return false;
-  const botMode = parseAgentConfig(agent.config).bot_mode;
-  return !botMode || typeof botMode !== "object" || Array.isArray(botMode);
+  return !isBotProfileConfig(agent.config);
 }
 
 export const AGENT_TYPES = {

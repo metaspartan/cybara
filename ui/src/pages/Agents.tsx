@@ -161,8 +161,9 @@ export function Agents() {
 
   const filteredAgents = agents?.filter(
     (agent) =>
-      agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (agent.type && agent.type.toLowerCase().includes(searchQuery.toLowerCase()))
+      !agent.is_bot &&
+      (agent.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        Boolean(agent.type?.toLowerCase().includes(searchQuery.toLowerCase())))
   );
 
   const handleCreate = async (formData: FormData) => {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { botRoutes } from "../../src/api/bot-routes";
+import { agentRoutes } from "../../src/api/agent-routes";
 import { deleteSession, getSession } from "../../src/api/chat-session-api";
 import { agentManager } from "../../src/core/agent";
 import { taskScheduler } from "../../src/core/scheduler";
@@ -17,6 +18,50 @@ afterEach(async () => {
 });
 
 describe("bot routes", () => {
+  test("keeps the bot roster separate from ordinary configured agents", async () => {
+    const create = botRoutes["POST /api/bots"];
+    const list = botRoutes["GET /api/bots"];
+    const ensure = botRoutes["POST /api/bots/:id/session"];
+    const remove = botRoutes["DELETE /api/bots/:id"];
+    const ordinary = Array.from({ length: 12 }, (_, index) =>
+      agentManager.create({
+        name: `Configured Agent ${index + 1}`,
+        type: index % 2 === 0 ? "coder" : "research",
+        model: "MiniMax-M3",
+        config: { tool_profile: "full" },
+      })
+    );
+    createdAgentIds.push(...ordinary.map((agent) => agent.id));
+    const created = (await create?.({
+      name: "Focused Bot",
+      title: "Release owner",
+      description: "Keep launch work organized.",
+      base_agent_id: ordinary[0]?.id,
+    })) as { bot: { id: string }; session_id: string };
+    createdAgentIds.push(created.bot.id);
+
+    const roster = (await list?.()) as { bots: Array<{ id: string }> };
+    expect(roster.bots.map((bot) => bot.id)).toContain(created.bot.id);
+    expect(roster.bots.some((bot) => ordinary.some((agent) => agent.id === bot.id))).toBe(false);
+    const summaries = (await agentRoutes["GET /api/agents/summary"]?.()) as Array<{
+      id: string;
+      is_bot: boolean;
+    }>;
+    expect(summaries.find((agent) => agent.id === created.bot.id)?.is_bot).toBe(true);
+    expect(summaries.find((agent) => agent.id === ordinary[0]?.id)?.is_bot).toBe(false);
+    await expect(ensure?.({}, { id: ordinary[0]?.id ?? "" })).rejects.toThrow("Bot not found");
+
+    expect(await remove?.({}, { id: created.bot.id })).toMatchObject({
+      success: true,
+      bot_id: created.bot.id,
+    });
+    expect(
+      ((await list?.()) as { bots: Array<{ id: string }> }).bots.some(
+        (bot) => bot.id === created.bot.id
+      )
+    ).toBe(false);
+  });
+
   test("creates a persistent bot and restores its canonical pinned conversation", async () => {
     const create = botRoutes["POST /api/bots"];
     const list = botRoutes["GET /api/bots"];
@@ -81,6 +126,9 @@ describe("bot routes", () => {
     const create = botRoutes["POST /api/bots"];
     const ensure = botRoutes["POST /api/bots/:id/session"];
     await expect(create?.({ name: "   " })).rejects.toThrow("Bot name is required");
+    await expect(create?.({ name: "Invalid provider", provider_id: "missing" })).rejects.toThrow(
+      "Provider not found"
+    );
     await expect(ensure?.({}, { id: "missing" })).rejects.toThrow("Bot not found");
   });
 
@@ -124,6 +172,31 @@ describe("bot routes", () => {
       "Honor the latest user request when it limits or forbids tool use."
     );
     expect(createdAgent?.system_prompt).toContain("this bot's own conversation");
+
+    const teammate = (await create?.({
+      name: "Launch Analyst",
+      title: "Risk analyst",
+      description: "Find launch risks and report evidence.",
+      base_agent_id: base.id,
+      model: "MiniMax-M3",
+    })) as { bot: { id: string }; session_id: string };
+    createdAgentIds.push(teammate.bot.id);
+    expect(agentManager.get(created.bot.id)?.system_prompt).toContain("Launch Analyst");
+    expect(agentManager.get(created.bot.id)?.system_prompt).toContain(
+      `agentId: ${teammate.bot.id}`
+    );
+    expect(agentManager.get(teammate.bot.id)?.system_prompt).toContain("Atlas Lead");
+    expect(agentManager.get(teammate.bot.id)?.model).toBe("MiniMax-M3");
+
+    const clonedTeammate = (await create?.({
+      name: "Launch Analyst Copy",
+      title: "Backup risk analyst",
+      base_agent_id: teammate.bot.id,
+    })) as { bot: { id: string }; session_id: string };
+    createdAgentIds.push(clonedTeammate.bot.id);
+    expect(agentManager.get(clonedTeammate.bot.id)?.system_prompt).not.toContain(
+      "You are Launch Analyst, a persistent Cybara bot."
+    );
 
     const updated = (await update?.(
       {

@@ -24,4 +24,9 @@ describe("mobile API normalizers", () => {
     expect(agent.reasoning_mode).toBeUndefined();
     expect(agent.reasoning_efforts).toEqual(["low", "xhigh"]);
   });
+
+  test("preserves bot membership for separate mobile organization", () => {
+    expect(normalizeAgent({ id: "bot-1", name: "Scout", is_bot: true }).is_bot).toBe(true);
+    expect(normalizeAgent({ id: "agent-1", name: "Coder" }).is_bot).toBeUndefined();
+  });
 });

@@ -1,18 +1,16 @@
 import { deleteSession, listSessions, setSessionPinned } from "./chat-session-api";
 import { agentManager } from "../core/agent";
-import { parseAgentConfig } from "../core/agent-internals";
+import {
+  buildBotSystemPrompt,
+  isBotProfileConfig,
+  readBotProfileMetadata,
+  withBotProfileMetadata,
+} from "../core/bot-profile";
 import { taskScheduler } from "../core/scheduler";
 import { persistSession } from "../core/session-context";
+import { providerManager } from "../core/providers";
 import { botSessionId } from "../../shared/bot-mode";
 import type { RouteHandler } from "./routes/_shared";
-
-interface BotMetadata {
-  title: string;
-  description: string;
-  hidden: boolean;
-  pinned: boolean;
-  baseSystemPrompt: string;
-}
 
 interface BotInput {
   name?: unknown;
@@ -21,6 +19,8 @@ interface BotInput {
   base_agent_id?: unknown;
   hidden?: unknown;
   pinned?: unknown;
+  model?: unknown;
+  provider_id?: unknown;
 }
 
 const BOT_AGENT_TYPES = new Set(["main", "research", "coder", "planner", "ops"]);
@@ -35,57 +35,54 @@ function boundedText(value: unknown, maximum: number): string {
   return typeof value === "string" ? value.trim().slice(0, maximum) : "";
 }
 
-function readBotMetadata(config: unknown): BotMetadata {
-  const root = parseAgentConfig(config);
-  const value = root.bot_mode;
-  const record =
-    value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
-  return {
-    title: boundedText(record.title, 80),
-    description: boundedText(record.description, 2_000),
-    hidden: record.hidden === true,
-    pinned: record.pinned === true,
-    baseSystemPrompt: boundedText(record.base_system_prompt, 20_000),
-  };
+function validatedProviderId(value: unknown): string {
+  const providerId = boundedText(value, 100);
+  if (providerId && !providerManager.get(providerId)) {
+    throw new Error("Validation error: Provider not found");
+  }
+  return providerId;
 }
 
-function withBotMetadata(config: unknown, updates: Partial<BotMetadata>): Record<string, unknown> {
-  const root = parseAgentConfig(config);
-  const current = readBotMetadata(root);
-  const next = { ...current, ...updates };
-  return {
-    ...root,
-    bot_mode: {
-      title: next.title,
-      description: next.description,
-      hidden: next.hidden,
-      pinned: next.pinned,
-      base_system_prompt: next.baseSystemPrompt,
-    },
-  };
+function isBotAgent(agent: ReturnType<typeof agentManager.list>[number]): boolean {
+  return BOT_AGENT_TYPES.has(agent.type || "main") && isBotProfileConfig(agent.config);
 }
 
-function botSystemPrompt(base: string, name: string, title: string, description: string): string {
-  const identity = [
-    `You are ${name}, a persistent Cybara bot.`,
-    title ? `Your role is ${title}.` : "",
-    description ? `Your standing responsibilities and boundaries are: ${description}` : "",
-    "Keep this role across conversations. Treat task-specific user messages as temporary instructions and preserve explicit approval boundaries.",
-    "Available tools are optional, not mandatory. Honor the latest user request when it limits or forbids tool use.",
-    "Do not import assumptions, claims, or unfinished work from other agents or conversations unless they appear in this bot's own conversation.",
-  ]
-    .filter(Boolean)
-    .join("\n");
-  return [base.trim(), identity].filter(Boolean).join("\n\n");
+function botTeammates(excludedId: string): string {
+  const teammates = agentManager
+    .list()
+    .filter((agent) => agent.id !== excludedId && isBotAgent(agent))
+    .map((agent) => {
+      const metadata = readBotProfileMetadata(agent.config);
+      const role = [metadata.title, metadata.description].filter(Boolean).join(": ");
+      return `- ${agent.name} (agentId: ${agent.id})${role ? ` — ${role}` : ""}`;
+    });
+  if (teammates.length === 0) return "You currently have no other bot teammates.";
+  return [
+    "Your bot teammates are listed below. When delegation is useful, use sessions_spawn with the teammate's agentId, wait with sessions_wait, and incorporate the result.",
+    ...teammates,
+  ].join("\n");
+}
+
+function refreshBotSystemPrompts(): void {
+  for (const agent of agentManager.list().filter(isBotAgent)) {
+    const metadata = readBotProfileMetadata(agent.config);
+    agentManager.update(agent.id, {
+      system_prompt: buildBotSystemPrompt(
+        metadata.baseSystemPrompt,
+        agent.name,
+        metadata.title,
+        metadata.description,
+        botTeammates(agent.id)
+      ),
+    });
+  }
 }
 
 function serializeBot(
   agent: ReturnType<typeof agentManager.list>[number],
   session: Awaited<ReturnType<typeof listSessions>>[number] | undefined
 ) {
-  const metadata = readBotMetadata(agent.config);
+  const metadata = readBotProfileMetadata(agent.config);
   return {
     id: agent.id,
     name: agent.name,
@@ -114,7 +111,7 @@ async function botRoster() {
   const sessionsById = new Map(sessions.map((session) => [session.id, session]));
   return agentManager
     .list()
-    .filter((agent) => BOT_AGENT_TYPES.has(agent.type || "main"))
+    .filter(isBotAgent)
     .map((agent) => serializeBot(agent, sessionsById.get(botSessionId(agent.id))))
     .sort((left, right) => {
       if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
@@ -128,7 +125,7 @@ async function botRoster() {
 
 async function ensureBotSession(id: string) {
   const agent = agentManager.get(id);
-  if (!agent || !BOT_AGENT_TYPES.has(agent.type || "main")) {
+  if (!agent || !isBotAgent(agent)) {
     throw new Error("Bot not found");
   }
   const sessionId = botSessionId(id);
@@ -182,21 +179,30 @@ export const botRoutes: Record<string, RouteHandler> = {
     const name = boundedText(input.name, 80);
     if (!name) throw new Error("Validation error: Bot name is required");
     const baseId = boundedText(input.base_agent_id, 100);
-    const base = baseId ? agentManager.get(baseId) : agentManager.list()[0];
+    const base = baseId
+      ? agentManager.get(baseId)
+      : (agentManager.list().find((agent) => !isBotProfileConfig(agent.config)) ??
+        agentManager.list()[0]);
     if (baseId && !base) throw new Error("Validation error: Base agent not found");
     const title = boundedText(input.title, 80);
     const description = boundedText(input.description, 2_000);
-    const baseSystemPrompt = base?.system_prompt || "";
+    const model = boundedText(input.model, 200) || base?.model;
+    const providerId = validatedProviderId(input.provider_id) || base?.provider_id;
+    const baseSystemPrompt = base
+      ? isBotAgent(base)
+        ? readBotProfileMetadata(base.config).baseSystemPrompt
+        : base.system_prompt || ""
+      : "";
     const agent = agentManager.create({
       name,
       type: "main",
-      model: base?.model,
-      provider_id: base?.provider_id,
+      model,
+      provider_id: providerId,
       fallback_provider_id: base?.fallback_provider_id,
-      system_prompt: botSystemPrompt(baseSystemPrompt, name, title, description),
+      system_prompt: buildBotSystemPrompt(baseSystemPrompt, name, title, description, ""),
       tools: base?.tools,
       memory_enabled: true,
-      config: withBotMetadata(base?.config, {
+      config: withBotProfileMetadata(base?.config, {
         title,
         description,
         hidden: false,
@@ -204,17 +210,18 @@ export const botRoutes: Record<string, RouteHandler> = {
         baseSystemPrompt,
       }),
     });
+    refreshBotSystemPrompts();
     const session = await ensureBotSession(agent.id);
     return { bot: serializeBot(agentManager.get(agent.id) ?? agent, undefined), ...session };
   },
   "PUT /api/bots/:id": async (body, params) => {
     const id = requiredAgentId(params);
     const agent = agentManager.get(id);
-    if (!agent || !BOT_AGENT_TYPES.has(agent.type || "main")) throw new Error("Bot not found");
+    if (!agent || !isBotAgent(agent)) throw new Error("Bot not found");
     const input = (body || {}) as BotInput;
     const name = input.name === undefined ? agent.name : boundedText(input.name, 80);
     if (!name) throw new Error("Validation error: Bot name is required");
-    const metadata = readBotMetadata(agent.config);
+    const metadata = readBotProfileMetadata(agent.config);
     const title = input.title === undefined ? metadata.title : boundedText(input.title, 80);
     const description =
       input.description === undefined
@@ -222,13 +229,19 @@ export const botRoutes: Record<string, RouteHandler> = {
         : boundedText(input.description, 2_000);
     const updated = agentManager.update(id, {
       name,
-      system_prompt: botSystemPrompt(
+      model: input.model === undefined ? agent.model : boundedText(input.model, 200),
+      provider_id:
+        input.provider_id === undefined
+          ? agent.provider_id
+          : validatedProviderId(input.provider_id),
+      system_prompt: buildBotSystemPrompt(
         metadata.baseSystemPrompt || agent.system_prompt || "",
         name,
         title,
-        description
+        description,
+        botTeammates(id)
       ),
-      config: withBotMetadata(agent.config, {
+      config: withBotProfileMetadata(agent.config, {
         title,
         description,
         hidden: input.hidden === undefined ? metadata.hidden : input.hidden === true,
@@ -237,14 +250,15 @@ export const botRoutes: Record<string, RouteHandler> = {
       }),
     });
     if (!updated) throw new Error("Bot not found");
+    refreshBotSystemPrompts();
     return { success: true, bot: serializeBot(updated, undefined) };
   },
   "POST /api/bots/:id/duplicate": async (body, params) => {
     const sourceId = requiredAgentId(params);
     const source = agentManager.get(sourceId);
-    if (!source || !BOT_AGENT_TYPES.has(source.type || "main")) throw new Error("Bot not found");
+    if (!source || !isBotAgent(source)) throw new Error("Bot not found");
     const input = (body || {}) as BotInput;
-    const metadata = readBotMetadata(source.config);
+    const metadata = readBotProfileMetadata(source.config);
     const name = boundedText(input.name, 80) || `${source.name} copy`;
     const title = metadata.title;
     const description = metadata.description;
@@ -255,10 +269,10 @@ export const botRoutes: Record<string, RouteHandler> = {
       model: source.model,
       provider_id: source.provider_id,
       fallback_provider_id: source.fallback_provider_id,
-      system_prompt: botSystemPrompt(baseSystemPrompt, name, title, description),
+      system_prompt: buildBotSystemPrompt(baseSystemPrompt, name, title, description, ""),
       tools: source.tools,
       memory_enabled: source.memory_enabled,
-      config: withBotMetadata(source.config, {
+      config: withBotProfileMetadata(source.config, {
         title,
         description,
         hidden: false,
@@ -266,6 +280,7 @@ export const botRoutes: Record<string, RouteHandler> = {
         baseSystemPrompt,
       }),
     });
+    refreshBotSystemPrompts();
     const session = await ensureBotSession(duplicate.id);
     const duplicatedTasks = duplicateBotTasks(sourceId, duplicate.id);
     return {
@@ -277,17 +292,12 @@ export const botRoutes: Record<string, RouteHandler> = {
   "DELETE /api/bots/:id": async (_body, params) => {
     const id = requiredAgentId(params);
     const agent = agentManager.get(id);
-    if (!agent || !BOT_AGENT_TYPES.has(agent.type || "main")) throw new Error("Bot not found");
-    if (
-      agentManager.list().filter((candidate) => BOT_AGENT_TYPES.has(candidate.type || "main"))
-        .length <= 1
-    ) {
-      throw new Error("The last bot cannot be deleted");
-    }
+    if (!agent || !isBotAgent(agent)) throw new Error("Bot not found");
     const deletedTasks = deleteBotTasks(id);
     const deleted = agentManager.delete(id);
     if (!deleted) throw new Error("Could not delete bot");
     await deleteSession(botSessionId(id));
+    refreshBotSystemPrompts();
     return { success: true, bot_id: id, deleted_tasks: deletedTasks };
   },
   "POST /api/bots/:id/session": async (_body, params) => ensureBotSession(requiredAgentId(params)),

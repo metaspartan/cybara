@@ -43,6 +43,7 @@ export interface AgentSummary {
   tool_profile?: string;
   max_context_tokens?: number | null;
   supports_images?: boolean;
+  is_bot?: boolean;
 }
 
 export interface BotRosterItem {

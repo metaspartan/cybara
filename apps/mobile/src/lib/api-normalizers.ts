@@ -1070,6 +1070,7 @@ export function normalizeAgent(agent: unknown, index = 0): AgentSummary {
     reasoning_mode: reasoningMode,
     reasoning_efforts: reasoningEfforts,
     supports_images: readBoolean(record, ["supports_images", "supportsImages"]),
+    is_bot: readBoolean(record, ["is_bot", "isBot"]),
     config,
   };
 }

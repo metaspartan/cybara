@@ -21,6 +21,7 @@ import {
 import { useDeferredValue, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Button, ConfirmDialog, Input, Modal, Textarea } from "@/components/ui";
+import { useProviders } from "@/hooks/useApi";
 import { botsApi, extractApiError } from "@/lib/api";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import type { BotRosterItem } from "@/types";
@@ -41,6 +42,8 @@ interface BotProfileDraft {
   name: string;
   title: string;
   description: string;
+  model: string;
+  providerId: string;
 }
 
 function previewForBot(bot: BotRosterItem): string {
@@ -49,7 +52,13 @@ function previewForBot(bot: BotRosterItem): string {
 }
 
 function profileDraft(bot: BotRosterItem): BotProfileDraft {
-  return { name: bot.name, title: bot.title, description: bot.description };
+  return {
+    name: bot.name,
+    title: bot.title,
+    description: bot.description,
+    model: bot.model ?? "",
+    providerId: bot.provider_id ?? "",
+  };
 }
 
 export function BotSidebar({
@@ -62,11 +71,14 @@ export function BotSidebar({
 }: BotSidebarProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { data: providers = [] } = useProviders();
   const [query, setQuery] = useState("");
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [baseAgentId, setBaseAgentId] = useState("");
+  const [model, setModel] = useState("");
+  const [providerId, setProviderId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [actionBotId, setActionBotId] = useState<string | null>(null);
@@ -134,6 +146,8 @@ export function BotSidebar({
         title,
         description,
         base_agent_id: baseAgentId || undefined,
+        model: model || undefined,
+        provider_id: providerId || undefined,
       });
       if (!response.success || !response.data) {
         throw new Error(extractApiError(response, "Could not create bot"));
@@ -145,6 +159,8 @@ export function BotSidebar({
       setTitle("");
       setDescription("");
       setBaseAgentId("");
+      setModel("");
+      setProviderId("");
       setError(null);
       onCreateOpenChange(false);
       refreshBots();
@@ -229,6 +245,26 @@ export function BotSidebar({
     setEditingBot(bot);
     setEditDraft(profileDraft(bot));
     setActionBotId(null);
+  };
+
+  const providerModels = (selectedProviderId: string): string[] =>
+    providers.find((provider) => provider.id === selectedProviderId)?.models ?? [];
+
+  const changeCreateProvider = (nextProviderId: string): void => {
+    setProviderId(nextProviderId);
+    setModel(providerModels(nextProviderId)[0] ?? "");
+  };
+
+  const changeEditProvider = (nextProviderId: string): void => {
+    setEditDraft((current) =>
+      current
+        ? {
+            ...current,
+            providerId: nextProviderId,
+            model: providerModels(nextProviderId)[0] ?? "",
+          }
+        : current
+    );
   };
 
   const beginTeam = (): void => {
@@ -560,6 +596,45 @@ export function BotSidebar({
               </select>
             </label>
           ) : null}
+          <details className="group rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-raised)]">
+            <summary className="cursor-pointer list-none rounded-2xl px-3.5 py-3 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]">
+              Model and provider
+              <span className="float-right text-xs text-[var(--text-subtle)] group-open:hidden">
+                Optional
+              </span>
+            </summary>
+            <div className="space-y-3 border-t border-[var(--surface-border)] px-3.5 pb-3.5 pt-3">
+              <label className="block text-sm font-medium text-[var(--text-secondary)]">
+                Provider
+                <select
+                  value={providerId}
+                  onChange={(event) => changeCreateProvider(event.target.value)}
+                  className="themed-form-control mt-1.5 w-full rounded-xl border px-4 py-2.5"
+                >
+                  <option value="">Inherit default provider</option>
+                  {providers.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Input
+                label="Model"
+                value={model}
+                list="create-bot-models"
+                maxLength={200}
+                onChange={(event) => setModel(event.target.value)}
+                placeholder="Inherit provider default"
+                helperText="Each bot can pin its own provider and model."
+              />
+              <datalist id="create-bot-models">
+                {providerModels(providerId).map((providerModel) => (
+                  <option key={providerModel} value={providerModel} />
+                ))}
+              </datalist>
+            </div>
+          </details>
           <div className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--text-muted)]">
             This bot gets one continuous conversation, persistent memory, its own model
             configuration, tools, and background work.
@@ -597,7 +672,16 @@ export function BotSidebar({
             onSubmit={(event) => {
               event.preventDefault();
               setError(null);
-              updateBot.mutate({ id: editingBot.id, updates: editDraft });
+              updateBot.mutate({
+                id: editingBot.id,
+                updates: {
+                  name: editDraft.name,
+                  title: editDraft.title,
+                  description: editDraft.description,
+                  model: editDraft.model,
+                  provider_id: editDraft.providerId,
+                },
+              });
             }}
           >
             <div className="flex items-center gap-3 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] p-3">
@@ -648,6 +732,48 @@ export function BotSidebar({
               }
               helperText="Keep durable responsibilities and approval boundaries here; use chat for the current task."
             />
+            <details className="group rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-raised)]">
+              <summary className="cursor-pointer list-none rounded-2xl px-3.5 py-3 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]">
+                Model and provider
+                <span className="float-right truncate pl-3 text-xs text-[var(--text-subtle)] group-open:hidden">
+                  {editDraft.model || "Automatic"}
+                </span>
+              </summary>
+              <div className="space-y-3 border-t border-[var(--surface-border)] px-3.5 pb-3.5 pt-3">
+                <label className="block text-sm font-medium text-[var(--text-secondary)]">
+                  Provider
+                  <select
+                    value={editDraft.providerId}
+                    onChange={(event) => changeEditProvider(event.target.value)}
+                    className="themed-form-control mt-1.5 w-full rounded-xl border px-4 py-2.5"
+                  >
+                    <option value="">Automatic provider</option>
+                    {providers.map((provider) => (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Input
+                  label="Model"
+                  value={editDraft.model}
+                  list="edit-bot-models"
+                  maxLength={200}
+                  onChange={(event) =>
+                    setEditDraft((current) =>
+                      current ? { ...current, model: event.target.value } : current
+                    )
+                  }
+                  placeholder="Provider default"
+                />
+                <datalist id="edit-bot-models">
+                  {providerModels(editDraft.providerId).map((providerModel) => (
+                    <option key={providerModel} value={providerModel} />
+                  ))}
+                </datalist>
+              </div>
+            </details>
             {error ? <p className="text-sm text-red-400">{error}</p> : null}
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="ghost" onClick={() => setEditingBot(null)}>

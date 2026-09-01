@@ -222,7 +222,14 @@ export const agentsApi = {
 
 export const botsApi = {
   list: () => fetchApi<{ bots: BotRosterItem[] }>("/bots"),
-  create: (input: { name: string; title?: string; description?: string; base_agent_id?: string }) =>
+  create: (input: {
+    name: string;
+    title?: string;
+    description?: string;
+    base_agent_id?: string;
+    model?: string;
+    provider_id?: string;
+  }) =>
     fetchApi<{ bot: BotRosterItem; session_id: string }>("/bots", {
       method: "POST",
       body: JSON.stringify(input),
@@ -235,6 +242,8 @@ export const botsApi = {
       description?: string;
       hidden?: boolean;
       pinned?: boolean;
+      model?: string;
+      provider_id?: string;
     }
   ) =>
     fetchApi<{ bot: BotRosterItem }>(`/bots/${id}`, {

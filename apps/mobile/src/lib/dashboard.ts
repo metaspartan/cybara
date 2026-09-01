@@ -555,7 +555,7 @@ function countArray(value: unknown[] | undefined): number {
 export function summarizeFeatureCounts(summary: FeatureSummary | null): FeatureCounts {
   return {
     sessions: summary?.sessionTotal ?? summary?.sessions.length ?? 0,
-    agents: summary?.agents.length ?? 0,
+    agents: summary?.agents.filter((agent) => !agent.is_bot).length ?? 0,
     providers: summary?.providers.length ?? 0,
     skills: countArray(summary?.skills),
     tools: countArray(summary?.tools),
