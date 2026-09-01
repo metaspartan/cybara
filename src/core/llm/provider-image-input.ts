@@ -1,11 +1,25 @@
 import type { AgentMessage } from "../agent";
 import type { AgentImage } from "./image-blocks";
+import { convertHeicWithEmbeddedDecoder } from "./heic-converter.js";
 import { hasImages, MAX_INLINE_IMAGE_BYTES, normalizeMimeType, parseDataUri } from "./image-blocks";
+
+type HeicConverter = (options: {
+  buffer: Uint8Array;
+  format: "JPEG";
+  quality: number;
+}) => Promise<Uint8Array>;
 
 const MAX_IMAGE_DIMENSION = 4096;
 const MAX_IMAGE_PIXELS = 64 * 1024 * 1024;
 const OMITTED_IMAGE_TEXT =
-  "[An attached image could not be decoded and was omitted. Ask the user to attach a valid PNG, JPEG, GIF, or WebP image.]";
+  "[An attached image could not be decoded and was omitted. Ask the user to attach a valid PNG, JPEG, GIF, WebP, HEIC, or HEIF image.]";
+const HEIC_MIME_TYPES = new Set([
+  "image/heic",
+  "image/heif",
+  "image/heic-sequence",
+  "image/heif-sequence",
+]);
+const HEIC_BRANDS = new Set(["heic", "heix", "hevc", "hevx", "heim", "heis"]);
 
 interface ImageMetadata {
   mimeType: string;
@@ -133,8 +147,31 @@ function imageMetadata(input: Buffer): ImageMetadata | undefined {
   return pngMetadata(input) ?? jpegMetadata(input) ?? gifMetadata(input) ?? webpMetadata(input);
 }
 
-async function prepareInlineImage(image: AgentImage): Promise<AgentImage | undefined> {
-  const payload = imagePayload(image);
+function hasHeicBrand(input: Buffer): boolean {
+  if (input.length < 12 || input.subarray(4, 8).toString("ascii") !== "ftyp") return false;
+  const boxSize = Math.min(input.readUInt32BE(0), input.length);
+  if (boxSize < 12) return false;
+  for (let offset = 8; offset + 4 <= boxSize; offset += 4) {
+    if (HEIC_BRANDS.has(input.subarray(offset, offset + 4).toString("ascii"))) return true;
+  }
+  return false;
+}
+
+async function defaultHeicConverter(options: {
+  buffer: Uint8Array;
+  format: "JPEG";
+  quality: number;
+}): Promise<Uint8Array> {
+  return convertHeicWithEmbeddedDecoder(options);
+}
+
+export async function prepareAgentImageForProvider(
+  image: AgentImage,
+  convertHeic: HeicConverter = defaultHeicConverter
+): Promise<AgentImage | undefined> {
+  const normalizedImage = await normalizeHeicAgentImage(image, convertHeic);
+  if (!normalizedImage) return undefined;
+  const payload = imagePayload(normalizedImage);
   if (!payload.data) return image.url ? image : undefined;
 
   const input = Buffer.from(payload.data, "base64");
@@ -142,9 +179,29 @@ async function prepareInlineImage(image: AgentImage): Promise<AgentImage | undef
 
   const metadata = imageMetadata(input);
   if (!metadata) return undefined;
-  return image.data === payload.data && normalizeMimeType(image.mimeType) === metadata.mimeType
-    ? image
-    : { data: payload.data, mimeType: metadata.mimeType };
+  const data = input.toString("base64");
+  return normalizedImage.data === data &&
+    normalizeMimeType(normalizedImage.mimeType) === metadata.mimeType
+    ? normalizedImage
+    : { data, mimeType: metadata.mimeType };
+}
+
+export async function normalizeHeicAgentImage(
+  image: AgentImage,
+  convertHeic: HeicConverter = defaultHeicConverter
+): Promise<AgentImage | undefined> {
+  const payload = imagePayload(image);
+  if (!payload.data) return image;
+  const input = Buffer.from(payload.data, "base64");
+  if (input.length === 0 || input.length > MAX_INLINE_IMAGE_BYTES) return undefined;
+  if (!HEIC_MIME_TYPES.has(payload.mimeType) && !hasHeicBrand(input)) return image;
+  try {
+    const output = Buffer.from(await convertHeic({ buffer: input, format: "JPEG", quality: 0.9 }));
+    if (output.length === 0 || output.length > MAX_INLINE_IMAGE_BYTES) return undefined;
+    return { data: output.toString("base64"), mimeType: "image/jpeg" };
+  } catch {
+    return undefined;
+  }
 }
 
 export async function prepareAgentMessagesForProvider(
@@ -160,7 +217,7 @@ export async function prepareAgentMessagesForProvider(
     }
 
     const images = (
-      await Promise.all(message.images.map((image) => prepareInlineImage(image)))
+      await Promise.all(message.images.map((image) => prepareAgentImageForProvider(image)))
     ).filter((image): image is AgentImage => image !== undefined);
     const omitted = message.images.length - images.length;
     if (omitted === 0 && images.every((image, index) => image === message.images?.[index])) {

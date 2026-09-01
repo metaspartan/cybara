@@ -111,6 +111,9 @@ const imageMediaTypes = new Map([
   [".png", "image/png"],
   [".jpg", "image/jpeg"],
   [".jpeg", "image/jpeg"],
+  [".gif", "image/gif"],
+  [".heic", "image/heic"],
+  [".heif", "image/heif"],
   [".webp", "image/webp"],
 ]);
 
@@ -176,7 +179,7 @@ async function imageFileSummary(
     `Media type: ${mediaType}`,
     `Size: ${sizeBytes} bytes`,
     dimensions ? `Dimensions: ${dimensions.width}x${dimensions.height}` : undefined,
-    "Use the image path as an image attachment when visual inspection is required.",
+    "The image pixels are attached to the next model turn when the active model supports vision.",
   ]
     .filter((line): line is string => Boolean(line))
     .join("\n");

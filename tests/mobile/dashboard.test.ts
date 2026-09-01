@@ -363,6 +363,9 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain(
       'options: ["Photo library", "Paste image", "Paste text", "Cancel"]'
     );
+    expect(dashboardScreenSource).toContain(
+      "ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible"
+    );
     expect(dashboardScreenSource).toContain("const composerMeasuredHeightRef = useRef");
     expect(dashboardScreenSource).toContain("composerMeasuredHeightRef.current");
     expect(dashboardScreenSource).toContain("const pasteText = async () =>");

@@ -3,12 +3,13 @@ import {
   chatImageSrc,
   formatBytes,
   imageAttachmentBytes,
+  isHeicImage,
   MAX_CHAT_IMAGES,
   mediaSummaryLabel,
 } from "@/lib/chatImages";
 import { cn } from "@/lib/utils";
 import type { ChatImageAttachment } from "@/types";
-import { FileText, Paperclip, X } from "lucide-react";
+import { FileImage, FileText, Paperclip, X } from "lucide-react";
 import type { RefObject } from "react";
 
 const attachmentKeys = new WeakMap<object, number>();
@@ -64,11 +65,18 @@ export function ChatComposerAttachments({
                     : ""
                 }`}
               >
-                <img
-                  src={chatImageSrc(image)}
-                  alt={image.name || "Attachment preview"}
-                  className="h-full w-full object-cover"
-                />
+                {isHeicImage(image) ? (
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 bg-[var(--surface-hover)] text-[var(--text-muted)]">
+                    <FileImage className={compact ? "h-4 w-4" : "h-5 w-5"} />
+                    {!compact ? <span className="text-[9px] font-medium">HEIC</span> : null}
+                  </div>
+                ) : (
+                  <img
+                    src={chatImageSrc(image)}
+                    alt={image.name || "Attachment preview"}
+                    className="h-full w-full object-cover"
+                  />
+                )}
                 {imageAttachmentBytes(image) > 0 && !compact ? (
                   <span className="absolute bottom-0 left-0 right-0 bg-black/55 px-1 py-px text-[9px] leading-tight text-white/90">
                     {formatBytes(imageAttachmentBytes(image))}
@@ -116,7 +124,7 @@ export function ChatComposerAttachments({
       <input
         ref={imageInputRef}
         type="file"
-        accept="image/png,image/jpeg,image/gif,image/webp,text/*,.md,.markdown,.json,.jsonc,.csv,.tsv,.xml,.yaml,.yml,.toml,.ini,.log,.html,.css,.scss,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.h,.cpp,.hpp,.cc,.cs,.php,.sh,.bash,.zsh,.sql,.env,.vue,.svelte"
+        accept="image/png,image/jpeg,image/gif,image/webp,image/heic,image/heif,.heic,.heif,text/*,.md,.markdown,.json,.jsonc,.csv,.tsv,.xml,.yaml,.yml,.toml,.ini,.log,.html,.css,.scss,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.h,.cpp,.hpp,.cc,.cs,.php,.sh,.bash,.zsh,.sql,.env,.vue,.svelte"
         multiple
         className="hidden"
         onChange={(event) => {

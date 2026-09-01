@@ -27,6 +27,7 @@ import {
   appendAgentBudgetWarning,
   sessionIdForVisibleTokenUsage,
 } from "./agent-provider-common-runtime";
+import { loadToolResultImages } from "./agent-tool-images";
 import { hasAgentTransferEnvelope } from "./agent-transfer";
 import {
   countWebResearchCalls,
@@ -61,6 +62,7 @@ import {
   anthropicRequestHeaders,
 } from "./llm/anthropic-vertex";
 import { normalizeAnthropicModelToolUses } from "./llm/model-dialect";
+import { toAnthropicImageBlock } from "./llm/image-blocks";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
 import { toAnthropicHistory } from "./llm/provider-history";
 import { supportsForcedToolChoice } from "./llm/provider-model-transport";
@@ -604,11 +606,16 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         role: "assistant",
         content: assistantLoopContent,
       });
+      const imageBlocks =
+        toolContext?.supportsImages === true
+          ? (await loadToolResultImages(iterationToolCalls)).map(toAnthropicImageBlock)
+          : [];
       const steeringText = this.consumeSteeringText(toolContext);
       currentMessages.push({
         role: "user",
         content: [
           ...toolResults,
+          ...imageBlocks,
           ...(steeringText ? [{ type: "text", text: steeringText }] : []),
           ...(notifyWebResearchBudget
             ? [{ type: "text", text: WEB_RESEARCH_SYNTHESIS_INSTRUCTION }]

@@ -29,6 +29,7 @@ import {
 } from "./agent-loop-runtime";
 import { AgentProviderCodexRuntime } from "./agent-provider-codex-runtime";
 import { sessionIdForVisibleTokenUsage } from "./agent-provider-common-runtime";
+import { loadToolResultImages } from "./agent-tool-images";
 import { hasAgentTransferEnvelope } from "./agent-transfer";
 import type { ToolDefinition } from "./database";
 import { classifyApiError } from "./error-classifier";
@@ -37,6 +38,7 @@ import {
   collectBedrockReasoningText,
 } from "./llm/bedrock-reasoning";
 import { googleFunctionDeclaration } from "./llm/google-tool-schema";
+import { toBedrockImageBlock, toGoogleImagePart } from "./llm/image-blocks";
 import { toBedrockHistory, toGoogleHistory } from "./llm/provider-history";
 import { googleThinkingConfig, normalizeReasoningEffort } from "./llm/reasoning";
 import { withLlmRequestTimeout } from "./llm/request-timeout";
@@ -345,10 +347,15 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
         role: "model",
         parts,
       });
+      const toolImages =
+        toolContext?.supportsImages === true ? await loadToolResultImages(iterationToolCalls) : [];
+      const imageParts = toolImages
+        .map(toGoogleImagePart)
+        .filter((part): part is Record<string, unknown> => part !== null);
       const steeringText = this.consumeSteeringText(toolContext);
       contents.push({
         role: "user",
-        parts: steeringText ? [...toolResponses, { text: steeringText }] : toolResponses,
+        parts: [...toolResponses, ...imageParts, ...(steeringText ? [{ text: steeringText }] : [])],
       });
     }
 
@@ -603,11 +610,18 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
         role: "assistant",
         content: outputContent,
       });
+      const toolImages =
+        toolContext?.supportsImages === true ? await loadToolResultImages(iterationToolCalls) : [];
+      const imageBlocks: BedrockContentBlock[] = toolImages.flatMap((image) => {
+        const block = toBedrockImageBlock(image);
+        return block ? [block] : [];
+      });
       const steeringText = this.consumeSteeringText(toolContext);
       conversation.push({
         role: "user",
         content: [
           ...toolResults,
+          ...imageBlocks,
           ...(budgetWarning ? [{ text: budgetWarning }] : []),
           ...(steeringText ? [{ text: steeringText }] : []),
         ],

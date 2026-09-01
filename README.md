@@ -211,7 +211,7 @@ Tool categories currently shipped:
 - `memory`: search/get/save/context/durable save
 - `core`: sessions/agents/artifacts/wallet/http/env/data/nodes/clipboard/cron/gateway/etc.
 - `lsp`: diagnostics/definition/references/hover/languages
-- `media`: image/tts + **image_generate** / **video_generate** / **music_generate** via a swappable provider registry (OpenAI, fal.ai with `FAL_KEY` or `FAL_API_KEY`)
+- `media`: image/tts + **image_generate** / **video_generate** / **music_generate** via a swappable provider registry (OpenAI, fal.ai, and MuAPI with `FAL_KEY`/`FAL_API_KEY` or `MUAPI_API_KEY`)
 - `skill`: calc/convert/pdf/ocr/summarization/video_frames/weather/mactop + **skill_save** (agents codify a successful procedure as a reusable skill for future sessions)
 - `channel`: message/telegram_media
 - `planning`: **todo** (session task-list with status discipline) + **clarify** (structured multi-choice questions to the user)

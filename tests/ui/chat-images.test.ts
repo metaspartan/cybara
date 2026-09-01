@@ -4,6 +4,8 @@ import {
   chatMarkdownImageSrc,
   chatMarkdownImageSources,
   imageToolResultSrc,
+  isHeicImage,
+  isSupportedImageType,
   loadChatImageSource,
   requiresAuthenticatedImageFetch,
   screenshotMediaSrc,
@@ -19,6 +21,14 @@ const lightboxSource = await Bun.file("ui/src/pages/chat/ChatImageLightbox.tsx")
 const previewSource = await Bun.file("ui/src/pages/chat/ChatImagePreview.tsx").text();
 
 describe("chat image rendering", () => {
+  test("accepts HEIC and HEIF attachments by MIME type or filename", () => {
+    expect(isSupportedImageType("image/heic")).toBe(true);
+    expect(isSupportedImageType("image/heif")).toBe(true);
+    expect(isSupportedImageType("", "camera.HEIC")).toBe(true);
+    expect(isHeicImage({ mimeType: "image/heic" })).toBe(true);
+    expect(isHeicImage({ path: "attachments/photo.heif" })).toBe(true);
+  });
+
   test("maps browser screenshot file links through the secured media route", () => {
     const source = chatMarkdownImageSrc(
       "file:///Users/carsen/.cybara/screenshots/screenshot_1783660799112.jpeg"

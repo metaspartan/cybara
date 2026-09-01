@@ -21,6 +21,33 @@ export {
 
 export const BROWSER_VIEWPORT_MODE_STORAGE_KEY = "cybara.browser.viewport-mode";
 
+export function initialBrowserViewportMode(
+  storedMode: unknown,
+  thumbnail: boolean
+): BrowserViewportMode {
+  if (thumbnail) return "desktop";
+  return isBrowserViewportMode(storedMode) ? storedMode : "desktop";
+}
+
+export function browserPreviewSurfaceSize(width: number, height: number): BrowserViewport | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+  return { width: Math.round(width), height: Math.round(height) };
+}
+
+export function shouldSyncRemoteBrowserViewportMode(
+  value: unknown,
+  currentMode: BrowserViewportMode,
+  visible: boolean,
+  thumbnail: boolean,
+  localChangeAt: number,
+  now: number
+): value is BrowserViewportMode {
+  if (!visible || thumbnail || !isBrowserViewportMode(value)) return false;
+  return value === currentMode || now - localChangeAt >= 1_000;
+}
+
 export function browserViewportForMode(
   mode: BrowserViewportMode,
   surface: BrowserViewport | null
@@ -37,22 +64,36 @@ function sameViewport(left: BrowserViewport | null, right: BrowserViewport): boo
 }
 
 export class BrowserViewportResizeQueue {
-  private pending: BrowserViewport | null = null;
+  private pending: { viewport: BrowserViewport; mode: BrowserViewportMode } | null = null;
   private active = false;
   private disposed = false;
-  private applied: BrowserViewport | null = null;
+  private applied: { viewport: BrowserViewport; mode: BrowserViewportMode } | null = null;
   private readonly idleWaiters = new Set<() => void>();
 
   constructor(
-    private readonly resize: (viewport: BrowserViewport) => Promise<BrowserViewport>,
+    private readonly resize: (
+      viewport: BrowserViewport,
+      mode: BrowserViewportMode
+    ) => Promise<BrowserViewport>,
     private readonly onApplied: (viewport: BrowserViewport) => void,
     private readonly onError: (error: unknown) => void
   ) {}
 
-  enqueue(viewport: BrowserViewport): void {
-    if (this.disposed || sameViewport(this.pending, viewport)) return;
-    if (!this.active && sameViewport(this.applied, viewport)) return;
-    this.pending = viewport;
+  enqueue(viewport: BrowserViewport, mode: BrowserViewportMode): void {
+    if (
+      this.disposed ||
+      (this.pending?.mode === mode && sameViewport(this.pending.viewport, viewport))
+    ) {
+      return;
+    }
+    if (
+      !this.active &&
+      this.applied?.mode === mode &&
+      sameViewport(this.applied.viewport, viewport)
+    ) {
+      return;
+    }
+    this.pending = { viewport, mode };
     void this.drain();
   }
 
@@ -73,9 +114,9 @@ export class BrowserViewportResizeQueue {
     this.pending = null;
     this.active = true;
     try {
-      const applied = await this.resize(target);
-      this.applied = applied;
-      if (!this.disposed && !this.pending) this.onApplied(applied);
+      const appliedViewport = await this.resize(target.viewport, target.mode);
+      this.applied = { viewport: appliedViewport, mode: target.mode };
+      if (!this.disposed && !this.pending) this.onApplied(appliedViewport);
     } catch (error) {
       if (!this.disposed && !this.pending) this.onError(error);
     } finally {

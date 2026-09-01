@@ -299,7 +299,7 @@ struct NativeChatBrowserPanel: View {
     let sessionID: String?
     let isActive: Bool
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    @AppStorage("cybara.browser.viewport-mode") private var viewportModeRaw = NativeBrowserViewportMode.responsive.rawValue
+    @AppStorage("cybara.browser.viewport-mode") private var viewportModeRaw = NativeBrowserViewportMode.desktop.rawValue
     @StateObject private var stream = NativeBrowserStreamConnection()
     @State private var page: NativeBrowserTab?
     @State private var address = ""
@@ -307,7 +307,7 @@ struct NativeChatBrowserPanel: View {
     @State private var revision = ""
     @State private var cursor: NativeBrowserCursor?
     @State private var viewport: NativeBrowserViewport?
-    @State private var requestedViewport = NativeBrowserViewport(width: 960, height: 640)
+    @State private var requestedViewport = NativeBrowserViewport(width: 1_440, height: 900)
     @State private var loading = false
     @State private var error: String?
     @FocusState private var addressFocused: Bool
@@ -368,7 +368,7 @@ struct NativeChatBrowserPanel: View {
             Divider()
 
             GeometryReader { proxy in
-                let mode = NativeBrowserViewportMode(rawValue: viewportModeRaw) ?? .responsive
+                let mode = NativeBrowserViewportMode(rawValue: viewportModeRaw) ?? .desktop
                 let targetViewport = nativeBrowserViewport(mode: mode, container: proxy.size)
                 ZStack {
                     if let presentedImage = stream.image ?? image {

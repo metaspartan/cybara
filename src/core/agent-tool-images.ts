@@ -5,9 +5,12 @@ import {
 } from "./computer-use-actions";
 import type { AgentToolCallResult } from "./agent-internals";
 import { type AgentImage, MAX_INLINE_IMAGE_BYTES, toOpenAIImageBlock } from "./llm/image-blocks";
+import { prepareAgentImageForProvider } from "./llm/provider-image-input";
 
 const imageMediaTypes = new Map([
   [".gif", "image/gif"],
+  [".heic", "image/heic"],
+  [".heif", "image/heif"],
   [".jpeg", "image/jpeg"],
   [".jpg", "image/jpeg"],
   [".png", "image/png"],
@@ -20,6 +23,7 @@ const visualToolNames = new Set([
   "browser_screenshot",
   "computer_use",
   "mobile_simulator",
+  "read",
   ...COMPUTER_USE_ACTION_TOOL_ALIASES,
   ...Object.keys(COMPUTER_USE_COMPAT_TOOL_ALIASES),
 ]);
@@ -28,7 +32,12 @@ function imagePathFromToolCall(toolCall: AgentToolCallResult): string | undefine
   if (!visualToolNames.has(toolCall.name)) return undefined;
   if (!toolCall.result || typeof toolCall.result !== "object") return undefined;
   const result = toolCall.result as Record<string, unknown>;
-  const path = toolCall.name === "image" ? result.image : result.filePath;
+  const path =
+    toolCall.name === "image"
+      ? result.image
+      : toolCall.name === "read"
+        ? result.path
+        : result.filePath;
   return typeof path === "string" && path.trim() ? path : undefined;
 }
 
@@ -44,7 +53,8 @@ export async function loadToolResultImages(
     const file = Bun.file(path);
     if (!(await file.exists()) || file.size <= 0 || file.size > MAX_INLINE_IMAGE_BYTES) continue;
     const data = Buffer.from(await file.arrayBuffer()).toString("base64");
-    images.push({ data, mimeType });
+    const prepared = await prepareAgentImageForProvider({ data, mimeType });
+    if (prepared) images.push(prepared);
   }
   return images;
 }
@@ -57,7 +67,7 @@ export async function openAIImageToolFollowup(
   return {
     role: "user",
     content: [
-      { type: "text", text: "Inspect the image returned by the image tool." },
+      { type: "text", text: "Inspect the image returned by the file or image tool." },
       ...images.map(toOpenAIImageBlock),
     ],
   };
