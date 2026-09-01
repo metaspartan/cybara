@@ -11,6 +11,8 @@ import {
   storeAccountConnectorToken,
   updateAccountConnectorConfig,
 } from "../../src/core/account-connectors/store";
+import { agentManager } from "../../src/core/agent";
+import { withBotProfileMetadata } from "../../src/core/bot-profile";
 
 describe("chat capability mentions", () => {
   test("normalizes names into stable mention aliases", () => {
@@ -41,6 +43,49 @@ describe("chat capability mentions", () => {
         (capability) => capability.kind === "skill" && capability.token === "@security-scan"
       )
     ).toBeDefined();
+  });
+
+  test("keeps bot chat mentions separate and delegates with the exact bot id", async () => {
+    const ordinary = agentManager.create({
+      name: "Large Agent Catalog Entry",
+      type: "research",
+      model: "test-model",
+      config: { tool_profile: "full" },
+    });
+    const bot = agentManager.create({
+      name: "Launch Researcher",
+      type: "main",
+      model: "test-model",
+      config: withBotProfileMetadata({}, { title: "Research owner" }),
+    });
+    try {
+      const capabilities = await listChatCapabilities(process.cwd(), "bots");
+      expect(capabilities).toContainEqual(
+        expect.objectContaining({
+          kind: "bot",
+          token: "@launch-researcher",
+          name: "Launch Researcher",
+          source: "Bot teammate",
+        })
+      );
+      expect(capabilities.some((capability) => capability.name === ordinary.name)).toBe(false);
+
+      const resolved = await resolveChatCapabilityMentions(
+        "@launch-researcher check the release notes",
+        process.cwd(),
+        "bots"
+      );
+      expect(resolved.mentions).toEqual([
+        expect.objectContaining({ kind: "bot", token: "@launch-researcher" }),
+      ]);
+      expect(resolved.instruction).toContain(`agentId ${JSON.stringify(bot.id)}`);
+      expect(resolved.instruction).toContain("maxToolIterations 12");
+      expect(resolved.instruction).toContain("preserve explicit limits");
+      expect(resolved.instruction).toContain("sessions_wait");
+    } finally {
+      agentManager.delete(bot.id);
+      agentManager.delete(ordinary.id);
+    }
   });
 
   test("lists goal, loop, and prompt commands for composer discovery", () => {

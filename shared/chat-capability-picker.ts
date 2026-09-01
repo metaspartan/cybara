@@ -48,6 +48,7 @@ export function filterChatCapabilities<T extends SharedChatCapabilityOption>(
   const normalized = query.trim().toLowerCase();
   const kindRank: Record<string, number> = {
     command: 70,
+    bot: 65,
     skill: 60,
     mcp_server: 50,
     mcp: 40,

@@ -24,6 +24,7 @@ describe("bot sidebar wiring", () => {
     expect(source).not.toContain('navigate("/chat")');
     expect(source).not.toContain("ChatInput");
     expect(chat).toContain("agentLocked: currentBot !== null");
+    expect(chat).toContain("sessionId,");
     expect(controls).toContain("disabled={updating || locked}");
     expect(controls).toContain("{locked ? null : modelRouterEnabled ? (");
   });

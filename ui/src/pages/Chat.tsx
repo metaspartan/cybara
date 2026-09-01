@@ -1403,6 +1403,7 @@ export function Chat() {
     setInput,
     inputRef,
     workspaceDir: effectiveWorkspaceDir,
+    sessionId,
     onSend: handleSend,
   });
 

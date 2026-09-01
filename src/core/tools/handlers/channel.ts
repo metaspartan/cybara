@@ -39,6 +39,7 @@ interface SubagentSession {
   allowedToolNames?: string[];
   task: string;
   model?: string;
+  maxToolIterations?: number;
   timeout?: number;
   status: "pending" | "running" | "completed" | "failed" | "killed";
   messages: Array<{
@@ -106,7 +107,13 @@ function resolveMaxActiveChildren(args: Record<string, unknown>): number | undef
 function resolveSubagentTargetAgent(requestedAgentId?: string) {
   const availableAgents = agentManager.list();
   if (typeof requestedAgentId === "string" && requestedAgentId.trim().length > 0) {
-    return availableAgents.find((agent) => agent.id === requestedAgentId);
+    const requested = requestedAgentId.trim();
+    const byId = availableAgents.find((agent) => agent.id === requested);
+    if (byId) return byId;
+    const byName = availableAgents.filter(
+      (agent) => agent.name.trim().toLowerCase() === requested.toLowerCase()
+    );
+    return byName.length === 1 ? byName[0] : undefined;
   }
   const configuredId = config.get<unknown>("subagent_agent_id");
   const configuredAgent =
@@ -189,6 +196,11 @@ export async function handleSessionsSpawn(
   const label = readTrimmedString(args.label);
   const requestedAgentId = readTrimmedString(args.agentId);
   const modelOverride = readTrimmedString(args.model);
+  const requestedMaxToolIterations = readNonNegativeInteger(args.maxToolIterations);
+  const maxToolIterations =
+    requestedMaxToolIterations && requestedMaxToolIterations > 0
+      ? Math.min(requestedMaxToolIterations, 100)
+      : undefined;
   const runTimeoutSeconds = resolveRunTimeoutSeconds(args);
   const cleanup = args.cleanup === "delete" ? "delete" : "keep";
   const silent = args.silent === true;
@@ -273,6 +285,7 @@ export async function handleSessionsSpawn(
     parentSessionId: requesterSessionKey,
     task,
     model: modelSelection.model,
+    maxToolIterations,
     timeout: runTimeoutSeconds && runTimeoutSeconds > 0 ? runTimeoutSeconds : undefined,
     status: "pending",
     messages: [
@@ -619,6 +632,9 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
       channel: "subagent",
       userId: "subagent",
       modelOverride: session.model,
+      modelParamsOverride: session.maxToolIterations
+        ? { max_tool_iterations: session.maxToolIterations }
+        : undefined,
       abortSignal: abortController.signal,
       allowedToolNames: session.allowedToolNames,
     });

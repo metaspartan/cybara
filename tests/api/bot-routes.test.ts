@@ -132,6 +132,44 @@ describe("bot routes", () => {
     await expect(ensure?.({}, { id: "missing" })).rejects.toThrow("Bot not found");
   });
 
+  test("keeps fresh bot identity prompts clean and bounds teammate context", async () => {
+    const create = botRoutes["POST /api/bots"];
+    const update = botRoutes["PUT /api/bots/:id"];
+    const base = agentManager.create({
+      name: "Fresh Bot Template",
+      type: "main",
+      model: "test-model",
+      config: { tool_profile: "full" },
+    });
+    createdAgentIds.push(base.id);
+    const lead = (await create?.({
+      name: "Launch Lead",
+      title: "Launch owner",
+      base_agent_id: base.id,
+    })) as { bot: { id: string } };
+    createdAgentIds.push(lead.bot.id);
+    const longDescription = `${"evidence ".repeat(60)}TAIL_SHOULD_NOT_ENTER_TEAM_PROMPTS`;
+    const researcher = (await create?.({
+      name: "Deep Research",
+      title: "Research owner",
+      description: longDescription,
+      base_agent_id: base.id,
+    })) as { bot: { id: string } };
+    createdAgentIds.push(researcher.bot.id);
+
+    const teammatePrompt = agentManager.get(lead.bot.id)?.system_prompt || "";
+    expect(teammatePrompt).toContain("@deep-research");
+    expect(teammatePrompt).toContain(`agentId: ${researcher.bot.id}`);
+    expect(teammatePrompt).toContain("maxToolIterations 12");
+    expect(teammatePrompt).not.toContain("TAIL_SHOULD_NOT_ENTER_TEAM_PROMPTS");
+
+    await update?.({ name: "Launch Director" }, { id: lead.bot.id });
+    const updatedPrompt = agentManager.get(lead.bot.id)?.system_prompt || "";
+    expect(updatedPrompt.match(/persistent Cybara bot/g)).toHaveLength(1);
+    expect(updatedPrompt).toContain("You are Launch Director");
+    expect(updatedPrompt).not.toContain("You are Launch Lead");
+  });
+
   test("keeps bot identity durable and supports profile lifecycle actions", async () => {
     const create = botRoutes["POST /api/bots"];
     const update = botRoutes["PUT /api/bots/:id"];

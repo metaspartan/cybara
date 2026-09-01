@@ -10,6 +10,13 @@ import {
 
 const capabilities: ChatCapabilityOption[] = [
   {
+    kind: "bot",
+    token: "@release-researcher",
+    name: "Release Researcher",
+    description: "Hand work to Release Researcher",
+    source: "Bot teammate",
+  },
+  {
     kind: "skill",
     token: "@model-usage",
     name: "Model Usage",
@@ -51,12 +58,13 @@ describe("chat capability mention composer", () => {
       query: "robinhood/get",
       trigger: "@",
     });
-    expect(filterChatCapabilities(capabilities, "robinhood/get")).toEqual([capabilities[1]]);
+    expect(filterChatCapabilities(capabilities, "robinhood/get")).toEqual([capabilities[2]]);
   });
 
   test("ranks prefix matches and limits results", () => {
-    expect(filterChatCapabilities(capabilities, "model", 1)).toEqual([capabilities[0]]);
-    expect(filterChatCapabilities(capabilities, "portfolio")).toEqual([capabilities[1]]);
+    expect(filterChatCapabilities(capabilities, "model", 1)).toEqual([capabilities[1]]);
+    expect(filterChatCapabilities(capabilities, "portfolio")).toEqual([capabilities[2]]);
+    expect(filterChatCapabilities(capabilities, "", 1)).toEqual([capabilities[0]]);
   });
 
   test("replaces only the active mention and places the cursor after it", () => {
@@ -113,5 +121,7 @@ describe("chat capability mention composer", () => {
     const source = readFileSync(capabilityPickerPath, "utf8");
     expect(source).toContain("enabled: activeMention !== null");
     expect(source).not.toContain("enabled: cursor !== null");
+    expect(source).toContain('["chat-capabilities", workspaceDir, sessionId]');
+    expect(source).toContain("chatApi.capabilities(workspaceDir, sessionId)");
   });
 });

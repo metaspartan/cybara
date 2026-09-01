@@ -9,6 +9,7 @@ import {
 import { taskScheduler } from "../core/scheduler";
 import { persistSession } from "../core/session-context";
 import { providerManager } from "../core/providers";
+import { normalizeCapabilityAlias } from "../core/chat/capability-alias";
 import { botSessionId } from "../../shared/bot-mode";
 import type { RouteHandler } from "./routes/_shared";
 
@@ -24,6 +25,7 @@ interface BotInput {
 }
 
 const BOT_AGENT_TYPES = new Set(["main", "research", "coder", "planner", "ops"]);
+const BOT_TEAMMATE_DESCRIPTION_MAX = 320;
 
 function requiredAgentId(params: Record<string, string> | undefined): string {
   const value = params?.id?.trim();
@@ -47,24 +49,28 @@ function isBotAgent(agent: ReturnType<typeof agentManager.list>[number]): boolea
   return BOT_AGENT_TYPES.has(agent.type || "main") && isBotProfileConfig(agent.config);
 }
 
-function botTeammates(excludedId: string): string {
-  const teammates = agentManager
-    .list()
-    .filter((agent) => agent.id !== excludedId && isBotAgent(agent))
+function botTeammates(
+  excludedId: string,
+  bots: ReturnType<typeof agentManager.list> = agentManager.list().filter(isBotAgent)
+): string {
+  const teammates = bots
+    .filter((agent) => agent.id !== excludedId)
     .map((agent) => {
       const metadata = readBotProfileMetadata(agent.config);
-      const role = [metadata.title, metadata.description].filter(Boolean).join(": ");
-      return `- ${agent.name} (agentId: ${agent.id})${role ? ` — ${role}` : ""}`;
+      const description = metadata.description.slice(0, BOT_TEAMMATE_DESCRIPTION_MAX);
+      const role = [metadata.title, description].filter(Boolean).join(": ");
+      return `- @${normalizeCapabilityAlias(agent.name)} — ${agent.name} (agentId: ${agent.id})${role ? ` — ${role}` : ""}`;
     });
   if (teammates.length === 0) return "You currently have no other bot teammates.";
   return [
-    "Your bot teammates are listed below. When delegation is useful, use sessions_spawn with the teammate's agentId, wait with sessions_wait, and incorporate the result.",
+    "Your bot teammates are listed below. When delegation is useful, use sessions_spawn with the teammate's agentId and maxToolIterations 12, preserve the user's exact scope and limits in the child task, wait with sessions_wait, and incorporate the result.",
     ...teammates,
   ].join("\n");
 }
 
 function refreshBotSystemPrompts(): void {
-  for (const agent of agentManager.list().filter(isBotAgent)) {
+  const bots = agentManager.list().filter(isBotAgent);
+  for (const agent of bots) {
     const metadata = readBotProfileMetadata(agent.config);
     agentManager.update(agent.id, {
       system_prompt: buildBotSystemPrompt(
@@ -72,7 +78,7 @@ function refreshBotSystemPrompts(): void {
         agent.name,
         metadata.title,
         metadata.description,
-        botTeammates(agent.id)
+        botTeammates(agent.id, bots)
       ),
     });
   }
@@ -235,7 +241,7 @@ export const botRoutes: Record<string, RouteHandler> = {
           ? agent.provider_id
           : validatedProviderId(input.provider_id),
       system_prompt: buildBotSystemPrompt(
-        metadata.baseSystemPrompt || agent.system_prompt || "",
+        metadata.baseSystemPrompt,
         name,
         title,
         description,
@@ -246,11 +252,13 @@ export const botRoutes: Record<string, RouteHandler> = {
         description,
         hidden: input.hidden === undefined ? metadata.hidden : input.hidden === true,
         pinned: input.pinned === undefined ? metadata.pinned : input.pinned === true,
-        baseSystemPrompt: metadata.baseSystemPrompt || agent.system_prompt || "",
+        baseSystemPrompt: metadata.baseSystemPrompt,
       }),
     });
     if (!updated) throw new Error("Bot not found");
-    refreshBotSystemPrompts();
+    const rosterChanged =
+      name !== agent.name || title !== metadata.title || description !== metadata.description;
+    if (rosterChanged) refreshBotSystemPrompts();
     return { success: true, bot: serializeBot(updated, undefined) };
   },
   "POST /api/bots/:id/duplicate": async (body, params) => {
@@ -262,7 +270,7 @@ export const botRoutes: Record<string, RouteHandler> = {
     const name = boundedText(input.name, 80) || `${source.name} copy`;
     const title = metadata.title;
     const description = metadata.description;
-    const baseSystemPrompt = metadata.baseSystemPrompt || source.system_prompt || "";
+    const baseSystemPrompt = metadata.baseSystemPrompt;
     const duplicate = agentManager.create({
       name,
       type: source.type,

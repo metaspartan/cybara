@@ -4,11 +4,16 @@ import { createEligibilityContext, filterEligibleSkills, loadAllSkills } from ".
 import { tables } from "../database";
 import { toolSchemas } from "../tools/registry";
 import { listAccountConnectorStatuses } from "../account-connectors/store";
+import { isBotProfileConfig } from "../bot-profile";
+import { normalizeCapabilityAlias } from "./capability-alias";
+
+export { normalizeCapabilityAlias } from "./capability-alias";
 
 export type ChatCapabilityKind =
   | "skill"
   | "mcp_server"
   | "mcp"
+  | "bot"
   | "agent"
   | "tool"
   | "connector"
@@ -26,13 +31,7 @@ interface ResolvedChatCapability extends ChatCapabilityOption {
   instruction: string;
 }
 
-export function normalizeCapabilityAlias(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+export type ChatAgentCapabilityScope = "all" | "bots";
 
 function inferredCapabilityTokens(message: string): string[] {
   const requestsCodexSecurity =
@@ -83,21 +82,35 @@ function mcpServerCapabilities(): ResolvedChatCapability[] {
   });
 }
 
-function agentCapabilities(): ResolvedChatCapability[] {
+function agentCapabilities(scope: ChatAgentCapabilityScope): ResolvedChatCapability[] {
   try {
-    const agents = tables.agents.all() as Array<{ name?: string; type?: string }>;
+    const agents = tables.agents.all() as Array<{
+      id?: string;
+      name?: string;
+      type?: string;
+      config?: unknown;
+    }>;
     return agents
-      .filter((agent) => typeof agent.name === "string" && agent.name.trim().length > 0)
+      .filter(
+        (agent) =>
+          typeof agent.id === "string" &&
+          agent.id.trim().length > 0 &&
+          typeof agent.name === "string" &&
+          agent.name.trim().length > 0 &&
+          (scope === "all" || isBotProfileConfig(agent.config))
+      )
       .map((agent) => {
         const name = agent.name as string;
+        const agentId = agent.id as string;
+        const bot = isBotProfileConfig(agent.config);
         const token = `@${normalizeCapabilityAlias(name)}`;
         return {
-          kind: "agent" as const,
+          kind: bot ? ("bot" as const) : ("agent" as const),
           token,
           name,
-          description: `Delegate to the ${name} agent`,
-          source: "Agent",
-          instruction: `For ${token}, delegate the relevant part of this task to the ${JSON.stringify(name)} agent using the sessions_spawn or subagents tool, then incorporate its result.`,
+          description: bot ? `Hand work to ${name}` : `Delegate to the ${name} agent`,
+          source: bot ? "Bot teammate" : "Agent",
+          instruction: `For ${token}, delegate only the user's requested scope to ${JSON.stringify(name)} using sessions_spawn with agentId ${JSON.stringify(agentId)} and maxToolIterations 12, preserve explicit limits such as read-only or keep-it-tight in the child task, call sessions_wait with the returned runId, and incorporate the result.`,
         };
       });
   } catch {
@@ -152,13 +165,16 @@ function mcpCapabilities(): ResolvedChatCapability[] {
   });
 }
 
-async function resolvedCapabilities(workspaceDir?: string): Promise<ResolvedChatCapability[]> {
+async function resolvedCapabilities(
+  workspaceDir?: string,
+  agentScope: ChatAgentCapabilityScope = "all"
+): Promise<ResolvedChatCapability[]> {
   const unique = new Map<string, ResolvedChatCapability>();
   for (const capability of [
     ...(await skillCapabilities(workspaceDir)),
     ...mcpServerCapabilities(),
     ...mcpCapabilities(),
-    ...agentCapabilities(),
+    ...agentCapabilities(agentScope),
     ...connectorCapabilities(),
     ...toolCapabilities(),
   ]) {
@@ -169,8 +185,11 @@ async function resolvedCapabilities(workspaceDir?: string): Promise<ResolvedChat
   );
 }
 
-export async function listChatCapabilities(workspaceDir?: string): Promise<ChatCapabilityOption[]> {
-  return (await resolvedCapabilities(workspaceDir)).map(
+export async function listChatCapabilities(
+  workspaceDir?: string,
+  agentScope: ChatAgentCapabilityScope = "all"
+): Promise<ChatCapabilityOption[]> {
+  return (await resolvedCapabilities(workspaceDir, agentScope)).map(
     ({ instruction: _instruction, ...capability }) => capability
   );
 }
@@ -200,13 +219,17 @@ export function listChatCommands(): ChatCapabilityOption[] {
 
 export async function resolveChatCapabilityMentions(
   message: string,
-  workspaceDir?: string
+  workspaceDir?: string,
+  agentScope: ChatAgentCapabilityScope = "all"
 ): Promise<{
   mentions: ChatCapabilityOption[];
   instruction: string | null;
 }> {
   const available = new Map(
-    (await resolvedCapabilities(workspaceDir)).map((item) => [item.token.toLowerCase(), item])
+    (await resolvedCapabilities(workspaceDir, agentScope)).map((item) => [
+      item.token.toLowerCase(),
+      item,
+    ])
   );
   const selected = new Map<string, ResolvedChatCapability>();
   const matches = message.matchAll(
@@ -235,9 +258,10 @@ export async function resolveChatCapabilityMentions(
 export async function applyChatCapabilityMentions<T extends { role: string; content: string }>(
   messages: T[],
   userMessage: string,
-  workspaceDir?: string
+  workspaceDir?: string,
+  agentScope: ChatAgentCapabilityScope = "all"
 ): Promise<T[]> {
-  const resolved = await resolveChatCapabilityMentions(userMessage, workspaceDir);
+  const resolved = await resolveChatCapabilityMentions(userMessage, workspaceDir, agentScope);
   return applyChatCapabilityInstruction(messages, resolved.instruction);
 }
 
