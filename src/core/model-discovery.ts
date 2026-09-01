@@ -44,33 +44,54 @@ function endpointModel(value: unknown): ModelsDevModel | undefined {
   const displayName =
     typeof model.display_name === "string" && model.display_name.trim()
       ? model.display_name.trim()
-      : undefined;
+      : typeof model.name === "string" && model.name.trim()
+        ? model.name.trim()
+        : undefined;
   const contextWindow =
     positiveInteger(model.context_length) ??
     positiveInteger(model.max_model_len) ??
     positiveInteger(model.context_window) ??
     positiveInteger(model.max_context_length);
-  const maxTokens = positiveInteger(model.max_output_tokens) ?? positiveInteger(model.max_tokens);
+  const maxTokens =
+    positiveInteger(model.max_output_tokens) ??
+    positiveInteger(model.max_output_length) ??
+    positiveInteger(model.max_tokens);
+  const endpointInput = Array.isArray(model.input_modalities)
+    ? model.input_modalities.filter((entry): entry is string => typeof entry === "string")
+    : [];
   const hasInputCapabilities =
-    Object.hasOwn(model, "supports_image_in") || Object.hasOwn(model, "supports_video_in");
-  const input = hasInputCapabilities
-    ? [
-        "text",
-        ...(model.supports_image_in === true ? ["image"] : []),
-        ...(model.supports_video_in === true ? ["video"] : []),
-      ]
-    : undefined;
+    endpointInput.length > 0 ||
+    Object.hasOwn(model, "supports_image_in") ||
+    Object.hasOwn(model, "supports_video_in");
+  const input = endpointInput.length
+    ? endpointInput
+    : hasInputCapabilities
+      ? [
+          "text",
+          ...(model.supports_image_in === true ? ["image"] : []),
+          ...(model.supports_video_in === true ? ["video"] : []),
+        ]
+      : undefined;
+  const supportedFeatures = Array.isArray(model.supported_features)
+    ? model.supported_features.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  const reasoning = Object.hasOwn(model, "supports_reasoning")
+    ? model.supports_reasoning === true
+    : supportedFeatures.length > 0
+      ? supportedFeatures.includes("reasoning")
+      : undefined;
+  const toolCall = Object.hasOwn(model, "supports_tool_use")
+    ? model.supports_tool_use !== false
+    : supportedFeatures.length > 0
+      ? supportedFeatures.includes("tools")
+      : undefined;
   return {
     id,
     ...(displayName ? { name: displayName } : {}),
     ...(contextWindow ? { contextWindow } : {}),
     ...(maxTokens ? { maxTokens } : {}),
-    ...(Object.hasOwn(model, "supports_reasoning")
-      ? { reasoning: model.supports_reasoning === true }
-      : {}),
-    ...(Object.hasOwn(model, "supports_tool_use")
-      ? { toolCall: model.supports_tool_use !== false }
-      : {}),
+    ...(reasoning !== undefined ? { reasoning } : {}),
+    ...(toolCall !== undefined ? { toolCall } : {}),
     ...(input ? { input } : {}),
   };
 }
