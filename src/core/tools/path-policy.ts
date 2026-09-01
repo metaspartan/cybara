@@ -211,7 +211,7 @@ const READABLE_CYBARA_SUBDIRS: readonly string[] = [
   ".cybara/tool-results",
 ];
 const READABLE_CYBARA_IMAGE_SUBDIRS: readonly string[] = [".cybara/screenshots"];
-const READABLE_IMAGE_PATTERN = /\.(png|jpe?g|webp)$/i;
+const READABLE_IMAGE_PATTERN = /\.(png|jpe?g|gif|webp|heic|heif)$/i;
 
 export function assertReadablePath(
   rawPath: string | undefined,

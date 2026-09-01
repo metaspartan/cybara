@@ -33,7 +33,9 @@ interface UseChatAttachmentsResult {
 }
 
 function hasAttachableFiles(files: Iterable<File>): boolean {
-  return Array.from(files).some((file) => isSupportedImageType(file.type) || isTextLikeFile(file));
+  return Array.from(files).some(
+    (file) => isSupportedImageType(file.type, file.name) || isTextLikeFile(file)
+  );
 }
 
 export function useChatAttachments(): UseChatAttachmentsResult {
@@ -45,7 +47,7 @@ export function useChatAttachments(): UseChatAttachmentsResult {
     const images: ChatImageAttachment[] = [];
     const texts: ChatFileAttachment[] = [];
     for (const file of files) {
-      if (isSupportedImageType(file.type)) {
+      if (isSupportedImageType(file.type, file.name)) {
         if (file.size <= MAX_CHAT_IMAGE_BYTES) images.push(await fileToChatImage(file));
       } else if (isTextLikeFile(file) && file.size <= MAX_TEXT_FILE_BYTES) {
         texts.push(await fileToTextAttachment(file));

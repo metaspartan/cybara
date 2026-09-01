@@ -9,11 +9,23 @@ import type { ChatImageAttachment } from "@/types";
 export const MAX_CHAT_IMAGES = 8;
 export const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
 
-const SUPPORTED_IMAGE_MIME = /^image\/(png|jpe?g|gif|webp)$/i;
-const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp)$/i;
+const SUPPORTED_IMAGE_MIME = /^image\/(png|jpe?g|gif|webp|heic|heif)$/i;
+const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp|heic|heif)$/i;
+const HEIC_IMAGE_MIME = /^image\/hei[cf](?:-sequence)?$/i;
+const HEIC_IMAGE_EXTENSION = /\.hei[cf]$/i;
 
-export function isSupportedImageType(mimeType: string): boolean {
-  return SUPPORTED_IMAGE_MIME.test(mimeType);
+export function isSupportedImageType(mimeType: string, fileName = ""): boolean {
+  return SUPPORTED_IMAGE_MIME.test(mimeType) || IMAGE_EXTENSION.test(fileName);
+}
+
+export function isHeicImage(
+  image: Pick<ChatImageAttachment, "mimeType" | "name" | "path">
+): boolean {
+  return (
+    HEIC_IMAGE_MIME.test(image.mimeType || "") ||
+    HEIC_IMAGE_EXTENSION.test(image.name || "") ||
+    HEIC_IMAGE_EXTENSION.test(image.path || "")
+  );
 }
 
 export async function fileToChatImage(file: File): Promise<ChatImageAttachment> {
@@ -25,7 +37,7 @@ export async function fileToChatImage(file: File): Promise<ChatImageAttachment> 
   }
   return {
     data: btoa(binary),
-    mimeType: file.type || "image/png",
+    mimeType: file.type || (HEIC_IMAGE_EXTENSION.test(file.name) ? "image/heic" : "image/png"),
     name: file.name,
     size: file.size,
   };

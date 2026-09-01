@@ -81,7 +81,9 @@ describe("Agent tool allowlist guardrails", () => {
     }>;
     expect(advertisedTools).toHaveLength(1);
     expect(advertisedTools[0].function?.name).toBe("read");
-    expect(advertisedTools[0].function?.description).toBe("Read file contents from the filesystem");
+    expect(advertisedTools[0].function?.description).toBe(
+      "Read file contents or list a directory. Reading a supported image attaches its pixels to the next turn for vision-capable models."
+    );
     expect(advertisedTools[0].function?.parameters?.required).toEqual(["path"]);
   });
 

@@ -2,7 +2,8 @@ import { mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, statSync
 import { join, resolve, sep, extname } from "path";
 import { randomUUID } from "crypto";
 import { cybaraDir } from "../paths";
-import type { AgentImage } from "../llm/image-blocks";
+import { type AgentImage, sanitizeAgentImages } from "../llm/image-blocks";
+import { normalizeHeicAgentImage } from "../llm/provider-image-input";
 
 const ATTACHMENTS_ROOT = resolve(cybaraDir, "attachments");
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
@@ -13,6 +14,8 @@ const MIME_TO_EXT: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/gif": "gif",
   "image/webp": "webp",
+  "image/heic": "heic",
+  "image/heif": "heif",
 };
 
 const EXT_TO_MIME: Record<string, string> = {
@@ -21,6 +24,8 @@ const EXT_TO_MIME: Record<string, string> = {
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".webp": "image/webp",
+  ".heic": "image/heic",
+  ".heif": "image/heif",
 };
 
 interface PersistedAttachment {
@@ -76,6 +81,11 @@ export function persistImageAttachments(
   }
 
   return refs;
+}
+
+export async function normalizeChatImageAttachments(value: unknown): Promise<AgentImage[]> {
+  const images = sanitizeAgentImages(value);
+  return Promise.all(images.map(async (image) => (await normalizeHeicAgentImage(image)) ?? image));
 }
 
 export function attachmentsToImages(value: unknown): AgentImage[] {

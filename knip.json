@@ -10,7 +10,7 @@
         "tests/fixtures/standalone-playwright-runtime.ts",
         "tests/**/*.test.{ts,tsx}"
       ],
-      "project": ["src/**/*.{ts,tsx}", "scripts/*.ts", "tests/**/*.{ts,tsx}"],
+      "project": ["src/**/*.{js,ts,tsx}", "scripts/*.ts", "tests/**/*.{ts,tsx}"],
       "ignoreDependencies": [
         "@huggingface/transformers",
         "@typescript/native",

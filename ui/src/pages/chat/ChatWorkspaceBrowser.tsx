@@ -14,6 +14,7 @@ import {
   type ReactElement,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -48,11 +49,12 @@ import {
   BROWSER_VIEWPORT_MODE_STORAGE_KEY,
   BROWSER_VIEWPORT_PRESETS,
   BrowserViewportResizeQueue,
+  browserPreviewSurfaceSize,
   browserViewportForMode,
   DEFAULT_BROWSER_VIEWPORT,
-  inferBrowserViewportMode,
+  initialBrowserViewportMode,
   isBrowserViewportMode,
-  parseBrowserViewportMode,
+  shouldSyncRemoteBrowserViewportMode,
   type BrowserViewport,
   type BrowserViewportMode,
 } from "./browserViewportMode";
@@ -303,15 +305,18 @@ export function ChatWorkspaceBrowser({
   const browserViewportRef = useRef(DEFAULT_BROWSER_VIEWPORT);
   const [previewSurfaceSize, setPreviewSurfaceSize] = useState<PreviewSize | null>(null);
   const [viewportMode, setViewportMode] = useState<BrowserViewportMode>(() =>
-    parseBrowserViewportMode(
+    initialBrowserViewportMode(
       typeof window === "undefined"
         ? null
-        : window.localStorage.getItem(BROWSER_VIEWPORT_MODE_STORAGE_KEY)
+        : window.localStorage.getItem(BROWSER_VIEWPORT_MODE_STORAGE_KEY),
+      thumbnail
     )
   );
   const [viewportModeHydratedPageId, setViewportModeHydratedPageId] = useState<string | null>(null);
+  const remotelyHydratedPageIdRef = useRef<string | null>(null);
   const viewportModeRef = useRef(viewportMode);
   const localViewportModeChangeAtRef = useRef(0);
+  const visibleRef = useRef(visible);
   const browserViewport = useMemo(
     () => browserViewportForMode(viewportMode, previewSurfaceSize),
     [previewSurfaceSize, viewportMode]
@@ -330,11 +335,22 @@ export function ChatWorkspaceBrowser({
   }, []);
 
   const syncRemoteViewportMode = useCallback(
-    (value: unknown, viewport: BrowserViewport | null): void => {
-      if (!isBrowserViewportMode(value)) return;
+    (value: unknown, viewport: BrowserViewport | null, pageId: string): void => {
+      if (!visibleRef.current || thumbnail || !isBrowserViewportMode(value)) return;
+      if (remotelyHydratedPageIdRef.current !== pageId) {
+        remotelyHydratedPageIdRef.current = pageId;
+        localViewportModeChangeAtRef.current = Date.now();
+        return;
+      }
       if (
-        value !== viewportModeRef.current &&
-        Date.now() - localViewportModeChangeAtRef.current < 1_000
+        !shouldSyncRemoteBrowserViewportMode(
+          value,
+          viewportModeRef.current,
+          visibleRef.current,
+          thumbnail,
+          localViewportModeChangeAtRef.current,
+          Date.now()
+        )
       ) {
         return;
       }
@@ -345,7 +361,7 @@ export function ChatWorkspaceBrowser({
           : BROWSER_VIEWPORT_PRESETS[value];
       setViewportMode((current) => (current === value ? current : value));
     },
-    []
+    [thumbnail]
   );
 
   useEffect(() => {
@@ -353,8 +369,14 @@ export function ChatWorkspaceBrowser({
   }, [onTitleChange]);
 
   useEffect(() => {
+    if (thumbnail) return;
     window.localStorage.setItem(BROWSER_VIEWPORT_MODE_STORAGE_KEY, viewportMode);
-  }, [viewportMode]);
+  }, [thumbnail, viewportMode]);
+
+  useLayoutEffect(() => {
+    visibleRef.current = visible;
+    if (visible && !thumbnail) localViewportModeChangeAtRef.current = Date.now();
+  }, [thumbnail, visible]);
 
   const clearPreview = useCallback((): void => {
     framePresenterRef.current?.reset();
@@ -463,7 +485,7 @@ export function ChatWorkspaceBrowser({
             : null;
         const nextCursor = parseBrowserCursor(payload?.cursor);
         const nextViewport = parseBrowserViewport(payload?.viewport);
-        syncRemoteViewportMode(payload?.viewportMode, nextViewport);
+        syncRemoteViewportMode(payload?.viewportMode, nextViewport, targetPage.id);
         setViewportModeHydratedPageId(targetPage.id);
         setPreview((current) => {
           const resolvedScreenshot = nextScreenshot ?? current?.screenshot ?? "";
@@ -520,7 +542,7 @@ export function ChatWorkspaceBrowser({
       const nextPage = parseBrowserPage(payload?.page) ?? targetPage;
       const nextCursor = parseBrowserCursor(payload?.cursor);
       const nextViewport = parseBrowserViewport(payload?.viewport);
-      syncRemoteViewportMode(payload?.viewportMode, nextViewport);
+      syncRemoteViewportMode(payload?.viewportMode, nextViewport, targetPage.id);
       setViewportModeHydratedPageId(targetPage.id);
       setPreview((current) => {
         if (!current) return current;
@@ -575,29 +597,42 @@ export function ChatWorkspaceBrowser({
     []
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const surface = previewSurfaceRef.current;
-    if (!surface || typeof ResizeObserver === "undefined") return;
-    let timer: number | null = null;
-    const updateViewport = () => {
-      if (timer !== null) window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        const bounds = surface.getBoundingClientRect();
-        setPreviewSurfaceSize((current) =>
-          current?.width === bounds.width && current.height === bounds.height
-            ? current
-            : { width: bounds.width, height: bounds.height }
-        );
-      }, 100);
+    if (!visible || !surface) {
+      setPreviewSurfaceSize(null);
+      return;
+    }
+    let animationFrame: number | null = null;
+    const measureViewport = (): void => {
+      const bounds = surface.getBoundingClientRect();
+      const next = browserPreviewSurfaceSize(bounds.width, bounds.height);
+      if (!next) return;
+      setPreviewSurfaceSize((current) =>
+        current?.width === next.width && current.height === next.height ? current : next
+      );
     };
-    const observer = new ResizeObserver(updateViewport);
-    observer.observe(surface);
-    updateViewport();
+    const scheduleViewportMeasurement = (): void => {
+      if (animationFrame !== null) return;
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null;
+        measureViewport();
+      });
+    };
+    measureViewport();
+    scheduleViewportMeasurement();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(scheduleViewportMeasurement);
+    observer?.observe(surface);
+    window.addEventListener("resize", scheduleViewportMeasurement);
     return () => {
-      observer.disconnect();
-      if (timer !== null) window.clearTimeout(timer);
+      observer?.disconnect();
+      window.removeEventListener("resize", scheduleViewportMeasurement);
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     };
-  }, []);
+  }, [visible]);
 
   useEffect(() => {
     setViewportModeHydratedPageId((current) => (current === browserPageId ? current : null));
@@ -608,10 +643,7 @@ export function ChatWorkspaceBrowser({
     viewportResizeQueueRef.current = null;
     if (!visible || !browserPageId) return;
     const queue = new BrowserViewportResizeQueue(
-      async (viewport) => {
-        const fixedMode = inferBrowserViewportMode(viewport) ?? "responsive";
-        return await resizeBrowserPage(browserPageId, viewport, fixedMode);
-      },
+      async (viewport, mode) => await resizeBrowserPage(browserPageId, viewport, mode),
       (viewport) => {
         setPreview((current) => (current ? { ...current, viewport } : current));
         setError(null);
@@ -630,9 +662,17 @@ export function ChatWorkspaceBrowser({
   }, [browserPageId, visible]);
 
   useEffect(() => {
-    if (!browserPageId || viewportModeHydratedPageId !== browserPageId) return;
-    viewportResizeQueueRef.current?.enqueue(browserViewport);
-  }, [browserPageId, browserViewport, viewportModeHydratedPageId, visible]);
+    if (!visible || !browserPageId || viewportModeHydratedPageId !== browserPageId) return;
+    if (viewportMode === "responsive" && !previewSurfaceSize) return;
+    viewportResizeQueueRef.current?.enqueue(browserViewport, viewportMode);
+  }, [
+    browserPageId,
+    browserViewport,
+    previewSurfaceSize,
+    viewportMode,
+    viewportModeHydratedPageId,
+    visible,
+  ]);
 
   useEffect(() => {
     if (!visible) return;

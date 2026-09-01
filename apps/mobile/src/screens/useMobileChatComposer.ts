@@ -101,6 +101,8 @@ export function useMobileChatComposer({
       quality: 0.8,
       allowsMultipleSelection: true,
       selectionLimit: MOBILE_CHAT_MAX_ATTACHMENTS,
+      preferredAssetRepresentationMode:
+        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
     });
     if (result.canceled) return;
     appendPendingImages(

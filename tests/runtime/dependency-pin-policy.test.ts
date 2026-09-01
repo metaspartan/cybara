@@ -60,4 +60,16 @@ describe("JavaScript dependency pin policy", () => {
       expect(lockfile).not.toContain('"nanoid": ["nanoid@3.3.17"');
     }
   });
+
+  test("root, web, and mobile lockfiles resolve the patched Browserslist release", () => {
+    for (const directory of ["", "ui/", "apps/mobile/"] as const) {
+      const pkg = readJson(`${directory}package.json`);
+      const overrides = pkg.overrides as Record<string, unknown>;
+      const lockfile = readFileSync(join(ROOT_DIR, directory, "bun.lock"), "utf8");
+
+      expect(overrides.browserslist).toBe("4.28.7");
+      expect(lockfile).toContain('"browserslist": ["browserslist@4.28.7"');
+      expect(lockfile).not.toMatch(/"browserslist": \["browserslist@4\.28\.[0-6]"/);
+    }
+  });
 });
