@@ -57,11 +57,19 @@ export function toOpenAIResponsesImageBlock(image: AgentImage): Record<string, u
   return { type: "input_image", image_url: finalUrl };
 }
 
-export function toBedrockImageBlock(image: AgentImage): Record<string, unknown> | null {
+interface BedrockImageContentBlock extends Record<string, unknown> {
+  image: {
+    format: "gif" | "jpeg" | "png" | "webp";
+    source: { bytes: Buffer };
+  };
+}
+
+export function toBedrockImageBlock(image: AgentImage): BedrockImageContentBlock | null {
   const { data, mimeType } = resolveImage(image);
   if (!data) return null;
-  const format =
-    mimeType.replace(/^image\//, "") === "jpg" ? "jpeg" : mimeType.replace(/^image\//, "");
+  const rawFormat = mimeType.replace(/^image\//, "");
+  const format = rawFormat === "jpg" ? "jpeg" : rawFormat;
+  if (format !== "gif" && format !== "jpeg" && format !== "png" && format !== "webp") return null;
   return { image: { format, source: { bytes: Buffer.from(data, "base64") } } };
 }
 

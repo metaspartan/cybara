@@ -151,7 +151,9 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("data-browser-viewport-mode={viewportMode}");
     expect(browserSource).toContain("data-browser-viewport-width={browserViewport.width}");
     expect(browserSource).toContain("data-browser-viewport-height={browserViewport.height}");
-    expect(browserSource).toContain("syncRemoteViewportMode(payload?.viewportMode, nextViewport)");
+    expect(browserSource).toContain(
+      "syncRemoteViewportMode(payload?.viewportMode, nextViewport, targetPage.id)"
+    );
     expect(browserSource).toContain("viewportModeHydratedPageId !== browserPageId");
     expect(browserSource).toContain("await loadBrowserState(nextPage, true)");
     expect(browserSource).toContain("viewportMode: BrowserViewportMode");

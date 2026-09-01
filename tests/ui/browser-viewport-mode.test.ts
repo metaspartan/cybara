@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   BROWSER_VIEWPORT_PRESETS,
   BrowserViewportResizeQueue,
+  browserPreviewSurfaceSize,
   browserViewportForMode,
   inferBrowserViewportMode,
+  initialBrowserViewportMode,
   parseBrowserViewportMode,
+  shouldSyncRemoteBrowserViewportMode,
   type BrowserViewport,
 } from "../../ui/src/pages/chat/browserViewportMode";
 
@@ -20,6 +23,30 @@ describe("browser viewport modes", () => {
     expect(inferBrowserViewportMode({ width: 390, height: 844 })).toBe("mobile");
     expect(inferBrowserViewportMode({ width: 1440, height: 900 })).toBe("desktop");
     expect(inferBrowserViewportMode({ width: 700, height: 600 })).toBeNull();
+  });
+
+  test("uses a desktop viewport for new and floating previews", () => {
+    expect(initialBrowserViewportMode(null, false)).toBe("desktop");
+    expect(initialBrowserViewportMode("responsive", false)).toBe("responsive");
+    expect(initialBrowserViewportMode("mobile", true)).toBe("desktop");
+    expect(browserPreviewSurfaceSize(0, 640)).toBeNull();
+    expect(browserPreviewSurfaceSize(Number.NaN, 640)).toBeNull();
+    expect(browserPreviewSurfaceSize(913.4, 677.6)).toEqual({ width: 913, height: 678 });
+  });
+
+  test("protects hidden and freshly reopened panels from thumbnail viewport updates", () => {
+    expect(shouldSyncRemoteBrowserViewportMode("desktop", "mobile", false, false, 0, 2_000)).toBe(
+      false
+    );
+    expect(shouldSyncRemoteBrowserViewportMode("desktop", "mobile", true, true, 0, 2_000)).toBe(
+      false
+    );
+    expect(
+      shouldSyncRemoteBrowserViewportMode("desktop", "mobile", true, false, 1_500, 2_000)
+    ).toBe(false);
+    expect(shouldSyncRemoteBrowserViewportMode("desktop", "mobile", true, false, 500, 2_000)).toBe(
+      true
+    );
   });
 
   test("bounds responsive viewports through the preview contract", () => {
@@ -46,10 +73,10 @@ describe("browser viewport modes", () => {
       () => undefined
     );
 
-    queue.enqueue({ width: 800, height: 600 });
+    queue.enqueue({ width: 800, height: 600 }, "responsive");
     await Bun.sleep(0);
-    queue.enqueue({ width: 900, height: 700 });
-    queue.enqueue({ width: 1000, height: 800 });
+    queue.enqueue({ width: 900, height: 700 }, "responsive");
+    queue.enqueue({ width: 1000, height: 800 }, "responsive");
     releaseFirst?.();
     await queue.whenIdle();
 
@@ -77,11 +104,34 @@ describe("browser viewport modes", () => {
       (error) => errors.push(error)
     );
 
-    queue.enqueue({ width: 800, height: 600 });
-    queue.enqueue({ width: 1200, height: 900 });
+    queue.enqueue({ width: 800, height: 600 }, "responsive");
+    queue.enqueue({ width: 1200, height: 900 }, "responsive");
     await queue.whenIdle();
 
     expect(applied).toEqual([{ width: 1200, height: 900 }]);
     expect(errors).toEqual([]);
+  });
+
+  test("does not collapse equal dimensions across different viewport modes", async () => {
+    const requested: Array<{ viewport: BrowserViewport; mode: string }> = [];
+    const viewport = { width: 1440, height: 900 };
+    const queue = new BrowserViewportResizeQueue(
+      async (nextViewport, mode) => {
+        requested.push({ viewport: nextViewport, mode });
+        return nextViewport;
+      },
+      () => undefined,
+      () => undefined
+    );
+
+    queue.enqueue(viewport, "responsive");
+    await queue.whenIdle();
+    queue.enqueue(viewport, "desktop");
+    await queue.whenIdle();
+
+    expect(requested).toEqual([
+      { viewport, mode: "responsive" },
+      { viewport, mode: "desktop" },
+    ]);
   });
 });

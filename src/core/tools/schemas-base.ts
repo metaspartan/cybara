@@ -3,7 +3,8 @@ import type { Tool } from "./types";
 export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
   read: {
     name: "read",
-    description: "Read file contents from the filesystem",
+    description:
+      "Read file contents or list a directory. Reading a supported image attaches its pixels to the next turn for vision-capable models.",
     category: "file",
     input_schema: {
       type: "object",

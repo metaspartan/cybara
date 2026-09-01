@@ -9,7 +9,7 @@ import {
 } from "../core/agent-transfer";
 import { maybeRunBackgroundReview } from "../core/background-review";
 import { resolveChannelAgentId } from "../core/channels/agent-selection";
-import { persistImageAttachments } from "../core/chat/attachments";
+import { normalizeChatImageAttachments, persistImageAttachments } from "../core/chat/attachments";
 import {
   applyChatCapabilityInstruction,
   resolveChatCapabilityMentions,
@@ -17,7 +17,7 @@ import {
 import { isBotProfileConfig } from "../core/bot-profile";
 import { stopRegisteredComputerUseTrajectory } from "../core/computer-use-lifecycle";
 import { config } from "../core/config";
-import { hasImages, sanitizeAgentImages } from "../core/llm/image-blocks";
+import { hasImages } from "../core/llm/image-blocks";
 import { sanitizeAssistantContent } from "../core/llm/text-tool-calls";
 import { createLogger } from "../core/logger";
 import { logAgentActivity, logSessionMessage } from "../core/logging";
@@ -1221,7 +1221,7 @@ async function handleChatTurn(
     userId,
   };
 
-  const sanitizedImages = sanitizeAgentImages(request.images);
+  const sanitizedImages = await normalizeChatImageAttachments(request.images);
   const supportsImages = agentSupportsImages(agent, requestedModelOverride);
   let imageRoutingError: string | null = null;
   const recordedUserMessageId =

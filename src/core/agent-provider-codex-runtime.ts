@@ -29,6 +29,7 @@ import {
   sessionIdForVisibleTokenUsage,
   shouldNudgeSkillLearning,
 } from "./agent-provider-common-runtime";
+import { loadToolResultImages } from "./agent-tool-images";
 import { AgentProviderOpenAICompatRuntime } from "./agent-provider-openai-compat-runtime";
 import { hasAgentTransferEnvelope } from "./agent-transfer";
 import { config } from "./config";
@@ -45,7 +46,7 @@ import {
   OpenAICodexStreamError,
   openAICodexStreamEventError,
 } from "./llm/codex-stream-errors";
-import { openAIResponsesUserContent } from "./llm/image-blocks";
+import { openAIResponsesUserContent, toOpenAIResponsesImageBlock } from "./llm/image-blocks";
 import { coerceReasoningEffort, normalizeReasoningEffort } from "./llm/reasoning";
 import {
   createStreamWatchdog,
@@ -870,6 +871,17 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
       }
 
       inputItems.push(...functionCallItems, ...functionCallOutputs);
+      const toolImages =
+        toolContext?.supportsImages === true ? await loadToolResultImages(iterationToolCalls) : [];
+      if (toolImages.length > 0) {
+        inputItems.push({
+          role: "user",
+          content: [
+            { type: "input_text", text: "Inspect the image returned by the file or image tool." },
+            ...toolImages.map(toOpenAIResponsesImageBlock),
+          ],
+        });
+      }
       const steeringText = this.consumeSteeringText(toolContext);
       if (steeringText) {
         inputItems.push({

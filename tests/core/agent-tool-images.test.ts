@@ -36,13 +36,21 @@ describe("agent tool images", () => {
     expect(followup).toEqual({
       role: "user",
       content: [
-        { type: "text", text: "Inspect the image returned by the image tool." },
+        { type: "text", text: "Inspect the image returned by the file or image tool." },
         {
           type: "image_url",
           image_url: { url: `data:image/png;base64,${tinyPng.toString("base64")}` },
         },
       ],
     });
+  });
+
+  test("inlines images discovered through directory listing and file reads", async () => {
+    const path = await createImagePath();
+    const images = await loadToolResultImages([
+      { name: "read", args: { path }, result: { path, content: "Image file" } },
+    ]);
+    expect(images).toEqual([{ data: tinyPng.toString("base64"), mimeType: "image/png" }]);
   });
 
   test("loads browser, computer, and simulator screenshots for native vision followups", async () => {

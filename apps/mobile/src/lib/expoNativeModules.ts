@@ -33,6 +33,11 @@ export const GlassView = ((props: PropsWithChildren<Record<string, unknown>>) =>
 export const GlassContainer = GlassView;
 
 export const ImagePicker = {
+  UIImagePickerPreferredAssetRepresentationMode: {
+    Automatic: "automatic",
+    Compatible: "compatible",
+    Current: "current",
+  },
   requestMediaLibraryPermissionsAsync: async () => deniedPermission,
   launchImageLibraryAsync: async (
     _options?: Record<string, unknown>

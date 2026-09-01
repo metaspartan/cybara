@@ -11,8 +11,10 @@ describe("browser preview image", () => {
     expect(source).toContain("maxHeight: String(BROWSER_PREVIEW_MAX_HEIGHT)");
     expect(workspace).not.toContain("maxWidth={browserViewport.width}");
     expect(workspace).not.toContain("maxHeight={browserViewport.height}");
-    expect(workspace).toContain("viewportResizeQueueRef.current?.enqueue(browserViewport)");
-    expect(workspace).toContain("resizeBrowserPage(browserPageId, viewport, fixedMode)");
+    expect(workspace).toContain(
+      "viewportResizeQueueRef.current?.enqueue(browserViewport, viewportMode)"
+    );
+    expect(workspace).toContain("resizeBrowserPage(browserPageId, viewport, mode)");
     expect(workspace).toContain("const viewport = browserViewportRef.current");
   });
 
