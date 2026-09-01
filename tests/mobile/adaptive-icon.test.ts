@@ -28,30 +28,54 @@ function alphaBounds(path: string): {
   return { width: image.width, height: image.height, left, top, right, bottom };
 }
 
+function pixel(path: string, x: number, y: number): [number, number, number, number] {
+  const image = PNG.sync.read(readFileSync(path));
+  const index = (y * image.width + x) * 4;
+  return [
+    image.data[index] ?? 0,
+    image.data[index + 1] ?? 0,
+    image.data[index + 2] ?? 0,
+    image.data[index + 3] ?? 0,
+  ];
+}
+
 describe("Android adaptive icon", () => {
-  test("uses padded foreground and monochrome assets inside the adaptive safe zone", () => {
+  test("uses a branded dark tile and a padded foreground inside the adaptive safe zone", () => {
     const config = JSON.parse(readFileSync("apps/mobile/app.json", "utf8")) as {
       expo: {
         android: {
+          icon: string;
           adaptiveIcon: {
             foregroundImage: string;
-            monochromeImage: string;
+            monochromeImage?: string;
+            backgroundColor: string;
           };
         };
       };
     };
+    const android = config.expo.android;
     const adaptiveIcon = config.expo.android.adaptiveIcon;
+    expect(android.icon).toBe("./assets/cybara-android.png");
     expect(adaptiveIcon.foregroundImage).not.toBe("./assets/cybara.png");
-    expect(adaptiveIcon.monochromeImage).toBe("./assets/cybara-adaptive-monochrome.png");
+    expect(adaptiveIcon.monochromeImage).toBeUndefined();
+    expect(adaptiveIcon.backgroundColor).toBe("#071016");
 
-    for (const relativePath of [adaptiveIcon.foregroundImage, adaptiveIcon.monochromeImage]) {
-      const bounds = alphaBounds(`apps/mobile/${relativePath.replace(/^\.\//, "")}`);
-      expect(bounds.width).toBe(1024);
-      expect(bounds.height).toBe(1024);
-      expect(bounds.left).toBeGreaterThanOrEqual(190);
-      expect(bounds.top).toBeGreaterThanOrEqual(190);
-      expect(bounds.right).toBeLessThanOrEqual(834);
-      expect(bounds.bottom).toBeLessThanOrEqual(834);
-    }
+    const foregroundBounds = alphaBounds(
+      `apps/mobile/${adaptiveIcon.foregroundImage.replace(/^\.\//, "")}`
+    );
+    expect(foregroundBounds.width).toBe(1024);
+    expect(foregroundBounds.height).toBe(1024);
+    expect(foregroundBounds.left).toBeGreaterThanOrEqual(190);
+    expect(foregroundBounds.top).toBeGreaterThanOrEqual(190);
+    expect(foregroundBounds.right).toBeLessThanOrEqual(834);
+    expect(foregroundBounds.bottom).toBeLessThanOrEqual(834);
+
+    const legacyPath = `apps/mobile/${android.icon.replace(/^\.\//, "")}`;
+    const legacyBounds = alphaBounds(legacyPath);
+    expect(legacyBounds.width).toBe(1024);
+    expect(legacyBounds.height).toBe(1024);
+    expect(pixel(legacyPath, 0, 0)[3]).toBe(0);
+    expect(pixel(legacyPath, 512, 0)[3]).toBeGreaterThan(0);
+    expect(pixel(legacyPath, 128, 512)).toEqual([7, 16, 22, 255]);
   });
 });

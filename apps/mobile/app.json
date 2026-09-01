@@ -30,13 +30,13 @@
     },
     "android": {
       "package": "com.ck.cybara",
+      "icon": "./assets/cybara-android.png",
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.POST_NOTIFICATIONS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/cybara-adaptive-foreground.png",
-        "monochromeImage": "./assets/cybara-adaptive-monochrome.png",
         "backgroundColor": "#071016"
       },
       "versionCode": 1001719
