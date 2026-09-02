@@ -15,6 +15,12 @@ describe("floating browser preview", () => {
       width: 260,
       height: 180,
     });
+    expect(defaultFloatingBrowserPreviewRect({ width: 1_000, height: 800 }, 120, "left")).toEqual({
+      x: 12,
+      y: 488,
+      width: 260,
+      height: 180,
+    });
     expect(
       clampFloatingBrowserPreviewRect(
         { width: 390, height: 700 },
@@ -59,6 +65,14 @@ describe("floating browser preview", () => {
       })
     ).toBe(false);
     expect(shouldShowFloatingBrowserPreview({ ...base, sessionId: null })).toBe(false);
+    expect(
+      shouldShowFloatingBrowserPreview({
+        ...base,
+        activeWorkspaceKind: "computer",
+        previewKind: "computer",
+        workspacePanelOpen: true,
+      })
+    ).toBe(false);
   });
 
   test("opens on a click while preserving drag gestures", () => {

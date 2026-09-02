@@ -821,17 +821,6 @@ export function getLatestInFlightStep(activities: LiveActivityItem[]): string | 
   return null;
 }
 
-export function isAgentUsingBrowser(
-  activities: LiveActivityItem[],
-  sessionActive: boolean
-): boolean {
-  if (!sessionActive) return false;
-  return activities.some(
-    (activity) =>
-      activity.phase === "start" && (activity.toolName || "").toLowerCase().includes("browser")
-  );
-}
-
 export function applyLiveActivityEvent(
   previous: LiveActivityItem[],
   event: {

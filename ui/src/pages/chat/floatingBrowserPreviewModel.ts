@@ -14,11 +14,13 @@ export interface FloatingBrowserPreviewVisibility {
   activeWorkspaceKind: string | null;
   artifactOpen: boolean;
   available: boolean;
+  previewKind?: string;
   sessionId: string | null;
   workspacePanelOpen: boolean;
 }
 
 export const FLOATING_BROWSER_PREVIEW_STORAGE_KEY = "cybara:browser-preview:floating-rect:v2";
+export const FLOATING_COMPUTER_PREVIEW_STORAGE_KEY = "cybara:computer-preview:floating-rect:v1";
 export const FLOATING_BROWSER_PREVIEW_GAP = 12;
 export const FLOATING_BROWSER_PREVIEW_WIDTH = 260;
 export const FLOATING_BROWSER_PREVIEW_HEIGHT = 180;
@@ -61,12 +63,16 @@ export function parseFloatingBrowserPreviewRect(
 
 export function defaultFloatingBrowserPreviewRect(
   container: FloatingBrowserPreviewSize,
-  bottomInset: number
+  bottomInset: number,
+  horizontal: "left" | "right" = "right"
 ): FloatingBrowserPreviewRect {
   return clampFloatingBrowserPreviewRect(
     container,
     {
-      x: container.width - FLOATING_BROWSER_PREVIEW_WIDTH - FLOATING_BROWSER_PREVIEW_GAP,
+      x:
+        horizontal === "left"
+          ? FLOATING_BROWSER_PREVIEW_GAP
+          : container.width - FLOATING_BROWSER_PREVIEW_WIDTH - FLOATING_BROWSER_PREVIEW_GAP,
       y:
         container.height -
         Math.max(0, bottomInset) -
@@ -114,31 +120,33 @@ export function shouldShowFloatingBrowserPreview({
   activeWorkspaceKind,
   artifactOpen,
   available,
+  previewKind = "browser",
   sessionId,
   workspacePanelOpen,
 }: FloatingBrowserPreviewVisibility): boolean {
   if (!sessionId || !available || artifactOpen) return false;
-  return !(workspacePanelOpen && activeWorkspaceKind === "browser");
+  return !(workspacePanelOpen && activeWorkspaceKind === previewKind);
 }
 
 export function isFloatingBrowserPreviewClick(deltaX: number, deltaY: number): boolean {
   return Math.hypot(deltaX, deltaY) <= FLOATING_BROWSER_PREVIEW_CLICK_DISTANCE;
 }
 
-export function readFloatingBrowserPreviewRect(): FloatingBrowserPreviewRect | null {
+export function readFloatingPreviewRect(storageKey: string): FloatingBrowserPreviewRect | null {
   if (typeof window === "undefined") return null;
   try {
-    return parseFloatingBrowserPreviewRect(
-      window.localStorage.getItem(FLOATING_BROWSER_PREVIEW_STORAGE_KEY)
-    );
+    return parseFloatingBrowserPreviewRect(window.localStorage.getItem(storageKey));
   } catch {
     return null;
   }
 }
 
-export function persistFloatingBrowserPreviewRect(rect: FloatingBrowserPreviewRect): void {
+export function persistFloatingPreviewRect(
+  storageKey: string,
+  rect: FloatingBrowserPreviewRect
+): void {
   try {
-    window.localStorage.setItem(FLOATING_BROWSER_PREVIEW_STORAGE_KEY, JSON.stringify(rect));
+    window.localStorage.setItem(storageKey, JSON.stringify(rect));
   } catch {
     return;
   }

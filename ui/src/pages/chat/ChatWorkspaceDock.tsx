@@ -30,6 +30,7 @@ interface ChatWorkspaceDockProps {
   workspaceDir: string | null;
   onClose: () => void;
   onCloseTab: (id: string) => void;
+  onComputerPreviewAvailable: () => void;
   onOpenDiffInWorkspace: (file: FileChangeItem) => void;
   onOpenFullIde: (path: string) => void;
   onOpenLink: (href: string, options: ChatLinkOpenOptions) => boolean;
@@ -57,6 +58,7 @@ export function ChatWorkspaceDock({
   workspaceDir,
   onClose,
   onCloseTab,
+  onComputerPreviewAvailable,
   onOpenDiffInWorkspace,
   onOpenFullIde,
   onOpenLink,
@@ -158,7 +160,11 @@ export function ChatWorkspaceDock({
         if (instance.kind === "computer") {
           return (
             <div key={instance.id} className={hiddenClass}>
-              <ChatWorkspaceComputer sessionId={sessionId} visible={isOpen && active} />
+              <ChatWorkspaceComputer
+                sessionId={sessionId}
+                visible={isOpen && active}
+                onPreviewAvailable={onComputerPreviewAvailable}
+              />
             </div>
           );
         }

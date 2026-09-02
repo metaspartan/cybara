@@ -89,10 +89,16 @@ function parseComputerPreview(value: unknown): ComputerPreview | null {
 }
 
 export function ChatWorkspaceComputer({
+  onPreviewAppChange,
+  onPreviewAvailable,
   sessionId,
+  thumbnail = false,
   visible,
 }: {
+  onPreviewAppChange?: (app: string | null) => void;
+  onPreviewAvailable?: () => void;
   sessionId?: string | null;
+  thumbnail?: boolean;
   visible: boolean;
 }) {
   const resolvedSessionId = sessionId?.trim() || "preview-new-chat";
@@ -129,10 +135,18 @@ export function ChatWorkspaceComputer({
         setImageUrl(`data:${next.contentType || "image/png"};base64,${next.screenshot}`);
         screenshotRevisionRef.current = next.screenshotRevision;
       }
-      setPreview((current) => ({
-        ...next,
-        screenshot: next.screenshot ?? current?.screenshot,
-      }));
+      setPreview((current) => {
+        if (
+          current?.revision === next.revision &&
+          current.screenshotRevision === next.screenshotRevision
+        ) {
+          return current;
+        }
+        return {
+          ...next,
+          screenshot: next.screenshot ?? current?.screenshot,
+        };
+      });
       setError(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Desktop preview is unavailable");
@@ -147,6 +161,11 @@ export function ChatWorkspaceComputer({
     setImageSize(null);
     screenshotRevisionRef.current = 0;
   }, [resolvedSessionId]);
+
+  useEffect(() => {
+    onPreviewAppChange?.(preview?.app?.trim() || null);
+    if (preview) onPreviewAvailable?.();
+  }, [onPreviewAppChange, onPreviewAvailable, preview]);
 
   useEffect(() => {
     if (!visible) return;
@@ -195,25 +214,27 @@ export function ChatWorkspaceComputer({
     : null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--chat-environment-panel-bg)]">
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-white/10 px-3">
-        <Monitor className="h-3.5 w-3.5 text-gray-500" />
-        <span className="min-w-0 flex-1 truncate text-[11px] text-gray-400">
-          {preview
-            ? `${preview.app || "Desktop"} · ${preview.action.replace(/_/g, " ")}`
-            : "Desktop"}
-        </span>
-        {preview ? (
-          <button
-            type="button"
-            className="rounded-md p-1.5 text-gray-500 hover:bg-white/[0.06] hover:text-gray-200"
-            onClick={() => void clear()}
-            aria-label="Clear desktop preview"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        ) : null}
-      </header>
+    <div className="relative flex h-full min-h-0 flex-col bg-[var(--chat-environment-panel-bg)]">
+      {!thumbnail ? (
+        <header className="flex h-10 shrink-0 items-center gap-2 border-b border-white/10 px-3">
+          <Monitor className="h-3.5 w-3.5 text-gray-500" />
+          <span className="min-w-0 flex-1 truncate text-[11px] text-gray-400">
+            {preview
+              ? `${preview.app || "Desktop"} · ${preview.action.replace(/_/g, " ")}`
+              : "Desktop"}
+          </span>
+          {preview ? (
+            <button
+              type="button"
+              className="rounded-md p-1.5 text-gray-500 hover:bg-white/[0.06] hover:text-gray-200"
+              onClick={() => void clear()}
+              aria-label="Clear desktop preview"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </header>
+      ) : null}
       <div ref={previewSurfaceRef} className="relative min-h-0 flex-1 overflow-hidden bg-[#111216]">
         {imageUrl ? (
           <img
@@ -229,16 +250,18 @@ export function ChatWorkspaceComputer({
             }
           />
         ) : (
-          <div className="flex h-full items-center justify-center p-8 text-center">
+          <div className="flex h-full items-center justify-center p-4 text-center">
             <div>
               {visible && !error ? (
                 <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-gray-600" />
               ) : (
                 <Monitor className="mx-auto mb-3 h-7 w-7 text-gray-700" />
               )}
-              <p className="text-xs text-gray-500">
-                {error || "Waiting for computer-use activity in this chat"}
-              </p>
+              {!thumbnail || error ? (
+                <p className="text-xs text-gray-500">
+                  {error || "Waiting for computer-use activity in this chat"}
+                </p>
+              ) : null}
             </div>
           </div>
         )}
