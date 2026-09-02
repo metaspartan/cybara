@@ -54,6 +54,17 @@ describe("bot sidebar wiring", () => {
     expect(sidebar).toContain("hidden: !bot.hidden");
     expect(sidebar).toContain("Model and provider");
     expect(sidebar).toContain("provider_id: editDraft.providerId");
+    expect(sidebar).toContain("useAgentSummaries");
+    expect(sidebar).toContain('label="Agent"');
+    expect(sidebar).toContain("selectableBotBaseAgents");
+    expect(sidebar).toContain("base_agent_id: selectedBaseAgentId || undefined");
+    const createForm = sidebar.slice(
+      sidebar.indexOf('id="create-bot-form"'),
+      sidebar.indexOf('title="Edit bot profile"')
+    );
+    expect(createForm).not.toContain("Model and provider");
+    expect(createForm).not.toContain('label="Provider"');
+    expect(createForm).not.toContain('label="Model"');
     expect(sidebar).toContain("var(--surface-hover)");
     expect(emptyState).toContain("Message <span");
     expect(emptyState).toContain("Persistent memory");

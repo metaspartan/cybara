@@ -24,6 +24,7 @@ import {
   readGatewayStartupStatus,
 } from "@/lib/desktopGatewayStartup";
 import { isTauriDesktopRuntime } from "@/lib/desktopHost";
+import { preventFileDropNavigation } from "@/lib/fileDrop";
 import { readSetupComplete, resolveSetupGate, writeSetupComplete } from "@/lib/setupGate";
 import { isPetWindow } from "@/lib/tauriPet";
 import { cn } from "@/lib/utils";
@@ -230,6 +231,22 @@ function AppHotkeys() {
   return null;
 }
 
+function FileDropNavigationGuard() {
+  useEffect(() => {
+    const preventNavigation = (event: DragEvent): void => {
+      preventFileDropNavigation(event);
+    };
+    window.addEventListener("dragover", preventNavigation);
+    window.addEventListener("drop", preventNavigation);
+    return () => {
+      window.removeEventListener("dragover", preventNavigation);
+      window.removeEventListener("drop", preventNavigation);
+    };
+  }, []);
+
+  return null;
+}
+
 function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
@@ -319,6 +336,7 @@ function App() {
           <div className="flex min-h-screen overflow-hidden bg-[var(--surface-backdrop)]">
             <ThemeConfigSync />
             <AppHotkeys />
+            <FileDropNavigationGuard />
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route path="/setup" element={<Setup />} />

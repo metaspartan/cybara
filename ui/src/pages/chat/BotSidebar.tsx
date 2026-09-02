@@ -22,12 +22,13 @@ import {
 } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { Button, ConfirmDialog, Input, Modal, Textarea } from "@/components/ui";
-import { useProviders } from "@/hooks/useApi";
+import { Button, ConfirmDialog, Input, Modal, Select, Textarea } from "@/components/ui";
+import { useAgentSummaries, useProviders } from "@/hooks/useApi";
 import { botsApi, extractApiError } from "@/lib/api";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import type { BotRosterItem } from "@/types";
 import { BotAvatar } from "./BotAvatar";
+import { resolveBotBaseAgentId, selectableBotBaseAgents } from "./botAgentSelection";
 import { buildFreshChatPath, buildSessionChatPath } from "./chatRoute";
 import { buildMultiChatPath, MULTI_CHAT_MAX_PANES } from "./multiChatLayout";
 
@@ -74,13 +75,12 @@ export function BotSidebar({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: providers = [] } = useProviders();
+  const agentsQuery = useAgentSummaries();
   const [query, setQuery] = useState("");
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [baseAgentId, setBaseAgentId] = useState("");
-  const [model, setModel] = useState("");
-  const [providerId, setProviderId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [actionBotId, setActionBotId] = useState<string | null>(null);
@@ -104,6 +104,12 @@ export function BotSidebar({
     refetchInterval: 10_000,
   });
   const allBots = botsQuery.data ?? [];
+  const availableAgents = useMemo(
+    () => selectableBotBaseAgents(agentsQuery.data ?? []),
+    [agentsQuery.data]
+  );
+  const selectedBaseAgentId = resolveBotBaseAgentId(availableAgents, baseAgentId);
+  const selectedBaseAgent = availableAgents.find((agent) => agent.id === selectedBaseAgentId);
   const hiddenCount = allBots.filter((bot) => bot.hidden).length;
   const visibleBots = useMemo(() => {
     const normalized = deferredQuery.trim().toLowerCase();
@@ -147,9 +153,7 @@ export function BotSidebar({
         name,
         title,
         description,
-        base_agent_id: baseAgentId || undefined,
-        model: model || undefined,
-        provider_id: providerId || undefined,
+        base_agent_id: selectedBaseAgentId || undefined,
       });
       if (!response.success || !response.data) {
         throw new Error(extractApiError(response, "Could not create bot"));
@@ -161,8 +165,6 @@ export function BotSidebar({
       setTitle("");
       setDescription("");
       setBaseAgentId("");
-      setModel("");
-      setProviderId("");
       setError(null);
       onCreateOpenChange(false);
       refreshBots();
@@ -251,11 +253,6 @@ export function BotSidebar({
 
   const providerModels = (selectedProviderId: string): string[] =>
     providers.find((provider) => provider.id === selectedProviderId)?.models ?? [];
-
-  const changeCreateProvider = (nextProviderId: string): void => {
-    setProviderId(nextProviderId);
-    setModel(providerModels(nextProviderId)[0] ?? "");
-  };
 
   const changeEditProvider = (nextProviderId: string): void => {
     setEditDraft((current) =>
@@ -558,7 +555,7 @@ export function BotSidebar({
               form="create-bot-form"
               type="submit"
               isLoading={createBot.isPending}
-              disabled={!name.trim()}
+              disabled={!name.trim() || !selectedBaseAgentId || agentsQuery.isLoading}
               leftIcon={<Plus className="h-4 w-4" />}
             >
               Create bot
@@ -591,6 +588,48 @@ export function BotSidebar({
             onChange={(event) => setTitle(event.target.value)}
             placeholder="Release coordinator"
           />
+          <Select
+            label="Agent"
+            value={selectedBaseAgentId}
+            onChange={setBaseAgentId}
+            disabled={agentsQuery.isLoading || availableAgents.length === 0}
+            helperText="The bot inherits this agent's provider, model, tools, reasoning, and capability settings."
+            required
+          >
+            {agentsQuery.isLoading ? (
+              <option value="">Loading agents...</option>
+            ) : availableAgents.length === 0 ? (
+              <option value="">No configured agents available</option>
+            ) : (
+              availableAgents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))
+            )}
+          </Select>
+          {selectedBaseAgent ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-raised)] px-3.5 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]">
+                <Bot className="h-4 w-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-[var(--text-primary)]">
+                  {selectedBaseAgent.name}
+                </span>
+                <span className="block truncate text-xs text-[var(--text-muted)]">
+                  {[selectedBaseAgent.type, selectedBaseAgent.model].filter(Boolean).join(" · ") ||
+                    "Configured agent"}
+                </span>
+              </span>
+              <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+            </div>
+          ) : null}
+          {!agentsQuery.isLoading && availableAgents.length === 0 ? (
+            <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2.5 text-xs leading-relaxed text-amber-300">
+              Create an agent in Settings before adding a bot.
+            </p>
+          ) : null}
           <Textarea
             label="Standing instructions"
             value={description}
@@ -600,63 +639,6 @@ export function BotSidebar({
             placeholder="Own release readiness, coordinate specialists, cite evidence, and never publish without approval."
             helperText="Use this for responsibilities and boundaries that should remain true."
           />
-          {allBots.length > 0 ? (
-            <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              Start from
-              <select
-                value={baseAgentId}
-                onChange={(event) => setBaseAgentId(event.target.value)}
-                className="themed-form-control mt-1.5 w-full rounded-xl border px-4 py-2.5"
-              >
-                <option value="">Current default configuration</option>
-                {allBots.map((bot) => (
-                  <option key={bot.id} value={bot.id}>
-                    {bot.name}
-                    {bot.model ? ` · ${bot.model}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <details className="group rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-raised)]">
-            <summary className="cursor-pointer list-none rounded-2xl px-3.5 py-3 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]">
-              Model and provider
-              <span className="float-right text-xs text-[var(--text-subtle)] group-open:hidden">
-                Optional
-              </span>
-            </summary>
-            <div className="space-y-3 border-t border-[var(--surface-border)] px-3.5 pb-3.5 pt-3">
-              <label className="block text-sm font-medium text-[var(--text-secondary)]">
-                Provider
-                <select
-                  value={providerId}
-                  onChange={(event) => changeCreateProvider(event.target.value)}
-                  className="themed-form-control mt-1.5 w-full rounded-xl border px-4 py-2.5"
-                >
-                  <option value="">Inherit default provider</option>
-                  {providers.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <Input
-                label="Model"
-                value={model}
-                list="create-bot-models"
-                maxLength={200}
-                onChange={(event) => setModel(event.target.value)}
-                placeholder="Inherit provider default"
-                helperText="Each bot can pin its own provider and model."
-              />
-              <datalist id="create-bot-models">
-                {providerModels(providerId).map((providerModel) => (
-                  <option key={providerModel} value={providerModel} />
-                ))}
-              </datalist>
-            </div>
-          </details>
           <div className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-raised)] p-3.5">
             <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
               <ShieldCheck className="h-4 w-4 text-[rgb(var(--accent-primary))]" />
@@ -678,6 +660,9 @@ export function BotSidebar({
             </p>
           </div>
           {error ? <p className="text-sm text-red-400">{error}</p> : null}
+          {agentsQuery.error ? (
+            <p className="text-sm text-red-400">Could not load configured agents.</p>
+          ) : null}
         </form>
       </Modal>
 

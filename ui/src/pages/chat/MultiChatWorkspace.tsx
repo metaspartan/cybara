@@ -38,6 +38,7 @@ import {
   useUpdateSessionAgent,
 } from "@/hooks/useChat";
 import { chatApi, routerApi, settingsApi } from "@/lib/api";
+import { dataTransferHasFiles } from "@/lib/fileDrop";
 import type { PendingChatMessage } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
@@ -744,7 +745,7 @@ function MultiChatPane({
             imageDragActive && "border-[rgba(var(--accent-primary),0.6)]"
           )}
           onDragOver={(event) => {
-            if (Array.from(event.dataTransfer?.items || []).some((item) => item.kind === "file")) {
+            if (dataTransferHasFiles(event.dataTransfer)) {
               event.preventDefault();
               setImageDragActive(true);
             }

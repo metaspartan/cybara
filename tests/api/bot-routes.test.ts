@@ -252,15 +252,14 @@ describe("bot routes", () => {
     expect(agentManager.get(teammate.bot.id)?.system_prompt).toContain("Atlas Lead");
     expect(agentManager.get(teammate.bot.id)?.model).toBe("MiniMax-M3");
 
-    const clonedTeammate = (await create?.({
-      name: "Launch Analyst Copy",
-      title: "Backup risk analyst",
-      base_agent_id: teammate.bot.id,
-    })) as { bot: { id: string }; session_id: string };
-    createdAgentIds.push(clonedTeammate.bot.id);
-    expect(agentManager.get(clonedTeammate.bot.id)?.system_prompt).not.toContain(
-      "You are Launch Analyst, a persistent Cybara bot."
-    );
+    await expect(
+      create?.({
+        name: "Launch Analyst Copy",
+        title: "Backup risk analyst",
+        base_agent_id: teammate.bot.id,
+      })
+    ).rejects.toThrow("Base agent not found");
+    expect(agentManager.list().some((agent) => agent.name === "Launch Analyst Copy")).toBe(false);
 
     const updated = (await update?.(
       {

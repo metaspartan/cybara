@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, Loader2, Mic, MicOff, Paperclip } from "lu
 import type { ClipboardEvent, DragEvent, RefObject } from "react";
 import type { ChatHorizontalPadding } from "../../../../shared/chat-appearance";
 import type { ChatFileAttachment } from "@/lib/chatImages";
+import { dataTransferHasFiles } from "@/lib/fileDrop";
 import type { PendingChatMessage } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import type {
@@ -77,7 +78,7 @@ export interface ChatComposerProps {
   onDeletePendingMessage: (id: string) => void;
   onDismissPlan: () => void;
   onDragActiveChange: (active: boolean) => void;
-  onDrop: (event: DragEvent<HTMLDivElement>) => void;
+  onDrop: (event: DragEvent<HTMLElement>) => void;
   onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   onReasoningChange: (effort: AgentReasoningEffort | null) => void;
   onCodexFastModeChange: (enabled: boolean) => void;
@@ -215,7 +216,7 @@ export function ChatComposer({
           imageDragActive && "border-[rgba(var(--accent-primary),0.6)]"
         )}
         onDragOver={(event) => {
-          if (Array.from(event.dataTransfer?.items || []).some((item) => item.kind === "file")) {
+          if (dataTransferHasFiles(event.dataTransfer)) {
             event.preventDefault();
             onDragActiveChange(true);
           }

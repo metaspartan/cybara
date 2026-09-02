@@ -97,6 +97,7 @@ import { useArtifactViewer } from "./chat/useArtifactViewer";
 import { useChatAttachments } from "./chat/useChatAttachments";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { useChatDictation } from "./chat/useChatDictation";
+import { useChatFileDropSurface } from "./chat/useChatFileDropSurface";
 import { useChatLiveSessionRuntime } from "./chat/useChatLiveSessionRuntime";
 import { useChatMessageActions } from "./chat/useChatMessageActions";
 import { useChatPendingMutations } from "./chat/useChatPendingMutations";
@@ -229,6 +230,10 @@ export function Chat() {
     removePendingImage,
     setImageDragActive,
   } = useChatAttachments();
+  const chatFileDropSurface = useChatFileDropSurface({
+    onDragActiveChange: setImageDragActive,
+    onDrop: handleComposerDrop,
+  });
   const {
     copiedMessageIndex,
     handleCopyMessage,
@@ -1663,7 +1668,7 @@ export function Chat() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#050508]">
+    <div className="h-screen flex flex-col bg-[#050508]" {...chatFileDropSurface}>
       <LocalFolderPickerModal
         isOpen={showWorkspacePicker}
         onClose={() => setShowWorkspacePicker(false)}
