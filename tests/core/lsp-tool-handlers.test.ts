@@ -1,10 +1,13 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs";
-import { createRequire } from "module";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-
-const require = createRequire(import.meta.url);
+import {
+  handleLSPDefinition,
+  handleLSPDiagnostics,
+  handleLSPHover,
+  handleLSPLanguages,
+} from "../../src/core/tools/handlers/lsp";
 
 interface DiagnosticShape {
   range: { start: { line: number; character: number } };
@@ -27,8 +30,6 @@ interface LocationShape {
 }
 
 const lspState = {
-  getThrows: false,
-  initWorkspaces: [] as string[],
   diagnostics: [] as DiagnosticShape[],
   allDiagnostics: new Map<string, DiagnosticShape[]>(),
   definitionResult: null as LocationShape | LocationShape[] | null,
@@ -62,61 +63,19 @@ const lspManager = {
   },
   getSupportedLanguages: () => ["typescript", "swift"],
   isAvailable: async (language: string) => language === "typescript",
-  isBundled: (language: string) => language === "typescript",
-  getWorkspacePath: () => {
-    const workspacePath = lspState.initWorkspaces.at(-1) || process.cwd();
-    return existsSync(workspacePath) ? realpathSync(workspacePath) : workspacePath;
-  },
-  getRunningServers: () => [],
-  shutdown: async () => {},
+  getServerCommand: (language: string) => language,
 };
 
-mock.module("../../src/core/lsp", () => ({
-  getLSPManager: (workspacePath?: string) => {
-    if (lspState.getThrows) {
-      throw new Error("not initialized");
-    }
-    if (workspacePath) lspState.initWorkspaces.push(workspacePath);
-    return lspManager;
-  },
-  initLSPManager: (workspacePath: string) => {
-    lspState.initWorkspaces.push(workspacePath);
-    return lspManager;
-  },
-  peekLSPManager: (workspacePath: string) => {
-    const activePath = lspState.initWorkspaces.at(-1);
-    if (!activePath) return null;
-    const canonicalActivePath = existsSync(activePath) ? realpathSync(activePath) : activePath;
-    const canonicalWorkspacePath = existsSync(workspacePath)
-      ? realpathSync(workspacePath)
-      : workspacePath;
-    return canonicalActivePath === canonicalWorkspacePath ? lspManager : null;
-  },
-  restartLSPManager: async (workspacePath: string) => {
-    lspState.initWorkspaces.push(workspacePath);
-    return lspManager;
-  },
-  shutdownAllLSPManagers: async () => {
-    lspState.initWorkspaces = [];
-  },
-}));
-
-let handlers: typeof import("../../src/core/tools/handlers/lsp");
 let tempDir = "";
 let sampleFile = "";
+const resolveManager = () => lspManager;
 
 describe("LSP tool handlers", () => {
-  beforeAll(() => {
-    handlers = require("../../src/core/tools/handlers/lsp");
-  });
-
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "cybara-lsp-tools-"));
     sampleFile = join(tempDir, "sample.ts");
     writeFileSync(sampleFile, "const value = 1;\n", "utf8");
 
-    lspState.getThrows = false;
-    lspState.initWorkspaces = [];
     lspState.diagnostics = [];
     lspState.allDiagnostics = new Map();
     lspState.definitionResult = null;
@@ -130,10 +89,6 @@ describe("LSP tool handlers", () => {
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  afterAll(() => {
-    mock.restore();
   });
 
   test("normalizes diagnostics and summarizes severity counts", async () => {
@@ -156,7 +111,7 @@ describe("LSP tool handlers", () => {
       },
     ];
 
-    const result = await handlers.handleLSPDiagnostics({ file: sampleFile });
+    const result = await handleLSPDiagnostics({ file: sampleFile }, resolveManager);
 
     expect(lspState.diagnosticsCalls).toEqual([sampleFile]);
     expect(result.summary).toBe("1 error, 1 warning, 1 other issue");
@@ -198,11 +153,14 @@ describe("LSP tool handlers", () => {
       },
     };
 
-    const result = await handlers.handleLSPDefinition({
-      file: sampleFile,
-      line: 3,
-      column: 7,
-    });
+    const result = await handleLSPDefinition(
+      {
+        file: sampleFile,
+        line: 3,
+        column: 7,
+      },
+      resolveManager
+    );
 
     expect(lspState.definitionCalls).toEqual([{ filePath: sampleFile, line: 2, column: 6 }]);
     expect(result).toEqual({
@@ -212,19 +170,19 @@ describe("LSP tool handlers", () => {
   });
 
   test("rejects missing or non-positive positions before calling the LSP manager", async () => {
-    await expect(handlers.handleLSPDefinition({ file: sampleFile, column: 1 })).rejects.toThrow(
-      "Required parameters: file, line, column"
-    );
-    await expect(handlers.handleLSPHover({ file: sampleFile, line: 0, column: 1 })).rejects.toThrow(
-      "line and column must be 1-based positive numbers"
-    );
+    await expect(
+      handleLSPDefinition({ file: sampleFile, column: 1 }, resolveManager)
+    ).rejects.toThrow("Required parameters: file, line, column");
+    await expect(
+      handleLSPHover({ file: sampleFile, line: 0, column: 1 }, resolveManager)
+    ).rejects.toThrow("line and column must be 1-based positive numbers");
 
     expect(lspState.definitionCalls).toEqual([]);
     expect(lspState.hoverCalls).toEqual([]);
   });
 
   test("lists language availability through the current manager", async () => {
-    const result = await handlers.handleLSPLanguages({});
+    const result = await handleLSPLanguages({}, resolveManager);
 
     expect(result.languages).toEqual([
       { name: "typescript", available: true, command: "typescript" },

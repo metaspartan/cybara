@@ -1,4 +1,4 @@
-import { getLSPManager } from "../../lsp";
+import { getLSPManager, type LSPManager } from "../../lsp";
 import { findLspWorkspaceRoot } from "../../lsp/workspace";
 import { resolve } from "path";
 import { existsSync } from "fs";
@@ -81,11 +81,28 @@ function requireFilePosition(args: Record<string, unknown>): {
   return { filePath, line: rawLine - 1, column: rawColumn - 1 };
 }
 
-function getManagerForPath(inputPath: string) {
+type LSPManagerAccess = Pick<
+  LSPManager,
+  | "getDiagnostics"
+  | "getAllDiagnostics"
+  | "getDefinition"
+  | "getReferences"
+  | "getHover"
+  | "getSupportedLanguages"
+  | "isAvailable"
+  | "getServerCommand"
+>;
+
+type LSPManagerResolver = (inputPath: string) => LSPManagerAccess;
+
+function getManagerForPath(inputPath: string): LSPManagerAccess {
   return getLSPManager(findLspWorkspaceRoot(inputPath));
 }
 
-export async function handleLSPDiagnostics(args: Record<string, unknown>): Promise<{
+export async function handleLSPDiagnostics(
+  args: Record<string, unknown>,
+  resolveManager: LSPManagerResolver = getManagerForPath
+): Promise<{
   diagnostics: Array<{
     file: string;
     line: number;
@@ -103,7 +120,7 @@ export async function handleLSPDiagnostics(args: Record<string, unknown>): Promi
     throw new Error("Either 'file' or 'workspace' parameter is required");
   }
 
-  const manager = getManagerForPath(workspacePath || filePath || process.cwd());
+  const manager = resolveManager(workspacePath || filePath || process.cwd());
 
   const results: Array<{
     file: string;
@@ -169,7 +186,10 @@ export async function handleLSPDiagnostics(args: Record<string, unknown>): Promi
   return { diagnostics: results, summary };
 }
 
-export async function handleLSPDefinition(args: Record<string, unknown>): Promise<{
+export async function handleLSPDefinition(
+  args: Record<string, unknown>,
+  resolveManager: LSPManagerResolver = getManagerForPath
+): Promise<{
   locations: Array<{
     file: string;
     line: number;
@@ -186,7 +206,7 @@ export async function handleLSPDefinition(args: Record<string, unknown>): Promis
     throw new Error(`File not found: ${filePath}`);
   }
 
-  const manager = getManagerForPath(resolvedPath);
+  const manager = resolveManager(resolvedPath);
 
   const result = await manager.getDefinition(resolvedPath, line, column);
 
@@ -213,7 +233,10 @@ export async function handleLSPDefinition(args: Record<string, unknown>): Promis
   };
 }
 
-export async function handleLSPReferences(args: Record<string, unknown>): Promise<{
+export async function handleLSPReferences(
+  args: Record<string, unknown>,
+  resolveManager: LSPManagerResolver = getManagerForPath
+): Promise<{
   references: Array<{ file: string; line: number; column: number }>;
   count: number;
 }> {
@@ -224,7 +247,7 @@ export async function handleLSPReferences(args: Record<string, unknown>): Promis
     throw new Error(`File not found: ${filePath}`);
   }
 
-  const manager = getManagerForPath(resolvedPath);
+  const manager = resolveManager(resolvedPath);
 
   const result = await manager.getReferences(resolvedPath, line, column);
 
@@ -242,7 +265,10 @@ export async function handleLSPReferences(args: Record<string, unknown>): Promis
   };
 }
 
-export async function handleLSPHover(args: Record<string, unknown>): Promise<{
+export async function handleLSPHover(
+  args: Record<string, unknown>,
+  resolveManager: LSPManagerResolver = getManagerForPath
+): Promise<{
   content: string | null;
   found: boolean;
 }> {
@@ -253,7 +279,7 @@ export async function handleLSPHover(args: Record<string, unknown>): Promise<{
     throw new Error(`File not found: ${filePath}`);
   }
 
-  const manager = getManagerForPath(resolvedPath);
+  const manager = resolveManager(resolvedPath);
 
   const result = await manager.getHover(resolvedPath, line, column);
 
@@ -275,10 +301,13 @@ export async function handleLSPHover(args: Record<string, unknown>): Promise<{
   return { content, found: true };
 }
 
-export async function handleLSPLanguages(_args: Record<string, unknown>): Promise<{
+export async function handleLSPLanguages(
+  _args: Record<string, unknown>,
+  resolveManager: LSPManagerResolver = getManagerForPath
+): Promise<{
   languages: Array<{ name: string; available: boolean; command: string }>;
 }> {
-  const manager = getManagerForPath(process.cwd());
+  const manager = resolveManager(process.cwd());
 
   const supported = manager.getSupportedLanguages();
   const languages: Array<{ name: string; available: boolean; command: string }> = [];
