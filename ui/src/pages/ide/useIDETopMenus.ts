@@ -1,5 +1,5 @@
 import { type Dispatch, type RefObject, type SetStateAction, useMemo } from "react";
-import type { IdeSettingsSectionId, IdeTopMenuId } from "./ideTypes";
+import type { IDESidebarMode, IdeSettingsSectionId, IdeTopMenuId } from "./ideTypes";
 
 interface IdeTopMenuItem {
   id: string;
@@ -30,7 +30,7 @@ interface UseIDETopMenusOptions {
   openCommandPalette: () => void;
   openQuickOpenPalette: () => void;
   openGlobalSearchPanel: () => void;
-  setSidebarMode: Dispatch<SetStateAction<"explorer" | "search" | "outline">>;
+  setSidebarMode: Dispatch<SetStateAction<IDESidebarMode>>;
   outlineInputRef: RefObject<HTMLInputElement | null>;
   setIsIdeChatOpen: Dispatch<SetStateAction<boolean>>;
   toggleTerminalPanel: () => void;
@@ -167,6 +167,11 @@ export function useIDETopMenus({
                 outlineInputRef.current?.select();
               });
             },
+          },
+          {
+            id: "show-problems",
+            label: "Show Problems",
+            run: () => setSidebarMode("problems"),
           },
           {
             id: "toggle-chat",

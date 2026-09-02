@@ -12,6 +12,8 @@ import {
   MAX_TEXT_FILE_BYTES,
   MAX_TEXT_FILES,
 } from "@/lib/chatImages";
+import { dataTransferHasFiles } from "@/lib/fileDrop";
+import { useUIStore } from "@/stores/uiStore";
 import type { ChatImageAttachment } from "@/types";
 
 interface ConsumedChatAttachments {
@@ -19,10 +21,16 @@ interface ConsumedChatAttachments {
   message: string;
 }
 
+type AttachmentFileResult =
+  | { kind: "image"; value: ChatImageAttachment }
+  | { kind: "text"; value: ChatFileAttachment }
+  | { kind: "oversized"; name: string }
+  | { kind: "unsupported"; name: string };
+
 interface UseChatAttachmentsResult {
   addAttachmentFiles: (files: Iterable<File>) => Promise<void>;
   consumeAttachments: (text: string) => ConsumedChatAttachments;
-  handleComposerDrop: (event: DragEvent<HTMLDivElement>) => void;
+  handleComposerDrop: (event: DragEvent<HTMLElement>) => void;
   handleComposerPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   imageDragActive: boolean;
   pendingFiles: ChatFileAttachment[];
@@ -38,6 +46,18 @@ function hasAttachableFiles(files: Iterable<File>): boolean {
   );
 }
 
+async function readAttachmentFile(file: File): Promise<AttachmentFileResult> {
+  if (isSupportedImageType(file.type, file.name)) {
+    if (file.size > MAX_CHAT_IMAGE_BYTES) return { kind: "oversized", name: file.name };
+    return { kind: "image", value: await fileToChatImage(file) };
+  }
+  if (isTextLikeFile(file)) {
+    if (file.size > MAX_TEXT_FILE_BYTES) return { kind: "oversized", name: file.name };
+    return { kind: "text", value: await fileToTextAttachment(file) };
+  }
+  return { kind: "unsupported", name: file.name };
+}
+
 export function useChatAttachments(): UseChatAttachmentsResult {
   const [pendingImages, setPendingImages] = useState<ChatImageAttachment[]>([]);
   const [pendingFiles, setPendingFiles] = useState<ChatFileAttachment[]>([]);
@@ -46,18 +66,30 @@ export function useChatAttachments(): UseChatAttachmentsResult {
   const addAttachmentFiles = useCallback(async (files: Iterable<File>): Promise<void> => {
     const images: ChatImageAttachment[] = [];
     const texts: ChatFileAttachment[] = [];
-    for (const file of files) {
-      if (isSupportedImageType(file.type, file.name)) {
-        if (file.size <= MAX_CHAT_IMAGE_BYTES) images.push(await fileToChatImage(file));
-      } else if (isTextLikeFile(file) && file.size <= MAX_TEXT_FILE_BYTES) {
-        texts.push(await fileToTextAttachment(file));
-      }
+    const unsupported: string[] = [];
+    const oversized: string[] = [];
+    const results = await Promise.all(Array.from(files).map(readAttachmentFile));
+    for (const result of results) {
+      if (result.kind === "image") images.push(result.value);
+      if (result.kind === "text") texts.push(result.value);
+      if (result.kind === "oversized") oversized.push(result.name);
+      if (result.kind === "unsupported") unsupported.push(result.name);
     }
     if (images.length > 0) {
       setPendingImages((previous) => [...previous, ...images].slice(0, MAX_CHAT_IMAGES));
     }
     if (texts.length > 0) {
       setPendingFiles((previous) => [...previous, ...texts].slice(0, MAX_TEXT_FILES));
+    }
+    if (oversized.length > 0) {
+      useUIStore
+        .getState()
+        .addToast("error", `Too large to attach: ${oversized.slice(0, 3).join(", ")}`);
+    }
+    if (unsupported.length > 0) {
+      useUIStore
+        .getState()
+        .addToast("error", `Unsupported attachment: ${unsupported.slice(0, 3).join(", ")}`);
     }
   }, []);
 
@@ -85,12 +117,12 @@ export function useChatAttachments(): UseChatAttachmentsResult {
   );
 
   const handleComposerDrop = useCallback(
-    (event: DragEvent<HTMLDivElement>): void => {
+    (event: DragEvent<HTMLElement>): void => {
       const files = Array.from(event.dataTransfer?.files || []);
-      if (files.length > 0 && hasAttachableFiles(files)) {
-        event.preventDefault();
-        void addAttachmentFiles(files);
-      }
+      if (!dataTransferHasFiles(event.dataTransfer)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (files.length > 0) void addAttachmentFiles(files);
       setImageDragActive(false);
     },
     [addAttachmentFiles]

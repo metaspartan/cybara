@@ -132,6 +132,19 @@ describe("plugin runtime", () => {
       expect(bundledSkills.get("browser-quality")).toEqual(["browser-qa"]);
       expect(bundledSkills.get("container-operations")).toEqual(["container-operations"]);
       expect(bundledSkills.get("data-workflows")).toEqual(["database-operations"]);
+      expect(bundledSkills.get("game-development")).toEqual([
+        "bevy",
+        "game-asset-pipeline",
+        "game-development",
+        "game-networking",
+        "game-playtesting",
+        "game-ui",
+        "godot",
+        "sprite-pipeline",
+        "unity",
+        "unreal-engine",
+        "web-game-development",
+      ]);
       expect(bundledSkills.get("media-workflows")).toEqual(["media-processing"]);
 
       setPluginEnabled("developer-essentials", false);

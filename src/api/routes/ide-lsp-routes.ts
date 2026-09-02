@@ -1,5 +1,6 @@
 import { isAbsolute, resolve } from "path";
 import { agentManager, type AgentMessage } from "../../core/agent";
+import { restartLSPManager } from "../../core/lsp";
 import { trackFileOperation } from "../../core/metrics";
 import { workspaceIndexer } from "../../core/workspace-indexer";
 import {
@@ -32,6 +33,7 @@ import {
   getOrInitLspManager,
   getWorkspaceLspStatus,
   normalizeDefinitionLocation,
+  normalizeFileUriToPath,
   normalizeLspSymbol,
   resolveWorkspacePath,
   sanitizeInlineCompletion,
@@ -154,6 +156,39 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
       return { success: false, error: String(error), servers: [] };
     }
   },
+  "POST /api/lsp/restart": async (_body, params) => {
+    const inputPath = typeof params?.path === "string" ? params.path.trim() : "";
+    if (!inputPath) {
+      trackLspOperation("restart", { success: false, reason: "missing_path" });
+      return { success: false, error: "Missing 'path' parameter", active: [] };
+    }
+    try {
+      const normalizedPath = isAbsolute(inputPath) ? inputPath : resolve(process.cwd(), inputPath);
+      const workspacePath = resolveWorkspacePath(normalizedPath);
+      const manager = await restartLSPManager(workspacePath);
+      await manager.openDocument(normalizedPath);
+      const active = await manager.getActiveServersForFile(normalizedPath);
+      trackLspOperation("restart", {
+        workspace: workspacePath,
+        filePath: normalizedPath,
+        languageId: active.languageId,
+        serverCount: active.servers.length,
+        runningCount: active.servers.filter((server) => server.running && server.initialized)
+          .length,
+        success: true,
+      });
+      return {
+        success: true,
+        workspace: workspacePath,
+        path: normalizedPath,
+        languageId: active.languageId,
+        active: active.servers,
+      };
+    } catch (error) {
+      trackLspOperation("restart", { path: inputPath, success: false, error: String(error) });
+      return { success: false, error: String(error), active: [] };
+    }
+  },
   "GET /api/lsp/workspace-status": (_body, params) => {
     const workspacePath = typeof params?.path === "string" ? params.path.trim() : "";
     if (!workspacePath) {
@@ -177,21 +212,55 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
       return { success: false, error: String(error), active: [] };
     }
   },
-  "GET /api/lsp/diagnostics": () => {
+  "GET /api/lsp/diagnostics": (_body, params) => {
+    const inputPath = typeof params?.path === "string" ? params.path.trim() : process.cwd();
     try {
-      const manager = getOrInitLspManager(process.cwd());
+      const workspacePath = resolveWorkspacePath(inputPath);
+      const manager = getOrInitLspManager(workspacePath);
       const all = manager.getAllDiagnostics();
       const result: Array<{ file: string; count: number; errors: number; warnings: number }> = [];
+      const issues: Array<{
+        file: string;
+        line: number;
+        character: number;
+        endLine: number;
+        endCharacter: number;
+        severity: "error" | "warning" | "info";
+        message: string;
+        source?: string;
+        code?: string | number;
+      }> = [];
 
       for (const [uri, diags] of all) {
         const typedDiags = diags as LspDiagnosticLike[];
+        const file = normalizeFileUriToPath(uri);
         result.push({
-          file: uri.replace("file://", ""),
+          file,
           count: typedDiags.length,
           errors: typedDiags.filter((d) => d.severity === 1).length,
           warnings: typedDiags.filter((d) => d.severity === 2).length,
         });
+        for (const diagnostic of typedDiags) {
+          issues.push({
+            file,
+            line: diagnostic.range?.start?.line ?? 0,
+            character: diagnostic.range?.start?.character ?? 0,
+            endLine: diagnostic.range?.end?.line ?? 0,
+            endCharacter: diagnostic.range?.end?.character ?? 0,
+            severity:
+              diagnostic.severity === 1 ? "error" : diagnostic.severity === 2 ? "warning" : "info",
+            message: diagnostic.message || "Unknown diagnostic",
+            source: diagnostic.source,
+            code: diagnostic.code,
+          });
+        }
       }
+
+      issues.sort((left, right) =>
+        left.file === right.file
+          ? left.line - right.line || left.character - right.character
+          : left.file.localeCompare(right.file)
+      );
 
       trackLspOperation("diagnostics", {
         workspace: manager.getWorkspacePath(),
@@ -199,14 +268,20 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
         total: result.reduce((sum, f) => sum + f.count, 0),
         success: true,
       });
-      return { files: result, total: result.reduce((sum, f) => sum + f.count, 0) };
+      return {
+        success: true,
+        workspace: manager.getWorkspacePath(),
+        files: result,
+        issues,
+        total: result.reduce((sum, f) => sum + f.count, 0),
+      };
     } catch (err) {
       trackLspOperation("diagnostics", {
-        workspace: process.cwd(),
+        workspace: inputPath,
         success: false,
         error: String(err),
       });
-      return { files: [], total: 0 };
+      return { success: false, error: String(err), files: [], issues: [], total: 0 };
     }
   },
   "GET /api/lsp/diagnostics/file": async (_body, params) => {

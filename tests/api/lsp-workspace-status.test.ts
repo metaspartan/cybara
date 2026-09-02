@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getWorkspaceLspStatus } from "../../src/api/routes/lsp-ide";
-import { getLSPManager, initLSPManager } from "../../src/core/lsp";
+import { getLSPManager, initLSPManager, shutdownAllLSPManagers } from "../../src/core/lsp";
 
 const roots: string[] = [];
 
@@ -16,9 +16,7 @@ function workspace(name: string): string {
 }
 
 afterEach(async () => {
-  try {
-    await getLSPManager().shutdown();
-  } catch {}
+  await shutdownAllLSPManagers();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -29,9 +27,9 @@ describe("workspace LSP status", () => {
 
     const status = getWorkspaceLspStatus(activeWorkspace);
 
-    expect(status.workspace).toBe(activeWorkspace);
+    expect(status.workspace).toBe(realpathSync(activeWorkspace));
     expect(status.active).toEqual([]);
-    expect(getLSPManager().getWorkspacePath()).toBe(activeWorkspace);
+    expect(getLSPManager().getWorkspacePath()).toBe(realpathSync(activeWorkspace));
   });
 
   test("returns no active servers for another workspace without switching managers", () => {
@@ -41,8 +39,8 @@ describe("workspace LSP status", () => {
 
     const status = getWorkspaceLspStatus(otherWorkspace);
 
-    expect(status.workspace).toBe(otherWorkspace);
+    expect(status.workspace).toBe(realpathSync(otherWorkspace));
     expect(status.active).toEqual([]);
-    expect(getLSPManager().getWorkspacePath()).toBe(activeWorkspace);
+    expect(getLSPManager().getWorkspacePath()).toBe(realpathSync(activeWorkspace));
   });
 });

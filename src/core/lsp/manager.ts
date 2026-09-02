@@ -8,8 +8,8 @@ import {
   type DocumentSymbolResult,
   type CompletionItem,
 } from "./types";
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "fs";
+import { join, resolve } from "path";
 import { cybaraDir } from "../paths";
 import { findBunRuntime } from "../bun-runtime";
 import * as bundledTS from "./bundled-ts";
@@ -165,6 +165,7 @@ type OpenDocumentState = {
 
 export class LSPManager {
   private clients = new Map<string, LSPClient>();
+  private startingClients = new Map<string, Promise<LSPClient | null>>();
   private config: LSPConfig;
   private workspacePath: string;
   private workspaceUri: string;
@@ -225,13 +226,25 @@ export class LSPManager {
       return null;
     }
 
-    if (this.clients.has(configKey)) {
-      const client = this.clients.get(configKey)!;
-      if (client.isInitialized) {
-        return client;
-      }
-    }
+    const client = this.clients.get(configKey);
+    if (client?.isInitialized) return client;
 
+    const existingStart = this.startingClients.get(configKey);
+    if (existingStart) return existingStart;
+
+    const start = this.startClientByConfigKey(configKey, serverConfig);
+    this.startingClients.set(configKey, start);
+    try {
+      return await start;
+    } finally {
+      if (this.startingClients.get(configKey) === start) this.startingClients.delete(configKey);
+    }
+  }
+
+  private async startClientByConfigKey(
+    configKey: string,
+    serverConfig: LSPServerConfig
+  ): Promise<LSPClient | null> {
     const commands = this.getCommandsForConfigKey(configKey, serverConfig);
 
     let lastError: unknown = null;
@@ -786,6 +799,9 @@ export class LSPManager {
   }
 
   async shutdown(): Promise<void> {
+    const pendingStarts = Array.from(this.startingClients.values());
+    if (pendingStarts.length > 0) await Promise.allSettled(pendingStarts);
+    this.startingClients.clear();
     for (const [name, client] of this.clients) {
       console.log(`[LSP Manager] Shutting down ${name}...`);
       await client.shutdown();
@@ -796,22 +812,80 @@ export class LSPManager {
   }
 }
 
-let manager: LSPManager | null = null;
+type LspManagerEntry = {
+  manager: LSPManager;
+  lastUsedAt: number;
+};
+
+const managers = new Map<string, LspManagerEntry>();
+let activeWorkspacePath: string | null = null;
+const IDLE_MANAGER_TTL_MS = 15 * 60 * 1000;
+
+function normalizeWorkspacePath(workspacePath: string): string {
+  const resolvedPath = resolve(workspacePath);
+  return existsSync(resolvedPath) ? realpathSync.native(resolvedPath) : resolvedPath;
+}
+
+function pruneIdleManagers(activePath: string): void {
+  const now = Date.now();
+  for (const [workspacePath, entry] of managers) {
+    if (workspacePath === activePath) continue;
+    if (now - entry.lastUsedAt < IDLE_MANAGER_TTL_MS) continue;
+    managers.delete(workspacePath);
+    void entry.manager.shutdown().catch((error) => {
+      console.warn(`[LSP Manager] Failed to prune workspace ${workspacePath}:`, error);
+    });
+  }
+}
 
 export function getLSPManager(workspacePath?: string): LSPManager {
-  if (!manager && workspacePath) {
-    manager = new LSPManager(workspacePath);
-  }
-  if (!manager) {
+  const requestedPath = workspacePath ? normalizeWorkspacePath(workspacePath) : activeWorkspacePath;
+  if (!requestedPath) {
     throw new Error("LSP Manager not initialized - provide workspace path");
   }
-  return manager;
+  const existing = managers.get(requestedPath);
+  if (existing) {
+    existing.lastUsedAt = Date.now();
+    activeWorkspacePath = requestedPath;
+    pruneIdleManagers(requestedPath);
+    return existing.manager;
+  }
+  if (!workspacePath) {
+    throw new Error("LSP Manager not initialized - provide workspace path");
+  }
+  return initLSPManager(requestedPath);
 }
 
 export function initLSPManager(workspacePath: string): LSPManager {
-  if (manager) {
-    manager.shutdown();
+  const normalizedPath = normalizeWorkspacePath(workspacePath);
+  const existing = managers.get(normalizedPath);
+  if (existing) {
+    existing.lastUsedAt = Date.now();
+    activeWorkspacePath = normalizedPath;
+    return existing.manager;
   }
-  manager = new LSPManager(workspacePath);
+  const manager = new LSPManager(normalizedPath);
+  managers.set(normalizedPath, { manager, lastUsedAt: Date.now() });
+  activeWorkspacePath = normalizedPath;
+  pruneIdleManagers(normalizedPath);
   return manager;
+}
+
+export function peekLSPManager(workspacePath: string): LSPManager | null {
+  return managers.get(normalizeWorkspacePath(workspacePath))?.manager ?? null;
+}
+
+export async function restartLSPManager(workspacePath: string): Promise<LSPManager> {
+  const normalizedPath = normalizeWorkspacePath(workspacePath);
+  const existing = managers.get(normalizedPath);
+  managers.delete(normalizedPath);
+  if (existing) await existing.manager.shutdown();
+  return initLSPManager(normalizedPath);
+}
+
+export async function shutdownAllLSPManagers(): Promise<void> {
+  const activeManagers = Array.from(managers.values(), (entry) => entry.manager);
+  managers.clear();
+  activeWorkspacePath = null;
+  await Promise.all(activeManagers.map((manager) => manager.shutdown()));
 }

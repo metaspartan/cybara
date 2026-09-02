@@ -16,8 +16,12 @@ describe("GitStatus refresh + cleanup", () => {
   });
 
   test("polls so the branch/counts do not go stale, and re-fetches on refreshKey", () => {
-    expect(src).toContain("setInterval");
+    expect(src).toContain("window.setInterval(refreshWhenVisible, pollMs)");
     expect(src).toContain("clearInterval");
+    expect(src).toContain("pollMs = 30000");
+    expect(src).toContain('document.visibilityState === "visible"');
+    expect(src).toContain('window.addEventListener("focus", refreshWhenVisible)');
+    expect(src).toContain("if (inFlight) return");
     expect(src).toContain("refreshKey");
     expect(src).toMatch(/\[path, refreshKey, pollMs\]/);
   });
@@ -61,5 +65,11 @@ describe("CodeViewer LSP keyboard + hover fixes", () => {
     expect(src).toContain("setHoverInfo({ line: displayLine");
     expect(src).toContain("line: String(Math.max(displayLine - 1, 0))");
     expect(src).toContain("scheduleHover(i + 1, 0)");
+  });
+
+  test("pauses file and diagnostic polling while the IDE is hidden", () => {
+    expect(src).toContain('document.visibilityState !== "visible"');
+    expect(src).toContain('window.addEventListener("focus", refreshWhenVisible)');
+    expect(src).toContain("window.setInterval(refreshWhenVisible, 8000)");
   });
 });

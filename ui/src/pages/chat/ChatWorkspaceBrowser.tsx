@@ -38,7 +38,11 @@ import {
   decodeBrowserPreviewImage,
   normalizeBrowserWheelDelta,
 } from "./browserPreviewInteraction";
-import { browserPreviewPollDelay } from "./browserPreviewTiming";
+import {
+  browserPreviewPollDelay,
+  BROWSER_PREVIEW_STREAM_PROFILE,
+  BROWSER_PREVIEW_THUMBNAIL_STREAM_PROFILE,
+} from "./browserPreviewTiming";
 import { BrowserPreviewImage } from "./BrowserPreviewImage";
 import { BrowserViewportModeControl } from "./BrowserViewportModeControl";
 import {
@@ -322,6 +326,9 @@ export function ChatWorkspaceBrowser({
     [previewSurfaceSize, viewportMode]
   );
   const browserPageId = page?.id ?? null;
+  const streamProfile = thumbnail
+    ? BROWSER_PREVIEW_THUMBNAIL_STREAM_PROFILE
+    : BROWSER_PREVIEW_STREAM_PROFILE;
 
   useEffect(() => {
     browserViewportRef.current = browserViewport;
@@ -1111,7 +1118,10 @@ export function ChatWorkspaceBrowser({
           pageId={page?.id ?? null}
           visible={visible}
           fallbackSource={displayedPreview?.screenshot ?? null}
-          quality={BROWSER_PREVIEW_QUALITY}
+          quality={streamProfile.quality}
+          maxWidth={streamProfile.maxWidth}
+          maxHeight={streamProfile.maxHeight}
+          everyNthFrame={streamProfile.everyNthFrame}
           inputSenderRef={streamInputRef}
           onConnectionChange={(connected) => {
             streamConnectedRef.current = connected;

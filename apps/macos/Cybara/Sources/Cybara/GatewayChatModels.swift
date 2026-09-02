@@ -41,6 +41,7 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
     let reasoning_effort: String?
     let reasoning_mode: String?
     let reasoning_efforts: [String]?
+    let image_input_mode: String?
     let supports_images: Bool?
     let created_at: String?
     let config: [String: JSONValue]?
@@ -50,7 +51,7 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
         case provider_type, providerType
         case system_prompt, systemPrompt, reasoning_effort, reasoningEffort
         case reasoning_mode, reasoningMode, reasoning_efforts, reasoningEfforts
-        case supports_images, supportsImages
+        case image_input_mode, imageInputMode, supports_images, supportsImages
         case created_at, createdAt, config
     }
 
@@ -70,6 +71,7 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
         reasoning_mode = try container.decodeFlexibleString(forKeys: [.reasoning_mode, .reasoningMode])
         reasoning_efforts = try container.decodeIfPresent([String].self, forKey: .reasoning_efforts)
             ?? container.decodeIfPresent([String].self, forKey: .reasoningEfforts)
+        image_input_mode = try container.decodeFlexibleString(forKeys: [.image_input_mode, .imageInputMode])
         supports_images = try container.decodeIfPresent(Bool.self, forKey: .supports_images)
             ?? container.decodeIfPresent(Bool.self, forKey: .supportsImages)
         created_at = try container.decodeFlexibleString(forKeys: [.created_at, .createdAt])
@@ -97,10 +99,19 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
     }
 
     var imageInputMode: String {
+        if image_input_mode == "enabled" || image_input_mode == "disabled" {
+            return image_input_mode ?? "auto"
+        }
         guard case .string(let value)? = config?["image_input"],
               value == "enabled" || value == "disabled"
         else { return "auto" }
         return value
+    }
+
+    var imageStatusLabel: String {
+        if imageInputMode == "enabled" { return "Enabled" }
+        if imageInputMode == "disabled" { return "Disabled" }
+        return supportsImages ? "Auto · enabled" : "Auto · disabled"
     }
 
     var autostart: Bool {

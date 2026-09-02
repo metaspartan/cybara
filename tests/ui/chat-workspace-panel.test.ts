@@ -36,6 +36,14 @@ const floatingBrowserSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/chat/FloatingBrowserPreview.tsx", import.meta.url)),
   "utf8"
 );
+const floatingPreviewFrameSource = readFileSync(
+  fileURLToPath(new URL("../../ui/src/pages/chat/FloatingPreviewFrame.tsx", import.meta.url)),
+  "utf8"
+);
+const floatingComputerSource = readFileSync(
+  fileURLToPath(new URL("../../ui/src/pages/chat/FloatingComputerPreview.tsx", import.meta.url)),
+  "utf8"
+);
 const computerSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/chat/ChatWorkspaceComputer.tsx", import.meta.url)),
   "utf8"
@@ -112,13 +120,23 @@ describe("chat workspace panel", () => {
   test("keeps browser work visible outside the full workspace panel", () => {
     expect(chatSource).toContain("FloatingBrowserPreview");
     expect(chatSource).toContain("shouldShowFloatingBrowserPreview");
-    expect(floatingBrowserSource).toContain('aria-label="Open live browser preview"');
-    expect(floatingBrowserSource).toContain('role="button"');
+    expect(floatingBrowserSource).toContain('ariaLabel="Open live browser preview"');
+    expect(floatingPreviewFrameSource).toContain('role="button"');
     expect(floatingBrowserSource).not.toContain("Resize floating browser preview");
     expect(floatingBrowserSource).not.toContain("workspace-browser-nav-button");
     expect(floatingBrowserSource).toContain("<ChatWorkspaceBrowser");
     expect(floatingBrowserSource).toContain("thumbnail");
     expect(browserSource).toContain("thumbnail ? null");
+  });
+
+  test("keeps active desktop work visible and focuses its app from the floating preview", () => {
+    expect(chatSource).toContain("FloatingComputerPreview");
+    expect(chatSource).toContain("useFloatingPreviewActivity");
+    expect(floatingComputerSource).toContain('testId="floating-computer-preview"');
+    expect(floatingComputerSource).toContain("/api/computer-use/preview/focus?");
+    expect(floatingComputerSource).toContain("onActivate={focusApp}");
+    expect(floatingComputerSource).toContain("thumbnail");
+    expect(computerSource).toContain("onPreviewAvailable");
   });
 
   test("browser preview shares the chat session and fills the workspace panel", () => {

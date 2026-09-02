@@ -259,20 +259,18 @@ export const botRoutes: Record<string, RouteHandler> = {
     const input = (body || {}) as BotInput;
     const name = validatedBotName(input.name);
     const baseId = boundedText(input.base_agent_id, 100);
+    const configuredAgents = agentManager
+      .list()
+      .filter((agent) => !isBotProfileConfig(agent.config));
     const base = baseId
-      ? agentManager.get(baseId)
-      : (agentManager.list().find((agent) => !isBotProfileConfig(agent.config)) ??
-        agentManager.list()[0]);
+      ? configuredAgents.find((agent) => agent.id === baseId)
+      : configuredAgents[0];
     if (baseId && !base) throw new Error("Validation error: Base agent not found");
     const title = boundedText(input.title, 80);
     const description = boundedText(input.description, 2_000);
     const model = boundedText(input.model, 200) || base?.model;
     const providerId = validatedProviderId(input.provider_id) || base?.provider_id;
-    const baseSystemPrompt = base
-      ? isBotAgent(base)
-        ? readBotProfileMetadata(base.config).baseSystemPrompt
-        : base.system_prompt || ""
-      : "";
+    const baseSystemPrompt = base?.system_prompt || "";
     const agent = agentManager.create({
       name,
       type: "main",

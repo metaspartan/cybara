@@ -3,7 +3,10 @@ import {
   BROWSER_PREVIEW_ACTIVE_POLL_MS,
   BROWSER_PREVIEW_IDLE_POLL_MS,
   BROWSER_PREVIEW_MIN_PAINT_GAP_MS,
+  BROWSER_PREVIEW_STREAM_PROFILE,
+  BROWSER_PREVIEW_THUMBNAIL_STREAM_PROFILE,
   browserPreviewPollDelay,
+  browserPreviewReconnectDelay,
   browserPreviewViewport,
 } from "../../ui/src/pages/chat/browserPreviewTiming";
 
@@ -15,6 +18,28 @@ describe("browser preview polling", () => {
 
   test("presents live frames at an interactive cadence", () => {
     expect(BROWSER_PREVIEW_MIN_PAINT_GAP_MS).toBe(33);
+  });
+
+  test("uses a lower-cost stream for the floating thumbnail", () => {
+    expect(BROWSER_PREVIEW_STREAM_PROFILE).toEqual({
+      quality: 82,
+      maxWidth: 1_600,
+      maxHeight: 1_200,
+      everyNthFrame: 1,
+    });
+    expect(BROWSER_PREVIEW_THUMBNAIL_STREAM_PROFILE).toEqual({
+      quality: 68,
+      maxWidth: 640,
+      maxHeight: 480,
+      everyNthFrame: 2,
+    });
+  });
+
+  test("bounds stream reconnect backoff", () => {
+    expect(browserPreviewReconnectDelay(0)).toBe(250);
+    expect(browserPreviewReconnectDelay(1)).toBe(500);
+    expect(browserPreviewReconnectDelay(10)).toBe(5_000);
+    expect(browserPreviewReconnectDelay(Number.NaN)).toBe(250);
   });
 
   test("polls quickly while loading or recently interactive", () => {

@@ -17,6 +17,7 @@ import { commandExists, isWindows } from "../../core/platform";
 import {
   activeComputerUseTrajectoryId,
   clearComputerUsePreview,
+  focusComputerUsePreviewApp,
   getComputerUsePreview,
   replayComputerUseTrajectory,
   stopComputerUseTrajectoryCapture,
@@ -139,6 +140,25 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     if (!sessionId) return { success: false, error: "Session ID is required" };
     clearComputerUsePreview(sessionId);
     return { success: true };
+  },
+  "POST /api/computer-use/preview/focus": async (_body, params, context) => {
+    const forwardedIp = forwardedClientIp(context?.headers ?? {});
+    const localClient =
+      isLoopbackIp(context?.clientIp) && (!forwardedIp || isLoopbackIp(forwardedIp));
+    if (!localClient) {
+      return { success: false, error: "Desktop app focus is local-only" };
+    }
+    const sessionId = browserSessionId(params?.sessionId);
+    if (!sessionId) return { success: false, error: "Session ID is required" };
+    try {
+      const result = await focusComputerUsePreviewApp(sessionId);
+      return { success: true, ...result };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Could not focus the desktop app",
+      };
+    }
   },
   "GET /api/computer-use/trajectories": () => ({
     trajectories: listComputerUseTrajectories(activeComputerUseTrajectoryId()),

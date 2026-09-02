@@ -1,6 +1,5 @@
-import { existsSync, statSync } from "fs";
-import { dirname, isAbsolute, parse, resolve } from "path";
-import { getLSPManager, initLSPManager } from "../../core/lsp";
+import { isAbsolute, resolve } from "path";
+import { findLspWorkspaceRoot, getLSPManager, peekLSPManager } from "../../core/lsp";
 import { trackMetric } from "../../core/metrics";
 import { resolveAllowedIdePath } from "../ide-path-policy";
 import type { LspLocationLike, LspSymbolLike, NormalizedLspSymbol } from "./_shared";
@@ -18,45 +17,12 @@ export function resolveWorkspacePath(filePath?: string): string {
   if (!absolute) {
     throw new Error("Validation error: LSP path is outside the allowed IDE scope");
   }
-  let current = absolute;
-  try {
-    if (!statSync(absolute).isDirectory()) current = dirname(absolute);
-  } catch {
-    current = dirname(absolute);
-  }
-  const root = parse(current).root;
-  const markers = [
-    ".git",
-    "package.json",
-    "tsconfig.json",
-    "go.mod",
-    "Cargo.toml",
-    "pyproject.toml",
-    "pom.xml",
-    "build.gradle",
-    "build.gradle.kts",
-  ];
-  while (true) {
-    if (markers.some((marker) => existsSync(resolve(current, marker)))) return current;
-    if (current === root) break;
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return existsSync(absolute) && statSync(absolute).isDirectory() ? absolute : dirname(absolute);
+  return findLspWorkspaceRoot(absolute);
 }
 
 export function getOrInitLspManager(workspacePath?: string) {
   const resolvedWorkspace = workspacePath ? resolve(workspacePath) : resolve(process.cwd());
-  try {
-    const existing = getLSPManager();
-    if (resolve(existing.getWorkspacePath()) !== resolvedWorkspace) {
-      return initLSPManager(resolvedWorkspace);
-    }
-    return existing;
-  } catch {
-    return initLSPManager(resolvedWorkspace);
-  }
+  return getLSPManager(resolvedWorkspace);
 }
 
 export function getWorkspaceLspStatus(workspacePath: string): {
@@ -66,10 +32,8 @@ export function getWorkspaceLspStatus(workspacePath: string): {
 } {
   const resolvedWorkspace = resolveWorkspacePath(workspacePath);
   try {
-    const existing = getLSPManager();
-    if (resolve(existing.getWorkspacePath()) !== resolve(resolvedWorkspace)) {
-      return { workspace: resolvedWorkspace, active: [], diagnosticsCount: 0 };
-    }
+    const existing = peekLSPManager(resolvedWorkspace);
+    if (!existing) return { workspace: resolvedWorkspace, active: [], diagnosticsCount: 0 };
     return {
       workspace: resolvedWorkspace,
       active: existing.getRunningServers(),

@@ -187,6 +187,13 @@ function itemFromRecord(
   };
 }
 
+function agentImageStatusLabel(agent: FeatureSummary["agents"][number]): string {
+  const mode = agent.image_input_mode ?? "auto";
+  if (mode === "enabled") return "Images enabled";
+  if (mode === "disabled") return "Images disabled";
+  return `Images auto ${agent.supports_images ? "on" : "off"}`;
+}
+
 export function surfaceRows(
   surface: MobileSurfaceKey,
   summary: FeatureSummary | null
@@ -200,7 +207,9 @@ export function surfaceRows(
           itemFromRecord(
             agent.id,
             agent.name,
-            [agent.status, agent.model, agent.type].filter(Boolean).join(" - ") || "Configured",
+            [agent.status, agent.model, agent.type, agentImageStatusLabel(agent)]
+              .filter(Boolean)
+              .join(" · ") || "Configured",
             agent as unknown as Record<string, unknown>
           )
         );

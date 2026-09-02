@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { join, parse } from "path";
 import { resolveWorkspacePath } from "../../src/api/routes/lsp-ide";
@@ -14,8 +14,8 @@ describe("LSP workspace root resolution", () => {
       const file = join(nested, "index.ts");
       writeFileSync(file, "export {}\n");
 
-      expect(resolveWorkspacePath(file)).toBe(root);
-      expect(resolveWorkspacePath(join(root, "config.yaml"))).toBe(root);
+      expect(resolveWorkspacePath(file)).toBe(realpathSync(root));
+      expect(resolveWorkspacePath(join(root, "config.yaml"))).toBe(realpathSync(root));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -24,7 +24,7 @@ describe("LSP workspace root resolution", () => {
   test("preserves explicit directory roots", () => {
     const root = mkdtempSync(join(homedir(), ".cybara-lsp-directory-"));
     try {
-      expect(resolveWorkspacePath(root)).toBe(root);
+      expect(resolveWorkspacePath(root)).toBe(realpathSync(root));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

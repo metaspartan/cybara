@@ -1426,6 +1426,26 @@ async function performDriverAction(
   }
 }
 
+export async function focusComputerUsePreviewApp(
+  sessionIdValue: string
+): Promise<{ app: string; text: string }> {
+  const sessionId = normalizedComputerUseSessionId(sessionIdValue);
+  if (!sessionId) throw new Error("Session ID is required");
+  const preview = getComputerUsePreview(sessionId);
+  const app = preview?.app?.trim();
+  if (!app) throw new Error("No desktop app is available to focus for this chat");
+  if (focusApplicationNatively(app)) {
+    return { app, text: `Focused ${app}.` };
+  }
+  await ensureDriver();
+  await ensureDriverSession(sessionId);
+  const result = await performDriverAction(
+    { action: "focus_app", app, raiseWindow: true },
+    sessionId
+  );
+  return { app, text: result.text || `Focused ${app}.` };
+}
+
 export async function handleComputerUse(
   args: Record<string, unknown>,
   context?: ComputerUseContext
@@ -1541,7 +1561,7 @@ export async function handleComputerUse(
     if (sessionId) {
       recordComputerUsePreview(
         sessionId,
-        typedArgs,
+        { ...typedArgs, app: typedArgs.app ?? activeWindowTarget?.appName },
         screenshot,
         screenshotMime,
         filePath,

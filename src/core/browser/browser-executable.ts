@@ -1,10 +1,13 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, win32 } from "node:path";
-import type { chromium as ChromiumApi } from "playwright";
+import { findHermeticPlaywrightBrowserPath } from "./playwright-loader";
 
-type Chromium = typeof ChromiumApi;
 type RuntimePlatform = NodeJS.Platform;
+
+interface ChromiumExecutableLocator {
+  executablePath(): string;
+}
 
 export interface BrowserLaunchTarget {
   label: string;
@@ -26,16 +29,16 @@ export function browserExecutableCandidates(
       env["ProgramFiles(x86)"] || env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)";
     const localAppData = env.LOCALAPPDATA;
     candidates.push(
-      windowsJoin(programFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
-      windowsJoin(programFilesX86, "Microsoft", "Edge", "Application", "msedge.exe"),
-      localAppData && windowsJoin(localAppData, "Microsoft", "Edge", "Application", "msedge.exe"),
       windowsJoin(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
       windowsJoin(programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
       localAppData && windowsJoin(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
+      windowsJoin(programFiles, "Chromium", "Application", "chrome.exe"),
       windowsJoin(programFiles, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
       localAppData &&
         windowsJoin(localAppData, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
-      windowsJoin(programFiles, "Chromium", "Application", "chrome.exe")
+      windowsJoin(programFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
+      windowsJoin(programFilesX86, "Microsoft", "Edge", "Application", "msedge.exe"),
+      localAppData && windowsJoin(localAppData, "Microsoft", "Edge", "Application", "msedge.exe")
     );
   } else if (platform === "darwin") {
     candidates.push(
@@ -62,8 +65,8 @@ export function browserExecutableCandidates(
   return [...new Set(candidates.filter((value): value is string => Boolean(value)))];
 }
 
-export function browserChannelNames(platform: RuntimePlatform): Array<"chrome" | "msedge"> {
-  return platform === "win32" ? ["msedge", "chrome"] : ["chrome", "msedge"];
+export function browserChannelNames(_platform: RuntimePlatform): Array<"chrome" | "msedge"> {
+  return ["chrome", "msedge"];
 }
 
 export function browserExecutableLabel(executablePath: string): string {
@@ -129,7 +132,7 @@ export function buildBrowserLaunchPlan(
 }
 
 function browserCommandNames(platform: RuntimePlatform): string[] {
-  if (platform === "win32") return ["chrome.exe", "msedge.exe", "brave.exe", "chromium.exe"];
+  if (platform === "win32") return ["chrome.exe", "chromium.exe", "brave.exe", "msedge.exe"];
   if (platform === "darwin") return [];
   return [
     "google-chrome",
@@ -165,13 +168,40 @@ export function findSystemBrowserExecutables(
   return [...new Set(found)];
 }
 
-export function findBundledBrowserExecutable(chromium: Chromium): string | null {
+export function findPlaywrightBrowserExecutable(
+  browserRoot: string,
+  platform: RuntimePlatform = process.platform
+): string | null {
+  if (!existsSync(browserRoot)) return null;
+  const executableNames =
+    platform === "win32"
+      ? new Set(["headless_shell.exe", "chrome.exe"])
+      : new Set(["headless_shell", "chrome"]);
+  const pending = [browserRoot];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) continue;
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) pending.push(path);
+      else if (executableNames.has(entry.name.toLowerCase())) return path;
+    }
+  }
+  return null;
+}
+
+export function findBundledBrowserExecutable(
+  chromium: ChromiumExecutableLocator,
+  platform: RuntimePlatform = process.platform,
+  browserRoot: string | null = findHermeticPlaywrightBrowserPath()
+): string | null {
   try {
     const executable = chromium.executablePath();
-    return executable && existsSync(executable) ? executable : null;
+    if (executable && existsSync(executable)) return executable;
   } catch {
-    return null;
+    return browserRoot ? findPlaywrightBrowserExecutable(browserRoot, platform) : null;
   }
+  return browserRoot ? findPlaywrightBrowserExecutable(browserRoot, platform) : null;
 }
 
 export function browserLaunchArgs(

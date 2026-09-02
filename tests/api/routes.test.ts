@@ -463,6 +463,8 @@ describe("Agents API", () => {
       expect(first.config).toBeUndefined();
       expect(first.tools).toBeUndefined();
       expect(typeof first.tool_profile).toBe("string");
+      expect(["auto", "enabled", "disabled"]).toContain(first.image_input_mode);
+      expect(typeof first.supports_images).toBe("boolean");
       expect(["adaptive", "binary", "effort"]).toContain(first.reasoning_mode);
       expect(Array.isArray(first.reasoning_efforts)).toBe(true);
     }

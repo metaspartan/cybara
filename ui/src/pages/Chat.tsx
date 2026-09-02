@@ -61,7 +61,6 @@ import {
   formatToolIntent,
   getLegacyMessageProcessKey,
   getMessageProcessKey,
-  isAgentUsingBrowser,
   normalizeMessageProcessActivities,
   PENDING_CAPTURE_TIMEOUT_MS,
   type PendingProcessCapture,
@@ -82,7 +81,9 @@ import { parseInitialChatRoute } from "./chat/chatRoute";
 import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
 import { FloatingBrowserPreview } from "./chat/FloatingBrowserPreview";
+import { FloatingComputerPreview } from "./chat/FloatingComputerPreview";
 import { shouldShowFloatingBrowserPreview } from "./chat/floatingBrowserPreviewModel";
+import { useFloatingPreviewActivity } from "./chat/useFloatingPreviewActivity";
 import { hasMixedAssistantAuthors } from "./chat/assistantAuthors";
 import { clearCachedLiveSessionState, isLiveSessionRunning } from "./chat/liveSessionState";
 import { NearbyShareModal } from "./chat/NearbyShareModal";
@@ -97,6 +98,7 @@ import { useArtifactViewer } from "./chat/useArtifactViewer";
 import { useChatAttachments } from "./chat/useChatAttachments";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { useChatDictation } from "./chat/useChatDictation";
+import { useChatFileDropSurface } from "./chat/useChatFileDropSurface";
 import { useChatLiveSessionRuntime } from "./chat/useChatLiveSessionRuntime";
 import { useChatMessageActions } from "./chat/useChatMessageActions";
 import { useChatPendingMutations } from "./chat/useChatPendingMutations";
@@ -229,6 +231,10 @@ export function Chat() {
     removePendingImage,
     setImageDragActive,
   } = useChatAttachments();
+  const chatFileDropSurface = useChatFileDropSurface({
+    onDragActiveChange: setImageDragActive,
+    onDrop: handleComposerDrop,
+  });
   const {
     copiedMessageIndex,
     handleCopyMessage,
@@ -476,32 +482,30 @@ export function Chat() {
     }
     return Array.from(names).slice(0, 24);
   }, [typedMessages]);
-  const agentUsingBrowser = useMemo(() => {
-    const sessionActive = !!sessionId && activeSessionIds.includes(sessionId);
-    return isAgentUsingBrowser(liveActivities, sessionActive);
-  }, [activeSessionIds, liveActivities, sessionId]);
-  const [browserPreviewSeenSessionId, setBrowserPreviewSeenSessionId] = useState<string | null>(
-    null
-  );
-  useEffect(() => {
-    if (!sessionId) {
-      setBrowserPreviewSeenSessionId(null);
-      return;
-    }
-    if (agentUsingBrowser) setBrowserPreviewSeenSessionId(sessionId);
-  }, [agentUsingBrowser, sessionId]);
+  const floatingPreviewActivity = useFloatingPreviewActivity({
+    activeSessionIds,
+    liveActivities,
+    sessionId,
+  });
   const floatingBrowserTab = useMemo(
     () =>
       workspaceTabs.find((instance) => instance.kind === "browser" && !instance.pageKey) ??
       workspaceTabs.find((instance) => instance.kind === "browser"),
     [workspaceTabs]
   );
-  const floatingBrowserAvailable =
-    !!floatingBrowserTab || browserPreviewSeenSessionId === sessionId || agentUsingBrowser;
+  const floatingBrowserAvailable = !!floatingBrowserTab || floatingPreviewActivity.browserAvailable;
   const floatingBrowserVisible = shouldShowFloatingBrowserPreview({
     activeWorkspaceKind,
     artifactOpen: !!artifactViewerTarget,
     available: floatingBrowserAvailable,
+    sessionId,
+    workspacePanelOpen: showWorkspacePanel,
+  });
+  const floatingComputerVisible = shouldShowFloatingBrowserPreview({
+    activeWorkspaceKind,
+    artifactOpen: !!artifactViewerTarget,
+    available: floatingPreviewActivity.computerAvailable,
+    previewKind: "computer",
     sessionId,
     workspacePanelOpen: showWorkspacePanel,
   });
@@ -1663,7 +1667,7 @@ export function Chat() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#050508]">
+    <div className="h-screen flex flex-col bg-[#050508]" {...chatFileDropSurface}>
       <LocalFolderPickerModal
         isOpen={showWorkspacePicker}
         onClose={() => setShowWorkspacePicker(false)}
@@ -1708,7 +1712,7 @@ export function Chat() {
                   )
               )
             ),
-            agentUsingBrowser,
+            agentUsingBrowser: floatingPreviewActivity.browserActive,
             timeToFirstTokenMs,
             onDismissPlan: dismissEnvironmentPlan,
             sessionId,
@@ -1878,6 +1882,13 @@ export function Chat() {
               onExpand={expandFloatingBrowser}
             />
           ) : null}
+          {floatingComputerVisible && sessionId ? (
+            <FloatingComputerPreview
+              bottomInset={Math.max(82, composerHeight + 18)}
+              sessionId={sessionId}
+              onPreviewAvailable={floatingPreviewActivity.markComputerAvailable}
+            />
+          ) : null}
         </div>
 
         {sessionId && showEnvironmentOverview && !showWorkspacePanel ? (
@@ -1903,6 +1914,7 @@ export function Chat() {
             workspaceDir={effectiveWorkspaceDir}
             onClose={() => setShowWorkspacePanel(false)}
             onCloseTab={closeWorkspaceTab}
+            onComputerPreviewAvailable={floatingPreviewActivity.markComputerAvailable}
             onOpenDiffInWorkspace={handleOpenDiffFileInWorkspace}
             onOpenFullIde={handleOpenPathInIde}
             onOpenLink={handleOpenChatLink}

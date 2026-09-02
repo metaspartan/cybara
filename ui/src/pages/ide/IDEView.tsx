@@ -24,6 +24,7 @@ import {
   TerminalSquare,
   X,
   Zap,
+  CircleAlert,
 } from "lucide-react";
 import type { ReactElement } from "react";
 import { type CSSProperties, Suspense } from "react";
@@ -34,6 +35,7 @@ import { FileTree } from "./FileTree";
 import { GitStatus } from "./GitStatus";
 import { IDE_DEFAULT_PREFERENCES } from "./ideConstants";
 import { IDEKeyboardSettingsPanel } from "./IDEKeyboardSettingsPanel";
+import { IDEProblemsPanel } from "./IDEProblemsPanel";
 import { IDETerminalSettingsPanel } from "./IDETerminalSettingsPanel";
 import { fileEntryFromPath, getSymbolKindLabel, isMarkdownExtension } from "./ideUtils";
 import type { IDEViewModel } from "./IDEViewModel";
@@ -71,6 +73,7 @@ export function IDEView({ model }: { model: IDEViewModel }): ReactElement {
     setGitHistoryStatus,
     sidebarWidth,
     sidebarMode,
+    setSidebarMode,
     openMenu,
     setOpenMenu,
     globalSearchQuery,
@@ -309,6 +312,20 @@ export function IDEView({ model }: { model: IDEViewModel }): ReactElement {
           </div>
           <button
             type="button"
+            onClick={() => setSidebarMode("problems")}
+            className={cn(
+              "px-2 py-1 rounded text-xs border transition-colors flex items-center justify-center gap-1 max-md:h-7 max-md:w-7 max-md:px-0",
+              sidebarMode === "problems"
+                ? "border-red-500/40 bg-red-500/15 text-red-200"
+                : "border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/5"
+            )}
+            title="Show workspace problems"
+          >
+            <CircleAlert className="w-3.5 h-3.5" />
+            <span className="max-md:hidden">Problems</span>
+          </button>
+          <button
+            type="button"
             onClick={() => toggleTerminalPanel()}
             className={cn(
               "px-2 py-1 rounded text-xs border transition-colors flex items-center justify-center gap-1 max-md:h-7 max-md:w-7 max-md:px-0",
@@ -357,7 +374,9 @@ export function IDEView({ model }: { model: IDEViewModel }): ReactElement {
               ? "Search"
               : sidebarMode === "outline"
                 ? "Outline"
-                : "Explorer"}
+                : sidebarMode === "problems"
+                  ? "Problems"
+                  : "Explorer"}
           </div>
 
           {sidebarMode === "explorer" ? (
@@ -539,6 +558,11 @@ export function IDEView({ model }: { model: IDEViewModel }): ReactElement {
                 )}
               </div>
             </div>
+          ) : sidebarMode === "problems" ? (
+            <IDEProblemsPanel
+              workspacePath={effectiveWorkspacePath}
+              onOpenLocation={(file, line) => openFileAtPath(file, line)}
+            />
           ) : (
             <div className="flex-1 flex flex-col overflow-hidden bg-[#0a0a10]">
               <div className="p-3 border-b border-white/10 space-y-2">

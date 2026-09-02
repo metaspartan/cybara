@@ -8,13 +8,16 @@ import {
   buildPreSteeringActivityMessage,
   canUseNativeSpeechRecognition,
   formatToolIntent,
-  isAgentUsingBrowser,
   isSessionStatusSnapshotCurrent,
   isRawToolCallThought,
   pruneCanonicalizedLiveActivities,
   resolveDictationRuntime,
   resolveStatusSnapshotActivities,
 } from "../../ui/src/pages/chat/chatModel";
+import {
+  isAgentUsingBrowser,
+  isAgentUsingComputer,
+} from "../../ui/src/pages/chat/floatingPreviewActivityModel";
 import { readChatUiSource } from "../source-fixtures";
 
 const sidebarPath = join(process.cwd(), "ui", "src", "components", "layout", "Sidebar.tsx");
@@ -95,6 +98,23 @@ describe("Chat live activity persistence", () => {
         true
       )
     ).toBe(false);
+  });
+
+  test("shows computer activity only while a desktop tool is in flight for the active session", () => {
+    const computerStart: LiveActivityItem = {
+      id: "computer-start",
+      phase: "start",
+      text: "Using the desktop",
+      timestamp: 1783300001000,
+      toolName: "computer_use",
+      toolCallId: "computer-1",
+    };
+
+    expect(isAgentUsingComputer([computerStart], true)).toBe(true);
+    expect(isAgentUsingComputer([{ ...computerStart, toolName: "focus_app" }], true)).toBe(true);
+    expect(isAgentUsingComputer([{ ...computerStart, toolName: "web_search" }], true)).toBe(false);
+    expect(isAgentUsingComputer([{ ...computerStart, phase: "result" }], true)).toBe(false);
+    expect(isAgentUsingComputer([computerStart], false)).toBe(false);
   });
 
   test("hides provider tool-call envelopes that arrive as thought activity", () => {
