@@ -2,11 +2,21 @@ import { describe, expect, test } from "bun:test";
 import {
   agentImageSupportById,
   agentSupportsImages,
+  readAgentImageInputMode,
 } from "../../src/core/agent-image-capabilities";
 import { tables } from "../../src/core/database";
 import { providerManager } from "../../src/core/providers";
 
 describe("agent image capabilities", () => {
+  test("reports whether image input is automatic or explicitly overridden", () => {
+    expect(readAgentImageInputMode(undefined)).toBe("auto");
+    expect(readAgentImageInputMode({ image_input: "enabled" })).toBe("enabled");
+    expect(readAgentImageInputMode({ image_input: "disabled" })).toBe("disabled");
+    expect(readAgentImageInputMode({ supports_images: true })).toBe("enabled");
+    expect(readAgentImageInputMode({ supportsImages: false })).toBe("disabled");
+    expect(readAgentImageInputMode({ image_input: "unexpected" })).toBe("auto");
+  });
+
   test("uses provider model metadata instead of model-name guesses", () => {
     const provider = providerManager.create({
       name: "Image capability test",

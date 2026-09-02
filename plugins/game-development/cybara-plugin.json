@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "game-development",
+  "name": "Game Development",
+  "version": "1.0.0",
+  "description": "Engine-aware development, asset, build, performance, and playtesting workflows for native and browser games.",
+  "author": "Cybara",
+  "contributions": {
+    "skills": {
+      "dirs": ["skills"]
+    }
+  }
+}

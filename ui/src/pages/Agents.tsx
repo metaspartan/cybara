@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { ArrowUpRight, Bot, Trash2, Edit2 } from "lucide-react";
+import { ArrowUpRight, Bot, Trash2, Edit2, Image as ImageIcon } from "lucide-react";
 import { Link } from "react-router";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -65,6 +65,22 @@ function agentReasoningLabel(agent: AgentSummary): string {
     agent.provider_type ?? agent.provider,
     agent.model ?? ""
   );
+}
+
+function agentImageStatus(agent: AgentSummary): { label: string; enabled: boolean; title: string } {
+  const mode = agent.image_input_mode ?? "auto";
+  const enabled = agent.supports_images === true;
+  if (mode === "enabled") {
+    return { label: "Enabled", enabled: true, title: "Enabled for this agent" };
+  }
+  if (mode === "disabled") {
+    return { label: "Disabled", enabled: false, title: "Disabled for this agent" };
+  }
+  return {
+    label: `Auto · ${enabled ? "enabled" : "disabled"}`,
+    enabled,
+    title: `Automatically ${enabled ? "enabled" : "disabled"} from model metadata`,
+  };
 }
 
 function buildConfig(formData: FormData, existing?: unknown): Record<string, unknown> {
@@ -312,7 +328,8 @@ export function Agents() {
       />
 
       <AgentModal
-        isOpen={!!editingAgentId}
+        key={editingAgent?.id ?? "agent-editor-loading"}
+        isOpen={!!editingAgentId && !!editingAgent}
         onClose={() => setEditingAgentId(null)}
         onSubmit={handleUpdate}
         title="Edit Agent"
@@ -345,6 +362,7 @@ function AgentCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const imageStatus = agentImageStatus(agent);
   return (
     <Card hover>
       <CardContent>
@@ -393,6 +411,18 @@ function AgentCard({
           <div className="flex justify-between">
             <span className="text-gray-500">Tools</span>
             <span className="text-gray-300 capitalize">{agent.tool_profile || "full"}</span>
+          </div>
+          <div className="flex justify-between gap-3">
+            <span className="text-gray-500">Images</span>
+            <span
+              className={imageStatus.enabled ? "text-emerald-300" : "text-gray-400"}
+              title={imageStatus.title}
+            >
+              <span className="inline-flex items-center justify-end gap-1.5">
+                <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                {imageStatus.label}
+              </span>
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Context</span>

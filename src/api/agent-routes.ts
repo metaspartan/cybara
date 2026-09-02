@@ -1,6 +1,6 @@
 import { handleChat } from "../api/chat";
 import { agentManager } from "../core/agent";
-import { agentImageSupportById } from "../core/agent-image-capabilities";
+import { agentImageSupportById, readAgentImageInputMode } from "../core/agent-image-capabilities";
 import { parseAgentConfig, readAgentContextWindowTokens } from "../core/agent-internals";
 import { isBotProfileConfig } from "../core/bot-profile";
 import { listAgentLoopRuns, startAgentLoop } from "../core/agent-loop";
@@ -62,6 +62,7 @@ export const agentRoutes: Record<string, RouteHandler> = {
         reasoning_efforts: supportedReasoningEfforts(provider, agent.model),
         tool_profile: typeof toolProfile === "string" ? toolProfile : "full",
         max_context_tokens: readAgentContextWindowTokens(agent.config) ?? null,
+        image_input_mode: readAgentImageInputMode(agent.config),
         supports_images: imageSupport.get(agent.id) ?? false,
         is_bot: isBotProfileConfig(agent.config),
       };

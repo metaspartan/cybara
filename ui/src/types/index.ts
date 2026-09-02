@@ -42,6 +42,7 @@ export interface AgentSummary {
   reasoning_efforts?: AgentReasoningEffort[];
   tool_profile?: string;
   max_context_tokens?: number | null;
+  image_input_mode?: "auto" | "enabled" | "disabled";
   supports_images?: boolean;
   is_bot?: boolean;
 }

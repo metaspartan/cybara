@@ -1043,6 +1043,13 @@ export function normalizeAgent(agent: unknown, index = 0): AgentSummary {
     reasoningModeValue === "effort"
       ? reasoningModeValue
       : undefined;
+  const imageInputModeValue = readString(record, ["image_input_mode", "imageInputMode"]);
+  const imageInputMode =
+    imageInputModeValue === "auto" ||
+    imageInputModeValue === "enabled" ||
+    imageInputModeValue === "disabled"
+      ? imageInputModeValue
+      : undefined;
   const rawReasoningEfforts = record.reasoning_efforts ?? record.reasoningEfforts;
   const reasoningEfforts = Array.isArray(rawReasoningEfforts)
     ? rawReasoningEfforts.flatMap((value) =>
@@ -1069,6 +1076,7 @@ export function normalizeAgent(agent: unknown, index = 0): AgentSummary {
       : null,
     reasoning_mode: reasoningMode,
     reasoning_efforts: reasoningEfforts,
+    image_input_mode: imageInputMode,
     supports_images: readBoolean(record, ["supports_images", "supportsImages"]),
     is_bot: readBoolean(record, ["is_bot", "isBot"]),
     config,

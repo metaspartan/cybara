@@ -22,8 +22,15 @@ import { styles } from "./dashboardStyles";
 const agentTypeOptions = ["main", "research", "coder", "planner", "ops", "worker"] as const;
 
 function agentImageInputMode(agent: AgentSummary): string {
-  const value = agent.config?.image_input;
+  const value = agent.image_input_mode ?? agent.config?.image_input;
   return value === "enabled" || value === "disabled" ? value : "auto";
+}
+
+function agentImageStatusLabel(agent: AgentSummary): string {
+  const mode = agentImageInputMode(agent);
+  if (mode === "enabled") return "Images enabled";
+  if (mode === "disabled") return "Images disabled";
+  return `Images auto ${agent.supports_images ? "on" : "off"}`;
 }
 
 export function AgentSettingsPanel({
@@ -195,7 +202,7 @@ export function AgentSettingsPanel({
             {agent.name}
           </Text>
           <Text numberOfLines={1} style={styles.itemDetail}>
-            {agent.model || "Model not set"}
+            {[agent.model || "Model not set", agentImageStatusLabel(agent)].join(" · ")}
           </Text>
         </View>
       </View>

@@ -2,6 +2,8 @@ import type { Agent, ProviderModel } from "./database";
 import { parseAgentConfig } from "./agent-internals";
 import { providerManager } from "./providers";
 
+export type AgentImageInputMode = "auto" | "enabled" | "disabled";
+
 function inputTypes(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === "string");
@@ -26,11 +28,18 @@ export function providerModelSupportsImages(providerId: string, modelId: string)
   return !!model && inputTypes(model.input_types).some((item) => item.toLowerCase() === "image");
 }
 
-export function readAgentImageSupportOverride(config: unknown): boolean | undefined {
+export function readAgentImageInputMode(config: unknown): AgentImageInputMode {
   const parsed = parseAgentConfig(config);
   const value = parsed.image_input ?? parsed.supports_images ?? parsed.supportsImages;
-  if (value === true || value === "enabled" || value === "vision") return true;
-  if (value === false || value === "disabled" || value === "text") return false;
+  if (value === true || value === "enabled" || value === "vision") return "enabled";
+  if (value === false || value === "disabled" || value === "text") return "disabled";
+  return "auto";
+}
+
+export function readAgentImageSupportOverride(config: unknown): boolean | undefined {
+  const mode = readAgentImageInputMode(config);
+  if (mode === "enabled") return true;
+  if (mode === "disabled") return false;
   return undefined;
 }
 

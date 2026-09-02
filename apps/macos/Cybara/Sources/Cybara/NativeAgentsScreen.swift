@@ -352,6 +352,9 @@ struct AgentsScreen: View {
                 Text("Reasoning · \(nativeReasoningLabel(effort: agent.reasoningEffort, agent: agent))")
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.tertiary)
+                Label(agent.imageStatusLabel, systemImage: agent.supportsImages ? "photo.fill" : "photo")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(agent.supportsImages ? Color.green : Color.secondary)
             }
 
             Spacer()
