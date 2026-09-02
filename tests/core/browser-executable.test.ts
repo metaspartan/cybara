@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -7,6 +7,7 @@ import {
   browserExecutableCandidates,
   browserLaunchArgs,
   buildBrowserLaunchPlan,
+  findBundledBrowserExecutable,
 } from "../../src/core/browser/browser-executable";
 import {
   configureHermeticPlaywrightBrowserPath,
@@ -31,8 +32,8 @@ describe("browser executable discovery", () => {
     expect(candidates).toContain(
       "C:\\Users\\Test\\AppData\\Local\\Microsoft\\Edge\\Application\\msedge.exe"
     );
-    expect(candidates[0]).toBe("C:\\Apps\\Microsoft\\Edge\\Application\\msedge.exe");
-    expect(browserChannelNames("win32")).toEqual(["msedge", "chrome"]);
+    expect(candidates[0]).toBe("C:\\Apps\\Google\\Chrome\\Application\\chrome.exe");
+    expect(browserChannelNames("win32")).toEqual(["chrome", "msedge"]);
   });
 
   test("covers common native and packaged Linux browser locations", () => {
@@ -81,6 +82,25 @@ describe("browser executable discovery", () => {
     });
 
     expect(candidates[0]).toBe("/opt/cybara/chrome");
+  });
+
+  test("finds the packaged Windows Chromium headless shell when the full browser is absent", () => {
+    const root = mkdtempSync(join(tmpdir(), "cybara-packaged-chromium-"));
+    const executable = join(root, "chromium_headless_shell-1", "chrome-win", "headless_shell.exe");
+    try {
+      mkdirSync(join(root, "chromium_headless_shell-1", "chrome-win"), { recursive: true });
+      writeFileSync(executable, "browser");
+
+      expect(
+        findBundledBrowserExecutable(
+          { executablePath: () => join(root, "chromium-1", "chrome.exe") },
+          "win32",
+          root
+        )
+      ).toBe(executable);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("keeps the Chromium sandbox enabled on desktop platforms", () => {

@@ -12,6 +12,7 @@ import { arch, platform } from "os";
 import { dirname, join, relative } from "path";
 import { readGitCommit } from "../src/core/build-info";
 import { type BunRuntimeTarget, installBunRuntimeAt } from "../src/core/bun-runtime";
+import { findPlaywrightBrowserExecutable } from "../src/core/browser/browser-executable";
 import {
   CUA_DRIVER_VERSION,
   getCuaDriverTarget,
@@ -369,18 +370,7 @@ function copyOptionalPackage(packageName: string, targetNodeModulesDir: string):
 }
 
 export function findWindowsPlaywrightBrowserExecutable(browserRoot: string): string | null {
-  if (!existsSync(browserRoot)) return null;
-  const pending = [browserRoot];
-  while (pending.length > 0) {
-    const current = pending.pop();
-    if (!current) continue;
-    for (const entry of readdirSync(current, { withFileTypes: true })) {
-      const path = join(current, entry.name);
-      if (entry.isDirectory()) pending.push(path);
-      else if (["headless_shell.exe", "chrome.exe"].includes(entry.name.toLowerCase())) return path;
-    }
-  }
-  return null;
+  return findPlaywrightBrowserExecutable(browserRoot, "win32");
 }
 
 export function findBundledWindowsPlaywrightRuntime(targetRoot: string): string | null {
