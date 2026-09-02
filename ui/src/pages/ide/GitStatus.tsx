@@ -1,5 +1,4 @@
-/** Git status bar widget — shows branch + modified/untracked counts. */
-import { useState, useEffect } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
@@ -8,55 +7,61 @@ export function GitStatus({
   path,
   compact = false,
   refreshKey,
-  pollMs = 15000,
+  pollMs = 30000,
 }: {
   path: string;
   compact?: boolean;
-  /** Bump to force an immediate refresh (e.g. after a save/commit). */
   refreshKey?: number | string;
-  /** Background refresh interval; set 0 to disable polling. */
   pollMs?: number;
-}) {
+}): ReactElement | null {
   const [branch, setBranch] = useState<string | null>(null);
   const [modified, setModified] = useState(0);
   const [untracked, setUntracked] = useState(0);
 
   useEffect(() => {
-    // Guard against setState-after-unmount and out-of-order responses when the
-    // path changes or the component unmounts mid-request.
     let cancelled = false;
+    let inFlight = false;
     const controller = new AbortController();
 
-    const fetchGit = async () => {
+    const fetchGit = async (): Promise<void> => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const res = await apiFetch(`/api/git/status?path=${encodeURIComponent(path)}`, {
           signal: controller.signal,
         });
-        const data = await res.json();
+        const value: unknown = await res.json();
         if (cancelled) return;
-        if (data.isRepo) {
-          setBranch(data.branch || "HEAD");
-          setModified(data.modified?.length || 0);
-          setUntracked(data.untracked?.length || 0);
+        const data = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+        if (data.isRepo === true) {
+          setBranch(typeof data.branch === "string" && data.branch ? data.branch : "HEAD");
+          setModified(Array.isArray(data.modified) ? data.modified.length : 0);
+          setUntracked(Array.isArray(data.untracked) ? data.untracked.length : 0);
         } else {
           setBranch(null);
         }
       } catch (err) {
-        if (cancelled || (err as Error)?.name === "AbortError") return;
+        if (cancelled || (err instanceof Error && err.name === "AbortError")) return;
         setBranch(null);
+      } finally {
+        inFlight = false;
       }
     };
 
     void fetchGit();
-
-    // Poll so branch/modified counts don't go stale after edits or commits —
-    // everything else in the IDE stays live, this used to be a frozen snapshot.
-    const timer = pollMs > 0 ? window.setInterval(() => void fetchGit(), pollMs) : undefined;
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState === "visible") void fetchGit();
+    };
+    const timer = pollMs > 0 ? window.setInterval(refreshWhenVisible, pollMs) : undefined;
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
 
     return () => {
       cancelled = true;
       controller.abort();
       if (timer !== undefined) window.clearInterval(timer);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [path, refreshKey, pollMs]);
 

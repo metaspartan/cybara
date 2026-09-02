@@ -486,14 +486,20 @@ export function CodeViewer({
   useEffect(() => {
     if (!autoRefresh || !path) return;
 
-    const interval = setInterval(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
       if (!hasUnsavedChangesRef.current) {
         void fetchContent();
       }
       void fetchDiagnostics();
       void fetchLineChanges();
-    }, 3000);
-    return () => clearInterval(interval);
+    };
+    const interval = window.setInterval(refreshWhenVisible, 8000);
+    window.addEventListener("focus", refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
   }, [autoRefresh, path, fetchContent, fetchDiagnostics, fetchLineChanges]);
 
   useEffect(() => {

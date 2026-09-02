@@ -436,6 +436,7 @@ describe("LSP API", () => {
     const diagnosticsRes = await fixture.api("GET", "/api/lsp/diagnostics");
     expect(diagnosticsRes.status).toBe(200);
     expect(Array.isArray(diagnosticsRes.data.files)).toBe(true);
+    expect(Array.isArray(diagnosticsRes.data.issues)).toBe(true);
     expect(typeof diagnosticsRes.data.total).toBe("number");
 
     const installStatusRes = await fixture.api("GET", "/api/lsp/install-status");
@@ -455,6 +456,38 @@ describe("LSP API", () => {
     const missingWorkspaceStatusRes = await fixture.api("GET", "/api/lsp/workspace-status");
     expect(missingWorkspaceStatusRes.status).toBe(200);
     expect(missingWorkspaceStatusRes.data.success).toBe(false);
+
+    const missingRestartRes = await fixture.api("POST", "/api/lsp/restart", {});
+    expect(missingRestartRes.status).toBe(200);
+    expect(missingRestartRes.data.success).toBe(false);
+
+    const restartRes = await fixture.api(
+      "POST",
+      `/api/lsp/restart?path=${encodeURIComponent(fixture.testHome)}`,
+      {}
+    );
+    expect(restartRes.status).toBe(200);
+    expect(restartRes.data.success).toBe(true);
+    expect(restartRes.data.workspace).toBe(realpathSync(fixture.testHome));
+
+    const restartFile = join(fixture.testHome, "restart-lsp.ts");
+    writeFileSync(restartFile, "export const restarted = true;\n", "utf8");
+    const restartFileRes = await fixture.api(
+      "POST",
+      `/api/lsp/restart?path=${encodeURIComponent(restartFile)}`,
+      {}
+    );
+    expect(restartFileRes.status).toBe(200);
+    expect(restartFileRes.data.success).toBe(true);
+    expect(restartFileRes.data.languageId).toBe("typescript");
+    expect(Array.isArray(restartFileRes.data.active)).toBe(true);
+    expect(restartFileRes.data.active.length).toBeGreaterThan(0);
+    expect(
+      restartFileRes.data.active.some(
+        (server: { running?: boolean; initialized?: boolean }) =>
+          server.running === true && server.initialized === true
+      )
+    ).toBe(true);
 
     const lspMetricsAfter = fixture.countMetrics("lsp_operation");
     expect(lspMetricsAfter).toBeGreaterThan(lspMetricsBefore);

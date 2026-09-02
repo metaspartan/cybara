@@ -1,5 +1,5 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { createRequire } from "module";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -62,18 +62,42 @@ const lspManager = {
   },
   getSupportedLanguages: () => ["typescript", "swift"],
   isAvailable: async (language: string) => language === "typescript",
+  isBundled: (language: string) => language === "typescript",
+  getWorkspacePath: () => {
+    const workspacePath = lspState.initWorkspaces.at(-1) || process.cwd();
+    return existsSync(workspacePath) ? realpathSync(workspacePath) : workspacePath;
+  },
+  getRunningServers: () => [],
+  shutdown: async () => {},
 };
 
 mock.module("../../src/core/lsp", () => ({
-  getLSPManager: () => {
+  getLSPManager: (workspacePath?: string) => {
     if (lspState.getThrows) {
       throw new Error("not initialized");
     }
+    if (workspacePath) lspState.initWorkspaces.push(workspacePath);
     return lspManager;
   },
   initLSPManager: (workspacePath: string) => {
     lspState.initWorkspaces.push(workspacePath);
     return lspManager;
+  },
+  peekLSPManager: (workspacePath: string) => {
+    const activePath = lspState.initWorkspaces.at(-1);
+    if (!activePath) return null;
+    const canonicalActivePath = existsSync(activePath) ? realpathSync(activePath) : activePath;
+    const canonicalWorkspacePath = existsSync(workspacePath)
+      ? realpathSync(workspacePath)
+      : workspacePath;
+    return canonicalActivePath === canonicalWorkspacePath ? lspManager : null;
+  },
+  restartLSPManager: async (workspacePath: string) => {
+    lspState.initWorkspaces.push(workspacePath);
+    return lspManager;
+  },
+  shutdownAllLSPManagers: async () => {
+    lspState.initWorkspaces = [];
   },
 }));
 
@@ -106,6 +130,10 @@ describe("LSP tool handlers", () => {
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  afterAll(() => {
+    mock.restore();
   });
 
   test("normalizes diagnostics and summarizes severity counts", async () => {

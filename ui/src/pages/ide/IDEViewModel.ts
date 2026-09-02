@@ -11,6 +11,7 @@ import type {
   IdePendingFileDiff,
   IdePendingFileDiffController,
   IdePreferences,
+  IDESidebarMode,
   IdeReplacePreviewResult,
   IdeSearchResult,
   IdeSettingsSectionId,
@@ -64,7 +65,8 @@ export interface IDEViewModel {
   gitHistoryStatus: GitHistoryStatus;
   setGitHistoryStatus: import("react").Dispatch<import("react").SetStateAction<GitHistoryStatus>>;
   sidebarWidth: number;
-  sidebarMode: "explorer" | "search" | "outline";
+  sidebarMode: IDESidebarMode;
+  setSidebarMode: import("react").Dispatch<import("react").SetStateAction<IDESidebarMode>>;
   openMenu: IdeTopMenuId;
   setOpenMenu: import("react").Dispatch<import("react").SetStateAction<IdeTopMenuId>>;
   globalSearchQuery: string;

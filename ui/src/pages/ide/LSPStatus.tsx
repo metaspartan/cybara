@@ -1,6 +1,5 @@
-/** LSP status bar widget — shows active language servers for the current file. */
-import { useState, useEffect, useRef } from "react";
-import { ChevronDown, Zap } from "lucide-react";
+import { useCallback, useState, useEffect, useEffectEvent, useRef } from "react";
+import { ChevronDown, RefreshCw, RotateCcw, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
 import { getActiveLanguageFromExtension } from "./ideLanguageMaps";
@@ -21,8 +20,49 @@ export function LSPStatus({
   const [servers, setServers] = useState<LspActiveServer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const requestSequenceRef = useRef(0);
+
+  const refreshStatus = useCallback(async (): Promise<void> => {
+    const fallbackLanguage = getActiveLanguageFromExtension(activeExtension);
+    if (!activeFilePath) {
+      setServers([]);
+      setLanguageId(fallbackLanguage);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+
+    const sequence = ++requestSequenceRef.current;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/lsp/active?path=${encodeURIComponent(activeFilePath)}`);
+      const value: unknown = await res.json();
+      if (sequence !== requestSequenceRef.current) return;
+      const data = value && typeof value === "object" ? value : {};
+      const record = data as Record<string, unknown>;
+      setServers(Array.isArray(record.servers) ? (record.servers as LspActiveServer[]) : []);
+      setLanguageId(
+        typeof record.languageId === "string" && record.languageId
+          ? record.languageId
+          : fallbackLanguage
+      );
+      if (record.success === false && typeof record.error === "string") setError(record.error);
+    } catch (err) {
+      if (sequence !== requestSequenceRef.current) return;
+      setServers([]);
+      setLanguageId(fallbackLanguage);
+      setError(err instanceof Error ? err.message : "Failed to load LSP status");
+    } finally {
+      if (sequence === requestSequenceRef.current) setIsLoading(false);
+    }
+  }, [activeExtension, activeFilePath]);
+  const refreshWhenVisible = useEffectEvent(() => {
+    if (document.visibilityState === "visible") void refreshStatus();
+  });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -44,48 +84,43 @@ export function LSPStatus({
   }, [isOpen]);
 
   useEffect(() => {
-    const fallbackLanguage = getActiveLanguageFromExtension(activeExtension);
-    if (!activeFilePath) {
-      setServers([]);
-      setLanguageId(fallbackLanguage);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
-
-    let isCancelled = false;
-    const fetchStatus = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const res = await apiFetch(`/api/lsp/active?path=${encodeURIComponent(activeFilePath)}`);
-        const data = await res.json();
-        if (isCancelled) return;
-        setServers(Array.isArray(data?.servers) ? (data.servers as LspActiveServer[]) : []);
-        setLanguageId(
-          typeof data?.languageId === "string" && data.languageId
-            ? data.languageId
-            : fallbackLanguage
-        );
-        if (data?.success === false && typeof data?.error === "string") {
-          setError(data.error);
-        }
-      } catch (err) {
-        if (isCancelled) return;
-        setServers([]);
-        setLanguageId(fallbackLanguage);
-        setError((err as Error)?.message || "Failed to load LSP status");
-      } finally {
-        if (!isCancelled) {
-          setIsLoading(false);
-        }
-      }
-    };
-    void fetchStatus();
+    void refreshStatus();
     return () => {
-      isCancelled = true;
+      requestSequenceRef.current += 1;
     };
-  }, [activeExtension, activeFilePath]);
+  }, [refreshStatus]);
+
+  useEffect(() => {
+    if (!activeFilePath) return;
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [activeFilePath]);
+
+  const restartServers = async (): Promise<void> => {
+    if (!activeFilePath || isRestarting) return;
+    setIsRestarting(true);
+    setError(null);
+    try {
+      const response = await apiFetch(
+        `/api/lsp/restart?path=${encodeURIComponent(activeFilePath)}`,
+        { method: "POST" }
+      );
+      const value: unknown = await response.json();
+      const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+      if (!response.ok || record.success === false) {
+        throw new Error(typeof record.error === "string" ? record.error : "Restart failed");
+      }
+      await refreshStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to restart language servers");
+    } finally {
+      setIsRestarting(false);
+    }
+  };
 
   const runningCount = servers.filter((server) => server.running && server.initialized).length;
   const availableCount = servers.filter((server) => server.available).length;
@@ -110,7 +145,10 @@ export function LSPStatus({
       <div ref={popoverRef} className="relative">
         <button
           type="button"
-          onClick={() => setIsOpen((previous) => !previous)}
+          onClick={() => {
+            setIsOpen((previous) => !previous);
+            void refreshStatus();
+          }}
           className="inline-flex items-center gap-2 rounded px-1.5 py-0.5 hover:bg-white/5"
           title="Show active language servers"
         >
@@ -125,7 +163,29 @@ export function LSPStatus({
         {isOpen && (
           <div className="absolute bottom-[calc(100%+8px)] right-0 z-30 w-[360px] overflow-hidden rounded-md border border-white/10 bg-[#0b0f19] shadow-[0_20px_40px_rgba(0,0,0,0.45)]">
             <div className="border-b border-white/10 px-3 py-2">
-              <div className="text-xs font-medium text-gray-200">Language Servers</div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs font-medium text-gray-200">Language Servers</div>
+                <button
+                  type="button"
+                  onClick={() => void refreshStatus()}
+                  disabled={isLoading}
+                  className="ml-auto rounded p-1 text-gray-500 hover:bg-white/5 hover:text-gray-200 disabled:opacity-50"
+                  title="Refresh language server status"
+                  aria-label="Refresh language server status"
+                >
+                  <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void restartServers()}
+                  disabled={!activeFilePath || isRestarting}
+                  className="rounded p-1 text-gray-500 hover:bg-white/5 hover:text-gray-200 disabled:opacity-50"
+                  title="Restart language servers for this workspace"
+                  aria-label="Restart language servers for this workspace"
+                >
+                  <RotateCcw className={cn("h-3.5 w-3.5", isRestarting && "animate-spin")} />
+                </button>
+              </div>
               <div className="mt-0.5 text-[11px] text-gray-500">
                 {languageId || "unknown"} • {runningCount}/{servers.length} running
               </div>

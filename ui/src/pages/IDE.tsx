@@ -43,6 +43,7 @@ import type {
   IdeOutlineSymbol,
   IdePendingFileDiff,
   IdePendingFileDiffController,
+  IDESidebarMode,
   IdeReplacePreviewResult,
   IdeReplaceResult,
   IdeSearchResult,
@@ -114,7 +115,7 @@ export function IDE() {
   } | null>(null);
   const [gitHistoryStatus, setGitHistoryStatus] = useState<GitHistoryStatus>("idle");
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => readPersistedSidebarWidth());
-  const [sidebarMode, setSidebarMode] = useState<"explorer" | "search" | "outline">("explorer");
+  const [sidebarMode, setSidebarMode] = useState<IDESidebarMode>("explorer");
   const [openMenu, setOpenMenu] = useState<IdeTopMenuId | null>(null);
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
   const [globalSearchReplace, setGlobalSearchReplace] = useState("");
@@ -1660,6 +1661,7 @@ export function IDE() {
         setGitHistoryStatus,
         sidebarWidth,
         sidebarMode,
+        setSidebarMode,
         openMenu,
         setOpenMenu,
         globalSearchQuery,

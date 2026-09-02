@@ -1,5 +1,7 @@
 import type { LiveActivityItem, ToolCallLike } from "@/lib/chatActivities";
 import type { AgentReasoningEffort, AgentTransferInfo, ChatImageAttachment } from "@/types";
+export type IDESidebarMode = "explorer" | "search" | "outline" | "problems";
+
 export interface FileEntry {
   name: string;
   path: string;
