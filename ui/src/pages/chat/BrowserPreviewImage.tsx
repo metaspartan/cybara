@@ -2,12 +2,12 @@ import { type MutableRefObject, useEffect, useRef } from "react";
 import { createHydratedAuthenticatedWebSocket, withGatewayBasePath } from "@/lib/auth";
 import {
   type BrowserPreviewStreamSender,
+  containBrowserPreviewFrame,
   LatestBrowserFrameDecoder,
 } from "./browserPreviewStreamClient";
 import {
-  BROWSER_PREVIEW_MAX_HEIGHT,
-  BROWSER_PREVIEW_MAX_WIDTH,
   BROWSER_PREVIEW_MIN_PAINT_GAP_MS,
+  browserPreviewReconnectDelay,
 } from "./browserPreviewTiming";
 
 interface BrowserPreviewImageProps {
@@ -15,6 +15,9 @@ interface BrowserPreviewImageProps {
   visible: boolean;
   fallbackSource: string | null;
   quality: number;
+  maxWidth: number;
+  maxHeight: number;
+  everyNthFrame: number;
   inputSenderRef: MutableRefObject<BrowserPreviewStreamSender | null>;
   onConnectionChange: (connected: boolean) => void;
   onFramePresented: (presented: boolean) => void;
@@ -89,6 +92,9 @@ export function BrowserPreviewImage({
   visible,
   fallbackSource,
   quality,
+  maxWidth,
+  maxHeight,
+  everyNthFrame,
   inputSenderRef,
   onConnectionChange,
   onFramePresented,
@@ -157,16 +163,17 @@ export function BrowserPreviewImage({
         frame.release();
         return;
       }
-      if (canvas.width !== frame.width || canvas.height !== frame.height) {
-        canvas.width = frame.width;
-        canvas.height = frame.height;
+      const frameSize = containBrowserPreviewFrame(frame.width, frame.height, maxWidth, maxHeight);
+      if (canvas.width !== frameSize.width || canvas.height !== frameSize.height) {
+        canvas.width = frameSize.width;
+        canvas.height = frameSize.height;
         canvasContextRef.current = null;
       }
       const context =
         canvasContextRef.current ?? canvas.getContext("2d", { alpha: false, desynchronized: true });
       canvasContextRef.current = context;
       try {
-        context?.drawImage(frame.source, 0, 0, frame.width, frame.height);
+        context?.drawImage(frame.source, 0, 0, frameSize.width, frameSize.height);
         hasStreamFrame = Boolean(context);
         if (context) {
           streamFrameVersion += 1;
@@ -221,13 +228,29 @@ export function BrowserPreviewImage({
       presentStreamFrame,
       (frame) => frame.release()
     );
+    const scheduleReconnect = (): void => {
+      if (!active || reconnectTimer !== null) return;
+      const delay = browserPreviewReconnectDelay(reconnectAttempt);
+      reconnectAttempt += 1;
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        void connect().catch(handleConnectFailure);
+      }, delay);
+    };
+    const handleConnectFailure = (): void => {
+      connectedRef.current = false;
+      inputSenderRef.current = null;
+      connectionChangeRef.current(false);
+      if (!hasStreamFrame) presentFallback();
+      scheduleReconnect();
+    };
     const connect = async (): Promise<void> => {
       if (!active) return;
       const query = new URLSearchParams({
         quality: String(quality),
-        maxWidth: String(BROWSER_PREVIEW_MAX_WIDTH),
-        maxHeight: String(BROWSER_PREVIEW_MAX_HEIGHT),
-        everyNthFrame: "1",
+        maxWidth: String(maxWidth),
+        maxHeight: String(maxHeight),
+        everyNthFrame: String(everyNthFrame),
       });
       const nextSocket = await createHydratedAuthenticatedWebSocket(
         browserStreamUrl(
@@ -300,12 +323,10 @@ export function BrowserPreviewImage({
             presentFallback();
           }, 750);
         }
-        const delay = Math.min(5_000, 250 * 2 ** reconnectAttempt);
-        reconnectAttempt += 1;
-        reconnectTimer = window.setTimeout(() => void connect(), delay);
+        scheduleReconnect();
       };
     };
-    void connect();
+    void connect().catch(handleConnectFailure);
     return () => {
       active = false;
       if (paintHandle !== null) window.cancelAnimationFrame(paintHandle);
@@ -326,7 +347,7 @@ export function BrowserPreviewImage({
       presentFallback();
       lastPresentedValueRef.current = false;
     };
-  }, [inputSenderRef, pageId, quality, visible]);
+  }, [everyNthFrame, inputSenderRef, maxHeight, maxWidth, pageId, quality, visible]);
 
   return (
     <>

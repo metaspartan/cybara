@@ -1,14 +1,36 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { LatestBrowserFrameDecoder } from "../../ui/src/pages/chat/browserPreviewStreamClient";
+import {
+  containBrowserPreviewFrame,
+  LatestBrowserFrameDecoder,
+} from "../../ui/src/pages/chat/browserPreviewStreamClient";
 
 describe("browser preview image", () => {
+  test("bounds oversized frames while preserving their aspect ratio", () => {
+    expect(containBrowserPreviewFrame(1440, 900, 640, 480)).toEqual({
+      width: 640,
+      height: 400,
+    });
+    expect(containBrowserPreviewFrame(390, 844, 640, 480)).toEqual({
+      width: 222,
+      height: 480,
+    });
+    expect(containBrowserPreviewFrame(320, 240, 640, 480)).toEqual({
+      width: 320,
+      height: 240,
+    });
+  });
+
   test("keeps stream capture bounds stable while the panel viewport resizes", () => {
     const source = readFileSync("ui/src/pages/chat/BrowserPreviewImage.tsx", "utf8");
     const workspace = readFileSync("ui/src/pages/chat/ChatWorkspaceBrowser.tsx", "utf8");
 
-    expect(source).toContain("maxWidth: String(BROWSER_PREVIEW_MAX_WIDTH)");
-    expect(source).toContain("maxHeight: String(BROWSER_PREVIEW_MAX_HEIGHT)");
+    expect(source).toContain("maxWidth: String(maxWidth)");
+    expect(source).toContain("maxHeight: String(maxHeight)");
+    expect(source).toContain("everyNthFrame: String(everyNthFrame)");
+    expect(source).toContain("containBrowserPreviewFrame(");
+    expect(source).toContain("frameSize.width");
+    expect(source).toContain("frameSize.height");
     expect(workspace).not.toContain("maxWidth={browserViewport.width}");
     expect(workspace).not.toContain("maxHeight={browserViewport.height}");
     expect(workspace).toContain(
@@ -16,6 +38,14 @@ describe("browser preview image", () => {
     );
     expect(workspace).toContain("resizeBrowserPage(browserPageId, viewport, mode)");
     expect(workspace).toContain("const viewport = browserViewportRef.current");
+  });
+
+  test("retries a failed stream handshake without an unhandled rejection", () => {
+    const source = readFileSync("ui/src/pages/chat/BrowserPreviewImage.tsx", "utf8");
+
+    expect(source).toContain("void connect().catch(handleConnectFailure)");
+    expect(source).toContain("scheduleReconnect();");
+    expect(source).toContain("browserPreviewReconnectDelay(reconnectAttempt)");
   });
 
   test("decodes one frame at a time and keeps only the latest queued frame", async () => {

@@ -4,6 +4,33 @@ export const BROWSER_PREVIEW_IDLE_POLL_MS = 2_500;
 export const BROWSER_PREVIEW_MAX_WIDTH = 1_600;
 export const BROWSER_PREVIEW_MAX_HEIGHT = 1_200;
 export const BROWSER_PREVIEW_MIN_PAINT_GAP_MS = 33;
+export const BROWSER_PREVIEW_RECONNECT_MAX_MS = 5_000;
+
+export interface BrowserPreviewStreamProfile {
+  quality: number;
+  maxWidth: number;
+  maxHeight: number;
+  everyNthFrame: number;
+}
+
+export const BROWSER_PREVIEW_STREAM_PROFILE: BrowserPreviewStreamProfile = {
+  quality: 82,
+  maxWidth: BROWSER_PREVIEW_MAX_WIDTH,
+  maxHeight: BROWSER_PREVIEW_MAX_HEIGHT,
+  everyNthFrame: 1,
+};
+
+export const BROWSER_PREVIEW_THUMBNAIL_STREAM_PROFILE: BrowserPreviewStreamProfile = {
+  quality: 68,
+  maxWidth: 640,
+  maxHeight: 480,
+  everyNthFrame: 2,
+};
+
+export function browserPreviewReconnectDelay(attempt: number): number {
+  const normalizedAttempt = Number.isFinite(attempt) ? Math.max(0, Math.floor(attempt)) : 0;
+  return Math.min(BROWSER_PREVIEW_RECONNECT_MAX_MS, 250 * 2 ** normalizedAttempt);
+}
 
 export function browserPreviewViewport(
   width: number,
