@@ -1,13 +1,45 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   clampFloatingBrowserPreviewRect,
   defaultFloatingBrowserPreviewRect,
+  FLOATING_COMPUTER_PREVIEW_STORAGE_KEY,
   isFloatingBrowserPreviewClick,
   parseFloatingBrowserPreviewRect,
+  persistFloatingPreviewHidden,
+  readFloatingPreviewHidden,
   shouldShowFloatingBrowserPreview,
 } from "../../ui/src/pages/chat/floatingBrowserPreviewModel";
 
+function makeLocalStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+    removeItem: (key: string) => void store.delete(key),
+    clear: () => store.clear(),
+    key: (index: number) => Array.from(store.keys())[index] ?? null,
+    get length() {
+      return store.size;
+    },
+  };
+}
+
+const originalWindow = globalThis.window;
+const originalLocalStorage = globalThis.localStorage;
+
 describe("floating browser preview", () => {
+  beforeEach(() => {
+    globalThis.window = {
+      localStorage: makeLocalStorage(),
+    } as unknown as Window & typeof globalThis;
+    globalThis.localStorage = globalThis.window.localStorage;
+  });
+
+  afterEach(() => {
+    globalThis.window = originalWindow as unknown as Window & typeof globalThis;
+    globalThis.localStorage = originalLocalStorage;
+  });
+
   test("defaults above the composer and stays inside the chat surface", () => {
     expect(defaultFloatingBrowserPreviewRect({ width: 1_000, height: 800 }, 120)).toEqual({
       x: 728,
@@ -80,5 +112,13 @@ describe("floating browser preview", () => {
     expect(isFloatingBrowserPreviewClick(4, 4)).toBe(true);
     expect(isFloatingBrowserPreviewClick(7, 0)).toBe(false);
     expect(isFloatingBrowserPreviewClick(24, 18)).toBe(false);
+  });
+
+  test("persists and reads the hidden flag per storage key", () => {
+    expect(readFloatingPreviewHidden(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY)).toBe(false);
+    persistFloatingPreviewHidden(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY, true);
+    expect(readFloatingPreviewHidden(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY)).toBe(true);
+    persistFloatingPreviewHidden(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY, false);
+    expect(readFloatingPreviewHidden(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY)).toBe(false);
   });
 });

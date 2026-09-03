@@ -1,5 +1,9 @@
 import { normalizeChatAppearanceSettings } from "cybara-shared/chat-appearance";
-import { CHAT_FOLLOW_THRESHOLD_PX, isChatNearBottom } from "cybara-shared/chat-scroll-follow";
+import {
+  CHAT_FOLLOW_THRESHOLD_PX,
+  type ChatScrollMetrics,
+  isChatNearBottom,
+} from "cybara-shared/chat-scroll-follow";
 import {
   ArrowDown,
   ArrowUp,
@@ -259,21 +263,29 @@ export function SessionDetailPanel({
   const scrollRef = useRef<ScrollView>(null);
   const followChatBottomRef = useRef(true);
   const chatScrollGestureActiveRef = useRef(false);
+  const pendingScrollToEndRef = useRef<number | null>(null);
   const headerActionRef = useRef<() => void>(() => {});
   const updateChatFollowFromScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-      followChatBottomRef.current = isChatNearBottom(
-        {
-          clientHeight: layoutMeasurement.height,
-          scrollHeight: contentSize.height,
-          scrollTop: contentOffset.y,
-        },
-        CHAT_FOLLOW_THRESHOLD_PX
-      );
+      const metrics: ChatScrollMetrics = {
+        clientHeight: layoutMeasurement.height,
+        scrollHeight: contentSize.height,
+        scrollTop: contentOffset.y,
+      };
+      followChatBottomRef.current = isChatNearBottom(metrics, CHAT_FOLLOW_THRESHOLD_PX);
     },
     []
   );
+  const scrollChatToEnd = useCallback((): void => {
+    if (!followChatBottomRef.current || chatScrollGestureActiveRef.current) return;
+    if (pendingScrollToEndRef.current !== null) return;
+    pendingScrollToEndRef.current = requestAnimationFrame(() => {
+      pendingScrollToEndRef.current = null;
+      if (!followChatBottomRef.current || chatScrollGestureActiveRef.current) return;
+      scrollRef.current?.scrollToEnd({ animated: false });
+    });
+  }, []);
   const {
     detail,
     setDetail,
@@ -1496,7 +1508,7 @@ export function SessionDetailPanel({
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => {
           if (!followChatBottomRef.current) return;
-          scrollRef.current?.scrollToEnd({ animated: false });
+          scrollChatToEnd();
         }}
         onMomentumScrollBegin={() => {
           chatScrollGestureActiveRef.current = true;
@@ -1516,6 +1528,7 @@ export function SessionDetailPanel({
         onScrollEndDrag={(event) => {
           updateChatFollowFromScroll(event);
           chatScrollGestureActiveRef.current = false;
+          if (followChatBottomRef.current) scrollChatToEnd();
         }}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}

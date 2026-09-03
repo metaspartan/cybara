@@ -132,6 +132,23 @@ export function isFloatingBrowserPreviewClick(deltaX: number, deltaY: number): b
   return Math.hypot(deltaX, deltaY) <= FLOATING_BROWSER_PREVIEW_CLICK_DISTANCE;
 }
 
+export function readFloatingPreviewHidden(storageKey: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(`${storageKey}:hidden`) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function persistFloatingPreviewHidden(storageKey: string, hidden: boolean): void {
+  try {
+    window.localStorage.setItem(`${storageKey}:hidden`, hidden ? "true" : "false");
+  } catch {
+    return;
+  }
+}
+
 export function readFloatingPreviewRect(storageKey: string): FloatingBrowserPreviewRect | null {
   if (typeof window === "undefined") return null;
   try {

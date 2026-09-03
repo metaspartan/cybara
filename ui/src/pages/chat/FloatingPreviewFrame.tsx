@@ -1,5 +1,6 @@
 import {
   type KeyboardEvent,
+  type MouseEvent,
   type PointerEvent,
   type ReactElement,
   type ReactNode,
@@ -8,6 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   clampFloatingBrowserPreviewRect,
@@ -23,8 +25,10 @@ interface FloatingPreviewFrameProps {
   ariaLabel: string;
   bottomInset: number;
   children: ReactNode;
+  hideLabel?: string;
   horizontal?: "left" | "right";
   onActivate: () => void;
+  onHide: () => void;
   storageKey: string;
   testId: string;
   title: string;
@@ -50,8 +54,10 @@ export function FloatingPreviewFrame({
   ariaLabel,
   bottomInset,
   children,
+  hideLabel = "Hide preview",
   horizontal = "right",
   onActivate,
+  onHide,
   storageKey,
   testId,
   title,
@@ -195,6 +201,14 @@ export function FloatingPreviewFrame({
     [bottomInset, commitRect, onActivate, rect]
   );
 
+  const handleHide = useCallback(
+    (event: MouseEvent<HTMLButtonElement>): void => {
+      event.stopPropagation();
+      onHide();
+    },
+    [onHide]
+  );
+
   return (
     <section
       ref={frameRef}
@@ -225,6 +239,15 @@ export function FloatingPreviewFrame({
       <div className="pointer-events-none h-full min-h-0 select-none" aria-hidden="true">
         {children}
       </div>
+      <button
+        type="button"
+        aria-label={hideLabel}
+        className="pointer-events-auto absolute right-2 top-2 z-50 flex h-6 w-6 items-center justify-center rounded-full border border-[var(--glass-border)] bg-black/45 text-white/80 transition-opacity duration-150 hover:bg-black/70 hover:text-white focus-visible:opacity-100"
+        onClick={handleHide}
+        title={hideLabel}
+      >
+        <X className="h-3.5 w-3.5" strokeWidth={2.4} />
+      </button>
     </section>
   );
 }
