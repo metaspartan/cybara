@@ -934,6 +934,14 @@ export function useChatLiveSessionRuntime({
               }
             }
           }
+          if (payload.type === "session_message") {
+            const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : "";
+            const activeSession = activeSessionRef.current;
+            if (sessionId && activeSession && sessionId === activeSession && !loadingRef.current) {
+              setStreamingContent(null);
+              void refreshSessionMessagesRef.current(sessionId, [], "latest");
+            }
+          }
           return;
         }
         const status = typeof payload.status === "string" ? payload.status : "";

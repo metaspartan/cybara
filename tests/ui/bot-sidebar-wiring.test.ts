@@ -41,7 +41,10 @@ describe("bot sidebar wiring", () => {
     expect(sidebar).toContain("Edit bot profile");
     expect(sidebar).toContain("botsApi.duplicate");
     expect(sidebar).toContain("botsApi.delete");
-    expect(sidebar).toContain("Team workspace");
+    expect(sidebar).toContain(">\n          Team\n        </button>");
+    expect(sidebar).toContain('t("chat.room.newRoom")');
+    expect(sidebar).toContain("<RoomCreateModal");
+    expect(sidebar).toContain('t("chat.room.delete")');
     expect(sidebar).toContain("buildMultiChatPath(sessions)");
     expect(sidebar).toContain("Routines");
     expect(sidebar).toContain("setActionBotId(null)");

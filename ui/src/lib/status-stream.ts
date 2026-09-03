@@ -94,11 +94,21 @@ export interface StatusStreamTokenEvent {
   timestamp: number;
 }
 
+export interface StatusStreamSessionMessageEvent {
+  type: "session_message";
+  sessionId: string;
+  agentId?: string;
+  agentName?: string;
+  role: "assistant" | "user" | "system";
+  timestamp: number;
+}
+
 export type StatusStreamEvent =
   | StatusStreamStatusEvent
   | StatusStreamTaskEvent
   | StatusStreamSnapshotEvent
-  | StatusStreamTokenEvent;
+  | StatusStreamTokenEvent
+  | StatusStreamSessionMessageEvent;
 
 interface ConnectStatusStreamHandlers {
   onEvent: (event: StatusStreamEvent) => void;

@@ -34,6 +34,7 @@ import {
   surfaceCount,
 } from "./dashboardHelpers";
 import type { IconGlyph } from "./dashboardPrimitives";
+import { botSessionId, isBotSessionId } from "cybara-shared/bot-mode";
 
 export interface ModuleCard {
   key: string;
@@ -362,8 +363,11 @@ export function routeHeader(
   if (!route) return fallback;
   if (route.kind === "session") {
     const session = summary?.sessions.find((candidate) => candidate.id === route.id);
+    const botAgent = isBotSessionId(route.id)
+      ? summary?.agents.find((agent) => botSessionId(agent.id) === route.id)
+      : undefined;
     return {
-      title: session?.title || "Chat",
+      title: botAgent?.name || session?.title || "Chat",
       detail: session
         ? `${session.message_count ?? 0} messages - ${lastUpdatedLabel(session)}`
         : "Chat details",

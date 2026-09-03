@@ -21,6 +21,7 @@ import {
   reconcileRecoveredSessionRunCompletion,
 } from "./session-event-ledger";
 import { deriveSessionTitleFromMessages, normalizeSessionTitle } from "./session-title";
+import { parseRoomConfig, type RoomConfig, serializeRoomConfig } from "../../shared/room-mode";
 
 const log = createLogger("Session");
 
@@ -1292,6 +1293,7 @@ export async function loadPersistedSession(
   compactionCount: number;
   workspaceDir: string | null;
   title: string | null;
+  roomConfig: RoomConfig | null;
 } | null> {
   try {
     const storedSessionMessages = options.deferHistoricalMetadata
@@ -1305,7 +1307,7 @@ export async function loadPersistedSession(
     const sessionMessages = reconcilePersistedRecoveryMessages(sessionId, storedSessionMessages);
     const session = db
       .prepare(
-        "SELECT agent_id, use_model_router, workspace_dir, title, context_state FROM chat_sessions WHERE id = ?"
+        "SELECT agent_id, use_model_router, workspace_dir, title, context_state, room_config FROM chat_sessions WHERE id = ?"
       )
       .get(sessionId) as {
       agent_id?: string;
@@ -1313,6 +1315,7 @@ export async function loadPersistedSession(
       workspace_dir?: string | null;
       title?: string | null;
       context_state?: string | null;
+      room_config?: string | null;
     } | null;
     if (!session) return null;
 
@@ -1338,6 +1341,7 @@ export async function loadPersistedSession(
       compactionCount: contextState?.compactionCount ?? 0,
       workspaceDir,
       title: title || deriveSessionTitle(messages, agentId || "default"),
+      roomConfig: parseRoomConfig(session?.room_config),
     };
   } catch (error) {
     log.exception("Failed to load persisted session", error, { sessionId });
@@ -1372,6 +1376,7 @@ export interface PersistedSessionListEntry {
   lastMessageRole: string | null;
   lastMessageContent: string | null;
   modelMetadata: SessionModelMetadata | null;
+  roomConfig: RoomConfig | null;
 }
 
 interface PersistedSessionListRow {
@@ -1387,6 +1392,20 @@ interface PersistedSessionListRow {
   lastMessageRole: string | null;
   lastMessageContent: string | null;
   lastModelMetadata: string | null;
+  roomConfig: string | null;
+}
+
+export function loadSessionRoomConfig(sessionId: string): RoomConfig | null {
+  return parseRoomConfig(tables.chatSessions.getRoomConfig(sessionId));
+}
+
+export function persistSessionRoomConfig(
+  sessionId: string,
+  agentId: string,
+  roomConfig: RoomConfig
+): void {
+  tables.chatSessions.ensure(sessionId, agentId);
+  tables.chatSessions.setRoomConfig(sessionId, serializeRoomConfig(roomConfig));
 }
 
 function normalizePersistedSessionListRow(
@@ -1394,6 +1413,7 @@ function normalizePersistedSessionListRow(
 ): PersistedSessionListEntry {
   return {
     ...session,
+    roomConfig: parseRoomConfig(session.roomConfig),
     useModelRouter: session.useModelRouter === 1,
     lastMessageContent:
       typeof session.lastMessageContent === "string" && session.lastMessageRole === "assistant"
@@ -1424,6 +1444,7 @@ function persistedSessionListSql(
         cs.updated_at as updatedAt,
         cs.workspace_dir as workspaceDir,
         COALESCE(cs.pinned, 0) as pinned,
+        cs.room_config as roomConfig,
         COALESCE(NULLIF((
           SELECT COUNT(*)
           FROM session_messages sm

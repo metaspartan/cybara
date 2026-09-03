@@ -74,11 +74,21 @@ export interface PendingChatMessageSnapshot {
   sequence: number;
 }
 
+export interface SessionMessageEventPayload {
+  type: "session_message";
+  sessionId: string;
+  agentId?: string;
+  agentName?: string;
+  role: "assistant" | "user" | "system";
+  timestamp: number;
+}
+
 export type StatusStreamEvent =
   | ({ type: "status" } & StatusPayload)
   | TaskEventPayload
   | StatusSnapshotEventPayload
-  | TokenStreamEventPayload;
+  | TokenStreamEventPayload
+  | SessionMessageEventPayload;
 
 export interface TokenStreamEventPayload {
   type: "assistant_token";
@@ -633,6 +643,21 @@ export function broadcastStatus(status: StatusPayload): void {
     sessionCallbacks: sessionStatusCallbacks.size,
     streamCallbacks: statusStreamCallbacks.size,
     sseClients: sseClients.size,
+  });
+}
+
+export function broadcastSessionMessageEvent(
+  event: Omit<SessionMessageEventPayload, "type" | "timestamp"> & { timestamp?: number }
+): void {
+  const sessionId = event.sessionId.trim();
+  if (!sessionId) return;
+  emitStatusStreamEvent({
+    type: "session_message",
+    sessionId,
+    agentId: event.agentId,
+    agentName: event.agentName,
+    role: event.role,
+    timestamp: event.timestamp ?? Date.now(),
   });
 }
 

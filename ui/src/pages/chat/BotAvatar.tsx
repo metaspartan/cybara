@@ -17,6 +17,15 @@ function botColorIndex(id: string): number {
   return hash % BOT_COLORS.length;
 }
 
+export function agentAvatarGradient(id: string): string {
+  const colors = BOT_COLORS[botColorIndex(id)];
+  return `linear-gradient(145deg, ${colors[0]}, ${colors[1]})`;
+}
+
+export function agentAvatarInitials(name: string): string {
+  return name.trim().slice(0, 2).toUpperCase();
+}
+
 interface BotAvatarProps {
   bot: BotRosterItem;
   active?: boolean;
@@ -25,17 +34,16 @@ interface BotAvatarProps {
 }
 
 export function BotAvatar({ bot, active = false, className, showPresence = true }: BotAvatarProps) {
-  const colors = BOT_COLORS[botColorIndex(bot.id)];
   return (
     <span
       className={cn(
         "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-white/15 text-sm font-semibold text-white shadow-lg",
         className
       )}
-      style={{ background: `linear-gradient(145deg, ${colors[0]}, ${colors[1]})` }}
+      style={{ background: agentAvatarGradient(bot.id) }}
       aria-hidden="true"
     >
-      {bot.name.trim().slice(0, 2).toUpperCase() || <Bot className="h-4 w-4" />}
+      {agentAvatarInitials(bot.name) || <Bot className="h-4 w-4" />}
       {showPresence ? (
         <span
           className={cn(

@@ -7,6 +7,7 @@ import {
   useLoadSession,
   useUpdateSessionAgent,
 } from "@/hooks/useChat";
+import { ChatRoomBanner, useCurrentRoom } from "./chat/RoomBanner";
 import { canShareNearbySession, useNearbyStatus } from "@/hooks/useNearbyStatus";
 import { botsApi, chatApi, extractApiError, providerPlansApi, settingsApi } from "@/lib/api";
 import {
@@ -162,6 +163,7 @@ export function Chat() {
     () => botRoster.find((bot) => bot.session_id === sessionId) ?? null,
     [botRoster, sessionId]
   );
+  const currentRoom = useCurrentRoom(sessionId);
   const composerAgents = useMemo(
     () =>
       currentBot
@@ -1593,7 +1595,7 @@ export function Chat() {
     activeAgent: activeAgentForPlan,
     agents: composerAgents,
     agentUpdating: updateSessionAgent.isPending,
-    agentLocked: currentBot !== null,
+    agentLocked: currentBot !== null || currentRoom !== null,
     approvalMode: toolApprovalMode,
     approvalUpdating: savingToolApprovalMode,
     capabilityPicker,
@@ -1755,6 +1757,12 @@ export function Chat() {
       <div className="flex-1 flex overflow-hidden">
         <div className="relative flex-1 flex flex-col min-w-0">
           <PendingApprovalsBanner />
+          <ChatRoomBanner
+            sessionId={sessionId}
+            busy={isLoading || currentSessionIsWorking}
+            onStop={() => void handleStopActive()}
+            onRoomChanged={() => void loadSessionMutation.loadFresh(sessionId || "")}
+          />
           {artifactViewerTarget ? (
             <ArtifactViewerPanel
               artifact={artifactViewerTarget}
@@ -1826,7 +1834,7 @@ export function Chat() {
                     messageProcessMap={messageProcessMap}
                     savingGoldenMessageIndex={savingGoldenMessageIndex}
                     sessionId={sessionId}
-                    showAuthorAttribution={transcriptHasMixedAgents}
+                    showAuthorAttribution={transcriptHasMixedAgents || currentRoom !== null}
                     showWorkingTimeline={showWorkingTimeline}
                     speakingMessageIndex={speakingMessageIndex}
                     workspaceDir={effectiveWorkspaceDir}

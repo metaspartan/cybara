@@ -244,6 +244,7 @@ export async function getSession(sessionId: string, options: ChatSessionLoadOpti
       workspaceDir,
       persisted: true,
       compactionCount: persisted.compactionCount,
+      room: persisted.roomConfig,
     };
     cacheChatSession(restoredSession);
     upsertPersistedSessionIndex({
@@ -257,6 +258,7 @@ export async function getSession(sessionId: string, options: ChatSessionLoadOpti
       workspaceDir,
       lastMessage: buildLastMessagePreview(recoveredMessages[recoveredMessages.length - 1]),
       modelMetadata,
+      room: persisted.roomConfig,
     });
     return restoredSession;
   }
@@ -413,6 +415,7 @@ async function buildSessionListIndex(): Promise<SessionListEntry[]> {
       pinned: persisted.pinned,
       lastMessage: persisted.lastMessage,
       modelMetadata: persisted.modelMetadata,
+      room: persisted.room ?? null,
     });
   }
 

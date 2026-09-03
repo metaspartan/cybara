@@ -252,15 +252,31 @@ export function encodeMobileConnectPayload(payload: MobileConnectPayload): strin
   return JSON.stringify(payload);
 }
 
-export function isMobileConnectDeepLink(value: unknown): value is string {
-  if (typeof value !== "string" || !value.trim()) return false;
+const EXPO_DEV_LINK_PROTOCOLS = new Set(["exp:", "exps:"]);
+
+export function mobileConnectDeepLinkPayload(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
   try {
     const url = new URL(value.trim());
-    const route = (url.hostname || url.pathname).replace(/^\/+/, "").toLowerCase();
-    return url.protocol === "cybara:" && route === "connect";
+    if (url.protocol === "cybara:") {
+      const route = (url.hostname || url.pathname).replace(/^\/+/, "").toLowerCase();
+      return route === "connect" ? url.searchParams.get("payload") : null;
+    }
+    if (EXPO_DEV_LINK_PROTOCOLS.has(url.protocol)) {
+      const route = url.pathname
+        .replace(/^\/+(--\/)?/, "")
+        .replace(/\/+$/, "")
+        .toLowerCase();
+      return route === "connect" ? url.searchParams.get("payload") : null;
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function isMobileConnectDeepLink(value: unknown): value is string {
+  return mobileConnectDeepLinkPayload(value) !== null;
 }
 
 export function parseMobileConnectPayload(raw: unknown): MobileConnectPayload {
@@ -403,13 +419,10 @@ export async function resolveGatewayProfile(
 ): Promise<GatewayProfile> {
   const trimmed = normalizeConnectionPayloadInput(raw);
 
-  try {
-    const url = new URL(trimmed);
-    const nestedPayload = url.protocol === "cybara:" ? url.searchParams.get("payload") : null;
-    if (nestedPayload && nestedPayload !== trimmed) {
-      return resolveGatewayProfile(nestedPayload, now, fetchImpl, timeoutMs, beforeRequest);
-    }
-  } catch {}
+  const nestedPayload = mobileConnectDeepLinkPayload(trimmed);
+  if (nestedPayload && nestedPayload !== trimmed) {
+    return resolveGatewayProfile(nestedPayload, now, fetchImpl, timeoutMs, beforeRequest);
+  }
 
   let parsed: unknown = null;
   try {

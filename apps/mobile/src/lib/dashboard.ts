@@ -14,7 +14,14 @@ import type {
 } from "./api";
 import type { GatewayProfile } from "./connection";
 
-export type MobileTabKey = "overview" | "sessions" | "metrics" | "usage" | "tasks" | "settings";
+export type MobileTabKey =
+  | "overview"
+  | "sessions"
+  | "bots"
+  | "metrics"
+  | "usage"
+  | "tasks"
+  | "settings";
 export type MobileSettingsTab =
   | "general"
   | "accessibility"
@@ -108,6 +115,7 @@ export interface MobileHeaderCopy {
 export const MOBILE_TABS: MobileTabDefinition[] = [
   { key: "overview", label: "Home", showsGatewayPanel: false },
   { key: "sessions", label: "Chats", showsGatewayPanel: false },
+  { key: "bots", label: "Bots", showsGatewayPanel: false },
   { key: "metrics", label: "Metrics", showsGatewayPanel: false },
   { key: "usage", label: "Usage", showsGatewayPanel: false },
   { key: "tasks", label: "Tasks", showsGatewayPanel: false },
@@ -752,6 +760,11 @@ export function buildMobileHeaderCopy(
       return {
         title: "Chats",
         detail: counts.sessions === 1 ? "1 chat" : `${counts.sessions} chats`,
+      };
+    case "bots":
+      return {
+        title: "Bots",
+        detail: "Persistent teammates and group rooms",
       };
     case "metrics": {
       const sessionLabel = counts.sessions === 1 ? "1 chat" : `${counts.sessions} chats`;

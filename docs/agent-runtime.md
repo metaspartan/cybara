@@ -41,6 +41,8 @@ stable prompt cannot grow without limit.
 | Memory | Durable and daily files, hybrid retrieval, optional external providers, and per-agent recall |
 | Planning | Session task lists, durable plan artifacts, plan UI, tasks, and environment surfaces |
 | Subagents | Isolated sessions, bounded child count, model/reasoning selection, live activity, result delivery, and multi-result synthesis |
+| Group rooms | Persistent `room:` sessions where several agents share one transcript with per-agent attribution, round-robin/mention-only/parallel/moderated discussion modes, bounded rounds, and manual next-speaker control |
+| Bots | Named, persistent teammates over a configured agent with a role preset, own memory and pinned conversation, surfaced in web and mobile Bots areas |
 | Approvals | Ask/allow modes, per-session and persistent allowlists, dangerous-tool policy, checkpoints, path policy, and sandbox enforcement |
 | Context management | Model-aware compaction, provider-overflow retry, recoverable large tool-result storage, and token accounting |
 | Hooks | Shell lifecycle hooks plus tool-result, model-output, and terminal-output transforms |

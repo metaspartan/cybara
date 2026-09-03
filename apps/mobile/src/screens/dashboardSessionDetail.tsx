@@ -105,6 +105,9 @@ import {
   writeCachedMobileOptimisticTranscriptMessage,
 } from "./dashboardOptimisticTranscript";
 import { mobileTranscriptHasMixedAuthors } from "./dashboardMessageAuthors";
+import { MobileRoomBanner } from "./dashboardRoomBanner";
+import { isBotSessionId } from "cybara-shared/bot-mode";
+import { isRoomSessionId } from "cybara-shared/room-mode";
 import { MobileGoalCard } from "./dashboardGoal";
 import {
   clearCachedMobileOptimisticPendingMessages,
@@ -452,7 +455,7 @@ export function SessionDetailPanel({
       const result = await api.sendChat({
         message,
         sessionId,
-        agentId: detail?.agentId,
+        agentId: sessionKeepsOwnAgent ? undefined : detail?.agentId,
         workspaceDir: detail?.workspaceDir,
         queueMode: queuedSend ? "queue" : undefined,
         clientPendingId: optimisticPendingMessageId || undefined,
@@ -1459,6 +1462,7 @@ export function SessionDetailPanel({
     () => latestVisibleChatMessages(renderMessages),
     [renderMessages]
   );
+  const sessionKeepsOwnAgent = isBotSessionId(sessionId) || isRoomSessionId(sessionId);
   const transcriptHasMixedAgents = useMemo(
     () => mobileTranscriptHasMixedAuthors(renderMessages),
     [renderMessages]
@@ -1543,6 +1547,17 @@ export function SessionDetailPanel({
         {loadError ? <EmptyState label="Session unavailable" detail={loadError} /> : null}
         {detail ? (
           <>
+            {detail.room ? (
+              <MobileRoomBanner
+                api={api}
+                sessionId={sessionId}
+                room={detail.room}
+                agents={agents}
+                busy={sessionActive}
+                onChanged={() => void loadSession(false)}
+                onStop={() => void stopResponse()}
+              />
+            ) : null}
             <MobileGoalCard api={api} sessionId={sessionId} working={sessionActive} />
             {sessionActive && detail.plan ? <MobilePlanSummaryCard plan={detail.plan} /> : null}
             {visibleMessages.map((message, index) => (
@@ -1553,7 +1568,7 @@ export function SessionDetailPanel({
                 message={message}
                 mediaUrl={(filePath) => api.mediaUrl(filePath)}
                 nowMs={message.id === liveAssistant?.id && sessionActive ? liveNowMs : undefined}
-                showAuthor={transcriptHasMixedAgents}
+                showAuthor={transcriptHasMixedAgents || Boolean(detail.room)}
                 onAddToChat={appendTextToComposer}
                 onRevert={message.role === "user" ? confirmRevertToMessage : undefined}
               />

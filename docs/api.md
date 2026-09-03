@@ -827,6 +827,113 @@ Connect via WebSocket for interactive terminal access. Send text to write to std
 GET /api/terminal/sessions
 ```
 
+## Bots
+
+Bots are persistent, named teammates built on top of a configured agent. Each bot keeps its
+own canonical pinned conversation (`bot:<agentId>`), memory, tools, and a role. Bots and group
+rooms live under **Bots** in the web sidebar and the mobile app's Bots tab; they are hidden from
+the regular chat list.
+
+### Role Presets
+
+```
+GET /api/bots/roles
+```
+
+Returns the built-in role catalog (generalist, researcher, coder, planner, ops, marketer,
+writer, analyst, support, sales, designer, product, qa, security, finance, recruiter, social,
+moderator). Each preset carries a `title`, `description`, and a working-style `focus` that is
+folded into the bot's system prompt.
+
+### Create, Update, And Open Bots
+
+```
+GET    /api/bots
+POST   /api/bots               { "name": "Nova", "role": "marketer", "base_agent_id": "...",
+                                 "title": "...", "description": "...", "model": "...", "provider_id": "..." }
+PUT    /api/bots/:id           { "name", "role", "title", "description", "hidden", "pinned", "model", "provider_id" }
+POST   /api/bots/:id/duplicate
+POST   /api/bots/:id/session   → { "session_id": "bot:<id>" }
+DELETE /api/bots/:id
+```
+
+When `role` is set and `title` or `description` are omitted, the preset fills them in. A bot's
+session always answers as that bot; an `agentId` sent with a chat message is ignored for
+`bot:` sessions. Paired mobile devices need the `read` scope to list bots, `chat` to open a bot
+session or use rooms, and `manage` to create, edit, or delete bots.
+
+## Group Rooms
+
+A group room is a persistent chat session (`room:<uuid>`) shared by several agents. Every
+participant sees the same transcript, each reply is attributed to the agent and model that
+wrote it, and each agent keeps its own system prompt, tools, and memory. Rooms survive
+restarts and appear in the normal session list with a `room` field.
+
+### Discussion Modes
+
+| Mode | Behavior |
+| --- | --- |
+| `round_robin` | Every participant replies in order. Extra rounds continue only while someone still has something to add; agents reply `PASS` to stay silent. |
+| `mention_only` | Only participants @mentioned in the user message reply. Agents can pull each other in by @handle. With no mention, everyone replies. |
+| `parallel` | All participants answer a round at the same time without seeing each other's reply for that round. |
+| `moderated` | A moderator agent picks who speaks next and decides when the discussion ends. |
+
+`max_rounds` (1-6) bounds the back-and-forth after each user message.
+
+### Create Room
+
+```
+POST /api/rooms
+{
+  "participant_agent_ids": ["agent-a", "agent-b"],
+  "mode": "round_robin",
+  "max_rounds": 2,
+  "moderator_agent_id": null,
+  "shared_context": "Ship v2 by Friday",
+  "title": "Launch planning",
+  "workspace_dir": null
+}
+```
+
+Returns `{ success, room }` where `room` includes `session_id`, the normalized config, and a
+`participants` list with each agent's `@handle`.
+
+### Talk To A Room
+
+Send messages with the regular chat endpoint using the room's `session_id`:
+
+```
+POST /api/chat
+{ "message": "@coder draft the migration, @research check the risks", "sessionId": "room:..." }
+```
+
+The response carries the last reply in `message` and every reply from the turn in `messages`.
+Each assistant message includes `agent_id`, `agent_name`, and `model`. While the room is
+talking, the status stream emits `status` events with the speaking `agentId` and a
+`session_message` event after each reply lands.
+
+### Inspect, Update, And Steer
+
+```
+GET  /api/rooms/modes
+GET  /api/rooms/:id
+PUT  /api/rooms/:id           { "mode": "moderated", "max_rounds": 3, "participant_agent_ids": [...] }
+POST /api/rooms/:id/speak     { "agent_id": "agent-b" }
+POST /api/chat/sessions/:id/stop
+```
+
+`speak` makes one participant reply immediately without a new user message, which is the
+manual next-speaker control. `stop` ends the current discussion. Deleting a room is an
+ordinary `DELETE /api/sessions/:id`.
+
+### Clients
+
+Bots and rooms appear under **Bots** in the web sidebar and in the mobile app's **Bots** tab;
+neither shows up in the regular chat list. Both clients can create bots with a role preset,
+start a room, switch discussion mode and rounds, tap a participant to make it speak next, end
+a running discussion, and delete bots and rooms. Path parameters are URL-decoded by the
+gateway, so clients may send `bot:`/`room:` ids raw or percent-encoded.
+
 ## Subagents
 
 ### Spawn Subagent

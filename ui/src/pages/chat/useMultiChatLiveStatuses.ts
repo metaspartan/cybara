@@ -188,6 +188,10 @@ export function useMultiChatLiveStatuses({
       }
       const sessionId = event.sessionId?.trim();
       if (!sessionId || !sessionIdSetRef.current.has(sessionId)) return;
+      if (event.type === "session_message") {
+        onRefresh(sessionId, false);
+        return;
+      }
       if (!acceptEvent(sessionId, event)) return;
       if (event.type === "assistant_token") {
         setStatuses((current) => {

@@ -47,6 +47,7 @@ import type { ChatMessage } from "./chatModel";
 import { sessionDisplayTitle, sessionPreviewText, sessionRouteLabel } from "./chatModel";
 import { MULTI_CHAT_DRAG_TYPE } from "./multiChatLayout";
 import { isBotSessionId } from "../../../../shared/bot-mode";
+import { isRoomSessionId } from "../../../../shared/room-mode";
 import {
   type ChatSidebarSession,
   type ChatSidebarSessionGroup,
@@ -283,7 +284,11 @@ export function SessionsPanel({
 }: SessionsPanelProps) {
   const navigate = useNavigate();
   const { t } = useI18n();
-  const { data: sessions, isLoading, refetch } = useSessions();
+  const { data: allSessions, isLoading, refetch } = useSessions();
+  const sessions = useMemo(
+    () => allSessions?.filter((session) => !isRoomSessionId(session.id)),
+    [allSessions]
+  );
   const { data: tasks = [], isLoading: tasksLoading } = useTasks();
   const deleteSession = useDeleteSession();
   const loadSession = useLoadSession();

@@ -52,6 +52,7 @@ export interface BotRosterItem {
   name: string;
   title: string;
   description: string;
+  role?: string | null;
   hidden: boolean;
   pinned: boolean;
   model?: string;
@@ -510,6 +511,29 @@ export interface Session {
   workspace_dir?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export type SessionRoomMode = "round_robin" | "mention_only" | "parallel" | "moderated";
+
+export interface SessionRoomConfig {
+  participant_agent_ids: string[];
+  mode: SessionRoomMode;
+  max_rounds: number;
+  moderator_agent_id: string | null;
+  shared_context: string;
+}
+
+export interface RoomParticipantSummary {
+  id: string;
+  name: string;
+  handle: string;
+  model?: string;
+}
+
+export interface RoomSummary extends SessionRoomConfig {
+  session_id: string;
+  title: string;
+  participants: RoomParticipantSummary[];
 }
 
 export interface MemoryEntry {

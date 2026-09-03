@@ -5,6 +5,7 @@ import {
   buildMobileConnectPayload,
   encodeMobileConnectPayload,
   isMobileConnectDeepLink,
+  mobileConnectDeepLinkPayload,
   isLoopbackGatewayUrl,
   isLocalNetworkGatewayUrl,
   isGatewaySessionListResponse,
@@ -22,6 +23,12 @@ describe("mobile gateway connection payloads", () => {
     expect(isMobileConnectDeepLink("cybara://connect.evil.example?payload=test")).toBe(false);
     expect(isMobileConnectDeepLink("cybara://settings")).toBe(false);
     expect(isMobileConnectDeepLink("exp://192.168.1.155:8088")).toBe(false);
+    expect(isMobileConnectDeepLink("exp://127.0.0.1:8081/--/connect?payload=test")).toBe(true);
+    expect(isMobileConnectDeepLink("exps://dev.example/--/connect?payload=test")).toBe(true);
+    expect(isMobileConnectDeepLink("exp://127.0.0.1:8081/--/settings?payload=test")).toBe(false);
+    expect(
+      mobileConnectDeepLinkPayload("exp://127.0.0.1:8081/--/connect?payload=%7B%22a%22%3A1%7D")
+    ).toBe('{"a":1}');
     expect(isMobileConnectDeepLink(null)).toBe(false);
   });
 

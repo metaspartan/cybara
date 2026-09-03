@@ -457,6 +457,13 @@ export function useMobileSessionRuntime({
             return;
           }
 
+          if (event.type === "session_message") {
+            if (event.sessionId !== sessionId) return;
+            void loadSession(false).finally(() => {
+              void hydrateLiveAssistant();
+            });
+            return;
+          }
           if (event.type !== "status" || event.sessionId !== sessionId) return;
           if (!acceptLiveEvent(event)) return;
           const queuedTurnHandoff =

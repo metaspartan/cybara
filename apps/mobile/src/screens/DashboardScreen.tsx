@@ -248,6 +248,10 @@ import {
   TasksPanel,
 } from "./dashboardDetailPanels";
 import { SessionDetailPanel, type ChatHeaderAction } from "./dashboardSessionDetail";
+import { BotsPanel } from "./dashboardBotsPanel";
+import { standaloneChatSessions } from "./dashboardBots";
+import { isBotSessionId } from "cybara-shared/bot-mode";
+import { isRoomSessionId } from "cybara-shared/room-mode";
 import {
   mergeActivityLogs,
   routeHeader,
@@ -289,7 +293,8 @@ import cybaraLogo from "../../assets/cybara.png";
 
 const tabIcons: Record<MobileTabKey, IconGlyph> = {
   overview: House,
-  sessions: UsersRound,
+  sessions: MessageCircle,
+  bots: Bot,
   metrics: Cpu,
   usage: Gauge,
   tasks: CalendarCheck,
@@ -581,7 +586,9 @@ export function DashboardScreen({
       restoredSessionRef.current = true;
       const lastSessionId = await readLastOpenedSessionId();
       if (cancelled || !lastSessionId) return;
-      setActiveTab("sessions");
+      setActiveTab(
+        isBotSessionId(lastSessionId) || isRoomSessionId(lastSessionId) ? "bots" : "sessions"
+      );
       setDetailRoute((route) => route ?? { kind: "session", id: lastSessionId });
     })();
     return () => {
@@ -635,6 +642,7 @@ export function DashboardScreen({
 
   const sessions = summary?.sessions ?? [];
   const orderedSessions = useMemo(() => sortSessionSummaries(sessions), [sessions]);
+  const chatSessions = useMemo(() => standaloneChatSessions(orderedSessions), [orderedSessions]);
   const counts = summarizeFeatureCounts(summary);
   const gatewayAccentKey = resolveAccentKey(summary);
   const accentKey = accentOverride ?? gatewayAccentKey;
@@ -925,10 +933,20 @@ export function DashboardScreen({
               openSession={openSessionRoute}
             />
           ) : null}
+          {!detailRoute && activeTab === "bots" ? (
+            <BotsPanel
+              api={api}
+              agents={summary?.agents ?? []}
+              sessions={orderedSessions}
+              activeSessionIds={activeSessionIds}
+              openSession={openSessionRoute}
+              refreshSummary={() => void refresh(false)}
+            />
+          ) : null}
           {!detailRoute && activeTab === "sessions" ? (
             <SessionsPanel
               activeSessionIds={activeSessionIds}
-              sessions={orderedSessions}
+              sessions={chatSessions}
               summary={summary}
               openSession={openSessionRoute}
               createChat={() => setDetailRoute({ kind: "newChat" })}
