@@ -44,7 +44,8 @@
     "nanoid": "3.3.18",
     "postcss": "8.5.23",
     "uuid": "11.1.1",
-    "js-yaml": "4.3.1"
+    "js-yaml": "4.3.1",
+    "@xmldom/xmldom": "0.9.12"
   },
   "patchedDependencies": {
     "@react-native/gradle-plugin@0.85.3": "patches/@react-native%2Fgradle-plugin@0.85.3.patch",
