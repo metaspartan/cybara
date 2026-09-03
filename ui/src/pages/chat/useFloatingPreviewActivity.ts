@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LiveActivityItem } from "@/lib/chatActivities";
-import { isAgentUsingBrowser, isAgentUsingComputer } from "./floatingPreviewActivityModel";
+import {
+  computerPreviewDismissDelayMs,
+  isAgentUsingBrowser,
+  isAgentUsingComputer,
+} from "./floatingPreviewActivityModel";
 
 interface FloatingPreviewActivityOptions {
   activeSessionIds: string[];
@@ -11,7 +15,9 @@ interface FloatingPreviewActivityOptions {
 interface FloatingPreviewActivityState {
   browserActive: boolean;
   browserAvailable: boolean;
+  computerActive: boolean;
   computerAvailable: boolean;
+  dismissComputerPreview: () => void;
   markComputerAvailable: () => void;
 }
 
@@ -30,7 +36,8 @@ export function useFloatingPreviewActivity({
     [liveActivities, sessionActive]
   );
   const [browserSeenSessionId, setBrowserSeenSessionId] = useState<string | null>(null);
-  const [computerSeenSessionId, setComputerSeenSessionId] = useState<string | null>(null);
+  const [computerAvailable, setComputerAvailable] = useState(false);
+  const [computerPreviewToken, setComputerPreviewToken] = useState(0);
 
   useEffect(() => {
     if (!sessionId) {
@@ -41,21 +48,40 @@ export function useFloatingPreviewActivity({
   }, [browserActive, sessionId]);
 
   useEffect(() => {
-    if (!sessionId) {
-      setComputerSeenSessionId(null);
+    if (!sessionId) setComputerAvailable(false);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (computerActive) {
+      setComputerAvailable(true);
+      setComputerPreviewToken((token) => token + 1);
       return;
     }
-    if (computerActive) setComputerSeenSessionId(sessionId);
-  }, [computerActive, sessionId]);
+    const delay = computerPreviewDismissDelayMs({
+      active: computerActive,
+      available: computerAvailable,
+    });
+    if (delay === null) return;
+    const timer = window.setTimeout(() => setComputerAvailable(false), delay);
+    return () => window.clearTimeout(timer);
+  }, [computerActive, computerAvailable, computerPreviewToken]);
 
   const markComputerAvailable = useCallback((): void => {
-    if (sessionId) setComputerSeenSessionId(sessionId);
+    if (!sessionId) return;
+    setComputerAvailable(true);
+    setComputerPreviewToken((token) => token + 1);
   }, [sessionId]);
+
+  const dismissComputerPreview = useCallback((): void => {
+    setComputerAvailable(false);
+  }, []);
 
   return {
     browserActive,
     browserAvailable: browserSeenSessionId === sessionId || browserActive,
-    computerAvailable: computerSeenSessionId === sessionId || computerActive,
+    computerActive,
+    computerAvailable,
+    dismissComputerPreview,
     markComputerAvailable,
   };
 }

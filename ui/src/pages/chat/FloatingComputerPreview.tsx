@@ -3,6 +3,7 @@ import { type ReactElement, useCallback, useState } from "react";
 import { apiFetch } from "@/lib/auth";
 import { ChatWorkspaceComputer } from "./ChatWorkspaceComputer";
 import { FloatingPreviewFrame } from "./FloatingPreviewFrame";
+import { isComputerFocusUnavailableError } from "./floatingPreviewActivityModel";
 import {
   FLOATING_COMPUTER_PREVIEW_STORAGE_KEY,
   persistFloatingPreviewHidden,
@@ -12,12 +13,14 @@ import {
 interface FloatingComputerPreviewProps {
   bottomInset: number;
   sessionId: string;
+  onFocusUnavailable: () => void;
   onPreviewAvailable: () => void;
 }
 
 export function FloatingComputerPreview({
   bottomInset,
   sessionId,
+  onFocusUnavailable,
   onPreviewAvailable,
 }: FloatingComputerPreviewProps): ReactElement {
   const [app, setApp] = useState<string | null>(null);
@@ -45,10 +48,15 @@ export function FloatingComputerPreview({
         );
       })
       .catch((reason: unknown) => {
-        setFocusError(reason instanceof Error ? reason.message : "Could not focus the app");
+        const message = reason instanceof Error ? reason.message : "Could not focus the app";
+        if (isComputerFocusUnavailableError(message)) {
+          onFocusUnavailable();
+          return;
+        }
+        setFocusError(message);
       })
       .finally(() => setFocusing(false));
-  }, [focusing, sessionId]);
+  }, [focusing, onFocusUnavailable, sessionId]);
 
   const hide = useCallback((): void => {
     persistFloatingPreviewHidden(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY, true);

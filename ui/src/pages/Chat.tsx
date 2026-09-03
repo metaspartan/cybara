@@ -1886,6 +1886,7 @@ export function Chat() {
             <FloatingComputerPreview
               bottomInset={Math.max(82, composerHeight + 18)}
               sessionId={sessionId}
+              onFocusUnavailable={floatingPreviewActivity.dismissComputerPreview}
               onPreviewAvailable={floatingPreviewActivity.markComputerAvailable}
             />
           ) : null}
