@@ -1,24 +1,34 @@
-import { Loader2 } from "lucide-react";
+import { Eye, Loader2 } from "lucide-react";
 import { type ReactElement, useCallback, useState } from "react";
 import { apiFetch } from "@/lib/auth";
 import { ChatWorkspaceComputer } from "./ChatWorkspaceComputer";
 import { FloatingPreviewFrame } from "./FloatingPreviewFrame";
-import { FLOATING_COMPUTER_PREVIEW_STORAGE_KEY } from "./floatingBrowserPreviewModel";
+import { isComputerFocusUnavailableError } from "./floatingPreviewActivityModel";
+import {
+  FLOATING_COMPUTER_PREVIEW_STORAGE_KEY,
+  persistFloatingPreviewHidden,
+  readFloatingPreviewHidden,
+} from "./floatingBrowserPreviewModel";
 
 interface FloatingComputerPreviewProps {
   bottomInset: number;
   sessionId: string;
+  onFocusUnavailable: () => void;
   onPreviewAvailable: () => void;
 }
 
 export function FloatingComputerPreview({
   bottomInset,
   sessionId,
+  onFocusUnavailable,
   onPreviewAvailable,
 }: FloatingComputerPreviewProps): ReactElement {
   const [app, setApp] = useState<string | null>(null);
   const [focusing, setFocusing] = useState(false);
   const [focusError, setFocusError] = useState<string | null>(null);
+  const [hidden, setHidden] = useState(() =>
+    readFloatingPreviewHidden(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY)
+  );
 
   const focusApp = useCallback((): void => {
     if (focusing) return;
@@ -38,18 +48,51 @@ export function FloatingComputerPreview({
         );
       })
       .catch((reason: unknown) => {
-        setFocusError(reason instanceof Error ? reason.message : "Could not focus the app");
+        const message = reason instanceof Error ? reason.message : "Could not focus the app";
+        if (isComputerFocusUnavailableError(message)) {
+          onFocusUnavailable();
+          return;
+        }
+        setFocusError(message);
       })
       .finally(() => setFocusing(false));
-  }, [focusing, sessionId]);
+  }, [focusing, onFocusUnavailable, sessionId]);
+
+  const hide = useCallback((): void => {
+    persistFloatingPreviewHidden(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY, true);
+    setHidden(true);
+  }, []);
+
+  const show = useCallback((): void => {
+    persistFloatingPreviewHidden(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY, false);
+    setHidden(false);
+  }, []);
 
   const label = app ? `Focus ${app}` : "Focus the app used by the agent";
+
+  if (hidden) {
+    return (
+      <button
+        type="button"
+        aria-label="Show computer preview"
+        className="absolute bottom-0 left-0 z-40 flex items-center gap-1.5 rounded-tr-lg border border-[var(--glass-border)] bg-black/45 px-2 py-1 text-[11px] text-white/80 hover:bg-black/70 hover:text-white"
+        data-testid="floating-computer-preview-show"
+        onClick={show}
+        title="Show computer preview"
+      >
+        <Eye className="h-3 w-3" strokeWidth={2.2} />
+        <span>Computer</span>
+      </button>
+    );
+  }
+
   return (
     <FloatingPreviewFrame
       ariaLabel={label}
       bottomInset={bottomInset}
       horizontal="left"
       onActivate={focusApp}
+      onHide={hide}
       storageKey={FLOATING_COMPUTER_PREVIEW_STORAGE_KEY}
       testId="floating-computer-preview"
       title={label}

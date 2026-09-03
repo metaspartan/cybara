@@ -38,6 +38,7 @@ import {
   type MobileSimulatorPlatform,
   runMobileSimulatorAction,
 } from "./mobile-simulator";
+import { COMPUTER_FOCUS_UNAVAILABLE_ERROR } from "../../shared/computer-preview";
 
 export {
   COMPUTER_USE_ACTION_TOOL_ALIASES,
@@ -1433,7 +1434,7 @@ export async function focusComputerUsePreviewApp(
   if (!sessionId) throw new Error("Session ID is required");
   const preview = getComputerUsePreview(sessionId);
   const app = preview?.app?.trim();
-  if (!app) throw new Error("No desktop app is available to focus for this chat");
+  if (!app) throw new Error(COMPUTER_FOCUS_UNAVAILABLE_ERROR);
   if (focusApplicationNatively(app)) {
     return { app, text: `Focused ${app}.` };
   }
