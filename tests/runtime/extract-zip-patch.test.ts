@@ -80,7 +80,8 @@ describe("extract-zip symlink containment patch", () => {
     expect(manifest.patchedDependencies?.["extract-zip@2.0.1"]).toBe(
       "patches/extract-zip@2.0.1.patch"
     );
-    expect(manifest.scripts?.["audit:root"]).toContain("GHSA-jmr9-qjv8-65gv");
+    const auditScript = await Bun.file("scripts/security-audit.ts").text();
+    expect(auditScript).toContain("GHSA-jmr9-qjv8-65gv");
   });
 
   test("rejects a symlink that escapes the extraction directory", async () => {
