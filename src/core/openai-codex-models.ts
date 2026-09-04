@@ -80,6 +80,7 @@ export function extractOpenAICodexAccountId(token: string): string | undefined {
 export function getOpenAICodexModelCandidates(modelId: string): string[] {
   const normalized = modelId.trim().toLowerCase();
   const fallbacks: Record<string, string[]> = {
+    "gpt-6-astra": ["gpt-5.6-sol", "gpt-5.5", "gpt-5.4"],
     "gpt-5.6-luna": ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.5", "gpt-5.4"],
     "gpt-5.6-terra": ["gpt-5.6-sol", "gpt-5.5", "gpt-5.4"],
     "gpt-5.6-sol": ["gpt-5.5", "gpt-5.4"],

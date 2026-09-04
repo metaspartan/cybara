@@ -101,14 +101,23 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers["gitlab-duo"].api).toBe("gitlab-duo");
   });
 
-  test("includes current OpenAI preview models in API and Codex catalogs", () => {
+  test("includes GPT-6 Astra and current OpenAI preview models in API and Codex catalogs", () => {
     const openAiModelIds = providers.openai.models.map((model) => model.id);
     const codexModelIds = providers["openai-codex"].models.map((model) => model.id);
     expect(openAiModelIds).toContain("gpt-5.6");
-    for (const modelId of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+    for (const modelId of ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
       expect(openAiModelIds).toContain(modelId);
       expect(codexModelIds).toContain(modelId);
     }
+    expect(providers.openai.models.find((model) => model.id === "gpt-6-astra")).toMatchObject({
+      context: 1050000,
+      maxTokens: 128000,
+      reasoning: true,
+      input: ["text", "image"],
+    });
+    const codexAstra = providers["openai-codex"].models.find((model) => model.id === "gpt-6-astra");
+    expect(codexAstra?.context).toBe(372000);
+    expect(codexAstra?.name).toBe("GPT-6-Astra");
     for (const modelId of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
       const apiModel = providers.openai.models.find((model) => model.id === modelId);
       const codexModel = providers["openai-codex"].models.find((model) => model.id === modelId);

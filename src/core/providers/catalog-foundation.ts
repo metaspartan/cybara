@@ -68,6 +68,15 @@ export const foundationProviderCatalog = {
     authType: "api_key",
     models: [
       {
+        id: "gpt-6-astra",
+        name: "GPT-6 Astra",
+        context: 1050000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
+      {
         id: "gpt-5.6-sol",
         name: "GPT-5.6 Sol",
         context: 1050000,
