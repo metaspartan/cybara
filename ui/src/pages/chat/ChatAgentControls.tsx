@@ -18,6 +18,7 @@ export function ChatAgentControls({
   fastModeUpdating,
   onFastModeChange,
   locked = false,
+  lockedLabel,
   controlId = "chat-agent-selector",
 }: {
   agents: AgentSummary[];
@@ -32,6 +33,7 @@ export function ChatAgentControls({
   fastModeUpdating?: boolean;
   onFastModeChange?: (enabled: boolean) => void;
   locked?: boolean;
+  lockedLabel?: string;
   controlId?: string;
 }) {
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
@@ -58,40 +60,49 @@ export function ChatAgentControls({
           onChange={onFastModeChange}
         />
       ) : null}
-      <label className="sr-only" htmlFor={controlId}>
-        Chat agent
-      </label>
-      <div className="chat-agent-selector-shell relative min-w-0">
-        <select
-          id={controlId}
-          value={useModelRouter ? MODEL_ROUTER_SELECTOR_VALUE : selectedAgentId || ""}
-          disabled={updating || locked}
-          onChange={(event) => onSelectAgent(event.target.value || undefined)}
-          title={routeTitle}
-          className="chat-agent-selector h-7 min-w-[104px] max-w-[196px] appearance-none truncate border-0 bg-transparent py-1 pl-2 pr-6 text-[11px] font-medium text-gray-300 outline-none ring-0 transition-colors hover:text-white focus:outline-none focus:ring-0 disabled:opacity-60"
+      {locked ? (
+        <span
+          className="chat-agent-locked-label min-w-0 truncate px-2 text-[11px] font-medium text-gray-400"
+          title={lockedLabel || routeTitle}
         >
-          {locked ? null : modelRouterEnabled ? (
-            <option value={MODEL_ROUTER_SELECTOR_VALUE} className="chat-select-option">
-              Model Router
-            </option>
-          ) : (
-            <option value="" className="chat-select-option">
-              Gateway default
-            </option>
-          )}
-          {agents.map((agent) => (
-            <option key={agent.id} value={agent.id} className="chat-select-option">
-              {agent.model ? `${agent.name} - ${agent.model}` : agent.name}
-            </option>
-          ))}
-        </select>
-        <span className="chat-agent-selector-compact-label pointer-events-none absolute inset-y-0 left-2 right-6 hidden items-center truncate text-[11px] font-medium text-gray-300">
-          {routeLabel}
+          {lockedLabel || routeLabel}
         </span>
-        {locked ? null : (
-          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500" />
-        )}
-      </div>
+      ) : (
+        <>
+          <label className="sr-only" htmlFor={controlId}>
+            Chat agent
+          </label>
+          <div className="chat-agent-selector-shell relative min-w-0">
+            <select
+              id={controlId}
+              value={useModelRouter ? MODEL_ROUTER_SELECTOR_VALUE : selectedAgentId || ""}
+              disabled={updating}
+              onChange={(event) => onSelectAgent(event.target.value || undefined)}
+              title={routeTitle}
+              className="chat-agent-selector h-7 min-w-[104px] max-w-[196px] appearance-none truncate border-0 bg-transparent py-1 pl-2 pr-6 text-[11px] font-medium text-gray-300 outline-none ring-0 transition-colors hover:text-white focus:outline-none focus:ring-0 disabled:opacity-60"
+            >
+              {modelRouterEnabled ? (
+                <option value={MODEL_ROUTER_SELECTOR_VALUE} className="chat-select-option">
+                  Model Router
+                </option>
+              ) : (
+                <option value="" className="chat-select-option">
+                  Gateway default
+                </option>
+              )}
+              {agents.map((agent) => (
+                <option key={agent.id} value={agent.id} className="chat-select-option">
+                  {agent.model ? `${agent.name} - ${agent.model}` : agent.name}
+                </option>
+              ))}
+            </select>
+            <span className="chat-agent-selector-compact-label pointer-events-none absolute inset-y-0 left-2 right-6 hidden items-center truncate text-[11px] font-medium text-gray-300">
+              {routeLabel}
+            </span>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500" />
+          </div>
+        </>
+      )}
       {updating ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-gray-400" /> : null}
     </div>
   );

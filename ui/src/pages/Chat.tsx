@@ -7,7 +7,8 @@ import {
   useLoadSession,
   useUpdateSessionAgent,
 } from "@/hooks/useChat";
-import { ChatRoomBanner, useCurrentRoom } from "./chat/RoomBanner";
+import { ChatRoomBanner, roomComposerLabel, useCurrentRoom } from "./chat/RoomBanner";
+import { useComposerAgents, useCurrentBot } from "./chat/useChatBotContext";
 import { canShareNearbySession, useNearbyStatus } from "@/hooks/useNearbyStatus";
 import { botsApi, chatApi, extractApiError, providerPlansApi, settingsApi } from "@/lib/api";
 import {
@@ -159,18 +160,9 @@ export function Chat() {
   const goalController = useSessionGoal(sessionId || undefined);
   const { data: environmentSubagents = [] } = useSubagents(sessionId);
   const typedMessages = messages as ChatMessage[];
-  const currentBot = useMemo(
-    () => botRoster.find((bot) => bot.session_id === sessionId) ?? null,
-    [botRoster, sessionId]
-  );
+  const currentBot = useCurrentBot(botRoster, sessionId);
   const currentRoom = useCurrentRoom(sessionId);
-  const composerAgents = useMemo(
-    () =>
-      currentBot
-        ? agents.filter((agent) => agent.id === currentBot.id)
-        : agents.filter((agent) => !agent.is_bot),
-    [agents, currentBot]
-  );
+  const composerAgents = useComposerAgents(agents, currentBot);
   const turnStartedAtMsByIndex = useMemo(() => {
     const lookup = new Map<number, number | undefined>();
     let latestUserTimestampMs: number | undefined;
@@ -1596,6 +1588,7 @@ export function Chat() {
     agents: composerAgents,
     agentUpdating: updateSessionAgent.isPending,
     agentLocked: currentBot !== null || currentRoom !== null,
+    agentLockedLabel: roomComposerLabel(currentRoom),
     approvalMode: toolApprovalMode,
     approvalUpdating: savingToolApprovalMode,
     capabilityPicker,
@@ -1835,6 +1828,7 @@ export function Chat() {
                     savingGoldenMessageIndex={savingGoldenMessageIndex}
                     sessionId={sessionId}
                     showAuthorAttribution={transcriptHasMixedAgents || currentRoom !== null}
+                    conversationStyle={currentBot !== null || currentRoom !== null}
                     showWorkingTimeline={showWorkingTimeline}
                     speakingMessageIndex={speakingMessageIndex}
                     workspaceDir={effectiveWorkspaceDir}

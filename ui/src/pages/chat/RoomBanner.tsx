@@ -26,6 +26,12 @@ interface RoomBannerProps {
   onRoomChanged: () => void;
 }
 
+export function roomComposerLabel(room: SessionRoomConfig | null): string | undefined {
+  if (!room) return undefined;
+  const count = room.participant_agent_ids.length;
+  return `${count} ${count === 1 ? "bot" : "bots"} · ${ROOM_MODE_LABELS[room.mode]}`;
+}
+
 export function useCurrentRoom(sessionId: string | null | undefined): SessionRoomConfig | null {
   const roomSessionId = sessionId && isRoomSessionId(sessionId) ? sessionId : "";
   const { data } = useSessionDetail(roomSessionId, Boolean(roomSessionId));

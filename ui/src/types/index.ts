@@ -378,6 +378,9 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
   message_id?: string;
+  agent_id?: string;
+  agent_name?: string;
+  model?: string;
   metadata_deferred?: boolean;
   timestamp?: string;
   thinking?: string;
