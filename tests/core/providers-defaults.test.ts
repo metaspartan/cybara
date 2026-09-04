@@ -500,13 +500,16 @@ describe("Provider model defaults and API-family parity", () => {
     });
   });
 
-  test("advertises the GLM-5.3 family only on the Z.AI Coding Plan endpoint", () => {
+  test("advertises the GLM-5.3 family on the Z.AI API, Coding Plan, and OpenRouter endpoints", () => {
     const apiIds = providers["z.ai"].models.map((model) => model.id);
     const codingIds = providers["z.ai-coding"].models.map((model) => model.id);
+    const openrouterIds = providers.openrouter.models.map((model) => model.id);
 
     expect(codingIds.slice(0, 2)).toEqual(["glm-5.3-flash", "glm-5.3"]);
-    expect(apiIds).not.toContain("glm-5.3");
-    expect(apiIds).not.toContain("glm-5.3-flash");
+    expect(apiIds).toContain("glm-5.3");
+    expect(apiIds).toContain("glm-5.3-flash");
+    expect(openrouterIds).toContain("z-ai/glm-5.3");
+    expect(openrouterIds).toContain("z-ai/glm-5.3-flash");
     expect(providers["z.ai-coding"].models[0]).toMatchObject({
       context: 1000000,
       maxTokens: 131072,
