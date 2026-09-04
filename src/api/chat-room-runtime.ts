@@ -67,6 +67,7 @@ const log = createLogger("ChatRoom");
 
 const ROOM_TRANSCRIPT_TAIL_FOR_MODERATOR = 14;
 const ROOM_MODERATOR_MAX_DECISION_CHARS = 4000;
+const MODERATOR_UNDECIDED_LIMIT = 2;
 
 export interface RoomParticipant {
   agent: Agent;
@@ -436,10 +437,18 @@ function transcriptTailForModerator(messages: readonly ChatMessage[]): string {
     .slice(-ROOM_MODERATOR_MAX_DECISION_CHARS);
 }
 
+const MODERATOR_END_ALIASES = new Set(["none", "end", "stop", "done", "finish", "nobody"]);
+
+export interface ModeratorDecision {
+  next: RoomParticipant | null;
+  note: string;
+  end: boolean;
+}
+
 export function parseModeratorDecision(
   raw: string,
   participants: readonly RoomParticipant[]
-): { next: RoomParticipant | null; note: string; end: boolean } {
+): ModeratorDecision {
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   let next: unknown;
   let note = "";
@@ -452,16 +461,15 @@ export function parseModeratorDecision(
       next = undefined;
     }
   }
-  if (typeof next !== "string") {
-    const mentioned = parseRoomMentions(raw, participants)[0];
-    return { next: mentioned ?? null, note, end: !mentioned };
+  if (typeof next === "string") {
+    const alias = normalizeCapabilityAlias(next);
+    if (MODERATOR_END_ALIASES.has(alias)) return { next: null, note, end: true };
+    const participant = findRoomParticipantByAlias(alias, participants);
+    if (participant) return { next: participant, note, end: false };
   }
-  const alias = normalizeCapabilityAlias(next);
-  if (!alias || alias === "none" || alias === "end" || alias === "stop") {
-    return { next: null, note, end: true };
-  }
-  const participant = findRoomParticipantByAlias(alias, participants) ?? null;
-  return { next: participant, note, end: !participant };
+  const mentioned = parseRoomMentions(raw, participants)[0];
+  if (mentioned) return { next: mentioned, note, end: false };
+  return { next: null, note, end: false };
 }
 
 async function askModerator(
@@ -576,10 +584,18 @@ async function runRoomDiscussion(
       participants[0]?.agent;
     if (!moderator) return replies;
     let budget = config.maxRounds * participants.length;
+    let undecided = 0;
     while (budget > 0) {
       ensureNotAborted(abortController);
       const decision = await askModerator(context, moderator, replies.length, budget);
-      if (decision.end || !decision.next) break;
+      if (decision.end) break;
+      if (!decision.next) {
+        undecided += 1;
+        if (undecided >= MODERATOR_UNDECIDED_LIMIT) break;
+        budget -= 1;
+        continue;
+      }
+      undecided = 0;
       const round = Math.floor(replies.length / participants.length) + 1;
       record(
         await speakInRoomTurn(context, decision.next, {

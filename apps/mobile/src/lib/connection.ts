@@ -252,24 +252,13 @@ export function encodeMobileConnectPayload(payload: MobileConnectPayload): strin
   return JSON.stringify(payload);
 }
 
-const EXPO_DEV_LINK_PROTOCOLS = new Set(["exp:", "exps:"]);
-
 export function mobileConnectDeepLinkPayload(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) return null;
   try {
     const url = new URL(value.trim());
-    if (url.protocol === "cybara:") {
-      const route = (url.hostname || url.pathname).replace(/^\/+/, "").toLowerCase();
-      return route === "connect" ? url.searchParams.get("payload") : null;
-    }
-    if (EXPO_DEV_LINK_PROTOCOLS.has(url.protocol)) {
-      const route = url.pathname
-        .replace(/^\/+(--\/)?/, "")
-        .replace(/\/+$/, "")
-        .toLowerCase();
-      return route === "connect" ? url.searchParams.get("payload") : null;
-    }
-    return null;
+    if (url.protocol !== "cybara:") return null;
+    const route = (url.hostname || url.pathname).replace(/^\/+/, "").toLowerCase();
+    return route === "connect" ? url.searchParams.get("payload") : null;
   } catch {
     return null;
   }

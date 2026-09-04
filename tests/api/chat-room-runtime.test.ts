@@ -153,8 +153,25 @@ describe("room prompts", () => {
       end: false,
     });
     expect(parseModeratorDecision('{"next":"none"}', participants).end).toBe(true);
+    expect(parseModeratorDecision('{"next":"stop"}', participants).end).toBe(true);
     expect(parseModeratorDecision("Let @coder answer", participants).next).toBe(coder);
-    expect(parseModeratorDecision("nothing useful", participants).end).toBe(true);
+    expect(parseModeratorDecision('{"next":"NONE"}', participants).end).toBe(true);
+  });
+
+  test("prose without a decision does not end the discussion", () => {
+    for (const reply of [
+      "nothing useful",
+      "Let me think about who should go next.",
+      '{"next":"someone-who-left"}',
+      "research, can you check?",
+      "We are done here",
+    ]) {
+      expect(parseModeratorDecision(reply, participants)).toEqual({
+        next: null,
+        note: "",
+        end: false,
+      });
+    }
   });
 });
 
