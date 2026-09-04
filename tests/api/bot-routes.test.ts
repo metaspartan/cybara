@@ -5,6 +5,7 @@ import { deleteSession, getSession } from "../../src/api/chat-session-api";
 import { agentManager } from "../../src/core/agent";
 import { taskScheduler } from "../../src/core/scheduler";
 import { botSessionId } from "../../shared/bot-mode";
+import { BOT_ROLE_IDS, BOT_ROLE_PRESETS } from "../../shared/bot-roles";
 
 const createdAgentIds: string[] = [];
 const createdTaskIds: string[] = [];
@@ -120,6 +121,47 @@ describe("bot routes", () => {
       session_id: response.session_id,
       session: { title: "Release Scout" },
     });
+  });
+
+  test("applies role presets to new bots and lists the preset catalog", async () => {
+    const create = botRoutes["POST /api/bots"];
+    const roles = botRoutes["GET /api/bots/roles"];
+    const update = botRoutes["PUT /api/bots/:id"];
+    const base = agentManager.create({ name: "Role Preset Base", type: "main" });
+    createdAgentIds.push(base.id);
+    const catalog = (await roles?.({})) as { roles: Array<{ id: string; title: string }> };
+    expect(catalog.roles.map((role) => role.id)).toEqual([...BOT_ROLE_IDS]);
+    expect(catalog.roles.find((role) => role.id === "marketer")?.title).toBe("Marketer");
+
+    const created = (await create?.({
+      name: "Nova",
+      role: "marketer",
+      base_agent_id: base.id,
+    })) as {
+      bot: { id: string; role: string | null; title: string; description: string };
+    };
+    createdAgentIds.push(created.bot.id);
+    expect(created.bot.role).toBe("marketer");
+    expect(created.bot.title).toBe(BOT_ROLE_PRESETS.marketer.title);
+    expect(created.bot.description).toBe(BOT_ROLE_PRESETS.marketer.description);
+    expect(agentManager.get(created.bot.id)?.system_prompt).toContain(
+      BOT_ROLE_PRESETS.marketer.focus
+    );
+
+    const updated = (await update?.({ role: "writer" }, { id: created.bot.id })) as {
+      bot: { role: string | null; title: string };
+    };
+    expect(updated.bot.role).toBe("writer");
+    expect(updated.bot.title).toBe(BOT_ROLE_PRESETS.marketer.title);
+    expect(agentManager.get(created.bot.id)?.system_prompt).toContain(
+      BOT_ROLE_PRESETS.writer.focus
+    );
+
+    const custom = (await create?.({ name: "Plain", role: "bogus", base_agent_id: base.id })) as {
+      bot: { id: string; role: string | null };
+    };
+    createdAgentIds.push(custom.bot.id);
+    expect(custom.bot.role).toBeNull();
   });
 
   test("rejects malformed names and unknown bot ids", async () => {

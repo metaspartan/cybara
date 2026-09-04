@@ -266,12 +266,14 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_TABS.map((tab) => tab.key)).toEqual([
       "overview",
       "sessions",
+      "bots",
       "metrics",
       "usage",
       "tasks",
       "settings",
     ]);
     expect(MOBILE_TABS.find((tab) => tab.key === "sessions")?.label).toBe("Chats");
+    expect(MOBILE_TABS.find((tab) => tab.key === "bots")?.label).toBe("Bots");
     expect(MOBILE_TABS.at(-1)?.key).toBe("settings");
     expect(MOBILE_TABS.filter((tab) => tab.showsGatewayPanel).map((tab) => tab.key)).toEqual([]);
     expect(MOBILE_HOME_CHROME.firstSection).toBe("recent_activity");

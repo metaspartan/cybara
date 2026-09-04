@@ -100,7 +100,11 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["build:all"]).toContain("bun run build:main");
     expect(pkg.scripts?.["build:cli"]).toContain("--outdir dist");
     expect(pkg.scripts?.["build:cli"]).toContain("--entry-naming cli.js");
-    expect(pkg.scripts?.["audit:ci"]).toContain("bun run audit:site");
+    expect(pkg.scripts?.["audit:ci"]).toBe("bun scripts/security-audit.ts");
+    expect(pkg.scripts?.["audit:root"]).toBe("bun scripts/security-audit.ts root");
+    expect(pkg.scripts?.["audit:ui"]).toBe("bun scripts/security-audit.ts ui");
+    expect(pkg.scripts?.["audit:mobile"]).toBe("bun scripts/security-audit.ts mobile");
+    expect(pkg.scripts?.["audit:site"]).toBe("bun scripts/security-audit.ts site");
     expect(pkg.scripts?.["build"]).not.toContain("--external @noble/hashes");
     expect(pkg.scripts?.["build:cli"]).not.toContain("--external @scure/bip39");
     expect(pkg.scripts?.["build:main"]).not.toContain("--external @scure/base");

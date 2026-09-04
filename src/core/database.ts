@@ -176,6 +176,7 @@ try {
     context_state TEXT,
     workspace_dir TEXT,
     pinned INTEGER NOT NULL DEFAULT 0,
+    room_config TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -484,6 +485,11 @@ try {
   } catch {}
 
   try {
+    db.exec("ALTER TABLE chat_sessions ADD COLUMN room_config TEXT");
+    console.error("[Database] Migration: Added room_config column to chat_sessions");
+  } catch {}
+
+  try {
     db.exec("ALTER TABLE mcp_servers ADD COLUMN url TEXT");
     console.error("[Database] Migration: Added url column to mcp_servers");
   } catch {}
@@ -651,6 +657,7 @@ db.exec(`
     context_state TEXT,
     workspace_dir TEXT,
     pinned INTEGER NOT NULL DEFAULT 0,
+    room_config TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -882,6 +889,10 @@ const stmts = {
     ),
     getWorkspace: prepare("SELECT workspace_dir FROM chat_sessions WHERE id = ?"),
     getTitle: prepare("SELECT title FROM chat_sessions WHERE id = ?"),
+    getRoomConfig: prepare("SELECT room_config FROM chat_sessions WHERE id = ?"),
+    setRoomConfig: prepare(
+      "UPDATE chat_sessions SET room_config = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+    ),
     setPinned: prepare("UPDATE chat_sessions SET pinned = ? WHERE id = ?"),
     delete: prepare("DELETE FROM chat_sessions WHERE id = ?"),
     list: prepare("SELECT * FROM chat_sessions ORDER BY pinned DESC, updated_at DESC"),
@@ -1472,6 +1483,18 @@ export const tables = {
     },
     setPinned: (id: string, pinned: boolean): boolean => {
       const result = stmts.chatSessions?.setPinned.run(pinned ? 1 : 0, id);
+      return (result?.changes ?? 0) > 0;
+    },
+    getRoomConfig: (id: string): string | null => {
+      const row = stmts.chatSessions?.getRoomConfig.get(id) as {
+        room_config?: string | null;
+      } | null;
+      return typeof row?.room_config === "string" && row.room_config.trim()
+        ? row.room_config
+        : null;
+    },
+    setRoomConfig: (id: string, roomConfig: string | null): boolean => {
+      const result = stmts.chatSessions?.setRoomConfig.run(roomConfig, id);
       return (result?.changes ?? 0) > 0;
     },
     delete: (id: string) => stmts.chatSessions?.delete.run(id),

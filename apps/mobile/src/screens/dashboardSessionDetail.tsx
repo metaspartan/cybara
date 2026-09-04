@@ -105,6 +105,10 @@ import {
   writeCachedMobileOptimisticTranscriptMessage,
 } from "./dashboardOptimisticTranscript";
 import { mobileTranscriptHasMixedAuthors } from "./dashboardMessageAuthors";
+import { MobileRoomBanner } from "./dashboardRoomBanner";
+import { roomModeSummary } from "./dashboardBots";
+import { isBotSessionId } from "cybara-shared/bot-mode";
+import { isRoomSessionId } from "cybara-shared/room-mode";
 import { MobileGoalCard } from "./dashboardGoal";
 import {
   clearCachedMobileOptimisticPendingMessages,
@@ -201,6 +205,7 @@ export function SessionDetailPanel({
   setHeaderAction?: Dispatch<SetStateAction<ChatHeaderAction | null>>;
 }) {
   const insets = useSafeAreaInsets();
+  const sessionKeepsOwnAgent = isBotSessionId(sessionId) || isRoomSessionId(sessionId);
   const labConfig =
     config?.lab && typeof config.lab === "object" && !Array.isArray(config.lab)
       ? (config.lab as Record<string, unknown>)
@@ -452,7 +457,7 @@ export function SessionDetailPanel({
       const result = await api.sendChat({
         message,
         sessionId,
-        agentId: detail?.agentId,
+        agentId: sessionKeepsOwnAgent ? undefined : detail?.agentId,
         workspaceDir: detail?.workspaceDir,
         queueMode: queuedSend ? "queue" : undefined,
         clientPendingId: optimisticPendingMessageId || undefined,
@@ -1045,6 +1050,7 @@ export function SessionDetailPanel({
   };
 
   const openAgentSelector = () => {
+    if (sessionKeepsOwnAgent) return;
     if (agentUpdating || (!routerEnabled && agents.length === 0)) return;
     haptics.select();
     if (Platform.OS === "ios") {
@@ -1184,9 +1190,12 @@ export function SessionDetailPanel({
     provider,
     providerName,
   });
-  const selectedAgentLabel = useModelRouter
-    ? "Model Router"
-    : selectedAgent?.name || (agentId ? "Selected agent" : "Gateway default");
+  const roomParticipantCount = detail?.room?.participant_agent_ids.length ?? 0;
+  const selectedAgentLabel = detail?.room
+    ? `${roomParticipantCount} ${roomParticipantCount === 1 ? "bot" : "bots"}`
+    : useModelRouter
+      ? "Model Router"
+      : selectedAgent?.name || (agentId ? "Selected agent" : "Gateway default");
   const contextSummary = contextUsage
     ? `${mobileFormatTokenCount(contextUsage.usedTokens)} / ${mobileFormatTokenCount(
         contextUsage.limitTokens
@@ -1203,9 +1212,13 @@ export function SessionDetailPanel({
   const chatSettingsRows: ChatSettingsRow[] = [
     {
       icon: Bot,
-      label: "Agent",
+      label: detail?.room ? "Participants" : "Agent",
       value: selectedAgentLabel,
-      detail: providerModelLabel !== selectedAgentLabel ? providerModelLabel : null,
+      detail: detail?.room
+        ? roomModeSummary({ mode: detail.room.mode, maxRounds: detail.room.max_rounds })
+        : providerModelLabel !== selectedAgentLabel
+          ? providerModelLabel
+          : null,
     },
     {
       icon: MessageSquareText,
@@ -1543,6 +1556,17 @@ export function SessionDetailPanel({
         {loadError ? <EmptyState label="Session unavailable" detail={loadError} /> : null}
         {detail ? (
           <>
+            {detail.room ? (
+              <MobileRoomBanner
+                api={api}
+                sessionId={sessionId}
+                room={detail.room}
+                agents={agents}
+                busy={sessionActive}
+                onChanged={() => void loadSession(false)}
+                onStop={() => void stopResponse()}
+              />
+            ) : null}
             <MobileGoalCard api={api} sessionId={sessionId} working={sessionActive} />
             {sessionActive && detail.plan ? <MobilePlanSummaryCard plan={detail.plan} /> : null}
             {visibleMessages.map((message, index) => (
@@ -1553,7 +1577,7 @@ export function SessionDetailPanel({
                 message={message}
                 mediaUrl={(filePath) => api.mediaUrl(filePath)}
                 nowMs={message.id === liveAssistant?.id && sessionActive ? liveNowMs : undefined}
-                showAuthor={transcriptHasMixedAgents}
+                showAuthor={transcriptHasMixedAgents || Boolean(detail.room)}
                 onAddToChat={appendTextToComposer}
                 onRevert={message.role === "user" ? confirmRevertToMessage : undefined}
               />

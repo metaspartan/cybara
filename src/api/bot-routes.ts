@@ -12,12 +12,14 @@ import { providerManager } from "../core/providers";
 import { normalizeCapabilityAlias } from "../core/chat/capability-alias";
 import { uniqueCapabilityHandles } from "../core/chat/capability-handles";
 import { botSessionId } from "../../shared/bot-mode";
+import { BOT_ROLE_LIST, botRolePreset, isBotRoleId } from "../../shared/bot-roles";
 import type { RouteHandler } from "./routes/_shared";
 
 interface BotInput {
   name?: unknown;
   title?: unknown;
   description?: unknown;
+  role?: unknown;
   base_agent_id?: unknown;
   hidden?: unknown;
   pinned?: unknown;
@@ -137,7 +139,8 @@ function refreshBotSystemPrompts(): void {
         agent.name,
         metadata.title,
         metadata.description,
-        botTeammates(agent.id, bots)
+        botTeammates(agent.id, bots),
+        metadata.role
       ),
     });
   }
@@ -156,6 +159,7 @@ function serializeBot(
     name: agent.name,
     title: metadata.title || agent.type || "Assistant",
     description: metadata.description,
+    role: metadata.role,
     hidden: metadata.hidden,
     pinned: metadata.pinned,
     model: agent.model,
@@ -255,6 +259,7 @@ function deleteBotTasks(id: string): number {
 
 export const botRoutes: Record<string, RouteHandler> = {
   "GET /api/bots": async () => ({ bots: await botRoster() }),
+  "GET /api/bots/roles": () => ({ roles: BOT_ROLE_LIST }),
   "POST /api/bots": async (body) => {
     const input = (body || {}) as BotInput;
     const name = validatedBotName(input.name);
@@ -266,8 +271,10 @@ export const botRoutes: Record<string, RouteHandler> = {
       ? configuredAgents.find((agent) => agent.id === baseId)
       : configuredAgents[0];
     if (baseId && !base) throw new Error("Validation error: Base agent not found");
-    const title = boundedText(input.title, 80);
-    const description = boundedText(input.description, 2_000);
+    const role = isBotRoleId(input.role) ? input.role : null;
+    const preset = botRolePreset(role);
+    const title = boundedText(input.title, 80) || preset?.title || "";
+    const description = boundedText(input.description, 2_000) || preset?.description || "";
     const model = boundedText(input.model, 200) || base?.model;
     const providerId = validatedProviderId(input.provider_id) || base?.provider_id;
     const baseSystemPrompt = base?.system_prompt || "";
@@ -277,7 +284,7 @@ export const botRoutes: Record<string, RouteHandler> = {
       model,
       provider_id: providerId,
       fallback_provider_id: base?.fallback_provider_id,
-      system_prompt: buildBotSystemPrompt(baseSystemPrompt, name, title, description, ""),
+      system_prompt: buildBotSystemPrompt(baseSystemPrompt, name, title, description, "", role),
       tools: base?.tools,
       memory_enabled: true,
       config: withBotProfileMetadata(base?.config, {
@@ -286,6 +293,7 @@ export const botRoutes: Record<string, RouteHandler> = {
         hidden: false,
         pinned: false,
         baseSystemPrompt,
+        role,
       }),
     });
     refreshBotSystemPrompts();
@@ -304,6 +312,8 @@ export const botRoutes: Record<string, RouteHandler> = {
       input.description === undefined
         ? metadata.description
         : boundedText(input.description, 2_000);
+    const role =
+      input.role === undefined ? metadata.role : isBotRoleId(input.role) ? input.role : null;
     const updated = agentManager.update(id, {
       name,
       model: input.model === undefined ? agent.model : boundedText(input.model, 200),
@@ -316,7 +326,8 @@ export const botRoutes: Record<string, RouteHandler> = {
         name,
         title,
         description,
-        botTeammates(id)
+        botTeammates(id),
+        role
       ),
       config: withBotProfileMetadata(agent.config, {
         title,
@@ -324,6 +335,7 @@ export const botRoutes: Record<string, RouteHandler> = {
         hidden: input.hidden === undefined ? metadata.hidden : input.hidden === true,
         pinned: input.pinned === undefined ? metadata.pinned : input.pinned === true,
         baseSystemPrompt: metadata.baseSystemPrompt,
+        role,
       }),
     });
     if (!updated) throw new Error("Bot not found");
@@ -351,7 +363,14 @@ export const botRoutes: Record<string, RouteHandler> = {
       model: source.model,
       provider_id: source.provider_id,
       fallback_provider_id: source.fallback_provider_id,
-      system_prompt: buildBotSystemPrompt(baseSystemPrompt, name, title, description, ""),
+      system_prompt: buildBotSystemPrompt(
+        baseSystemPrompt,
+        name,
+        title,
+        description,
+        "",
+        metadata.role
+      ),
       tools: source.tools,
       memory_enabled: source.memory_enabled,
       config: withBotProfileMetadata(source.config, {

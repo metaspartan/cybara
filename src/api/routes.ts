@@ -141,6 +141,8 @@ import { checkForUpdate, isUpdateCheckDisabled } from "../core/update-check";
 import { workspaceIndexer } from "../core/workspace-indexer";
 import { agentRoutes } from "./agent-routes";
 import { botRoutes } from "./bot-routes";
+import { roomRoutes } from "./room-routes";
+import { roomConfigToApi } from "../../shared/room-mode";
 import { channelRoutes } from "./channel-routes";
 import { getClientIp } from "./client-ip";
 import { getCybaraDataDirConfigInfo, getCybaraDataDirInfo } from "./data-dir-info";
@@ -274,6 +276,7 @@ const routes: Record<string, RouteHandler> = {
   ...channelRoutes,
   ...agentRoutes,
   ...botRoutes,
+  ...roomRoutes,
   "GET /api/metrics": () => ({
     requestCount: requestLogs.length,
     recentRequests: requestLogs.slice(0, 100),
@@ -1252,6 +1255,7 @@ const routes: Record<string, RouteHandler> = {
             ? session.workspaceDir
             : null,
         pinned: session.pinned === true,
+        room: session.room ? roomConfigToApi(session.room) : null,
         message_count: session.messageCount,
         last_message: lastMessage
           ? {
@@ -1317,6 +1321,10 @@ const routes: Record<string, RouteHandler> = {
           : messages[messages.length - 1]?.timestamp || session.createdAt
       ),
       pinned: ("pinned" in session && session.pinned === true) || getSessionPinned(session.id),
+      room:
+        "room" in session && session.room
+          ? roomConfigToApi(session.room as Parameters<typeof roomConfigToApi>[0])
+          : null,
       workspace_dir:
         "workspaceDir" in session && typeof session.workspaceDir === "string"
           ? session.workspaceDir

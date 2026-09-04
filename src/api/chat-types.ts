@@ -85,4 +85,5 @@ export interface ChatResponse {
   };
   thinking?: string;
   tool_calls?: ToolCallInfo[];
+  messages?: ChatMessage[];
 }

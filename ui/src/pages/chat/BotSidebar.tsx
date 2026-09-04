@@ -7,6 +7,7 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  MessagesSquare,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -23,13 +24,18 @@ import {
 import { useDeferredValue, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Button, ConfirmDialog, Input, Modal, Select, Textarea } from "@/components/ui";
-import { useAgentSummaries, useProviders } from "@/hooks/useApi";
+import { useAgentSummaries, useDeleteSession, useProviders } from "@/hooks/useApi";
 import { botsApi, extractApiError } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import type { BotRosterItem } from "@/types";
 import { BotAvatar } from "./BotAvatar";
 import { resolveBotBaseAgentId, selectableBotBaseAgents } from "./botAgentSelection";
 import { buildFreshChatPath, buildSessionChatPath } from "./chatRoute";
+import { RoomCreateModal } from "./RoomCreateModal";
+import { useSessions } from "@/hooks/useChat";
+import { BOT_ROLE_LIST, type BotRoleId, botRolePreset } from "../../../../shared/bot-roles";
+import { isRoomSessionId, ROOM_MODE_LABELS } from "../../../../shared/room-mode";
 import { buildMultiChatPath, MULTI_CHAT_MAX_PANES } from "./multiChatLayout";
 
 interface BotSidebarProps {
@@ -74,6 +80,7 @@ export function BotSidebar({
 }: BotSidebarProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
   const { data: providers = [] } = useProviders();
   const agentsQuery = useAgentSummaries();
   const [query, setQuery] = useState("");
@@ -88,6 +95,10 @@ export function BotSidebar({
   const [editDraft, setEditDraft] = useState<BotProfileDraft | null>(null);
   const [deletingBot, setDeletingBot] = useState<BotRosterItem | null>(null);
   const [teamOpen, setTeamOpen] = useState(false);
+  const [roomOpen, setRoomOpen] = useState(false);
+  const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
+  const deleteRoom = useDeleteSession();
+  const [role, setRole] = useState<BotRoleId | "">("");
   const [teamBotIds, setTeamBotIds] = useState<string[]>([]);
   const deferredQuery = useDeferredValue(query);
   const activeIds = useMemo(() => new Set(activeSessionIds), [activeSessionIds]);
@@ -104,6 +115,11 @@ export function BotSidebar({
     refetchInterval: 10_000,
   });
   const allBots = botsQuery.data ?? [];
+  const { data: allSessions = [] } = useSessions();
+  const roomSessionList = useMemo(
+    () => allSessions.filter((session) => isRoomSessionId(session.id)),
+    [allSessions]
+  );
   const availableAgents = useMemo(
     () => selectableBotBaseAgents(agentsQuery.data ?? []),
     [agentsQuery.data]
@@ -153,6 +169,7 @@ export function BotSidebar({
         name,
         title,
         description,
+        role: role || undefined,
         base_agent_id: selectedBaseAgentId || undefined,
       });
       if (!response.success || !response.data) {
@@ -164,6 +181,7 @@ export function BotSidebar({
       setName("");
       setTitle("");
       setDescription("");
+      setRole("");
       setBaseAgentId("");
       setError(null);
       onCreateOpenChange(false);
@@ -243,7 +261,6 @@ export function BotSidebar({
       navigate(buildMultiChatPath(sessions));
     },
   });
-
   const beginEdit = (bot: BotRosterItem): void => {
     setError(null);
     setEditingBot(bot);
@@ -293,7 +310,16 @@ export function BotSidebar({
           className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-raised)] px-2 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           <UsersRound className="h-3.5 w-3.5" />
-          Team workspace
+          Team
+        </button>
+        <button
+          type="button"
+          onClick={() => setRoomOpen(true)}
+          disabled={allBots.filter((bot) => !bot.hidden).length < 2}
+          className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-raised)] px-2 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <MessagesSquare className="h-3.5 w-3.5" />
+          {t("chat.room.newRoom")}
         </button>
         {hiddenCount > 0 ? (
           <button
@@ -540,6 +566,77 @@ export function BotSidebar({
         ) : null}
       </div>
 
+      {roomSessionList.length > 0 ? (
+        <div className="shrink-0 border-t border-[var(--surface-border)] px-2 pb-2 pt-2">
+          <div className="flex items-center justify-between px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+            <span>{t("chat.room.rooms")}</span>
+            <span>{roomSessionList.length}</span>
+          </div>
+          <div className="max-h-48 space-y-0.5 overflow-y-auto">
+            {roomSessionList.map((session) => {
+              const active = currentSessionId === session.id;
+              return (
+                <div
+                  key={session.id}
+                  className={cn(
+                    "group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-[var(--surface-hover)]",
+                    active && "bg-[var(--surface-hover)]"
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => navigate(buildSessionChatPath(session.id))}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  >
+                    <MessagesSquare className="h-3.5 w-3.5 shrink-0 text-[var(--text-muted)]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12px] font-medium text-[var(--text-primary)]">
+                        {session.title || t("chat.room.untitled")}
+                      </span>
+                      <span className="block truncate text-[10px] text-[var(--text-muted)]">
+                        {session.room ? ROOM_MODE_LABELS[session.room.mode] : ""}
+                        {session.updated_at ? ` · ${formatRelativeTime(session.updated_at)}` : ""}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeletingRoomId(session.id)}
+                    className="theme-muted-icon-button flex h-6 w-6 shrink-0 items-center justify-center rounded-md opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+                    aria-label={t("chat.room.delete")}
+                    title={t("chat.room.delete")}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <RoomCreateModal isOpen={roomOpen} onClose={() => setRoomOpen(false)} botsOnly />
+      <ConfirmDialog
+        isOpen={Boolean(deletingRoomId)}
+        onClose={() => setDeletingRoomId(null)}
+        onConfirm={() => {
+          if (!deletingRoomId) return;
+          const target = deletingRoomId;
+          deleteRoom.mutate(target, {
+            onSuccess: () => {
+              setDeletingRoomId(null);
+              if (currentSessionId === target) navigate(buildFreshChatPath());
+            },
+            onError: (mutationError: Error) => setError(mutationError.message),
+          });
+        }}
+        title={t("chat.room.delete")}
+        description={t("chat.room.deleteDescription")}
+        confirmText={t("chat.room.delete")}
+        isLoading={deleteRoom.isPending}
+        variant="danger"
+      />
+
       <Modal
         isOpen={createOpen}
         onClose={() => onCreateOpenChange(false)}
@@ -581,6 +678,32 @@ export function BotSidebar({
             placeholder="Atlas"
             required
           />
+          <Select
+            label={t("bots.role")}
+            value={role}
+            onChange={(value) => {
+              const nextRole = value as BotRoleId | "";
+              const preset = botRolePreset(nextRole);
+              setRole(nextRole);
+              if (preset && (!title.trim() || title === botRolePreset(role)?.title)) {
+                setTitle(preset.title);
+              }
+              if (
+                preset &&
+                (!description.trim() || description === botRolePreset(role)?.description)
+              ) {
+                setDescription(preset.description);
+              }
+            }}
+            helperText={botRolePreset(role)?.focus || t("bots.roleHelp")}
+          >
+            <option value="">{t("bots.roleCustom")}</option>
+            {BOT_ROLE_LIST.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.title}
+              </option>
+            ))}
+          </Select>
           <Input
             label="Job title"
             value={title}

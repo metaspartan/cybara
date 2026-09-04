@@ -1,3 +1,4 @@
+import type { ToolCallInfo } from "./chat-process-activities";
 export interface ToolCallResultLike {
   name: string;
   args?: Record<string, unknown>;
@@ -558,4 +559,36 @@ export function shouldPreferArtifactsForMessage(message: string): boolean {
   const trimmed = message.trim();
   if (trimmed.length < 6) return false;
   return ARTIFACT_INTENT_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+export function toToolCallInfo(
+  toolCall: {
+    id?: string;
+    name: string;
+    args?: unknown;
+    result?: unknown;
+    duration?: number;
+  },
+  timelineIndex: number
+): ToolCallInfo {
+  const outcome = classifyToolCallResult(toolCall.result);
+  return {
+    id:
+      typeof toolCall.id === "string" && toolCall.id.trim()
+        ? toolCall.id
+        : `call_${crypto.randomUUID().slice(0, 8)}`,
+    name: toolCall.name,
+    args:
+      toolCall.args && typeof toolCall.args === "object" && !Array.isArray(toolCall.args)
+        ? (toolCall.args as Record<string, unknown>)
+        : {},
+    status: outcome.status,
+    result: toolCall.result,
+    error: outcome.error,
+    duration:
+      typeof toolCall.duration === "number" && Number.isFinite(toolCall.duration)
+        ? Math.max(0, Math.round(toolCall.duration))
+        : 0,
+    timeline_index: timelineIndex,
+  };
 }

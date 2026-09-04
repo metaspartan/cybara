@@ -7,6 +7,8 @@ import {
   useLoadSession,
   useUpdateSessionAgent,
 } from "@/hooks/useChat";
+import { ChatRoomBanner, roomComposerLabel, useCurrentRoom } from "./chat/RoomBanner";
+import { useComposerAgents, useCurrentBot } from "./chat/useChatBotContext";
 import { canShareNearbySession, useNearbyStatus } from "@/hooks/useNearbyStatus";
 import { botsApi, chatApi, extractApiError, providerPlansApi, settingsApi } from "@/lib/api";
 import {
@@ -158,17 +160,9 @@ export function Chat() {
   const goalController = useSessionGoal(sessionId || undefined);
   const { data: environmentSubagents = [] } = useSubagents(sessionId);
   const typedMessages = messages as ChatMessage[];
-  const currentBot = useMemo(
-    () => botRoster.find((bot) => bot.session_id === sessionId) ?? null,
-    [botRoster, sessionId]
-  );
-  const composerAgents = useMemo(
-    () =>
-      currentBot
-        ? agents.filter((agent) => agent.id === currentBot.id)
-        : agents.filter((agent) => !agent.is_bot),
-    [agents, currentBot]
-  );
+  const currentBot = useCurrentBot(botRoster, sessionId);
+  const currentRoom = useCurrentRoom(sessionId);
+  const composerAgents = useComposerAgents(agents, currentBot);
   const turnStartedAtMsByIndex = useMemo(() => {
     const lookup = new Map<number, number | undefined>();
     let latestUserTimestampMs: number | undefined;
@@ -1593,7 +1587,8 @@ export function Chat() {
     activeAgent: activeAgentForPlan,
     agents: composerAgents,
     agentUpdating: updateSessionAgent.isPending,
-    agentLocked: currentBot !== null,
+    agentLocked: currentBot !== null || currentRoom !== null,
+    agentLockedLabel: roomComposerLabel(currentRoom),
     approvalMode: toolApprovalMode,
     approvalUpdating: savingToolApprovalMode,
     capabilityPicker,
@@ -1755,6 +1750,12 @@ export function Chat() {
       <div className="flex-1 flex overflow-hidden">
         <div className="relative flex-1 flex flex-col min-w-0">
           <PendingApprovalsBanner />
+          <ChatRoomBanner
+            sessionId={sessionId}
+            busy={isLoading || currentSessionIsWorking}
+            onStop={() => void handleStopActive()}
+            onRoomChanged={() => void loadSessionMutation.loadFresh(sessionId || "")}
+          />
           {artifactViewerTarget ? (
             <ArtifactViewerPanel
               artifact={artifactViewerTarget}
@@ -1826,7 +1827,8 @@ export function Chat() {
                     messageProcessMap={messageProcessMap}
                     savingGoldenMessageIndex={savingGoldenMessageIndex}
                     sessionId={sessionId}
-                    showAuthorAttribution={transcriptHasMixedAgents}
+                    showAuthorAttribution={transcriptHasMixedAgents || currentRoom !== null}
+                    conversationStyle={currentBot !== null || currentRoom !== null}
                     showWorkingTimeline={showWorkingTimeline}
                     speakingMessageIndex={speakingMessageIndex}
                     workspaceDir={effectiveWorkspaceDir}

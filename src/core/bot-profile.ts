@@ -1,4 +1,5 @@
 import { parseAgentConfig } from "./agent-internals";
+import { type BotRoleId, botRolePreset, isBotRoleId } from "../../shared/bot-roles";
 
 export interface BotProfileMetadata {
   title: string;
@@ -6,6 +7,7 @@ export interface BotProfileMetadata {
   hidden: boolean;
   pinned: boolean;
   baseSystemPrompt: string;
+  role: BotRoleId | null;
 }
 
 function boundedText(value: unknown, maximum: number): string {
@@ -27,7 +29,8 @@ export function isBotProfileConfig(config: unknown): boolean {
     typeof record.description === "string" ||
     typeof record.hidden === "boolean" ||
     typeof record.pinned === "boolean" ||
-    typeof record.base_system_prompt === "string"
+    typeof record.base_system_prompt === "string" ||
+    typeof record.role === "string"
   );
 }
 
@@ -39,6 +42,7 @@ export function readBotProfileMetadata(config: unknown): BotProfileMetadata {
     hidden: record.hidden === true,
     pinned: record.pinned === true,
     baseSystemPrompt: boundedText(record.base_system_prompt, 20_000),
+    role: isBotRoleId(record.role) ? record.role : null,
   };
 }
 
@@ -57,6 +61,7 @@ export function withBotProfileMetadata(
       hidden: next.hidden,
       pinned: next.pinned,
       base_system_prompt: next.baseSystemPrompt,
+      role: next.role,
     },
   };
 }
@@ -66,12 +71,15 @@ export function buildBotSystemPrompt(
   name: string,
   title: string,
   description: string,
-  teammates: string
+  teammates: string,
+  role: BotRoleId | null = null
 ): string {
+  const preset = botRolePreset(role);
   const identity = [
     `You are ${name}, a persistent Cybara bot.`,
     title ? `Your role is ${title}.` : "",
     description ? `Your standing responsibilities and boundaries are: ${description}` : "",
+    preset ? `Working style for a ${preset.title}: ${preset.focus}` : "",
     "Keep this role across conversations. Treat task-specific user messages as temporary instructions and preserve explicit approval boundaries.",
     "Available tools are optional, not mandatory. Honor the latest user request when it limits or forbids tool use.",
     "Do not import assumptions, claims, or unfinished work from other agents or conversations unless they appear in this bot's own conversation.",

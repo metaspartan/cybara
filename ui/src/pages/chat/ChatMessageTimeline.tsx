@@ -13,6 +13,7 @@ import { chatImageSrc, toolOutputImageSources } from "@/lib/chatImages";
 import { cn } from "@/lib/utils";
 import { LiveActivityTimeline } from "./ActivityTimeline";
 import { assistantAuthorLabel } from "./assistantAuthors";
+import { agentAvatarGradient, agentAvatarInitials } from "./BotAvatar";
 import { AgentTransferTimeline } from "./AgentTransferTimeline";
 import { AssistantMetaInline } from "./AssistantMetaInline";
 import { parseTimestampMs } from "./assistantMetaModel";
@@ -51,6 +52,7 @@ interface ChatMessageTimelineProps {
   savingGoldenMessageIndex: number | null;
   sessionId: string | null;
   showAuthorAttribution?: boolean;
+  conversationStyle?: boolean;
   showWorkingTimeline: boolean;
   speakingMessageIndex: number | null;
   workspaceDir: string | null;
@@ -74,6 +76,7 @@ interface ChatMessageRowProps {
   savingGoldenMessageIndex: number | null;
   sessionId: string | null;
   showAuthorAttribution: boolean;
+  conversationStyle: boolean;
   speakingMessageIndex: number | null;
   workspaceDir: string | null;
   onCopyMessage: (index: number, content: string) => void;
@@ -100,6 +103,7 @@ export function ChatMessageTimeline({
   savingGoldenMessageIndex,
   sessionId,
   showAuthorAttribution = false,
+  conversationStyle = false,
   showWorkingTimeline,
   speakingMessageIndex,
   workspaceDir,
@@ -140,6 +144,7 @@ export function ChatMessageTimeline({
           savingGoldenMessageIndex,
           sessionId,
           showAuthorAttribution,
+          conversationStyle,
           speakingMessageIndex,
           workspaceDir,
           onCopyMessage,
@@ -235,6 +240,7 @@ function ChatMessageRow({
   savingGoldenMessageIndex,
   sessionId,
   showAuthorAttribution,
+  conversationStyle,
   speakingMessageIndex,
   workspaceDir,
   onCopyMessage,
@@ -292,19 +298,25 @@ function ChatMessageRow({
         <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(var(--accent-primary),0.2)] sm:h-8 sm:w-8">
           <User className="h-3.5 w-3.5 accent-text sm:h-4 sm:w-4" />
         </div>
+      ) : conversationStyle ? (
+        <AssistantAvatar message={message} />
       ) : null}
       <div
         className={
           message.role === "user"
             ? "max-w-[85%] text-right sm:max-w-[75%] lg:max-w-[65%]"
-            : "w-full min-w-0"
+            : conversationStyle
+              ? "min-w-0 max-w-[88%] sm:max-w-[78%] lg:max-w-[70%]"
+              : "w-full min-w-0"
         }
       >
         <div
           className={
             message.role === "user"
               ? "rounded-xl border border-[rgba(var(--accent-primary),0.2)] px-3 py-2 sm:rounded-2xl sm:px-4 sm:py-3"
-              : "py-1"
+              : conversationStyle
+                ? "rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 sm:rounded-2xl sm:px-4 sm:py-3"
+                : "py-1"
           }
         >
           {message.role !== "user" && showAuthorAttribution ? (
@@ -399,6 +411,20 @@ function ChatMessageRow({
         />
       </div>
     </div>
+  );
+}
+
+function AssistantAvatar({ message }: { message: ChatMessage }): ReactElement {
+  const seed = message.agent_id || message.agent_name || "assistant";
+  const name = message.agent_name || "AI";
+  return (
+    <span
+      className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white sm:h-8 sm:w-8"
+      style={{ background: agentAvatarGradient(seed) }}
+      aria-hidden="true"
+    >
+      {agentAvatarInitials(name)}
+    </span>
   );
 }
 

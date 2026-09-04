@@ -63,7 +63,10 @@ import {
   recordCircuitSuccess,
 } from "../core/tools/runtime-guards";
 import { resolveAgentToolPolicy } from "../core/toolsets";
+import { isBotSessionId } from "../../shared/bot-mode";
+import { isRoomSessionId } from "../../shared/room-mode";
 import { stripAgentAttributionTag } from "./chat-agent-handoff";
+import { handleRoomChatTurn } from "./chat-room-runtime";
 import {
   activeAgentSystemPrompt,
   applyActiveAgentToSession,
@@ -94,11 +97,7 @@ import {
   restorePendingChatQueueState,
   syncPendingChatStatus,
 } from "./chat-pending-state";
-import {
-  deletePersistedPendingChatItem,
-  persistPendingChatItem,
-  persistPendingChatItems,
-} from "./chat-pending-store";
+import { deletePersistedPendingChatItem, persistPendingChatItem } from "./chat-pending-store";
 import {
   buildFallbackProcessActivities,
   dedupeProcessActivities,
@@ -162,11 +161,11 @@ import { constrainToolsForMessage, messageDisallowsAllTools } from "./chat-tool-
 import { resolveToolResponseContent } from "./chat-tool-response";
 import {
   buildNoUsableAssistantResponseMessage,
-  classifyToolCallResult,
   extractVisibleClarification,
   requiredDirectToolForMessage,
   shouldPreferArtifactsForMessage,
   suppressRecoveredWebFailureActivities,
+  toToolCallInfo,
 } from "./chat-tool-summary";
 import type {
   ChatMessage,
@@ -176,6 +175,11 @@ import type {
 } from "./chat-types";
 
 export { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
+export {
+  deletePendingChatMessage,
+  reorderPendingChatMessages,
+  updatePendingChatMessage,
+} from "./chat-pending-mutations";
 export { stripThinkingTags } from "./chat-formatting";
 export {
   formatProcessActivityFromToolCall,
@@ -702,7 +706,9 @@ export function runChatTurnWithQueueDrain(
 ): Promise<ChatResponse> {
   const isGoalIteration = request.source === GOAL_LOOP_SOURCE;
   const result = chatTurnMutex.run(effectiveSessionId, () =>
-    handleChatTurn(request, effectiveSessionId, goalCommand, goalCommandSideEffectsApplied)
+    isRoomSessionId(effectiveSessionId)
+      ? handleRoomChatTurn(request, effectiveSessionId)
+      : handleChatTurn(request, effectiveSessionId, goalCommand, goalCommandSideEffectsApplied)
   );
   const finalized = result.then(
     async (response) => {
@@ -835,141 +841,6 @@ export function listPendingChatMessages(sessionId: string): PendingChatMessageSn
 
 export function restorePersistedPendingChatQueues(schedule = true): number {
   return restorePendingChatQueueState(schedule ? schedulePendingChatDrain : undefined);
-}
-
-export function reorderPendingChatMessages(
-  sessionId: string,
-  pendingMessageIds: string[]
-):
-  | { success: true; pendingMessages: PendingChatMessageSnapshot[] }
-  | {
-      success: false;
-      error: string;
-      pendingMessages: PendingChatMessageSnapshot[];
-    } {
-  const key = sessionId.trim();
-  const queue = pendingChatQueues.get(key) || [];
-  if (queue.length === 0) {
-    return { success: true, pendingMessages: [] };
-  }
-
-  const normalizedIds = pendingMessageIds
-    .map((id) => (typeof id === "string" ? id.trim() : ""))
-    .filter((id, index, ids) => id.length > 0 && ids.indexOf(id) === index);
-  const visibleItems = queue.filter((item) => item.materialized !== true);
-  const visibleById = new Map(visibleItems.map((item) => [item.id, item]));
-  const unknownId = normalizedIds.find((id) => !visibleById.has(id));
-  if (unknownId) {
-    return {
-      success: false,
-      error: "Pending message not found",
-      pendingMessages: pendingChatSnapshots(key),
-    };
-  }
-
-  const orderedIds = new Set(normalizedIds);
-  const now = Date.now();
-  const orderedVisibleItems = [
-    ...normalizedIds
-      .map((id) => visibleById.get(id))
-      .filter((item): item is PendingChatItem => !!item),
-    ...visibleItems.filter((item) => !orderedIds.has(item.id)),
-  ].map((item) => ({
-    ...item,
-    updatedAt: now,
-    sequence: nextPendingChatSequence(),
-  }));
-  const materializedItems = queue.filter((item) => item.materialized === true);
-
-  pendingChatQueues.set(key, [...materializedItems, ...orderedVisibleItems]);
-  persistPendingChatItems([...materializedItems, ...orderedVisibleItems]);
-  const pendingMessages = syncPendingChatStatus(key);
-  return { success: true, pendingMessages };
-}
-
-export function updatePendingChatMessage(
-  sessionId: string,
-  pendingMessageId: string,
-  content: string
-):
-  | {
-      success: true;
-      pendingMessage: PendingChatMessageSnapshot;
-      pendingMessages: PendingChatMessageSnapshot[];
-    }
-  | {
-      success: false;
-      error: string;
-      pendingMessages: PendingChatMessageSnapshot[];
-    } {
-  const key = sessionId.trim();
-  const nextContent = typeof content === "string" ? content.trim() : "";
-  if (nextContent.length === 0) {
-    return {
-      success: false,
-      error: "Pending message cannot be empty",
-      pendingMessages: pendingChatSnapshots(key),
-    };
-  }
-
-  const queue = pendingChatQueues.get(key) || [];
-  const index = queue.findIndex(
-    (item) => item.id === pendingMessageId && item.materialized !== true
-  );
-  if (index < 0) {
-    return {
-      success: false,
-      error: "Pending message not found",
-      pendingMessages: pendingChatSnapshots(key),
-    };
-  }
-
-  const item = {
-    ...queue[index],
-    content: nextContent,
-    request: {
-      ...queue[index].request,
-      message: nextContent,
-    },
-    updatedAt: Date.now(),
-  };
-  queue[index] = item;
-  pendingChatQueues.set(key, queue);
-  persistPendingChatItem(item);
-  const pendingMessages = syncPendingChatStatus(key);
-  return {
-    success: true,
-    pendingMessage: pendingChatSnapshot(item),
-    pendingMessages,
-  };
-}
-
-export function deletePendingChatMessage(
-  sessionId: string,
-  pendingMessageId: string
-):
-  | { success: true; pendingMessages: PendingChatMessageSnapshot[] }
-  | {
-      success: false;
-      error: string;
-      pendingMessages: PendingChatMessageSnapshot[];
-    } {
-  const key = sessionId.trim();
-  const queue = pendingChatQueues.get(key) || [];
-  const visibleIndex = queue.findIndex(
-    (item) => item.id === pendingMessageId && item.materialized !== true
-  );
-  if (visibleIndex < 0) {
-    return {
-      success: false,
-      error: "Pending message not found",
-      pendingMessages: pendingChatSnapshots(key),
-    };
-  }
-
-  const pendingMessages = removePendingChatQueueItem(key, pendingMessageId);
-  rejectPendingChatCompletion(pendingMessageId, new Error("Pending chat message was deleted"));
-  return { success: true, pendingMessages };
 }
 
 async function waitForPendingChatSession(sessionId: string): Promise<InMemoryChatSession | null> {
@@ -1177,7 +1048,7 @@ async function handleChatTurn(
 
   const requestedAgentId =
     typeof agentId === "string" && agentId.trim().length > 0 ? agentId.trim() : undefined;
-  if (requestedAgentId && requestedAgentId !== session.agentId) {
+  if (requestedAgentId && requestedAgentId !== session.agentId && !isBotSessionId(session.id)) {
     const requestedAgent = agentManager.get(requestedAgentId);
     if (!requestedAgent) {
       return {
@@ -1693,27 +1564,7 @@ async function handleChatTurn(
         responseContent = resolvedToolResponse.responseContent;
         toolResults.push(...resolvedToolResponse.toolResults);
         for (const tc of toolResults) {
-          const timelineIndex = allToolCalls.length;
-          const outcome = classifyToolCallResult(tc.result);
-          allToolCalls.push({
-            id:
-              typeof tc.id === "string" && tc.id.trim()
-                ? tc.id
-                : `call_${crypto.randomUUID().slice(0, 8)}`,
-            name: tc.name,
-            args:
-              tc.args && typeof tc.args === "object" && !Array.isArray(tc.args)
-                ? (tc.args as Record<string, unknown>)
-                : {},
-            status: outcome.status,
-            result: tc.result,
-            error: outcome.error,
-            duration:
-              typeof tc.duration === "number" && Number.isFinite(tc.duration)
-                ? Math.max(0, Math.round(tc.duration))
-                : 0,
-            timeline_index: timelineIndex,
-          });
+          allToolCalls.push(toToolCallInfo(tc, allToolCalls.length));
         }
       }
 

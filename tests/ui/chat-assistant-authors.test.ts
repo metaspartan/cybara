@@ -39,7 +39,9 @@ describe("assistant author attribution", () => {
     );
 
     expect(chat).toContain("hasMixedAssistantAuthors(typedMessages)");
-    expect(chat).toContain("showAuthorAttribution={transcriptHasMixedAgents}");
+    expect(chat).toContain(
+      "showAuthorAttribution={transcriptHasMixedAgents || currentRoom !== null}"
+    );
     expect(multi).toContain("showAuthorAttribution={hasMixedAssistantAuthors(displayMessages)}");
     expect(timeline).toContain('message.role !== "user" && showAuthorAttribution ? (');
   });

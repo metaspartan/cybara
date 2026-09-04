@@ -47,8 +47,9 @@ describe("useChat session race guards", () => {
       "messages: queuedSend ? prev.messages : [...prev.messages, userMessage]"
     );
     expect(source).toContain("queuedSend ? prev.messages");
+    expect(source).toContain("Array.isArray(response.data.messages)");
     expect(source).toContain(
-      "queuedSend\n                  ? [...prev.messages, userMessage, response.data!.message]"
+      "queuedSend\n                  ? [...prev.messages, userMessage, ...repliedMessages]"
     );
   });
 

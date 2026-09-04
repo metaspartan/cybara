@@ -5,6 +5,7 @@ import type {
   ChatImageAttachment,
   ChatMessage,
   SessionContextUsage,
+  SessionRoomConfig,
   SessionTokenUsage,
 } from "@/types";
 import { enrichReloadedMessages, readCachedSessionMessages } from "@/pages/chat/messageCache";
@@ -43,6 +44,7 @@ export interface LoadedChatSession {
   contextUsage?: SessionContextUsage | null;
   tokenUsage?: SessionTokenUsage | null;
   plan?: unknown;
+  room?: SessionRoomConfig | null;
   messagesList: ChatMessage[];
 }
 
@@ -212,13 +214,17 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
           void invalidateSessionDetail(queryClient, response.data.sessionId);
           return response.data;
         }
+        const repliedMessages =
+          Array.isArray(response.data.messages) && response.data.messages.length > 0
+            ? response.data.messages
+            : [response.data.message];
         setState((prev) => ({
           ...(prev.sessionId !== requestSessionId
             ? prev
             : {
                 messages: queuedSend
-                  ? [...prev.messages, userMessage, response.data!.message]
-                  : [...prev.messages, response.data!.message],
+                  ? [...prev.messages, userMessage, ...repliedMessages]
+                  : [...prev.messages, ...repliedMessages],
                 sessionId: response.data!.sessionId,
                 workspaceDir: resolvedWorkspaceDir ?? null,
                 isLoading: false,

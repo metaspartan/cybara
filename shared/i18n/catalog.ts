@@ -1,32 +1,11 @@
-export const supportedLocales = [
-  "en",
-  "es",
-  "zh-CN",
-  "zh-TW",
-  "ja",
-  "fr",
-  "de",
-  "ko",
-  "pt-BR",
-  "it",
-  "nl",
-  "pl",
-  "tr",
-  "vi",
-  "id",
-  "th",
-  "hi",
-  "ru",
-  "uk",
-  "sv",
-  "da",
-  "fi",
-  "ar",
-] as const;
-
-export type SupportedLocale = (typeof supportedLocales)[number];
-
-export type LocaleDirection = "ltr" | "rtl";
+export {
+  type LocaleDirection,
+  localeDirections,
+  localeLabels,
+  type SupportedLocale,
+  supportedLocales,
+} from "./locales";
+import type { SupportedLocale } from "./locales";
 
 export type TranslationKey =
   | "app.name"
@@ -145,61 +124,27 @@ export type TranslationKey =
   | "chat.tabs.android"
   | "chat.tabs.computer"
   | "chat.tabs.files"
-  | "chat.tabs.subagents";
+  | "chat.tabs.subagents"
+  | "chat.room.startRoom"
+  | "chat.room.openSideBySide"
+  | "chat.room.participants"
+  | "chat.room.endDiscussion"
+  | "chat.room.askToSpeak"
+  | "chat.room.settings"
+  | "chat.room.moderator"
+  | "chat.room.rounds"
+  | "chat.room.newRoom"
+  | "chat.room.createDescription"
+  | "chat.room.rooms"
+  | "chat.room.untitled"
+  | "bots.role"
+  | "bots.roleHelp"
+  | "bots.roleCustom"
+  | "chat.room.delete"
+  | "chat.room.deleteDescription";
 
 export type TranslationCatalog = Record<TranslationKey, string>;
 
-export const localeLabels: Record<SupportedLocale, string> = {
-  en: "English",
-  es: "Español",
-  "zh-CN": "简体中文",
-  "zh-TW": "繁體中文",
-  ja: "日本語",
-  fr: "Français",
-  de: "Deutsch",
-  ko: "한국어",
-  "pt-BR": "Português (Brasil)",
-  it: "Italiano",
-  nl: "Nederlands",
-  pl: "Polski",
-  tr: "Türkçe",
-  vi: "Tiếng Việt",
-  id: "Bahasa Indonesia",
-  th: "ไทย",
-  hi: "हिन्दी",
-  ru: "Русский",
-  uk: "Українська",
-  sv: "Svenska",
-  da: "Dansk",
-  fi: "Suomi",
-  ar: "العربية",
-};
-
-export const localeDirections: Record<SupportedLocale, LocaleDirection> = {
-  en: "ltr",
-  es: "ltr",
-  "zh-CN": "ltr",
-  "zh-TW": "ltr",
-  ja: "ltr",
-  fr: "ltr",
-  de: "ltr",
-  ko: "ltr",
-  "pt-BR": "ltr",
-  it: "ltr",
-  nl: "ltr",
-  pl: "ltr",
-  tr: "ltr",
-  vi: "ltr",
-  id: "ltr",
-  th: "ltr",
-  hi: "ltr",
-  ru: "ltr",
-  uk: "ltr",
-  sv: "ltr",
-  da: "ltr",
-  fi: "ltr",
-  ar: "rtl",
-};
 
 const englishTranslations: TranslationCatalog = {
     "app.name": "Cybara",
@@ -319,6 +264,23 @@ const englishTranslations: TranslationCatalog = {
   "chat.tabs.computer": "Desktop",
   "chat.tabs.files": "Files",
   "chat.tabs.subagents": "Side task",
+  "chat.room.startRoom": "Start group room",
+  "chat.room.openSideBySide": "Open side by side",
+  "chat.room.participants": "Participants",
+  "chat.room.endDiscussion": "End discussion",
+  "chat.room.askToSpeak": "Ask {name} to speak",
+  "chat.room.settings": "Room settings",
+  "chat.room.moderator": "Moderator",
+  "chat.room.rounds": "Rounds",
+  "chat.room.newRoom": "New Room",
+  "chat.room.createDescription": "Pick up to {max} agents to share one transcript.",
+  "chat.room.rooms": "Rooms",
+  "chat.room.untitled": "Untitled room",
+  "bots.role": "Role preset",
+  "bots.roleHelp": "Pick a role to prefill the job title, standing instructions, and working style.",
+  "bots.roleCustom": "Custom role",
+  "chat.room.delete": "Delete room",
+  "chat.room.deleteDescription": "Delete this group room and its shared transcript? The bots keep their own chats and memory.",
 };
 
 export const translations: { en: TranslationCatalog } & Record<
@@ -1926,53 +1888,10 @@ export const translations: { en: TranslationCatalog } & Record<
   },
 };
 
-const localeAliases: Record<string, SupportedLocale> = {
-  zh: "zh-CN",
-  "zh-hans": "zh-CN",
-  "zh-cn": "zh-CN",
-  "zh-hant": "zh-TW",
-  "zh-tw": "zh-TW",
-  "zh-hk": "zh-TW",
-  "zh-mo": "zh-TW",
-  pt: "pt-BR",
-  "pt-br": "pt-BR",
-};
-
-const fallbackLocale: SupportedLocale = "en";
+export { detectLocale, normalizeLocale } from "./locale-detection";
 
 function completeCatalog(locale: SupportedLocale): TranslationCatalog {
   return { ...englishTranslations, ...translations[locale] };
-}
-
-export function normalizeLocale(value: string | null | undefined): SupportedLocale {
-  const raw = (value || "").trim().replace("_", "-");
-  if (!raw) return fallbackLocale;
-  const exact = supportedLocales.find((locale) => locale.toLowerCase() === raw.toLowerCase());
-  if (exact) return exact;
-  const lower = raw.toLowerCase();
-  if (
-    lower.startsWith("zh-hant") ||
-    lower.startsWith("zh-tw") ||
-    lower.startsWith("zh-hk") ||
-    lower.startsWith("zh-mo")
-  ) {
-    return "zh-TW";
-  }
-  const alias = localeAliases[lower] || localeAliases[lower.split("-")[0] || ""];
-  if (alias) return alias;
-  const language = lower.split("-")[0];
-  return supportedLocales.find((locale) => locale.toLowerCase().split("-")[0] === language) || fallbackLocale;
-}
-
-export function detectLocale(candidates: Array<string | null | undefined>): SupportedLocale {
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    const normalized = normalizeLocale(candidate);
-    if (normalized !== fallbackLocale || candidate.toLowerCase().startsWith("en")) {
-      return normalized;
-    }
-  }
-  return fallbackLocale;
 }
 
 export function translate(

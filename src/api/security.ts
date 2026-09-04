@@ -851,6 +851,15 @@ export function routeRequiredScope(method: string, path: string): MobileScope | 
   if (path === "/api/chat" || path.startsWith("/api/chat/")) {
     return "chat";
   }
+  if (path.startsWith("/api/rooms")) {
+    if (method === "GET") return "read";
+    return "chat";
+  }
+  if (path.startsWith("/api/bots")) {
+    if (method === "GET") return "read";
+    if (/^\/api\/bots\/[^/]+\/session$/.test(path)) return "chat";
+    return "manage";
+  }
   if (path.startsWith("/api/sessions")) {
     if (method === "GET") return "read";
     return "chat";

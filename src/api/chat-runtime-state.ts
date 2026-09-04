@@ -22,6 +22,7 @@ import {
 import { setSessionStatusLivenessResolver } from "../core/status";
 import { selectResidentChatSessionEvictions } from "./chat-runtime-stability";
 import type { ChatMessage, ChatRequest, ChatResponse } from "./chat-types";
+import type { RoomConfig } from "../../shared/room-mode";
 
 const log = createLogger("ChatState");
 
@@ -43,6 +44,7 @@ export interface InMemoryChatSession {
   persisted: boolean;
   compactionCount?: number;
   lastFlushCompactionCount?: number;
+  room?: RoomConfig | null;
 }
 
 export function persistActiveSessionContext(session: InMemoryChatSession): void {
@@ -83,6 +85,7 @@ export interface SessionListEntry {
   pinned: boolean;
   lastMessage: SessionLastMessagePreview | null;
   modelMetadata: SessionModelMetadata | null;
+  room?: RoomConfig | null;
 }
 
 type PersistedSessionIndexEntry = SessionListEntry;
@@ -340,6 +343,7 @@ export function buildMemorySessionListEntries(): SessionListEntry[] {
       pinned: persistedSessionIndex.get(s.id)?.pinned ?? false,
       lastMessage: buildLastMessagePreview(s.messages[s.messages.length - 1]),
       modelMetadata,
+      room: s.room ?? null,
     };
   });
 }
@@ -357,6 +361,7 @@ export function persistedSessionToIndexEntry(
     updatedAt: persisted.updatedAt,
     workspaceDir: persisted.workspaceDir ?? null,
     pinned: persisted.pinned,
+    room: persisted.roomConfig,
     modelMetadata: persisted.modelMetadata ?? resolveSessionModelMetadata(persisted.agentId),
     lastMessage:
       persisted.lastMessageRole && persisted.lastMessageContent
@@ -416,6 +421,7 @@ export async function restorePersistedChatSessionForChat(
       workspaceDir: persisted.workspaceDir ?? indexed?.workspaceDir ?? null,
       persisted: true,
       compactionCount: persisted.compactionCount,
+      room: persisted.roomConfig,
     };
     cacheChatSession(restored);
     log.info("Restored persisted session for chat turn", {

@@ -32,6 +32,7 @@ import type {
   SessionSummary,
   SessionTokenUsage,
   SessionToolCallSummary,
+  SessionRoomConfig,
 } from "./api-types";
 import { createWebSocketAuthProtocol } from "cybara-shared/websocket-auth";
 import {
@@ -497,6 +498,7 @@ function normalizeSessions(value: unknown): SessionSummary[] {
         last_message: asRecord(record?.last_message || record?.lastMessage) as
           | SessionSummary["last_message"]
           | null,
+        room: normalizeSessionRoomConfig(record?.room),
       };
     })
   );
@@ -595,7 +597,27 @@ export function normalizeSessionDetail(value: unknown, fallbackId: string): Sess
     contextUsage: normalizeSessionContextUsage(record?.contextUsage ?? record?.context_usage),
     tokenUsage: normalizeSessionTokenUsage(record?.tokenUsage ?? record?.token_usage),
     plan: normalizeSessionPlan(record?.plan),
+    room: normalizeSessionRoomConfig(record?.room),
     messages,
+  };
+}
+
+export function normalizeSessionRoomConfig(value: unknown): SessionRoomConfig | null {
+  const record = asRecord(value);
+  if (!record) return null;
+  const participants = normalizeArrayResponse(
+    record.participant_agent_ids ?? record.participantAgentIds,
+    []
+  ).filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  if (participants.length === 0) return null;
+  const mode = readString(record, ["mode"]);
+  return {
+    participant_agent_ids: participants,
+    mode:
+      mode === "mention_only" || mode === "parallel" || mode === "moderated" ? mode : "round_robin",
+    max_rounds: readNumber(record, ["max_rounds", "maxRounds"]) ?? 1,
+    moderator_agent_id: readString(record, ["moderator_agent_id", "moderatorAgentId"]) || null,
+    shared_context: readString(record, ["shared_context", "sharedContext"]) || "",
   };
 }
 
@@ -939,6 +961,20 @@ export function normalizeMobileStatusStreamEvent(value: unknown): MobileStatusSt
       resultPreview: readString(record, ["resultPreview", "result_preview"]),
       error: readString(record, ["error"]),
       timestamp: readNumber(record, ["timestamp"]),
+    };
+  }
+
+  if (type === "session_message") {
+    const sessionId = readString(record, ["sessionId", "session_id"]);
+    if (!sessionId) return null;
+    const role = readString(record, ["role"]);
+    return {
+      type,
+      sessionId,
+      agentId: readString(record, ["agentId", "agent_id"]),
+      agentName: readString(record, ["agentName", "agent_name"]),
+      role: role === "user" || role === "system" ? role : "assistant",
+      timestamp: readNumber(record, ["timestamp"]) ?? Date.now(),
     };
   }
 

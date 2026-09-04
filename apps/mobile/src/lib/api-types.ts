@@ -94,6 +94,15 @@ export interface SessionSummary {
   workspace_dir?: string | null;
   pinned?: boolean;
   last_message?: { role: string; content: string } | null;
+  room?: SessionRoomConfig | null;
+}
+
+export interface SessionRoomConfig {
+  participant_agent_ids: string[];
+  mode: "round_robin" | "mention_only" | "parallel" | "moderated";
+  max_rounds: number;
+  moderator_agent_id: string | null;
+  shared_context: string;
 }
 
 export interface SessionListPage {
@@ -940,6 +949,7 @@ export interface SessionDetailSummary {
   contextUsage?: SessionContextUsage;
   tokenUsage?: SessionTokenUsage;
   plan?: SessionPlanSnapshot | null;
+  room?: SessionRoomConfig | null;
   messages: SessionMessageSummary[];
 }
 
@@ -1055,6 +1065,15 @@ export interface MobileStatusStreamTokenEvent {
   timestamp: number;
 }
 
+export interface MobileStatusStreamSessionMessageEvent {
+  type: "session_message";
+  sessionId: string;
+  agentId?: string;
+  agentName?: string;
+  role: "assistant" | "user" | "system";
+  timestamp: number;
+}
+
 export interface MobileStatusStreamTaskEvent {
   type: "task_completed";
   taskId: string;
@@ -1070,7 +1089,8 @@ export type MobileStatusStreamEvent =
   | MobileStatusStreamStatusEvent
   | MobileStatusStreamSnapshotEvent
   | MobileStatusStreamTokenEvent
-  | MobileStatusStreamTaskEvent;
+  | MobileStatusStreamTaskEvent
+  | MobileStatusStreamSessionMessageEvent;
 
 export interface MobileSessionStatusResponse {
   activeSessions: MobileStatusSessionSnapshot[];

@@ -299,6 +299,12 @@ describe("API security module", () => {
   });
 
   test("plugin discovery is readable while plugin changes require management access", () => {
+    expect(security.routeRequiredScope("GET", "/api/bots")).toBe("read");
+    expect(security.routeRequiredScope("POST", "/api/bots")).toBe("manage");
+    expect(security.routeRequiredScope("POST", "/api/bots/abc/session")).toBe("chat");
+    expect(security.routeRequiredScope("GET", "/api/rooms/room:1")).toBe("read");
+    expect(security.routeRequiredScope("POST", "/api/rooms")).toBe("chat");
+    expect(security.routeRequiredScope("POST", "/api/rooms/room:1/speak")).toBe("chat");
     expect(security.routeRequiredScope("GET", "/api/plugins")).toBe("read");
     expect(security.routeRequiredScope("GET", "/api/plugins/catalog")).toBe("read");
     expect(security.routeRequiredScope("GET", "/api/plugins/marketplace")).toBe("read");

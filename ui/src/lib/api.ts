@@ -21,6 +21,7 @@ import type {
   SessionContextUsage,
   SessionGoal,
   SessionPlanSnapshot,
+  SessionRoomConfig,
   SessionTokenUsage,
   Skill,
   Task,
@@ -205,6 +206,7 @@ export const agentsApi = {
       interrupted?: boolean;
       pendingMessage?: PendingChatMessage;
       pendingMessages?: PendingChatMessage[];
+      messages?: ChatMessage[];
     }>(`/agents/${id}/chat`, {
       method: "POST",
       body: JSON.stringify({
@@ -226,6 +228,7 @@ export const botsApi = {
     name: string;
     title?: string;
     description?: string;
+    role?: string;
     base_agent_id?: string;
     model?: string;
     provider_id?: string;
@@ -240,6 +243,7 @@ export const botsApi = {
       name?: string;
       title?: string;
       description?: string;
+      role?: string | null;
       hidden?: boolean;
       pinned?: boolean;
       model?: string;
@@ -1131,6 +1135,8 @@ export interface ChatCapabilityOption {
   source: string;
 }
 
+export { roomsApi, type RoomInput } from "@/lib/api/rooms";
+
 export const chatApi = {
   capabilities: (workspaceDir?: string | null, sessionId?: string | null) => {
     const params = new URLSearchParams();
@@ -1167,6 +1173,7 @@ export const chatApi = {
       stopped?: boolean;
       pendingMessage?: PendingChatMessage;
       pendingMessages?: PendingChatMessage[];
+      messages?: ChatMessage[];
     }>("/chat", {
       method: "POST",
       body: JSON.stringify({
@@ -1400,6 +1407,7 @@ export const chatApi = {
         updated_at: string;
         workspace_dir?: string | null;
         pinned?: boolean;
+        room?: SessionRoomConfig | null;
         message_count?: number;
         last_message?: { role: string; content: string };
       }[]
@@ -1421,6 +1429,7 @@ export const chatApi = {
       contextUsage?: SessionContextUsage;
       tokenUsage?: SessionTokenUsage;
       plan?: SessionPlanSnapshot | null;
+      room?: SessionRoomConfig | null;
       messagesList: ChatMessage[];
     }>("/sessions/" + id + (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : ""), {
       signal: options?.signal,
@@ -1907,6 +1916,7 @@ export const sessionsApi = {
         updated_at: string;
         workspace_dir?: string | null;
         pinned?: boolean;
+        room?: SessionRoomConfig | null;
         message_count?: number;
         last_message?: { role: string; content: string };
       }[]

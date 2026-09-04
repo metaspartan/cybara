@@ -22,6 +22,28 @@ describe("compiled route matcher", () => {
     });
   });
 
+  test("decodes percent-encoded parameters so bot and room ids resolve", () => {
+    expect(matcher.match("GET", "/api/sessions/room%3A5334ff19")).toEqual({
+      routeKey: "GET /api/sessions/:id",
+      params: { id: "room:5334ff19" },
+    });
+    expect(matcher.match("GET", "/api/sessions/bot%3Aagent-1")).toEqual({
+      routeKey: "GET /api/sessions/:id",
+      params: { id: "bot:agent-1" },
+    });
+    expect(matcher.match("GET", "/api/sessions/room:5334ff19")).toEqual({
+      routeKey: "GET /api/sessions/:id",
+      params: { id: "room:5334ff19" },
+    });
+  });
+
+  test("keeps malformed percent sequences intact", () => {
+    expect(matcher.match("GET", "/api/sessions/%E0%A4%A")).toEqual({
+      routeKey: "GET /api/sessions/:id",
+      params: { id: "%E0%A4%A" },
+    });
+  });
+
   test("returns an empty match for unsupported paths and methods", () => {
     expect(matcher.match("DELETE", "/api/sessions/session-1")).toEqual({
       routeKey: null,

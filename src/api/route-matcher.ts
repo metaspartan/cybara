@@ -31,6 +31,15 @@ function compileRoute(routeKey: string): { method: string; route: CompiledRoute 
   };
 }
 
+export function decodeRouteParam(value: string): string {
+  if (!value.includes("%")) return value;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export function createRouteMatcher(routeKeys: string[]): RouteMatcher {
   const routesByMethod = new Map<string, Map<number, CompiledRoute[]>>();
   for (const routeKey of routeKeys) {
@@ -61,7 +70,7 @@ export function createRouteMatcher(routeKeys: string[]): RouteMatcher {
           const routePart = candidate.parts[index];
           const actualPart = actualParts[index];
           if (routePart.startsWith(":")) {
-            params[routePart.slice(1)] = actualPart;
+            params[routePart.slice(1)] = decodeRouteParam(actualPart);
           } else if (routePart !== actualPart) {
             matches = false;
             break;

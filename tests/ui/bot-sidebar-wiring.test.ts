@@ -25,8 +25,11 @@ describe("bot sidebar wiring", () => {
     expect(source).not.toContain("ChatInput");
     expect(chat).toContain("agentLocked: currentBot !== null");
     expect(chat).toContain("sessionId,");
-    expect(controls).toContain("disabled={updating || locked}");
-    expect(controls).toContain("{locked ? null : modelRouterEnabled ? (");
+    expect(controls).toContain("{locked ? (");
+    expect(controls).toContain("chat-agent-locked-label");
+    expect(controls).not.toContain("disabled={updating || locked}");
+    expect(chat).toContain("agentLockedLabel: roomComposerLabel(currentRoom)");
+    expect(chat).toContain("conversationStyle={currentBot !== null || currentRoom !== null}");
   });
 
   test("exposes durable profile, team, visibility, and routine actions", () => {
@@ -41,7 +44,10 @@ describe("bot sidebar wiring", () => {
     expect(sidebar).toContain("Edit bot profile");
     expect(sidebar).toContain("botsApi.duplicate");
     expect(sidebar).toContain("botsApi.delete");
-    expect(sidebar).toContain("Team workspace");
+    expect(sidebar).toContain(">\n          Team\n        </button>");
+    expect(sidebar).toContain('t("chat.room.newRoom")');
+    expect(sidebar).toContain("<RoomCreateModal");
+    expect(sidebar).toContain('t("chat.room.delete")');
     expect(sidebar).toContain("buildMultiChatPath(sessions)");
     expect(sidebar).toContain("Routines");
     expect(sidebar).toContain("setActionBotId(null)");
