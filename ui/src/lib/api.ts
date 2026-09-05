@@ -248,6 +248,7 @@ export const botsApi = {
       pinned?: boolean;
       model?: string;
       provider_id?: string;
+      profile_image?: string;
     }
   ) =>
     fetchApi<{ bot: BotRosterItem }>(`/bots/${id}`, {

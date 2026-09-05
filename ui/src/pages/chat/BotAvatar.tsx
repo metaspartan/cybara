@@ -44,6 +44,16 @@ export function BotAvatar({ bot, active = false, className, showPresence = true 
       aria-hidden="true"
     >
       {agentAvatarInitials(bot.name) || <Bot className="h-4 w-4" />}
+      {bot.profile_image ? (
+        <img
+          src={bot.profile_image}
+          alt=""
+          className="absolute inset-0 h-full w-full rounded-[inherit] object-cover"
+          onError={(event) => {
+            event.currentTarget.hidden = true;
+          }}
+        />
+      ) : null}
       {showPresence ? (
         <span
           className={cn(
