@@ -370,4 +370,41 @@ describe("bot routes", () => {
     expect(await getSession(cloned.session_id)).toBeUndefined();
     expect(taskScheduler.list().some((task) => task.agent_id === cloned.bot.id)).toBe(false);
   });
+
+  test("stores, lists, preserves, clears, and validates profile pictures", async () => {
+    const create = botRoutes["POST /api/bots"];
+    const update = botRoutes["PUT /api/bots/:id"];
+    const list = botRoutes["GET /api/bots"];
+    const png = `data:image/png;base64,${Buffer.from(
+      Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    ).toString("base64")}`;
+    const created = (await create?.({ name: "Portrait Bot" })) as {
+      bot: { id: string; profile_image: string };
+    };
+    createdAgentIds.push(created.bot.id);
+
+    expect(created.bot.profile_image).toBe("");
+    const pictured = (await update?.({ profile_image: png }, { id: created.bot.id })) as {
+      bot: { profile_image: string };
+    };
+    expect(pictured.bot.profile_image).toBe(png);
+    expect(
+      ((await list?.()) as { bots: Array<{ id: string; profile_image: string }> }).bots.find(
+        (bot) => bot.id === created.bot.id
+      )?.profile_image
+    ).toBe(png);
+
+    const preserved = (await update?.({ title: "Still pictured" }, { id: created.bot.id })) as {
+      bot: { profile_image: string };
+    };
+    expect(preserved.bot.profile_image).toBe(png);
+    await expect(
+      update?.({ profile_image: "https://example.com/untrusted.png" }, { id: created.bot.id })
+    ).rejects.toThrow("Profile picture must be a PNG, JPEG, or WebP up to 2 MB");
+
+    const cleared = (await update?.({ profile_image: "" }, { id: created.bot.id })) as {
+      bot: { profile_image: string };
+    };
+    expect(cleared.bot.profile_image).toBe("");
+  });
 });

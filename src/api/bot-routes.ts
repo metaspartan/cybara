@@ -13,6 +13,7 @@ import { normalizeCapabilityAlias } from "../core/chat/capability-alias";
 import { uniqueCapabilityHandles } from "../core/chat/capability-handles";
 import { botSessionId } from "../../shared/bot-mode";
 import { BOT_ROLE_LIST, botRolePreset, isBotRoleId } from "../../shared/bot-roles";
+import { normalizeBotProfileImage } from "../../shared/bot-profile-image";
 import type { RouteHandler } from "./routes/_shared";
 
 interface BotInput {
@@ -25,6 +26,7 @@ interface BotInput {
   pinned?: unknown;
   model?: unknown;
   provider_id?: unknown;
+  profile_image?: unknown;
 }
 
 const BOT_AGENT_TYPES = new Set(["main", "research", "coder", "planner", "ops"]);
@@ -53,6 +55,14 @@ function validatedProviderId(value: unknown): string {
     throw new Error("Validation error: Provider not found");
   }
   return providerId;
+}
+
+function validatedProfileImage(value: unknown): string {
+  const image = normalizeBotProfileImage(value);
+  if (image === null) {
+    throw new Error("Validation error: Profile picture must be a PNG, JPEG, or WebP up to 2 MB");
+  }
+  return image;
 }
 
 function isBotAgent(agent: ReturnType<typeof agentManager.list>[number]): boolean {
@@ -159,6 +169,7 @@ function serializeBot(
     name: agent.name,
     title: metadata.title || agent.type || "Assistant",
     description: metadata.description,
+    profile_image: metadata.profileImage,
     role: metadata.role,
     hidden: metadata.hidden,
     pinned: metadata.pinned,
@@ -273,6 +284,8 @@ export const botRoutes: Record<string, RouteHandler> = {
     if (baseId && !base) throw new Error("Validation error: Base agent not found");
     const role = isBotRoleId(input.role) ? input.role : null;
     const preset = botRolePreset(role);
+    const profileImage =
+      input.profile_image === undefined ? "" : validatedProfileImage(input.profile_image);
     const title = boundedText(input.title, 80) || preset?.title || "";
     const description = boundedText(input.description, 2_000) || preset?.description || "";
     const model = boundedText(input.model, 200) || base?.model;
@@ -294,6 +307,7 @@ export const botRoutes: Record<string, RouteHandler> = {
         pinned: false,
         baseSystemPrompt,
         role,
+        profileImage,
       }),
     });
     refreshBotSystemPrompts();
@@ -314,6 +328,10 @@ export const botRoutes: Record<string, RouteHandler> = {
         : boundedText(input.description, 2_000);
     const role =
       input.role === undefined ? metadata.role : isBotRoleId(input.role) ? input.role : null;
+    const profileImage =
+      input.profile_image === undefined
+        ? metadata.profileImage
+        : validatedProfileImage(input.profile_image);
     const updated = agentManager.update(id, {
       name,
       model: input.model === undefined ? agent.model : boundedText(input.model, 200),
@@ -336,6 +354,7 @@ export const botRoutes: Record<string, RouteHandler> = {
         pinned: input.pinned === undefined ? metadata.pinned : input.pinned === true,
         baseSystemPrompt: metadata.baseSystemPrompt,
         role,
+        profileImage,
       }),
     });
     if (!updated) throw new Error("Bot not found");

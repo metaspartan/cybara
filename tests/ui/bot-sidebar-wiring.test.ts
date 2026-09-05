@@ -60,6 +60,10 @@ describe("bot sidebar wiring", () => {
     expect(sidebar).toContain("hidden: !bot.hidden");
     expect(sidebar).toContain("Model and provider");
     expect(sidebar).toContain("provider_id: editDraft.providerId");
+    expect(sidebar).toContain("profile_image: editDraft.profileImage");
+    expect(sidebar).toContain("BOT_PROFILE_IMAGE_ACCEPT");
+    expect(sidebar).toContain("Add picture");
+    expect(sidebar).toContain("Remove picture");
     expect(sidebar).toContain("useAgentSummaries");
     expect(sidebar).toContain('label="Agent"');
     expect(sidebar).toContain("selectableBotBaseAgents");

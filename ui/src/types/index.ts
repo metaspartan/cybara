@@ -52,6 +52,7 @@ export interface BotRosterItem {
   name: string;
   title: string;
   description: string;
+  profile_image?: string;
   role?: string | null;
   hidden: boolean;
   pinned: boolean;
