@@ -6,13 +6,27 @@ use std::time::Duration;
 const PROBE_TIMEOUT: Duration = Duration::from_millis(900);
 const LIVENESS_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const GATEWAY_PORT_SIGNAL_PREFIX: &str = "CYBARA_GATEWAY_PORT=";
+const DESKTOP_GATEWAY_API_VERSION: u64 = 1;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GatewayProbeStatus {
     Available,
-    Occupied,
-    Incompatible,
-    Compatible,
+    Busy,
+    NonCybara,
+    UnhealthyCybara { gateway_version: Option<String> },
+    CybaraGateway(GatewayCompatibility),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GatewayCompatibility {
+    Compatible {
+        gateway_version: String,
+        exact_match: bool,
+    },
+    Incompatible {
+        gateway_version: Option<String>,
+        reason: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -33,6 +47,14 @@ struct HttpResponse {
     status: u16,
     headers: HashMap<String, String>,
     body: String,
+}
+
+struct GatewayHealth {
+    version: Option<String>,
+    healthy: bool,
+    api_version: Option<u64>,
+    min_client_api_version: Option<u64>,
+    compatibility_declared: bool,
 }
 
 impl GatewayEndpoint {
@@ -87,36 +109,64 @@ fn ui_response(addr: &str) -> Option<HttpResponse> {
     http_get(addr, path)
 }
 
-pub fn probe_gateway_at(addr: &str, expected_version: &str) -> GatewayProbeStatus {
+pub fn probe_gateway_at(addr: &str, client_version: &str) -> GatewayProbeStatus {
     let Some(health) = http_get(addr, "/api/health") else {
         return if port_accepts_connections(addr) {
-            GatewayProbeStatus::Occupied
+            GatewayProbeStatus::Busy
         } else {
             GatewayProbeStatus::Available
         };
     };
-    if !is_matching_health_response(&health, expected_version) {
-        return GatewayProbeStatus::Incompatible;
-    }
-    let Some(ui) = ui_response(addr) else {
-        return GatewayProbeStatus::Occupied;
+    let Some(health) = cybara_health(&health) else {
+        return GatewayProbeStatus::NonCybara;
     };
-    if ui.status != 200 {
-        return GatewayProbeStatus::Incompatible;
+    if !health.healthy {
+        return GatewayProbeStatus::UnhealthyCybara {
+            gateway_version: health.version,
+        };
     }
+    let Some(gateway_version) = health.version else {
+        return GatewayProbeStatus::CybaraGateway(GatewayCompatibility::Incompatible {
+            gateway_version: None,
+            reason: "The Cybara gateway returned a missing version.".to_string(),
+        });
+    };
+    let compatibility = gateway_compatibility_with_api(
+        &gateway_version,
+        client_version,
+        health.api_version,
+        health.min_client_api_version,
+        health.compatibility_declared,
+    );
+    let GatewayCompatibility::Compatible { .. } = compatibility else {
+        return GatewayProbeStatus::CybaraGateway(compatibility);
+    };
+    let Some(ui) = ui_response(addr) else {
+        return GatewayProbeStatus::CybaraGateway(GatewayCompatibility::Incompatible {
+            gateway_version: Some(gateway_version),
+            reason: "The Cybara gateway did not return its web interface.".to_string(),
+        });
+    };
     let normalized = ui.body.to_ascii_lowercase();
-    if normalized.contains("<!doctype html")
+    if ui.status == 200
+        && normalized.contains("<!doctype html")
         && normalized.contains("/assets/")
         && !normalized.contains("ui not built")
     {
-        GatewayProbeStatus::Compatible
+        GatewayProbeStatus::CybaraGateway(compatibility)
     } else {
-        GatewayProbeStatus::Incompatible
+        GatewayProbeStatus::CybaraGateway(GatewayCompatibility::Incompatible {
+            gateway_version: Some(gateway_version),
+            reason: "The Cybara gateway web interface is unavailable.".to_string(),
+        })
     }
 }
 
-pub fn is_compatible_gateway_at(addr: &str, expected_version: &str) -> bool {
-    probe_gateway_at(addr, expected_version) == GatewayProbeStatus::Compatible
+pub fn is_compatible_gateway_at(addr: &str, client_version: &str) -> bool {
+    matches!(
+        probe_gateway_at(addr, client_version),
+        GatewayProbeStatus::CybaraGateway(GatewayCompatibility::Compatible { .. })
+    )
 }
 
 fn port_accepts_connections(addr: &str) -> bool {
@@ -149,17 +199,122 @@ pub fn gateway_liveness_at(addr: &str) -> GatewayLivenessStatus {
     }
 }
 
-fn is_matching_health_response(response: &HttpResponse, expected_version: &str) -> bool {
-    if response.status != 200 {
-        return false;
+fn cybara_health(response: &HttpResponse) -> Option<GatewayHealth> {
+    let value = serde_json::from_str::<serde_json::Value>(&response.body).ok()?;
+    let status = value.get("status").and_then(serde_json::Value::as_str)?;
+    if !matches!(status, "healthy" | "warning" | "critical" | "unhealthy") {
+        return None;
     }
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&response.body) else {
-        return false;
+    let compatibility = value.get("compatibility");
+    let product = value.get("product").and_then(serde_json::Value::as_str);
+    let structural_markers = ["timestamp", "uptime", "system", "checks"]
+        .iter()
+        .filter(|key| value.get(**key).is_some())
+        .count();
+    if product != Some("cybara") && compatibility.is_none() && structural_markers < 2 {
+        return None;
+    }
+    let version = value
+        .get("version")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|version| !version.is_empty())
+        .map(str::to_string);
+    Some(GatewayHealth {
+        version,
+        healthy: response.status == 200 && matches!(status, "healthy" | "warning" | "critical"),
+        api_version: compatibility
+            .and_then(|entry| entry.get("api_version"))
+            .and_then(serde_json::Value::as_u64),
+        min_client_api_version: compatibility
+            .and_then(|entry| entry.get("min_client_api_version"))
+            .and_then(serde_json::Value::as_u64),
+        compatibility_declared: compatibility.is_some(),
+    })
+}
+
+fn version_components(value: &str) -> Option<[u64; 3]> {
+    let core = value.trim().trim_start_matches(['v', 'V']);
+    let core = core.split(['-', '+']).next()?;
+    let mut parts = core.split('.');
+    let version = [
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+    ];
+    parts.next().is_none().then_some(version)
+}
+
+pub fn gateway_compatibility(gateway_version: &str, client_version: &str) -> GatewayCompatibility {
+    gateway_compatibility_with_api(gateway_version, client_version, None, None, false)
+}
+
+fn gateway_compatibility_with_api(
+    gateway_version: &str,
+    client_version: &str,
+    api_version: Option<u64>,
+    min_client_api_version: Option<u64>,
+    compatibility_declared: bool,
+) -> GatewayCompatibility {
+    let Some(gateway) = version_components(gateway_version) else {
+        return GatewayCompatibility::Incompatible {
+            gateway_version: None,
+            reason: "The Cybara gateway returned an unparseable version.".to_string(),
+        };
     };
-    matches!(
-        value.get("status").and_then(serde_json::Value::as_str),
-        Some("healthy" | "warning" | "critical")
-    ) && value.get("version").and_then(serde_json::Value::as_str) == Some(expected_version)
+    let Some(client) = version_components(client_version) else {
+        return GatewayCompatibility::Incompatible {
+            gateway_version: Some(gateway_version.to_string()),
+            reason: "The desktop client version is unparseable.".to_string(),
+        };
+    };
+    if gateway[0] != client[0] {
+        return GatewayCompatibility::Incompatible {
+            gateway_version: Some(gateway_version.to_string()),
+            reason: format!(
+                "Gateway major version {} is incompatible with desktop major version {}.",
+                gateway[0], client[0]
+            ),
+        };
+    }
+    if compatibility_declared {
+        let (Some(api_version), Some(min_client_api_version)) =
+            (api_version, min_client_api_version)
+        else {
+            return GatewayCompatibility::Incompatible {
+                gateway_version: Some(gateway_version.to_string()),
+                reason: "The Cybara gateway returned invalid API compatibility metadata."
+                    .to_string(),
+            };
+        };
+        if api_version == 0 || min_client_api_version == 0 {
+            return GatewayCompatibility::Incompatible {
+                gateway_version: Some(gateway_version.to_string()),
+                reason: "The Cybara gateway returned invalid API compatibility metadata."
+                    .to_string(),
+            };
+        }
+        if DESKTOP_GATEWAY_API_VERSION < min_client_api_version {
+            return GatewayCompatibility::Incompatible {
+                gateway_version: Some(gateway_version.to_string()),
+                reason: format!(
+                    "Gateway API requires desktop API {min_client_api_version} or newer; this desktop supports API {DESKTOP_GATEWAY_API_VERSION}."
+                ),
+            };
+        }
+        if DESKTOP_GATEWAY_API_VERSION > api_version {
+            return GatewayCompatibility::Incompatible {
+                gateway_version: Some(gateway_version.to_string()),
+                reason: format!(
+                    "This desktop requires gateway API {DESKTOP_GATEWAY_API_VERSION}; the gateway supports API {api_version}."
+                ),
+            };
+        }
+    }
+    GatewayCompatibility::Compatible {
+        gateway_version: gateway_version.to_string(),
+        exact_match: gateway == client,
+    }
 }
 
 pub fn parse_gateway_port_signal(value: &str) -> Option<u16> {
@@ -195,8 +350,9 @@ impl GatewayPortSignalParser {
 #[cfg(test)]
 mod tests {
     use super::{
-        GatewayEndpoint, GatewayLivenessStatus, GatewayPortSignalParser, GatewayProbeStatus,
-        gateway_liveness_at, is_compatible_gateway_at, parse_gateway_port_signal, probe_gateway_at,
+        GatewayCompatibility, GatewayEndpoint, GatewayLivenessStatus, GatewayPortSignalParser,
+        GatewayProbeStatus, gateway_compatibility, gateway_liveness_at, is_compatible_gateway_at,
+        parse_gateway_port_signal, probe_gateway_at,
     };
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -231,11 +387,96 @@ mod tests {
     #[test]
     fn accepts_matching_gateway_with_production_ui() {
         let (endpoint, handle) = serve(vec![
-            r#"{"status":"healthy","version":"1.2.3"}"#.into(),
+            r#"{"product":"cybara","status":"healthy","version":"1.2.3"}"#.into(),
             r#"<!doctype html><html><script src="/assets/index.js"></script></html>"#.into(),
         ]);
         assert!(is_compatible_gateway_at(&endpoint.addr, "1.2.3"));
         handle.join().expect("join test gateway");
+    }
+
+    #[test]
+    fn accepts_same_major_gateway_patch_drift_in_both_directions() {
+        for gateway_version in ["1.0.2275", "1.0.2287"] {
+            let (endpoint, handle) = serve(vec![
+                format!(
+                    r#"{{"product":"cybara","status":"healthy","version":"{gateway_version}"}}"#
+                ),
+                r#"<!doctype html><html><script src="/assets/index.js"></script></html>"#.into(),
+            ]);
+            assert!(is_compatible_gateway_at(&endpoint.addr, "1.0.2281"));
+            handle.join().expect("join compatible drift gateway");
+        }
+        assert_eq!(
+            gateway_compatibility("1.0.2275", "1.0.2281"),
+            GatewayCompatibility::Compatible {
+                gateway_version: "1.0.2275".into(),
+                exact_match: false,
+            }
+        );
+        assert_eq!(
+            gateway_compatibility("1.0.2281", "1.0.2281"),
+            GatewayCompatibility::Compatible {
+                gateway_version: "1.0.2281".into(),
+                exact_match: true,
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_different_major_and_unparseable_gateway_versions() {
+        assert!(matches!(
+            gateway_compatibility("2.0.0", "1.0.2281"),
+            GatewayCompatibility::Incompatible {
+                gateway_version: Some(version),
+                reason,
+            } if version == "2.0.0" && reason.contains("major version 2")
+        ));
+        assert!(matches!(
+            gateway_compatibility("development", "1.0.2281"),
+            GatewayCompatibility::Incompatible {
+                gateway_version: None,
+                reason,
+            } if reason.contains("unparseable")
+        ));
+    }
+
+    #[test]
+    fn api_compatibility_metadata_can_require_a_desktop_update() {
+        let (endpoint, handle) = serve(vec![
+            r#"{"product":"cybara","status":"healthy","version":"1.0.2287","compatibility":{"api_version":2,"min_client_api_version":2}}"#.into(),
+        ]);
+        assert!(matches!(
+            probe_gateway_at(&endpoint.addr, "1.0.2281"),
+            GatewayProbeStatus::CybaraGateway(GatewayCompatibility::Incompatible {
+                gateway_version: Some(version),
+                reason,
+            }) if version == "1.0.2287" && reason.contains("desktop API 2 or newer")
+        ));
+        handle.join().expect("join API-incompatible gateway");
+    }
+
+    #[test]
+    fn invalid_api_compatibility_metadata_fails_closed() {
+        let (endpoint, handle) = serve(vec![
+            r#"{"product":"cybara","status":"healthy","version":"1.0.2281","compatibility":{"api_version":"new"}}"#
+                .into(),
+        ]);
+        assert!(matches!(
+            probe_gateway_at(&endpoint.addr, "1.0.2281"),
+            GatewayProbeStatus::CybaraGateway(GatewayCompatibility::Incompatible { reason, .. })
+                if reason.contains("invalid API compatibility metadata")
+        ));
+        handle.join().expect("join invalid compatibility gateway");
+    }
+
+    #[test]
+    fn classifies_non_cybara_health_json_as_an_occupied_port() {
+        let (endpoint, handle) = serve(vec![r#"{"status":"ok","version":"1.0.2281"}"#.into()]);
+        assert_eq!(
+            probe_gateway_at(&endpoint.addr, "1.0.2281"),
+            GatewayProbeStatus::NonCybara
+        );
+        handle.join().expect("join unrelated service");
     }
 
     #[test]
@@ -249,7 +490,7 @@ mod tests {
         });
         assert_eq!(
             probe_gateway_at(&format!("127.0.0.1:{port}"), "1.2.3"),
-            GatewayProbeStatus::Occupied
+            GatewayProbeStatus::Busy
         );
         handle.join().expect("join busy gateway");
     }
@@ -271,16 +512,20 @@ mod tests {
     #[test]
     fn rejects_gateway_with_missing_ui_or_wrong_version() {
         let (missing_ui, missing_handle) = serve(vec![
-            r#"{"status":"healthy","version":"1.2.3"}"#.into(),
+            r#"{"product":"cybara","status":"healthy","version":"1.2.3"}"#.into(),
             "<!DOCTYPE html><html><p>UI not built.</p></html>".into(),
         ]);
         assert!(!is_compatible_gateway_at(&missing_ui.addr, "1.2.3"));
         missing_handle.join().expect("join missing UI gateway");
 
-        let (wrong_version, version_handle) =
-            serve(vec![r#"{"status":"healthy","version":"1.2.2"}"#.into()]);
-        assert!(!is_compatible_gateway_at(&wrong_version.addr, "1.2.3"));
-        version_handle.join().expect("join wrong version gateway");
+        let (wrong_major, version_handle) = serve(vec![
+            r#"{"product":"cybara","status":"healthy","version":"2.0.0"}"#.into(),
+        ]);
+        assert!(matches!(
+            probe_gateway_at(&wrong_major.addr, "1.2.3"),
+            GatewayProbeStatus::CybaraGateway(GatewayCompatibility::Incompatible { .. })
+        ));
+        version_handle.join().expect("join wrong major gateway");
     }
 
     #[test]

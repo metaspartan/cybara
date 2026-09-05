@@ -624,6 +624,17 @@ fn schedule_sidecar_restart(app: tauri::AppHandle, reason: String) {
     }
 }
 
+fn gateway_version_failure(
+    client_version: &str,
+    gateway_version: Option<&str>,
+    reason: &str,
+) -> String {
+    format!(
+        "A Cybara gateway is running on port 4269, but this desktop cannot attach. Desktop version: {client_version}. Gateway version: {}. {reason} Update the older component from an official Cybara release, then retry. The desktop will not replace or stop an external gateway.",
+        gateway_version.unwrap_or("unknown")
+    )
+}
+
 fn attach_existing_gateway(
     app: &tauri::AppHandle,
     generation: u64,
@@ -648,27 +659,62 @@ fn wait_for_existing_gateway(
         ),
     );
     std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(60);
         while is_sidecar_launch_current(&app, generation) {
+            if Instant::now() >= deadline {
+                release_sidecar_launch(&app, generation);
+                set_gateway_startup_status(
+                    &app,
+                    GatewayStartupStatus::failed(
+                        "The existing service on port 4269 did not become a healthy Cybara gateway within 60 seconds. Check that gateway or the forwarding connection, then retry."
+                            .to_string(),
+                    ),
+                );
+                return;
+            }
             match gateway::probe_gateway_at(&endpoint.addr, env!("CARGO_PKG_VERSION")) {
-                gateway::GatewayProbeStatus::Compatible => {
+                gateway::GatewayProbeStatus::CybaraGateway(
+                    gateway::GatewayCompatibility::Compatible { .. },
+                ) => {
                     attach_existing_gateway(&app, generation, endpoint);
                     return;
                 }
-                gateway::GatewayProbeStatus::Occupied => {
+                gateway::GatewayProbeStatus::Busy => {
                     std::thread::sleep(Duration::from_millis(500));
+                }
+                gateway::GatewayProbeStatus::UnhealthyCybara { .. } => {
+                    std::thread::sleep(Duration::from_millis(500));
+                }
+                gateway::GatewayProbeStatus::NonCybara => {
+                    release_sidecar_launch(&app, generation);
+                    set_gateway_startup_status(
+                        &app,
+                        GatewayStartupStatus::failed(
+                            "Port 4269 is occupied by a non-Cybara service. Stop it before starting Cybara."
+                                .to_string(),
+                        ),
+                    );
+                    return;
                 }
                 gateway::GatewayProbeStatus::Available => {
                     release_sidecar_launch(&app, generation);
                     start_sidecar(app);
                     return;
                 }
-                gateway::GatewayProbeStatus::Incompatible => {
+                gateway::GatewayProbeStatus::CybaraGateway(
+                    gateway::GatewayCompatibility::Incompatible {
+                        gateway_version,
+                        reason,
+                    },
+                ) => {
                     release_sidecar_launch(&app, generation);
                     set_gateway_startup_status(
                         &app,
-                        GatewayStartupStatus::failed(
-                            "Port 4269 is occupied by an incompatible service. Stop it before starting Cybara.",
-                        ),
+                        GatewayStartupStatus::failed(gateway_version_failure(
+                            env!("CARGO_PKG_VERSION"),
+                            gateway_version.as_deref(),
+                            &reason,
+                        )),
                     );
                     return;
                 }
@@ -683,21 +729,41 @@ fn start_sidecar(app: tauri::AppHandle) {
     };
     let preferred = gateway::GatewayEndpoint::loopback(CYBARA_DEFAULT_PORT);
     match gateway::probe_gateway_at(&preferred.addr, env!("CARGO_PKG_VERSION")) {
-        gateway::GatewayProbeStatus::Compatible => {
+        gateway::GatewayProbeStatus::CybaraGateway(gateway::GatewayCompatibility::Compatible {
+            ..
+        }) => {
             attach_existing_gateway(&app, generation, preferred);
             return;
         }
-        gateway::GatewayProbeStatus::Occupied => {
+        gateway::GatewayProbeStatus::Busy | gateway::GatewayProbeStatus::UnhealthyCybara { .. } => {
             wait_for_existing_gateway(app, generation, preferred);
             return;
         }
-        gateway::GatewayProbeStatus::Incompatible => {
+        gateway::GatewayProbeStatus::NonCybara => {
             release_sidecar_launch(&app, generation);
             set_gateway_startup_status(
                 &app,
                 GatewayStartupStatus::failed(
-                    "Port 4269 is occupied by an incompatible service. Stop it before starting Cybara.",
+                    "Port 4269 is occupied by a non-Cybara service. Stop it before starting Cybara."
+                        .to_string(),
                 ),
+            );
+            return;
+        }
+        gateway::GatewayProbeStatus::CybaraGateway(
+            gateway::GatewayCompatibility::Incompatible {
+                gateway_version,
+                reason,
+            },
+        ) => {
+            release_sidecar_launch(&app, generation);
+            set_gateway_startup_status(
+                &app,
+                GatewayStartupStatus::failed(gateway_version_failure(
+                    env!("CARGO_PKG_VERSION"),
+                    gateway_version.as_deref(),
+                    &reason,
+                )),
             );
             return;
         }
@@ -1008,7 +1074,7 @@ struct GatewayRuntimeState(std::sync::Mutex<gateway::GatewayEndpoint>);
 
 #[cfg(test)]
 mod tests {
-    use super::{gateway_url_for_location, write_theme_file};
+    use super::{gateway_url_for_location, gateway_version_failure, write_theme_file};
 
     #[test]
     fn theme_export_writes_valid_json_to_theme_file() {
@@ -1046,6 +1112,19 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn gateway_version_failure_is_actionable_and_non_destructive() {
+        let message = gateway_version_failure(
+            "1.0.2281",
+            Some("2.0.0"),
+            "Gateway major version 2 is incompatible with desktop major version 1.",
+        );
+        assert!(message.contains("Desktop version: 1.0.2281"));
+        assert!(message.contains("Gateway version: 2.0.0"));
+        assert!(message.contains("will not replace or stop an external gateway"));
+        assert!(!message.contains("occupied by an incompatible service"));
     }
 
     #[test]

@@ -126,6 +126,10 @@ describe("mobile gateway connection verification", () => {
     await expect(verifyGatewayProfile(profile, okFetch, 0)).resolves.toBeUndefined();
     expect(calls).toEqual([
       {
+        url: "http://192.168.1.20:4269/api/health",
+        auth: "Bearer cybara_mobile_test",
+      },
+      {
         url: "http://192.168.1.20:4269/api/sessions?limit=1",
         auth: "Bearer cybara_mobile_test",
       },
@@ -185,6 +189,68 @@ describe("mobile gateway connection verification", () => {
     await expect(
       verifyGatewayProfile({ ...profile, baseUrl: "http://127.0.0.1:4269" }, failingFetch, 0)
     ).rejects.toThrow("localhost on the phone");
+  });
+
+  test("uses API compatibility metadata without requiring exact release equality", async () => {
+    const calls: string[] = [];
+    const compatibleFetch: typeof fetch = (async (input) => {
+      const path = new URL(String(input)).pathname;
+      calls.push(path);
+      return new Response(
+        JSON.stringify(
+          path === "/api/health"
+            ? {
+                status: "healthy",
+                version: "1.0.100",
+                compatibility: { api_version: 1, min_client_api_version: 1 },
+              }
+            : { sessions: [] }
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    await verifyGatewayProfile(profile, compatibleFetch, 0);
+    expect(calls).toEqual(["/api/health", "/api/sessions"]);
+  });
+
+  test("requires a mobile update only when the gateway API contract requires it", async () => {
+    const incompatibleFetch: typeof fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          status: "healthy",
+          compatibility: { api_version: 2, min_client_api_version: 2 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )) as typeof fetch;
+
+    await expect(verifyGatewayProfile(profile, incompatibleFetch, 0)).rejects.toThrow(
+      "requires client API 2 or newer"
+    );
+  });
+
+  test("fails closed when a gateway declares malformed API compatibility metadata", async () => {
+    const malformedFetch: typeof fetch = (async () =>
+      new Response(JSON.stringify({ status: "healthy", compatibility: { api_version: "new" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+
+    await expect(verifyGatewayProfile(profile, malformedFetch, 0)).rejects.toThrow(
+      "compatibility metadata is invalid"
+    );
+  });
+
+  test("keeps legacy authenticated gateways API-oriented", async () => {
+    const legacyFetch: typeof fetch = (async (input) => {
+      const path = new URL(String(input)).pathname;
+      return new Response(
+        JSON.stringify(path === "/api/health" ? { status: "healthy", version: "1.0.1" } : []),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    await expect(verifyGatewayProfile(profile, legacyFetch, 0)).resolves.toBeUndefined();
   });
 
   test("times out authenticated verification when native fetch never resolves", async () => {

@@ -10,10 +10,14 @@ public struct GatewayHealthProbe: Equatable {
     public let status: String
     public let version: String?
     public let processID: Int?
+    public let apiVersion: Int?
+    public let minimumClientAPIVersion: Int?
+    public let compatibilityDeclared: Bool
 }
 
 public enum SidecarCore {
     public static let defaultPort = 4269
+    public static let gatewayAPIVersion = 1
 
     public static func port(fromEnv value: String?) -> Int {
         guard let value, let parsed = Int(value.trimmingCharacters(in: .whitespaces)), parsed > 0,
@@ -43,7 +47,10 @@ public enum SidecarCore {
     }
 
     public static func isHealthyResponse(statusCode: Int, body: String) -> Bool {
-        gatewayHealthProbe(statusCode: statusCode, body: body) != nil
+        guard statusCode == 200,
+              let probe = gatewayHealthProbe(statusCode: statusCode, body: body)
+        else { return false }
+        return ["healthy", "warning", "critical"].contains(probe.status)
     }
 
     public static func isLiveResponse(statusCode: Int, body: String) -> Bool {
@@ -55,20 +62,38 @@ public enum SidecarCore {
     }
 
     public static func gatewayHealthProbe(statusCode: Int, body: String) -> GatewayHealthProbe? {
-        guard statusCode == 200,
-              let data = body.data(using: .utf8),
+        guard let data = body.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let status = object["status"] as? String,
-              ["healthy", "warning", "critical"].contains(status)
+              ["healthy", "warning", "critical", "unhealthy"].contains(status)
+        else { return nil }
+        let compatibility = object["compatibility"] as? [String: Any]
+        let structuralMarkers = ["timestamp", "uptime", "system", "checks"]
+            .filter { object[$0] != nil }
+            .count
+        guard object["product"] as? String == "cybara" || compatibility != nil || structuralMarkers >= 2
         else { return nil }
         let version = (object["version"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let system = object["system"] as? [String: Any]
         let process = system?["process"] as? [String: Any]
         let processID = (process?["pid"] as? NSNumber)?.intValue
+        guard statusCode == 200, ["healthy", "warning", "critical"].contains(status) else {
+            return GatewayHealthProbe(
+                status: status,
+                version: version?.isEmpty == false ? version : nil,
+                processID: processID,
+                apiVersion: (compatibility?["api_version"] as? NSNumber)?.intValue,
+                minimumClientAPIVersion: (compatibility?["min_client_api_version"] as? NSNumber)?.intValue,
+                compatibilityDeclared: object["compatibility"] != nil
+            )
+        }
         return GatewayHealthProbe(
             status: status,
             version: version?.isEmpty == false ? version : nil,
-            processID: processID
+            processID: processID,
+            apiVersion: (compatibility?["api_version"] as? NSNumber)?.intValue,
+            minimumClientAPIVersion: (compatibility?["min_client_api_version"] as? NSNumber)?.intValue,
+            compatibilityDeclared: object["compatibility"] != nil
         )
     }
 
@@ -78,20 +103,74 @@ public enum SidecarCore {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    public static func isGatewayVersionCompatible(
-        gatewayVersion: String?, minimumVersion: String?
-    ) -> Bool {
-        guard let minimumVersion else { return true }
-        guard let gateway = versionComponents(gatewayVersion),
-              let minimum = versionComponents(minimumVersion),
-              gateway[0] == minimum[0]
-        else { return false }
-        for index in 0 ..< max(gateway.count, minimum.count) {
-            let gatewayPart = index < gateway.count ? gateway[index] : 0
-            let minimumPart = index < minimum.count ? minimum[index] : 0
-            if gatewayPart != minimumPart { return gatewayPart > minimumPart }
+    public enum GatewayCompatibility: Equatable {
+        case compatible(gatewayVersion: String, exactMatch: Bool)
+        case incompatible(gatewayVersion: String?, reason: String)
+    }
+
+    public static func gatewayCompatibility(
+        gatewayVersion: String?,
+        clientVersion: String?,
+        apiVersion: Int? = nil,
+        minimumClientAPIVersion: Int? = nil,
+        compatibilityDeclared: Bool = false
+    ) -> GatewayCompatibility {
+        guard let gateway = versionComponents(gatewayVersion) else {
+            return .incompatible(
+                gatewayVersion: nil,
+                reason: "The Cybara gateway returned a missing or unparseable version."
+            )
         }
-        return true
+        guard let client = versionComponents(clientVersion) else {
+            return .incompatible(
+                gatewayVersion: gatewayVersion,
+                reason: "The native client version is missing or unparseable."
+            )
+        }
+        guard gateway[0] == client[0] else {
+            return .incompatible(
+                gatewayVersion: gatewayVersion,
+                reason: "Gateway major version \(gateway[0]) is incompatible with native client major version \(client[0])."
+            )
+        }
+        if compatibilityDeclared {
+            guard let apiVersion, let minimumClientAPIVersion,
+                  apiVersion > 0, minimumClientAPIVersion > 0
+            else {
+                return .incompatible(
+                    gatewayVersion: gatewayVersion,
+                    reason: "The Cybara gateway returned invalid API compatibility metadata."
+                )
+            }
+            if gatewayAPIVersion < minimumClientAPIVersion {
+                return .incompatible(
+                    gatewayVersion: gatewayVersion,
+                    reason: "Gateway API requires native client API \(minimumClientAPIVersion) or newer; this client supports API \(gatewayAPIVersion)."
+                )
+            }
+            if gatewayAPIVersion > apiVersion {
+                return .incompatible(
+                    gatewayVersion: gatewayVersion,
+                    reason: "This native client requires gateway API \(gatewayAPIVersion); the gateway supports API \(apiVersion)."
+                )
+            }
+        }
+        return .compatible(
+            gatewayVersion: gatewayVersion?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+            exactMatch: gateway == client
+        )
+    }
+
+    public static func isGatewayVersionCompatible(
+        gatewayVersion: String?, clientVersion: String?
+    ) -> Bool {
+        if case .compatible = gatewayCompatibility(
+            gatewayVersion: gatewayVersion,
+            clientVersion: clientVersion
+        ) {
+            return true
+        }
+        return false
     }
 
     public static func isNativeSidecarCommand(_ command: String) -> Bool {
@@ -106,7 +185,7 @@ public enum SidecarCore {
             .first
         guard let core else { return nil }
         let components = core.split(separator: ".").map(String.init)
-        guard !components.isEmpty,
+        guard components.count == 3,
               components.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isNumber) })
         else { return nil }
         return components.compactMap(Int.init)

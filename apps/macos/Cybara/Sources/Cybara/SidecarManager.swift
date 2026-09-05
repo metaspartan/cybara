@@ -362,7 +362,7 @@ final class SidecarManager: ObservableObject {
         }
     }
 
-    private var minimumGatewayVersion: String? {
+    private var nativeClientVersion: String? {
         let environmentVersion = ProcessInfo.processInfo.environment["CYBARA_NATIVE_APP_VERSION"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if environmentVersion?.isEmpty == false { return environmentVersion }
@@ -392,7 +392,10 @@ final class SidecarManager: ObservableObject {
         guard let probe = await gatewayProbe(),
               SidecarCore.isGatewayVersionCompatible(
                 gatewayVersion: probe.version,
-                minimumVersion: minimumGatewayVersion
+                clientVersion: nativeClientVersion,
+                apiVersion: probe.apiVersion,
+                minimumClientAPIVersion: probe.minimumClientAPIVersion,
+                compatibilityDeclared: probe.compatibilityDeclared
               )
         else { return nil }
         return probe
@@ -430,10 +433,22 @@ final class SidecarManager: ObservableObject {
             appendLog("Refused to launch a second gateway while port \(port) is occupied.")
             return .blocked
         }
-        if SidecarCore.isGatewayVersionCompatible(
+        guard ["healthy", "warning", "critical"].contains(probe.status) else {
+            let runningVersion = probe.version ?? "unknown"
+            status = .failed(
+                "Cybara gateway \(runningVersion) is unhealthy on port \(port). Wait for it to recover or restart that gateway, then retry."
+            )
+            appendLog("Refused unhealthy Cybara gateway v\(runningVersion) at \(serverURL.absoluteString)")
+            return .blocked
+        }
+        let compatibility = SidecarCore.gatewayCompatibility(
             gatewayVersion: probe.version,
-            minimumVersion: minimumGatewayVersion
-        ) {
+            clientVersion: nativeClientVersion,
+            apiVersion: probe.apiVersion,
+            minimumClientAPIVersion: probe.minimumClientAPIVersion,
+            compatibilityDeclared: probe.compatibilityDeclared
+        )
+        if case .compatible = compatibility {
             gatewayMode = .attached
             markGatewayReady("Attached to existing Cybara gateway at \(serverURL.absoluteString)")
             return .attached
@@ -444,12 +459,18 @@ final class SidecarManager: ObservableObject {
             return .launch
         }
 
-        let runningVersion = probe.version.map { "v\($0)" } ?? "an unknown version"
-        let requiredVersion = minimumGatewayVersion.map { "v\($0) or newer" } ?? "this app version"
+        let runningVersion = probe.version ?? "unknown"
+        let clientVersion = nativeClientVersion ?? "unknown"
+        let reason: String
+        if case .incompatible(_, let detail) = compatibility {
+            reason = detail
+        } else {
+            reason = "The gateway and native client are incompatible."
+        }
         status = .failed(
-            "Gateway \(runningVersion) is incompatible with Cybara Native. Stop the process on port \(port) or update it to \(requiredVersion)."
+            "A Cybara gateway is running on port \(port), but this client cannot attach. Native client version: \(clientVersion). Gateway version: \(runningVersion). \(reason) Update the older component from an official Cybara release, then retry. Cybara Native will not replace or stop an external gateway."
         )
-        appendLog("Refused incompatible gateway \(runningVersion) at \(serverURL.absoluteString)")
+        appendLog("Refused incompatible gateway v\(runningVersion) at \(serverURL.absoluteString)")
         return .blocked
     }
 
