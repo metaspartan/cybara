@@ -44,6 +44,12 @@ This assembles a real `CybaraNative.app` bundle under `release/native-macos/<arc
 
 The packaged app uses the same `127.0.0.1:4269` local gateway contract as the Tauri app. The sidecar receives `CYBARA_RESOURCE_DIR` so it can resolve bundled UI and local indexing runtime assets from the app bundle instead of relying on the developer checkout.
 
+## Existing Gateway Attachment
+
+At launch, Cybara Native first probes the configured loopback endpoint. A healthy Cybara gateway with a compatible same-major API contract is attached even when its patch release differs from the app. This supports user-managed private-network, SSH, and VPN forwards without requiring lockstep updates.
+
+Cybara Native starts and supervises the bundled sidecar only when the port is available. It never replaces or stops an externally managed gateway. Cross-major versions, missing versions, and incompatible or malformed API compatibility metadata fail closed with explicit client and gateway versions. Update the older component through an official Cybara release before retrying.
+
 ## Run
 
 ```bash

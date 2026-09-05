@@ -12,6 +12,8 @@ Design:
 - native SwiftUI navigation, chat, management, settings, terminal, wallet, Lab, and environment surfaces
 - the same loopback gateway contract used by Tauri, accessed through the typed native `GatewayClient`
 - attachment to a compatible healthy local gateway or managed startup of the bundled sidecar
+- same-major release drift based on the gateway API compatibility contract rather than exact release equality
+- fail-closed diagnostics for incompatible major/API versions without replacing externally managed gateways
 - native notifications, external-link handling, workspace folder selection, deep links, and persisted window position and size
 - release-ready `CybaraNative.app` packaging with the compiled sidecar, bundled UI resources for gateway access, `secp256k1.wasm`, sidecar packages, and local Transformers.js/ONNX assets
 - optional codesigning and notarization when Apple release credentials are configured
@@ -66,6 +68,7 @@ The mobile companion:
   `cybara mobile list|revoke|remove` CLI commands
 - manage sessions, agents, providers, provider plan limits, metrics, speech settings, tools/approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, gateway controls, and settings summaries
 - keep API-first parity before attempting any local mobile runtime
+- use gateway API compatibility metadata for breaking changes without requiring exact mobile/gateway release equality
 - use mobile push-notification settings for chat and task completion alerts
 
 Release CI exports Expo bundles for iOS and Android on every release run, and tagged releases also run best-effort native Android/iOS builds. Signed Android AAB/APK, iOS IPA, Google Play internal-track upload, and TestFlight upload are enabled only when the relevant store signing/App Store Connect secrets are configured.

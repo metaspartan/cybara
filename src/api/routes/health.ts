@@ -11,6 +11,10 @@ import {
 } from "../health-status";
 import type { RouteHandler } from "./_shared";
 import { makeRawHttpResponse } from "./raw-http-response";
+import {
+  CYBARA_GATEWAY_API_MIN_CLIENT_VERSION,
+  CYBARA_GATEWAY_API_VERSION,
+} from "../../../shared/gateway-compatibility";
 
 interface ProcessMemoryUsage {
   heapUsed: number;
@@ -46,10 +50,15 @@ function healthResponse(): unknown {
   const system = getSystemMonitorSnapshot();
   const database = checkDatabaseHealth();
   const response = {
+    product: "cybara",
     status: resolveGatewayHealthStatus(database.status, system.status),
     timestamp: now.toISOString(),
     uptime: process.uptime(),
     version: getAppVersion(),
+    compatibility: {
+      api_version: CYBARA_GATEWAY_API_VERSION,
+      min_client_api_version: CYBARA_GATEWAY_API_MIN_CLIENT_VERSION,
+    },
     system,
     checks: {
       database,

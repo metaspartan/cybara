@@ -62,22 +62,25 @@ final class SidecarCoreTests: XCTestCase {
     }
 
     func testHealthyResponseAccepts200WithStatus() {
-        XCTAssertTrue(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"status":"healthy"}"#))
-        XCTAssertTrue(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"status":"warning"}"#))
-        XCTAssertTrue(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"status":"critical"}"#))
+        XCTAssertTrue(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"product":"cybara","status":"healthy"}"#))
+        XCTAssertTrue(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"product":"cybara","status":"warning"}"#))
+        XCTAssertTrue(SidecarCore.isHealthyResponse(statusCode: 200, body: #"{"product":"cybara","status":"critical"}"#))
     }
 
     func testHealthyResponseToleratesWhitespace() {
         XCTAssertTrue(
-            SidecarCore.isHealthyResponse(statusCode: 200, body: #"{ "status" : "healthy" }"#))
+            SidecarCore.isHealthyResponse(
+                statusCode: 200, body: #"{ "product" : "cybara", "status" : "healthy" }"#))
         XCTAssertTrue(
             SidecarCore.isHealthyResponse(
-                statusCode: 200, body: "{\n  \"status\": \"healthy\",\n  \"uptime\": 5\n}"))
+                statusCode: 200,
+                body: "{\n  \"product\": \"cybara\",\n  \"status\": \"healthy\",\n  \"uptime\": 5\n}"
+            ))
     }
 
     func testHealthyResponseRejectsNon200() {
-        XCTAssertFalse(SidecarCore.isHealthyResponse(statusCode: 500, body: #"{"status":"healthy"}"#))
-        XCTAssertFalse(SidecarCore.isHealthyResponse(statusCode: 404, body: #"{"status":"healthy"}"#))
+        XCTAssertFalse(SidecarCore.isHealthyResponse(statusCode: 500, body: #"{"product":"cybara","status":"healthy"}"#))
+        XCTAssertFalse(SidecarCore.isHealthyResponse(statusCode: 404, body: #"{"product":"cybara","status":"healthy"}"#))
         XCTAssertFalse(SidecarCore.isHealthyResponse(statusCode: 0, body: ""))
     }
 
@@ -90,30 +93,126 @@ final class SidecarCoreTests: XCTestCase {
             SidecarCore.isHealthyResponse(statusCode: 200, body: "<html>It works!</html>"))
     }
 
+    func testOwnSidecarCommandMatchesOnlyTheAppBundleCandidates() {
+        let candidates = [
+            "/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara",
+            "/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara-aarch64-apple-darwin",
+        ]
+        XCTAssertTrue(
+            SidecarCore.isOwnSidecarCommand(
+                "/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara",
+                candidatePaths: candidates))
+        XCTAssertTrue(
+            SidecarCore.isOwnSidecarCommand(
+                "/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara --port 4269",
+                candidatePaths: candidates))
+        XCTAssertTrue(
+            SidecarCore.isOwnSidecarCommand(
+                "/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara-aarch64-apple-darwin",
+                candidatePaths: candidates))
+    }
+
+    func testOwnSidecarCommandRejectsForeignBundlesAndNonSidecars() {
+        let candidates = ["/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara"]
+        XCTAssertFalse(
+            SidecarCore.isOwnSidecarCommand(
+                "/Volumes/External/OldCybara.app/Contents/MacOS/sidecar/cybara",
+                candidatePaths: candidates))
+        XCTAssertFalse(
+            SidecarCore.isOwnSidecarCommand(
+                "/Applications/CybaraNative.app/Contents/MacOS/CybaraNative",
+                candidatePaths: candidates))
+        XCTAssertFalse(
+            SidecarCore.isOwnSidecarCommand("/usr/local/bin/cybara", candidatePaths: candidates))
+        XCTAssertFalse(
+            SidecarCore.isOwnSidecarCommand("/Applications/Cybara.app/Contents/MacOS/cybara", candidatePaths: []))
+    }
+
+    func testGatewayHealthProbeRejectsArbitraryStatusJSON() {
+        XCTAssertNil(
+            SidecarCore.gatewayHealthProbe(
+                statusCode: 200,
+                body: #"{"status":"healthy","version":"1.0.2281"}"#
+            )
+        )
+    }
+
     func testGatewayHealthProbeReadsVersionAndProcessIdentifier() {
-        let body = #"{"status":"healthy","version":"1.0.1703","system":{"process":{"pid":55441}}}"#
+        let body = #"{"product":"cybara","status":"healthy","version":"1.0.1703","system":{"process":{"pid":55441}}}"#
         let probe = SidecarCore.gatewayHealthProbe(statusCode: 200, body: body)
         XCTAssertEqual(probe?.status, "healthy")
         XCTAssertEqual(probe?.version, "1.0.1703")
         XCTAssertEqual(probe?.processID, 55441)
+        XCTAssertFalse(probe?.compatibilityDeclared ?? true)
     }
 
-    func testGatewayVersionCompatibilityRequiresCurrentMajorAndMinimumBuild() {
+    func testGatewayVersionCompatibilityAcceptsSameMajorPatchDrift() {
         XCTAssertTrue(
             SidecarCore.isGatewayVersionCompatible(
-                gatewayVersion: "1.0.1703", minimumVersion: "1.0.1697"))
+                gatewayVersion: "1.0.2275", clientVersion: "1.0.2281"))
         XCTAssertTrue(
             SidecarCore.isGatewayVersionCompatible(
-                gatewayVersion: "1.0.1697", minimumVersion: "1.0.1697"))
+                gatewayVersion: "1.0.2287", clientVersion: "1.0.2281"))
+        XCTAssertEqual(
+            SidecarCore.gatewayCompatibility(
+                gatewayVersion: "1.0.2281", clientVersion: "1.0.2281"),
+            .compatible(gatewayVersion: "1.0.2281", exactMatch: true)
+        )
+    }
+
+    func testGatewayVersionCompatibilityRejectsMajorAndMalformedVersions() {
+        XCTAssertEqual(
+            SidecarCore.gatewayCompatibility(
+                gatewayVersion: "2.0.0", clientVersion: "1.0.2281"),
+            .incompatible(
+                gatewayVersion: "2.0.0",
+                reason: "Gateway major version 2 is incompatible with native client major version 1."
+            )
+        )
+        XCTAssertEqual(
+            SidecarCore.gatewayCompatibility(
+                gatewayVersion: nil, clientVersion: "1.0.2281"),
+            .incompatible(
+                gatewayVersion: nil,
+                reason: "The Cybara gateway returned a missing or unparseable version."
+            )
+        )
         XCTAssertFalse(
             SidecarCore.isGatewayVersionCompatible(
-                gatewayVersion: "1.0.920", minimumVersion: "1.0.1697"))
+                gatewayVersion: "development", clientVersion: "1.0.2281"))
+    }
+
+    func testGatewayVersionCompatibilityRejectsIncompleteSemanticVersions() {
         XCTAssertFalse(
             SidecarCore.isGatewayVersionCompatible(
-                gatewayVersion: "2.0.0", minimumVersion: "1.0.1697"))
+                gatewayVersion: "1.0", clientVersion: "1.0.2281"))
         XCTAssertFalse(
             SidecarCore.isGatewayVersionCompatible(
-                gatewayVersion: nil, minimumVersion: "1.0.1697"))
+                gatewayVersion: "1.0.2281.1", clientVersion: "1.0.2281"))
+    }
+
+    func testGatewayAPICompatibilityCanRequireANativeClientUpdate() {
+        XCTAssertEqual(
+            SidecarCore.gatewayCompatibility(
+                gatewayVersion: "1.0.2287",
+                clientVersion: "1.0.2281",
+                apiVersion: 2,
+                minimumClientAPIVersion: 2,
+                compatibilityDeclared: true
+            ),
+            .incompatible(
+                gatewayVersion: "1.0.2287",
+                reason: "Gateway API requires native client API 2 or newer; this client supports API 1."
+            )
+        )
+    }
+
+    func testGatewayHealthProbeReadsAPICompatibilityMetadata() {
+        let body = #"{"status":"healthy","version":"1.0.2281","compatibility":{"api_version":1,"min_client_api_version":1}}"#
+        let probe = SidecarCore.gatewayHealthProbe(statusCode: 200, body: body)
+        XCTAssertEqual(probe?.apiVersion, 1)
+        XCTAssertEqual(probe?.minimumClientAPIVersion, 1)
+        XCTAssertTrue(probe?.compatibilityDeclared ?? false)
     }
 
     func testNativeSidecarCommandDetection() {
