@@ -69,10 +69,13 @@ final class SidecarCoreTests: XCTestCase {
 
     func testHealthyResponseToleratesWhitespace() {
         XCTAssertTrue(
-            SidecarCore.isHealthyResponse(statusCode: 200, body: #"{ "status" : "healthy" }"#))
+            SidecarCore.isHealthyResponse(
+                statusCode: 200, body: #"{ "product" : "cybara", "status" : "healthy" }"#))
         XCTAssertTrue(
             SidecarCore.isHealthyResponse(
-                statusCode: 200, body: "{\n  \"status\": \"healthy\",\n  \"uptime\": 5\n}"))
+                statusCode: 200,
+                body: "{\n  \"product\": \"cybara\",\n  \"status\": \"healthy\",\n  \"uptime\": 5\n}"
+            ))
     }
 
     func testHealthyResponseRejectsNon200() {

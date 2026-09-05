@@ -162,11 +162,18 @@ public enum SidecarCore {
     }
 
     public static func isGatewayVersionCompatible(
-        gatewayVersion: String?, clientVersion: String?
+        gatewayVersion: String?,
+        clientVersion: String?,
+        apiVersion: Int? = nil,
+        minimumClientAPIVersion: Int? = nil,
+        compatibilityDeclared: Bool = false
     ) -> Bool {
         if case .compatible = gatewayCompatibility(
             gatewayVersion: gatewayVersion,
-            clientVersion: clientVersion
+            clientVersion: clientVersion,
+            apiVersion: apiVersion,
+            minimumClientAPIVersion: minimumClientAPIVersion,
+            compatibilityDeclared: compatibilityDeclared
         ) {
             return true
         }
