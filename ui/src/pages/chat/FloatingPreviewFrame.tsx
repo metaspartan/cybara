@@ -244,6 +244,8 @@ export function FloatingPreviewFrame({
         aria-label={hideLabel}
         className="pointer-events-auto absolute right-2 top-2 z-50 flex h-6 w-6 items-center justify-center rounded-full border border-[var(--glass-border)] bg-black/45 text-white/80 transition-opacity duration-150 hover:bg-black/70 hover:text-white focus-visible:opacity-100"
         onClick={handleHide}
+        onKeyDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
         title={hideLabel}
       >
         <X className="h-3.5 w-3.5" strokeWidth={2.4} />
