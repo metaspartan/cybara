@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BUN_VERSION: "1.4.0"
+  BUN_VERSION: "1.4.1"
   PUPPETEER_SKIP_DOWNLOAD: "true"
   SKIP_SPAWN_TESTS: "1"
 

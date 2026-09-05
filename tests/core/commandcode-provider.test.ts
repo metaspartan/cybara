@@ -14,7 +14,7 @@ describe("command code provider registration", () => {
     expect(provider.baseUrl).toBe("https://api.commandcode.ai/provider/v1");
     expect(provider.api).toBe("openai-completions");
     expect(provider.authType).toBe("api_key");
-    expect(provider.models.length).toBe(51);
+    expect(provider.models.length).toBe(59);
   });
 
   test("routes Claude models through the Anthropic messages endpoint", () => {

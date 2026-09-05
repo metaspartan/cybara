@@ -68,6 +68,15 @@ export const foundationProviderCatalog = {
     authType: "api_key",
     models: [
       {
+        id: "gpt-6-astra",
+        name: "GPT-6 Astra",
+        context: 1050000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
+      {
         id: "gpt-5.6-sol",
         name: "GPT-5.6 Sol",
         context: 1050000,
@@ -339,6 +348,38 @@ export const foundationProviderCatalog = {
         reasoning: true,
         input: ["text", "image"],
       },
+      {
+        id: "muse-spark-1.2",
+        name: "Muse Spark 1.2",
+        context: 1048576,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image", "audio", "video", "pdf"],
+      },
+      {
+        id: "muse-spark-1.2-contributor",
+        name: "Muse Spark 1.2 Contributor",
+        context: 1048576,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image", "audio", "video", "pdf"],
+      },
+      {
+        id: "muse-spark-1.3",
+        name: "Muse Spark 1.3",
+        context: 1048576,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image", "audio", "video", "pdf"],
+      },
+      {
+        id: "muse-spark-1.3-contributor",
+        name: "Muse Spark 1.3 Contributor",
+        context: 1048576,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image", "audio", "video", "pdf"],
+      },
     ],
   },
   anthropic: {
@@ -382,6 +423,14 @@ export const foundationProviderCatalog = {
       {
         id: "claude-fable-5",
         name: "Claude Fable 5",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image", "pdf"],
+      },
+      {
+        id: "claude-fable-5-1",
+        name: "Claude Fable 5.1",
         context: 1000000,
         maxTokens: 128000,
         reasoning: true,
@@ -467,6 +516,22 @@ export const foundationProviderCatalog = {
     api: "google-generative-ai",
     authType: "api_key",
     models: [
+      {
+        id: "gemini-3.8-flash",
+        name: "Gemini 3.8 Flash",
+        context: 1048576,
+        maxTokens: 65536,
+        reasoning: true,
+        input: ["text", "image", "audio", "video"],
+      },
+      {
+        id: "gemini-3.7-flash",
+        name: "Gemini 3.7 Flash",
+        context: 1048576,
+        maxTokens: 65536,
+        reasoning: true,
+        input: ["text", "image", "audio", "video"],
+      },
       {
         id: "gemini-3.6-flash",
         name: "Gemini 3.6 Flash",
