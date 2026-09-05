@@ -406,5 +406,20 @@ describe("bot routes", () => {
       bot: { profile_image: string };
     };
     expect(cleared.bot.profile_image).toBe("");
+
+    const rePictured = (await update?.({ profile_image: png }, { id: created.bot.id })) as {
+      bot: { profile_image: string };
+    };
+    expect(rePictured.bot.profile_image).toBe(png);
+    const nulled = (await update?.({ profile_image: null }, { id: created.bot.id })) as {
+      bot: { profile_image: string };
+    };
+    expect(nulled.bot.profile_image).toBe("");
+
+    const fromNull = (await create?.({ name: "Null Portrait Bot", profile_image: null })) as {
+      bot: { id: string; profile_image: string };
+    };
+    createdAgentIds.push(fromNull.bot.id);
+    expect(fromNull.bot.profile_image).toBe("");
   });
 });

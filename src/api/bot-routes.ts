@@ -285,7 +285,9 @@ export const botRoutes: Record<string, RouteHandler> = {
     const role = isBotRoleId(input.role) ? input.role : null;
     const preset = botRolePreset(role);
     const profileImage =
-      input.profile_image === undefined ? "" : validatedProfileImage(input.profile_image);
+      input.profile_image === undefined || input.profile_image === null
+        ? ""
+        : validatedProfileImage(input.profile_image);
     const title = boundedText(input.title, 80) || preset?.title || "";
     const description = boundedText(input.description, 2_000) || preset?.description || "";
     const model = boundedText(input.model, 200) || base?.model;
@@ -329,9 +331,11 @@ export const botRoutes: Record<string, RouteHandler> = {
     const role =
       input.role === undefined ? metadata.role : isBotRoleId(input.role) ? input.role : null;
     const profileImage =
-      input.profile_image === undefined
-        ? metadata.profileImage
-        : validatedProfileImage(input.profile_image);
+      input.profile_image === null
+        ? ""
+        : input.profile_image === undefined
+          ? metadata.profileImage
+          : validatedProfileImage(input.profile_image);
     const updated = agentManager.update(id, {
       name,
       model: input.model === undefined ? agent.model : boundedText(input.model, 200),
