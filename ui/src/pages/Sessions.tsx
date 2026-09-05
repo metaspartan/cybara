@@ -24,9 +24,14 @@ import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { PageLayout } from "@/components/layout";
-import { sessionsApi } from "@/lib/api";
+import { agentsApi, sessionsApi } from "@/lib/api";
 import { connectStatusStream } from "@/lib/status-stream";
 import type { ChatMessage, ToolCallInfo } from "@/types";
+import {
+  buildSessionAgentIdentities,
+  resolveSessionAgentIdentity,
+  type SessionAgentIdentity,
+} from "./sessionAgentIdentity";
 
 interface Session {
   id: string;
@@ -63,8 +68,13 @@ export function Sessions() {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
+  const [agentIdentities, setAgentIdentities] = useState<Map<string, SessionAgentIdentity>>(
+    new Map()
+  );
   const sessionsRef = useRef<Session[]>([]);
   const refreshTimerRef = useRef<number | null>(null);
+
+  const agentIdentity = (agentId: string) => resolveSessionAgentIdentity(agentIdentities, agentId);
 
   const fetchSessions = async (limitOverride?: number) => {
     setIsLoading(true);
@@ -143,6 +153,21 @@ export function Sessions() {
     };
   }, []);
 
+  useEffect(() => {
+    const fetchAgentNames = async () => {
+      try {
+        const response = await agentsApi.summaries();
+        if (response.success) {
+          setAgentIdentities(buildSessionAgentIdentities(response.data || []));
+        }
+      } catch (error) {
+        console.error("Failed to fetch agent names:", error);
+      }
+    };
+
+    void fetchAgentNames();
+  }, []);
+
   const handleViewSession = async (session: Session) => {
     try {
       const response = await sessionsApi.get(session.id);
@@ -173,7 +198,8 @@ export function Sessions() {
   const filteredSessions = sessions.filter(
     (session) =>
       session.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      session.agent_id.toLowerCase().includes(searchQuery.toLowerCase())
+      session.agent_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      agentIdentity(session.agent_id).name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -184,7 +210,7 @@ export function Sessions() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
               <Input
-                placeholder="Search sessions by ID or agent..."
+                placeholder="Search sessions by ID, agent, or bot name..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -228,7 +254,10 @@ export function Sessions() {
                       <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400">
                         <span className="flex items-center gap-1">
                           <Bot className="w-4 h-4 flex-shrink-0" />
-                          <span className="truncate">Agent: {session.agent_id.slice(0, 8)}...</span>
+                          <span className="truncate">
+                            {agentIdentity(session.agent_id).isBot ? "Bot" : "Agent"}:{" "}
+                            {agentIdentity(session.agent_id).name}
+                          </span>
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-4 h-4 flex-shrink-0" />
@@ -303,8 +332,10 @@ export function Sessions() {
         {selectedSession && (
           <div className="space-y-4 max-h-[70vh] overflow-y-auto">
             <div className="flex items-center gap-4 p-3 rounded-lg bg-white/5 text-sm">
-              <span className="text-gray-400">Agent:</span>
-              <code className="text-white">{selectedSession.agent_id}</code>
+              <span className="text-gray-400">
+                {agentIdentity(selectedSession.agent_id).isBot ? "Bot:" : "Agent:"}
+              </span>
+              <span className="text-white">{agentIdentity(selectedSession.agent_id).name}</span>
               <span className="text-gray-400 ml-4">Created:</span>
               <span className="text-white">
                 {new Date(selectedSession.created_at).toLocaleString()}
