@@ -496,10 +496,19 @@ final class SidecarManager: ObservableObject {
         }
     }
 
+    private var ownSidecarCommandPaths: [String] {
+        let currentDirectory = FileManager.default.currentDirectoryPath
+        let executableDirectory =
+            Bundle.main.executableURL?.deletingLastPathComponent().path ?? currentDirectory
+        return SidecarCore.sidecarCandidatePaths(
+            currentDirectory: currentDirectory,
+            executableDirectory: executableDirectory)
+    }
+
     private func terminateStaleNativeGateway(_ probe: GatewayHealthProbe) async -> Bool {
         guard let processID = probe.processID, processID > 1,
               let command = processCommand(processID: processID),
-              SidecarCore.isNativeSidecarCommand(command),
+              SidecarCore.isOwnSidecarCommand(command, candidatePaths: ownSidecarCommandPaths),
               Darwin.kill(pid_t(processID), SIGTERM) == 0
         else { return false }
 

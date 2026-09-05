@@ -93,6 +93,41 @@ final class SidecarCoreTests: XCTestCase {
             SidecarCore.isHealthyResponse(statusCode: 200, body: "<html>It works!</html>"))
     }
 
+    func testOwnSidecarCommandMatchesOnlyTheAppBundleCandidates() {
+        let candidates = [
+            "/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara",
+            "/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara-aarch64-apple-darwin",
+        ]
+        XCTAssertTrue(
+            SidecarCore.isOwnSidecarCommand(
+                "/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara",
+                candidatePaths: candidates))
+        XCTAssertTrue(
+            SidecarCore.isOwnSidecarCommand(
+                "/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara --port 4269",
+                candidatePaths: candidates))
+        XCTAssertTrue(
+            SidecarCore.isOwnSidecarCommand(
+                "/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara-aarch64-apple-darwin",
+                candidatePaths: candidates))
+    }
+
+    func testOwnSidecarCommandRejectsForeignBundlesAndNonSidecars() {
+        let candidates = ["/Applications/CybaraNative.app/Contents/MacOS/sidecar/cybara"]
+        XCTAssertFalse(
+            SidecarCore.isOwnSidecarCommand(
+                "/Volumes/External/OldCybara.app/Contents/MacOS/sidecar/cybara",
+                candidatePaths: candidates))
+        XCTAssertFalse(
+            SidecarCore.isOwnSidecarCommand(
+                "/Applications/CybaraNative.app/Contents/MacOS/CybaraNative",
+                candidatePaths: candidates))
+        XCTAssertFalse(
+            SidecarCore.isOwnSidecarCommand("/usr/local/bin/cybara", candidatePaths: candidates))
+        XCTAssertFalse(
+            SidecarCore.isOwnSidecarCommand("/Applications/Cybara.app/Contents/MacOS/cybara", candidatePaths: []))
+    }
+
     func testGatewayHealthProbeRejectsArbitraryStatusJSON() {
         XCTAssertNil(
             SidecarCore.gatewayHealthProbe(

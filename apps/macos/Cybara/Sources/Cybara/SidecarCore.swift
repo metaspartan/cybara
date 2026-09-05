@@ -185,6 +185,13 @@ public enum SidecarCore {
         return normalized.contains(".app/contents/macos/sidecar/cybara")
     }
 
+    public static func isOwnSidecarCommand(_ command: String, candidatePaths: [String]) -> Bool {
+        guard isNativeSidecarCommand(command) else { return false }
+        return candidatePaths.contains { candidate in
+            command == candidate || command.hasPrefix(candidate + " ")
+        }
+    }
+
     private static func versionComponents(_ version: String?) -> [Int]? {
         guard let version else { return nil }
         let core = version.trimmingCharacters(in: .whitespacesAndNewlines)
