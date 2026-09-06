@@ -227,6 +227,13 @@ export interface AgentExecutionFailure {
   retryable: boolean;
 }
 
+function assertModelKnownForProvider(providerId: string | undefined, model: string): void {
+  if (!providerId || !model.trim()) return;
+  if (!providerManager.hasAuthoritativeModel(providerId, model)) {
+    throw new Error(`Validation error: Unknown model ${model.trim()} for provider ${providerId}`);
+  }
+}
+
 class AgentManager extends AgentProviderRuntime {
   private runningAgents: Map<string, RunningAgentState> = new Map();
 
@@ -650,6 +657,7 @@ class AgentManager extends AgentProviderRuntime {
     const resolvedModel = definition.model
       ? resolveModelAlias(definition.model, resolvedProviderType)
       : typeConfig?.defaultModel;
+    assertModelKnownForProvider(resolvedProviderId, resolvedModel ?? "");
     const resolvedFallbackProviderId =
       providerManager.resolveProviderId(
         definition.fallback_provider_id || definition.fallback_provider
@@ -770,6 +778,9 @@ class AgentManager extends AgentProviderRuntime {
     const resolvedModel = updates.model
       ? resolveModelAlias(updates.model, effectiveProviderType)
       : undefined;
+    if (updates.model !== undefined) {
+      assertModelKnownForProvider(effectiveProviderId, resolvedModel ?? "");
+    }
     const resolvedFallbackProviderId =
       updates.fallback_provider_id !== undefined || updates.fallback_provider !== undefined
         ? providerManager.resolveProviderId(

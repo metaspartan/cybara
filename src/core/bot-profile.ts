@@ -1,5 +1,6 @@
 import { parseAgentConfig } from "./agent-internals";
 import { type BotRoleId, botRolePreset, isBotRoleId } from "../../shared/bot-roles";
+import { normalizeBotProfileImage } from "../../shared/bot-profile-image";
 
 export interface BotProfileMetadata {
   title: string;
@@ -8,6 +9,7 @@ export interface BotProfileMetadata {
   pinned: boolean;
   baseSystemPrompt: string;
   role: BotRoleId | null;
+  profileImage: string;
 }
 
 function boundedText(value: unknown, maximum: number): string {
@@ -30,7 +32,8 @@ export function isBotProfileConfig(config: unknown): boolean {
     typeof record.hidden === "boolean" ||
     typeof record.pinned === "boolean" ||
     typeof record.base_system_prompt === "string" ||
-    typeof record.role === "string"
+    typeof record.role === "string" ||
+    typeof record.profile_image === "string"
   );
 }
 
@@ -43,6 +46,7 @@ export function readBotProfileMetadata(config: unknown): BotProfileMetadata {
     pinned: record.pinned === true,
     baseSystemPrompt: boundedText(record.base_system_prompt, 20_000),
     role: isBotRoleId(record.role) ? record.role : null,
+    profileImage: normalizeBotProfileImage(record.profile_image) ?? "",
   };
 }
 
@@ -62,6 +66,7 @@ export function withBotProfileMetadata(
       pinned: next.pinned,
       base_system_prompt: next.baseSystemPrompt,
       role: next.role,
+      profile_image: next.profileImage,
     },
   };
 }

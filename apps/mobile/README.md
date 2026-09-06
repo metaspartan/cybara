@@ -57,6 +57,10 @@ For remote devices, configure Settings → Gateway → Remote Access with a priv
 the Cybara gateway password before QR pairing is enabled. The mobile app normalizes pasted/QR
 gateway URLs and stores only the revocable device token.
 
+## Gateway Compatibility
+
+Mobile is a remote API client and does not bundle or manage a Cybara gateway, so it does not require exact gateway release equality. During authenticated connection verification it reads the gateway's API compatibility metadata when available. Legacy gateways without that metadata remain supported through the existing authenticated sessions contract. A future breaking gateway API can declare a newer minimum client API version, producing a clear update-required error instead of a generic connection failure.
+
 ## Runtime Coverage
 
 The app talks to the same gateway API used by Web/Tauri and native macOS. Current mobile surfaces

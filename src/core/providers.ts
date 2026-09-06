@@ -486,6 +486,12 @@ class ProviderManager {
     if (normalized.length > 0) this.authoritativeModelIds.set(providerId, new Set(normalized));
   }
 
+  hasAuthoritativeModel(providerId: string, modelId: string): boolean {
+    const authoritative = this.authoritativeModelIds.get(providerId);
+    if (!authoritative) return true;
+    return authoritative.has(modelId.trim().toLowerCase());
+  }
+
   private mergeStaticCatalogModels(
     providerId: string,
     cached: ProviderModel[],

@@ -336,7 +336,14 @@ describe("UI page API wiring", () => {
     expect(logsSource).toContain("LogsSkeleton");
     expect(logsSource).not.toContain("apiFetch(");
 
-    expect(sessionsSource).toMatch(/import\s*\{\s*sessionsApi\s*\}\s*from\s*["']@\/lib\/api["'];/);
+    expect(sessionsSource).toMatch(
+      /import\s*\{[^}]*agentsApi[^}]*sessionsApi[^}]*\}\s*from\s*["']@\/lib\/api["'];/
+    );
+    expect(sessionsSource).toContain("agentsApi.summaries()");
+    expect(sessionsSource).toContain("buildSessionAgentIdentities(response.data || [])");
+    expect(sessionsSource).toContain('agentIdentity(session.agent_id).isBot ? "Bot" : "Agent"');
+    expect(sessionsSource).toContain("agentIdentity(selectedSession.agent_id).name");
+    expect(sessionsSource).toContain("agentIdentity(session.agent_id).name.toLowerCase()");
     expect(sessionsSource).toContain("sessionsApi.list({ limit: targetLimit, offset: 0 })");
     expect(sessionsSource).toContain("sessionsApi.list({");
     expect(sessionsSource).toContain("sessionsApi.get(session.id)");

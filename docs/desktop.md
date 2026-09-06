@@ -48,6 +48,22 @@ For the native SwiftUI bundle, unzip it first, move `CybaraNative.app` to
 then run the same command. This is only needed until the maintainer
 publishes notarized builds (see [Signing & Notarization (maintainers)](#signing--notarization-maintainers)).
 
+## Central Gateway Attachment
+
+Cybara desktop shells can attach to a healthy gateway already listening on the configured loopback port instead of starting their bundled sidecar. The loopback endpoint may be local or supplied by a user-managed private-network, SSH, or VPN forward; Cybara does not depend on the forwarding technology.
+
+The gateway is authoritative for its web runtime and API behavior. The Tauri shell loads the attached gateway's own web UI, while native clients use the gateway's published API compatibility contract. Desktop and gateway patch releases therefore do not need to match exactly:
+
+- same-major release drift attaches when the gateway API contract is compatible;
+- a future gateway can publish a minimum client API version and require an older native client to update;
+- different major versions, malformed compatibility metadata, and missing gateway versions fail closed with both versions and an actionable explanation;
+- an unrelated or unresponsive service remains an occupied-port error rather than being treated as Cybara;
+- desktop shells never downgrade themselves, replace an external gateway, or install software based only on an unauthenticated health response.
+
+A bundled sidecar remains desktop-managed. A pre-existing gateway remains externally managed: the shell attaches and monitors liveness but does not terminate or update it. Reconciliation runs when attaching or reconnecting, not through continuous release polling.
+
+For routine same-major drift, no update is required. When the API compatibility contract rejects attachment, update the older component from an official Cybara release and retry. Existing desktop update paths retain their signed manifest, checksum, and code-signing verification.
+
 ## Desktop Auto Updates
 
 Official release builds include a signed updater channel backed by GitHub Releases:

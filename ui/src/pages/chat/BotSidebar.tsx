@@ -6,6 +6,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  ImagePlus,
   Loader2,
   MessagesSquare,
   MoreHorizontal,
@@ -21,7 +22,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router";
 import { Button, ConfirmDialog, Input, Modal, Select, Textarea } from "@/components/ui";
 import { useAgentSummaries, useDeleteSession, useProviders } from "@/hooks/useApi";
@@ -37,6 +38,11 @@ import { useSessions } from "@/hooks/useChat";
 import { BOT_ROLE_LIST, type BotRoleId, botRolePreset } from "../../../../shared/bot-roles";
 import { isRoomSessionId, ROOM_MODE_LABELS } from "../../../../shared/room-mode";
 import { buildMultiChatPath, MULTI_CHAT_MAX_PANES } from "./multiChatLayout";
+import {
+  BOT_PROFILE_IMAGE_ACCEPT,
+  BOT_PROFILE_IMAGE_MAX_BYTES,
+  normalizeBotProfileImage,
+} from "../../../../shared/bot-profile-image";
 
 interface BotSidebarProps {
   activeSessionIds: string[];
@@ -53,6 +59,7 @@ interface BotProfileDraft {
   description: string;
   model: string;
   providerId: string;
+  profileImage: string;
 }
 
 function previewForBot(bot: BotRosterItem): string {
@@ -67,6 +74,7 @@ function profileDraft(bot: BotRosterItem): BotProfileDraft {
     description: bot.description,
     model: bot.model ?? "",
     providerId: bot.provider_id ?? "",
+    profileImage: bot.profile_image ?? "",
   };
 }
 
@@ -266,6 +274,38 @@ export function BotSidebar({
     setEditingBot(bot);
     setEditDraft(profileDraft(bot));
     setActionBotId(null);
+  };
+
+  const changeProfileImage = (event: ChangeEvent<HTMLInputElement>): void => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (!BOT_PROFILE_IMAGE_ACCEPT.split(",").includes(file.type)) {
+      setError("Profile picture must be a PNG, JPEG, or WebP image");
+      input.value = "";
+      return;
+    }
+    if (file.size > BOT_PROFILE_IMAGE_MAX_BYTES) {
+      setError("Profile picture must be 2 MB or smaller");
+      input.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = normalizeBotProfileImage(reader.result);
+      if (image === null) {
+        setError("Could not read that profile picture");
+      } else {
+        setEditDraft((current) => (current ? { ...current, profileImage: image } : current));
+        setError(null);
+      }
+      input.value = "";
+    };
+    reader.onerror = () => {
+      setError("Could not read that profile picture");
+      input.value = "";
+    };
+    reader.readAsDataURL(file);
   };
 
   const providerModels = (selectedProviderId: string): string[] =>
@@ -831,13 +871,18 @@ export function BotSidebar({
                   description: editDraft.description,
                   model: editDraft.model,
                   provider_id: editDraft.providerId,
+                  profile_image: editDraft.profileImage,
                 },
               });
             }}
           >
             <div className="flex items-center gap-3 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] p-3">
               <BotAvatar
-                bot={{ ...editingBot, name: editDraft.name || editingBot.name }}
+                bot={{
+                  ...editingBot,
+                  name: editDraft.name || editingBot.name,
+                  profile_image: editDraft.profileImage,
+                }}
                 showPresence={false}
               />
               <div className="min-w-0">
@@ -848,6 +893,35 @@ export function BotSidebar({
                   {editingBot.model || "Inherited model"}
                 </p>
               </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--surface-border)] bg-[var(--surface-raised)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]">
+                  <ImagePlus className="h-4 w-4" />
+                  {editDraft.profileImage ? "Change picture" : "Add picture"}
+                  <input
+                    type="file"
+                    accept={BOT_PROFILE_IMAGE_ACCEPT}
+                    className="sr-only"
+                    onChange={changeProfileImage}
+                  />
+                </label>
+                {editDraft.profileImage ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setEditDraft((current) =>
+                        current ? { ...current, profileImage: "" } : current
+                      )
+                    }
+                  >
+                    Remove picture
+                  </Button>
+                ) : null}
+              </div>
+              <p className="text-xs text-[var(--text-subtle)]">PNG, JPEG, or WebP. Maximum 2 MB.</p>
             </div>
             <Input
               data-autofocus

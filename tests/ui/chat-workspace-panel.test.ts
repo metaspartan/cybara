@@ -122,6 +122,10 @@ describe("chat workspace panel", () => {
     expect(chatSource).toContain("shouldShowFloatingBrowserPreview");
     expect(floatingBrowserSource).toContain('ariaLabel="Open live browser preview"');
     expect(floatingPreviewFrameSource).toContain('role="button"');
+    expect(floatingPreviewFrameSource).toContain(
+      "onPointerDown={(event) => event.stopPropagation()}"
+    );
+    expect(floatingPreviewFrameSource).toContain("onKeyDown={(event) => event.stopPropagation()}");
     expect(floatingBrowserSource).not.toContain("Resize floating browser preview");
     expect(floatingBrowserSource).not.toContain("workspace-browser-nav-button");
     expect(floatingBrowserSource).toContain("<ChatWorkspaceBrowser");

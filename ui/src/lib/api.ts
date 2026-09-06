@@ -232,6 +232,7 @@ export const botsApi = {
     base_agent_id?: string;
     model?: string;
     provider_id?: string;
+    profile_image?: string | null;
   }) =>
     fetchApi<{ bot: BotRosterItem; session_id: string }>("/bots", {
       method: "POST",
@@ -248,6 +249,7 @@ export const botsApi = {
       pinned?: boolean;
       model?: string;
       provider_id?: string;
+      profile_image?: string | null;
     }
   ) =>
     fetchApi<{ bot: BotRosterItem }>(`/bots/${id}`, {

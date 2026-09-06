@@ -1,3 +1,9 @@
+import {
+  CYBARA_GATEWAY_API_VERSION,
+  gatewayApiDecision,
+  readGatewayApiCompatibility,
+} from "cybara-shared/gateway-compatibility";
+
 export const MOBILE_CONNECT_PROTOCOL = "cybara-mobile-connect-v1";
 
 export interface GatewayProfile {
@@ -157,23 +163,60 @@ export function isGatewaySessionListResponse(value: unknown): boolean {
   return Array.isArray(record.sessions) || Array.isArray(record.items);
 }
 
+async function verifyGatewayApiCompatibility(
+  profile: GatewayProfile,
+  headers: Record<string, string>,
+  fetchImpl: typeof fetch,
+  timeoutMs: number
+): Promise<void> {
+  const response = await fetchWithTimeout(
+    `${profile.baseUrl}/api/health`,
+    { method: "GET", headers },
+    fetchImpl,
+    timeoutMs,
+    connectionFailureMessage(profile)
+  );
+  if (!response.ok) return;
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return;
+  }
+  const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  const compatibility = readGatewayApiCompatibility(record.compatibility);
+  if (record.compatibility !== undefined && compatibility === null) {
+    throw new Error(
+      "This Cybara Mobile build cannot verify the gateway API contract because its compatibility metadata is invalid. Update the gateway and reconnect."
+    );
+  }
+  const decision = gatewayApiDecision(compatibility, CYBARA_GATEWAY_API_VERSION);
+  if (!decision.compatible) {
+    throw new Error(
+      `This Cybara Mobile build is incompatible with the gateway. ${decision.reason} Update the older component and reconnect.`
+    );
+  }
+}
+
 export async function verifyGatewayProfile(
   profile: GatewayProfile,
   fetchImpl: typeof fetch = fetch,
   timeoutMs = DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS
 ): Promise<void> {
   try {
+    const headers = {
+      Accept: "application/json",
+      Authorization: `Bearer ${profile.apiKey}`,
+      ...(profile.gatewayPassword?.trim()
+        ? { "X-Cybara-Gateway-Password": profile.gatewayPassword.trim() }
+        : {}),
+    };
+    await verifyGatewayApiCompatibility(profile, headers, fetchImpl, timeoutMs);
     const response = await fetchWithTimeout(
       `${profile.baseUrl}/api/sessions?limit=1`,
       {
         method: "GET",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${profile.apiKey}`,
-          ...(profile.gatewayPassword?.trim()
-            ? { "X-Cybara-Gateway-Password": profile.gatewayPassword.trim() }
-            : {}),
-        },
+        headers,
       },
       fetchImpl,
       timeoutMs,
@@ -201,7 +244,8 @@ export async function verifyGatewayProfile(
       (/^The gateway /.test(error.message) ||
         /^This mobile device /.test(error.message) ||
         /^Could not reach /.test(error.message) ||
-        /^This QR points /.test(error.message))
+        /^This QR points /.test(error.message) ||
+        /^This Cybara Mobile build /.test(error.message))
     ) {
       throw error;
     }

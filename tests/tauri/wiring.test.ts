@@ -128,7 +128,10 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain('"CYBARA_PORT_FALLBACK_COUNT"');
     expect(mainRs).toContain('.env("CYBARA_GATEWAY_PORT_SIGNAL", "stdout")');
     expect(mainRs).toContain('.env("CYBARA_PORT_FALLBACK_COUNT", "0")');
-    expect(mainRs).toContain("gateway::GatewayProbeStatus::Occupied");
+    expect(mainRs).toContain("gateway::GatewayProbeStatus::Busy");
+    expect(mainRs).toContain("gateway::GatewayProbeStatus::NonCybara");
+    expect(mainRs).toContain("gateway::GatewayCompatibility::Compatible");
+    expect(mainRs).toContain("gateway_version_failure");
     expect(mainRs).toContain("wait_for_existing_gateway(app, generation, preferred)");
     expect(mainRs).not.toContain("const CYBARA_FALLBACK_PORT_COUNT");
     expect(mainRs).toContain("GatewayPortSignalParser::default()");
