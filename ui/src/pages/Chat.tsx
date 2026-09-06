@@ -53,6 +53,7 @@ import { GoalPanel } from "./chat/GoalPanel";
 import { isVisibleChatTranscriptMessage } from "./chat/goalLoopPresentation";
 import { useSessionGoal } from "./chat/useSessionGoal";
 import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFollowUpControls";
+import { onOpenChatImageLightbox } from "@/lib/chatImageLightbox";
 import { ChatImageLightbox } from "./chat/ChatImageLightbox";
 import { chatHorizontalPaddingClassName } from "./chat/chatAppearanceLayout";
 import { type ChatLinkOpenOptions, routeChatLink } from "./chat/chatLinkRouting";
@@ -239,6 +240,10 @@ export function Chat() {
     setImageLightbox,
     speakingMessageIndex,
   } = useChatMessageActions();
+  useEffect(
+    () => onOpenChatImageLightbox((image) => setImageLightbox({ images: [image], index: 0 })),
+    [setImageLightbox]
+  );
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
   const [forkingMessageIndex, setForkingMessageIndex] = useState<number | null>(null);

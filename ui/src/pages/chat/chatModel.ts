@@ -572,6 +572,8 @@ export function normalizePersistedLiveActivityItem(value: unknown): LiveActivity
     toolName: typeof candidate.toolName === "string" ? candidate.toolName : undefined,
     toolCallId: typeof candidate.toolCallId === "string" ? candidate.toolCallId : undefined,
     sandboxProvider: normalizeSandboxProviderValue(candidate.sandboxProvider),
+    imageSource: typeof candidate.imageSource === "string" ? candidate.imageSource : undefined,
+    imageAlt: typeof candidate.imageAlt === "string" ? candidate.imageAlt : undefined,
   };
 }
 
