@@ -18,6 +18,8 @@ import {
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import type { Subagent } from "@/hooks/useApi";
+import { loadChatImageSource } from "@/lib/chatImages";
+import { openChatImageLightbox } from "@/lib/chatImageLightbox";
 import {
   formatSandboxProviderLabel,
   getLatestInFlightStep,
@@ -42,6 +44,61 @@ const GROUP_ICONS: Record<ActivityGroupKind, LucideIcon> = {
   fetch: Globe2,
   command: SquareTerminal,
 };
+
+function ImageViewedThumbnail({ source, alt }: { source: string; alt: string }) {
+  const [displaySource, setDisplaySource] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let revoke: (() => void) | undefined;
+    setFailed(false);
+    setDisplaySource(null);
+    void loadChatImageSource(source)
+      .then((loaded) => {
+        if (!active) {
+          loaded.revoke?.();
+          return;
+        }
+        revoke = loaded.revoke;
+        setDisplaySource(loaded.src);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+      revoke?.();
+    };
+  }, [source]);
+
+  if (failed) return null;
+  return (
+    <button
+      type="button"
+      data-testid="activity-image-viewed-thumbnail"
+      aria-label={`Open ${alt}`}
+      title={`View ${alt}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (displaySource) openChatImageLightbox(displaySource, alt);
+      }}
+      disabled={!displaySource}
+      className={cn(
+        "block h-14 w-20 shrink-0 overflow-hidden rounded-md border border-white/10 bg-black/30",
+        displaySource && "cursor-zoom-in transition-opacity hover:opacity-90"
+      )}
+    >
+      {displaySource ? (
+        <img src={displaySource} alt={alt} className="h-full w-full object-cover" />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-500" />
+        </span>
+      )}
+    </button>
+  );
+}
 
 function ActivityRow({ activity }: { activity: LiveActivityItem }) {
   const [expanded, setExpanded] = useState(false);
@@ -105,6 +162,12 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
       ) : (
         <div className="min-w-0 flex-1 flex items-center gap-2">{textContent}</div>
       )}
+      {activity.imageSource ? (
+        <ImageViewedThumbnail
+          source={activity.imageSource}
+          alt={activity.imageAlt || "Viewed image"}
+        />
+      ) : null}
     </div>
   );
 }
