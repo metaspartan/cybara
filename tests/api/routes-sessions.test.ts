@@ -546,6 +546,50 @@ describe("Session API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  test("marks the latest assistant response read without hiding later responses", async () => {
+    const suffix = Date.now();
+    const sessionId = `session-unread-${suffix}`;
+    const agentId = `session-unread-agent-${suffix}`;
+    try {
+      fixture.insertRawAgent(agentId, "Unread Agent", "{}");
+      fixture.insertRawSession(sessionId, agentId, [
+        { role: "user", content: "Work on this" },
+        { role: "assistant", content: "Finished" },
+      ]);
+
+      const before = await fixture.api("GET", "/api/sessions");
+      expect(
+        (before.data as Array<{ id: string; unread: boolean }>).find(
+          (session) => session.id === sessionId
+        )?.unread
+      ).toBe(true);
+
+      const marked = await fixture.api("PUT", `/api/sessions/${sessionId}/read`);
+      expect(marked.status).toBe(200);
+      expect(marked.data).toMatchObject({ success: true, session_id: sessionId, unread: false });
+
+      const after = await fixture.api("GET", "/api/sessions");
+      expect(
+        (after.data as Array<{ id: string; unread: boolean }>).find(
+          (session) => session.id === sessionId
+        )?.unread
+      ).toBe(false);
+
+      fixture.insertRawSession(sessionId, agentId, [
+        { role: "assistant", content: "Another response" },
+      ]);
+      const later = await fixture.api("GET", "/api/sessions");
+      expect(
+        (later.data as Array<{ id: string; unread: boolean }>).find(
+          (session) => session.id === sessionId
+        )?.unread
+      ).toBe(true);
+    } finally {
+      fixture.deleteRawSession(sessionId);
+      fixture.deleteRawAgent(agentId);
+    }
+  });
+
   test("session list and detail include provider/model metadata for the chat agent", async () => {
     const suffix = Date.now();
     const providerId = `session-provider-${suffix}`;

@@ -630,6 +630,14 @@ export function Chat() {
   }, [sessionId]);
 
   useEffect(() => {
+    if (!sessionId) return;
+    void chatApi.markSessionRead(sessionId).then(() => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void queryClient.invalidateQueries({ queryKey: ["bots"] });
+    });
+  }, [queryClient, sessionId, typedMessages.length]);
+
+  useEffect(() => {
     let active = true;
     const loadRouterConfig = async () => {
       try {

@@ -1411,6 +1411,7 @@ export const chatApi = {
         pinned?: boolean;
         room?: SessionRoomConfig | null;
         message_count?: number;
+        unread?: boolean;
         last_message?: { role: string; content: string };
       }[]
     >("/sessions" + (suffix ? `?${suffix}` : ""));
@@ -1630,6 +1631,11 @@ export const chatApi = {
     }>(`/sessions/${encodeURIComponent(sessionId)}/artifacts/${encodeURIComponent(artifactName)}`, {
       method: "DELETE",
     }),
+  markSessionRead: (id: string) =>
+    fetchApi<{ success: boolean; session_id: string; unread: false }>(
+      `/sessions/${encodeURIComponent(id)}/read`,
+      { method: "PUT" }
+    ),
   deleteSession: (id: string) => fetchApi<void>("/sessions/" + id, { method: "DELETE" }),
 };
 
@@ -1920,6 +1926,7 @@ export const sessionsApi = {
         pinned?: boolean;
         room?: SessionRoomConfig | null;
         message_count?: number;
+        unread?: boolean;
         last_message?: { role: string; content: string };
       }[]
     >("/sessions" + (suffix ? `?${suffix}` : ""));

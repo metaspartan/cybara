@@ -1373,6 +1373,7 @@ export interface PersistedSessionListEntry {
   messageCount: number;
   workspaceDir: string | null;
   pinned: boolean;
+  unread: boolean;
   lastMessageRole: string | null;
   lastMessageContent: string | null;
   modelMetadata: SessionModelMetadata | null;
@@ -1389,6 +1390,7 @@ interface PersistedSessionListRow {
   messageCount: number;
   workspaceDir: string | null;
   pinned: number;
+  unread: number;
   lastMessageRole: string | null;
   lastMessageContent: string | null;
   lastModelMetadata: string | null;
@@ -1420,6 +1422,7 @@ function normalizePersistedSessionListRow(
         ? sanitizeAssistantContent(session.lastMessageContent)
         : session.lastMessageContent,
     pinned: !!session.pinned,
+    unread: !!session.unread,
     modelMetadata: mergeSessionModelMetadata(
       resolveSessionModelMetadata(session.agentId),
       parseSessionModelMetadata(session.lastModelMetadata)
@@ -1444,6 +1447,17 @@ function persistedSessionListSql(
         cs.updated_at as updatedAt,
         cs.workspace_dir as workspaceDir,
         COALESCE(cs.pinned, 0) as pinned,
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM session_messages unread_message
+          WHERE unread_message.session_id = cs.id
+            AND unread_message.role = 'assistant'
+            AND unread_message.rowid > COALESCE((
+              SELECT read_message.rowid
+              FROM session_messages read_message
+              WHERE read_message.id = cs.last_read_assistant_message_id
+            ), 0)
+        ) THEN 1 ELSE 0 END as unread,
         cs.room_config as roomConfig,
         COALESCE(NULLIF((
           SELECT COUNT(*)
