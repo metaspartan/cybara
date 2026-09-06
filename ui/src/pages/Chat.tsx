@@ -626,11 +626,15 @@ export function Chat() {
   useEffect(() => {
     if (sessionId) {
       persistSessionId(sessionId);
-      void chatApi.markSessionRead(sessionId).then(() => {
-        void queryClient.invalidateQueries({ queryKey: ["sessions"] });
-        void queryClient.invalidateQueries({ queryKey: ["bots"] });
-      });
     }
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    void chatApi.markSessionRead(sessionId).then(() => {
+      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void queryClient.invalidateQueries({ queryKey: ["bots"] });
+    });
   }, [queryClient, sessionId, typedMessages.length]);
 
   useEffect(() => {
