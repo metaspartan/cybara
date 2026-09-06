@@ -22,13 +22,15 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { useDeferredValue, useMemo, useState, type ChangeEvent } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router";
 import { Button, ConfirmDialog, Input, Modal, Select, Textarea } from "@/components/ui";
 import { useAgentSummaries, useDeleteSession, useProviders } from "@/hooks/useApi";
-import { botsApi, extractApiError } from "@/lib/api";
+import { botsApi, chatApi, extractApiError } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { cn, formatRelativeTime } from "@/lib/utils";
+import { useUnreadDotColor } from "@/lib/unreadPreferences";
+import { connectStatusStream } from "@/lib/status-stream";
 import type { BotRosterItem } from "@/types";
 import { BotAvatar } from "./BotAvatar";
 import { resolveBotBaseAgentId, selectableBotBaseAgents } from "./botAgentSelection";
@@ -88,6 +90,7 @@ export function BotSidebar({
 }: BotSidebarProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const unreadDotColor = useUnreadDotColor();
   const { t } = useI18n();
   const { data: providers = [] } = useProviders();
   const agentsQuery = useAgentSummaries();
@@ -109,6 +112,7 @@ export function BotSidebar({
   const [role, setRole] = useState<BotRoleId | "">("");
   const [teamBotIds, setTeamBotIds] = useState<string[]>([]);
   const deferredQuery = useDeferredValue(query);
+  const botsRefreshTimerRef = useRef<number | null>(null);
   const activeIds = useMemo(() => new Set(activeSessionIds), [activeSessionIds]);
   const botsQuery = useQuery({
     queryKey: ["bots"],
@@ -123,6 +127,30 @@ export function BotSidebar({
     refetchInterval: 10_000,
   });
   const allBots = botsQuery.data ?? [];
+  const refetchBots = botsQuery.refetch;
+  useEffect(() => {
+    const disconnect = connectStatusStream({
+      onEvent: (event) => {
+        if (!event || typeof event !== "object") return;
+        if (
+          event.type !== "status" &&
+          event.type !== "snapshot" &&
+          event.type !== "task_completed"
+        ) {
+          return;
+        }
+        if (botsRefreshTimerRef.current !== null) window.clearTimeout(botsRefreshTimerRef.current);
+        botsRefreshTimerRef.current = window.setTimeout(() => {
+          void refetchBots();
+          botsRefreshTimerRef.current = null;
+        }, 600);
+      },
+    });
+    return () => {
+      disconnect();
+      if (botsRefreshTimerRef.current !== null) window.clearTimeout(botsRefreshTimerRef.current);
+    };
+  }, [refetchBots]);
   const { data: allSessions = [] } = useSessions();
   const roomSessionList = useMemo(
     () => allSessions.filter((session) => isRoomSessionId(session.id)),
@@ -158,6 +186,17 @@ export function BotSidebar({
     void queryClient.invalidateQueries({ queryKey: ["agents"] });
   };
 
+  const markBotReadImmediately = (sessionId: string): void => {
+    queryClient.setQueryData<BotRosterItem[]>(["bots"], (bots) =>
+      bots?.map((bot) =>
+        bot.session_id === sessionId && bot.session
+          ? { ...bot, session: { ...bot.session, unread: false } }
+          : bot
+      )
+    );
+    void chatApi.markSessionRead(sessionId).then(refreshBots).catch(refreshBots);
+  };
+
   const openBot = useMutation({
     mutationFn: async (id: string) => {
       const response = await botsApi.ensureSession(id);
@@ -170,6 +209,7 @@ export function BotSidebar({
       refreshBots();
       navigate(buildSessionChatPath(sessionId));
     },
+    onError: refreshBots,
   });
   const createBot = useMutation({
     mutationFn: async () => {
@@ -468,7 +508,10 @@ export function BotSidebar({
                   >
                     <button
                       type="button"
-                      onClick={() => openBot.mutate(bot.id)}
+                      onClick={() => {
+                        markBotReadImmediately(bot.session_id);
+                        openBot.mutate(bot.id);
+                      }}
                       className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(var(--accent-primary),0.45)]"
                     >
                       <BotAvatar bot={bot} active={active} />
@@ -480,6 +523,14 @@ export function BotSidebar({
                           <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--text-primary)]">
                             {bot.name}
                           </span>
+                          {bot.session?.unread && !selected ? (
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_0_2px_rgba(255,255,255,0.12)]"
+                              style={{ backgroundColor: unreadDotColor }}
+                              aria-label="Unread response"
+                              title="Unread response"
+                            />
+                          ) : null}
                           {bot.session?.updated_at ? (
                             <span className="shrink-0 text-[10px] text-[var(--text-subtle)]">
                               {formatRelativeTime(bot.session.updated_at).replace(" ago", "")}
