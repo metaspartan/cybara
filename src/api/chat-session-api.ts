@@ -1,5 +1,5 @@
 import { agentManager } from "../core/agent";
-import db from "../core/database";
+import db, { tables } from "../core/database";
 import { logSessionMessage } from "../core/logging";
 import {
   clearSessionContextState,
@@ -402,7 +402,11 @@ async function buildSessionListIndex(): Promise<SessionListEntry[]> {
 
   const memoryMap = new Map(memorySessions.map((session) => [session.id, session]));
   for (const persisted of persistedSessionIndex.values()) {
-    if (memoryMap.has(persisted.id)) continue;
+    const memory = memoryMap.get(persisted.id);
+    if (memory) {
+      memory.unread = persisted.unread;
+      continue;
+    }
     memorySessions.push({
       id: persisted.id,
       agentId: persisted.agentId,
@@ -413,6 +417,7 @@ async function buildSessionListIndex(): Promise<SessionListEntry[]> {
       updatedAt: persisted.updatedAt,
       workspaceDir: persisted.workspaceDir,
       pinned: persisted.pinned,
+      unread: persisted.unread,
       lastMessage: persisted.lastMessage,
       modelMetadata: persisted.modelMetadata,
       room: persisted.room ?? null,
@@ -437,7 +442,9 @@ async function buildPersistedSessionPage(options: { limit: number; offset: numbe
   const memoryById = new Map(memorySessions.map((session) => [session.id, session]));
   const persistedEntries = page.sessions.map((persisted) => {
     const memory = memoryById.get(persisted.id);
-    return memory ?? persistedSessionToIndexEntry(persisted);
+    return memory
+      ? { ...memory, unread: persisted.unread }
+      : persistedSessionToIndexEntry(persisted);
   });
 
   if (transientSessions.length === 0) {
@@ -501,6 +508,15 @@ export async function listSessionPage(options?: { limit?: number; offset?: numbe
     offset,
     hasMore: limit ? offset + sessions.length < sortedSessions.length : false,
   };
+}
+
+export function markSessionRead(sessionId: string): { found: boolean; unread: false } {
+  const key = sessionId.trim();
+  if (!key) return { found: false, unread: false };
+  const found = tables.chatSessions.markRead(key);
+  const indexed = persistedSessionIndex.get(key);
+  if (indexed) persistedSessionIndex.set(key, { ...indexed, unread: false });
+  return { found, unread: false };
 }
 
 export async function deleteSession(sessionId: string): Promise<boolean> {

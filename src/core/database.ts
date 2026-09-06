@@ -177,6 +177,7 @@ try {
     workspace_dir TEXT,
     pinned INTEGER NOT NULL DEFAULT 0,
     room_config TEXT,
+    last_read_assistant_message_id TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -488,6 +489,41 @@ try {
     db.exec("ALTER TABLE chat_sessions ADD COLUMN room_config TEXT");
     console.error("[Database] Migration: Added room_config column to chat_sessions");
   } catch {}
+
+  try {
+    db.exec("ALTER TABLE chat_sessions ADD COLUMN last_read_assistant_message_id TEXT");
+    console.error("[Database] Migration: Added session read cursors");
+  } catch {}
+
+  try {
+    const migrationKey = "migration.session_read_cursors_v1";
+    const migrated = db.query("SELECT value FROM config WHERE key = ?").get(migrationKey);
+    if (!migrated) {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        db.exec(`
+          UPDATE chat_sessions
+          SET last_read_assistant_message_id = COALESCE(
+            (
+              SELECT sm.id
+              FROM session_messages sm
+              WHERE sm.session_id = chat_sessions.id AND sm.role = 'assistant'
+              ORDER BY sm.rowid DESC
+              LIMIT 1
+            ),
+            '__read__'
+          )
+        `);
+        db.query("INSERT INTO config (key, value) VALUES (?, ?)").run(migrationKey, "1");
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    }
+  } catch (error) {
+    console.warn("[Database] session read cursor backfill failed:", error);
+  }
 
   try {
     db.exec("ALTER TABLE mcp_servers ADD COLUMN url TEXT");
@@ -894,6 +930,15 @@ const stmts = {
       "UPDATE chat_sessions SET room_config = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
     ),
     setPinned: prepare("UPDATE chat_sessions SET pinned = ? WHERE id = ?"),
+    markRead: prepare(
+      `UPDATE chat_sessions
+       SET last_read_assistant_message_id = (
+         SELECT id FROM session_messages
+         WHERE session_id = ? AND role = 'assistant'
+         ORDER BY rowid DESC LIMIT 1
+       )
+       WHERE id = ?`
+    ),
     delete: prepare("DELETE FROM chat_sessions WHERE id = ?"),
     list: prepare("SELECT * FROM chat_sessions ORDER BY pinned DESC, updated_at DESC"),
   },
@@ -1495,6 +1540,10 @@ export const tables = {
     },
     setRoomConfig: (id: string, roomConfig: string | null): boolean => {
       const result = stmts.chatSessions?.setRoomConfig.run(roomConfig, id);
+      return (result?.changes ?? 0) > 0;
+    },
+    markRead: (id: string): boolean => {
+      const result = stmts.chatSessions?.markRead.run(id, id);
       return (result?.changes ?? 0) > 0;
     },
     delete: (id: string) => stmts.chatSessions?.delete.run(id),

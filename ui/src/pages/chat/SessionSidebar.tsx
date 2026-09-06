@@ -28,6 +28,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button, Modal } from "@/components/ui";
 import { useTasks } from "@/hooks/useApi";
 import {
@@ -39,8 +40,10 @@ import {
   useSessions,
 } from "@/hooks/useChat";
 import { apiFetch } from "@/lib/auth";
+import { chatApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { connectStatusStream } from "@/lib/status-stream";
+import { useUnreadDotColor } from "@/lib/unreadPreferences";
 import { cn } from "@/lib/utils";
 import type { SessionContextUsage, SessionTokenUsage, Task } from "@/types";
 import type { ChatMessage } from "./chatModel";
@@ -284,7 +287,9 @@ export function SessionsPanel({
 }: SessionsPanelProps) {
   const navigate = useNavigate();
   const { t } = useI18n();
+  const unreadDotColor = useUnreadDotColor();
   const { data: allSessions, isLoading, refetch } = useSessions();
+  const sessionQueryClient = useQueryClient();
   const sessions = useMemo(
     () => allSessions?.filter((session) => !isRoomSessionId(session.id)),
     [allSessions]
@@ -460,7 +465,22 @@ export function SessionsPanel({
     [onLoadSession]
   );
 
+  const markReadImmediately = (sessionId: string): void => {
+    sessionQueryClient.setQueriesData<Array<ChatSidebarSession>>(
+      { queryKey: ["sessions"] },
+      (sessions) =>
+        sessions?.map((session) =>
+          session.id === sessionId ? { ...session, unread: false } : session
+        )
+    );
+    void chatApi
+      .markSessionRead(sessionId)
+      .then(() => refetch())
+      .catch(() => refetch());
+  };
+
   const handleLoadSession = async (sessionId: string) => {
+    markReadImmediately(sessionId);
     if (placement === "main") {
       navigate(`/chat?session=${encodeURIComponent(sessionId)}`);
       return;
@@ -850,6 +870,14 @@ export function SessionsPanel({
                                 <span className="min-w-0 flex-1 truncate leading-none">
                                   {displayTitle}
                                 </span>
+                                {session.unread && !isSessionSelected ? (
+                                  <span
+                                    className="h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_0_2px_rgba(255,255,255,0.12)]"
+                                    style={{ backgroundColor: unreadDotColor }}
+                                    aria-label="Unread response"
+                                    title="Unread response"
+                                  />
+                                ) : null}
                                 <span className="ml-1 flex h-full w-8 shrink-0 items-center justify-end text-[12px] font-medium leading-none text-gray-500">
                                   {isSessionActive ? (
                                     <Loader2 className="h-3 w-3 animate-spin text-gray-400" />

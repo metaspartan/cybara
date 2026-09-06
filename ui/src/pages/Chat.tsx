@@ -626,8 +626,12 @@ export function Chat() {
   useEffect(() => {
     if (sessionId) {
       persistSessionId(sessionId);
+      void chatApi.markSessionRead(sessionId).then(() => {
+        void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+        void queryClient.invalidateQueries({ queryKey: ["bots"] });
+      });
     }
-  }, [sessionId]);
+  }, [queryClient, sessionId, typedMessages.length]);
 
   useEffect(() => {
     let active = true;

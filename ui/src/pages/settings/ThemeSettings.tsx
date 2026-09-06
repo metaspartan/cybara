@@ -4,6 +4,7 @@ import { useIdentity, useUpdateIdentity, type IdentityConfig } from "@/hooks/use
 import { settingsApi } from "@/lib/api";
 import { useI18n, languageOptions } from "@/lib/i18n";
 import { persistPetEnabled, readPetEnabled } from "@/lib/petPreferences";
+import { persistUnreadDotColor, readUnreadDotColor } from "@/lib/unreadPreferences";
 import { cn } from "@/lib/settingsFormat";
 import {
   customThemeConfigPayload,
@@ -67,6 +68,7 @@ export function ThemeSettings() {
   const [savingAccent, setSavingAccent] = useState<ThemeAccent | null>(null);
   const [draftTheme, setDraftTheme] = useState<CustomThemeBundle | null>(null);
   const [petEnabled, setPetEnabled] = useState(() => readPetEnabled());
+  const [unreadDotColor, setUnreadDotColor] = useState(() => readUnreadDotColor());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const identityThemeRef = useRef<{ initialized: boolean; value: unknown }>({
     initialized: false,
@@ -513,6 +515,32 @@ export function ThemeSettings() {
               }))}
             />
           </div>
+        </section>
+
+        <section className="flex items-center justify-between gap-4 border-t border-[var(--surface-border)] pt-5">
+          <div>
+            <span className="text-sm text-[var(--text-secondary)]">Unread response color</span>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              Used for the dot shown to the right of agents with unread responses.
+            </p>
+          </div>
+          <label className="flex items-center gap-2">
+            <input
+              type="color"
+              value={unreadDotColor}
+              onChange={(event) => {
+                setUnreadDotColor(event.target.value);
+                persistUnreadDotColor(event.target.value);
+              }}
+              className="h-8 w-10 cursor-pointer rounded-md border border-[var(--surface-border)] bg-transparent p-0.5"
+              aria-label="Unread response color"
+            />
+            <span
+              className="h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: unreadDotColor }}
+              aria-hidden="true"
+            />
+          </label>
         </section>
 
         <section className="flex items-center justify-between gap-4 border-t border-[var(--surface-border)] pt-5">

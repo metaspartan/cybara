@@ -11,6 +11,7 @@ import {
   listPendingChatMessages,
   listSessionPage,
   listSessions,
+  markSessionRead,
   reorderPendingChatMessages,
   revertSessionToMessage,
   setSessionPinned,
@@ -1255,6 +1256,7 @@ const routes: Record<string, RouteHandler> = {
             ? session.workspaceDir
             : null,
         pinned: session.pinned === true,
+        unread: session.unread === true,
         room: session.room ? roomConfigToApi(session.room) : null,
         message_count: session.messageCount,
         last_message: lastMessage
@@ -1559,6 +1561,11 @@ const routes: Record<string, RouteHandler> = {
   "DELETE /api/sessions/:sessionId": async (_body, params) => {
     await deleteSession(params!.sessionId);
     return { success: true, message: "Session deleted" };
+  },
+  "PUT /api/sessions/:sessionId/read": async (_body, params) => {
+    const result = markSessionRead(params!.sessionId);
+    if (!result.found) throw new Error("Session not found");
+    return { success: true, session_id: params!.sessionId, unread: false };
   },
 
   "POST /api/subagents/spawn": async (body) => {

@@ -188,6 +188,7 @@ function serializeBot(
           title: session.title,
           updated_at: session.updatedAt,
           message_count: session.messageCount,
+          unread: session.unread,
           last_message: session.lastMessage,
         }
       : null,
