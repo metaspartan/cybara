@@ -1,5 +1,5 @@
 {
-  version = "1.0.2295";
+  version = "1.0.2310";
   hashes = {
     "x86_64-linux" = "sha256-";
     "aarch64-linux" = "sha256-";
