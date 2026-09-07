@@ -10,7 +10,7 @@ import {
 import { ChatRoomBanner, roomComposerLabel, useCurrentRoom } from "./chat/RoomBanner";
 import { useComposerAgents, useCurrentBot } from "./chat/useChatBotContext";
 import { canShareNearbySession, useNearbyStatus } from "@/hooks/useNearbyStatus";
-import { botsApi, chatApi, extractApiError, providerPlansApi, settingsApi } from "@/lib/api";
+import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import {
   APP_HOTKEY_EVENT,
   type AppHotkeyActionId,
@@ -28,14 +28,9 @@ import { useI18n } from "@/lib/i18n";
 import { type PendingChatMessage, type StatusSessionSnapshot } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
-import type {
-  BotRosterItem,
-  ProviderPlanStatusResponse,
-  SessionContextUsage,
-  SessionTokenUsage,
-} from "@/types";
+import type { ProviderPlanStatusResponse, SessionContextUsage, SessionTokenUsage } from "@/types";
 import { openExternal } from "@/utils/openExternal";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, Loader2, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -52,6 +47,7 @@ import { ChatEmptyState } from "./chat/ChatEmptyState";
 import { GoalPanel } from "./chat/GoalPanel";
 import { isVisibleChatTranscriptMessage } from "./chat/goalLoopPresentation";
 import { useSessionGoal } from "./chat/useSessionGoal";
+import { useSessionReadAcknowledgement } from "./chat/useSessionReadAcknowledgement";
 import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFollowUpControls";
 import { onOpenChatImageLightbox } from "@/lib/chatImageLightbox";
 import { ChatImageLightbox } from "./chat/ChatImageLightbox";
@@ -98,6 +94,7 @@ import {
   type StoppedRunSuppressions,
 } from "./chat/stopSuppression";
 import { useArtifactViewer } from "./chat/useArtifactViewer";
+import { useBotRoster } from "./chat/useBotRoster";
 import { useChatAttachments } from "./chat/useChatAttachments";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { useChatDictation } from "./chat/useChatDictation";
@@ -122,18 +119,7 @@ export function Chat() {
   const { data: agents = [] } = useAgentSummaries();
   const updateAgentReasoning = useUpdateAgentReasoning();
   const { data: info } = useInfo();
-  const { data: botRoster = [] } = useQuery<BotRosterItem[]>({
-    queryKey: ["bots"],
-    queryFn: async () => {
-      const response = await botsApi.list();
-      if (!response.success || !response.data) {
-        throw new Error(extractApiError(response, "Could not load bots"));
-      }
-      return response.data.bots;
-    },
-    staleTime: 5_000,
-    refetchInterval: 10_000,
-  });
+  const botRoster = useBotRoster();
   const [initialChatRoute] = useState(() => parseInitialChatRoute(window.location.search));
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(
     initialChatRoute.agentId ?? undefined
@@ -161,6 +147,7 @@ export function Chat() {
   const goalController = useSessionGoal(sessionId || undefined);
   const { data: environmentSubagents = [] } = useSubagents(sessionId);
   const typedMessages = messages as ChatMessage[];
+  useSessionReadAcknowledgement(sessionId, typedMessages.length);
   const currentBot = useCurrentBot(botRoster, sessionId);
   const currentRoom = useCurrentRoom(sessionId);
   const composerAgents = useComposerAgents(agents, currentBot);
