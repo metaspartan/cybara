@@ -14,7 +14,7 @@ import {
   mergeActivityLists,
 } from "../../ui/src/lib/chatActivities";
 import { onOpenChatImageLightbox, openChatImageLightbox } from "../../ui/src/lib/chatImageLightbox";
-import { formatToolIntent } from "../../ui/src/pages/chat/chatModel";
+import { applyLiveActivityEvent, formatToolIntent } from "../../ui/src/pages/chat/chatModel";
 import { formatIdeStatusEventText } from "../../ui/src/pages/ide/ideActivityHelpers";
 
 const PNG_DATA_URL =
@@ -268,6 +268,57 @@ describe("image viewed activity labels", () => {
     expect(enriched[0].imageSource).toBe("/api/media?path=%2Ftmp%2Fmug_side.png");
   });
 
+  test("consecutive image views fold into a 'Viewed N images' group that reveals each thumbnail", () => {
+    const entries = groupSharedActivities([
+      { id: "1", phase: "result", text: "Viewed an image", toolName: "image" },
+      { id: "2", phase: "result", text: "Viewed an image", toolName: "image" },
+      { id: "3", phase: "result", text: "Viewed an image", toolName: "image" },
+    ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ type: "group", kind: "view", label: "Viewed 3 images" });
+    expect((entries[0] as { items: unknown[] }).items).toHaveLength(3);
+    expect(
+      groupSharedActivities([
+        { id: "1", phase: "result", text: "Ran pwd", toolName: "exec" },
+        { id: "2", phase: "result", text: "Ran echo hi", toolName: "exec" },
+        { id: "3", phase: "result", text: "Viewed an image", toolName: "image" },
+        { id: "4", phase: "result", text: "Viewed an image", toolName: "image" },
+      ]).map((entry) => (entry.type === "group" ? entry.label : "single"))
+    ).toEqual(["Ran 2 commands", "Viewed 2 images"]);
+  });
+
+  test("live activity ids match the gateway's runId:sequence scheme so rows survive completion", () => {
+    const started = applyLiveActivityEvent([], {
+      phase: "start",
+      text: "Viewing an image",
+      timestamp: 1_000,
+      toolName: "image",
+      toolCallId: "chatcmpl-tool-1",
+      runId: "run-abc",
+      sequence: 7,
+    });
+    expect(started[0].id).toBe("run-abc:7");
+    const completed = applyLiveActivityEvent(started, {
+      phase: "result",
+      text: "Viewed an image",
+      timestamp: 2_000,
+      toolName: "image",
+      toolCallId: "chatcmpl-tool-1",
+      imageSource: "/api/media?path=%2Ftmp%2Fa.png",
+      runId: "run-abc",
+      sequence: 8,
+    });
+    expect(completed).toHaveLength(1);
+    expect(completed[0].id).toBe("run-abc:7");
+    expect(completed[0].imageSource).toBe("/api/media?path=%2Ftmp%2Fa.png");
+    const fallback = applyLiveActivityEvent([], {
+      phase: "result",
+      text: "Ran ls",
+      toolName: "exec",
+    });
+    expect(fallback[0].id).toMatch(/^\d+-[a-z0-9]{6}$/);
+  });
+
   test("image views stay standalone rows instead of folding into command groups", () => {
     const entries = groupSharedActivities([
       { id: "1", phase: "result", text: "Ran ls", toolName: "exec" },
@@ -290,6 +341,19 @@ describe("image viewed activity labels", () => {
     expect(timelineSource).toContain('data-testid="activity-image-viewed-preview"');
     expect(timelineSource).toContain("const hasImage = Boolean(activity.imageSource);");
     expect(timelineSource).toContain('data-testid="activity-image-icon"');
+    expect(timelineSource).toContain("expanded && activity.imageSource");
+    expect(timelineSource).toContain('data-testid="activity-image-viewed-strip"');
+    expect(timelineSource).toContain('expanded && entry.kind === "view" ? (');
+    expect(timelineSource).not.toContain("revealImage");
+    expect(timelineSource).toContain("view: ImageIcon");
+    expect(timelineSource).toContain(
+      'const LIVE_OPEN_GROUP_KINDS: readonly ActivityGroupKind[] = ["view"];'
+    );
+    expect(timelineSource).toContain("openByDefault={LIVE_OPEN_GROUP_KINDS}");
+    expect(timelineSource).toContain(
+      "const expanded = openByDefault.includes(entry.kind) !== toggledGroups.has(entry.id);"
+    );
+    expect(timelineSource).toContain("peekChatImageSource(source) ?? null");
     expect(timelineSource).toContain('activity.phase === "result" && hasImage ? (');
   });
 });

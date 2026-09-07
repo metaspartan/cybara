@@ -1,9 +1,9 @@
 import {
   groupSharedActivities,
-  sharedActivityKind,
   type SharedActivityGroupKind,
   type SharedActivityItem,
   type SharedActivityPhase,
+  sharedActivityKind,
 } from "../../../shared/chat-activity-groups";
 import { isProviderRecoveryStatusLabel } from "../../../shared/chat-status";
 
@@ -75,6 +75,7 @@ const GROUP_ICONS: Record<SharedActivityGroupKind, string> = {
   edit: "✎",
   fetch: "◎",
   command: "▣",
+  view: "▦",
 };
 
 function classifyActivity(value: string): ActivityKind {

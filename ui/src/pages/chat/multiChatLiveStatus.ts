@@ -162,6 +162,8 @@ export function projectMultiChatStatusEvent(
       sandboxProvider: event.sandboxProvider,
       imageSource: imageSourceFromPath(event.imagePath),
       imageAlt: imageAltFromPath(event.imagePath),
+      runId: event.runId,
+      sequence: event.sequence,
     });
     liveStatus = "thinking";
     currentStep =

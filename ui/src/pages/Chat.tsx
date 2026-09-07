@@ -1,3 +1,7 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { ArrowDown, Loader2, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
 import { Button, Modal } from "@/components/ui";
 import { useAgentSummaries, useInfo, useSubagents, useUpdateAgentReasoning } from "@/hooks/useApi";
@@ -7,8 +11,6 @@ import {
   useLoadSession,
   useUpdateSessionAgent,
 } from "@/hooks/useChat";
-import { ChatRoomBanner, roomComposerLabel, useCurrentRoom } from "./chat/RoomBanner";
-import { useComposerAgents, useCurrentBot } from "./chat/useChatBotContext";
 import { canShareNearbySession, useNearbyStatus } from "@/hooks/useNearbyStatus";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import {
@@ -24,70 +26,65 @@ import {
   mergeActivityLists,
   suppressRecoveredWebFailureActivities,
 } from "@/lib/chatActivities";
+import { onOpenChatImageLightbox } from "@/lib/chatImageLightbox";
 import { useI18n } from "@/lib/i18n";
 import { type PendingChatMessage, type StatusSessionSnapshot } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
 import type { ProviderPlanStatusResponse, SessionContextUsage, SessionTokenUsage } from "@/types";
 import { openExternal } from "@/utils/openExternal";
-import { useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, Loader2, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router";
 import {
   resolveSessionEventOrder,
   type SessionEventCursor,
   type SessionEventIdentity,
 } from "../../../shared/session-event-order";
 import { ArtifactViewerPanel } from "./chat/ArtifactViewerPanel";
+import { hasMixedAssistantAuthors } from "./chat/assistantAuthors";
 import { parseTimestampMs } from "./chat/assistantMetaModel";
 import { MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
 import { ChatComposer, type ChatComposerProps } from "./chat/ChatComposer";
 import { ChatEmptyState } from "./chat/ChatEmptyState";
-import { GoalPanel } from "./chat/GoalPanel";
-import { isVisibleChatTranscriptMessage } from "./chat/goalLoopPresentation";
-import { useSessionGoal } from "./chat/useSessionGoal";
-import { useSessionReadAcknowledgement } from "./chat/useSessionReadAcknowledgement";
 import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFollowUpControls";
-import { onOpenChatImageLightbox } from "@/lib/chatImageLightbox";
 import { ChatImageLightbox } from "./chat/ChatImageLightbox";
+import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
+import { ChatPageHeader } from "./chat/ChatPageHeader";
+import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
+import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
 import { chatHorizontalPaddingClassName } from "./chat/chatAppearanceLayout";
 import { type ChatLinkOpenOptions, routeChatLink } from "./chat/chatLinkRouting";
-import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
 import {
   type ChatMessage,
   extractLatestPlanFromMessages,
   formatToolIntent,
   getLegacyMessageProcessKey,
   getMessageProcessKey,
+  latestAssistantMessageKey,
   normalizeMessageProcessActivities,
   PENDING_CAPTURE_TIMEOUT_MS,
   type PendingProcessCapture,
   persistMessageProcessMap,
   persistSessionId,
   persistWorkspaceDir,
+  type RevertTarget,
   readPersistedMessageProcessMap,
   readPersistedSessionId,
   readPersistedWorkspaceDir,
-  type RevertTarget,
   type SessionStatusResponse,
   type SessionStatusSnapshot,
   shouldShowSessionPlanInComposer,
 } from "./chat/chatModel";
-import { ChatPageHeader } from "./chat/ChatPageHeader";
-import { buildMultiChatPath } from "./chat/multiChatLayout";
 import { parseInitialChatRoute } from "./chat/chatRoute";
-import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
-import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
 import { FloatingBrowserPreview } from "./chat/FloatingBrowserPreview";
 import { FloatingComputerPreview } from "./chat/FloatingComputerPreview";
 import { shouldShowFloatingBrowserPreview } from "./chat/floatingBrowserPreviewModel";
-import { useFloatingPreviewActivity } from "./chat/useFloatingPreviewActivity";
-import { hasMixedAssistantAuthors } from "./chat/assistantAuthors";
+import { GoalPanel } from "./chat/GoalPanel";
+import { isVisibleChatTranscriptMessage } from "./chat/goalLoopPresentation";
 import { clearCachedLiveSessionState, isLiveSessionRunning } from "./chat/liveSessionState";
+import { buildMultiChatPath } from "./chat/multiChatLayout";
 import { NearbyShareModal } from "./chat/NearbyShareModal";
 import { PendingApprovalsBanner } from "./chat/PendingApprovalsBanner";
 import { normalizePendingChatMessages } from "./chat/pendingQueueState";
+import { ChatRoomBanner, roomComposerLabel, useCurrentRoom } from "./chat/RoomBanner";
 import {
   isStoppedRunSuppressed,
   markStoppedRun,
@@ -96,6 +93,7 @@ import {
 import { useArtifactViewer } from "./chat/useArtifactViewer";
 import { useBotRoster } from "./chat/useBotRoster";
 import { useChatAttachments } from "./chat/useChatAttachments";
+import { useComposerAgents, useCurrentBot } from "./chat/useChatBotContext";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { useChatDictation } from "./chat/useChatDictation";
 import { useChatFileDropSurface } from "./chat/useChatFileDropSurface";
@@ -106,7 +104,10 @@ import { useChatScroll } from "./chat/useChatScroll";
 import { useChatWorkspaceActions } from "./chat/useChatWorkspaceActions";
 import { useChatWorkspaceTabs } from "./chat/useChatWorkspaceTabs";
 import { useEnvironmentGitBranches } from "./chat/useEnvironmentGitBranches";
+import { useFloatingPreviewActivity } from "./chat/useFloatingPreviewActivity";
 import { useSessionFileChanges } from "./chat/useSessionFileChanges";
+import { useSessionGoal } from "./chat/useSessionGoal";
+import { useSessionReadAcknowledgement } from "./chat/useSessionReadAcknowledgement";
 
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
 
@@ -147,7 +148,8 @@ export function Chat() {
   const goalController = useSessionGoal(sessionId || undefined);
   const { data: environmentSubagents = [] } = useSubagents(sessionId);
   const typedMessages = messages as ChatMessage[];
-  useSessionReadAcknowledgement(sessionId, typedMessages.length);
+  const assistantReadKey = useMemo(() => latestAssistantMessageKey(typedMessages), [typedMessages]);
+  useSessionReadAcknowledgement(sessionId, assistantReadKey);
   const currentBot = useCurrentBot(botRoster, sessionId);
   const currentRoom = useCurrentRoom(sessionId);
   const composerAgents = useComposerAgents(agents, currentBot);

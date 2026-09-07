@@ -25,7 +25,7 @@ import {
   mergeActivityLists,
 } from "@/lib/chatActivities";
 import { openChatImageLightbox } from "@/lib/chatImageLightbox";
-import { loadChatImageSource } from "@/lib/chatImages";
+import { loadChatImageSource, peekChatImageSource } from "@/lib/chatImages";
 import { cn } from "@/lib/utils";
 import { formatWorkedDuration } from "./assistantMetaModel";
 import {
@@ -44,17 +44,22 @@ const GROUP_ICONS: Record<ActivityGroupKind, LucideIcon> = {
   edit: Pencil,
   fetch: Globe2,
   command: SquareTerminal,
+  view: ImageIcon,
 };
 
+const LIVE_OPEN_GROUP_KINDS: readonly ActivityGroupKind[] = ["view"];
+
 function ImageViewedThumbnail({ source, alt }: { source: string; alt: string }) {
-  const [displaySource, setDisplaySource] = useState<string | null>(null);
+  const [displaySource, setDisplaySource] = useState<string | null>(
+    () => peekChatImageSource(source) ?? null
+  );
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
     let revoke: (() => void) | undefined;
     setFailed(false);
-    setDisplaySource(null);
+    if (!peekChatImageSource(source)) setDisplaySource(null);
     void loadChatImageSource(source)
       .then((loaded) => {
         if (!active) {
@@ -188,12 +193,18 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
   );
 }
 
-export function GroupedActivityRows({ activities }: { activities: LiveActivityItem[] }) {
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+export function GroupedActivityRows({
+  activities,
+  openByDefault = [],
+}: {
+  activities: LiveActivityItem[];
+  openByDefault?: readonly ActivityGroupKind[];
+}) {
+  const [toggledGroups, setToggledGroups] = useState<Set<string>>(new Set());
   const entries = groupActivitiesForDisplay(activities);
 
   const toggleGroup = (id: string) => {
-    setExpandedGroups((previous) => {
+    setToggledGroups((previous) => {
       const next = new Set(previous);
       if (next.has(id)) {
         next.delete(id);
@@ -210,7 +221,7 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
         if (entry.type === "single") {
           return <ActivityRow key={entry.activity.id} activity={entry.activity} />;
         }
-        const expanded = expandedGroups.has(entry.id);
+        const expanded = openByDefault.includes(entry.kind) !== toggledGroups.has(entry.id);
         const GroupIcon = GROUP_ICONS[entry.kind];
         const inFlight = entry.items.some((activity) => activity.phase === "start");
         return (
@@ -238,13 +249,30 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
                 <ChevronRight className="w-3 h-3 text-gray-600 flex-shrink-0" />
               )}
             </button>
-            {expanded && (
+            {expanded && entry.kind === "view" ? (
+              <div
+                className="ml-[5px] mt-1.5 flex flex-wrap gap-2 border-l border-white/10 pl-2.5"
+                data-testid="activity-image-viewed-strip"
+              >
+                {entry.items.map((activity) =>
+                  activity.imageSource ? (
+                    <ImageViewedThumbnail
+                      key={activity.id}
+                      source={activity.imageSource}
+                      alt={activity.imageAlt || "Viewed image"}
+                    />
+                  ) : (
+                    <ActivityRow key={activity.id} activity={activity} />
+                  )
+                )}
+              </div>
+            ) : expanded ? (
               <div className="ml-[5px] mt-1 space-y-1 border-l border-white/10 pl-2.5">
                 {entry.items.map((activity) => (
                   <ActivityRow key={activity.id} activity={activity} />
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
         );
       })}
@@ -351,7 +379,9 @@ export function LiveActivityTimeline({
   return (
     <div className="space-y-1">
       <LiveWorkedDuration startedAtMs={startedAtMs} />
-      {visibleActivities.length > 0 && <GroupedActivityRows activities={visibleActivities} />}
+      {visibleActivities.length > 0 && (
+        <GroupedActivityRows activities={visibleActivities} openByDefault={LIVE_OPEN_GROUP_KINDS} />
+      )}
       {displayCurrentStep ? (
         <LiveStatusIndicator
           text={displayCurrentStep}

@@ -6,6 +6,7 @@ import {
   normalizeUnreadDotColor,
   readUnreadDotColor,
 } from "../../ui/src/lib/unreadPreferences";
+import { latestAssistantMessageKey } from "../../ui/src/pages/chat/chatModel";
 
 const root = resolve(import.meta.dir, "../..");
 const source = (path: string): string => readFileSync(resolve(root, path), "utf8");
@@ -44,9 +45,40 @@ describe("unread response indicators", () => {
     expect(botSidebar).toContain("unread: false");
     expect(sessionSidebar).toContain("markReadImmediately(sessionId)");
     expect(sessionSidebar).toContain("sessionQueryClient.setQueriesData");
-    expect(chat).toContain("useSessionReadAcknowledgement(sessionId, typedMessages.length)");
+    expect(chat).toContain("useSessionReadAcknowledgement(sessionId, assistantReadKey)");
+    expect(chat).toContain("latestAssistantMessageKey(typedMessages)");
     expect(acknowledgement).toContain("chatApi.markSessionRead(sessionId)");
-    expect(acknowledgement).toContain("[messageCount, queryClient, sessionId]");
+    expect(acknowledgement).toContain("[latestAssistantMessageKey, queryClient, sessionId]");
+    expect(acknowledgement).toContain("acknowledgedRef.current === acknowledgementKey");
+    expect(acknowledgement).not.toContain("messageCount");
+  });
+
+  test("acknowledges reads only when the latest assistant message advances", () => {
+    expect(latestAssistantMessageKey([])).toBeNull();
+    expect(latestAssistantMessageKey([{ role: "user", content: "hi" }])).toBeNull();
+    const conversation = [
+      { role: "user" as const, content: "hi" },
+      { role: "assistant" as const, content: "one", message_id: "m-1" },
+      { role: "user" as const, content: "again" },
+    ];
+    expect(latestAssistantMessageKey(conversation)).toBe("m-1");
+    expect(
+      latestAssistantMessageKey([...conversation, { role: "user" as const, content: "and again" }])
+    ).toBe("m-1");
+    expect(
+      latestAssistantMessageKey([
+        ...conversation,
+        { role: "assistant" as const, content: "two", message_id: "m-2" },
+      ])
+    ).toBe("m-2");
+    expect(
+      latestAssistantMessageKey([
+        { role: "assistant" as const, content: "streaming", timestamp: "2099-01-01T00:00:00.000Z" },
+      ])
+    ).toBe("2099-01-01T00:00:00.000Z");
+    expect(latestAssistantMessageKey([{ role: "assistant" as const, content: "bare" }])).toBe(
+      "assistant-0"
+    );
   });
 
   test("exposes the color picker in Appearance settings", () => {
