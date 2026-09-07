@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { cybaraDir } from "../../src/core/paths";
 import { resolveMediaFile } from "../../src/core/runtime/media-files";
-import { registerViewedMediaPath } from "../../src/core/viewed-media";
+import { snapshotViewedMedia } from "../../src/core/viewed-media";
 
 const screenshotsDir = join(cybaraDir, "screenshots");
 const mediaDir = join(cybaraDir, "media");
@@ -34,14 +34,16 @@ describe("resolveMediaFile", () => {
     if (existsSync(viewedDir)) rmSync(viewedDir, { recursive: true, force: true });
   });
 
-  test("serves images the agent viewed even outside the media roots", () => {
+  test("never serves files outside the media roots, even after the agent views them", () => {
     expect(resolveMediaFile(viewedPath).status).toBe(403);
-    registerViewedMediaPath(viewedPath);
-    const viewed = resolveMediaFile(viewedPath);
-    expect(viewed.status).toBe(200);
-    expect(viewed.contentType).toBe("image/png");
-    expect(viewed.bytes?.equals(pngBytes)).toBe(true);
+    const snapshot = snapshotViewedMedia(viewedPath);
+    expect(snapshot).toBeDefined();
+    expect(resolveMediaFile(viewedPath).status).toBe(403);
     expect(resolveMediaFile(unviewedPath).status).toBe(403);
+    const served = resolveMediaFile(snapshot!);
+    expect(served.status).toBe(200);
+    expect(served.contentType).toBe("image/png");
+    expect(served.bytes?.equals(pngBytes)).toBe(true);
   });
 
   test("serves a file inside an allowed subdir", () => {

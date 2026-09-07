@@ -19,7 +19,7 @@ import {
 import { noteSkillCaptureOpportunity } from "./tools/handlers/skill-capture";
 import { noteToolActivityForTodoReminder } from "./tools/handlers/todo";
 import { type ToolContext, toolSchemas } from "./tools/index";
-import { registerViewedMediaPath, snapshotViewedMedia } from "./viewed-media";
+import { snapshotViewedMedia } from "./viewed-media";
 
 export interface AgentToolExecutionResult {
   skipped: boolean;
@@ -222,7 +222,6 @@ async function executeAgentToolInternal(
     }
     const viewedImagePath = imagePathFromToolCall({ name: toolName, result });
     const viewedImageSnapshot = viewedImagePath ? snapshotViewedMedia(viewedImagePath) : undefined;
-    if (viewedImagePath) registerViewedMediaPath(viewedImagePath);
     if (viewedImageSnapshot && isPlainResult && viewedImageSnapshot !== viewedImagePath) {
       (result as Record<string, unknown>).snapshot = viewedImageSnapshot;
     }

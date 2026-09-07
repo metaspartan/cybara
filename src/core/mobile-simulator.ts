@@ -2,8 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmdirSync,
   unlinkSync,
   writeFileSync,
@@ -15,9 +15,10 @@ import { coalescePendingWork } from "./coalesced-work";
 import {
   ensureIosSimulatorAutomation,
   getIosSimulatorAutomationStatus,
-  iosSimulatorAutomationEnv,
   type IosSimulatorAutomationStatus,
+  iosSimulatorAutomationEnv,
 } from "./mobile-simulator-idb";
+import { screenshotsDir } from "./paths";
 import { readSubprocessStream } from "./subprocess-output";
 
 export type MobileSimulatorPlatform = "ios" | "android";
@@ -152,11 +153,7 @@ const ANDROID_PREVIEW_MAX_WIDTH = 720;
 const ANDROID_PREVIEW_MAX_HEIGHT = 1_600;
 const IOS_PREVIEW_MAX_HEIGHT = 1_600;
 const IOS_PREVIEW_JPEG_QUALITY = "78";
-const screenshotDir = join(
-  process.env.HOME || process.env.USERPROFILE || homedir(),
-  ".cybara",
-  "screenshots"
-);
+
 const frameCache = new Map<string, CachedFrame>();
 const pendingFrameCaptures = new Map<string, Promise<CachedFrame>>();
 const frameGenerations = new Map<string, number>();
@@ -1218,10 +1215,10 @@ export async function saveMobileSimulatorScreenshot(
 ): Promise<{ filePath: string; contentType: string; device: MobileSimulatorDevice }> {
   const frame = await captureMobileSimulator(platform, deviceId);
   if (!frame.bytes) throw new Error("Simulator screenshot was unchanged");
-  mkdirSync(screenshotDir, { recursive: true });
+  mkdirSync(screenshotsDir, { recursive: true });
   const extension = frame.contentType === "image/jpeg" ? "jpg" : "png";
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const filePath = join(screenshotDir, `${platform}_simulator_${stamp}.${extension}`);
+  const filePath = join(screenshotsDir, `${platform}_simulator_${stamp}.${extension}`);
   writeFileSync(filePath, frame.bytes);
   return { filePath, contentType: frame.contentType, device: frame.device };
 }
