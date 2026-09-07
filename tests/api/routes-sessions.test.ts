@@ -568,6 +568,10 @@ describe("Session API", () => {
       expect(marked.status).toBe(200);
       expect(marked.data).toMatchObject({ success: true, session_id: sessionId, unread: false });
 
+      const repeated = await fixture.api("PUT", `/api/sessions/${sessionId}/read`);
+      expect(repeated.status).toBe(200);
+      expect(repeated.data).toMatchObject({ success: true, session_id: sessionId, unread: false });
+
       const after = await fixture.api("GET", "/api/sessions");
       expect(
         (after.data as Array<{ id: string; unread: boolean }>).find(

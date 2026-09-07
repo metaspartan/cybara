@@ -937,7 +937,8 @@ const stmts = {
          WHERE session_id = ? AND role = 'assistant'
          ORDER BY rowid DESC LIMIT 1
        )
-       WHERE id = ?`
+       WHERE id = ?
+       RETURNING id`
     ),
     delete: prepare("DELETE FROM chat_sessions WHERE id = ?"),
     list: prepare("SELECT * FROM chat_sessions ORDER BY pinned DESC, updated_at DESC"),
@@ -1542,10 +1543,8 @@ export const tables = {
       const result = stmts.chatSessions?.setRoomConfig.run(roomConfig, id);
       return (result?.changes ?? 0) > 0;
     },
-    markRead: (id: string): boolean => {
-      const result = stmts.chatSessions?.markRead.run(id, id);
-      return (result?.changes ?? 0) > 0;
-    },
+    markRead: (id: string): boolean =>
+      Boolean(stmts.chatSessions?.markRead.get(id, id) as { id?: string } | null),
     delete: (id: string) => stmts.chatSessions?.delete.run(id),
     all: () => stmts.chatSessions?.list.all() || [],
   },

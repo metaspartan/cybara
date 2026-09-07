@@ -33,6 +33,7 @@ describe("session unread state", () => {
 
     expect(markSessionRead(id)).toEqual({ found: true, unread: false });
     expect(await unreadState(id)).toBe(false);
+    expect(markSessionRead(id)).toEqual({ found: true, unread: false });
 
     await upsertPersistedSessionMessage(id, "test-agent", {
       role: "user",
@@ -47,6 +48,16 @@ describe("session unread state", () => {
       timestamp: "2099-01-01T00:00:03.000Z",
     });
     expect(await unreadState(id)).toBe(true);
+  });
+
+  test("acknowledges an existing empty session idempotently", async () => {
+    const id = sessionId();
+    createdSessionIds.push(id);
+    await persistSession(id, "test-agent", []);
+
+    expect(markSessionRead(id)).toEqual({ found: true, unread: false });
+    expect(markSessionRead(id)).toEqual({ found: true, unread: false });
+    expect(await unreadState(id)).toBe(false);
   });
 
   test("does not acknowledge unknown sessions", () => {
