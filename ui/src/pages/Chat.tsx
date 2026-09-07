@@ -52,6 +52,7 @@ import { ChatEmptyState } from "./chat/ChatEmptyState";
 import { GoalPanel } from "./chat/GoalPanel";
 import { isVisibleChatTranscriptMessage } from "./chat/goalLoopPresentation";
 import { useSessionGoal } from "./chat/useSessionGoal";
+import { useSessionReadAcknowledgement } from "./chat/useSessionReadAcknowledgement";
 import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFollowUpControls";
 import { onOpenChatImageLightbox } from "@/lib/chatImageLightbox";
 import { ChatImageLightbox } from "./chat/ChatImageLightbox";
@@ -161,6 +162,7 @@ export function Chat() {
   const goalController = useSessionGoal(sessionId || undefined);
   const { data: environmentSubagents = [] } = useSubagents(sessionId);
   const typedMessages = messages as ChatMessage[];
+  useSessionReadAcknowledgement(sessionId, typedMessages.length);
   const currentBot = useCurrentBot(botRoster, sessionId);
   const currentRoom = useCurrentRoom(sessionId);
   const composerAgents = useComposerAgents(agents, currentBot);
@@ -633,14 +635,6 @@ export function Chat() {
       persistSessionId(sessionId);
     }
   }, [sessionId]);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    void chatApi.markSessionRead(sessionId).then(() => {
-      void queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      void queryClient.invalidateQueries({ queryKey: ["bots"] });
-    });
-  }, [queryClient, sessionId, typedMessages.length]);
 
   useEffect(() => {
     let active = true;

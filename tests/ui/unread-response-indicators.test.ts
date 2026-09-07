@@ -38,13 +38,15 @@ describe("unread response indicators", () => {
     const botSidebar = source("ui/src/pages/chat/BotSidebar.tsx");
     const sessionSidebar = source("ui/src/pages/chat/SessionSidebar.tsx");
     const chat = source("ui/src/pages/Chat.tsx");
+    const acknowledgement = source("ui/src/pages/chat/useSessionReadAcknowledgement.ts");
 
     expect(botSidebar).toContain("markBotReadImmediately(bot.session_id)");
     expect(botSidebar).toContain("unread: false");
     expect(sessionSidebar).toContain("markReadImmediately(sessionId)");
     expect(sessionSidebar).toContain("sessionQueryClient.setQueriesData");
-    expect(chat).toContain("chatApi.markSessionRead(sessionId)");
-    expect(chat).toContain("typedMessages.length");
+    expect(chat).toContain("useSessionReadAcknowledgement(sessionId, typedMessages.length)");
+    expect(acknowledgement).toContain("chatApi.markSessionRead(sessionId)");
+    expect(acknowledgement).toContain("[messageCount, queryClient, sessionId]");
   });
 
   test("exposes the color picker in Appearance settings", () => {
