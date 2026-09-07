@@ -1,10 +1,9 @@
-import type { LiveActivityItem } from "@/lib/chatActivities";
+import { imageAltFromPath, imageSourceFromPath, type LiveActivityItem } from "@/lib/chatActivities";
 import {
   type StatusSessionSnapshot,
   type StatusStreamStatusEvent,
   type StreamAgentStatus,
 } from "@/lib/status-stream";
-import { isRunEndingStatus, isSteeringHandoffStatus } from "./sessionRunStatus";
 import {
   applyLiveActivityEvent,
   formatToolIntent,
@@ -16,6 +15,7 @@ import {
   resolveStatusSnapshotActivities,
   toLiveActivityItems,
 } from "./chatModel";
+import { isRunEndingStatus, isSteeringHandoffStatus } from "./sessionRunStatus";
 
 export type MultiChatLiveStatusValue = "thinking" | "generating" | "compacting" | "idle";
 
@@ -160,6 +160,10 @@ export function projectMultiChatStatusEvent(
       toolName: event.toolName,
       toolCallId: event.toolCallId,
       sandboxProvider: event.sandboxProvider,
+      imageSource: imageSourceFromPath(event.imagePath),
+      imageAlt: imageAltFromPath(event.imagePath),
+      runId: event.runId,
+      sequence: event.sequence,
     });
     liveStatus = "thinking";
     currentStep =

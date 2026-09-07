@@ -61,8 +61,8 @@ import {
   anthropicRequestBase,
   anthropicRequestHeaders,
 } from "./llm/anthropic-vertex";
-import { normalizeAnthropicModelToolUses } from "./llm/model-dialect";
 import { toAnthropicImageBlock } from "./llm/image-blocks";
+import { normalizeAnthropicModelToolUses } from "./llm/model-dialect";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
 import { toAnthropicHistory } from "./llm/provider-history";
 import { supportsForcedToolChoice } from "./llm/provider-model-transport";
@@ -438,7 +438,8 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
                 allowedToolNames,
                 toolContext,
                 hookContext,
-                loopRuntimeTracker
+                loopRuntimeTracker,
+                id
               )
             );
           }
@@ -488,7 +489,8 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
             allowedToolNames,
             toolContext,
             hookContext,
-            loopRuntimeTracker
+            loopRuntimeTracker,
+            toolUseId
           ));
         const resultPayload =
           executed.result === undefined

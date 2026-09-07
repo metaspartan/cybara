@@ -29,8 +29,8 @@ import {
   sessionIdForVisibleTokenUsage,
   shouldNudgeSkillLearning,
 } from "./agent-provider-common-runtime";
-import { loadToolResultImages } from "./agent-tool-images";
 import { AgentProviderOpenAICompatRuntime } from "./agent-provider-openai-compat-runtime";
+import { loadToolResultImages } from "./agent-tool-images";
 import { hasAgentTransferEnvelope } from "./agent-transfer";
 import { config } from "./config";
 import type { ToolDefinition } from "./database";
@@ -806,7 +806,8 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
           allowedToolNames,
           toolContext,
           hookContext,
-          loopRuntimeTracker
+          loopRuntimeTracker,
+          toolCall.id
         );
         const resultPayload =
           executed.result === undefined ? { skipped: true, reason: "no result" } : executed.result;

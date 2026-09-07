@@ -1,5 +1,6 @@
-import type { MobileMessageImage, SessionMessageSummary } from "./api";
 import { isProviderRecoveryStatusLabel } from "cybara-shared/chat-status";
+import { formatStructuredToolActivityDetail } from "cybara-shared/tool-activity-detail";
+import type { MobileMessageImage, SessionMessageSummary } from "./api";
 
 export function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0 || !Number.isFinite(bytes)) return "";
@@ -233,6 +234,9 @@ function formatToolIntent(
   phase: MobileWorkActivityPhase,
   fallbackDetail?: string
 ): string {
+  const structuredDetail = formatStructuredToolActivityDetail(toolName, args ?? {}, phase);
+  if (structuredDetail) return structuredDetail;
+
   if (fallbackDetail?.trim() && !isGenericStatusLabel(fallbackDetail)) {
     return normalizeVerb(fallbackDetail, phase);
   }

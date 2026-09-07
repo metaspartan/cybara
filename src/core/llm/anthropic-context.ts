@@ -8,32 +8,15 @@ import {
   DEFAULT_MODEL_MAX_OUTPUT_TOKENS,
 } from "../agent-internals";
 import type { ToolContext } from "../tools";
-
-const IMAGE_TOKEN_ESTIMATE = 4096;
-
-function estimateValueChars(value: unknown): number {
-  if (typeof value === "string") return value.length;
-  if (typeof value === "number" || typeof value === "boolean") return String(value).length;
-  if (Array.isArray(value)) return value.reduce((sum, item) => sum + estimateValueChars(item), 0);
-  if (!value || typeof value !== "object") return 0;
-
-  const record = value as Record<string, unknown>;
-  if (record.type === "image") {
-    return IMAGE_TOKEN_ESTIMATE * CONTEXT_CHARS_PER_TOKEN_ESTIMATE;
-  }
-  return Object.entries(record).reduce(
-    (sum, [key, item]) => sum + key.length + estimateValueChars(item),
-    0
-  );
-}
+import { estimateRequestValueChars } from "./context-estimate";
 
 export function estimateAnthropicRequestInputTokens(requestBody: Record<string, unknown>): number {
   const chars =
-    estimateValueChars(requestBody.system) +
-    estimateValueChars(requestBody.messages) +
-    estimateValueChars(requestBody.tools) +
-    estimateValueChars(requestBody.tool_choice) +
-    estimateValueChars(requestBody.model);
+    estimateRequestValueChars(requestBody.system) +
+    estimateRequestValueChars(requestBody.messages) +
+    estimateRequestValueChars(requestBody.tools) +
+    estimateRequestValueChars(requestBody.tool_choice) +
+    estimateRequestValueChars(requestBody.model);
   return Math.max(1, Math.ceil(chars / CONTEXT_CHARS_PER_TOKEN_ESTIMATE));
 }
 

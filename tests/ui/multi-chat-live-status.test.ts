@@ -8,6 +8,42 @@ import {
 } from "../../ui/src/pages/chat/multiChatLiveStatus";
 
 describe("multi-chat live status", () => {
+  test("attaches viewed image thumbnails to live tool completions", () => {
+    const started = projectMultiChatStatusEvent(undefined, {
+      type: "status",
+      sessionId: "session-image",
+      runId: "run-image",
+      sequence: 1,
+      status: "tool_executing",
+      timestamp: 1_000,
+      toolName: "image",
+      toolCallId: "image-1",
+      toolPhase: "start",
+      detail: "Viewing an image",
+    });
+    const completed = projectMultiChatStatusEvent(started, {
+      type: "status",
+      sessionId: "session-image",
+      runId: "run-image",
+      sequence: 2,
+      status: "tool_completed",
+      timestamp: 2_000,
+      toolName: "image",
+      toolCallId: "image-1",
+      toolPhase: "result",
+      detail: "Viewed an image",
+      imagePath: "/Users/carsen/camera_model/renders/front_34.png",
+    });
+
+    const viewed = completed?.activities.find((activity) => activity.toolName === "image");
+    expect(viewed?.phase).toBe("result");
+    expect(viewed?.text).toBe("Viewed an image");
+    expect(viewed?.imageSource).toBe(
+      "/api/media?path=" + encodeURIComponent("/Users/carsen/camera_model/renders/front_34.png")
+    );
+    expect(viewed?.imageAlt).toBe("front_34.png");
+  });
+
   test("keeps delegated waits visibly active in web and Tauri chat state", () => {
     const state = projectMultiChatStatusEvent(undefined, {
       type: "status",

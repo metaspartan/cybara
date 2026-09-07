@@ -1,7 +1,7 @@
 import { apiFetch, withGatewayBasePath } from "@/lib/auth";
 import {
-  loadAuthenticatedMediaSource,
   type LoadedAuthenticatedMediaSource,
+  loadAuthenticatedMediaSource,
   requiresAuthenticatedMediaFetch,
 } from "@/lib/authenticatedMedia";
 import type { ChatImageAttachment } from "@/types";
@@ -74,13 +74,48 @@ export function requiresAuthenticatedImageFetch(source: string): boolean {
   return requiresAuthenticatedMediaFetch(source);
 }
 
+const MAX_CACHED_IMAGE_SOURCES = 200;
+const cachedImageSources = new Map<string, LoadedChatImageSource>();
+const pendingImageSources = new Map<string, Promise<LoadedChatImageSource>>();
+
+function rememberImageSource(source: string, loaded: LoadedChatImageSource): LoadedChatImageSource {
+  cachedImageSources.delete(source);
+  cachedImageSources.set(source, loaded);
+  while (cachedImageSources.size > MAX_CACHED_IMAGE_SOURCES) {
+    const oldest = cachedImageSources.keys().next().value;
+    if (oldest === undefined) break;
+    cachedImageSources.get(oldest)?.revoke?.();
+    cachedImageSources.delete(oldest);
+  }
+  return { src: loaded.src };
+}
+
+export function peekChatImageSource(source: string): string | undefined {
+  return cachedImageSources.get(source)?.src;
+}
+
+export function resetChatImageSourceCacheForTests(): void {
+  for (const loaded of cachedImageSources.values()) loaded.revoke?.();
+  cachedImageSources.clear();
+  pendingImageSources.clear();
+}
+
 export async function loadChatImageSource(
   source: string,
   fetcher: typeof apiFetch = apiFetch,
   createObjectUrl: (blob: Blob) => string = URL.createObjectURL,
-  revokeObjectUrl: (url: string) => void = URL.revokeObjectURL
+  revokeObjectUrl: (url: string) => void = URL.revokeObjectURL,
+  options?: { cache?: boolean }
 ): Promise<LoadedChatImageSource> {
-  return loadAuthenticatedMediaSource(
+  const cacheable =
+    (options?.cache ?? fetcher === apiFetch) && requiresAuthenticatedImageFetch(source);
+  if (cacheable) {
+    const cached = cachedImageSources.get(source);
+    if (cached) return { src: cached.src };
+    const pending = pendingImageSources.get(source);
+    if (pending) return pending;
+  }
+  const request = loadAuthenticatedMediaSource(
     source,
     "image/",
     fetcher,
@@ -88,6 +123,12 @@ export async function loadChatImageSource(
     revokeObjectUrl,
     "Image"
   );
+  if (!cacheable) return request;
+  const shared = request
+    .then((loaded) => rememberImageSource(source, loaded))
+    .finally(() => pendingImageSources.delete(source));
+  pendingImageSources.set(source, shared);
+  return shared;
 }
 
 export function chatMarkdownImageSources(content: string): string[] {

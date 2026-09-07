@@ -8,6 +8,7 @@ import {
   usesProviderAdaptiveReasoning,
   type ReasoningEffort,
 } from "../../../shared/reasoning-capabilities";
+import type { OpenAIMessage } from "../agent-internals";
 import { isKimiCodeProvider, kimiThinkingParams } from "./kimi-wire";
 
 export {
@@ -102,4 +103,15 @@ export function googleThinkingConfig(
     return { includeThoughts: true, thinkingLevel: resolved };
   }
   return { includeThoughts: true };
+}
+
+export function openAIReasoningContent(message: OpenAIMessage | undefined): string {
+  if (!message) return "";
+  const candidates = [message.reasoning_content, message.reasoning, message.thinking];
+  return (
+    candidates.find(
+      (candidate): candidate is string =>
+        typeof candidate === "string" && candidate.trim().length > 0
+    ) ?? ""
+  );
 }

@@ -19,6 +19,8 @@ export interface LiveActivityItem {
   toolCallId?: string;
   sandboxProvider?: string;
   fullText?: string;
+  imageSource?: string;
+  imageAlt?: string;
 }
 
 export interface ToolCallLike {
@@ -31,6 +33,110 @@ export interface ToolCallLike {
   started_at?: number | string;
   timeline_index?: number;
   duration?: number | string;
+}
+
+const imageViewedToolNames = new Set([
+  "image",
+  "browser",
+  "browser_screenshot",
+  "computer_use",
+  "mobile_simulator",
+  "read",
+]);
+
+const imageDataUrlPattern =
+  /^data:image\/(?:png|jpeg|jpg|gif|webp|heic|heif);base64,[A-Za-z0-9+/]+=*$/;
+
+function isImagePath(value: string): boolean {
+  return /\.(?:png|jpe?g|gif|webp|hei[cf])$/i.test(value.replace(/[?#].*$/, ""));
+}
+
+function gatewayMediaUrl(path: string): string {
+  const base =
+    typeof import.meta !== "undefined" && import.meta.env?.BASE_URL
+      ? import.meta.env.BASE_URL.replace(/\/$/, "")
+      : "";
+  return `${base}/api/media?path=${encodeURIComponent(path)}`;
+}
+
+function toLoadableImageSource(value: string): string | undefined {
+  if (value.startsWith("data:")) return imageDataUrlPattern.test(value) ? value : undefined;
+  if (/^https?:\/\//i.test(value)) return isImagePath(value) ? value : undefined;
+  if (/^file:\/\//i.test(value)) {
+    try {
+      return gatewayMediaUrl(decodeURIComponent(new URL(value).pathname));
+    } catch {
+      return undefined;
+    }
+  }
+  if (value.includes("/api/media?path=")) return isImagePath(value) ? value : undefined;
+  if (!value.startsWith("/")) return undefined;
+  return isImagePath(value) ? gatewayMediaUrl(value) : undefined;
+}
+
+export function imageSourceFromPath(value: string | undefined): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed ? toLoadableImageSource(trimmed) : undefined;
+}
+
+export function imageAltFromPath(value: string | undefined): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (!trimmed || trimmed.startsWith("data:")) return undefined;
+  return toDisplayPath(trimmed.replace(/[?#].*$/, ""));
+}
+
+export function imageViewedSource(call: ToolCallLike): string | undefined {
+  if (!imageViewedToolNames.has(call.name)) return undefined;
+  if (!isObjectRecord(call.result)) return undefined;
+  const candidates = [
+    call.result.snapshot,
+    call.result.image,
+    call.result.path,
+    call.result.filePath,
+    call.result.screenshot,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const trimmed = candidate.trim();
+    if (!trimmed) continue;
+    const source = toLoadableImageSource(trimmed);
+    if (source) return source;
+  }
+  return undefined;
+}
+
+function rawImageViewedPath(call: ToolCallLike): string | undefined {
+  if (!isObjectRecord(call.result)) return undefined;
+  for (const candidate of [
+    call.result.image,
+    call.result.path,
+    call.result.filePath,
+    call.result.screenshot,
+  ]) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return undefined;
+}
+
+function imageViewedAlt(args: Record<string, unknown>, source: string): string {
+  if (typeof args.path === "string" && args.path.trim()) return toDisplayPath(args.path);
+  if (typeof args.filePath === "string" && args.filePath.trim())
+    return toDisplayPath(args.filePath);
+  return toDisplayPath(source);
+}
+
+function applyImageViewedMetadata(
+  activity: LiveActivityItem,
+  call: ToolCallLike,
+  args: Record<string, unknown>,
+  correlated = true
+): LiveActivityItem {
+  if (activity.phase !== "result") return activity;
+  if (!correlated && !activity.imageSource) return activity;
+  const source = imageViewedSource(call);
+  if (!source) return activity;
+  const altSource = rawImageViewedPath(call) ?? source;
+  return { ...activity, imageSource: source, imageAlt: imageViewedAlt(args, altSource) };
 }
 
 function normalizeText(value: string): string {
@@ -280,7 +386,7 @@ export function buildActivitiesFromToolCalls(
         ? fallbackBase + call.timeline_index
         : fallbackBase + index);
 
-    activities.push({
+    const activity: LiveActivityItem = {
       id: call.id ? `tool-${call.id}` : `tool-${index}-${call.name}`,
       phase,
       text: trimmedText,
@@ -288,7 +394,8 @@ export function buildActivitiesFromToolCalls(
       toolName: call.name,
       toolCallId: call.id,
       sandboxProvider: resolveToolCallSandboxProvider(call),
-    });
+    };
+    activities.push(applyImageViewedMetadata(activity, call, args));
   }
 
   return activities;
@@ -339,10 +446,18 @@ export function enrichActivitiesWithToolCallDetails(
     );
     const text = structuredText || activity.text;
     const fullText = formatExpandedToolActivityDetail(call.name, args, activity.phase, call.result);
+    const withImage = applyImageViewedMetadata(
+      activity,
+      call,
+      args,
+      Boolean(callById && callById === call)
+    );
     if (!fullText || equivalentActivityText(text, fullText)) {
+      if (withImage !== activity)
+        return { ...withImage, text: text === activity.text ? withImage.text : text };
       return text === activity.text ? activity : { ...activity, text };
     }
-    return { ...activity, text, fullText };
+    return { ...withImage, text, fullText };
   });
 }
 
@@ -381,16 +496,36 @@ export function mergeActivityLists(
   const seenSemantic = new Set<string>();
   const merged: LiveActivityItem[] = [];
 
+  const positions = new Map<string, number>();
+  const backfillImageMetadata = (key: string, activity: LiveActivityItem): void => {
+    const index = positions.get(key);
+    if (index === undefined) return;
+    const kept = merged[index];
+    if (!kept || kept.imageSource || !activity.imageSource) return;
+    merged[index] = {
+      ...kept,
+      imageSource: activity.imageSource,
+      imageAlt: kept.imageAlt || activity.imageAlt,
+    };
+  };
   const pushUnique = (activity: LiveActivityItem) => {
     if (hasCompletionForStart(activity)) {
       return;
     }
     const exactKey = activityDedupKey(activity);
-    if (seen.has(exactKey)) return;
     const semanticKey = semanticActivityDedupKey(activity);
-    if (seenSemantic.has(semanticKey)) return;
+    if (seen.has(exactKey)) {
+      backfillImageMetadata(exactKey, activity);
+      return;
+    }
+    if (seenSemantic.has(semanticKey)) {
+      backfillImageMetadata(semanticKey, activity);
+      return;
+    }
     seen.add(exactKey);
     seenSemantic.add(semanticKey);
+    positions.set(exactKey, merged.length);
+    positions.set(semanticKey, merged.length);
     merged.push(activity);
   };
 

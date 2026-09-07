@@ -34,6 +34,7 @@ export interface StatusPayload {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
+  imagePath?: string;
   toolPhase?: ToolStatusPhase;
   durationMs?: number;
   pendingChatId?: string;
@@ -108,6 +109,7 @@ export interface SessionActivitySnapshot {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
+  imagePath?: string;
 }
 
 export interface SessionStatusSnapshot {
@@ -350,6 +352,7 @@ export function reduceSessionStatusSnapshot(
         toolName,
         toolCallId,
         sandboxProvider: payload.sandboxProvider,
+        imagePath: payload.imagePath,
       });
     } else {
       const matchIndex = findMatchingStartActivityIndex(
@@ -373,6 +376,7 @@ export function reduceSessionStatusSnapshot(
           toolName: toolName || matched.toolName,
           toolCallId: toolCallId || matched.toolCallId,
           sandboxProvider: payload.sandboxProvider || matched.sandboxProvider,
+          imagePath: payload.imagePath || matched.imagePath,
         };
       } else {
         const fallbackText = activityText || defaultToolActivityText(toolName, phase);
@@ -384,6 +388,7 @@ export function reduceSessionStatusSnapshot(
           toolName,
           toolCallId,
           sandboxProvider: payload.sandboxProvider,
+          imagePath: payload.imagePath,
         });
       }
     }

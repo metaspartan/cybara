@@ -72,6 +72,7 @@ export interface BotRosterItem {
     title?: string | null;
     updated_at?: string;
     message_count?: number;
+    unread?: boolean;
     last_message?: { role: string; content: string } | null;
   } | null;
 }

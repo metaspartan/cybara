@@ -1,15 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { SessionMessageSummary } from "../../apps/mobile/src/lib/api";
 import {
-  MOBILE_CHAT_WORK_TIMELINE,
-  MOBILE_NATIVE_TEXT_RENDERING,
-  MOBILE_VISIBLE_CHAT_MESSAGE_LIMIT,
   buildMobileWorkTimeline,
   chatIsWaitingForAssistant,
   extractMobileMarkdownImages,
   formatMobileWorkedDuration,
   hasUnicodeTextFallback,
   latestVisibleChatMessages,
+  MOBILE_CHAT_WORK_TIMELINE,
+  MOBILE_NATIVE_TEXT_RENDERING,
+  MOBILE_VISIBLE_CHAT_MESSAGE_LIMIT,
   mobileGoalIterationNumber,
   shouldUseSelectableNativeText,
   splitMessageContent,
@@ -180,6 +180,14 @@ describe("mobile chat formatting", () => {
           args: { cmd: "ls -la && pwd" },
           startedAt: 27_000,
         },
+        {
+          id: "image-1",
+          name: "image",
+          status: "completed",
+          args: { image: "/tmp/renders/mug_side.png", prompt: "Describe the render" },
+          detail: "image complete",
+          startedAt: 27_000,
+        },
       ],
     });
 
@@ -188,6 +196,7 @@ describe("mobile chat formatting", () => {
       "I'll check the available tools and execute a concrete mobile app smoke test.",
       'Search complete for "mobile test tools"',
       "Ran ls -la && pwd",
+      "Viewed an image",
     ]);
   });
 

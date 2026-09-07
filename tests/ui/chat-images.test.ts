@@ -1,13 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
   chatImageSrc,
-  chatMarkdownImageSrc,
   chatMarkdownImageSources,
+  chatMarkdownImageSrc,
   imageToolResultSrc,
   isHeicImage,
   isSupportedImageType,
   loadChatImageSource,
+  peekChatImageSource,
   requiresAuthenticatedImageFetch,
+  resetChatImageSourceCacheForTests,
   screenshotMediaSrc,
   toolOutputImageSources,
 } from "../../ui/src/lib/chatImages";
@@ -180,5 +182,34 @@ describe("chat image rendering", () => {
     expect(lightboxSource).toContain('aria-label="Zoom in"');
     expect(lightboxSource).toContain('aria-label="Download image"');
     expect(lightboxSource).toContain("onPointerMove={handlePointerMove}");
+  });
+});
+
+describe("chat image source cache", () => {
+  test("resolves a repeated authenticated image synchronously after the first load", async () => {
+    resetChatImageSourceCacheForTests();
+    const source = "/api/media?path=%2Ftmp%2Fcached.png";
+    expect(peekChatImageSource(source)).toBeUndefined();
+    let fetches = 0;
+    const fetcher = (async () => {
+      fetches += 1;
+      return new Response(new Blob(["png"], { type: "image/png" }), {
+        headers: { "Content-Type": "image/png" },
+      });
+    }) as typeof fetch;
+    const createObjectUrl = (blob: Blob) => `blob:cached-${blob.size}`;
+    const first = await loadChatImageSource(source, fetcher, createObjectUrl, () => undefined, {
+      cache: true,
+    });
+    expect(first.src).toBe("blob:cached-3");
+    expect(peekChatImageSource(source)).toBe("blob:cached-3");
+    expect(first.revoke).toBeUndefined();
+    const second = await loadChatImageSource(source, fetcher, createObjectUrl, () => undefined, {
+      cache: true,
+    });
+    expect(second.src).toBe(first.src);
+    expect(fetches).toBe(1);
+    resetChatImageSourceCacheForTests();
+    expect(peekChatImageSource(source)).toBeUndefined();
   });
 });

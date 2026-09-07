@@ -13,6 +13,7 @@ export interface ChatSidebarSession {
   updated_at?: string;
   workspace_dir?: string | null;
   pinned?: boolean;
+  unread?: boolean;
   message_count?: number;
   last_message?: { role: string; content: string } | null;
 }

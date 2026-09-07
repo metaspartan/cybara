@@ -7,7 +7,14 @@ export interface SharedActivityItem {
   toolName?: string;
 }
 
-export type SharedActivityGroupKind = "read" | "search" | "list" | "edit" | "fetch" | "command";
+export type SharedActivityGroupKind =
+  | "read"
+  | "search"
+  | "list"
+  | "edit"
+  | "fetch"
+  | "command"
+  | "view";
 
 export interface SharedActivityDisplayGroup<T extends SharedActivityItem> {
   type: "group";
@@ -27,6 +34,7 @@ export type SharedActivityDisplayEntry<T extends SharedActivityItem> =
   | SharedActivityDisplaySingle<T>;
 
 const TOOL_KINDS: Record<string, SharedActivityGroupKind> = {
+  image: "view",
   read: "read",
   grep: "search",
   file_search: "search",
@@ -42,6 +50,8 @@ const TOOL_KINDS: Record<string, SharedActivityGroupKind> = {
   fetch: "fetch",
   http_request: "fetch",
 };
+
+const STANDALONE_TOOLS = new Set(["browser_screenshot", "computer_use", "mobile_simulator"]);
 
 const COMMAND_KINDS: Record<string, SharedActivityGroupKind> = {
   cat: "read",
@@ -134,6 +144,7 @@ export function sharedActivityKind(
 ): SharedActivityGroupKind | null {
   if (activity.phase !== "result") return null;
   const toolName = activity.toolName?.toLowerCase() || "";
+  if (STANDALONE_TOOLS.has(toolName)) return null;
   if (toolName in TOOL_KINDS) return TOOL_KINDS[toolName] ?? "command";
   if (toolName === "exec" || toolName === "process" || toolName === "git" || !toolName) {
     const command = activity.text.match(/^Ran\s+(.+)$/s)?.[1];
@@ -159,6 +170,7 @@ const PHRASES: Record<
   edit: { one: "edited a file", many: (count) => `edited ${count} files` },
   fetch: { one: "fetched a page", many: (count) => `fetched ${count} pages` },
   command: { one: "ran a command", many: (count) => `ran ${count} commands` },
+  view: { one: "viewed an image", many: (count) => `viewed ${count} images` },
 };
 
 function groupLabel(kinds: SharedActivityGroupKind[]): string {
@@ -172,7 +184,7 @@ function groupLabel(kinds: SharedActivityGroupKind[]): string {
 
 function dominantKind(kinds: SharedActivityGroupKind[]): SharedActivityGroupKind {
   return (
-    (["edit", "fetch", "search", "read", "list", "command"] as const).find((kind) =>
+    (["view", "edit", "fetch", "search", "read", "list", "command"] as const).find((kind) =>
       kinds.includes(kind),
     ) ?? "command"
   );
@@ -221,6 +233,7 @@ export function groupSharedActivities<T extends SharedActivityItem>(
       entries.push({ type: "single", activity });
       continue;
     }
+    if (run && (kind === "view") !== (run.kinds[0] === "view")) flush();
     if (run) {
       run.kinds.push(kind);
       run.items.push(activity);

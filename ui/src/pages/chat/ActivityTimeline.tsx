@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -9,30 +8,34 @@ import {
   FileText,
   Folder,
   Globe2,
+  ImageIcon,
   Loader2,
+  type LucideIcon,
   Pencil,
   Search,
   SquareTerminal,
-  type LucideIcon,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui";
-import { cn } from "@/lib/utils";
 import type { Subagent } from "@/hooks/useApi";
+import {
+  type ActivityGroupKind,
+  groupActivitiesForDisplay,
+  type LiveActivityItem,
+  mergeActivityLists,
+} from "@/lib/chatActivities";
+import { openChatImageLightbox } from "@/lib/chatImageLightbox";
+import { loadChatImageSource, peekChatImageSource } from "@/lib/chatImages";
+import { cn } from "@/lib/utils";
+import { formatWorkedDuration } from "./assistantMetaModel";
 import {
   formatSandboxProviderLabel,
   getLatestInFlightStep,
   isGenericStatusLabel,
   isRawToolCallThought,
 } from "./chatModel";
-import {
-  groupActivitiesForDisplay,
-  type ActivityGroupKind,
-  mergeActivityLists,
-  type LiveActivityItem,
-} from "@/lib/chatActivities";
-import { SubagentIcon } from "./SubagentIcon";
-import { formatWorkedDuration } from "./assistantMetaModel";
 import { LiveStatusIndicator, LiveStatusOrb, LiveStatusText } from "./LiveStatusIndicator";
+import { SubagentIcon } from "./SubagentIcon";
 
 const GROUP_ICONS: Record<ActivityGroupKind, LucideIcon> = {
   read: FileText,
@@ -41,7 +44,67 @@ const GROUP_ICONS: Record<ActivityGroupKind, LucideIcon> = {
   edit: Pencil,
   fetch: Globe2,
   command: SquareTerminal,
+  view: ImageIcon,
 };
+
+const LIVE_OPEN_GROUP_KINDS: readonly ActivityGroupKind[] = ["view"];
+
+function ImageViewedThumbnail({ source, alt }: { source: string; alt: string }) {
+  const [displaySource, setDisplaySource] = useState<string | null>(
+    () => peekChatImageSource(source) ?? null
+  );
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let revoke: (() => void) | undefined;
+    setFailed(false);
+    if (!peekChatImageSource(source)) setDisplaySource(null);
+    void loadChatImageSource(source)
+      .then((loaded) => {
+        if (!active) {
+          loaded.revoke?.();
+          return;
+        }
+        revoke = loaded.revoke;
+        setDisplaySource(loaded.src);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+      revoke?.();
+    };
+  }, [source]);
+
+  if (failed) return null;
+  return (
+    <button
+      type="button"
+      data-testid="activity-image-viewed-thumbnail"
+      aria-label={`Open ${alt}`}
+      title={`View ${alt}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (displaySource) openChatImageLightbox(displaySource, alt);
+      }}
+      disabled={!displaySource}
+      className={cn(
+        "block h-28 w-44 shrink-0 overflow-hidden rounded-md border border-white/10 bg-black/30",
+        displaySource && "cursor-zoom-in transition-opacity hover:opacity-90"
+      )}
+    >
+      {displaySource ? (
+        <img src={displaySource} alt={alt} className="h-full w-full object-cover" />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-500" />
+        </span>
+      )}
+    </button>
+  );
+}
 
 function ActivityRow({ activity }: { activity: LiveActivityItem }) {
   const [expanded, setExpanded] = useState(false);
@@ -54,7 +117,8 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
     );
   }
   const fullText = activity.fullText?.trim();
-  const expandable = Boolean(fullText && fullText !== activity.text.trim());
+  const hasImage = Boolean(activity.imageSource);
+  const expandable = Boolean(fullText && fullText !== activity.text.trim()) || hasImage;
   const content = expanded && fullText ? fullText : activity.text;
   const textContent = (
     <>
@@ -70,51 +134,77 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
           {formatSandboxProviderLabel(activity.sandboxProvider)}
         </span>
       )}
-      {expandable &&
-        (expanded ? (
-          <ChevronDown className="h-3 w-3 shrink-0 text-current opacity-60" />
-        ) : (
-          <ChevronRight className="h-3 w-3 shrink-0 text-current opacity-60" />
-        ))}
+      {expandable && (
+        <span className="flex h-[1.5em] shrink-0 items-center">
+          {expanded ? (
+            <ChevronDown className="h-3 w-3 text-current opacity-60" />
+          ) : (
+            <ChevronRight className="h-3 w-3 text-current opacity-60" />
+          )}
+        </span>
+      )}
     </>
   );
 
   return (
-    <div className="chat-activity-text flex items-start gap-2 px-0.5 text-gray-400">
-      <span className="flex h-[1.5em] shrink-0 items-center" data-testid="activity-row-icon">
-        {activity.toolName === "sessions_transfer" || activity.toolName === "__steering" ? (
-          <ArrowRightLeft className="h-3 w-3 text-current opacity-70" />
-        ) : activity.phase === "start" ? (
-          <LiveStatusOrb state="solving" size={20} className="opacity-70" />
-        ) : activity.phase === "result" ? (
-          <CheckCircle2 className="h-3 w-3 text-current opacity-70" />
+    <div>
+      <div className="chat-activity-text flex items-start gap-2 px-0.5 text-gray-400">
+        <span className="flex h-[1.5em] shrink-0 items-center" data-testid="activity-row-icon">
+          {activity.toolName === "sessions_transfer" || activity.toolName === "__steering" ? (
+            <ArrowRightLeft className="h-3 w-3 text-current opacity-70" />
+          ) : activity.phase === "start" ? (
+            <LiveStatusOrb state="solving" size={20} className="opacity-70" />
+          ) : activity.phase === "result" && hasImage ? (
+            <ImageIcon
+              className="h-3 w-3 text-current opacity-70"
+              data-testid="activity-image-icon"
+            />
+          ) : activity.phase === "result" ? (
+            <CheckCircle2 className="h-3 w-3 text-current opacity-70" />
+          ) : (
+            <AlertTriangle className="h-3 w-3 text-current opacity-70" />
+          )}
+        </span>
+        {expandable ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            className="min-w-0 flex-1 cursor-pointer text-left text-inherit"
+            aria-expanded={expanded}
+            title={
+              expanded ? "Collapse" : hasImage ? "Show the viewed image" : "Show full tool call"
+            }
+          >
+            <span className="flex min-w-0 items-start gap-2">{textContent}</span>
+          </button>
         ) : (
-          <AlertTriangle className="h-3 w-3 text-current opacity-70" />
+          <div className="min-w-0 flex-1 flex items-center gap-2">{textContent}</div>
         )}
-      </span>
-      {expandable ? (
-        <button
-          type="button"
-          onClick={() => setExpanded((value) => !value)}
-          className="min-w-0 flex-1 cursor-pointer text-left text-inherit"
-          aria-expanded={expanded}
-          title={expanded ? "Collapse tool call" : "Show full tool call"}
-        >
-          <span className="flex min-w-0 items-start gap-2">{textContent}</span>
-        </button>
-      ) : (
-        <div className="min-w-0 flex-1 flex items-center gap-2">{textContent}</div>
-      )}
+      </div>
+      {expanded && activity.imageSource ? (
+        <div className="ml-5 mt-1.5" data-testid="activity-image-viewed-preview">
+          <ImageViewedThumbnail
+            source={activity.imageSource}
+            alt={activity.imageAlt || "Viewed image"}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-export function GroupedActivityRows({ activities }: { activities: LiveActivityItem[] }) {
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+export function GroupedActivityRows({
+  activities,
+  openByDefault = [],
+}: {
+  activities: LiveActivityItem[];
+  openByDefault?: readonly ActivityGroupKind[];
+}) {
+  const [toggledGroups, setToggledGroups] = useState<Set<string>>(new Set());
   const entries = groupActivitiesForDisplay(activities);
 
   const toggleGroup = (id: string) => {
-    setExpandedGroups((previous) => {
+    setToggledGroups((previous) => {
       const next = new Set(previous);
       if (next.has(id)) {
         next.delete(id);
@@ -131,7 +221,7 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
         if (entry.type === "single") {
           return <ActivityRow key={entry.activity.id} activity={entry.activity} />;
         }
-        const expanded = expandedGroups.has(entry.id);
+        const expanded = openByDefault.includes(entry.kind) !== toggledGroups.has(entry.id);
         const GroupIcon = GROUP_ICONS[entry.kind];
         const inFlight = entry.items.some((activity) => activity.phase === "start");
         return (
@@ -159,13 +249,30 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
                 <ChevronRight className="w-3 h-3 text-gray-600 flex-shrink-0" />
               )}
             </button>
-            {expanded && (
+            {expanded && entry.kind === "view" ? (
+              <div
+                className="ml-[5px] mt-1.5 flex flex-wrap gap-2 border-l border-white/10 pl-2.5"
+                data-testid="activity-image-viewed-strip"
+              >
+                {entry.items.map((activity) =>
+                  activity.imageSource ? (
+                    <ImageViewedThumbnail
+                      key={activity.id}
+                      source={activity.imageSource}
+                      alt={activity.imageAlt || "Viewed image"}
+                    />
+                  ) : (
+                    <ActivityRow key={activity.id} activity={activity} />
+                  )
+                )}
+              </div>
+            ) : expanded ? (
               <div className="ml-[5px] mt-1 space-y-1 border-l border-white/10 pl-2.5">
                 {entry.items.map((activity) => (
                   <ActivityRow key={activity.id} activity={activity} />
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
         );
       })}
@@ -272,7 +379,9 @@ export function LiveActivityTimeline({
   return (
     <div className="space-y-1">
       <LiveWorkedDuration startedAtMs={startedAtMs} />
-      {visibleActivities.length > 0 && <GroupedActivityRows activities={visibleActivities} />}
+      {visibleActivities.length > 0 && (
+        <GroupedActivityRows activities={visibleActivities} openByDefault={LIVE_OPEN_GROUP_KINDS} />
+      )}
       {displayCurrentStep ? (
         <LiveStatusIndicator
           text={displayCurrentStep}

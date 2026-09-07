@@ -1,11 +1,11 @@
+import { chmodSync, type Dirent, existsSync, mkdirSync, readdirSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
-import { chmodSync, type Dirent, existsSync, mkdirSync, readdirSync } from "fs";
 import {
+  type CybaraHomeSource,
   cybaraHomeOverrideFile,
   resolveCybaraHome,
   runtimeHomeDir,
-  type CybaraHomeSource,
 } from "./cybara-home";
 
 export const homeDir = runtimeHomeDir;
@@ -20,6 +20,7 @@ export const dataDir = join(cybaraDir, "data");
 export const memoryDir = join(cybaraDir, "memory");
 export const logsDir = join(cybaraDir, "logs");
 export const secureDir = join(cybaraDir, "secure");
+export const screenshotsDir = join(cybaraDir, "screenshots");
 export const configDir = process.env.CONFIG_DIR ? resolve(process.env.CONFIG_DIR) : cybaraDir;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

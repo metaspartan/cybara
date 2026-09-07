@@ -5,6 +5,7 @@ import {
   hasTextToolCallMarkup,
   sanitizeAssistantContent,
   stripTextToolCallMarkup,
+  toOpenAIReplayMessageWithNormalizedToolCalls,
 } from "../../src/core/llm/text-tool-calls";
 import {
   MESSAGE_CONTENT_COMPACTION_NOTICE,
@@ -275,5 +276,34 @@ describe("leaked DSML block cleanup", () => {
     expect(stripTextToolCallMarkup("Working on it.\n<｜DSML｜tool we have: users")).toBe(
       "Working on it."
     );
+  });
+});
+
+describe("assistant tool call replay", () => {
+  test("replaces truncated native tool arguments so providers can parse the transcript", () => {
+    const message = {
+      role: "assistant",
+      content: "",
+      tool_calls: [
+        {
+          id: "call-ok",
+          type: "function",
+          function: { name: "read", arguments: '{"path":"/tmp/a.py"}' },
+        },
+        {
+          id: "call-cut",
+          type: "function",
+          function: { name: "write", arguments: '{"content": "import bpy\\nimport mat' },
+        },
+      ],
+    };
+    const replay = toOpenAIReplayMessageWithNormalizedToolCalls(message, [
+      { id: "call-ok", name: "read", args: { path: "/tmp/a.py" }, source: "native" },
+      { id: "call-cut", name: "write", args: {}, source: "native" },
+    ]);
+    const replayed = replay.tool_calls as Array<{ function: { arguments: string } }>;
+    expect(replayed[0].function.arguments).toBe('{"path":"/tmp/a.py"}');
+    expect(replayed[1].function.arguments).toBe("{}");
+    expect(message.tool_calls[1].function.arguments).toBe('{"content": "import bpy\\nimport mat');
   });
 });

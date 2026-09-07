@@ -5,6 +5,7 @@ import {
   pauseAgenticLoopRuntime,
   resumeAgenticLoopRuntime,
 } from "./agent-loop-runtime";
+import { imagePathFromToolCall } from "./agent-tool-images";
 import type { AgentStatus, StatusPayload } from "./status";
 import { coerceToolArguments } from "./tool-argument-coercion";
 import { validateToolArguments } from "./tool-argument-validation";
@@ -18,6 +19,7 @@ import {
 import { noteSkillCaptureOpportunity } from "./tools/handlers/skill-capture";
 import { noteToolActivityForTodoReminder } from "./tools/handlers/todo";
 import { type ToolContext, toolSchemas } from "./tools/index";
+import { snapshotViewedMedia } from "./viewed-media";
 
 export interface AgentToolExecutionResult {
   skipped: boolean;
@@ -34,6 +36,7 @@ export interface AgentToolExecutionOptions {
   toolContext?: ToolContext;
   hookContext: AgentHookContext;
   runtimeTracker?: AgenticLoopRuntimeTracker;
+  providerToolCallId?: string;
   broadcastStatus: (
     status: AgentStatus,
     toolContext?: ToolContext,
@@ -187,7 +190,7 @@ async function executeAgentToolInternal(
     reservedSubagentSpawn = true;
   }
 
-  const toolCallId = createAgentToolCallStatusId(toolName);
+  const toolCallId = options.providerToolCallId?.trim() || createAgentToolCallStatusId(toolName);
   try {
     const startedAt = Date.now();
     broadcastStatus(
@@ -217,6 +220,11 @@ async function executeAgentToolInternal(
         ? `${record.system_reminder}\n${skillCaptureReminder}`
         : skillCaptureReminder;
     }
+    const viewedImagePath = imagePathFromToolCall({ name: toolName, result });
+    const viewedImageSnapshot = viewedImagePath ? snapshotViewedMedia(viewedImagePath) : undefined;
+    if (viewedImageSnapshot && isPlainResult && viewedImageSnapshot !== viewedImagePath) {
+      (result as Record<string, unknown>).snapshot = viewedImageSnapshot;
+    }
     broadcastStatus(
       "tool_completed",
       toolContext,
@@ -227,6 +235,7 @@ async function executeAgentToolInternal(
         toolPhase: "result",
         durationMs: Date.now() - startedAt,
         sandboxProvider: extractSandboxProviderFromToolResult(result),
+        imagePath: viewedImageSnapshot ?? viewedImagePath,
       }
     );
     await emitAgentHook({

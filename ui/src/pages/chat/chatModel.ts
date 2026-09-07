@@ -1,5 +1,7 @@
 import {
   finalizeCompletedActivities,
+  imageAltFromPath,
+  imageSourceFromPath,
   type LiveActivityItem,
   mergeActivityLists,
   normalizeActivityTextForPhase,
@@ -11,7 +13,17 @@ import type {
   SessionPlanItem,
   SessionPlanSnapshot,
 } from "@/types";
-import { isGenericChatStatusLabel } from "../../../../shared/chat-status";
+import { formatStructuredToolActivityDetail } from "../../../../shared/tool-activity-detail";
+import { isGenericStatusLabel, normalizeSandboxProviderValue } from "./liveActivityModel";
+
+export {
+  applyLiveActivityEvent,
+  formatSandboxProviderLabel,
+  getLatestInFlightStep,
+  isGenericStatusLabel,
+  isMeaningfulThoughtDetail,
+  normalizeSandboxProviderValue,
+} from "./liveActivityModel";
 export interface ToolCall {
   id: string;
   name: string;
@@ -112,6 +124,7 @@ export interface StatusStreamEvent {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
+  imagePath?: string;
   toolPhase?: "start" | "result" | "error" | "blocked";
   durationMs?: number;
   type?: string;
@@ -125,6 +138,7 @@ export interface SessionStatusActivity {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
+  imagePath?: string;
 }
 
 export interface SessionStatusSnapshot {
@@ -572,6 +586,18 @@ export function normalizePersistedLiveActivityItem(value: unknown): LiveActivity
     toolName: typeof candidate.toolName === "string" ? candidate.toolName : undefined,
     toolCallId: typeof candidate.toolCallId === "string" ? candidate.toolCallId : undefined,
     sandboxProvider: normalizeSandboxProviderValue(candidate.sandboxProvider),
+    imageSource:
+      typeof candidate.imageSource === "string"
+        ? candidate.imageSource
+        : imageSourceFromPath(
+            typeof candidate.imagePath === "string" ? candidate.imagePath : undefined
+          ),
+    imageAlt:
+      typeof candidate.imageAlt === "string"
+        ? candidate.imageAlt
+        : imageAltFromPath(
+            typeof candidate.imagePath === "string" ? candidate.imagePath : undefined
+          ),
   };
 }
 
@@ -803,149 +829,6 @@ export function toActivityPath(path: string): string {
   return segments[segments.length - 1] || normalized;
 }
 
-export function isGenericStatusLabel(detail: string): boolean {
-  return isGenericChatStatusLabel(detail);
-}
-
-export function isMeaningfulThoughtDetail(detail: string): boolean {
-  const normalized = detail.trim().toLowerCase();
-  if (!normalized) return false;
-  return !isGenericStatusLabel(normalized);
-}
-
-export function getLatestInFlightStep(activities: LiveActivityItem[]): string | null {
-  for (let index = activities.length - 1; index >= 0; index -= 1) {
-    const activity = activities[index];
-    if (!activity || activity.phase !== "start") continue;
-    const step = activity.text?.trim() || "";
-    if (!step || isGenericStatusLabel(step)) continue;
-    return step;
-  }
-  return null;
-}
-
-export function applyLiveActivityEvent(
-  previous: LiveActivityItem[],
-  event: {
-    phase: "start" | "result" | "error" | "blocked";
-    text: string;
-    timestamp?: number;
-    toolName?: string;
-    toolCallId?: string;
-    sandboxProvider?: string;
-  }
-): LiveActivityItem[] {
-  const trimmed = event.text.trim();
-  if (!trimmed) return previous;
-
-  const normalizedText = normalizeActivityTextForPhase(trimmed, event.phase);
-  if (isGenericStatusLabel(normalizedText)) return previous;
-  const nextTimestamp =
-    typeof event.timestamp === "number" && Number.isFinite(event.timestamp)
-      ? event.timestamp
-      : Date.now();
-  const normalizedToolName =
-    typeof event.toolName === "string" ? event.toolName.trim().toLowerCase() : "";
-  const normalizedToolCallId =
-    typeof event.toolCallId === "string" && event.toolCallId.trim()
-      ? event.toolCallId.trim().toLowerCase()
-      : "";
-  const normalizedSandboxProvider = normalizeSandboxProviderValue(event.sandboxProvider);
-  const nextId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const sortAndMergeActivities = (items: LiveActivityItem[]): LiveActivityItem[] =>
-    mergeActivityLists(
-      [],
-      [...items].sort((left, right) =>
-        left.timestamp === right.timestamp
-          ? left.id.localeCompare(right.id)
-          : left.timestamp - right.timestamp
-      )
-    );
-
-  if (event.phase !== "start") {
-    if (normalizedToolCallId) {
-      for (let index = previous.length - 1; index >= 0; index -= 1) {
-        const candidate = previous[index];
-        if (candidate.phase !== "start") continue;
-        if ((candidate.toolCallId || "").trim().toLowerCase() !== normalizedToolCallId) continue;
-        const updated = [...previous];
-        updated[index] = {
-          ...candidate,
-          phase: event.phase,
-          text: normalizedText,
-          toolName: normalizedToolName || candidate.toolName,
-          toolCallId: normalizedToolCallId,
-          sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
-        };
-        return sortAndMergeActivities(updated);
-      }
-    }
-
-    if (normalizedToolName) {
-      for (let index = previous.length - 1; index >= 0; index -= 1) {
-        const candidate = previous[index];
-        if (candidate.phase !== "start") continue;
-        if ((candidate.toolName || "").trim().toLowerCase() !== normalizedToolName) continue;
-        const updated = [...previous];
-        updated[index] = {
-          ...candidate,
-          phase: event.phase,
-          text: normalizedText,
-          toolName: normalizedToolName,
-          toolCallId: normalizedToolCallId || candidate.toolCallId,
-          sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
-        };
-        return sortAndMergeActivities(updated);
-      }
-    }
-
-    for (let index = previous.length - 1; index >= 0; index -= 1) {
-      const candidate = previous[index];
-      if (candidate.phase !== "start") continue;
-      if (normalizeActivityTextForPhase(candidate.text, event.phase) !== normalizedText) continue;
-      const updated = [...previous];
-      updated[index] = {
-        ...candidate,
-        phase: event.phase,
-        text: normalizedText,
-        toolName: normalizedToolName || candidate.toolName,
-        toolCallId: normalizedToolCallId || candidate.toolCallId,
-        sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
-      };
-      return sortAndMergeActivities(updated);
-    }
-  }
-
-  const previousLast = previous[previous.length - 1];
-  if (
-    previousLast &&
-    previousLast.phase === event.phase &&
-    normalizeActivityTextForPhase(previousLast.text, event.phase) === normalizedText &&
-    (normalizedToolCallId
-      ? (previousLast.toolCallId || "").trim().toLowerCase() === normalizedToolCallId
-      : true) &&
-    (normalizedToolName
-      ? (previousLast.toolName || "").trim().toLowerCase() === normalizedToolName
-      : true) &&
-    nextTimestamp - previousLast.timestamp < 750
-  ) {
-    return previous;
-  }
-
-  return sortAndMergeActivities([
-    ...previous,
-    {
-      id: nextId,
-      phase: event.phase,
-      text: normalizedText,
-      timestamp: nextTimestamp,
-      toolName: normalizedToolName || undefined,
-      toolCallId: normalizedToolCallId || undefined,
-      sandboxProvider: normalizedSandboxProvider,
-    },
-  ]);
-}
-
 export function normalizeSnapshotActivities(
   activities: LiveActivityItem[],
   status: string
@@ -1029,6 +912,8 @@ export function formatToolIntent(
   phase: "start" | "result" | "error" | "blocked",
   fallbackDetail?: string
 ): string {
+  const structuredDetail = formatStructuredToolActivityDetail(toolName, args, phase);
+  if (structuredDetail) return structuredDetail;
   if (fallbackDetail && fallbackDetail.trim()) {
     const normalizedFallback = fallbackDetail.trim();
     if (!isGenericStatusLabel(normalizedFallback)) {
@@ -1235,7 +1120,21 @@ export function toLiveActivityItems(
       toolName: activity.toolName,
       toolCallId: activity.toolCallId,
       sandboxProvider: normalizeSandboxProviderValue(activity.sandboxProvider),
+      imageSource: imageSourceFromPath(activity.imagePath),
+      imageAlt: imageAltFromPath(activity.imagePath),
     }));
+}
+
+export function latestAssistantMessageKey(messages: readonly ChatMessage[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== "assistant") continue;
+    const messageId = typeof message.message_id === "string" ? message.message_id.trim() : "";
+    if (messageId) return messageId;
+    const timestamp = typeof message.timestamp === "string" ? message.timestamp.trim() : "";
+    return timestamp || `assistant-${index}`;
+  }
+  return null;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1260,28 +1159,6 @@ export function tryParseJsonRecord(value: unknown): unknown {
   } catch {
     return value;
   }
-}
-
-export function normalizeSandboxProviderValue(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (
-    normalized === "apple_sandbox" ||
-    normalized === "podman" ||
-    normalized === "docker" ||
-    normalized === "host"
-  ) {
-    return normalized;
-  }
-  return undefined;
-}
-
-export function formatSandboxProviderLabel(provider: string): string {
-  if (provider === "apple_sandbox") return "Apple Sandbox";
-  if (provider === "podman") return "Podman";
-  if (provider === "docker") return "Docker";
-  if (provider === "host") return "Host";
-  return provider;
 }
 
 export function resolveToolCallSandboxProvider(toolCall: ToolCall): string | undefined {

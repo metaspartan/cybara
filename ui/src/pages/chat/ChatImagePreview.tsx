@@ -1,6 +1,10 @@
 import { ImageOff, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
-import { loadChatImageSource, requiresAuthenticatedImageFetch } from "@/lib/chatImages";
+import {
+  loadChatImageSource,
+  peekChatImageSource,
+  requiresAuthenticatedImageFetch,
+} from "@/lib/chatImages";
 import { cn } from "@/lib/utils";
 
 interface ChatImagePreviewProps {
@@ -22,8 +26,8 @@ export function ChatImagePreview({
   containerClassName,
   onOpen,
 }: ChatImagePreviewProps) {
-  const [displaySource, setDisplaySource] = useState(() =>
-    requiresAuthenticatedImageFetch(source) ? "" : source
+  const [displaySource, setDisplaySource] = useState(
+    () => peekChatImageSource(source) ?? (requiresAuthenticatedImageFetch(source) ? "" : source)
   );
   const [failed, setFailed] = useState(false);
 
@@ -31,7 +35,9 @@ export function ChatImagePreview({
     let active = true;
     let revoke: (() => void) | undefined;
     setFailed(false);
-    setDisplaySource(requiresAuthenticatedImageFetch(source) ? "" : source);
+    setDisplaySource(
+      peekChatImageSource(source) ?? (requiresAuthenticatedImageFetch(source) ? "" : source)
+    );
     void loadChatImageSource(source)
       .then((loaded) => {
         if (!active) {

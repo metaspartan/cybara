@@ -122,15 +122,29 @@ describe("chat workspace panel", () => {
     expect(chatSource).toContain("shouldShowFloatingBrowserPreview");
     expect(floatingBrowserSource).toContain('ariaLabel="Open live browser preview"');
     expect(floatingPreviewFrameSource).toContain('role="button"');
-    expect(floatingPreviewFrameSource).toContain(
-      "onPointerDown={(event) => event.stopPropagation()}"
-    );
+    expect(floatingPreviewFrameSource).toContain("onPointerDown={stopControlGesture}");
     expect(floatingPreviewFrameSource).toContain("onKeyDown={(event) => event.stopPropagation()}");
     expect(floatingBrowserSource).not.toContain("Resize floating browser preview");
     expect(floatingBrowserSource).not.toContain("workspace-browser-nav-button");
     expect(floatingBrowserSource).toContain("<ChatWorkspaceBrowser");
     expect(floatingBrowserSource).toContain("thumbnail");
     expect(browserSource).toContain("thumbnail ? null");
+  });
+
+  test("closes and minimizes floating previews without opening their panel", () => {
+    expect(floatingPreviewFrameSource).toContain('data-floating-preview-control="close"');
+    expect(floatingPreviewFrameSource).toContain('data-floating-preview-control="minimize"');
+    expect(floatingPreviewFrameSource).toContain("function isControlTarget(");
+    expect(floatingPreviewFrameSource).toContain(
+      "if (!rect || event.button !== 0 || isControlTarget(event.target)) return;"
+    );
+    expect(floatingPreviewFrameSource).toContain("gestureRef.current = null;");
+    expect(floatingPreviewFrameSource).toContain(
+      "persistFloatingPreviewMinimized(storageKey, true)"
+    );
+    expect(floatingPreviewFrameSource).toContain("if (minimized) restore();");
+    expect(floatingBrowserSource).toContain("minimizedIcon=");
+    expect(floatingComputerSource).toContain("minimizedIcon=");
   });
 
   test("keeps active desktop work visible and focuses its app from the floating preview", () => {

@@ -5,8 +5,9 @@ import {
   type ProcessActivityInfo,
   type ToolCallInfo,
 } from "./chat-process-activities";
-import { parseIsoTimestampMs, type InMemoryChatSession } from "./chat-runtime-state";
+import { type InMemoryChatSession, parseIsoTimestampMs } from "./chat-runtime-state";
 import type { ChatMessage } from "./chat-types";
+
 export { stripThinkingTags } from "./chat-formatting";
 export {
   formatProcessActivityFromToolCall,
@@ -45,6 +46,7 @@ export function getSessionProcessActivities(
       toolName: activity.toolName,
       toolCallId: activity.toolCallId,
       sandboxProvider: activity.sandboxProvider,
+      imagePath: activity.imagePath,
     }));
   return sanitizeObservedProcessActivities(activities);
 }
@@ -87,6 +89,10 @@ export function sanitizeObservedProcessActivities(
       typeof record.sandboxProvider === "string" && record.sandboxProvider.trim()
         ? record.sandboxProvider.trim().slice(0, 80)
         : undefined;
+    const imagePath =
+      typeof record.imagePath === "string" && record.imagePath.trim()
+        ? record.imagePath.trim().slice(0, 1024)
+        : undefined;
     sanitized.push({
       id,
       phase,
@@ -95,6 +101,7 @@ export function sanitizeObservedProcessActivities(
       toolName,
       toolCallId,
       sandboxProvider,
+      imagePath,
     });
   }
   const deduped = dedupeProcessActivities(sanitized);

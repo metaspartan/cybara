@@ -21,6 +21,7 @@ export interface StatusActivity {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
+  imagePath?: string;
 }
 
 export interface PendingChatMessage {
@@ -59,6 +60,7 @@ export interface StatusStreamStatusEvent {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
+  imagePath?: string;
   toolPhase?: "start" | "result" | "error" | "blocked";
   durationMs?: number;
   pendingChatId?: string;

@@ -1,12 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
 import {
-  installPluginFromPayload,
-  installLocalPluginFromPath,
   getBuiltinPluginCatalog,
+  installLocalPluginFromPath,
+  installPluginFromPayload,
   listInstalledPlugins,
   MAX_PLUGIN_EXPANDED_BYTES,
   parsePluginInstallPayload,
@@ -128,7 +128,7 @@ describe("plugin runtime", () => {
           .filter((plugin) => plugin.source === "bundled")
           .map((plugin) => [plugin.manifest.id, plugin.skillNames])
       );
-      expect(bundledSkills.get("blender-workflows")).toEqual(["blender-mcp"]);
+      expect(bundledSkills.get("blender-workflows")).toEqual(["blender-headless", "blender-mcp"]);
       expect(bundledSkills.get("browser-quality")).toEqual(["browser-qa"]);
       expect(bundledSkills.get("container-operations")).toEqual(["container-operations"]);
       expect(bundledSkills.get("data-workflows")).toEqual(["database-operations"]);

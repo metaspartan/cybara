@@ -8,8 +8,8 @@ import {
   buildPreSteeringActivityMessage,
   canUseNativeSpeechRecognition,
   formatToolIntent,
-  isSessionStatusSnapshotCurrent,
   isRawToolCallThought,
+  isSessionStatusSnapshotCurrent,
   pruneCanonicalizedLiveActivities,
   resolveDictationRuntime,
   resolveStatusSnapshotActivities,
@@ -174,7 +174,7 @@ describe("Chat live activity persistence", () => {
       'typeof event.timestamp === "number" && Number.isFinite(event.timestamp)'
     );
     expect(source).toMatch(
-      /appendLiveActivity\(\s*phase,\s*text,\s*payload\.toolName,\s*eventTimestamp,\s*payload\.toolCallId,\s*payload\.sandboxProvider\s*\);/
+      /appendLiveActivity\(\s*phase,\s*text,\s*payload\.toolName,\s*eventTimestamp,\s*payload\.toolCallId,\s*payload\.sandboxProvider,\s*imageSourceFromPath\(payload\.imagePath\),\s*imageAltFromPath\(payload\.imagePath\),\s*payload\.runId,\s*payload\.sequence\s*\);/
     );
   });
 

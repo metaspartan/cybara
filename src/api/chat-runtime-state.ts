@@ -83,6 +83,7 @@ export interface SessionListEntry {
   updatedAt: string;
   workspaceDir: string | null;
   pinned: boolean;
+  unread: boolean;
   lastMessage: SessionLastMessagePreview | null;
   modelMetadata: SessionModelMetadata | null;
   room?: RoomConfig | null;
@@ -243,10 +244,11 @@ export function buildLastMessagePreview(message?: ChatMessage): SessionLastMessa
 export function normalizePersistedIndexEntry(
   entry: Omit<
     PersistedSessionIndexEntry,
-    "title" | "lastMessage" | "pinned" | "modelMetadata" | "useModelRouter"
+    "title" | "lastMessage" | "pinned" | "unread" | "modelMetadata" | "useModelRouter"
   > & {
     title?: string | null;
     pinned?: boolean;
+    unread?: boolean;
     useModelRouter?: boolean;
     lastMessage?: SessionLastMessagePreview | null;
     modelMetadata?: SessionModelMetadata | null;
@@ -259,6 +261,7 @@ export function normalizePersistedIndexEntry(
       entry.useModelRouter ?? persistedSessionIndex.get(entry.id)?.useModelRouter ?? false,
     title: stripSessionTitleAgentPrefix(entry.title, [modelMetadata?.agent_name, entry.agentId]),
     pinned: entry.pinned ?? persistedSessionIndex.get(entry.id)?.pinned ?? false,
+    unread: entry.unread ?? persistedSessionIndex.get(entry.id)?.unread ?? false,
     lastMessage: entry.lastMessage
       ? {
           role: entry.lastMessage.role,
@@ -272,10 +275,11 @@ export function normalizePersistedIndexEntry(
 export function upsertPersistedSessionIndex(
   entry: Omit<
     PersistedSessionIndexEntry,
-    "title" | "lastMessage" | "pinned" | "modelMetadata" | "useModelRouter"
+    "title" | "lastMessage" | "pinned" | "unread" | "modelMetadata" | "useModelRouter"
   > & {
     title?: string | null;
     pinned?: boolean;
+    unread?: boolean;
     useModelRouter?: boolean;
     lastMessage?: SessionLastMessagePreview | null;
     modelMetadata?: SessionModelMetadata | null;
@@ -341,6 +345,7 @@ export function buildMemorySessionListEntries(): SessionListEntry[] {
       updatedAt: s.updatedAt || s.createdAt,
       workspaceDir: s.workspaceDir ?? null,
       pinned: persistedSessionIndex.get(s.id)?.pinned ?? false,
+      unread: persistedSessionIndex.get(s.id)?.unread ?? false,
       lastMessage: buildLastMessagePreview(s.messages[s.messages.length - 1]),
       modelMetadata,
       room: s.room ?? null,
@@ -361,6 +366,7 @@ export function persistedSessionToIndexEntry(
     updatedAt: persisted.updatedAt,
     workspaceDir: persisted.workspaceDir ?? null,
     pinned: persisted.pinned,
+    unread: persisted.unread,
     room: persisted.roomConfig,
     modelMetadata: persisted.modelMetadata ?? resolveSessionModelMetadata(persisted.agentId),
     lastMessage:

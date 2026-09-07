@@ -1,36 +1,36 @@
-import { spawn, type ChildProcess } from "child_process";
-import { mkdirSync, existsSync, readFileSync, statSync, writeFileSync } from "fs";
+import { type ChildProcess, spawn } from "child_process";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
 import { PNG } from "pngjs";
-import { config } from "./config";
-import { setComputerUseTrajectoryStopHandler } from "./computer-use-lifecycle";
-import { CUA_DRIVER_VERSION, ensureManagedCuaDriver, isExecutableFile } from "./cua-driver-runtime";
+import { COMPUTER_FOCUS_UNAVAILABLE_ERROR } from "../../shared/computer-preview";
+import {
+  assertActionAllowed,
+  type ComputerUseAction,
+  type ComputerUseArgs,
+  normalizeComputerUseCompatToolArgs,
+  VALID_ACTIONS,
+} from "./computer-use-actions";
 import {
   CUA_DRIVER_CMD_ENV,
-  getCuaDriverResolution,
-  resolveCuaDriverCommand,
   type CuaDriverCommandSource,
   type CuaDriverResolution,
+  getCuaDriverResolution,
+  resolveCuaDriverCommand,
 } from "./computer-use-driver-resolution";
+import { setComputerUseTrajectoryStopHandler } from "./computer-use-lifecycle";
 import {
   appendComputerUseTrajectoryTurn,
+  type ComputerUseTrajectoryDetail,
+  type ComputerUseTrajectorySurface,
   createComputerUseTrajectory,
   finishComputerUseTrajectory,
   getComputerUseTrajectory,
   getComputerUseTrajectoryDir,
   getPersistedComputerUsePreview,
-  type ComputerUseTrajectoryDetail,
-  type ComputerUseTrajectorySurface,
   touchComputerUseTrajectory,
 } from "./computer-use-trajectories";
-import {
-  VALID_ACTIONS,
-  assertActionAllowed,
-  normalizeComputerUseCompatToolArgs,
-  type ComputerUseAction,
-  type ComputerUseArgs,
-} from "./computer-use-actions";
+import { config } from "./config";
+import { CUA_DRIVER_VERSION, ensureManagedCuaDriver, isExecutableFile } from "./cua-driver-runtime";
 import {
   captureMobileSimulator,
   isMobileSimulatorAction,
@@ -38,13 +38,14 @@ import {
   type MobileSimulatorPlatform,
   runMobileSimulatorAction,
 } from "./mobile-simulator";
-import { COMPUTER_FOCUS_UNAVAILABLE_ERROR } from "../../shared/computer-preview";
+import { screenshotsDir } from "./paths";
 
 export {
+  assertActionAllowed,
   COMPUTER_USE_ACTION_TOOL_ALIASES,
   COMPUTER_USE_COMPAT_TOOL_ALIASES,
-  VALID_ACTIONS,
-  assertActionAllowed,
+  type ComputerUseAction,
+  type ComputerUseArgs,
   isBlockedKeyCombo,
   isBlockedTypeText,
   normalizeComputerUseActionArgs,
@@ -52,16 +53,15 @@ export {
   setComputerUseApprovalCallback,
   setComputerUseAutoApprove,
   summarizeAction,
-  type ComputerUseAction,
-  type ComputerUseArgs,
+  VALID_ACTIONS,
 } from "./computer-use-actions";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export {
-  resolveCuaDriverCommand,
   type CuaDriverCommandSource,
   type CuaDriverResolution,
+  resolveCuaDriverCommand,
 } from "./computer-use-driver-resolution";
 
 let driverProcess: ChildProcess | null = null;
@@ -581,18 +581,12 @@ function isComputerUsePreviewActive(sessionId: string): boolean {
   );
 }
 
-const SCREENSHOTS_DIR = join(
-  process.env.HOME || process.env.USERPROFILE || homedir(),
-  ".cybara",
-  "screenshots"
-);
-
 function persistDriverScreenshot(screenshot: string, mime: string): string | undefined {
   try {
-    mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+    mkdirSync(screenshotsDir, { recursive: true });
     const extension = mime.includes("jpeg") || mime.includes("jpg") ? "jpg" : "png";
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filePath = join(SCREENSHOTS_DIR, `computer_${stamp}.${extension}`);
+    const filePath = join(screenshotsDir, `computer_${stamp}.${extension}`);
     writeFileSync(filePath, Buffer.from(screenshot, "base64"));
     return filePath;
   } catch {
@@ -649,11 +643,11 @@ export function isFullDesktopCaptureRequest(
 
 async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
   try {
-    if (!existsSync(SCREENSHOTS_DIR)) {
-      mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+    if (!existsSync(screenshotsDir)) {
+      mkdirSync(screenshotsDir, { recursive: true });
     }
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filePath = join(SCREENSHOTS_DIR, `screen_${stamp}.png`);
+    const filePath = join(screenshotsDir, `screen_${stamp}.png`);
 
     const wantsWindowsCapture = process.platform === "win32" || isWsl();
     if (wantsWindowsCapture) {

@@ -1,5 +1,5 @@
+import { Eye, Globe } from "lucide-react";
 import { type ReactElement, useCallback, useState } from "react";
-import { Eye } from "lucide-react";
 import { ChatWorkspaceBrowser } from "./ChatWorkspaceBrowser";
 import { FloatingPreviewFrame } from "./FloatingPreviewFrame";
 import {
@@ -55,6 +55,9 @@ export function FloatingBrowserPreview({
     <FloatingPreviewFrame
       ariaLabel="Open live browser preview"
       bottomInset={bottomInset}
+      minimizeLabel="Minimize browser preview"
+      minimizedIcon={<Globe className="h-4 w-4" strokeWidth={2.2} />}
+      minimizedLabel="Restore browser preview"
       onActivate={onExpand}
       onHide={hide}
       storageKey={FLOATING_BROWSER_PREVIEW_STORAGE_KEY}

@@ -551,7 +551,8 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
           allowedToolNames,
           toolContext,
           hookContext,
-          loopRuntimeTracker
+          loopRuntimeTracker,
+          toolUse.toolUseId
         );
         if (executed.skipped || executed.result === undefined) {
           continue;

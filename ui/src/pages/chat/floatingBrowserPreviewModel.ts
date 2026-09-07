@@ -25,6 +25,7 @@ export const FLOATING_BROWSER_PREVIEW_GAP = 12;
 export const FLOATING_BROWSER_PREVIEW_WIDTH = 260;
 export const FLOATING_BROWSER_PREVIEW_HEIGHT = 180;
 export const FLOATING_BROWSER_PREVIEW_CLICK_DISTANCE = 6;
+export const FLOATING_PREVIEW_MINIMIZED_SIZE = 44;
 
 function finitePositive(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -64,31 +65,32 @@ export function parseFloatingBrowserPreviewRect(
 export function defaultFloatingBrowserPreviewRect(
   container: FloatingBrowserPreviewSize,
   bottomInset: number,
-  horizontal: "left" | "right" = "right"
+  horizontal: "left" | "right" = "right",
+  preferredSize?: FloatingBrowserPreviewSize
 ): FloatingBrowserPreviewRect {
+  const width = preferredSize?.width ?? FLOATING_BROWSER_PREVIEW_WIDTH;
+  const height = preferredSize?.height ?? FLOATING_BROWSER_PREVIEW_HEIGHT;
   return clampFloatingBrowserPreviewRect(
     container,
     {
       x:
         horizontal === "left"
           ? FLOATING_BROWSER_PREVIEW_GAP
-          : container.width - FLOATING_BROWSER_PREVIEW_WIDTH - FLOATING_BROWSER_PREVIEW_GAP,
-      y:
-        container.height -
-        Math.max(0, bottomInset) -
-        FLOATING_BROWSER_PREVIEW_HEIGHT -
-        FLOATING_BROWSER_PREVIEW_GAP,
-      width: FLOATING_BROWSER_PREVIEW_WIDTH,
-      height: FLOATING_BROWSER_PREVIEW_HEIGHT,
+          : container.width - width - FLOATING_BROWSER_PREVIEW_GAP,
+      y: container.height - Math.max(0, bottomInset) - height - FLOATING_BROWSER_PREVIEW_GAP,
+      width,
+      height,
     },
-    bottomInset
+    bottomInset,
+    preferredSize
   );
 }
 
 export function clampFloatingBrowserPreviewRect(
   container: FloatingBrowserPreviewSize,
   rect: FloatingBrowserPreviewRect,
-  bottomInset: number
+  bottomInset: number,
+  preferredSize?: FloatingBrowserPreviewSize
 ): FloatingBrowserPreviewRect {
   const containerWidth = Math.max(0, container.width);
   const containerHeight = Math.max(0, container.height);
@@ -98,8 +100,8 @@ export function clampFloatingBrowserPreviewRect(
     0,
     containerHeight - reservedBottom - FLOATING_BROWSER_PREVIEW_GAP * 2
   );
-  const width = Math.min(maximumWidth, FLOATING_BROWSER_PREVIEW_WIDTH);
-  const height = Math.min(maximumHeight, FLOATING_BROWSER_PREVIEW_HEIGHT);
+  const width = Math.min(maximumWidth, preferredSize?.width ?? FLOATING_BROWSER_PREVIEW_WIDTH);
+  const height = Math.min(maximumHeight, preferredSize?.height ?? FLOATING_BROWSER_PREVIEW_HEIGHT);
   const maximumX = Math.max(
     FLOATING_BROWSER_PREVIEW_GAP,
     containerWidth - width - FLOATING_BROWSER_PREVIEW_GAP
@@ -164,6 +166,23 @@ export function persistFloatingPreviewRect(
 ): void {
   try {
     window.localStorage.setItem(storageKey, JSON.stringify(rect));
+  } catch {
+    return;
+  }
+}
+
+export function readFloatingPreviewMinimized(storageKey: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(`${storageKey}:minimized`) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function persistFloatingPreviewMinimized(storageKey: string, minimized: boolean): void {
+  try {
+    window.localStorage.setItem(`${storageKey}:minimized`, minimized ? "true" : "false");
   } catch {
     return;
   }

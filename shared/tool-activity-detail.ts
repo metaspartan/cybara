@@ -104,11 +104,45 @@ export function formatStructuredToolActivityDetail(
     return name ? `Skill load failed for ${name}` : "Skill load failed";
   }
 
+  if (key === "image") {
+    if (phase === "start") return "Viewing an image";
+    if (phase === "result") return "Viewed an image";
+    if (phase === "blocked") return "Image view blocked";
+    return "Image view failed";
+  }
+
   if (key === "todo" || key === "update_plan") {
     return formatPlanSummary(resolvePlanItems(args, result), phase);
   }
 
   return undefined;
+}
+
+function imageSourceName(source: string): string | undefined {
+  if (source.startsWith("data:")) return undefined;
+  const segments = source
+    .replace(/[?#].*$/, "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean);
+  return segments[segments.length - 1];
+}
+
+function imageActivityDetail(
+  args: Record<string, unknown>,
+  phase: ToolActivityPhase,
+  result?: unknown,
+): string | undefined {
+  const summary = formatStructuredToolActivityDetail("image", args, phase, result);
+  const source = readString(args, ["image", "path", "filePath", "url"]);
+  const name = source ? imageSourceName(source) : undefined;
+  const prompt = readString(args, ["prompt"]);
+  const lines = [
+    summary,
+    name ? `Image: ${name}` : undefined,
+    prompt ? `Prompt: ${prompt}` : undefined,
+  ].filter((line): line is string => Boolean(line));
+  return lines.length > 1 ? lines.join("\n") : undefined;
 }
 
 function commandActivityDetail(
@@ -160,6 +194,9 @@ export function formatExpandedToolActivityDetail(
   }
   if (key === "todo" || key === "update_plan") {
     return planActivityDetail(args, phase, result);
+  }
+  if (key === "image") {
+    return imageActivityDetail(args, phase, result);
   }
   return formatStructuredToolActivityDetail(toolName, args, phase, result);
 }

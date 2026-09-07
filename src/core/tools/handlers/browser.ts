@@ -1,5 +1,4 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
-import { homedir } from "os";
 import { join } from "path";
 import {
   browserViewportPreset,
@@ -21,8 +20,9 @@ import * as profileManager from "../../browser/profiles";
 import * as pwManager from "../../browser/pw-manager";
 import { CONTENT_ROLES, INTERACTIVE_ROLES, STRUCTURAL_ROLES } from "../../browser/pw-role-snapshot";
 import { fetchPublicHttpUrl, type PublicHttpFetcher } from "../../outbound-url-policy";
-import type { ToolContext } from "../index";
+import { screenshotsDir } from "../../paths";
 import { getWebResearchRuntimeEnv } from "../../web-research-settings";
+import type { ToolContext } from "../index";
 import { enforceWebFetchAllowlist } from "./web-policy";
 import {
   extractFirecrawl,
@@ -30,12 +30,6 @@ import {
   firecrawlConfigured,
   parallelConfigured,
 } from "./web-research-providers";
-
-const SCREENSHOTS_DIR = join(
-  process.env.HOME || process.env.USERPROFILE || homedir(),
-  ".cybara",
-  "screenshots"
-);
 
 const sessionPages = new Map<string, string>();
 
@@ -743,11 +737,11 @@ export async function handleBrowser(
         const timestamp = Date.now();
         const filename = `screenshot_${timestamp}.${format}`;
 
-        if (!existsSync(SCREENSHOTS_DIR)) {
-          mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+        if (!existsSync(screenshotsDir)) {
+          mkdirSync(screenshotsDir, { recursive: true });
         }
 
-        const filePath = join(SCREENSHOTS_DIR, filename);
+        const filePath = join(screenshotsDir, filename);
         writeFileSync(filePath, screenshot);
         console.log(`[Browser] Screenshot saved to: ${filePath}`);
 
@@ -794,11 +788,11 @@ export async function handleBrowser(
       const timestamp = Date.now();
       const filename = `screenshot_${timestamp}.${format}`;
 
-      if (!existsSync(SCREENSHOTS_DIR)) {
-        mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+      if (!existsSync(screenshotsDir)) {
+        mkdirSync(screenshotsDir, { recursive: true });
       }
 
-      const filePath = join(SCREENSHOTS_DIR, filename);
+      const filePath = join(screenshotsDir, filename);
       writeFileSync(filePath, screenshot);
       console.log(`[Browser] Screenshot saved to: ${filePath}`);
 

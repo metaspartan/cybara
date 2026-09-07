@@ -55,6 +55,7 @@ import {
   type ToolApprovalMode,
 } from "./ChatFollowUpControls";
 import type { ChatLightboxImage } from "./ChatImageLightbox";
+import { onOpenChatImageLightbox } from "@/lib/chatImageLightbox";
 import { ChatImageLightbox } from "./ChatImageLightbox";
 import { ChatMessageTimeline } from "./ChatMessageTimeline";
 import { isVisibleChatTranscriptMessage } from "./goalLoopPresentation";
@@ -961,6 +962,7 @@ export function MultiChatWorkspace() {
   const [pickerTargetIndex, setPickerTargetIndex] = useState<number | null>(null);
   const [openEnvironmentIds, setOpenEnvironmentIds] = useState<Set<string>>(() => new Set());
   const [lightboxImage, setLightboxImage] = useState<ChatLightboxImage | null>(null);
+  useEffect(() => onOpenChatImageLightbox(setLightboxImage), []);
   const [toolApprovalMode, setToolApprovalMode] = useState<ToolApprovalMode>("ask");
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const initializedRef = useRef(false);

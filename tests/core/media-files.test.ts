@@ -1,8 +1,9 @@
-import { describe, expect, test, beforeAll, afterAll } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync, existsSync, symlinkSync } from "fs";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { join } from "path";
-import { resolveMediaFile } from "../../src/core/runtime/media-files";
 import { cybaraDir } from "../../src/core/paths";
+import { resolveMediaFile } from "../../src/core/runtime/media-files";
+import { snapshotViewedMedia } from "../../src/core/viewed-media";
 
 const screenshotsDir = join(cybaraDir, "screenshots");
 const mediaDir = join(cybaraDir, "media");
@@ -12,6 +13,9 @@ const audioName = "test_media_files_tts.m4a";
 const audioPath = join(mediaDir, audioName);
 const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const audioBytes = Buffer.from([0x00, 0x00, 0x00, 0x1c, 0x66, 0x74, 0x79, 0x70]);
+const viewedDir = join(cybaraDir, "test_media_files_viewed_outside");
+const viewedPath = join(viewedDir, "render.png");
+const unviewedPath = join(viewedDir, "other.png");
 
 describe("resolveMediaFile", () => {
   beforeAll(() => {
@@ -19,11 +23,27 @@ describe("resolveMediaFile", () => {
     mkdirSync(mediaDir, { recursive: true });
     writeFileSync(samplePath, pngBytes);
     writeFileSync(audioPath, audioBytes);
+    mkdirSync(viewedDir, { recursive: true });
+    writeFileSync(viewedPath, pngBytes);
+    writeFileSync(unviewedPath, pngBytes);
   });
 
   afterAll(() => {
     if (existsSync(samplePath)) rmSync(samplePath);
     if (existsSync(audioPath)) rmSync(audioPath);
+    if (existsSync(viewedDir)) rmSync(viewedDir, { recursive: true, force: true });
+  });
+
+  test("never serves files outside the media roots, even after the agent views them", () => {
+    expect(resolveMediaFile(viewedPath).status).toBe(403);
+    const snapshot = snapshotViewedMedia(viewedPath);
+    expect(snapshot).toBeDefined();
+    expect(resolveMediaFile(viewedPath).status).toBe(403);
+    expect(resolveMediaFile(unviewedPath).status).toBe(403);
+    const served = resolveMediaFile(snapshot!);
+    expect(served.status).toBe(200);
+    expect(served.contentType).toBe("image/png");
+    expect(served.bytes?.equals(pngBytes)).toBe(true);
   });
 
   test("serves a file inside an allowed subdir", () => {

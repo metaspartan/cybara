@@ -10,9 +10,28 @@ import {
   DEFAULT_MODEL_MAX_OUTPUT_TOKENS,
 } from "../../src/core/agent-internals";
 import { canPreStartOpenAIToolCall } from "../../src/core/agent-provider-openai-compat-runtime";
-import { openAICompatClosingReasoningParams } from "../../src/core/llm/reasoning";
+import {
+  openAICompatClosingReasoningParams,
+  openAIReasoningContent,
+} from "../../src/core/llm/reasoning";
 
 describe("agent helper modules", () => {
+  test("falls back to reasoning channels when a closing reply has empty content", () => {
+    expect(openAIReasoningContent(undefined)).toBe("");
+    expect(openAIReasoningContent({ role: "assistant", content: "" })).toBe("");
+    expect(
+      openAIReasoningContent({ role: "assistant", content: null, reasoning: "Here is the model." })
+    ).toBe("Here is the model.");
+    expect(
+      openAIReasoningContent({
+        role: "assistant",
+        content: "",
+        reasoning_content: "  findings  ",
+        thinking: "ignored",
+      })
+    ).toBe("  findings  ");
+  });
+
   test("prestarts independent reads but validates mutations before execution", () => {
     expect(canPreStartOpenAIToolCall("read")).toBe(true);
     expect(canPreStartOpenAIToolCall("exec")).toBe(true);

@@ -27,6 +27,7 @@ import {
   callDevinAgentTransport,
   callGitLabDuoTransport,
 } from "./llm/agent-provider-transports";
+import { estimateOpenAIRequestTokens } from "./llm/context-estimate";
 import { prepareAgentMessagesForProvider } from "./llm/provider-image-input";
 import { normalizeProviderMessages } from "./llm/provider-messages";
 import { resolveProviderModelApiFamily } from "./llm/provider-model-transport";
@@ -104,6 +105,9 @@ export function sessionIdForVisibleTokenUsage(toolContext?: ToolContext): string
   const sessionId = typeof toolContext?.sessionId === "string" ? toolContext.sessionId.trim() : "";
   return sessionId || undefined;
 }
+
+export const OUTPUT_LIMIT_TRUNCATION_NOTICE =
+  "Your previous reply was cut off by the output token limit, so the last tool call may be incomplete or missing arguments. Re-issue it with smaller content: split large files across several write or edit calls and keep each call well under the output limit.";
 
 export function appendAgentBudgetWarning(content: string, warning?: string): string {
   return warning ? `${content}\n\n${warning}` : content;
@@ -409,7 +413,8 @@ export abstract class AgentProviderCommonRuntime {
     allowedToolNames: Set<string>,
     toolContext: ToolContext | undefined,
     hookContext: AgentHookContext,
-    runtimeTracker?: AgenticLoopRuntimeTracker
+    runtimeTracker?: AgenticLoopRuntimeTracker,
+    providerToolCallId?: string
   ): Promise<AgentToolExecutionResult> {
     const { executeAgentTool } = await import("./agent-tool-execution");
     return await executeAgentTool({
@@ -419,6 +424,7 @@ export abstract class AgentProviderCommonRuntime {
       toolContext,
       hookContext,
       runtimeTracker,
+      providerToolCallId,
       broadcastStatus: (status, context, detail, extra) =>
         this.broadcastAgentStatus(status, context, detail, extra),
     });
@@ -895,19 +901,7 @@ export abstract class AgentProviderCommonRuntime {
   }
 
   protected estimateOpenAIRequestInputTokens(requestBody: Record<string, unknown>): number {
-    const payload: Record<string, unknown> = {};
-    if (requestBody.model !== undefined) payload.model = requestBody.model;
-    if (requestBody.messages !== undefined) payload.messages = requestBody.messages;
-    if (requestBody.tools !== undefined) payload.tools = requestBody.tools;
-    if (requestBody.tool_choice !== undefined) payload.tool_choice = requestBody.tool_choice;
-
-    try {
-      const serialized = JSON.stringify(payload);
-      if (!serialized) return 0;
-      return Math.max(1, Math.ceil(serialized.length / CONTEXT_CHARS_PER_TOKEN_ESTIMATE));
-    } catch {
-      return DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS;
-    }
+    return estimateOpenAIRequestTokens(requestBody);
   }
 
   protected resolveOpenAIRequestTokenLimit(

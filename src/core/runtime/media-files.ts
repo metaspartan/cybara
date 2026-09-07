@@ -1,5 +1,5 @@
-import { existsSync, statSync, readFileSync, realpathSync } from "fs";
-import { resolve, sep, extname, isAbsolute } from "path";
+import { existsSync, readFileSync, realpathSync, statSync } from "fs";
+import { extname, isAbsolute, resolve, sep } from "path";
 import { cybaraDir } from "../paths";
 
 const MEDIA_MIME: Record<string, string> = {
