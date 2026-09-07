@@ -26,6 +26,19 @@ describe("chat process activities", () => {
     ).toBe("Ran bun test bun run typecheck");
   });
 
+  test("labels image views by phase instead of the generic tool name", () => {
+    const args = { image: "/tmp/renders/mug_side.png", prompt: "Describe the render" };
+    expect(
+      formatProcessActivityFromToolCall({ id: "image-1", name: "image", args, status: "executing" })
+    ).toBe("Viewing an image");
+    expect(
+      formatProcessActivityFromToolCall({ id: "image-1", name: "image", args, status: "completed" })
+    ).toBe("Viewed an image");
+    expect(
+      formatProcessActivityFromToolCall({ id: "image-1", name: "image", args, status: "failed" })
+    ).toBe("Image view failed");
+  });
+
   test("formats complete command activity without shortening it", () => {
     const command =
       "printf 'complete command activity remains fully visible across every client surface' >/dev/null";

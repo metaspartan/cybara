@@ -27,6 +27,7 @@ import {
   callDevinAgentTransport,
   callGitLabDuoTransport,
 } from "./llm/agent-provider-transports";
+import { estimateOpenAIRequestTokens } from "./llm/context-estimate";
 import { prepareAgentMessagesForProvider } from "./llm/provider-image-input";
 import { normalizeProviderMessages } from "./llm/provider-messages";
 import { resolveProviderModelApiFamily } from "./llm/provider-model-transport";
@@ -895,19 +896,7 @@ export abstract class AgentProviderCommonRuntime {
   }
 
   protected estimateOpenAIRequestInputTokens(requestBody: Record<string, unknown>): number {
-    const payload: Record<string, unknown> = {};
-    if (requestBody.model !== undefined) payload.model = requestBody.model;
-    if (requestBody.messages !== undefined) payload.messages = requestBody.messages;
-    if (requestBody.tools !== undefined) payload.tools = requestBody.tools;
-    if (requestBody.tool_choice !== undefined) payload.tool_choice = requestBody.tool_choice;
-
-    try {
-      const serialized = JSON.stringify(payload);
-      if (!serialized) return 0;
-      return Math.max(1, Math.ceil(serialized.length / CONTEXT_CHARS_PER_TOKEN_ESTIMATE));
-    } catch {
-      return DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS;
-    }
+    return estimateOpenAIRequestTokens(requestBody);
   }
 
   protected resolveOpenAIRequestTokenLimit(

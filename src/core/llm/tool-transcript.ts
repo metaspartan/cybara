@@ -1,3 +1,5 @@
+import { estimateRequestValueChars } from "./context-estimate";
+
 export const TOOL_RESULT_COMPACTION_NOTICE =
   "[compacted: earlier tool output elided to free context]";
 export const MESSAGE_CONTENT_COMPACTION_NOTICE =
@@ -80,11 +82,7 @@ function estimateOpenAIChatMessageChars(message: Record<string, unknown>): numbe
   if (typeof content === "string") {
     total += content.length;
   } else if (Array.isArray(content)) {
-    try {
-      total += JSON.stringify(content).length;
-    } catch {
-      total += 256;
-    }
+    total += estimateRequestValueChars(content);
   }
 
   if (Array.isArray(message.tool_calls)) {

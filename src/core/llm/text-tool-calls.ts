@@ -704,6 +704,22 @@ export function hasTextToolCallMarkup(content: string | null | undefined): boole
   );
 }
 
+function isParsableToolArguments(value: unknown): boolean {
+  if (typeof value !== "string") return true;
+  if (!value.trim()) return true;
+  try {
+    JSON.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeReplayToolCall(toolCall: OpenAICompatToolCall): OpenAICompatToolCall {
+  if (!toolCall.function || isParsableToolArguments(toolCall.function.arguments)) return toolCall;
+  return { ...toolCall, function: { ...toolCall.function, arguments: "{}" } };
+}
+
 function toOpenAIReplayAssistantMessage(message: OpenAICompatMessage): Record<string, unknown> {
   const replayMessage: Record<string, unknown> = {
     role: typeof message.role === "string" && message.role.trim() ? message.role : "assistant",
@@ -711,7 +727,7 @@ function toOpenAIReplayAssistantMessage(message: OpenAICompatMessage): Record<st
   };
 
   if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-    replayMessage.tool_calls = message.tool_calls;
+    replayMessage.tool_calls = message.tool_calls.map(sanitizeReplayToolCall);
   }
 
   for (const [key, value] of Object.entries(message)) {

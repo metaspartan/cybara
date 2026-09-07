@@ -1,5 +1,7 @@
 import {
   finalizeCompletedActivities,
+  imageAltFromPath,
+  imageSourceFromPath,
   type LiveActivityItem,
   mergeActivityLists,
   normalizeActivityTextForPhase,
@@ -12,6 +14,7 @@ import type {
   SessionPlanSnapshot,
 } from "@/types";
 import { isGenericChatStatusLabel } from "../../../../shared/chat-status";
+import { formatStructuredToolActivityDetail } from "../../../../shared/tool-activity-detail";
 export interface ToolCall {
   id: string;
   name: string;
@@ -112,6 +115,7 @@ export interface StatusStreamEvent {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
+  imagePath?: string;
   toolPhase?: "start" | "result" | "error" | "blocked";
   durationMs?: number;
   type?: string;
@@ -125,6 +129,7 @@ export interface SessionStatusActivity {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
+  imagePath?: string;
 }
 
 export interface SessionStatusSnapshot {
@@ -835,6 +840,8 @@ export function applyLiveActivityEvent(
     toolName?: string;
     toolCallId?: string;
     sandboxProvider?: string;
+    imageSource?: string;
+    imageAlt?: string;
   }
 ): LiveActivityItem[] {
   const trimmed = event.text.trim();
@@ -878,6 +885,8 @@ export function applyLiveActivityEvent(
           toolName: normalizedToolName || candidate.toolName,
           toolCallId: normalizedToolCallId,
           sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
+          imageSource: event.imageSource || candidate.imageSource,
+          imageAlt: event.imageAlt || candidate.imageAlt,
         };
         return sortAndMergeActivities(updated);
       }
@@ -896,6 +905,8 @@ export function applyLiveActivityEvent(
           toolName: normalizedToolName,
           toolCallId: normalizedToolCallId || candidate.toolCallId,
           sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
+          imageSource: event.imageSource || candidate.imageSource,
+          imageAlt: event.imageAlt || candidate.imageAlt,
         };
         return sortAndMergeActivities(updated);
       }
@@ -913,6 +924,8 @@ export function applyLiveActivityEvent(
         toolName: normalizedToolName || candidate.toolName,
         toolCallId: normalizedToolCallId || candidate.toolCallId,
         sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
+        imageSource: event.imageSource || candidate.imageSource,
+        imageAlt: event.imageAlt || candidate.imageAlt,
       };
       return sortAndMergeActivities(updated);
     }
@@ -944,6 +957,8 @@ export function applyLiveActivityEvent(
       toolName: normalizedToolName || undefined,
       toolCallId: normalizedToolCallId || undefined,
       sandboxProvider: normalizedSandboxProvider,
+      imageSource: event.imageSource,
+      imageAlt: event.imageAlt,
     },
   ]);
 }
@@ -1031,6 +1046,8 @@ export function formatToolIntent(
   phase: "start" | "result" | "error" | "blocked",
   fallbackDetail?: string
 ): string {
+  const structuredDetail = formatStructuredToolActivityDetail(toolName, args, phase);
+  if (structuredDetail) return structuredDetail;
   if (fallbackDetail && fallbackDetail.trim()) {
     const normalizedFallback = fallbackDetail.trim();
     if (!isGenericStatusLabel(normalizedFallback)) {
@@ -1237,6 +1254,8 @@ export function toLiveActivityItems(
       toolName: activity.toolName,
       toolCallId: activity.toolCallId,
       sandboxProvider: normalizeSandboxProviderValue(activity.sandboxProvider),
+      imageSource: imageSourceFromPath(activity.imagePath),
+      imageAlt: imageAltFromPath(activity.imagePath),
     }));
 }
 

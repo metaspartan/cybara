@@ -74,6 +74,17 @@ function toLoadableImageSource(value: string): string | undefined {
   return isImagePath(value) ? gatewayMediaUrl(value) : undefined;
 }
 
+export function imageSourceFromPath(value: string | undefined): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed ? toLoadableImageSource(trimmed) : undefined;
+}
+
+export function imageAltFromPath(value: string | undefined): string | undefined {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (!trimmed || trimmed.startsWith("data:")) return undefined;
+  return toDisplayPath(trimmed.replace(/[?#].*$/, ""));
+}
+
 export function imageViewedSource(call: ToolCallLike): string | undefined {
   if (!imageViewedToolNames.has(call.name)) return undefined;
   if (!isObjectRecord(call.result)) return undefined;

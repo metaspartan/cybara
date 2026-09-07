@@ -1,7 +1,15 @@
+import {
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useRef,
+} from "react";
 import type { LoadedChatSession } from "@/hooks/useChat";
 import { chatApi } from "@/lib/api";
 import type { LiveActivityItem } from "@/lib/chatActivities";
-import { mergeActivityLists } from "@/lib/chatActivities";
+import { imageAltFromPath, imageSourceFromPath, mergeActivityLists } from "@/lib/chatActivities";
 import {
   loadLatestTranscript,
   loadPersistedCompletion,
@@ -14,16 +22,8 @@ import {
   type StatusStreamStatusEvent,
   type StatusStreamTokenEvent,
 } from "@/lib/status-stream";
-import { isDelegatedWaitStatusLabel } from "../../../../shared/chat-status";
 import type { SessionContextUsage, SessionTokenUsage } from "@/types";
-import {
-  type Dispatch,
-  type RefObject,
-  type SetStateAction,
-  useCallback,
-  useEffect,
-  useRef,
-} from "react";
+import { isDelegatedWaitStatusLabel } from "../../../../shared/chat-status";
 import type { SessionEventIdentity } from "../../../../shared/session-event-order";
 import {
   applyLiveActivityEvent,
@@ -53,7 +53,6 @@ import {
   readCachedOptimisticPendingMessages,
   writeCachedOptimisticPendingMessages,
 } from "./pendingQueueCache";
-import { isRunEndingStatus, isSteeringHandoffStatus } from "./sessionRunStatus";
 import {
   materializedPendingChatIds,
   mergePendingChatMessages,
@@ -61,6 +60,7 @@ import {
   removeHandedOffPendingChatMessage,
   resolveHandedOffPendingChatId,
 } from "./pendingQueueState";
+import { isRunEndingStatus, isSteeringHandoffStatus } from "./sessionRunStatus";
 
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
 type LiveStatus = "thinking" | "generating" | "compacting" | "idle";
@@ -227,7 +227,9 @@ export function useChatLiveSessionRuntime({
       toolName?: string,
       eventTimestamp?: number,
       toolCallId?: string,
-      sandboxProvider?: string
+      sandboxProvider?: string,
+      imageSource?: string,
+      imageAlt?: string
     ) => {
       const applyEvent = (previous: LiveActivityItem[]): LiveActivityItem[] =>
         applyLiveActivityEvent(previous, {
@@ -237,6 +239,8 @@ export function useChatLiveSessionRuntime({
           toolName,
           toolCallId,
           sandboxProvider,
+          imageSource,
+          imageAlt,
         });
 
       runActivityBufferRef.current = applyEvent(runActivityBufferRef.current);
@@ -1186,7 +1190,9 @@ export function useChatLiveSessionRuntime({
             payload.toolName,
             eventTimestamp,
             payload.toolCallId,
-            payload.sandboxProvider
+            payload.sandboxProvider,
+            imageSourceFromPath(payload.imagePath),
+            imageAltFromPath(payload.imagePath)
           );
           if (phase === "start") {
             setLiveStatus("thinking");

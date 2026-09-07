@@ -39,6 +39,7 @@ import { normalizeModelToolCalls } from "./llm/model-dialect";
 import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
 import { toOpenAIChatHistory } from "./llm/provider-history";
+import { openAIReasoningContent } from "./llm/reasoning";
 import {
   sanitizeAssistantContent,
   toOpenAIReplayMessageWithNormalizedToolCalls,
@@ -445,8 +446,12 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
           sessionId: sessionIdForVisibleTokenUsage(toolContext),
           routerRouteId: toolContext?.routerRouteId,
         });
-        const closingContent = closingData.choices?.[0]?.message?.content;
-        if (typeof closingContent === "string" && closingContent.trim()) {
+        const closingMessage = closingData.choices?.[0]?.message;
+        const closingContent =
+          typeof closingMessage?.content === "string" && closingMessage.content.trim()
+            ? closingMessage.content
+            : openAIReasoningContent(closingMessage);
+        if (closingContent.trim()) {
           finalContent = closingContent;
         }
       } catch (error) {

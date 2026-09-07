@@ -1,10 +1,20 @@
 import type { AgentMessage } from "./agent";
 import {
   compactOpenAILoopMessagesForContext,
-  resolveMaterializationContextBudgetChars,
   resolveContextGuardBudgets,
+  resolveMaterializationContextBudgetChars,
   truncateToolResultContentForContext,
 } from "./agent-context-guard";
+import {
+  redactExposedCredentials,
+  requestedDeliverableNeedsExtendedEvidence,
+  requestedDeliverableNeedsInspection,
+  requestedDeliverablePathsFromMessages,
+  toolCallContainsExposedCredential,
+  toolCallContainsPlaceholder,
+  toolCallProducedPath,
+  toolsForInitialDeliverableInspection,
+} from "./agent-deferred-continuation";
 import {
   type AgenticLoopState,
   type AgentToolCallResult,
@@ -22,23 +32,13 @@ import {
   evaluateNoProgressLoop,
   requestedDeliverableMaterializationPrompt,
   requiresRequestedDeliverableMaterialization,
+  resolveAgenticLoopLimit,
   resolveInspectionToolRoundTokenLimit,
   resolveRequestedDeliverableFinalContent,
   resolveRequestedDeliverableToolChoice,
-  resolveAgenticLoopLimit,
   toolsAfterMaterializationCheckpoint,
   updateNoProgressLoopState,
 } from "./agent-loop-runtime";
-import {
-  redactExposedCredentials,
-  requestedDeliverableNeedsInspection,
-  requestedDeliverableNeedsExtendedEvidence,
-  requestedDeliverablePathsFromMessages,
-  toolCallContainsExposedCredential,
-  toolCallContainsPlaceholder,
-  toolCallProducedPath,
-  toolsForInitialDeliverableInspection,
-} from "./agent-deferred-continuation";
 import {
   AgentProviderCommonRuntime,
   appendAgentBudgetWarning,
@@ -54,6 +54,11 @@ import {
 } from "./agent-web-research";
 import type { ToolDefinition } from "./database";
 import { applyProviderApiKey } from "./llm/auth-headers";
+import {
+  DEFAULT_MAX_INLINE_IMAGES,
+  limitInlineImages,
+  parseProviderInlineImageLimit,
+} from "./llm/inline-images";
 import {
   applyMoonshotRequestOptions,
   isKimiCodeProvider,
@@ -73,6 +78,7 @@ import {
   normalizeReasoningEffort,
   openAICompatClosingReasoningParams,
   openAICompatReasoningParams,
+  openAIReasoningContent,
 } from "./llm/reasoning";
 import {
   sanitizeAssistantContent,
@@ -102,16 +108,6 @@ function toOpenAICompatTool(
       parameters: isKimiCodeProvider(providerConfig) ? normalizeKimiToolSchema(schema) : schema,
     },
   };
-}
-
-function openAIReasoningContent(message: OpenAIMessage): string {
-  const candidates = [message.reasoning_content, message.reasoning, message.thinking];
-  return (
-    candidates.find(
-      (candidate): candidate is string =>
-        typeof candidate === "string" && candidate.trim().length > 0
-    ) ?? ""
-  );
 }
 
 export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderCommonRuntime {
@@ -206,6 +202,8 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
 
     applyMoonshotRequestOptions(requestBody, providerConfig, modelId);
 
+    let maxInlineImages = DEFAULT_MAX_INLINE_IMAGES;
+    limitInlineImages(requestBody.messages as Record<string, unknown>[], maxInlineImages);
     this.compactOpenAIRequestMessagesForContext(requestBody, contextWindowTokens);
     const initialTokenLimit = resolveInspectionToolRoundTokenLimit(
       this.resolveOpenAIRequestTokenLimit(requestBody, maxOutputTokens, contextWindowTokens),
@@ -242,15 +240,16 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
       );
     } catch (error) {
-      if (!isContextOverflowError(this.normalizeErrorMessage(error))) {
-        throw error;
-      }
-      const compacted = this.compactOpenAIRequestMessagesForContext(
-        requestBody,
-        contextWindowTokens,
-        true
-      );
-      if (!compacted) {
+      const errorMessage = this.normalizeErrorMessage(error);
+      const providerImageLimit = parseProviderInlineImageLimit(errorMessage);
+      if (providerImageLimit !== undefined) maxInlineImages = providerImageLimit;
+      const recovered =
+        providerImageLimit !== undefined
+          ? limitInlineImages(requestBody.messages as Record<string, unknown>[], maxInlineImages) >
+            0
+          : isContextOverflowError(errorMessage) &&
+            this.compactOpenAIRequestMessagesForContext(requestBody, contextWindowTokens, true);
+      if (!recovered) {
         throw error;
       }
       const retryLimit = this.resolveOpenAIRequestTokenLimit(
@@ -612,6 +611,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
           ? await openAIImageToolFollowup(iterationToolCalls)
           : undefined;
       if (imageFollowup) currentMessages.push(imageFollowup);
+      limitInlineImages(currentMessages, maxInlineImages);
       if (notifyWebResearchBudget) {
         currentMessages.push({
           role: "user",
@@ -716,16 +716,19 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         );
       } catch (error) {
         const errorMessage = this.normalizeErrorMessage(error);
-        if (!isContextOverflowError(errorMessage)) {
-          throw error;
-        }
-        const compacted = compactOpenAILoopMessagesForContext(
-          currentMessages,
-          Math.max(4096, Math.floor(contextGuard.contextBudgetChars * 0.65)),
-          true,
-          { model: modelId, toolContext }
-        );
-        if (!compacted) {
+        const providerImageLimit = parseProviderInlineImageLimit(errorMessage);
+        if (providerImageLimit !== undefined) maxInlineImages = providerImageLimit;
+        const recovered =
+          providerImageLimit !== undefined
+            ? limitInlineImages(currentMessages, maxInlineImages) > 0
+            : isContextOverflowError(errorMessage) &&
+              compactOpenAILoopMessagesForContext(
+                currentMessages,
+                Math.max(4096, Math.floor(contextGuard.contextBudgetChars * 0.65)),
+                true,
+                { model: modelId, toolContext }
+              );
+        if (!recovered) {
           throw error;
         }
         const retryLoopRequestBody: Record<string, unknown> = {
@@ -826,8 +829,12 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
           sessionId: sessionIdForVisibleTokenUsage(toolContext),
           routerRouteId: toolContext?.routerRouteId,
         });
-        const nudgeContent = nudgeData.choices?.[0]?.message?.content;
-        if (typeof nudgeContent === "string" && nudgeContent.trim()) finalContent = nudgeContent;
+        const nudgeMessage = nudgeData.choices?.[0]?.message;
+        const nudgeContent =
+          typeof nudgeMessage?.content === "string" && nudgeMessage.content.trim()
+            ? nudgeMessage.content
+            : openAIReasoningContent(nudgeMessage);
+        if (nudgeContent.trim()) finalContent = nudgeContent;
       } catch (error) {
         console.warn(`[Agent] Closing-response nudge failed: ${this.normalizeErrorMessage(error)}`);
       }

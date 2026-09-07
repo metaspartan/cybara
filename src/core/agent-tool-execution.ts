@@ -5,6 +5,7 @@ import {
   pauseAgenticLoopRuntime,
   resumeAgenticLoopRuntime,
 } from "./agent-loop-runtime";
+import { imagePathFromToolCall } from "./agent-tool-images";
 import type { AgentStatus, StatusPayload } from "./status";
 import { coerceToolArguments } from "./tool-argument-coercion";
 import { validateToolArguments } from "./tool-argument-validation";
@@ -18,6 +19,7 @@ import {
 import { noteSkillCaptureOpportunity } from "./tools/handlers/skill-capture";
 import { noteToolActivityForTodoReminder } from "./tools/handlers/todo";
 import { type ToolContext, toolSchemas } from "./tools/index";
+import { registerViewedMediaPath } from "./viewed-media";
 
 export interface AgentToolExecutionResult {
   skipped: boolean;
@@ -227,6 +229,7 @@ async function executeAgentToolInternal(
         toolPhase: "result",
         durationMs: Date.now() - startedAt,
         sandboxProvider: extractSandboxProviderFromToolResult(result),
+        imagePath: imagePathFromToolCall({ name: toolName, result }),
       }
     );
     await emitAgentHook({
@@ -296,6 +299,11 @@ export async function executeAgentTool(
   }
   const completedExecution = { ...execution, durationMs: Math.max(0, Date.now() - startedAt) };
   if (!completedExecution.skipped && completedExecution.result !== undefined) {
+    const viewedImagePath = imagePathFromToolCall({
+      name: options.toolName,
+      result: completedExecution.result,
+    });
+    if (viewedImagePath) registerViewedMediaPath(viewedImagePath);
     executionState?.toolCalls.push({
       order,
       name: options.toolName,

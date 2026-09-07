@@ -32,6 +32,39 @@ describe("LLM tool transcript compaction", () => {
     ).toBe(true);
   });
 
+  test("does not elide image follow-ups because of their base64 size", () => {
+    const imageBlock = {
+      type: "image_url",
+      image_url: { url: `data:image/png;base64,${"a".repeat(1_700_000)}` },
+    };
+    const messages: Array<Record<string, unknown>> = [
+      { role: "system", content: "system rules" },
+      { role: "user", content: "render and inspect" },
+      { role: "tool", tool_call_id: "call-1", content: JSON.stringify({ image: "/tmp/a.png" }) },
+      {
+        role: "user",
+        content: [{ type: "text", text: "Inspect the image." }, imageBlock, imageBlock],
+      },
+      { role: "assistant", content: "rendering again" },
+      { role: "tool", tool_call_id: "call-2", content: JSON.stringify({ image: "/tmp/b.png" }) },
+      {
+        role: "user",
+        content: [{ type: "text", text: "Inspect the image." }, imageBlock, imageBlock],
+      },
+      { role: "user", content: "what do you see?" },
+    ];
+
+    const elided = compactOpenAIChatTranscriptInPlace(messages, 120_000);
+
+    expect(elided).toBe(0);
+    const imageBlocks = messages.flatMap((message) =>
+      Array.isArray(message.content)
+        ? message.content.filter((block) => (block as { type?: string }).type === "image_url")
+        : []
+    );
+    expect(imageBlocks).toHaveLength(4);
+  });
+
   test("elides old OpenAI-compatible chat content without reordering messages", () => {
     const messages: Array<Record<string, unknown>> = [
       { role: "system", content: "system rules" },

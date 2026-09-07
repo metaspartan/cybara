@@ -43,6 +43,8 @@ const TOOL_KINDS: Record<string, SharedActivityGroupKind> = {
   http_request: "fetch",
 };
 
+const STANDALONE_TOOLS = new Set(["image", "browser_screenshot", "computer_use", "mobile_simulator"]);
+
 const COMMAND_KINDS: Record<string, SharedActivityGroupKind> = {
   cat: "read",
   head: "read",
@@ -134,6 +136,7 @@ export function sharedActivityKind(
 ): SharedActivityGroupKind | null {
   if (activity.phase !== "result") return null;
   const toolName = activity.toolName?.toLowerCase() || "";
+  if (STANDALONE_TOOLS.has(toolName)) return null;
   if (toolName in TOOL_KINDS) return TOOL_KINDS[toolName] ?? "command";
   if (toolName === "exec" || toolName === "process" || toolName === "git" || !toolName) {
     const command = activity.text.match(/^Ran\s+(.+)$/s)?.[1];

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { groupSharedActivities } from "../../shared/chat-activity-groups";
+import {
+  formatExpandedToolActivityDetail,
+  formatStructuredToolActivityDetail,
+} from "../../shared/tool-activity-detail";
 import {
   buildActivitiesFromToolCalls,
   enrichActivitiesWithToolCallDetails,
@@ -8,6 +13,7 @@ import {
   type LiveActivityItem,
 } from "../../ui/src/lib/chatActivities";
 import { onOpenChatImageLightbox, openChatImageLightbox } from "../../ui/src/lib/chatImageLightbox";
+import { formatToolIntent } from "../../ui/src/pages/chat/chatModel";
 
 const PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -157,5 +163,72 @@ describe("image viewed timeline contract", () => {
   test("persisted activity normalization keeps thumbnail metadata", () => {
     expect(modelSource).toContain("imageSource");
     expect(modelSource).toContain("imageAlt");
+  });
+});
+
+describe("image viewed activity labels", () => {
+  const args = { image: "/tmp/mug_side.png", prompt: "Describe the render" };
+
+  test("shared formatter labels every image view phase", () => {
+    expect(formatStructuredToolActivityDetail("image", args, "start")).toBe("Viewing an image");
+    expect(formatStructuredToolActivityDetail("image", args, "result")).toBe("Viewed an image");
+    expect(formatStructuredToolActivityDetail("image", args, "blocked")).toBe("Image view blocked");
+    expect(formatStructuredToolActivityDetail("image", args, "error")).toBe("Image view failed");
+    expect(formatExpandedToolActivityDetail("image", args, "result")).toBe(
+      "Viewed an image\nImage: mug_side.png\nPrompt: Describe the render"
+    );
+    expect(formatExpandedToolActivityDetail("image", { image: PNG_DATA_URL }, "result")).toBe(
+      undefined
+    );
+  });
+
+  test("client intent prefers viewed labels over generic gateway fallbacks", () => {
+    expect(formatToolIntent("image", args, "start")).toBe("Viewing an image");
+    expect(formatToolIntent("image", args, "result", "image complete")).toBe("Viewed an image");
+    expect(formatToolIntent("exec", { command: "ls" }, "result", "Ran ls")).toBe("Ran ls");
+  });
+
+  test("enrichment upgrades persisted generic image labels and keeps thumbnails", () => {
+    const activity: LiveActivityItem = {
+      id: "tool-call-3",
+      phase: "result",
+      text: "image complete",
+      timestamp: 1,
+      toolName: "image",
+      toolCallId: "call-3",
+    };
+    const enriched = enrichActivitiesWithToolCallDetails(
+      [activity],
+      [{ id: "call-3", name: "image", args, result: { image: "/tmp/mug_side.png" } }]
+    );
+    expect(enriched[0].text).toBe("Viewed an image");
+    expect(enriched[0].fullText).toContain("Image: mug_side.png");
+    expect(enriched[0].fullText).toContain("Prompt: Describe the render");
+    expect(enriched[0].imageSource).toBe("/api/media?path=%2Ftmp%2Fmug_side.png");
+  });
+
+  test("image views stay standalone rows instead of folding into command groups", () => {
+    const entries = groupSharedActivities([
+      { id: "1", phase: "result", text: "Ran ls", toolName: "exec" },
+      { id: "2", phase: "result", text: "Viewed an image", toolName: "image" },
+      { id: "3", phase: "result", text: "Ran pwd", toolName: "exec" },
+    ]);
+    expect(entries.map((entry) => entry.type)).toEqual(["single", "single", "single"]);
+    expect(entries[1]).toEqual({
+      type: "single",
+      activity: { id: "2", phase: "result", text: "Viewed an image", toolName: "image" },
+    });
+  });
+
+  test("timeline reveals the thumbnail only once the row is expanded", () => {
+    const timelineSource = readFileSync(
+      fileURLToPath(new URL("../../ui/src/pages/chat/ActivityTimeline.tsx", import.meta.url)),
+      "utf8"
+    );
+    expect(timelineSource).toContain("expanded && activity.imageSource");
+    expect(timelineSource).toContain('data-testid="activity-image-viewed-preview"');
+    expect(timelineSource).toContain("const hasImage = Boolean(activity.imageSource);");
+    expect(timelineSource).toContain('data-testid="activity-image-icon"');
+    expect(timelineSource).toContain('activity.phase === "result" && hasImage ? (');
   });
 });

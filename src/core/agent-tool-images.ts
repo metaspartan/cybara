@@ -1,9 +1,9 @@
 import { extname } from "node:path";
+import type { AgentToolCallResult } from "./agent-internals";
 import {
   COMPUTER_USE_ACTION_TOOL_ALIASES,
   COMPUTER_USE_COMPAT_TOOL_ALIASES,
 } from "./computer-use-actions";
-import type { AgentToolCallResult } from "./agent-internals";
 import { type AgentImage, MAX_INLINE_IMAGE_BYTES, toOpenAIImageBlock } from "./llm/image-blocks";
 import { prepareAgentImageForProvider } from "./llm/provider-image-input";
 
@@ -28,7 +28,9 @@ const visualToolNames = new Set([
   ...Object.keys(COMPUTER_USE_COMPAT_TOOL_ALIASES),
 ]);
 
-function imagePathFromToolCall(toolCall: AgentToolCallResult): string | undefined {
+export function imagePathFromToolCall(
+  toolCall: Pick<AgentToolCallResult, "name" | "result">
+): string | undefined {
   if (!visualToolNames.has(toolCall.name)) return undefined;
   if (!toolCall.result || typeof toolCall.result !== "object") return undefined;
   const result = toolCall.result as Record<string, unknown>;

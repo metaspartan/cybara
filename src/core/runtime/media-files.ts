@@ -1,6 +1,7 @@
-import { existsSync, statSync, readFileSync, realpathSync } from "fs";
-import { resolve, sep, extname, isAbsolute } from "path";
+import { existsSync, readFileSync, realpathSync, statSync } from "fs";
+import { extname, isAbsolute, resolve, sep } from "path";
 import { cybaraDir } from "../paths";
+import { isViewedMediaPath } from "../viewed-media";
 
 const MEDIA_MIME: Record<string, string> = {
   ".png": "image/png",
@@ -40,7 +41,9 @@ export function resolveMediaFile(relPath: string): MediaFileResult {
     ? resolve(relPath)
     : resolve(cybaraDir, relPath.replace(/^\/+/, ""));
   const roots = allowedRoots();
-  const contained = roots.some((root) => target === root || target.startsWith(root + sep));
+  const viewed = isViewedMediaPath(target);
+  const contained =
+    viewed || roots.some((root) => target === root || target.startsWith(root + sep));
   if (!contained) return { status: 403, error: "forbidden" };
 
   const contentType = MEDIA_MIME[extname(target).toLowerCase()];
@@ -54,9 +57,8 @@ export function resolveMediaFile(relPath: string): MediaFileResult {
     const realRoots = roots.map((root) =>
       existsSync(root) ? realpathSync.native(root) : resolve(root)
     );
-    const realContained = realRoots.some(
-      (root) => realTarget === root || realTarget.startsWith(root + sep)
-    );
+    const realContained =
+      viewed || realRoots.some((root) => realTarget === root || realTarget.startsWith(root + sep));
     if (!realContained) return { status: 403, error: "forbidden" };
     return { status: 200, contentType, bytes: readFileSync(realTarget) };
   } catch {
