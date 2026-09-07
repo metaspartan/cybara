@@ -1,14 +1,14 @@
-import { Eye, Loader2 } from "lucide-react";
+import { Eye, Loader2, MonitorSmartphone } from "lucide-react";
 import { type ReactElement, useCallback, useState } from "react";
 import { apiFetch } from "@/lib/auth";
 import { ChatWorkspaceComputer } from "./ChatWorkspaceComputer";
 import { FloatingPreviewFrame } from "./FloatingPreviewFrame";
-import { isComputerFocusUnavailableError } from "./floatingPreviewActivityModel";
 import {
   FLOATING_COMPUTER_PREVIEW_STORAGE_KEY,
   persistFloatingPreviewHidden,
   readFloatingPreviewHidden,
 } from "./floatingBrowserPreviewModel";
+import { isComputerFocusUnavailableError } from "./floatingPreviewActivityModel";
 
 interface FloatingComputerPreviewProps {
   bottomInset: number;
@@ -91,6 +91,9 @@ export function FloatingComputerPreview({
       ariaLabel={label}
       bottomInset={bottomInset}
       horizontal="left"
+      minimizeLabel="Minimize computer preview"
+      minimizedIcon={<MonitorSmartphone className="h-4 w-4" strokeWidth={2.2} />}
+      minimizedLabel="Restore computer preview"
       onActivate={focusApp}
       onHide={hide}
       storageKey={FLOATING_COMPUTER_PREVIEW_STORAGE_KEY}

@@ -3,10 +3,13 @@ import {
   clampFloatingBrowserPreviewRect,
   defaultFloatingBrowserPreviewRect,
   FLOATING_COMPUTER_PREVIEW_STORAGE_KEY,
+  FLOATING_PREVIEW_MINIMIZED_SIZE,
   isFloatingBrowserPreviewClick,
   parseFloatingBrowserPreviewRect,
   persistFloatingPreviewHidden,
+  persistFloatingPreviewMinimized,
   readFloatingPreviewHidden,
+  readFloatingPreviewMinimized,
   shouldShowFloatingBrowserPreview,
 } from "../../ui/src/pages/chat/floatingBrowserPreviewModel";
 
@@ -112,6 +115,38 @@ describe("floating browser preview", () => {
     expect(isFloatingBrowserPreviewClick(4, 4)).toBe(true);
     expect(isFloatingBrowserPreviewClick(7, 0)).toBe(false);
     expect(isFloatingBrowserPreviewClick(24, 18)).toBe(false);
+  });
+
+  test("keeps a minimized preview as a small draggable puck inside the surface", () => {
+    const container = { width: 1200, height: 800 };
+    const minimized = {
+      width: FLOATING_PREVIEW_MINIMIZED_SIZE,
+      height: FLOATING_PREVIEW_MINIMIZED_SIZE,
+    };
+    const rect = defaultFloatingBrowserPreviewRect(container, 100, "right", minimized);
+    expect(rect.width).toBe(FLOATING_PREVIEW_MINIMIZED_SIZE);
+    expect(rect.height).toBe(FLOATING_PREVIEW_MINIMIZED_SIZE);
+    expect(rect.x + rect.width).toBeLessThanOrEqual(container.width);
+    expect(rect.y + rect.height).toBeLessThanOrEqual(container.height - 100);
+
+    const dragged = clampFloatingBrowserPreviewRect(
+      container,
+      { ...rect, x: -400, y: -400 },
+      100,
+      minimized
+    );
+    expect(dragged.width).toBe(FLOATING_PREVIEW_MINIMIZED_SIZE);
+    expect(dragged.x).toBeGreaterThan(0);
+    expect(dragged.y).toBeGreaterThan(0);
+  });
+
+  test("persists and reads the minimized flag per storage key", () => {
+    expect(readFloatingPreviewMinimized(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY)).toBe(false);
+    persistFloatingPreviewMinimized(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY, true);
+    expect(readFloatingPreviewMinimized(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY)).toBe(true);
+    expect(readFloatingPreviewHidden(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY)).toBe(false);
+    persistFloatingPreviewMinimized(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY, false);
+    expect(readFloatingPreviewMinimized(FLOATING_COMPUTER_PREVIEW_STORAGE_KEY)).toBe(false);
   });
 
   test("persists and reads the hidden flag per storage key", () => {

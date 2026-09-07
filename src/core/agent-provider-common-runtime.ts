@@ -413,7 +413,8 @@ export abstract class AgentProviderCommonRuntime {
     allowedToolNames: Set<string>,
     toolContext: ToolContext | undefined,
     hookContext: AgentHookContext,
-    runtimeTracker?: AgenticLoopRuntimeTracker
+    runtimeTracker?: AgenticLoopRuntimeTracker,
+    providerToolCallId?: string
   ): Promise<AgentToolExecutionResult> {
     const { executeAgentTool } = await import("./agent-tool-execution");
     return await executeAgentTool({
@@ -423,6 +424,7 @@ export abstract class AgentProviderCommonRuntime {
       toolContext,
       hookContext,
       runtimeTracker,
+      providerToolCallId,
       broadcastStatus: (status, context, detail, extra) =>
         this.broadcastAgentStatus(status, context, detail, extra),
     });

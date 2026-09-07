@@ -401,7 +401,8 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
                 allowedToolNames,
                 toolContext,
                 hookContext,
-                loopRuntimeTracker
+                loopRuntimeTracker,
+                toolCall.id
               )
             );
           }
@@ -508,7 +509,8 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
             allowedToolNames,
             toolContext,
             hookContext,
-            loopRuntimeTracker
+            loopRuntimeTracker,
+            toolCallId
           ));
         const resultPayload =
           executed.result === undefined

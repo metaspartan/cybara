@@ -128,9 +128,11 @@ function imageViewedAlt(args: Record<string, unknown>, source: string): string {
 function applyImageViewedMetadata(
   activity: LiveActivityItem,
   call: ToolCallLike,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  correlated = true
 ): LiveActivityItem {
   if (activity.phase !== "result") return activity;
+  if (!correlated && !activity.imageSource) return activity;
   const source = imageViewedSource(call);
   if (!source) return activity;
   const altSource = rawImageViewedPath(call) ?? source;
@@ -444,7 +446,12 @@ export function enrichActivitiesWithToolCallDetails(
     );
     const text = structuredText || activity.text;
     const fullText = formatExpandedToolActivityDetail(call.name, args, activity.phase, call.result);
-    const withImage = applyImageViewedMetadata(activity, call, args);
+    const withImage = applyImageViewedMetadata(
+      activity,
+      call,
+      args,
+      Boolean(callById && callById === call)
+    );
     if (!fullText || equivalentActivityText(text, fullText)) {
       if (withImage !== activity)
         return { ...withImage, text: text === activity.text ? withImage.text : text };
@@ -489,16 +496,36 @@ export function mergeActivityLists(
   const seenSemantic = new Set<string>();
   const merged: LiveActivityItem[] = [];
 
+  const positions = new Map<string, number>();
+  const backfillImageMetadata = (key: string, activity: LiveActivityItem): void => {
+    const index = positions.get(key);
+    if (index === undefined) return;
+    const kept = merged[index];
+    if (!kept || kept.imageSource || !activity.imageSource) return;
+    merged[index] = {
+      ...kept,
+      imageSource: activity.imageSource,
+      imageAlt: kept.imageAlt || activity.imageAlt,
+    };
+  };
   const pushUnique = (activity: LiveActivityItem) => {
     if (hasCompletionForStart(activity)) {
       return;
     }
     const exactKey = activityDedupKey(activity);
-    if (seen.has(exactKey)) return;
     const semanticKey = semanticActivityDedupKey(activity);
-    if (seenSemantic.has(semanticKey)) return;
+    if (seen.has(exactKey)) {
+      backfillImageMetadata(exactKey, activity);
+      return;
+    }
+    if (seenSemantic.has(semanticKey)) {
+      backfillImageMetadata(semanticKey, activity);
+      return;
+    }
     seen.add(exactKey);
     seenSemantic.add(semanticKey);
+    positions.set(exactKey, merged.length);
+    positions.set(semanticKey, merged.length);
     merged.push(activity);
   };
 

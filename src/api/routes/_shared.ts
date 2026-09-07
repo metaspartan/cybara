@@ -1,9 +1,9 @@
 import { existsSync, statSync } from "fs";
 import { readdir, stat } from "fs/promises";
 import { join } from "path";
+import { presentProviderProtocolText } from "../../../shared/provider-protocol";
 import { getArtifactsRootDir } from "../../core/artifacts";
 import { sanitizeAssistantContent } from "../../core/llm/text-tool-calls";
-import { presentProviderProtocolText } from "../../../shared/provider-protocol";
 import { cybaraDir, dataDir, logsDir, memoryDir, secureDir, userSkillsDir } from "../../core/paths";
 import {
   type ProviderType,
@@ -980,6 +980,12 @@ export function sanitizeProcessActivities(
       typeof entry.toolCallId === "string" && entry.toolCallId.trim()
         ? entry.toolCallId
         : undefined;
+    const sandboxProvider =
+      typeof entry.sandboxProvider === "string" && entry.sandboxProvider.trim()
+        ? entry.sandboxProvider
+        : undefined;
+    const imagePath =
+      typeof entry.imagePath === "string" && entry.imagePath.trim() ? entry.imagePath : undefined;
 
     sanitized.push({
       id,
@@ -994,6 +1000,8 @@ export function sanitizeProcessActivities(
       timestamp,
       toolName,
       toolCallId,
+      sandboxProvider,
+      imagePath,
     });
   }
 

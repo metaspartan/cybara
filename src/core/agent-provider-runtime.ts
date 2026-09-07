@@ -26,8 +26,8 @@ import {
   appendAgentBudgetWarning,
   sessionIdForVisibleTokenUsage,
 } from "./agent-provider-common-runtime";
-import { hasAgentTransferEnvelope } from "./agent-transfer";
 import { openAIImageToolFollowup } from "./agent-tool-images";
+import { hasAgentTransferEnvelope } from "./agent-transfer";
 import {
   countWebResearchCalls,
   toolsAfterWebResearchBudget,
@@ -184,7 +184,8 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
                 allowedToolNames,
                 toolContext,
                 hookContext,
-                loopRuntimeTracker
+                loopRuntimeTracker,
+                toolCall.id
               )
             );
           }
@@ -226,7 +227,8 @@ export abstract class AgentProviderRuntime extends AgentProviderAnthropicRuntime
             allowedToolNames,
             toolContext,
             hookContext,
-            loopRuntimeTracker
+            loopRuntimeTracker,
+            toolCallId
           ));
         const resultPayload =
           executed.result === undefined

@@ -5,6 +5,7 @@ import {
   formatProcessActivityFromToolCall,
   type ProcessActivityInfo,
 } from "../../src/api/chat-process-activities";
+import { sanitizeProcessActivities } from "../../src/api/routes/_shared";
 
 describe("chat process activities", () => {
   test("formats paths and multiline commands without losing detail", () => {
@@ -199,5 +200,38 @@ describe("chat process activities", () => {
 
   test("returns no fallback for empty generic activity", () => {
     expect(buildFallbackProcessActivities([], "Thinking...", Number.NaN)).toBeUndefined();
+  });
+});
+
+describe("session read-path activity sanitization", () => {
+  test("keeps the viewed image and sandbox metadata when a session is reloaded", () => {
+    const sanitized = sanitizeProcessActivities([
+      {
+        id: "run:4",
+        phase: "result",
+        text: "Viewed an image",
+        timestamp: 1_788_758_258_991,
+        toolName: "image",
+        toolCallId: "chatcmpl-tool-b1ee513f165187f2",
+        imagePath: "/Users/carsen/.cybara/media/viewed/abc/render.png",
+        sandboxProvider: "host",
+      },
+      {
+        id: "run:5",
+        phase: "result",
+        text: "Ran ls",
+        timestamp: 1_788_758_259_000,
+        toolName: "exec",
+      },
+    ]);
+
+    expect(sanitized).toHaveLength(2);
+    expect(sanitized?.[0]).toMatchObject({
+      toolCallId: "chatcmpl-tool-b1ee513f165187f2",
+      imagePath: "/Users/carsen/.cybara/media/viewed/abc/render.png",
+      sandboxProvider: "host",
+    });
+    expect(sanitized?.[1].imagePath).toBeUndefined();
+    expect(sanitized?.[1].sandboxProvider).toBeUndefined();
   });
 });

@@ -1,3 +1,4 @@
+import { Minus, X } from "lucide-react";
 import {
   type KeyboardEvent,
   type MouseEvent,
@@ -6,19 +7,22 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
-import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   clampFloatingBrowserPreviewRect,
   defaultFloatingBrowserPreviewRect,
-  isFloatingBrowserPreviewClick,
-  persistFloatingPreviewRect,
-  readFloatingPreviewRect,
+  FLOATING_PREVIEW_MINIMIZED_SIZE,
   type FloatingBrowserPreviewRect,
   type FloatingBrowserPreviewSize,
+  isFloatingBrowserPreviewClick,
+  persistFloatingPreviewMinimized,
+  persistFloatingPreviewRect,
+  readFloatingPreviewMinimized,
+  readFloatingPreviewRect,
 } from "./floatingBrowserPreviewModel";
 
 interface FloatingPreviewFrameProps {
@@ -27,6 +31,9 @@ interface FloatingPreviewFrameProps {
   children: ReactNode;
   hideLabel?: string;
   horizontal?: "left" | "right";
+  minimizeLabel?: string;
+  minimizedIcon: ReactNode;
+  minimizedLabel?: string;
   onActivate: () => void;
   onHide: () => void;
   storageKey: string;
@@ -42,6 +49,8 @@ interface FloatingPreviewGesture {
   moved: boolean;
 }
 
+const CONTROL_ATTRIBUTE = "data-floating-preview-control";
+
 function containerSize(element: HTMLElement | null): FloatingBrowserPreviewSize {
   const bounds = element?.getBoundingClientRect();
   return {
@@ -50,12 +59,19 @@ function containerSize(element: HTMLElement | null): FloatingBrowserPreviewSize 
   };
 }
 
+function isControlTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest(`[${CONTROL_ATTRIBUTE}]`);
+}
+
 export function FloatingPreviewFrame({
   ariaLabel,
   bottomInset,
   children,
-  hideLabel = "Hide preview",
+  hideLabel = "Close preview",
   horizontal = "right",
+  minimizeLabel = "Minimize preview",
+  minimizedIcon,
+  minimizedLabel = "Restore preview",
   onActivate,
   onHide,
   storageKey,
@@ -67,26 +83,35 @@ export function FloatingPreviewFrame({
   const containerSizeRef = useRef<FloatingBrowserPreviewSize>({ width: 0, height: 0 });
   const [rect, setRect] = useState<FloatingBrowserPreviewRect | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [minimized, setMinimized] = useState(() => readFloatingPreviewMinimized(storageKey));
+
+  const preferredSize = useMemo(
+    () =>
+      minimized
+        ? { width: FLOATING_PREVIEW_MINIMIZED_SIZE, height: FLOATING_PREVIEW_MINIMIZED_SIZE }
+        : undefined,
+    [minimized]
+  );
 
   const commitRect = useCallback(
     (next: FloatingBrowserPreviewRect): void => {
       setRect(next);
-      persistFloatingPreviewRect(storageKey, next);
+      if (!minimized) persistFloatingPreviewRect(storageKey, next);
     },
-    [storageKey]
+    [minimized, storageKey]
   );
 
   useEffect(() => {
     const container = frameRef.current?.parentElement;
     if (!container) return;
     const update = (): void => {
-      const size = containerSize(container);
-      containerSizeRef.current = size;
+      const bounds = containerSize(container);
+      containerSizeRef.current = bounds;
       setRect((current) => {
         const source = current ?? readFloatingPreviewRect(storageKey);
         return source
-          ? clampFloatingBrowserPreviewRect(size, source, bottomInset)
-          : defaultFloatingBrowserPreviewRect(size, bottomInset, horizontal);
+          ? clampFloatingBrowserPreviewRect(bounds, source, bottomInset, preferredSize)
+          : defaultFloatingBrowserPreviewRect(bounds, bottomInset, horizontal, preferredSize);
       });
     };
     update();
@@ -97,7 +122,7 @@ export function FloatingPreviewFrame({
     const observer = new ResizeObserver(update);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [bottomInset, horizontal, storageKey]);
+  }, [bottomInset, horizontal, preferredSize, storageKey]);
 
   const updateGesture = useCallback(
     (pointerId: number, clientX: number, clientY: number): void => {
@@ -114,12 +139,18 @@ export function FloatingPreviewFrame({
             x: gesture.origin.x + deltaX,
             y: gesture.origin.y + deltaY,
           },
-          bottomInset
+          bottomInset,
+          preferredSize
         )
       );
     },
-    [bottomInset]
+    [bottomInset, preferredSize]
   );
+
+  const restore = useCallback((): void => {
+    persistFloatingPreviewMinimized(storageKey, false);
+    setMinimized(false);
+  }, [storageKey]);
 
   const finishGesture = useCallback(
     (pointerId: number): void => {
@@ -128,12 +159,14 @@ export function FloatingPreviewFrame({
       gestureRef.current = null;
       setDragging(false);
       setRect((current) => {
-        if (current) persistFloatingPreviewRect(storageKey, current);
+        if (current && !minimized) persistFloatingPreviewRect(storageKey, current);
         return current;
       });
-      if (!gesture.moved) onActivate();
+      if (gesture.moved) return;
+      if (minimized) restore();
+      else onActivate();
     },
-    [onActivate, storageKey]
+    [minimized, onActivate, restore, storageKey]
   );
 
   useEffect(() => {
@@ -153,7 +186,7 @@ export function FloatingPreviewFrame({
 
   const beginGesture = useCallback(
     (event: PointerEvent<HTMLElement>): void => {
-      if (!rect || event.button !== 0) return;
+      if (!rect || event.button !== 0 || isControlTarget(event.target)) return;
       event.preventDefault();
       event.stopPropagation();
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -171,10 +204,11 @@ export function FloatingPreviewFrame({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLElement>): void => {
-      if (!rect) return;
+      if (!rect || isControlTarget(event.target)) return;
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        onActivate();
+        if (minimized) restore();
+        else onActivate();
         return;
       }
       const distance = event.shiftKey ? 32 : 12;
@@ -194,62 +228,112 @@ export function FloatingPreviewFrame({
         clampFloatingBrowserPreviewRect(
           containerSizeRef.current,
           { ...rect, x: rect.x + delta.x, y: rect.y + delta.y },
-          bottomInset
+          bottomInset,
+          preferredSize
         )
       );
     },
-    [bottomInset, commitRect, onActivate, rect]
+    [bottomInset, commitRect, minimized, onActivate, preferredSize, rect, restore]
   );
+
+  const stopControlGesture = useCallback((event: PointerEvent<HTMLButtonElement>): void => {
+    event.stopPropagation();
+  }, []);
 
   const handleHide = useCallback(
     (event: MouseEvent<HTMLButtonElement>): void => {
+      event.preventDefault();
       event.stopPropagation();
+      gestureRef.current = null;
+      setDragging(false);
       onHide();
     },
     [onHide]
   );
 
+  const handleMinimize = useCallback(
+    (event: MouseEvent<HTMLButtonElement>): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      gestureRef.current = null;
+      setDragging(false);
+      persistFloatingPreviewMinimized(storageKey, true);
+      setMinimized(true);
+    },
+    [storageKey]
+  );
+
+  const fallbackStyle = {
+    [horizontal]: 16,
+    bottom: Math.max(16, bottomInset + 16),
+    width: minimized ? FLOATING_PREVIEW_MINIMIZED_SIZE : "min(260px, calc(100% - 24px))",
+    height: minimized ? FLOATING_PREVIEW_MINIMIZED_SIZE : "min(180px, calc(100% - 48px))",
+  } as const;
+
   return (
     <section
       ref={frameRef}
-      aria-label={ariaLabel}
+      aria-label={minimized ? minimizedLabel : ariaLabel}
       className={cn(
-        "glass-strong absolute z-40 min-h-0 touch-none overflow-hidden rounded-[16px] border border-[var(--glass-border)] shadow-[0_16px_48px_rgba(0,0,0,0.46)] outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--accent-primary))]",
+        "glass-strong absolute z-40 min-h-0 touch-none overflow-hidden border border-[var(--glass-border)] shadow-[0_16px_48px_rgba(0,0,0,0.46)] outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--accent-primary))]",
+        minimized ? "rounded-full" : "rounded-[16px]",
         dragging
           ? "cursor-grabbing select-none shadow-[0_22px_58px_rgba(0,0,0,0.56)]"
           : "cursor-grab transition-[box-shadow,transform] duration-150 hover:-translate-y-0.5"
       )}
+      data-minimized={minimized ? "true" : "false"}
       data-testid={testId}
       onKeyDown={handleKeyDown}
       onPointerDown={beginGesture}
       role="button"
       style={
-        rect
-          ? { left: rect.x, top: rect.y, width: rect.width, height: rect.height }
-          : {
-              [horizontal]: 16,
-              bottom: Math.max(16, bottomInset + 16),
-              width: "min(260px, calc(100% - 24px))",
-              height: "min(180px, calc(100% - 48px))",
-            }
+        rect ? { left: rect.x, top: rect.y, width: rect.width, height: rect.height } : fallbackStyle
       }
       tabIndex={0}
-      title={title}
+      title={minimized ? minimizedLabel : title}
     >
-      <div className="pointer-events-none h-full min-h-0 select-none" aria-hidden="true">
-        {children}
-      </div>
-      <button
-        type="button"
-        aria-label={hideLabel}
-        className="pointer-events-auto absolute right-2 top-2 z-50 flex h-6 w-6 items-center justify-center rounded-full border border-[var(--glass-border)] bg-black/45 text-white/80 transition-opacity duration-150 hover:bg-black/70 hover:text-white focus-visible:opacity-100"
-        onClick={handleHide}
-        onKeyDown={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
-        title={hideLabel}
-      >
-        <X className="h-3.5 w-3.5" strokeWidth={2.4} />
-      </button>
+      {minimized ? (
+        <span
+          className="pointer-events-none flex h-full w-full items-center justify-center text-white/85"
+          data-testid={`${testId}-minimized`}
+        >
+          {minimizedIcon}
+        </span>
+      ) : (
+        <>
+          <div className="pointer-events-none h-full min-h-0 select-none" aria-hidden="true">
+            {children}
+          </div>
+          <div className="absolute right-1.5 top-1.5 z-50 flex items-center gap-1">
+            <button
+              type="button"
+              aria-label={minimizeLabel}
+              className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full border border-[var(--glass-border)] bg-black/45 text-white/80 transition-colors duration-150 hover:bg-black/70 hover:text-white"
+              data-floating-preview-control="minimize"
+              data-testid={`${testId}-minimize`}
+              onClick={handleMinimize}
+              onKeyDown={(event) => event.stopPropagation()}
+              onPointerDown={stopControlGesture}
+              title={minimizeLabel}
+            >
+              <Minus className="h-3.5 w-3.5" strokeWidth={2.4} />
+            </button>
+            <button
+              type="button"
+              aria-label={hideLabel}
+              className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full border border-[var(--glass-border)] bg-black/45 text-white/80 transition-colors duration-150 hover:bg-black/70 hover:text-white"
+              data-floating-preview-control="close"
+              data-testid={`${testId}-close`}
+              onClick={handleHide}
+              onKeyDown={(event) => event.stopPropagation()}
+              onPointerDown={stopControlGesture}
+              title={hideLabel}
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={2.4} />
+            </button>
+          </div>
+        </>
+      )}
     </section>
   );
 }

@@ -11,9 +11,11 @@ import {
   enrichActivitiesWithToolCallDetails,
   imageViewedSource,
   type LiveActivityItem,
+  mergeActivityLists,
 } from "../../ui/src/lib/chatActivities";
 import { onOpenChatImageLightbox, openChatImageLightbox } from "../../ui/src/lib/chatImageLightbox";
 import { formatToolIntent } from "../../ui/src/pages/chat/chatModel";
+import { formatIdeStatusEventText } from "../../ui/src/pages/ide/ideActivityHelpers";
 
 const PNG_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -119,6 +121,43 @@ describe("image viewed activity sources", () => {
     expect(activities[0].imageAlt).toBe("shot.png");
     expect(activities[1].imageSource).toBeUndefined();
     expect(activities[2].imageSource).toBeUndefined();
+  });
+
+  test("merging a cached activity with a fresh one keeps the viewed image", () => {
+    const cached: LiveActivityItem = {
+      id: "run:4",
+      phase: "result",
+      text: "Viewed an image",
+      timestamp: 10,
+      toolName: "image",
+      toolCallId: "chatcmpl-tool-b1",
+    };
+    const fresh: LiveActivityItem = {
+      ...cached,
+      imageSource: "/api/media?path=%2Ftmp%2Fsnap%2Frender.png",
+      imageAlt: "render.png",
+    };
+    const merged = mergeActivityLists([cached], [fresh]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].imageSource).toBe("/api/media?path=%2Ftmp%2Fsnap%2Frender.png");
+    expect(merged[0].imageAlt).toBe("render.png");
+  });
+
+  test("does not attach an unrelated render when ids do not correlate", () => {
+    const activity: LiveActivityItem = {
+      id: "tool-uncorrelated",
+      phase: "result",
+      text: "Viewed an image",
+      timestamp: 1,
+      toolName: "image",
+      toolCallId: "status-image-1",
+    };
+    const enriched = enrichActivitiesWithToolCallDetails(
+      [activity],
+      [{ id: "chatcmpl-tool-9", name: "image", result: { image: "/tmp/other.png" } }]
+    );
+    expect(enriched[0].imageSource).toBeUndefined();
+    expect(enriched[0].imageAlt).toBeUndefined();
   });
 
   test("enrich backfills thumbnail metadata onto matched activities", () => {
@@ -252,5 +291,15 @@ describe("image viewed activity labels", () => {
     expect(timelineSource).toContain("const hasImage = Boolean(activity.imageSource);");
     expect(timelineSource).toContain('data-testid="activity-image-icon"');
     expect(timelineSource).toContain('activity.phase === "result" && hasImage ? (');
+  });
+});
+
+describe("ide activity labels", () => {
+  test("labels image views instead of falling back to the tool name", () => {
+    expect(formatIdeStatusEventText("image", "start")).toBe("Viewing an image");
+    expect(formatIdeStatusEventText("image", "result")).toBe("Viewed an image");
+    expect(formatIdeStatusEventText("image", "result", "image complete")).toBe("Viewed an image");
+    expect(formatIdeStatusEventText("exec", "result", "Ran ls")).toBe("Ran ls");
+    expect(formatIdeStatusEventText("exec", "result")).toBe("exec complete");
   });
 });

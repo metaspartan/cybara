@@ -36,6 +36,7 @@ export interface AgentToolExecutionOptions {
   toolContext?: ToolContext;
   hookContext: AgentHookContext;
   runtimeTracker?: AgenticLoopRuntimeTracker;
+  providerToolCallId?: string;
   broadcastStatus: (
     status: AgentStatus,
     toolContext?: ToolContext,
@@ -189,7 +190,7 @@ async function executeAgentToolInternal(
     reservedSubagentSpawn = true;
   }
 
-  const toolCallId = createAgentToolCallStatusId(toolName);
+  const toolCallId = options.providerToolCallId?.trim() || createAgentToolCallStatusId(toolName);
   try {
     const startedAt = Date.now();
     broadcastStatus(

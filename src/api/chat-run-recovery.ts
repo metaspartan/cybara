@@ -4,11 +4,11 @@ import {
   appendSessionEvent,
   getActiveSessionRunId,
   latestSessionRunId,
-  listAllSessionEvents,
   listAllRunEvents,
+  listAllSessionEvents,
   listIncompleteSessionRuns,
-  sessionEventsFingerprint,
   type SessionLedgerEvent,
+  sessionEventsFingerprint,
 } from "../core/session-event-ledger";
 import {
   type AgentStatus,
@@ -16,8 +16,8 @@ import {
   type SessionStatusSnapshot,
   type StatusPayload,
 } from "../core/status";
-import type { ProcessActivityInfo } from "./chat-process-activities";
 import { INTERRUPTED_RESPONSE } from "./chat-interruption";
+import type { ProcessActivityInfo } from "./chat-process-activities";
 import type { ChatMessage } from "./chat-types";
 
 const LEGACY_RUN_RECOVERY_SETTLE_MS = 30_000;
@@ -113,6 +113,7 @@ function statusPayload(event: SessionLedgerEvent): StatusPayload | null {
     ...(typeof payload.sandboxProvider === "string"
       ? { sandboxProvider: payload.sandboxProvider }
       : {}),
+    ...(typeof payload.imagePath === "string" ? { imagePath: payload.imagePath } : {}),
     ...(payload.toolPhase === "start" ||
     payload.toolPhase === "result" ||
     payload.toolPhase === "error" ||
