@@ -36,6 +36,28 @@ describe("image viewed activity sources", () => {
     ).toBe("/api/media?path=%2Ftmp%2Fios.webp");
   });
 
+  test("prefers the gateway snapshot of a viewed image over the original path", () => {
+    const activities = buildActivitiesFromToolCalls(
+      [
+        {
+          id: "call-snapshot",
+          name: "image",
+          status: "completed",
+          arguments: { image: "/Users/carsen/camera_model/renders/tt_06.png", prompt: "look" },
+          result: {
+            image: "/Users/carsen/camera_model/renders/tt_06.png",
+            snapshot: "/Users/carsen/.cybara/media/viewed/abc123/tt_06.png",
+          },
+        },
+      ],
+      intent
+    );
+    expect(activities[0].imageSource).toBe(
+      "/api/media?path=" + encodeURIComponent("/Users/carsen/.cybara/media/viewed/abc123/tt_06.png")
+    );
+    expect(activities[0].imageAlt).toBe("tt_06.png");
+  });
+
   test("ignores non-image results, non-visual tools, and foreign data URLs", () => {
     expect(imageViewedSource({ name: "read", result: { path: "/tmp/notes.md" } })).toBeUndefined();
     expect(imageViewedSource({ name: "read", result: { path: "/tmp/shot" } })).toBeUndefined();

@@ -33,6 +33,14 @@ Use the project's existing scripts when present. Otherwise select the narrowest 
 5. Launch the correct map and exercise the changed player flow.
 6. Inspect logs for ensures, access violations, asset load failures, shader failures, and automation errors.
 
+## Headless automation and visual verification
+
+1. Drive editor automation with Python when no C++ change is needed: `UnrealEditor-Cmd <project.uproject> -run=pythonscript -script=<absolute script.py> -unattended -nop4 -nosplash` after resolving the real editor binary; enable the Python Editor Script Plugin first.
+2. Keep each generated script small and split large scripts across several write or edit calls; a tool call cut off by the output limit loses its arguments.
+3. For visual checks, capture stills with `HighResShot` console commands, `unreal.AutomationLibrary.take_high_res_screenshot`, or a Movie Render Queue job, writing PNG files to absolute paths.
+4. Inspect every capture with the `image` tool, compare it with the requested result, fix, re-run, and inspect again before reporting.
+5. Keep captures you reported to the user; write new versions to new file names.
+
 ## Performance
 
 Capture representative frame timing before changing performance-sensitive code. Distinguish game thread, render thread, GPU, streaming, shader compilation, and memory pressure. Validate packaged behavior because editor timing is not a shipping baseline.

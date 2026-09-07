@@ -42,6 +42,7 @@ import {
 import {
   AgentProviderCommonRuntime,
   appendAgentBudgetWarning,
+  OUTPUT_LIMIT_TRUNCATION_NOTICE,
   sessionIdForVisibleTokenUsage,
 } from "./agent-provider-common-runtime";
 import { openAIImageToolFollowup } from "./agent-tool-images";
@@ -273,6 +274,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
 
     const choice = data.choices?.[0];
     let message = choice?.message;
+    let lastFinishReason = choice?.finish_reason;
 
     trackOpenAIResponseUsage(data, {
       model: modelId,
@@ -594,6 +596,12 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       const lastToolResult = toolResults.at(-1);
       if (lastToolResult) {
         lastToolResult.content = appendAgentBudgetWarning(lastToolResult.content, budgetWarning);
+        if (lastFinishReason === "length") {
+          lastToolResult.content = appendAgentBudgetWarning(
+            lastToolResult.content,
+            OUTPUT_LIMIT_TRUNCATION_NOTICE
+          );
+        }
       }
 
       const replayMessage = toOpenAIReplayMessageWithNormalizedToolCalls(
@@ -766,6 +774,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         routerRouteId: toolContext?.routerRouteId,
       });
       const loopChoice = loopData.choices?.[0];
+      lastFinishReason = loopChoice?.finish_reason;
       message = loopChoice?.message as OpenAIMessage;
 
       if (!message) {

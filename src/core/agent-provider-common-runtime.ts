@@ -106,6 +106,9 @@ export function sessionIdForVisibleTokenUsage(toolContext?: ToolContext): string
   return sessionId || undefined;
 }
 
+export const OUTPUT_LIMIT_TRUNCATION_NOTICE =
+  "Your previous reply was cut off by the output token limit, so the last tool call may be incomplete or missing arguments. Re-issue it with smaller content: split large files across several write or edit calls and keep each call well under the output limit.";
+
 export function appendAgentBudgetWarning(content: string, warning?: string): string {
   return warning ? `${content}\n\n${warning}` : content;
 }

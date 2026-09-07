@@ -89,6 +89,7 @@ export function imageViewedSource(call: ToolCallLike): string | undefined {
   if (!imageViewedToolNames.has(call.name)) return undefined;
   if (!isObjectRecord(call.result)) return undefined;
   const candidates = [
+    call.result.snapshot,
     call.result.image,
     call.result.path,
     call.result.filePath,

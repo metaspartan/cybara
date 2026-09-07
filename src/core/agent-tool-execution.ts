@@ -19,7 +19,7 @@ import {
 import { noteSkillCaptureOpportunity } from "./tools/handlers/skill-capture";
 import { noteToolActivityForTodoReminder } from "./tools/handlers/todo";
 import { type ToolContext, toolSchemas } from "./tools/index";
-import { registerViewedMediaPath } from "./viewed-media";
+import { registerViewedMediaPath, snapshotViewedMedia } from "./viewed-media";
 
 export interface AgentToolExecutionResult {
   skipped: boolean;
@@ -219,6 +219,12 @@ async function executeAgentToolInternal(
         ? `${record.system_reminder}\n${skillCaptureReminder}`
         : skillCaptureReminder;
     }
+    const viewedImagePath = imagePathFromToolCall({ name: toolName, result });
+    const viewedImageSnapshot = viewedImagePath ? snapshotViewedMedia(viewedImagePath) : undefined;
+    if (viewedImagePath) registerViewedMediaPath(viewedImagePath);
+    if (viewedImageSnapshot && isPlainResult && viewedImageSnapshot !== viewedImagePath) {
+      (result as Record<string, unknown>).snapshot = viewedImageSnapshot;
+    }
     broadcastStatus(
       "tool_completed",
       toolContext,
@@ -229,7 +235,7 @@ async function executeAgentToolInternal(
         toolPhase: "result",
         durationMs: Date.now() - startedAt,
         sandboxProvider: extractSandboxProviderFromToolResult(result),
-        imagePath: imagePathFromToolCall({ name: toolName, result }),
+        imagePath: viewedImageSnapshot ?? viewedImagePath,
       }
     );
     await emitAgentHook({
@@ -299,11 +305,6 @@ export async function executeAgentTool(
   }
   const completedExecution = { ...execution, durationMs: Math.max(0, Date.now() - startedAt) };
   if (!completedExecution.skipped && completedExecution.result !== undefined) {
-    const viewedImagePath = imagePathFromToolCall({
-      name: options.toolName,
-      result: completedExecution.result,
-    });
-    if (viewedImagePath) registerViewedMediaPath(viewedImagePath);
     executionState?.toolCalls.push({
       order,
       name: options.toolName,

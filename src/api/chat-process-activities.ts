@@ -1,4 +1,5 @@
 import { formatStructuredToolActivityDetail } from "../../shared/tool-activity-detail";
+import { imagePathFromToolCall } from "../core/agent-tool-images";
 
 export interface ProcessActivityInfo {
   id: string;
@@ -8,6 +9,7 @@ export interface ProcessActivityInfo {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
+  imagePath?: string;
 }
 
 export interface ToolCallInfo {
@@ -90,6 +92,14 @@ function normalizeProcessActivityTextForPhase(
     .replace(/^Running\b/i, "Command failed")
     .replace(/^Writing\b/i, "Edit failed")
     .replace(/^Editing\b/i, "Edit failed");
+}
+
+function viewedImagePathFromToolCall(toolCall: ToolCallInfo): string | undefined {
+  const result = toolCall.result;
+  if (!result || typeof result !== "object" || Array.isArray(result)) return undefined;
+  const snapshot = (result as Record<string, unknown>).snapshot;
+  if (typeof snapshot === "string" && snapshot.trim()) return snapshot;
+  return imagePathFromToolCall({ name: toolCall.name, result });
 }
 
 export function formatProcessActivityFromToolCall(toolCall: ToolCallInfo): string {
@@ -271,6 +281,7 @@ export function buildFallbackProcessActivities(
       toolName: toolCall.name,
       toolCallId: typeof toolCall.id === "string" && toolCall.id.trim() ? toolCall.id : undefined,
       sandboxProvider: extractSandboxProviderFromToolCall(toolCall),
+      imagePath: viewedImagePathFromToolCall(toolCall),
     });
   }
 
