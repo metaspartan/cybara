@@ -5,17 +5,16 @@ import {
   requiresAuthenticatedMediaFetch,
 } from "@/lib/authenticatedMedia";
 import type { ChatImageAttachment } from "@/types";
+import { isImageMimeType, isImagePath } from "../../../shared/image-formats";
 
 export const MAX_CHAT_IMAGES = 8;
 export const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
 
-const SUPPORTED_IMAGE_MIME = /^image\/(png|jpe?g|gif|webp|heic|heif)$/i;
-const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp|heic|heif)$/i;
 const HEIC_IMAGE_MIME = /^image\/hei[cf](?:-sequence)?$/i;
 const HEIC_IMAGE_EXTENSION = /\.hei[cf]$/i;
 
 export function isSupportedImageType(mimeType: string, fileName = ""): boolean {
-  return SUPPORTED_IMAGE_MIME.test(mimeType) || IMAGE_EXTENSION.test(fileName);
+  return isImageMimeType(mimeType) || isImagePath(fileName);
 }
 
 export function isHeicImage(
@@ -61,7 +60,7 @@ export function chatMarkdownImageSrc(source: string): string | null {
   if (!source.toLowerCase().startsWith("file://")) return null;
   try {
     const path = decodeURIComponent(new URL(source).pathname);
-    if (!/\/screenshots\/[^/]+$/i.test(path) || !IMAGE_EXTENSION.test(path)) return null;
+    if (!/\/screenshots\/[^/]+$/i.test(path) || !isImagePath(path)) return null;
     return screenshotMediaSrc(path);
   } catch {
     return null;
@@ -218,7 +217,7 @@ export function imageToolResultSrc(result: unknown): string | null {
   const record = result as Record<string, unknown>;
   const filePath = typeof record.filePath === "string" ? record.filePath : "";
   const contentType = typeof record.contentType === "string" ? record.contentType : "";
-  const isImage = /^image\//i.test(contentType) || IMAGE_EXTENSION.test(filePath);
+  const isImage = /^image\//i.test(contentType) || isImagePath(filePath);
   if (filePath && isImage) return screenshotMediaSrc(filePath);
   return null;
 }

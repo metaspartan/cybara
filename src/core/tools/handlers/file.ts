@@ -1,20 +1,21 @@
 import {
-  readFileSync,
   existsSync,
-  writeFileSync,
+  promises as fs,
   mkdirSync,
   readdirSync,
-  promises as fs,
+  readFileSync,
+  writeFileSync,
 } from "fs";
-import { join, dirname, extname, isAbsolute, sep } from "path";
-import { homeDir } from "../../paths";
+import { dirname, extname, isAbsolute, join, sep } from "path";
+import { imageMimeForPath } from "../../../../shared/image-formats";
+import { redactRootDestructiveCommands } from "../../destructive-content";
 import { trackMetric } from "../../metrics";
+import { homeDir } from "../../paths";
 import { commandExists } from "../../platform";
-import type { ToolContext } from "../index";
-import { assertWritablePath, assertReadablePath } from "../path-policy";
 import { readFileLines } from "../file-read";
 import { searchFiles } from "../file-search";
-import { redactRootDestructiveCommands } from "../../destructive-content";
+import type { ToolContext } from "../index";
+import { assertReadablePath, assertWritablePath } from "../path-policy";
 
 const workspace = homeDir;
 
@@ -106,16 +107,6 @@ interface FileChangeMeta {
   removedLines: number;
   diff: string;
 }
-
-const imageMediaTypes = new Map([
-  [".png", "image/png"],
-  [".jpg", "image/jpeg"],
-  [".jpeg", "image/jpeg"],
-  [".gif", "image/gif"],
-  [".heic", "image/heic"],
-  [".heif", "image/heif"],
-  [".webp", "image/webp"],
-]);
 
 function pngImageDimensions(bytes: Uint8Array): { width: number; height: number } | undefined {
   if (
@@ -364,7 +355,7 @@ export async function handleRead(
   }
 
   const stats = await fs.stat(path);
-  const mediaType = stats.isFile() ? imageMediaTypes.get(extname(path).toLowerCase()) : undefined;
+  const mediaType = stats.isFile() ? imageMimeForPath(path) : undefined;
   if (mediaType) {
     trackMetric("file_operation", "read", 1, { path });
     trackMetric("file_read", path, 1);

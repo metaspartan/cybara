@@ -185,6 +185,20 @@ describe("chat image rendering", () => {
   });
 });
 
+describe("chat image format support", () => {
+  test("accepts every browser-renderable format for attachments and screenshot markdown", () => {
+    expect(isSupportedImageType("image/avif")).toBe(true);
+    expect(isSupportedImageType("image/bmp", "")).toBe(true);
+    expect(isSupportedImageType("", "photo.HEIC")).toBe(true);
+    expect(isSupportedImageType("application/octet-stream", "diagram.svg")).toBe(true);
+    expect(isSupportedImageType("image/tiff", "scan.tif")).toBe(false);
+    expect(chatMarkdownImageSrc("file:///Users/x/.cybara/screenshots/shot.avif")).toContain(
+      "screenshots%2Fshot.avif"
+    );
+    expect(chatMarkdownImageSrc("file:///Users/x/.cybara/screenshots/scan.tiff")).toBeNull();
+  });
+});
+
 describe("chat image source cache", () => {
   test("resolves a repeated authenticated image synchronously after the first load", async () => {
     resetChatImageSourceCacheForTests();

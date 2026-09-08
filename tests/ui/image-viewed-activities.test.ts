@@ -36,6 +36,21 @@ describe("image viewed activity sources", () => {
     expect(
       imageViewedSource({ name: "mobile_simulator", result: { filePath: "/tmp/ios.webp" } })
     ).toBe("/api/media?path=%2Ftmp%2Fios.webp");
+    expect(imageViewedSource({ name: "image", result: { image: "/tmp/clip.avif" } })).toBe(
+      "/api/media?path=%2Ftmp%2Fclip.avif"
+    );
+    expect(imageViewedSource({ name: "image", result: { image: "/tmp/scan.bmp" } })).toBe(
+      "/api/media?path=%2Ftmp%2Fscan.bmp"
+    );
+    expect(imageViewedSource({ name: "image", result: { image: "/tmp/logo.svg" } })).toBe(
+      "/api/media?path=%2Ftmp%2Flogo.svg"
+    );
+    expect(
+      imageViewedSource({ name: "image", result: { image: "data:image/avif;base64,AAAA" } })
+    ).toBe("data:image/avif;base64,AAAA");
+    expect(
+      imageViewedSource({ name: "image", result: { image: "/tmp/scan.tiff" } })
+    ).toBeUndefined();
   });
 
   test("prefers the gateway snapshot of a viewed image over the original path", () => {

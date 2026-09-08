@@ -1,14 +1,10 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "fs";
 import { extname, isAbsolute, resolve, sep } from "path";
+import { IMAGE_MIME_BY_EXTENSION } from "../../../shared/image-formats";
 import { cybaraDir } from "../paths";
 
 const MEDIA_MIME: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".svg": "image/svg+xml",
+  ...IMAGE_MIME_BY_EXTENSION,
   ".pdf": "application/pdf",
   ".mp3": "audio/mpeg",
   ".m4a": "audio/mp4",

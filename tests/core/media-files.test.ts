@@ -34,13 +34,14 @@ describe("resolveMediaFile", () => {
     if (existsSync(viewedDir)) rmSync(viewedDir, { recursive: true, force: true });
   });
 
-  test("never serves files outside the media roots, even after the agent views them", () => {
+  test("never serves files outside the media roots, even after the agent views them", async () => {
     expect(resolveMediaFile(viewedPath).status).toBe(403);
-    const snapshot = snapshotViewedMedia(viewedPath);
+    const snapshot = await snapshotViewedMedia(viewedPath);
     expect(snapshot).toBeDefined();
     expect(resolveMediaFile(viewedPath).status).toBe(403);
     expect(resolveMediaFile(unviewedPath).status).toBe(403);
-    const served = resolveMediaFile(snapshot!);
+    if (!snapshot) throw new Error("snapshot missing");
+    const served = resolveMediaFile(snapshot);
     expect(served.status).toBe(200);
     expect(served.contentType).toBe("image/png");
     expect(served.bytes?.equals(pngBytes)).toBe(true);
@@ -99,5 +100,25 @@ describe("resolveMediaFile", () => {
   test("rejects empty and null-byte paths", () => {
     expect(resolveMediaFile("").status).toBe(400);
     expect(resolveMediaFile("screenshots/a\0.png").status).toBe(400);
+  });
+
+  test("serves the newly supported browser-renderable formats with the right content type", () => {
+    const cases: Array<[string, string]> = [
+      ["test_media_files_sample.avif", "image/avif"],
+      ["test_media_files_sample.bmp", "image/bmp"],
+      ["test_media_files_sample.svg", "image/svg+xml"],
+    ];
+    for (const [name, contentType] of cases) {
+      const path = join(screenshotsDir, name);
+      writeFileSync(path, "x");
+      try {
+        const result = resolveMediaFile(`screenshots/${name}`);
+        expect(result.status).toBe(200);
+        expect(result.contentType).toBe(contentType);
+      } finally {
+        rmSync(path);
+      }
+    }
+    expect(resolveMediaFile("screenshots/nope.tiff").status).toBe(415);
   });
 });

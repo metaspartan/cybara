@@ -221,7 +221,9 @@ async function executeAgentToolInternal(
         : skillCaptureReminder;
     }
     const viewedImagePath = imagePathFromToolCall({ name: toolName, result });
-    const viewedImageSnapshot = viewedImagePath ? snapshotViewedMedia(viewedImagePath) : undefined;
+    const viewedImageSnapshot = viewedImagePath
+      ? await snapshotViewedMedia(viewedImagePath)
+      : undefined;
     if (viewedImageSnapshot && isPlainResult && viewedImageSnapshot !== viewedImagePath) {
       (result as Record<string, unknown>).snapshot = viewedImageSnapshot;
     }

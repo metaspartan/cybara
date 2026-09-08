@@ -1,11 +1,21 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "fs";
 import { basename, extname, join, resolve, sep } from "path";
+import { imageExtensionOf, isHeicMimeType, isImagePath } from "../../shared/image-formats";
+import { convertHeicWithEmbeddedDecoder } from "./llm/heic-converter";
 import { cybaraDir } from "./paths";
 
 const MAX_SNAPSHOT_BYTES = 25 * 1024 * 1024;
 const DEFAULT_MAX_SNAPSHOT_DIRS = 400;
 const DEFAULT_PRUNE_EVERY = 25;
-const SNAPSHOT_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
 const DEFAULT_SNAPSHOT_ROOT = join(cybaraDir, "media", "viewed");
 const snapshotsByFingerprint = new Map<string, string>();
 
@@ -73,11 +83,24 @@ export function isViewedMediaSnapshot(path: string): boolean {
   return !!normalized && normalized.startsWith(snapshotRoot + sep);
 }
 
-export function snapshotViewedMedia(path: string): string | undefined {
+export type ViewedMediaHeicConverter = (options: {
+  buffer: Uint8Array;
+  format: "JPEG";
+  quality: number;
+}) => Promise<Uint8Array>;
+
+function isHeicPath(path: string): boolean {
+  return isHeicMimeType(`image/${imageExtensionOf(path).slice(1)}`);
+}
+
+export async function snapshotViewedMedia(
+  path: string,
+  convertHeic: ViewedMediaHeicConverter = convertHeicWithEmbeddedDecoder
+): Promise<string | undefined> {
   const normalized = normalizeViewedPath(path);
   if (!normalized) return undefined;
   if (isViewedMediaSnapshot(normalized)) return normalized;
-  if (!SNAPSHOT_EXTENSIONS.has(extname(normalized).toLowerCase())) return undefined;
+  if (!isImagePath(normalized)) return undefined;
   let stats: ReturnType<typeof statSync>;
   try {
     stats = statSync(normalized);
@@ -90,10 +113,25 @@ export function snapshotViewedMedia(path: string): string | undefined {
   if (cached && existsSync(cached)) return cached;
   if (cached) snapshotsByFingerprint.delete(fingerprint);
   const dir = join(snapshotRoot, nextSnapshotDirName());
-  const target = join(dir, basename(normalized));
+  const heic = isHeicPath(normalized);
+  const name = basename(normalized);
+  const target = join(
+    dir,
+    heic ? `${name.slice(0, name.length - extname(name).length)}.jpg` : name
+  );
   try {
     mkdirSync(dir, { recursive: true });
-    copyFileSync(normalized, target);
+    if (heic) {
+      const converted = await convertHeic({
+        buffer: readFileSync(normalized),
+        format: "JPEG",
+        quality: 0.9,
+      });
+      if (converted.length === 0) return undefined;
+      writeFileSync(target, converted);
+    } else {
+      copyFileSync(normalized, target);
+    }
   } catch {
     return undefined;
   }

@@ -1,6 +1,6 @@
 import type { AgentMessage } from "../agent";
-import type { AgentImage } from "./image-blocks";
 import { convertHeicWithEmbeddedDecoder } from "./heic-converter.js";
+import type { AgentImage } from "./image-blocks";
 import { hasImages, MAX_INLINE_IMAGE_BYTES, normalizeMimeType, parseDataUri } from "./image-blocks";
 
 type HeicConverter = (options: {
@@ -143,7 +143,7 @@ function webpMetadata(input: Buffer): ImageMetadata | undefined {
   return validDimensions(width, height) ? { mimeType: "image/webp", width, height } : undefined;
 }
 
-function imageMetadata(input: Buffer): ImageMetadata | undefined {
+export function imageMetadata(input: Buffer): ImageMetadata | undefined {
   return pngMetadata(input) ?? jpegMetadata(input) ?? gifMetadata(input) ?? webpMetadata(input);
 }
 

@@ -3,6 +3,7 @@ import {
   type SharedActivityDisplayEntry,
   type SharedActivityGroupKind,
 } from "../../../shared/chat-activity-groups";
+import { IMAGE_MIME_TYPES, isImagePath } from "../../../shared/image-formats";
 import {
   formatExpandedToolActivityDetail,
   formatStructuredToolActivityDetail,
@@ -44,12 +45,9 @@ const imageViewedToolNames = new Set([
   "read",
 ]);
 
-const imageDataUrlPattern =
-  /^data:image\/(?:png|jpeg|jpg|gif|webp|heic|heif);base64,[A-Za-z0-9+/]+=*$/;
-
-function isImagePath(value: string): boolean {
-  return /\.(?:png|jpe?g|gif|webp|hei[cf])$/i.test(value.replace(/[?#].*$/, ""));
-}
+const imageDataUrlPattern = new RegExp(
+  `^data:(?:${[...IMAGE_MIME_TYPES].map((mime) => mime.replace(/[+/]/g, "\\$&")).join("|")});base64,[A-Za-z0-9+/]+=*$`
+);
 
 function gatewayMediaUrl(path: string): string {
   const base =

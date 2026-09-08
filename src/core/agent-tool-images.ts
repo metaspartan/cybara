@@ -1,4 +1,4 @@
-import { extname } from "node:path";
+import { imageMimeForPath } from "../../shared/image-formats";
 import type { AgentToolCallResult } from "./agent-internals";
 import {
   COMPUTER_USE_ACTION_TOOL_ALIASES,
@@ -6,16 +6,6 @@ import {
 } from "./computer-use-actions";
 import { type AgentImage, MAX_INLINE_IMAGE_BYTES, toOpenAIImageBlock } from "./llm/image-blocks";
 import { prepareAgentImageForProvider } from "./llm/provider-image-input";
-
-const imageMediaTypes = new Map([
-  [".gif", "image/gif"],
-  [".heic", "image/heic"],
-  [".heif", "image/heif"],
-  [".jpeg", "image/jpeg"],
-  [".jpg", "image/jpeg"],
-  [".png", "image/png"],
-  [".webp", "image/webp"],
-]);
 
 const visualToolNames = new Set([
   "image",
@@ -50,7 +40,7 @@ export async function loadToolResultImages(
   for (const toolCall of toolCalls) {
     const path = imagePathFromToolCall(toolCall);
     if (!path) continue;
-    const mimeType = imageMediaTypes.get(extname(path).toLowerCase());
+    const mimeType = imageMimeForPath(path);
     if (!mimeType) continue;
     const file = Bun.file(path);
     if (!(await file.exists()) || file.size <= 0 || file.size > MAX_INLINE_IMAGE_BYTES) continue;
