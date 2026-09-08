@@ -55,6 +55,7 @@ describe("OpenCode Go provider routing", () => {
     });
     createdAgentIds.push(agent.id);
 
+    const sessionId = `opencode-go-openai-${crypto.randomUUID()}`;
     const result = await agentManager.execute(
       agent.id,
       [{ role: "user", content: "Calculate something" }],
@@ -62,13 +63,15 @@ describe("OpenCode Go provider routing", () => {
         useTools: true,
         requireToolUse: true,
         requiredToolName: "calc",
-        sessionId: `opencode-go-openai-${crypto.randomUUID()}`,
+        sessionId,
       }
     );
 
     expect(result.content).toBe("Ready.");
     expect(requestUrl).toBe("https://opencode.ai/zen/go/v1/chat/completions");
     expect(requestHeaders.get("Authorization")).toBe("Bearer go-test-key");
+    expect(requestHeaders.get("x-opencode-session")).toBe(sessionId);
+    expect(requestHeaders.get("x-opencode-client")).toBe("cybara");
     expect(requestBody.tool_choice).toBe("auto");
   });
 
@@ -107,6 +110,7 @@ describe("OpenCode Go provider routing", () => {
     });
     createdAgentIds.push(agent.id);
 
+    const sessionId = `opencode-go-anthropic-${crypto.randomUUID()}`;
     const result = await agentManager.execute(
       agent.id,
       [{ role: "user", content: "Calculate something" }],
@@ -114,13 +118,15 @@ describe("OpenCode Go provider routing", () => {
         useTools: true,
         requireToolUse: true,
         requiredToolName: "calc",
-        sessionId: `opencode-go-anthropic-${crypto.randomUUID()}`,
+        sessionId,
       }
     );
 
     expect(result.content).toBe("MiniMax ready.");
     expect(requestUrl).toBe("https://opencode.ai/zen/go/v1/messages");
     expect(requestHeaders.get("x-api-key")).toBe("go-test-key");
+    expect(requestHeaders.get("x-opencode-session")).toBe(sessionId);
+    expect(requestHeaders.get("x-opencode-client")).toBe("cybara");
     expect(requestHeaders.get("Authorization")).toBeNull();
     expect(requestBody.tool_choice).toEqual({ type: "auto" });
   });

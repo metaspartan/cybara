@@ -77,6 +77,7 @@ import { isContextOverflowError } from "./llm/tool-transcript";
 import { type AnthropicCacheRequest, applyAnthropicCacheControl } from "./prompt-cache";
 import { boundedPoolRetryDelayMs, providerExceptionRetryDelayMs } from "./provider-retry";
 import { type ProviderType, providers as providerCatalog } from "./providers";
+import { openCodeSessionHeaders } from "./providers/opencode-session";
 import { recordRateLimit } from "./rate-limit-tracker";
 import type { ToolContext } from "./tools/index";
 
@@ -141,7 +142,10 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
     }
 
     const oauth = providerCatalog[providerConfig as ProviderType]?.authType === "oauth";
-    const headers: Record<string, string> = anthropicRequestHeaders(auth, vertex, oauth);
+    const headers: Record<string, string> = {
+      ...anthropicRequestHeaders(auth, vertex, oauth),
+      ...openCodeSessionHeaders(providerConfig, baseUrl, toolContext?.sessionId),
+    };
 
     if (!vertex && shouldSendAnthropicContext1mBeta(modelId, modelParams?.context1m === true)) {
       headers["anthropic-beta"] = this.mergeHeaderToken(

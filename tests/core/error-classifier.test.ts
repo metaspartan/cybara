@@ -108,6 +108,31 @@ describe("classifyApiError", () => {
     expect(c.retryable).toBe(false);
   });
 
+  test("retries a 400 whose body carries no error message as a transient upstream failure", () => {
+    for (const body of [
+      '{"object":"error","model":"deepseek-v4-flash"}',
+      '{"error":{}}',
+      '{"error":""}',
+      "",
+      "   ",
+    ]) {
+      const c = classifyApiError({ status: 400, body });
+      expect(c.category).toBe("server_error");
+      expect(c.retryable).toBe(true);
+      expect(c.rotateCredential).toBe(false);
+    }
+    for (const body of [
+      '{"error":{"message":"invalid model"}}',
+      '{"error":{"type":"invalid_request_error"}}',
+      '{"message":"unsupported parameter"}',
+      "malformed",
+      "[]",
+    ]) {
+      const c = classifyApiError({ status: 400, body });
+      expect(c.retryable).toBe(false);
+    }
+  });
+
   test("classifies 5xx as server_error, retryable", () => {
     const c = classifyApiError({ status: 503 });
     expect(c.category).toBe("server_error");
