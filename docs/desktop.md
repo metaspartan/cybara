@@ -50,19 +50,18 @@ publishes notarized builds (see [Signing & Notarization (maintainers)](#signing-
 
 ## Central Gateway Attachment
 
-Cybara desktop shells can attach to a healthy gateway already listening on the configured loopback port instead of starting their bundled sidecar. The loopback endpoint may be local or supplied by a user-managed private-network, SSH, or VPN forward; Cybara does not depend on the forwarding technology.
+Cybara Desktop has two explicit gateway ownership modes:
 
-The gateway is authoritative for its web runtime and API behavior. The Tauri shell loads the attached gateway's own web UI, while native clients use the gateway's published API compatibility contract. Desktop and gateway patch releases therefore do not need to match exactly:
+- **Managed Local** — the desktop launched the bundled gateway and may stop or restart that owned process.
+- **Attached External** — the desktop discovered a healthy pre-existing gateway and must never start, stop, replace, or kill a gateway as fallback.
 
-- same-major release drift attaches when the gateway API contract is compatible;
-- a future gateway can publish a minimum client API version and require an older native client to update;
-- different major versions, malformed compatibility metadata, and missing gateway versions fail closed with both versions and an actionable explanation;
-- an unrelated or unresponsive service remains an occupied-port error rather than being treated as Cybara;
-- desktop shells never downgrade themselves, replace an external gateway, or install software based only on an unauthenticated health response.
+A loopback address does not imply local ownership. `127.0.0.1:4269` may be a user-managed private-network, SSH, or VPN forward to a central gateway. When Desktop first attaches to a pre-existing gateway, it stores both the external intent and that gateway's identity-capability identifier in desktop-local application data. The identifier detects accidental replacement at the endpoint; authentication remains the security boundary.
 
-A bundled sidecar remains desktop-managed. A pre-existing gateway remains externally managed: the shell attaches and monitors liveness but does not terminate or update it. Reconciliation runs when attaching or reconnecting, not through continuous release polling.
+If an attached external gateway or forward disappears, Desktop enters a disconnected/reconnecting screen and probes the same endpoint with bounded exponential backoff. It does not start the bundled sidecar even when the port becomes free. Reconnection succeeds only when the same compatible gateway identifier returns. A non-Cybara service, an incompatible gateway, or a different Cybara gateway at that endpoint fails closed with an actionable message.
 
-For routine same-major drift, no update is required. When the API compatibility contract rejects attachment, update the older component from an official Cybara release and retry. Existing desktop update paths retain their signed manifest, checksum, and code-signing verification.
+External intent survives desktop restarts. Restarting Desktop while the forward is unavailable remains remote-only and cannot create a replacement local gateway. To abandon the external gateway, choose **Use local gateway** explicitly. Desktop requires port 4269 to be free before changing ownership and starting the bundled sidecar.
+
+The gateway remains authoritative for its web runtime and API behavior. Same-major patch drift attaches when the API compatibility contract allows it; different major versions and incompatible or malformed API metadata fail closed. Existing release integrity and authentication requirements are unchanged.
 
 ## Desktop Auto Updates
 
