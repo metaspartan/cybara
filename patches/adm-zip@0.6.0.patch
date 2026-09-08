@@ -1,0 +1,57 @@
+diff --git a/util/utils.js b/util/utils.js
+index 8b8efaed31d64a4aa456d4b0905fac2599805ffe..c755256136c4d9b2b9f79f859ff501fa566585ca 100644
+--- a/util/utils.js
++++ b/util/utils.js
+@@ -337,17 +337,50 @@ Utils.findLast = function (arr, callback) {
+     return void 0;
+ };
+ 
++function resolveThroughExistingAncestors(/*string*/ path) {
++    let current = path;
++    for (;;) {
++        try {
++            return pth.join(fsystem.realpathSync(current), pth.relative(current, path));
++        } catch (e) {
++            const parent = pth.dirname(current);
++            if (parent === current) throw e;
++            current = parent;
++        }
++    }
++}
++
++Utils.assertContained = function (/*string*/ prefix, /*string*/ target) {
++    let stat;
++    try {
++        stat = fsystem.lstatSync(target);
++    } catch (e) {
++        stat = undefined;
++    }
++    if (stat && stat.isSymbolicLink()) {
++        throw new Error(`Out of bound symlink at extraction target "${target}"`);
++    }
++    const root = resolveThroughExistingAncestors(prefix);
++    const resolved = resolveThroughExistingAncestors(target);
++    if (resolved !== root && !resolved.startsWith(root + pth.sep)) {
++        throw new Error(`Out of bound symlink found while extracting to "${target}"`);
++    }
++    return target;
++};
++
+ // make absolute paths taking prefix as root folder
+ Utils.sanitize = function (/*string*/ prefix, /*string*/ name) {
+     prefix = pth.resolve(pth.normalize(prefix));
+     var parts = name.split("/");
++    var result = pth.normalize(pth.join(prefix, pth.basename(name)));
+     for (var i = 0, l = parts.length; i < l; i++) {
+         var path = pth.normalize(pth.join(prefix, parts.slice(i, l).join(pth.sep)));
+         if (path === prefix || path.startsWith(prefix + pth.sep)) {
+-            return path;
++            result = path;
++            break;
+         }
+     }
+-    return pth.normalize(pth.join(prefix, pth.basename(name)));
++    return Utils.assertContained(prefix, result);
+ };
+ 
+ // converts buffer, Uint8Array, string types to buffer

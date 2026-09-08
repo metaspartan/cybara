@@ -158,7 +158,7 @@
     "path-to-regexp": "8.4.2",
     "protobufjs": "8.7.1",
     "qs": "6.16.0",
-    "sharp": "0.35.0",
+    "sharp": "0.35.4",
     "shell-quote": "1.9.0",
     "socket.io-parser": "4.2.7",
     "stream-json": "3.5.0",
@@ -194,6 +194,7 @@
     ]
   },
   "patchedDependencies": {
-    "extract-zip@2.0.1": "patches/extract-zip@2.0.1.patch"
+    "extract-zip@2.0.1": "patches/extract-zip@2.0.1.patch",
+    "adm-zip@0.6.0": "patches/adm-zip@0.6.0.patch"
   }
 }
