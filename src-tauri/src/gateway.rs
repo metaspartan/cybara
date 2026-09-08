@@ -22,6 +22,7 @@ pub enum GatewayCompatibility {
     Compatible {
         gateway_version: String,
         exact_match: bool,
+        gateway_id: Option<String>,
     },
     Incompatible {
         gateway_version: Option<String>,
@@ -41,6 +42,7 @@ pub enum GatewayLivenessStatus {
 pub struct GatewayEndpoint {
     pub addr: String,
     pub url: String,
+    port: u16,
 }
 
 struct HttpResponse {
@@ -51,6 +53,7 @@ struct HttpResponse {
 
 struct GatewayHealth {
     version: Option<String>,
+    instance_id: Option<String>,
     healthy: bool,
     api_version: Option<u64>,
     min_client_api_version: Option<u64>,
@@ -62,7 +65,12 @@ impl GatewayEndpoint {
         Self {
             addr: format!("127.0.0.1:{port}"),
             url: format!("http://127.0.0.1:{port}"),
+            port,
         }
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
     }
 }
 
@@ -138,6 +146,18 @@ pub fn probe_gateway_at(addr: &str, client_version: &str) -> GatewayProbeStatus 
         health.min_client_api_version,
         health.compatibility_declared,
     );
+    let compatibility = match compatibility {
+        GatewayCompatibility::Compatible {
+            gateway_version,
+            exact_match,
+            ..
+        } => GatewayCompatibility::Compatible {
+            gateway_version,
+            exact_match,
+            gateway_id: health.instance_id.clone(),
+        },
+        incompatible => incompatible,
+    };
     let GatewayCompatibility::Compatible { .. } = compatibility else {
         return GatewayProbeStatus::CybaraGateway(compatibility);
     };
@@ -167,6 +187,28 @@ pub fn is_compatible_gateway_at(addr: &str, client_version: &str) -> bool {
         probe_gateway_at(addr, client_version),
         GatewayProbeStatus::CybaraGateway(GatewayCompatibility::Compatible { .. })
     )
+}
+
+pub fn compatible_gateway_id_at(addr: &str, client_version: &str) -> Option<String> {
+    let response = http_get(addr, "/api/health")?;
+    let health = cybara_health(&response)?;
+    if !health.healthy {
+        return None;
+    }
+    let version = health.version?;
+    if !matches!(
+        gateway_compatibility_with_api(
+            &version,
+            client_version,
+            health.api_version,
+            health.min_client_api_version,
+            health.compatibility_declared,
+        ),
+        GatewayCompatibility::Compatible { .. }
+    ) {
+        return None;
+    }
+    health.instance_id
 }
 
 fn port_accepts_connections(addr: &str) -> bool {
@@ -222,6 +264,12 @@ fn cybara_health(response: &HttpResponse) -> Option<GatewayHealth> {
         .map(str::to_string);
     Some(GatewayHealth {
         version,
+        instance_id: value
+            .get("instance_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
         healthy: response.status == 200 && matches!(status, "healthy" | "warning" | "critical"),
         api_version: compatibility
             .and_then(|entry| entry.get("api_version"))
@@ -314,6 +362,7 @@ fn gateway_compatibility_with_api(
     GatewayCompatibility::Compatible {
         gateway_version: gateway_version.to_string(),
         exact_match: gateway == client,
+        gateway_id: None,
     }
 }
 
@@ -351,8 +400,8 @@ impl GatewayPortSignalParser {
 mod tests {
     use super::{
         GatewayCompatibility, GatewayEndpoint, GatewayLivenessStatus, GatewayPortSignalParser,
-        GatewayProbeStatus, gateway_compatibility, gateway_liveness_at, is_compatible_gateway_at,
-        parse_gateway_port_signal, probe_gateway_at,
+        GatewayProbeStatus, compatible_gateway_id_at, gateway_compatibility, gateway_liveness_at,
+        is_compatible_gateway_at, parse_gateway_port_signal, probe_gateway_at,
     };
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -395,6 +444,42 @@ mod tests {
     }
 
     #[test]
+    fn returns_the_stable_gateway_identity_from_health() {
+        let (endpoint, handle) = serve(vec![
+            r#"{"product":"cybara","status":"healthy","version":"1.2.3","instance_id":"gateway-one"}"#.into(),
+            r#"<!doctype html><html><script src="/assets/index.js"></script></html>"#.into(),
+        ]);
+        assert!(matches!(
+            probe_gateway_at(&endpoint.addr, "1.2.3"),
+            GatewayProbeStatus::CybaraGateway(GatewayCompatibility::Compatible {
+                gateway_id: Some(gateway_id),
+                ..
+            }) if gateway_id == "gateway-one"
+        ));
+        handle.join().expect("join identity gateway");
+    }
+
+    #[test]
+    fn lightweight_identity_probe_preserves_compatibility_checks() {
+        let (endpoint, handle) = serve(vec![
+            r#"{"product":"cybara","status":"healthy","version":"1.2.3","instance_id":"gateway-one"}"#.into(),
+        ]);
+        assert_eq!(
+            compatible_gateway_id_at(&endpoint.addr, "1.2.4"),
+            Some("gateway-one".into())
+        );
+        handle.join().expect("join lightweight identity gateway");
+
+        let (incompatible, incompatible_handle) = serve(vec![
+            r#"{"product":"cybara","status":"healthy","version":"2.0.0","instance_id":"gateway-two"}"#.into(),
+        ]);
+        assert_eq!(compatible_gateway_id_at(&incompatible.addr, "1.2.4"), None);
+        incompatible_handle
+            .join()
+            .expect("join incompatible identity gateway");
+    }
+
+    #[test]
     fn accepts_same_major_gateway_patch_drift_in_both_directions() {
         for gateway_version in ["1.0.2275", "1.0.2287"] {
             let (endpoint, handle) = serve(vec![
@@ -411,6 +496,7 @@ mod tests {
             GatewayCompatibility::Compatible {
                 gateway_version: "1.0.2275".into(),
                 exact_match: false,
+                gateway_id: None,
             }
         );
         assert_eq!(
@@ -418,6 +504,7 @@ mod tests {
             GatewayCompatibility::Compatible {
                 gateway_version: "1.0.2281".into(),
                 exact_match: true,
+                gateway_id: None,
             }
         );
     }
