@@ -24,7 +24,11 @@ describe("lightweight health request handler", () => {
       product?: unknown;
       status?: unknown;
       instance_id?: unknown;
-      compatibility?: { api_version?: unknown; min_client_api_version?: unknown };
+      compatibility?: {
+        api_version?: unknown;
+        min_client_api_version?: unknown;
+        identity_version?: unknown;
+      };
       checks?: { memory?: { rss?: unknown }; database?: { status?: unknown } };
     };
     expect(response.status).toBe(200);
@@ -40,7 +44,11 @@ describe("lightweight health request handler", () => {
     });
     expect((repeated.body as { instance_id?: unknown }).instance_id).toBe(body.instance_id);
     expect(["healthy", "warning"]).toContain(body.status);
-    expect(body.compatibility).toEqual({ api_version: 1, min_client_api_version: 1 });
+    expect(body.compatibility).toEqual({
+      api_version: 1,
+      min_client_api_version: 1,
+      identity_version: 1,
+    });
     expect(typeof body.checks?.memory?.rss).toBe("number");
     expect(body.checks?.database?.status).toBe("healthy");
   });

@@ -55,9 +55,9 @@ Cybara Desktop has two explicit gateway ownership modes:
 - **Managed Local** — the desktop launched the bundled gateway and may stop or restart that owned process.
 - **Attached External** — the desktop discovered a healthy pre-existing gateway and must never start, stop, replace, or kill a gateway as fallback.
 
-A loopback address does not imply local ownership. `127.0.0.1:4269` may be a user-managed private-network, SSH, or VPN forward to a central gateway. When Desktop first attaches to a pre-existing gateway, it stores both the external intent and that gateway's stable instance identity in desktop-local application data.
+A loopback address does not imply local ownership. `127.0.0.1:4269` may be a user-managed private-network, SSH, or VPN forward to a central gateway. When Desktop first attaches to a pre-existing gateway, it stores both the external intent and that gateway's identity-capability identifier in desktop-local application data. The identifier detects accidental replacement at the endpoint; authentication remains the security boundary.
 
-If an attached external gateway or forward disappears, Desktop enters a disconnected/reconnecting screen and probes the same endpoint with bounded exponential backoff. It does not start the bundled sidecar even when the port becomes free. Reconnection succeeds only when the same compatible gateway identity returns. A non-Cybara service, an incompatible gateway, or a different Cybara gateway at that endpoint fails closed with an actionable message.
+If an attached external gateway or forward disappears, Desktop enters a disconnected/reconnecting screen and probes the same endpoint with bounded exponential backoff. It does not start the bundled sidecar even when the port becomes free. Reconnection succeeds only when the same compatible gateway identifier returns. A non-Cybara service, an incompatible gateway, or a different Cybara gateway at that endpoint fails closed with an actionable message.
 
 External intent survives desktop restarts. Restarting Desktop while the forward is unavailable remains remote-only and cannot create a replacement local gateway. To abandon the external gateway, choose **Use local gateway** explicitly. Desktop requires port 4269 to be free before changing ownership and starting the bundled sidecar.
 

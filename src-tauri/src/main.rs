@@ -273,14 +273,7 @@ fn restart_gateway_sidecar(app: tauri::AppHandle) -> Result<(), String> {
         gateway_ownership::GatewayOwnership::ManagedLocal => {
             reset_gateway_supervision(&app)?;
             stop_sidecar(&app);
-            set_gateway_startup_status(
-                &app,
-                GatewayStartupStatus::restarting(
-                    "Restarting the managed Cybara gateway.",
-                    gateway_ownership::GatewayOwnership::ManagedLocal,
-                ),
-            );
-            start_sidecar(app, false);
+            schedule_sidecar_restart(app, "Restarting the managed Cybara gateway.".into());
         }
         gateway_ownership::GatewayOwnership::AttachedExternal => {
             start_external_gateway_reconnect(app);
@@ -950,7 +943,7 @@ fn wait_for_existing_gateway(
                     set_gateway_startup_status(
                         &app,
                         GatewayStartupStatus::failed(
-                            "The external gateway does not publish a stable identity. Update that gateway before attaching so Cybara can prevent silent gateway replacement.",
+                            "The external gateway does not publish the supported gateway identity capability. Update that gateway before attaching so Cybara can detect accidental gateway replacement.",
                             if allow_external_attach {
                                 gateway_ownership::GatewayOwnership::AttachedExternal
                             } else {
@@ -1056,7 +1049,7 @@ fn start_sidecar(app: tauri::AppHandle, allow_external_attach: bool) {
             set_gateway_startup_status(
                 &app,
                 GatewayStartupStatus::failed(
-                    "The external gateway does not publish a stable identity. Update that gateway before attaching so Cybara can prevent silent gateway replacement.",
+                    "The external gateway does not publish the supported gateway identity capability. Update that gateway before attaching so Cybara can detect accidental gateway replacement.",
                     if allow_external_attach {
                         gateway_ownership::GatewayOwnership::AttachedExternal
                     } else {

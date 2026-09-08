@@ -196,19 +196,8 @@ impl GatewayOwnershipController {
     }
 }
 
-pub fn load_gateway_intent(path: &Path, default_port: u16) -> Result<LoadedGatewayIntent, String> {
-    let backup = path.with_extension("json.backup");
-    let source = if path.exists() {
-        path
-    } else if backup.exists() {
-        backup.as_path()
-    } else {
-        return Ok(LoadedGatewayIntent {
-            intent: GatewayIntent::managed_local(default_port),
-            persisted: false,
-        });
-    };
-    let bytes = std::fs::read(source).map_err(|error| error.to_string())?;
+fn read_gateway_intent(path: &Path) -> Result<GatewayIntent, String> {
+    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
     let intent: GatewayIntent = serde_json::from_slice(&bytes)
         .map_err(|error| format!("Invalid gateway intent: {error}"))?;
     if intent.port == 0 {
@@ -224,6 +213,26 @@ pub fn load_gateway_intent(path: &Path, default_port: u16) -> Result<LoadedGatew
     {
         return Err("Invalid gateway intent: external gateway identity is missing".into());
     }
+    Ok(intent)
+}
+
+pub fn load_gateway_intent(path: &Path, default_port: u16) -> Result<LoadedGatewayIntent, String> {
+    let backup = path.with_extension("json.backup");
+    if !path.exists() && !backup.exists() {
+        return Ok(LoadedGatewayIntent {
+            intent: GatewayIntent::managed_local(default_port),
+            persisted: false,
+        });
+    }
+    let intent = match read_gateway_intent(path) {
+        Ok(intent) => intent,
+        Err(primary_error) if backup.exists() => read_gateway_intent(&backup).map_err(|backup_error| {
+            format!(
+                "Invalid gateway intent and backup: primary: {primary_error}; backup: {backup_error}"
+            )
+        })?,
+        Err(error) => return Err(error),
+    };
     Ok(LoadedGatewayIntent {
         intent,
         persisted: true,
@@ -440,6 +449,31 @@ mod tests {
         let loaded = load_gateway_intent(&path, 4269).expect("recover intent");
         assert_eq!(loaded.intent, intent);
         assert!(loaded.persisted);
+        std::fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn corrupt_primary_recovers_valid_external_backup() {
+        let root = std::env::temp_dir().join(format!(
+            "cybara-corrupt-primary-gateway-intent-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create fixture");
+        let path = root.join("gateway-intent.json");
+        let backup = path.with_extension("json.backup");
+        std::fs::write(&path, b"not json").expect("write corrupt primary");
+        std::fs::write(
+            &backup,
+            serde_json::to_vec(&GatewayIntent::attached_external(
+                4269,
+                "gateway-test".into(),
+            ))
+            .expect("serialize backup"),
+        )
+        .expect("write backup");
+        let loaded = load_gateway_intent(&path, 4269).expect("recover backup");
+        assert_eq!(loaded.intent.ownership, GatewayOwnership::AttachedExternal);
+        assert_eq!(loaded.intent.gateway_id.as_deref(), Some("gateway-test"));
         std::fs::remove_dir_all(root).expect("remove fixture");
     }
 

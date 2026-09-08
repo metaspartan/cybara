@@ -7,6 +7,7 @@ const PROBE_TIMEOUT: Duration = Duration::from_millis(900);
 const LIVENESS_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const GATEWAY_PORT_SIGNAL_PREFIX: &str = "CYBARA_GATEWAY_PORT=";
 const DESKTOP_GATEWAY_API_VERSION: u64 = 1;
+const GATEWAY_IDENTITY_VERSION: u64 = 1;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GatewayProbeStatus {
@@ -54,6 +55,7 @@ struct HttpResponse {
 struct GatewayHealth {
     version: Option<String>,
     instance_id: Option<String>,
+    identity_version: Option<u64>,
     healthy: bool,
     api_version: Option<u64>,
     min_client_api_version: Option<u64>,
@@ -154,7 +156,9 @@ pub fn probe_gateway_at(addr: &str, client_version: &str) -> GatewayProbeStatus 
         } => GatewayCompatibility::Compatible {
             gateway_version,
             exact_match,
-            gateway_id: health.instance_id.clone(),
+            gateway_id: (health.identity_version == Some(GATEWAY_IDENTITY_VERSION))
+                .then_some(health.instance_id.clone())
+                .flatten(),
         },
         incompatible => incompatible,
     };
@@ -206,6 +210,9 @@ pub fn compatible_gateway_id_at(addr: &str, client_version: &str) -> Option<Stri
         ),
         GatewayCompatibility::Compatible { .. }
     ) {
+        return None;
+    }
+    if health.identity_version != Some(GATEWAY_IDENTITY_VERSION) {
         return None;
     }
     health.instance_id
@@ -264,12 +271,17 @@ fn cybara_health(response: &HttpResponse) -> Option<GatewayHealth> {
         .map(str::to_string);
     Some(GatewayHealth {
         version,
-        instance_id: value
-            .get("instance_id")
+        instance_id: (product == Some("cybara"))
+            .then(|| value.get("instance_id"))
+            .flatten()
             .and_then(serde_json::Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_string),
+        identity_version: (product == Some("cybara"))
+            .then(|| compatibility.and_then(|entry| entry.get("identity_version")))
+            .flatten()
+            .and_then(serde_json::Value::as_u64),
         healthy: response.status == 200 && matches!(status, "healthy" | "warning" | "critical"),
         api_version: compatibility
             .and_then(|entry| entry.get("api_version"))
@@ -446,7 +458,7 @@ mod tests {
     #[test]
     fn returns_the_stable_gateway_identity_from_health() {
         let (endpoint, handle) = serve(vec![
-            r#"{"product":"cybara","status":"healthy","version":"1.2.3","instance_id":"gateway-one"}"#.into(),
+            r#"{"product":"cybara","status":"healthy","version":"1.2.3","instance_id":"gateway-one","compatibility":{"api_version":1,"min_client_api_version":1,"identity_version":1}}"#.into(),
             r#"<!doctype html><html><script src="/assets/index.js"></script></html>"#.into(),
         ]);
         assert!(matches!(
@@ -462,7 +474,7 @@ mod tests {
     #[test]
     fn lightweight_identity_probe_preserves_compatibility_checks() {
         let (endpoint, handle) = serve(vec![
-            r#"{"product":"cybara","status":"healthy","version":"1.2.3","instance_id":"gateway-one"}"#.into(),
+            r#"{"product":"cybara","status":"healthy","version":"1.2.3","instance_id":"gateway-one","compatibility":{"api_version":1,"min_client_api_version":1,"identity_version":1}}"#.into(),
         ]);
         assert_eq!(
             compatible_gateway_id_at(&endpoint.addr, "1.2.4"),
@@ -471,12 +483,27 @@ mod tests {
         handle.join().expect("join lightweight identity gateway");
 
         let (incompatible, incompatible_handle) = serve(vec![
-            r#"{"product":"cybara","status":"healthy","version":"2.0.0","instance_id":"gateway-two"}"#.into(),
+            r#"{"product":"cybara","status":"healthy","version":"2.0.0","instance_id":"gateway-two","compatibility":{"api_version":1,"min_client_api_version":1,"identity_version":1}}"#.into(),
         ]);
         assert_eq!(compatible_gateway_id_at(&incompatible.addr, "1.2.4"), None);
         incompatible_handle
             .join()
             .expect("join incompatible identity gateway");
+    }
+
+    #[test]
+    fn identity_requires_declared_capability_and_product_marker() {
+        let (legacy, legacy_handle) = serve(vec![
+            r#"{"product":"cybara","status":"healthy","version":"1.2.4","instance_id":"legacy-id"}"#.into(),
+        ]);
+        assert_eq!(compatible_gateway_id_at(&legacy.addr, "1.2.4"), None);
+        legacy_handle.join().expect("join legacy gateway");
+
+        let (spoofed, spoofed_handle) = serve(vec![
+            r#"{"status":"healthy","version":"1.2.4","instance_id":"gateway-one","compatibility":{"api_version":1,"min_client_api_version":1,"identity_version":1}}"#.into(),
+        ]);
+        assert_eq!(compatible_gateway_id_at(&spoofed.addr, "1.2.4"), None);
+        spoofed_handle.join().expect("join spoofed gateway");
     }
 
     #[test]

@@ -104,6 +104,17 @@ describe("Tauri wiring", () => {
     expect(gatewaySource).toContain("installGatewayLogCapture({ environment: process.env })");
   });
 
+  test("managed gateway restart waits through supervised recovery", () => {
+    const mainRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "main.rs"), "utf8");
+    const restartStart = mainRs.indexOf("fn restart_gateway_sidecar");
+    const restartEnd = mainRs.indexOf("fn switch_to_local_gateway", restartStart);
+    const restartSource = mainRs.slice(restartStart, restartEnd);
+
+    expect(restartSource).toContain("stop_sidecar(&app)");
+    expect(restartSource).toContain("schedule_sidecar_restart");
+    expect(restartSource).not.toContain("start_sidecar(app, false)");
+  });
+
   test("main.rs exposes a narrow desktop API key reader command", () => {
     const mainRsPath = join(ROOT_DIR, "src-tauri", "src", "main.rs");
     const mainRs = readFileSync(mainRsPath, "utf8");

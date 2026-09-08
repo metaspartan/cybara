@@ -1,5 +1,6 @@
 export const CYBARA_GATEWAY_API_VERSION = 1;
 export const CYBARA_GATEWAY_API_MIN_CLIENT_VERSION = 1;
+export const CYBARA_GATEWAY_IDENTITY_VERSION = 1;
 
 export interface GatewayApiCompatibility {
   api_version: number;
