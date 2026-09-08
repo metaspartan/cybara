@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { PNG } from "pngjs";
+import { tinyBmp, tinyTiff } from "../helpers/image-fixtures";
 import {
   normalizeHeicAgentImage,
   prepareAgentMessagesForProvider,
@@ -36,6 +38,33 @@ describe("provider image input", () => {
 
     expect(Buffer.from(conversionInput ?? []).equals(heic)).toBe(true);
     expect(converted).toEqual({ data: VALID_JPEG_BASE64, mimeType: "image/jpeg" });
+  });
+
+  test("decodes TIFF and BMP attachments into PNG before a provider request", async () => {
+    const pixels: Array<[number, number, number, number?]> = [
+      [255, 0, 0, 255],
+      [0, 0, 255, 64],
+    ];
+    const tiff = await normalizeHeicAgentImage({
+      data: tinyTiff(pixels, 2, 1, { alpha: true }).toString("base64"),
+      mimeType: "image/tiff",
+    });
+    const bmp = await normalizeHeicAgentImage({
+      data: tinyBmp(pixels, 2, 1, { bits: 32 }).toString("base64"),
+      mimeType: "application/octet-stream",
+    });
+    for (const image of [tiff, bmp]) {
+      expect(image?.mimeType).toBe("image/png");
+      const png = PNG.sync.read(Buffer.from(image?.data ?? "", "base64"));
+      expect([png.width, png.height]).toEqual([2, 1]);
+      expect(Array.from(png.data)).toEqual([255, 0, 0, 255, 0, 0, 255, 64]);
+    }
+    expect(
+      await normalizeHeicAgentImage({
+        data: Buffer.from([0x49, 0x49, 0x2a, 0, 9, 9, 9, 9]).toString("base64"),
+        mimeType: "image/tiff",
+      })
+    ).toBeUndefined();
   });
 
   test("detects HEIC container brands when clients omit the MIME type", async () => {

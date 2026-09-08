@@ -107,6 +107,8 @@ describe("resolveMediaFile", () => {
       ["test_media_files_sample.avif", "image/avif"],
       ["test_media_files_sample.bmp", "image/bmp"],
       ["test_media_files_sample.svg", "image/svg+xml"],
+      ["test_media_files_sample.tiff", "image/tiff"],
+      ["test_media_files_sample.tif", "image/tiff"],
     ];
     for (const [name, contentType] of cases) {
       const path = join(screenshotsDir, name);
@@ -119,6 +121,6 @@ describe("resolveMediaFile", () => {
         rmSync(path);
       }
     }
-    expect(resolveMediaFile("screenshots/nope.tiff").status).toBe(415);
+    expect(resolveMediaFile("screenshots/nope.psd").status).toBe(415);
   });
 });

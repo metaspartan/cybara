@@ -1,10 +1,12 @@
 import { readFileSync, statSync } from "fs";
+import { decode as decodeTiffPages } from "tiff";
 import {
   imageMimeForPath,
   isHeicMimeType,
-  isProviderImageMimeType,
+  isProviderSendableMimeType,
 } from "../../../shared/image-formats";
 import { imageMetadata } from "./provider-image-input";
+import { isTiff } from "./raster-decoders";
 
 export interface ImageExif {
   orientation?: number;
@@ -180,6 +182,29 @@ function bmpDimensions(bytes: Buffer): { width: number; height: number } | undef
   return width > 0 && height > 0 ? { width, height } : undefined;
 }
 
+function tiffDescription(bytes: Buffer): ImageDescription | undefined {
+  if (!isTiff(bytes)) return undefined;
+  try {
+    const page = decodeTiffPages(bytes, { ignoreImageData: true, pages: [0] })[0];
+    if (!page) return undefined;
+    const make = typeof page.get("Make") === "string" ? page.get("Make").trim() : "";
+    const model = typeof page.get("Model") === "string" ? page.get("Model").trim() : "";
+    const camera = [make, model].filter(Boolean).join(" ");
+    const orientation = page.orientation;
+    return {
+      format: "image/tiff",
+      width: page.width,
+      height: page.height,
+      orientation: orientation >= 1 && orientation <= 8 ? orientation : undefined,
+      camera: camera || undefined,
+      capturedAt: exifDateToIso(page.dateTime),
+      providerSendable: true,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 const HEIC_BRANDS = new Set([
   "heic",
   "heix",
@@ -276,11 +301,13 @@ export function describeImage(
       camera: camera || undefined,
       capturedAt: exif?.capturedAt,
       hasLocation: exif ? exif.hasLocation : undefined,
-      providerSendable: isProviderImageMimeType(parsed.mimeType),
+      providerSendable: isProviderSendableMimeType(parsed.mimeType),
     };
   }
   const bmp = bmpDimensions(bytes);
-  if (bmp) return { format: "image/bmp", ...bmp, providerSendable: false };
+  if (bmp) return { format: "image/bmp", ...bmp, providerSendable: true };
+  const tiff = tiffDescription(bytes);
+  if (tiff) return tiff;
   const declared = declaredMimeType?.trim().toLowerCase();
   const brands = isobmffBrands(bytes);
   const size = brands.size > 0 ? isobmffImageSize(bytes) : undefined;

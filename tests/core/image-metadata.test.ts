@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { describeImage, readJpegExif } from "../../src/core/llm/image-metadata";
+import { tinyTiff } from "../helpers/image-fixtures";
 
 const VALID_JPEG_BASE64 =
   "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABBQJ//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyF//9oADAMBAAIAAwAAABD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/EH//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/EH//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/EH//2Q==";
@@ -199,8 +200,20 @@ describe("image metadata", () => {
       format: "image/bmp",
       width: 640,
       height: 480,
-      providerSendable: false,
+      providerSendable: true,
     });
+    expect(
+      describeImage(tinyTiff([[1, 2, 3]], 1, 1, { make: "Cybara Scan", orientation: 6 }))
+    ).toEqual({
+      format: "image/tiff",
+      width: 1,
+      height: 1,
+      orientation: 6,
+      camera: "Cybara Scan",
+      capturedAt: undefined,
+      providerSendable: true,
+    });
+    expect(describeImage(Buffer.from([0x49, 0x49, 0x2a, 0x00, 9, 9, 9, 9]))).toBeUndefined();
     const heic = Buffer.from("0000001866747970686569630000000068656963", "hex");
     expect(describeImage(heic, "image/heic")).toEqual({
       format: "image/heic",

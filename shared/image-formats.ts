@@ -9,6 +9,8 @@ export const IMAGE_MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   ".svg": "image/svg+xml",
   ".heic": "image/heic",
   ".heif": "image/heif",
+  ".tif": "image/tiff",
+  ".tiff": "image/tiff",
 };
 
 export const IMAGE_EXTENSIONS: readonly string[] = Object.keys(IMAGE_MIME_BY_EXTENSION);
@@ -25,6 +27,23 @@ export const HEIC_IMAGE_MIME: ReadonlySet<string> = new Set([
   "image/heif",
   "image/heic-sequence",
   "image/heif-sequence",
+]);
+
+export const CONVERTIBLE_IMAGE_MIME: ReadonlySet<string> = new Set([
+  ...HEIC_IMAGE_MIME,
+  "image/tiff",
+  "image/bmp",
+]);
+
+export const RENDERABLE_IMAGE_MIME: ReadonlySet<string> = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "image/bmp",
+  "image/svg+xml",
 ]);
 
 export const IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
@@ -58,4 +77,15 @@ export function isHeicMimeType(mimeType: string): boolean {
 export function isProviderImageMimeType(mimeType: string): boolean {
   const normalized = mimeType.trim().toLowerCase();
   return PROVIDER_IMAGE_MIME.has(normalized === "image/jpg" ? "image/jpeg" : normalized);
+}
+
+export function isProviderSendableMimeType(mimeType: string): boolean {
+  return (
+    isProviderImageMimeType(mimeType) || CONVERTIBLE_IMAGE_MIME.has(mimeType.trim().toLowerCase())
+  );
+}
+
+export function isRenderableImagePath(path: string): boolean {
+  const mime = imageMimeForPath(path);
+  return !!mime && RENDERABLE_IMAGE_MIME.has(mime);
 }

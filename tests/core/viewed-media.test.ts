@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { basename, join } from "path";
+import { PNG } from "pngjs";
 import { cybaraDir } from "../../src/core/paths";
 import {
   configureViewedMediaSnapshotsForTests,
@@ -8,6 +9,7 @@ import {
   snapshotViewedMedia,
   viewedMediaSnapshotCacheSizeForTests,
 } from "../../src/core/viewed-media";
+import { tinyBmp, tinyTiff } from "../helpers/image-fixtures";
 
 const renderDir = join(cybaraDir, "test_viewed_media_renders");
 const isolatedRoot = join(cybaraDir, "test_viewed_media_root");
@@ -46,9 +48,33 @@ describe("viewed media snapshots", () => {
     expect(await snapshotViewedMedia(renderPath)).toBeUndefined();
   });
 
+  test("decodes TIFF and BMP sources into PNG snapshots the browser and model can use", async () => {
+    const tiffPath = join(renderDir, "scan.tiff");
+    const bmpPath = join(renderDir, "scan.bmp");
+    const pixels: Array<[number, number, number]> = [
+      [255, 0, 0],
+      [0, 255, 0],
+    ];
+    writeFileSync(tiffPath, tinyTiff(pixels, 2, 1));
+    writeFileSync(bmpPath, tinyBmp(pixels, 2, 1));
+    const tiffSnapshot = defined(await snapshotViewedMedia(tiffPath), "tiff snapshot");
+    const bmpSnapshot = defined(await snapshotViewedMedia(bmpPath), "bmp snapshot");
+    expect(basename(tiffSnapshot)).toBe("scan.png");
+    expect(basename(bmpSnapshot)).toBe("scan.png");
+    expect(tiffSnapshot).not.toBe(bmpSnapshot);
+    for (const snapshot of [tiffSnapshot, bmpSnapshot]) {
+      const png = PNG.sync.read(readFileSync(snapshot));
+      expect([png.width, png.height]).toEqual([2, 1]);
+      expect(Array.from(png.data)).toEqual([255, 0, 0, 255, 0, 255, 0, 255]);
+    }
+    writeFileSync(join(renderDir, "broken.tiff"), Buffer.from([0x49, 0x49, 0x2a, 0, 9, 9, 9, 9]));
+    expect(await snapshotViewedMedia(join(renderDir, "broken.tiff"))).toBeUndefined();
+  });
+
   test("refuses non-image sources so only renderable media is ingested", async () => {
     expect(await snapshotViewedMedia(secretPath)).toBeUndefined();
-    expect(await snapshotViewedMedia(join(renderDir, "scan.tiff"))).toBeUndefined();
+    expect(await snapshotViewedMedia(join(renderDir, "layers.psd"))).toBeUndefined();
+    expect(await snapshotViewedMedia(join(renderDir, "missing.tiff"))).toBeUndefined();
     expect(await snapshotViewedMedia("data:image/png;base64,AAAA")).toBeUndefined();
     expect(await snapshotViewedMedia("https://example.com/render.png")).toBeUndefined();
     expect(await snapshotViewedMedia("   ")).toBeUndefined();

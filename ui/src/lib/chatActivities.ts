@@ -3,7 +3,7 @@ import {
   type SharedActivityDisplayEntry,
   type SharedActivityGroupKind,
 } from "../../../shared/chat-activity-groups";
-import { IMAGE_MIME_TYPES, isImagePath } from "../../../shared/image-formats";
+import { isRenderableImagePath, RENDERABLE_IMAGE_MIME } from "../../../shared/image-formats";
 import {
   formatExpandedToolActivityDetail,
   formatStructuredToolActivityDetail,
@@ -46,7 +46,7 @@ const imageViewedToolNames = new Set([
 ]);
 
 const imageDataUrlPattern = new RegExp(
-  `^data:(?:${[...IMAGE_MIME_TYPES].map((mime) => mime.replace(/[+/]/g, "\\$&")).join("|")});base64,[A-Za-z0-9+/]+=*$`
+  `^data:(?:${[...RENDERABLE_IMAGE_MIME].map((mime) => mime.replace(/[+/]/g, "\\$&")).join("|")});base64,[A-Za-z0-9+/]+=*$`
 );
 
 function gatewayMediaUrl(path: string): string {
@@ -59,7 +59,7 @@ function gatewayMediaUrl(path: string): string {
 
 function toLoadableImageSource(value: string): string | undefined {
   if (value.startsWith("data:")) return imageDataUrlPattern.test(value) ? value : undefined;
-  if (/^https?:\/\//i.test(value)) return isImagePath(value) ? value : undefined;
+  if (/^https?:\/\//i.test(value)) return isRenderableImagePath(value) ? value : undefined;
   if (/^file:\/\//i.test(value)) {
     try {
       return gatewayMediaUrl(decodeURIComponent(new URL(value).pathname));
@@ -67,9 +67,9 @@ function toLoadableImageSource(value: string): string | undefined {
       return undefined;
     }
   }
-  if (value.includes("/api/media?path=")) return isImagePath(value) ? value : undefined;
+  if (value.includes("/api/media?path=")) return isRenderableImagePath(value) ? value : undefined;
   if (!value.startsWith("/")) return undefined;
-  return isImagePath(value) ? gatewayMediaUrl(value) : undefined;
+  return isRenderableImagePath(value) ? gatewayMediaUrl(value) : undefined;
 }
 
 export function imageSourceFromPath(value: string | undefined): string | undefined {

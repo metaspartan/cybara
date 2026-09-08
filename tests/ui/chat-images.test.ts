@@ -191,7 +191,8 @@ describe("chat image format support", () => {
     expect(isSupportedImageType("image/bmp", "")).toBe(true);
     expect(isSupportedImageType("", "photo.HEIC")).toBe(true);
     expect(isSupportedImageType("application/octet-stream", "diagram.svg")).toBe(true);
-    expect(isSupportedImageType("image/tiff", "scan.tif")).toBe(false);
+    expect(isSupportedImageType("image/tiff", "scan.tif")).toBe(true);
+    expect(isSupportedImageType("", "layers.psd")).toBe(false);
     expect(chatMarkdownImageSrc("file:///Users/x/.cybara/screenshots/shot.avif")).toContain(
       "screenshots%2Fshot.avif"
     );

@@ -9,8 +9,14 @@ import {
   writeFileSync,
 } from "fs";
 import { basename, extname, join, resolve, sep } from "path";
-import { imageExtensionOf, isHeicMimeType, isImagePath } from "../../shared/image-formats";
+import {
+  imageExtensionOf,
+  imageMimeForPath,
+  isHeicMimeType,
+  isImagePath,
+} from "../../shared/image-formats";
 import { convertHeicWithEmbeddedDecoder } from "./llm/heic-converter";
+import { convertRasterToPng } from "./llm/raster-decoders";
 import { cybaraDir } from "./paths";
 
 const MAX_SNAPSHOT_BYTES = 25 * 1024 * 1024;
@@ -89,6 +95,11 @@ export type ViewedMediaHeicConverter = (options: {
   quality: number;
 }) => Promise<Uint8Array>;
 
+function isRasterConversionPath(path: string): boolean {
+  const mime = imageMimeForPath(path);
+  return mime === "image/tiff" || mime === "image/bmp";
+}
+
 function isHeicPath(path: string): boolean {
   return isHeicMimeType(`image/${imageExtensionOf(path).slice(1)}`);
 }
@@ -114,11 +125,10 @@ export async function snapshotViewedMedia(
   if (cached) snapshotsByFingerprint.delete(fingerprint);
   const dir = join(snapshotRoot, nextSnapshotDirName());
   const heic = isHeicPath(normalized);
+  const raster = isRasterConversionPath(normalized);
   const name = basename(normalized);
-  const target = join(
-    dir,
-    heic ? `${name.slice(0, name.length - extname(name).length)}.jpg` : name
-  );
+  const stem = name.slice(0, name.length - extname(name).length);
+  const target = join(dir, heic ? `${stem}.jpg` : raster ? `${stem}.png` : name);
   try {
     mkdirSync(dir, { recursive: true });
     if (heic) {
@@ -129,6 +139,10 @@ export async function snapshotViewedMedia(
       });
       if (converted.length === 0) return undefined;
       writeFileSync(target, converted);
+    } else if (raster) {
+      const png = convertRasterToPng(readFileSync(normalized));
+      if (!png) return undefined;
+      writeFileSync(target, png);
     } else {
       copyFileSync(normalized, target);
     }
