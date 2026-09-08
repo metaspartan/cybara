@@ -113,6 +113,8 @@ describe("Tauri wiring", () => {
     expect(restartSource).toContain("stop_sidecar(&app)");
     expect(restartSource).toContain("schedule_sidecar_restart");
     expect(restartSource).not.toContain("start_sidecar(app, false)");
+    expect(mainRs).toContain("previous managed gateway is still releasing port 4269");
+    expect(mainRs).toContain("Cybara refused to adopt it");
   });
 
   test("main.rs exposes a narrow desktop API key reader command", () => {

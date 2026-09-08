@@ -1031,12 +1031,10 @@ fn start_sidecar(app: tauri::AppHandle, allow_external_attach: bool) {
                 attach_existing_gateway(&app, generation, preferred, gateway_id);
             } else {
                 release_sidecar_launch(&app, generation);
-                set_gateway_startup_status(
-                    &app,
-                    GatewayStartupStatus::failed(
-                        "A pre-existing Cybara gateway is occupying the managed local gateway port. Cybara refused to change gateway ownership during recovery.",
-                        gateway_ownership::GatewayOwnership::ManagedLocal,
-                    ),
+                schedule_sidecar_restart(
+                    app,
+                    "The previous managed gateway is still releasing port 4269; Cybara refused to adopt it and will retry within the bounded recovery budget."
+                        .into(),
                 );
             }
             return;
