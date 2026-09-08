@@ -217,26 +217,36 @@ fn read_gateway_intent(path: &Path) -> Result<GatewayIntent, String> {
 }
 
 pub fn load_gateway_intent(path: &Path, default_port: u16) -> Result<LoadedGatewayIntent, String> {
+    let pending_backup = path.with_extension("json.backup.pending");
     let backup = path.with_extension("json.backup");
-    if !path.exists() && !backup.exists() {
+    let candidates = [path, pending_backup.as_path(), backup.as_path()];
+    let existing = candidates
+        .iter()
+        .copied()
+        .filter(|candidate| candidate.exists())
+        .collect::<Vec<_>>();
+    if existing.is_empty() {
         return Ok(LoadedGatewayIntent {
             intent: GatewayIntent::managed_local(default_port),
             persisted: false,
         });
     }
-    let intent = match read_gateway_intent(path) {
-        Ok(intent) => intent,
-        Err(primary_error) if backup.exists() => read_gateway_intent(&backup).map_err(|backup_error| {
-            format!(
-                "Invalid gateway intent and backup: primary: {primary_error}; backup: {backup_error}"
-            )
-        })?,
-        Err(error) => return Err(error),
-    };
-    Ok(LoadedGatewayIntent {
-        intent,
-        persisted: true,
-    })
+    let mut errors = Vec::new();
+    for candidate in existing {
+        match read_gateway_intent(candidate) {
+            Ok(intent) => {
+                return Ok(LoadedGatewayIntent {
+                    intent,
+                    persisted: true,
+                });
+            }
+            Err(error) => errors.push(format!("{}: {error}", candidate.display())),
+        }
+    }
+    Err(format!(
+        "Invalid gateway intent files: {}",
+        errors.join("; ")
+    ))
 }
 
 pub fn persist_gateway_intent(path: &Path, intent: &GatewayIntent) -> Result<(), String> {
@@ -245,25 +255,30 @@ pub fn persist_gateway_intent(path: &Path, intent: &GatewayIntent) -> Result<(),
         .ok_or_else(|| "Gateway intent path has no parent".to_string())?;
     std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     let temporary = path.with_extension("json.tmp");
+    let pending_backup = path.with_extension("json.backup.pending");
     let backup = path.with_extension("json.backup");
     let bytes = serde_json::to_vec_pretty(intent).map_err(|error| error.to_string())?;
     let mut file = std::fs::File::create(&temporary).map_err(|error| error.to_string())?;
     std::io::Write::write_all(&mut file, &bytes).map_err(|error| error.to_string())?;
     file.sync_all().map_err(|error| error.to_string())?;
+
     if path.exists() {
-        if backup.exists() {
-            std::fs::remove_file(&backup).map_err(|error| error.to_string())?;
+        if pending_backup.exists() {
+            std::fs::remove_file(&pending_backup).map_err(|error| error.to_string())?;
         }
-        std::fs::rename(path, &backup).map_err(|error| error.to_string())?;
+        std::fs::rename(path, &pending_backup).map_err(|error| error.to_string())?;
     }
     if let Err(error) = std::fs::rename(&temporary, path) {
-        if backup.exists() {
-            let _ = std::fs::rename(&backup, path);
+        if pending_backup.exists() {
+            let _ = std::fs::rename(&pending_backup, path);
         }
         return Err(error.to_string());
     }
-    if backup.exists() {
-        std::fs::remove_file(backup).map_err(|error| error.to_string())?;
+
+    if pending_backup.exists() {
+        if !backup.exists() || std::fs::remove_file(&backup).is_ok() {
+            let _ = std::fs::rename(&pending_backup, &backup);
+        }
     }
     Ok(())
 }
@@ -274,7 +289,7 @@ mod tests {
         ExistingGatewayAction, ExternalProbeAction, GatewayIntent, GatewayOwnership,
         GatewayOwnershipController, RecoveryAction, SwitchToLocalAction, WatchdogAction,
         existing_gateway_action, external_probe_action, load_gateway_intent,
-        persist_gateway_intent, switch_to_local_action, watchdog_action,
+        persist_gateway_intent, read_gateway_intent, switch_to_local_action, watchdog_action,
     };
     use crate::gateway::{GatewayCompatibility, GatewayProbeStatus};
 
@@ -424,6 +439,14 @@ mod tests {
         let loaded = load_gateway_intent(&path, 4269).expect("load intent");
         assert_eq!(loaded.intent, intent);
         assert!(loaded.persisted);
+        let next = GatewayIntent::attached_external(4269, "gateway-next".into());
+        persist_gateway_intent(&path, &next).expect("replace intent");
+        assert_eq!(read_gateway_intent(&path).expect("read replacement"), next);
+        assert_eq!(
+            read_gateway_intent(&path.with_extension("json.backup"))
+                .expect("read previous intent backup"),
+            intent
+        );
         assert_eq!(
             GatewayOwnershipController::new(loaded.intent).recovery_action(),
             RecoveryAction::ReconnectExternal
@@ -449,6 +472,30 @@ mod tests {
         let loaded = load_gateway_intent(&path, 4269).expect("recover intent");
         assert_eq!(loaded.intent, intent);
         assert!(loaded.persisted);
+        std::fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[test]
+    fn missing_primary_recovers_pending_external_backup() {
+        let root = std::env::temp_dir().join(format!(
+            "cybara-pending-gateway-intent-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create fixture");
+        let path = root.join("gateway-intent.json");
+        let pending_backup = path.with_extension("json.backup.pending");
+        std::fs::write(
+            &pending_backup,
+            serde_json::to_vec(&GatewayIntent::attached_external(
+                4269,
+                "gateway-pending".into(),
+            ))
+            .expect("serialize pending backup"),
+        )
+        .expect("write pending backup");
+        let loaded = load_gateway_intent(&path, 4269).expect("recover pending backup");
+        assert_eq!(loaded.intent.ownership, GatewayOwnership::AttachedExternal);
+        assert_eq!(loaded.intent.gateway_id.as_deref(), Some("gateway-pending"));
         std::fs::remove_dir_all(root).expect("remove fixture");
     }
 
