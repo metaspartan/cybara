@@ -48,8 +48,14 @@ describe("image viewed activity sources", () => {
     expect(
       imageViewedSource({ name: "image", result: { image: "data:image/avif;base64,AAAA" } })
     ).toBe("data:image/avif;base64,AAAA");
+    expect(imageViewedSource({ name: "image", result: { image: "/tmp/scan.tiff" } })).toBe(
+      "/api/media?path=%2Ftmp%2Fscan.tiff"
+    );
+    expect(imageViewedSource({ name: "image", result: { image: "/tmp/IMG_7.HEIC" } })).toBe(
+      "/api/media?path=%2Ftmp%2FIMG_7.HEIC"
+    );
     expect(
-      imageViewedSource({ name: "image", result: { image: "/tmp/scan.tiff" } })
+      imageViewedSource({ name: "image", result: { image: "/tmp/layers.psd" } })
     ).toBeUndefined();
   });
 

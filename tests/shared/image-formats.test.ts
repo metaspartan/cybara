@@ -7,7 +7,6 @@ import {
   isImagePath,
   isProviderImageMimeType,
   isProviderSendableMimeType,
-  isRenderableImagePath,
 } from "../../shared/image-formats";
 
 describe("shared image formats", () => {
@@ -43,9 +42,6 @@ describe("shared image formats", () => {
     expect(imageMimeForPath("/x/photo.tiff")).toBe("image/tiff");
     expect(imageMimeForPath("/x/PHOTO.TIF")).toBe("image/tiff");
     expect(isImagePath("/x/photo.tif")).toBe(true);
-    expect(isRenderableImagePath("/x/photo.tiff")).toBe(false);
-    expect(isRenderableImagePath("/x/photo.bmp")).toBe(true);
-    expect(isRenderableImagePath("/x/photo.heic")).toBe(false);
     expect(isProviderImageMimeType("image/tiff")).toBe(false);
     expect(isProviderSendableMimeType("image/tiff")).toBe(true);
     expect(isProviderSendableMimeType("image/bmp")).toBe(true);

@@ -5,7 +5,7 @@ import {
   requiresAuthenticatedMediaFetch,
 } from "@/lib/authenticatedMedia";
 import type { ChatImageAttachment } from "@/types";
-import { isImageMimeType, isImagePath, isRenderableImagePath } from "../../../shared/image-formats";
+import { isImageMimeType, isImagePath } from "../../../shared/image-formats";
 
 export const MAX_CHAT_IMAGES = 8;
 export const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -60,7 +60,7 @@ export function chatMarkdownImageSrc(source: string): string | null {
   if (!source.toLowerCase().startsWith("file://")) return null;
   try {
     const path = decodeURIComponent(new URL(source).pathname);
-    if (!/\/screenshots\/[^/]+$/i.test(path) || !isRenderableImagePath(path)) return null;
+    if (!/\/screenshots\/[^/]+$/i.test(path) || !isImagePath(path)) return null;
     return screenshotMediaSrc(path);
   } catch {
     return null;
@@ -218,7 +218,7 @@ export function imageToolResultSrc(result: unknown): string | null {
   const filePath = typeof record.filePath === "string" ? record.filePath : "";
   const contentType = typeof record.contentType === "string" ? record.contentType : "";
   const isImage = /^image\//i.test(contentType) || isImagePath(filePath);
-  if (filePath && isImage && isRenderableImagePath(filePath)) return screenshotMediaSrc(filePath);
+  if (filePath && isImage) return screenshotMediaSrc(filePath);
   return null;
 }
 

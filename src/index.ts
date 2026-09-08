@@ -95,7 +95,7 @@ import {
   gatewayPortFallbackCount,
   gatewayPortSignal,
 } from "./core/runtime/gateway-port";
-import { resolveMediaFile } from "./core/runtime/media-files";
+import { serveMediaFile } from "./core/runtime/media-files";
 import { isCompiledRuntime } from "./core/runtime/runtime-mode";
 import { readUiIndexContent } from "./core/runtime/ui-index";
 import { resolveUiPath } from "./core/runtime/ui-path";
@@ -668,7 +668,7 @@ function createGatewayServer(
             },
           });
         }
-        const result = resolveMediaFile(url.searchParams.get("path") || "");
+        const result = await serveMediaFile(url.searchParams.get("path") || "");
         if (result.status !== 200 || !result.bytes || !result.contentType) {
           return new Response(JSON.stringify({ error: result.error || "error" }), {
             status: result.status,

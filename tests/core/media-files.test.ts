@@ -2,7 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { cybaraDir } from "../../src/core/paths";
-import { resolveMediaFile } from "../../src/core/runtime/media-files";
+import { PNG } from "pngjs";
+import { resolveMediaFile, serveMediaFile } from "../../src/core/runtime/media-files";
+import { tinyTiff } from "../helpers/image-fixtures";
 import { snapshotViewedMedia } from "../../src/core/viewed-media";
 
 const screenshotsDir = join(cybaraDir, "screenshots");
@@ -100,6 +102,37 @@ describe("resolveMediaFile", () => {
   test("rejects empty and null-byte paths", () => {
     expect(resolveMediaFile("").status).toBe(400);
     expect(resolveMediaFile("screenshots/a\0.png").status).toBe(400);
+  });
+
+  test("transcodes HEIC and TIFF on the way out so every client can render them", async () => {
+    const heicPath = join(screenshotsDir, "test_media_files_shot.HEIC");
+    const tiffPath = join(screenshotsDir, "test_media_files_scan.tiff");
+    writeFileSync(heicPath, Buffer.from("0000001866747970686569630000000068656963", "hex"));
+    writeFileSync(tiffPath, tinyTiff([[255, 0, 0]], 1, 1));
+    try {
+      const heic = await serveMediaFile("screenshots/test_media_files_shot.HEIC", async () =>
+        Buffer.from("converted-jpeg")
+      );
+      expect(heic.status).toBe(200);
+      expect(heic.contentType).toBe("image/jpeg");
+      expect(heic.bytes?.toString()).toBe("converted-jpeg");
+      expect(heic.path?.endsWith("test_media_files_shot.jpg")).toBe(true);
+      const tiff = await serveMediaFile(tiffPath);
+      expect(tiff.status).toBe(200);
+      expect(tiff.contentType).toBe("image/png");
+      const png = PNG.sync.read(tiff.bytes ?? Buffer.alloc(0));
+      expect([png.width, png.height, ...png.data]).toEqual([1, 1, 255, 0, 0, 255]);
+      expect(resolveMediaFile(tiffPath).contentType).toBe("image/tiff");
+      const passthrough = await serveMediaFile(`screenshots/${sampleName}`);
+      expect(passthrough.contentType).toBe("image/png");
+      expect(passthrough.bytes?.equals(pngBytes)).toBe(true);
+      writeFileSync(tiffPath, Buffer.from([0x49, 0x49, 0x2a, 0, 9, 9, 9, 9]));
+      expect((await serveMediaFile(tiffPath)).status).toBe(415);
+      expect((await serveMediaFile("screenshots/missing.tiff")).status).toBe(404);
+    } finally {
+      rmSync(heicPath, { force: true });
+      rmSync(tiffPath, { force: true });
+    }
   });
 
   test("serves the newly supported browser-renderable formats with the right content type", () => {

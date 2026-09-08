@@ -35,17 +35,6 @@ export const CONVERTIBLE_IMAGE_MIME: ReadonlySet<string> = new Set([
   "image/bmp",
 ]);
 
-export const RENDERABLE_IMAGE_MIME: ReadonlySet<string> = new Set([
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-  "image/avif",
-  "image/bmp",
-  "image/svg+xml",
-]);
-
 export const IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
   ...Object.values(IMAGE_MIME_BY_EXTENSION),
   "image/jpg",
@@ -85,7 +74,3 @@ export function isProviderSendableMimeType(mimeType: string): boolean {
   );
 }
 
-export function isRenderableImagePath(path: string): boolean {
-  const mime = imageMimeForPath(path);
-  return !!mime && RENDERABLE_IMAGE_MIME.has(mime);
-}
