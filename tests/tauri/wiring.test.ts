@@ -88,6 +88,12 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("child.kill()");
     expect(mainRs).toContain("get_gateway_startup_status");
     expect(mainRs).toContain("restart_gateway_sidecar");
+    expect(mainRs).toContain("switch_to_local_gateway");
+    expect(mainRs).toContain("GatewayOwnership::AttachedExternal");
+    expect(mainRs).toContain("start_external_gateway_reconnect");
+    expect(mainRs).toContain("attached_external_gateway_is_current");
+    expect(mainRs).toContain("allow_external_attach");
+    expect(mainRs).toContain("gateway-intent.json");
     expect(mainRs).toContain('log::warn!(target: "cybara::sidecar"');
     expect(mainRs).toContain('log::info!(target: "cybara::sidecar"');
     expect(mainRs).toContain('Ok(value) if value == "0" || value.eq_ignore_ascii_case("false")');
@@ -96,6 +102,19 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain(".rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))");
     const gatewaySource = readFileSync(join(ROOT_DIR, "src", "index.ts"), "utf8");
     expect(gatewaySource).toContain("installGatewayLogCapture({ environment: process.env })");
+  });
+
+  test("managed gateway restart waits through supervised recovery", () => {
+    const mainRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "main.rs"), "utf8");
+    const restartStart = mainRs.indexOf("fn restart_gateway_sidecar");
+    const restartEnd = mainRs.indexOf("fn switch_to_local_gateway", restartStart);
+    const restartSource = mainRs.slice(restartStart, restartEnd);
+
+    expect(restartSource).toContain("stop_sidecar(&app)");
+    expect(restartSource).toContain("schedule_sidecar_restart");
+    expect(restartSource).not.toContain("start_sidecar(app, false)");
+    expect(mainRs).toContain("previous managed gateway is still releasing port 4269");
+    expect(mainRs).toContain("Cybara refused to adopt it");
   });
 
   test("main.rs exposes a narrow desktop API key reader command", () => {
@@ -132,7 +151,9 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("gateway::GatewayProbeStatus::NonCybara");
     expect(mainRs).toContain("gateway::GatewayCompatibility::Compatible");
     expect(mainRs).toContain("gateway_version_failure");
-    expect(mainRs).toContain("wait_for_existing_gateway(app, generation, preferred)");
+    expect(mainRs).toContain(
+      "wait_for_existing_gateway(app, generation, preferred, allow_external_attach)"
+    );
     expect(mainRs).not.toContain("const CYBARA_FALLBACK_PORT_COUNT");
     expect(mainRs).toContain("GatewayPortSignalParser::default()");
     expect(mainRs).toContain("port_receiver.recv_timeout(Duration::from_secs(30))");
@@ -225,6 +246,7 @@ describe("Tauri wiring", () => {
     expect(gatewayPermission).toContain('"get_gateway_url"');
     expect(gatewayPermission).toContain('"get_gateway_startup_status"');
     expect(gatewayPermission).toContain('"restart_gateway_sidecar"');
+    expect(gatewayPermission).toContain('"switch_to_local_gateway"');
     expect(updaterPermission).toContain('"get_desktop_update_state"');
     expect(updaterPermission).toContain('"check_desktop_update"');
     expect(updaterPermission).toContain('"install_desktop_update"');

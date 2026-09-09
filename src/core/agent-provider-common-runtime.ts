@@ -1,4 +1,6 @@
 import { isProviderRecoveryStatusLabel } from "../../shared/chat-status";
+import { isImageContentBlock } from "./llm/context-estimate";
+import { openCodeSessionHeaders } from "./providers/opencode-session";
 import type { AgentMessage } from "./agent";
 import { type AgentHookContext, emitAgentHook } from "./agent-hooks";
 import {
@@ -21,7 +23,7 @@ import {
 import type { AgentToolExecutionResult } from "./agent-tool-execution";
 import { config } from "./config";
 import type { Agent, Provider, ToolDefinition } from "./database";
-import { classifyApiError } from "./error-classifier";
+import { classifyApiError, isBlankUpstreamError } from "./error-classifier";
 import {
   callCursorAgentTransport,
   callDevinAgentTransport,
@@ -124,6 +126,9 @@ export interface AgentProviderResponse {
   thinking?: string;
   tool_calls?: AgentToolCallResult[];
 }
+
+const TEXT_ONLY_IMAGE_PLACEHOLDER =
+  "[Image omitted: this model only accepts text input, so you cannot see it. Say so instead of guessing its contents.]";
 
 export abstract class AgentProviderCommonRuntime {
   protected abstract get(id: string): Agent | undefined;
@@ -586,7 +591,11 @@ export abstract class AgentProviderCommonRuntime {
     );
     const providerHeaders = providerDefinition?.headers || {};
     const customHeaders = (providerInfo as { headers?: Record<string, string> }).headers || {};
-    const mergedHeaders = { ...providerHeaders, ...customHeaders };
+    const mergedHeaders = {
+      ...providerHeaders,
+      ...customHeaders,
+      ...openCodeSessionHeaders(providerConfig, baseUrl, toolContext?.sessionId),
+    };
     const modelParams = this.resolveModelParams(toolContext);
     const resolvedModelMaxOutputTokens = resolveModelMaxOutputTokens(
       providerConfig,
@@ -825,6 +834,44 @@ export abstract class AgentProviderCommonRuntime {
       nextBody.chat_template_kwargs = nextTemplate;
     }
     return nextBody;
+  }
+
+  protected classifyImageRejection(
+    status: number,
+    errorText: string,
+    requestBody: Record<string, unknown>
+  ): "explicit" | "blank" | undefined {
+    if (status !== 400) return undefined;
+    const messages = Array.isArray(requestBody.messages) ? requestBody.messages : [];
+    const hasImages = messages.some((message) => {
+      const content = (message as Record<string, unknown> | null)?.content;
+      return Array.isArray(content) && content.some(isImageContentBlock);
+    });
+    if (!hasImages) return undefined;
+    if (
+      /only supports text input|unsupported content type ['"]?(image_url|input_image)|does not support image|image input is not supported|images? (are|is) not supported/i.test(
+        errorText
+      )
+    ) {
+      return "explicit";
+    }
+    return isBlankUpstreamError(errorText) ? "blank" : undefined;
+  }
+
+  protected toTextOnlyRequestBody(requestBody: Record<string, unknown>): Record<string, unknown> {
+    const messages = Array.isArray(requestBody.messages) ? requestBody.messages : [];
+    return {
+      ...requestBody,
+      messages: messages.map((message) => {
+        if (!message || typeof message !== "object") return message;
+        const record = message as Record<string, unknown>;
+        if (!Array.isArray(record.content)) return message;
+        const content = record.content.map((part) =>
+          isImageContentBlock(part) ? { type: "text", text: TEXT_ONLY_IMAGE_PLACEHOLDER } : part
+        );
+        return { ...record, content };
+      }),
+    };
   }
 
   protected toMaxCompletionTokensRequestBody(
@@ -1129,6 +1176,8 @@ export abstract class AgentProviderCommonRuntime {
     let attemptedForcedToolChoiceReasoningRetry = false;
     let attemptedToolChoiceCompatibilityRetry = false;
     let attemptedToolChoiceRemovalRetry = false;
+    let attemptedTextOnlyRetry = false;
+    let repeatedBlankImageRequest = false;
     let contextRetryCount = 0;
     let attemptedOAuthRefresh = false;
     const maxTransientRetries = retryPolicy.maxRetries;
@@ -1174,6 +1223,32 @@ export abstract class AgentProviderCommonRuntime {
         this.logProviderRetryStatus(streamContext, "Provider session refreshed; continuing...");
         continue;
       }
+      const imageRejection = attemptedTextOnlyRetry
+        ? undefined
+        : this.classifyImageRejection(response.status, errorText, currentBody);
+      if (imageRejection === "blank" && !repeatedBlankImageRequest) {
+        repeatedBlankImageRequest = true;
+        this.logProviderRetryStatus(
+          streamContext,
+          "Provider returned an empty error for a request with images; retrying once unchanged..."
+        );
+        await this.waitForRetryDelay(
+          this.providerRetryDelayMs(response.status, response.headers, 0),
+          signal
+        );
+        continue;
+      }
+      if (imageRejection) {
+        attemptedTextOnlyRetry = true;
+        console.warn(
+          imageRejection === "explicit"
+            ? "[Agent] Provider rejected image input for this model; retrying with images replaced by text notes"
+            : "[Agent] Provider repeated an empty error only for the request with images; retrying with images replaced by text notes"
+        );
+        currentBody = this.toTextOnlyRequestBody(currentBody);
+        continue;
+      }
+
       const classifiedError = classifyApiError({ status: response.status, body: errorText });
       const retryDelayMs = this.providerRetryDelayMs(
         response.status,

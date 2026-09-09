@@ -2,7 +2,9 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 import { cybaraDir } from "../../src/core/paths";
-import { resolveMediaFile } from "../../src/core/runtime/media-files";
+import { PNG } from "pngjs";
+import { resolveMediaFile, serveMediaFile } from "../../src/core/runtime/media-files";
+import { tinyBmp, tinyTiff } from "../helpers/image-fixtures";
 import { snapshotViewedMedia } from "../../src/core/viewed-media";
 
 const screenshotsDir = join(cybaraDir, "screenshots");
@@ -34,13 +36,14 @@ describe("resolveMediaFile", () => {
     if (existsSync(viewedDir)) rmSync(viewedDir, { recursive: true, force: true });
   });
 
-  test("never serves files outside the media roots, even after the agent views them", () => {
+  test("never serves files outside the media roots, even after the agent views them", async () => {
     expect(resolveMediaFile(viewedPath).status).toBe(403);
-    const snapshot = snapshotViewedMedia(viewedPath);
+    const snapshot = await snapshotViewedMedia(viewedPath);
     expect(snapshot).toBeDefined();
     expect(resolveMediaFile(viewedPath).status).toBe(403);
     expect(resolveMediaFile(unviewedPath).status).toBe(403);
-    const served = resolveMediaFile(snapshot!);
+    if (!snapshot) throw new Error("snapshot missing");
+    const served = resolveMediaFile(snapshot);
     expect(served.status).toBe(200);
     expect(served.contentType).toBe("image/png");
     expect(served.bytes?.equals(pngBytes)).toBe(true);
@@ -99,5 +102,69 @@ describe("resolveMediaFile", () => {
   test("rejects empty and null-byte paths", () => {
     expect(resolveMediaFile("").status).toBe(400);
     expect(resolveMediaFile("screenshots/a\0.png").status).toBe(400);
+  });
+
+  test("transcodes HEIC and TIFF on the way out so every client can render them", async () => {
+    const heicPath = join(screenshotsDir, "test_media_files_shot.HEIC");
+    const tiffPath = join(screenshotsDir, "test_media_files_scan.tiff");
+    writeFileSync(heicPath, Buffer.from("0000001866747970686569630000000068656963", "hex"));
+    writeFileSync(tiffPath, tinyTiff([[255, 0, 0]], 1, 1));
+    try {
+      const heic = await serveMediaFile("screenshots/test_media_files_shot.HEIC", async () =>
+        Buffer.from("converted-jpeg")
+      );
+      expect(heic.status).toBe(200);
+      expect(heic.contentType).toBe("image/jpeg");
+      expect(heic.bytes?.toString()).toBe("converted-jpeg");
+      expect(heic.path?.endsWith("test_media_files_shot.jpg")).toBe(true);
+      const tiff = await serveMediaFile(tiffPath);
+      expect(tiff.status).toBe(200);
+      expect(tiff.contentType).toBe("image/png");
+      const png = PNG.sync.read(tiff.bytes ?? Buffer.alloc(0));
+      expect([png.width, png.height, ...png.data]).toEqual([1, 1, 255, 0, 0, 255]);
+      expect(resolveMediaFile(tiffPath).contentType).toBe("image/tiff");
+      const bmpPath = join(screenshotsDir, "test_media_files_scan.bmp");
+      writeFileSync(bmpPath, tinyBmp([[0, 255, 0]], 1, 1));
+      try {
+        const bmp = await serveMediaFile(bmpPath);
+        expect(bmp.contentType).toBe("image/png");
+        const bmpPng = PNG.sync.read(bmp.bytes ?? Buffer.alloc(0));
+        expect([bmpPng.width, bmpPng.height, ...bmpPng.data]).toEqual([1, 1, 0, 255, 0, 255]);
+        expect(resolveMediaFile(bmpPath).contentType).toBe("image/bmp");
+      } finally {
+        rmSync(bmpPath, { force: true });
+      }
+      const passthrough = await serveMediaFile(`screenshots/${sampleName}`);
+      expect(passthrough.contentType).toBe("image/png");
+      expect(passthrough.bytes?.equals(pngBytes)).toBe(true);
+      writeFileSync(tiffPath, Buffer.from([0x49, 0x49, 0x2a, 0, 9, 9, 9, 9]));
+      expect((await serveMediaFile(tiffPath)).status).toBe(415);
+      expect((await serveMediaFile("screenshots/missing.tiff")).status).toBe(404);
+    } finally {
+      rmSync(heicPath, { force: true });
+      rmSync(tiffPath, { force: true });
+    }
+  });
+
+  test("serves the newly supported browser-renderable formats with the right content type", () => {
+    const cases: Array<[string, string]> = [
+      ["test_media_files_sample.avif", "image/avif"],
+      ["test_media_files_sample.bmp", "image/bmp"],
+      ["test_media_files_sample.svg", "image/svg+xml"],
+      ["test_media_files_sample.tiff", "image/tiff"],
+      ["test_media_files_sample.tif", "image/tiff"],
+    ];
+    for (const [name, contentType] of cases) {
+      const path = join(screenshotsDir, name);
+      writeFileSync(path, "x");
+      try {
+        const result = resolveMediaFile(`screenshots/${name}`);
+        expect(result.status).toBe(200);
+        expect(result.contentType).toBe(contentType);
+      } finally {
+        rmSync(path);
+      }
+    }
+    expect(resolveMediaFile("screenshots/nope.psd").status).toBe(415);
   });
 });

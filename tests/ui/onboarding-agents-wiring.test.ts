@@ -40,6 +40,8 @@ describe("onboarding boot: no shell flash + full-screen spinner", () => {
     expect(app).toContain("readGatewayStartupStatus");
     expect(app).toContain('gatewayStartup?.phase === "failed"');
     expect(app).toContain("<GatewayStartupFailure");
+    expect(app).toContain("gatewayStartup.canSwitchToLocal");
+    expect(app).toContain("Use local gateway");
   });
 });
 

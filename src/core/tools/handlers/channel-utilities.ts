@@ -6,6 +6,7 @@ import { agentManager } from "../../agent";
 import { getInboundMediaRootDir, saveInboundMediaFromUrl } from "../../channels/media";
 import * as cron from "../../cron";
 import type { CronJobCreate, CronJobPatch } from "../../cron/types";
+import { describeImageFile } from "../../llm/image-metadata";
 import { windowsOcrText } from "../../ocr-windows";
 import {
   type SpeechSynthesisResult,
@@ -424,9 +425,16 @@ export async function handleImage(
     }
   }
 
+  const metadata = describeImageFile(resolvedImagePath);
   return {
     description: prompt,
     image: resolvedImagePath,
+    ...(metadata ? { metadata } : {}),
+    ...(metadata && !metadata.providerSendable
+      ? {
+          warning: `You cannot see this image: ${metadata.format} is not sent to the model as pixels, so do not describe or guess its contents. Only the metadata and any extracted text below are real. Convert it to PNG or JPEG (for example with sips or ffmpeg) and view that file instead.`,
+        }
+      : {}),
     text: shouldExtractText
       ? extractedText ||
         "No text could be extracted. Try using browser({action:'snapshot'}) to read page text directly."

@@ -11,6 +11,7 @@ use tauri_plugin_shell::ShellExt;
 
 mod desktop_update;
 mod gateway;
+mod gateway_ownership;
 mod gateway_supervision;
 mod tray;
 
@@ -22,34 +23,40 @@ const MAX_NATIVE_RECORDING_BYTES: u64 = 64 * 1024 * 1024;
 struct GatewayStartupStatus {
     phase: String,
     message: Option<String>,
+    ownership: String,
+    can_switch_to_local: bool,
 }
 
 impl GatewayStartupStatus {
-    fn starting() -> Self {
-        Self {
-            phase: "starting".into(),
-            message: None,
-        }
+    fn starting(ownership: gateway_ownership::GatewayOwnership) -> Self {
+        Self::with_phase("starting", None, ownership)
     }
 
-    fn ready() -> Self {
-        Self {
-            phase: "ready".into(),
-            message: None,
-        }
+    fn ready(ownership: gateway_ownership::GatewayOwnership) -> Self {
+        Self::with_phase("ready", None, ownership)
     }
 
-    fn restarting(message: impl Into<String>) -> Self {
-        Self {
-            phase: "starting".into(),
-            message: Some(message.into()),
-        }
+    fn restarting(
+        message: impl Into<String>,
+        ownership: gateway_ownership::GatewayOwnership,
+    ) -> Self {
+        Self::with_phase("starting", Some(message.into()), ownership)
     }
 
-    fn failed(message: impl Into<String>) -> Self {
+    fn failed(message: impl Into<String>, ownership: gateway_ownership::GatewayOwnership) -> Self {
+        Self::with_phase("failed", Some(message.into()), ownership)
+    }
+
+    fn with_phase(
+        phase: &str,
+        message: Option<String>,
+        ownership: gateway_ownership::GatewayOwnership,
+    ) -> Self {
         Self {
-            phase: "failed".into(),
-            message: Some(message.into()),
+            phase: phase.into(),
+            message,
+            ownership: ownership.as_str().into(),
+            can_switch_to_local: ownership == gateway_ownership::GatewayOwnership::AttachedExternal,
         }
     }
 }
@@ -255,11 +262,57 @@ fn set_gateway_startup_status(app: &tauri::AppHandle, status: GatewayStartupStat
 fn get_gateway_startup_status(app: tauri::AppHandle) -> GatewayStartupStatus {
     app.try_state::<GatewayStartupState>()
         .and_then(|state| state.0.lock().ok().map(|guard| guard.clone()))
-        .unwrap_or_else(GatewayStartupStatus::starting)
+        .unwrap_or_else(|| {
+            GatewayStartupStatus::starting(gateway_ownership::GatewayOwnership::ManagedLocal)
+        })
 }
 
 #[tauri::command]
 fn restart_gateway_sidecar(app: tauri::AppHandle) -> Result<(), String> {
+    match gateway_intent(&app).ownership {
+        gateway_ownership::GatewayOwnership::ManagedLocal => {
+            reset_gateway_supervision(&app)?;
+            stop_sidecar(&app);
+            schedule_sidecar_restart(app, "Restarting the managed Cybara gateway.".into());
+        }
+        gateway_ownership::GatewayOwnership::AttachedExternal => {
+            start_external_gateway_reconnect(app);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn switch_to_local_gateway(app: tauri::AppHandle) -> Result<(), String> {
+    let endpoint = gateway::GatewayEndpoint::loopback(CYBARA_DEFAULT_PORT);
+    if gateway_ownership::switch_to_local_action(matches!(
+        gateway::probe_gateway_at(&endpoint.addr, env!("CARGO_PKG_VERSION")),
+        gateway::GatewayProbeStatus::Available
+    )) == gateway_ownership::SwitchToLocalAction::WaitForFreePort
+    {
+        return Err(
+            "Port 4269 must be free before switching to the managed local gateway. Stop the forwarding connection or occupying service, then try again."
+                .into(),
+        );
+    }
+    set_gateway_intent(
+        &app,
+        gateway_ownership::GatewayIntent::managed_local(CYBARA_DEFAULT_PORT),
+    )?;
+    reset_gateway_supervision(&app)?;
+    stop_sidecar(&app);
+    set_gateway_startup_status(
+        &app,
+        GatewayStartupStatus::restarting(
+            "Switching to the managed local Cybara gateway.",
+            gateway_ownership::GatewayOwnership::ManagedLocal,
+        ),
+    );
+    start_sidecar(app, false);
+    Ok(())
+}
+
+fn reset_gateway_supervision(app: &tauri::AppHandle) -> Result<(), String> {
     let state = app
         .try_state::<GatewaySupervisionState>()
         .ok_or_else(|| "Gateway supervisor is unavailable".to_string())?;
@@ -268,13 +321,6 @@ fn restart_gateway_sidecar(app: tauri::AppHandle) -> Result<(), String> {
         .lock()
         .map_err(|_| "Gateway supervisor is unavailable".to_string())?;
     *guard = gateway_supervision::GatewaySupervision::default();
-    drop(guard);
-    stop_sidecar(&app);
-    set_gateway_startup_status(
-        &app,
-        GatewayStartupStatus::restarting("Restarting the Cybara gateway."),
-    );
-    start_sidecar(app);
     Ok(())
 }
 
@@ -413,6 +459,44 @@ fn set_gateway_endpoint(app: &tauri::AppHandle, endpoint: gateway::GatewayEndpoi
     {
         *guard = endpoint;
     }
+}
+
+fn gateway_intent_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_local_data_dir()
+        .map(|path| path.join("gateway-intent.json"))
+        .map_err(|error| error.to_string())
+}
+
+fn gateway_intent(app: &tauri::AppHandle) -> gateway_ownership::GatewayIntent {
+    app.try_state::<GatewayOwnershipState>()
+        .and_then(|state| state.0.lock().ok().map(|guard| guard.intent()))
+        .unwrap_or_else(|| gateway_ownership::GatewayIntent::managed_local(CYBARA_DEFAULT_PORT))
+}
+
+fn gateway_recovery_action(app: &tauri::AppHandle) -> gateway_ownership::RecoveryAction {
+    app.try_state::<GatewayOwnershipState>()
+        .and_then(|state| state.0.lock().ok().map(|guard| guard.recovery_action()))
+        .unwrap_or(gateway_ownership::RecoveryAction::RestartManagedSidecar)
+}
+
+fn set_gateway_intent(
+    app: &tauri::AppHandle,
+    intent: gateway_ownership::GatewayIntent,
+) -> Result<(), String> {
+    let path = gateway_intent_path(app)?;
+    gateway_ownership::persist_gateway_intent(&path, &intent)?;
+    let state = app
+        .try_state::<GatewayOwnershipState>()
+        .ok_or_else(|| "Gateway ownership state is unavailable".to_string())?;
+    let mut guard = state
+        .0
+        .lock()
+        .map_err(|_| "Gateway ownership state is unavailable".to_string())?;
+    let port = intent.port;
+    guard.set_intent(intent);
+    set_gateway_endpoint(app, gateway::GatewayEndpoint::loopback(port));
+    Ok(())
 }
 
 #[tauri::command]
@@ -574,9 +658,130 @@ fn record_gateway_healthy(app: &tauri::AppHandle) {
     }
 }
 
+fn start_gateway_for_intent(app: tauri::AppHandle, allow_external_attach: bool) {
+    match gateway_recovery_action(&app) {
+        gateway_ownership::RecoveryAction::RestartManagedSidecar => {
+            start_sidecar(app, allow_external_attach)
+        }
+        gateway_ownership::RecoveryAction::ReconnectExternal => {
+            start_external_gateway_reconnect(app)
+        }
+    }
+}
+
+fn external_reconnect_delay(attempt: u32) -> Duration {
+    Duration::from_secs(1_u64 << attempt.min(4))
+}
+
+fn start_external_gateway_reconnect(app: tauri::AppHandle) {
+    let Some((generation, intent)) = app.try_state::<GatewayOwnershipState>().and_then(|state| {
+        state.0.lock().ok().and_then(|mut guard| {
+            let intent = guard.intent();
+            guard
+                .begin_external_reconnect()
+                .map(|generation| (generation, intent))
+        })
+    }) else {
+        return;
+    };
+    let endpoint = gateway::GatewayEndpoint::loopback(intent.port);
+    set_gateway_endpoint(&app, endpoint.clone());
+    set_gateway_startup_status(
+        &app,
+        GatewayStartupStatus::restarting(
+            "The attached external gateway is disconnected. Reconnecting without starting a local gateway.",
+            gateway_ownership::GatewayOwnership::AttachedExternal,
+        ),
+    );
+    std::thread::spawn(move || {
+        let mut attempt = 0;
+        loop {
+            let current = app
+                .try_state::<GatewayOwnershipState>()
+                .and_then(|state| {
+                    state
+                        .0
+                        .lock()
+                        .ok()
+                        .map(|guard| guard.external_reconnect_is_current(generation))
+                })
+                .unwrap_or(false);
+            if !current {
+                return;
+            }
+            let probe = gateway::probe_gateway_at(&endpoint.addr, env!("CARGO_PKG_VERSION"));
+            let incompatibility = match &probe {
+                gateway::GatewayProbeStatus::CybaraGateway(
+                    gateway::GatewayCompatibility::Incompatible {
+                        gateway_version,
+                        reason,
+                    },
+                ) => Some(gateway_version_failure(
+                    env!("CARGO_PKG_VERSION"),
+                    gateway_version.as_deref(),
+                    reason,
+                )),
+                _ => None,
+            };
+            match gateway_ownership::external_probe_action(intent.gateway_id.as_deref(), probe) {
+                gateway_ownership::ExternalProbeAction::Reattach => {
+                    if let Some(state) = app.try_state::<GatewayOwnershipState>()
+                        && let Ok(mut guard) = state.0.lock()
+                        && guard.finish_external_reconnect(generation)
+                    {
+                        record_gateway_healthy(&app);
+                        set_gateway_startup_status(
+                            &app,
+                            GatewayStartupStatus::ready(
+                                gateway_ownership::GatewayOwnership::AttachedExternal,
+                            ),
+                        );
+                        navigate_after_ready(&app);
+                    }
+                    return;
+                }
+                gateway_ownership::ExternalProbeAction::Retry => {}
+                gateway_ownership::ExternalProbeAction::Fail(reason) => {
+                    finish_external_reconnect_with_failure(
+                        &app,
+                        generation,
+                        incompatibility.unwrap_or(reason),
+                    );
+                    return;
+                }
+            }
+            std::thread::sleep(external_reconnect_delay(attempt));
+            attempt = attempt.saturating_add(1);
+        }
+    });
+}
+
+fn finish_external_reconnect_with_failure(
+    app: &tauri::AppHandle,
+    generation: u64,
+    message: String,
+) {
+    if let Some(state) = app.try_state::<GatewayOwnershipState>()
+        && let Ok(mut guard) = state.0.lock()
+        && guard.finish_external_reconnect(generation)
+    {
+        set_gateway_startup_status(
+            app,
+            GatewayStartupStatus::failed(
+                message,
+                gateway_ownership::GatewayOwnership::AttachedExternal,
+            ),
+        );
+    }
+}
+
 fn schedule_sidecar_restart(app: tauri::AppHandle, reason: String) {
     use gateway_supervision::RestartPlan;
 
+    if gateway_recovery_action(&app) == gateway_ownership::RecoveryAction::ReconnectExternal {
+        start_external_gateway_reconnect(app);
+        return;
+    }
     let plan = app
         .try_state::<GatewaySupervisionState>()
         .and_then(|state| {
@@ -594,7 +799,13 @@ fn schedule_sidecar_restart(app: tauri::AppHandle, reason: String) {
                 gateway_supervision::MAX_RESTART_ATTEMPTS
             );
             log::warn!("{reason} {message}");
-            set_gateway_startup_status(&app, GatewayStartupStatus::restarting(message));
+            set_gateway_startup_status(
+                &app,
+                GatewayStartupStatus::restarting(
+                    message,
+                    gateway_ownership::GatewayOwnership::ManagedLocal,
+                ),
+            );
             std::thread::spawn(move || {
                 std::thread::sleep(delay);
                 let should_start = app
@@ -607,8 +818,11 @@ fn schedule_sidecar_restart(app: tauri::AppHandle, reason: String) {
                             .map(|mut guard| guard.begin_scheduled_restart())
                     })
                     .unwrap_or(false);
-                if should_start {
-                    start_sidecar(app);
+                if should_start
+                    && gateway_intent(&app).ownership
+                        == gateway_ownership::GatewayOwnership::ManagedLocal
+                {
+                    start_sidecar(app, false);
                 }
             });
         }
@@ -618,7 +832,13 @@ fn schedule_sidecar_restart(app: tauri::AppHandle, reason: String) {
                 gateway_supervision::MAX_RESTART_ATTEMPTS
             );
             log::error!("{reason} {message}");
-            set_gateway_startup_status(&app, GatewayStartupStatus::failed(message));
+            set_gateway_startup_status(
+                &app,
+                GatewayStartupStatus::failed(
+                    message,
+                    gateway_ownership::GatewayOwnership::ManagedLocal,
+                ),
+            );
         }
         Some(RestartPlan::AlreadyScheduled | RestartPlan::ShuttingDown) | None => {}
     }
@@ -639,11 +859,27 @@ fn attach_existing_gateway(
     app: &tauri::AppHandle,
     generation: u64,
     endpoint: gateway::GatewayEndpoint,
+    gateway_id: String,
 ) {
     release_sidecar_launch(app, generation);
-    set_gateway_endpoint(app, endpoint);
+    let intent = gateway_ownership::GatewayIntent::attached_external(endpoint.port(), gateway_id);
+    if let Err(error) = set_gateway_intent(app, intent) {
+        set_gateway_startup_status(
+            app,
+            GatewayStartupStatus::failed(
+                format!(
+                    "The external gateway was verified, but its ownership could not be saved: {error}"
+                ),
+                gateway_ownership::GatewayOwnership::AttachedExternal,
+            ),
+        );
+        return;
+    }
     record_gateway_healthy(app);
-    set_gateway_startup_status(app, GatewayStartupStatus::ready());
+    set_gateway_startup_status(
+        app,
+        GatewayStartupStatus::ready(gateway_ownership::GatewayOwnership::AttachedExternal),
+    );
     navigate_after_ready(app);
 }
 
@@ -651,11 +887,13 @@ fn wait_for_existing_gateway(
     app: tauri::AppHandle,
     generation: u64,
     endpoint: gateway::GatewayEndpoint,
+    allow_external_attach: bool,
 ) {
     set_gateway_startup_status(
         &app,
         GatewayStartupStatus::restarting(
             "The existing Cybara gateway is busy. Waiting for it to respond.",
+            gateway_ownership::GatewayOwnership::AttachedExternal,
         ),
     );
     std::thread::spawn(move || {
@@ -668,15 +906,51 @@ fn wait_for_existing_gateway(
                     GatewayStartupStatus::failed(
                         "The existing service on port 4269 did not become a healthy Cybara gateway within 60 seconds. Check that gateway or the forwarding connection, then retry."
                             .to_string(),
+                        gateway_ownership::GatewayOwnership::AttachedExternal,
                     ),
                 );
                 return;
             }
             match gateway::probe_gateway_at(&endpoint.addr, env!("CARGO_PKG_VERSION")) {
                 gateway::GatewayProbeStatus::CybaraGateway(
-                    gateway::GatewayCompatibility::Compatible { .. },
+                    gateway::GatewayCompatibility::Compatible {
+                        gateway_id: Some(gateway_id),
+                        ..
+                    },
                 ) => {
-                    attach_existing_gateway(&app, generation, endpoint);
+                    if gateway_ownership::existing_gateway_action(allow_external_attach)
+                        == gateway_ownership::ExistingGatewayAction::AttachExternal
+                    {
+                        attach_existing_gateway(&app, generation, endpoint, gateway_id);
+                    } else {
+                        release_sidecar_launch(&app, generation);
+                        set_gateway_startup_status(
+                            &app,
+                            GatewayStartupStatus::failed(
+                                "A pre-existing Cybara gateway is occupying the managed local gateway port. Cybara refused to change gateway ownership during recovery.",
+                                gateway_ownership::GatewayOwnership::ManagedLocal,
+                            ),
+                        );
+                    }
+                    return;
+                }
+                gateway::GatewayProbeStatus::CybaraGateway(
+                    gateway::GatewayCompatibility::Compatible {
+                        gateway_id: None, ..
+                    },
+                ) => {
+                    release_sidecar_launch(&app, generation);
+                    set_gateway_startup_status(
+                        &app,
+                        GatewayStartupStatus::failed(
+                            "The external gateway does not publish the supported gateway identity capability. Update that gateway before attaching so Cybara can detect accidental gateway replacement.",
+                            if allow_external_attach {
+                                gateway_ownership::GatewayOwnership::AttachedExternal
+                            } else {
+                                gateway_ownership::GatewayOwnership::ManagedLocal
+                            },
+                        ),
+                    );
                     return;
                 }
                 gateway::GatewayProbeStatus::Busy => {
@@ -692,13 +966,24 @@ fn wait_for_existing_gateway(
                         GatewayStartupStatus::failed(
                             "Port 4269 is occupied by a non-Cybara service. Stop it before starting Cybara."
                                 .to_string(),
+                            gateway_ownership::GatewayOwnership::AttachedExternal,
                         ),
                     );
                     return;
                 }
                 gateway::GatewayProbeStatus::Available => {
                     release_sidecar_launch(&app, generation);
-                    start_sidecar(app);
+                    if allow_external_attach {
+                        set_gateway_startup_status(
+                            &app,
+                            GatewayStartupStatus::failed(
+                                "The pre-existing gateway endpoint disappeared before its identity could be verified. Cybara refused to start a local replacement. Restore the external gateway and retry, or explicitly switch to local mode.",
+                                gateway_ownership::GatewayOwnership::AttachedExternal,
+                            ),
+                        );
+                    } else {
+                        start_sidecar(app, false);
+                    }
                     return;
                 }
                 gateway::GatewayProbeStatus::CybaraGateway(
@@ -710,11 +995,14 @@ fn wait_for_existing_gateway(
                     release_sidecar_launch(&app, generation);
                     set_gateway_startup_status(
                         &app,
-                        GatewayStartupStatus::failed(gateway_version_failure(
-                            env!("CARGO_PKG_VERSION"),
-                            gateway_version.as_deref(),
-                            &reason,
-                        )),
+                        GatewayStartupStatus::failed(
+                            gateway_version_failure(
+                                env!("CARGO_PKG_VERSION"),
+                                gateway_version.as_deref(),
+                                &reason,
+                            ),
+                            gateway_ownership::GatewayOwnership::AttachedExternal,
+                        ),
                     );
                     return;
                 }
@@ -723,20 +1011,54 @@ fn wait_for_existing_gateway(
     });
 }
 
-fn start_sidecar(app: tauri::AppHandle) {
+fn start_sidecar(app: tauri::AppHandle, allow_external_attach: bool) {
+    if gateway_intent(&app).ownership != gateway_ownership::GatewayOwnership::ManagedLocal {
+        start_external_gateway_reconnect(app);
+        return;
+    }
     let Some(generation) = reserve_sidecar_launch(&app) else {
         return;
     };
     let preferred = gateway::GatewayEndpoint::loopback(CYBARA_DEFAULT_PORT);
     match gateway::probe_gateway_at(&preferred.addr, env!("CARGO_PKG_VERSION")) {
         gateway::GatewayProbeStatus::CybaraGateway(gateway::GatewayCompatibility::Compatible {
+            gateway_id: Some(gateway_id),
             ..
         }) => {
-            attach_existing_gateway(&app, generation, preferred);
+            if gateway_ownership::existing_gateway_action(allow_external_attach)
+                == gateway_ownership::ExistingGatewayAction::AttachExternal
+            {
+                attach_existing_gateway(&app, generation, preferred, gateway_id);
+            } else {
+                release_sidecar_launch(&app, generation);
+                schedule_sidecar_restart(
+                    app,
+                    "The previous managed gateway is still releasing port 4269; Cybara refused to adopt it and will retry within the bounded recovery budget."
+                        .into(),
+                );
+            }
+            return;
+        }
+        gateway::GatewayProbeStatus::CybaraGateway(gateway::GatewayCompatibility::Compatible {
+            gateway_id: None,
+            ..
+        }) => {
+            release_sidecar_launch(&app, generation);
+            set_gateway_startup_status(
+                &app,
+                GatewayStartupStatus::failed(
+                    "The external gateway does not publish the supported gateway identity capability. Update that gateway before attaching so Cybara can detect accidental gateway replacement.",
+                    if allow_external_attach {
+                        gateway_ownership::GatewayOwnership::AttachedExternal
+                    } else {
+                        gateway_ownership::GatewayOwnership::ManagedLocal
+                    },
+                ),
+            );
             return;
         }
         gateway::GatewayProbeStatus::Busy | gateway::GatewayProbeStatus::UnhealthyCybara { .. } => {
-            wait_for_existing_gateway(app, generation, preferred);
+            wait_for_existing_gateway(app, generation, preferred, allow_external_attach);
             return;
         }
         gateway::GatewayProbeStatus::NonCybara => {
@@ -746,6 +1068,7 @@ fn start_sidecar(app: tauri::AppHandle) {
                 GatewayStartupStatus::failed(
                     "Port 4269 is occupied by a non-Cybara service. Stop it before starting Cybara."
                         .to_string(),
+                    gateway_ownership::GatewayOwnership::ManagedLocal,
                 ),
             );
             return;
@@ -759,15 +1082,33 @@ fn start_sidecar(app: tauri::AppHandle) {
             release_sidecar_launch(&app, generation);
             set_gateway_startup_status(
                 &app,
-                GatewayStartupStatus::failed(gateway_version_failure(
-                    env!("CARGO_PKG_VERSION"),
-                    gateway_version.as_deref(),
-                    &reason,
-                )),
+                GatewayStartupStatus::failed(
+                    gateway_version_failure(
+                        env!("CARGO_PKG_VERSION"),
+                        gateway_version.as_deref(),
+                        &reason,
+                    ),
+                    gateway_ownership::GatewayOwnership::ManagedLocal,
+                ),
             );
             return;
         }
         gateway::GatewayProbeStatus::Available => {}
+    }
+
+    if let Err(error) = set_gateway_intent(
+        &app,
+        gateway_ownership::GatewayIntent::managed_local(CYBARA_DEFAULT_PORT),
+    ) {
+        release_sidecar_launch(&app, generation);
+        set_gateway_startup_status(
+            &app,
+            GatewayStartupStatus::failed(
+                format!("The managed gateway ownership could not be saved: {error}"),
+                gateway_ownership::GatewayOwnership::ManagedLocal,
+            ),
+        );
+        return;
     }
 
     log::info!("Starting Cybara gateway sidecar on port {CYBARA_DEFAULT_PORT}");
@@ -900,7 +1241,10 @@ fn start_sidecar(app: tauri::AppHandle) {
             Duration::from_secs(25),
         ) {
             record_gateway_healthy(&app);
-            set_gateway_startup_status(&app, GatewayStartupStatus::ready());
+            set_gateway_startup_status(
+                &app,
+                GatewayStartupStatus::ready(gateway_ownership::GatewayOwnership::ManagedLocal),
+            );
             navigate_after_ready(&app);
         } else {
             stop_sidecar_generation(&app, generation);
@@ -910,6 +1254,16 @@ fn start_sidecar(app: tauri::AppHandle) {
             );
         }
     });
+}
+
+fn attached_external_gateway_is_current(app: &tauri::AppHandle) -> bool {
+    let intent = gateway_intent(app);
+    if intent.ownership != gateway_ownership::GatewayOwnership::AttachedExternal {
+        return true;
+    }
+    let endpoint = gateway_endpoint(app);
+    gateway::compatible_gateway_id_at(&endpoint.addr, env!("CARGO_PKG_VERSION")).as_deref()
+        == intent.gateway_id.as_deref()
 }
 
 fn start_gateway_watchdog(app: tauri::AppHandle) {
@@ -931,7 +1285,14 @@ fn start_gateway_watchdog(app: tauri::AppHandle) {
                 continue;
             }
             let endpoint = gateway_endpoint(&app);
-            let liveness = gateway::gateway_liveness_at(&endpoint.addr);
+            let liveness = if gateway_intent(&app).ownership
+                == gateway_ownership::GatewayOwnership::AttachedExternal
+                && !attached_external_gateway_is_current(&app)
+            {
+                gateway::GatewayLivenessStatus::Unhealthy
+            } else {
+                gateway::gateway_liveness_at(&endpoint.addr)
+            };
             let should_restart = app
                 .try_state::<GatewaySupervisionState>()
                 .and_then(|state| {
@@ -950,11 +1311,18 @@ fn start_gateway_watchdog(app: tauri::AppHandle) {
                 })
                 .unwrap_or(false);
             if should_restart {
-                stop_sidecar(&app);
-                schedule_sidecar_restart(
-                    app.clone(),
-                    "Gateway liveness probe failed repeatedly.".into(),
-                );
+                match gateway_recovery_action(&app) {
+                    gateway_ownership::RecoveryAction::RestartManagedSidecar => {
+                        stop_sidecar(&app);
+                        schedule_sidecar_restart(
+                            app.clone(),
+                            "Gateway liveness probe failed repeatedly.".into(),
+                        );
+                    }
+                    gateway_ownership::RecoveryAction::ReconnectExternal => {
+                        start_external_gateway_reconnect(app.clone());
+                    }
+                }
             }
         }
     });
@@ -994,6 +1362,7 @@ fn main() {
             get_gateway_url,
             get_gateway_startup_status,
             restart_gateway_sidecar,
+            switch_to_local_gateway,
             start_native_recording,
             stop_native_recording,
             write_theme_file,
@@ -1009,11 +1378,40 @@ fn main() {
                 gateway_supervision::GatewaySupervision::default(),
             )));
             app.manage(PendingOpen(std::sync::Mutex::new(None)));
+            let intent_path = app.path().app_local_data_dir()?.join("gateway-intent.json");
+            let intent_result =
+                gateway_ownership::load_gateway_intent(&intent_path, CYBARA_DEFAULT_PORT);
+            let intent_error = intent_result.as_ref().err().cloned();
+            let loaded_intent = intent_result.unwrap_or_else(|error| {
+                log::error!("{error}");
+                gateway_ownership::LoadedGatewayIntent {
+                    intent: gateway_ownership::GatewayIntent::attached_external(
+                        CYBARA_DEFAULT_PORT,
+                        "invalid-persisted-gateway-intent".into(),
+                    ),
+                    persisted: true,
+                }
+            });
+            let allow_external_attach = !loaded_intent.persisted;
+            let intent = loaded_intent.intent;
+            app.manage(GatewayOwnershipState(std::sync::Mutex::new(
+                gateway_ownership::GatewayOwnershipController::new(intent.clone()),
+            )));
             app.manage(GatewayStartupState(std::sync::Mutex::new(
-                GatewayStartupStatus::starting(),
+                intent_error
+                    .as_ref()
+                    .map(|error| {
+                        GatewayStartupStatus::failed(
+                            format!(
+                                "The saved external gateway intent could not be read: {error}. Cybara refused to start a local replacement."
+                            ),
+                            gateway_ownership::GatewayOwnership::AttachedExternal,
+                        )
+                    })
+                    .unwrap_or_else(|| GatewayStartupStatus::starting(intent.ownership)),
             )));
             app.manage(GatewayRuntimeState(std::sync::Mutex::new(
-                gateway::GatewayEndpoint::loopback(CYBARA_DEFAULT_PORT),
+                gateway::GatewayEndpoint::loopback(intent.port),
             )));
             app.manage(desktop_update::DesktopUpdateManager::default());
             tray::setup(app)?;
@@ -1023,7 +1421,9 @@ fn main() {
             }
 
             start_gateway_watchdog(app.handle().clone());
-            start_sidecar(app.handle().clone());
+            if intent_error.is_none() {
+                start_gateway_for_intent(app.handle().clone(), allow_external_attach);
+            }
 
             Ok(())
         })
@@ -1065,6 +1465,8 @@ struct ManagedSidecar {
 struct SidecarState(std::sync::Mutex<ManagedSidecar>);
 
 struct GatewaySupervisionState(std::sync::Mutex<gateway_supervision::GatewaySupervision>);
+
+struct GatewayOwnershipState(std::sync::Mutex<gateway_ownership::GatewayOwnershipController>);
 
 struct PendingOpen(std::sync::Mutex<Option<String>>);
 

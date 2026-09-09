@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, statSync } from "fs";
+import { isImagePath } from "../../../shared/image-formats";
 import { type AgentImage, MAX_INLINE_IMAGE_BYTES } from "../llm/image-blocks";
 import type { MessageHandlerAttachmentInfo, MessageHandlerFileInfo } from "./types";
 
-const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp)$/i;
 const TEXT_EXTENSION =
   /\.(txt|md|markdown|json|jsonc|csv|tsv|xml|ya?ml|toml|ini|cfg|conf|log|html?|css|scss|jsx?|tsx?|mjs|cjs|py|rb|go|rs|java|kt|swift|c|h|cpp|hpp|cc|cs|php|sh|bash|zsh|sql)$/i;
 const MAX_TEXT_BYTES = 256 * 1024;
@@ -15,7 +15,7 @@ export function channelFileIsImage(fileInfo?: Partial<MessageHandlerFileInfo>): 
   if (!fileInfo?.hasFile) return false;
   const filePath = (fileInfo.filePath || "").trim();
   const fileType = (fileInfo.fileType || "").toLowerCase();
-  return fileType.startsWith("image/") || IMAGE_EXTENSION.test(filePath);
+  return fileType.startsWith("image/") || isImagePath(filePath);
 }
 
 function channelFiles(

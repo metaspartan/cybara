@@ -93,6 +93,16 @@ ignoreUntil = 2026-12-31
 reason = "extract-zip has no patched release; the transitive Puppeteer copy is patched in-tree via patches/extract-zip@2.0.1.patch to reject symlinks that resolve outside the extraction directory. Verified against a malicious ZIP regression test."
 
 [[IgnoredVulns]]
+id = "GHSA-7pqw-9j4j-h8q3"
+ignoreUntil = 2026-12-31
+reason = "extract-zip has no patched release; the same-name symlink-then-file write is blocked by patches/extract-zip@2.0.1.patch, which refuses to create any symlink that resolves outside the extraction directory before a later entry could write through it. Verified against a two-entry malicious ZIP regression test."
+
+[[IgnoredVulns]]
+id = "GHSA-vwc7-r8mq-g2x9"
+ignoreUntil = 2026-12-31
+reason = "adm-zip has no patched release (0.6.0 is latest, last_affected). It is only reached by onnxruntime-node's postinstall unpacking its own release archive, and the destination-symlink follow is fixed in-tree via patches/adm-zip@0.6.0.patch: Utils.sanitize now refuses symlinked targets and any path whose existing ancestors resolve outside the extraction root. Verified against a planted-symlink regression test."
+
+[[IgnoredVulns]]
 id = "RUSTSEC-2026-0235"
 ignoreUntil = 2026-12-31
 reason = "rkyv 0.7 arrives only as an optional feature of rust_decimal via tauri-plugin-log/byte-unit; rust_decimal 1.42.1 is the latest release and still pins rkyv ^0.7 with no 0.8 upgrade path. The rkyv feature is not enabled in this build (rkyv is a lockfile-only entry, absent from the resolved graph), so no untrusted rkyv archives are validated."

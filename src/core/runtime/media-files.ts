@@ -1,14 +1,11 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "fs";
 import { extname, isAbsolute, resolve, sep } from "path";
+import { IMAGE_MIME_BY_EXTENSION, imageMimeForPath } from "../../../shared/image-formats";
 import { cybaraDir } from "../paths";
+import { snapshotViewedMedia, type ViewedMediaHeicConverter } from "../viewed-media";
 
 const MEDIA_MIME: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".svg": "image/svg+xml",
+  ...IMAGE_MIME_BY_EXTENSION,
   ".pdf": "application/pdf",
   ".mp3": "audio/mpeg",
   ".m4a": "audio/mp4",
@@ -21,6 +18,8 @@ const MEDIA_MIME: Record<string, string> = {
 
 const ALLOWED_SUBDIRS = ["screenshots", "attachments", "media"] as const;
 
+const TRANSCODED_MIME = new Set(["image/heic", "image/heif", "image/tiff", "image/bmp"]);
+
 function allowedRoots(): string[] {
   return ALLOWED_SUBDIRS.map((dir) => resolve(cybaraDir, dir));
 }
@@ -30,6 +29,29 @@ export interface MediaFileResult {
   contentType?: string;
   bytes?: Buffer;
   error?: string;
+  path?: string;
+}
+
+export async function serveMediaFile(
+  relPath: string,
+  convertHeic?: ViewedMediaHeicConverter
+): Promise<MediaFileResult> {
+  const resolved = resolveMediaFile(relPath);
+  if (
+    resolved.status !== 200 ||
+    !resolved.path ||
+    !TRANSCODED_MIME.has(resolved.contentType ?? "")
+  ) {
+    return resolved;
+  }
+  const snapshot = await snapshotViewedMedia(resolved.path, convertHeic);
+  const contentType = snapshot ? imageMimeForPath(snapshot) : undefined;
+  if (!snapshot || !contentType) return { status: 415, error: "undecodable image" };
+  try {
+    return { status: 200, contentType, bytes: readFileSync(snapshot), path: snapshot };
+  } catch {
+    return { status: 500, error: "read error" };
+  }
 }
 
 export function resolveMediaFile(relPath: string): MediaFileResult {
@@ -58,7 +80,7 @@ export function resolveMediaFile(relPath: string): MediaFileResult {
       (root) => realTarget === root || realTarget.startsWith(root + sep)
     );
     if (!realContained) return { status: 403, error: "forbidden" };
-    return { status: 200, contentType, bytes: readFileSync(realTarget) };
+    return { status: 200, contentType, bytes: readFileSync(realTarget), path: realTarget };
   } catch {
     return { status: 500, error: "read error" };
   }

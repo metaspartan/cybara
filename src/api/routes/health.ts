@@ -1,5 +1,6 @@
 import { agentManager } from "../../core/agent";
 import { getAppVersion } from "../../core/build-info";
+import { config } from "../../core/config";
 import { tables } from "../../core/database";
 import { type ProviderType, providerManager, providers } from "../../core/providers";
 import { getSystemMonitorSnapshot } from "../../core/system-monitor";
@@ -14,6 +15,7 @@ import { makeRawHttpResponse } from "./raw-http-response";
 import {
   CYBARA_GATEWAY_API_MIN_CLIENT_VERSION,
   CYBARA_GATEWAY_API_VERSION,
+  CYBARA_GATEWAY_IDENTITY_VERSION,
 } from "../../../shared/gateway-compatibility";
 
 interface ProcessMemoryUsage {
@@ -21,6 +23,14 @@ interface ProcessMemoryUsage {
   heapTotal: number;
   external: number;
   rss: number;
+}
+
+function gatewayInstanceId(): string {
+  const stored = config.get<unknown>("gateway_instance_id");
+  if (typeof stored === "string" && stored.trim()) return stored.trim();
+  const created = crypto.randomUUID();
+  config.set("gateway_instance_id", created);
+  return created;
 }
 
 export function getProcessMemoryUsage(): ProcessMemoryUsage {
@@ -55,9 +65,11 @@ function healthResponse(): unknown {
     timestamp: now.toISOString(),
     uptime: process.uptime(),
     version: getAppVersion(),
+    instance_id: gatewayInstanceId(),
     compatibility: {
       api_version: CYBARA_GATEWAY_API_VERSION,
       min_client_api_version: CYBARA_GATEWAY_API_MIN_CLIENT_VERSION,
+      identity_version: CYBARA_GATEWAY_IDENTITY_VERSION,
     },
     system,
     checks: {

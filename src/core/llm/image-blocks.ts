@@ -1,3 +1,4 @@
+import { PROVIDER_IMAGE_MIME } from "../../../shared/image-formats";
 export interface AgentImage {
   data?: string;
   url?: string;
@@ -5,7 +6,7 @@ export interface AgentImage {
   mimeType?: string;
 }
 
-const SUPPORTED_ANTHROPIC_MIME = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const SUPPORTED_ANTHROPIC_MIME = PROVIDER_IMAGE_MIME;
 
 export function normalizeMimeType(mime?: string): string {
   const m = (mime || "").trim().toLowerCase();

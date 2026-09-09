@@ -22,6 +22,7 @@ import {
   gatewayStartupPollInterval,
   isGatewayRecovering,
   readGatewayStartupStatus,
+  switchToLocalGateway,
 } from "@/lib/desktopGatewayStartup";
 import { isTauriDesktopRuntime } from "@/lib/desktopHost";
 import { preventFileDropNavigation } from "@/lib/fileDrop";
@@ -95,6 +96,7 @@ function ChatRoute() {
 function SetupGuard({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const cachedSetupComplete = readSetupComplete();
+  const [gatewaySwitchError, setGatewaySwitchError] = useState<string | null>(null);
   const setupStatusQuery = useQuery({
     queryKey: ["setup", "status"],
     queryFn: async () => {
@@ -132,6 +134,7 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
     return (
       <GatewayStartupFailure
         message={gatewayStartup.message || "The packaged gateway exited before it was ready."}
+        canSwitchToLocal={gatewayStartup.canSwitchToLocal}
       />
     );
   }
@@ -143,6 +146,30 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
         <p className="max-w-md text-center text-sm text-[var(--text-secondary)]">
           {gatewayStartup?.message}
         </p>
+        {gatewayStartup?.canSwitchToLocal ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                !window.confirm(
+                  "Stop following the external gateway and start a new local gateway?"
+                )
+              ) {
+                return;
+              }
+              setGatewaySwitchError(null);
+              void switchToLocalGateway().then(setGatewaySwitchError);
+            }}
+            className="rounded-md border border-[var(--surface-border)] px-3 py-2 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+          >
+            Use local gateway
+          </button>
+        ) : null}
+        {gatewaySwitchError ? (
+          <p role="alert" className="max-w-md text-center text-sm text-destructive">
+            {gatewaySwitchError}
+          </p>
+        ) : null}
       </div>
     );
   }

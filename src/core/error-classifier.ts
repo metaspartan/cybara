@@ -23,6 +23,30 @@ export function isTransientStatus(status: number): boolean {
   return [429, 500, 502, 503, 520, 529].includes(status);
 }
 
+export function isBlankUpstreamError(body: string | undefined): boolean {
+  const trimmed = (body ?? "").trim();
+  if (!trimmed) return true;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return false;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+  const record = parsed as Record<string, unknown>;
+  const error = record.error;
+  if (typeof error === "string") return error.trim().length === 0;
+  if (error && typeof error === "object") {
+    const details = error as Record<string, unknown>;
+    return [details.message, details.type, details.code].every(
+      (value) => value === undefined || value === null || String(value).trim().length === 0
+    );
+  }
+  return [record.message, record.detail, record.msg].every(
+    (value) => value === undefined || value === null || String(value).trim().length === 0
+  );
+}
+
 export function classifyApiError(input: {
   status?: number;
   body?: string;
@@ -130,6 +154,16 @@ export function classifyApiError(input: {
   ) {
     return {
       category: "network",
+      retryable: true,
+      rotateCredential: false,
+      reduceContext: false,
+      status,
+      message,
+    };
+  }
+  if (status === 400 && isBlankUpstreamError(input.body)) {
+    return {
+      category: "server_error",
       retryable: true,
       rotateCredential: false,
       reduceContext: false,

@@ -185,6 +185,34 @@ describe("chat image rendering", () => {
   });
 });
 
+describe("chat image format support", () => {
+  test("accepts every browser-renderable format for attachments and screenshot markdown", () => {
+    expect(isSupportedImageType("image/avif")).toBe(true);
+    expect(isSupportedImageType("image/bmp", "")).toBe(true);
+    expect(isSupportedImageType("", "photo.HEIC")).toBe(true);
+    expect(isSupportedImageType("application/octet-stream", "diagram.svg")).toBe(true);
+    expect(isSupportedImageType("image/tiff", "scan.tif")).toBe(true);
+    expect(isSupportedImageType("", "layers.psd")).toBe(false);
+    expect(chatMarkdownImageSrc("file:///Users/x/.cybara/screenshots/shot.avif")).toContain(
+      "screenshots%2Fshot.avif"
+    );
+    expect(chatMarkdownImageSrc("file:///Users/x/.cybara/screenshots/scan.tiff")).toContain(
+      "screenshots%2Fscan.tiff"
+    );
+    expect(chatMarkdownImageSrc("file:///Users/x/.cybara/screenshots/IMG_1.HEIC")).toContain(
+      "screenshots%2FIMG_1.HEIC"
+    );
+    expect(chatMarkdownImageSrc("file:///Users/x/.cybara/screenshots/notes.psd")).toBeNull();
+    expect(imageToolResultSrc({ filePath: "/Users/x/.cybara/screenshots/shot.heif" })).toContain(
+      "screenshots%2Fshot.heif"
+    );
+    expect(imageToolResultSrc({ filePath: "/Users/x/.cybara/screenshots/scan.tif" })).toContain(
+      "screenshots%2Fscan.tif"
+    );
+    expect(imageToolResultSrc({ filePath: "/Users/x/.cybara/screenshots/notes.psd" })).toBeNull();
+  });
+});
+
 describe("chat image source cache", () => {
   test("resolves a repeated authenticated image synchronously after the first load", async () => {
     resetChatImageSourceCacheForTests();
