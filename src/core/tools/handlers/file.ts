@@ -16,6 +16,7 @@ import { readFileLines } from "../file-read";
 import { searchFiles } from "../file-search";
 import type { ToolContext } from "../index";
 import { assertReadablePath, assertWritablePath } from "../path-policy";
+import { readablePathOptions } from "../sensitive-read-policy";
 
 const workspace = homeDir;
 
@@ -190,7 +191,7 @@ function resolveSearchResultPath(searchDir: string, resultPath: string): string 
 
 function isReadableSearchResult(searchDir: string, resultPath: string): boolean {
   try {
-    assertReadablePath(resolveSearchResultPath(searchDir, resultPath));
+    assertReadablePath(resolveSearchResultPath(searchDir, resultPath), readablePathOptions());
     return true;
   } catch {
     return false;
@@ -349,7 +350,7 @@ export async function handleRead(
       'Validation error: path is required. Provide a file path (for example: {"path":"src/index.ts"}).'
     );
   }
-  assertReadablePath(path);
+  assertReadablePath(path, readablePathOptions());
   if (!existsSync(path)) {
     throw fileNotFoundError(path);
   }
@@ -530,7 +531,7 @@ export async function handleFileSearch(
   }
 
   const searchDir = cwd || context?.workspaceDir || workspace;
-  const safeSearchDir = assertReadablePath(searchDir);
+  const safeSearchDir = assertReadablePath(searchDir, readablePathOptions());
 
   if (!pattern) {
     return {
@@ -616,7 +617,10 @@ export async function handleGrep(
   const caseSensitive = args.caseSensitive as boolean | undefined;
   const shouldRecursive = args.recursive !== false;
 
-  const searchDir = assertReadablePath(expandTilde(path) || toolContext?.workspaceDir || workspace);
+  const searchDir = assertReadablePath(
+    expandTilde(path) || toolContext?.workspaceDir || workspace,
+    readablePathOptions()
+  );
   const extensions = fileType ? fileType.split(",").map((t) => t.trim()) : null;
 
   const results: Array<{ path: string; line: number; content: string }> = [];
@@ -849,7 +853,7 @@ async function searchDirectory(
         }
       } else if (entry.isFile()) {
         try {
-          assertReadablePath(fullPath);
+          assertReadablePath(fullPath, readablePathOptions());
         } catch {
           continue;
         }

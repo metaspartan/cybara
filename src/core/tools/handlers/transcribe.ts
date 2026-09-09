@@ -1,6 +1,7 @@
 import { existsSync, statSync } from "fs";
 import { basename } from "path";
 import { assertReadablePath } from "../path-policy";
+import { readablePathOptions } from "../sensitive-read-policy";
 import { validateUrl } from "../../../api/security";
 import { config } from "../../config";
 import { fetchPublicHttpUrl, type PublicHttpFetcher } from "../../outbound-url-policy";
@@ -104,7 +105,7 @@ async function loadAudio(
   const url = typeof args.url === "string" ? args.url.trim() : "";
 
   if (path) {
-    assertReadablePath(path);
+    assertReadablePath(path, readablePathOptions());
     if (!existsSync(path)) throw new Error(`Audio file not found: ${path}`);
     if (statSync(path).size > MAX_AUDIO_BYTES) {
       throw new Error(`Audio file exceeds 25MB limit: ${path}`);

@@ -9,6 +9,47 @@ export const DEFAULT_SANDBOX_CDP_PORT = 9222;
 export const DEFAULT_SANDBOX_NOVNC_PORT = 6080;
 
 const DOCKER_CMD = process.env.CYBARA_SANDBOX_DOCKER_CMD || "docker";
+const DOCKER_PROBE_TIMEOUT_MS = 4000;
+const DOCKER_UNAVAILABLE_CACHE_MS = 15_000;
+
+let dockerUnavailableUntil = 0;
+
+function dockerCommand(): string {
+  return process.env.CYBARA_SANDBOX_DOCKER_CMD || DOCKER_CMD;
+}
+
+function dockerProbeTimeoutMs(): number {
+  const configured = Number(process.env.CYBARA_SANDBOX_DOCKER_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : DOCKER_PROBE_TIMEOUT_MS;
+}
+
+interface DockerProbeResult {
+  exitCode: number | null;
+  stdout: string;
+  timedOut: boolean;
+}
+
+async function runDockerProbe(args: string[]): Promise<DockerProbeResult> {
+  let proc: ReturnType<typeof Bun.spawn>;
+  try {
+    proc = Bun.spawn([dockerCommand(), ...args], { stdout: "pipe", stderr: "pipe" });
+  } catch {
+    return { exitCode: null, stdout: "", timedOut: false };
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<"timeout">((resolveTimeout) => {
+    timer = setTimeout(() => resolveTimeout("timeout"), dockerProbeTimeoutMs());
+  });
+  const outcome = await Promise.race([proc.exited, timeout]);
+  if (timer) clearTimeout(timer);
+  if (outcome === "timeout") {
+    proc.kill("SIGKILL");
+    return { exitCode: null, stdout: "", timedOut: true };
+  }
+  const stdout =
+    proc.stdout instanceof ReadableStream ? await readSubprocessStreamAsText(proc.stdout) : "";
+  return { exitCode: outcome, stdout, timedOut: false };
+}
 
 export interface SandboxBrowserOptions {
   image?: string;
@@ -99,32 +140,25 @@ export function sandboxContextDir(): string {
   return resolveSandboxContextDir();
 }
 
-function dockerAvailable(): boolean {
-  try {
-    const result = Bun.spawnSync([DOCKER_CMD, "version", "--format", "{{.Server.Version}}"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    return result.exitCode === 0;
-  } catch {
-    return false;
-  }
+async function dockerAvailable(): Promise<boolean> {
+  if (Date.now() < dockerUnavailableUntil) return false;
+  const result = await runDockerProbe(["version", "--format", "{{.Server.Version}}"]);
+  const available = result.exitCode === 0;
+  dockerUnavailableUntil = available ? 0 : Date.now() + DOCKER_UNAVAILABLE_CACHE_MS;
+  return available;
 }
 
-function imageBuilt(image: string): boolean {
-  const result = Bun.spawnSync([DOCKER_CMD, "image", "inspect", image], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  return result.exitCode === 0;
+async function imageBuilt(image: string): Promise<boolean> {
+  return (await runDockerProbe(["image", "inspect", image])).exitCode === 0;
 }
 
-function containerRunning(container: string): boolean {
-  const result = Bun.spawnSync([DOCKER_CMD, "inspect", "-f", "{{.State.Running}}", container], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  return result.exitCode === 0 && result.stdout.toString().trim() === "true";
+async function containerRunning(container: string): Promise<boolean> {
+  const result = await runDockerProbe(["inspect", "-f", "{{.State.Running}}", container]);
+  return result.exitCode === 0 && result.stdout.trim() === "true";
+}
+
+export function resetSandboxDockerAvailabilityForTests(): void {
+  dockerUnavailableUntil = 0;
 }
 
 async function waitForCdp(cdpPort: number, timeoutMs: number): Promise<boolean> {
@@ -154,7 +188,7 @@ export async function buildSandboxImage(opts?: SandboxBrowserOptions): Promise<v
   if (!existsSync(join(context, "Dockerfile"))) {
     throw new Error(`Sandbox browser Dockerfile not found at ${context}`);
   }
-  const proc = Bun.spawn([DOCKER_CMD, "build", "-t", image, context], {
+  const proc = Bun.spawn([dockerCommand(), "build", "-t", image, context], {
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -165,7 +199,9 @@ export async function buildSandboxImage(opts?: SandboxBrowserOptions): Promise<v
   }
 }
 
-export function getSandboxBrowserStatus(opts?: SandboxBrowserOptions): SandboxBrowserStatus {
+export async function getSandboxBrowserStatus(
+  opts?: SandboxBrowserOptions
+): Promise<SandboxBrowserStatus> {
   const { image, container, cdpPort, novncPort } = resolved(opts);
   const base: SandboxBrowserStatus = {
     dockerAvailable: false,
@@ -176,14 +212,14 @@ export function getSandboxBrowserStatus(opts?: SandboxBrowserOptions): SandboxBr
     cdpUrl: sandboxCdpUrl(cdpPort),
     novncUrl: sandboxNovncUrl(novncPort),
   };
-  if (!dockerAvailable()) {
+  if (!(await dockerAvailable())) {
     return { ...base, reason: "Docker is not available on this host" };
   }
   return {
     ...base,
     dockerAvailable: true,
-    imageBuilt: imageBuilt(image),
-    running: containerRunning(container),
+    imageBuilt: await imageBuilt(image),
+    running: await containerRunning(container),
   };
 }
 
@@ -191,16 +227,16 @@ export async function startSandboxBrowser(
   opts?: SandboxBrowserOptions
 ): Promise<SandboxBrowserStatus> {
   const params = resolved(opts);
-  if (!dockerAvailable()) {
+  if (!(await dockerAvailable())) {
     throw new Error("Docker is not available. Install Docker to use the sandbox browser.");
   }
-  if (containerRunning(params.container)) {
+  if (await containerRunning(params.container)) {
     return getSandboxBrowserStatus(opts);
   }
-  if (!imageBuilt(params.image)) {
+  if (!(await imageBuilt(params.image))) {
     await buildSandboxImage(opts);
   }
-  const proc = Bun.spawn([DOCKER_CMD, ...buildDockerRunArgs(params)], {
+  const proc = Bun.spawn([dockerCommand(), ...buildDockerRunArgs(params)], {
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -218,8 +254,8 @@ export async function startSandboxBrowser(
 
 export async function stopSandboxBrowser(opts?: SandboxBrowserOptions): Promise<void> {
   const { container } = resolved(opts);
-  if (!dockerAvailable()) return;
-  const proc = Bun.spawn([DOCKER_CMD, "rm", "-f", container], {
+  if (!(await dockerAvailable())) return;
+  const proc = Bun.spawn([dockerCommand(), "rm", "-f", container], {
     stdout: "pipe",
     stderr: "pipe",
   });

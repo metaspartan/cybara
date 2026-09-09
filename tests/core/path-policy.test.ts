@@ -8,6 +8,7 @@ import {
 import { homedir, tmpdir } from "os";
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { join } from "path";
+import { cybaraDir } from "../../src/core/paths";
 
 describe("checkWritePath", () => {
   test("allows a normal project file", () => {
@@ -30,6 +31,46 @@ describe("checkWritePath", () => {
     expect(checkWritePath(".env").allowed).toBe(false);
     expect(checkWritePath(".env.local").allowed).toBe(false);
     expect(checkWritePath(".env.production").allowed).toBe(false);
+  });
+
+  test("treats .env example and template files as ordinary readable files", () => {
+    for (const name of [
+      ".env.example",
+      ".env.sample",
+      ".env.template",
+      ".env.dist",
+      ".env.local.example",
+    ]) {
+      expect(checkWritePath(`/Users/dev/project/${name}`).allowed).toBe(true);
+      expect(assertReadablePath(`/Users/dev/project/${name}`)).toBe(`/Users/dev/project/${name}`);
+    }
+    expect(checkWritePath("/Users/dev/project/.env").allowed).toBe(false);
+    expect(checkWritePath("/Users/dev/project/.env.production").allowed).toBe(false);
+  });
+
+  test("sensitive read modes open .env files or everything except Cybara's own data", () => {
+    const envPath = "/Users/dev/project/.env";
+    const keyPath = "/Users/dev/project/id_rsa";
+    expect(() => assertReadablePath(envPath)).toThrow("Settings → Safety");
+    expect(() => assertReadablePath(envPath, { sensitiveReads: "blocked" })).toThrow("Refused");
+    expect(assertReadablePath(envPath, { sensitiveReads: "env-files" })).toBe(envPath);
+    expect(
+      assertReadablePath("/Users/dev/project/.env.local", { sensitiveReads: "env-files" })
+    ).toBe("/Users/dev/project/.env.local");
+    expect(() => assertReadablePath(keyPath, { sensitiveReads: "env-files" })).toThrow("Refused");
+    expect(assertReadablePath(keyPath, { sensitiveReads: "all" })).toBe(keyPath);
+    expect(assertReadablePath(envPath, { sensitiveReads: "all" })).toBe(envPath);
+    const secureKey = join(homedir(), ".cybara", "secure", "storage.key");
+    expect(() => assertReadablePath(secureKey, { sensitiveReads: "all" })).toThrow("Refused");
+    const configuredSecureKey = join(cybaraDir, "secure", "storage.key");
+    expect(() => assertReadablePath(configuredSecureKey, { sensitiveReads: "all" })).toThrow(
+      "Refused"
+    );
+    expect(checkWritePath(join(cybaraDir, "data", "platform.db")).allowed).toBe(false);
+    expect(
+      assertReadablePath(join(cybaraDir, "memory", "notes.md"), { sensitiveReads: "all" })
+    ).toBe(join(cybaraDir, "memory", "notes.md"));
+    expect(() => assertWritablePath(envPath, { sensitiveReads: "all" })).toThrow("Refused");
   });
 
   test("denies other credential files", () => {

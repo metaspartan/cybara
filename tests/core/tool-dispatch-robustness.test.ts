@@ -288,7 +288,7 @@ describe("tool dispatch robustness", () => {
                       type: "function",
                       function: {
                         name: "read",
-                        arguments: JSON.stringify({ path: ".env.example" }),
+                        arguments: JSON.stringify({ path: ".env" }),
                       },
                     },
                   ],

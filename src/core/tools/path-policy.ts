@@ -1,8 +1,12 @@
 import { existsSync, realpathSync } from "fs";
 import { homedir } from "os";
 import { resolve, isAbsolute, dirname, join } from "path";
+import { runtimeHomeDir } from "../cybara-home";
+import { cybaraDir } from "../paths";
 
 export type PathPolicyDenialReason = "sensitive-path" | "outside-workspace" | "empty-path";
+
+export type SensitiveReadMode = "blocked" | "env-files" | "all";
 
 export interface PathPolicyDecision {
   allowed: boolean;
@@ -10,8 +14,11 @@ export interface PathPolicyDecision {
   resolvedPath: string;
 }
 
+const ENV_FILE_PATTERN = /^\.env(\..*)?$/i;
+const ENV_TEMPLATE_PATTERN = /^\.env(\..*)?\.(example|sample|template|dist)$/i;
+
 const DENY_FILENAME_PATTERNS: readonly RegExp[] = [
-  /^\.env(\..*)?$/i,
+  ENV_FILE_PATTERN,
   /^id_[a-z0-9-]+$/i,
   /^authorized_keys$/i,
   /^known_hosts$/i,
@@ -36,7 +43,6 @@ const DENY_PATH_SEGMENTS: readonly string[] = [
   ".ssh",
   ".gnupg",
   ".aws",
-  ".cybara",
   "Library/Cookies",
   "Library/Keychains",
 ];
@@ -46,6 +52,7 @@ export interface PathPolicyOptions {
   workspaceRoot?: string;
   extraDenyPrefixes?: string[];
   disabled?: boolean;
+  sensitiveReads?: SensitiveReadMode;
 }
 
 function normalize(p: string): string {
@@ -91,9 +98,23 @@ function policyPaths(rawPath: string): string[] {
   return paths;
 }
 
+function basenameOf(resolvedPath: string): string {
+  return resolvedPath.toLowerCase().split("/").pop() ?? "";
+}
+
+export function isEnvTemplateFile(path: string): boolean {
+  return ENV_TEMPLATE_PATTERN.test(basenameOf(path.replace(/\\/g, "/")));
+}
+
+export function isEnvFile(path: string): boolean {
+  const basename = basenameOf(path.replace(/\\/g, "/"));
+  return ENV_FILE_PATTERN.test(basename) && !ENV_TEMPLATE_PATTERN.test(basename);
+}
+
 function matchesDenyPattern(resolvedPath: string): boolean {
   const lower = resolvedPath.toLowerCase();
-  const basename = lower.split("/").pop() ?? "";
+  const basename = basenameOf(lower);
+  if (ENV_TEMPLATE_PATTERN.test(basename)) return false;
   for (const pattern of DENY_FILENAME_PATTERNS) {
     if (pattern.source.includes("\\/") || pattern.source.includes("/")) {
       if (pattern.test(lower) || pattern.test(resolvedPath)) return true;
@@ -104,15 +125,34 @@ function matchesDenyPattern(resolvedPath: string): boolean {
   return false;
 }
 
-function homePolicyRoots(): string[] {
-  const roots = [normalize(homedir())];
-  try {
-    const realHome = normalize(realpathSync.native(homedir()));
-    if (!roots.includes(realHome)) roots.push(realHome);
-  } catch {
-    return roots;
+function withRealPaths(paths: string[]): string[] {
+  const roots: string[] = [];
+  for (const path of paths) {
+    const normalized = normalize(path);
+    if (!roots.includes(normalized)) roots.push(normalized);
+    try {
+      const real = normalize(realpathSync.native(path));
+      if (!roots.includes(real)) roots.push(real);
+    } catch {
+      continue;
+    }
   }
   return roots;
+}
+
+function homePolicyRoots(): string[] {
+  return withRealPaths([homedir(), runtimeHomeDir]);
+}
+
+function cybaraPolicyRoots(): string[] {
+  return withRealPaths([join(homedir(), ".cybara"), join(runtimeHomeDir, ".cybara"), cybaraDir]);
+}
+
+function isUnderCybaraDir(resolvedPath: string, subdir?: string): boolean {
+  return cybaraPolicyRoots().some((root) => {
+    const marker = subdir ? `${root}/${subdir.toLowerCase()}` : root;
+    return resolvedPath === marker || resolvedPath.startsWith(`${marker}/`);
+  });
 }
 
 function isUnderHomeSubdir(resolvedPath: string, segment: string): boolean {
@@ -140,6 +180,10 @@ export function checkWritePath(
 
   for (const candidate of candidates) {
     if (matchesDenyPattern(candidate)) {
+      return { allowed: false, reason: "sensitive-path", resolvedPath: resolved };
+    }
+
+    if (isUnderCybaraDir(candidate)) {
       return { allowed: false, reason: "sensitive-path", resolvedPath: resolved };
     }
 
@@ -205,13 +249,22 @@ export function assertWritablePath(
   return decision.resolvedPath;
 }
 
-const READABLE_CYBARA_SUBDIRS: readonly string[] = [
-  ".cybara/memory",
-  ".cybara/skills",
-  ".cybara/tool-results",
-];
-const READABLE_CYBARA_IMAGE_SUBDIRS: readonly string[] = [".cybara/screenshots"];
+const READABLE_CYBARA_SUBDIRS: readonly string[] = ["memory", "skills", "tool-results"];
+const READABLE_CYBARA_IMAGE_SUBDIRS: readonly string[] = ["screenshots"];
 const READABLE_IMAGE_PATTERN = /\.(png|jpe?g|gif|webp|heic|heif)$/i;
+
+export const SENSITIVE_READ_DENIAL =
+  "Refused: reading this path is blocked — it points at a sensitive credential or key file. If this is intended, allow sensitive file reads under Settings → Safety → Sensitive file access.";
+
+function permittedBySensitiveReadMode(
+  candidates: string[],
+  mode: SensitiveReadMode | undefined
+): boolean {
+  if (!mode || mode === "blocked") return false;
+  if (candidates.some((candidate) => isUnderCybaraDir(candidate))) return false;
+  if (mode === "all") return true;
+  return candidates.every((candidate) => isEnvFile(candidate));
+}
 
 export function assertReadablePath(
   rawPath: string | undefined,
@@ -220,13 +273,16 @@ export function assertReadablePath(
   const decision = checkWritePath(rawPath, options);
   if (!decision.allowed && decision.reason === "sensitive-path" && rawPath) {
     const candidates = policyPaths(rawPath);
+    if (permittedBySensitiveReadMode(candidates, options?.sensitiveReads)) {
+      return decision.resolvedPath;
+    }
     const inReadableSubdir = candidates.every((candidate) =>
-      READABLE_CYBARA_SUBDIRS.some((subdir) => isUnderHomeSubdir(candidate, subdir))
+      READABLE_CYBARA_SUBDIRS.some((subdir) => isUnderCybaraDir(candidate, subdir))
     );
     const inReadableImageSubdir =
       READABLE_IMAGE_PATTERN.test(decision.resolvedPath) &&
       candidates.every((candidate) =>
-        READABLE_CYBARA_IMAGE_SUBDIRS.some((subdir) => isUnderHomeSubdir(candidate, subdir))
+        READABLE_CYBARA_IMAGE_SUBDIRS.some((subdir) => isUnderCybaraDir(candidate, subdir))
       );
     const hitsFilenameDeny = candidates.some((candidate) => matchesDenyPattern(candidate));
     if ((inReadableSubdir || inReadableImageSubdir) && !hitsFilenameDeny) {
@@ -236,7 +292,7 @@ export function assertReadablePath(
   if (!decision.allowed) {
     const message =
       decision.reason === "sensitive-path"
-        ? "Refused: reading this path is blocked — it points at a sensitive credential or key file."
+        ? SENSITIVE_READ_DENIAL
         : describeDenial(decision.reason!);
     throw new Error(message);
   }
