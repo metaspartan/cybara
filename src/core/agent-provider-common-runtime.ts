@@ -836,22 +836,26 @@ export abstract class AgentProviderCommonRuntime {
     return nextBody;
   }
 
-  protected shouldRetryWithoutImages(
+  protected classifyImageRejection(
     status: number,
     errorText: string,
     requestBody: Record<string, unknown>
-  ): boolean {
-    if (status !== 400) return false;
-    const rejectsImages =
-      /only supports text input|unsupported content type ['"]?(image_url|input_image)|does not support image|image input is not supported|images? (are|is) not supported/i.test(
-        errorText
-      ) || isBlankUpstreamError(errorText);
-    if (!rejectsImages) return false;
+  ): "explicit" | "blank" | undefined {
+    if (status !== 400) return undefined;
     const messages = Array.isArray(requestBody.messages) ? requestBody.messages : [];
-    return messages.some((message) => {
+    const hasImages = messages.some((message) => {
       const content = (message as Record<string, unknown> | null)?.content;
       return Array.isArray(content) && content.some(isImageContentBlock);
     });
+    if (!hasImages) return undefined;
+    if (
+      /only supports text input|unsupported content type ['"]?(image_url|input_image)|does not support image|image input is not supported|images? (are|is) not supported/i.test(
+        errorText
+      )
+    ) {
+      return "explicit";
+    }
+    return isBlankUpstreamError(errorText) ? "blank" : undefined;
   }
 
   protected toTextOnlyRequestBody(requestBody: Record<string, unknown>): Record<string, unknown> {
@@ -1173,6 +1177,7 @@ export abstract class AgentProviderCommonRuntime {
     let attemptedToolChoiceCompatibilityRetry = false;
     let attemptedToolChoiceRemovalRetry = false;
     let attemptedTextOnlyRetry = false;
+    let repeatedBlankImageRequest = false;
     let contextRetryCount = 0;
     let attemptedOAuthRefresh = false;
     const maxTransientRetries = retryPolicy.maxRetries;
@@ -1218,13 +1223,27 @@ export abstract class AgentProviderCommonRuntime {
         this.logProviderRetryStatus(streamContext, "Provider session refreshed; continuing...");
         continue;
       }
-      if (
-        !attemptedTextOnlyRetry &&
-        this.shouldRetryWithoutImages(response.status, errorText, currentBody)
-      ) {
+      const imageRejection = attemptedTextOnlyRetry
+        ? undefined
+        : this.classifyImageRejection(response.status, errorText, currentBody);
+      if (imageRejection === "blank" && !repeatedBlankImageRequest) {
+        repeatedBlankImageRequest = true;
+        this.logProviderRetryStatus(
+          streamContext,
+          "Provider returned an empty error for a request with images; retrying once unchanged..."
+        );
+        await this.waitForRetryDelay(
+          this.providerRetryDelayMs(response.status, response.headers, 0),
+          signal
+        );
+        continue;
+      }
+      if (imageRejection) {
         attemptedTextOnlyRetry = true;
         console.warn(
-          "[Agent] Provider rejected image input for this model; retrying with images replaced by text notes"
+          imageRejection === "explicit"
+            ? "[Agent] Provider rejected image input for this model; retrying with images replaced by text notes"
+            : "[Agent] Provider repeated an empty error only for the request with images; retrying with images replaced by text notes"
         );
         currentBody = this.toTextOnlyRequestBody(currentBody);
         continue;

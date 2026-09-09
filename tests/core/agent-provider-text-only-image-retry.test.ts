@@ -88,7 +88,7 @@ describe("text-only model image fallback", () => {
     );
   });
 
-  test("strips images first when a 400 carries no message, which is how some upstreams reject them", async () => {
+  test("strips images only after a message-less 400 repeats for the same request", async () => {
     const bodies: Record<string, unknown>[] = [];
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
@@ -142,8 +142,69 @@ describe("text-only model image fallback", () => {
     );
 
     expect(result.content).toBe("Text only.");
+    expect(bodies).toHaveLength(3);
+    expect(hasImageBlocks(bodies[0] as Record<string, unknown>)).toBe(true);
+    expect(hasImageBlocks(bodies[1] as Record<string, unknown>)).toBe(true);
+    expect(hasImageBlocks(bodies[2] as Record<string, unknown>)).toBe(false);
+  });
+
+  test("keeps the images when a blank 400 turns out to be a one-off flake", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      bodies.push(body);
+      if (bodies.length === 1) {
+        return new Response(JSON.stringify({ object: "error", model: "deepseek-v4-flash" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return Response.json({
+        id: "flake-response",
+        object: "chat.completion",
+        model: "deepseek-v4-flash",
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: { role: "assistant", content: "A red cube." },
+          },
+        ],
+        usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "opencode-go",
+      name: "OpenCode Go Flake Test",
+      api_key: "go-test-key",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "OpenCode Go Flake Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "deepseek-v4-flash",
+      config: { image_input: "enabled" },
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [
+        {
+          role: "user",
+          content: "What is in this picture?",
+          images: [{ data: TINY_PNG, mimeType: "image/png" }],
+        },
+      ],
+      { sessionId: `flake-${crypto.randomUUID()}` }
+    );
+
+    expect(result.content).toBe("A red cube.");
     expect(bodies).toHaveLength(2);
-    expect(hasImageBlocks(bodies[1] as Record<string, unknown>)).toBe(false);
+    expect(hasImageBlocks(bodies[0] as Record<string, unknown>)).toBe(true);
+    expect(hasImageBlocks(bodies[1] as Record<string, unknown>)).toBe(true);
   });
 
   test("does not strip images for unrelated 400 errors", async () => {

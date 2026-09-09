@@ -4,7 +4,7 @@ import { join } from "path";
 import { cybaraDir } from "../../src/core/paths";
 import { PNG } from "pngjs";
 import { resolveMediaFile, serveMediaFile } from "../../src/core/runtime/media-files";
-import { tinyTiff } from "../helpers/image-fixtures";
+import { tinyBmp, tinyTiff } from "../helpers/image-fixtures";
 import { snapshotViewedMedia } from "../../src/core/viewed-media";
 
 const screenshotsDir = join(cybaraDir, "screenshots");
@@ -123,6 +123,17 @@ describe("resolveMediaFile", () => {
       const png = PNG.sync.read(tiff.bytes ?? Buffer.alloc(0));
       expect([png.width, png.height, ...png.data]).toEqual([1, 1, 255, 0, 0, 255]);
       expect(resolveMediaFile(tiffPath).contentType).toBe("image/tiff");
+      const bmpPath = join(screenshotsDir, "test_media_files_scan.bmp");
+      writeFileSync(bmpPath, tinyBmp([[0, 255, 0]], 1, 1));
+      try {
+        const bmp = await serveMediaFile(bmpPath);
+        expect(bmp.contentType).toBe("image/png");
+        const bmpPng = PNG.sync.read(bmp.bytes ?? Buffer.alloc(0));
+        expect([bmpPng.width, bmpPng.height, ...bmpPng.data]).toEqual([1, 1, 0, 255, 0, 255]);
+        expect(resolveMediaFile(bmpPath).contentType).toBe("image/bmp");
+      } finally {
+        rmSync(bmpPath, { force: true });
+      }
       const passthrough = await serveMediaFile(`screenshots/${sampleName}`);
       expect(passthrough.contentType).toBe("image/png");
       expect(passthrough.bytes?.equals(pngBytes)).toBe(true);

@@ -18,7 +18,7 @@ const MEDIA_MIME: Record<string, string> = {
 
 const ALLOWED_SUBDIRS = ["screenshots", "attachments", "media"] as const;
 
-const TRANSCODED_MIME = new Set(["image/heic", "image/heif", "image/tiff"]);
+const TRANSCODED_MIME = new Set(["image/heic", "image/heif", "image/tiff", "image/bmp"]);
 
 function allowedRoots(): string[] {
   return ALLOWED_SUBDIRS.map((dir) => resolve(cybaraDir, dir));
