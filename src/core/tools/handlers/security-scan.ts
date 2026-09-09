@@ -2,6 +2,7 @@ import { statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { agentManager } from "../../agent";
 import { assertReadablePath } from "../path-policy";
+import { readablePathOptions } from "../sensitive-read-policy";
 import type { ToolContext } from "../types";
 
 type SecurityToolAction = "info" | "scan" | "validate";
@@ -80,10 +81,13 @@ function resolveTarget(args: Record<string, unknown>, context: ToolContext): str
   const workspace = context.workspaceDir ? resolve(context.workspaceDir) : process.cwd();
   const requested = stringValue(args.target);
   const target = requested ? resolve(workspace, requested) : workspace;
-  return assertReadablePath(target, {
-    workspaceRoot: workspace,
-    confineToWorkspace: context.confineToWorkspace === true,
-  });
+  return assertReadablePath(
+    target,
+    readablePathOptions({
+      workspaceRoot: workspace,
+      confineToWorkspace: context.confineToWorkspace === true,
+    })
+  );
 }
 
 function timeoutMs(args: Record<string, unknown>): number {

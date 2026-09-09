@@ -34,6 +34,7 @@ interface PlatformConfig {
   dangerous_tool_policy?: DangerousToolPolicyConfig;
   tool_approval_mode?: ToolApprovalMode;
   web_tool_url_policy?: WebToolUrlPolicyConfig;
+  sensitive_file_policy?: SensitiveFilePolicyConfig;
   [key: string]: unknown;
 }
 
@@ -109,6 +110,24 @@ export type SpeechRealtimeProvider = "managed" | "openai" | "gemini" | "moshi";
 export interface DangerousToolPolicyConfig {
   enabled: boolean;
   mode: DangerousToolPolicyMode;
+}
+
+export interface SensitiveFilePolicyConfig {
+  allow_env_file_reads: boolean;
+  allow_all_sensitive_reads: boolean;
+}
+
+export const DEFAULT_SENSITIVE_FILE_POLICY: SensitiveFilePolicyConfig = {
+  allow_env_file_reads: false,
+  allow_all_sensitive_reads: false,
+};
+
+export function normalizeSensitiveFilePolicy(value: unknown): SensitiveFilePolicyConfig {
+  const parsed = asObject(value);
+  return {
+    allow_env_file_reads: parsed?.allow_env_file_reads === true,
+    allow_all_sensitive_reads: parsed?.allow_all_sensitive_reads === true,
+  };
 }
 
 export interface WebToolUrlPolicyConfig {
@@ -881,6 +900,7 @@ class ConfigManager {
       tool_approval_mode: DEFAULT_TOOL_APPROVAL_MODE,
       follow_up_behavior_enabled: true,
       web_tool_url_policy: { ...DEFAULT_WEB_TOOL_URL_POLICY },
+      sensitive_file_policy: { ...DEFAULT_SENSITIVE_FILE_POLICY },
       sandbox_runtime: { ...DEFAULT_SANDBOX_RUNTIME },
       workspace_indexer: { ...DEFAULT_WORKSPACE_INDEXER_SETTINGS },
       memory: { ...DEFAULT_MEMORY_BEHAVIOR_SETTINGS },
@@ -997,6 +1017,16 @@ class ConfigManager {
   setWebToolUrlPolicy(policy: unknown): WebToolUrlPolicyConfig {
     const normalized = normalizeWebToolUrlPolicy(policy);
     this.set("web_tool_url_policy", normalized);
+    return normalized;
+  }
+
+  getSensitiveFilePolicy(): SensitiveFilePolicyConfig {
+    return normalizeSensitiveFilePolicy(this.get<unknown>("sensitive_file_policy"));
+  }
+
+  setSensitiveFilePolicy(policy: unknown): SensitiveFilePolicyConfig {
+    const normalized = normalizeSensitiveFilePolicy(policy);
+    this.set("sensitive_file_policy", normalized);
     return normalized;
   }
 

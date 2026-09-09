@@ -350,6 +350,7 @@ const routes: Record<string, RouteHandler> = {
     dangerous_tool_policy: config.getDangerousToolPolicy(),
     tool_approval_mode: config.getToolApprovalMode(),
     web_tool_url_policy: config.getWebToolUrlPolicy(),
+    sensitive_file_policy: config.getSensitiveFilePolicy(),
     sandbox_runtime: redactSandboxRuntimeConfig(config.getSandboxRuntime()),
     workspace_indexer: config.getWorkspaceIndexerSettings(),
     memory: config.getMemoryBehaviorSettings(),
@@ -459,6 +460,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "web_tool_url_policy") {
         config.setWebToolUrlPolicy(value);
+        continue;
+      }
+      if (key === "sensitive_file_policy") {
+        config.setSensitiveFilePolicy(value);
         continue;
       }
       if (key === "sandbox_runtime") {

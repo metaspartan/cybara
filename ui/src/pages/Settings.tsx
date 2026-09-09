@@ -22,6 +22,7 @@ import {
 } from "./settings/RuntimeSettings";
 import { SpeechSettingsSection } from "./settings/SpeechSettingsSection";
 import { ThemeSettings } from "./settings/ThemeSettings";
+import { SensitiveFileSettings } from "./settings/SensitiveFileSettings";
 import { WebToolPolicySettings } from "./settings/WebToolPolicySettings";
 import { WebResearchSettings } from "./settings/WebResearchSettings";
 import { SystemPromptSection } from "./settings/SystemPromptSection";
@@ -1347,6 +1348,7 @@ export function Settings() {
           <>
             <FeatureSettings />
             <ToolCapabilitySettings />
+            <SensitiveFileSettings />
             <WebResearchSettings />
             <WebToolPolicySettings />
             <SandboxBrowserSettings />

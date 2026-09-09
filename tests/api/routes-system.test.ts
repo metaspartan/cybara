@@ -467,6 +467,24 @@ describe("Config API", () => {
     expect(resetRes.status).toBe(200);
   });
 
+  test("PUT /api/config normalizes the sensitive file policy", async () => {
+    const putRes = await fixture.api("PUT", "/api/config", {
+      sensitive_file_policy: { allow_env_file_reads: true, allow_all_sensitive_reads: "no" },
+    });
+    expect(putRes.status).toBe(200);
+    const getRes = await fixture.api("GET", "/api/config");
+    expect(getRes.data.sensitive_file_policy).toEqual({
+      allow_env_file_reads: true,
+      allow_all_sensitive_reads: false,
+    });
+    const resetRes = await fixture.api("PUT", "/api/config", { sensitive_file_policy: {} });
+    expect(resetRes.status).toBe(200);
+    expect((await fixture.api("GET", "/api/config")).data.sensitive_file_policy).toEqual({
+      allow_env_file_reads: false,
+      allow_all_sensitive_reads: false,
+    });
+  });
+
   test("PUT /api/config normalizes computer-use driver command override", async () => {
     const putRes = await fixture.api("PUT", "/api/config", {
       computer_use: {

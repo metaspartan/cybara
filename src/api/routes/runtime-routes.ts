@@ -232,7 +232,7 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
   },
   "POST /api/browser/sandbox/stop": async () => {
     await stopSandboxBrowser();
-    return { success: true, status: getSandboxBrowserStatus() };
+    return { success: true, status: await getSandboxBrowserStatus() };
   },
   "GET /api/browser/tabs": async (_body, params) => {
     const sessionId = browserSessionId(params?.sessionId);
