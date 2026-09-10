@@ -259,7 +259,7 @@ const DEFERRED_WORK_VERBS =
 const DEFERRED_WORK_PATTERNS = [
   /\bI(?:'m| am)\s+(?:now\s+)?(?:going to|about to)\s+\w+/i,
   /\bI(?:'m| am)\s+(?:now\s+)?(?:adding|building|creating|fixing|implementing|rebuilding|re-?exporting|re-?rendering|re-?running|rewriting|working on|writing)\b[^\n]{0,200}\bnow\b/i,
-  /\bI(?:'ll| will)\s+(?:now\s+)?(?:report back|follow up|get back to you|update you|circle back|let you know)\b/i,
+  /\b(?:I(?:'ll| will)|and will|then will)\s+(?:now\s+)?(?:report back|follow up|get back to you|update you|circle back|let you know)\b/i,
   new RegExp(`\\bI(?:'ll| will)\\s+(?:now\\s+|then\\s+)?(?:${DEFERRED_WORK_VERBS})\\b`, "i"),
   new RegExp(
     `\\b(?:let me|next,?\\s+I(?:'ll| will)|now\\s+I(?:'ll| will))\\s+(?:now\\s+)?(?:${DEFERRED_WORK_VERBS})\\b`,
@@ -377,6 +377,48 @@ function isPrematureExecutionStop(
   );
 }
 
+const TERMINAL_DELEGATED_RUN_STATUSES = new Set(["completed", "failed", "cancelled", "timeout"]);
+
+function hasPendingDelegatedRun(toolCalls: ToolCallResultLike[]): boolean {
+  const finished = new Set<string>();
+  for (const toolCall of toolCalls) {
+    if (
+      toolCall.name !== "sessions_wait" ||
+      !toolCall.result ||
+      typeof toolCall.result !== "object"
+    ) {
+      continue;
+    }
+    const runs = (toolCall.result as { runs?: unknown }).runs;
+    if (!Array.isArray(runs)) continue;
+    for (const run of runs) {
+      const record = run as { runId?: unknown; status?: unknown } | null;
+      if (
+        typeof record?.runId === "string" &&
+        typeof record.status === "string" &&
+        TERMINAL_DELEGATED_RUN_STATUSES.has(record.status)
+      ) {
+        finished.add(record.runId);
+      }
+    }
+  }
+  return toolCalls.some((toolCall) => {
+    if (
+      toolCall.name !== "sessions_spawn" ||
+      !toolCall.result ||
+      typeof toolCall.result !== "object"
+    ) {
+      return false;
+    }
+    const result = toolCall.result as { status?: unknown; runId?: unknown };
+    return (
+      result.status === "accepted" &&
+      typeof result.runId === "string" &&
+      !finished.has(result.runId)
+    );
+  });
+}
+
 function closingPortion(content: string): string {
   return content
     .replace(/```[\s\S]*?```/g, " ")
@@ -408,6 +450,7 @@ function isDeferredWorkResponse(
     return false;
   }
   if (hasSuccessfulClarification(toolCalls)) return false;
+  if (hasPendingDelegatedRun(toolCalls)) return false;
   return closingPortion(assistantContent)
     .split(/(?<=[.!?])\s+|\n+/)
     .map((sentence) => sentence.trim())

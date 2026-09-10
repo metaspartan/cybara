@@ -280,6 +280,34 @@ describe("chat tool summary utilities", () => {
     ).toBeUndefined();
   });
 
+  test("does not treat a promise as broken while a delegated run is still pending", () => {
+    const delegated =
+      "I've handed the clamp modelling to a Blender subagent and will report back with its result.";
+    const spawn = {
+      name: "sessions_spawn",
+      args: { task: "model the clamp" },
+      result: { status: "accepted", runId: "run-1" },
+    };
+    const request = "Continue fixing the mount.";
+    expect(
+      findAssistantEvidenceIssue(delegated, [spawn], { userMessage: request })
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue(
+        delegated,
+        [
+          spawn,
+          {
+            name: "sessions_wait",
+            args: { runIds: ["run-1"] },
+            result: { runs: [{ runId: "run-1", status: "completed" }] },
+          },
+        ],
+        { userMessage: request }
+      )
+    ).toBe("deferred_work");
+  });
+
   test("allows requested planning and explicit approval boundaries", () => {
     const deferral =
       "I mapped the remaining work. Would you like me to proceed with implementing it?";
