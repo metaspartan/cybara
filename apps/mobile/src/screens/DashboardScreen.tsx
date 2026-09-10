@@ -866,6 +866,7 @@ export function DashboardScreen({
 
       {detailRoute?.kind === "session" ? (
         <SessionDetailPanel
+          key={detailRoute.id}
           accentColor={accentColor}
           api={api}
           agents={summary?.agents ?? []}
@@ -1496,6 +1497,7 @@ function DetailContent({
   if (route.kind === "session") {
     return (
       <SessionDetailPanel
+        key={route.id}
         accentColor={accentColor}
         api={api}
         agents={summary?.agents ?? []}

@@ -108,10 +108,10 @@ describe("chat live auto-scroll", () => {
 
   test("mobile: follows live growth with one stable non-animated scroll owner", () => {
     const source = readMobileChatSource();
-    expect(source).toContain("onContentSizeChange={() => {");
-    expect(source).toContain("if (!followChatBottomRef.current) return;");
-    expect(source).toContain("if (!chatScrollGestureActiveRef.current) return;");
-    expect(source).toContain("scrollRef.current?.scrollToEnd({ animated: false });");
+    expect(source).toContain("onContentSizeChange={chatScroll.onContentSizeChange}");
+    expect(source).toContain("onScrollBeginDrag={chatScroll.onScrollBeginDrag}");
+    expect(source).toContain("onScrollEndDrag={chatScroll.onScrollEndDrag}");
+    expect(source).toContain("scrollRef.current?.scrollToEnd({ animated: false })");
     expect(source).not.toContain("scrollRef.current?.scrollToEnd({ animated: true });");
   });
 });
