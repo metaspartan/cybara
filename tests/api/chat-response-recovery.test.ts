@@ -458,6 +458,64 @@ describe("chat response recovery", () => {
     expect(result.message.tool_calls).toHaveLength(2);
   });
 
+  test("continues the turn when the reply only promises work it has not done", async () => {
+    const agentId = createTestAgent("Deferred Work Recovery Agent");
+    const sessionId = `deferred-work-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const executionOptions: Array<Parameters<typeof agentManager.execute>[2]> = [];
+    const retryPrompts: string[] = [];
+    let callCount = 0;
+
+    agentManager.execute = (async (_agentId, messages, options) => {
+      callCount += 1;
+      executionOptions.push(options);
+      if (callCount === 1) {
+        return {
+          content:
+            "What I built is a receiver, not a clamp. I'm building the missing clamp bar now, then I'll re-run the interference check and re-export the FBX. I'll report back with the seated-on-rail proof.",
+          tool_calls: [
+            {
+              name: "write",
+              args: { path: "/tmp/diag.py", content: "print(1)" },
+              result: { success: true, path: "/tmp/diag.py" },
+            },
+          ],
+        };
+      }
+      retryPrompts.push(String(messages.at(-1)?.content || ""));
+      return {
+        content: "Rebuilt the clamp bar and verified 0.00 mm³ interference on the rail section.",
+        tool_calls: [
+          {
+            name: "edit",
+            args: { path: "/tmp/mount.py" },
+            result: { filePath: "/tmp/mount.py" },
+          },
+          {
+            name: "exec",
+            args: { command: "blender -b check.py" },
+            result: { output: "interference 0.00", exitCode: 0 },
+          },
+        ],
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message:
+        "Continue getting the mount fully correct, it is missing the bottom half of the clamp.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(2);
+    expect(executionOptions[1]?.requireToolUse).toBe(true);
+    expect(retryPrompts[0]).toContain("promise is not progress");
+    expect(result.message.content).toContain("verified 0.00");
+    expect(result.message.content).not.toContain("report back");
+    expect(result.message.tool_calls).toHaveLength(3);
+  });
+
   test("requires current-turn evidence after an earlier turn used tools", async () => {
     const agentId = createTestAgent("Multi Round Evidence Recovery Agent");
     const sessionId = `multi-round-evidence-${crypto.randomUUID()}`;

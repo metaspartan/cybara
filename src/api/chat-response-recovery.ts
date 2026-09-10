@@ -59,6 +59,9 @@ function buildRetryInstruction(
   if (evidenceIssue === "missing_clarification") {
     return "Your previous response said a question was asked, but no question was visible. Ask the actual concise question directly now, or use the clarify tool with the complete question and options. Do not say that you asked without including the question.";
   }
+  if (evidenceIssue === "deferred_work") {
+    return "Your previous response ended by announcing work you were about to do, such as building, re-running, or reporting back, but the turn ended without doing it. Nothing happens after a reply ends, so a promise is not progress. Do that work now with the available tools, verify it, and report only what is actually done. If you cannot finish, state exactly what remains and why instead of promising future action.";
+  }
   if (evidenceIssue === "unfinished_execution") {
     return "Your previous response stopped after describing work you said you were executing now. Continue immediately, use the available tools to finish and verify the request, and return only after the work is complete or a concrete blocker prevents further progress.";
   }
@@ -136,7 +139,8 @@ export async function recoverAssistantResponse(
   const shouldRetryToolExecution =
     (params.shouldRequireToolUse && (params.toolResults.length === 0 || !hasRequiredToolCall)) ||
     (params.toolsEnabled === true &&
-      (evidenceIssue === "unfinished_execution" ||
+      (evidenceIssue === "deferred_work" ||
+        evidenceIssue === "unfinished_execution" ||
         evidenceIssue === "incomplete_plan" ||
         evidenceIssue === "missing_action_evidence" ||
         evidenceIssue === "plan_only" ||
