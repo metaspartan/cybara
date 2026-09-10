@@ -1,4 +1,5 @@
 import type { ToolCallInfo } from "./chat-process-activities";
+import { isTruncatedReplyFragment, requestsTerseReply } from "../core/llm/reply-fragments";
 export interface ToolCallResultLike {
   name: string;
   args?: Record<string, unknown>;
@@ -138,8 +139,9 @@ export function shouldRecoverNonSubstantiveAssistantCompletion(
   assistantContent: string,
   toolCallCount: number
 ): boolean {
-  if (toolCallCount > 0 || LITERAL_COMPLETION_REQUEST_PATTERN.test(userMessage.trim())) {
-    return false;
+  if (LITERAL_COMPLETION_REQUEST_PATTERN.test(userMessage.trim())) return false;
+  if (toolCallCount > 0) {
+    return !requestsTerseReply(userMessage) && isTruncatedReplyFragment(assistantContent);
   }
   return isNonSubstantiveAssistantCompletion(assistantContent);
 }

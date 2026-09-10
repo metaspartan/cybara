@@ -2,6 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { formatToolActivityDetail } from "../../src/core/agent-internals";
 
 describe("tool activity detail", () => {
+  test("labels image reads as viewed images", () => {
+    expect(formatToolActivityDetail("read", { path: "/Users/x/renders/side.png" }, "start")).toBe(
+      "Viewing an image"
+    );
+    expect(formatToolActivityDetail("read", { path: "/Users/x/renders/side.png" }, "result")).toBe(
+      "Viewed an image"
+    );
+    expect(formatToolActivityDetail("read", { path: "/Users/x/notes.md" }, "result")).toBe(
+      "Explored /Users/x/notes.md"
+    );
+  });
+
   test("identifies the loaded skill", () => {
     expect(
       formatToolActivityDetail("skill_load", { name: "security-scan" }, "result", {

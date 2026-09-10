@@ -1,4 +1,5 @@
 import { type AgentExecutionResult, type AgentMessage, agentManager } from "../core/agent";
+import { isTruncatedReplyFragment } from "../core/llm/reply-fragments";
 import type { AgentToolCallResult } from "../core/agent-internals";
 import { sanitizeAssistantContent } from "../core/llm/text-tool-calls";
 import { isContextCompactionOnlyContent } from "../core/llm/tool-transcript";
@@ -48,10 +49,14 @@ function buildRetryInstruction(
   requiredToolName: string | undefined,
   evidenceIssue: ReturnType<typeof findAssistantEvidenceIssue>,
   compactionOnly: boolean,
-  invalidRequestedJson: boolean
+  invalidRequestedJson: boolean,
+  truncatedFragment = false
 ): string {
   if (compactionOnly) {
     return "Earlier context was compacted successfully. Continue the current task from the preserved context and tool results, then give the user a substantive response. Do not repeat an internal compaction marker.";
+  }
+  if (truncatedFragment && !shouldRetryToolExecution) {
+    return "Your previous reply ended after only a few characters, so it was cut off before it said anything. Reply again now with the complete answer, concisely and in well under 500 words, based on the tool results already gathered in this conversation. Do not call more tools unless the answer genuinely depends on them.";
   }
   if (invalidRequestedJson) {
     return "Your previous response was not complete valid JSON even though the user explicitly required JSON-only output. Return one complete valid JSON value that satisfies the requested structure, with no Markdown fence or explanatory prose.";
@@ -176,7 +181,8 @@ export async function recoverAssistantResponse(
         params.requiredToolName,
         latestEvidenceIssue,
         latestCompactionOnly,
-        latestInvalidRequestedJson
+        latestInvalidRequestedJson,
+        !latestCompactionOnly && isTruncatedReplyFragment(visibleAssistantContent(latestContent))
       )
     );
 

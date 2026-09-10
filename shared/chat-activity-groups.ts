@@ -139,12 +139,31 @@ function classifyCommand(command: string): SharedActivityGroupKind {
   return kinds.find((kind) => kind !== "command") ?? "command";
 }
 
+const IMAGE_READ_ACTIVITY_PATTERN =
+  /^(?:Explored|Viewed an image)\b.*?(?:\.(?:png|jpe?g|webp|gif|bmp|tiff?|heic|heif|avif|svg)(?:\s+\(lines[^)]*\))?)?$/i;
+const EXPLORED_IMAGE_PATTERN =
+  /^Explored\s+\S.*\.(?:png|jpe?g|webp|gif|bmp|tiff?|heic|heif|avif|svg)(?:\s+\(lines[^)]*\))?$/i;
+
+export function isImageReadActivity(toolName: string | undefined, text: string): boolean {
+  const name = toolName?.toLowerCase() || "";
+  if (name && name !== "read") return false;
+  if (/^Viewed an image\b/.test(text)) return name === "read";
+  return EXPLORED_IMAGE_PATTERN.test(text) && IMAGE_READ_ACTIVITY_PATTERN.test(text);
+}
+
+export function normalizeImageReadActivityText(toolName: string | undefined, text: string): string {
+  return EXPLORED_IMAGE_PATTERN.test(text) && isImageReadActivity(toolName, text)
+    ? "Viewed an image"
+    : text;
+}
+
 export function sharedActivityKind(
   activity: SharedActivityItem,
 ): SharedActivityGroupKind | null {
   if (activity.phase !== "result") return null;
   const toolName = activity.toolName?.toLowerCase() || "";
   if (STANDALONE_TOOLS.has(toolName)) return null;
+  if (isImageReadActivity(toolName, activity.text)) return "view";
   if (toolName in TOOL_KINDS) return TOOL_KINDS[toolName] ?? "command";
   if (toolName === "exec" || toolName === "process" || toolName === "git" || !toolName) {
     const command = activity.text.match(/^Ran\s+(.+)$/s)?.[1];

@@ -54,10 +54,14 @@ export function screenshotMediaSrc(filePath: string): string {
   return withGatewayBasePath(`/api/media?path=${encodeURIComponent(`screenshots/${base}`)}`);
 }
 
+function isScreenshotDirectoryPath(filePath: string): boolean {
+  return /[\\/]screenshots[\\/][^\\/]+$/i.test(filePath.trim());
+}
+
 export function mediaPathSrc(filePath: string): string {
   const trimmed = filePath.trim();
   if (!trimmed) return "";
-  if (/[\\/]screenshots[\\/][^\\/]+$/i.test(trimmed)) return screenshotMediaSrc(trimmed);
+  if (isScreenshotDirectoryPath(trimmed)) return screenshotMediaSrc(trimmed);
   return withGatewayBasePath(`/api/media?path=${encodeURIComponent(trimmed)}`);
 }
 
@@ -227,7 +231,8 @@ export function imageToolResultSrc(result: unknown): string | null {
   const filePath = typeof record.filePath === "string" ? record.filePath : "";
   const contentType = typeof record.contentType === "string" ? record.contentType : "";
   const isImage = /^image\//i.test(contentType) || isImagePath(filePath);
-  if (filePath && isImage) return mediaPathSrc(filePath);
+  if (filePath && isImage && isScreenshotDirectoryPath(filePath))
+    return screenshotMediaSrc(filePath);
   return null;
 }
 

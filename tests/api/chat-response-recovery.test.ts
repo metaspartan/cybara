@@ -516,6 +516,47 @@ describe("chat response recovery", () => {
     expect(result.message.tool_calls).toHaveLength(3);
   });
 
+  test("asks for the full reply again when the model's answer was cut off after a word", async () => {
+    const agentId = createTestAgent("Truncated Reply Recovery Agent");
+    const sessionId = `truncated-reply-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const retryPrompts: string[] = [];
+    let callCount = 0;
+
+    agentManager.execute = (async (_agentId, messages) => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          content: "The",
+          tool_calls: [
+            {
+              name: "exec",
+              args: { command: "blender -b measure.py" },
+              result: { output: "mouth 22.2mm", exitCode: 0 },
+            },
+          ],
+        };
+      }
+      retryPrompts.push(String(messages.at(-1)?.content || ""));
+      return {
+        content:
+          "The mouth measures 22.2 mm, so the channel is inverted. I rebuilt it with the jaws facing inward.",
+      };
+    }) as typeof agentManager.execute;
+
+    const result = await handleChat({
+      message: "Measure the channel and tell me what is wrong with the mount.",
+      agentId,
+      sessionId,
+      tools: true,
+    });
+
+    expect(callCount).toBe(2);
+    expect(retryPrompts[0]).toContain("cut off");
+    expect(result.message.content).toContain("22.2 mm");
+    expect(result.message.content).not.toBe("The");
+  });
+
   test("requires current-turn evidence after an earlier turn used tools", async () => {
     const agentId = createTestAgent("Multi Round Evidence Recovery Agent");
     const sessionId = `multi-round-evidence-${crypto.randomUUID()}`;

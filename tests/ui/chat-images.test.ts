@@ -218,12 +218,7 @@ describe("chat image format support", () => {
     ).toBe(
       `/api/media?path=${encodeURIComponent("/Users/x/.cybara/media/viewed/abc-000001-xyz/side.png")}`
     );
-    expect(imageToolResultSrc({ filePath: "/Users/x/Downloads/renders/side.png" })).toBe(
-      `/api/media?path=${encodeURIComponent("/Users/x/Downloads/renders/side.png")}`
-    );
-    expect(imageToolResultSrc({ filePath: "/Users/x/Downloads/renders/side.png" })).not.toContain(
-      "screenshots%2F"
-    );
+    expect(imageToolResultSrc({ filePath: "/Users/x/Downloads/renders/side.png" })).toBeNull();
   });
 });
 

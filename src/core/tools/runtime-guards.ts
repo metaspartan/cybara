@@ -43,6 +43,12 @@ export function checkRateLimit(
   };
 }
 
+export function resetRuntimeGuardsForTests(): void {
+  if (process.env.NODE_ENV !== "test") return;
+  for (const key of Object.keys(rateLimits)) delete rateLimits[key];
+  circuitBreakers.clear();
+}
+
 export function getRateLimitStatus(key: string): { remaining: number; resetTime: number } {
   const record = rateLimits[key];
   if (!record || Date.now() > record.resetTime) {

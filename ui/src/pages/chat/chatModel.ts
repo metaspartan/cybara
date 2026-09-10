@@ -15,6 +15,8 @@ import type {
 } from "@/types";
 import { formatStructuredToolActivityDetail } from "../../../../shared/tool-activity-detail";
 import { isGenericStatusLabel, normalizeSandboxProviderValue } from "./liveActivityModel";
+import { isImagePath } from "../../../../shared/image-formats";
+import { normalizeImageReadActivityText } from "../../../../shared/chat-activity-groups";
 
 export {
   applyLiveActivityEvent,
@@ -578,12 +580,13 @@ export function normalizePersistedLiveActivityItem(value: unknown): LiveActivity
       ? candidate.phase
       : "result";
   if (!id || !text) return null;
+  const toolName = typeof candidate.toolName === "string" ? candidate.toolName : undefined;
   return {
     id,
-    text,
+    text: normalizeImageReadActivityText(toolName, text),
     timestamp,
     phase,
-    toolName: typeof candidate.toolName === "string" ? candidate.toolName : undefined,
+    toolName,
     toolCallId: typeof candidate.toolCallId === "string" ? candidate.toolCallId : undefined,
     sandboxProvider: normalizeSandboxProviderValue(candidate.sandboxProvider),
     imageSource:
@@ -926,6 +929,11 @@ export function formatToolIntent(
   const displayPath = path ? toActivityPath(path) : undefined;
 
   if (key === "read") {
+    if (path && isImagePath(path)) {
+      if (phase === "start") return "Viewing an image";
+      if (phase === "result") return "Viewed an image";
+      return `Image read failed for ${displayPath}`;
+    }
     if (path) {
       const offset = readNumberArg(args, ["offset"]);
       const limit = readNumberArg(args, ["limit"]);

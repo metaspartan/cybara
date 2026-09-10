@@ -61,7 +61,11 @@ export function openAICompatReasoningParams(
   }
 }
 
-export function openAICompatClosingReasoningParams(model?: string | null): Record<string, unknown> {
+export function openAICompatClosingReasoningParams(
+  model?: string | null,
+  providerId?: string | null,
+  baseParams: Record<string, unknown> = {}
+): Record<string, unknown> {
   const modelId = normalizeReasoningModelId(model);
   if (/^minimax-m3(?:$|[-/])/.test(modelId)) {
     return { reasoning_split: true, thinking: { type: "disabled" } };
@@ -69,7 +73,49 @@ export function openAICompatClosingReasoningParams(model?: string | null): Recor
   if (/^glm-5(?:\.3)?(?:$|[-/])/.test(modelId)) {
     return { reasoning_effort: "low" };
   }
-  return {};
+  if (Object.keys(baseParams).length === 0) return {};
+  const format = PROVIDER_THINKING_FORMAT[providerId || ""] || "openai";
+  switch (format) {
+    case "zai":
+    case "qwen":
+      return {};
+    case "deepseek":
+      return { thinking: { type: "enabled" }, reasoning_effort: "low" };
+    case "openrouter":
+      return { reasoning: { effort: "low" } };
+    case "together":
+      return { reasoning: { enabled: true }, reasoning_effort: "low" };
+    case "openai":
+    default:
+      return "reasoning_effort" in baseParams ? { reasoning_effort: "low" } : {};
+  }
+}
+
+export function openAICompatMinimalReasoningParams(
+  providerId?: string | null,
+  model?: string | null,
+  baseParams: Record<string, unknown> = {}
+): Record<string, unknown> {
+  const modelId = normalizeReasoningModelId(model);
+  if (/^minimax-m3(?:$|[-/])/.test(modelId)) {
+    return { reasoning_split: true, thinking: { type: "disabled" } };
+  }
+  if (isKimiCodeProvider(providerId || "")) return kimiThinkingParams("low");
+  const format = PROVIDER_THINKING_FORMAT[providerId || ""] || "openai";
+  switch (format) {
+    case "zai":
+    case "qwen":
+      return { enable_thinking: false };
+    case "deepseek":
+      return { thinking: { type: "disabled" } };
+    case "openrouter":
+      return { reasoning: { enabled: false } };
+    case "together":
+      return { reasoning: { enabled: false } };
+    case "openai":
+    default:
+      return "reasoning_effort" in baseParams ? { reasoning_effort: "low" } : {};
+  }
 }
 
 const BUDGET: Record<ReasoningEffort, number> = {

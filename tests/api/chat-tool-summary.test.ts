@@ -308,6 +308,33 @@ describe("chat tool summary utilities", () => {
     ).toBe("deferred_work");
   });
 
+  test("recovers a reply that was cut off after a few characters even when tools ran", () => {
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("continue the fix", "The", 19)).toBe(
+      true
+    );
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("fix the mount", "Inspecti", 60)).toBe(
+      true
+    );
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("fix the mount", "", 4)).toBe(true);
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("fix the mount", "Completed", 4)).toBe(
+      false
+    );
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("what is 6*7", "42", 1)).toBe(false);
+    expect(
+      shouldRecoverNonSubstantiveAssistantCompletion("reply with only the word", "Picatinny", 1)
+    ).toBe(false);
+    expect(
+      shouldRecoverNonSubstantiveAssistantCompletion(
+        "fix the mount",
+        "Which data source should I use?\n\n**API**\n- **API**: pull from the billing API",
+        1
+      )
+    ).toBe(false);
+    expect(
+      shouldRecoverNonSubstantiveAssistantCompletion("fix the mount", "Rebuilt the clamp.", 3)
+    ).toBe(false);
+  });
+
   test("allows requested planning and explicit approval boundaries", () => {
     const deferral =
       "I mapped the remaining work. Would you like me to proceed with implementing it?";

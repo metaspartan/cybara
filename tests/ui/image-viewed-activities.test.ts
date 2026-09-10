@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { groupSharedActivities } from "../../shared/chat-activity-groups";
+import {
+  groupSharedActivities,
+  normalizeImageReadActivityText,
+  sharedActivityKind,
+} from "../../shared/chat-activity-groups";
 import {
   formatExpandedToolActivityDetail,
   formatStructuredToolActivityDetail,
@@ -14,7 +18,11 @@ import {
   mergeActivityLists,
 } from "../../ui/src/lib/chatActivities";
 import { onOpenChatImageLightbox, openChatImageLightbox } from "../../ui/src/lib/chatImageLightbox";
-import { applyLiveActivityEvent, formatToolIntent } from "../../ui/src/pages/chat/chatModel";
+import {
+  applyLiveActivityEvent,
+  formatToolIntent,
+  normalizeMessageProcessActivities,
+} from "../../ui/src/pages/chat/chatModel";
 import { formatIdeStatusEventText } from "../../ui/src/pages/ide/ideActivityHelpers";
 
 const PNG_DATA_URL =
@@ -266,6 +274,55 @@ describe("image viewed activity labels", () => {
 
   test("client intent prefers viewed labels over generic gateway fallbacks", () => {
     expect(formatToolIntent("image", args, "start")).toBe("Viewing an image");
+    expect(formatToolIntent("read", { path: "/Users/x/renders/side.png" }, "start")).toBe(
+      "Viewing an image"
+    );
+    expect(formatToolIntent("read", { path: "/Users/x/renders/side.PNG" }, "result")).toBe(
+      "Viewed an image"
+    );
+    expect(formatToolIntent("read", { path: "/Users/x/notes.md" }, "result")).toBe(
+      "Explored notes.md"
+    );
+    expect(sharedActivityKind({ phase: "result", toolName: "read", text: "Viewed an image" })).toBe(
+      "view"
+    );
+    expect(
+      sharedActivityKind({ phase: "result", toolName: "read", text: "Explored /Users/x/notes.md" })
+    ).toBe("read");
+    expect(
+      sharedActivityKind({
+        phase: "result",
+        toolName: "read",
+        text: "Explored /Users/x/renders/side.png",
+      })
+    ).toBe("view");
+    expect(normalizeImageReadActivityText("read", "Explored /Users/x/renders/side.png")).toBe(
+      "Viewed an image"
+    );
+    expect(normalizeImageReadActivityText("read", "Explored /Users/x/notes.md")).toBe(
+      "Explored /Users/x/notes.md"
+    );
+    expect(normalizeImageReadActivityText("exec", "Explored /Users/x/renders/side.png")).toBe(
+      "Explored /Users/x/renders/side.png"
+    );
+    const legacy = normalizeMessageProcessActivities([
+      {
+        id: "legacy-1",
+        phase: "result",
+        text: "Explored /Users/x/renders/side.png",
+        toolName: "read",
+        imagePath: "/Users/x/.cybara/media/viewed/abc-000001-xyz/side.png",
+        timestamp: 1,
+      },
+    ]);
+    expect(legacy[0]?.text).toBe("Viewed an image");
+    const live = applyLiveActivityEvent([], {
+      phase: "result",
+      text: "Explored /Users/x/renders/side.png",
+      toolName: "read",
+      timestamp: 2,
+    });
+    expect(live[0]?.text).toBe("Viewed an image");
     expect(formatToolIntent("image", args, "result", "image complete")).toBe("Viewed an image");
     expect(formatToolIntent("exec", { command: "ls" }, "result", "Ran ls")).toBe("Ran ls");
   });
