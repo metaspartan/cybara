@@ -1,4 +1,5 @@
 import type { ToolCallInfo } from "./chat-process-activities";
+import { isTruncatedReplyFragment, requestsTerseReply } from "../core/llm/reply-fragments";
 export interface ToolCallResultLike {
   name: string;
   args?: Record<string, unknown>;
@@ -17,6 +18,7 @@ export interface ToolCallOutcome {
 }
 
 export type AssistantEvidenceIssue =
+  | "deferred_work"
   | "incomplete_plan"
   | "missing_clarification"
   | "missing_action_evidence"
@@ -137,8 +139,9 @@ export function shouldRecoverNonSubstantiveAssistantCompletion(
   assistantContent: string,
   toolCallCount: number
 ): boolean {
-  if (toolCallCount > 0 || LITERAL_COMPLETION_REQUEST_PATTERN.test(userMessage.trim())) {
-    return false;
+  if (LITERAL_COMPLETION_REQUEST_PATTERN.test(userMessage.trim())) return false;
+  if (toolCallCount > 0) {
+    return !requestsTerseReply(userMessage) && isTruncatedReplyFragment(assistantContent);
   }
   return isNonSubstantiveAssistantCompletion(assistantContent);
 }
@@ -253,6 +256,27 @@ const UNFINISHED_EXECUTION_PATTERNS = [
   /\bI (?:have not|haven't|did not|didn't)\s+(?:yet\s+)?(?:build|complete|create|design|finish|generate|implement|produce|write)\b[\s\S]{0,1600}\b(?:remaining|outstanding|next)\s+(?:required\s+)?(?:steps?|tasks?|work|deliverables?)\b/i,
 ];
 
+const DEFERRED_WORK_VERBS =
+  "add|apply|build|check|continue|create|fix|generate|implement|measure|proceed|rebuild|re-?export|re-?render|re-?run|rerun|run|start|verify|write";
+const DEFERRED_WORK_PATTERNS = [
+  /\bI(?:'m| am)\s+(?:now\s+)?(?:going to|about to)\s+\w+/i,
+  /\bI(?:'m| am)\s+(?:now\s+)?(?:adding|building|creating|fixing|implementing|rebuilding|re-?exporting|re-?rendering|re-?running|rewriting|working on|writing)\b[^\n]{0,200}\bnow\b/i,
+  /\b(?:I(?:'ll| will)|and will|then will)\s+(?:now\s+)?(?:report back|follow up|get back to you|update you|circle back|let you know)\b/i,
+  new RegExp(`\\bI(?:'ll| will)\\s+(?:now\\s+|then\\s+)?(?:${DEFERRED_WORK_VERBS})\\b`, "i"),
+  new RegExp(
+    `\\b(?:let me|next,?\\s+I(?:'ll| will)|now\\s+I(?:'ll| will))\\s+(?:now\\s+)?(?:${DEFERRED_WORK_VERBS})\\b`,
+    "i"
+  ),
+  /\b(?:adding|building|creating|fixing|implementing|rebuilding)\s+(?:that|this|it|the)\b[^\n.]{0,120}\bnow\b/i,
+];
+const ACTION_REQUEST_ANYWHERE_PATTERN =
+  /\b(?:add|build|complete|configure|continue|create|deploy|export|finish|fix|implement|improve|install|integrate|make|migrate|refactor|render|repair|research|rebuild|update|write)\b|\bget\s+(?:it|this|that|them)\s+(?:working|right|correct|done|fixed)\b/i;
+const DEFERRED_WORK_EXCLUSION_PATTERNS = [
+  /\b(?:if you(?:'d| would)?\s+(?:like|want|prefer)|would you like|do you want|should I|shall I|want me to|once you|when you|after you|unless you)\b/i,
+  /\bI(?:'ll| will)\s+(?:be here|be around|be happy|gladly|wait)\b/i,
+  /\?\s*$/,
+];
+
 const PERMISSION_DEFERRAL_PATTERNS = [
   /\b(?:do you want|want|would you like) me to\s+(?:continue|proceed|finish|implement|build|create|design|generate|write|complete)\b/i,
   /\b(?:let me know|tell me)\s+(?:if|when)\s+(?:you want|you'd like|you would like) me to\s+(?:continue|proceed|finish|implement|build|create|design|generate|write|complete)\b/i,
@@ -355,6 +379,92 @@ function isPrematureExecutionStop(
   );
 }
 
+const TERMINAL_DELEGATED_RUN_STATUSES = new Set(["completed", "failed", "cancelled", "timeout"]);
+
+function hasPendingDelegatedRun(toolCalls: ToolCallResultLike[]): boolean {
+  const finished = new Set<string>();
+  for (const toolCall of toolCalls) {
+    if (
+      toolCall.name !== "sessions_wait" ||
+      !toolCall.result ||
+      typeof toolCall.result !== "object"
+    ) {
+      continue;
+    }
+    const runs = (toolCall.result as { runs?: unknown }).runs;
+    if (!Array.isArray(runs)) continue;
+    for (const run of runs) {
+      const record = run as { runId?: unknown; status?: unknown } | null;
+      if (
+        typeof record?.runId === "string" &&
+        typeof record.status === "string" &&
+        TERMINAL_DELEGATED_RUN_STATUSES.has(record.status)
+      ) {
+        finished.add(record.runId);
+      }
+    }
+  }
+  return toolCalls.some((toolCall) => {
+    if (
+      toolCall.name !== "sessions_spawn" ||
+      !toolCall.result ||
+      typeof toolCall.result !== "object"
+    ) {
+      return false;
+    }
+    const result = toolCall.result as { status?: unknown; runId?: unknown };
+    return (
+      result.status === "accepted" &&
+      typeof result.runId === "string" &&
+      !finished.has(result.runId)
+    );
+  });
+}
+
+function closingPortion(content: string): string {
+  return content
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/^\s*\|.*$/gm, " ")
+    .trim()
+    .slice(-900);
+}
+
+function isDeferredWorkResponse(
+  userMessage: string | undefined,
+  assistantContent: string,
+  toolCalls: ToolCallResultLike[]
+): boolean {
+  const request = userMessage?.trim() || "";
+  if (!request) return false;
+  if (hasPattern(request, USER_DEFERRED_EXECUTION_PATTERNS)) return false;
+  if (
+    EXPLICIT_PLANNING_REQUEST_PATTERN.test(request) &&
+    !PLANNING_FOLLOW_THROUGH_PATTERN.test(request)
+  ) {
+    return false;
+  }
+  if (
+    toolCalls.length === 0 &&
+    !requiresToolEvidenceForMessage(request) &&
+    !IMPLEMENTATION_REQUEST_PATTERN.test(request) &&
+    !ACTION_REQUEST_ANYWHERE_PATTERN.test(request)
+  ) {
+    return false;
+  }
+  if (hasSuccessfulClarification(toolCalls)) return false;
+  if (hasPendingDelegatedRun(toolCalls)) return false;
+  return closingPortion(assistantContent)
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((sentence) => sentence.trim())
+    .some(
+      (sentence) =>
+        sentence.length > 0 &&
+        !sentence.startsWith(">") &&
+        hasPattern(sentence, DEFERRED_WORK_PATTERNS) &&
+        !hasPattern(sentence, DEFERRED_WORK_EXCLUSION_PATTERNS)
+    );
+}
+
 function hasSuccessfulCompletionEvidence(
   content: string,
   toolCalls: ToolCallResultLike[]
@@ -418,6 +528,9 @@ export function findAssistantEvidenceIssue(
   }
   if (isPrematureExecutionStop(context.userMessage, visibleContent, toolCalls)) {
     return "unfinished_execution";
+  }
+  if (isDeferredWorkResponse(context.userMessage, visibleContent, toolCalls)) {
+    return "deferred_work";
   }
   if (
     context.allowPlanOnly !== true &&
@@ -505,6 +618,9 @@ export function buildUnsupportedAssistantClaimMessage(issue: AssistantEvidenceIs
   }
   if (issue === "unfinished_execution") {
     return "I couldn't finish the requested work in this turn. Retry this turn or switch agents.";
+  }
+  if (issue === "deferred_work") {
+    return "I stopped after promising further work instead of doing it. Retry this turn or switch agents.";
   }
   return "I couldn't verify the requested result in this turn. Retry this turn or switch agents.";
 }

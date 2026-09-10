@@ -4,6 +4,7 @@ import {
   normalizeActivityTextForPhase,
 } from "@/lib/chatActivities";
 import { isGenericChatStatusLabel } from "../../../../shared/chat-status";
+import { normalizeImageReadActivityText } from "../../../../shared/chat-activity-groups";
 
 export function isGenericStatusLabel(detail: string): boolean {
   return isGenericChatStatusLabel(detail);
@@ -44,14 +45,17 @@ export function applyLiveActivityEvent(
   const trimmed = event.text.trim();
   if (!trimmed) return previous;
 
-  const normalizedText = normalizeActivityTextForPhase(trimmed, event.phase);
+  const normalizedToolName =
+    typeof event.toolName === "string" ? event.toolName.trim().toLowerCase() : "";
+  const normalizedText = normalizeImageReadActivityText(
+    normalizedToolName,
+    normalizeActivityTextForPhase(trimmed, event.phase)
+  );
   if (isGenericStatusLabel(normalizedText)) return previous;
   const nextTimestamp =
     typeof event.timestamp === "number" && Number.isFinite(event.timestamp)
       ? event.timestamp
       : Date.now();
-  const normalizedToolName =
-    typeof event.toolName === "string" ? event.toolName.trim().toLowerCase() : "";
   const normalizedToolCallId =
     typeof event.toolCallId === "string" && event.toolCallId.trim()
       ? event.toolCallId.trim().toLowerCase()

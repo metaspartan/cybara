@@ -78,9 +78,11 @@ import {
   coerceReasoningEffort,
   normalizeReasoningEffort,
   openAICompatClosingReasoningParams,
+  openAICompatMinimalReasoningParams,
   openAICompatReasoningParams,
   openAIReasoningContent,
 } from "./llm/reasoning";
+import { isTruncatedReplyFragment } from "./llm/reply-fragments";
 import {
   sanitizeAssistantContent,
   shouldUseMiniMaxReasoningSplit,
@@ -110,6 +112,8 @@ function toOpenAICompatTool(
     },
   };
 }
+
+const CLOSING_RESPONSE_ATTEMPTS = 2;
 
 export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderCommonRuntime {
   protected async callOpenAICompatAPI(
@@ -791,64 +795,99 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       requestedDeliverableMaterialized()
     );
 
+    const finalReplyTruncated =
+      lastFinishReason === "length" && isTruncatedReplyFragment(finalContent);
     if (
-      (!finalContent.trim() || Boolean(limitReason)) &&
+      (!finalContent.trim() || finalReplyTruncated || Boolean(limitReason)) &&
       allToolCalls.length > 0 &&
       !hasAgentTransferEnvelope(allToolCalls)
     ) {
-      console.warn("[Agent] Final content empty after tool loop; requesting a closing response");
-      try {
-        currentMessages.push({
-          role: "user",
-          content: limitReason
-            ? agenticLoopClosingPrompt(limitReason, loopPolicy)
-            : "Reply to the user now with your findings from the tool results above. Do not call any more tools.",
-        });
-        const nudgeBody: Record<string, unknown> = {
-          model: modelId,
-          messages: currentMessages,
-          ...reasoningParams,
-          ...openAICompatClosingReasoningParams(modelId),
-        };
-        if (isKimiCodeProvider(providerConfig) && toolContext?.sessionId) {
-          nudgeBody.prompt_cache_key = toolContext.sessionId;
-        }
-        this.compactOpenAIRequestMessagesForContext(nudgeBody, contextWindowTokens);
-        const limit = this.resolveOpenAIRequestTokenLimit(
-          nudgeBody,
-          Math.min(maxOutputTokens, DEFAULT_MODEL_MAX_OUTPUT_TOKENS),
-          contextWindowTokens
-        );
-        this.applyOpenAITokenLimit(nudgeBody, preferMaxCompletionTokens, limit);
-        const nudgeStartedAt = performance.now();
-        const nudgeData = await this.postOpenAIChatCompletions(
-          baseUrl,
-          headers,
-          nudgeBody,
-          "API error in agentic loop closing response",
-          toolContext?.abortSignal,
-          { providerId: options?.providerId, providerType: providerConfig },
-          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
-        );
-        trackOpenAIResponseUsage(nudgeData, {
-          model: modelId,
-          provider: providerConfig || "openai-compat",
-          inputTokens: this.estimateOpenAIRequestInputTokens(nudgeBody),
+      console.warn(
+        finalReplyTruncated
+          ? "[Agent] Final content was cut off by the output limit; requesting a closing response"
+          : "[Agent] Final content empty after tool loop; requesting a closing response"
+      );
+      currentMessages.push({
+        role: "user",
+        content: limitReason
+          ? agenticLoopClosingPrompt(limitReason, loopPolicy)
+          : "Reply to the user now with your findings from the tool results above. Do not call any more tools.",
+      });
+      let fallbackContent = finalReplyTruncated ? "" : finalContent;
+      for (let attempt = 0; attempt < CLOSING_RESPONSE_ATTEMPTS; attempt += 1) {
+        try {
+          if (attempt > 0) {
+            currentMessages.push({
+              role: "user",
+              content:
+                "Your previous reply was cut off by the output token limit before it said anything useful. Reply again now, concisely and in well under 500 words, with your findings from the tool results above. Do not call any more tools.",
+            });
+          }
+          const nudgeBody: Record<string, unknown> = {
+            model: modelId,
+            messages: currentMessages,
+            ...(attempt === 0
+              ? {
+                  ...reasoningParams,
+                  ...openAICompatClosingReasoningParams(modelId, providerConfig, reasoningParams),
+                }
+              : openAICompatMinimalReasoningParams(providerConfig, modelId, reasoningParams)),
+          };
+          if (isKimiCodeProvider(providerConfig) && toolContext?.sessionId) {
+            nudgeBody.prompt_cache_key = toolContext.sessionId;
+          }
+          this.compactOpenAIRequestMessagesForContext(nudgeBody, contextWindowTokens, attempt > 0);
+          const limit = this.resolveOpenAIRequestTokenLimit(
+            nudgeBody,
+            Math.min(maxOutputTokens, DEFAULT_MODEL_MAX_OUTPUT_TOKENS),
+            contextWindowTokens
+          );
+          this.applyOpenAITokenLimit(nudgeBody, preferMaxCompletionTokens, limit);
+          const nudgeStartedAt = performance.now();
+          const nudgeData = await this.postOpenAIChatCompletions(
+            baseUrl,
+            headers,
+            nudgeBody,
+            "API error in agentic loop closing response",
+            toolContext?.abortSignal,
+            { providerId: options?.providerId, providerType: providerConfig },
+            { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
+          );
+          trackOpenAIResponseUsage(nudgeData, {
+            model: modelId,
+            provider: providerConfig || "openai-compat",
+            inputTokens: this.estimateOpenAIRequestInputTokens(nudgeBody),
 
-          providerUrl: baseUrl,
-          durationMs: Math.round(performance.now() - nudgeStartedAt),
-          sessionId: sessionIdForVisibleTokenUsage(toolContext),
-          routerRouteId: toolContext?.routerRouteId,
-        });
-        const nudgeMessage = nudgeData.choices?.[0]?.message;
-        const nudgeContent =
-          typeof nudgeMessage?.content === "string" && nudgeMessage.content.trim()
-            ? nudgeMessage.content
-            : openAIReasoningContent(nudgeMessage);
-        if (nudgeContent.trim()) finalContent = nudgeContent;
-      } catch (error) {
-        console.warn(`[Agent] Closing-response nudge failed: ${this.normalizeErrorMessage(error)}`);
+            providerUrl: baseUrl,
+            durationMs: Math.round(performance.now() - nudgeStartedAt),
+            sessionId: sessionIdForVisibleTokenUsage(toolContext),
+            routerRouteId: toolContext?.routerRouteId,
+          });
+          const nudgeChoice = nudgeData.choices?.[0];
+          const nudgeMessage = nudgeChoice?.message;
+          const nudgeContent =
+            typeof nudgeMessage?.content === "string" && nudgeMessage.content.trim()
+              ? nudgeMessage.content
+              : openAIReasoningContent(nudgeMessage);
+          const nudgeTruncated =
+            nudgeChoice?.finish_reason === "length" && isTruncatedReplyFragment(nudgeContent);
+          if (nudgeContent.trim() && !nudgeTruncated) {
+            finalContent = nudgeContent;
+            fallbackContent = "";
+            break;
+          }
+          if (nudgeContent.trim() && !fallbackContent.trim()) fallbackContent = nudgeContent;
+          console.warn(
+            `[Agent] Closing response was cut off by the output limit (attempt ${attempt + 1}/${CLOSING_RESPONSE_ATTEMPTS})`
+          );
+        } catch (error) {
+          console.warn(
+            `[Agent] Closing-response nudge failed: ${this.normalizeErrorMessage(error)}`
+          );
+          break;
+        }
       }
+      if (fallbackContent.trim()) finalContent = fallbackContent;
     }
 
     if (limitReason) {

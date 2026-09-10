@@ -600,6 +600,14 @@ export const cloudProviderCatalog = {
         input: ["text"],
       },
       {
+        id: "deepseek-flash",
+        name: "DeepSeek Flash",
+        context: 1000000,
+        maxTokens: 384000,
+        reasoning: true,
+        input: ["text"],
+      },
+      {
         id: "deepseek-chat",
         name: "DeepSeek Chat (V4 Flash)",
         context: 1000000,

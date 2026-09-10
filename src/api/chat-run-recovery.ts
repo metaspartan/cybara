@@ -360,8 +360,8 @@ export async function recoverInterruptedSessionMessages(
       continue;
     }
     const processActivities = buildActivities(events, true);
-    const content = sanitizeAssistantContent(events.map(assistantDelta).join(""));
-    if (processActivities.length <= 1 && !content.trim()) continue;
+    const streamedContent = sanitizeAssistantContent(events.map(assistantDelta).join(""));
+    const content = streamedContent.trim() ? streamedContent : INTERRUPTED_RESPONSE;
     const timestamp = new Date(
       events.reduce((latest, event) => Math.max(latest, eventTimestamp(event)), 0) || Date.now()
     ).toISOString();

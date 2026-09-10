@@ -1,7 +1,8 @@
-import { afterAll } from "bun:test";
+import { afterAll, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { resetRuntimeGuardsForTests } from "../src/core/tools/runtime-guards";
 
 const ownsIsolatedHome = process.env.CYBARA_TEST_ISOLATED !== "1";
 const realHome = process.env.CYBARA_TEST_REAL_HOME || process.env.HOME || "";
@@ -22,4 +23,8 @@ afterAll(() => {
   } catch {
     void 0;
   }
+});
+
+afterEach(() => {
+  resetRuntimeGuardsForTests();
 });

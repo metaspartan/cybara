@@ -223,6 +223,118 @@ describe("chat tool summary utilities", () => {
     ).toBe("unfinished_execution");
   });
 
+  test("detects replies that end by promising imminent work instead of doing it", () => {
+    const promise = [
+      "**So the real problem is the one you've been telling me each time:** what I built is a receiver, not a clamp.",
+      "",
+      "I'm building that missing half now — the clamp bar spanning under the rail base, the cross-bolt through the recoil slot — then I'll re-run the interference check, re-export the FBX at centimeter scale, and re-render the fit.",
+      "",
+      "I don't want to hand you another \"should be right now\" — I'll report back with the numeric cross-section and the seated-on-rail proof.",
+    ].join("\n");
+    const mutationCalls = [
+      { name: "write", args: { path: "/tmp/diag.py" }, result: { success: true } },
+      { name: "exec", args: { command: "blender -b" }, result: { output: "ok", exitCode: 0 } },
+    ];
+    const request =
+      "This is still not correct continue getting it fully correct please its missing the bottom half of the clamp for picatinny rail? research whatever you need";
+    expect(findAssistantEvidenceIssue(promise, mutationCalls, { userMessage: request })).toBe(
+      "deferred_work"
+    );
+    expect(findAssistantEvidenceIssue(promise, [], { userMessage: request })).toBe("deferred_work");
+    expect(
+      findAssistantEvidenceIssue(
+        "Measured the channel. Next, I will rebuild the jaw and rerun the fit check.",
+        mutationCalls,
+        {
+          userMessage: "Continue fixing the mount.",
+        }
+      )
+    ).toBe("deferred_work");
+    expect(
+      findAssistantEvidenceIssue(promise, mutationCalls, {
+        userMessage: "Stop here and just tell me what you would do next.",
+      })
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue(
+        "Rebuilt the clamp and verified 0.00 mm³ interference on the rail section. Let me know if you want the FBX re-exported at a different scale.",
+        mutationCalls,
+        { userMessage: "Continue fixing the mount." }
+      )
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue(
+        "The clamp is now a two-jaw design. I'll verify the fit once you confirm which rail profile you want.",
+        mutationCalls,
+        { userMessage: "Continue fixing the mount." }
+      )
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue(
+        "Paris is the capital of France. I'll add that it has about 2 million residents.",
+        [],
+        {
+          userMessage: "What is the capital of France?",
+        }
+      )
+    ).toBeUndefined();
+  });
+
+  test("does not treat a promise as broken while a delegated run is still pending", () => {
+    const delegated =
+      "I've handed the clamp modelling to a Blender subagent and will report back with its result.";
+    const spawn = {
+      name: "sessions_spawn",
+      args: { task: "model the clamp" },
+      result: { status: "accepted", runId: "run-1" },
+    };
+    const request = "Continue fixing the mount.";
+    expect(
+      findAssistantEvidenceIssue(delegated, [spawn], { userMessage: request })
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue(
+        delegated,
+        [
+          spawn,
+          {
+            name: "sessions_wait",
+            args: { runIds: ["run-1"] },
+            result: { runs: [{ runId: "run-1", status: "completed" }] },
+          },
+        ],
+        { userMessage: request }
+      )
+    ).toBe("deferred_work");
+  });
+
+  test("recovers a reply that was cut off after a few characters even when tools ran", () => {
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("continue the fix", "The", 19)).toBe(
+      true
+    );
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("fix the mount", "Inspecti", 60)).toBe(
+      true
+    );
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("fix the mount", "", 4)).toBe(true);
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("fix the mount", "Completed", 4)).toBe(
+      false
+    );
+    expect(shouldRecoverNonSubstantiveAssistantCompletion("what is 6*7", "42", 1)).toBe(false);
+    expect(
+      shouldRecoverNonSubstantiveAssistantCompletion("reply with only the word", "Picatinny", 1)
+    ).toBe(false);
+    expect(
+      shouldRecoverNonSubstantiveAssistantCompletion(
+        "fix the mount",
+        "Which data source should I use?\n\n**API**\n- **API**: pull from the billing API",
+        1
+      )
+    ).toBe(false);
+    expect(
+      shouldRecoverNonSubstantiveAssistantCompletion("fix the mount", "Rebuilt the clamp.", 3)
+    ).toBe(false);
+  });
+
   test("allows requested planning and explicit approval boundaries", () => {
     const deferral =
       "I mapped the remaining work. Would you like me to proceed with implementing it?";

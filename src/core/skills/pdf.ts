@@ -1,3 +1,9 @@
+import { extractPdfText, SCANNED_PDF_NOTICE } from "../pdf-text";
+
+function systemPdfToolsDisabled(): boolean {
+  return process.env.CYBARA_PDF_EMBEDDED_ONLY === "1";
+}
+
 export async function handlePdf(args: Record<string, unknown>): Promise<unknown> {
   const action = args.action as string;
   const path = args.path as string;
@@ -13,6 +19,11 @@ export async function handlePdf(args: Record<string, unknown>): Promise<unknown>
 
   switch (action) {
     case "extract_text": {
+      if (systemPdfToolsDisabled()) {
+        const extraction = await extractPdfText(await file.bytes());
+        if (!extraction.text.trim()) throw new Error(SCANNED_PDF_NOTICE);
+        return { text: extraction.text, pages: extraction.pages, method: "embedded" };
+      }
       try {
         const result = Bun.spawnSync(["pdftotext", "-layout", path, "-"], {
           stdout: "pipe",
@@ -47,9 +58,9 @@ export async function handlePdf(args: Record<string, unknown>): Promise<unknown>
         void 0;
       }
 
-      throw new Error(
-        "PDF text extraction failed. Install poppler (brew install poppler) for pdftotext support."
-      );
+      const extraction = await extractPdfText(await file.bytes());
+      if (!extraction.text.trim()) throw new Error(SCANNED_PDF_NOTICE);
+      return { text: extraction.text, pages: extraction.pages, method: "embedded" };
     }
 
     case "metadata": {
@@ -100,7 +111,7 @@ export async function handlePdf(args: Record<string, unknown>): Promise<unknown>
         void 0;
       }
 
-      throw new Error("Could not determine page count. Install poppler (brew install poppler).");
+      return { pages: (await extractPdfText(await file.bytes())).pages, method: "embedded" };
     }
 
     default:

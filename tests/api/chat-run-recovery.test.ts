@@ -8,6 +8,7 @@ import {
   upsertPersistedSessionMessage,
 } from "../../src/core/session-context";
 import {
+  appendSessionEvent,
   completeSessionRun,
   getActiveSessionRunId,
   listAllRunEvents,
@@ -123,6 +124,45 @@ describe("chat run recovery", () => {
       text: "Read file 599",
       toolCallId: "read-599",
     });
+  });
+
+  test("leaves a visible interrupted reply for a run that died before producing output", async () => {
+    const { sessionId, agentId } = createSession("silent-crash-run");
+    const runId = crypto.randomUUID();
+    const timestamp = Date.now();
+    appendSessionEvent({
+      sessionId,
+      runId,
+      type: "run_started",
+      payload: { timestamp, processId: 999_999 },
+    });
+    appendSessionEvent({
+      sessionId,
+      runId,
+      type: "status",
+      payload: { status: "thinking", timestamp: timestamp + 1, detail: "Thinking...", sessionId },
+    });
+    appendSessionEvent({
+      sessionId,
+      runId,
+      type: "status",
+      payload: {
+        status: "generating",
+        timestamp: timestamp + 5,
+        detail: "Generating response...",
+        sessionId,
+      },
+    });
+
+    const recovered = await recoverInterruptedSessionMessages(sessionId, agentId, [], {
+      hydrateExistingRuns: false,
+      processAlive: () => false,
+    });
+
+    const marker = recovered.find((message) => message.run_id === runId);
+    expect(marker?.interrupted).toBe(true);
+    expect(marker?.content).toContain("Response interrupted before completion");
+    expect(listIncompleteSessionRuns(sessionId)).toEqual([]);
   });
 
   test("closes a recovered run so later restarts do not keep it active", async () => {

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { tinyPdf } from "../helpers/pdf-fixture";
 import { handleWebFetch } from "../../src/core/tools/handlers/browser";
 import { handleWebSearch } from "../../src/core/tools/handlers/web-search";
 import {
@@ -274,5 +275,49 @@ describe("web research providers", () => {
     expect(result.content).toBe("Recovered content");
     expect(directCalls).toBe(1);
     expect(externalCalls).toBe(1);
+  });
+
+  test("web_fetch extracts PDF text locally without any external provider", async () => {
+    delete process.env.FIRECRAWL_API_KEY;
+    delete process.env.PARALLEL_API_KEY;
+    const pdf = tinyPdf([["Picatinny rail slot width 0.206 inch"]], { title: "Rail Spec" });
+    const fetchUrl = async (): Promise<Response> =>
+      new Response(pdf, { status: 200, headers: { "content-type": "application/pdf" } });
+
+    const result = await handleWebFetch(
+      { url: "https://example.com/specs/1913_specs.pdf" },
+      undefined,
+      fetchUrl
+    );
+    expect(result.provider).toBe("direct");
+    expect(result.title).toBe("Rail Spec");
+    expect(result.content).toContain("Rail Spec (PDF, 1 page)");
+    expect(result.content).toContain("Picatinny rail slot width 0.206 inch");
+  });
+
+  test("web_fetch recognises a PDF served as octet-stream and explains scanned documents", async () => {
+    delete process.env.FIRECRAWL_API_KEY;
+    delete process.env.PARALLEL_API_KEY;
+    const withText = tinyPdf([["Served without a PDF content type"]]);
+    const first = await handleWebFetch(
+      { url: "https://example.com/download?id=7" },
+      undefined,
+      async () =>
+        new Response(withText, {
+          status: 200,
+          headers: { "content-type": "application/octet-stream" },
+        })
+    );
+    expect(first.content).toContain("Served without a PDF content type");
+
+    const scanned = tinyPdf([[]]);
+    await expect(
+      handleWebFetch(
+        { url: "https://example.com/scan.pdf" },
+        undefined,
+        async () =>
+          new Response(scanned, { status: 200, headers: { "content-type": "application/pdf" } })
+      )
+    ).rejects.toThrow("no extractable text");
   });
 });

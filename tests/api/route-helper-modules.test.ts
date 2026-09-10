@@ -98,6 +98,23 @@ describe("route helper modules", () => {
     ).toMatchObject({ name: "run", line: 2, character: 3, endLine: 4, endCharacter: 5 });
   });
 
+  test("keeps the viewed snapshot so clients can render images outside the media roots", () => {
+    expect(
+      sanitizeToolMediaResult({
+        content: "Image file: /Users/test/Downloads/renders/side.png\nMedia type: image/png",
+        path: "/Users/test/Downloads/renders/side.png",
+        snapshot: "/Users/test/.cybara/media/viewed/abc-000001-xyz/side.png",
+        system_reminder: "x".repeat(3000),
+      })
+    ).toEqual({
+      filePath: "/Users/test/Downloads/renders/side.png",
+      snapshot: "/Users/test/.cybara/media/viewed/abc-000001-xyz/side.png",
+    });
+    expect(
+      sanitizeToolMediaResult({ path: "/Users/test/Downloads/a.png", snapshot: "/tmp/notes.txt" })
+    ).toEqual({ filePath: "/Users/test/Downloads/a.png" });
+  });
+
   test("keeps durable screenshot metadata while removing persisted base64 payloads", () => {
     const result = sanitizeToolMediaResult(
       JSON.stringify({

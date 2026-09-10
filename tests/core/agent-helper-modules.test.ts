@@ -12,8 +12,10 @@ import {
 import { canPreStartOpenAIToolCall } from "../../src/core/agent-provider-openai-compat-runtime";
 import {
   openAICompatClosingReasoningParams,
+  openAICompatMinimalReasoningParams,
   openAIReasoningContent,
 } from "../../src/core/llm/reasoning";
+import { isTruncatedReplyFragment } from "../../src/core/llm/reply-fragments";
 
 describe("agent helper modules", () => {
   test("falls back to reasoning channels when a closing reply has empty content", () => {
@@ -121,6 +123,45 @@ describe("agent helper modules", () => {
   test("uses known model limits for custom compatible endpoints", () => {
     expect(resolveModelContextWindowTokens("custom", undefined, "MiniMax-M3")).toBe(1_000_000);
     expect(resolveModelMaxOutputTokens("custom", undefined, "MiniMax-M3")).toBe(32_768);
+  });
+
+  test("lowers or disables reasoning for closing replies per provider format", () => {
+    const deepseekBase = { thinking: { type: "enabled" }, reasoning_effort: "high" };
+    expect(openAICompatClosingReasoningParams("deepseek-flash", "deepseek", deepseekBase)).toEqual({
+      thinking: { type: "enabled" },
+      reasoning_effort: "low",
+    });
+    expect(openAICompatMinimalReasoningParams("deepseek", "deepseek-flash", deepseekBase)).toEqual({
+      thinking: { type: "disabled" },
+    });
+    expect(
+      openAICompatClosingReasoningParams("gpt-5", "openai", { reasoning_effort: "high" })
+    ).toEqual({ reasoning_effort: "low" });
+    expect(openAICompatClosingReasoningParams("gpt-4.1", "openai", {})).toEqual({});
+    expect(openAICompatMinimalReasoningParams("openai", "gpt-4.1", {})).toEqual({});
+    expect(openAICompatMinimalReasoningParams("z.ai", "glm-5", { enable_thinking: true })).toEqual({
+      enable_thinking: false,
+    });
+    expect(openAICompatMinimalReasoningParams("openrouter", "x", { reasoning: {} })).toEqual({
+      reasoning: { enabled: false },
+    });
+  });
+
+  test("recognises replies that were cut off after a word or two", () => {
+    for (const fragment of ["", "The", "Inspecti", "Now the", "I measured the"]) {
+      expect(isTruncatedReplyFragment(fragment)).toBe(true);
+    }
+    for (const reply of [
+      "Completed",
+      "Done.",
+      "42",
+      "Yes",
+      "Ready.",
+      "The mount is fixed.",
+      "one two three four",
+    ]) {
+      expect(isTruncatedReplyFragment(reply)).toBe(false);
+    }
   });
 
   test("disables MiniMax M3 thinking for a forced closing response", () => {

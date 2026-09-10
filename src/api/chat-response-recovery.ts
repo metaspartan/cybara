@@ -1,4 +1,5 @@
 import { type AgentExecutionResult, type AgentMessage, agentManager } from "../core/agent";
+import { isTruncatedReplyFragment } from "../core/llm/reply-fragments";
 import type { AgentToolCallResult } from "../core/agent-internals";
 import { sanitizeAssistantContent } from "../core/llm/text-tool-calls";
 import { isContextCompactionOnlyContent } from "../core/llm/tool-transcript";
@@ -48,16 +49,23 @@ function buildRetryInstruction(
   requiredToolName: string | undefined,
   evidenceIssue: ReturnType<typeof findAssistantEvidenceIssue>,
   compactionOnly: boolean,
-  invalidRequestedJson: boolean
+  invalidRequestedJson: boolean,
+  truncatedFragment = false
 ): string {
   if (compactionOnly) {
     return "Earlier context was compacted successfully. Continue the current task from the preserved context and tool results, then give the user a substantive response. Do not repeat an internal compaction marker.";
+  }
+  if (truncatedFragment && !shouldRetryToolExecution) {
+    return "Your previous reply ended after only a few characters, so it was cut off before it said anything. Reply again now with the complete answer, concisely and in well under 500 words, based on the tool results already gathered in this conversation. Do not call more tools unless the answer genuinely depends on them.";
   }
   if (invalidRequestedJson) {
     return "Your previous response was not complete valid JSON even though the user explicitly required JSON-only output. Return one complete valid JSON value that satisfies the requested structure, with no Markdown fence or explanatory prose.";
   }
   if (evidenceIssue === "missing_clarification") {
     return "Your previous response said a question was asked, but no question was visible. Ask the actual concise question directly now, or use the clarify tool with the complete question and options. Do not say that you asked without including the question.";
+  }
+  if (evidenceIssue === "deferred_work") {
+    return "Your previous response ended by announcing work you were about to do, such as building, re-running, or reporting back, but the turn ended without doing it. Nothing happens after a reply ends, so a promise is not progress. Do that work now with the available tools, verify it, and report only what is actually done. If you cannot finish, state exactly what remains and why instead of promising future action.";
   }
   if (evidenceIssue === "unfinished_execution") {
     return "Your previous response stopped after describing work you said you were executing now. Continue immediately, use the available tools to finish and verify the request, and return only after the work is complete or a concrete blocker prevents further progress.";
@@ -136,7 +144,8 @@ export async function recoverAssistantResponse(
   const shouldRetryToolExecution =
     (params.shouldRequireToolUse && (params.toolResults.length === 0 || !hasRequiredToolCall)) ||
     (params.toolsEnabled === true &&
-      (evidenceIssue === "unfinished_execution" ||
+      (evidenceIssue === "deferred_work" ||
+        evidenceIssue === "unfinished_execution" ||
         evidenceIssue === "incomplete_plan" ||
         evidenceIssue === "missing_action_evidence" ||
         evidenceIssue === "plan_only" ||
@@ -172,7 +181,8 @@ export async function recoverAssistantResponse(
         params.requiredToolName,
         latestEvidenceIssue,
         latestCompactionOnly,
-        latestInvalidRequestedJson
+        latestInvalidRequestedJson,
+        !latestCompactionOnly && isTruncatedReplyFragment(visibleAssistantContent(latestContent))
       )
     );
 

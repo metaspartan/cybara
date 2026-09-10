@@ -1,4 +1,5 @@
 import { formatStructuredToolActivityDetail } from "../../shared/tool-activity-detail";
+import { isImagePath } from "../../shared/image-formats";
 
 export interface OpenAIToolCall {
   id: string;
@@ -594,6 +595,16 @@ export function formatToolActivityDetail(
   }
 
   if (key === "read") {
+    if (path && isImagePath(path)) {
+      return phase === "start"
+        ? "Viewing an image"
+        : phase === "result"
+          ? "Viewed an image"
+          : appendToolErrorSummary(
+              `${phase === "blocked" ? "Image read blocked for" : "Image read failed for"} ${path}`,
+              result
+            );
+    }
     if (path) {
       const offset = readNumberArg(args, ["offset"]);
       const limit = readNumberArg(args, ["limit"]);
