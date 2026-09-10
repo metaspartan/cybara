@@ -16,6 +16,12 @@ import { readFileLines } from "../file-read";
 import { searchFiles } from "../file-search";
 import type { ToolContext } from "../index";
 import { assertReadablePath, assertWritablePath } from "../path-policy";
+import {
+  describePdfExtraction,
+  extractPdfText,
+  MAX_PDF_BYTES,
+  SCANNED_PDF_NOTICE,
+} from "../../pdf-text";
 import { readablePathOptions } from "../sensitive-read-policy";
 
 const workspace = homeDir;
@@ -334,6 +340,29 @@ export function buildUnifiedDiff(path: string, before: string, after: string): s
   return [...header, ...operations].join("\n");
 }
 
+async function pdfFileContent(
+  path: string,
+  size: number,
+  offset: number | undefined,
+  limit: number | undefined
+): Promise<string> {
+  if (size > MAX_PDF_BYTES) {
+    throw new Error(`PDF is larger than the ${Math.round(MAX_PDF_BYTES / 1024 / 1024)}MB limit`);
+  }
+  const extraction = await extractPdfText(await fs.readFile(path));
+  if (!extraction.text.trim()) return `${describePdfExtraction(extraction)}\n${SCANNED_PDF_NOTICE}`;
+  const lines = `${describePdfExtraction(extraction)}\n\n${extraction.text}`.split("\n");
+  const start = Math.max(0, Math.floor(offset ?? 1) - 1);
+  const end = typeof limit === "number" && limit > 0 ? start + Math.floor(limit) : lines.length;
+  const selected = lines.slice(start, end);
+  if (end < lines.length) {
+    selected.push(
+      `[Read truncated after ${selected.length.toLocaleString()} lines. Continue with offset ${end + 1}.]`
+    );
+  }
+  return selected.join("\n");
+}
+
 export async function handleRead(
   args: Record<string, unknown>,
   context?: ToolContext
@@ -368,6 +397,11 @@ export async function handleRead(
 
   const offset = args.offset as number | undefined;
   const limit = args.limit as number | undefined;
+  if (stats.isFile() && /\.pdf$/i.test(path)) {
+    trackMetric("file_operation", "read", 1, { path });
+    trackMetric("file_read", path, 1);
+    return { content: await pdfFileContent(path, stats.size, offset, limit), path };
+  }
   let content: string;
   if (stats.isDirectory()) {
     const entries = await fs.readdir(path, { withFileTypes: true });

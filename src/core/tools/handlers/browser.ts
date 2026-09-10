@@ -1,4 +1,11 @@
 import { existsSync, mkdirSync, writeFileSync } from "fs";
+import {
+  describePdfExtraction,
+  extractPdfText,
+  isPdfBytes,
+  MAX_PDF_BYTES,
+  SCANNED_PDF_NOTICE,
+} from "../../pdf-text";
 import { join } from "path";
 import {
   browserViewportPreset,
@@ -1427,9 +1434,7 @@ export async function handleWebFetch(
   ];
   const providers: Array<"direct" | "firecrawl" | "parallel"> = requestedProvider
     ? [requestedProvider, "direct", ...external]
-    : /\.pdf(?:$|[?#])/i.test(validatedUrl)
-      ? [...external, "direct"]
-      : ["direct", ...external];
+    : ["direct", ...external];
   const uniqueProviders = [...new Set(providers)];
   const errors: string[] = [];
 
@@ -1456,7 +1461,44 @@ export async function handleWebFetch(
     }
   }
 
-  throw new Error(`Failed to fetch ${url}: ${errors.join("; ")}`);
+  throw new Error(`Could not extract readable content from ${url}: ${errors.join("; ")}`);
+}
+
+const MAX_DIRECT_FETCH_BYTES = MAX_PDF_BYTES;
+
+async function readBoundedBody(response: Response): Promise<Uint8Array> {
+  const declared = Number(response.headers.get("content-length") || "");
+  if (Number.isFinite(declared) && declared > MAX_DIRECT_FETCH_BYTES) {
+    throw new Error(`response is larger than the ${MAX_DIRECT_FETCH_BYTES} byte limit`);
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.length > MAX_DIRECT_FETCH_BYTES) {
+    throw new Error(`response is larger than the ${MAX_DIRECT_FETCH_BYTES} byte limit`);
+  }
+  return bytes;
+}
+
+function looksLikePdfResponse(url: string, response: Response, bytes: Uint8Array): boolean {
+  const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  if (contentType.includes("application/pdf")) return true;
+  if (contentType.includes("text/html")) return false;
+  return /\.pdf(?:$|[?#])/i.test(url) || isPdfBytes(bytes);
+}
+
+async function pdfWebContent(
+  url: string,
+  bytes: Uint8Array,
+  maxChars: number
+): Promise<{ content: string; url: string; title?: string }> {
+  const extraction = await extractPdfText(bytes);
+  if (!extraction.text.trim()) throw new Error(SCANNED_PDF_NOTICE);
+  const header = describePdfExtraction(extraction);
+  const body = `${header}\n\n${extraction.text}`;
+  return {
+    content: body.length > maxChars ? `${body.slice(0, maxChars)}\n... [truncated]` : body,
+    url,
+    title: extraction.title,
+  };
 }
 
 async function fetchDirectWebContent(
@@ -1498,10 +1540,11 @@ async function fetchDirectWebContent(
 
   if (!response) throw new Error("Too many redirects");
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  if ((response.headers.get("content-type") || "").toLowerCase().includes("application/pdf")) {
-    throw new Error("PDF extraction requires a configured extraction provider");
+  const bytes = await readBoundedBody(response);
+  if (looksLikePdfResponse(currentUrl, response, bytes)) {
+    return pdfWebContent(currentUrl, bytes, maxChars);
   }
-  const { title, content } = extractReadableContent(await response.text(), extractMode);
+  const { title, content } = extractReadableContent(new TextDecoder().decode(bytes), extractMode);
   return {
     content: content.length > maxChars ? `${content.slice(0, maxChars)}\n... [truncated]` : content,
     url: currentUrl,
