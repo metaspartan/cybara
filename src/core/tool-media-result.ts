@@ -81,6 +81,8 @@ export function sanitizeToolMediaResult(result: unknown): Record<string, unknown
   }
 
   const payload: Record<string, unknown> = { filePath };
+  const snapshot = stringField(record, ["snapshot"]);
+  if (snapshot && IMAGE_FILE_PATTERN.test(snapshot)) payload.snapshot = snapshot;
   const action = stringField(record, ["action"]);
   const text = boundedText(record.text, 1_000);
   const error = boundedText(record.error, 500);

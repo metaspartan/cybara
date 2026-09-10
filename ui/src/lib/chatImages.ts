@@ -54,6 +54,13 @@ export function screenshotMediaSrc(filePath: string): string {
   return withGatewayBasePath(`/api/media?path=${encodeURIComponent(`screenshots/${base}`)}`);
 }
 
+export function mediaPathSrc(filePath: string): string {
+  const trimmed = filePath.trim();
+  if (!trimmed) return "";
+  if (/[\\/]screenshots[\\/][^\\/]+$/i.test(trimmed)) return screenshotMediaSrc(trimmed);
+  return withGatewayBasePath(`/api/media?path=${encodeURIComponent(trimmed)}`);
+}
+
 export function chatMarkdownImageSrc(source: string): string | null {
   if (/^(https?:|data:image\/)/i.test(source)) return source;
   if (source.startsWith("/") && source.includes("/api/media?path=")) return source;
@@ -215,10 +222,12 @@ export function imageToolResultSrc(result: unknown): string | null {
   }
   if (!result || typeof result !== "object") return null;
   const record = result as Record<string, unknown>;
+  const snapshot = typeof record.snapshot === "string" ? record.snapshot.trim() : "";
+  if (snapshot && isImagePath(snapshot)) return mediaPathSrc(snapshot);
   const filePath = typeof record.filePath === "string" ? record.filePath : "";
   const contentType = typeof record.contentType === "string" ? record.contentType : "";
   const isImage = /^image\//i.test(contentType) || isImagePath(filePath);
-  if (filePath && isImage) return screenshotMediaSrc(filePath);
+  if (filePath && isImage) return mediaPathSrc(filePath);
   return null;
 }
 

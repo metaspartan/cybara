@@ -210,6 +210,20 @@ describe("chat image format support", () => {
       "screenshots%2Fscan.tif"
     );
     expect(imageToolResultSrc({ filePath: "/Users/x/.cybara/screenshots/notes.psd" })).toBeNull();
+    expect(
+      imageToolResultSrc({
+        filePath: "/Users/x/Downloads/renders/side.png",
+        snapshot: "/Users/x/.cybara/media/viewed/abc-000001-xyz/side.png",
+      })
+    ).toBe(
+      `/api/media?path=${encodeURIComponent("/Users/x/.cybara/media/viewed/abc-000001-xyz/side.png")}`
+    );
+    expect(imageToolResultSrc({ filePath: "/Users/x/Downloads/renders/side.png" })).toBe(
+      `/api/media?path=${encodeURIComponent("/Users/x/Downloads/renders/side.png")}`
+    );
+    expect(imageToolResultSrc({ filePath: "/Users/x/Downloads/renders/side.png" })).not.toContain(
+      "screenshots%2F"
+    );
   });
 });
 
