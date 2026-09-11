@@ -113,11 +113,13 @@ describe("mobile: chat management", () => {
     const screen = read("screens/dashboardSessionDetail.tsx");
     const runtime = read("screens/useMobileSessionRuntime.ts");
 
-    expect(screen).toContain("followChatBottomRef.current = true;");
-    expect(screen).toContain("if (!followChatBottomRef.current) return;");
-    expect(screen).toContain("if (!chatScrollGestureActiveRef.current) return;");
-    expect(screen).toContain("onScrollBeginDrag={() => {");
-    expect(screen).toContain("followChatBottomRef.current = false;");
+    expect(screen).toContain("new MobileChatScrollController(");
+    expect(screen).toContain("onContentSizeChange={chatScroll.onContentSizeChange}");
+    expect(screen).toContain("onScrollBeginDrag={chatScroll.onScrollBeginDrag}");
+    expect(screen).toContain("onScrollEndDrag={chatScroll.onScrollEndDrag}");
+    expect(screen).toContain("onMomentumScrollBegin={chatScroll.onScrollBeginDrag}");
+    expect(screen).toContain("onMomentumScrollEnd={chatScroll.onScrollEndDrag}");
+    expect(screen).toContain("chatScroll.followLatest();");
     expect(screen).toContain("Math.max(composerBarHeight, MOBILE_CHAT_CHROME.composerHeight)");
     expect(runtime).not.toContain("scrollToEnd");
     expect(runtime).not.toContain("requestAnimationFrame");

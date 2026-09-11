@@ -30,11 +30,12 @@ describe("chat follow parity", () => {
 
   test("mobile only pins to the bottom while the reader is following", () => {
     const source = read("apps/mobile/src/screens/dashboardSessionDetail.tsx");
-    expect(source).toContain("cybara-shared/chat-scroll-follow");
-    expect(source).toContain("if (!followChatBottomRef.current) return;");
-    expect(source).toContain("followChatBottomRef.current = isChatNearBottom(");
-    expect(source).toContain("if (!chatScrollGestureActiveRef.current) return;");
-    expect(source).toContain("onMomentumScrollEnd={(event) => {");
+    const controller = read("apps/mobile/src/lib/chat-scroll.ts");
+    expect(controller).toContain("cybara-shared/chat-scroll-follow");
+    expect(controller).toContain("isChatNearBottom(");
+    expect(controller).toContain("if (!this.interacting) return;");
+    expect(source).toContain("onScrollBeginDrag={chatScroll.onScrollBeginDrag}");
+    expect(source).toContain("onMomentumScrollEnd={chatScroll.onScrollEndDrag}");
   });
 
   test("macos gates every transcript autoscroll on the follow state", () => {

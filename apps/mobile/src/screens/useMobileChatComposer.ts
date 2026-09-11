@@ -34,6 +34,7 @@ interface MobileChatComposerController {
   pendingImages: MobileMessageImage[];
   setPendingImages: Dispatch<SetStateAction<MobileMessageImage[]>>;
   removePendingImage: (index: number) => void;
+  appendPendingImages: (images: MobileMessageImage[]) => void;
   openAttachmentMenu: () => void;
 }
 
@@ -199,6 +200,7 @@ export function useMobileChatComposer({
     pendingImages,
     setPendingImages,
     removePendingImage,
+    appendPendingImages,
     openAttachmentMenu,
   };
 }
