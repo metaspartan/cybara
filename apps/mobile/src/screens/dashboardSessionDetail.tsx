@@ -90,6 +90,7 @@ import { absoluteTimestampLabel, relativeTimestamp } from "./dashboardHelpers";
 import {
   clearCachedMobileLiveAssistant,
   liveAssistantMessage,
+  mergeLiveActivity,
   mobileAgentUsingBrowser,
   mobilePreSteerProcessActivities,
 } from "./dashboardLiveChat";
@@ -496,7 +497,8 @@ export function SessionDetailPanel({
         responseHapticActiveRef.current = false;
         haptics.agentCompleted();
       }
-    } catch {
+    } catch (error) {
+      const failureText = error instanceof Error ? error.message : String(error);
       const received = await recoverMobileChatSubmission(
         api,
         {
@@ -527,20 +529,36 @@ export function SessionDetailPanel({
           current.filter((entry) => entry.id !== optimisticPendingMessageId)
         );
       }
-      if (!received && optimisticMessageId) {
-        clearCachedMobileOptimisticTranscript(sessionId, optimisticMessageId);
-        setDetail((current) =>
-          current
-            ? {
-                ...current,
-                messages: current.messages.filter((entry) => entry.id !== optimisticMessageId),
-              }
-            : current
-        );
-      }
-      if (!received && responseHapticActiveRef.current) {
-        responseHapticActiveRef.current = false;
-        haptics.warning();
+      if (!received) {
+        const failedAt = Date.now();
+        setLoadError(failureText);
+        if (optimisticMessageId) {
+          clearCachedMobileOptimisticTranscript(sessionId, optimisticMessageId);
+          setDetail((current) =>
+            current
+              ? {
+                  ...current,
+                  messages: current.messages.filter((entry) => entry.id !== optimisticMessageId),
+                }
+              : current
+          );
+        }
+        if (responseHapticActiveRef.current) {
+          responseHapticActiveRef.current = false;
+          haptics.warning();
+        }
+        commitLiveAssistant((current) => {
+          const base = liveAssistantMessage(sessionId, current, failedAt);
+          return {
+            ...base,
+            processActivities: mergeLiveActivity(base.processActivities || [], {
+              id: `live-error-${failedAt}`,
+              phase: "error",
+              text: failureText,
+              timestamp: failedAt,
+            }),
+          };
+        }, failedAt);
       }
       await loadSession(false);
       refreshSummary();
