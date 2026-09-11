@@ -1,10 +1,5 @@
 import { normalizeChatAppearanceSettings } from "cybara-shared/chat-appearance";
 import {
-  CHAT_FOLLOW_THRESHOLD_PX,
-  type ChatScrollMetrics,
-  isChatNearBottom,
-} from "cybara-shared/chat-scroll-follow";
-import {
   ArrowDown,
   ArrowUp,
   Bot,
@@ -45,8 +40,6 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Modal,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -89,13 +82,14 @@ import {
   sessionProviderModelLabel,
 } from "../lib/dashboard";
 import { haptics } from "../lib/haptics";
+import { MobileChatScrollController } from "../lib/chat-scroll";
+import { recoverMobileChatSubmission } from "../lib/chat-send-recovery";
 import { colors, spacing } from "../theme/liquidGlass";
 import { ChatMessageRow, MobilePlanSummaryCard } from "./dashboardChat";
 import { absoluteTimestampLabel, relativeTimestamp } from "./dashboardHelpers";
 import {
   clearCachedMobileLiveAssistant,
   liveAssistantMessage,
-  mergeLiveActivity,
   mobileAgentUsingBrowser,
   mobilePreSteerProcessActivities,
 } from "./dashboardLiveChat";
@@ -266,31 +260,15 @@ export function SessionDetailPanel({
   const [toolApprovalUpdating, setToolApprovalUpdating] = useState(false);
   const [pendingToolApprovalMode, setPendingToolApprovalMode] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
-  const followChatBottomRef = useRef(true);
-  const chatScrollGestureActiveRef = useRef(false);
-  const pendingScrollToEndRef = useRef<number | null>(null);
-  const headerActionRef = useRef<() => void>(() => {});
-  const updateChatFollowFromScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-      const metrics: ChatScrollMetrics = {
-        clientHeight: layoutMeasurement.height,
-        scrollHeight: contentSize.height,
-        scrollTop: contentOffset.y,
-      };
-      followChatBottomRef.current = isChatNearBottom(metrics, CHAT_FOLLOW_THRESHOLD_PX);
-    },
-    []
+  const [chatScroll] = useState(
+    () =>
+      new MobileChatScrollController(() => scrollRef.current?.scrollToEnd({ animated: false }), {
+        request: requestAnimationFrame,
+        cancel: cancelAnimationFrame,
+      })
   );
-  const scrollChatToEnd = useCallback((): void => {
-    if (!followChatBottomRef.current || chatScrollGestureActiveRef.current) return;
-    if (pendingScrollToEndRef.current !== null) return;
-    pendingScrollToEndRef.current = requestAnimationFrame(() => {
-      pendingScrollToEndRef.current = null;
-      if (!followChatBottomRef.current || chatScrollGestureActiveRef.current) return;
-      scrollRef.current?.scrollToEnd({ animated: false });
-    });
-  }, []);
+  useEffect(() => () => chatScroll.dispose(), [chatScroll]);
+  const headerActionRef = useRef<() => void>(() => {});
   const {
     detail,
     setDetail,
@@ -316,11 +294,6 @@ export function SessionDetailPanel({
     setPendingSessionAgentId,
     onSessionUpdated: onSessionUpdated ?? ignoreSessionDetail,
   });
-
-  useEffect(() => {
-    followChatBottomRef.current = true;
-    chatScrollGestureActiveRef.current = false;
-  }, [sessionId]);
 
   useEffect(() => {
     let active = true;
@@ -377,6 +350,7 @@ export function SessionDetailPanel({
     pendingImages,
     setPendingImages,
     removePendingImage,
+    appendPendingImages,
     openAttachmentMenu,
   } = useMobileChatComposer({ setLoadError });
 
@@ -391,12 +365,14 @@ export function SessionDetailPanel({
   };
 
   const sendMessage = async () => {
-    const message = draft.trim();
+    const message = draftRef.current.trim();
     const attachments = pendingImages;
+    const previousMessageIds = detail?.messages.map((entry) => entry.id) ?? [];
     const chatBusy = sending || sessionActive || pendingMessages.length > 0;
     const queuedSend = followUpBehaviorEnabled && chatBusy;
     if (!message && attachments.length === 0) return;
     if (chatBusy && !followUpBehaviorEnabled) return;
+    chatScroll.followLatest();
     haptics.messageSent();
     resetComposerDraft();
     setPendingImages([]);
@@ -520,17 +496,38 @@ export function SessionDetailPanel({
         responseHapticActiveRef.current = false;
         haptics.agentCompleted();
       }
-    } catch (error) {
-      const messageText = error instanceof Error ? error.message : String(error);
-      setComposerDraft(message);
-      if (attachments.length > 0) setPendingImages(attachments);
-      setLoadError(messageText);
+    } catch {
+      const received = await recoverMobileChatSubmission(
+        api,
+        {
+          sessionId,
+          message,
+          images: attachments,
+          previousMessageIds,
+          clientPendingId: optimisticPendingMessageId,
+        },
+        {
+          restoreText: appendTextToComposer,
+          restoreImages: appendPendingImages,
+          offerRestore: (restore) => {
+            if (!scrollRef.current) return;
+            Alert.alert(
+              "Message delivery unconfirmed",
+              "Check the chat before sending again. You can restore the prompt if it is missing.",
+              [
+                { text: "Dismiss", style: "cancel" },
+                { text: "Restore prompt", onPress: restore },
+              ]
+            );
+          },
+        }
+      );
       if (optimisticPendingMessageId) {
         setPendingMessages((current) =>
           current.filter((entry) => entry.id !== optimisticPendingMessageId)
         );
       }
-      if (optimisticMessageId) {
+      if (!received && optimisticMessageId) {
         clearCachedMobileOptimisticTranscript(sessionId, optimisticMessageId);
         setDetail((current) =>
           current
@@ -541,23 +538,12 @@ export function SessionDetailPanel({
             : current
         );
       }
-      const failedAt = Date.now();
-      if (responseHapticActiveRef.current) {
+      if (!received && responseHapticActiveRef.current) {
         responseHapticActiveRef.current = false;
         haptics.warning();
       }
-      commitLiveAssistant((current) => {
-        const base = liveAssistantMessage(sessionId, current, failedAt);
-        return {
-          ...base,
-          processActivities: mergeLiveActivity(base.processActivities || [], {
-            id: `live-error-${failedAt}`,
-            phase: "error",
-            text: messageText,
-            timestamp: failedAt,
-          }),
-        };
-      }, failedAt);
+      await loadSession(false);
+      refreshSummary();
     } finally {
       if (!queuedSend) {
         setSending(false);
@@ -1519,31 +1505,12 @@ export function SessionDetailPanel({
           },
         ]}
         keyboardShouldPersistTaps="handled"
-        onContentSizeChange={() => {
-          if (!followChatBottomRef.current) return;
-          scrollChatToEnd();
-        }}
-        onMomentumScrollBegin={() => {
-          chatScrollGestureActiveRef.current = true;
-        }}
-        onMomentumScrollEnd={(event) => {
-          updateChatFollowFromScroll(event);
-          chatScrollGestureActiveRef.current = false;
-        }}
-        onScroll={(event) => {
-          if (!chatScrollGestureActiveRef.current) return;
-          updateChatFollowFromScroll(event);
-        }}
-        onScrollBeginDrag={() => {
-          chatScrollGestureActiveRef.current = true;
-          followChatBottomRef.current = false;
-        }}
-        onScrollEndDrag={(event) => {
-          updateChatFollowFromScroll(event);
-          chatScrollGestureActiveRef.current = false;
-          if (followChatBottomRef.current) scrollChatToEnd();
-        }}
-        scrollEventThrottle={16}
+        onContentSizeChange={chatScroll.onContentSizeChange}
+        onLayout={chatScroll.onContentSizeChange}
+        onScrollBeginDrag={chatScroll.onScrollBeginDrag}
+        onScrollEndDrag={chatScroll.onScrollEndDrag}
+        onMomentumScrollBegin={chatScroll.onScrollBeginDrag}
+        onMomentumScrollEnd={chatScroll.onScrollEndDrag}
         showsVerticalScrollIndicator={false}
         style={styles.chatScroll}
       >
