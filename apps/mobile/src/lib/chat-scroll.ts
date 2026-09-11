@@ -57,6 +57,7 @@ export class MobileChatScrollController {
         },
         CHAT_FOLLOW_THRESHOLD_PX
       );
+    if (this.following) this.onContentSizeChange();
   };
 
   readonly followLatest = (): void => {

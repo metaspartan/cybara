@@ -96,6 +96,22 @@ describe("mobile chat scroll", () => {
     expect(harness.scrolls()).toBe(1);
   });
 
+  test("releasing a drag near the bottom snaps to the newest message", () => {
+    const harness = createScrollHarness();
+    harness.controller.onScrollBeginDrag();
+    harness.controller.onScrollEndDrag(scrollEvent(2304));
+    harness.flush();
+    expect(harness.scrolls()).toBe(1);
+  });
+
+  test("releasing a drag away from the bottom leaves the reading position alone", () => {
+    const harness = createScrollHarness();
+    harness.controller.onScrollBeginDrag();
+    harness.controller.onScrollEndDrag(scrollEvent(2303));
+    harness.flush();
+    expect(harness.scrolls()).toBe(0);
+  });
+
   test("layout scroll events cannot resume following while reading", () => {
     const harness = createScrollHarness();
     harness.controller.onScrollBeginDrag();
