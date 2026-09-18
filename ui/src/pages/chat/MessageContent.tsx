@@ -7,9 +7,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
-import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import ReactMarkdown, { type Components, defaultUrlTransform, type Options } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -274,6 +275,25 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
   );
 }
 
+type MarkdownPreProps = ComponentPropsWithoutRef<"pre">;
+type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
+
+const CHAT_REMARK_PLUGINS: Options["remarkPlugins"] = [remarkGfm, remarkMath];
+const CHAT_REHYPE_PLUGINS: Options["rehypePlugins"] = [
+  [rehypeKatex, { output: "htmlAndMathml", strict: "warn", throwOnError: false, trust: false }],
+];
+
+function openChatLink(
+  handler: ((href: string, options: ChatLinkOpenOptions) => boolean) | undefined,
+  target: string,
+  options: ChatLinkOpenOptions
+): boolean {
+  if (handler) return handler(target, options);
+  const route = routeChatLink(target, { external: true });
+  if (route.kind === "external") void openExternal(route.url);
+  return route.kind === "external" || route.kind === "blocked";
+}
+
 function MessageContentComponent({
   content,
   onOpenImage,
@@ -283,133 +303,131 @@ function MessageContentComponent({
   onOpenImage?: (src: string, alt: string) => void;
   onOpenLink?: (href: string, options: ChatLinkOpenOptions) => boolean;
 }) {
-  type MarkdownPreProps = ComponentPropsWithoutRef<"pre">;
-  type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
   const cleanedContent = useMemo(() => preprocessChatMarkdown(content), [content]);
-  const openLink = useCallback(
-    (target: string, options: ChatLinkOpenOptions): boolean => {
-      if (onOpenLink) return onOpenLink(target, options);
-      const route = routeChatLink(target, { external: true });
-      if (route.kind === "external") void openExternal(route.url);
-      return route.kind === "external" || route.kind === "blocked";
-    },
-    [onOpenLink]
+  const openImageRef = useRef(onOpenImage);
+  const openLinkRef = useRef(onOpenLink);
+
+  useEffect(() => {
+    openImageRef.current = onOpenImage;
+    openLinkRef.current = onOpenLink;
+  }, [onOpenImage, onOpenLink]);
+
+  const components = useMemo<Components>(
+    () => ({
+      pre: ({ children }: MarkdownPreProps) => <>{children}</>,
+      code({ className, children, inline, ...props }: MarkdownCodeProps) {
+        const rawCode = extractTextContent(children).replace(/\n$/, "");
+        const inferredInline = !className && !rawCode.includes("\n");
+        if (inline ?? inferredInline) {
+          return <InlineCodeSnippet code={rawCode} className={className} codeProps={props} />;
+        }
+
+        const languageMatch = className ? /language-([^\s]+)/.exec(className) : null;
+        const language = normalizeCodeLanguage(languageMatch?.[1]);
+        if (language === "mermaid") {
+          return (
+            <MermaidCodeBlock
+              code={rawCode}
+              codeView={<SyntaxCodeBlock code={rawCode} language="plaintext" />}
+            />
+          );
+        }
+        if (looksLikeDiffCode(rawCode, language)) {
+          return <DiffCodeBlock code={rawCode} />;
+        }
+
+        return <SyntaxCodeBlock code={rawCode} language={language} />;
+      },
+      p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+      ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
+      ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
+      li: ({ children }) => <li className="mb-1">{children}</li>,
+      table: ({ children }) => (
+        <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03]">
+          <table className="chat-code-text w-full border-collapse">{children}</table>
+        </div>
+      ),
+      thead: ({ children }) => <thead className="bg-white/5">{children}</thead>,
+      tbody: ({ children }) => <tbody>{children}</tbody>,
+      tr: ({ children }) => (
+        <tr className="border-b border-white/10 last:border-b-0">{children}</tr>
+      ),
+      th: ({ children }) => (
+        <th className="text-left font-semibold text-gray-100 px-3 py-2 align-top">{children}</th>
+      ),
+      td: ({ children }) => <td className="px-3 py-2 align-top text-gray-300">{children}</td>,
+      h1: ({ children }) => <h1 className="text-xl font-bold mb-2">{children}</h1>,
+      h2: ({ children }) => <h2 className="text-lg font-bold mb-2">{children}</h2>,
+      h3: ({ children }) => <h3 className="text-base font-bold mb-2">{children}</h3>,
+      a: ({ href, children }) => {
+        const target = typeof href === "string" ? href : "";
+        return (
+          <a
+            href={target}
+            className="text-indigo-400 hover:text-indigo-300 underline"
+            rel="noopener noreferrer"
+            onClick={(event) => {
+              if (!target) return;
+              const handled = openChatLink(openLinkRef.current, target, {
+                external: event.metaKey || event.ctrlKey || event.shiftKey || event.altKey,
+              });
+              if (!handled) return;
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onAuxClick={(event) => {
+              if (
+                !target ||
+                event.button !== 1 ||
+                !openChatLink(openLinkRef.current, target, { external: true })
+              )
+                return;
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            {children}
+          </a>
+        );
+      },
+      img: ({ src, alt }) => {
+        const source = typeof src === "string" ? src : "";
+        const imageSource = chatMarkdownImageSrc(source);
+        if (!imageSource) return null;
+        return (
+          <ChatImagePreview
+            source={imageSource}
+            alt={alt || "Image"}
+            width={640}
+            height={400}
+            className="aspect-[16/10] max-h-80 w-full max-w-[640px] rounded-lg border border-white/12 object-contain"
+            containerClassName="block my-2 cursor-zoom-in"
+            onOpen={(src, imageAlt) => openImageRef.current?.(src, imageAlt)}
+          />
+        );
+      },
+      blockquote: ({ children }) => (
+        <blockquote
+          className="my-2 border-l-2 pl-3 text-[var(--text-muted)]"
+          style={{ borderColor: "rgb(var(--accent-primary))" }}
+        >
+          {children}
+        </blockquote>
+      ),
+      hr: () => (
+        <hr className="border-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent my-4" />
+      ),
+    }),
+    []
   );
 
   return (
     <div className="chat-markdown max-w-none text-gray-200">
       <ReactMarkdown
         urlTransform={transformChatMarkdownUrl}
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[
-          [
-            rehypeKatex,
-            { output: "htmlAndMathml", strict: "warn", throwOnError: false, trust: false },
-          ],
-        ]}
-        components={{
-          pre: ({ children }: MarkdownPreProps) => <>{children}</>,
-          code({ className, children, inline, ...props }: MarkdownCodeProps) {
-            const rawCode = extractTextContent(children).replace(/\n$/, "");
-            const inferredInline = !className && !rawCode.includes("\n");
-            if (inline ?? inferredInline) {
-              return <InlineCodeSnippet code={rawCode} className={className} codeProps={props} />;
-            }
-
-            const languageMatch = className ? /language-([^\s]+)/.exec(className) : null;
-            const language = normalizeCodeLanguage(languageMatch?.[1]);
-            if (language === "mermaid") {
-              return (
-                <MermaidCodeBlock
-                  code={rawCode}
-                  codeView={<SyntaxCodeBlock code={rawCode} language="plaintext" />}
-                />
-              );
-            }
-            if (looksLikeDiffCode(rawCode, language)) {
-              return <DiffCodeBlock code={rawCode} />;
-            }
-
-            return <SyntaxCodeBlock code={rawCode} language={language} />;
-          },
-          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-          ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
-          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
-          li: ({ children }) => <li className="mb-1">{children}</li>,
-          table: ({ children }) => (
-            <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03]">
-              <table className="chat-code-text w-full border-collapse">{children}</table>
-            </div>
-          ),
-          thead: ({ children }) => <thead className="bg-white/5">{children}</thead>,
-          tbody: ({ children }) => <tbody>{children}</tbody>,
-          tr: ({ children }) => (
-            <tr className="border-b border-white/10 last:border-b-0">{children}</tr>
-          ),
-          th: ({ children }) => (
-            <th className="text-left font-semibold text-gray-100 px-3 py-2 align-top">
-              {children}
-            </th>
-          ),
-          td: ({ children }) => <td className="px-3 py-2 align-top text-gray-300">{children}</td>,
-          h1: ({ children }) => <h1 className="text-xl font-bold mb-2">{children}</h1>,
-          h2: ({ children }) => <h2 className="text-lg font-bold mb-2">{children}</h2>,
-          h3: ({ children }) => <h3 className="text-base font-bold mb-2">{children}</h3>,
-          a: ({ href, children }) => {
-            const target = typeof href === "string" ? href : "";
-            return (
-              <a
-                href={target}
-                className="text-indigo-400 hover:text-indigo-300 underline"
-                rel="noopener noreferrer"
-                onClick={(event) => {
-                  if (!target) return;
-                  const handled = openLink(target, {
-                    external: event.metaKey || event.ctrlKey || event.shiftKey || event.altKey,
-                  });
-                  if (!handled) return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                }}
-                onAuxClick={(event) => {
-                  if (!target || event.button !== 1 || !openLink(target, { external: true }))
-                    return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                }}
-              >
-                {children}
-              </a>
-            );
-          },
-          img: ({ src, alt }) => {
-            const source = typeof src === "string" ? src : "";
-            const imageSource = chatMarkdownImageSrc(source);
-            if (!imageSource) return null;
-            return (
-              <ChatImagePreview
-                source={imageSource}
-                alt={alt || "Image"}
-                width={640}
-                height={400}
-                className="aspect-[16/10] max-h-80 w-full max-w-[640px] rounded-lg border border-white/12 object-contain"
-                containerClassName="block my-2 cursor-zoom-in"
-                onOpen={(src, imageAlt) => onOpenImage?.(src, imageAlt)}
-              />
-            );
-          },
-          blockquote: ({ children }) => (
-            <blockquote
-              className="my-2 border-l-2 pl-3 text-[var(--text-muted)]"
-              style={{ borderColor: "rgb(var(--accent-primary))" }}
-            >
-              {children}
-            </blockquote>
-          ),
-          hr: () => (
-            <hr className="border-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent my-4" />
-          ),
-        }}
+        remarkPlugins={CHAT_REMARK_PLUGINS}
+        rehypePlugins={CHAT_REHYPE_PLUGINS}
+        components={components}
       >
         {cleanedContent}
       </ReactMarkdown>
