@@ -897,10 +897,8 @@ export async function scrollPage(pageId: string, deltaX: number, deltaY: number)
 export async function sendKey(pageId: string, key: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
-  if (/^[\x20-\x7e]$/.test(key)) {
+  if (Array.from(key).length === 1) {
     await page.keyboard.press(key).catch(async () => await page.keyboard.insertText(key));
-  } else if (key.length === 1) {
-    await page.keyboard.insertText(key);
   } else {
     await page.keyboard.press(key);
   }

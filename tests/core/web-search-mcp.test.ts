@@ -121,6 +121,27 @@ describe("provider base URL overrides", () => {
     ).toBe("https://proxy.test/brave/res/v1/web/search");
   });
 
+  test("does not repeat endpoint segments that the base URL already ends with", () => {
+    expect(
+      providerEndpoint("https://proxy.example/v1", "https://api.parallel.ai", "/v1/search")
+    ).toBe("https://proxy.example/v1/search");
+    expect(
+      providerEndpoint("https://proxy.example/res/v1", "https://b", "/res/v1/web/search")
+    ).toBe("https://proxy.example/res/v1/web/search");
+    expect(
+      providerEndpoint("https://proxy.example/brave/res/v1/web", "https://b", "/res/v1/web/search")
+    ).toBe("https://proxy.example/brave/res/v1/web/search");
+    expect(providerEndpoint("https://proxy.example/gateway/v1/", "https://a", "/v1/extract")).toBe(
+      "https://proxy.example/gateway/v1/extract"
+    );
+    expect(providerEndpoint("https://proxy.example/v2", "https://a", "/v1/search")).toBe(
+      "https://proxy.example/v2/v1/search"
+    );
+    expect(providerEndpoint("https://proxy.example/", "https://a", "/search")).toBe(
+      "https://proxy.example/search"
+    );
+  });
+
   test("rejects non-HTTP and credential-bearing base URLs", () => {
     expect(() => providerEndpoint("ftp://proxy.test", "https://a", "/search")).toThrow(
       "must use HTTP or HTTPS"

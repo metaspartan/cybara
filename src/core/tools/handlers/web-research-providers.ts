@@ -51,7 +51,16 @@ export function providerEndpoint(
 ): string {
   const parsed = parseProviderUrl(configuredBaseUrl?.trim() || defaultBaseUrl);
   const basePath = parsed.pathname.replace(/\/+$/, "");
-  parsed.pathname = basePath.endsWith(path) ? basePath : `${basePath}${path}`;
+  const baseSegments = basePath.split("/").filter(Boolean);
+  const pathSegments = path.split("/").filter(Boolean);
+  let overlap = Math.min(baseSegments.length, pathSegments.length);
+  while (
+    overlap > 0 &&
+    baseSegments.slice(-overlap).join("/") !== pathSegments.slice(0, overlap).join("/")
+  ) {
+    overlap -= 1;
+  }
+  parsed.pathname = `/${[...baseSegments, ...pathSegments.slice(overlap)].join("/")}`;
   return parsed.toString();
 }
 
