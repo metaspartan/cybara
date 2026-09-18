@@ -30,6 +30,7 @@ import {
   wrapPlaywrightBrowser,
 } from "./automation-driver";
 import { findHermeticPlaywrightBrowserPath, getChromium } from "./playwright-loader";
+import { normalizePageCursor, pageCursorProbeScript } from "./preview-cursor";
 import {
   type BrowserDownloadPolicy,
   type BrowserSupervisionStatus,
@@ -862,6 +863,13 @@ export async function movePointerAt(pageId: string, x: number, y: number): Promi
   await movePagePointer(pageId, page, target.x, target.y, "user");
 }
 
+export async function pageCursorAt(pageId: string, x: number, y: number): Promise<string> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) throw new Error(`Page ${pageId} not found`);
+  const target = boundedPointerPosition(page, x, y);
+  return normalizePageCursor(await page.evaluate(pageCursorProbeScript(target.x, target.y)));
+}
+
 export async function pointerDownAt(pageId: string, x: number, y: number): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
@@ -889,7 +897,9 @@ export async function scrollPage(pageId: string, deltaX: number, deltaY: number)
 export async function sendKey(pageId: string, key: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
-  if (key.length === 1) {
+  if (/^[\x20-\x7e]$/.test(key)) {
+    await page.keyboard.press(key).catch(async () => await page.keyboard.insertText(key));
+  } else if (key.length === 1) {
     await page.keyboard.insertText(key);
   } else {
     await page.keyboard.press(key);

@@ -16,8 +16,9 @@ describe("browser preview polling", () => {
     expect(BROWSER_PREVIEW_IDLE_POLL_MS).toBe(2_500);
   });
 
-  test("presents live frames at an interactive cadence", () => {
-    expect(BROWSER_PREVIEW_MIN_PAINT_GAP_MS).toBe(33);
+  test("paints live frames at display refresh rate up to the stream's 60fps", () => {
+    expect(BROWSER_PREVIEW_MIN_PAINT_GAP_MS).toBeLessThan(16);
+    expect(BROWSER_PREVIEW_MIN_PAINT_GAP_MS).toBeGreaterThan(8);
   });
 
   test("uses a lower-cost stream for the floating thumbnail", () => {
