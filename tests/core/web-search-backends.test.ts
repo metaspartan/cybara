@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { parseDuckDuckGoSearchResults } from "../../src/core/tools/handlers/web-search";
 import {
-  parseDuckDuckGoSearchResults,
   resolveSearchBackends,
   selectSearchBackends,
-} from "../../src/core/tools/handlers/web-search";
+} from "../../src/core/tools/handlers/web-search-backends";
 
 describe("web search backend selection", () => {
   test("DuckDuckGo is always the final fallback with no keys", () => {
@@ -81,6 +81,37 @@ describe("web search backend selection", () => {
         BRAVE_API_KEY: "b",
       })
     ).toEqual(["exa", "tavily", "brave", "duckduckgo"]);
+  });
+
+  test("follows a user-defined order and appends providers left out of it", () => {
+    const env = {
+      TAVILY_API_KEY: "t",
+      BRAVE_API_KEY: "b",
+      SEARXNG_URL: "http://localhost:8080",
+      WEB_SEARCH_ORDER: "searxng, brave, unknown, brave",
+    };
+    expect(selectSearchBackends(env)).toEqual(["searxng", "brave", "tavily", "duckduckgo"]);
+  });
+
+  test("skips disabled providers while keeping their keys configured", () => {
+    const env = { TAVILY_API_KEY: "t", EXA_API_KEY: "e", WEB_SEARCH_DISABLED: "tavily,duckduckgo" };
+    expect(selectSearchBackends(env)).toEqual(["exa"]);
+    expect(resolveSearchBackends("tavily", env)).toEqual(["exa"]);
+    expect(selectSearchBackends({ WEB_SEARCH_DISABLED: "duckduckgo" })).toEqual([]);
+  });
+
+  test("uses an MCP tool only when both server and tool are configured", () => {
+    expect(selectSearchBackends({ WEB_SEARCH_MCP_SERVER: "srv" })).toEqual(["duckduckgo"]);
+    expect(
+      selectSearchBackends({ WEB_SEARCH_MCP_SERVER: "srv", WEB_SEARCH_MCP_TOOL: "search" })
+    ).toEqual(["mcp", "duckduckgo"]);
+    expect(
+      resolveSearchBackends("mcp", {
+        BRAVE_API_KEY: "b",
+        WEB_SEARCH_MCP_SERVER: "srv",
+        WEB_SEARCH_MCP_TOOL: "search",
+      })
+    ).toEqual(["mcp", "brave", "duckduckgo"]);
   });
 
   test("parses nested title and snippet markup from DuckDuckGo HTML", async () => {

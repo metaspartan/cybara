@@ -14,8 +14,8 @@ const sidebarAgentStatusPath = fileURLToPath(
   new URL("../../ui/src/components/layout/useSidebarAgentStatus.ts", import.meta.url)
 );
 const logoPath = fileURLToPath(new URL("../../ui/public/cybara.png", import.meta.url));
-const thinkingLogoPath = fileURLToPath(
-  new URL("../../ui/public/cybara-thinking.png", import.meta.url)
+const thinkingPosePaths = [1, 2, 3, 4, 5].map((pose) =>
+  fileURLToPath(new URL(`../../ui/public/cybara-thinking-${pose}.png`, import.meta.url))
 );
 
 function readSidebarSource(): string {
@@ -64,7 +64,7 @@ describe("Sidebar status indicator behavior", () => {
     expect(statusHook).not.toContain("pruneInactiveSessions");
   });
 
-  test("renders the shared two-frame thinking mark instead of a halo ring", () => {
+  test("renders the shared five-pose thinking mark instead of a halo ring", () => {
     const source = readSidebarSource();
     const mark = readFileSync(
       fileURLToPath(new URL("../../ui/src/components/CybaraThinkingMark.tsx", import.meta.url)),
@@ -77,8 +77,12 @@ describe("Sidebar status indicator behavior", () => {
     expect(source).toContain('src="/cybara.png"');
     expect(source).toContain('status === "active" && "opacity-0"');
     expect(source).toContain("<CybaraThinkingMark />");
-    expect(mark).toContain('from "../../public/cybara.png"');
-    expect(mark).toContain('from "../../public/cybara-thinking.png"');
+    for (const pose of [1, 2, 3, 4, 5]) {
+      expect(mark).toContain(`from "../../public/cybara-thinking-${pose}.png"`);
+      expect(css).toContain(`.cybara-thinking-mark-pose-${pose}`);
+      expect(css).toContain(`@keyframes cybara-thinking-pose-${pose}`);
+    }
+    expect(css).toContain("animation-duration: 1.8s");
     expect(css).toContain(".cybara-thinking-mark");
     expect(css).not.toContain(".gif");
     expect(css).toContain("inset: 0");
@@ -90,9 +94,9 @@ describe("Sidebar status indicator behavior", () => {
     expect(css).not.toContain('url("/cybara-thinking-sprite.png")');
   });
 
-  test("thinking frames use square canvases and matching visible proportions", () => {
+  test("thinking poses share the logo's square canvas and registration", () => {
     const logo = PNG.sync.read(readFileSync(logoPath));
-    const thinking = PNG.sync.read(readFileSync(thinkingLogoPath));
+    const poses = thinkingPosePaths.map((path) => PNG.sync.read(readFileSync(path)));
     const visibleBounds = (
       png: PNG
     ): { top: number; bottom: number; height: number; center: number } => {
@@ -115,14 +119,22 @@ describe("Sidebar status indicator behavior", () => {
     };
 
     expect(logo.width).toBe(logo.height);
-    expect(thinking.width).toBe(thinking.height);
     const logoBounds = visibleBounds(logo);
-    const thinkingBounds = visibleBounds(thinking);
     const logoHeightRatio = logoBounds.height / logo.height;
-    const thinkingHeightRatio = thinkingBounds.height / thinking.height;
     const logoCenterRatio = logoBounds.center / logo.height;
-    const thinkingCenterRatio = thinkingBounds.center / thinking.height;
-    expect(Math.abs(thinkingHeightRatio - logoHeightRatio)).toBeLessThanOrEqual(0.01);
-    expect(Math.abs(thinkingCenterRatio - logoCenterRatio)).toBeLessThanOrEqual(0.01);
+    for (const pose of poses) {
+      expect(pose.width).toBe(pose.height);
+      expect(pose.width).toBe(poses[0].width);
+      const bounds = visibleBounds(pose);
+      expect(Math.abs(bounds.height / pose.height - logoHeightRatio)).toBeLessThanOrEqual(0.02);
+      expect(Math.abs(bounds.center / pose.height - logoCenterRatio)).toBeLessThanOrEqual(0.02);
+    }
+    const restingBounds = visibleBounds(poses[0]);
+    expect(Math.abs(restingBounds.height / poses[0].height - logoHeightRatio)).toBeLessThanOrEqual(
+      0.01
+    );
+    expect(Math.abs(restingBounds.center / poses[0].height - logoCenterRatio)).toBeLessThanOrEqual(
+      0.01
+    );
   });
 });

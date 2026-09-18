@@ -19,6 +19,18 @@ function readChatSource(): string {
 }
 
 describe("Chat markdown rendering behavior", () => {
+  test("keeps markdown element types stable across re-renders so images do not remount", () => {
+    const source = readFileSync(messageContentPath, "utf8");
+
+    expect(source).toContain("const components = useMemo<Components>(");
+    expect(source).toContain("components={components}");
+    expect(source).not.toContain("components={{");
+    expect(source).toContain("remarkPlugins={CHAT_REMARK_PLUGINS}");
+    expect(source).toContain("rehypePlugins={CHAT_REHYPE_PLUGINS}");
+    expect(source).toContain("openImageRef.current?.(src, imageAlt)");
+    expect(source).toContain("openChatLink(openLinkRef.current, target,");
+  });
+
   test("keeps inline code simple and does not render inline copy controls", () => {
     const source = readChatSource();
 
@@ -70,7 +82,9 @@ describe("Chat markdown rendering behavior", () => {
     expect(source).toContain('import rehypeKatex from "rehype-katex"');
     expect(source).toContain('import remarkMath from "remark-math"');
     expect(source).toContain('import "katex/dist/katex.min.css"');
-    expect(source).toContain("remarkPlugins={[remarkGfm, remarkMath]}");
+    expect(source).toContain(
+      'const CHAT_REMARK_PLUGINS: Options["remarkPlugins"] = [remarkGfm, remarkMath];'
+    );
     expect(source).toContain('output: "htmlAndMathml"');
     expect(source).toContain("trust: false");
     expect(source).toContain('className="chat-markdown');

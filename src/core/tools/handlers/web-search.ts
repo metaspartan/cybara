@@ -1,16 +1,17 @@
 import { filterWebSearchResultsByAllowlist } from "./web-policy";
 import { getWebResearchRuntimeEnv } from "../../web-research-settings";
+import { providerEndpoint, searchFirecrawl, searchParallel } from "./web-research-providers";
 import {
-  firecrawlConfigured,
-  parallelConfigured,
-  searchFirecrawl,
-  searchParallel,
-} from "./web-research-providers";
+  isWebSearchBackend,
+  resolveSearchBackends,
+  type WebSearchBackend,
+} from "./web-search-backends";
+import { searchWithMcp } from "./web-search-mcp";
 
-const BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
+const BRAVE_BASE_URL = "https://api.search.brave.com";
 const DDG_HTML_ENDPOINT = "https://html.duckduckgo.com/html/";
-const TAVILY_SEARCH_ENDPOINT = "https://api.tavily.com/search";
-const EXA_SEARCH_ENDPOINT = "https://api.exa.ai/search";
+const TAVILY_BASE_URL = "https://api.tavily.com";
+const EXA_BASE_URL = "https://api.exa.ai";
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
@@ -67,9 +68,10 @@ function setCache(key: string, results: SearchResponse): void {
 async function searchWithBrave(
   query: string,
   count: number,
-  apiKey: string
+  apiKey: string,
+  baseUrl: string | undefined
 ): Promise<SearchResponse> {
-  const url = new URL(BRAVE_SEARCH_ENDPOINT);
+  const url = new URL(providerEndpoint(baseUrl, BRAVE_BASE_URL, "/res/v1/web/search"));
   url.searchParams.set("q", query);
   url.searchParams.set("count", String(count));
 
@@ -199,10 +201,11 @@ export async function parseDuckDuckGoSearchResults(
 async function searchWithTavily(
   query: string,
   count: number,
-  apiKey: string
+  apiKey: string,
+  baseUrl: string | undefined
 ): Promise<SearchResponse> {
   const start = Date.now();
-  const response = await fetch(TAVILY_SEARCH_ENDPOINT, {
+  const response = await fetch(providerEndpoint(baseUrl, TAVILY_BASE_URL, "/search"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -232,10 +235,11 @@ async function searchWithTavily(
 async function searchWithExa(
   query: string,
   count: number,
-  apiKey: string
+  apiKey: string,
+  baseUrl: string | undefined
 ): Promise<SearchResponse> {
   const start = Date.now();
-  const response = await fetch(EXA_SEARCH_ENDPOINT, {
+  const response = await fetch(providerEndpoint(baseUrl, EXA_BASE_URL, "/search"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -307,49 +311,6 @@ function safeHostname(url: string): string | undefined {
   }
 }
 
-export type WebSearchBackend =
-  | "firecrawl"
-  | "parallel"
-  | "tavily"
-  | "exa"
-  | "brave"
-  | "searxng"
-  | "duckduckgo";
-
-export function selectSearchBackends(env: Record<string, string | undefined>): WebSearchBackend[] {
-  const order: WebSearchBackend[] = [];
-  if (firecrawlConfigured(env)) order.push("firecrawl");
-  if (parallelConfigured(env)) order.push("parallel");
-  if (env.TAVILY_API_KEY) order.push("tavily");
-  if (env.EXA_API_KEY) order.push("exa");
-  if (env.BRAVE_API_KEY) order.push("brave");
-  if (env.SEARXNG_URL || env.SEARXNG_BASE_URL) order.push("searxng");
-  order.push("duckduckgo");
-  return order;
-}
-
-function backendIsConfigured(
-  backend: WebSearchBackend,
-  env: Record<string, string | undefined>
-): boolean {
-  if (backend === "duckduckgo") return true;
-  if (backend === "firecrawl") return firecrawlConfigured(env);
-  if (backend === "parallel") return parallelConfigured(env);
-  if (backend === "tavily") return Boolean(env.TAVILY_API_KEY);
-  if (backend === "exa") return Boolean(env.EXA_API_KEY);
-  if (backend === "brave") return Boolean(env.BRAVE_API_KEY);
-  return Boolean(env.SEARXNG_URL || env.SEARXNG_BASE_URL);
-}
-
-export function resolveSearchBackends(
-  requested: WebSearchBackend | undefined,
-  env: Record<string, string | undefined>
-): WebSearchBackend[] {
-  const automatic = selectSearchBackends(env);
-  if (!requested || !backendIsConfigured(requested, env)) return automatic;
-  return [requested, ...automatic.filter((backend) => backend !== requested)];
-}
-
 function runBackend(
   backend: WebSearchBackend,
   query: string,
@@ -377,7 +338,7 @@ function runBackend(
     case "parallel": {
       const apiKey = env.PARALLEL_API_KEY;
       if (!apiKey) return Promise.reject(new Error("PARALLEL_API_KEY is not configured"));
-      return searchParallel(query, count, apiKey).then((results) => ({
+      return searchParallel(query, count, apiKey, env.PARALLEL_API_URL).then((results) => ({
         query,
         provider: "parallel",
         count: results.length,
@@ -386,11 +347,19 @@ function runBackend(
       }));
     }
     case "tavily":
-      return searchWithTavily(query, count, env.TAVILY_API_KEY!);
+      return searchWithTavily(query, count, env.TAVILY_API_KEY!, env.TAVILY_API_URL);
     case "exa":
-      return searchWithExa(query, count, env.EXA_API_KEY!);
+      return searchWithExa(query, count, env.EXA_API_KEY!, env.EXA_API_URL);
     case "brave":
-      return searchWithBrave(query, count, env.BRAVE_API_KEY!);
+      return searchWithBrave(query, count, env.BRAVE_API_KEY!, env.BRAVE_API_URL);
+    case "mcp":
+      return searchWithMcp(query, count, env).then((results) => ({
+        query,
+        provider: "mcp",
+        count: results.length,
+        tookMs: Date.now() - start,
+        results,
+      }));
     case "searxng":
       return searchWithSearxng(query, count, (env.SEARXNG_URL || env.SEARXNG_BASE_URL)!);
     case "duckduckgo":
@@ -411,18 +380,7 @@ function stringList(value: unknown): string[] | undefined {
 }
 
 function requestedBackend(value: unknown): WebSearchBackend | undefined {
-  const supported = new Set<WebSearchBackend>([
-    "firecrawl",
-    "parallel",
-    "tavily",
-    "exa",
-    "brave",
-    "searxng",
-    "duckduckgo",
-  ]);
-  return typeof value === "string" && supported.has(value as WebSearchBackend)
-    ? (value as WebSearchBackend)
-    : undefined;
+  return isWebSearchBackend(value) ? value : undefined;
 }
 
 function normalizedDomain(value: string): string {
@@ -481,7 +439,14 @@ export async function handleWebSearch(args: Record<string, unknown>): Promise<Se
   }
 
   const requested = requestedBackend(args.provider);
-  const cacheKey = `${getCacheKey(query, count)}:${requested || "auto"}:${JSON.stringify({
+  const env = getWebResearchRuntimeEnv();
+  const backends = resolveSearchBackends(requested, env);
+  if (backends.length === 0) {
+    throw new Error(
+      "No web search providers are enabled. Enable one in Settings → Web research or WEB_SEARCH_DISABLED."
+    );
+  }
+  const cacheKey = `${getCacheKey(query, count)}:${backends.join(",")}:${JSON.stringify({
     categories: stringList(args.categories),
     includeDomains,
     excludeDomains,
@@ -493,9 +458,6 @@ export async function handleWebSearch(args: Record<string, unknown>): Promise<Se
   if (cached) {
     return cached;
   }
-
-  const env = getWebResearchRuntimeEnv();
-  const backends = resolveSearchBackends(requested, env);
 
   const errors: string[] = [];
   for (const backend of backends) {

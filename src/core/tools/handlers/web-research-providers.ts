@@ -31,7 +31,7 @@ function configured(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function endpoint(baseUrl: string, path: string): string {
+function parseProviderUrl(baseUrl: string): URL {
   const parsed = new URL(baseUrl);
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new Error("Web research provider URL must use HTTP or HTTPS");
@@ -41,6 +41,31 @@ function endpoint(baseUrl: string, path: string): string {
   }
   parsed.search = "";
   parsed.hash = "";
+  return parsed;
+}
+
+export function providerEndpoint(
+  configuredBaseUrl: string | undefined,
+  defaultBaseUrl: string,
+  path: string
+): string {
+  const parsed = parseProviderUrl(configuredBaseUrl?.trim() || defaultBaseUrl);
+  const basePath = parsed.pathname.replace(/\/+$/, "");
+  const baseSegments = basePath.split("/").filter(Boolean);
+  const pathSegments = path.split("/").filter(Boolean);
+  let overlap = Math.min(baseSegments.length, pathSegments.length);
+  while (
+    overlap > 0 &&
+    baseSegments.slice(-overlap).join("/") !== pathSegments.slice(0, overlap).join("/")
+  ) {
+    overlap -= 1;
+  }
+  parsed.pathname = `/${[...baseSegments, ...pathSegments.slice(overlap)].join("/")}`;
+  return parsed.toString();
+}
+
+function endpoint(baseUrl: string, path: string): string {
+  const parsed = parseProviderUrl(baseUrl);
   const normalizedPath = parsed.pathname.replace(/\/+$/, "");
   parsed.pathname = normalizedPath.endsWith("/v2") ? `${normalizedPath}${path}` : `/v2${path}`;
   return parsed.toString();
@@ -187,10 +212,11 @@ export async function searchFirecrawl(
 export async function searchParallel(
   query: string,
   count: number,
-  apiKey: string
+  apiKey: string,
+  baseUrl?: string
 ): Promise<ExternalWebSearchResult[]> {
   const payload = await postJson(
-    `${PARALLEL_BASE_URL}/v1/search`,
+    providerEndpoint(baseUrl, PARALLEL_BASE_URL, "/v1/search"),
     { "x-api-key": apiKey.trim() },
     { objective: query, search_queries: [query], max_results: count },
     "Parallel Search"
@@ -254,10 +280,11 @@ export async function extractParallel(
   url: string,
   maxChars: number,
   apiKey: string,
-  objective?: string
+  objective?: string,
+  baseUrl?: string
 ): Promise<ExternalWebExtractResult> {
   const payload = await postJson(
-    `${PARALLEL_BASE_URL}/v1/extract`,
+    providerEndpoint(baseUrl, PARALLEL_BASE_URL, "/v1/extract"),
     { "x-api-key": apiKey.trim() },
     {
       urls: [url],

@@ -185,7 +185,16 @@ function sameBrowserPage(left: BrowserPage | null, right: BrowserPage | null): b
   return left?.id === right?.id && left?.title === right?.title && left?.url === right?.url;
 }
 
-function sameBrowserCursor(left: BrowserCursor | null, right: BrowserCursor | null): boolean {
+function renderedBrowserCursor(cursor: BrowserCursor | null): BrowserCursor | null {
+  return cursor?.source === "agent" ? cursor : null;
+}
+
+function sameBrowserCursor(
+  currentCursor: BrowserCursor | null,
+  nextCursor: BrowserCursor | null
+): boolean {
+  const left = renderedBrowserCursor(currentCursor);
+  const right = renderedBrowserCursor(nextCursor);
   return (
     left?.x === right?.x &&
     left?.y === right?.y &&
@@ -283,6 +292,7 @@ export function ChatWorkspaceBrowser({
   const [preview, setPreview] = useState<BrowserPreview | null>(null);
   const [displayedPreview, setDisplayedPreview] = useState<BrowserPreview | null>(null);
   const [streamFrameVisible, setStreamFrameVisible] = useState(false);
+  const [pageCursor, setPageCursor] = useState("default");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [startupLabel, setStartupLabel] = useState("Checking installed browsers");
@@ -1100,7 +1110,7 @@ export function ChatWorkspaceBrowser({
       )}
       <div
         ref={previewSurfaceRef}
-        className="relative min-h-0 flex-1 touch-none cursor-default overflow-hidden overscroll-contain bg-[var(--surface-backdrop)] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[rgb(var(--accent-primary))]"
+        className="relative min-h-0 flex-1 touch-none overflow-hidden overscroll-contain bg-[var(--surface-backdrop)] outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[rgb(var(--accent-primary))]"
         onKeyDown={handlePreviewKeyDown}
         onPaste={handlePreviewPaste}
         onPointerDown={handlePreviewPointerDown}
@@ -1110,6 +1120,8 @@ export function ChatWorkspaceBrowser({
         role="application"
         tabIndex={0}
         aria-label="Interactive browser preview"
+        style={{ cursor: streamFrameVisible ? pageCursor : "default" }}
+        data-browser-page-cursor={pageCursor}
         data-browser-viewport-mode={viewportMode}
         data-browser-viewport-width={browserViewport.width}
         data-browser-viewport-height={browserViewport.height}
@@ -1125,11 +1137,13 @@ export function ChatWorkspaceBrowser({
           inputSenderRef={streamInputRef}
           onConnectionChange={(connected) => {
             streamConnectedRef.current = connected;
+            if (!connected) setPageCursor("default");
             onConnectionChange?.(connected);
             if (!connected && page) schedulePreviewRefresh(page, true);
           }}
           onFramePresented={setStreamFrameVisible}
           onStreamError={setError}
+          onPageCursor={setPageCursor}
         />
         {!displayedPreview?.screenshot && !streamFrameVisible ? (
           <div className="flex h-full items-center justify-center p-8 text-center">

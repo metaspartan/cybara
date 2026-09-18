@@ -376,27 +376,86 @@ html.light .hover\:bg-\[\#1c202a\]:hover,
 html.light .hover\:bg-\[\#202633\]:hover,
 html.light .hover\:bg-\[\#242733\]:hover { background-color: var(--surface-hover); }
 
-@keyframes cybara-thinking-awake {
-  0%,
-  49.999%,
+@keyframes cybara-thinking-pose-1 {
+  0% {
+    opacity: 1;
+  }
+  11.111% {
+    opacity: 0;
+  }
+  72.222%,
   100% {
     opacity: 1;
   }
-  50%,
-  99.999% {
+}
+
+@keyframes cybara-thinking-pose-2 {
+  0% {
+    opacity: 0;
+  }
+  11.111% {
+    opacity: 1;
+  }
+  16.667% {
+    opacity: 0;
+  }
+  66.667% {
+    opacity: 1;
+  }
+  72.222%,
+  100% {
     opacity: 0;
   }
 }
 
-@keyframes cybara-thinking-resting {
-  0%,
-  49.999%,
+@keyframes cybara-thinking-pose-3 {
+  0% {
+    opacity: 0;
+  }
+  16.667% {
+    opacity: 1;
+  }
+  22.222% {
+    opacity: 0;
+  }
+  61.111% {
+    opacity: 1;
+  }
+  66.667%,
   100% {
     opacity: 0;
   }
-  50%,
-  99.999% {
+}
+
+@keyframes cybara-thinking-pose-4 {
+  0% {
+    opacity: 0;
+  }
+  22.222% {
     opacity: 1;
+  }
+  27.778% {
+    opacity: 0;
+  }
+  55.556% {
+    opacity: 1;
+  }
+  61.111%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes cybara-thinking-pose-5 {
+  0% {
+    opacity: 0;
+  }
+  27.778% {
+    opacity: 1;
+  }
+  55.556%,
+  100% {
+    opacity: 0;
   }
 }
 
@@ -415,24 +474,36 @@ html.light .hover\:bg-\[\#242733\]:hover { background-color: var(--surface-hover
   height: 100%;
   object-fit: contain;
   user-select: none;
+  opacity: 0;
+  animation-duration: 1.8s;
+  animation-timing-function: steps(1, end);
+  animation-iteration-count: infinite;
 }
 
-.cybara-thinking-mark-awake {
-  animation: cybara-thinking-awake 1.2s steps(1, end) infinite;
+.cybara-thinking-mark-pose-1 {
+  opacity: 1;
+  animation-name: cybara-thinking-pose-1;
 }
 
-.cybara-thinking-mark-resting {
-  animation: cybara-thinking-resting 1.2s steps(1, end) infinite;
+.cybara-thinking-mark-pose-2 {
+  animation-name: cybara-thinking-pose-2;
+}
+
+.cybara-thinking-mark-pose-3 {
+  animation-name: cybara-thinking-pose-3;
+}
+
+.cybara-thinking-mark-pose-4 {
+  animation-name: cybara-thinking-pose-4;
+}
+
+.cybara-thinking-mark-pose-5 {
+  animation-name: cybara-thinking-pose-5;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cybara-thinking-mark-awake,
-  .cybara-thinking-mark-resting {
+  .cybara-thinking-mark-frame {
     animation: none;
-  }
-
-  .cybara-thinking-mark-resting {
-    opacity: 0;
   }
 }
 

@@ -22,6 +22,7 @@ interface BrowserPreviewImageProps {
   onConnectionChange: (connected: boolean) => void;
   onFramePresented: (presented: boolean) => void;
   onStreamError: (message: string) => void;
+  onPageCursor: (cursor: string) => void;
 }
 
 function browserStreamUrl(path: string): string {
@@ -38,6 +39,12 @@ function applyFallbackSource(image: HTMLImageElement | null, source: string | nu
   }
   image.removeAttribute("src");
   image.style.visibility = "hidden";
+}
+
+function browserStreamCursor(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const message = value as { type?: unknown; cursor?: unknown };
+  return message.type === "cursor" && typeof message.cursor === "string" ? message.cursor : null;
 }
 
 function frameBlob(value: unknown): Blob | null {
@@ -99,6 +106,7 @@ export function BrowserPreviewImage({
   onConnectionChange,
   onFramePresented,
   onStreamError,
+  onPageCursor,
 }: BrowserPreviewImageProps) {
   const imageRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -108,6 +116,7 @@ export function BrowserPreviewImage({
   const connectionChangeRef = useRef(onConnectionChange);
   const framePresentedRef = useRef(onFramePresented);
   const streamErrorRef = useRef(onStreamError);
+  const pageCursorRef = useRef(onPageCursor);
   const lastPresentedValueRef = useRef(false);
 
   const notifyFramePresented = (presented: boolean): void => {
@@ -120,7 +129,8 @@ export function BrowserPreviewImage({
     connectionChangeRef.current = onConnectionChange;
     framePresentedRef.current = onFramePresented;
     streamErrorRef.current = onStreamError;
-  }, [onConnectionChange, onFramePresented, onStreamError]);
+    pageCursorRef.current = onPageCursor;
+  }, [onConnectionChange, onFramePresented, onStreamError, onPageCursor]);
 
   useEffect(() => {
     fallbackSourceRef.current = fallbackSource;
@@ -288,6 +298,11 @@ export function BrowserPreviewImage({
         if (typeof event.data === "string") {
           try {
             const value: unknown = JSON.parse(event.data);
+            const cursor = browserStreamCursor(value);
+            if (cursor) {
+              pageCursorRef.current(cursor);
+              return;
+            }
             if (
               value &&
               typeof value === "object" &&

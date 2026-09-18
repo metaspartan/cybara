@@ -1,3 +1,4 @@
+import { WEB_SEARCH_BACKEND_IDS } from "./handlers/web-search-backends";
 import type { Tool } from "./types";
 
 export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
@@ -432,8 +433,9 @@ export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
         count: { type: "number", description: "Number of results (1-10, default 5)" },
         provider: {
           type: "string",
-          enum: ["firecrawl", "parallel", "tavily", "exa", "brave", "searxng", "duckduckgo"],
-          description: "Optional preferred search backend",
+          enum: [...WEB_SEARCH_BACKEND_IDS],
+          description:
+            "Optional preferred search backend; disabled or unconfigured backends are ignored",
         },
         categories: {
           type: "array",

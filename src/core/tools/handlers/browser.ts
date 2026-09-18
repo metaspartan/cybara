@@ -1450,7 +1450,8 @@ export async function handleWebFetch(
           validatedUrl,
           maxChars,
           apiKey,
-          typeof args.objective === "string" ? args.objective : undefined
+          typeof args.objective === "string" ? args.objective : undefined,
+          env.PARALLEL_API_URL
         );
       }
       const result = await fetchDirectWebContent(validatedUrl, extractMode, maxChars, fetchUrl);
