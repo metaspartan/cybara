@@ -7,12 +7,35 @@ import {
   webResearchApi,
   type WebResearchCredentialId,
   type WebResearchSettingsStatus,
+  type WebResearchSettingsUpdate,
+  type WebResearchUrlId,
+  type WebSearchBackendStatus,
+  type WebSearchMcpBackend,
 } from "@/lib/api";
 import { useUIStore } from "@/stores/uiStore";
 import { KeyRound, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { WebSearchBackendsPanel } from "./WebSearchBackendsPanel";
 
 type CredentialDrafts = Partial<Record<WebResearchCredentialId, string>>;
+type UrlDrafts = Partial<Record<WebResearchUrlId, string>>;
+
+const EMPTY_MCP_BACKEND: WebSearchMcpBackend = {
+  server: "",
+  tool: "",
+  queryArg: "",
+  countArg: "",
+};
+
+function sameList(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function urlHelperText(id: WebResearchUrlId): string {
+  if (id === "firecrawl") return "Optional for self-hosted Firecrawl";
+  if (id === "searxng") return "Optional self-hosted metasearch endpoint";
+  return "Optional proxy or compatible endpoint; leave empty for the default";
+}
 
 function sourceLabel(source: "env" | "stored" | "none"): string {
   if (source === "env") return "Environment";
@@ -23,8 +46,9 @@ function sourceLabel(source: "env" | "stored" | "none"): string {
 export function WebResearchSettings() {
   const [status, setStatus] = useState<WebResearchSettingsStatus | null>(null);
   const [drafts, setDrafts] = useState<CredentialDrafts>({});
-  const [firecrawlApiUrl, setFirecrawlApiUrl] = useState("");
-  const [searxngUrl, setSearxngUrl] = useState("");
+  const [urls, setUrls] = useState<UrlDrafts>({});
+  const [backends, setBackends] = useState<WebSearchBackendStatus[]>([]);
+  const [mcpBackend, setMcpBackend] = useState<WebSearchMcpBackend>(EMPTY_MCP_BACKEND);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const { addToast } = useUIStore();
@@ -32,8 +56,14 @@ export function WebResearchSettings() {
   const applyStatus = useCallback((next: WebResearchSettingsStatus) => {
     setStatus(next);
     setDrafts({});
-    setFirecrawlApiUrl(next.firecrawlApiUrl.value);
-    setSearxngUrl(next.searxngUrl.value);
+    setUrls(Object.fromEntries(next.urls.map((url) => [url.id, url.value])));
+    setBackends(next.backends);
+    setMcpBackend({
+      server: next.mcpBackend.server,
+      tool: next.mcpBackend.tool,
+      queryArg: next.mcpBackend.queryArg,
+      countArg: next.mcpBackend.countArg,
+    });
   }, []);
 
   useEffect(() => {
@@ -63,7 +93,7 @@ export function WebResearchSettings() {
     };
   }, [addToast, applyStatus]);
 
-  const update = async (payload: Parameters<typeof webResearchApi.updateSettings>[0]) => {
+  const update = async (payload: WebResearchSettingsUpdate) => {
     setSaving(true);
     try {
       const result = await webResearchApi.updateSettings(payload);
@@ -86,12 +116,46 @@ export function WebResearchSettings() {
     const credentials = Object.fromEntries(
       Object.entries(drafts).flatMap(([id, value]) => (value?.trim() ? [[id, value.trim()]] : []))
     ) as Partial<Record<WebResearchCredentialId, string>>;
-    const payload: Parameters<typeof webResearchApi.updateSettings>[0] = {};
+    const payload: WebResearchSettingsUpdate = {};
     if (Object.keys(credentials).length > 0) payload.credentials = credentials;
-    if (status?.firecrawlApiUrl.source !== "env") {
-      payload.firecrawlApiUrl = firecrawlApiUrl.trim() || null;
+    const editableUrls = (status?.urls ?? []).filter((url) => url.source !== "env");
+    if (editableUrls.length > 0) {
+      payload.urls = Object.fromEntries(
+        editableUrls.map((url) => [url.id, urls[url.id]?.trim() || null])
+      );
     }
-    if (status?.searxngUrl.source !== "env") payload.searxngUrl = searxngUrl.trim() || null;
+    const savedBackends = status?.backends ?? [];
+    const order = backends.map((backend) => backend.id);
+    if (
+      status?.backendOrderSource !== "env" &&
+      !sameList(
+        order,
+        savedBackends.map((backend) => backend.id)
+      )
+    ) {
+      payload.backendOrder = order;
+    }
+    const disabledIds = backends.filter((backend) => !backend.enabled).map((backend) => backend.id);
+    const savedDisabledIds = savedBackends
+      .filter((backend) => !backend.enabled)
+      .map((backend) => backend.id);
+    if (
+      status?.disabledBackendsSource !== "env" &&
+      !sameList([...disabledIds].sort(), [...savedDisabledIds].sort())
+    ) {
+      payload.disabledBackends = disabledIds;
+    }
+    if (status?.mcpBackend.source !== "env") {
+      payload.mcpBackend =
+        mcpBackend.server.trim() || mcpBackend.tool.trim()
+          ? {
+              server: mcpBackend.server.trim(),
+              tool: mcpBackend.tool.trim(),
+              queryArg: mcpBackend.queryArg.trim(),
+              countArg: mcpBackend.countArg.trim(),
+            }
+          : null;
+    }
     await update(payload);
   };
 
@@ -159,31 +223,32 @@ export function WebResearchSettings() {
         </div>
 
         <div className="grid gap-4 xl:grid-cols-2">
-          <Input
-            label="Firecrawl API URL"
-            value={firecrawlApiUrl}
-            placeholder="https://api.firecrawl.dev"
-            disabled={loading || saving || status?.firecrawlApiUrl.source === "env"}
-            helperText={
-              status?.firecrawlApiUrl.source === "env"
-                ? `Managed by ${status.firecrawlApiUrl.envVar}`
-                : "Optional for self-hosted Firecrawl"
-            }
-            onChange={(event) => setFirecrawlApiUrl(event.target.value)}
-          />
-          <Input
-            label="SearXNG URL"
-            value={searxngUrl}
-            placeholder="https://search.example.com"
-            disabled={loading || saving || status?.searxngUrl.source === "env"}
-            helperText={
-              status?.searxngUrl.source === "env"
-                ? `Managed by ${status.searxngUrl.envVar}`
-                : "Optional self-hosted metasearch endpoint"
-            }
-            onChange={(event) => setSearxngUrl(event.target.value)}
-          />
+          {(status?.urls || []).map((url) => {
+            const locked = url.source === "env";
+            return (
+              <Input
+                key={url.id}
+                label={url.label}
+                value={urls[url.id] ?? ""}
+                placeholder={url.placeholder}
+                disabled={loading || saving || locked}
+                helperText={locked ? `Managed by ${url.envVar}` : urlHelperText(url.id)}
+                onChange={(event) =>
+                  setUrls((current) => ({ ...current, [url.id]: event.target.value }))
+                }
+              />
+            );
+          })}
         </div>
+
+        <WebSearchBackendsPanel
+          status={status}
+          backends={backends}
+          mcpBackend={mcpBackend}
+          disabled={loading || saving}
+          onBackendsChange={setBackends}
+          onMcpBackendChange={setMcpBackend}
+        />
 
         <div className="flex justify-end">
           <Button disabled={loading || saving} isLoading={saving} onClick={() => void save()}>

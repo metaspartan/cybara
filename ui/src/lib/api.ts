@@ -898,41 +898,7 @@ export const browserSupervisionApi = {
     }),
 };
 
-export type WebResearchCredentialId = "firecrawl" | "parallel" | "tavily" | "exa" | "brave";
-export type WebResearchSettingSource = "env" | "stored" | "none";
-
-export interface WebResearchSettingsStatus {
-  credentials: Array<{
-    id: WebResearchCredentialId;
-    label: string;
-    envVar: string;
-    configured: boolean;
-    source: WebResearchSettingSource;
-  }>;
-  firecrawlApiUrl: {
-    value: string;
-    source: WebResearchSettingSource;
-    envVar: string;
-  };
-  searxngUrl: {
-    value: string;
-    source: WebResearchSettingSource;
-    envVar: string;
-  };
-}
-
-export const webResearchApi = {
-  settings: () => fetchApi<WebResearchSettingsStatus>("/web-research/settings"),
-  updateSettings: (data: {
-    credentials?: Partial<Record<WebResearchCredentialId, string | null>>;
-    firecrawlApiUrl?: string | null;
-    searxngUrl?: string | null;
-  }) =>
-    fetchApi<WebResearchSettingsStatus>("/web-research/settings", {
-      method: "PUT",
-      body: JSON.stringify(data),
-    }),
-};
+export * from "@/lib/api/web-research";
 
 export type IntegrationCredentialId = "smithery" | "voyage";
 export type IntegrationCredentialSource = "env" | "stored" | "none";
