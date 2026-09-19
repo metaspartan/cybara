@@ -135,7 +135,7 @@
     "typescript-language-server": "5.3.0"
   },
   "overrides": {
-    "adm-zip": "0.6.0",
+    "adm-zip": "0.6.1",
     "axios": "1.18.1",
     "basic-ftp": "5.3.1",
     "bn.js": "5.2.4",
@@ -195,7 +195,6 @@
     ]
   },
   "patchedDependencies": {
-    "extract-zip@2.0.1": "patches/extract-zip@2.0.1.patch",
-    "adm-zip@0.6.0": "patches/adm-zip@0.6.0.patch"
+    "extract-zip@2.0.1": "patches/extract-zip@2.0.1.patch"
   }
 }

@@ -51,12 +51,7 @@ const WORKSPACES: readonly Workspace[] = [
     label: "root",
     lockfile: "bun.lock",
     cwd: REPO_ROOT,
-    ignored: new Set([
-      "GHSA-mh99-v99m-4gvg",
-      "GHSA-jmr9-qjv8-65gv",
-      "GHSA-7pqw-9j4j-h8q3",
-      "GHSA-vwc7-r8mq-g2x9",
-    ]),
+    ignored: new Set(["GHSA-mh99-v99m-4gvg", "GHSA-jmr9-qjv8-65gv", "GHSA-7pqw-9j4j-h8q3"]),
   },
   { label: "ui", lockfile: "ui/bun.lock", cwd: join(REPO_ROOT, "ui"), ignored: new Set() },
   {
