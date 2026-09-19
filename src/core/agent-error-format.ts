@@ -26,6 +26,52 @@ function extractLlmErrorDetail(message: string): string | undefined {
 export interface LlmFailureContext {
   authType?: string;
   providerName?: string;
+  baseUrl?: string | null;
+  platform?: NodeJS.Platform;
+}
+
+const CONNECTION_FAILURE_PATTERN =
+  /was there a typo in the url or port|unable to connect|econnrefused|ehostunreach|enetunreach|ehostdown|connectionrefused|failedtoopensocket|connection refused|host is unreachable|network is unreachable/i;
+
+function isLocalNetworkHost(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (host === "localhost" || host.startsWith("127.") || host === "::1") return false;
+  if (host.endsWith(".local") || host.endsWith(".lan") || host.endsWith(".home.arpa")) return true;
+  if (!host.includes(".") && !host.includes(":")) return true;
+  const octets = host.split(".").map(Number);
+  if (
+    octets.length === 4 &&
+    octets.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)
+  ) {
+    const [first, second] = octets;
+    return (
+      first === 10 ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168) ||
+      (first === 169 && second === 254) ||
+      (first === 100 && second >= 64 && second <= 127)
+    );
+  }
+  return /^(fe8|fe9|fea|feb|fc|fd)/.test(host);
+}
+
+export function describeProviderConnectionFailure(
+  message: string,
+  context: { baseUrl?: string | null; providerName?: string; platform?: NodeJS.Platform }
+): string | undefined {
+  if (!CONNECTION_FAILURE_PATTERN.test(message) || !context.baseUrl) return undefined;
+  let target: URL;
+  try {
+    target = new URL(context.baseUrl);
+  } catch {
+    return undefined;
+  }
+  const name = context.providerName?.trim() || "the provider";
+  const address = target.host;
+  if ((context.platform ?? process.platform) === "darwin" && isLocalNetworkHost(target.hostname)) {
+    return `Couldn't connect to ${name} at ${address}. If that server is running, macOS may be blocking Cybara from your local network: open System Settings → Privacy & Security → Local Network, turn on Cybara, then quit and reopen Cybara.`;
+  }
+  return `Couldn't connect to ${name} at ${address}. Check that the server is running and reachable from this machine, and that the provider's base URL and port are correct.`;
 }
 
 export function formatLlmFailure(error: unknown, context?: LlmFailureContext): string {
@@ -83,6 +129,13 @@ export function formatLlmFailure(error: unknown, context?: LlmFailureContext): s
   if (lower.includes("429") || lower.includes("rate limit")) {
     return "Provider rate limit remained active after automatic retries. Wait briefly or use another account/provider.";
   }
+
+  const connectionFailure = describeProviderConnectionFailure(message, {
+    baseUrl: context?.baseUrl,
+    providerName: context?.providerName,
+    platform: context?.platform,
+  });
+  if (connectionFailure) return connectionFailure;
 
   const detail = extractLlmErrorDetail(message);
   if (lower.includes("400") || lower.includes("unsupported") || lower.includes("invalid")) {
