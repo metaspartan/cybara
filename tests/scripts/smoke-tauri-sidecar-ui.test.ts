@@ -3,9 +3,23 @@ import {
   assertSidecarBuildCommit,
   assertSidecarVersion,
   sidecarSmokeAuthorization,
+  sidecarStartTimeoutMs,
 } from "../../scripts/smoke-tauri-sidecar-ui";
 
 describe("sidecar release smoke", () => {
+  test("gives emulated sidecars a generous startup window that CI can override", () => {
+    expect(sidecarStartTimeoutMs({})).toBe(120_000);
+    expect(sidecarStartTimeoutMs({ CYBARA_SIDECAR_SMOKE_TIMEOUT_MS: "45000" })).toBe(45_000);
+    expect(sidecarStartTimeoutMs({ CYBARA_SIDECAR_SMOKE_TIMEOUT_MS: "nope" })).toBe(120_000);
+    expect(sidecarStartTimeoutMs({ CYBARA_SIDECAR_SMOKE_TIMEOUT_MS: "-5" })).toBe(120_000);
+  });
+
+  test("release Android builds install only the SDK packages that still exist", async () => {
+    const workflow = await Bun.file(".github/workflows/release.yml").text();
+    const setup = workflow.slice(workflow.indexOf("name: Setup Android SDK"));
+    expect(setup.slice(0, 260)).toContain("packages: platform-tools");
+  });
+
   test("authenticates production sidecar requests with the isolated smoke key", () => {
     expect(sidecarSmokeAuthorization("cybara_smoke_test")).toBe("Bearer cybara_smoke_test");
   });

@@ -1,3 +1,4 @@
+import { describeProviderConnectionFailure } from "../core/agent-error-format";
 import { credentialDestinationChanged } from "../core/credential-destination";
 import { tables } from "../core/database";
 import { discoverProviderModels } from "../core/model-discovery";
@@ -210,7 +211,11 @@ export const providerRoutes: Record<string, RouteHandler> = {
         return {
           success: false,
           provider: provider.provider,
-          message: `Failed to connect to Ollama: ${(error as Error).message}`,
+          message:
+            describeProviderConnectionFailure((error as Error).message, {
+              baseUrl,
+              providerName: provider.name,
+            }) ?? `Failed to connect to Ollama: ${(error as Error).message}`,
         };
       }
     }
@@ -252,7 +257,11 @@ export const providerRoutes: Record<string, RouteHandler> = {
         return {
           success: false,
           provider: provider.provider,
-          message: `Provider test failed: ${(error as Error).message}`,
+          message:
+            describeProviderConnectionFailure((error as Error).message, {
+              baseUrl,
+              providerName: provider.name,
+            }) ?? `Provider test failed: ${(error as Error).message}`,
         };
       }
     }

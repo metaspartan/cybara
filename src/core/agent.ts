@@ -293,6 +293,7 @@ class AgentManager extends AgentProviderRuntime {
     return formatLlmFailure(error, {
       authType: catalogEntry?.authType,
       providerName: provider.name || catalogEntry?.name,
+      baseUrl: provider.base_url || catalogEntry?.baseUrl,
     });
   }
 

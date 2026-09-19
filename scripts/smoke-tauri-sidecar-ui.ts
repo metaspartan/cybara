@@ -14,9 +14,27 @@ export function sidecarSmokeAuthorization(apiKey: string): string {
   return `Bearer ${apiKey}`;
 }
 
-async function waitForResponse(url: string, authorization: string): Promise<Response> {
+const SIDECAR_START_TIMEOUT_MS = 120_000;
+const SIDECAR_POLL_INTERVAL_MS = 250;
+
+export function sidecarStartTimeoutMs(
+  env: Record<string, string | undefined> = process.env
+): number {
+  const configured = Number(env.CYBARA_SIDECAR_SMOKE_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? configured : SIDECAR_START_TIMEOUT_MS;
+}
+
+async function waitForResponse(
+  url: string,
+  authorization: string,
+  exitCode: () => number | null = () => null,
+  timeoutMs = sidecarStartTimeoutMs()
+): Promise<Response> {
   let lastError: unknown;
-  for (let attempt = 0; attempt < 120; attempt++) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const code = exitCode();
+    if (code !== null) throw new Error(`Tauri sidecar exited with code ${code} before responding`);
     try {
       const response = await fetch(url, { headers: { Authorization: authorization } });
       if (response.ok) return response;
@@ -24,9 +42,24 @@ async function waitForResponse(url: string, authorization: string): Promise<Resp
     } catch (error) {
       lastError = error;
     }
-    await Bun.sleep(250);
+    await Bun.sleep(SIDECAR_POLL_INTERVAL_MS);
   }
-  throw lastError instanceof Error ? lastError : new Error("Tauri sidecar did not start");
+  const detail = lastError instanceof Error ? lastError.message : "no response";
+  throw new Error(`Tauri sidecar did not respond within ${timeoutMs}ms: ${detail}`);
+}
+
+const SIDECAR_OUTPUT_DRAIN_MS = 3_000;
+
+async function settleWithin(promise: Promise<string>, timeoutMs: number): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<string>((resolve) => {
+    timer = setTimeout(() => resolve(""), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise.catch(() => ""), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function firstAssetPath(html: string): string {
@@ -103,7 +136,8 @@ export async function smokeSidecarUi(
   let output = "";
 
   try {
-    const dashboard = await waitForResponse(`http://127.0.0.1:${port}/`, authorization);
+    const exitCode = () => processHandle.exitCode;
+    const dashboard = await waitForResponse(`http://127.0.0.1:${port}/`, authorization, exitCode);
     const html = await dashboard.text();
     if (html.includes("UI not built")) throw new Error("Tauri sidecar served the missing UI page");
     const assetPath = firstAssetPath(html);
@@ -111,11 +145,16 @@ export async function smokeSidecarUi(
       headers: { Authorization: authorization },
     });
     if (!asset.ok) throw new Error(`Embedded UI asset returned HTTP ${asset.status}: ${assetPath}`);
-    const health = await waitForResponse(`http://127.0.0.1:${port}/api/health`, authorization);
+    const health = await waitForResponse(
+      `http://127.0.0.1:${port}/api/health`,
+      authorization,
+      exitCode
+    );
     assertSidecarVersion(await health.json(), expectedVersion);
     const buildInfo = await waitForResponse(
       `http://127.0.0.1:${port}/api/build-info`,
-      authorization
+      authorization,
+      exitCode
     );
     assertSidecarBuildCommit(await buildInfo.json(), expectedCommit);
   } catch (error) {
@@ -123,13 +162,21 @@ export async function smokeSidecarUi(
   } finally {
     processHandle.kill();
     await processHandle.exited;
-    output = `${await stdoutPromise}\n${await stderrPromise}`;
+    const [stdout, stderr] = await Promise.all([
+      settleWithin(stdoutPromise, SIDECAR_OUTPUT_DRAIN_MS),
+      settleWithin(stderrPromise, SIDECAR_OUTPUT_DRAIN_MS),
+    ]);
+    output = `${stdout}\n${stderr}`;
     rmSync(directory, { recursive: true, force: true });
   }
   if (output.includes("Failed to load UI index")) {
     throw new Error("Tauri sidecar could not load its embedded UI");
   }
-  if (failure) throw failure;
+  if (failure) {
+    const message = failure instanceof Error ? failure.message : String(failure);
+    const tail = output.trim().split("\n").slice(-40).join("\n");
+    throw new Error(tail ? `${message}\n--- sidecar output ---\n${tail}` : message);
+  }
 }
 
 if (import.meta.main) {
