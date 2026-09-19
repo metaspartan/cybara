@@ -75,13 +75,12 @@
   },
   "patchedDependencies": {
     "extract-zip@2.0.1": "patches/extract-zip@2.0.1.patch",
-    "adm-zip@0.6.0": "patches/adm-zip@0.6.0.patch",
   },
   "overrides": {
     "@discordjs/rest": "2.6.1",
     "@humanfs/node": "0.16.8",
     "@toon-format/toon": "2.3.1",
-    "adm-zip": "0.6.0",
+    "adm-zip": "0.6.1",
     "axios": "1.18.1",
     "basic-ftp": "5.3.1",
     "bn.js": "5.2.4",
@@ -1169,7 +1168,7 @@
 
     "acorn-jsx": ["acorn-jsx@5.3.2", "", { "peerDependencies": { "acorn": "^6.0.0 || ^7.0.0 || ^8.0.0" } }, "sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ=="],
 
-    "adm-zip": ["adm-zip@0.6.0", "", {}, "sha512-XleryMhbuksdKtofnWZ9Sk+4CUTbms4Mb/EU32SZwToAyZ5RgVos/ki8n+yr0LWHOGKuakbXTuuYNHLQjhddgg=="],
+    "adm-zip": ["adm-zip@0.6.1", "", {}, "sha512-Xwrja8nx9e5o2N1my4DsKCeKpdrnACyr1wtbPxBDgGzKzKyE9kRtBFA8mWldI+RVlD7CBZNWY/wQ2+ydwOR6kQ=="],
 
     "aes-js": ["aes-js@4.0.0-beta.5", "", {}, "sha512-G965FqalsNyrPqgEGON7nIx1e/OVENSgiEIzyC63haUMuvNnwIgIjMs52hlTCKhkBny7A2ORNlfY9Zu+jmGk1Q=="],
 
