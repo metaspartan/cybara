@@ -227,6 +227,7 @@ export interface LabSettings {
 
 export interface TokenOptimizationSettings {
   toonStructuredDataEnabled: boolean;
+  evidenceReducerEnabled: boolean;
 }
 
 function normalizeDefaultWorkspaceDir(value: unknown): string {
@@ -260,6 +261,7 @@ export const DEFAULT_SANDBOX_RUNTIME: SandboxRuntimeConfig = {
 
 export const DEFAULT_TOKEN_OPTIMIZATION_SETTINGS: TokenOptimizationSettings = {
   toonStructuredDataEnabled: true,
+  evidenceReducerEnabled: true,
 };
 
 export const DEFAULT_WORKSPACE_INDEXER_SETTINGS: WorkspaceIndexerSettings = {
@@ -841,16 +843,34 @@ function normalizeMemoryBehaviorSettings(value: unknown): MemoryBehaviorSettings
   };
 }
 
-export function normalizeTokenOptimizationSettings(value: unknown): TokenOptimizationSettings {
+function mergeTokenOptimizationSettings(
+  value: unknown,
+  fallback: TokenOptimizationSettings
+): TokenOptimizationSettings {
   const parsed = asObject(value);
-  return {
-    toonStructuredDataEnabled:
-      typeof parsed?.toonStructuredDataEnabled === "boolean"
-        ? parsed.toonStructuredDataEnabled
-        : typeof parsed?.toon_structured_data_enabled === "boolean"
-          ? parsed.toon_structured_data_enabled
-          : DEFAULT_TOKEN_OPTIMIZATION_SETTINGS.toonStructuredDataEnabled,
+  const pick = (camelKey: string, snakeKey: string, current: boolean): boolean => {
+    const camel = parsed?.[camelKey];
+    if (typeof camel === "boolean") return camel;
+    const snake = parsed?.[snakeKey];
+    if (typeof snake === "boolean") return snake;
+    return current;
   };
+  return {
+    toonStructuredDataEnabled: pick(
+      "toonStructuredDataEnabled",
+      "toon_structured_data_enabled",
+      fallback.toonStructuredDataEnabled
+    ),
+    evidenceReducerEnabled: pick(
+      "evidenceReducerEnabled",
+      "evidence_reducer_enabled",
+      fallback.evidenceReducerEnabled
+    ),
+  };
+}
+
+export function normalizeTokenOptimizationSettings(value: unknown): TokenOptimizationSettings {
+  return mergeTokenOptimizationSettings(value, DEFAULT_TOKEN_OPTIMIZATION_SETTINGS);
 }
 
 function normalizeLegacyMemoryFlushSettings(value: unknown): Partial<MemoryBehaviorSettings> {
@@ -1059,7 +1079,8 @@ class ConfigManager {
   }
 
   setTokenOptimizationSettings(settings: unknown): TokenOptimizationSettings {
-    const normalized = normalizeTokenOptimizationSettings(settings);
+    const current = normalizeTokenOptimizationSettings(this.get("token_optimization"));
+    const normalized = mergeTokenOptimizationSettings(settings, current);
     this.set("token_optimization", normalized);
     return normalized;
   }

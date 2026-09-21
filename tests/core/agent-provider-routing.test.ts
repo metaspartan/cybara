@@ -1490,6 +1490,7 @@ describe("Agent provider API-family routing", () => {
 
   test("anthropic loop truncates oversized tool results and retries with compaction on context overflow", async () => {
     config.set("tool_approval_mode", "always_allow");
+    config.set("token_optimization", { evidenceReducerEnabled: false });
     const requestBodies: Array<Record<string, unknown>> = [];
     let requestCount = 0;
     let sawTruncatedMarker = false;

@@ -17,6 +17,7 @@ export function AiFeatureSettings() {
   const [reasoningEffort, setReasoningEffort] = useState("");
   const [followUpBehaviorEnabled, setFollowUpBehaviorEnabled] = useState(true);
   const [toonStructuredDataEnabled, setToonStructuredDataEnabled] = useState(true);
+  const [evidenceReducerEnabled, setEvidenceReducerEnabled] = useState(true);
   const [savingReasoningEffort, setSavingReasoningEffort] = useState(false);
   const [savingTokenOptimization, setSavingTokenOptimization] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -45,11 +46,21 @@ export function AiFeatureSettings() {
         setReasoningEffort(typeof data?.reasoning_effort === "string" ? data.reasoning_effort : "");
         setFollowUpBehaviorEnabled(data?.follow_up_behavior_enabled !== false);
         const tokenOptimization = data?.token_optimization as
-          | { toonStructuredDataEnabled?: boolean; toon_structured_data_enabled?: boolean }
+          | {
+              toonStructuredDataEnabled?: boolean;
+              toon_structured_data_enabled?: boolean;
+              evidenceReducerEnabled?: boolean;
+              evidence_reducer_enabled?: boolean;
+            }
           | undefined;
         setToonStructuredDataEnabled(
           tokenOptimization?.toonStructuredDataEnabled ??
             tokenOptimization?.toon_structured_data_enabled ??
+            true
+        );
+        setEvidenceReducerEnabled(
+          tokenOptimization?.evidenceReducerEnabled ??
+            tokenOptimization?.evidence_reducer_enabled ??
             true
         );
       } finally {
@@ -196,6 +207,30 @@ export function AiFeatureSettings() {
       );
     } catch {
       setToonStructuredDataEnabled(!enabled);
+      addToast("error", "Failed to update token optimization");
+    } finally {
+      setSavingTokenOptimization(false);
+    }
+  };
+
+  const toggleEvidenceReducer = async (enabled: boolean) => {
+    setEvidenceReducerEnabled(enabled);
+    setSavingTokenOptimization(true);
+    try {
+      const result = await settingsApi.updateConfig({
+        token_optimization: { evidenceReducerEnabled: enabled },
+      });
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || "Config update failed");
+      }
+      addToast(
+        "success",
+        enabled
+          ? "Large command output is reduced into verified evidence receipts"
+          : "Large command output is passed through unmodified"
+      );
+    } catch {
+      setEvidenceReducerEnabled(!enabled);
       addToast("error", "Failed to update token optimization");
     } finally {
       setSavingTokenOptimization(false);
@@ -397,6 +432,21 @@ export function AiFeatureSettings() {
             checked={toonStructuredDataEnabled}
             disabled={loading || savingTokenOptimization}
             onChange={(next) => void toggleToonStructuredData(next)}
+          />
+        </div>
+
+        <div className="flex items-center justify-between py-3">
+          <div className="min-w-0 pr-3">
+            <p className="text-sm text-white font-medium">Evidence-Preserving Reducer</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Compress large command output into verified evidence receipts, with the full output
+              archived and the original kept whenever verification fails.
+            </p>
+          </div>
+          <Switch
+            checked={evidenceReducerEnabled}
+            disabled={loading || savingTokenOptimization}
+            onChange={(next) => void toggleEvidenceReducer(next)}
           />
         </div>
       </CardContent>
