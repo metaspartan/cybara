@@ -227,6 +227,7 @@ export interface LabSettings {
 
 export interface TokenOptimizationSettings {
   toonStructuredDataEnabled: boolean;
+  evidenceReducerEnabled: boolean;
 }
 
 function normalizeDefaultWorkspaceDir(value: unknown): string {
@@ -260,6 +261,7 @@ export const DEFAULT_SANDBOX_RUNTIME: SandboxRuntimeConfig = {
 
 export const DEFAULT_TOKEN_OPTIMIZATION_SETTINGS: TokenOptimizationSettings = {
   toonStructuredDataEnabled: true,
+  evidenceReducerEnabled: true,
 };
 
 export const DEFAULT_WORKSPACE_INDEXER_SETTINGS: WorkspaceIndexerSettings = {
@@ -850,6 +852,12 @@ export function normalizeTokenOptimizationSettings(value: unknown): TokenOptimiz
         : typeof parsed?.toon_structured_data_enabled === "boolean"
           ? parsed.toon_structured_data_enabled
           : DEFAULT_TOKEN_OPTIMIZATION_SETTINGS.toonStructuredDataEnabled,
+    evidenceReducerEnabled:
+      typeof parsed?.evidenceReducerEnabled === "boolean"
+        ? parsed.evidenceReducerEnabled
+        : typeof parsed?.evidence_reducer_enabled === "boolean"
+          ? parsed.evidence_reducer_enabled
+          : DEFAULT_TOKEN_OPTIMIZATION_SETTINGS.evidenceReducerEnabled,
   };
 }
 

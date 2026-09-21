@@ -1,4 +1,5 @@
 import { type AgentHookContext, emitAgentHook } from "./agent-hooks";
+import { applyEvidenceReducer } from "./evidence-reducer";
 import { extractSandboxProviderFromToolResult, formatToolActivityDetail } from "./agent-internals";
 import {
   type AgenticLoopRuntimeTracker,
@@ -204,39 +205,42 @@ async function executeAgentToolInternal(
       }
     );
     const result = await executeTool(toolName, args, toolContext);
+    const reducedResult = await applyEvidenceReducer({ toolName, args, result, toolContext });
+    const finalResult = reducedResult === undefined ? result : reducedResult;
     if (reservedSubagentSpawn) {
-      if (!isAcceptedSubagentSpawn(result)) releaseSubagentSpawnReservation(toolContext);
+      if (!isAcceptedSubagentSpawn(finalResult)) releaseSubagentSpawnReservation(toolContext);
       reservedSubagentSpawn = false;
     }
-    const isPlainResult = result && typeof result === "object" && !Array.isArray(result);
+    const isPlainResult =
+      finalResult && typeof finalResult === "object" && !Array.isArray(finalResult);
     const todoReminder = noteToolActivityForTodoReminder(toolName, toolContext);
     if (todoReminder && isPlainResult) {
-      (result as Record<string, unknown>).system_reminder = todoReminder;
+      (finalResult as Record<string, unknown>).system_reminder = todoReminder;
     }
     const skillCaptureReminder = noteSkillCaptureOpportunity(toolName, toolContext);
     if (skillCaptureReminder && isPlainResult) {
-      const record = result as Record<string, unknown>;
+      const record = finalResult as Record<string, unknown>;
       record.system_reminder = record.system_reminder
         ? `${record.system_reminder}\n${skillCaptureReminder}`
         : skillCaptureReminder;
     }
-    const viewedImagePath = imagePathFromToolCall({ name: toolName, result });
+    const viewedImagePath = imagePathFromToolCall({ name: toolName, result: finalResult });
     const viewedImageSnapshot = viewedImagePath
       ? await snapshotViewedMedia(viewedImagePath)
       : undefined;
     if (viewedImageSnapshot && isPlainResult && viewedImageSnapshot !== viewedImagePath) {
-      (result as Record<string, unknown>).snapshot = viewedImageSnapshot;
+      (finalResult as Record<string, unknown>).snapshot = viewedImageSnapshot;
     }
     broadcastStatus(
       "tool_completed",
       toolContext,
-      formatToolActivityDetail(toolName, args, "result", result),
+      formatToolActivityDetail(toolName, args, "result", finalResult),
       {
         toolName,
         toolCallId,
         toolPhase: "result",
         durationMs: Date.now() - startedAt,
-        sandboxProvider: extractSandboxProviderFromToolResult(result),
+        sandboxProvider: extractSandboxProviderFromToolResult(finalResult),
         imagePath: viewedImageSnapshot ?? viewedImagePath,
       }
     );
@@ -245,9 +249,9 @@ async function executeAgentToolInternal(
       context: hookContext,
       toolName,
       args,
-      result,
+      result: finalResult,
     });
-    return { skipped: false, result };
+    return { skipped: false, result: finalResult };
   } catch (error) {
     if (reservedSubagentSpawn) releaseSubagentSpawnReservation(toolContext);
     const errorMessage = sanitizeToolErrorMessage(normalizeErrorMessage(error));
