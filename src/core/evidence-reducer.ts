@@ -76,8 +76,25 @@ function sourceHashOf(source: string): string {
   return createHash("sha256").update(source).digest("hex").slice(0, 12);
 }
 
+function effectiveReceiptExitCode(source: string, exitCode: number): number {
+  const matches = [...source.matchAll(/EXIT_CODE=(\d+)/g)];
+  const last = matches.at(-1);
+  if (!last) return exitCode;
+  const echoed = Number(last[1]);
+  return Number.isFinite(echoed) && echoed !== exitCode ? echoed : exitCode;
+}
+
 function hasSuspectedSecrets(source: string): boolean {
   return redactSecretText(source) !== source;
+}
+
+function repairShortQuote(quote: string, source: string): string {
+  const idx = source.indexOf(quote);
+  if (idx === -1) return quote;
+  const start = source.lastIndexOf("\n", idx) + 1;
+  let end = source.indexOf("\n", idx);
+  if (end === -1) end = source.length;
+  return source.slice(start, end).trim();
 }
 
 function stripCodeFences(text: string): string {
@@ -133,27 +150,25 @@ function parseReceipt(text: string, source: string, exitCode: number): EvidenceR
   if (record.quotes.length > MAX_QUOTE_COUNT) {
     return "receipt quotes exceed item limit";
   }
-  if (exitCode !== 0 && record.quotes.length === 0) {
-    return "failed command receipt must include quoted evidence";
+  const repairedQuotes: string[] = [];
+  for (const rawQuote of record.quotes) {
+    let quote = rawQuote.trim();
+    if (quote.length < MIN_QUOTE_CHARS) {
+      quote = repairShortQuote(quote, source);
+    }
+    if (quote.length < MIN_QUOTE_CHARS || quote.length > MAX_QUOTE_CHARS) continue;
+    if (!source.includes(quote)) continue;
+    repairedQuotes.push(quote);
   }
-  for (const quote of record.quotes) {
-    const trimmed = quote.trim();
-    if (trimmed.length < MIN_QUOTE_CHARS) {
-      return `quoted evidence too short (${trimmed.length} chars)`;
-    }
-    if (trimmed.length > MAX_QUOTE_CHARS) {
-      return "quoted evidence exceeds size limit";
-    }
-    if (!source.includes(trimmed)) {
-      return "quoted evidence not found verbatim in source";
-    }
+  if (exitCode !== 0 && repairedQuotes.length === 0) {
+    return "failed command receipt must include quoted evidence";
   }
   return {
     source_sha256: record.source_sha256,
     exit_code: record.exit_code,
     summary: record.summary.trim(),
     errors: record.errors,
-    quotes: record.quotes.map((quote) => quote.trim()),
+    quotes: repairedQuotes,
   };
 }
 
@@ -209,6 +224,7 @@ function buildExtractionPrompt(source: string, exitCode: number, sourceHash: str
     `- source_sha256 must be exactly: ${sourceHash}`,
     `- exit_code must be exactly: ${exitCode}`,
     "- Copy every quote character-for-character from the output; never paraphrase, trim, or merge lines.",
+    "- Each quote must be one complete line copied verbatim from the output (including prefixes like (pass)/(fail) or error codes). Never quote bare numbers, fragments, or your own wording.",
     "- Quote the most diagnostic lines (failure messages, assertion results, test summaries). At least one quote when the command failed.",
     "- Keep the summary under 120 words. Omit errors array entries when there are none.",
     "",
@@ -246,7 +262,7 @@ export async function reduceExecToolResult(
 ): Promise<unknown> {
   if (!isEvidenceReducerCandidate(input.toolName, input.result)) return input.result;
   const source = input.result.output;
-  const exitCode = input.result.exitCode;
+  const exitCode = effectiveReceiptExitCode(source, input.result.exitCode);
   if (hasSuspectedSecrets(source)) {
     stats.skipped += 1;
     return input.result;
@@ -277,6 +293,7 @@ export async function reduceExecToolResult(
   return {
     ...input.result,
     output: verified.rendered,
+    exit_code_receipt_reference: exitCode,
   };
 }
 

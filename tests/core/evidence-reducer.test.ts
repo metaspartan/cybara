@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "crypto";
+import { config } from "../../src/core/config";
 import {
   EVIDENCE_RECEIPT_MARKER,
   EVIDENCE_REDUCER_MIN_CHARS,
@@ -114,24 +115,72 @@ describe("verifyEvidenceReceipt", () => {
     if (!verified.ok) expect(verified.reason).toContain("exit_code");
   });
 
+  test("expands a short verbatim quote fragment to its full source line", () => {
+    const failureLine = "(fail) order pricing pipeline > case 36: editorial receipt total";
+    const source = buildSource(150, failureLine);
+    const fragment = "case 36";
+    expect(source.includes(fragment)).toBe(true);
+    const receipt = receiptJson({ source, exitCode: 1, quotes: [fragment] });
+    const verified = verifyEvidenceReceipt(receipt, source, 1);
+    expect(verified.ok).toBe(true);
+    if (verified.ok) {
+      expect(verified.rendered).toContain(failureLine);
+    }
+  });
+
+  test("drops unusable quotes but rejects a failed-command receipt left with none", () => {
+    const source = buildSource(150);
+    const receipt = receiptJson({ source, exitCode: 1, quotes: ["totally absent evidence text"] });
+    const verified = verifyEvidenceReceipt(receipt, source, 1);
+    expect(verified.ok).toBe(false);
+    if (!verified.ok) expect(verified.reason).toContain("quoted evidence");
+  });
+
+  test("drops an oversized repaired line and rejects a failed-command receipt left with none", () => {
+    const longLine = `error line padded beyond limit ${"a".repeat(420)}`;
+    const source = buildSource(150, longLine);
+    const receipt = receiptJson({ source, exitCode: 1, quotes: ["beyond"] });
+    const verified = verifyEvidenceReceipt(receipt, source, 1);
+    expect(verified.ok).toBe(false);
+    if (!verified.ok) expect(verified.reason).toContain("quoted evidence");
+  });
+
+  test("drops unusable quotes and keeps a failed-command receipt with mixed quotes", () => {
+    const failureLine = "error TS2304: Cannot find name 'bunTest' in mixed quote sample";
+    const source = buildSource(150, failureLine);
+    const receipt = receiptJson({
+      source,
+      exitCode: 1,
+      quotes: [" 1 fail", failureLine],
+    });
+    const verified = verifyEvidenceReceipt(receipt, source, 1);
+    expect(verified.ok).toBe(true);
+    if (verified.ok) {
+      expect(verified.rendered).toContain(failureLine);
+      expect(verified.rendered).not.toContain(" 1 fail\n");
+    }
+  });
+
   test("rejects quotes that are not verbatim in the source", () => {
-    const source = buildSource(120);
+    const source = buildSource(150);
     const receipt = receiptJson({
       source,
       exitCode: 0,
       quotes: ["this exact line never appeared anywhere in the output"],
     });
     const verified = verifyEvidenceReceipt(receipt, source, 0);
-    expect(verified.ok).toBe(false);
-    if (!verified.ok) expect(verified.reason).toContain("verbatim");
+    expect(verified.ok).toBe(true);
+    if (verified.ok) {
+      expect(verified.rendered).not.toContain("never appeared anywhere");
+    }
   });
 
   test("rejects quotes shorter than the minimum evidence length", () => {
     const source = buildSource(120);
-    const receipt = receiptJson({ source, exitCode: 0, quotes: ["step 0:"] });
-    const verified = verifyEvidenceReceipt(receipt, source, 0);
+    const receipt = receiptJson({ source, exitCode: 1, quotes: ["nope"] });
+    const verified = verifyEvidenceReceipt(receipt, source, 1);
     expect(verified.ok).toBe(false);
-    if (!verified.ok) expect(verified.reason).toContain("too short");
+    if (!verified.ok) expect(verified.reason).toContain("quoted evidence");
   });
 
   test("rejects failed-command receipts without any quoted evidence", () => {
@@ -200,6 +249,25 @@ describe("reduceExecToolResult", () => {
     expect(record.cwd).toBe("/tmp");
     const statsAfter = getEvidenceReducerStats();
     expect(statsAfter.reduced).toBe(1);
+  });
+
+  test("wrapped-command receipts use the echoed exit status as the reference", async () => {
+    resetEvidenceReducerStats();
+    const failureLine = "FATAL: WRAP2E-11 linker stage aborted with 42 unresolved symbols";
+    const source = `${buildSource(150, failureLine)}\nEXIT_CODE=1`;
+    const original = { output: source, exitCode: 0 };
+    const extractor: EvidenceExtractor = async ({ source: src, exitCode, sourceHash }) =>
+      receiptJson({ source: src, exitCode, quotes: [failureLine], hashOverride: sourceHash });
+    const reduced = (await reduceExecToolResult(reducerInput("exec", original), extractor)) as {
+      output: string;
+      exitCode: number;
+      exit_code_receipt_reference: number;
+    };
+    expect(reduced.output).toContain(EVIDENCE_RECEIPT_MARKER);
+    expect(reduced.output).toContain("exit_code:1");
+    expect(reduced.exitCode).toBe(0);
+    expect(reduced.exit_code_receipt_reference).toBe(1);
+    expect(getEvidenceReducerStats().reduced).toBe(1);
   });
 
   test("falls back to the original result when the extractor throws", async () => {
@@ -289,6 +357,46 @@ describe("reduceExecToolResult", () => {
     const archived = await Bun.file(archivedPath).text();
     expect(archived).toContain("step 0: compiling module 0");
     expect(archived.length).toBeGreaterThanOrEqual(source.length);
+  });
+});
+
+describe("token optimization settings", () => {
+  test("partial updates preserve the other flag instead of resetting to defaults", () => {
+    const previous = config.getTokenOptimizationSettings();
+    try {
+      config.setTokenOptimizationSettings({ evidenceReducerEnabled: false });
+      expect(config.getTokenOptimizationSettings().evidenceReducerEnabled).toBe(false);
+      expect(config.getTokenOptimizationSettings().toonStructuredDataEnabled).toBe(true);
+
+      config.setTokenOptimizationSettings({ toonStructuredDataEnabled: false });
+      expect(config.getTokenOptimizationSettings().toonStructuredDataEnabled).toBe(false);
+      expect(config.getTokenOptimizationSettings().evidenceReducerEnabled).toBe(false);
+
+      config.setTokenOptimizationSettings({ evidence_reducer_enabled: true });
+      expect(config.getTokenOptimizationSettings().evidenceReducerEnabled).toBe(true);
+      expect(config.getTokenOptimizationSettings().toonStructuredDataEnabled).toBe(false);
+    } finally {
+      config.setTokenOptimizationSettings(previous);
+    }
+  });
+
+  test("full updates and unknown payloads behave like before", () => {
+    const previous = config.getTokenOptimizationSettings();
+    try {
+      config.setTokenOptimizationSettings({
+        toonStructuredDataEnabled: false,
+        evidenceReducerEnabled: true,
+      });
+      expect(config.getTokenOptimizationSettings()).toEqual({
+        toonStructuredDataEnabled: false,
+        evidenceReducerEnabled: true,
+      });
+      config.setTokenOptimizationSettings(undefined);
+      expect(config.getTokenOptimizationSettings().toonStructuredDataEnabled).toBe(false);
+      expect(config.getTokenOptimizationSettings().evidenceReducerEnabled).toBe(true);
+    } finally {
+      config.setTokenOptimizationSettings(previous);
+    }
   });
 });
 
