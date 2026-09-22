@@ -14,6 +14,13 @@ export interface AnthropicToolChoiceContext {
 const ANTHROPIC_NATIVE_1M_MODEL =
   /claude-(?:(?:opus|sonnet|fable|mythos)-5|(?:opus|sonnet)-4[-.](?:6|8))(?:-|$)/;
 
+const ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED =
+  /(?:^|[/.])claude-(?:opus-5-5|fable-5-1|mythos-5-1)(?:-|@|$)/;
+
+export function supportsAnthropicForcedToolChoice(modelId?: string): boolean {
+  return !ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED.test((modelId ?? "").trim().toLowerCase());
+}
+
 function removeAnthropicSamplingOptions(requestBody: Record<string, unknown>): void {
   delete requestBody.temperature;
   delete requestBody.top_p;
@@ -66,10 +73,12 @@ export function applyAnthropicReasoningOptions(
 
 export function resolveAnthropicToolChoice(
   toolNames: string[],
-  context?: AnthropicToolChoiceContext
+  context?: AnthropicToolChoiceContext,
+  modelId?: string
 ): Record<string, string> | undefined {
   if (toolNames.length === 0) return undefined;
   if (context?.requireToolUse !== true) return { type: "auto" };
+  if (!supportsAnthropicForcedToolChoice(modelId)) return { type: "auto" };
 
   const requiredToolName = context.requiredToolName?.trim();
   if (requiredToolName && toolNames.includes(requiredToolName)) {

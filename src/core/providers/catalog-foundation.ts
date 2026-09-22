@@ -77,6 +77,24 @@ export const foundationProviderCatalog = {
         code: true,
       },
       {
+        id: "gpt-6-sol",
+        name: "GPT-6 Sol",
+        context: 1050000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
+      {
+        id: "gpt-6-luna",
+        name: "GPT-6 Luna",
+        context: 1050000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
+      {
         id: "gpt-5.6-sol",
         name: "GPT-5.6 Sol",
         context: 1050000,
@@ -388,6 +406,14 @@ export const foundationProviderCatalog = {
     api: "anthropic-messages",
     authType: "api_key",
     models: [
+      {
+        id: "claude-opus-5-5",
+        name: "Claude Opus 5.5",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image", "pdf"],
+      },
       {
         id: "claude-opus-5",
         name: "Claude Opus 5",

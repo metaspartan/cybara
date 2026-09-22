@@ -27,10 +27,16 @@ type PricingEntry = [
 
 const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["openai", "gpt-5.6-sol", 5.0, 30.0, 0.5, 6.25],
+  ["openai", "gpt-6-astra", 10.0, 50.0, 1.0, 12.5],
+  ["openai", "gpt-6-sol", 2.0, 10.0, 0.2],
+  ["openai", "gpt-6-luna", 0.1, 0.5, 0.01, 0.125],
   ["openai", "gpt-5.6", 5.0, 30.0, 0.5, 6.25],
   ["openai", "gpt-5.6-terra", 2.5, 15.0, 0.25, 3.125],
   ["openai", "gpt-5.6-luna", 1.0, 6.0, 0.1, 1.25],
   ["openai-codex", "gpt-5.6-sol", 5.0, 30.0, 0.5, 6.25],
+  ["openai-codex", "gpt-6-astra", 10.0, 50.0, 1.0, 12.5],
+  ["openai-codex", "gpt-6-sol", 2.0, 10.0, 0.2],
+  ["openai-codex", "gpt-6-luna", 0.1, 0.5, 0.01, 0.125],
   ["openai-codex", "gpt-5.6-terra", 2.5, 15.0, 0.25, 3.125],
   ["openai-codex", "gpt-5.6-luna", 1.0, 6.0, 0.1, 1.25],
   ["openai", "gpt-5.5", 5.0, 30.0, 0.5, 6.25],
@@ -43,12 +49,14 @@ const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["openai", "gpt-5.1", 2.0, 8.0, 0.5],
 
   ["anthropic", "claude-opus-5", 5.0, 25.0, 0.5, 6.25],
+  ["anthropic", "claude-opus-5-5", 4.0, 20.0, 0.2, 5.0],
   ["anthropic", "claude-opus-4-8", 5.0, 25.0, 0.5, 6.25],
   ["anthropic", "claude-opus-4-7", 5.0, 25.0, 0.5, 6.25],
   ["anthropic", "claude-opus-4-6", 5.0, 25.0, 0.5, 6.25],
   ["anthropic", "claude-sonnet-4-6", 3.0, 15.0, 0.3, 3.75],
   ["anthropic", "claude-haiku-4-5", 1.0, 5.0, 0.1, 1.25],
   ["anthropic", "claude-sonnet-5", 2.0, 10.0, 0.2, 2.5],
+  ["anthropic", "claude-fable-5-1", 10.0, 50.0, 0.25, 12.5],
   ["anthropic", "claude-fable-5", 10.0, 50.0, 1.0, 12.5],
   ["anthropic", "claude-mythos-5", 10.0, 50.0, 1.0, 12.5],
 

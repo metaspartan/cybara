@@ -70,9 +70,10 @@ describe("OpenAI Codex model availability", () => {
     ]);
   });
 
-  test("falls back from GPT-6 Astra to the GPT-5.6 flagship chain", () => {
+  test("falls back from GPT-6 Astra to GPT-6 Sol, then the GPT-5.6 flagship chain", () => {
     expect(getOpenAICodexModelCandidates("gpt-6-astra")).toEqual([
       "gpt-6-astra",
+      "gpt-6-sol",
       "gpt-5.6-sol",
       "gpt-5.5",
       "gpt-5.4",

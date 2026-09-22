@@ -105,7 +105,7 @@ export function normalizeReasoningModelId(id: string | null | undefined): string
 }
 
 function resolveOpenAIModelEfforts(modelId: string): ReasoningEffort[] {
-  if (/^gpt-5\.6(?:-|$)/.test(modelId)) return GPT_56_EFFORTS;
+  if (/^gpt-(?:6|5\.6)(?:-|$)/.test(modelId)) return GPT_56_EFFORTS;
   if (modelId === "gpt-5.1-codex-mini") return GPT_CODEX_MINI_EFFORTS;
   if (modelId === "gpt-5.1-codex-max") return GPT_CODEX_MAX_EFFORTS;
   if (/^gpt-5(?:\.\d+)?-codex(?:-|$)/.test(modelId)) return GPT_CODEX_EFFORTS;
