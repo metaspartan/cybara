@@ -14,7 +14,8 @@ interface ResolvedEdit {
   lines: string[];
 }
 
-const ANCHOR_PATTERN = /^\s*(\d+)#([0-9a-z]{3})\s*$/i;
+const ANCHOR_PATTERN = /^\s*(\d+)\s*#\s*([0-9a-z]{3})\s*(?:\|.*)?$/is;
+const RELOCATE_WINDOW = 8;
 const CONTEXT_LINES = 3;
 const MAX_RETURNED_REGION_LINES = 80;
 
@@ -58,30 +59,63 @@ function contextAround(lines: readonly string[], lineNumber: number): string {
   return formatHashlines(lines.slice(from - 1, to), from);
 }
 
+function uniqueMatch(candidates: number[]): number | undefined {
+  return candidates.length === 1 ? candidates[0] : undefined;
+}
+
+function relocateByHash(lines: readonly string[], lineNumber: number, hash: string) {
+  const from = Math.max(1, lineNumber - RELOCATE_WINDOW);
+  const to = Math.min(lines.length, lineNumber + RELOCATE_WINDOW);
+  const nearby: number[] = [];
+  for (let candidate = from; candidate <= to; candidate += 1) {
+    if (lineHash(lines[candidate - 1]) === hash) nearby.push(candidate);
+  }
+  if (nearby.length === 0) return undefined;
+  const closest = Math.min(...nearby.map((candidate) => Math.abs(candidate - lineNumber)));
+  return uniqueMatch(nearby.filter((candidate) => Math.abs(candidate - lineNumber) === closest));
+}
+
+function locateByContent(lines: readonly string[], text: string) {
+  const exact: number[] = [];
+  const trimmed: number[] = [];
+  const target = text.trim();
+  if (target.length === 0) return undefined;
+  lines.forEach((line, index) => {
+    if (line === text) exact.push(index + 1);
+    if (line.trim() === target) trimmed.push(index + 1);
+  });
+  return uniqueMatch(exact) ?? uniqueMatch(trimmed);
+}
+
 function resolveAnchor(anchor: unknown, lines: readonly string[], label: string): number {
   if (typeof anchor !== "string") {
     throw new Error(
-      `Validation error: ${label} must be a line anchor such as "12#k3f" copied from read output.`
+      `Validation error: ${label} must be a line anchor such as "12#a1b" copied from read output.`
     );
   }
   const match = ANCHOR_PATTERN.exec(anchor);
   if (!match) {
+    const byContent = locateByContent(lines, anchor.replace(/^\s*\d+\s*#\s*[0-9a-z]{0,3}\|/i, ""));
+    if (byContent !== undefined) return byContent;
     throw new Error(
-      `Validation error: "${anchor}" is not a line anchor. Copy anchors like "12#k3f" exactly from read output.`
+      `Validation error: "${anchor}" is not a line anchor. Use the LINE#HASH text before the | on a line of read output.`
     );
   }
   const lineNumber = Number(match[1]);
+  const hash = match[2].toLowerCase();
+  if (lineNumber >= 1 && lineNumber <= lines.length && lineHash(lines[lineNumber - 1]) === hash) {
+    return lineNumber;
+  }
+  const relocated = relocateByHash(lines, lineNumber, hash);
+  if (relocated !== undefined) return relocated;
   if (lineNumber < 1 || lineNumber > lines.length) {
     throw new Error(
-      `Stale anchor ${anchor}: the file has ${lines.length} lines. Read the file again to get current anchors.`
+      `Stale anchor ${match[1]}#${hash}: the file has ${lines.length} lines. Read the file again to get current anchors.`
     );
   }
-  if (lineHash(lines[lineNumber - 1]) !== match[2].toLowerCase()) {
-    throw new Error(
-      `Stale anchor ${anchor}: line ${lineNumber} changed since it was read. Nothing was edited. Current lines:\n${contextAround(lines, lineNumber)}`
-    );
-  }
-  return lineNumber;
+  throw new Error(
+    `Stale anchor ${match[1]}#${hash}: line ${lineNumber} changed since it was read. Nothing was edited. Current lines:\n${contextAround(lines, lineNumber)}`
+  );
 }
 
 function contentLines(content: unknown, op: HashlineOp): string[] {
@@ -196,10 +230,10 @@ function changedRegionAnchors(before: readonly string[], after: readonly string[
 }
 
 export const HASHLINE_READ_DESCRIPTION =
-  "Read file contents or list a directory. Text files are returned with an anchor before every line in the form LINE#HASH|content, for example 12#k3f|const total = 0; — use those anchors with the edit tool. Reading a supported image attaches its pixels to the next turn for vision-capable models.";
+  "Read file contents or list a directory. Text files are returned with an anchor before every line in the form LINE#HASH|content, for example 12#a1b|const total = 0; — pass the LINE#HASH part (before the |) with the edit tool. Reading a supported image attaches its pixels to the next turn for vision-capable models.";
 
 export const HASHLINE_EDIT_DESCRIPTION =
-  "Edit a file by line anchors copied from read output (LINE#HASH, for example 12#k3f). Each edit is one of: replace (lines start..end, inclusive, with content), delete (lines start..end), insert_after (content after the start line), insert_before (content before the start line). Send several non-overlapping edits in one call. If a file changed since it was read, the anchors no longer match and nothing is written; the error shows the current anchors to retry with. The result returns fresh anchors around each change, so you can keep editing without reading the file again.";
+  "Edit a file by line anchors copied from read output (the LINE#HASH text before the | on each line). Each edit is one of: replace (lines start..end, inclusive, with content), delete (lines start..end), insert_after (content after the start line), insert_before (content before the start line). Send several non-overlapping edits in one call. If a file changed since it was read, the anchors no longer match and nothing is written; the error shows the current anchors to retry with. The result returns fresh anchors around each change, so you can keep editing without reading the file again.";
 
 export const hashlineEditInputSchema = {
   type: "object",
@@ -212,7 +246,10 @@ export const hashlineEditInputSchema = {
         type: "object",
         properties: {
           op: { type: "string", enum: ["replace", "delete", "insert_after", "insert_before"] },
-          start: { type: "string", description: 'Anchor of the first line, e.g. "12#k3f"' },
+          start: {
+            type: "string",
+            description: "LINE#HASH of the first line, copied from read output",
+          },
           end: {
             type: "string",
             description: "Anchor of the last line for replace or delete (defaults to start)",

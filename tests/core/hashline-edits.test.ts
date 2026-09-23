@@ -89,6 +89,22 @@ describe("hashline anchors", () => {
     );
   });
 
+  test("tolerates pasted read lines, shifted line numbers, and bare unique line text", () => {
+    const expected = SOURCE.replace("    result = 0", "    result = 1");
+    const edit = (start: string) =>
+      applyHashlineEdits(SOURCE, [{ op: "replace", start, content: "    result = 1" }]).content;
+    expect(edit(`${at(2)}|    result = 0`)).toBe(expected);
+    expect(edit(`${at(2).replace("#", " # ")}`)).toBe(expected);
+    expect(edit(`3#${lineHash("    result = 0")}`)).toBe(expected);
+    expect(edit("    result = 0")).toBe(expected);
+    expect(edit("2#zz|    result = 0")).toBe(expected);
+    expect(() => edit("")).toThrow("not a line anchor");
+    const duplicated = "x = 1\ny = 2\nx = 1\n";
+    expect(() => applyHashlineEdits(duplicated, [{ op: "delete", start: "x = 1" }])).toThrow(
+      "not a line anchor"
+    );
+  });
+
   test("overlapping edits and inserts inside a replaced range are rejected", () => {
     expect(() =>
       applyHashlineEdits(SOURCE, [
