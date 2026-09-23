@@ -128,6 +128,7 @@ import {
   UNATTENDED_APPROVAL_MESSAGE,
 } from "../../tool-approval";
 import { resolveToolCapabilityDecision } from "../../tool-capability-policy";
+import { getEffectiveToolSchema } from "../registry";
 import {
   getRegisteredToolHandler,
   registerToolHandler,
@@ -499,7 +500,7 @@ export function getMissingRequiredToolArguments(
   name: string,
   args: Record<string, unknown>
 ): string[] {
-  const schema = toolSchemaRegistry[name]?.input_schema as { required?: string[] } | undefined;
+  const schema = getEffectiveToolSchema(name)?.input_schema as { required?: string[] } | undefined;
   if (!Array.isArray(schema?.required) || schema.required.length === 0) {
     return [];
   }
@@ -530,7 +531,7 @@ export async function executeTool(
   if (missing.length > 0) {
     throw new Error(formatMissingRequiredToolArgumentsError(name, missing));
   }
-  const validationErrors = validateToolArguments(args, toolSchemaRegistry[name]?.input_schema);
+  const validationErrors = validateToolArguments(args, getEffectiveToolSchema(name)?.input_schema);
   if (validationErrors.length > 0) {
     throw new Error(`Validation error: ${validationErrors.slice(0, 3).join("; ")}`);
   }

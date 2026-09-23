@@ -20,6 +20,7 @@ import {
 import { noteSkillCaptureOpportunity } from "./tools/handlers/skill-capture";
 import { noteToolActivityForTodoReminder } from "./tools/handlers/todo";
 import { type ToolContext, toolSchemas } from "./tools/index";
+import { getEffectiveToolSchema } from "./tools/registry";
 import { liveToolFullDetail } from "./live-tool-detail";
 import { snapshotViewedMedia } from "./viewed-media";
 
@@ -112,7 +113,10 @@ async function executeAgentToolInternal(
     });
     return { skipped: false, result: { error: reason } };
   }
-  const validationErrors = validateToolArguments(args, toolSchemas[toolName]?.input_schema);
+  const validationErrors = validateToolArguments(
+    args,
+    getEffectiveToolSchema(toolName)?.input_schema
+  );
   if (validationErrors.length > 0) {
     const reason = `Validation error: ${validationErrors.slice(0, 3).join("; ")}`;
     await emitAgentHook({

@@ -9,6 +9,7 @@ import {
 import { dirname, extname, isAbsolute, join, sep } from "path";
 import { imageMimeForPath } from "../../../../shared/image-formats";
 import { redactRootDestructiveCommands } from "../../destructive-content";
+import { config } from "../../config";
 import { trackMetric } from "../../metrics";
 import { homeDir } from "../../paths";
 import { commandExists } from "../../platform";
@@ -23,6 +24,7 @@ import {
   SCANNED_PDF_NOTICE,
 } from "../../pdf-text";
 import { readablePathOptions } from "../sensitive-read-policy";
+import { applyHashlineEdits, formatHashlines, splitFileLines } from "./hashline";
 
 const workspace = homeDir;
 
@@ -426,7 +428,10 @@ export async function handleRead(
     if (result.error) throw new Error(`File read failed: ${result.error}`);
     if (result.aborted) throw new Error("File read cancelled.");
     if (result.timedOut) throw new Error("File read timed out. Use a smaller offset and limit.");
-    content = result.content;
+    content =
+      config.getEditToolMode() === "hashline"
+        ? formatHashlines(splitFileLines(result.content).lines, Math.max(1, Number(offset) || 1))
+        : result.content;
     if (result.truncated) {
       content += `\n[Read truncated after ${result.returnedLines.toLocaleString()} lines or 2,000,000 characters. Continue with offset and limit.]`;
     }
@@ -499,6 +504,7 @@ export async function handleEdit(
   path: string;
   change: FileChangeMeta;
   safetyRedactions?: number;
+  anchors?: string[];
 }> {
   const rawPath = typeof args.path === "string" ? args.path : undefined;
   const path = assertWritablePath(expandTilde(rawPath), {
@@ -511,20 +517,32 @@ export async function handleEdit(
       'Validation error: path is required. Provide a file path (for example: {"path":"src/index.ts"}).'
     );
   }
-  const oldText = args.oldText as string;
-  const sanitized = sanitizeGeneratedDocumentContent(path, args.newText as string);
-  const newText = sanitized.content;
-
   if (!existsSync(path)) {
     throw fileNotFoundError(path);
   }
-
   const content = readFileSync(path, "utf-8");
-  if (!content.includes(oldText)) {
-    throw new Error(`Text not found in file: ${oldText}`);
+  let newContent: string;
+  let redactions = 0;
+  let anchors: string[] | undefined;
+  if (Array.isArray(args.edits)) {
+    const sanitizedEdits = (args.edits as Array<Record<string, unknown>>).map((edit) => {
+      if (typeof edit?.content !== "string") return edit;
+      const sanitized = sanitizeGeneratedDocumentContent(path, edit.content);
+      redactions += sanitized.redactions;
+      return { ...edit, content: sanitized.content };
+    });
+    const applied = applyHashlineEdits(content, sanitizedEdits);
+    newContent = applied.content;
+    anchors = applied.changedRegions;
+  } else {
+    const oldText = typeof args.oldText === "string" ? args.oldText : "";
+    if (!oldText) {
+      throw new Error("Validation error: oldText must be a non-empty string copied from the file.");
+    }
+    const sanitized = sanitizeGeneratedDocumentContent(path, args.newText as string);
+    redactions = sanitized.redactions;
+    newContent = replaceUniqueText(content, oldText, sanitized.content);
   }
-
-  const newContent = content.replace(oldText, newText);
   writeFileSync(path, newContent, "utf-8");
   const { addedLines, removedLines } = computeLineDelta(content, newContent);
 
@@ -534,7 +552,8 @@ export async function handleEdit(
   return {
     success: true,
     path,
-    ...(sanitized.redactions > 0 ? { safetyRedactions: sanitized.redactions } : {}),
+    ...(redactions > 0 ? { safetyRedactions: redactions } : {}),
+    ...(anchors && anchors.length > 0 ? { anchors } : {}),
     change: {
       path,
       type: "updated",
@@ -543,6 +562,39 @@ export async function handleEdit(
       diff: buildUnifiedDiff(path, content, newContent),
     },
   };
+}
+
+function collapseWhitespace(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function replaceUniqueText(content: string, oldText: string, newText: string): string {
+  const first = content.indexOf(oldText);
+  if (first === -1) {
+    const target = collapseWhitespace(oldText);
+    const nearMatch = target
+      ? content
+          .split("\n")
+          .findIndex((line) =>
+            collapseWhitespace(line).includes(target.split(" ").slice(0, 6).join(" "))
+          )
+      : -1;
+    const hint =
+      nearMatch >= 0
+        ? ` A line with similar text but different whitespace is at line ${nearMatch + 1}; copy the exact text including indentation.`
+        : " Read the file again and copy the exact text, including indentation.";
+    throw new Error(`Text not found in file.${hint}`);
+  }
+  const second = content.indexOf(oldText, first + 1);
+  if (second !== -1) {
+    let count = 0;
+    for (let at = content.indexOf(oldText); at !== -1; at = content.indexOf(oldText, at + 1))
+      count += 1;
+    throw new Error(
+      `oldText matches ${count} places in the file. Include more surrounding lines so it matches exactly one place.`
+    );
+  }
+  return content.slice(0, first) + newText + content.slice(first + oldText.length);
 }
 
 export async function handleFileSearch(

@@ -349,6 +349,7 @@ const routes: Record<string, RouteHandler> = {
     ...redactSecretConfig(config.getAll()),
     dangerous_tool_policy: config.getDangerousToolPolicy(),
     tool_approval_mode: config.getToolApprovalMode(),
+    edit_tool_mode: config.getEditToolMode(),
     web_tool_url_policy: config.getWebToolUrlPolicy(),
     sensitive_file_policy: config.getSensitiveFilePolicy(),
     sandbox_runtime: redactSandboxRuntimeConfig(config.getSandboxRuntime()),
@@ -456,6 +457,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "tool_approval_mode") {
         config.setToolApprovalMode(value);
+        continue;
+      }
+      if (key === "edit_tool_mode") {
+        config.setEditToolMode(value);
         continue;
       }
       if (key === "web_tool_url_policy") {

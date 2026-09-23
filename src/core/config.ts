@@ -100,6 +100,7 @@ export function normalizeLlmTimeoutSettings(value: unknown): LlmTimeoutSettings 
 
 export type DangerousToolPolicyMode = "audit" | "block";
 export type ToolApprovalMode = "always_allow" | "ask";
+export type EditToolMode = "replace" | "hashline";
 export type SandboxProvider = "auto" | "apple_sandbox" | "podman" | "docker" | "remote";
 export type SandboxNetworkMode = "allow" | "deny";
 export type { EmbeddingProviderPreference } from "./memory/embeddings";
@@ -1026,6 +1027,16 @@ class ConfigManager {
   setToolApprovalMode(mode: unknown): ToolApprovalMode {
     const normalized = normalizeToolApprovalMode(mode);
     this.set("tool_approval_mode", normalized);
+    return normalized;
+  }
+
+  getEditToolMode(): EditToolMode {
+    return this.get<unknown>("edit_tool_mode") === "hashline" ? "hashline" : "replace";
+  }
+
+  setEditToolMode(mode: unknown): EditToolMode {
+    const normalized: EditToolMode = mode === "hashline" ? "hashline" : "replace";
+    this.set("edit_tool_mode", normalized);
     return normalized;
   }
 
