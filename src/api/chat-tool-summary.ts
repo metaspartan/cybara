@@ -1,5 +1,5 @@
-import type { ToolCallInfo } from "./chat-process-activities";
 import { isTruncatedReplyFragment, requestsTerseReply } from "../core/llm/reply-fragments";
+import type { ToolCallInfo } from "./chat-process-activities";
 export interface ToolCallResultLike {
   name: string;
   args?: Record<string, unknown>;
@@ -22,6 +22,7 @@ export type AssistantEvidenceIssue =
   | "incomplete_plan"
   | "missing_clarification"
   | "missing_action_evidence"
+  | "open_todos"
   | "plan_only"
   | "unfinished_execution"
   | "unsupported_completion"
@@ -236,6 +237,25 @@ function latestTodoHasIncompleteItems(toolCalls: ToolCallResultLike[]): boolean 
     const status = (item as Record<string, unknown>).status;
     return status !== "completed" && status !== "cancelled" && status !== "canceled";
   });
+}
+
+const HANDOFF_TO_USER_PATTERNS = [
+  /\?\s*$/,
+  /\b(?:blocked|blocker|cannot proceed|can't proceed|unable to (?:continue|proceed))\b/i,
+  /\b(?:need|needs|requires?|waiting (?:for|on))\s+(?:your|you to|the user|user|approval|permission|credentials|access)\b/i,
+  /\b(?:let me know|tell me|confirm|which (?:option|one) (?:do|would) you)\b/i,
+];
+
+function asksOnlyForPlan(userMessage: string | undefined): boolean {
+  const request = userMessage?.trim() || "";
+  return (
+    EXPLICIT_PLANNING_REQUEST_PATTERN.test(request) &&
+    !PLANNING_FOLLOW_THROUGH_PATTERN.test(request)
+  );
+}
+
+function handsOffToUser(content: string): boolean {
+  return hasPattern(closingPortion(content), HANDOFF_TO_USER_PATTERNS);
 }
 
 const EXECUTION_VERIFICATION_CLAIM_PATTERNS = [
@@ -553,6 +573,14 @@ export function findAssistantEvidenceIssue(
     return "incomplete_plan";
   }
   if (
+    context.allowPlanOnly !== true &&
+    !asksOnlyForPlan(context.userMessage) &&
+    latestTodoHasIncompleteItems(toolCalls) &&
+    !handsOffToUser(visibleContent)
+  ) {
+    return "open_todos";
+  }
+  if (
     hasPattern(visibleContent, COMPLETION_CLAIM_PATTERNS) &&
     !hasSuccessfulCompletionEvidence(visibleContent, toolCalls)
   ) {
@@ -603,6 +631,9 @@ export function extractVisibleClarification(toolCalls: ToolCallResultLike[]): st
 export function buildUnsupportedAssistantClaimMessage(issue: AssistantEvidenceIssue): string {
   if (issue === "incomplete_plan") {
     return "I couldn't reconcile every planned item in this turn. Continue the session to finish remaining work or mark obsolete items cancelled.";
+  }
+  if (issue === "open_todos") {
+    return "I stopped with planned items still open. Continue the session to finish them.";
   }
   if (issue === "missing_clarification") {
     return "I couldn't produce the clarification needed to continue. Retry this turn or switch agents.";

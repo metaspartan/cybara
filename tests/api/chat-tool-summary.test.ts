@@ -6,8 +6,8 @@ import {
   extractVisibleClarification,
   findAssistantEvidenceIssue,
   isNonSubstantiveAssistantCompletion,
-  requiresToolEvidenceForMessage,
   requiredDirectToolForMessage,
+  requiresToolEvidenceForMessage,
   shouldPreferArtifactsForMessage,
   shouldRecoverNonSubstantiveAssistantCompletion,
   suppressRecoveredWebFailureActivities,
@@ -79,11 +79,33 @@ describe("chat tool summary utilities", () => {
         { name: "edit", result: { filePath: "/tmp/import.ts" } },
       ])
     ).toBeUndefined();
+    const openPlan = [
+      { name: "todo", result: { items: [{ step: "Inspect", status: "in_progress" }] } },
+    ];
+    expect(findAssistantEvidenceIssue("I have created a task plan.", openPlan)).toBe("open_todos");
     expect(
-      findAssistantEvidenceIssue("I have created a task plan.", [
-        { name: "todo", result: { items: [{ step: "Inspect", status: "in_progress" }] } },
-      ])
+      findAssistantEvidenceIssue("I have created a task plan.", openPlan, { allowPlanOnly: true })
     ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue("The plan is ready.", openPlan, { userMessage: "Create a plan" })
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue("The plan is ready.", openPlan, {
+        userMessage: "Create a plan and implement it",
+      })
+    ).toBe("open_todos");
+    expect(
+      findAssistantEvidenceIssue(
+        "Progress so far: the parser is done. The tests still need your API key to run.",
+        openPlan
+      )
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue("Parser done. Should I also migrate the old configs?", openPlan)
+    ).toBeUndefined();
+    expect(
+      findAssistantEvidenceIssue("Summary of progress: parser and lexer are implemented.", openPlan)
+    ).toBe("open_todos");
     expect(
       findAssistantEvidenceIssue("All tests passed and the build is green.", [
         { name: "exec", result: { output: "3 failed", exitCode: 1 } },

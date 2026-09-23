@@ -1,6 +1,6 @@
 import { type AgentExecutionResult, type AgentMessage, agentManager } from "../core/agent";
-import { isTruncatedReplyFragment } from "../core/llm/reply-fragments";
 import type { AgentToolCallResult } from "../core/agent-internals";
+import { isTruncatedReplyFragment } from "../core/llm/reply-fragments";
 import { sanitizeAssistantContent } from "../core/llm/text-tool-calls";
 import { isContextCompactionOnlyContent } from "../core/llm/tool-transcript";
 import { isInvalidRequestedJsonResponse, stripThinkingTags } from "./chat-formatting";
@@ -72,6 +72,9 @@ function buildRetryInstruction(
   }
   if (evidenceIssue === "incomplete_plan") {
     return "Your previous response claimed the task was complete while the latest todo plan still contained unfinished items. Finish the remaining work or mark only genuinely completed items complete, verify the required deliverables, and then report the accurate result.";
+  }
+  if (evidenceIssue === "open_todos") {
+    return "Your previous response ended while the latest todo plan still has unfinished items, and nothing happens after a reply ends. Keep working on them now with the tools, marking each item completed only when it is actually done. If an item is genuinely blocked or needs the user, say exactly what blocks it instead of summarizing progress.";
   }
   if (evidenceIssue === "missing_action_evidence") {
     return "Your previous response answered an actionable request without using the available tools. Use the tools now to inspect or perform the work, base every claim on the observed results, and return a concrete answer only after a real tool attempt.";
@@ -147,6 +150,7 @@ export async function recoverAssistantResponse(
       (evidenceIssue === "deferred_work" ||
         evidenceIssue === "unfinished_execution" ||
         evidenceIssue === "incomplete_plan" ||
+        evidenceIssue === "open_todos" ||
         evidenceIssue === "missing_action_evidence" ||
         evidenceIssue === "plan_only" ||
         evidenceIssue === "unsupported_completion" ||
