@@ -106,6 +106,9 @@ describe("LLM tool transcript compaction", () => {
     compactOpenAIChatTranscriptInPlace(messages, 1_500, { protectRecent: 2 });
     expect(messages[1].content).toBe(compacted);
     expect(compactedToolResult("short")).toBe(TOOL_RESULT_COMPACTION_NOTICE);
+    const again = compactedToolResult("tool output ".repeat(500), "session-a");
+    expect(again).toBe(compactedToolResult("tool output ".repeat(500), "session-a"));
+    expect(again).toContain("session-a");
   });
 
   test("compacts large tool transcripts in linear time", () => {

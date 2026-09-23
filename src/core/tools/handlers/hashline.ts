@@ -263,5 +263,5 @@ export const hashlineEditInputSchema = {
       },
     },
   },
-  required: ["path", "edits"],
+  required: ["path"],
 };

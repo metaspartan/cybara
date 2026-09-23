@@ -699,7 +699,12 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
         turn = await runCodexTurn();
       } catch (error) {
         if (!isContextOverflowError(this.normalizeErrorMessage(error))) throw error;
-        compactCodexInputItemsForContext(inputItems, Math.max(4096, codexBudgetChars * 0.65), true);
+        compactCodexInputItemsForContext(
+          inputItems,
+          Math.max(4096, codexBudgetChars * 0.65),
+          true,
+          toolContext?.sessionId
+        );
         turn = await runCodexTurn();
       }
       activeModelId = turn.resolvedModel;
@@ -890,7 +895,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
           content: [{ type: "input_text", text: steeringText }],
         });
       }
-      compactCodexInputItemsForContext(inputItems, codexBudgetChars);
+      compactCodexInputItemsForContext(inputItems, codexBudgetChars, false, toolContext?.sessionId);
     }
 
     if (limitReason) {

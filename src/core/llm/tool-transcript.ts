@@ -1,4 +1,4 @@
-import { persistToolOutputForRecovery } from "../tool-output-recovery";
+import { persistCompactedToolOutput } from "../tool-output-recovery";
 import { estimateRequestValueChars } from "./context-estimate";
 
 export const TOOL_RESULT_COMPACTION_NOTICE =
@@ -18,8 +18,7 @@ export function compactedToolResult(content: unknown, sessionId?: string): strin
     return TOOL_RESULT_COMPACTION_NOTICE;
   }
   const path =
-    SAVED_OUTPUT_PATH_PATTERN.exec(content)?.[1] ??
-    persistToolOutputForRecovery({ content, sessionId, toolName: "compacted" });
+    SAVED_OUTPUT_PATH_PATTERN.exec(content)?.[1] ?? persistCompactedToolOutput(content, sessionId);
   return path
     ? `${TOOL_RESULT_COMPACTION_NOTICE}\nFull output saved to: ${path} (read it again only if needed)`
     : TOOL_RESULT_COMPACTION_NOTICE;
@@ -58,6 +57,7 @@ export interface ToolResultFormat<T> {
 export interface CompactionOptions {
   protectRecent?: number;
   aggressive?: boolean;
+  sessionId?: string;
 }
 
 export function compactToolTranscriptInPlace<T>(
@@ -179,7 +179,7 @@ export function compactOpenAIChatTranscriptInPlace(
       estimateChars: estimateOpenAIChatMessageChars,
       isElided: (message) => isCompactedToolResult(message.content),
       elide: (message) => {
-        message.content = compactedToolResult(message.content);
+        message.content = compactedToolResult(message.content, options.sessionId);
       },
       minimize: (message) => {
         const minimized = minimizeCompactedToolResult(message.content);

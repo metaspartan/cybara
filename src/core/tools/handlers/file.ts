@@ -8,21 +8,21 @@ import {
 } from "fs";
 import { dirname, extname, isAbsolute, join, sep } from "path";
 import { imageMimeForPath } from "../../../../shared/image-formats";
-import { redactRootDestructiveCommands } from "../../destructive-content";
 import { config } from "../../config";
+import { redactRootDestructiveCommands } from "../../destructive-content";
 import { trackMetric } from "../../metrics";
 import { homeDir } from "../../paths";
-import { commandExists } from "../../platform";
-import { readFileLines } from "../file-read";
-import { searchFiles } from "../file-search";
-import type { ToolContext } from "../index";
-import { assertReadablePath, assertWritablePath } from "../path-policy";
 import {
   describePdfExtraction,
   extractPdfText,
   MAX_PDF_BYTES,
   SCANNED_PDF_NOTICE,
 } from "../../pdf-text";
+import { commandExists } from "../../platform";
+import { readFileLines } from "../file-read";
+import { searchFiles } from "../file-search";
+import type { ToolContext } from "../index";
+import { assertReadablePath, assertWritablePath } from "../path-policy";
 import { readablePathOptions } from "../sensitive-read-policy";
 import { applyHashlineEdits, formatHashlines, splitFileLines } from "./hashline";
 
@@ -537,7 +537,14 @@ export async function handleEdit(
   } else {
     const oldText = typeof args.oldText === "string" ? args.oldText : "";
     if (!oldText) {
-      throw new Error("Validation error: oldText must be a non-empty string copied from the file.");
+      throw new Error(
+        config.getEditToolMode() === "hashline"
+          ? "Validation error: provide edits with line anchors from read output, or oldText and newText."
+          : "Validation error: oldText must be a non-empty string copied from the file."
+      );
+    }
+    if (typeof args.newText !== "string") {
+      throw new Error("Validation error: newText must be a string.");
     }
     const sanitized = sanitizeGeneratedDocumentContent(path, args.newText as string);
     redactions = sanitized.redactions;

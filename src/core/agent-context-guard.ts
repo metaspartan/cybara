@@ -176,7 +176,10 @@ export function compactOpenAILoopMessagesForContext(
   context?: CompactionContext
 ): boolean {
   const beforeChars = JSON.stringify(messages).length;
-  const elided = compactOpenAIChatTranscriptInPlace(messages, contextBudgetChars, { aggressive });
+  const elided = compactOpenAIChatTranscriptInPlace(messages, contextBudgetChars, {
+    aggressive,
+    sessionId: context?.toolContext?.sessionId,
+  });
   if (elided > 0) {
     recordContextCompaction(beforeChars, JSON.stringify(messages).length, messages.length, context);
   }

@@ -133,7 +133,7 @@ describe("edit tool modes", () => {
   test("hashline mode swaps the edit schema, anchors reads, and validates against the new schema", async () => {
     config.setEditToolMode("hashline");
     const edit = getToolSchemasForLLM().find((tool) => tool.name === "edit");
-    expect((edit?.input_schema as { required: string[] }).required).toEqual(["path", "edits"]);
+    expect((edit?.input_schema as { required: string[] }).required).toEqual(["path"]);
     expect(getEffectiveToolSchema("read")?.description).toContain("LINE#HASH|content");
     expect(getMissingRequiredToolArguments("edit", { path: "a.py", edits: [] })).toEqual([]);
 
@@ -149,6 +149,22 @@ describe("edit tool modes", () => {
     );
     expect(readFileSync(join(root, "calc.py"), "utf8")).toContain("    result = 1\n");
     expect(result.anchors?.[0]).toContain("|    result = 1");
+  });
+
+  test("hashline mode still accepts oldText and newText edits", async () => {
+    config.setEditToolMode("hashline");
+    expect(
+      getMissingRequiredToolArguments("edit", { path: "a.py", oldText: "a", newText: "b" })
+    ).toEqual([]);
+    const { root, context } = workspace({ "calc.py": SOURCE });
+    await handleEdit(
+      { path: join(root, "calc.py"), oldText: "result = 0", newText: "result = 2" },
+      context
+    );
+    expect(readFileSync(join(root, "calc.py"), "utf8")).toContain("    result = 2\n");
+    await expect(handleEdit({ path: join(root, "calc.py") }, context)).rejects.toThrow(
+      "provide edits with line anchors from read output, or oldText and newText"
+    );
   });
 
   test("replace mode is the default and keeps its schema", () => {
