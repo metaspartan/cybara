@@ -36,6 +36,7 @@ export interface SystemPromptParams {
     channel?: string;
     capabilities?: string[];
     repoRoot?: string;
+    python?: string;
   };
   subagentContext?: {
     requesterSessionKey?: string;
@@ -757,6 +758,9 @@ function buildRuntimeSection(
   }
   if (runtimeInfo?.capabilities && runtimeInfo.capabilities.length > 0) {
     parts.push(`capabilities=${runtimeInfo.capabilities.join(",")}`);
+  }
+  if (runtimeInfo?.python) {
+    parts.push(`python=${runtimeInfo.python}`);
   }
 
   return ["## Runtime", `Runtime: ${parts.join(" | ")}`, ""];

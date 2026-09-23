@@ -1,16 +1,24 @@
 import {
   assertResponsesToolPairing,
+  compactedToolResult,
   compactToolTranscriptInPlace,
-  TOOL_RESULT_COMPACTION_NOTICE,
+  isCompactedToolResult,
+  minimizeCompactedToolResult,
   type ToolResultFormat,
 } from "./tool-transcript";
 
 const responsesToolResultFormat: ToolResultFormat<Record<string, unknown>> = {
   isToolResult: (item) => item.type === "function_call_output",
   estimateChars: (item) => JSON.stringify(item).length + 8,
-  isElided: (item) => item.output === TOOL_RESULT_COMPACTION_NOTICE,
+  isElided: (item) => isCompactedToolResult(item.output),
   elide: (item) => {
-    item.output = TOOL_RESULT_COMPACTION_NOTICE;
+    item.output = compactedToolResult(item.output);
+  },
+  minimize: (item) => {
+    const minimized = minimizeCompactedToolResult(item.output);
+    if (minimized === undefined) return false;
+    item.output = minimized;
+    return true;
   },
 };
 

@@ -10,6 +10,7 @@ import { config } from "./config";
 import { recordMidLoopContextCompaction } from "./llm/context-pressure";
 import { formatToolResultForModel } from "./llm/model-visible-format";
 import {
+  compactedToolResult,
   compactOpenAIChatTranscriptInPlace,
   TOOL_RESULT_COMPACTION_NOTICE,
 } from "./llm/tool-transcript";
@@ -148,7 +149,10 @@ export function compactAnthropicLoopMessagesForContext(
       if (typed.type !== "tool_result" || typeof typed.content !== "string") return block;
       if (typed.content.includes(TOOL_RESULT_COMPACTION_NOTICE)) return block;
       changed = true;
-      return { ...typed, content: TOOL_RESULT_COMPACTION_NOTICE };
+      return {
+        ...typed,
+        content: compactedToolResult(typed.content, context?.toolContext?.sessionId),
+      };
     });
     if (!changed) continue;
     message.content = nextContent;

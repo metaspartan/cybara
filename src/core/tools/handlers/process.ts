@@ -14,7 +14,7 @@ import {
 import { killSubprocessTree } from "../../subprocess-tree";
 import { persistToolOutputForRecovery } from "../../tool-output-recovery";
 import type { ToolContext } from "../index";
-import { missingCommandHint } from "./missing-command-hint";
+import { execFailureHint } from "./exec-failure-hint";
 
 const log = createLogger("ProcessTool");
 const STREAM_DRAIN_GRACE_MS = 200;
@@ -389,7 +389,7 @@ export async function handleExec(
         ? "\nCommand interrupted."
         : "";
     const combinedOutput = captured.stdout + (captured.stderr ? "\n" + captured.stderr : "");
-    const hint = plan.provider ? "" : missingCommandHint(captured.exitCode, combinedOutput);
+    const hint = plan.provider ? "" : execFailureHint(captured.exitCode, combinedOutput);
     return {
       output: combinedOutput + statusOutput + hint,
       exitCode: captured.aborted ? 130 : captured.timedOut ? 124 : captured.exitCode,

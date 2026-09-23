@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "fs";
 import {
+  compactedToolResult,
   compactOpenAIChatTranscriptInPlace,
   isContextCompactionOnlyContent,
   isContextOverflowError,
@@ -87,6 +89,23 @@ describe("LLM tool transcript compaction", () => {
     expect(messages[3].content).toBe(TOOL_RESULT_COMPACTION_NOTICE);
     expect(messages[5].content).toBe("recent summary");
     expect(messages[6].content).toBe("current question");
+  });
+
+  test("keeps a reopenable copy of elided tool output while the budget allows", () => {
+    const messages: Array<Record<string, unknown>> = [
+      { role: "user", content: "review this repo" },
+      { role: "tool", tool_call_id: "call-1", content: "tool output ".repeat(500) },
+      { role: "assistant", content: "a" },
+      { role: "user", content: "b" },
+    ];
+    compactOpenAIChatTranscriptInPlace(messages, 1_500, { protectRecent: 2 });
+    const compacted = String(messages[1].content);
+    expect(compacted.startsWith(TOOL_RESULT_COMPACTION_NOTICE)).toBe(true);
+    const savedPath = /Full output saved to: (\S+)/.exec(compacted)?.[1] ?? "";
+    expect(readFileSync(savedPath, "utf8")).toContain("tool output tool output");
+    compactOpenAIChatTranscriptInPlace(messages, 1_500, { protectRecent: 2 });
+    expect(messages[1].content).toBe(compacted);
+    expect(compactedToolResult("short")).toBe(TOOL_RESULT_COMPACTION_NOTICE);
   });
 
   test("compacts large tool transcripts in linear time", () => {

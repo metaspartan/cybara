@@ -1,9 +1,29 @@
+import { persistToolOutputForRecovery } from "../tool-output-recovery";
 import { estimateRequestValueChars } from "./context-estimate";
 
 export const TOOL_RESULT_COMPACTION_NOTICE =
   "[compacted: earlier tool output elided to free context]";
 export const MESSAGE_CONTENT_COMPACTION_NOTICE =
   "[compacted: earlier message content elided to free context]";
+
+const MIN_RECOVERABLE_TOOL_OUTPUT_CHARS = 400;
+const SAVED_OUTPUT_PATH_PATTERN = /Full output saved to: (\S+)/;
+
+export function isCompactedToolResult(content: unknown): boolean {
+  return typeof content === "string" && content.startsWith(TOOL_RESULT_COMPACTION_NOTICE);
+}
+
+export function compactedToolResult(content: unknown, sessionId?: string): string {
+  if (typeof content !== "string" || content.length < MIN_RECOVERABLE_TOOL_OUTPUT_CHARS) {
+    return TOOL_RESULT_COMPACTION_NOTICE;
+  }
+  const path =
+    SAVED_OUTPUT_PATH_PATTERN.exec(content)?.[1] ??
+    persistToolOutputForRecovery({ content, sessionId, toolName: "compacted" });
+  return path
+    ? `${TOOL_RESULT_COMPACTION_NOTICE}\nFull output saved to: ${path} (read it again only if needed)`
+    : TOOL_RESULT_COMPACTION_NOTICE;
+}
 
 const CONTEXT_COMPACTION_NOTICES = [
   TOOL_RESULT_COMPACTION_NOTICE,
@@ -32,6 +52,7 @@ export interface ToolResultFormat<T> {
   estimateChars: (item: T) => number;
   isElided: (item: T) => boolean;
   elide: (item: T) => void;
+  minimize?: (item: T) => boolean;
 }
 
 export interface CompactionOptions {
@@ -70,7 +91,23 @@ export function compactToolTranscriptInPlace<T>(
     force = false;
   }
 
+  if (running > budgetChars && format.minimize) {
+    for (let index = 0; index < lastProtectedIndex && running > budgetChars; index += 1) {
+      const item = items[index];
+      if (!format.isToolResult(item) || !format.isElided(item) || !format.minimize(item)) continue;
+      const nextEstimate = format.estimateChars(item);
+      running = running - estimates[index] + nextEstimate;
+      estimates[index] = nextEstimate;
+    }
+  }
+
   return elided;
+}
+
+export function minimizeCompactedToolResult(content: unknown): string | undefined {
+  return isCompactedToolResult(content) && content !== TOOL_RESULT_COMPACTION_NOTICE
+    ? TOOL_RESULT_COMPACTION_NOTICE
+    : undefined;
 }
 
 function estimateOpenAIChatMessageChars(message: Record<string, unknown>): number {
@@ -140,9 +177,15 @@ export function compactOpenAIChatTranscriptInPlace(
     {
       isToolResult: (message) => message.role === "tool" && typeof message.content === "string",
       estimateChars: estimateOpenAIChatMessageChars,
-      isElided: (message) => message.content === TOOL_RESULT_COMPACTION_NOTICE,
+      isElided: (message) => isCompactedToolResult(message.content),
       elide: (message) => {
-        message.content = TOOL_RESULT_COMPACTION_NOTICE;
+        message.content = compactedToolResult(message.content);
+      },
+      minimize: (message) => {
+        const minimized = minimizeCompactedToolResult(message.content);
+        if (minimized === undefined) return false;
+        message.content = minimized;
+        return true;
       },
     },
     { ...options, protectRecent: defaultProtectRecent }
