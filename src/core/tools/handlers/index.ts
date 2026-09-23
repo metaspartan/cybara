@@ -120,7 +120,13 @@ import {
 } from "../index";
 import { handleTelegramMedia } from "./telegram-media";
 import { createLogger } from "../../logger";
-import { requestToolApproval } from "../../tool-approval";
+import {
+  buildApprovalKey,
+  canWaitForToolApproval,
+  isToolApproved,
+  requestToolApproval,
+  UNATTENDED_APPROVAL_MESSAGE,
+} from "../../tool-approval";
 import { resolveToolCapabilityDecision } from "../../tool-capability-policy";
 import {
   getRegisteredToolHandler,
@@ -590,6 +596,22 @@ export async function executeTool(
     !capabilityAllows
   ) {
     if (context?.sessionId) {
+      if (
+        !isToolApproved(context.sessionId, buildApprovalKey(name, args)) &&
+        !canWaitForToolApproval(context.channel) &&
+        (capabilityRequiresApproval || toolApprovalMode !== "always_allow")
+      ) {
+        trackMetric("dangerous_tool_usage", name, 1, {
+          blocked: true,
+          mode: dangerousPolicy.mode,
+          approvalMode: toolApprovalMode,
+          sessionId: context.sessionId,
+          agentId: context.agentId,
+        });
+        throw new Error(
+          `Tool '${name}' was denied by the operator. It ${UNATTENDED_APPROVAL_MESSAGE}`
+        );
+      }
       const decision = await requestToolApproval({
         sessionId: context.sessionId,
         agentId: context.agentId,

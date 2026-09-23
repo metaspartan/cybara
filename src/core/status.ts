@@ -538,6 +538,10 @@ export function onSessionStatus(sessionId: string, callback: StatusCallback): ()
   };
 }
 
+export function statusStreamListenerCount(): number {
+  return statusStreamCallbacks.size;
+}
+
 export function onStatusStream(callback: StatusStreamCallback): () => void {
   statusStreamCallbacks.add(callback);
   return () => {

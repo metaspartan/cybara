@@ -40,8 +40,11 @@ describe("openAICompatReasoningParams (per-provider shapes)", () => {
     expect(openAICompatReasoningParams("minimax-portal", "medium", "MiniMax-M3")).toEqual({});
   });
 
-  test("zai/qwen use enable_thinking", () => {
-    expect(openAICompatReasoningParams("z.ai", "medium")).toEqual({ enable_thinking: true });
+  test("zai sends graded effort with thinking on; qwen uses enable_thinking", () => {
+    expect(openAICompatReasoningParams("z.ai", "low")).toEqual({
+      enable_thinking: true,
+      reasoning_effort: "low",
+    });
     expect(openAICompatReasoningParams("qwen-portal", "high")).toEqual({ enable_thinking: true });
     expect(openAICompatReasoningParams("alibaba", "medium", "qwen3.7-plus")).toEqual({
       enable_thinking: true,

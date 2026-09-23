@@ -12,10 +12,6 @@ const VALID_REASONING_EFFORTS = new Set<ReasoningEffort>([
 ]);
 
 const BINARY_THINKING_PROVIDERS = new Set([
-  "z.ai",
-  "z.ai-coding",
-  "zai",
-  "z-ai",
   "qwen-portal",
   "alibaba",
   "alibaba-coding-plan",

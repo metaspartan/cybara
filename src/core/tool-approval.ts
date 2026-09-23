@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { broadcastStatus } from "./status";
+import { broadcastStatus, statusStreamListenerCount } from "./status";
 import { config } from "./config";
 
 export interface ApprovalRequest {
@@ -59,6 +59,15 @@ const pendingRequests = new Map<string, ApprovalRequest>();
 const resolvers = new Map<string, (decision: ApprovalDecision) => void>();
 
 const APPROVAL_TIMEOUT_MS = 120_000;
+
+export const UNATTENDED_APPROVAL_MESSAGE =
+  "needs approval, but no Cybara app is connected to approve it. Open Cybara to approve, or set tool approvals to Always Allow for unattended runs.";
+
+export function canWaitForToolApproval(channel?: string): boolean {
+  const normalized = channel?.trim().toLowerCase();
+  if (normalized && normalized !== "web" && normalized !== "api") return true;
+  return statusStreamListenerCount() > 0;
+}
 
 export function isToolApproved(sessionId: string, approvalKey: string): boolean {
   if (alwaysAllowlist.has(approvalKey)) return true;

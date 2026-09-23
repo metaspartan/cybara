@@ -47,6 +47,7 @@ export function openAICompatReasoningParams(
   const format = PROVIDER_THINKING_FORMAT[providerId] || "openai";
   switch (format) {
     case "zai":
+      return { enable_thinking: true, reasoning_effort: effort };
     case "qwen":
       return { enable_thinking: true };
     case "deepseek":

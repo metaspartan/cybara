@@ -127,7 +127,7 @@ describe("Agent provider OpenAI-compatible routing", () => {
     expect(result.content).toBe("zai-ok");
     expect(requestUrl).toBe("https://api.z.ai/api/coding/paas/v4/chat/completions");
     expect(requestBody.enable_thinking).toBe(true);
-    expect("reasoning_effort" in requestBody).toBe(false);
+    expect(requestBody.reasoning_effort).toBe("medium");
     expect("max_tokens" in requestBody).toBe(false);
     expect(typeof requestBody.max_completion_tokens).toBe("number");
   });
