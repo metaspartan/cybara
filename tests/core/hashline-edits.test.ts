@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { config } from "../../src/core/config";
+import { validateToolArguments } from "../../src/core/tool-argument-validation";
 import { getMissingRequiredToolArguments } from "../../src/core/tools/handlers";
 import { handleEdit, handleRead } from "../../src/core/tools/handlers/file";
 import {
@@ -155,6 +156,12 @@ describe("edit tool modes", () => {
     config.setEditToolMode("hashline");
     expect(
       getMissingRequiredToolArguments("edit", { path: "a.py", oldText: "a", newText: "b" })
+    ).toEqual([]);
+    expect(
+      validateToolArguments(
+        { path: "a.py", oldText: "a", newText: "b" },
+        getEffectiveToolSchema("edit")?.input_schema
+      )
     ).toEqual([]);
     const { root, context } = workspace({ "calc.py": SOURCE });
     await handleEdit(
