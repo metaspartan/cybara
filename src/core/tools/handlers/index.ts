@@ -120,8 +120,15 @@ import {
 } from "../index";
 import { handleTelegramMedia } from "./telegram-media";
 import { createLogger } from "../../logger";
-import { requestToolApproval } from "../../tool-approval";
+import {
+  buildApprovalKey,
+  canWaitForToolApproval,
+  isToolApproved,
+  requestToolApproval,
+  UNATTENDED_APPROVAL_MESSAGE,
+} from "../../tool-approval";
 import { resolveToolCapabilityDecision } from "../../tool-capability-policy";
+import { getEffectiveToolSchema } from "../registry";
 import {
   getRegisteredToolHandler,
   registerToolHandler,
@@ -493,7 +500,7 @@ export function getMissingRequiredToolArguments(
   name: string,
   args: Record<string, unknown>
 ): string[] {
-  const schema = toolSchemaRegistry[name]?.input_schema as { required?: string[] } | undefined;
+  const schema = getEffectiveToolSchema(name)?.input_schema as { required?: string[] } | undefined;
   if (!Array.isArray(schema?.required) || schema.required.length === 0) {
     return [];
   }
@@ -524,7 +531,7 @@ export async function executeTool(
   if (missing.length > 0) {
     throw new Error(formatMissingRequiredToolArgumentsError(name, missing));
   }
-  const validationErrors = validateToolArguments(args, toolSchemaRegistry[name]?.input_schema);
+  const validationErrors = validateToolArguments(args, getEffectiveToolSchema(name)?.input_schema);
   if (validationErrors.length > 0) {
     throw new Error(`Validation error: ${validationErrors.slice(0, 3).join("; ")}`);
   }
@@ -590,6 +597,22 @@ export async function executeTool(
     !capabilityAllows
   ) {
     if (context?.sessionId) {
+      if (
+        !isToolApproved(context.sessionId, buildApprovalKey(name, args)) &&
+        !canWaitForToolApproval(context.channel) &&
+        (capabilityRequiresApproval || toolApprovalMode !== "always_allow")
+      ) {
+        trackMetric("dangerous_tool_usage", name, 1, {
+          blocked: true,
+          mode: dangerousPolicy.mode,
+          approvalMode: toolApprovalMode,
+          sessionId: context.sessionId,
+          agentId: context.agentId,
+        });
+        throw new Error(
+          `Tool '${name}' was denied by the operator. It ${UNATTENDED_APPROVAL_MESSAGE}`
+        );
+      }
       const decision = await requestToolApproval({
         sessionId: context.sessionId,
         agentId: context.agentId,

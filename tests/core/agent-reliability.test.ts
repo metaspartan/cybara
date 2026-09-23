@@ -47,7 +47,7 @@ describe("system prompt reliability guidance", () => {
   });
 
   test("includes parallel tool-call guidance", () => {
-    expect(prompt).toContain("Batch independent tool calls");
+    expect(prompt).toContain("Batch independent reads, searches, and checks in one response");
     expect(prompt).toContain("Do not narrate routine calls");
     expect(prompt).toContain("brief updates at the start and meaningful milestones");
   });

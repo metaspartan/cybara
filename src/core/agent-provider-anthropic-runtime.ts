@@ -66,6 +66,7 @@ import { normalizeAnthropicModelToolUses } from "./llm/model-dialect";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
 import { toAnthropicHistory } from "./llm/provider-history";
 import { supportsForcedToolChoice } from "./llm/provider-model-transport";
+import { postAnthropicMessages } from "./llm/anthropic-sdk-transport";
 import { withLlmRequestTimeout } from "./llm/request-timeout";
 import {
   sanitizeAssistantContent,
@@ -137,7 +138,8 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
       }));
       requestBody.tool_choice = resolveAnthropicToolChoice(
         tools.map((tool) => tool.name),
-        supportsForcedToolChoice(providerConfig) ? toolContext : undefined
+        supportsForcedToolChoice(providerConfig) ? toolContext : undefined,
+        modelId
       );
     }
 
@@ -199,7 +201,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         headers["x-api-key"] = currentApiKey;
       }
       try {
-        response = await fetch(`${baseUrl}${anthropicEndpoint}`, {
+        response = await postAnthropicMessages(baseUrl, anthropicEndpoint, {
           method: "POST",
           headers,
           body: JSON.stringify(requestBody),
@@ -688,7 +690,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
       try {
         while (loopRetryCount <= MAX_RETRIES) {
           try {
-            loopResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
+            loopResponse = await postAnthropicMessages(baseUrl, anthropicEndpoint, {
               method: "POST",
               headers,
               body: JSON.stringify(loopRequestBody),
@@ -735,7 +737,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
               ...loopRequestBody,
               messages: currentMessages,
             };
-            const retryResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
+            const retryResponse = await postAnthropicMessages(baseUrl, anthropicEndpoint, {
               method: "POST",
               headers,
               body: JSON.stringify(retryBody),
@@ -887,7 +889,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         let attemptedClosingOAuthRefresh = false;
         while (true) {
           try {
-            closingResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
+            closingResponse = await postAnthropicMessages(baseUrl, anthropicEndpoint, {
               method: "POST",
               headers,
               body: JSON.stringify(closingBody),

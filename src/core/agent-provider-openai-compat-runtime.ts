@@ -89,6 +89,7 @@ import {
   toOpenAIReplayMessageWithNormalizedToolCalls,
 } from "./llm/text-tool-calls";
 import { isContextOverflowError } from "./llm/tool-transcript";
+import { builtInReasoningEffort } from "./llm/default-reasoning";
 import { type ProviderType, providers as providerCatalog } from "./providers";
 import type { ToolContext } from "./tools/index";
 
@@ -160,9 +161,14 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
       messages: toOpenAIChatHistory(messages, providerConfig, modelId),
     };
 
-    const openaiEffort = normalizeReasoningEffort(
-      this.resolveModelParams(toolContext).reasoning_effort
-    );
+    const catalogModel = (
+      providerCatalog[providerConfig as ProviderType]?.models as
+        | ReadonlyArray<{ id: string; reasoning?: boolean }>
+        | undefined
+    )?.find((model) => model.id === modelId);
+    const openaiEffort =
+      normalizeReasoningEffort(this.resolveModelParams(toolContext).reasoning_effort) ??
+      builtInReasoningEffort(providerConfig, modelId, catalogModel?.reasoning);
     const reasoningParams = openaiEffort
       ? openAICompatReasoningParams(
           providerConfig || "",

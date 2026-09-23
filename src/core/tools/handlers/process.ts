@@ -1,19 +1,20 @@
 import { existsSync } from "fs";
 import { appendFile } from "fs/promises";
 import { config } from "../../config";
+import { createLogger } from "../../logger";
 import { homeDir } from "../../paths";
+import { getPathSeparator, isWindows, shellEscapeArg } from "../../platform";
 import { buildSandboxedShellPlan } from "../../sandbox";
 import { runInRemoteSandbox } from "../../sandbox/remote-sandbox";
-import { createLogger } from "../../logger";
-import { getPathSeparator, isWindows, shellEscapeArg } from "../../platform";
-import { persistToolOutputForRecovery } from "../../tool-output-recovery";
 import {
   buildContainerRuntimeEnvironment,
   buildHostSubprocessEnvironment,
   sanitizeSubprocessEnvironment,
 } from "../../subprocess-env";
-import type { ToolContext } from "../index";
 import { killSubprocessTree } from "../../subprocess-tree";
+import { persistToolOutputForRecovery } from "../../tool-output-recovery";
+import type { ToolContext } from "../index";
+import { execFailureHint } from "./exec-failure-hint";
 
 const log = createLogger("ProcessTool");
 const STREAM_DRAIN_GRACE_MS = 200;
@@ -387,8 +388,10 @@ export async function handleExec(
       : captured.aborted
         ? "\nCommand interrupted."
         : "";
+    const combinedOutput = captured.stdout + (captured.stderr ? "\n" + captured.stderr : "");
+    const hint = plan.provider ? "" : execFailureHint(captured.exitCode, combinedOutput);
     return {
-      output: captured.stdout + (captured.stderr ? "\n" + captured.stderr : "") + statusOutput,
+      output: combinedOutput + statusOutput + hint,
       exitCode: captured.aborted ? 130 : captured.timedOut ? 124 : captured.exitCode,
       pid: captured.pid,
       cwd: plan.cwd,

@@ -65,6 +65,8 @@ import { providerExceptionRetryDelayMs, resolveProviderRetryPolicy } from "./pro
 import { broadcastTokenDelta } from "./status";
 import type { ToolContext } from "./tools/index";
 
+const CODEX_EMPTY_STOP_MAX_RETRIES = 2;
+
 export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompatRuntime {
   protected resolveOpenAICodexBaseUrl(baseUrl: string): string {
     const trimmed = (baseUrl || "").trim().replace(/\/+$/, "");
@@ -593,6 +595,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
     let finalContent = "";
     let closingResponseRequested = false;
     let skillLearningNudged = false;
+    let emptyStopRetries = 0;
     let preservedFinalContent: string | null = null;
     let lastProgressThought = "";
     const allToolCalls: AgentToolCallResult[] = [];
@@ -699,7 +702,12 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
         turn = await runCodexTurn();
       } catch (error) {
         if (!isContextOverflowError(this.normalizeErrorMessage(error))) throw error;
-        compactCodexInputItemsForContext(inputItems, Math.max(4096, codexBudgetChars * 0.65), true);
+        compactCodexInputItemsForContext(
+          inputItems,
+          Math.max(4096, codexBudgetChars * 0.65),
+          true,
+          toolContext?.sessionId
+        );
         turn = await runCodexTurn();
       }
       activeModelId = turn.resolvedModel;
@@ -757,16 +765,20 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
           break;
         }
         if (allToolCalls.length > 0 && !closingResponseRequested) {
+          const continueWork = emptyStopRetries < CODEX_EMPTY_STOP_MAX_RETRIES;
+          emptyStopRetries += 1;
           inputItems.push({
             role: "user",
             content: [
               {
                 type: "input_text",
-                text: "Reply to the user now with your findings from the tool results above. Do not call any more tools.",
+                text: continueWork
+                  ? "You stopped without a reply or a tool call. If the task still has work left, make the next required tool call now. If it is complete, give the final answer."
+                  : "Reply to the user now with your findings from the tool results above. Do not call any more tools.",
               },
             ],
           });
-          closingResponseRequested = true;
+          closingResponseRequested = !continueWork;
           continue;
         }
         break;
@@ -890,7 +902,7 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
           content: [{ type: "input_text", text: steeringText }],
         });
       }
-      compactCodexInputItemsForContext(inputItems, codexBudgetChars);
+      compactCodexInputItemsForContext(inputItems, codexBudgetChars, false, toolContext?.sessionId);
     }
 
     if (limitReason) {

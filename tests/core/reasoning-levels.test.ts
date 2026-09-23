@@ -116,9 +116,13 @@ describe("reasoning level support matrix", () => {
     expect(supportedReasoningEfforts("google", "gemini-3.1-pro-preview")).toEqual(["low", "high"]);
   });
 
-  test("z.ai is binary thinking", () => {
-    expect(supportedReasoningEfforts("z.ai", "glm-5.2")).toEqual(["medium"]);
-    expect(supportedReasoningEfforts("z.ai-coding", "glm-5.2")).toEqual(["medium"]);
+  test("z.ai offers graded reasoning effort because GLM honours reasoning_effort", () => {
+    expect(supportedReasoningEfforts("z.ai", "glm-5.2")).toEqual(["low", "medium", "high"]);
+    expect(supportedReasoningEfforts("z.ai-coding", "glm-5.3-flash")).toEqual([
+      "low",
+      "medium",
+      "high",
+    ]);
   });
 
   test("MiniMax M3 keeps provider-adaptive reasoning", () => {
@@ -233,9 +237,9 @@ describe("coerceReasoningEffort downgrades gracefully", () => {
   });
 
   test("binary providers collapse every level to medium", () => {
-    expect(coerceReasoningEffort("xhigh", "z.ai", "glm-5.2")).toBe("medium");
-    expect(coerceReasoningEffort("minimal", "z.ai", "glm-5.2")).toBe("medium");
-    expect(coerceReasoningEffort("high", "z.ai", "glm-5.2")).toBe("medium");
+    expect(coerceReasoningEffort("xhigh", "qwen-portal", "qwen3.7-plus")).toBe("medium");
+    expect(coerceReasoningEffort("minimal", "qwen-portal", "qwen3.7-plus")).toBe("medium");
+    expect(coerceReasoningEffort("high", "qwen-portal", "qwen3.7-plus")).toBe("medium");
   });
 
   test("supported levels are untouched", () => {

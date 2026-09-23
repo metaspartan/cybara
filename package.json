@@ -68,6 +68,7 @@
     "native:macos:package": "bun run scripts/package-native-macos.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.128.0",
     "@aws-sdk/client-bedrock-runtime": "3.1076.0",
     "@huggingface/transformers": "4.2.0",
     "@lobehub/icons": "5.10.1",

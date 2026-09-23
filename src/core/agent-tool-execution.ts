@@ -20,6 +20,8 @@ import {
 import { noteSkillCaptureOpportunity } from "./tools/handlers/skill-capture";
 import { noteToolActivityForTodoReminder } from "./tools/handlers/todo";
 import { type ToolContext, toolSchemas } from "./tools/index";
+import { getEffectiveToolSchema } from "./tools/registry";
+import { liveToolFullDetail } from "./live-tool-detail";
 import { snapshotViewedMedia } from "./viewed-media";
 
 export interface AgentToolExecutionResult {
@@ -111,7 +113,10 @@ async function executeAgentToolInternal(
     });
     return { skipped: false, result: { error: reason } };
   }
-  const validationErrors = validateToolArguments(args, toolSchemas[toolName]?.input_schema);
+  const validationErrors = validateToolArguments(
+    args,
+    getEffectiveToolSchema(toolName)?.input_schema
+  );
   if (validationErrors.length > 0) {
     const reason = `Validation error: ${validationErrors.slice(0, 3).join("; ")}`;
     await emitAgentHook({
@@ -192,6 +197,8 @@ async function executeAgentToolInternal(
   }
 
   const toolCallId = options.providerToolCallId?.trim() || createAgentToolCallStatusId(toolName);
+  const liveFullDetail = (phase: "start" | "result" | "error" | "blocked", result?: unknown) =>
+    liveToolFullDetail(toolName, args, phase, result);
   try {
     const startedAt = Date.now();
     broadcastStatus(
@@ -202,6 +209,7 @@ async function executeAgentToolInternal(
         toolName,
         toolCallId,
         toolPhase: "start",
+        fullDetail: liveFullDetail("start"),
       }
     );
     const result = await executeTool(toolName, args, toolContext);
@@ -242,6 +250,7 @@ async function executeAgentToolInternal(
         durationMs: Date.now() - startedAt,
         sandboxProvider: extractSandboxProviderFromToolResult(finalResult),
         imagePath: viewedImageSnapshot ?? viewedImagePath,
+        fullDetail: liveFullDetail("result", finalResult),
       }
     );
     await emitAgentHook({
@@ -265,6 +274,7 @@ async function executeAgentToolInternal(
         toolName,
         toolCallId,
         toolPhase: phase,
+        fullDetail: liveFullDetail(phase, errorMessage),
       }
     );
     if (blocked) {

@@ -818,6 +818,31 @@ export abstract class AgentProviderCommonRuntime {
     );
   }
 
+  protected shouldRetryWithoutReasoningControls(status: number, errorText: string): boolean {
+    if (status !== 400 && status !== 422) return false;
+    const normalized = errorText.toLowerCase();
+    if (normalized.includes("tool_choice")) return false;
+    const namesReasoningControl =
+      /\breasoning_effort\b|\benable_thinking\b|["'`]reasoning["'`]|\breasoning\.effort\b/.test(
+        normalized
+      );
+    const rejected =
+      /unrecognized|unsupported|not supported|unknown (?:field|parameter|argument)|extra (?:inputs?|fields?)|not permitted|invalid (?:parameter|argument|value)|does not support/.test(
+        normalized
+      );
+    return namesReasoningControl && rejected;
+  }
+
+  protected toWithoutReasoningRequestBody(
+    requestBody: Record<string, unknown>
+  ): Record<string, unknown> {
+    const nextBody: Record<string, unknown> = { ...requestBody };
+    delete nextBody.reasoning_effort;
+    delete nextBody.reasoning;
+    delete nextBody.enable_thinking;
+    return nextBody;
+  }
+
   protected toForcedToolChoiceWithoutReasoningRequestBody(
     requestBody: Record<string, unknown>
   ): Record<string, unknown> {
@@ -1174,6 +1199,7 @@ export abstract class AgentProviderCommonRuntime {
     let currentBody: Record<string, unknown> = { ...requestBody };
     let attemptedMaxCompletionRetry = false;
     let attemptedForcedToolChoiceReasoningRetry = false;
+    let attemptedReasoningRemovalRetry = false;
     let attemptedToolChoiceCompatibilityRetry = false;
     let attemptedToolChoiceRemovalRetry = false;
     let attemptedTextOnlyRetry = false;
@@ -1287,6 +1313,17 @@ export abstract class AgentProviderCommonRuntime {
         attemptedMaxCompletionRetry = true;
         console.log("[Agent] Retrying OpenAI request with max_completion_tokens");
         currentBody = this.toMaxCompletionTokensRequestBody(currentBody);
+        continue;
+      }
+
+      if (
+        !attemptedReasoningRemovalRetry &&
+        this.hasReasoningRequestControls(currentBody) &&
+        this.shouldRetryWithoutReasoningControls(response.status, errorText)
+      ) {
+        attemptedReasoningRemovalRetry = true;
+        console.log("[Agent] Provider rejected reasoning controls; retrying without them");
+        currentBody = this.toWithoutReasoningRequestBody(currentBody);
         continue;
       }
 

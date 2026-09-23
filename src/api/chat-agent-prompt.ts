@@ -1,11 +1,12 @@
-import type { Agent } from "../core/database";
-import { config } from "../core/config";
 import { getBootstrapContextFiles } from "../core/bootstrap-files";
+import { config } from "../core/config";
+import type { Agent } from "../core/database";
+import { hostPythonTooling } from "../core/python-tooling";
 import { getSandboxPromptInfo } from "../core/sandbox";
 import { createEligibilityContext, filterEligibleSkills, loadAllSkills } from "../core/skills";
 import {
-  buildSystemPrompt,
   AGENT_TYPE_PROMPTS,
+  buildSystemPrompt,
   systemPromptSandboxMarker,
   systemPromptToolMarker,
 } from "../core/system-prompt";
@@ -96,20 +97,23 @@ export async function activeAgentSystemPrompt(
     typeof agent.system_prompt === "string" && agent.system_prompt.trim()
       ? agent.system_prompt.trim()
       : "";
+  const tools = chatAgentToolNames(agent, messages, options);
+  const sandboxInfo = getSandboxPromptInfo(homeDir);
   return buildSystemPrompt({
     workspaceDir: homeDir,
     agentData: { name: agent.name, config: agent.config as string | undefined },
     config: {},
     modelDisplay: agent.model || "MiniMax-M2.5",
-    tools: chatAgentToolNames(agent, messages, options),
+    tools,
     executionMode: agent.type === "planner" ? "plan" : "execute",
     skills,
     contextFiles: getBootstrapContextFiles(homeDir),
-    sandboxInfo: getSandboxPromptInfo(homeDir),
+    sandboxInfo,
     runtimeInfo: {
       agentId: agent.id,
       model: agent.model,
       channel: options.runtimeChannel,
+      python: sandboxInfo.enabled || !tools.includes("exec") ? undefined : hostPythonTooling(),
     },
     extraSystemPrompt:
       storedPrompt && !isGeneratedAgentPrompt(storedPrompt) ? storedPrompt : undefined,

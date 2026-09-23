@@ -93,6 +93,26 @@ export function persistToolOutputForRecovery(input: {
   }
 }
 
+export function persistCompactedToolOutput(
+  content: string,
+  sessionId?: string
+): string | undefined {
+  try {
+    const persistedContent = formatPersistedContent(content);
+    const hash = createHash("sha256").update(persistedContent).digest("hex").slice(0, 16);
+    const sessionDir = join(TOOL_OUTPUT_RECOVERY_DIR, segment(sessionId, "compacted"));
+    const path = join(sessionDir, `compacted-${hash}.txt`);
+    if (existsSync(path)) return path;
+    cleanupOldOutputs();
+    ensurePrivateDir(TOOL_OUTPUT_RECOVERY_DIR);
+    ensurePrivateDir(sessionDir);
+    writeFileSync(path, persistedContent, { encoding: "utf8", mode: 0o600 });
+    return path;
+  } catch {
+    return undefined;
+  }
+}
+
 export function formatRecoverableToolOutputPreview(
   content: string,
   maxChars: number,

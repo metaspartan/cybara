@@ -974,17 +974,16 @@ describe("mobile dashboard model", () => {
 
 describe("mobile provider-aware reasoning gating", () => {
   test("binary thinking providers collapse to Default/Thinking", () => {
-    expect(mobileSupportedReasoningEfforts("z.ai", "glm-5.2")).toEqual([
+    expect(mobileSupportedReasoningEfforts("qwen-portal", "qwen3")).toEqual([
       { label: "Default", value: "" },
       { label: "Thinking", value: "medium" },
     ]);
-    expect(mobileSupportedReasoningEfforts("qwen-portal", "qwen3").length).toBe(2);
     expect(mobileSupportedReasoningEfforts("alibaba-coding-plan", "qwen3.7-plus").length).toBe(2);
     expect(mobileSupportedReasoningEfforts("qwen-token-plan-cn", "qwen3.7-plus")).toEqual([
       { label: "Default", value: "" },
       { label: "Thinking", value: "medium" },
     ]);
-    expect(mobileSupportedReasoningEfforts("zai", "x").length).toBe(2);
+    expect(mobileSupportedReasoningEfforts("zai", "glm-5.2").length).toBeGreaterThan(2);
   });
 
   test("MiniMax M3 uses provider-adaptive reasoning", () => {
@@ -1062,7 +1061,8 @@ describe("mobile provider-aware reasoning gating", () => {
     expect(mobileReasoningLabel(null)).toBe("Default");
     expect(mobileReasoningLabel("high", "google", "gemini-2.5-pro")).toBe("High");
     expect(mobileReasoningLabel("xhigh", "openai", "gpt-5.2")).toBe("Extra High");
-    expect(mobileReasoningLabel("medium", "z.ai", "glm-5.2")).toBe("Thinking");
+    expect(mobileReasoningLabel("medium", "qwen-portal", "qwen3")).toBe("Thinking");
+    expect(mobileReasoningLabel("medium", "z.ai", "glm-5.2")).toBe("Medium");
   });
 
   test("gateway reasoning capabilities override provider inference", () => {

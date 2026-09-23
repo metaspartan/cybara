@@ -40,6 +40,7 @@ export function applyLiveActivityEvent(
     imageAlt?: string;
     runId?: string;
     sequence?: number;
+    fullText?: string;
   }
 ): LiveActivityItem[] {
   const trimmed = event.text.trim();
@@ -94,6 +95,7 @@ export function applyLiveActivityEvent(
           sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
           imageSource: event.imageSource || candidate.imageSource,
           imageAlt: event.imageAlt || candidate.imageAlt,
+          fullText: event.fullText || candidate.fullText,
         };
         return sortAndMergeActivities(updated);
       }
@@ -114,6 +116,7 @@ export function applyLiveActivityEvent(
           sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
           imageSource: event.imageSource || candidate.imageSource,
           imageAlt: event.imageAlt || candidate.imageAlt,
+          fullText: event.fullText || candidate.fullText,
         };
         return sortAndMergeActivities(updated);
       }
@@ -133,6 +136,7 @@ export function applyLiveActivityEvent(
         sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
         imageSource: event.imageSource || candidate.imageSource,
         imageAlt: event.imageAlt || candidate.imageAlt,
+        fullText: event.fullText || candidate.fullText,
       };
       return sortAndMergeActivities(updated);
     }
@@ -166,6 +170,7 @@ export function applyLiveActivityEvent(
       sandboxProvider: normalizedSandboxProvider,
       imageSource: event.imageSource,
       imageAlt: event.imageAlt,
+      fullText: event.fullText,
     },
   ]);
 }

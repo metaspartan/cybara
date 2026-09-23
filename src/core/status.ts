@@ -35,6 +35,7 @@ export interface StatusPayload {
   toolCallId?: string;
   sandboxProvider?: string;
   imagePath?: string;
+  fullDetail?: string;
   toolPhase?: ToolStatusPhase;
   durationMs?: number;
   pendingChatId?: string;
@@ -110,6 +111,7 @@ export interface SessionActivitySnapshot {
   toolCallId?: string;
   sandboxProvider?: string;
   imagePath?: string;
+  fullDetail?: string;
 }
 
 export interface SessionStatusSnapshot {
@@ -353,6 +355,7 @@ export function reduceSessionStatusSnapshot(
         toolCallId,
         sandboxProvider: payload.sandboxProvider,
         imagePath: payload.imagePath,
+        fullDetail: payload.fullDetail,
       });
     } else {
       const matchIndex = findMatchingStartActivityIndex(
@@ -377,6 +380,7 @@ export function reduceSessionStatusSnapshot(
           toolCallId: toolCallId || matched.toolCallId,
           sandboxProvider: payload.sandboxProvider || matched.sandboxProvider,
           imagePath: payload.imagePath || matched.imagePath,
+          fullDetail: payload.fullDetail || matched.fullDetail,
         };
       } else {
         const fallbackText = activityText || defaultToolActivityText(toolName, phase);
@@ -389,6 +393,7 @@ export function reduceSessionStatusSnapshot(
           toolCallId,
           sandboxProvider: payload.sandboxProvider,
           imagePath: payload.imagePath,
+          fullDetail: payload.fullDetail,
         });
       }
     }
@@ -531,6 +536,10 @@ export function onSessionStatus(sessionId: string, callback: StatusCallback): ()
     callbacks.delete(callback);
     if (callbacks.size === 0) sessionStatusCallbacks.delete(key);
   };
+}
+
+export function statusStreamListenerCount(): number {
+  return statusStreamCallbacks.size;
 }
 
 export function onStatusStream(callback: StatusStreamCallback): () => void {

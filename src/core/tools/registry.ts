@@ -5,6 +5,11 @@ import {
   COMPUTER_USE_COMPAT_TOOL_ALIASES,
 } from "../computer-use-actions";
 import { config } from "../config";
+import {
+  HASHLINE_EDIT_DESCRIPTION,
+  HASHLINE_READ_DESCRIPTION,
+  hashlineEditInputSchema,
+} from "./handlers/hashline";
 import { toolSchemas } from "./schemas";
 import type { Tool } from "./types";
 
@@ -97,8 +102,28 @@ export function isSelfImprovingSkillsEnabled(): boolean {
   return config.get<boolean>("self_improving_skills_enabled") !== false;
 }
 
+function withEditToolMode(tool: Omit<Tool, "handler">): Omit<Tool, "handler"> {
+  if (config.getEditToolMode() !== "hashline") return tool;
+  if (tool.name === "edit") {
+    return {
+      ...tool,
+      description: HASHLINE_EDIT_DESCRIPTION,
+      input_schema: hashlineEditInputSchema,
+    };
+  }
+  if (tool.name === "read") return { ...tool, description: HASHLINE_READ_DESCRIPTION };
+  return tool;
+}
+
+export function getEffectiveToolSchema(name: string): Omit<Tool, "handler"> | undefined {
+  const tool = toolSchemas[name];
+  return tool ? withEditToolMode(tool) : undefined;
+}
+
 export function getToolSchemasForLLM(): Omit<Tool, "handler">[] {
-  return Object.values(toolSchemas).filter((tool) => isToolEnabledForAgent(tool.name));
+  return Object.values(toolSchemas)
+    .filter((tool) => isToolEnabledForAgent(tool.name))
+    .map(withEditToolMode);
 }
 
 export function getToolRequiredPermissions(name: string): string[] {

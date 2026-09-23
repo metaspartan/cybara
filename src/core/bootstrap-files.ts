@@ -1,6 +1,14 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
-import { join } from "path";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "fs";
 import { homedir } from "os";
+import { join } from "path";
 
 export interface BootstrapFile {
   name: string;
@@ -27,6 +35,77 @@ export const CONTEXT_FILES = [
   "USER.md",
   "TOOLS.md",
 ];
+
+const PRIMARY_INSTRUCTION_FILES = ["AGENTS.md", "CLAUDE.md"];
+
+export const FOREIGN_RULE_FILES = [
+  "GEMINI.md",
+  ".github/copilot-instructions.md",
+  ".cursorrules",
+  ".windsurfrules",
+  ".clinerules",
+];
+
+const FOREIGN_RULE_DIRECTORIES = [
+  { dir: ".cursor/rules", extensions: [".mdc", ".md"] },
+  { dir: ".clinerules", extensions: [".md"] },
+  { dir: ".windsurf/rules", extensions: [".md"] },
+];
+
+const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+
+function isRegularFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function alwaysAppliedRuleBody(content: string): string | null {
+  const frontmatter = FRONTMATTER_PATTERN.exec(content);
+  if (!frontmatter) return content;
+  const alwaysApply = /^alwaysApply:\s*true\s*$/m.test(frontmatter[1]);
+  const conditional = /^(?:globs|description|trigger):\s*\S/m.test(frontmatter[1]);
+  if (!alwaysApply && conditional) return null;
+  return content.slice(frontmatter[0].length);
+}
+
+export function readForeignRuleFiles(workspaceDir: string): BootstrapFile[] {
+  const files: BootstrapFile[] = [];
+  for (const name of FOREIGN_RULE_FILES) {
+    const path = join(workspaceDir, name);
+    if (!isRegularFile(path)) continue;
+    files.push({ name, path, content: readFileSync(path, "utf-8"), missing: false });
+  }
+  for (const { dir, extensions } of FOREIGN_RULE_DIRECTORIES) {
+    const root = join(workspaceDir, dir);
+    let entries: string[];
+    try {
+      entries = readdirSync(root).sort();
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!extensions.some((extension) => entry.endsWith(extension))) continue;
+      const path = join(root, entry);
+      if (!isRegularFile(path)) continue;
+      const body = alwaysAppliedRuleBody(readFileSync(path, "utf-8"));
+      if (body === null) continue;
+      files.push({ name: `${dir}/${entry}`, path, content: body, missing: false });
+    }
+  }
+  return files;
+}
+
+function hasPrimaryInstructions(files: readonly BootstrapFile[]): boolean {
+  return files.some(
+    (file) =>
+      PRIMARY_INSTRUCTION_FILES.includes(file.name) &&
+      !file.missing &&
+      file.content.trim().length > 0
+  );
+}
 
 export const DEFAULT_CONTEXT_FILE_MAX_CHARS = 20_000;
 export const DEFAULT_CONTEXT_TOTAL_MAX_CHARS = 60_000;
@@ -114,7 +193,10 @@ export function getBootstrapContextFiles(
     1,
     Math.floor(options.maxTotalChars ?? DEFAULT_CONTEXT_TOTAL_MAX_CHARS)
   );
-  const bootstrapFiles = readBootstrapFiles(workspaceDir);
+  const ownFiles = readBootstrapFiles(workspaceDir);
+  const bootstrapFiles = hasPrimaryInstructions(ownFiles)
+    ? ownFiles
+    : [...ownFiles, ...readForeignRuleFiles(workspaceDir)];
   const contextFiles: Array<{ name: string; path: string; content: string }> = [];
   const marker = "\n\n[... truncated ...]";
   let remainingChars = maxTotalChars;

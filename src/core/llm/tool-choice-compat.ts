@@ -15,7 +15,10 @@ export function shouldRetryByRemovingToolChoice(
     normalized.includes("unsupported") ||
     normalized.includes("cannot be used") ||
     normalized.includes("not allowed");
-  return mentionsToolChoice && mentionsThinkingMode && mentionsRejection;
+  const rejectedForModel =
+    normalized.includes("not supported for this model") ||
+    normalized.includes("not supported on this model");
+  return mentionsToolChoice && mentionsRejection && (mentionsThinkingMode || rejectedForModel);
 }
 
 export function toNoToolChoiceRequestBody(
