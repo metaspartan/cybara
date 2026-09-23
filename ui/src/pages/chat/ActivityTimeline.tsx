@@ -106,8 +106,20 @@ function ImageViewedThumbnail({ source, alt }: { source: string; alt: string }) 
   );
 }
 
-function ActivityRow({ activity }: { activity: LiveActivityItem }) {
-  const [expanded, setExpanded] = useState(false);
+export function activityRowKey(activity: LiveActivityItem): string {
+  const toolCallId = activity.toolCallId?.trim().toLowerCase();
+  return toolCallId ? `call:${toolCallId}` : activity.id;
+}
+
+function ActivityRow({
+  activity,
+  expanded,
+  onToggle,
+}: {
+  activity: LiveActivityItem;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   if (isRawToolCallThought(activity)) return null;
   if (activity.toolName === "__thought") {
     return (
@@ -168,7 +180,7 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
         {expandable ? (
           <button
             type="button"
-            onClick={() => setExpanded((value) => !value)}
+            onClick={onToggle}
             className="min-w-0 flex-1 cursor-pointer text-left text-inherit"
             aria-expanded={expanded}
             title={
@@ -201,7 +213,32 @@ export function GroupedActivityRows({
   openByDefault?: readonly ActivityGroupKind[];
 }) {
   const [toggledGroups, setToggledGroups] = useState<Set<string>>(new Set());
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const entries = groupActivitiesForDisplay(activities);
+
+  const toggleRow = (key: string) => {
+    setExpandedRows((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const renderRow = (activity: LiveActivityItem) => {
+    const key = activityRowKey(activity);
+    return (
+      <ActivityRow
+        key={key}
+        activity={activity}
+        expanded={expandedRows.has(key)}
+        onToggle={() => toggleRow(key)}
+      />
+    );
+  };
 
   const toggleGroup = (id: string) => {
     setToggledGroups((previous) => {
@@ -219,7 +256,7 @@ export function GroupedActivityRows({
     <div className="space-y-1">
       {entries.map((entry) => {
         if (entry.type === "single") {
-          return <ActivityRow key={entry.activity.id} activity={entry.activity} />;
+          return renderRow(entry.activity);
         }
         const expanded = openByDefault.includes(entry.kind) !== toggledGroups.has(entry.id);
         const GroupIcon = GROUP_ICONS[entry.kind];
@@ -257,20 +294,18 @@ export function GroupedActivityRows({
                 {entry.items.map((activity) =>
                   activity.imageSource ? (
                     <ImageViewedThumbnail
-                      key={activity.id}
+                      key={activityRowKey(activity)}
                       source={activity.imageSource}
                       alt={activity.imageAlt || "Viewed image"}
                     />
                   ) : (
-                    <ActivityRow key={activity.id} activity={activity} />
+                    renderRow(activity)
                   )
                 )}
               </div>
             ) : expanded ? (
               <div className="ml-[5px] mt-1 space-y-1 border-l border-white/10 pl-2.5">
-                {entry.items.map((activity) => (
-                  <ActivityRow key={activity.id} activity={activity} />
-                ))}
+                {entry.items.map((activity) => renderRow(activity))}
               </div>
             ) : null}
           </div>

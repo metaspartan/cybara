@@ -114,6 +114,7 @@ function statusPayload(event: SessionLedgerEvent): StatusPayload | null {
       ? { sandboxProvider: payload.sandboxProvider }
       : {}),
     ...(typeof payload.imagePath === "string" ? { imagePath: payload.imagePath } : {}),
+    ...(typeof payload.fullDetail === "string" ? { fullDetail: payload.fullDetail } : {}),
     ...(payload.toolPhase === "start" ||
     payload.toolPhase === "result" ||
     payload.toolPhase === "error" ||

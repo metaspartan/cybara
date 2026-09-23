@@ -141,6 +141,7 @@ export interface SessionStatusActivity {
   toolCallId?: string;
   sandboxProvider?: string;
   imagePath?: string;
+  fullDetail?: string;
 }
 
 export interface SessionStatusSnapshot {
@@ -1130,6 +1131,7 @@ export function toLiveActivityItems(
       sandboxProvider: normalizeSandboxProviderValue(activity.sandboxProvider),
       imageSource: imageSourceFromPath(activity.imagePath),
       imageAlt: imageAltFromPath(activity.imagePath),
+      fullText: activity.fullDetail,
     }));
 }
 

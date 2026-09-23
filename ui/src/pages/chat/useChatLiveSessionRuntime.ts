@@ -231,7 +231,8 @@ export function useChatLiveSessionRuntime({
       imageSource?: string,
       imageAlt?: string,
       runId?: string,
-      sequence?: number
+      sequence?: number,
+      fullText?: string
     ) => {
       const applyEvent = (previous: LiveActivityItem[]): LiveActivityItem[] =>
         applyLiveActivityEvent(previous, {
@@ -245,6 +246,7 @@ export function useChatLiveSessionRuntime({
           imageAlt,
           runId,
           sequence,
+          fullText,
         });
 
       runActivityBufferRef.current = applyEvent(runActivityBufferRef.current);
@@ -1198,7 +1200,8 @@ export function useChatLiveSessionRuntime({
             imageSourceFromPath(payload.imagePath),
             imageAltFromPath(payload.imagePath),
             payload.runId,
-            payload.sequence
+            payload.sequence,
+            payload.fullDetail
           );
           if (phase === "start") {
             setLiveStatus("thinking");

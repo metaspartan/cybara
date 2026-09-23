@@ -495,15 +495,20 @@ export function mergeActivityLists(
   const merged: LiveActivityItem[] = [];
 
   const positions = new Map<string, number>();
-  const backfillImageMetadata = (key: string, activity: LiveActivityItem): void => {
+  const backfillActivityMetadata = (key: string, activity: LiveActivityItem): void => {
     const index = positions.get(key);
     if (index === undefined) return;
     const kept = merged[index];
-    if (!kept || kept.imageSource || !activity.imageSource) return;
+    if (!kept) return;
+    const needsImage = !kept.imageSource && Boolean(activity.imageSource);
+    const needsFullText = !kept.fullText && Boolean(activity.fullText);
+    if (!needsImage && !needsFullText) return;
     merged[index] = {
       ...kept,
-      imageSource: activity.imageSource,
-      imageAlt: kept.imageAlt || activity.imageAlt,
+      ...(needsImage
+        ? { imageSource: activity.imageSource, imageAlt: kept.imageAlt || activity.imageAlt }
+        : {}),
+      ...(needsFullText ? { fullText: activity.fullText } : {}),
     };
   };
   const pushUnique = (activity: LiveActivityItem) => {
@@ -513,11 +518,11 @@ export function mergeActivityLists(
     const exactKey = activityDedupKey(activity);
     const semanticKey = semanticActivityDedupKey(activity);
     if (seen.has(exactKey)) {
-      backfillImageMetadata(exactKey, activity);
+      backfillActivityMetadata(exactKey, activity);
       return;
     }
     if (seenSemantic.has(semanticKey)) {
-      backfillImageMetadata(semanticKey, activity);
+      backfillActivityMetadata(semanticKey, activity);
       return;
     }
     seen.add(exactKey);

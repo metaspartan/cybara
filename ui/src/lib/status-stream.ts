@@ -61,6 +61,7 @@ export interface StatusStreamStatusEvent {
   toolCallId?: string;
   sandboxProvider?: string;
   imagePath?: string;
+  fullDetail?: string;
   toolPhase?: "start" | "result" | "error" | "blocked";
   durationMs?: number;
   pendingChatId?: string;

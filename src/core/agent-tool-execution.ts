@@ -20,6 +20,7 @@ import {
 import { noteSkillCaptureOpportunity } from "./tools/handlers/skill-capture";
 import { noteToolActivityForTodoReminder } from "./tools/handlers/todo";
 import { type ToolContext, toolSchemas } from "./tools/index";
+import { liveToolFullDetail } from "./live-tool-detail";
 import { snapshotViewedMedia } from "./viewed-media";
 
 export interface AgentToolExecutionResult {
@@ -192,6 +193,8 @@ async function executeAgentToolInternal(
   }
 
   const toolCallId = options.providerToolCallId?.trim() || createAgentToolCallStatusId(toolName);
+  const liveFullDetail = (phase: "start" | "result" | "error" | "blocked", result?: unknown) =>
+    liveToolFullDetail(toolName, args, phase, result);
   try {
     const startedAt = Date.now();
     broadcastStatus(
@@ -202,6 +205,7 @@ async function executeAgentToolInternal(
         toolName,
         toolCallId,
         toolPhase: "start",
+        fullDetail: liveFullDetail("start"),
       }
     );
     const result = await executeTool(toolName, args, toolContext);
@@ -242,6 +246,7 @@ async function executeAgentToolInternal(
         durationMs: Date.now() - startedAt,
         sandboxProvider: extractSandboxProviderFromToolResult(finalResult),
         imagePath: viewedImageSnapshot ?? viewedImagePath,
+        fullDetail: liveFullDetail("result", finalResult),
       }
     );
     await emitAgentHook({
@@ -265,6 +270,7 @@ async function executeAgentToolInternal(
         toolName,
         toolCallId,
         toolPhase: phase,
+        fullDetail: liveFullDetail(phase, errorMessage),
       }
     );
     if (blocked) {
