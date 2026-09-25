@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { join } from "path";
+import { basename, join, sep } from "path";
 import type { ChatMessage } from "../api/chat";
 import type { MigrationSourceKind } from "./source-migration";
 import type { OpenCodeSessionSnapshot } from "./source-migration-opencode";
@@ -128,12 +128,14 @@ function snapshotFromFile(
   workspaceDir: string | null,
   createdAt: number,
   updatedAt: number,
-  title: string
+  title: string,
+  titleOverride: string | null = null
 ): ImportedSessionSnapshot | null {
   if (messages.length === 0) return null;
+  const override = titleOverride?.replace(/\s+/g, " ").trim();
   return {
     sourceId,
-    title: deriveTitle(messages, title),
+    title: override ? override : deriveTitle(messages, title),
     workspaceDir: existingDirectory(workspaceDir),
     createdAt,
     updatedAt,
@@ -147,12 +149,17 @@ function readClaudeCodeSession(path: string): ImportedSessionSnapshot | null {
   const messages: ChatMessage[] = [];
   let workspaceDir: string | null = null;
   let aiTitle = "";
+  let customTitle = "";
   let firstAt = 0;
   let lastAt = 0;
 
   for (const row of rows) {
+    if (row.isSidechain === true) continue;
     if (typeof row.cwd === "string" && !workspaceDir) workspaceDir = row.cwd;
     if (row.type === "ai-title" && typeof row.aiTitle === "string") aiTitle = row.aiTitle;
+    if (row.type === "custom-title" && typeof row.customTitle === "string") {
+      customTitle = row.customTitle;
+    }
     if (row.type !== "user" && row.type !== "assistant") continue;
     const message = row.message as Record<string, unknown> | undefined;
     if (!message) continue;
@@ -169,7 +176,8 @@ function readClaudeCodeSession(path: string): ImportedSessionSnapshot | null {
     workspaceDir,
     firstAt || Date.now(),
     lastAt || firstAt || Date.now(),
-    aiTitle || "Claude Code session"
+    "Claude Code session",
+    customTitle || aiTitle || null
   );
 }
 
@@ -290,7 +298,11 @@ function collectTranscripts(kind: MigrationSourceKind, root: string, extension: 
 }
 
 function sessionFilesFor(kind: MigrationSourceKind, root: string): string[] {
-  if (kind === "claude-code") return collectTranscripts(kind, root, ".jsonl");
+  if (kind === "claude-code") {
+    return collectTranscripts(kind, root, ".jsonl").filter(
+      (path) => !isClaudeCodeSubagentTranscript(path)
+    );
+  }
   if (kind === "codex") return collectTranscripts(kind, root, ".jsonl");
   if (kind === "openclaw") {
     return collectTranscripts(kind, root, ".jsonl").filter(
@@ -321,5 +333,11 @@ export function readSourceSessions(
 }
 
 export function countSourceSessions(kind: MigrationSourceKind, root: string): number {
-  return sessionFilesFor(kind, root).length;
+  if (kind === "claude-code") return readSourceSessions(kind, root).length;
+  return sessionFilesFor(kind, root).filter(isFile).length;
+}
+
+function isClaudeCodeSubagentTranscript(path: string): boolean {
+  if (path.split(sep).includes("subagents")) return true;
+  return /^agent-.+\.jsonl$/.test(basename(path));
 }
