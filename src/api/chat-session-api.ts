@@ -416,6 +416,7 @@ async function buildSessionListIndex(): Promise<SessionListEntry[]> {
       createdAt: persisted.createdAt,
       updatedAt: persisted.updatedAt,
       workspaceDir: persisted.workspaceDir,
+      parentSessionId: persisted.parentSessionId,
       pinned: persisted.pinned,
       unread: persisted.unread,
       lastMessage: persisted.lastMessage,

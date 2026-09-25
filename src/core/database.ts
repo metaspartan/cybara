@@ -175,6 +175,7 @@ try {
     messages TEXT NOT NULL,
     context_state TEXT,
     workspace_dir TEXT,
+    parent_session_id TEXT,
     pinned INTEGER NOT NULL DEFAULT 0,
     room_config TEXT,
     last_read_assistant_message_id TEXT,
@@ -466,6 +467,11 @@ try {
   } catch {}
 
   try {
+    db.exec("ALTER TABLE chat_sessions ADD COLUMN parent_session_id TEXT");
+    console.error("[Database] Migration: Added parent_session_id column to chat_sessions");
+  } catch {}
+
+  try {
     db.exec("ALTER TABLE chat_sessions ADD COLUMN title TEXT");
     console.error("[Database] Migration: Added title column to chat_sessions");
   } catch {}
@@ -692,6 +698,7 @@ db.exec(`
     messages TEXT NOT NULL,
     context_state TEXT,
     workspace_dir TEXT,
+    parent_session_id TEXT,
     pinned INTEGER NOT NULL DEFAULT 0,
     room_config TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

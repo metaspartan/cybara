@@ -1265,6 +1265,7 @@ const routes: Record<string, RouteHandler> = {
           "workspaceDir" in session && typeof session.workspaceDir === "string"
             ? session.workspaceDir
             : null,
+        parent_session_id: session.parentSessionId ?? null,
         pinned: session.pinned === true,
         unread: session.unread === true,
         room: session.room ? roomConfigToApi(session.room) : null,

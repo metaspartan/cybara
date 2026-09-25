@@ -19,6 +19,7 @@ export interface OpenCodeSessionSnapshot {
   createdAt: number;
   updatedAt: number;
   messages: ChatMessage[];
+  parentSourceId?: string | null;
 }
 
 export interface OpenCodeSessionStore {
@@ -392,7 +393,7 @@ export function countOpenCodeSessions(sourcePath: string): number {
   }
 }
 
-function targetSessionId(sourceId: string): string {
+export function targetSessionId(sourceId: string): string {
   const hash = createHash("sha256").update(sourceId).digest("hex").slice(0, 24);
   return `migration-opencode-${hash}`;
 }

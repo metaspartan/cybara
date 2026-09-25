@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { basename, join, sep } from "path";
+import { basename, dirname, join, sep } from "path";
 import type { ChatMessage } from "../api/chat";
 import type { MigrationSourceKind } from "./source-migration";
 import type { OpenCodeSessionSnapshot } from "./source-migration-opencode";
@@ -328,7 +328,103 @@ export function readSourceSessions(
     else if (kind === "hermes") snapshot = readHermesSession(path);
     if (snapshot) snapshots.push(snapshot);
   }
+  if (kind === "claude-code") {
+    const capped = snapshots
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, MAX_SESSIONS_PER_SOURCE);
+    const cappedIds = new Set(capped.map((snapshot) => snapshot.sourceId));
+    const children = claudeCodeSubagentFiles(root)
+      .map((path) => readClaudeCodeSubagentSession(path))
+      .filter((snapshot): snapshot is ImportedSessionSnapshot & { parentSourceId: string } =>
+        Boolean(snapshot?.parentSourceId)
+      )
+      .filter((snapshot) => cappedIds.has(snapshot.parentSourceId))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    return [...capped, ...children];
+  }
   return snapshots.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_SESSIONS_PER_SOURCE);
+}
+
+function claudeCodeSubagentFiles(root: string): string[] {
+  const projects = join(root, "projects");
+  if (!existsSync(projects)) return [];
+  let projectEntries: ReturnType<typeof readdirSync>;
+  try {
+    projectEntries = readdirSync(projects, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const found: string[] = [];
+  for (const project of projectEntries) {
+    if (!project.isDirectory()) continue;
+    const projectDir = join(projects, project.name);
+    let sessionEntries: ReturnType<typeof readdirSync>;
+    try {
+      sessionEntries = readdirSync(projectDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const session of sessionEntries) {
+      if (!session.isDirectory()) continue;
+      const subagentsDir = join(projectDir, session.name, "subagents");
+      let fileEntries: ReturnType<typeof readdirSync>;
+      try {
+        fileEntries = readdirSync(subagentsDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const file of fileEntries) {
+        if (file.isFile() && file.name.endsWith(".jsonl")) {
+          found.push(join(subagentsDir, file.name));
+        }
+      }
+    }
+  }
+  return found;
+}
+
+function readClaudeCodeSubagentSession(
+  path: string
+): (ImportedSessionSnapshot & { parentSourceId: string }) | null {
+  const rows = readJsonLines(path);
+  if (rows.length === 0) return null;
+  const messages: ChatMessage[] = [];
+  let workspaceDir: string | null = null;
+  let parentSessionKey = "";
+  let firstAt = 0;
+  let lastAt = 0;
+  for (const row of rows) {
+    if (typeof row.sessionId === "string" && !parentSessionKey) parentSessionKey = row.sessionId;
+    if (typeof row.cwd === "string" && !workspaceDir) workspaceDir = row.cwd;
+    if (row.type !== "user" && row.type !== "assistant") continue;
+    const message = row.message as Record<string, unknown> | undefined;
+    if (!message) continue;
+    const at = timestampMs(row.timestamp, Date.now());
+    if (!firstAt) firstAt = at;
+    lastAt = at;
+    pushMessage(messages, message.role ?? row.type, message.content, row.timestamp);
+  }
+  if (!parentSessionKey || messages.length === 0) return null;
+  const parentPath = join(dirname(path), "..", "..", `${parentSessionKey}.jsonl`);
+  if (!isFile(parentPath)) return null;
+  let metaTitle = "";
+  try {
+    const meta = JSON.parse(
+      readFileSync(`${path.slice(0, -".jsonl".length)}.meta.json`, "utf-8")
+    ) as Record<string, unknown>;
+    if (typeof meta.description === "string") metaTitle = meta.description.trim();
+  } catch {}
+  const base = snapshotFromFile(
+    path,
+    path,
+    messages,
+    workspaceDir,
+    firstAt || Date.now(),
+    lastAt || firstAt || Date.now(),
+    "Claude Code subagent"
+  );
+  if (!base) return null;
+  return { ...base, title: metaTitle || base.title, parentSourceId: parentPath };
 }
 
 export function countSourceSessions(kind: MigrationSourceKind, root: string): number {

@@ -3,7 +3,11 @@ import { agentManager } from "./agent";
 import { persistImageAttachments } from "./chat/attachments";
 import db, { tables } from "./database";
 import { persistSession, upsertPersistedSessionMessage } from "./session-context";
-import type { OpenCodeSessionSnapshot, OpenCodeSessionStore } from "./source-migration-opencode";
+import {
+  targetSessionId,
+  type OpenCodeSessionSnapshot,
+  type OpenCodeSessionStore,
+} from "./source-migration-opencode";
 import type { AgentImage } from "./llm/image-blocks";
 
 function materializeImages(images?: AgentImage[]): AgentImage[] {
@@ -62,6 +66,15 @@ export function createCybaraOpenCodeSessionStore(
         sqliteTimestamp(snapshot.updatedAt),
         sessionId
       );
+      if (snapshot.parentSourceId) {
+        const parentSessionId = targetSessionId(snapshot.parentSourceId);
+        if (tables.chatSessions.get(parentSessionId)) {
+          db.prepare("UPDATE chat_sessions SET parent_session_id = ? WHERE id = ?").run(
+            parentSessionId,
+            sessionId
+          );
+        }
+      }
     },
   };
 }

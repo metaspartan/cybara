@@ -82,6 +82,7 @@ export interface SessionListEntry {
   createdAt: string;
   updatedAt: string;
   workspaceDir: string | null;
+  parentSessionId?: string | null;
   pinned: boolean;
   unread: boolean;
   lastMessage: SessionLastMessagePreview | null;
@@ -365,6 +366,7 @@ export function persistedSessionToIndexEntry(
     createdAt: persisted.createdAt,
     updatedAt: persisted.updatedAt,
     workspaceDir: persisted.workspaceDir ?? null,
+    parentSessionId: persisted.parentSessionId ?? null,
     pinned: persisted.pinned,
     unread: persisted.unread,
     room: persisted.roomConfig,

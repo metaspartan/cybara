@@ -209,6 +209,84 @@ describe("source session import", () => {
     expect(countSourceSessions("claude-code", root)).toBe(1);
   });
 
+  test("imports Claude subagent transcripts as children linked to their parent", () => {
+    const root = makeRoot();
+    const parentDir = join(root, "projects", "demo");
+    mkdirSync(join(parentDir, "parent-1", "subagents"), { recursive: true });
+    writeFileSync(
+      join(parentDir, "parent-1.jsonl"),
+      [
+        JSON.stringify({
+          type: "user",
+          isSidechain: false,
+          timestamp: "2026-01-01T00:00:00Z",
+          message: { role: "user", content: "main task" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          isSidechain: false,
+          timestamp: "2026-01-01T00:00:04Z",
+          message: { role: "assistant", content: "done" },
+        }),
+      ].join("\n")
+    );
+    writeFileSync(
+      join(parentDir, "parent-1", "subagents", "agent-abc.jsonl"),
+      [
+        JSON.stringify({
+          type: "user",
+          sessionId: "parent-1",
+          isSidechain: true,
+          cwd: root,
+          timestamp: "2026-01-01T00:00:01Z",
+          message: { role: "user", content: "delegated research" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          sessionId: "parent-1",
+          isSidechain: true,
+          timestamp: "2026-01-01T00:00:02Z",
+          message: { role: "assistant", content: "research findings" },
+        }),
+      ].join("\n")
+    );
+    writeFileSync(
+      join(parentDir, "parent-1", "subagents", "agent-abc.meta.json"),
+      JSON.stringify({ agentType: "general-purpose", description: "Ship artist brief" })
+    );
+    const sessions = readSourceSessions("claude-code", root);
+    expect(sessions).toHaveLength(2);
+    expect(sessions[0].sourceId.endsWith("parent-1.jsonl")).toBe(true);
+    expect(sessions[0].parentSourceId).toBeFalsy();
+    const child = sessions[1];
+    expect(child.sourceId.endsWith("agent-abc.jsonl")).toBe(true);
+    expect(child.parentSourceId).toBe(join(parentDir, "parent-1.jsonl"));
+    expect(child.title).toBe("Ship artist brief");
+    expect(child.messages.map((m) => m.content)).toEqual([
+      "delegated research",
+      "research findings",
+    ]);
+    expect(countSourceSessions("claude-code", root)).toBe(2);
+  });
+
+  test("skips orphan subagent transcripts without an existing parent transcript", () => {
+    const root = makeRoot();
+    const projects = join(root, "projects", "demo");
+    mkdirSync(join(projects, "ghost-parent", "subagents"), { recursive: true });
+    writeFileSync(
+      join(projects, "ghost-parent", "subagents", "agent-orphan.jsonl"),
+      JSON.stringify({
+        type: "user",
+        sessionId: "ghost-parent",
+        isSidechain: true,
+        timestamp: "2026-01-01T00:00:00Z",
+        message: { role: "user", content: "orphaned work" },
+      })
+    );
+    expect(readSourceSessions("claude-code", root)).toEqual([]);
+    expect(countSourceSessions("claude-code", root)).toBe(0);
+  });
+
   test("skips sidechain rows inside a Claude Code transcript", () => {
     const root = makeRoot();
     const projects = join(root, "projects", "demo");
