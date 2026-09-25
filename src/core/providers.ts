@@ -697,7 +697,7 @@ export function getDefaultModel(providerType: string): string {
     "z.ai": "glm-5.2",
     zai: "glm-5.2",
     "z.ai-coding": "glm-5.3",
-    xiaomi: "mimo-v2.5-pro",
+    xiaomi: "mimo-v2.6-pro",
     opencode_zen: "claude-opus-5",
     commandcode: "claude-opus-5",
     opencode: "claude-opus-5",

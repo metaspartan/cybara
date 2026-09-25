@@ -265,6 +265,28 @@ describe("source session import", () => {
     expect(countSourceSessions("claude-code", root)).toBe(0);
   });
 
+  test("caps Claude Code transcripts to the most recent messages while keeping the original title", () => {
+    const root = makeRoot();
+    const projects = join(root, "projects", "demo");
+    mkdirSync(projects, { recursive: true });
+    const rows: string[] = [];
+    for (let i = 0; i < 450; i += 1) {
+      rows.push(
+        JSON.stringify({
+          type: "user",
+          timestamp: `2026-01-01T00:${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}Z`,
+          message: { role: "user", content: `message number ${i}` },
+        })
+      );
+    }
+    writeFileSync(join(projects, "long.jsonl"), rows.join("\n"));
+    const [session] = readSourceSessions("claude-code", root);
+    expect(session.messages.length).toBe(400);
+    expect(session.messages[0].content).toBe("message number 50");
+    expect(session.messages[399].content).toBe("message number 449");
+    expect(session.title).toBe("message number 0");
+  });
+
   test("prefers explicit Claude Code titles over first user message", () => {
     const root = makeRoot();
     const projects = join(root, "projects", "demo");

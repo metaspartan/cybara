@@ -46,6 +46,18 @@ describe("codex fast mode", () => {
     expect(codexFastModeServiceTier(true, "gpt-5.2-codex")).toBeNull();
   });
 
+  test("gpt-6 models support fast mode except excluded suffixes", () => {
+    expect(supportsCodexFastMode("gpt-6")).toBe(true);
+    expect(supportsCodexFastMode("gpt-6-astra")).toBe(true);
+    expect(supportsCodexFastMode("gpt-6-sol")).toBe(true);
+    expect(supportsCodexFastMode("gpt-6-luna")).toBe(true);
+    expect(supportsCodexFastMode("gpt-6-pro")).toBe(false);
+    expect(supportsCodexFastMode("gpt-6-nano")).toBe(false);
+    expect(supportsCodexFastMode("gpt-6-spark")).toBe(false);
+    expect(supportsCodexFastMode("GPT-6-Astra")).toBe(true);
+    expect(supportsCodexFastMode("gpt-7")).toBe(false);
+  });
+
   test("sends the tier value the Codex backend accepts", () => {
     expect(CODEX_FAST_MODE_SERVICE_TIER).toBe("priority");
   });

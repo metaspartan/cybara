@@ -55,7 +55,7 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("alibaba-coding-plan")).toBe("qwen3.7-plus");
     expect(getDefaultModel("qwen-token-plan")).toBe("qwen3.7-plus");
     expect(getDefaultModel("qwen-token-plan-cn")).toBe("qwen3.7-plus");
-    expect(getDefaultModel("xiaomi")).toBe("mimo-v2.5-pro");
+    expect(getDefaultModel("xiaomi")).toBe("mimo-v2.6-pro");
     expect(getDefaultModel("nvidia")).toBe("nvidia/nemotron-3-super-120b-a12b");
     expect(getDefaultModel("ollama-cloud")).toBe("glm-5.2:cloud");
   });

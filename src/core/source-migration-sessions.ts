@@ -82,7 +82,6 @@ function flattenContent(value: unknown): string {
 }
 
 function pushMessage(messages: ChatMessage[], role: unknown, content: unknown, at?: unknown): void {
-  if (messages.length >= MAX_MESSAGES_PER_SESSION) return;
   const normalizedRole = role === "assistant" ? "assistant" : role === "user" ? "user" : undefined;
   if (!normalizedRole) return;
   const text = flattenContent(content).trim();
@@ -139,7 +138,7 @@ function snapshotFromFile(
     workspaceDir: existingDirectory(workspaceDir),
     createdAt,
     updatedAt,
-    messages,
+    messages: messages.slice(-MAX_MESSAGES_PER_SESSION),
   };
 }
 
