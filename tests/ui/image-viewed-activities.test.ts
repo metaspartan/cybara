@@ -244,6 +244,15 @@ describe("image viewed timeline contract", () => {
     expect(timelineSource).toContain("event.stopPropagation()");
   });
 
+  test("live timeline auto-reveals viewed images while the response is in progress", () => {
+    expect(timelineSource).toContain("defaultExpandImages = false");
+    expect(timelineSource).toContain(
+      "const defaultExpanded = defaultExpandImages && Boolean(activity.imageSource);"
+    );
+    expect(timelineSource).toContain("const expanded = defaultExpanded !== toggledRows.has(key);");
+    expect(timelineSource).toContain("defaultExpandImages");
+  });
+
   test("both chat hosts subscribe to the lightbox bridge", () => {
     expect(chatSource).toContain("onOpenChatImageLightbox");
     expect(chatSource).toContain("setImageLightbox({ images: [image], index: 0 })");

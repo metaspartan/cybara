@@ -20,6 +20,35 @@ function formatJson(value: unknown): string {
   }
 }
 
+interface TimelineToolCall {
+  id?: string;
+  name: string;
+  args?: Record<string, unknown>;
+  result: unknown;
+  status?: "pending" | "executing" | "completed" | "failed";
+}
+
+interface TimelineEntry {
+  key: string;
+  kind: "thought" | "tool";
+  text: string;
+  phase: "start" | "result" | "error" | "blocked";
+  timestamp: number;
+  toolCall?: TimelineToolCall;
+}
+
+function statusTone(status: TimelineToolCall["status"], phase: TimelineEntry["phase"]): string {
+  if (status === "failed" || phase === "error" || phase === "blocked")
+    return "chat-meta-text capitalize text-red-400";
+  if (status === "executing" || status === "pending" || phase === "start")
+    return "chat-meta-text capitalize text-[rgb(var(--accent-primary))]";
+  return "chat-meta-text capitalize text-gray-600";
+}
+
+function toolStatus(entry: TimelineEntry): string {
+  return entry.toolCall?.status || (entry.phase === "start" ? "executing" : "completed");
+}
+
 export function SubagentTimeline({
   onOpenLink,
   subagent,
@@ -27,14 +56,7 @@ export function SubagentTimeline({
   onOpenLink: (href: string, options: ChatLinkOpenOptions) => boolean;
   subagent: Subagent;
 }): ReactElement {
-  const activities = useMemo(
-    () =>
-      [...(subagent.activities || [])]
-        .filter((activity) => isVisibleActivityText(activity.text))
-        .sort((a, b) => a.timestamp - b.timestamp),
-    [subagent.activities]
-  );
-  const toolCalls = useMemo(
+  const storedToolCalls = useMemo(
     () =>
       [...(subagent.toolCalls || [])].sort(
         (a, b) =>
@@ -43,104 +65,161 @@ export function SubagentTimeline({
       ),
     [subagent.toolCalls]
   );
+
+  const entries = useMemo<TimelineEntry[]>(() => {
+    const activities = [...(subagent.activities || [])]
+      .filter((activity) => isVisibleActivityText(activity.text))
+      .sort((a, b) => a.timestamp - b.timestamp);
+    const callsById = new Map<string, TimelineToolCall>();
+    const callsByName = new Map<string, TimelineToolCall[]>();
+    for (const toolCall of storedToolCalls) {
+      if (toolCall.id) callsById.set(toolCall.id, toolCall);
+      const name = toolCall.name.trim().toLowerCase();
+      if (!name) continue;
+      const named = callsByName.get(name) || [];
+      named.push(toolCall);
+      callsByName.set(name, named);
+    }
+
+    const matched = new Set<TimelineToolCall>();
+    const entries: TimelineEntry[] = activities.map((activity, index) => {
+      if (activity.toolName === "__thought") {
+        return {
+          key: activity.id || `thought-${index}`,
+          kind: "thought",
+          text: activity.text,
+          phase: activity.phase,
+          timestamp: activity.timestamp,
+        };
+      }
+      let toolCall = activity.toolCallId ? callsById.get(activity.toolCallId) : undefined;
+      if (!toolCall && activity.toolName) {
+        const candidates = callsByName.get(activity.toolName.trim().toLowerCase()) || [];
+        toolCall = candidates.find((candidate) => !matched.has(candidate)) ?? candidates[0];
+      }
+      if (toolCall) matched.add(toolCall);
+      return {
+        key: activity.id || `tool-${index}`,
+        kind: "tool",
+        text: activity.text,
+        phase: activity.phase,
+        timestamp: activity.timestamp,
+        toolCall,
+      };
+    });
+
+    for (const toolCall of storedToolCalls) {
+      if (matched.has(toolCall)) continue;
+      entries.push({
+        key: toolCall.id || `tool-orphan-${entries.length}`,
+        kind: "tool",
+        text: toolCall.name,
+        phase: toolCall.status === "failed" ? "error" : "result",
+        timestamp: Number.MAX_SAFE_INTEGER,
+        toolCall,
+      });
+    }
+    return entries;
+  }, [subagent.activities, storedToolCalls]);
+
+  const hasThoughtEntries = entries.some((entry) => entry.kind === "thought");
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+  const toggleTool = (key: string) => {
+    setExpandedTools((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const storedToolCallCount = subagent.toolCalls?.length || 0;
+  const totalToolCallCount = Math.max(subagent.toolCallCount || 0, storedToolCallCount);
 
   return (
     <div className="space-y-5">
-      {activities.length > 0 ? (
+      {entries.length > 0 ? (
         <section>
-          <h4 className="mb-2 text-[11px] font-semibold uppercase text-gray-500">Activity</h4>
+          <h4 className="mb-2 text-[11px] font-semibold uppercase text-gray-500">Timeline</h4>
           <div className="space-y-2 border-l border-white/10 pl-3">
-            {activities.map((activity) => (
-              <div key={activity.id} className="chat-activity-text flex gap-2 text-gray-400">
-                <span
-                  className={
-                    activity.phase === "error" || activity.phase === "blocked"
-                      ? "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-400"
-                      : activity.phase === "start"
-                        ? "mt-1.5 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[rgb(var(--accent-primary))]"
-                        : "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-500"
-                  }
-                />
-                <div className="min-w-0">
-                  <MessageContent content={activity.text} onOpenLink={onOpenLink} />
-                  {activity.toolName && activity.toolName !== "__thought" ? (
-                    <span className="chat-meta-text mt-0.5 block font-mono text-gray-600">
-                      {activity.toolName} · {activity.phase}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {subagent.thinking && activities.every((activity) => activity.toolName !== "__thought") ? (
-        <section>
-          <h4 className="mb-2 text-[11px] font-semibold uppercase text-gray-500">Thinking</h4>
-          <div className="chat-thought-text rounded-md bg-white/[0.025] p-3 text-gray-400">
-            <MessageContent content={subagent.thinking} onOpenLink={onOpenLink} />
-          </div>
-        </section>
-      ) : null}
-
-      {toolCalls.length > 0 ? (
-        <section>
-          <h4 className="mb-2 text-[11px] font-semibold uppercase text-gray-500">Tool calls</h4>
-          <div className="space-y-1.5">
-            {toolCalls.map((toolCall, index) => {
-              const key = toolCall.id || `${toolCall.name}-${index}`;
-              const expanded = expandedTools.has(key);
+            {entries.map((entry) => {
+              if (entry.kind === "thought") {
+                return (
+                  <div key={entry.key} className="chat-thought-text flex gap-2 text-gray-500">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-600" />
+                    <div className="min-w-0">
+                      <MessageContent content={entry.text} onOpenLink={onOpenLink} />
+                    </div>
+                  </div>
+                );
+              }
+              const expanded = expandedTools.has(entry.key);
+              const expandable = Boolean(
+                entry.toolCall &&
+                  ((entry.toolCall.args && Object.keys(entry.toolCall.args).length > 0) ||
+                    (entry.toolCall.result !== null && entry.toolCall.result !== undefined))
+              );
               return (
-                <div key={key} className="overflow-hidden rounded-md bg-white/[0.025]">
-                  <button
-                    type="button"
-                    className="chat-activity-text flex w-full items-center gap-2 px-3 py-2 text-left text-gray-300 hover:bg-white/[0.04]"
-                    onClick={() =>
-                      setExpandedTools((current) => {
-                        const next = new Set(current);
-                        if (next.has(key)) next.delete(key);
-                        else next.add(key);
-                        return next;
-                      })
-                    }
-                  >
-                    {expanded ? (
-                      <ChevronDown className="h-3 w-3" />
-                    ) : (
-                      <ChevronRight className="h-3 w-3" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate font-mono">{toolCall.name}</span>
+                <div key={entry.key} className="min-w-0">
+                  <div className="chat-activity-text flex gap-2 text-gray-400">
                     <span
                       className={
-                        toolCall.status === "failed"
-                          ? "chat-meta-text capitalize text-red-400"
-                          : toolCall.status === "executing" || toolCall.status === "pending"
-                            ? "chat-meta-text capitalize text-[rgb(var(--accent-primary))]"
-                            : "chat-meta-text capitalize text-gray-600"
+                        entry.phase === "error" || entry.phase === "blocked"
+                          ? "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-400"
+                          : entry.phase === "start"
+                            ? "mt-1.5 h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[rgb(var(--accent-primary))]"
+                            : "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-500"
                       }
-                    >
-                      {toolCall.status || "completed"}
-                    </span>
-                  </button>
-                  {expanded ? (
-                    <div className="grid gap-2 border-t border-white/10 p-2.5">
-                      {toolCall.args && Object.keys(toolCall.args).length > 0 ? (
+                    />
+                    <div className="min-w-0 flex-1">
+                      {expandable ? (
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-1.5 text-left hover:text-gray-200"
+                          onClick={() => toggleTool(entry.key)}
+                        >
+                          {expanded ? (
+                            <ChevronDown className="h-3 w-3 shrink-0" />
+                          ) : (
+                            <ChevronRight className="h-3 w-3 shrink-0" />
+                          )}
+                          <span className="min-w-0 flex-1">
+                            <MessageContent content={entry.text} onOpenLink={onOpenLink} />
+                          </span>
+                        </button>
+                      ) : (
+                        <MessageContent content={entry.text} onOpenLink={onOpenLink} />
+                      )}
+                      {entry.toolCall ? (
+                        <span
+                          className={`chat-meta-text mt-0.5 block ${statusTone(entry.toolCall.status, entry.phase)}`}
+                        >
+                          {entry.toolCall.name} · {toolStatus(entry)}
+                        </span>
+                      ) : (
+                        <span className="chat-meta-text mt-0.5 block font-mono text-gray-600">
+                          {entry.phase}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {expanded && entry.toolCall ? (
+                    <div className="mt-1.5 grid gap-2 rounded-md bg-white/[0.025] p-2.5">
+                      {entry.toolCall.args && Object.keys(entry.toolCall.args).length > 0 ? (
                         <div>
                           <div className="chat-meta-text mb-1 uppercase text-gray-600">
                             Arguments
                           </div>
                           <pre className="chat-code-text max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-black/20 p-2 text-gray-400">
-                            {formatJson(toolCall.args)}
+                            {formatJson(entry.toolCall.args)}
                           </pre>
                         </div>
                       ) : null}
-                      {toolCall.result !== null && toolCall.result !== undefined ? (
+                      {entry.toolCall.result !== null && entry.toolCall.result !== undefined ? (
                         <div>
                           <div className="chat-meta-text mb-1 uppercase text-gray-600">Output</div>
                           <pre className="chat-code-text max-h-56 overflow-auto whitespace-pre-wrap break-all rounded bg-black/20 p-2 text-gray-300">
-                            {formatJson(toolCall.result)}
+                            {formatJson(entry.toolCall.result)}
                           </pre>
                         </div>
                       ) : null}
@@ -149,6 +228,20 @@ export function SubagentTimeline({
                 </div>
               );
             })}
+          </div>
+          {totalToolCallCount > storedToolCallCount ? (
+            <p className="chat-meta-text mt-2 text-gray-600">
+              Showing the latest {storedToolCallCount} of {totalToolCallCount} tool calls
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {subagent.thinking && !hasThoughtEntries ? (
+        <section>
+          <h4 className="mb-2 text-[11px] font-semibold uppercase text-gray-500">Thinking</h4>
+          <div className="chat-thought-text rounded-md bg-white/[0.025] p-3 text-gray-400">
+            <MessageContent content={subagent.thinking} onOpenLink={onOpenLink} />
           </div>
         </section>
       ) : null}

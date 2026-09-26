@@ -16,6 +16,7 @@ import {
   toLiveActivityItems,
 } from "./chatModel";
 import { isRunEndingStatus, isSteeringHandoffStatus } from "./sessionRunStatus";
+import { isDelegatedWaitStatusLabel } from "../../../../shared/chat-status";
 
 export type MultiChatLiveStatusValue = "thinking" | "generating" | "compacting" | "idle";
 
@@ -133,7 +134,11 @@ export function projectMultiChatStatusEvent(
     if (event.status !== "generating" || previous?.status !== "generating") {
       streamingContent = null;
     }
-    if (!event.toolName && isMeaningfulThoughtDetail(detail)) {
+    if (
+      !event.toolName &&
+      isMeaningfulThoughtDetail(detail) &&
+      !isDelegatedWaitStatusLabel(detail)
+    ) {
       activities = applyLiveActivityEvent(activities, {
         phase: "result",
         text: detail,

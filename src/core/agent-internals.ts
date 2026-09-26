@@ -1,4 +1,7 @@
-import { formatStructuredToolActivityDetail } from "../../shared/tool-activity-detail";
+import {
+  fetchFailureLabel,
+  formatStructuredToolActivityDetail,
+} from "../../shared/tool-activity-detail";
 import { isImagePath } from "../../shared/image-formats";
 
 export interface OpenAIToolCall {
@@ -727,13 +730,13 @@ export function formatToolActivityDetail(
         ? `Fetching ${url}`
         : phase === "result"
           ? `Fetched ${url}`
-          : `Fetch failed for ${url}`;
+          : fetchFailureLabel(phase, url, result);
     }
     return phase === "start"
       ? "Fetching webpage..."
       : phase === "result"
         ? "Fetch complete"
-        : "Fetch failed";
+        : fetchFailureLabel(phase, undefined, result);
   }
 
   if (key === "exec" || key === "process" || key === "git") {

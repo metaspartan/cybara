@@ -3,7 +3,10 @@ import {
   mergeActivityLists,
   normalizeActivityTextForPhase,
 } from "@/lib/chatActivities";
-import { isGenericChatStatusLabel } from "../../../../shared/chat-status";
+import {
+  isDelegatedWaitStatusLabel,
+  isGenericChatStatusLabel,
+} from "../../../../shared/chat-status";
 import { normalizeImageReadActivityText } from "../../../../shared/chat-activity-groups";
 
 export function isGenericStatusLabel(detail: string): boolean {
@@ -45,6 +48,7 @@ export function applyLiveActivityEvent(
 ): LiveActivityItem[] {
   const trimmed = event.text.trim();
   if (!trimmed) return previous;
+  if (isDelegatedWaitStatusLabel(trimmed)) return previous;
 
   const normalizedToolName =
     typeof event.toolName === "string" ? event.toolName.trim().toLowerCase() : "";

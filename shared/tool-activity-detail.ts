@@ -83,6 +83,37 @@ function formatPlanSummary(
   return `Created plan with ${items.length} item${items.length === 1 ? "" : "s"}`;
 }
 
+const HTTP_STATUS_TEXT_PATTERN = /\bHTTP\s+(\d{3})\b/i;
+const STATUS_FIELD_PATTERN = /\bstatus(?:\s+code)?(?:\s*[:=]\s*|\s+)(\d{3})\b/i;
+
+function toolErrorText(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (!isRecord(error)) return "";
+  const parts: string[] = [];
+  for (const key of ["error", "message", "detail", "content"]) {
+    const value = error[key];
+    if (typeof value === "string") parts.push(value);
+  }
+  return parts.join(" ");
+}
+
+export function fetchHttpStatusFromError(error: unknown): string | undefined {
+  const text = toolErrorText(error);
+  const match = HTTP_STATUS_TEXT_PATTERN.exec(text) ?? STATUS_FIELD_PATTERN.exec(text);
+  return match?.[1];
+}
+
+export function fetchFailureLabel(
+  phase: ToolActivityPhase,
+  url: string | undefined,
+  error: unknown,
+): string {
+  const verb = phase === "blocked" ? "Fetch blocked" : "Fetch failed";
+  const status = fetchHttpStatusFromError(error);
+  const label = status ? `${verb} (${status})` : verb;
+  return url ? `${label} for ${url}` : label;
+}
+
 export function formatStructuredToolActivityDetail(
   toolName: string,
   args: Record<string, unknown>,

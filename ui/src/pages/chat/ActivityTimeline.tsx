@@ -36,6 +36,7 @@ import {
 } from "./chatModel";
 import { LiveStatusIndicator, LiveStatusOrb, LiveStatusText } from "./LiveStatusIndicator";
 import { SubagentIcon } from "./SubagentIcon";
+import { isDelegatedWaitStatusLabel } from "../../../../shared/chat-status";
 
 const GROUP_ICONS: Record<ActivityGroupKind, LucideIcon> = {
   read: FileText,
@@ -208,16 +209,18 @@ function ActivityRow({
 export function GroupedActivityRows({
   activities,
   openByDefault = [],
+  defaultExpandImages = false,
 }: {
   activities: LiveActivityItem[];
   openByDefault?: readonly ActivityGroupKind[];
+  defaultExpandImages?: boolean;
 }) {
   const [toggledGroups, setToggledGroups] = useState<Set<string>>(new Set());
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [toggledRows, setToggledRows] = useState<Set<string>>(new Set());
   const entries = groupActivitiesForDisplay(activities);
 
   const toggleRow = (key: string) => {
-    setExpandedRows((previous) => {
+    setToggledRows((previous) => {
       const next = new Set(previous);
       if (next.has(key)) {
         next.delete(key);
@@ -230,11 +233,13 @@ export function GroupedActivityRows({
 
   const renderRow = (activity: LiveActivityItem) => {
     const key = activityRowKey(activity);
+    const defaultExpanded = defaultExpandImages && Boolean(activity.imageSource);
+    const expanded = defaultExpanded !== toggledRows.has(key);
     return (
       <ActivityRow
         key={key}
         activity={activity}
-        expanded={expandedRows.has(key)}
+        expanded={expanded}
         onToggle={() => toggleRow(key)}
       />
     );
@@ -398,24 +403,36 @@ export function LiveActivityTimeline({
   const activeStartStep = getLatestInFlightStep(visibleActivities);
   const explicitCurrentStep =
     typeof currentStep === "string" && currentStep.trim().length > 0 ? currentStep.trim() : null;
+  const delegatedWaitStep =
+    explicitCurrentStep && isDelegatedWaitStatusLabel(explicitCurrentStep)
+      ? explicitCurrentStep
+      : null;
   const normalizedCurrentStep =
-    explicitCurrentStep && !isGenericStatusLabel(explicitCurrentStep) ? explicitCurrentStep : null;
-  const displayCurrentStep = activeStartStep
+    explicitCurrentStep && !isGenericStatusLabel(explicitCurrentStep) && !delegatedWaitStep
+      ? explicitCurrentStep
+      : null;
+  const displayCurrentStep = delegatedWaitStep
     ? null
-    : normalizedCurrentStep ||
-      (status === "generating"
-        ? "Generating response..."
-        : status === "compacting"
-          ? "Compacting earlier context..."
-          : status === "thinking"
-            ? "Thinking..."
-            : null);
+    : activeStartStep
+      ? null
+      : normalizedCurrentStep ||
+        (status === "generating"
+          ? "Generating response..."
+          : status === "compacting"
+            ? "Compacting earlier context..."
+            : status === "thinking"
+              ? "Thinking..."
+              : null);
 
   return (
     <div className="space-y-1">
       <LiveWorkedDuration startedAtMs={startedAtMs} />
       {visibleActivities.length > 0 && (
-        <GroupedActivityRows activities={visibleActivities} openByDefault={LIVE_OPEN_GROUP_KINDS} />
+        <GroupedActivityRows
+          activities={visibleActivities}
+          defaultExpandImages
+          openByDefault={LIVE_OPEN_GROUP_KINDS}
+        />
       )}
       {displayCurrentStep ? (
         <LiveStatusIndicator

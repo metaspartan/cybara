@@ -70,4 +70,116 @@ describe("persisted subagents", () => {
     fixture.deleteRawSession(child);
     fixture.deleteRawSession(root);
   });
+
+  test("derives tool call counts and history from persisted child messages", async () => {
+    const root = `root-${crypto.randomUUID()}`;
+    const child = `child-${crypto.randomUUID()}`;
+    fixture.insertRawSession(root, "default", [{ role: "user", content: "Parent task" }]);
+    fixture.insertRawSession(
+      child,
+      "default",
+      [
+        { role: "user", content: "Child task" },
+        {
+          role: "assistant",
+          content: "Child result",
+          metadata: {
+            thinking: "I will inspect the file first.",
+            tool_calls: [
+              {
+                id: "call-1",
+                name: "read",
+                args: { path: "notes.md" },
+                status: "completed",
+                result: { content: "# Notes" },
+                timeline_index: 0,
+              },
+              {
+                id: "call-2",
+                name: "exec",
+                args: { command: "ls" },
+                status: "completed",
+                result: { output: "notes.md" },
+                timeline_index: 1,
+              },
+            ],
+            process_activities: [
+              {
+                id: "activity-1",
+                phase: "result",
+                text: "Explored notes.md",
+                timestamp: 1_000,
+                toolName: "read",
+                toolCallId: "call-1",
+              },
+            ],
+          },
+        },
+      ],
+      root
+    );
+    const runs = await fixture.api("GET", `/api/subagents?sessionId=${root}`);
+    expect(runs.data).toHaveLength(1);
+    expect(runs.data[0]).toMatchObject({
+      id: child,
+      toolCallCount: 2,
+      activityCount: 1,
+    });
+    const detail = await fixture.api("GET", `/api/subagents/${child}?sessionId=${root}`);
+    expect(detail.data.thinking).toContain("inspect the file");
+    expect(detail.data.toolCalls.map((toolCall: { name: string }) => toolCall.name)).toEqual([
+      "read",
+      "exec",
+    ]);
+    expect(detail.data.toolCalls[0]).toMatchObject({
+      id: "call-1",
+      args: { path: "notes.md" },
+      status: "completed",
+      timeline_index: 0,
+    });
+    expect(detail.data.activities).toHaveLength(1);
+    expect(detail.data.activities[0]).toMatchObject({
+      text: "Explored notes.md",
+      toolName: "read",
+      toolCallId: "call-1",
+      phase: "result",
+    });
+    fixture.deleteRawSession(child);
+    fixture.deleteRawSession(root);
+  });
+
+  test("reports true tool call totals for imported runs beyond the stored window", async () => {
+    const root = `root-${crypto.randomUUID()}`;
+    const child = `child-${crypto.randomUUID()}`;
+    fixture.insertRawSession(root, "default", [{ role: "user", content: "Parent task" }]);
+    const toolCalls = Array.from({ length: 150 }, (_, index) => ({
+      id: `call-${index}`,
+      name: "read",
+      args: { path: `file-${index}.md` },
+      status: "completed",
+      result: { content: "file" },
+      timeline_index: index,
+    }));
+    fixture.insertRawSession(
+      child,
+      "default",
+      [
+        { role: "user", content: "Child task" },
+        {
+          role: "assistant",
+          content: "Child result",
+          metadata: { tool_calls: toolCalls },
+        },
+      ],
+      root
+    );
+    const runs = await fixture.api("GET", `/api/subagents?sessionId=${root}`);
+    expect(runs.data).toHaveLength(1);
+    expect(runs.data[0]).toMatchObject({ id: child, toolCallCount: 150 });
+    const detail = await fixture.api("GET", `/api/subagents/${child}?sessionId=${root}`);
+    expect(detail.data.toolCalls).toHaveLength(100);
+    expect(detail.data.toolCallCount).toBe(150);
+    fixture.deleteRawSession(child);
+    fixture.deleteRawSession(root);
+  });
 });

@@ -50,6 +50,7 @@ import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
 import { ChatPageHeader } from "./chat/ChatPageHeader";
 import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
+import { RunningTasksBar } from "./chat/RunningTasksBar";
 import { chatHorizontalPaddingClassName } from "./chat/chatAppearanceLayout";
 import { type ChatLinkOpenOptions, routeChatLink } from "./chat/chatLinkRouting";
 import {
@@ -1615,6 +1616,13 @@ export function Chat() {
     providerPlan: activeProviderPlan,
     queueing: sendQueuesFollowUp,
     reasoningUpdating: updateAgentReasoning.isPending,
+    runningTasks: sessionId ? (
+      <RunningTasksBar
+        sessionId={sessionId}
+        liveDetail={liveCurrentStep}
+        onOpenSubagent={openWorkspaceSubagent}
+      />
+    ) : null,
     codexFastMode,
     codexFastModeUpdating: savingCodexFastMode,
     onCodexFastModeChange: updateCodexFastMode,

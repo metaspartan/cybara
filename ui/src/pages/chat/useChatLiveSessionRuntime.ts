@@ -1070,12 +1070,15 @@ export function useChatLiveSessionRuntime({
           if (!payload.toolName) {
             const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
             const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-            if (isDelegatedWaitStatusLabel(detail)) setStreamingContent(null);
+            const delegatedWait = isDelegatedWaitStatusLabel(detail);
+            if (delegatedWait) setStreamingContent(null);
             const eventTimestamp =
               typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
                 ? payload.timestamp
                 : undefined;
-            if (isMeaningfulThoughtDetail(detail)) {
+            if (delegatedWait) {
+              setLiveCurrentStep(activeToolStep || detail);
+            } else if (isMeaningfulThoughtDetail(detail)) {
               appendLiveActivity("result", detail, "__thought", eventTimestamp);
               setLiveCurrentStep(activeToolStep || detail);
             } else {

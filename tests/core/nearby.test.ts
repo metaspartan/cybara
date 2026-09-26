@@ -409,7 +409,11 @@ describe("nearby network and settings boundaries", () => {
         discoveryMinutes: 5,
         autoAdvertise: true,
       });
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        if ((await serviceA.status()).advertising && (await serviceB.status()).advertising) break;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
       expect((await serviceA.status()).advertising).toBe(true);
       expect((await serviceB.status()).advertising).toBe(true);
       const [infoA, infoB] = await Promise.all([

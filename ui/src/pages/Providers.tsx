@@ -967,19 +967,21 @@ function ProviderModal({
               name="base_url"
               label="MiMo API Base URL"
               defaultValue={
-                provider?.base_url || provider?.baseUrl || "https://api.xiaomimimo.com/anthropic/v1"
+                provider?.base_url ||
+                provider?.baseUrl ||
+                "https://token-plan-sgp.xiaomimimo.com/anthropic/v1"
               }
               helperText="Use the endpoint for your key and region. Re-enter your API key when changing the endpoint."
               list="mimo-endpoints"
               required
             />
             <datalist id="mimo-endpoints">
+              <option value="https://token-plan-sgp.xiaomimimo.com/anthropic/v1">
+                Token Plan: Singapore (tp- / ttp-) — default
+              </option>
               <option value="https://api.xiaomimimo.com/anthropic/v1">Pay as you go (sk-)</option>
               <option value="https://token-plan-cn.xiaomimimo.com/anthropic/v1">
                 Token Plan: China (tp- / ttp-)
-              </option>
-              <option value="https://token-plan-sgp.xiaomimimo.com/anthropic/v1">
-                Token Plan: Singapore (tp- / ttp-)
               </option>
               <option value="https://token-plan-ams.xiaomimimo.com/anthropic/v1">
                 Token Plan: Europe (tp- / ttp-)

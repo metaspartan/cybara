@@ -4,6 +4,7 @@ import type {
   SubagentRunRecord,
   SubagentToolCall,
 } from "../core/subagent-registry";
+import { subagentRunCounts } from "../core/subagent-registry";
 
 export type ApiSubagentStatus =
   | "pending"
@@ -71,8 +72,7 @@ export function serializeSubagentSummary(run: SubagentRunRecord): ApiSubagentSum
     cleanup: run.cleanup,
     result: run.outcome?.result,
     error: run.outcome?.error,
-    activityCount: run.activities?.length || 0,
-    toolCallCount: run.toolCalls?.length || 0,
+    ...subagentRunCounts(run),
   };
 }
 

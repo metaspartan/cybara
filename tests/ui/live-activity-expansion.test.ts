@@ -112,10 +112,10 @@ describe("live activity expansion", () => {
       "utf8"
     );
     expect(source).toContain(
-      "const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());"
+      "const [toggledRows, setToggledRows] = useState<Set<string>>(new Set());"
     );
     expect(source).toContain("key={key}");
-    expect(source).toContain("expanded={expandedRows.has(key)}");
+    expect(source).toContain("const expanded = defaultExpanded !== toggledRows.has(key);");
     expect(source).not.toContain("<ActivityRow key={activity.id}");
   });
 });

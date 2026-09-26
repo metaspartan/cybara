@@ -84,6 +84,7 @@ import {
 } from "./multiChatLayout";
 import { MULTI_CHAT_ACTIVE_STATUSES, type MultiChatLiveState } from "./multiChatLiveStatus";
 import { NewChatWorkspaceBar } from "./NewChatWorkspaceBar";
+import { RunningTasksBar } from "./RunningTasksBar";
 import { normalizePendingChatMessages } from "./pendingQueueState";
 import type { ChatSidebarSession } from "./sessionGrouping";
 import { useChatAttachments } from "./useChatAttachments";
@@ -722,6 +723,10 @@ function MultiChatPane({
             {dictationError || dictationStatus}
           </div>
         ) : null}
+        <RunningTasksBar
+          liveDetail={status?.currentStep || null}
+          sessionId={isDraft ? null : sessionId}
+        />
         {isDraft ? (
           <NewChatWorkspaceBar
             branches={environmentGit.branches}

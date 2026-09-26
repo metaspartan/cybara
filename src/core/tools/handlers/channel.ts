@@ -61,7 +61,6 @@ const sessions = new Map<string, SubagentSession>();
 const subagentAbortControllers = new Map<string, AbortController>();
 const DEFAULT_SUBAGENT_MAX_ACTIVE_CHILDREN = 3;
 const SUBAGENT_MAX_ACTIVITIES = 300;
-const SUBAGENT_MAX_TOOL_CALLS = 100;
 
 export function getSubagentSession(sessionKey: string): SubagentSession | undefined {
   return sessions.get(sessionKey);
@@ -361,8 +360,7 @@ function subagentWaitResult(run: SubagentRunRecord): SubagentWaitResult {
     task: run.task,
     result: run.outcome?.result,
     error: run.outcome?.error,
-    activityCount: run.activities?.length || 0,
-    toolCallCount: run.toolCalls?.length || 0,
+    ...subagentRegistry.subagentRunCounts(run),
     endedAt: run.endedAt,
   };
 }
@@ -573,9 +571,6 @@ function recordSubagentToolCall(
   };
   if (existingIndex >= 0) toolCalls[existingIndex] = next;
   else toolCalls.push(next);
-  if (toolCalls.length > SUBAGENT_MAX_TOOL_CALLS) {
-    toolCalls.splice(0, toolCalls.length - SUBAGENT_MAX_TOOL_CALLS);
-  }
   return true;
 }
 
@@ -603,7 +598,12 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
     const activityChanged = recordSubagentActivity(activities, payload);
     const toolCallChanged = recordSubagentToolCall(liveToolCalls, payload);
     if ((activityChanged || toolCallChanged) && run) {
-      subagentRegistry.updateRunDetails(run.runId, { activities, toolCalls: liveToolCalls });
+      subagentRegistry.updateRunDetails(run.runId, {
+        activities,
+        toolCalls: liveToolCalls,
+        activityCount: activities.length,
+        toolCallCount: liveToolCalls.length,
+      });
     }
   });
 

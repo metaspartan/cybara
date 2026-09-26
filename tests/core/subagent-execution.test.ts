@@ -23,6 +23,7 @@ import {
   resetSubagentRegistryForTests,
   configureSubagentRegistry,
   cleanupOldRuns,
+  updateRunDetails,
 } from "../../src/core/subagent-registry";
 import {
   configureChannelChatRuntime,
@@ -532,6 +533,38 @@ describe("Subagent execution wiring", () => {
     } finally {
       (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
     }
+  });
+
+  test("keeps true tool call counts even when stored details are capped", () => {
+    const run = registerSubagentRun({
+      childSessionKey: `child-counts-${process.pid}`,
+      requesterSessionKey: `parent-counts-${process.pid}`,
+      task: "Run far more than one hundred tools",
+    });
+
+    const toolCalls = Array.from({ length: 150 }, (_, index) => ({
+      id: `call-${index}`,
+      name: "read",
+      result: { content: `file-${index}` },
+      status: "completed" as const,
+    }));
+    updateRunDetails(run.runId, {
+      toolCalls,
+      toolCallCount: toolCalls.length,
+      activities: [{ id: "a1", phase: "result", text: "Explored files", timestamp: 1 }],
+      activityCount: 240,
+    });
+
+    const updated = getRun(run.runId);
+    expect(updated?.toolCallCount).toBe(150);
+    expect(updated?.toolCalls).toHaveLength(100);
+    expect(updated?.activityCount).toBe(240);
+    expect(updated?.activities).toHaveLength(1);
+
+    markRunCompleted(run.runId, "done", { toolCalls, activities: [] });
+    const completed = getRun(run.runId);
+    expect(completed?.toolCallCount).toBe(150);
+    expect(completed?.toolCalls).toHaveLength(100);
   });
 
   test("sessions_wait is scoped to the requester and reports pending runs without blocking", async () => {

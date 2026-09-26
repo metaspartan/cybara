@@ -13,6 +13,7 @@ import {
   getActiveSessionRunId,
   removeSupersededRecoveryCompletion,
 } from "./session-event-ledger";
+import { isDelegatedWaitStatusLabel } from "../../shared/chat-status";
 
 export type AgentStatus =
   | "idle"
@@ -208,6 +209,7 @@ function isMeaningfulThoughtDetail(detail: string): boolean {
   const normalized = detail.trim().toLowerCase();
   if (!normalized) return false;
   if (isMidLoopContextCompactionDetail(detail)) return false;
+  if (isDelegatedWaitStatusLabel(detail)) return false;
   if (
     normalized === "thinking..." ||
     normalized === "thinking" ||
