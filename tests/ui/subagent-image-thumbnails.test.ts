@@ -75,4 +75,10 @@ describe("subagent image thumbnails", () => {
     expect(timelineSource).toContain("imageAltFromPath(imagePath)");
     expect(timelineSource).toContain('entry.imageAlt || "Viewed image"');
   });
+
+  test("orphan tool calls stay visible with or without image sources", () => {
+    expect(timelineSource).toContain("if (matched.has(toolCall)) continue;");
+    expect(timelineSource).not.toContain("if (!imageSource) continue;");
+    expect(timelineSource).toContain("tool-orphan-");
+  });
 });

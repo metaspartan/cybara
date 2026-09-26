@@ -123,8 +123,11 @@ export function SubagentTimeline({
 
     for (const toolCall of storedToolCalls) {
       if (matched.has(toolCall)) continue;
+      const imagePath =
+        typeof toolCall.args?.path === "string" && toolCall.args.path.trim()
+          ? toolCall.args.path.trim()
+          : undefined;
       const imageSource = imageViewedSource(toolCall);
-      if (!imageSource) continue;
       entries.push({
         key: toolCall.id || `tool-orphan-${entries.length}`,
         kind: "tool",
@@ -133,9 +136,7 @@ export function SubagentTimeline({
         timestamp: Number.MAX_SAFE_INTEGER,
         toolCall,
         imageSource,
-        imageAlt: imageAltFromPath(
-          typeof toolCall.args?.path === "string" ? toolCall.args.path : undefined
-        ),
+        imageAlt: imageSource && imagePath ? imageAltFromPath(imagePath) : undefined,
       });
     }
     return entries;
