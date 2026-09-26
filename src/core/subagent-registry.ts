@@ -15,6 +15,8 @@ export interface SubagentActivity {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
+  imagePath?: string;
+  imageAlt?: string;
 }
 
 export interface SubagentToolCall {

@@ -519,6 +519,8 @@ function recordSubagentActivity(
       toolName: payload.toolName,
       toolCallId: payload.toolCallId,
       sandboxProvider: payload.sandboxProvider,
+      imagePath: payload.imagePath || activities[matchingIndex]?.imagePath,
+      imageAlt: activities[matchingIndex]?.imageAlt,
     };
     if (matchingIndex >= 0) activities[matchingIndex] = activity;
     else activities.push(activity);
