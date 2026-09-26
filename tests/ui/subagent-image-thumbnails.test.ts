@@ -55,16 +55,24 @@ describe("subagent image thumbnails", () => {
         toolName: "read",
         toolCallId: "call-view-1",
         imagePath: "/tmp/cybara-e2e/test-image.png",
-        imageAlt: "test-image.png",
       },
     ]);
     expect(activities?.[0]).toMatchObject({
       imagePath: "/tmp/cybara-e2e/test-image.png",
-      imageAlt: "test-image.png",
       toolName: "read",
     });
     updateRunDetails(run.runId, { activities, activityCount: activities?.length });
     const stored = getRun(run.runId);
     expect(stored?.activities?.[0]?.imagePath).toBe("/tmp/cybara-e2e/test-image.png");
+  });
+
+  test("alt text stays UI-derived from imagePath instead of a dead schema field", () => {
+    const registrySource = readFileSync(
+      fileURLToPath(new URL("../../src/core/subagent-registry.ts", import.meta.url)),
+      "utf8"
+    );
+    expect(registrySource).not.toContain("imageAlt");
+    expect(timelineSource).toContain("imageAltFromPath(imagePath)");
+    expect(timelineSource).toContain('entry.imageAlt || "Viewed image"');
   });
 });
