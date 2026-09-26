@@ -308,7 +308,8 @@ function buildRoutesFixture() {
       role: string;
       content: string;
       metadata?: string | Record<string, unknown>;
-    }>
+    }>,
+    parentSessionId?: string
   ): void {
     const dbPath = join(testHome, ".cybara", "data", "platform.db");
     const db = new Database(dbPath);
@@ -317,6 +318,12 @@ function buildRoutesFixture() {
         "INSERT OR REPLACE INTO chat_sessions (id, agent_id, messages, created_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
       ).run(sessionId, agentId, "[]");
 
+      if (parentSessionId) {
+        db.query("UPDATE chat_sessions SET parent_session_id = ? WHERE id = ?").run(
+          parentSessionId,
+          sessionId
+        );
+      }
       for (const message of messages) {
         const metadata =
           typeof message.metadata === "string"

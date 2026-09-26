@@ -14,6 +14,7 @@ export type ApiSubagentStatus =
   | "killed";
 
 export interface ApiSubagentSummary {
+  imported?: boolean;
   id: string;
   label: string;
   status: ApiSubagentStatus;
@@ -55,6 +56,7 @@ export function subagentStatus(run: SubagentRunRecord): ApiSubagentStatus {
 export function serializeSubagentSummary(run: SubagentRunRecord): ApiSubagentSummary {
   return {
     id: run.runId,
+    imported: run.imported,
     label: run.label || run.task.slice(0, 50),
     status: subagentStatus(run),
     createdAt: new Date(run.createdAt).toISOString(),

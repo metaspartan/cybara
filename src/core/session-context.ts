@@ -1492,6 +1492,7 @@ function persistedSessionListSql(
           )
         ) as lastModelMetadata
       FROM chat_sessions cs
+      WHERE cs.parent_session_id IS NULL
       ORDER BY cs.pinned DESC, cs.updated_at DESC
       ${typeof limit === "number" ? "LIMIT ? OFFSET ?" : ""}
     `;
@@ -1500,7 +1501,9 @@ function persistedSessionListSql(
 
 export async function countPersistedSessions(): Promise<number> {
   try {
-    const row = db.prepare("SELECT COUNT(*) as total FROM chat_sessions").get() as {
+    const row = db
+      .prepare("SELECT COUNT(*) as total FROM chat_sessions WHERE parent_session_id IS NULL")
+      .get() as {
       total?: number;
     } | null;
     return typeof row?.total === "number" ? row.total : 0;

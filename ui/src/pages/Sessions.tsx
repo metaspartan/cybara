@@ -203,48 +203,22 @@ export function Sessions() {
       agentIdentity(session.agent_id).name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const sessionsById = new Map(filteredSessions.map((session) => [session.id, session]));
-  const subChatsByParent = new Map<string, Session[]>();
-  for (const session of filteredSessions) {
-    if (!session.parent_session_id) continue;
-    const parent = sessionsById.get(session.parent_session_id);
-    if (!parent) continue;
-    const children = subChatsByParent.get(session.parent_session_id) ?? [];
-    children.push(session);
-    subChatsByParent.set(session.parent_session_id, children);
-  }
-  const topLevelSessions = filteredSessions.filter(
-    (session) => !session.parent_session_id || !sessionsById.has(session.parent_session_id)
-  );
-
-  const renderSessionCard = (session: Session, isSubChat: boolean, subChatCount: number) => (
+  const renderSessionCard = (session: Session) => (
     <Card
-      className={
-        isSubChat
-          ? "hover:border-white/20 transition-colors max-w-full overflow-hidden ml-8 border-white/5 bg-white/[0.02]"
-          : "hover:border-white/20 transition-colors max-w-full overflow-hidden"
-      }
+      key={session.id}
+      className="hover:border-white/20 transition-colors max-w-full overflow-hidden"
     >
       <CardContent className="p-4">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 mb-2 flex-wrap">
-              {isSubChat ? (
-                <span className="text-gray-500 text-sm flex-shrink-0">↳</span>
-              ) : (
-                <MessageSquare className="w-5 h-5 text-indigo-400 flex-shrink-0" />
-              )}
-              <h3 className={`font-medium text-white truncate ${isSubChat ? "text-sm" : ""}`}>
+              <MessageSquare className="w-5 h-5 text-indigo-400 flex-shrink-0" />
+              <h3 className="font-medium text-white truncate">
                 Session {session.id.slice(0, 8)}...
               </h3>
               <Badge variant="info" size="sm">
                 {session.message_count || 0} messages
               </Badge>
-              {!isSubChat && subChatCount > 0 && (
-                <Badge variant="default" size="sm">
-                  {subChatCount} sub-chat{subChatCount === 1 ? "" : "s"}
-                </Badge>
-              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400">
@@ -325,15 +299,7 @@ export function Sessions() {
           </Card>
         ) : (
           <div className="grid gap-4 max-w-full">
-            {topLevelSessions.map((session) => {
-              const subChats = subChatsByParent.get(session.id) ?? [];
-              return (
-                <div key={session.id} className="space-y-2">
-                  {renderSessionCard(session, false, subChats.length)}
-                  {subChats.map((subChat) => renderSessionCard(subChat, true, 0))}
-                </div>
-              );
-            })}
+            {filteredSessions.map(renderSessionCard)}
             {hasMore && (
               <div className="flex justify-center pt-2">
                 <Button
@@ -407,7 +373,8 @@ export function Sessions() {
                       {message.tool_calls && message.tool_calls.length > 0 && (
                         <Badge variant="warning" size="sm" className="flex items-center gap-1">
                           <Zap className="w-3 h-3" />
-                          {message.tool_calls.length} tool{message.tool_calls.length > 1 ? "s" : ""}
+                          {message.tool_calls.length} tool
+                          {message.tool_calls.length > 1 ? "s" : ""}
                         </Badge>
                       )}
                     </div>
