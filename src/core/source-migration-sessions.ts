@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { join } from "path";
+import { basename, dirname, join, sep } from "path";
 import type { ChatMessage } from "../api/chat";
 import type { MigrationSourceKind } from "./source-migration";
 import type { OpenCodeSessionSnapshot } from "./source-migration-opencode";
@@ -82,7 +82,6 @@ function flattenContent(value: unknown): string {
 }
 
 function pushMessage(messages: ChatMessage[], role: unknown, content: unknown, at?: unknown): void {
-  if (messages.length >= MAX_MESSAGES_PER_SESSION) return;
   const normalizedRole = role === "assistant" ? "assistant" : role === "user" ? "user" : undefined;
   if (!normalizedRole) return;
   const text = flattenContent(content).trim();
@@ -128,16 +127,18 @@ function snapshotFromFile(
   workspaceDir: string | null,
   createdAt: number,
   updatedAt: number,
-  title: string
+  title: string,
+  titleOverride: string | null = null
 ): ImportedSessionSnapshot | null {
   if (messages.length === 0) return null;
+  const override = titleOverride?.replace(/\s+/g, " ").trim();
   return {
     sourceId,
-    title: deriveTitle(messages, title),
+    title: override ? override : deriveTitle(messages, title),
     workspaceDir: existingDirectory(workspaceDir),
     createdAt,
     updatedAt,
-    messages,
+    messages: messages.slice(-MAX_MESSAGES_PER_SESSION),
   };
 }
 
@@ -147,12 +148,17 @@ function readClaudeCodeSession(path: string): ImportedSessionSnapshot | null {
   const messages: ChatMessage[] = [];
   let workspaceDir: string | null = null;
   let aiTitle = "";
+  let customTitle = "";
   let firstAt = 0;
   let lastAt = 0;
 
   for (const row of rows) {
+    if (row.isSidechain === true) continue;
     if (typeof row.cwd === "string" && !workspaceDir) workspaceDir = row.cwd;
     if (row.type === "ai-title" && typeof row.aiTitle === "string") aiTitle = row.aiTitle;
+    if (row.type === "custom-title" && typeof row.customTitle === "string") {
+      customTitle = row.customTitle;
+    }
     if (row.type !== "user" && row.type !== "assistant") continue;
     const message = row.message as Record<string, unknown> | undefined;
     if (!message) continue;
@@ -169,7 +175,8 @@ function readClaudeCodeSession(path: string): ImportedSessionSnapshot | null {
     workspaceDir,
     firstAt || Date.now(),
     lastAt || firstAt || Date.now(),
-    aiTitle || "Claude Code session"
+    "Claude Code session",
+    customTitle || aiTitle || null
   );
 }
 
@@ -290,7 +297,11 @@ function collectTranscripts(kind: MigrationSourceKind, root: string, extension: 
 }
 
 function sessionFilesFor(kind: MigrationSourceKind, root: string): string[] {
-  if (kind === "claude-code") return collectTranscripts(kind, root, ".jsonl");
+  if (kind === "claude-code") {
+    return collectTranscripts(kind, root, ".jsonl").filter(
+      (path) => !isClaudeCodeSubagentTranscript(path)
+    );
+  }
   if (kind === "codex") return collectTranscripts(kind, root, ".jsonl");
   if (kind === "openclaw") {
     return collectTranscripts(kind, root, ".jsonl").filter(
@@ -317,9 +328,111 @@ export function readSourceSessions(
     else if (kind === "hermes") snapshot = readHermesSession(path);
     if (snapshot) snapshots.push(snapshot);
   }
+  if (kind === "claude-code") {
+    const capped = snapshots
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, MAX_SESSIONS_PER_SOURCE);
+    const cappedIds = new Set(capped.map((snapshot) => snapshot.sourceId));
+    const children = claudeCodeSubagentFiles(root)
+      .map((path) => readClaudeCodeSubagentSession(path))
+      .filter((snapshot): snapshot is ImportedSessionSnapshot & { parentSourceId: string } =>
+        Boolean(snapshot?.parentSourceId)
+      )
+      .filter((snapshot) => cappedIds.has(snapshot.parentSourceId))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    return [...capped, ...children];
+  }
   return snapshots.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, MAX_SESSIONS_PER_SOURCE);
 }
 
+function claudeCodeSubagentFiles(root: string): string[] {
+  const projects = join(root, "projects");
+  if (!existsSync(projects)) return [];
+  let projectEntries: ReturnType<typeof readdirSync>;
+  try {
+    projectEntries = readdirSync(projects, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const found: string[] = [];
+  for (const project of projectEntries) {
+    if (!project.isDirectory()) continue;
+    const projectDir = join(projects, project.name);
+    let sessionEntries: ReturnType<typeof readdirSync>;
+    try {
+      sessionEntries = readdirSync(projectDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const session of sessionEntries) {
+      if (!session.isDirectory()) continue;
+      const subagentsDir = join(projectDir, session.name, "subagents");
+      let fileEntries: ReturnType<typeof readdirSync>;
+      try {
+        fileEntries = readdirSync(subagentsDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const file of fileEntries) {
+        if (file.isFile() && file.name.endsWith(".jsonl")) {
+          found.push(join(subagentsDir, file.name));
+        }
+      }
+    }
+  }
+  return found;
+}
+
+function readClaudeCodeSubagentSession(
+  path: string
+): (ImportedSessionSnapshot & { parentSourceId: string }) | null {
+  const rows = readJsonLines(path);
+  if (rows.length === 0) return null;
+  const messages: ChatMessage[] = [];
+  let workspaceDir: string | null = null;
+  let parentSessionKey = "";
+  let firstAt = 0;
+  let lastAt = 0;
+  for (const row of rows) {
+    if (typeof row.sessionId === "string" && !parentSessionKey) parentSessionKey = row.sessionId;
+    if (typeof row.cwd === "string" && !workspaceDir) workspaceDir = row.cwd;
+    if (row.type !== "user" && row.type !== "assistant") continue;
+    const message = row.message as Record<string, unknown> | undefined;
+    if (!message) continue;
+    const at = timestampMs(row.timestamp, Date.now());
+    if (!firstAt) firstAt = at;
+    lastAt = at;
+    pushMessage(messages, message.role ?? row.type, message.content, row.timestamp);
+  }
+  if (!parentSessionKey || messages.length === 0) return null;
+  const parentPath = join(dirname(path), "..", "..", `${parentSessionKey}.jsonl`);
+  if (!isFile(parentPath)) return null;
+  let metaTitle = "";
+  try {
+    const meta = JSON.parse(
+      readFileSync(`${path.slice(0, -".jsonl".length)}.meta.json`, "utf-8")
+    ) as Record<string, unknown>;
+    if (typeof meta.description === "string") metaTitle = meta.description.trim();
+  } catch {}
+  const base = snapshotFromFile(
+    path,
+    path,
+    messages,
+    workspaceDir,
+    firstAt || Date.now(),
+    lastAt || firstAt || Date.now(),
+    "Claude Code subagent"
+  );
+  if (!base) return null;
+  return { ...base, title: metaTitle || base.title, parentSourceId: parentPath };
+}
+
 export function countSourceSessions(kind: MigrationSourceKind, root: string): number {
-  return sessionFilesFor(kind, root).length;
+  if (kind === "claude-code") return readSourceSessions(kind, root).length;
+  return sessionFilesFor(kind, root).filter(isFile).length;
+}
+
+function isClaudeCodeSubagentTranscript(path: string): boolean {
+  if (path.split(sep).includes("subagents")) return true;
+  return /^agent-.+\.jsonl$/.test(basename(path));
 }

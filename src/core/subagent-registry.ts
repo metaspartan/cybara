@@ -46,6 +46,7 @@ export type DeliveryContext = {
 };
 
 export interface SubagentRunRecord {
+  imported?: boolean;
   runId: string;
   childSessionKey: string;
   requesterSessionKey: string;

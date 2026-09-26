@@ -187,6 +187,16 @@ describe("UI page API wiring", () => {
     expect(source).not.toContain("apiFetch('/api/setup/complete'");
   });
 
+  test("MiMo provider form offers region-specific Token Plan endpoints", () => {
+    const source = readPage("Providers.tsx");
+    expect(source).toContain('selectedProvider === "xiaomi"');
+    expect(source).toContain('name="base_url"');
+    for (const region of ["cn", "sgp", "ams"]) {
+      expect(source).toContain(`https://token-plan-${region}.xiaomimimo.com/anthropic/v1`);
+    }
+    expect(source).toContain("Re-enter your API key when changing the endpoint.");
+  });
+
   test("Providers page keeps OAuth flows on expected backend routes", () => {
     const source = readPage("Providers.tsx");
     const typesSource = readFileSync(

@@ -40,6 +40,7 @@ interface Session {
   created_at: string;
   updated_at: string;
   message_count?: number;
+  parent_session_id?: string | null;
   last_message?: {
     role: string;
     content: string;
@@ -202,6 +203,71 @@ export function Sessions() {
       agentIdentity(session.agent_id).name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const renderSessionCard = (session: Session) => (
+    <Card
+      key={session.id}
+      className="hover:border-white/20 transition-colors max-w-full overflow-hidden"
+    >
+      <CardContent className="p-4">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
+              <MessageSquare className="w-5 h-5 text-indigo-400 flex-shrink-0" />
+              <h3 className="font-medium text-white truncate">
+                Session {session.id.slice(0, 8)}...
+              </h3>
+              <Badge variant="info" size="sm">
+                {session.message_count || 0} messages
+              </Badge>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400">
+              <span className="flex items-center gap-1">
+                <Bot className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">
+                  {agentIdentity(session.agent_id).isBot ? "Bot" : "Agent"}:{" "}
+                  {agentIdentity(session.agent_id).name}
+                </span>
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">{new Date(session.updated_at).toLocaleString()}</span>
+              </span>
+            </div>
+
+            {session.last_message && (
+              <p className="mt-2 text-sm text-gray-500 truncate">
+                Last: <span className="capitalize">{session.last_message.role}</span>:{" "}
+                {session.last_message.content.slice(0, 100)}
+                {session.last_message.content.length > 100 && "..."}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleViewSession(session)}
+              leftIcon={<ChevronRight className="w-4 h-4" />}
+            >
+              View
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              leftIcon={<Trash2 className="w-4 h-4 text-red-400" />}
+              onClick={() => {
+                setSessionToDelete(session);
+                setIsDeleteModalOpen(true);
+              }}
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <PageLayout title="Sessions" subtitle="View and manage chat sessions">
       <div className="space-y-6">
@@ -233,72 +299,7 @@ export function Sessions() {
           </Card>
         ) : (
           <div className="grid gap-4 max-w-full">
-            {filteredSessions.map((session) => (
-              <Card
-                key={session.id}
-                className="hover:border-white/20 transition-colors max-w-full overflow-hidden"
-              >
-                <CardContent className="p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2 flex-wrap">
-                        <MessageSquare className="w-5 h-5 text-indigo-400 flex-shrink-0" />
-                        <h3 className="font-medium text-white truncate">
-                          Session {session.id.slice(0, 8)}...
-                        </h3>
-                        <Badge variant="info" size="sm">
-                          {session.message_count || 0} messages
-                        </Badge>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400">
-                        <span className="flex items-center gap-1">
-                          <Bot className="w-4 h-4 flex-shrink-0" />
-                          <span className="truncate">
-                            {agentIdentity(session.agent_id).isBot ? "Bot" : "Agent"}:{" "}
-                            {agentIdentity(session.agent_id).name}
-                          </span>
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-4 h-4 flex-shrink-0" />
-                          <span className="truncate">
-                            {new Date(session.updated_at).toLocaleString()}
-                          </span>
-                        </span>
-                      </div>
-
-                      {session.last_message && (
-                        <p className="mt-2 text-sm text-gray-500 truncate">
-                          Last: <span className="capitalize">{session.last_message.role}</span>:{" "}
-                          {session.last_message.content.slice(0, 100)}
-                          {session.last_message.content.length > 100 && "..."}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleViewSession(session)}
-                        leftIcon={<ChevronRight className="w-4 h-4" />}
-                      >
-                        View
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        leftIcon={<Trash2 className="w-4 h-4 text-red-400" />}
-                        onClick={() => {
-                          setSessionToDelete(session);
-                          setIsDeleteModalOpen(true);
-                        }}
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            {filteredSessions.map(renderSessionCard)}
             {hasMore && (
               <div className="flex justify-center pt-2">
                 <Button
@@ -372,7 +373,8 @@ export function Sessions() {
                       {message.tool_calls && message.tool_calls.length > 0 && (
                         <Badge variant="warning" size="sm" className="flex items-center gap-1">
                           <Zap className="w-3 h-3" />
-                          {message.tool_calls.length} tool{message.tool_calls.length > 1 ? "s" : ""}
+                          {message.tool_calls.length} tool
+                          {message.tool_calls.length > 1 ? "s" : ""}
                         </Badge>
                       )}
                     </div>

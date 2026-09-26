@@ -680,10 +680,26 @@ export const integrationProviderCatalog = {
   },
   xiaomi: {
     name: "Xiaomi MiMo",
-    baseUrl: "https://api.xiaomimimo.com/anthropic",
+    baseUrl: "https://api.xiaomimimo.com/anthropic/v1",
     api: "anthropic-messages",
     authType: "api_key",
     models: [
+      {
+        id: "mimo-v2.6-pro",
+        name: "Xiaomi MiMo V2.6 Pro",
+        context: 1048576,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "mimo-v2.6-flash",
+        name: "Xiaomi MiMo V2.6 Flash",
+        context: 1048576,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image"],
+      },
       {
         id: "mimo-v2.5-pro",
         name: "Xiaomi MiMo V2.5 Pro",

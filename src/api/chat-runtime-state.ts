@@ -1,3 +1,4 @@
+import db from "../core/database";
 import { type AgentMessage, agentManager } from "../core/agent";
 import { KeyedMutex } from "../core/keyed-mutex";
 import { createLogger } from "../core/logger";
@@ -82,6 +83,7 @@ export interface SessionListEntry {
   createdAt: string;
   updatedAt: string;
   workspaceDir: string | null;
+  parentSessionId?: string | null;
   pinned: boolean;
   unread: boolean;
   lastMessage: SessionLastMessagePreview | null;
@@ -328,29 +330,38 @@ export function removePersistedSessionIndex(sessionId: string): void {
 }
 
 export function buildMemorySessionListEntries(): SessionListEntry[] {
-  return Array.from(chatSessions.values()).map((s) => {
-    const modelMetadata = resolveSessionModelMetadata(s.agentId);
-    return {
-      id: s.id,
-      agentId: s.agentId,
-      useModelRouter: s.useModelRouter,
-      title: shouldRegenerateSessionTitle(s.title)
-        ? stripSessionTitleAgentPrefix(deriveSessionTitleFromMessages(s.messages), [
-            modelMetadata?.agent_name,
-            s.agentId,
-          ])
-        : stripSessionTitleAgentPrefix(s.title, [modelMetadata?.agent_name, s.agentId]),
-      messageCount: countVisibleSessionMessages(s.messages),
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt || s.createdAt,
-      workspaceDir: s.workspaceDir ?? null,
-      pinned: persistedSessionIndex.get(s.id)?.pinned ?? false,
-      unread: persistedSessionIndex.get(s.id)?.unread ?? false,
-      lastMessage: buildLastMessagePreview(s.messages[s.messages.length - 1]),
-      modelMetadata,
-      room: s.room ?? null,
-    };
-  });
+  const childIds = new Set(
+    (
+      db.prepare("SELECT id FROM chat_sessions WHERE parent_session_id IS NOT NULL").all() as {
+        id: string;
+      }[]
+    ).map((row) => row.id)
+  );
+  return Array.from(chatSessions.values())
+    .filter((session) => !childIds.has(session.id))
+    .map((s) => {
+      const modelMetadata = resolveSessionModelMetadata(s.agentId);
+      return {
+        id: s.id,
+        agentId: s.agentId,
+        useModelRouter: s.useModelRouter,
+        title: shouldRegenerateSessionTitle(s.title)
+          ? stripSessionTitleAgentPrefix(deriveSessionTitleFromMessages(s.messages), [
+              modelMetadata?.agent_name,
+              s.agentId,
+            ])
+          : stripSessionTitleAgentPrefix(s.title, [modelMetadata?.agent_name, s.agentId]),
+        messageCount: countVisibleSessionMessages(s.messages),
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt || s.createdAt,
+        workspaceDir: s.workspaceDir ?? null,
+        pinned: persistedSessionIndex.get(s.id)?.pinned ?? false,
+        unread: persistedSessionIndex.get(s.id)?.unread ?? false,
+        lastMessage: buildLastMessagePreview(s.messages[s.messages.length - 1]),
+        modelMetadata,
+        room: s.room ?? null,
+      };
+    });
 }
 
 export function persistedSessionToIndexEntry(
@@ -365,6 +376,7 @@ export function persistedSessionToIndexEntry(
     createdAt: persisted.createdAt,
     updatedAt: persisted.updatedAt,
     workspaceDir: persisted.workspaceDir ?? null,
+    parentSessionId: persisted.parentSessionId ?? null,
     pinned: persisted.pinned,
     unread: persisted.unread,
     room: persisted.roomConfig,

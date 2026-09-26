@@ -1372,6 +1372,7 @@ export interface PersistedSessionListEntry {
   updatedAt: string;
   messageCount: number;
   workspaceDir: string | null;
+  parentSessionId: string | null;
   pinned: boolean;
   unread: boolean;
   lastMessageRole: string | null;
@@ -1389,6 +1390,7 @@ interface PersistedSessionListRow {
   updatedAt: string;
   messageCount: number;
   workspaceDir: string | null;
+  parentSessionId: string | null;
   pinned: number;
   unread: number;
   lastMessageRole: string | null;
@@ -1446,6 +1448,7 @@ function persistedSessionListSql(
         cs.created_at as createdAt,
         cs.updated_at as updatedAt,
         cs.workspace_dir as workspaceDir,
+        cs.parent_session_id as parentSessionId,
         COALESCE(cs.pinned, 0) as pinned,
         CASE WHEN EXISTS (
           SELECT 1
@@ -1489,6 +1492,7 @@ function persistedSessionListSql(
           )
         ) as lastModelMetadata
       FROM chat_sessions cs
+      WHERE cs.parent_session_id IS NULL
       ORDER BY cs.pinned DESC, cs.updated_at DESC
       ${typeof limit === "number" ? "LIMIT ? OFFSET ?" : ""}
     `;
@@ -1497,7 +1501,9 @@ function persistedSessionListSql(
 
 export async function countPersistedSessions(): Promise<number> {
   try {
-    const row = db.prepare("SELECT COUNT(*) as total FROM chat_sessions").get() as {
+    const row = db
+      .prepare("SELECT COUNT(*) as total FROM chat_sessions WHERE parent_session_id IS NULL")
+      .get() as {
       total?: number;
     } | null;
     return typeof row?.total === "number" ? row.total : 0;
@@ -1597,6 +1603,17 @@ export async function setPersistedSessionPinned(
 
 export async function deletePersistedSession(sessionId: string): Promise<boolean> {
   try {
+    const childIds = (
+      db.prepare("SELECT id FROM chat_sessions WHERE parent_session_id = ?").all(sessionId) as {
+        id: string;
+      }[]
+    ).map((row) => row.id);
+    for (const childId of childIds) {
+      clearSessionEventLedger(childId);
+      db.prepare("DELETE FROM pending_chat_messages WHERE session_id = ?").run(childId);
+      db.prepare("DELETE FROM session_messages WHERE session_id = ?").run(childId);
+      db.prepare("DELETE FROM chat_sessions WHERE id = ?").run(childId);
+    }
     clearSessionEventLedger(sessionId);
     db.prepare("DELETE FROM pending_chat_messages WHERE session_id = ?").run(sessionId);
     db.prepare("DELETE FROM session_messages WHERE session_id = ?").run(sessionId);

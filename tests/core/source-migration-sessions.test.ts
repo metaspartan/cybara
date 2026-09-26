@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { join, sep } from "path";
 import { countSourceSessions, readSourceSessions } from "../../src/core/source-migration-sessions";
+import {
+  migrateOpenCodeSessions,
+  type OpenCodeSessionSnapshot,
+  type OpenCodeSessionStore,
+} from "../../src/core/source-migration-opencode";
 
 const roots: string[] = [];
 
@@ -36,7 +41,10 @@ describe("source session import", () => {
             ...shared,
             type: "assistant",
             timestamp: "2026-01-01T00:01:00Z",
-            message: { role: "assistant", content: [{ type: "text", text: "hi back" }] },
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: "hi back" }],
+            },
           }),
         ].join("\n")
       );
@@ -111,7 +119,12 @@ describe("source session import", () => {
     const dir = join(root, "agents", "main", "sessions");
     mkdirSync(dir, { recursive: true });
     const body = [
-      JSON.stringify({ type: "session", id: "oc-1", cwd: root, timestamp: "2026-03-01T00:00:00Z" }),
+      JSON.stringify({
+        type: "session",
+        id: "oc-1",
+        cwd: root,
+        timestamp: "2026-03-01T00:00:00Z",
+      }),
       JSON.stringify({
         type: "message",
         timestamp: "2026-03-01T00:00:01Z",
@@ -168,5 +181,252 @@ describe("source session import", () => {
     expect(readSourceSessions("claude-code", root)).toHaveLength(1);
     expect(readSourceSessions("claude-code", join(root, "projects"))).toHaveLength(1);
     expect(countSourceSessions("claude-code", join(root, "projects"))).toBe(1);
+  });
+
+  test("excludes nested and legacy Claude Code subagent transcripts", () => {
+    const root = makeRoot();
+    const projects = join(root, "projects", "demo");
+    const nested = join(projects, "11111111-2222-3333-4444-555555555555", "subagents");
+    mkdirSync(nested, { recursive: true });
+    const subagentRow = JSON.stringify({
+      type: "user",
+      timestamp: "2026-01-01T00:00:00Z",
+      message: { role: "user", content: "subagent task" },
+    });
+    writeFileSync(join(nested, "agent-aaaaaaaaaaaaaaaa.jsonl"), subagentRow);
+    writeFileSync(join(projects, "agent-bbbbbbbbbbbbbbbb.jsonl"), subagentRow);
+    writeFileSync(
+      join(projects, "root-session.jsonl"),
+      JSON.stringify({
+        type: "user",
+        timestamp: "2026-01-01T00:00:00Z",
+        message: { role: "user", content: "root conversation" },
+      })
+    );
+    const sessions = readSourceSessions("claude-code", root);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].messages[0]?.content).toBe("root conversation");
+    expect(countSourceSessions("claude-code", root)).toBe(1);
+  });
+
+  test("imports Claude subagent transcripts as children linked to their parent", () => {
+    const root = makeRoot();
+    const parentDir = join(root, "projects", "demo");
+    mkdirSync(join(parentDir, "parent-1", "subagents"), { recursive: true });
+    writeFileSync(
+      join(parentDir, "parent-1.jsonl"),
+      [
+        JSON.stringify({
+          type: "user",
+          isSidechain: false,
+          timestamp: "2026-01-01T00:00:00Z",
+          message: { role: "user", content: "main task" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          isSidechain: false,
+          timestamp: "2026-01-01T00:00:04Z",
+          message: { role: "assistant", content: "done" },
+        }),
+      ].join("\n")
+    );
+    writeFileSync(
+      join(parentDir, "parent-1", "subagents", "agent-abc.jsonl"),
+      [
+        JSON.stringify({
+          type: "user",
+          sessionId: "parent-1",
+          isSidechain: true,
+          cwd: root,
+          timestamp: "2026-01-01T00:00:01Z",
+          message: { role: "user", content: "delegated research" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          sessionId: "parent-1",
+          isSidechain: true,
+          timestamp: "2026-01-01T00:00:02Z",
+          message: { role: "assistant", content: "research findings" },
+        }),
+      ].join("\n")
+    );
+    writeFileSync(
+      join(parentDir, "parent-1", "subagents", "agent-abc.meta.json"),
+      JSON.stringify({ agentType: "general-purpose", description: "Ship artist brief" })
+    );
+    const sessions = readSourceSessions("claude-code", root);
+    expect(sessions).toHaveLength(2);
+    expect(sessions[0].sourceId.endsWith("parent-1.jsonl")).toBe(true);
+    expect(sessions[0].parentSourceId).toBeFalsy();
+    const child = sessions[1];
+    expect(child.sourceId.endsWith("agent-abc.jsonl")).toBe(true);
+    expect(child.parentSourceId).toBe(join(parentDir, "parent-1.jsonl"));
+    expect(child.title).toBe("Ship artist brief");
+    expect(child.messages.map((m) => m.content)).toEqual([
+      "delegated research",
+      "research findings",
+    ]);
+    expect(countSourceSessions("claude-code", root)).toBe(2);
+  });
+
+  test("skips orphan subagent transcripts without an existing parent transcript", () => {
+    const root = makeRoot();
+    const projects = join(root, "projects", "demo");
+    mkdirSync(join(projects, "ghost-parent", "subagents"), { recursive: true });
+    writeFileSync(
+      join(projects, "ghost-parent", "subagents", "agent-orphan.jsonl"),
+      JSON.stringify({
+        type: "user",
+        sessionId: "ghost-parent",
+        isSidechain: true,
+        timestamp: "2026-01-01T00:00:00Z",
+        message: { role: "user", content: "orphaned work" },
+      })
+    );
+    expect(readSourceSessions("claude-code", root)).toEqual([]);
+    expect(countSourceSessions("claude-code", root)).toBe(0);
+  });
+
+  test("skips sidechain rows inside a Claude Code transcript", () => {
+    const root = makeRoot();
+    const projects = join(root, "projects", "demo");
+    mkdirSync(projects, { recursive: true });
+    writeFileSync(
+      join(projects, "session.jsonl"),
+      [
+        JSON.stringify({
+          type: "user",
+          isSidechain: false,
+          timestamp: "2026-01-01T00:00:00Z",
+          message: { role: "user", content: "root question" },
+        }),
+        JSON.stringify({
+          type: "user",
+          isSidechain: true,
+          timestamp: "2026-01-01T00:00:01Z",
+          message: { role: "user", content: "sidechain prompt" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          isSidechain: true,
+          timestamp: "2026-01-01T00:00:02Z",
+          message: { role: "assistant", content: "sidechain answer" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          isSidechain: false,
+          timestamp: "2026-01-01T00:00:03Z",
+          message: { role: "assistant", content: "root answer" },
+        }),
+      ].join("\n")
+    );
+    const sessions = readSourceSessions("claude-code", root);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].messages.map((m) => m.content)).toEqual(["root question", "root answer"]);
+  });
+
+  test("does not count or import sidechain-only or malformed root transcripts", () => {
+    const root = makeRoot();
+    const projects = join(root, "projects", "demo");
+    mkdirSync(projects, { recursive: true });
+    writeFileSync(
+      join(projects, "renamed.jsonl"),
+      JSON.stringify({
+        type: "user",
+        isSidechain: true,
+        message: { role: "user", content: "delegated task" },
+      })
+    );
+    writeFileSync(join(projects, "empty.jsonl"), "");
+    writeFileSync(join(projects, "malformed.jsonl"), "not-json");
+    expect(readSourceSessions("claude-code", root)).toEqual([]);
+    expect(countSourceSessions("claude-code", root)).toBe(0);
+  });
+
+  test("caps Claude Code transcripts to the most recent messages while keeping the original title", () => {
+    const root = makeRoot();
+    const projects = join(root, "projects", "demo");
+    mkdirSync(projects, { recursive: true });
+    const rows: string[] = [];
+    for (let i = 0; i < 450; i += 1) {
+      rows.push(
+        JSON.stringify({
+          type: "user",
+          timestamp: `2026-01-01T00:${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}Z`,
+          message: { role: "user", content: `message number ${i}` },
+        })
+      );
+    }
+    writeFileSync(join(projects, "long.jsonl"), rows.join("\n"));
+    const [session] = readSourceSessions("claude-code", root);
+    expect(session.messages.length).toBe(400);
+    expect(session.messages[0].content).toBe("message number 50");
+    expect(session.messages[399].content).toBe("message number 449");
+    expect(session.title).toBe("message number 0");
+  });
+
+  test("prefers explicit Claude Code titles over first user message", () => {
+    const root = makeRoot();
+    const projects = join(root, "projects", "demo");
+    mkdirSync(projects, { recursive: true });
+    const row = (extra: Record<string, unknown>) =>
+      JSON.stringify({
+        type: "user",
+        timestamp: "2026-01-01T00:00:00Z",
+        message: {
+          role: "user",
+          content: "first user prompt that should not win",
+        },
+        ...extra,
+      });
+    writeFileSync(
+      join(projects, "custom.jsonl"),
+      `${row({})}\n${JSON.stringify({ type: "custom-title", customTitle: "Custom title" })}\n${JSON.stringify({ type: "ai-title", aiTitle: "AI title" })}`
+    );
+    writeFileSync(
+      join(projects, "ai.jsonl"),
+      `${row({})}\n${JSON.stringify({ type: "ai-title", aiTitle: "AI title" })}`
+    );
+    writeFileSync(join(projects, "none.jsonl"), row({}));
+    const sessions = readSourceSessions("claude-code", root);
+    expect(sessions).toHaveLength(3);
+    const bySource = new Map(
+      sessions.map((session) => [session.sourceId.split(sep).pop(), session])
+    );
+    expect(bySource.get("custom.jsonl")?.title).toBe("Custom title");
+    expect(bySource.get("ai.jsonl")?.title).toBe("AI title");
+    expect(bySource.get("none.jsonl")?.title).toBe("first user prompt that should not win");
+  });
+
+  test("imports shared-session Claude Code transcripts independently and idempotently", async () => {
+    const root = makeRoot();
+    const projects = join(root, "projects", "demo");
+    mkdirSync(projects, { recursive: true });
+    for (const name of ["one.jsonl", "two.jsonl"]) {
+      writeFileSync(
+        join(projects, name),
+        JSON.stringify({
+          sessionId: "same-session",
+          type: "user",
+          timestamp: "2026-01-01T00:00:00Z",
+          message: { role: "user", content: `chat ${name}` },
+        })
+      );
+    }
+    const written = new Map<string, OpenCodeSessionSnapshot>();
+    const store: OpenCodeSessionStore = {
+      exists: async (sessionId) => written.has(sessionId),
+      write: async (sessionId, snapshot) => {
+        written.set(sessionId, snapshot);
+      },
+    };
+    const options = { dryRun: false, overwrite: false, store };
+    const first = await migrateOpenCodeSessions(readSourceSessions("claude-code", root), options);
+    expect(first.map((result) => result.status)).toEqual(["migrated", "migrated"]);
+    expect(written.size).toBe(2);
+    expect(new Set(first.map((result) => result.sessionId)).size).toBe(2);
+    const second = await migrateOpenCodeSessions(readSourceSessions("claude-code", root), options);
+    expect(second.map((result) => result.status)).toEqual(["conflict", "conflict"]);
+    expect(written.size).toBe(2);
   });
 });

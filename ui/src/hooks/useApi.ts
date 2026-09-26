@@ -1034,6 +1034,7 @@ export function useUninstallLSP() {
 }
 
 export interface Subagent {
+  imported?: boolean;
   id: string;
   label: string;
   status: "pending" | "running" | "completed" | "failed" | "timeout" | "killed";

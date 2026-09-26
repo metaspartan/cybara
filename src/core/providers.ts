@@ -1,3 +1,4 @@
+import { normalizeXiaomiEndpoint } from "./providers/xiaomi-endpoint";
 import { tables, type Provider, type ProviderModel } from "./database";
 import { codingProviderCatalog } from "./providers/catalog-coding";
 import { cloudProviderCatalog } from "./providers/catalog-cloud";
@@ -96,7 +97,8 @@ class ProviderManager {
     const staticHeaders = (staticConfig as { headers?: Record<string, string> }).headers;
     return {
       ...dbProvider,
-      base_url: baseUrl,
+      base_url:
+        dbProvider.provider === "xiaomi" && baseUrl ? normalizeXiaomiEndpoint(baseUrl) : baseUrl,
       headers: isKimiCodeProvider(dbProvider.provider)
         ? { ...staticHeaders, ...kimiCodeIdentityHeaders() }
         : staticHeaders,
@@ -697,7 +699,7 @@ export function getDefaultModel(providerType: string): string {
     "z.ai": "glm-5.2",
     zai: "glm-5.2",
     "z.ai-coding": "glm-5.3",
-    xiaomi: "mimo-v2.5-pro",
+    xiaomi: "mimo-v2.6-pro",
     opencode_zen: "claude-opus-5",
     commandcode: "claude-opus-5",
     opencode: "claude-opus-5",

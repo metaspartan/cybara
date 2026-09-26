@@ -1,3 +1,8 @@
+import {
+  findSubagentRun,
+  listPersistedSubagentRuns,
+  mergeSubagentRuns,
+} from "./persisted-subagents";
 import { dirname } from "path";
 import {
   type ChatMessage,
@@ -1265,6 +1270,7 @@ const routes: Record<string, RouteHandler> = {
           "workspaceDir" in session && typeof session.workspaceDir === "string"
             ? session.workspaceDir
             : null,
+        parent_session_id: session.parentSessionId ?? null,
         pinned: session.pinned === true,
         unread: session.unread === true,
         room: session.room ? roomConfigToApi(session.room) : null,
@@ -1629,7 +1635,9 @@ const routes: Record<string, RouteHandler> = {
     const runs = requesterSessionId
       ? subagentRegistry.getRunsByRequester(requesterSessionId)
       : subagentRegistry.listAllRuns();
-    return runs.filter(isVisibleSubagentRun).map(serializeSubagentSummary);
+    return mergeSubagentRuns(runs, listPersistedSubagentRuns(requesterSessionId))
+      .filter(isVisibleSubagentRun)
+      .map(serializeSubagentSummary);
   },
   "POST /api/subagents/wait": async (body) => {
     const data = body as {
@@ -1659,9 +1667,14 @@ const routes: Record<string, RouteHandler> = {
     }
   },
   "GET /api/subagents/:id": (_body, params) => {
-    const run = subagentRegistry.getRun(params!.id);
+    const run = findSubagentRun(params!.id, params?.sessionId);
     if (!run) return { error: "Subagent not found" };
     return serializeSubagentDetail(run);
+  },
+  "GET /api/subagents/:id/messages": async (_body, params) => {
+    const run = findSubagentRun(params!.id, params?.sessionId);
+    if (!run) return { error: "Subagent not found" };
+    return getSessionMessages(run.childSessionKey);
   },
   "POST /api/subagents/:id/kill": (_body, params) => {
     const killed = killSubagentSession(params!.id);

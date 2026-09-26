@@ -1,3 +1,7 @@
+import type { ChatMessage } from "@/types";
+import { SubagentTranscript } from "./SubagentTranscript";
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/auth";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { Loader2, MessageSquare, Square, Trash2 } from "lucide-react";
 import { type Subagent, useClearSubagent, useKillSubagent, useSubagent } from "@/hooks/useApi";
@@ -38,6 +42,20 @@ export function SubagentDetailPanel({
   runId: string;
 }): ReactElement {
   const { data: subagent, isLoading, refetch } = useSubagent(runId);
+  const [showTranscript, setShowTranscript] = useState(false);
+  const transcript = useQuery({
+    queryKey: ["subagent-transcript", runId, subagent?.requesterSessionId],
+    enabled: showTranscript && Boolean(subagent?.requesterSessionId),
+    queryFn: async (): Promise<ChatMessage[]> => {
+      const response = await apiFetch(
+        `/api/subagents/${encodeURIComponent(runId)}/messages?sessionId=${encodeURIComponent(subagent?.requesterSessionId ?? "")}`
+      );
+      if (!response.ok) throw new Error("Unable to load transcript");
+      const messages: unknown = await response.json();
+      if (!Array.isArray(messages)) throw new Error("Unable to load transcript");
+      return messages;
+    },
+  });
   const killSubagent = useKillSubagent();
   const clearSubagent = useClearSubagent();
   const refreshTimerRef = useRef<number | null>(null);
@@ -109,6 +127,13 @@ export function SubagentDetailPanel({
             </div>
           ) : null}
 
+          {showTranscript && (
+            <section className="space-y-3" aria-label="Subagent transcript">
+              {transcript.isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {transcript.error && <p>Unable to load transcript</p>}
+              <SubagentTranscript messages={transcript.data ?? []} onOpenLink={onOpenLink} />
+            </section>
+          )}
           <SubagentTimeline subagent={subagent} onOpenLink={onOpenLink} />
 
           {subagent.result || subagent.error ? (
@@ -128,8 +153,16 @@ export function SubagentDetailPanel({
       </div>
 
       <div className="flex shrink-0 justify-end gap-2 border-t border-white/5 px-3 py-2.5">
-        <Button variant="secondary" onClick={() => onViewSession(subagent.sessionKey)}>
-          <MessageSquare className="mr-2 h-4 w-4" /> View chat
+        <Button
+          variant="secondary"
+          onClick={() =>
+            subagent.imported
+              ? setShowTranscript((shown) => !shown)
+              : onViewSession(subagent.sessionKey)
+          }
+        >
+          <MessageSquare className="mr-2 h-4 w-4" />{" "}
+          {subagent.imported ? "Transcript" : "View chat"}
         </Button>
         {active ? (
           <Button
@@ -139,7 +172,7 @@ export function SubagentDetailPanel({
           >
             <Square className="mr-2 h-4 w-4" /> Stop
           </Button>
-        ) : (
+        ) : !subagent.imported ? (
           <Button
             variant="danger"
             disabled={clearSubagent.isPending}
@@ -150,7 +183,7 @@ export function SubagentDetailPanel({
           >
             <Trash2 className="mr-2 h-4 w-4" /> Clear
           </Button>
-        )}
+        ) : null}
       </div>
     </div>
   );
