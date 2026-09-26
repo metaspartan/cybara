@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Loader2, Mic, MicOff, Paperclip } from "lucide-react";
-import type { ClipboardEvent, DragEvent, RefObject } from "react";
+import type { ClipboardEvent, DragEvent, ReactNode, RefObject } from "react";
 import type { ChatHorizontalPadding } from "../../../../shared/chat-appearance";
 import type { ChatFileAttachment } from "@/lib/chatImages";
 import { dataTransferHasFiles } from "@/lib/fileDrop";
@@ -66,6 +66,7 @@ export interface ChatComposerProps {
   providerPlan: ProviderPlanSnapshot | null;
   queueing: boolean;
   reasoningUpdating: boolean;
+  runningTasks?: ReactNode;
   codexFastMode: boolean;
   codexFastModeUpdating: boolean;
   selectedAgentId?: string;
@@ -133,6 +134,7 @@ export function ChatComposer({
   providerPlan,
   queueing,
   reasoningUpdating,
+  runningTasks,
   codexFastMode,
   codexFastModeUpdating,
   selectedAgentId,
@@ -212,6 +214,7 @@ export function ChatComposer({
           <span className="min-w-0 flex-1 truncate">{dictationError || dictationStatus}</span>
         </div>
       ) : null}
+      {runningTasks}
       <div
         className={cn(
           "chat-composer-surface relative rounded-[22px] border px-3 py-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors",

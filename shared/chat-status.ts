@@ -11,9 +11,22 @@ export function isProviderRecoveryStatusLabel(value: unknown): boolean {
   return PROVIDER_RECOVERY_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
+export function formatDelegatedRunWaitLabel(count: number): string {
+  const safeCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 1;
+  return `Running ${safeCount} ${safeCount === 1 ? "task" : "tasks"}…`;
+}
+
+export function delegatedRunWaitCount(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const legacy = /^waiting for (\d+) delegated tasks?\.\.\.$/i.exec(value.trim());
+  if (legacy?.[1]) return Number.parseInt(legacy[1], 10);
+  const current = /^running (\d+) tasks?…$/i.exec(value.trim());
+  if (current?.[1]) return Number.parseInt(current[1], 10);
+  return null;
+}
+
 export function isDelegatedWaitStatusLabel(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-  return /^waiting for \d+ delegated tasks?\.\.\.$/i.test(value.trim());
+  return delegatedRunWaitCount(value) !== null;
 }
 
 export function isVisibleActivityText(value: unknown): value is string {

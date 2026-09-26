@@ -108,7 +108,7 @@ function normalizeSubagentResult(
   }).content;
 }
 
-function normalizeSubagentThinking(value: unknown): string | undefined {
+export function normalizeSubagentThinking(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = redactSecretText(value).trim();
   if (!normalized) return undefined;
@@ -168,7 +168,7 @@ function normalizeSubagentToolArgs(
   return { value: normalized };
 }
 
-function normalizeSubagentActivities(
+export function normalizeSubagentActivities(
   activities: SubagentActivity[] | undefined
 ): SubagentActivity[] | undefined {
   if (!activities?.length) return undefined;
@@ -178,7 +178,7 @@ function normalizeSubagentActivities(
   }));
 }
 
-function normalizeSubagentToolCalls(
+export function normalizeSubagentToolCalls(
   toolCalls: SubagentToolCall[] | undefined,
   context: { requesterSessionKey: string; runId: string }
 ): SubagentToolCall[] | undefined {

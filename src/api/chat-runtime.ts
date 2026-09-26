@@ -64,6 +64,7 @@ import {
 } from "../core/tools/runtime-guards";
 import { resolveAgentToolPolicy } from "../core/toolsets";
 import { isBotSessionId } from "../../shared/bot-mode";
+import { formatDelegatedRunWaitLabel } from "../../shared/chat-status";
 import { isRoomSessionId } from "../../shared/room-mode";
 import { stripAgentAttributionTag } from "./chat-agent-handoff";
 import { handleRoomChatTurn } from "./chat-room-runtime";
@@ -1511,7 +1512,7 @@ async function handleChatTurn(
             broadcastStatus({
               status: "thinking",
               timestamp: Date.now(),
-              detail: `Waiting for ${pendingCount} delegated ${pendingCount === 1 ? "task" : "tasks"}...`,
+              detail: formatDelegatedRunWaitLabel(pendingCount),
               sessionId: session.id,
               agentId: agent?.id,
             });

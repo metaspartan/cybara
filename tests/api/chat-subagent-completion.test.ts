@@ -178,11 +178,11 @@ describe("chat subagent completion", () => {
       void responsePromise.then(() => {
         responseSettled = true;
       });
-      await waitForCondition(() => statusDetails.at(-1) === "Waiting for 1 delegated task...");
+      await waitForCondition(() => statusDetails.at(-1) === "Running 1 task…");
 
       expect(responseSettled).toBe(false);
       expect(getActiveSessionRunId(sessionId)).toBeDefined();
-      expect(statusDetails.at(-1)).toBe("Waiting for 1 delegated task...");
+      expect(statusDetails.at(-1)).toBe("Running 1 task…");
       expect(executionCount).toBe(1);
 
       markRunCompleted(run.runId, "CHILD_RESULT=verified");
@@ -195,7 +195,7 @@ describe("chat subagent completion", () => {
         "sessions_spawn",
         "sessions_wait",
       ]);
-      expect(statusDetails).toContain("Waiting for 1 delegated task...");
+      expect(statusDetails).toContain("Running 1 task…");
       expect(statusDetails.at(-1)).toBe("Idle");
       expect(executionCount).toBe(2);
     } finally {

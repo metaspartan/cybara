@@ -52,12 +52,28 @@ describe("multi-chat live status", () => {
       sequence: 4,
       status: "thinking",
       timestamp: 1_000,
+      detail: "Running 2 tasks…",
+    });
+
+    expect(state?.liveStatus).toBe("thinking");
+    expect(state?.currentStep).toBe("Running 2 tasks…");
+    expect(state?.activities).toEqual([]);
+  });
+
+  test("suppresses legacy delegated wait labels from the activity feed", () => {
+    const state = projectMultiChatStatusEvent(undefined, {
+      type: "status",
+      sessionId: "session-waiting",
+      runId: "run-waiting",
+      sequence: 4,
+      status: "thinking",
+      timestamp: 1_000,
       detail: "Waiting for 2 delegated tasks...",
     });
 
     expect(state?.liveStatus).toBe("thinking");
     expect(state?.currentStep).toBe("Waiting for 2 delegated tasks...");
-    expect(state?.activities.at(-1)?.text).toBe("Waiting for 2 delegated tasks...");
+    expect(state?.activities).toEqual([]);
   });
 
   test("hydrates in-progress tool calls and thoughts from a session snapshot", () => {

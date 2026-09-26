@@ -680,7 +680,7 @@ export const integrationProviderCatalog = {
   },
   xiaomi: {
     name: "Xiaomi MiMo",
-    baseUrl: "https://api.xiaomimimo.com/anthropic/v1",
+    baseUrl: "https://token-plan-sgp.xiaomimimo.com/anthropic/v1",
     api: "anthropic-messages",
     authType: "api_key",
     models: [
