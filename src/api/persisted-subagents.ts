@@ -114,16 +114,16 @@ function readActivities(metadata: Record<string, unknown>): SubagentActivity[] {
   return activities;
 }
 
-function loadRunDetails(
-  messages: PersistedChildMessage[]
-): Map<
-  string,
-  { thinking?: string; activities?: SubagentActivity[]; toolCalls?: SubagentToolCall[] }
-> {
-  const details = new Map<
-    string,
-    { thinking?: string; activities?: SubagentActivity[]; toolCalls?: SubagentToolCall[] }
-  >();
+interface PersistedRunDetails {
+  thinking?: string;
+  activities?: SubagentActivity[];
+  toolCalls?: SubagentToolCall[];
+  activityCount?: number;
+  toolCallCount?: number;
+}
+
+function loadRunDetails(messages: PersistedChildMessage[]): Map<string, PersistedRunDetails> {
+  const details = new Map<string, PersistedRunDetails>();
   for (const message of messages) {
     const metadata = parseMessageMetadata(message.metadata);
     if (!metadata) continue;
@@ -136,6 +136,12 @@ function loadRunDetails(
     if (activities.length > 0) {
       entry.activities = [...(entry.activities ?? []), ...activities];
     }
+    if (Array.isArray(metadata.tool_calls)) {
+      entry.toolCallCount = (entry.toolCallCount ?? 0) + metadata.tool_calls.length;
+    }
+    if (Array.isArray(metadata.process_activities)) {
+      entry.activityCount = (entry.activityCount ?? 0) + metadata.process_activities.length;
+    }
     if (typeof metadata.thinking === "string" && metadata.thinking.trim()) {
       entry.thinking = [entry.thinking, metadata.thinking].filter(Boolean).join("\n\n");
     }
@@ -143,6 +149,7 @@ function loadRunDetails(
   }
   for (const [sessionId, entry] of details) {
     details.set(sessionId, {
+      ...entry,
       thinking: normalizeSubagentThinking(entry.thinking),
       activities: normalizeSubagentActivities(entry.activities),
       toolCalls: normalizeSubagentToolCalls(entry.toolCalls, {
@@ -207,6 +214,8 @@ export function listPersistedSubagentRuns(requesterSessionId?: string): Subagent
       thinking: runDetails?.thinking,
       activities: runDetails?.activities,
       toolCalls: runDetails?.toolCalls,
+      activityCount: runDetails?.activityCount,
+      toolCallCount: runDetails?.toolCallCount,
     };
   });
 }

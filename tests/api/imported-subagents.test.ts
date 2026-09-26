@@ -147,4 +147,39 @@ describe("persisted subagents", () => {
     fixture.deleteRawSession(child);
     fixture.deleteRawSession(root);
   });
+
+  test("reports true tool call totals for imported runs beyond the stored window", async () => {
+    const root = `root-${crypto.randomUUID()}`;
+    const child = `child-${crypto.randomUUID()}`;
+    fixture.insertRawSession(root, "default", [{ role: "user", content: "Parent task" }]);
+    const toolCalls = Array.from({ length: 150 }, (_, index) => ({
+      id: `call-${index}`,
+      name: "read",
+      args: { path: `file-${index}.md` },
+      status: "completed",
+      result: { content: "file" },
+      timeline_index: index,
+    }));
+    fixture.insertRawSession(
+      child,
+      "default",
+      [
+        { role: "user", content: "Child task" },
+        {
+          role: "assistant",
+          content: "Child result",
+          metadata: { tool_calls: toolCalls },
+        },
+      ],
+      root
+    );
+    const runs = await fixture.api("GET", `/api/subagents?sessionId=${root}`);
+    expect(runs.data).toHaveLength(1);
+    expect(runs.data[0]).toMatchObject({ id: child, toolCallCount: 150 });
+    const detail = await fixture.api("GET", `/api/subagents/${child}?sessionId=${root}`);
+    expect(detail.data.toolCalls).toHaveLength(100);
+    expect(detail.data.toolCallCount).toBe(150);
+    fixture.deleteRawSession(child);
+    fixture.deleteRawSession(root);
+  });
 });

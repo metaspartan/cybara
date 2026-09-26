@@ -30,6 +30,18 @@ export interface SubagentRunDetails {
   thinking?: string;
   activities?: SubagentActivity[];
   toolCalls?: SubagentToolCall[];
+  activityCount?: number;
+  toolCallCount?: number;
+}
+
+export function subagentRunCounts(run: SubagentRunRecord): {
+  activityCount: number;
+  toolCallCount: number;
+} {
+  return {
+    activityCount: Math.max(run.activityCount ?? 0, run.activities?.length ?? 0),
+    toolCallCount: Math.max(run.toolCallCount ?? 0, run.toolCalls?.length ?? 0),
+  };
 }
 
 export type SubagentRunOutcome = {
@@ -65,6 +77,8 @@ export interface SubagentRunRecord {
   thinking?: string;
   activities?: SubagentActivity[];
   toolCalls?: SubagentToolCall[];
+  activityCount?: number;
+  toolCallCount?: number;
   archiveAtMs?: number;
   cleanupCompletedAt?: number;
   cleanupHandled?: boolean;
@@ -513,6 +527,12 @@ export function updateRunDetails(runId: string, details: SubagentRunDetails): bo
       runId: entry.runId,
     });
   }
+  if (details.activityCount !== undefined) {
+    entry.activityCount = Math.max(entry.activityCount ?? 0, Math.round(details.activityCount));
+  }
+  if (details.toolCallCount !== undefined) {
+    entry.toolCallCount = Math.max(entry.toolCallCount ?? 0, Math.round(details.toolCallCount));
+  }
   scheduleSubagentRunsPersistence();
   return true;
 }
@@ -537,6 +557,16 @@ export function markRunCompleted(
     requesterSessionKey: entry.requesterSessionKey,
     runId: entry.runId,
   });
+  entry.activityCount = Math.max(
+    entry.activityCount ?? 0,
+    details?.activities?.length ?? 0,
+    details?.activityCount ?? 0
+  );
+  entry.toolCallCount = Math.max(
+    entry.toolCallCount ?? 0,
+    details?.toolCalls?.length ?? 0,
+    details?.toolCallCount ?? 0
+  );
   finalizeRunRetention(entry, entry.endedAt);
   persistSubagentRuns();
 

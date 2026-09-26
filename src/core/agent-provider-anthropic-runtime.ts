@@ -421,9 +421,11 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
       }
       iterations = nextIteration;
 
-      const progressThought = summarizeProgressThought(
-        currentData.content?.find((c) => c.type === "text")?.text
-      );
+      const progressThought =
+        summarizeProgressThought(currentData.content?.find((c) => c.type === "text")?.text) ??
+        summarizeProgressThought(
+          collectAnthropicThinkingText(currentData.content).join("\n\n").slice(0, 2_000)
+        );
       if (progressThought && progressThought !== lastProgressThought) {
         this.broadcastAgentStatus("thinking", toolContext, progressThought);
         lastProgressThought = progressThought;
