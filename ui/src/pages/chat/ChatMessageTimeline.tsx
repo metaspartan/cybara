@@ -27,6 +27,7 @@ import {
   normalizeMessageProcessActivities,
 } from "./chatModel";
 import { MessageContent } from "./MessageContent";
+import { ClarifyQuestionCard, clarifyQuestionFromToolCalls } from "./ClarifyQuestionCard";
 import { observeDeferredMessage } from "./deferredMessageVisibility";
 import { loadDeferredMessageMetadata } from "./deferredMessageMetadata";
 import { goalIterationNumber } from "./goalLoopPresentation";
@@ -72,6 +73,7 @@ interface ChatMessageRowProps {
   entry: VisibleMessageEntry;
   forkingMessageIndex: number | null;
   goldenTurnsEnabled: boolean;
+  isLatestEntry?: boolean;
   messageProcessMap: Record<string, LiveActivityItem[]>;
   savingGoldenMessageIndex: number | null;
   sessionId: string | null;
@@ -140,6 +142,7 @@ export function ChatMessageTimeline({
           entry,
           forkingMessageIndex,
           goldenTurnsEnabled,
+          isLatestEntry: visibleIndex === entries.length - 1,
           messageProcessMap,
           savingGoldenMessageIndex,
           sessionId,
@@ -236,6 +239,7 @@ function ChatMessageRow({
   entry: { message, originalIndex, turnStartedAtMs },
   forkingMessageIndex,
   goldenTurnsEnabled,
+  isLatestEntry,
   messageProcessMap,
   savingGoldenMessageIndex,
   sessionId,
@@ -287,6 +291,9 @@ function ChatMessageRow({
     message.tool_calls
   );
   const processActivities = detailedActivities.length > 0 ? detailedActivities : undefined;
+  const interactiveClarify = isLatestEntry
+    ? clarifyQuestionFromToolCalls(message.tool_calls)
+    : null;
   return (
     <div
       className={cn(
@@ -366,6 +373,9 @@ function ChatMessageRow({
             onOpenImage={onOpenImage}
             onOpenLink={onOpenLink}
           />
+          {message.role !== "user" && interactiveClarify ? (
+            <ClarifyQuestionCard interactive question={interactiveClarify} sessionId={sessionId} />
+          ) : null}
           {message.role !== "user" ? (
             <ToolOutputImages
               message={message}
