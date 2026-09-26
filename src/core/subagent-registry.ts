@@ -15,6 +15,7 @@ export interface SubagentActivity {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
+  imagePath?: string;
 }
 
 export interface SubagentToolCall {
@@ -97,7 +98,7 @@ const defaultPersistPath =
     : join(cybaraDir, "subagent-registry.json");
 
 const DEFAULT_CONFIG: SubagentConfig = {
-  archiveAfterMinutes: 60,
+  archiveAfterMinutes: 0,
   defaultTimeoutSeconds: 0,
   persistPath: defaultPersistPath,
 };
@@ -759,6 +760,7 @@ export function resetSubagentRegistryForTests(): void {
   subagentRuns.clear();
   stopSweeper();
   restoreAttempted = false;
+  config = { ...DEFAULT_CONFIG };
 
   for (const timer of runTimers.values()) {
     clearTimeout(timer);

@@ -1059,6 +1059,7 @@ export interface Subagent {
     toolName?: string;
     toolCallId?: string;
     sandboxProvider?: string;
+    imagePath?: string;
   }>;
   toolCalls?: Array<{
     id?: string;

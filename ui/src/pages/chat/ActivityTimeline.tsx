@@ -50,7 +50,7 @@ const GROUP_ICONS: Record<ActivityGroupKind, LucideIcon> = {
 
 const LIVE_OPEN_GROUP_KINDS: readonly ActivityGroupKind[] = ["view"];
 
-function ImageViewedThumbnail({ source, alt }: { source: string; alt: string }) {
+export function ImageViewedThumbnail({ source, alt }: { source: string; alt: string }) {
   const [displaySource, setDisplaySource] = useState<string | null>(
     () => peekChatImageSource(source) ?? null
   );

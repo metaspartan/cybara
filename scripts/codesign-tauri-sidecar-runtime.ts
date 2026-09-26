@@ -7,6 +7,7 @@ import { findNestedSignables, stripAppleMetadata } from "./package-native-macos"
 
 const ROOT = join(import.meta.dirname, "..");
 const TAURI_BIN_DIR = join(ROOT, "src-tauri", "bin");
+const SIDECAR_ENTITLEMENTS = join(ROOT, "src-tauri", "sidecar-runtime.entitlements.plist");
 
 export function resolveMacOSCodesignIdentity(
   env: Record<string, string | undefined> = process.env
@@ -44,7 +45,7 @@ export async function codesignTauriSidecarRuntime(
 
   console.log(`Signing ${signables.length} Tauri sidecar runtime file(s).`);
   for (const signable of signables) {
-    await $`codesign --force --timestamp --options runtime --sign ${identity} ${signable}`.quiet();
+    await $`codesign --force --timestamp --options runtime --entitlements ${SIDECAR_ENTITLEMENTS} --sign ${identity} ${signable}`.quiet();
   }
   return signables.length;
 }

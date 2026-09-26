@@ -94,7 +94,8 @@ describe("Subagent execution wiring", () => {
     expect(run.archiveAtMs).toBeUndefined();
   });
 
-  test("starts the archive window only after a subagent becomes terminal", () => {
+  test("starts the archive window only after a subagent becomes terminal when retention is configured", () => {
+    configureSubagentRegistry({ archiveAfterMinutes: 60 });
     const run = registerSubagentRun({
       childSessionKey: `child-archive-window-${process.pid}`,
       requesterSessionKey: `parent-archive-window-${process.pid}`,
@@ -565,6 +566,61 @@ describe("Subagent execution wiring", () => {
     const completed = getRun(run.runId);
     expect(completed?.toolCallCount).toBe(150);
     expect(completed?.toolCalls).toHaveLength(100);
+  });
+
+  test("keeps completed runs visible by default instead of archiving them", () => {
+    const run = registerSubagentRun({
+      childSessionKey: `child-retain-${process.pid}`,
+      requesterSessionKey: `parent-retain-${process.pid}`,
+      task: "Stay listed after completion",
+    });
+    markRunCompleted(run.runId, "finished");
+
+    const completed = getRun(run.runId);
+    expect(completed?.archiveAtMs).toBeUndefined();
+    expect(getRunsByRequester(`parent-retain-${process.pid}`)).toHaveLength(1);
+  });
+
+  test("restores long-completed runs across restarts without sweeping them", () => {
+    const restorePath = join(tmpdir(), `cybara-subagent-retain-${process.pid}.json`);
+    const runId = `retain-${process.pid}`;
+    const endedAt = Date.now() - 6 * 60 * 60_000;
+    writeFileSync(
+      restorePath,
+      JSON.stringify([
+        [
+          runId,
+          {
+            runId,
+            childSessionKey: `child-restore-retain-${process.pid}`,
+            requesterSessionKey: `parent-restore-retain-${process.pid}`,
+            requesterDisplayKey: `parent-restore-retain-${process.pid}`,
+            task: "Completed long before a gateway restart",
+            cleanup: "keep",
+            endedAt,
+            outcome: { status: "ok", result: "kept result" },
+            createdAt: endedAt - 60_000,
+            startedAt: endedAt - 60_000,
+            cleanupHandled: true,
+            cleanupCompletedAt: endedAt,
+          },
+        ],
+      ]),
+      "utf8"
+    );
+
+    resetSubagentRegistryForTests();
+    configureSubagentRegistry({ persistPath: restorePath });
+    initSubagentRegistry();
+    try {
+      const restored = getRun(runId);
+      expect(restored?.outcome?.result).toBe("kept result");
+      expect(restored?.archiveAtMs).toBeUndefined();
+      expect(getRunsByRequester(`parent-restore-retain-${process.pid}`)).toHaveLength(1);
+    } finally {
+      resetSubagentRegistryForTests();
+      rmSync(restorePath, { force: true });
+    }
   });
 
   test("sessions_wait is scoped to the requester and reports pending runs without blocking", async () => {

@@ -1,8 +1,10 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { type ReactElement, useMemo, useState } from "react";
 import type { Subagent } from "@/hooks/useApi";
+import { imageAltFromPath, imageSourceFromPath, imageViewedSource } from "@/lib/chatActivities";
 import { isVisibleActivityText } from "../../../../shared/chat-status";
 import type { ChatLinkOpenOptions } from "./chatLinkRouting";
+import { ImageViewedThumbnail } from "./ActivityTimeline";
 import { MessageContent } from "./MessageContent";
 
 function formatJson(value: unknown): string {
@@ -35,6 +37,8 @@ interface TimelineEntry {
   phase: "start" | "result" | "error" | "blocked";
   timestamp: number;
   toolCall?: TimelineToolCall;
+  imageSource?: string;
+  imageAlt?: string;
 }
 
 function statusTone(status: TimelineToolCall["status"], phase: TimelineEntry["phase"]): string {
@@ -98,6 +102,13 @@ export function SubagentTimeline({
         toolCall = candidates.find((candidate) => !matched.has(candidate)) ?? candidates[0];
       }
       if (toolCall) matched.add(toolCall);
+      const imagePath = activity.imagePath?.trim();
+      const imageSource =
+        (imagePath ? imageSourceFromPath(imagePath) : undefined) ??
+        (toolCall ? imageViewedSource(toolCall) : undefined);
+      const imageAlt =
+        (imagePath ? imageAltFromPath(imagePath) : undefined) ??
+        (imagePath ? imagePath.split("/").pop() : undefined);
       return {
         key: activity.id || `tool-${index}`,
         kind: "tool",
@@ -105,11 +116,18 @@ export function SubagentTimeline({
         phase: activity.phase,
         timestamp: activity.timestamp,
         toolCall,
+        imageSource,
+        imageAlt,
       };
     });
 
     for (const toolCall of storedToolCalls) {
       if (matched.has(toolCall)) continue;
+      const imagePath =
+        typeof toolCall.args?.path === "string" && toolCall.args.path.trim()
+          ? toolCall.args.path.trim()
+          : undefined;
+      const imageSource = imageViewedSource(toolCall);
       entries.push({
         key: toolCall.id || `tool-orphan-${entries.length}`,
         kind: "tool",
@@ -117,15 +135,17 @@ export function SubagentTimeline({
         phase: toolCall.status === "failed" ? "error" : "result",
         timestamp: Number.MAX_SAFE_INTEGER,
         toolCall,
+        imageSource,
+        imageAlt: imageSource && imagePath ? imageAltFromPath(imagePath) : undefined,
       });
     }
     return entries;
   }, [subagent.activities, storedToolCalls]);
 
   const hasThoughtEntries = entries.some((entry) => entry.kind === "thought");
-  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
-  const toggleTool = (key: string) => {
-    setExpandedTools((current) => {
+  const [toggledRows, setToggledRows] = useState<Set<string>>(new Set());
+  const toggleRow = (key: string) => {
+    setToggledRows((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -153,12 +173,14 @@ export function SubagentTimeline({
                   </div>
                 );
               }
-              const expanded = expandedTools.has(entry.key);
-              const expandable = Boolean(
+              const defaultExpanded = Boolean(entry.imageSource);
+              const expanded = defaultExpanded !== toggledRows.has(entry.key);
+              const hasDetail = Boolean(
                 entry.toolCall &&
                   ((entry.toolCall.args && Object.keys(entry.toolCall.args).length > 0) ||
                     (entry.toolCall.result !== null && entry.toolCall.result !== undefined))
               );
+              const expandable = Boolean(hasDetail || entry.imageSource);
               return (
                 <div key={entry.key} className="min-w-0">
                   <div className="chat-activity-text flex gap-2 text-gray-400">
@@ -175,8 +197,9 @@ export function SubagentTimeline({
                       {expandable ? (
                         <button
                           type="button"
+                          aria-expanded={expanded}
                           className="flex w-full items-center gap-1.5 text-left hover:text-gray-200"
-                          onClick={() => toggleTool(entry.key)}
+                          onClick={() => toggleRow(entry.key)}
                         >
                           {expanded ? (
                             <ChevronDown className="h-3 w-3 shrink-0" />
@@ -203,7 +226,15 @@ export function SubagentTimeline({
                       )}
                     </div>
                   </div>
-                  {expanded && entry.toolCall ? (
+                  {expanded && entry.imageSource ? (
+                    <div className="mt-1.5 pl-5">
+                      <ImageViewedThumbnail
+                        source={entry.imageSource}
+                        alt={entry.imageAlt || "Viewed image"}
+                      />
+                    </div>
+                  ) : null}
+                  {expanded && !entry.imageSource && hasDetail && entry.toolCall ? (
                     <div className="mt-1.5 grid gap-2 rounded-md bg-white/[0.025] p-2.5">
                       {entry.toolCall.args && Object.keys(entry.toolCall.args).length > 0 ? (
                         <div>
