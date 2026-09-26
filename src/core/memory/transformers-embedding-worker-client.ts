@@ -11,6 +11,11 @@ import {
   isManagedTransformersRuntimeInstalled,
   managedTransformersRuntimeDir,
 } from "./transformers-package-runtime";
+import {
+  defaultNativeModuleRuntimeProbe,
+  resolveNativeModulesRuntime,
+} from "../native-module-runtime";
+import { bunRuntimeCandidates } from "../bun-runtime";
 
 interface PendingWorkerRequest {
   resolve: (response: TransformersEmbeddingWorkerResponse) => void;
@@ -69,7 +74,18 @@ async function startWorker(cacheDir: string): Promise<ReturnType<typeof Bun.spaw
   if (worker && !worker.killed && workerCacheDir === cacheDir) return worker;
   if (worker && !worker.killed) worker.kill();
   const runtimeDir = await ensureManagedTransformersRuntime();
-  const runtimePath = findBunRuntime() || (await ensureBunRuntime());
+  const runtimePath = await resolveNativeModulesRuntime(
+    () => findBunRuntime(),
+    async () => {
+      const preferred = findBunRuntime();
+      const fallbacks = bunRuntimeCandidates().filter((candidate) => candidate !== preferred);
+      const downloaded = await ensureBunRuntime().catch(() => null);
+      if (downloaded && !fallbacks.includes(downloaded)) fallbacks.unshift(downloaded);
+      return fallbacks;
+    },
+    runtimeDir,
+    defaultNativeModuleRuntimeProbe
+  );
   const materializedWorkerPath = join(runtimeDir, "transformers-embedding-worker.mjs");
   await Bun.write(materializedWorkerPath, Bun.file(resolveTransformersWorkerPath()));
   let stderr = "";

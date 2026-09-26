@@ -4,10 +4,10 @@ import { ensureBunRuntime, findBunRuntime } from "../bun-runtime";
 import { resolveCybaraHome } from "../cybara-home";
 import { readSubprocessStreamAsText } from "../subprocess-output";
 
-export const MANAGED_TRANSFORMERS_VERSION = "4.2.0";
-export const MANAGED_ONNX_NODE_VERSION = "1.24.3";
-export const MANAGED_ONNX_WEB_VERSION = "1.26.0-dev.20260416-b7804b056c";
-export const MANAGED_SHARP_VERSION = "0.34.5";
+export const MANAGED_TRANSFORMERS_VERSION = "4.3.0";
+export const MANAGED_ONNX_NODE_VERSION = "1.30.0";
+export const MANAGED_ONNX_WEB_VERSION = "1.31.0-dev.20260914-8d85527a0";
+export const MANAGED_SHARP_VERSION = "0.35.4";
 export const MANAGED_DETECT_LIBC_VERSION = "2.1.2";
 
 export interface ManagedTransformersInstallResult {
