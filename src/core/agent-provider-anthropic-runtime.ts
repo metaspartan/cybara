@@ -8,7 +8,6 @@ import {
   type AgenticLoopState,
   type AgentToolCallResult,
   ANTHROPIC_CONTEXT_1M_BETA,
-  type AnthropicResponse,
   type AnthropicUsage,
   summarizeProgressThought,
 } from "./agent-internals";
@@ -66,8 +65,12 @@ import { normalizeAnthropicModelToolUses } from "./llm/model-dialect";
 import { canRunToolsInParallel } from "./llm/parallel-tools";
 import { toAnthropicHistory } from "./llm/provider-history";
 import { supportsForcedToolChoice } from "./llm/provider-model-transport";
-import { postAnthropicMessages } from "./llm/anthropic-sdk-transport";
 import { withLlmRequestTimeout } from "./llm/request-timeout";
+import {
+  anthropicTimingOptions,
+  postAnthropicStreamableMessages,
+  readAnthropicMessageBody,
+} from "./llm/anthropic-streaming";
 import {
   sanitizeAssistantContent,
   toAnthropicReplayContentWithNormalizedToolUses,
@@ -201,12 +204,14 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         headers["x-api-key"] = currentApiKey;
       }
       try {
-        response = await postAnthropicMessages(baseUrl, anthropicEndpoint, {
-          method: "POST",
+        const initialRequestStartedAt = performance.now();
+        response = await postAnthropicStreamableMessages(baseUrl, anthropicEndpoint, requestBody, {
           headers,
-          body: JSON.stringify(requestBody),
           signal: withLlmRequestTimeout(toolContext?.abortSignal),
         });
+        (
+          response as Response & { anthropicRequestStartedAtMs?: number }
+        ).anthropicRequestStartedAtMs = initialRequestStartedAt;
       } catch (error) {
         const retryDelayMs = providerExceptionRetryDelayMs(
           error,
@@ -341,7 +346,12 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
       throw new Error(`API error after ${INITIAL_MAX_RETRIES} retries: ${lastInitialError}`);
     }
 
-    const data = (await response.json()) as AnthropicResponse;
+    const initialRead = await readAnthropicMessageBody(
+      response,
+      (response as Response & { anthropicRequestStartedAtMs?: number })
+        .anthropicRequestStartedAtMs ?? startTime
+    );
+    const data = initialRead.message;
 
     const durationMs = Math.round(performance.now() - startTime);
 
@@ -359,6 +369,7 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
           cachedInputTokens: usage.cachedInputTokens,
           cacheWriteTokens: usage.cacheWriteTokens,
           routerRouteId: toolContext?.routerRouteId,
+          ...anthropicTimingOptions(initialRead.timing, durationMs),
         }
       );
     }
@@ -690,12 +701,15 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
       try {
         while (loopRetryCount <= MAX_RETRIES) {
           try {
-            loopResponse = await postAnthropicMessages(baseUrl, anthropicEndpoint, {
-              method: "POST",
-              headers,
-              body: JSON.stringify(loopRequestBody),
-              signal: withLlmRequestTimeout(toolContext?.abortSignal),
-            });
+            loopResponse = await postAnthropicStreamableMessages(
+              baseUrl,
+              anthropicEndpoint,
+              loopRequestBody,
+              {
+                headers,
+                signal: withLlmRequestTimeout(toolContext?.abortSignal),
+              }
+            );
           } catch (error) {
             const retryDelayMs = providerExceptionRetryDelayMs(
               error,
@@ -737,12 +751,15 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
               ...loopRequestBody,
               messages: currentMessages,
             };
-            const retryResponse = await postAnthropicMessages(baseUrl, anthropicEndpoint, {
-              method: "POST",
-              headers,
-              body: JSON.stringify(retryBody),
-              signal: withLlmRequestTimeout(toolContext?.abortSignal),
-            });
+            const retryResponse = await postAnthropicStreamableMessages(
+              baseUrl,
+              anthropicEndpoint,
+              retryBody,
+              {
+                headers,
+                signal: withLlmRequestTimeout(toolContext?.abortSignal),
+              }
+            );
             if (!retryResponse.ok) {
               loopFatalError = true;
               lastLoopError = await retryResponse.text();
@@ -835,22 +852,25 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         break;
       }
 
-      const responseData = (await loopResponse.json()) as AnthropicResponse;
+      const loopRead = await readAnthropicMessageBody(loopResponse, loopRequestStartedAt);
+      const responseData = loopRead.message;
       thinkingParts.push(...collectAnthropicThinkingText(responseData.content));
       if (responseData.usage) {
         const usage = normalizeAnthropicUsage(responseData.usage);
+        const loopDurationMs = Math.round(performance.now() - loopRequestStartedAt);
         trackTokenUsage(
           modelId,
           providerConfig,
           baseUrl,
           usage.inputTokens,
           usage.outputTokens,
-          Math.round(performance.now() - loopRequestStartedAt),
+          loopDurationMs,
           {
             sessionId: sessionIdForVisibleTokenUsage(toolContext),
             cachedInputTokens: usage.cachedInputTokens,
             cacheWriteTokens: usage.cacheWriteTokens,
             routerRouteId: toolContext?.routerRouteId,
+            ...anthropicTimingOptions(loopRead.timing, loopDurationMs),
           }
         );
       }
@@ -889,12 +909,15 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
         let attemptedClosingOAuthRefresh = false;
         while (true) {
           try {
-            closingResponse = await postAnthropicMessages(baseUrl, anthropicEndpoint, {
-              method: "POST",
-              headers,
-              body: JSON.stringify(closingBody),
-              signal: withLlmRequestTimeout(toolContext?.abortSignal),
-            });
+            closingResponse = await postAnthropicStreamableMessages(
+              baseUrl,
+              anthropicEndpoint,
+              closingBody,
+              {
+                headers,
+                signal: withLlmRequestTimeout(toolContext?.abortSignal),
+              }
+            );
           } catch (error) {
             const retryDelayMs = providerExceptionRetryDelayMs(
               error,
@@ -946,22 +969,25 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
           throw new Error(`API error: ${closingResponse.status} - ${errorText}`);
         }
         if (closingResponse.ok) {
-          const closingData = (await closingResponse.json()) as AnthropicResponse;
+          const closingRead = await readAnthropicMessageBody(closingResponse, closingStartedAt);
+          const closingData = closingRead.message;
           thinkingParts.push(...collectAnthropicThinkingText(closingData.content));
           if (closingData.usage) {
             const usage = normalizeAnthropicUsage(closingData.usage);
+            const closingDurationMs = Math.round(performance.now() - closingStartedAt);
             trackTokenUsage(
               modelId,
               providerConfig,
               baseUrl,
               usage.inputTokens,
               usage.outputTokens,
-              Math.round(performance.now() - closingStartedAt),
+              closingDurationMs,
               {
                 sessionId: sessionIdForVisibleTokenUsage(toolContext),
                 cachedInputTokens: usage.cachedInputTokens,
                 cacheWriteTokens: usage.cacheWriteTokens,
                 routerRouteId: toolContext?.routerRouteId,
+                ...anthropicTimingOptions(closingRead.timing, closingDurationMs),
               }
             );
           }
