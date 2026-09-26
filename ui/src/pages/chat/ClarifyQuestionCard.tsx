@@ -147,7 +147,7 @@ export function ClarifyQuestionCard({
           data-testid="clarify-question-send"
           disabled={!canSend}
           onClick={submit}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[rgba(var(--accent-primary),0.9)] px-3 py-1.5 text-sm font-medium text-black disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[rgba(var(--accent-primary),0.9)] px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           {sending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
