@@ -1,3 +1,5 @@
+import type { ChatMessage } from "@/types";
+import { SubagentTranscript } from "./SubagentTranscript";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/auth";
 import { useEffect, useRef, useState, type ReactElement } from "react";
@@ -44,7 +46,7 @@ export function SubagentDetailPanel({
   const transcript = useQuery({
     queryKey: ["subagent-transcript", runId, subagent?.requesterSessionId],
     enabled: showTranscript && Boolean(subagent?.requesterSessionId),
-    queryFn: async (): Promise<Array<{ id: string; role: string; content: string }>> => {
+    queryFn: async (): Promise<ChatMessage[]> => {
       const response = await apiFetch(
         `/api/subagents/${encodeURIComponent(runId)}/messages?sessionId=${encodeURIComponent(subagent?.requesterSessionId ?? "")}`
       );
@@ -129,12 +131,7 @@ export function SubagentDetailPanel({
             <section className="space-y-3" aria-label="Subagent transcript">
               {transcript.isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
               {transcript.error && <p>Unable to load transcript</p>}
-              {transcript.data?.map((message) => (
-                <div key={message.id} className="rounded-xl border border-white/10 p-3">
-                  <div className="text-xs text-gray-500 mb-2">{message.role}</div>
-                  <MessageContent content={message.content} onOpenLink={onOpenLink} />
-                </div>
-              ))}
+              <SubagentTranscript messages={transcript.data ?? []} onOpenLink={onOpenLink} />
             </section>
           )}
           <SubagentTimeline subagent={subagent} onOpenLink={onOpenLink} />
