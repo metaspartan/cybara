@@ -1,5 +1,8 @@
 import { isProviderRecoveryStatusLabel } from "cybara-shared/chat-status";
-import { formatStructuredToolActivityDetail } from "cybara-shared/tool-activity-detail";
+import {
+  fetchFailureLabel,
+  formatStructuredToolActivityDetail,
+} from "cybara-shared/tool-activity-detail";
 import type { MobileMessageImage, SessionMessageSummary } from "./api";
 
 export function formatBytes(bytes: number): string {
@@ -313,11 +316,11 @@ function formatToolIntent(
     if (url) {
       if (phase === "start") return `Fetching ${url}`;
       if (phase === "result") return `Fetched ${url}`;
-      return `Fetch failed for ${url}`;
+      return fetchFailureLabel(phase, url, fallbackDetail);
     }
     if (phase === "start") return "Fetching webpage...";
     if (phase === "result") return "Fetch complete";
-    return "Fetch failed";
+    return fetchFailureLabel(phase, undefined, fallbackDetail);
   }
 
   if (
