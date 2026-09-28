@@ -66,8 +66,13 @@ describe("parseLockfilePackages", () => {
 
   test("parses the real root lockfile", () => {
     const refs = parseLockfilePackages(readFileSync("bun.lock", "utf8"));
+    const manifest = JSON.parse(readFileSync("package.json", "utf8")) as {
+      dependencies: Record<string, string>;
+    };
+    const pinnedVersion = manifest.dependencies["@solana/web3.js"];
+    expect(pinnedVersion).toMatch(/^\d+\.\d+\.\d+$/);
     expect(refs.length).toBeGreaterThan(100);
-    expect(refs).toContainEqual({ name: "@solana/web3.js", version: "1.98.4" });
+    expect(refs).toContainEqual({ name: "@solana/web3.js", version: pinnedVersion });
     expect(refs.every((ref) => !ref.version.startsWith("workspace:"))).toBe(true);
   });
 });
