@@ -985,22 +985,19 @@ async function searchDirectory(
         if (fileStat.size > 10 * 1024 * 1024) continue;
         const content = await fs.readFile(fullPath, "utf-8");
         const lines = content.split("\n");
-        const regex = caseSensitive ? new RegExp(pattern, "g") : new RegExp(pattern, "gi");
+        const regex = caseSensitive ? new RegExp(pattern) : new RegExp(pattern, "i");
 
         for (let i = 0; i < lines.length; i++) {
-          if (regex.test(lines[i])) {
-            const startLine = Math.max(0, i - context);
-            const endLine = Math.min(lines.length - 1, i + context);
-
-            for (let j = startLine; j <= endLine; j++) {
-              if (results.length > maxResults) break;
-              results.push({
-                path: fullPath,
-                line: j + 1,
-                content: lines[j],
-              });
-            }
+          if (!regex.test(lines[i])) continue;
+          if (results.length >= maxResults) {
+            results.length = maxResults;
+            return true;
           }
+          results.push({
+            path: fullPath,
+            line: i + 1,
+            content: lines[i],
+          });
         }
       }
     }

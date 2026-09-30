@@ -26,6 +26,39 @@ function estimateChars(value: DecisionInput): number {
   }
 }
 
+const CHOICE_WRAPPER_KEYS = ["item", "items", "values", "value", "options"] as const;
+
+function isChoiceWrapperKey(key: string): key is (typeof CHOICE_WRAPPER_KEYS)[number] {
+  return (CHOICE_WRAPPER_KEYS as readonly string[]).includes(key);
+}
+
+function unwrapChoiceValue(value: unknown, depth = 0): unknown {
+  if (depth > 4) return value;
+  if (Array.isArray(value)) return value;
+  if (!isRecord(value)) return value;
+  const keys = Object.keys(value);
+  if (keys.length === 1 && isChoiceWrapperKey(keys[0])) {
+    return unwrapChoiceValue(value[keys[0]], depth + 1);
+  }
+  for (const key of CHOICE_WRAPPER_KEYS) {
+    if (!(key in value)) continue;
+    const inner = unwrapChoiceValue(value[key], depth + 1);
+    if (Array.isArray(inner)) return inner;
+  }
+  return value;
+}
+
+function flattenChoiceOptions(options: unknown[]): unknown[] {
+  const flattened: unknown[] = [];
+  for (const option of options) {
+    if (Array.isArray(option)) {
+      flattened.push(...flattenChoiceOptions(option));
+      continue;
+    }
+    flattened.push(unwrapChoiceValue(option, 1));
+  }
+  return flattened;
+}
 export function validateDecisionQuestion(value: unknown): DecisionQuestion | string {
   if (!isRecord(value)) return "question must be an object";
   const type = value.type;
@@ -38,9 +71,10 @@ export function validateDecisionQuestion(value: unknown): DecisionQuestion | str
   }
 
   if (type === "choice") {
-    const options = value.options;
-    if (!Array.isArray(options) || options.length < 2) {
-      return "choice questions require at least two options";
+    const raw = unwrapChoiceValue(value.options);
+    const options = Array.isArray(raw) ? flattenChoiceOptions(raw) : null;
+    if (!options || options.length < 2) {
+      return 'choice questions require at least two options as a plain array of strings, for example "options": ["platform","ci-infra"]';
     }
     if (options.some((option) => typeof option !== "string" || !option.trim())) {
       return "choice options must all be non-empty strings";
@@ -48,6 +82,7 @@ export function validateDecisionQuestion(value: unknown): DecisionQuestion | str
     if (new Set(options).size !== options.length) {
       return "choice options must be unique";
     }
+    return { type: "choice", instructions, options: options as string[] };
   }
 
   if (type === "score") {
@@ -63,7 +98,6 @@ export function validateDecisionQuestion(value: unknown): DecisionQuestion | str
     type,
     instructions,
     ...(isRecord(value.criteria) ? { criteria: value.criteria } : {}),
-    ...(type === "choice" ? { options: value.options as string[] } : {}),
     ...(type === "score" ? { legend: value.legend as Record<string, string> } : {}),
   } as DecisionQuestion;
 }
