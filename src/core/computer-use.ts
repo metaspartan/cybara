@@ -18,6 +18,7 @@ import {
   resolveCuaDriverCommand,
 } from "./computer-use-driver-resolution";
 import { setComputerUseTrajectoryStopHandler } from "./computer-use-lifecycle";
+import { shouldStartDriverVideoRecording } from "./computer-use-recording";
 import {
   frontmostWindow,
   orderWindowsFrontmostFirst,
@@ -81,6 +82,7 @@ export {
 
 let driverProcess: ChildProcess | null = null;
 let driverToolNames = new Set<string>();
+let driverStartRecordingReliable = false;
 let activeWindowTarget: {
   pid: number;
   windowId?: number;
@@ -218,6 +220,7 @@ async function initializeSession(): Promise<void> {
   sendNotification("notifications/initialized");
 
   driverToolNames = new Set();
+  driverStartRecordingReliable = false;
   activeWindowTarget = null;
   try {
     const listed = (await sendRaw("tools/list", {})) as {
@@ -898,6 +901,22 @@ function scheduleComputerUseTrajectoryStop(): void {
   }, COMPUTER_USE_TRAJECTORY_IDLE_MS);
 }
 
+function startDriverVideoRecording(outputDir: string): Promise<boolean> {
+  return callDriverTool("start_recording", {
+    output_dir: outputDir,
+    record_video: true,
+  }).then(
+    () => {
+      driverStartRecordingReliable = true;
+      return true;
+    },
+    () => {
+      driverStartRecordingReliable = false;
+      return false;
+    }
+  );
+}
+
 async function ensureComputerUseTrajectoryRecording(
   sessionId: string,
   driverReady: boolean,
@@ -917,20 +936,21 @@ async function ensureComputerUseTrajectoryRecording(
     if (activeComputerUseTrajectory) {
       await stopActiveComputerUseTrajectory("completed");
     }
+    const recordVideo = shouldStartDriverVideoRecording({
+      trajectoryVideoEnabled: settings.trajectoryVideoEnabled,
+      driverReady,
+      hasStartRecordingTool: driverHasTool("start_recording"),
+      surface,
+      driverStartRecordingReliable,
+    });
     const created = createComputerUseTrajectory({
       sessionId,
-      recordVideo: surface === "desktop" && settings.trajectoryVideoEnabled,
+      recordVideo,
       surface,
     });
-    let driverRecording = false;
-    if (driverReady && driverHasTool("start_recording")) {
-      try {
-        await callDriverTool("start_recording", {
-          output_dir: created.dir,
-          record_video: created.metadata.recordVideo,
-        });
-        driverRecording = true;
-      } catch {}
+    const driverRecording = recordVideo;
+    if (recordVideo) {
+      void startDriverVideoRecording(created.dir);
     }
     try {
       activeComputerUseTrajectory = {
