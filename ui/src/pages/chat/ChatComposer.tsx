@@ -69,6 +69,8 @@ export interface ChatComposerProps {
   runningTasks?: ReactNode;
   codexFastMode: boolean;
   codexFastModeUpdating: boolean;
+  codexUltrafastMode: boolean;
+  codexUltrafastModeUpdating: boolean;
   selectedAgentId?: string;
   showPlan: boolean;
   showStop: boolean;
@@ -84,6 +86,7 @@ export interface ChatComposerProps {
   onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   onReasoningChange: (effort: AgentReasoningEffort | null) => void;
   onCodexFastModeChange: (enabled: boolean) => void;
+  onCodexUltrafastModeChange: (enabled: boolean) => void;
   onRemovePendingFile: (index: number) => void;
   onRemovePendingImage: (index: number) => void;
   onReorderPendingMessages: (orderedIds: string[]) => void;
@@ -137,6 +140,8 @@ export function ChatComposer({
   runningTasks,
   codexFastMode,
   codexFastModeUpdating,
+  codexUltrafastMode,
+  codexUltrafastModeUpdating,
   selectedAgentId,
   showPlan,
   showStop,
@@ -152,6 +157,7 @@ export function ChatComposer({
   onPaste,
   onReasoningChange,
   onCodexFastModeChange,
+  onCodexUltrafastModeChange,
   onRemovePendingFile,
   onRemovePendingImage,
   onReorderPendingMessages,
@@ -279,6 +285,9 @@ export function ChatComposer({
             fastMode={codexFastMode}
             fastModeUpdating={codexFastModeUpdating}
             onFastModeChange={onCodexFastModeChange}
+            ultrafastMode={codexUltrafastMode}
+            ultrafastModeUpdating={codexUltrafastModeUpdating}
+            onUltrafastModeChange={onCodexUltrafastModeChange}
           />
           <ChatReasoningControl
             effort={activeAgent?.reasoning_effort}

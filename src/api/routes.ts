@@ -259,6 +259,19 @@ function pluginSummary(plugin: ReturnType<typeof listInstalledPlugins>[number]) 
   };
 }
 
+const CONFIG_VALUE_SETTERS: Record<string, (value: unknown) => void> = {
+  dangerous_tool_policy: (value) => config.setDangerousToolPolicy(value),
+  tool_approval_mode: (value) => config.setToolApprovalMode(value),
+  edit_tool_mode: (value) => config.setEditToolMode(value),
+  web_tool_url_policy: (value) => config.setWebToolUrlPolicy(value),
+  sensitive_file_policy: (value) => config.setSensitiveFilePolicy(value),
+  memory: (value) => config.setMemoryBehaviorSettings(value),
+  llm_timeouts: (value) => config.setLlmTimeoutSettings(value),
+  memory_provider: (value) => config.setMemoryProviderSettings(value),
+  token_optimization: (value) => config.setTokenOptimizationSettings(value),
+  speech: (value) => config.setSpeechSettings(value),
+};
+
 const routes: Record<string, RouteHandler> = {
   ...sessionMessageDetailRoutes,
   ...walletRoutes,
@@ -373,6 +386,7 @@ const routes: Record<string, RouteHandler> = {
     ...getCybaraDataDirConfigInfo(),
     reasoning_effort: config.getDefaultReasoningEffort(),
     codex_fast_mode: config.getCodexFastMode(),
+    codex_ultrafast_mode: config.getCodexUltrafastMode(),
     follow_up_behavior_enabled: config.getFollowUpBehaviorEnabled(),
     tui: config.getTuiPreferences(),
     self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
@@ -458,24 +472,9 @@ const routes: Record<string, RouteHandler> = {
     const data = body as Record<string, unknown>;
     let cybaraDataDirChanged = false;
     for (const [key, value] of Object.entries(data)) {
-      if (key === "dangerous_tool_policy") {
-        config.setDangerousToolPolicy(value);
-        continue;
-      }
-      if (key === "tool_approval_mode") {
-        config.setToolApprovalMode(value);
-        continue;
-      }
-      if (key === "edit_tool_mode") {
-        config.setEditToolMode(value);
-        continue;
-      }
-      if (key === "web_tool_url_policy") {
-        config.setWebToolUrlPolicy(value);
-        continue;
-      }
-      if (key === "sensitive_file_policy") {
-        config.setSensitiveFilePolicy(value);
+      const valueSetter = CONFIG_VALUE_SETTERS[key];
+      if (valueSetter) {
+        valueSetter(value);
         continue;
       }
       if (key === "sandbox_runtime") {
@@ -485,26 +484,6 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "workspace_indexer") {
         workspaceIndexer.updateSettings(value);
-        continue;
-      }
-      if (key === "memory") {
-        config.setMemoryBehaviorSettings(value);
-        continue;
-      }
-      if (key === "llm_timeouts") {
-        config.setLlmTimeoutSettings(value);
-        continue;
-      }
-      if (key === "memory_provider") {
-        config.setMemoryProviderSettings(value);
-        continue;
-      }
-      if (key === "token_optimization") {
-        config.setTokenOptimizationSettings(value);
-        continue;
-      }
-      if (key === "speech") {
-        config.setSpeechSettings(value);
         continue;
       }
       if (key === "computer_use") {
@@ -532,6 +511,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "codex_fast_mode") {
         config.setCodexFastMode(value);
+        continue;
+      }
+      if (key === "codex_ultrafast_mode") {
+        config.setCodexUltrafastMode(value);
         continue;
       }
       if (key === "follow_up_behavior_enabled") {

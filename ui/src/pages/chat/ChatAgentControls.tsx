@@ -1,6 +1,6 @@
 import { ChevronDown, Loader2 } from "lucide-react";
 import type { AgentSummary, ProviderPlanSnapshot, SessionContextUsage } from "@/types";
-import { ChatFastModeToggle } from "./ChatFastModeToggle";
+import { ChatFastModeToggle, ChatUltrafastModeToggle } from "./ChatFastModeToggle";
 import { ContextUsageRing } from "./ContextUsageRing";
 
 export const MODEL_ROUTER_SELECTOR_VALUE = "__model_router__";
@@ -17,6 +17,9 @@ export function ChatAgentControls({
   fastMode,
   fastModeUpdating,
   onFastModeChange,
+  ultrafastMode,
+  ultrafastModeUpdating,
+  onUltrafastModeChange,
   locked = false,
   lockedLabel,
   controlId = "chat-agent-selector",
@@ -32,6 +35,9 @@ export function ChatAgentControls({
   fastMode?: boolean;
   fastModeUpdating?: boolean;
   onFastModeChange?: (enabled: boolean) => void;
+  ultrafastMode?: boolean;
+  ultrafastModeUpdating?: boolean;
+  onUltrafastModeChange?: (enabled: boolean) => void;
   locked?: boolean;
   lockedLabel?: string;
   controlId?: string;
@@ -58,6 +64,18 @@ export function ChatAgentControls({
           disabled={useModelRouter}
           updating={fastModeUpdating}
           onChange={onFastModeChange}
+        />
+      ) : null}
+      {onUltrafastModeChange ? (
+        <ChatUltrafastModeToggle
+          enabled={ultrafastMode === true}
+          provider={
+            selectedAgent?.provider_type ?? selectedAgent?.provider ?? selectedAgent?.provider_id
+          }
+          model={selectedAgent?.model}
+          disabled={useModelRouter}
+          updating={ultrafastModeUpdating}
+          onChange={onUltrafastModeChange}
         />
       ) : null}
       {locked ? (

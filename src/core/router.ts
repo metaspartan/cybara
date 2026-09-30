@@ -28,6 +28,7 @@ type PricingEntry = [
 const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["openai", "gpt-5.6-sol", 5.0, 30.0, 0.5, 6.25],
   ["openai", "gpt-6-astra", 10.0, 50.0, 1.0, 12.5],
+  ["openai", "gpt-6.1-sol", 2.0, 10.0, 0.1, 2.5],
   ["openai", "gpt-6-sol", 2.0, 10.0, 0.2],
   ["openai", "gpt-6-luna", 0.1, 0.5, 0.01, 0.125],
   ["openai", "gpt-5.6", 5.0, 30.0, 0.5, 6.25],
@@ -35,6 +36,7 @@ const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["openai", "gpt-5.6-luna", 1.0, 6.0, 0.1, 1.25],
   ["openai-codex", "gpt-5.6-sol", 5.0, 30.0, 0.5, 6.25],
   ["openai-codex", "gpt-6-astra", 10.0, 50.0, 1.0, 12.5],
+  ["openai-codex", "gpt-6.1-sol", 2.0, 10.0, 0.1, 2.5],
   ["openai-codex", "gpt-6-sol", 2.0, 10.0, 0.2],
   ["openai-codex", "gpt-6-luna", 0.1, 0.5, 0.01, 0.125],
   ["openai-codex", "gpt-5.6-terra", 2.5, 15.0, 0.25, 3.125],

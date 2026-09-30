@@ -1,5 +1,8 @@
-import { Loader2, Zap } from "lucide-react";
-import { supportsCodexFastMode } from "../../../../shared/codex-fast-mode";
+import { Gauge, Loader2, Zap } from "lucide-react";
+import {
+  supportsCodexFastMode,
+  supportsCodexUltrafastMode,
+} from "../../../../shared/codex-fast-mode";
 import { cn } from "@/lib/utils";
 
 export function isCodexFastModeProvider(provider?: string | null): boolean {
@@ -8,6 +11,66 @@ export function isCodexFastModeProvider(provider?: string | null): boolean {
 
 export function shouldShowCodexFastMode(provider?: string | null, model?: string | null): boolean {
   return isCodexFastModeProvider(provider) && supportsCodexFastMode(model);
+}
+
+export function shouldShowCodexUltrafastMode(
+  provider?: string | null,
+  model?: string | null
+): boolean {
+  return isCodexFastModeProvider(provider) && supportsCodexUltrafastMode(model);
+}
+
+export function ChatUltrafastModeToggle({
+  enabled,
+  provider,
+  model,
+  disabled,
+  updating,
+  onChange,
+}: {
+  enabled: boolean;
+  provider?: string | null;
+  model?: string | null;
+  disabled?: boolean;
+  updating?: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  if (!shouldShowCodexUltrafastMode(provider, model)) return null;
+
+  const label = enabled ? "Ultra mode on" : "Ultra mode off";
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={enabled}
+      disabled={disabled || updating}
+      onClick={() => onChange(!enabled)}
+      title={
+        enabled
+          ? "Ultra mode: fastest service tier, up to 6x faster and costs more"
+          : "Ultra mode: fastest service tier for this model, costs more"
+      }
+      className={cn(
+        "inline-flex h-5 w-5 shrink-0 items-center justify-center bg-transparent transition-colors",
+        enabled
+          ? "text-rose-400 hover:text-rose-300"
+          : "text-[var(--icon-muted)] hover:text-[var(--text-primary)]",
+        (disabled || updating) && "cursor-not-allowed opacity-60"
+      )}
+    >
+      {updating ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : (
+        <Gauge
+          className={cn(
+            "h-3.5 w-3.5",
+            enabled && "fill-current drop-shadow-[0_0_4px_rgba(251,113,133,0.55)]"
+          )}
+        />
+      )}
+    </button>
+  );
 }
 
 export function ChatFastModeToggle({

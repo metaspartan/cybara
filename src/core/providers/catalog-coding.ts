@@ -1157,6 +1157,15 @@ export const codingProviderCatalog = {
         code: true,
       },
       {
+        id: "gpt-6.1-sol",
+        name: "GPT-6.1-Sol",
+        context: 372000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
+      {
         id: "gpt-6-sol",
         name: "GPT-6-Sol",
         context: 372000,

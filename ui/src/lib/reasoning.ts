@@ -1,4 +1,5 @@
 import {
+  normalizeReasoningEffort,
   supportedReasoningEfforts,
   supportsXHighReasoning,
   usesBinaryReasoning,
@@ -76,8 +77,5 @@ export function readAgentReasoningEffort(config: unknown): ReasoningEffort | nul
   const params = rawParams as Record<string, unknown>;
   const effort = params.reasoning_effort ?? params.reasoningEffort;
   if (typeof effort !== "string") return null;
-  const normalized = effort.trim().toLowerCase();
-  return ["minimal", "low", "medium", "high", "xhigh", "max"].includes(normalized)
-    ? (normalized as ReasoningEffort)
-    : null;
+  return normalizeReasoningEffort(effort);
 }

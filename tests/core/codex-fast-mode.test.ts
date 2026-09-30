@@ -55,7 +55,9 @@ describe("codex fast mode", () => {
     expect(supportsCodexFastMode("gpt-6-nano")).toBe(false);
     expect(supportsCodexFastMode("gpt-6-spark")).toBe(false);
     expect(supportsCodexFastMode("GPT-6-Astra")).toBe(true);
-    expect(supportsCodexFastMode("gpt-7")).toBe(false);
+    expect(supportsCodexFastMode("gpt-6.1-sol")).toBe(true);
+    expect(supportsCodexFastMode("gpt-7")).toBe(true);
+    expect(supportsCodexFastMode("not-a-model")).toBe(false);
   });
 
   test("sends the tier value the Codex backend accepts", () => {
@@ -74,8 +76,8 @@ describe("codex fast mode", () => {
       join(process.cwd(), "src/core/agent-provider-codex-runtime.ts"),
       "utf8"
     );
-    expect(runtime).toContain("codexFastModeServiceTier(config.getCodexFastMode(), activeModelId)");
-    expect(runtime).toContain("requestBody.service_tier = fastModeTier");
+    expect(runtime).toContain("fastMode: config.getCodexFastMode()");
+    expect(runtime).toContain("requestBody.service_tier = serviceTier");
 
     const config = readFileSync(join(process.cwd(), "src/core/config.ts"), "utf8");
     expect(config).toContain('this.get<unknown>("codex_fast_mode") === true');

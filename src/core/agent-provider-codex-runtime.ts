@@ -1,4 +1,4 @@
-import { codexFastModeServiceTier } from "../../shared/codex-fast-mode";
+import { codexServiceTier } from "../../shared/codex-fast-mode";
 import type { AgentMessage } from "./agent";
 import {
   resolveContextGuardBudgets,
@@ -663,9 +663,13 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
             : "auto",
         parallel_tool_calls: true,
       };
-      const fastModeTier = codexFastModeServiceTier(config.getCodexFastMode(), activeModelId);
-      if (fastModeTier) {
-        requestBody.service_tier = fastModeTier;
+      const serviceTier = codexServiceTier({
+        fastMode: config.getCodexFastMode(),
+        ultrafastMode: config.getCodexUltrafastMode(),
+        modelId: activeModelId,
+      });
+      if (serviceTier) {
+        requestBody.service_tier = serviceTier;
       }
       const codexEffort = normalizeReasoningEffort(
         this.resolveModelParams(toolContext).reasoning_effort

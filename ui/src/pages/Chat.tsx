@@ -42,6 +42,7 @@ import { ArtifactViewerPanel } from "./chat/ArtifactViewerPanel";
 import { hasMixedAssistantAuthors } from "./chat/assistantAuthors";
 import { parseTimestampMs } from "./chat/assistantMetaModel";
 import { MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
+import { useCodexServiceTierModes } from "./chat/useCodexServiceTierModes";
 import { ChatComposer, type ChatComposerProps } from "./chat/ChatComposer";
 import { ChatEmptyState } from "./chat/ChatEmptyState";
 import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFollowUpControls";
@@ -318,8 +319,15 @@ export function Chat() {
   const [followUpBehaviorEnabled, setFollowUpBehaviorEnabled] = useState(true);
   const [goldenTurnsEnabled, setGoldenTurnsEnabled] = useState(true);
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
-  const [codexFastMode, setCodexFastMode] = useState(false);
-  const [savingCodexFastMode, setSavingCodexFastMode] = useState(false);
+  const {
+    fastMode: codexFastMode,
+    fastModeUpdating: savingCodexFastMode,
+    ultrafastMode: codexUltrafastMode,
+    ultrafastModeUpdating: savingCodexUltrafastMode,
+    setFastMode: updateCodexFastMode,
+    setUltrafastMode: updateCodexUltrafastMode,
+    syncFromConfig: syncCodexServiceTiers,
+  } = useCodexServiceTierModes();
   const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
     null
   );
@@ -740,30 +748,6 @@ export function Chat() {
     ]
   );
 
-  const updateCodexFastMode = useCallback(
-    async (next: boolean) => {
-      if (savingCodexFastMode) return;
-      const previous = codexFastMode;
-      setCodexFastMode(next);
-      setSavingCodexFastMode(true);
-      try {
-        const result = await settingsApi.updateConfig({ codex_fast_mode: next });
-        if (!result.success || !result.data?.success) {
-          throw new Error(result.error || "Config update failed");
-        }
-        useUIStore.getState().addToast("success", next ? "Fast mode on" : "Fast mode off");
-      } catch (error) {
-        setCodexFastMode(previous);
-        useUIStore
-          .getState()
-          .addToast("error", error instanceof Error ? error.message : "Failed to update fast mode");
-      } finally {
-        setSavingCodexFastMode(false);
-      }
-    },
-    [codexFastMode, savingCodexFastMode]
-  );
-
   const updateToolApprovalMode = useCallback(
     async (nextMode: ToolApprovalMode) => {
       if (nextMode === toolApprovalMode || savingToolApprovalMode) return;
@@ -808,7 +792,7 @@ export function Chat() {
         if (!mounted || !result.success) return;
         setToolApprovalMode(normalizeToolApprovalMode(result.data?.tool_approval_mode));
         setFollowUpBehaviorEnabled(result.data?.follow_up_behavior_enabled !== false);
-        setCodexFastMode(result.data?.codex_fast_mode === true);
+        syncCodexServiceTiers(result.data);
         const lab = result.data?.lab;
         const labRecord =
           lab && typeof lab === "object" && !Array.isArray(lab)
@@ -1629,6 +1613,9 @@ export function Chat() {
     codexFastMode,
     codexFastModeUpdating: savingCodexFastMode,
     onCodexFastModeChange: updateCodexFastMode,
+    codexUltrafastMode,
+    codexUltrafastModeUpdating: savingCodexUltrafastMode,
+    onCodexUltrafastModeChange: updateCodexUltrafastMode,
     selectedAgentId,
     showPlan: showComposerPlan,
     showStop: showStopComposerButton,
