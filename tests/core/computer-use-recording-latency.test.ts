@@ -52,6 +52,24 @@ describe("driver video recording gate", () => {
       shouldStartDriverVideoRecording({ ...enabled, driverStartRecordingReliable: false })
     ).toBe(false);
   });
+
+  test("the reliability flag starts permissive so the first recording can be attempted", () => {
+    const declaration = computerUseSource.match(/let driverStartRecordingReliable = (true|false);/);
+    expect(declaration?.[1]).toBe("true");
+  });
+
+  test("a fresh driver start resets reliability to permissive", () => {
+    const reset = computerUseSource.match(
+      /driverToolNames = new Set\(\);\s*driverStartRecordingReliable = (true|false);/
+    );
+    expect(reset?.[1]).toBe("true");
+  });
+
+  test("a failed start_recording attempt is what disables further recording", () => {
+    expect(computerUseSource).toMatch(
+      /driverStartRecordingReliable = false;[\s\S]{0,40}?return false;/
+    );
+  });
 });
 
 describe("driver start_recording capability probe", () => {

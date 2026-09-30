@@ -82,7 +82,7 @@ export {
 
 let driverProcess: ChildProcess | null = null;
 let driverToolNames = new Set<string>();
-let driverStartRecordingReliable = false;
+let driverStartRecordingReliable = true;
 let activeWindowTarget: {
   pid: number;
   windowId?: number;
@@ -220,7 +220,7 @@ async function initializeSession(): Promise<void> {
   sendNotification("notifications/initialized");
 
   driverToolNames = new Set();
-  driverStartRecordingReliable = false;
+  driverStartRecordingReliable = true;
   activeWindowTarget = null;
   try {
     const listed = (await sendRaw("tools/list", {})) as {
