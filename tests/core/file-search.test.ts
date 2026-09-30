@@ -150,7 +150,10 @@ describe("file search", () => {
     }
   });
 
-  test("skips unreadable directories without failing accessible matches", async () => {
+  test.skipIf(
+    process.platform === "win32",
+    "Windows chmod only toggles the read-only attribute and cannot make a directory unreadable"
+  )("skips unreadable directories without failing accessible matches", async () => {
     const directory = mkdtempSync(join(tmpdir(), "cybara-file-search-unreadable-"));
     const unreadable = join(directory, "unreadable");
     try {

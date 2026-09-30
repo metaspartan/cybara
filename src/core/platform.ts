@@ -47,6 +47,31 @@ export function commandExists(cmd: string): boolean {
   }
 }
 
+const commandWorksCache = new Map<string, { works: boolean; expires: number }>();
+const COMMAND_WORKS_TTL_MS = 60_000;
+
+export function commandWorks(cmd: string, args: string[] = ["--version"]): boolean {
+  const cached = commandWorksCache.get(cmd);
+  if (cached && cached.expires > Date.now()) return cached.works;
+  let works = false;
+  try {
+    const result = Bun.spawnSync([cmd, ...args], {
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 5_000,
+    });
+    works = result.exitCode === 0;
+  } catch {
+    works = false;
+  }
+  commandWorksCache.set(cmd, { works, expires: Date.now() + COMMAND_WORKS_TTL_MS });
+  return works;
+}
+
+export function resetCommandWorksCache(): void {
+  commandWorksCache.clear();
+}
+
 export function getWindowsShellCommand(
   command: string,
   commandAvailable: (cmd: string) => boolean = commandExists
