@@ -19,6 +19,15 @@ import {
 } from "./computer-use-driver-resolution";
 import { setComputerUseTrajectoryStopHandler } from "./computer-use-lifecycle";
 import {
+  assertUserNotDriving,
+  beginComputerUseFocus,
+  endComputerUseFocus,
+  getComputerUseFocusState,
+  isFocusMutatingAction,
+  isUserHoldingFocus,
+  listActiveComputerUseFocus,
+} from "./computer-use-focus";
+import {
   appendComputerUseTrajectoryTurn,
   type ComputerUseTrajectoryDetail,
   type ComputerUseTrajectorySurface,
@@ -556,6 +565,20 @@ export function clearComputerUsePreview(sessionIdValue: string): void {
   computerUsePreviews.delete(sessionId);
   computerUsePreviewViews.delete(sessionId);
   computerUsePreviewFiles.delete(sessionId);
+  endComputerUseFocus(sessionId);
+}
+
+export interface ComputerUseTakeoverState {
+  sessionId: string;
+  app: string;
+  startedAt: number;
+  lastActionAt: number;
+  yieldedToUser: boolean;
+  reason: string | null;
+}
+
+export function listActiveComputerUseTakeovers(now = Date.now()): ComputerUseTakeoverState[] {
+  return listActiveComputerUseFocus(now);
 }
 
 function renderComputerUsePreviewFile(sessionId: string): void {
@@ -1441,6 +1464,16 @@ export async function focusComputerUsePreviewApp(
   return { app, text: result.text || `Focused ${app}.` };
 }
 
+async function guardFocusSafeAction(args: ComputerUseArgs, sessionId: string): Promise<void> {
+  if (!isFocusMutatingAction(args.action)) return;
+  const previous = getComputerUseFocusState(sessionId);
+  const targetApp = args.app?.trim() || previous?.agentApp || "";
+  const baseline = activeWindowTarget?.appName || previous?.frontmostApp || "";
+
+  assertUserNotDriving(sessionId, targetApp, baseline);
+  beginComputerUseFocus(sessionId, targetApp, baseline);
+}
+
 export async function handleComputerUse(
   args: Record<string, unknown>,
   context?: ComputerUseContext
@@ -1477,6 +1510,7 @@ export async function handleComputerUse(
     } catch (error) {
       if (!isFullDesktopCaptureRequest(typedArgs)) throw error;
     }
+    if (sessionId) await guardFocusSafeAction(typedArgs, sessionId);
     if (sessionId) await ensureComputerUseTrajectoryRecording(sessionId, driverReady);
     if (isFullDesktopCaptureRequest(typedArgs)) {
       const native = await nativeScreenCapture();

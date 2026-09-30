@@ -51,6 +51,7 @@ import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
 import { ChatPageHeader } from "./chat/ChatPageHeader";
 import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
+import { ComputerUseTakeoverOverlay } from "./chat/ComputerUseTakeoverOverlay";
 import { RunningTasksBar } from "./chat/RunningTasksBar";
 import { chatHorizontalPaddingClassName } from "./chat/chatAppearanceLayout";
 import { type ChatLinkOpenOptions, routeChatLink } from "./chat/chatLinkRouting";
@@ -1884,6 +1885,7 @@ export function Chat() {
               onPreviewAvailable={floatingPreviewActivity.markComputerAvailable}
             />
           ) : null}
+          <ComputerUseTakeoverOverlay sessionId={sessionId} />
         </div>
 
         {sessionId && showEnvironmentOverview && !showWorkspacePanel ? (
