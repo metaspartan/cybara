@@ -24,6 +24,7 @@ const DYNAMIC_IMPORT_ALLOWLIST = new Set([
   "src/core/agent.ts",
   "src/core/source-migration.ts",
   "src/core/ssh/ssh-client.ts",
+  "src/core/llm/image-compression.ts",
   "ui/src/lib/desktopHost.ts",
   "ui/src/lib/tauriPet.ts",
   "ui/src/pages/PetOverlay.tsx",

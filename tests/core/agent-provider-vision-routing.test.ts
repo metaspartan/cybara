@@ -122,7 +122,7 @@ describe("agent provider vision routing", () => {
     const imageFollowup = followupMessages.find(
       (message) => message.role === "user" && Array.isArray(message.content)
     );
-    expect(JSON.stringify(imageFollowup)).toContain("data:image/png;base64,");
+    expect(JSON.stringify(imageFollowup)).toMatch(/data:image\/(png|jpeg);base64,/);
   });
 
   test("lets a vision agent list a directory and inspect an image with read", async () => {
@@ -216,6 +216,6 @@ describe("agent provider vision routing", () => {
     expect(result.content).toBe("The directory image is visible.");
     expect(requestBodies).toHaveLength(3);
     const finalMessages = requestBodies[2]?.messages as Array<Record<string, unknown>>;
-    expect(JSON.stringify(finalMessages)).toContain("data:image/png;base64,");
+    expect(JSON.stringify(finalMessages)).toMatch(/data:image\/(png|jpeg);base64,/);
   });
 });
