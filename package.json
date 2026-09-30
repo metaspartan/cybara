@@ -138,7 +138,7 @@
   },
   "overrides": {
     "adm-zip": "0.6.1",
-    "axios": "1.18.1",
+    "axios": "1.20.0",
     "basic-ftp": "5.3.1",
     "bn.js": "5.2.4",
     "body-parser": "2.3.0",
