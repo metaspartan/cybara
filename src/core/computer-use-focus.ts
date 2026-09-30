@@ -9,6 +9,7 @@ const MUTATING_ACTIONS = new Set([
   "drag",
   "scroll",
   "focus_app",
+  "capture",
 ]);
 
 const ACTIVE_TTL_MS = 90_000;
@@ -23,6 +24,13 @@ export interface ComputerUseFocusState {
   frontmostApp?: string;
   interferenceAt?: number;
   interferenceReason?: string;
+  interferenceCount: number;
+}
+
+export interface ComputerUseInterferenceOutcome {
+  blocked: boolean;
+  reason: string | undefined;
+  interferenceCount: number;
 }
 
 const focusStates = new Map<string, ComputerUseFocusState>();
@@ -51,6 +59,7 @@ export function beginComputerUseFocus(
     lastAgentActionAt: now,
     agentAppBeforeAction: normalizeApp(frontmostApp),
     frontmostApp: normalizeApp(frontmostApp) || existing?.frontmostApp,
+    interferenceCount: existing?.interferenceCount ?? 0,
   });
 }
 
@@ -89,14 +98,14 @@ export function listActiveComputerUseFocus(now = Date.now()): Array<{
       focusStates.delete(sessionId);
       continue;
     }
-    const yielded = isUserHoldingFocus(state);
+    const yieldedToUser = isUserHoldingFocus(state);
     active.push({
       sessionId,
       app: state.agentApp,
       startedAt: state.startedAt,
       lastActionAt: state.lastAgentActionAt,
-      yieldedToUser: yielded,
-      reason: yielded ? state.interferenceReason || "user-took-over" : null,
+      yieldedToUser,
+      reason: yieldedToUser ? (state.interferenceReason ?? null) : null,
     });
   }
   return active;
@@ -121,32 +130,37 @@ export function detectUserInterference(
   if (!state) return undefined;
 
   const target = normalizeApp(targetApp);
-  if (target && frontmost === target) {
+  const observed = normalizeApp(state.frontmostApp);
+  const baseline = normalizeApp(state.agentAppBeforeAction);
+
+  if (frontmost === target || frontmost === observed || frontmost === baseline) {
     state.frontmostApp = frontmost;
     return undefined;
   }
-
-  const baseline = normalizeApp(state.agentAppBeforeAction);
-  if (baseline && frontmost === baseline) return undefined;
 
   state.frontmostApp = frontmost;
   if (Date.now() - state.lastAgentActionAt < INTERFERENCE_GRACE_MS) return undefined;
 
   state.interferenceAt = Date.now();
+  state.interferenceCount += 1;
   state.interferenceReason = target
-    ? `You switched to ${frontmost} while Cybara was working in ${target}.`
-    : `You switched to ${frontmost} while Cybara was using your computer.`;
+    ? `User switched to ${frontmost} while Cybara was working in ${target}.`
+    : `User switched to ${frontmost} while Cybara was using the computer.`;
   return state.interferenceReason;
 }
 
-export function assertUserNotDriving(
+export function guardComputerUseAgainstUserInterference(
   sessionIdValue: string,
   targetApp: string,
   frontmostAppValue: string
-): void {
-  const reason = detectUserInterference(sessionIdValue, targetApp, frontmostAppValue);
-  if (!reason) return;
-  throw new Error(
-    `${reason} Cybara paused so it does not fight you. Re-run the step when you are ready, or stop the turn to take over fully.`
-  );
+): ComputerUseInterferenceOutcome {
+  const sessionId = sessionIdValue.trim();
+  const reason = detectUserInterference(sessionId, targetApp, frontmostAppValue);
+  const state = getComputerUseFocusState(sessionId);
+  const blocked = isUserHoldingFocus(state);
+  return {
+    blocked,
+    reason: reason ?? (blocked ? (state?.interferenceReason ?? undefined) : undefined),
+    interferenceCount: state?.interferenceCount ?? 0,
+  };
 }

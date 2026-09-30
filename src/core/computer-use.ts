@@ -19,10 +19,16 @@ import {
 } from "./computer-use-driver-resolution";
 import { setComputerUseTrajectoryStopHandler } from "./computer-use-lifecycle";
 import {
-  assertUserNotDriving,
+  frontmostWindow,
+  orderWindowsFrontmostFirst,
+  parseDriverWindows,
+  type DriverWindowRecord,
+} from "./computer-use-window-order";
+import {
   beginComputerUseFocus,
   endComputerUseFocus,
   getComputerUseFocusState,
+  guardComputerUseAgainstUserInterference,
   isFocusMutatingAction,
   isUserHoldingFocus,
   listActiveComputerUseFocus,
@@ -754,12 +760,7 @@ interface DriverCallResult {
   structured?: Record<string, unknown>;
 }
 
-interface DriverWindow {
-  appName: string;
-  pid: number;
-  windowId?: number;
-  zIndex: number;
-}
+type DriverWindow = DriverWindowRecord;
 
 interface DriverApp {
   active?: boolean;
@@ -1234,15 +1235,7 @@ async function listDriverWindows(): Promise<DriverWindow[]> {
       rawWindows = parsed?.windows || [];
     } catch {}
   }
-  return rawWindows
-    .filter((w) => Number.isFinite(Number(w.pid)))
-    .map((w) => ({
-      appName: typeof w.app_name === "string" ? w.app_name : "",
-      pid: Number(w.pid),
-      windowId: Number.isFinite(Number(w.window_id)) ? Number(w.window_id) : undefined,
-      zIndex: Number.isFinite(Number(w.z_index)) ? Number(w.z_index) : 0,
-    }))
-    .sort((a, b) => a.zIndex - b.zIndex);
+  return orderWindowsFrontmostFirst(parseDriverWindows(rawWindows));
 }
 
 async function resolveWindowTarget(app?: string): Promise<{ pid: number; windowId?: number }> {
@@ -1272,7 +1265,7 @@ async function resolveWindowTarget(app?: string): Promise<{ pid: number; windowI
       windowId: activeWindowTarget.windowId,
     };
   }
-  const frontmost = windows[0];
+  const frontmost = frontmostWindow(windows);
   if (!frontmost) {
     throw new Error(
       "No on-screen windows reported by cua-driver. Check its OS permissions (`cua-driver doctor`)."
@@ -1464,14 +1457,38 @@ export async function focusComputerUsePreviewApp(
   return { app, text: result.text || `Focused ${app}.` };
 }
 
+const NON_APP_SURFACES = new Set(["desktop", "screen", "display", "wallpaper", "dock", "menubar"]);
+
+async function currentFrontmostApp(): Promise<string> {
+  try {
+    const windows = await listDriverWindows();
+    const topmost = frontmostWindow(
+      windows.filter((window) => {
+        const name = window.appName.trim().toLowerCase();
+        return name.length > 0 && !NON_APP_SURFACES.has(name);
+      })
+    );
+    return topmost?.appName?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
 async function guardFocusSafeAction(args: ComputerUseArgs, sessionId: string): Promise<void> {
   if (!isFocusMutatingAction(args.action)) return;
   const previous = getComputerUseFocusState(sessionId);
   const targetApp = args.app?.trim() || previous?.agentApp || "";
-  const baseline = activeWindowTarget?.appName || previous?.frontmostApp || "";
+  const frontmostApp = await currentFrontmostApp();
 
-  assertUserNotDriving(sessionId, targetApp, baseline);
-  beginComputerUseFocus(sessionId, targetApp, baseline);
+  const outcome = guardComputerUseAgainstUserInterference(sessionId, targetApp, frontmostApp);
+  if (outcome.blocked) {
+    throw new Error(
+      outcome.reason
+        ? `${outcome.reason} Stop the conversation to let Cybara resume.`
+        : "User took control of the computer. Stop the conversation to let Cybara resume."
+    );
+  }
+  beginComputerUseFocus(sessionId, targetApp, frontmostApp);
 }
 
 export async function handleComputerUse(

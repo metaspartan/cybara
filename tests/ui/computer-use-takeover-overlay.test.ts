@@ -17,9 +17,13 @@ describe("computer use takeover overlay", () => {
     expect(overlaySource).toContain("if (!response.ok) throw new Error");
   });
 
-  test("renders the active and user-yielded copy", () => {
+  test("announces the takeover and routes stop through the caller's handler", () => {
     expect(overlaySource).toContain("Cybara is using your computer");
-    expect(overlaySource).toContain("takeover.reason");
-    expect(overlaySource).toContain('data-testid="computer-use-takeover"');
+    expect(overlaySource).toContain("onStop");
+    expect(overlaySource).toContain('data-testid="computer-use-stop"');
+  });
+
+  test("maps escape to stop so the surface is always escapable", () => {
+    expect(overlaySource).toContain('event.key === "Escape"');
   });
 });

@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
-  assertUserNotDriving,
   beginComputerUseFocus,
   clearAllComputerUseFocus,
   detectUserInterference,
   endComputerUseFocus,
   getComputerUseFocusState,
+  guardComputerUseAgainstUserInterference,
   isFocusMutatingAction,
   isUserHoldingFocus,
   listActiveComputerUseFocus,
@@ -18,11 +18,20 @@ afterEach(() => {
 });
 
 describe("computer use focus mutating actions", () => {
-  test("classifies only state-changing actions as focus mutating", () => {
-    for (const action of ["click", "double_click", "type", "key", "drag", "scroll", "focus_app"]) {
+  test("classifies focus-mutating actions as focus mutating", () => {
+    for (const action of [
+      "click",
+      "double_click",
+      "type",
+      "key",
+      "drag",
+      "scroll",
+      "focus_app",
+      "capture",
+    ]) {
       expect(isFocusMutatingAction(action)).toBe(true);
     }
-    for (const action of ["capture", "screenshot", "list_apps", "move", "wait", "read_text"]) {
+    for (const action of ["screenshot", "list_apps", "move", "wait", "read_text"]) {
       expect(isFocusMutatingAction(action)).toBe(false);
     }
   });
@@ -64,14 +73,13 @@ describe("computer use user interference detection", () => {
   });
 });
 
-describe("computer use yields to the user", () => {
-  test("throws an actionable pause message instead of fighting the user", () => {
+describe("computer use yields to the user when they take over", () => {
+  test("blocks the agent step and explains why", () => {
     beginComputerUseFocus("s6", "Safari", "Safari");
     pastGraceFor("s6");
-    detectUserInterference("s6", "Safari", "Slack");
-    expect(() => assertUserNotDriving("s6", "Safari", "Slack")).toThrow(
-      /does not fight you|paused/i
-    );
+    const outcome = guardComputerUseAgainstUserInterference("s6", "Safari", "Slack");
+    expect(outcome.blocked).toBe(true);
+    expect(outcome.reason).toMatch(/Slack/);
   });
 
   test("stays yielded until the agent acts again", () => {

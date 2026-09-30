@@ -1885,7 +1885,10 @@ export function Chat() {
               onPreviewAvailable={floatingPreviewActivity.markComputerAvailable}
             />
           ) : null}
-          <ComputerUseTakeoverOverlay sessionId={sessionId} />
+          <ComputerUseTakeoverOverlay
+            sessionId={sessionId}
+            onStop={() => void handleStopActive()}
+          />
         </div>
 
         {sessionId && showEnvironmentOverview && !showWorkspacePanel ? (
