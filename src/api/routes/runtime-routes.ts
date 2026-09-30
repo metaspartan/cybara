@@ -19,6 +19,7 @@ import {
   clearComputerUsePreview,
   focusComputerUsePreviewApp,
   getComputerUsePreview,
+  listActiveComputerUseTakeovers,
   replayComputerUseTrajectory,
   stopComputerUseTrajectoryCapture,
 } from "../../core/computer-use";
@@ -122,6 +123,16 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
       title: typeof title === "string" ? title : undefined,
     });
     return { success: true, ...result };
+  },
+  "GET /api/computer-use/active": (_body, params) => {
+    const sessionId = browserSessionId(params?.sessionId);
+    const takeovers = listActiveComputerUseTakeovers();
+    const data = sessionId
+      ? takeovers.find((entry) => entry.sessionId === sessionId) || null
+      : takeovers.length > 0
+        ? takeovers[0]
+        : null;
+    return { success: true, data };
   },
   "GET /api/computer-use/preview": (_body, params) => {
     const sessionId = browserSessionId(params?.sessionId);

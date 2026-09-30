@@ -35,6 +35,8 @@ import {
   handleMemorySearch,
 } from "../api/memory/memory-api";
 import { agentManager, getBuiltinTools } from "../core/agent";
+import { getResidentChatSession } from "./chat-runtime-state";
+import { buildSessionUsageFields, sessionAgentContextWindowTokens } from "./session-usage-fields";
 import { resolveTurnContextWindow } from "./chat-turn-context";
 import { sessionGoalRoutes } from "./session-goal-routes";
 import { forkSession } from "../core/agent-eval";
@@ -227,16 +229,6 @@ import {
 } from "./subagents";
 
 const log = createLogger("API");
-
-function sessionAgentContextWindowTokens(
-  agentId: string | undefined,
-  model: string | undefined
-): number | undefined {
-  if (!agentId) return undefined;
-  const agent = agentManager.get(agentId);
-  if (!agent) return undefined;
-  return resolveTurnContextWindow(agent, model).contextWindowTokens;
-}
 
 function pluginSummary(plugin: ReturnType<typeof listInstalledPlugins>[number]) {
   return {
@@ -810,13 +802,34 @@ const routes: Record<string, RouteHandler> = {
     if (!session) return session;
     const sessionObj = session as Record<string, unknown>;
     const messages = await getSessionMessages(params!.id);
+    const sanitized = sanitizeSessionMessages(messages);
+    const detailModel = sessionModelMetadata(
+      session.agentId,
+      sessionModelMetadataSnapshot(
+        (sessionObj.modelMetadata as SessionModelMetadata | null | undefined) || undefined
+      ) || latestSessionModelMetadata(sanitized)
+    );
+    const usage = buildSessionUsageFields(
+      {
+        id: session.id,
+        agentId: session.agentId,
+        compactionCount:
+          "compactionCount" in session && typeof session.compactionCount === "number"
+            ? session.compactionCount
+            : 0,
+      },
+      getResidentChatSession(session.id)?.messages || messages,
+      detailModel.model
+    );
     return {
       ...session,
       plan: extractLatestSessionPlan(params!.id, messages),
-      messages: sanitizeSessionMessages(messages),
+      messages: sanitized,
+      ...usage,
+      goal: getSessionGoal(session.id) ?? null,
       messagesList: Array.isArray(sessionObj.messagesList)
         ? sanitizeSessionMessages(sessionObj.messagesList as SessionMessageView[])
-        : undefined,
+        : sanitized,
     };
   },
   "GET /api/chat/sessions/:id/messages": async (_body, params) => {

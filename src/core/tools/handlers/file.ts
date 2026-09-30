@@ -18,7 +18,7 @@ import {
   MAX_PDF_BYTES,
   SCANNED_PDF_NOTICE,
 } from "../../pdf-text";
-import { commandExists } from "../../platform";
+import { commandWorks, normalizePath } from "../../platform";
 import { readFileLines } from "../file-read";
 import { searchFiles } from "../file-search";
 import type { ToolContext } from "../index";
@@ -625,12 +625,13 @@ export async function handleFileSearch(
 
   const searchDir = cwd || context?.workspaceDir || workspace;
   const safeSearchDir = assertReadablePath(searchDir, readablePathOptions());
+  const nativeSearchDir = normalizePath(safeSearchDir);
 
   if (!pattern) {
     return {
       files: [],
       pattern: "",
-      cwd: safeSearchDir,
+      cwd: nativeSearchDir,
       error:
         'pattern is required. Provide a glob pattern (for example: "**/*.ts" or "src/**/*.md").',
     };
@@ -640,14 +641,14 @@ export async function handleFileSearch(
     return {
       files: [],
       pattern,
-      cwd: safeSearchDir,
-      error: `Directory does not exist: ${safeSearchDir}`,
+      cwd: nativeSearchDir,
+      error: `Directory does not exist: ${nativeSearchDir}`,
     };
   }
 
   try {
     const search = await searchFiles({
-      cwd: safeSearchDir,
+      cwd: nativeSearchDir,
       pattern,
       signal: context?.abortSignal,
       maxEntries:
@@ -656,9 +657,9 @@ export async function handleFileSearch(
           : undefined,
     });
 
-    const readableFiles = search.files.filter((file) =>
-      isReadableSearchResult(safeSearchDir, file)
-    );
+    const readableFiles = search.files
+      .filter((file) => isReadableSearchResult(safeSearchDir, file))
+      .map((file) => file.split(sep).join("/"));
 
     trackMetric("file_operation", "search", 1, { pattern, resultCount: readableFiles.length });
     trackMetric("tool_call", "file_search", 1, { pattern, resultCount: readableFiles.length });
@@ -676,7 +677,7 @@ export async function handleFileSearch(
     return {
       files: readableFiles,
       pattern,
-      cwd: safeSearchDir,
+      cwd: nativeSearchDir,
       truncated: search.limitReached,
       visitedEntries: search.visitedEntries,
       ...(warning ? { warning } : {}),
@@ -686,7 +687,7 @@ export async function handleFileSearch(
     return {
       files: [],
       pattern,
-      cwd: safeSearchDir,
+      cwd: nativeSearchDir,
       error: `Glob search failed: ${(err as Error).message}`,
     };
   }
@@ -705,7 +706,13 @@ export async function handleGrep(
   const pattern = args.pattern as string;
   const path = args.path as string | undefined;
   const fileType = args.type as string | undefined;
-  const context = (args.context as number) || 2;
+  const requestedContext = args.context as number | undefined;
+  const context =
+    typeof requestedContext === "number" &&
+    Number.isFinite(requestedContext) &&
+    requestedContext >= 0
+      ? Math.floor(requestedContext)
+      : 2;
   const maxResults = (args.maxResults as number) || 50;
   const caseSensitive = args.caseSensitive as boolean | undefined;
   const shouldRecursive = args.recursive !== false;
@@ -720,9 +727,10 @@ export async function handleGrep(
 
   const hasRipgrep = await checkRipgrepAvailable();
   let truncated = false;
+  let source = "javascript";
 
   if (hasRipgrep) {
-    truncated = await searchWithRipgrep(
+    const outcome = await searchWithRipgrep(
       searchDir,
       pattern,
       extensions,
@@ -733,7 +741,15 @@ export async function handleGrep(
       maxResults,
       toolContext?.abortSignal
     );
-  } else {
+    truncated = outcome.truncated;
+    if (outcome.ran) {
+      source = "ripgrep";
+    } else {
+      results.length = 0;
+    }
+  }
+
+  if (source === "javascript") {
     truncated = await searchDirectory(
       searchDir,
       pattern,
@@ -750,20 +766,25 @@ export async function handleGrep(
   trackMetric("file_operation", "search", 1, { pattern, resultCount: results.length });
   trackMetric("tool_call", "grep", 1, {
     resultCount: results.length,
-    source: hasRipgrep ? "ripgrep" : "javascript",
+    source,
   });
 
   return {
     results,
     pattern,
     count: results.length,
-    source: hasRipgrep ? "ripgrep" : "javascript",
+    source,
     truncated,
   };
 }
 
+interface RipgrepSearchOutcome {
+  ran: boolean;
+  truncated: boolean;
+}
+
 async function checkRipgrepAvailable(): Promise<boolean> {
-  return commandExists("rg");
+  return commandWorks("rg");
 }
 
 async function searchWithRipgrep(
@@ -776,9 +797,9 @@ async function searchWithRipgrep(
   results: Array<{ path: string; line: number; content: string }>,
   maxResults: number,
   signal?: AbortSignal
-): Promise<boolean> {
+): Promise<RipgrepSearchOutcome> {
   try {
-    if (signal?.aborted) return false;
+    if (signal?.aborted) return { ran: false, truncated: false };
     const args = [
       "--json",
       "--no-messages",
@@ -856,10 +877,10 @@ async function searchWithRipgrep(
       if (truncated) await reader.cancel().catch(() => undefined);
     }
     if (truncated) results.length = maxResults;
-    return truncated;
+    return { ran: true, truncated };
   } catch (e) {
     console.error("[grep] ripgrep error:", e);
-    return false;
+    return { ran: false, truncated: false };
   }
 }
 
@@ -964,22 +985,19 @@ async function searchDirectory(
         if (fileStat.size > 10 * 1024 * 1024) continue;
         const content = await fs.readFile(fullPath, "utf-8");
         const lines = content.split("\n");
-        const regex = caseSensitive ? new RegExp(pattern, "g") : new RegExp(pattern, "gi");
+        const regex = caseSensitive ? new RegExp(pattern) : new RegExp(pattern, "i");
 
         for (let i = 0; i < lines.length; i++) {
-          if (regex.test(lines[i])) {
-            const startLine = Math.max(0, i - context);
-            const endLine = Math.min(lines.length - 1, i + context);
-
-            for (let j = startLine; j <= endLine; j++) {
-              if (results.length > maxResults) break;
-              results.push({
-                path: fullPath,
-                line: j + 1,
-                content: lines[j],
-              });
-            }
+          if (!regex.test(lines[i])) continue;
+          if (results.length >= maxResults) {
+            results.length = maxResults;
+            return true;
           }
+          results.push({
+            path: fullPath,
+            line: i + 1,
+            content: lines[i],
+          });
         }
       }
     }

@@ -77,6 +77,7 @@ import {
   completeTUIChatCommand,
   matchingTUIChatCommands,
   nextTUIChatCommandIndex,
+  TUI_CHAT_COMMANDS,
 } from "../commands";
 import {
   CommandPalette,
@@ -120,6 +121,7 @@ import {
   normalizeTuiScrollStep,
 } from "../../../../shared/tui-preferences";
 import { runTuiPreferenceCommand } from "../tui-preference-commands";
+import { runTuiSessionCommand } from "../tui-session-commands";
 import { runTuiIdeCommand } from "../tui-ide-command";
 
 export function InteractiveChatTUI({
@@ -1150,6 +1152,34 @@ export function InteractiveChatTUI({
           setScrollStep(preferenceResult.scrollStep);
         }
         setNotice(preferenceResult.notice || null);
+        return true;
+      }
+      const sessionResult = await runTuiSessionCommand({
+        argument,
+        command: normalizedCommand,
+        fetchAPI,
+        localSessionId,
+        messages: messages.map((message) => ({
+          content: typeof message.content === "string" ? message.content : "",
+          role: message.role,
+          timestamp:
+            typeof message.timestamp === "number"
+              ? new Date(message.timestamp).toISOString()
+              : message.timestamp,
+        })),
+        commands: TUI_CHAT_COMMANDS,
+        theme: tuiColorScheme,
+      });
+      if (sessionResult.handled) {
+        if (sessionResult.sessionId) {
+          setLocalSessionId(sessionResult.sessionId);
+          setMessages([]);
+          setPendingMessages([]);
+          setEnvironmentSnapshot(null);
+        } else {
+          await loadMessages();
+        }
+        setNotice(sessionResult.notice || null);
         return true;
       }
       if (normalizedCommand === "review" || normalizedCommand === "security") {

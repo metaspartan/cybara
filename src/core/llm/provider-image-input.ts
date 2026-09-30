@@ -2,6 +2,7 @@ import type { AgentMessage } from "../agent";
 import { convertHeicWithEmbeddedDecoder } from "./heic-converter.js";
 import type { AgentImage } from "./image-blocks";
 import { hasImages, MAX_INLINE_IMAGE_BYTES, normalizeMimeType, parseDataUri } from "./image-blocks";
+import { compressImageToJpeg } from "./image-compression";
 import { convertRasterToPng, isBmp, isTiff } from "./raster-decoders";
 
 type HeicConverter = (options: {
@@ -177,6 +178,11 @@ export async function prepareAgentImageForProvider(
 
   const input = Buffer.from(payload.data, "base64");
   if (input.length === 0 || input.length > MAX_INLINE_IMAGE_BYTES) return undefined;
+
+  const compressed = await compressImageToJpeg(input);
+  if (compressed) {
+    return { data: compressed.data, mimeType: compressed.mimeType };
+  }
 
   const metadata = imageMetadata(input);
   if (!metadata) return undefined;

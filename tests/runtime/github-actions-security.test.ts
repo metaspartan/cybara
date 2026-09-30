@@ -68,13 +68,34 @@ describe("GitHub Actions security posture", () => {
   });
 
   test("OSV-scanned package roots pin the patched DOMPurify release", () => {
-    expect(read("package.json")).toContain('"dompurify": "3.4.13"');
-    expect(read("ui/package.json")).toContain('"dompurify": "3.4.13"');
+    const floor = "3.4.16";
 
-    for (const lockfile of ["bun.lock", "ui/bun.lock"]) {
-      const contents = read(lockfile);
-      expect(contents).toContain("dompurify@3.4.13");
-      expect(contents).not.toContain("dompurify@3.4.11");
+    function versionAtOrAboveFloor(spec: string, label: string): boolean {
+      const parsed = (spec.match(/(\d+)\.(\d+)\.(\d+)/) ?? []).slice(1).map(Number);
+      const minimum = (floor.match(/\d+/g) ?? []).map(Number);
+      if (parsed.length !== 3 || minimum.length !== 3) {
+        throw new Error(`${label} has an unparsable dompurify version: ${spec}`);
+      }
+      for (let index = 0; index < 3; index += 1) {
+        const actual = parsed[index] ?? 0;
+        const required = minimum[index] ?? 0;
+        if (actual !== required) return actual > required;
+      }
+      return true;
+    }
+
+    const declared = ["package.json", "ui/package.json"].map((manifest) => ({
+      label: manifest,
+      spec: read(manifest).match(/"dompurify":\s*"([^"]+)"/)?.[1] ?? "",
+    }));
+    const resolved = ["bun.lock", "ui/bun.lock"].map((lockfile) => ({
+      label: lockfile,
+      spec: read(lockfile).match(/"dompurify": \["dompurify@([^"]+)"/)?.[1] ?? "",
+    }));
+
+    for (const entry of [...declared, ...resolved]) {
+      expect(entry.spec).not.toBe("");
+      expect(versionAtOrAboveFloor(entry.spec, entry.label)).toBe(true);
     }
   });
 

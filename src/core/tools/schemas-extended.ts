@@ -1512,6 +1512,39 @@ ACTIONS:
           type: "object",
           description:
             "Map of question id to a typed question. Each has type, instructions, and type-specific fields: noul may add criteria {true,false}; choice requires options (2+); score requires a legend of at least two numeric keys.",
+          additionalProperties: {
+            type: "object",
+            properties: {
+              type: {
+                type: "string",
+                enum: ["noul", "choice", "score"],
+                description:
+                  "noul answers a yes/no probability, choice picks one option, score answers against a legend.",
+              },
+              instructions: {
+                type: "string",
+                description: "What the decision model should decide.",
+              },
+              criteria: {
+                type: "object",
+                description:
+                  'noul only: map of answer to the condition that earns it, for example {true: "Explicitly time-sensitive", false: "No urgency"}.',
+              },
+              options: {
+                type: "array",
+                description:
+                  'choice only: the candidate answers as a plain array of strings, for example ["platform","ci-infra"]. At least two. Never wrap this in an object.',
+                items: { type: "string" },
+                minItems: 2,
+              },
+              legend: {
+                type: "object",
+                description:
+                  'score only: map of each numeric score to its meaning, for example {"0":"cosmetic","1":"degraded","2":"release blocker"}. At least two keys.',
+              },
+            },
+            required: ["type", "instructions"],
+          },
         },
         model: {
           type: "string",

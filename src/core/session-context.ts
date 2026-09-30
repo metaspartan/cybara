@@ -431,7 +431,10 @@ const DEFAULT_CONTEXT_TOKENS = 200_000;
 const CONTEXT_SAFETY_MARGIN = 1.2;
 const MAX_HISTORY_SHARE = 0.5;
 const SUMMARY_RESERVE_TOKENS = 4000;
-const COMPACTION_SUMMARY_MAX_CHARS = 4000;
+const MIN_SUMMARY_RESERVE_TOKENS = 256;
+const MIN_MAX_HISTORY_TOKENS = 512;
+const BASE_MIN_RECENT_MESSAGES = 4;
+export const COMPACTION_SUMMARY_MAX_CHARS = 4000;
 const COMPACTION_CHUNK_SUMMARY_MAX_CHARS = 2400;
 const CONTEXT_SUMMARY_PREFIXES = ["[Context Summary:", "Previous conversation summary:"] as const;
 
@@ -958,9 +961,12 @@ export function shouldCompactContext(
 
   const maxUsableTokens = Math.floor(contextWindow / CONTEXT_SAFETY_MARGIN);
   const availableTokens = maxUsableTokens - totalTokens;
+  const alreadyCompacted = messages.some(isContextSummaryMessage);
+  const summaryReserveTokens = resolveSummaryReserveTokens(contextWindow);
+  const overflowed = totalTokens > maxUsableTokens;
 
   return {
-    needed: availableTokens < SUMMARY_RESERVE_TOKENS,
+    needed: overflowed || (!alreadyCompacted && availableTokens < summaryReserveTokens),
     currentTokens: totalTokens,
     maxTokens: contextWindow,
     availableTokens,
@@ -978,7 +984,10 @@ export async function compactContext(
   wasCompacted: boolean;
 }> {
   const contextWindow = options?.contextWindowTokens ?? getContextWindow(model);
-  const maxHistoryTokens = Math.floor((contextWindow * MAX_HISTORY_SHARE) / CONTEXT_SAFETY_MARGIN);
+  const maxHistoryTokens = Math.max(
+    MIN_MAX_HISTORY_TOKENS,
+    Math.floor((contextWindow * MAX_HISTORY_SHARE) / CONTEXT_SAFETY_MARGIN)
+  );
 
   const summaryMessages = messages.filter(isContextSummaryMessage);
   const previousSummary = summaryMessages.map(extractContextSummary).filter(Boolean).join("\n\n");
@@ -987,16 +996,31 @@ export async function compactContext(
   );
   const nonSystemMessages = messages.filter((m) => m.role !== "system");
 
-  const minRecent = 4;
-  let recentCount = Math.min(nonSystemMessages.length, minRecent);
   const systemTokens = estimateMessagesRequestVisibleTokens(systemMessages);
-  const reserveForSummaryAndSystem = systemTokens + SUMMARY_RESERVE_TOKENS;
+  const summaryReserveTokens = summaryReserveTokensFor(contextWindow);
+  const reserveForSummaryAndSystem = Math.min(
+    systemTokens + summaryReserveTokens,
+    Math.max(0, maxHistoryTokens - 1)
+  );
+  const minRecent = resolveMinRecentMessages(maxHistoryTokens, systemTokens, summaryReserveTokens);
+  let recentCount = Math.min(nonSystemMessages.length, minRecent);
+  const recentBudgetTokens = Math.max(
+    0,
+    maxHistoryTokens - Math.min(reserveForSummaryAndSystem, maxHistoryTokens - 1)
+  );
   if (!options?.force) {
     for (let n = recentCount + 1; n <= nonSystemMessages.length; n += 1) {
       const candidateRecent = nonSystemMessages.slice(-n);
       const candidateTokens = estimateMessagesRequestVisibleTokens(candidateRecent);
-      if (candidateTokens > (maxHistoryTokens - reserveForSummaryAndSystem) * 0.4) break;
+      if (candidateTokens > Math.max(recentBudgetTokens * 0.4, 0)) break;
       recentCount = n;
+    }
+    while (
+      recentCount > 1 &&
+      estimateMessagesRequestVisibleTokens(nonSystemMessages.slice(-recentCount)) >
+        recentBudgetTokens
+    ) {
+      recentCount -= 1;
     }
   }
   const recentMessages = nonSystemMessages.slice(-recentCount);
@@ -1029,11 +1053,11 @@ export async function compactContext(
         previousSummary || undefined
       );
     } else {
-      summary = createFallbackSummary(olderMessages, previousSummary || undefined);
+      summary = buildCompactionFallbackSummary(olderMessages, previousSummary || undefined);
     }
   } catch (error) {
     log.exception("Summary generation failed, using fallback", error);
-    summary = createFallbackSummary(olderMessages, previousSummary || undefined);
+    summary = buildCompactionFallbackSummary(olderMessages, previousSummary || undefined);
   }
 
   const summaryMessage: ChatMessage = {
@@ -1061,7 +1085,7 @@ export async function compactContext(
   };
 }
 
-function isContextSummaryMessage(message: ChatMessage): boolean {
+export function isContextSummaryMessage(message: ChatMessage): boolean {
   const trimmed = message.content.trim();
   return (
     message.role === "system" &&
@@ -1159,13 +1183,62 @@ ${chunkSummaries.map((s, i) => `--- Part ${i + 1} ---\n${s}`).join("\n")}`;
   return merged.content.slice(0, COMPACTION_SUMMARY_MAX_CHARS);
 }
 
-function createFallbackSummary(messages: ChatMessage[], previousSummary?: string): string {
+export function buildCompactionFallbackSummary(
+  messages: ChatMessage[],
+  previousSummary?: string
+): string {
   const transcript = messagesToConversationText(messages.slice(-12));
-  const prior = previousSummary ? `Prior checkpoint:\n${previousSummary}\n\n` : "";
+  const inherited = flattenInheritedCheckpoint(previousSummary);
+  const prior = inherited ? `Prior checkpoint:\n${inherited}\n\n` : "";
   return `${prior}Earlier conversation (${messages.length} messages):\n${transcript}`.slice(
     0,
     COMPACTION_SUMMARY_MAX_CHARS
   );
+}
+
+function maxHistoryTokensFor(contextWindow: number): number {
+  return Math.max(
+    MIN_MAX_HISTORY_TOKENS,
+    Math.floor((contextWindow * MAX_HISTORY_SHARE) / CONTEXT_SAFETY_MARGIN)
+  );
+}
+
+function summaryReserveTokensFor(contextWindow: number): number {
+  const maxHistoryTokens = maxHistoryTokensFor(contextWindow);
+  return Math.max(
+    MIN_SUMMARY_RESERVE_TOKENS,
+    Math.min(SUMMARY_RESERVE_TOKENS, maxHistoryTokens / 2)
+  );
+}
+
+function resolveSummaryReserveTokens(contextWindow: number): number {
+  return summaryReserveTokensFor(contextWindow);
+}
+
+function resolveMinRecentMessages(
+  maxHistoryTokens: number,
+  systemTokens: number,
+  summaryReserveTokens: number
+): number {
+  const recentBudgetTokens = Math.max(
+    0,
+    maxHistoryTokens -
+      systemTokens -
+      Math.min(summaryReserveTokens, Math.floor(maxHistoryTokens / 2))
+  );
+  if (recentBudgetTokens <= 0) return 1;
+  return Math.max(1, Math.min(BASE_MIN_RECENT_MESSAGES, Math.floor(recentBudgetTokens / 128)));
+}
+
+function flattenInheritedCheckpoint(previousSummary: string | undefined): string {
+  if (!previousSummary) return "";
+  const inherited = previousSummary
+    .replace(/\[\s*Context Summary:[^\]]*\]\s*/gi, "")
+    .replace(/^\s*Prior checkpoint:\s*/gim, "")
+    .trim();
+  if (!inherited) return "";
+  if (inherited.length <= COMPACTION_SUMMARY_MAX_CHARS / 2) return inherited;
+  return inherited.slice(inherited.length - Math.floor(COMPACTION_SUMMARY_MAX_CHARS / 2));
 }
 
 export async function persistSession(
