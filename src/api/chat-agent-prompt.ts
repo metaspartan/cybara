@@ -1,6 +1,7 @@
 import {
   AGENT_TRANSITION_AUTHORITY,
   type AgentInstructionUpdate,
+  collapseInstructionLedger,
 } from "../core/agent-instruction-update";
 import { getBootstrapContextFiles } from "../core/bootstrap-files";
 import { config } from "../core/config";
@@ -144,48 +145,50 @@ ${prompt}`;
   const content = session.messages[0]?.role === "system" ? transition : prompt;
   const unchanged = latest?.content === prompt || latest?.content === transition;
   const historyOffset = session.messages.filter((message) => message.role !== "system").length;
-  const retainedMessages = session.messages.filter(
+  const retainedMessages = collapseInstructionLedger(session.messages).filter(
     (message, index) =>
       index === 0 ||
       message.role !== "system" ||
       message.instructionUpdate?.pending !== true ||
       message.instructionUpdate.historyOffset !== historyOffset
   );
-  const nextMessages = unchanged
-    ? session.messages.map((message) =>
-        !options.pendingTransition && message.instructionUpdate?.pending
-          ? {
-              ...message,
+  const nextMessages = collapseInstructionLedger(
+    unchanged
+      ? session.messages.map((message) =>
+          !options.pendingTransition && message.instructionUpdate?.pending
+            ? {
+                ...message,
+                instructionUpdate: {
+                  ...message.instructionUpdate,
+                  pending: false,
+                },
+              }
+            : message
+        )
+      : session.messages[0]?.role === "system"
+        ? [
+            ...retainedMessages,
+            {
+              role: "system" as const,
+              content,
               instructionUpdate: {
-                ...message.instructionUpdate,
-                pending: false,
+                kind: "agent-transition" as const,
+                agentId: agent.id,
+                historyOffset,
+                ...(options.pendingTransition ? { pending: true } : {}),
               },
-            }
-          : message
-      )
-    : session.messages[0]?.role === "system"
-      ? [
-          ...retainedMessages,
-          {
-            role: "system" as const,
-            content,
-            instructionUpdate: {
-              kind: "agent-transition" as const,
-              agentId: agent.id,
-              historyOffset,
-              ...(options.pendingTransition ? { pending: true } : {}),
+              timestamp: new Date().toISOString(),
             },
-            timestamp: new Date().toISOString(),
-          },
-        ]
-      : [
-          {
-            role: "system" as const,
-            content,
-            timestamp: new Date().toISOString(),
-          },
-          ...session.messages,
-        ];
+          ]
+        : [
+            {
+              role: "system" as const,
+              content,
+              timestamp: new Date().toISOString(),
+            },
+            ...session.messages,
+          ]
+  );
 
   if (session.id) {
     db.prepare(

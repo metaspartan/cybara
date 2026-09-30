@@ -16,7 +16,7 @@ struct NativeBrowserStreamConnectionTests {
         #expect(components.scheme == "wss")
         #expect(components.host == "host.test")
         #expect(components.percentEncodedPath == "/cybara/api/browser/tabs/page%2F1/stream")
-        #expect(query["quality"] == "58")
+        #expect(query["quality"] == "82")
         #expect(query["maxWidth"] == "1600")
         #expect(query["maxHeight"] == "1200")
         #expect(query["everyNthFrame"] == "1")

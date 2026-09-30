@@ -37,6 +37,7 @@ describe("persisted tool activities", () => {
     );
     expect(splitToolActivityDetail(enriched?.fullText ?? "")).toEqual({
       head: "Ran ls",
+      args: '{\n  "command": "ls"\n}',
       output: "a.txt\nb.txt",
     });
     expect(enriched?.detailCallId).toBe("provider-1");
@@ -87,12 +88,14 @@ describe("leadingLines", () => {
 describe("expanded rendering contract", () => {
   const timeline = readUiSource("pages/chat/ActivityTimeline.tsx");
 
-  test("output and diff render only while a row is expanded", () => {
+  test("arguments, output and diff render only while a row is expanded", () => {
     expect(timeline).toContain("const detailText = expanded ?");
-    expect(timeline).toContain("{expanded && (detailParts?.output || detailParts?.diff) ? (");
     expect(timeline).toContain(
-      "<ToolActivityBody output={detailParts.output} diff={detailParts.diff} />"
+      "{expanded && (detailParts?.args || detailParts?.output || detailParts?.diff) ? ("
     );
+    expect(timeline).toContain("args={detailParts.args}");
+    expect(timeline).toContain("output={detailParts.output}");
+    expect(timeline).toContain("diff={detailParts.diff}");
   });
 
   test("completed rows fetch the untruncated call only after expansion", () => {

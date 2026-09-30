@@ -248,9 +248,13 @@ function ActivityRow({
           />
         </div>
       ) : null}
-      {expanded && (detailParts?.output || detailParts?.diff) ? (
+      {expanded && (detailParts?.args || detailParts?.output || detailParts?.diff) ? (
         <div className="ml-5 mt-1.5">
-          <ToolActivityBody output={detailParts.output} diff={detailParts.diff} />
+          <ToolActivityBody
+            args={detailParts.args}
+            output={detailParts.output}
+            diff={detailParts.diff}
+          />
         </div>
       ) : null}
     </div>

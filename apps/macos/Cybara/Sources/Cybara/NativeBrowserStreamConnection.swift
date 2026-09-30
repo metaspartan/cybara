@@ -17,7 +17,7 @@ func nativeBrowserStreamURL(client: GatewayClient, pageID: String) -> URL? {
     }
     components.scheme = components.scheme == "https" ? "wss" : "ws"
     components.queryItems = [
-        URLQueryItem(name: "quality", value: "58"),
+        URLQueryItem(name: "quality", value: "82"),
         URLQueryItem(name: "maxWidth", value: "1600"),
         URLQueryItem(name: "maxHeight", value: "1200"),
         URLQueryItem(name: "everyNthFrame", value: "1"),
@@ -52,6 +52,7 @@ final class NativeBrowserStreamConnection: ObservableObject {
             request.setValue(password, forHTTPHeaderField: "X-Cybara-Gateway-Password")
         }
         let next = URLSession.shared.webSocketTask(with: request)
+        next.maximumMessageSize = 8 * 1024 * 1024
         task = next
         self.pageID = pageID
         error = nil

@@ -6,7 +6,7 @@ import { presentProviderProtocolText } from "../../shared/provider-protocol";
 import { parseRoomConfig, type RoomConfig, serializeRoomConfig } from "../../shared/room-mode";
 import type { ChatMessage } from "../api/chat";
 import { agentManager } from "./agent";
-import { restoreInstructionLedger } from "./agent-instruction-update";
+import { collapseInstructionLedger, restoreInstructionLedger } from "./agent-instruction-update";
 import { attachmentsToImages } from "./chat/attachments";
 import {
   compactChatContentForPrompt,
@@ -14,6 +14,7 @@ import {
 } from "./chat-token-optimization";
 import db, { tables } from "./database";
 import { sanitizeAssistantContent } from "./llm/text-tool-calls";
+import { MAX_TOOL_CALL_ARGUMENT_CHARS } from "./llm/tool-transcript";
 import { createLogger } from "./logger";
 import { SESSION_SUMMARY_COMPACTION_PREDICATE } from "./metrics";
 import { providerManager, providers } from "./providers";
@@ -532,6 +533,13 @@ function requestVisibleToolResultChars(value: unknown): string {
   return serialized.slice(0, TOOL_RESULT_PROMPT_MAX_CHARS);
 }
 
+function requestVisibleToolCallArgChars(value: unknown): string {
+  const serialized = typeof value === "string" ? value : safeJsonStringify(value ?? {});
+  return serialized.length <= MAX_TOOL_CALL_ARGUMENT_CHARS
+    ? serialized
+    : serialized.slice(0, MAX_TOOL_CALL_ARGUMENT_CHARS);
+}
+
 function estimateRequestVisibleMessageTokens(message: ChatMessage): number {
   return cachedPerMessageEstimate(
     requestVisibleEstimateCache,
@@ -546,7 +554,7 @@ function computeRequestVisibleEstimate(message: ChatMessage): number {
     ? message.tool_calls.reduce((sum, toolCall) => {
         const hasReplayableResult = toolCall.result !== undefined || Boolean(toolCall.error);
         if (!hasReplayableResult) return sum;
-        const argsTokens = estimateTokens(safeJsonStringify(toolCall.args ?? {}));
+        const argsTokens = estimateTokens(requestVisibleToolCallArgChars(toolCall.args ?? {}));
         const resultTokens = estimateTokens(
           requestVisibleToolResultChars(toolCall.result ?? { error: toolCall.error })
         );
@@ -1221,7 +1229,9 @@ export async function persistSession(
       );
     }
 
-    const instructions = messages.filter((message) => message.role === "system");
+    const instructions = collapseInstructionLedger(
+      messages.filter((message) => message.role === "system")
+    );
     if (instructions.length) {
       db.prepare(
         "UPDATE chat_sessions SET context_state = json_set(COALESCE(context_state, '{}'), '$.instructions', json(?)) WHERE id = ?"

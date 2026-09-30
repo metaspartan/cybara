@@ -235,20 +235,24 @@ function expandedToolActivityHead(
 export interface ToolDetailLimits {
   outputChars: number;
   diffChars: number;
+  argsChars: number;
 }
 
 export const PERSISTED_TOOL_DETAIL_LIMITS: ToolDetailLimits = {
   outputChars: 30_000,
   diffChars: 200_000,
+  argsChars: 20_000,
 };
 
 export const LIVE_TOOL_DETAIL_LIMITS: ToolDetailLimits = {
   outputChars: 4_000,
   diffChars: 16_000,
+  argsChars: 4_000,
 };
 
 export const TOOL_OUTPUT_HEADING = "Output:";
 export const TOOL_DIFF_HEADING = "Diff:";
+export const TOOL_ARGS_HEADING = "Arguments:";
 
 const FILE_CHANGE_TOOLS = new Set(["write", "edit", "apply_patch"]);
 const COMMAND_TOOLS = new Set(["exec", "process", "git"]);
@@ -358,6 +362,23 @@ function toolActivityBody(
   return `${TOOL_OUTPUT_HEADING}\n${clipMiddle(output, limits.outputChars)}`;
 }
 
+export function formatToolCallArgs(
+  args: Record<string, unknown>,
+  limits: ToolDetailLimits = PERSISTED_TOOL_DETAIL_LIMITS,
+): string | undefined {
+  const entries = Object.entries(args ?? {});
+  if (entries.length === 0) return undefined;
+  const compacted = compactForSerialization(args, 0);
+  let json: string;
+  try {
+    json = JSON.stringify(compacted, null, 2);
+  } catch {
+    return undefined;
+  }
+  if (!json || json === "{}") return undefined;
+  return `${TOOL_ARGS_HEADING}\n${clipAtLine(json, limits.argsChars)}`;
+}
+
 export function formatExpandedToolActivityDetail(
   toolName: string,
   args: Record<string, unknown>,
@@ -365,29 +386,46 @@ export function formatExpandedToolActivityDetail(
   result?: unknown,
   limits: ToolDetailLimits = PERSISTED_TOOL_DETAIL_LIMITS,
 ): string | undefined {
+  const key = toolName.trim().toLowerCase();
   const head = expandedToolActivityHead(toolName, args, phase, result);
-  const body =
-    phase === "start"
-      ? undefined
-      : toolActivityBody(toolName.trim().toLowerCase(), result, limits);
-  if (!body) return head;
-  return head ? `${head}\n\n${body}` : body;
+  const argSection = HEAD_ONLY_TOOLS.has(key) ? undefined : formatToolCallArgs(args, limits);
+  const body = phase === "start" ? undefined : toolActivityBody(key, result, limits);
+  const sections = [head, argSection, body].filter(
+    (section): section is string => Boolean(section),
+  );
+  return sections.length > 0 ? sections.join("\n\n") : undefined;
 }
 
 export interface ToolActivityDetailParts {
   head: string;
+  args?: string;
   output?: string;
   diff?: string;
 }
 
-const DETAIL_BODY_PATTERN = new RegExp(
-  `(?:^|\\n\\n)(${TOOL_OUTPUT_HEADING}|${TOOL_DIFF_HEADING})\\n`,
+const DETAIL_SECTION_PATTERN = new RegExp(
+  `(?:^|\\n\\n)(${TOOL_ARGS_HEADING}|${TOOL_OUTPUT_HEADING}|${TOOL_DIFF_HEADING})\\n`,
+  "g",
 );
 
 export function splitToolActivityDetail(text: string): ToolActivityDetailParts {
-  const match = DETAIL_BODY_PATTERN.exec(text);
-  if (!match) return { head: text };
-  const head = text.slice(0, match.index);
-  const body = text.slice(match.index + match[0].length);
-  return match[1] === TOOL_DIFF_HEADING ? { head, diff: body } : { head, output: body };
+  const pattern = new RegExp(DETAIL_SECTION_PATTERN.source, "g");
+  const matches = [...text.matchAll(pattern)];
+  if (matches.length === 0) return { head: text };
+
+  const parts: ToolActivityDetailParts = {
+    head: text.slice(0, matches[0].index ?? 0),
+  };
+
+  matches.forEach((match, index) => {
+    const heading = match[1] ?? "";
+    const start = (match.index ?? 0) + match[0].length;
+    const end = index + 1 < matches.length ? (matches[index + 1].index ?? text.length) : text.length;
+    const body = text.slice(start, end);
+    if (heading === TOOL_ARGS_HEADING) parts.args = body;
+    else if (heading === TOOL_DIFF_HEADING) parts.diff = body;
+    else parts.output = body;
+  });
+
+  return parts;
 }

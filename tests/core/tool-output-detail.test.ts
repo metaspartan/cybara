@@ -24,8 +24,12 @@ describe("expanded tool output", () => {
       output: "hi\n",
       exitCode: 0,
     });
-    expect(text).toBe("Ran echo hi\n\nOutput:\nhi\n");
-    expect(splitToolActivityDetail(text ?? "")).toEqual({ head: "Ran echo hi", output: "hi\n" });
+    expect(text).toBe('Ran echo hi\n\nArguments:\n{\n  "command": "echo hi"\n}\n\nOutput:\nhi\n');
+    expect(splitToolActivityDetail(text ?? "")).toEqual({
+      head: "Ran echo hi",
+      args: '{\n  "command": "echo hi"\n}',
+      output: "hi\n",
+    });
   });
 
   test("non-zero exit codes are visible in the output", () => {
@@ -36,11 +40,12 @@ describe("expanded tool output", () => {
     expect(splitToolActivityDetail(text ?? "").output).toBe("boom\n[exit code 2]");
   });
 
-  test("in-flight calls show no output section", () => {
+  test("in-flight calls show arguments but no output section", () => {
     const text = formatExpandedToolActivityDetail("exec", { command: "sleep 5" }, "start", {
       output: "ignored",
     });
-    expect(text).toBe("Running sleep 5");
+    expect(text).toBe('Running sleep 5\n\nArguments:\n{\n  "command": "sleep 5"\n}');
+    expect(splitToolActivityDetail(text ?? "").output).toBeUndefined();
   });
 
   test("tools without a custom head still expose their content", () => {
@@ -50,8 +55,18 @@ describe("expanded tool output", () => {
     });
     expect(splitToolActivityDetail(text ?? "")).toEqual({
       head: "",
+      args: '{\n  "path": "a.txt"\n}',
       output: "line one\nline two",
     });
+  });
+
+  test("head-only tools keep their head without a redundant arguments block", () => {
+    const text = formatExpandedToolActivityDetail("skill_load", { name: "pdf" }, "result", {
+      name: "pdf",
+      instructions: "do the thing",
+    });
+    expect(text).toBe("Loaded pdf skill");
+    expect(splitToolActivityDetail(text ?? "").args).toBeUndefined();
   });
 
   test("structured results without text fields are pretty-printed and stripped of bulk", () => {
@@ -116,7 +131,11 @@ describe("expanded file edit diffs", () => {
       success: true,
       change: { path: "src/a.ts", diff: editDiff, addedLines: 1, removedLines: 1 },
     });
-    expect(splitToolActivityDetail(text ?? "")).toEqual({ head: "", diff: editDiff });
+    expect(splitToolActivityDetail(text ?? "")).toEqual({
+      head: "",
+      args: '{\n  "path": "src/a.ts"\n}',
+      diff: editDiff,
+    });
   });
 
   test("apply_patch results join every file diff", () => {
@@ -184,7 +203,7 @@ describe("live tool detail", () => {
       output: "a.txt",
       exitCode: 0,
     });
-    expect(output).toBe("Ran ls\n\nOutput:\na.txt");
+    expect(output).toBe('Ran ls\n\nArguments:\n{\n  "command": "ls"\n}\n\nOutput:\na.txt');
     const diff = liveToolFullDetail("edit", { path: "src/a.ts" }, "result", {
       change: { diff: editDiff },
     });

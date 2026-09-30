@@ -201,6 +201,7 @@ import {
   sessionModelMetadata,
   sessionModelMetadataSnapshot,
 } from "./routes/session-model-metadata";
+import { decisionRoutes } from "./routes/decisions";
 import { formatSkillInstallSpec } from "./routes/skill-formatting";
 import { speechRoutes } from "./routes/speech";
 import { toolCapabilityPolicyRoutes } from "./routes/tool-capability-policy";
@@ -269,6 +270,7 @@ const routes: Record<string, RouteHandler> = {
   ...sessionEventRoutes,
   ...externalTelemetryRoutes,
   ...toolCapabilityPolicyRoutes,
+  ...decisionRoutes,
   ...browserSupervisionRoutes,
   ...ideLspRoutes,
   ...runtimeRoutes,

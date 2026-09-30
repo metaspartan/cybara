@@ -27,15 +27,19 @@ export function isHeicImage(
   );
 }
 
-export async function fileToChatImage(file: File): Promise<ChatImageAttachment> {
-  const buffer = new Uint8Array(await file.arrayBuffer());
+export function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunk = 0x8000;
-  for (let i = 0; i < buffer.length; i += chunk) {
-    binary += String.fromCharCode(...buffer.subarray(i, i + chunk));
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
+  return btoa(binary);
+}
+
+export async function fileToChatImage(file: File): Promise<ChatImageAttachment> {
+  const buffer = new Uint8Array(await file.arrayBuffer());
   return {
-    data: btoa(binary),
+    data: bytesToBase64(buffer),
     mimeType: file.type || (HEIC_IMAGE_EXTENSION.test(file.name) ? "image/heic" : "image/png"),
     name: file.name,
     size: file.size,

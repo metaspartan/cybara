@@ -46,6 +46,7 @@
         "desktop-updater",
         "native-recording",
         "theme-files",
+        "image-files",
         "process:default",
         "updater:default"
     ]

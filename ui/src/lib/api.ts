@@ -815,6 +815,29 @@ export type ToolCapabilityPolicyMode = "inherit" | "ask" | "allow" | "deny";
 
 export type ToolCapabilityPolicy = Record<ToolCapability, ToolCapabilityPolicyMode>;
 
+export type DecisionQuestionType = "noul" | "choice" | "score";
+
+export interface DecisionModelDescriptor {
+  id: string;
+  name: string;
+  provider: string;
+  questionTypes: DecisionQuestionType[];
+}
+
+export interface DecisionSettings {
+  models: DecisionModelDescriptor[];
+  base_url: string;
+  has_api_key: boolean;
+  model: string;
+  provider_ready: boolean;
+}
+
+export interface DecisionSettingsUpdate {
+  base_url?: string;
+  api_key?: string;
+  model?: string;
+}
+
 export interface ExternalTelemetrySettings {
   enabled: boolean;
   serviceName: string;
@@ -837,6 +860,15 @@ export interface ExternalTelemetryStatus {
   exportedMetrics: number;
   exportedSpans: number;
 }
+
+export const decisionApi = {
+  get: () => fetchApi<DecisionSettings>("/settings/decisions"),
+  update: (update: DecisionSettingsUpdate) =>
+    fetchApi<DecisionSettings & { success: boolean }>("/settings/decisions", {
+      method: "PUT",
+      body: JSON.stringify(update),
+    }),
+};
 
 export const toolCapabilityPolicyApi = {
   get: () => fetchApi<{ policy: ToolCapabilityPolicy }>("/settings/tool-capabilities"),

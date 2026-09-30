@@ -399,6 +399,12 @@
           "markdownDescription": "Allows the Cybara interface to check, monitor, and install signed desktop updates."
         },
         {
+          "description": "Allows the Cybara interface to save validated images chosen through a save dialog.",
+          "type": "string",
+          "const": "image-files",
+          "markdownDescription": "Allows the Cybara interface to save validated images chosen through a save dialog."
+        },
+        {
           "description": "Allows the Cybara interface to start and stop native microphone recording.",
           "type": "string",
           "const": "native-recording",

@@ -43,8 +43,11 @@ describe("durable instruction transitions", () => {
       session,
       agent("b", "Updated approved instructions")
     );
-    expect(session.messages.length).toBe(count + 1);
+    expect(session.messages.length).toBe(count);
     expect(session.messages.at(-1)?.content).toContain("Updated approved instructions");
+    expect(
+      session.messages.filter((message) => message.instructionUpdate !== undefined)
+    ).toHaveLength(1);
   });
   test("replaces only pending switches at the same boundary and uses latest tools and instructions", async () => {
     const session: {
@@ -110,8 +113,11 @@ describe("durable instruction transitions", () => {
       useTools: false,
       pendingTransition: true,
     });
-    expect(session.messages).toHaveLength(3);
+    expect(session.messages).toHaveLength(2);
     expect(session.messages.at(-1)?.content).toContain("new instruction");
+    expect(
+      session.messages.filter((message) => message.instructionUpdate !== undefined)
+    ).toHaveLength(1);
   });
   test("atomic instruction update preserves unrelated context state", async () => {
     const id = `instruction-context-${randomUUID()}`;

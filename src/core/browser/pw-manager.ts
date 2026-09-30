@@ -45,6 +45,7 @@ import {
   type BrowserDownloadPolicy,
   type BrowserSupervisionStatus,
   browserDownloadsAccepted,
+  browserRecycleDue,
   getBrowserSupervisionSettings,
   getBrowserSupervisionStatus,
   onBrowserSupervisionSettingsChanged,
@@ -250,6 +251,7 @@ function isClickModifier(value: string): value is ClickModifier {
 }
 
 let legacyBrowser: Browser | null = null;
+let legacyBrowserStartedAt: number | null = null;
 let legacyContext: BrowserContext | null = null;
 const legacyPages = new Map<string, Page>();
 const consoleLogs = new Map<string, Array<{ type: string; text: string; location?: string }>>();
@@ -292,6 +294,7 @@ function resetLegacyBrowserState(): void {
   legacyBrowserOwner = "none";
   legacyDownloadPolicy = null;
   legacyBrowser = null;
+  legacyBrowserStartedAt = null;
   legacyContext = null;
   legacyBrowserPromise = null;
   legacyContextPromise = null;
@@ -327,6 +330,18 @@ function scheduleBrowserHealthCheck(
       const hadActivePages = legacyPages.size > 0;
       recordBrowserDisconnect("Browser health check failed");
       resetLegacyBrowserState();
+      scheduleBrowserRestart(hadActivePages);
+      return;
+    }
+    const settings = getBrowserSupervisionSettings({ redact: false });
+    if (browserRecycleDue(legacyBrowserStartedAt, Date.now(), settings.maxBrowserUptimeMs)) {
+      const hadActivePages = legacyPages.size > 0;
+      console.warn("[Browser] Recycling browser after uptime limit");
+      recordBrowserDisconnect("Browser uptime limit reached");
+      resetLegacyBrowserState();
+      void browser
+        .close()
+        .catch((error: unknown) => console.error("[Browser] Browser recycle close failed:", error));
       scheduleBrowserRestart(hadActivePages);
       return;
     }
@@ -426,6 +441,7 @@ async function getLegacyBrowser(): Promise<Browser> {
       });
       legacyBrowser = browser;
       legacyBrowserOwner = owner;
+      legacyBrowserStartedAt = Date.now();
       recordBrowserHealthy(owner);
       scheduleBrowserHealthCheck(browser, owner);
       return browser;

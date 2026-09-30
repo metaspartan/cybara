@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { config } from "../../src/core/config";
 import {
   browserDownloadsAccepted,
+  browserRecycleDue,
   getBrowserSupervisionSettings,
   onBrowserSupervisionSettingsChanged,
   setBrowserSupervisionSettings,
@@ -74,5 +75,36 @@ describe("browser supervision", () => {
     } finally {
       unsubscribe();
     }
+  });
+
+  test("clamps max browser uptime to a safe maintenance window", () => {
+    expect(getBrowserSupervisionSettings().maxBrowserUptimeMs).toBe(8 * 60 * 60 * 1000);
+    expect(setBrowserSupervisionSettings({ maxBrowserUptimeMs: 1 }).maxBrowserUptimeMs).toBe(
+      300000
+    );
+    expect(
+      setBrowserSupervisionSettings({ maxBrowserUptimeMs: 999999999 }).maxBrowserUptimeMs
+    ).toBe(604800000);
+  });
+
+  test("recycles browsers only after the configured uptime elapses", () => {
+    const startedAt = 1_000_000;
+    expect(browserRecycleDue(startedAt, startedAt + 30 * 60 * 1000, 8 * 60 * 60 * 1000)).toBe(
+      false
+    );
+    expect(browserRecycleDue(startedAt, startedAt + 8 * 60 * 60 * 1000, 8 * 60 * 60 * 1000)).toBe(
+      true
+    );
+    expect(browserRecycleDue(startedAt, startedAt + 25 * 60 * 60 * 1000, 8 * 60 * 60 * 1000)).toBe(
+      true
+    );
+    expect(browserRecycleDue(null, startedAt + 25 * 60 * 60 * 1000, 8 * 60 * 60 * 1000)).toBe(
+      false
+    );
+    expect(browserRecycleDue(startedAt, startedAt + 25 * 60 * 60 * 1000, 0)).toBe(false);
+    expect(browserRecycleDue(startedAt, startedAt + 25 * 60 * 60 * 1000, Number.NaN)).toBe(false);
+    expect(browserRecycleDue(Number.NaN, startedAt + 25 * 60 * 60 * 1000, 8 * 60 * 60 * 1000)).toBe(
+      false
+    );
   });
 });

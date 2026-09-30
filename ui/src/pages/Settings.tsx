@@ -11,6 +11,7 @@ import { ChatAccessibilitySettings } from "./settings/ChatAccessibilitySettings"
 import { HotkeySettings } from "./settings/HotkeySettings";
 import { FeatureSettings } from "./settings/FeatureSettings";
 import { ToolCapabilitySettings } from "./settings/ToolCapabilitySettings";
+import { DecisionModelSettings } from "./settings/DecisionModelSettings";
 import { ExternalTelemetrySettings } from "./settings/ExternalTelemetrySettings";
 import { BrowserSupervisionSettings } from "./settings/BrowserSupervisionSettings";
 import { MemoryBehaviorSettings } from "./settings/MemoryBehaviorSettings";
@@ -1348,6 +1349,7 @@ export function Settings() {
           <>
             <FeatureSettings />
             <ToolCapabilitySettings />
+            <DecisionModelSettings />
             <SensitiveFileSettings />
             <WebResearchSettings />
             <WebToolPolicySettings />

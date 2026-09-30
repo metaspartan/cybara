@@ -221,6 +221,7 @@ describe("Tauri wiring", () => {
     expect(capability.permissions).toContain("desktop-gateway");
     expect(capability.permissions).toContain("desktop-updater");
     expect(capability.permissions).toContain("theme-files");
+    expect(capability.permissions).toContain("image-files");
     expect(tauriConfig).toContain('"csp": "default-src');
   });
 
@@ -241,6 +242,15 @@ describe("Tauri wiring", () => {
       join(ROOT_DIR, "ui", "src", "pages", "settings", "theme", "themeFiles.ts"),
       "utf8"
     );
+    const imagePermission = readFileSync(
+      join(ROOT_DIR, "src-tauri", "permissions", "image-files.toml"),
+      "utf8"
+    );
+    const imageExport = readFileSync(
+      join(ROOT_DIR, "ui", "src", "lib", "chatImageExport.ts"),
+      "utf8"
+    );
+    const tauriMain = readFileSync(join(ROOT_DIR, "src-tauri", "src", "main.rs"), "utf8");
 
     expect(gatewayPermission).toContain('"read_cybara_api_key"');
     expect(gatewayPermission).toContain('"get_gateway_url"');
@@ -253,5 +263,8 @@ describe("Tauri wiring", () => {
     expect(themePermission).toContain('"write_theme_file"');
     expect(themeFiles).toContain('invoke("write_theme_file", { path, content })');
     expect(themeFiles).toContain("document.body.appendChild(anchor)");
+    expect(imagePermission).toContain('commands.allow = ["save_image_file"]');
+    expect(imageExport).toContain('invoke("save_image_file", { path, dataBase64 })');
+    expect(tauriMain).toContain("image_export::save_image_file");
   });
 });

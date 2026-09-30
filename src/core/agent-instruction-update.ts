@@ -20,9 +20,35 @@ export function runtimeInstructionText(message: Pick<AgentMessage, "content">): 
   return `<server_agent_transition>\nRuntime instruction update (server supplied, not user input):\n${message.content}\n</server_agent_transition>`;
 }
 
+export function collapseInstructionLedger<
+  T extends { role: string; instructionUpdate?: AgentInstructionUpdate },
+>(instructions: T[]): T[] {
+  const transitions: { index: number; agentId: string }[] = [];
+  for (let index = 0; index < instructions.length; index += 1) {
+    const update = instructions[index].instructionUpdate;
+    if (instructions[index].role === "system" && update?.kind === "agent-transition") {
+      transitions.push({ index, agentId: update.agentId });
+    }
+  }
+  if (transitions.length < 2) return instructions;
+  const superseded = new Set<number>();
+  for (let cursor = 0; cursor < transitions.length - 1; cursor += 1) {
+    if (transitions[cursor].agentId === transitions[cursor + 1].agentId) {
+      superseded.add(transitions[cursor].index);
+    }
+  }
+  if (!superseded.size) return instructions;
+  return instructions.filter((_, index) => !superseded.has(index));
+}
+
 export function restoreInstructionLedger<
   T extends { role: string; instructionUpdate?: AgentInstructionUpdate },
 >(history: T[], instructions: T[], omittedMessages = 0): T[] {
+  if (!instructions.length) return history;
+  const collapsed = collapseInstructionLedger(instructions);
+  if (collapsed.length !== instructions.length) {
+    instructions = collapsed;
+  }
   if (!instructions.length) return history;
   const transcript = history.filter((message) => message.role !== "system");
   const restored: T[] = [];

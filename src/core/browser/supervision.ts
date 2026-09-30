@@ -6,6 +6,7 @@ export type BrowserDownloadPolicy = "allow" | "deny";
 export interface BrowserSupervisionSettings {
   autoRestart: boolean;
   healthCheckIntervalMs: number;
+  maxBrowserUptimeMs: number;
   downloadPolicy: BrowserDownloadPolicy;
   remoteRoutingEnabled: boolean;
   remoteEndpoint: string;
@@ -24,6 +25,7 @@ export interface BrowserSupervisionStatus {
 const DEFAULT_SETTINGS: BrowserSupervisionSettings = {
   autoRestart: true,
   healthCheckIntervalMs: 30_000,
+  maxBrowserUptimeMs: 8 * 60 * 60 * 1000,
   downloadPolicy: "deny",
   remoteRoutingEnabled: false,
   remoteEndpoint: "",
@@ -84,11 +86,27 @@ function normalize(value: unknown): BrowserSupervisionSettings {
       Number.isFinite(record.healthCheckIntervalMs)
         ? Math.min(300_000, Math.max(5_000, Math.floor(record.healthCheckIntervalMs)))
         : DEFAULT_SETTINGS.healthCheckIntervalMs,
+    maxBrowserUptimeMs:
+      typeof record.maxBrowserUptimeMs === "number" && Number.isFinite(record.maxBrowserUptimeMs)
+        ? Math.min(604_800_000, Math.max(300_000, Math.floor(record.maxBrowserUptimeMs)))
+        : DEFAULT_SETTINGS.maxBrowserUptimeMs,
     downloadPolicy: record.downloadPolicy === "allow" ? "allow" : "deny",
     remoteRoutingEnabled: record.remoteRoutingEnabled === true,
     remoteEndpoint,
     remoteToken: openToken(record.remoteToken),
   };
+}
+
+export function browserRecycleDue(
+  startedAtMs: number | null,
+  nowMs: number,
+  maxUptimeMs: number
+): boolean {
+  if (startedAtMs === null || !Number.isFinite(startedAtMs) || !Number.isFinite(nowMs)) {
+    return false;
+  }
+  if (!Number.isFinite(maxUptimeMs) || maxUptimeMs <= 0) return false;
+  return nowMs - startedAtMs >= maxUptimeMs;
 }
 
 export function getBrowserSupervisionSettings(options?: {

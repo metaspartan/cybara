@@ -76,6 +76,7 @@ import { handleScp, handleSsh } from "./ssh";
 import { handleData } from "./data";
 import { handleAccountConnectorRead, handleAccountConnectorWrite } from "./account-connectors";
 import { handleCalc, handleConvert } from "./calc";
+import { handleDecisionEvaluate, handleDecisionList } from "./decision";
 import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
 import { handleXSearch } from "./x-search";
@@ -310,6 +311,8 @@ Object.assign(registeredToolHandlers, {
   account_connector_write: handleAccountConnectorWrite,
   calc: handleCalc,
   convert: handleConvert,
+  decision_evaluate: handleDecisionEvaluate,
+  decision_list: handleDecisionList,
   env: handleEnv,
 
   phone: handlePhoneCall,

@@ -35,8 +35,13 @@ function fallbackMetadataForSkill(skillName: string): SkillMetadata | undefined 
   return undefined;
 }
 
-export function hasBinary(bin: string): boolean {
-  if (!bin || typeof bin !== "string") return false;
+const binaryAvailabilityCache = new Map<string, boolean>();
+
+function binaryCacheKey(bin: string): string {
+  return `${process.env.PATH ?? ""}\u0000${bin}`;
+}
+
+function probeBinary(bin: string): boolean {
   try {
     const checkCmd = platform() === "win32" ? "where" : "which";
     const result = Bun.spawnSync([checkCmd, bin], {
@@ -46,6 +51,37 @@ export function hasBinary(bin: string): boolean {
     return (result.exitCode ?? 1) === 0;
   } catch {
     return false;
+  }
+}
+
+export function hasBinary(bin: string): boolean {
+  if (!bin || typeof bin !== "string") return false;
+  const cacheKey = binaryCacheKey(bin);
+  const cached = binaryAvailabilityCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const available = probeBinary(bin);
+  binaryAvailabilityCache.set(cacheKey, available);
+  return available;
+}
+
+export async function prewarmBinaryAvailability(bins: string[]): Promise<void> {
+  const pending = [...new Set(bins)].filter(
+    (bin) => !!bin && typeof bin === "string" && !binaryAvailabilityCache.has(binaryCacheKey(bin))
+  );
+  if (pending.length === 0) return;
+  const checkCmd = platform() === "win32" ? "where" : "which";
+  const probes = await Promise.all(
+    pending.map(async (bin) => {
+      try {
+        const proc = Bun.spawn([checkCmd, bin], { stdout: "ignore", stderr: "ignore" });
+        return [bin, (await proc.exited) === 0] as const;
+      } catch {
+        return [bin, false] as const;
+      }
+    })
+  );
+  for (const [bin, available] of probes) {
+    binaryAvailabilityCache.set(binaryCacheKey(bin), available);
   }
 }
 

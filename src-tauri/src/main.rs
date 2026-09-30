@@ -13,6 +13,7 @@ mod desktop_update;
 mod gateway;
 mod gateway_ownership;
 mod gateway_supervision;
+mod image_export;
 mod tray;
 
 const CYBARA_DEFAULT_PORT: u16 = 4269;
@@ -1366,6 +1367,7 @@ fn main() {
             start_native_recording,
             stop_native_recording,
             write_theme_file,
+            image_export::save_image_file,
             desktop_update::get_desktop_update_state,
             desktop_update::check_desktop_update,
             desktop_update::install_desktop_update

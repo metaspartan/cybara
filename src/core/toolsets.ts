@@ -147,6 +147,8 @@ const safeToolNames = new Set([
   "convert",
   "pdf",
   "ocr",
+  "decision_evaluate",
+  "decision_list",
 ]);
 
 const directToolNames = new Set([

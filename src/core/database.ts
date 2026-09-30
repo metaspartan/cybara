@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { chmodSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
+import { collapsePersistedInstructionLedgers } from "./instruction-ledger-repair";
 import { dataDir } from "./paths";
 import { isSealedSecret, openSecret, sealSecret } from "./secret-storage";
 import { applyPendingSystemRestore } from "./system-backup";
@@ -531,6 +532,21 @@ try {
     console.warn("[Database] session read cursor backfill failed:", error);
   }
 
+  try {
+    const migrationKey = "migration.instruction_ledger_collapse_v1";
+    const migrated = db.query("SELECT value FROM config WHERE key = ?").get(migrationKey);
+    if (!migrated) {
+      const repaired = collapsePersistedInstructionLedgers(db);
+      if (repaired > 0) {
+        console.error(
+          `[Database] Migration: Collapsed superseded instruction ledgers in ${repaired} session(s)`
+        );
+      }
+      db.query("INSERT INTO config (key, value) VALUES (?, ?)").run(migrationKey, "1");
+    }
+  } catch (error) {
+    console.warn("[Database] instruction ledger collapse failed:", error);
+  }
   try {
     db.exec("ALTER TABLE mcp_servers ADD COLUMN url TEXT");
     console.error("[Database] Migration: Added url column to mcp_servers");

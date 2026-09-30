@@ -5,6 +5,225 @@ export const TOOL_RESULT_COMPACTION_NOTICE =
   "[compacted: earlier tool output elided to free context]";
 export const MESSAGE_CONTENT_COMPACTION_NOTICE =
   "[compacted: earlier message content elided to free context]";
+export const TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE =
+  "[compacted: earlier tool call arguments elided to free context]";
+
+export const MAX_TOOL_CALL_ARGUMENT_CHARS = 6_000;
+export const MAX_TOOL_CALL_PAYLOAD_CHARS_PER_MESSAGE = 20_000;
+export const TOOL_CALL_RESULT_COMPACTION_NOTICE =
+  "[compacted: earlier tool call result elided to free context]";
+export const THINKING_COMPACTION_NOTICE =
+  "[compacted: earlier thinking trace elided to free context]";
+
+function elideMessageThinking(message: Record<string, unknown>): boolean {
+  const thinking = message.thinking;
+  if (typeof thinking !== "string") return false;
+  if (!thinking.trim() || thinking === THINKING_COMPACTION_NOTICE) return false;
+  message.thinking = THINKING_COMPACTION_NOTICE;
+  return true;
+}
+
+function isElidedToolCallResult(value: unknown): boolean {
+  return typeof value === "string" && value.startsWith(TOOL_CALL_RESULT_COMPACTION_NOTICE);
+}
+
+function timelineToolCallResultChars(toolCall: Record<string, unknown>): number {
+  if (!("result" in toolCall) || isElidedToolCallResult(toolCall.result)) return 0;
+  try {
+    return JSON.stringify(toolCall.result ?? null).length;
+  } catch {
+    return 0;
+  }
+}
+
+function timelineToolCallArgChars(toolCall: Record<string, unknown>): number {
+  const args = toolCall.args;
+  if (args === undefined || args === null) return 0;
+  if (isElidedToolCallResult(args)) return 0;
+  try {
+    return JSON.stringify(args).length;
+  } catch {
+    return 0;
+  }
+}
+
+function hasInFlightTimelineToolCall(toolCall: Record<string, unknown>): boolean {
+  if (!("result" in toolCall)) return true;
+  const status = toolCall.status;
+  if (status === "pending" || status === "executing") return true;
+  return !isElidedToolCallResult(toolCall.result) && timelineToolCallResultChars(toolCall) === 0;
+}
+
+function messageHasInFlightToolCalls(message: Record<string, unknown>): boolean {
+  const toolCalls = message.tool_calls;
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return false;
+  return toolCalls.some(
+    (toolCall) =>
+      !!toolCall && typeof toolCall === "object" && hasInFlightTimelineToolCall(toolCall)
+  );
+}
+
+function collapseTimelineToolCallResults(message: Record<string, unknown>): boolean {
+  const toolCalls = message.tool_calls;
+  if (!Array.isArray(toolCalls)) return false;
+  let changed = false;
+  const nextToolCalls = toolCalls.map((toolCall) => {
+    if (!toolCall || typeof toolCall !== "object") return toolCall;
+    const typed = toolCall as Record<string, unknown>;
+    const resultChars = timelineToolCallResultChars(typed);
+    const argChars = timelineToolCallArgChars(typed);
+    if (resultChars === 0 && argChars === 0) return toolCall;
+    changed = true;
+    return {
+      ...typed,
+      result: resultChars > 0 ? TOOL_CALL_RESULT_COMPACTION_NOTICE : typed.result,
+      args: argChars > 0 ? TOOL_CALL_RESULT_COMPACTION_NOTICE : typed.args,
+    };
+  });
+  if (!changed) return false;
+  message.tool_calls = nextToolCalls;
+  return true;
+}
+
+function toolCallPayloadChars(message: Record<string, unknown>): number {
+  const toolCalls = message.tool_calls;
+  if (!Array.isArray(toolCalls)) return 0;
+  let total = 0;
+  for (const toolCall of toolCalls) {
+    if (!toolCall || typeof toolCall !== "object") continue;
+    const typed = toolCall as Record<string, unknown>;
+    const fn = typed.function;
+    if (fn && typeof fn === "object") {
+      const args = (fn as Record<string, unknown>).arguments;
+      if (typeof args === "string") total += args.length;
+      continue;
+    }
+    total += timelineToolCallResultChars(typed) + timelineToolCallArgChars(typed);
+  }
+  return total;
+}
+
+function collapseToolCallPayload(message: Record<string, unknown>): boolean {
+  const toolCalls = message.tool_calls;
+  if (!Array.isArray(toolCalls)) return false;
+  let changed = false;
+  message.tool_calls = toolCalls.map((toolCall) => {
+    if (!toolCall || typeof toolCall !== "object") return toolCall;
+    const typed = toolCall as Record<string, unknown>;
+    const fn = typed.function;
+    if (!fn || typeof fn !== "object") return toolCall;
+    const fnTyped = fn as Record<string, unknown>;
+    const args = fnTyped.arguments;
+    if (typeof args !== "string" || args.length <= TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE.length) {
+      return toolCall;
+    }
+    changed = true;
+    return { ...typed, function: { ...fnTyped, arguments: TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE } };
+  });
+  return changed;
+}
+
+export function isElidedToolCallArguments(value: unknown): boolean {
+  return typeof value === "string" && value.startsWith(TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE);
+}
+
+function compactToolCallArgumentsString(value: string, maxChars: number): string {
+  if (value.length <= maxChars || isElidedToolCallArguments(value)) return value;
+  const budget = Math.max(0, maxChars - TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE.length - 1);
+  return `${TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE} ${value.slice(0, budget)}`;
+}
+
+function elideOpenAIToolCallArguments(message: Record<string, unknown>, maxChars: number): boolean {
+  const toolCalls = message.tool_calls;
+  if (!Array.isArray(toolCalls)) return false;
+  let changed = false;
+  const nextToolCalls = toolCalls.map((toolCall) => {
+    if (!toolCall || typeof toolCall !== "object") return toolCall;
+    const typed = toolCall as Record<string, unknown>;
+    const fn = typed.function;
+    if (!fn || typeof fn !== "object") return toolCall;
+    const fnTyped = fn as Record<string, unknown>;
+    const args = fnTyped.arguments;
+    if (typeof args !== "string") return toolCall;
+    const compacted = compactToolCallArgumentsString(args, maxChars);
+    if (compacted === args) return toolCall;
+    changed = true;
+    return { ...typed, function: { ...fnTyped, arguments: compacted } };
+  });
+  if (!changed) return false;
+  message.tool_calls = nextToolCalls;
+  return true;
+}
+
+function isElidedOpenAIToolCallArguments(
+  message: Record<string, unknown>,
+  maxChars: number
+): boolean {
+  const toolCalls = message.tool_calls;
+  if (!Array.isArray(toolCalls)) return true;
+  return !toolCalls.some((toolCall) => {
+    if (!toolCall || typeof toolCall !== "object") return false;
+    const fn = (toolCall as Record<string, unknown>).function;
+    if (!fn || typeof fn !== "object") return false;
+    const args = (fn as Record<string, unknown>).arguments;
+    return typeof args === "string" && args.length > maxChars;
+  });
+}
+
+function collapseOversizedToolCallPayloads(
+  messages: Array<Record<string, unknown>>,
+  maxPayloadChars: number,
+  protectRecent: number
+): number {
+  const protectedFrom = Math.max(0, messages.length - protectRecent);
+  let pendingAssistantIndex = -1;
+  for (let index = messages.length - 1; index >= protectedFrom; index -= 1) {
+    if (messages[index].role !== "assistant") continue;
+    if (messageHasInFlightToolCalls(messages[index])) {
+      pendingAssistantIndex = index;
+      break;
+    }
+  }
+  let collapsed = 0;
+  for (let index = 0; index < messages.length; index += 1) {
+    if (index === pendingAssistantIndex) continue;
+    const message = messages[index];
+    if (message.role !== "assistant") continue;
+    if (toolCallPayloadChars(message) <= maxPayloadChars) continue;
+    if (collapseToolCallPayload(message) || collapseTimelineToolCallResults(message))
+      collapsed += 1;
+  }
+  return collapsed;
+}
+
+function compactOpenAIToolCallArguments(
+  messages: Array<Record<string, unknown>>,
+  budgetChars: number,
+  maxArgumentChars: number
+): number {
+  const estimates = messages.map((message) => estimateOpenAIChatMessageChars(message));
+  let running = estimates.reduce((sum, value) => sum + value, 0);
+  if (running <= budgetChars) return 0;
+
+  let elided = 0;
+  let force = true;
+  for (let index = 0; index < messages.length; index += 1) {
+    if (!force && running <= budgetChars) break;
+    if (index >= messages.length - 2) break;
+    const message = messages[index];
+    if (message.role !== "assistant") continue;
+    if (isElidedOpenAIToolCallArguments(message, maxArgumentChars)) continue;
+    const previousEstimate = estimates[index];
+    if (!elideOpenAIToolCallArguments(message, maxArgumentChars)) continue;
+    const nextEstimate = estimateOpenAIChatMessageChars(message);
+    estimates[index] = nextEstimate;
+    running = running - previousEstimate + nextEstimate;
+    elided += 1;
+    force = false;
+  }
+
+  return elided;
+}
 
 const MIN_RECOVERABLE_TOOL_OUTPUT_CHARS = 400;
 const SAVED_OUTPUT_PATH_PATTERN = /Full output saved to: (\S+)/;
@@ -58,6 +277,8 @@ export interface CompactionOptions {
   protectRecent?: number;
   aggressive?: boolean;
   sessionId?: string;
+  maxToolCallArgumentChars?: number;
+  maxToolCallPayloadChars?: number;
 }
 
 export function compactToolTranscriptInPlace<T>(
@@ -120,6 +341,10 @@ function estimateOpenAIChatMessageChars(message: Record<string, unknown>): numbe
     total += content.length;
   } else if (Array.isArray(content)) {
     total += estimateRequestValueChars(content);
+  }
+
+  if (typeof message.thinking === "string") {
+    total += message.thinking.length;
   }
 
   if (Array.isArray(message.tool_calls)) {
@@ -191,11 +416,30 @@ export function compactOpenAIChatTranscriptInPlace(
     { ...options, protectRecent: defaultProtectRecent }
   );
 
+  const protectRecent = options.aggressive ? 2 : defaultProtectRecent;
+  const payloadCollapsed = collapseOversizedToolCallPayloads(
+    messages,
+    options.maxToolCallPayloadChars ?? MAX_TOOL_CALL_PAYLOAD_CHARS_PER_MESSAGE,
+    protectRecent
+  );
+
   const estimates = messages.map((message) => estimateOpenAIChatMessageChars(message));
   let running = estimates.reduce((sum, value) => sum + value, 0);
-  if (running <= budgetChars && !options.aggressive) return toolElided;
+  if (running <= budgetChars && !options.aggressive) return toolElided + payloadCollapsed;
 
-  const protectRecent = options.aggressive ? 2 : defaultProtectRecent;
+  const argumentElided = compactOpenAIToolCallArguments(
+    messages,
+    budgetChars,
+    options.maxToolCallArgumentChars ?? MAX_TOOL_CALL_ARGUMENT_CHARS
+  );
+  if (argumentElided > 0) {
+    const afterArguments = messages.map((message) => estimateOpenAIChatMessageChars(message));
+    running = afterArguments.reduce((sum, value) => sum + value, 0);
+    if (running <= budgetChars && !options.aggressive) {
+      return toolElided + argumentElided + payloadCollapsed;
+    }
+  }
+
   const firstUserIndex = messages.findIndex((message) => message.role === "user");
   const lastProtectedIndex = messages.length - protectRecent;
   let messageElided = 0;
@@ -209,7 +453,9 @@ export function compactOpenAIChatTranscriptInPlace(
     const role = message.role;
     if (role === "system" || role === "tool") continue;
     if (index === firstUserIndex) continue;
-    if (!elideOpenAIMessageContent(message)) continue;
+    const contentElided = elideOpenAIMessageContent(message);
+    const thinkingElided = elideMessageThinking(message);
+    if (!contentElided && !thinkingElided) continue;
 
     const previousEstimate = estimates[index];
     const nextEstimate = estimateOpenAIChatMessageChars(message);

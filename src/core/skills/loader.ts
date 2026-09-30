@@ -4,6 +4,7 @@ import { join, resolve, dirname } from "path";
 import { homedir } from "os";
 import { getBuiltinPluginForSkill, getPluginRoots, listInstalledPlugins } from "../plugins";
 import { getBuiltinSkillPacks } from "./builtin-packs";
+import { prewarmBinaryAvailability } from "./gating";
 import type {
   Skill,
   SkillEntry,
@@ -14,6 +15,15 @@ import type {
 } from "./types";
 
 const SKILL_FILENAME = "SKILL.md";
+
+function collectGatedBinaryNames(skills: SkillEntry[]): string[] {
+  const bins = new Set<string>();
+  for (const entry of skills) {
+    for (const bin of entry.metadata?.requires?.bins ?? []) bins.add(bin);
+    for (const bin of entry.metadata?.requires?.anyBins ?? []) bins.add(bin);
+  }
+  return [...bins];
+}
 
 export function parseFrontmatter(content: string): {
   frontmatter: Record<string, unknown>;
@@ -355,6 +365,7 @@ export async function loadAllSkills(options: {
   }
 
   const skills = Array.from(skillsByName.values());
+  await prewarmBinaryAvailability(collectGatedBinaryNames(skills));
   loadedSkillsCache = { key: cacheKey, skills, expires: now + LOADED_SKILLS_CACHE_TTL_MS };
   return skills;
 }

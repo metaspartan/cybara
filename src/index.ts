@@ -592,7 +592,7 @@ function createGatewayServer(
           data: {
             kind: "browser",
             pageId: browserStreamId,
-            quality: boundedStreamParameter(url, "quality", 58, 40, 85),
+            quality: boundedStreamParameter(url, "quality", 82, 40, 85),
             maxWidth: boundedStreamParameter(url, "maxWidth", 1280, 320, 2560),
             maxHeight: boundedStreamParameter(url, "maxHeight", 900, 320, 1600),
             everyNthFrame: boundedStreamParameter(url, "everyNthFrame", 1, 1, 4),

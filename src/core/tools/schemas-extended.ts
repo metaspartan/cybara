@@ -1495,4 +1495,42 @@ ACTIONS:
     },
     permissions: [],
   },
+  decision_evaluate: {
+    name: "decision_evaluate",
+    description:
+      "Evaluate supplied evidence against typed questions using a small bounded decision model. Returns a choice, score, or yes-probability per question with a confidence value. Cheaper and far lower latency than asking the main model. Question types: noul (yes/no probability), choice (pick one of your options), score (numeric against your legend). Answers are evidence, not permission to act.",
+    category: "skill",
+    input_schema: {
+      type: "object",
+      properties: {
+        state: {
+          type: ["string", "object", "array"],
+          description:
+            "The evidence to evaluate: text, a chat log, or a structured record. Keep it to the relevant excerpt.",
+        },
+        questions: {
+          type: "object",
+          description:
+            "Map of question id to a typed question. Each has type, instructions, and type-specific fields: noul may add criteria {true,false}; choice requires options (2+); score requires a legend of at least two numeric keys.",
+        },
+        model: {
+          type: "string",
+          description:
+            "Optional decision model reference such as typesafe/jev-latest. Defaults to the configured decision model.",
+        },
+      },
+      required: ["state", "questions"],
+    },
+    permissions: [],
+  },
+  decision_list: {
+    name: "decision_list",
+    description: "List available decision models, the configured default, and evaluation limits.",
+    category: "skill",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+    permissions: [],
+  },
 };

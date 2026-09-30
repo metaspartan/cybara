@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "image-files"
+description = "Allows the Cybara interface to save validated images chosen through a save dialog."
+commands.allow = ["save_image_file"]

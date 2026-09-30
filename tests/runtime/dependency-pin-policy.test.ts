@@ -61,6 +61,34 @@ describe("JavaScript dependency pin policy", () => {
     }
   });
 
+  test("lockfiles resolve the patched brace-expansion and ip-address releases", () => {
+    const expected: Array<{ directory: string; braceExpansion: string; vulnerable: string[] }> = [
+      { directory: "", braceExpansion: "1.1.21", vulnerable: ["1.1.18", "5.0.9"] },
+      { directory: "ui/", braceExpansion: "5.0.12", vulnerable: ["5.0.9"] },
+      { directory: "apps/mobile/", braceExpansion: "5.0.12", vulnerable: ["5.0.9"] },
+    ];
+
+    for (const entry of expected) {
+      const overrides = readJson(`${entry.directory}package.json`).overrides as Record<
+        string,
+        unknown
+      >;
+      const lockfile = readFileSync(join(ROOT_DIR, entry.directory, "bun.lock"), "utf8");
+
+      expect(overrides["brace-expansion"]).toBe(entry.braceExpansion);
+      expect(lockfile).toContain(`"brace-expansion": ["brace-expansion@${entry.braceExpansion}"`);
+      for (const vulnerable of entry.vulnerable) {
+        expect(lockfile).not.toContain(`"brace-expansion": ["brace-expansion@${vulnerable}"`);
+      }
+    }
+
+    const rootOverrides = readJson("package.json").overrides as Record<string, unknown>;
+    const rootLockfile = readFileSync(join(ROOT_DIR, "bun.lock"), "utf8");
+    expect(rootOverrides["ip-address"]).toBe("10.7.1");
+    expect(rootLockfile).toContain('"ip-address": ["ip-address@10.7.1"');
+    expect(rootLockfile).not.toContain('"ip-address": ["ip-address@10.5.1"');
+  });
+
   test("root, web, and mobile lockfiles resolve the patched Browserslist release", () => {
     for (const directory of ["", "ui/", "apps/mobile/"] as const) {
       const pkg = readJson(`${directory}package.json`);
