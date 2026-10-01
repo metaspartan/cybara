@@ -1089,7 +1089,7 @@ ACTIONS:
   execute_code: {
     name: "execute_code",
     description:
-      "Run trusted JavaScript/TypeScript as a host child process that can call enabled tools through the `cybara` namespace (e.g. `await cybara.read({path})`). This is dangerous host execution, not a security sandbox; use `sandbox_run` for untrusted code. Return a value explicitly when one is needed.",
+      "Run trusted JavaScript/TypeScript as a host child process that can call enabled tools through the `cybara` namespace (e.g. `await cybara.read({path})`). This is dangerous host execution, not a security sandbox; use `sandbox_run` for untrusted code. Use ESM await import(), not require(). Helpers: await cybara.readJson({path}) parses one JSON input; await cybara.writeJson({path,value}) writes and verifies read-back; cybara.assertEqual(actual,expected) compares JSON ignoring object-key order but preserving array order and strings. Helpers require the same enabled read/write tools. Independently derive the expected value; write only the requested output keys and return diagnostics separately.",
     category: "discovery",
     input_schema: {
       type: "object",

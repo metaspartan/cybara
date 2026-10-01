@@ -92,6 +92,7 @@ import {
   markStoppedRun,
   type StoppedRunSuppressions,
 } from "./chat/stopSuppression";
+import { useSessionPlan } from "./chat/useSessionPlan";
 import { useArtifactViewer } from "./chat/useArtifactViewer";
 import { useBotRoster } from "./chat/useBotRoster";
 import { useChatAttachments } from "./chat/useChatAttachments";
@@ -429,14 +430,17 @@ export function Chat() {
     liveActivities,
     showWorkspacePanel && activeWorkspaceKind === "review"
   );
-  const currentSessionPlan = useMemo(
+  const initialSessionPlan = useMemo(
     () => extractLatestPlanFromMessages(typedMessages, sessionId),
     [typedMessages, sessionId]
   );
+  const currentSessionPlan = useSessionPlan(sessionId, typedMessages, initialSessionPlan);
   const currentSessionPlanKey = useMemo(() => {
     if (!currentSessionPlan) return null;
     return [
       sessionId || "new-chat",
+      currentSessionPlan.revision ?? "",
+      currentSessionPlan.lifecycle ?? "",
       currentSessionPlan.updatedAt || "",
       currentSessionPlan.summary.completed,
       currentSessionPlan.summary.inProgress,

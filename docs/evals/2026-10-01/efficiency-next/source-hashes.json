@@ -1,0 +1,23 @@
+{
+  "base_commit": "ee5e9a4c57ff31e3fa60ebe7696f34b747767236",
+  "source": "working tree with pending plan lifecycle and fused execution capability changes",
+  "hashes": {
+    "src/core/system-prompt.ts": "54f5f0887b51c8d81579455330268124101db9595ae0693b3780c4f3c8caf051",
+    "src/core/toolsets.ts": "72fc5042002731970237fa9209789e487b8061d2ffae47a0636c72f470d7ebe2",
+    "src/core/tools/schemas-extended.ts": "0ef96c04cefcae994015d06091f8d502ffa526d52e3e73fa4679c91736d35ef4",
+    "src/core/tools/handlers/execute-code.ts": "9c2e8c079989f36f063511c00ef06c6a03245e933cd786e9d051e51d279c473c",
+    "src/core/session-plan-store.ts": "f945b4d50fb0d0fca95b2b47dcd60be4236a4e43e46d6186025847bd442d5b3d",
+    "scripts/harness-benchmark.ts": "b7a5066132f6d18dd5c34ea4192c55d6d4ba34a8da2c29e6947397ab33acf625",
+    "scripts/harness-benchmark-core.ts": "9dcff3690a3c178f4e11607aa8573393913fef9176207a4b7e173f24c87596c2"
+  },
+  "omp_release": "18.4.8",
+  "omp_binary_sha256": "64e8cc817c91b6ea5c7f5c507fd4590f1e339759e42f3b414e6071bdcd99cad2",
+  "runtime": "1.4.2",
+  "model": "space-bunny-free",
+  "reasoning": "high",
+  "output_budget": 8192,
+  "upstream_mode": "buffered",
+  "native_cli_startup": "cold per trial",
+  "gateway_startup": "warm service",
+  "no_universal_claim": true
+}

@@ -1,3 +1,4 @@
+import { readAgentExecutionMode, setAgentExecutionMode } from "@/lib/agentExecutionMode";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { ArrowUpRight, Bot, Trash2, Edit2, Image as ImageIcon } from "lucide-react";
 import { Link } from "react-router";
@@ -84,7 +85,10 @@ function agentImageStatus(agent: AgentSummary): { label: string; enabled: boolea
 }
 
 function buildConfig(formData: FormData, existing?: unknown): Record<string, unknown> {
-  const config: Record<string, unknown> = { ...parseAgentConfig(existing) };
+  const config: Record<string, unknown> = setAgentExecutionMode(
+    parseAgentConfig(existing),
+    formData.get("tool_execution_mode")
+  );
   const modelParams: Record<string, unknown> = {
     ...((config.model_params as Record<string, unknown>) || {}),
   };
@@ -652,6 +656,22 @@ function AgentModal({
             options={toolProfiles}
           />
 
+          <div className="space-y-1.5">
+            <Select
+              label="Tool Execution"
+              name="tool_execution_mode"
+              defaultValue={readAgentExecutionMode(parseAgentConfig(initialData?.config))}
+              options={[
+                { value: "direct", label: "Direct tools (default)" },
+                { value: "fused", label: "Fused code (trusted local work)" },
+              ]}
+            />
+            <p className="text-xs text-gray-500">
+              Fused mode groups enabled file and process tools inside one code call to reduce model
+              round trips. It is trusted host execution, not a security sandbox. Existing tool
+              permissions and approvals still apply; the agent must allow execute_code.
+            </p>
+          </div>
           <div className="space-y-1.5">
             <Select
               label="Image Input"

@@ -110,21 +110,33 @@ describe("chat plan handoff between agents", () => {
       const model = request.model || "unknown";
       const lastMessage = request.messages?.at(-1);
       const offersTodo = request.tools?.some((tool) => tool.function?.name === "todo") === true;
-      if (offersTodo && lastMessage?.role === "user" && lastMessage.content === createRequest) {
+      if (
+        offersTodo &&
+        lastMessage?.role === "user" &&
+        lastMessage.content?.startsWith(createRequest)
+      ) {
         initialPlanCalls += 1;
         return todoResponse(model, "todo-plan-a", [
           { content: "Old active work", status: "in_progress", priority: "high" },
           { content: "Old stale work", status: "pending", priority: "low" },
         ]);
       }
-      if (offersTodo && lastMessage?.role === "user" && lastMessage.content === handoffRequest) {
+      if (
+        offersTodo &&
+        lastMessage?.role === "user" &&
+        lastMessage.content?.startsWith(handoffRequest)
+      ) {
         handoffPlanCalls += 1;
         return todoResponse(model, "todo-plan-b", [
           { content: "Obsolete inherited approach", status: "cancelled", priority: "low" },
           { content: "Replacement work", status: "completed", priority: "high" },
         ]);
       }
-      if (offersTodo && lastMessage?.role === "user" && lastMessage.content === clearRequest) {
+      if (
+        offersTodo &&
+        lastMessage?.role === "user" &&
+        lastMessage.content?.startsWith(clearRequest)
+      ) {
         clearPlanCalls += 1;
         return todoResponse(model, "todo-plan-clear", []);
       }

@@ -276,13 +276,19 @@ export function ChatEnvironmentOverview({
           {currentPlan ? (
             <PlanSummaryCard
               plan={currentPlan}
+              defaultExpanded
               expandable
               dismissible
               onDismiss={onDismissPlan}
               title="Latest plan update"
             />
           ) : (
-            <div className="rounded-lg border border-[#343843] bg-[#171a22] p-2 text-[12px] text-gray-500">
+            <div
+              role="status"
+              aria-live="polite"
+              data-testid="chat-plan-empty"
+              className="rounded-lg border border-[#343843] bg-[#171a22] p-2 text-[12px] text-gray-500"
+            >
               No plan has been recorded for this chat.
             </div>
           )}

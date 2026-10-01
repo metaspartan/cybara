@@ -431,13 +431,19 @@ function buildToolingSection(tools: string[], isMinimal: boolean, runtimeOs?: st
       );
     }
 
-    if (availableTools.has("read")) {
+    if (availableTools.has("read") && !availableTools.has("execute_code")) {
       lines.push(
         "Read exact input paths directly. For text, use path as an array of up to 8 paths not vision. Independently recompute from inputs after writing transformations; use exec. Write receipts prove syntax, not semantics.",
         ""
       );
     }
 
+    if (availableTools.has("execute_code")) {
+      lines.push(
+        "Fused execution exposes file/process operations through the enabled cybara namespace instead of separate schemas. For trusted deterministic JSON tasks, prefer one execute_code call: readJson({path}) inputs, compute all inclusion/order rules, writeJson({path,value}) output, and assertEqual(output,independentlyComputedReference). These helpers call enabled read/write tools; object key order is immaterial, array order and strings are exact. Keep the artifact minimal with only requested fields; diagnostics belong in the returned receipt. Use ESM await import(), not require(). Separate calls when the source shape is uncertain or checks fail. Never hardcode answers, suppress errors, bypass policy with direct filesystem access, or execute untrusted host code.",
+        ""
+      );
+    }
     if (availableTools.has("exec")) {
       lines.push(
         "For development servers and other long-running commands, call exec with background:true and a workdir. Do not append shell '&'. Use process to list or stop background processes."

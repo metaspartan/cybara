@@ -419,6 +419,9 @@ export interface SessionPlanSnapshot {
   summary: SessionPlanSummary;
   updatedAt?: string;
   source: "todo_tool";
+  revision?: number;
+  lifecycle?: "active" | "completed" | "paused" | "needs_update" | "cleared";
+  runId?: string;
 }
 
 export interface SessionContextUsage {

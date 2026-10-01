@@ -101,7 +101,7 @@ import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbo
 import { taskScheduler } from "../core/scheduler";
 import { getSessionGoal } from "../core/session-goals";
 import { estimateSessionContextUsage, summarizeSessionTokenUsage } from "../core/session-context";
-import { extractLatestSessionPlan } from "../core/session-plan";
+import { readSessionPlan as extractLatestSessionPlan } from "../core/session-plan-store";
 import { searchSessionMessages } from "../core/session-search";
 import {
   clearSkillsCache,

@@ -24,6 +24,9 @@ type Metrics = {
   scope: string;
   date: string;
   model: string;
+  headlineFirst: string;
+  headlineSecond: string;
+  tokenMetric: "input" | "total";
 };
 
 const NAVY = "#16233A";
@@ -48,6 +51,7 @@ async function fromArchive(): Promise<Metrics> {
   const runs = opt.runs;
   const tasks = Math.round(runs / raw.rounds);
   return {
+    headlineFirst: "Less context.", headlineSecond: "Same task success.", tokenMetric: "input",
     source: ARCHIVE.replace(ROOT + "/", ""),
     label: "Archive receipt",
     headlineStat: `${red.toFixed(1)}%`,
@@ -76,11 +80,12 @@ async function fromLive(raw: Record<string, unknown>): Promise<Metrics | null> {
   if (raw.verified !== true) return null;
   const suite = typeof raw.suite === "string" ? raw.suite : "";
   if (!suite) return null;
-  const red = num(raw.pct_fewer_input_tokens, raw.input_token_reduction_pct, raw.pct_reduction);
-  if (red === null || red <= 0 || red > 60) return null;
-  const a = num(raw.cybara_input_tokens, raw.optimized_prompt_tokens);
-  const b = num(raw.omp_input_tokens, raw.baseline_prompt_tokens);
-  if (a === null || b === null || a >= b) return null;
+  const totalMetric = raw.token_metric === "total";
+  const red = totalMetric ? num(raw.pct_fewer_total_tokens) : num(raw.pct_fewer_input_tokens, raw.input_token_reduction_pct, raw.pct_reduction);
+  if (red === null || red <= 0 || red >= 100) return null;
+  const a = totalMetric ? num(raw.cybara_total_tokens) : num(raw.cybara_input_tokens, raw.optimized_prompt_tokens);
+  const b = totalMetric ? num(raw.omp_total_tokens) : num(raw.omp_input_tokens, raw.baseline_prompt_tokens);
+  if (a === null || b === null || a >= b || Math.abs(red - (1 - a / b) * 100) > 0.01) return null;
   const passA = num(raw.cybara_passed, raw.optimized_passed);
   const passB = num(raw.omp_passed, raw.baseline_passed);
   const nA = num(raw.cybara_runs, raw.optimized_runs);
@@ -99,10 +104,13 @@ async function fromLive(raw: Record<string, unknown>): Promise<Metrics | null> {
   const t2 = pick(1, { value: base.tile2Value, label: base.tile2Label, sub: base.tile2Sub });
   const t3 = pick(2, { value: base.tile3Value, label: base.tile3Label, sub: base.tile3Sub });
   return {
+    headlineFirst: typeof raw.headline_first === "string" ? raw.headline_first : "Less context.",
+    headlineSecond: typeof raw.headline_second === "string" ? raw.headline_second : "Same task success.",
+    tokenMetric: totalMetric ? "total" : "input",
     source: LIVE.replace(ROOT + "/", ""),
     label: "Verified suite metrics",
     headlineStat: `${red.toFixed(1)}%`,
-    headlineNote: "fewer input tokens than OMP 18.4.8",
+    headlineNote: totalMetric ? "fewer total tokens than OMP 18.4.8" : "fewer input tokens than OMP 18.4.8",
     tile1Value: t1.value,
     tile1Label: t1.label,
     tile1Sub: t1.sub,
@@ -196,6 +204,7 @@ function svg(m: Metrics, mascot: string): string {
   <g>
     <rect x="88" y="72" width="10" height="52" fill="${ORANGE}"/>
     <text x="122" y="112" fill="${NAVY}" font-family="${F}" font-size="38" font-weight="700" letter-spacing="1.4">CYBARA</text>
+    <text x="328" y="108" fill="${NAVY_SOFT}" font-family="${F}" font-size="19" font-weight="600" letter-spacing="1.6">FUSED MODE</text>
     <text x="88" y="176" fill="${NAVY_SOFT}" font-family="${F}" font-size="21" font-weight="400" letter-spacing="3.2">CONTEXT BUDGET, SPENT ON PURPOSE</text>
   </g>
 
@@ -205,7 +214,7 @@ function svg(m: Metrics, mascot: string): string {
   </g>
 
   <g>
-    <text x="88" y="318" fill="${NAVY}" font-family="${F}" font-size="104" font-weight="700" letter-spacing="-3.2">Less context.</text>
+    <text x="88" y="318" fill="${NAVY}" font-family="${F}" font-size="104" font-weight="700" letter-spacing="-3.2">${esc2(m.headlineFirst)}</text>
     <text x="88" y="416" fill="${ORANGE_DEEP}" font-family="${F}" font-size="104" font-weight="700" letter-spacing="-3.2">Same task</text>
     <text x="88" y="514" fill="${ORANGE_DEEP}" font-family="${F}" font-size="104" font-weight="700" letter-spacing="-3.2">success.</text>
 
@@ -217,6 +226,8 @@ function svg(m: Metrics, mascot: string): string {
   <g>
     <image x="1000" y="140" width="548" height="500" xlink:href="${mascot}" href="${mascot}" preserveAspectRatio="xMidYMid meet"/>
   </g>
+
+  <text x="88" y="628" fill="#7A6A55" font-family="${F}" font-size="18" font-weight="500">Warm Cybara gateway / cold OMP native CLI · Raw tokens include cached input</text>
 
   ${tile(88, m.tile1Value, m.tile1Label, m.tile1Sub, true)}
   ${tile(577, m.tile2Value, m.tile2Label, m.tile2Sub, false)}
@@ -238,8 +249,14 @@ await Bun.write(`${OUT}/cybara-vs-omp-x.svg`, markup);
 const image = await sharp(Buffer.from(markup)).png({ compressionLevel: 9 }).toBuffer();
 await Bun.write(`${OUT}/cybara-context-claim.png`, image);
 await Bun.write(`${OUT}/cybara-vs-omp-x.png`, image);
-await Bun.write(
-  `${OUT}/claims.md`,
-  `# Verified claims on this card\n\n- Headline: "Less context. Same task success." with ${metrics.headlineStat} ${metrics.headlineNote}.\n- Scope: ${metrics.scope}\n- Deliberately absent: speed, latency, request count, and all-around superiority claims.\n- Metric source: ${metrics.source}\n- Regenerate: bun run docs/marketing/2026-10-01/generate.ts\n`,
-);
+await Bun.write(`${OUT}/claims.md`, `# Verified claims on this card
+
+- Headline: "${metrics.headlineFirst} ${metrics.headlineSecond}" with ${metrics.headlineStat} ${metrics.headlineNote}.
+- Scope: ${metrics.scope}
+- Tiles: ${metrics.tile1Value} ${metrics.tile1Label}; ${metrics.tile2Value} ${metrics.tile2Label}; ${metrics.tile3Value} ${metrics.tile3Label}.
+- Source: ${metrics.source}; raw trial receipt identified in marketing-metrics.json.
+- Token metric: ${metrics.tokenMetric}; raw provider tokens include cached input, not billable dollars.
+- Startup caveat: warm Cybara gateway versus cold OMP native CLI. Hosted variance; no universal superiority claim.
+- Regenerate: bun run docs/marketing/2026-10-01/generate.ts
+`);
 console.log(`source=${metrics.source} headline=${metrics.headlineStat} tiles=${metrics.tile1Value} | ${metrics.tile2Value} | ${metrics.tile3Value}`);

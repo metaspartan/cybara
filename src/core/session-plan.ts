@@ -1,3 +1,5 @@
+export type SessionPlanLifecycle = "active" | "completed" | "paused" | "needs_update" | "cleared";
+
 export type SessionPlanItemStatus = "pending" | "in_progress" | "completed" | "cancelled";
 export type SessionPlanItemPriority = "high" | "medium" | "low";
 
@@ -21,6 +23,9 @@ export interface SessionPlanSnapshot {
   summary: SessionPlanSummary;
   updatedAt?: string;
   source: "todo_tool";
+  revision?: number;
+  lifecycle?: SessionPlanLifecycle;
+  runId?: string;
 }
 
 interface ToolCallLike {
@@ -28,6 +33,8 @@ interface ToolCallLike {
   args?: unknown;
   arguments?: unknown;
   result?: unknown;
+  status?: unknown;
+  error?: unknown;
 }
 
 interface MessageLike {
@@ -100,6 +107,10 @@ export function sanitizeTodoToolResult(result: unknown): {
   items: SessionPlanItem[];
   summary: SessionPlanSummary;
   note?: string;
+  updatedAt?: string;
+  revision?: number;
+  lifecycle?: SessionPlanLifecycle;
+  runId?: string;
 } | null {
   const record = parseRecord(result);
   if (!record) return null;
@@ -113,6 +124,20 @@ export function sanitizeTodoToolResult(result: unknown): {
     items,
     summary,
     ...(note ? { note } : {}),
+    ...(typeof record.updatedAt === "string" && Number.isFinite(Date.parse(record.updatedAt))
+      ? { updatedAt: record.updatedAt }
+      : {}),
+    ...(typeof record.revision === "number" &&
+    Number.isSafeInteger(record.revision) &&
+    record.revision >= 0
+      ? { revision: record.revision }
+      : {}),
+    ...(["active", "completed", "paused", "needs_update", "cleared"].includes(
+      String(record.lifecycle)
+    )
+      ? { lifecycle: record.lifecycle as SessionPlanLifecycle }
+      : {}),
+    ...(typeof record.runId === "string" ? { runId: record.runId } : {}),
   };
 }
 
@@ -122,6 +147,11 @@ function planFromToolCall(
   updatedAt?: string
 ): SessionPlanSnapshot | undefined {
   if (String(toolCall.name || "").toLowerCase() !== "todo") return undefined;
+  if (
+    toolCall.error ||
+    ["failed", "error", "blocked", "pending", "executing"].includes(String(toolCall.status))
+  )
+    return undefined;
   const resultRecord = parseRecord(toolCall.result);
   const resultPlan = Array.isArray(resultRecord?.items)
     ? sanitizeTodoToolResult(resultRecord)
@@ -137,7 +167,12 @@ function planFromToolCall(
     sessionId,
     items,
     summary: summarizeSessionPlanItems(items),
-    ...(updatedAt ? { updatedAt } : {}),
+    ...(resultPlan?.updatedAt || updatedAt
+      ? { updatedAt: resultPlan?.updatedAt ?? updatedAt }
+      : {}),
+    ...(resultPlan?.revision !== undefined ? { revision: resultPlan.revision } : {}),
+    ...(resultPlan?.lifecycle ? { lifecycle: resultPlan.lifecycle } : {}),
+    ...(resultPlan?.runId ? { runId: resultPlan.runId } : {}),
     source: "todo_tool",
   };
 }
@@ -146,6 +181,7 @@ export function extractLatestSessionPlanState(
   sessionId: string,
   messages: MessageLike[]
 ): ExtractedSessionPlanState | null {
+  let latest: ExtractedSessionPlanState | null = null;
   for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
     const message = messages[messageIndex];
     if (!message || !Array.isArray(message.tool_calls)) continue;
@@ -162,14 +198,18 @@ export function extractLatestSessionPlanState(
           typeof message.agent_id === "string" && message.agent_id.trim()
             ? message.agent_id.trim()
             : undefined;
-        return {
-          plan: snapshot,
-          ...(writerAgentId ? { writerAgentId } : {}),
-        };
+        if (
+          !latest ||
+          (snapshot.revision !== undefined && snapshot.revision > (latest.plan.revision ?? -1))
+        )
+          latest = {
+            plan: snapshot,
+            ...(writerAgentId ? { writerAgentId } : {}),
+          };
       }
     }
   }
-  return null;
+  return latest;
 }
 
 export function extractLatestSessionPlan(

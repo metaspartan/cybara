@@ -1,0 +1,574 @@
+[
+  {
+    "phase": "fusion",
+    "generated_at": "2026-10-01T21:01:55.358Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 6,
+        "passed": 4,
+        "mean_ms": 19930.333333333332,
+        "median_ms": 15822.5,
+        "requests": 35,
+        "failed_requests": 0,
+        "prompt": 122764,
+        "completion": 6259,
+        "cached": 96029,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      },
+      {
+        "id": "omp",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 15753.666666666666,
+        "median_ms": 12923.5,
+        "requests": 28,
+        "failed_requests": 0,
+        "prompt": 163829,
+        "completion": 4525,
+        "cached": 134626,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      }
+    ],
+    "inputs_preserved": 20,
+    "repairs": []
+  },
+  {
+    "phase": "fusion-enabled",
+    "generated_at": "2026-10-01T21:10:22.206Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 17608.166666666668,
+        "median_ms": 12952,
+        "requests": 21,
+        "failed_requests": 0,
+        "prompt": 72170,
+        "completion": 4928,
+        "cached": 49383,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      },
+      {
+        "id": "omp",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 19132.833333333332,
+        "median_ms": 13082,
+        "requests": 23,
+        "failed_requests": 0,
+        "prompt": 130354,
+        "completion": 3537,
+        "cached": 96994,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      }
+    ],
+    "inputs_preserved": 20,
+    "repairs": []
+  },
+  {
+    "phase": "fusion-confirmation",
+    "generated_at": "2026-10-01T21:14:36.521Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 13007.5,
+        "median_ms": 11630,
+        "requests": 22,
+        "failed_requests": 0,
+        "prompt": 78865,
+        "completion": 6464,
+        "cached": 51178,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      },
+      {
+        "id": "omp",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 13617.833333333334,
+        "median_ms": 12168.5,
+        "requests": 25,
+        "failed_requests": 0,
+        "prompt": 143503,
+        "completion": 3910,
+        "cached": 119286,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      }
+    ],
+    "inputs_preserved": 20,
+    "repairs": []
+  },
+  {
+    "phase": "replication",
+    "generated_at": "2026-10-01T21:21:21.623Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 14856,
+        "median_ms": 13071.5,
+        "requests": 23,
+        "failed_requests": 0,
+        "prompt": 84620,
+        "completion": 7503,
+        "cached": 52959,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      },
+      {
+        "id": "omp",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 15075.833333333334,
+        "median_ms": 15568,
+        "requests": 25,
+        "failed_requests": 0,
+        "prompt": 144105,
+        "completion": 5070,
+        "cached": 124120,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      }
+    ],
+    "inputs_preserved": 20,
+    "repairs": []
+  },
+  {
+    "phase": "heldout",
+    "generated_at": "2026-10-01T21:25:46.807Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 4,
+        "passed": 3,
+        "mean_ms": 32653.5,
+        "median_ms": 32242.5,
+        "requests": 21,
+        "failed_requests": 0,
+        "prompt": 100979,
+        "completion": 8915,
+        "cached": 70606,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      },
+      {
+        "id": "omp",
+        "runs": 4,
+        "passed": 4,
+        "mean_ms": 33465.75,
+        "median_ms": 31377.5,
+        "requests": 35,
+        "failed_requests": 0,
+        "prompt": 229206,
+        "completion": 7779,
+        "cached": 206039,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      }
+    ],
+    "inputs_preserved": 18,
+    "repairs": [
+      {
+        "run_id": "r1-coding-repair-omp",
+        "cases": 121,
+        "passed": true
+      },
+      {
+        "run_id": "r1-coding-repair-cybara",
+        "cases": 121,
+        "passed": true
+      }
+    ]
+  },
+  {
+    "phase": "final-confirmation",
+    "generated_at": "2026-10-01T21:31:57.162Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 19238.333333333332,
+        "median_ms": 17229,
+        "requests": 25,
+        "failed_requests": 0,
+        "prompt": 99575,
+        "completion": 9548,
+        "cached": 61795,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      },
+      {
+        "id": "omp",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 14895.833333333334,
+        "median_ms": 15597,
+        "requests": 26,
+        "failed_requests": 0,
+        "prompt": 148538,
+        "completion": 4281,
+        "cached": 119297,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      }
+    ],
+    "inputs_preserved": 20,
+    "repairs": []
+  },
+  {
+    "phase": "final-heldout",
+    "generated_at": "2026-10-01T21:37:46.619Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 4,
+        "passed": 3,
+        "mean_ms": 31896,
+        "median_ms": 24912,
+        "requests": 25,
+        "failed_requests": 0,
+        "prompt": 115351,
+        "completion": 7611,
+        "cached": 89431,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      },
+      {
+        "id": "omp",
+        "runs": 4,
+        "passed": 4,
+        "mean_ms": 55348.5,
+        "median_ms": 58921,
+        "requests": 37,
+        "failed_requests": 1,
+        "prompt": null,
+        "completion": null,
+        "cached": null,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      }
+    ],
+    "inputs_preserved": 18,
+    "repairs": [
+      {
+        "run_id": "r1-coding-repair-omp",
+        "cases": 121,
+        "passed": true
+      },
+      {
+        "run_id": "r1-coding-repair-cybara",
+        "cases": 121,
+        "passed": true
+      }
+    ]
+  },
+  {
+    "phase": "json-confirmation",
+    "generated_at": "2026-10-01T21:45:25.402Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 25266.833333333332,
+        "median_ms": 15880,
+        "requests": 28,
+        "failed_requests": 1,
+        "prompt": null,
+        "completion": null,
+        "cached": null,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      },
+      {
+        "id": "omp",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 12955,
+        "median_ms": 11254.5,
+        "requests": 26,
+        "failed_requests": 0,
+        "prompt": 148190,
+        "completion": 3480,
+        "cached": 115111,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      }
+    ],
+    "inputs_preserved": 20,
+    "repairs": []
+  },
+  {
+    "phase": "json-heldout",
+    "generated_at": "2026-10-01T21:50:08.792Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 4,
+        "passed": 4,
+        "mean_ms": 27599.75,
+        "median_ms": 28427.5,
+        "requests": 23,
+        "failed_requests": 0,
+        "prompt": 99815,
+        "completion": 7474,
+        "cached": 75254,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      },
+      {
+        "id": "omp",
+        "runs": 4,
+        "passed": 4,
+        "mean_ms": 43141.5,
+        "median_ms": 39947.5,
+        "requests": 38,
+        "failed_requests": 1,
+        "prompt": null,
+        "completion": null,
+        "cached": null,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      }
+    ],
+    "inputs_preserved": 18,
+    "repairs": [
+      {
+        "run_id": "r1-coding-repair-omp",
+        "cases": 121,
+        "passed": true
+      },
+      {
+        "run_id": "r1-coding-repair-cybara",
+        "cases": 121,
+        "passed": true
+      }
+    ]
+  },
+  {
+    "phase": "fused-mode",
+    "generated_at": "2026-10-01T21:54:15.985Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 12517.666666666666,
+        "median_ms": 12272,
+        "requests": 20,
+        "failed_requests": 0,
+        "prompt": 51108,
+        "completion": 5106,
+        "cached": 30057,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      },
+      {
+        "id": "omp",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 15126.333333333334,
+        "median_ms": 12601.5,
+        "requests": 28,
+        "failed_requests": 0,
+        "prompt": 158924,
+        "completion": 4183,
+        "cached": 124733,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      }
+    ],
+    "inputs_preserved": 20,
+    "repairs": []
+  },
+  {
+    "phase": "fused-broad",
+    "generated_at": "2026-10-01T21:59:18.918Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 4,
+        "passed": 4,
+        "mean_ms": 30029.25,
+        "median_ms": 25819,
+        "requests": 24,
+        "failed_requests": 0,
+        "prompt": 76391,
+        "completion": 8199,
+        "cached": 57047,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      },
+      {
+        "id": "omp",
+        "runs": 4,
+        "passed": 3,
+        "mean_ms": 45575.25,
+        "median_ms": 34722.5,
+        "requests": 42,
+        "failed_requests": 0,
+        "prompt": 314018,
+        "completion": 11652,
+        "cached": 281499,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      }
+    ],
+    "inputs_preserved": 18,
+    "repairs": [
+      {
+        "run_id": "r1-coding-repair-omp",
+        "cases": 121,
+        "passed": true
+      },
+      {
+        "run_id": "r1-coding-repair-cybara",
+        "cases": 121,
+        "passed": true
+      }
+    ]
+  },
+  {
+    "phase": "fused-replication",
+    "generated_at": "2026-10-01T22:03:57.628Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 14876.166666666666,
+        "median_ms": 10717.5,
+        "requests": 20,
+        "failed_requests": 0,
+        "prompt": 50818,
+        "completion": 5016,
+        "cached": 31864,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      },
+      {
+        "id": "omp",
+        "runs": 6,
+        "passed": 6,
+        "mean_ms": 22829.833333333332,
+        "median_ms": 13611.5,
+        "requests": 25,
+        "failed_requests": 1,
+        "prompt": null,
+        "completion": null,
+        "cached": null,
+        "efforts": [
+          "high"
+        ],
+        "caps": [
+          8192
+        ]
+      }
+    ],
+    "inputs_preserved": 20,
+    "repairs": []
+  }
+]

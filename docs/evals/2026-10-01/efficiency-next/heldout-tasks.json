@@ -1,0 +1,112 @@
+{
+  "model": "space-bunny-free",
+  "tasks": [
+    {
+      "id": "string-fidelity",
+      "prompt": "Read strings.json. Write answer.json as an object mapping every item id to its text exactly, without trimming, case changes, control-character loss, or interpreting null/True/False inside strings. Preserve Unicode, backslashes, quotation marks and embedded line breaks. Do not modify strings.json. Verify the output.",
+      "files": [
+        {
+          "path": "strings.json",
+          "content": "[{\"id\":\"a\",\"text\":\"True null false \\\"quoted\\\" \\\\ newline\\n\\t끝🌻\"},{\"id\":\"b\",\"text\":\"  whitespace  \"},{\"id\":\"c\",\"text\":\"0\\u0000end\"}]"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": {
+            "a": "True null false \"quoted\" \\ newline\n\t끝🌻",
+            "b": "  whitespace  ",
+            "c": "0\u0000end"
+          }
+        }
+      ]
+    },
+    {
+      "id": "multi-file-join",
+      "prompt": "Read products.json, rates.json, orders.json and policy.json. Write answer.json with total_cents by summing accepted order quantities times product cents after integer rounding per line with multiplier rates[product.category]; exclude products disabled or orders refunded. Order IDs process only once, using the first occurrence. applied_ids must retain original order. All values are integer cents. Preserve inputs and verify.",
+      "files": [
+        {
+          "path": "products.json",
+          "content": "{\"a\":{\"cents\":125,\"category\":\"x\",\"enabled\":true},\"b\":{\"cents\":230,\"category\":\"y\",\"enabled\":true},\"c\":{\"cents\":990,\"category\":\"x\",\"enabled\":false}}"
+        },
+        {
+          "path": "rates.json",
+          "content": "{\"x\":1.2,\"y\":0.5}"
+        },
+        {
+          "path": "orders.json",
+          "content": "[{\"id\":\"o1\",\"product\":\"a\",\"quantity\":2},{\"id\":\"o2\",\"product\":\"b\",\"quantity\":3},{\"id\":\"o1\",\"product\":\"a\",\"quantity\":9},{\"id\":\"o3\",\"product\":\"c\",\"quantity\":1},{\"id\":\"o4\",\"product\":\"a\",\"quantity\":1,\"refunded\":true}]"
+        },
+        {
+          "path": "policy.json",
+          "content": "{\"rounding\":\"round per line\",\"exclude_refunded\":true}"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": {
+            "total_cents": 645,
+            "applied_ids": [
+              "o1",
+              "o2"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "dependency-order",
+      "prompt": "Read pointer.json first. Its field next specifies the data file to read (do not guess which file is authoritative). Read that file, then write answer.json containing its secret_label and the sum of its values. Preserve inputs. Verify your output.",
+      "files": [
+        {
+          "path": "pointer.json",
+          "content": "{\"next\":\"actual.json\"}"
+        },
+        {
+          "path": "actual.json",
+          "content": "{\"secret_label\":\"ORCHID-942\",\"values\":[3,-7,19,0]}"
+        },
+        {
+          "path": "decoy.json",
+          "content": "{\"secret_label\":\"WRONG\",\"values\":[999]}"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": {
+            "secret_label": "ORCHID-942",
+            "sum": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "coding-repair",
+      "prompt": "Fix source.ts so apply(records) returns only unique enabled records with finite numeric amount, excluding booleans, null, strings and amounts <=0. Use first enabled valid occurrence per id, retain input order, and return {ids,total}. Run check.ts to verify the fix, then write answer.json {\"tests_passed\":true}. Do not alter check.ts or input fixtures. Do not simply hardcode expected ids. Retain the exported apply function.",
+      "files": [
+        {
+          "path": "source.ts",
+          "content": "export function apply(records: Array<{id:string;enabled:boolean;amount:unknown}>): {ids:string[];total:number} { const valid=records.filter(r=>r.enabled && Number(r.amount)>0); return {ids:valid.map(r=>r.id),total:valid.reduce((s,r)=>s+Number(r.amount),0)}; }"
+        },
+        {
+          "path": "check.ts",
+          "content": "import {apply} from \"./source\";const rows=[{id:\"a\",enabled:true,amount:5},{id:\"a\",enabled:true,amount:9},{id:\"b\",enabled:true,amount:\"7\"},{id:\"c\",enabled:false,amount:20},{id:\"d\",enabled:true,amount:3},{id:\"e\",enabled:true,amount:true},{id:\"f\",enabled:true,amount:null},{id:\"g\",enabled:true,amount:Infinity}];for(const [data,want] of [[rows,{ids:[\"a\",\"d\"],total:8}],[[],{ids:[],total:0}],[rows.slice().reverse(),{ids:[\"d\",\"a\"],total:12}]] as const){if(JSON.stringify(apply([...data]))!==JSON.stringify(want))throw Error(\"Mismatch\")}console.log(\"ALL TESTS PASSED\");"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": {
+            "tests_passed": true
+          }
+        }
+      ]
+    }
+  ]
+}

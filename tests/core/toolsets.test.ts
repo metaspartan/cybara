@@ -197,3 +197,63 @@ describe("toolset execution boundaries", () => {
     expect(result.result).toBeUndefined();
   });
 });
+
+test("explicit process fusion capability is offered without widening a restricted agent", () => {
+  const processOnly = resolveAgentToolPolicy(
+    makePolicyAgent({ tool_profile: "full", toolsets: ["process"] })
+  );
+  for (const name of ["exec", "process", "git", "ssh", "scp", "sandbox_run", "execute_code"])
+    expect(processOnly.allowedToolNames).toContain(name);
+  const agent = makePolicyAgent({
+    tool_profile: "coding",
+    tool_policy: { allow: ["read", "write", "execute_code"] },
+  });
+  const policy = resolveAgentToolPolicy(agent);
+  expect(policy.allowedToolNames.sort()).toEqual(["execute_code", "read", "write"]);
+  expect(policy.offeredTools.map((tool) => tool.name).sort()).toEqual([
+    "execute_code",
+    "read",
+    "write",
+  ]);
+  const denied = resolveAgentToolPolicy(
+    makePolicyAgent({
+      tool_profile: "coding",
+      tool_policy: { allow: ["read", "write", "execute_code"], deny: ["execute_code"] },
+    })
+  );
+  expect(denied.offeredTools.some((tool) => tool.name === "execute_code")).toBe(false);
+  expect(
+    resolveAgentToolPolicy(makePolicyAgent({ tool_profile: "safe" })).allowedToolNames
+  ).not.toContain("execute_code");
+});
+
+function makePolicyAgent(configValue: Record<string, unknown>): Agent {
+  return agentManager.create({
+    name: "Process fusion policy fixture",
+    model: "fixture",
+    config: configValue,
+  });
+}
+
+test("fused exposure retains the same namespace policy while reducing provider tool schemas", () => {
+  const allowed = ["read", "write", "edit", "exec", "grep", "file_search", "execute_code"];
+  const direct = resolveAgentToolPolicy(
+    makePolicyAgent({ tool_profile: "coding", tool_policy: { allow: allowed } })
+  );
+  const fused = resolveAgentToolPolicy(
+    makePolicyAgent({
+      tool_profile: "coding",
+      tool_policy: { allow: allowed },
+      tool_execution_mode: "fused",
+    })
+  );
+  expect(fused.allowedToolNames).toEqual(direct.allowedToolNames);
+  expect(fused.offeredTools.map((tool) => tool.name)).toEqual(["execute_code"]);
+  expect(
+    resolveAgentToolPolicy(makePolicyAgent({ tool_profile: "safe", tool_execution_mode: "fused" }))
+      .valid
+  ).toBe(false);
+  expect(resolveAgentToolPolicy(makePolicyAgent({ tool_execution_mode: "unknown" })).valid).toBe(
+    false
+  );
+});

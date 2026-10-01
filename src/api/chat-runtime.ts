@@ -46,7 +46,12 @@ import {
   type SessionGoalCommandResult,
 } from "../core/session-goals";
 import { GOAL_LOOP_SOURCE, recordGoalIterationOutcome } from "../core/session-goal-loop";
-import { extractLatestSessionPlan, extractLatestSessionPlanState } from "../core/session-plan";
+import {
+  readSessionPlan as extractLatestSessionPlan,
+  readSessionPlanState as extractLatestSessionPlanState,
+  beginSessionPlanTurn,
+  finishSessionPlanTurn,
+} from "../core/session-plan-store";
 import {
   deriveSessionTitleFromMessages,
   deriveSessionTitleFromTurn,
@@ -267,6 +272,7 @@ async function finishStoppedChatTurn(
   agent: { id: string; name: string },
   controller: AbortController
 ): Promise<ChatResponse> {
+  finishSessionPlanTurn(session.id, "paused");
   const stoppedMessage = await persistStoppedAssistantTurn(session);
   clearActiveChatTurnAbortController(session.id, controller);
   broadcastStatus({
@@ -301,6 +307,7 @@ async function finishInterruptedChatTurn(
   agent: { id: string; name: string },
   controller: AbortController
 ): Promise<ChatResponse> {
+  finishSessionPlanTurn(session.id, "paused");
   clearActiveChatTurnAbortController(session.id, controller);
   const pendingSteeringId = interruptedChatTurnSteeringIds.get(controller);
   const materializedMessage = pendingSteeringId
@@ -712,11 +719,15 @@ export function runChatTurnWithQueueDrain(
   goalCommandSideEffectsApplied = false
 ): Promise<ChatResponse> {
   const isGoalIteration = request.source === GOAL_LOOP_SOURCE;
-  const result = chatTurnMutex.run(effectiveSessionId, () =>
-    isRoomSessionId(effectiveSessionId)
-      ? handleRoomChatTurn(request, effectiveSessionId)
-      : handleChatTurn(request, effectiveSessionId, goalCommand, goalCommandSideEffectsApplied)
-  );
+  const result = chatTurnMutex.run(effectiveSessionId, async () => {
+    try {
+      return await (isRoomSessionId(effectiveSessionId)
+        ? handleRoomChatTurn(request, effectiveSessionId)
+        : handleChatTurn(request, effectiveSessionId, goalCommand, goalCommandSideEffectsApplied));
+    } finally {
+      finishSessionPlanTurn(effectiveSessionId, "paused");
+    }
+  });
   const finalized = result.then(
     async (response) => {
       await stopRegisteredComputerUseTrajectory(
@@ -1082,6 +1093,7 @@ async function handleChatTurn(
 
   let agent = agentManager.get(session.agentId);
   const persistedPlanState = extractLatestSessionPlanState(session.id, session.messages);
+  beginSessionPlanTurn(session.id);
   hydrateTodoState(
     session.id,
     persistedPlanState?.plan.items ?? [],
@@ -1613,6 +1625,8 @@ async function handleChatTurn(
   if (turnAbortController.signal.aborted && agent) {
     return await finishAbortedTurn(agent);
   }
+
+  finishSessionPlanTurn(session.id, executionFailure ? "paused" : "ended");
 
   if (executionFailure?.retryable && allToolCalls.length === 0 && agent) {
     const response = await finishRetryableProviderFailure({
