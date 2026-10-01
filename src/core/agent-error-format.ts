@@ -1,3 +1,8 @@
+import {
+  isUpstreamJsonDecodeError,
+  unserializableToolCallArgumentCount,
+} from "./llm/tool-call-argument-repair";
+
 function extractLlmErrorDetail(message: string): string | undefined {
   const afterDash = message.replace(/^API error[^:]*:\s*\d+\s*-\s*/i, "");
   const candidate = afterDash !== message ? afterDash : message;
@@ -30,17 +35,18 @@ export interface LlmFailureContext {
   platform?: NodeJS.Platform;
 }
 
-const UPSTREAM_JSON_DECODE_PATTERN =
-  /expecting value|expecting property name|unexpected end of (?:json|input)|jsondecodeerror|json\.loads?\s*\(?\)?\s*failed|invalid \w*json/i;
-
 function describeBadRequestRejection(
   detail: string | undefined,
   status: number,
-  rawMessage: string
+  rawMessage: string,
+  unserializableToolCallArguments: number
 ): string {
   const reported = detail ?? rawMessage;
-  if (UPSTREAM_JSON_DECODE_PATTERN.test(reported)) {
-    return `The provider could not decode a tool call from earlier in this conversation, so this turn was not sent. Nothing was lost — send the message again and the agent will continue. If it repeats, start a new chat.`;
+  if (unserializableToolCallArguments > 0) {
+    return `The provider could not decode ${unserializableToolCallArguments} tool call argument payload(s) replayed from earlier in this conversation, so this turn was not sent. Nothing was lost — resend the message and the agent will continue. If it repeats, start a new chat. Provider detail: ${reported}`;
+  }
+  if (isUpstreamJsonDecodeError(reported)) {
+    return `Provider rejected the request (${status}) because the provider could not decode part of the request it received. No malformed tool call from this conversation was found, so this is a provider-side decoding fault. Provider detail: ${reported}`;
   }
   return detail
     ? `Provider rejected the request (${status}): ${detail}`
@@ -157,7 +163,12 @@ export function formatLlmFailure(error: unknown, context?: LlmFailureContext): s
   const detail = extractLlmErrorDetail(message);
   if (lower.includes("400") || lower.includes("unsupported") || lower.includes("invalid")) {
     const status = extractedStatus ?? 400;
-    return describeBadRequestRejection(detail, status, message);
+    return describeBadRequestRejection(
+      detail,
+      status,
+      message,
+      unserializableToolCallArgumentCount(error)
+    );
   }
   if (lower.includes("404")) {
     return detail

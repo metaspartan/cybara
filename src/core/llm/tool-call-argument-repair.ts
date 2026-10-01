@@ -8,6 +8,10 @@ const PYTHON_JSON_DECODE_FINGERPRINTS = [
   "invalid \\escape",
   "invalid control character",
   "extra data",
+  "unexpected end of json input",
+  "unexpected end of input",
+  "json.loads() failed",
+  "json.loads failed",
 ];
 
 const UNQUOTED_JSON_LITERALS: Record<string, string> = {
@@ -253,6 +257,26 @@ export function serializeToolCallArguments(raw: unknown): string {
 export function isUpstreamJsonDecodeError(errorText: string): boolean {
   const lower = errorText.toLowerCase();
   return PYTHON_JSON_DECODE_FINGERPRINTS.some((fingerprint) => lower.includes(fingerprint));
+}
+
+export interface UnserializableToolCallArgumentsError extends Error {
+  cybaraUnserializableToolCallArguments?: number;
+}
+
+export function markUnserializableToolCallArguments(
+  error: Error,
+  count: number
+): UnserializableToolCallArgumentsError {
+  const marked = error as UnserializableToolCallArgumentsError;
+  if (count > 0) marked.cybaraUnserializableToolCallArguments = count;
+  return marked;
+}
+
+export function unserializableToolCallArgumentCount(error: unknown): number {
+  if (!error || typeof error !== "object") return 0;
+  const value = (error as UnserializableToolCallArgumentsError)
+    .cybaraUnserializableToolCallArguments;
+  return typeof value === "number" && value > 0 ? value : 0;
 }
 
 export function describesMissingToolCallArguments(errorText: string): boolean {

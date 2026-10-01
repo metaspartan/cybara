@@ -54,6 +54,7 @@ import {
   shouldRetryByRepairingToolCallArguments,
   toRepairedToolCallArgumentsRequestBody,
 } from "./llm/tool-call-argument-compat";
+import { markUnserializableToolCallArguments } from "./llm/tool-call-argument-repair";
 import {
   compactOpenAIRequestMessagesForContext as compactOpenAIRequestMessages,
   isContextOverflowError,
@@ -1222,6 +1223,7 @@ export abstract class AgentProviderCommonRuntime {
     let attemptedToolChoiceCompatibilityRetry = false;
     let attemptedToolChoiceRemovalRetry = false;
     let attemptedToolCallArgumentRepairRetry = false;
+    let repairedToolCallArgumentCount = 0;
     let attemptedTextOnlyRetry = false;
     let repeatedBlankImageRequest = false;
     let contextRetryCount = 0;
@@ -1394,8 +1396,10 @@ export abstract class AgentProviderCommonRuntime {
         this.shouldRetryByRepairingToolCallArguments(response.status, errorText, currentBody)
       ) {
         attemptedToolCallArgumentRepairRetry = true;
+        const malformedToolCallPayloads = countUnserializableToolCallArguments(currentBody);
+        repairedToolCallArgumentCount = malformedToolCallPayloads;
         console.log(
-          `[Agent] Provider could not decode ${countUnserializableToolCallArguments(currentBody)} malformed tool call argument payload(s); retrying with repaired arguments`
+          `[Agent] Provider could not decode ${malformedToolCallPayloads} malformed tool call argument payload(s); retrying with repaired arguments`
         );
         currentBody = this.toRepairedToolCallArgumentsRequestBody(currentBody);
         continue;
@@ -1417,7 +1421,10 @@ export abstract class AgentProviderCommonRuntime {
         }
       }
 
-      throw new Error(`${errorPrefix}: ${response.status} - ${errorText}`);
+      throw markUnserializableToolCallArguments(
+        new Error(`${errorPrefix}: ${response.status} - ${errorText}`),
+        Math.max(repairedToolCallArgumentCount, countUnserializableToolCallArguments(currentBody))
+      );
     }
   }
 }
