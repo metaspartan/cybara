@@ -1,4 +1,5 @@
 import type { AgentMessage } from "./agent";
+import { recordActiveContextUsage } from "./llm/session-active-context";
 import {
   compactAnthropicLoopMessagesForContext,
   resolveContextGuardBudgets,
@@ -360,6 +361,14 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
 
     if (data.usage) {
       const usage = normalizeAnthropicUsage(data.usage);
+      if (usage)
+        recordActiveContextUsage(
+          sessionIdForVisibleTokenUsage(toolContext),
+          usage.inputTokens + usage.outputTokens,
+          contextWindowTokens,
+          0,
+          "provider"
+        );
       trackTokenUsage(
         modelId,
         providerConfig,
@@ -862,6 +871,14 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
       thinkingParts.push(...collectAnthropicThinkingText(responseData.content));
       if (responseData.usage) {
         const usage = normalizeAnthropicUsage(responseData.usage);
+        if (usage)
+          recordActiveContextUsage(
+            sessionIdForVisibleTokenUsage(toolContext),
+            usage.inputTokens + usage.outputTokens,
+            contextWindowTokens,
+            0,
+            "provider"
+          );
         const loopDurationMs = Math.round(performance.now() - loopRequestStartedAt);
         trackTokenUsage(
           modelId,
@@ -979,6 +996,14 @@ export abstract class AgentProviderAnthropicRuntime extends AgentProviderCloudRu
           thinkingParts.push(...collectAnthropicThinkingText(closingData.content));
           if (closingData.usage) {
             const usage = normalizeAnthropicUsage(closingData.usage);
+            if (usage)
+              recordActiveContextUsage(
+                sessionIdForVisibleTokenUsage(toolContext),
+                usage.inputTokens + usage.outputTokens,
+                contextWindowTokens,
+                0,
+                "provider"
+              );
             const closingDurationMs = Math.round(performance.now() - closingStartedAt);
             trackTokenUsage(
               modelId,

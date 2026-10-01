@@ -1,3 +1,4 @@
+import { recordActiveContextUsage } from "./llm/session-active-context";
 import { isProviderRecoveryStatusLabel } from "../../shared/chat-status";
 import { isImageContentBlock } from "./llm/context-estimate";
 import { openCodeSessionHeaders } from "./providers/opencode-session";
@@ -1083,8 +1084,34 @@ export abstract class AgentProviderCommonRuntime {
     errorPrefix: string,
     signal?: AbortSignal,
     rateLimitContext?: ProviderRateLimitContext,
-    streamContext?: { sessionId?: string | null; agentId?: string | null }
+    streamContext?: {
+      sessionId?: string | null;
+      agentId?: string | null;
+      contextWindowTokens?: number;
+    }
   ): Promise<OpenAIResponse> {
+    const updateActiveUsage = (response: OpenAIResponse, body: Record<string, unknown>): void => {
+      const input =
+        typeof response.usage?.prompt_tokens === "number"
+          ? response.usage.prompt_tokens
+          : this.estimateOpenAIRequestInputTokens(body);
+      const output =
+        typeof response.usage?.completion_tokens === "number"
+          ? response.usage.completion_tokens
+          : 0;
+      recordActiveContextUsage(
+        streamContext?.sessionId,
+        input + output,
+        streamContext?.contextWindowTokens ??
+          resolveModelContextWindowTokens(
+            rateLimitContext?.providerType ?? "",
+            rateLimitContext?.providerId,
+            String(body.model ?? "")
+          ),
+        Array.isArray(body.messages) ? body.messages.length : 0,
+        typeof response.usage?.prompt_tokens === "number" ? "provider" : "estimated"
+      );
+    };
     const streamSessionId = streamContext?.sessionId?.trim() || "";
     const onTextDelta =
       streamSessionId.length > 0
@@ -1253,11 +1280,14 @@ export abstract class AgentProviderCommonRuntime {
         throw error;
       }
       if (!(result instanceof Response)) {
+        updateActiveUsage(result, currentBody);
         return result;
       }
       const response = result;
       if (response.ok) {
-        return (await response.json()) as OpenAIResponse;
+        const data = (await response.json()) as OpenAIResponse;
+        updateActiveUsage(data, currentBody);
+        return data;
       }
 
       const errorText = await response.text();

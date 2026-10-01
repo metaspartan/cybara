@@ -1,3 +1,4 @@
+import { isCompiledRuntime } from "../runtime/runtime-mode";
 import {
   cpSync,
   existsSync,
@@ -43,7 +44,7 @@ function normalizePluginId(value: string): string {
 }
 
 function getBundledPluginsRoot(): string {
-  const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.includes("/bun");
+  const isCompiledBinary = isCompiledRuntime();
   if (isCompiledBinary) {
     const execDir = dirname(process.execPath);
     const candidates = [
@@ -126,13 +127,17 @@ function resolveContributionDirs(
       warnings.push(`Ignoring contribution path outside plugin root: ${dir}`);
       continue;
     }
-    if (existsSync(nextPath) && statSync(nextPath).isDirectory()) {
+    try {
       const canonicalNext = realpathSync(nextPath);
       if (!isWithinDirectory(canonicalRoot, canonicalNext)) {
         warnings.push(`Ignoring symlinked contribution path outside plugin root: ${dir}`);
         continue;
       }
-      resolvedDirs.push(canonicalNext);
+      if (statSync(canonicalNext).isDirectory()) resolvedDirs.push(canonicalNext);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        warnings.push(`Ignoring unresolved contribution path: ${dir}`);
+      }
     }
   }
   return [...new Set(resolvedDirs)];
@@ -167,20 +172,28 @@ function resolveContributionFiles(
       warnings.push(`Ignoring contribution path outside plugin root: ${file}`);
       continue;
     }
-    if (!existsSync(nextPath) || !statSync(nextPath).isFile()) {
-      warnings.push(`Contribution file not found: ${file}`);
-      continue;
+    try {
+      const canonicalNext = realpathSync(nextPath);
+      if (!isWithinDirectory(canonicalRoot, canonicalNext)) {
+        warnings.push(`Ignoring symlinked contribution path outside plugin root: ${file}`);
+        continue;
+      }
+      if (!statSync(canonicalNext).isFile()) {
+        warnings.push(`Contribution file not found: ${file}`);
+        continue;
+      }
+      if (!canonicalNext.endsWith(".json")) {
+        warnings.push(`Contribution file must be JSON: ${file}`);
+        continue;
+      }
+      resolvedFiles.push(canonicalNext);
+    } catch (error) {
+      warnings.push(
+        (error as NodeJS.ErrnoException).code === "ENOENT"
+          ? `Contribution file not found: ${file}`
+          : `Ignoring unresolved contribution path: ${file}`
+      );
     }
-    const canonicalNext = realpathSync(nextPath);
-    if (!isWithinDirectory(canonicalRoot, canonicalNext)) {
-      warnings.push(`Ignoring symlinked contribution path outside plugin root: ${file}`);
-      continue;
-    }
-    if (!canonicalNext.endsWith(".json")) {
-      warnings.push(`Contribution file must be JSON: ${file}`);
-      continue;
-    }
-    resolvedFiles.push(canonicalNext);
   }
   return [...new Set(resolvedFiles)];
 }

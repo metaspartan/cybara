@@ -33,6 +33,11 @@ export interface OpenAIUsage {
   prompt_tokens_details?: {
     cached_tokens?: number;
   };
+  input_tokens_details?: { cached_tokens?: number };
+  cache_read_tokens?: number;
+  prompt_cache_hit_tokens?: number;
+  cached_input_tokens?: number;
+  cache_write_tokens?: number;
   cache_read_input_tokens?: number;
   cache_creation_input_tokens?: number;
 }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import React from "react";
 import { renderToString } from "ink";
+import { resolve } from "node:path";
 import {
   defaultTUIConversationExportPath,
   formatTUIConversationExport,
@@ -77,10 +78,10 @@ describe("CLI TUI transcript history", () => {
 
   test("creates deterministic safe export paths", () => {
     expect(defaultTUIConversationExportPath("session:/123", "/tmp/exports", 0)).toBe(
-      "/tmp/exports/cybara-session123-1970-01-01T00-00-00-000Z.md"
+      resolve("/tmp/exports", "cybara-session123-1970-01-01T00-00-00-000Z.md")
     );
     expect(resolveTUIConversationExportPath("nested/chat.md", "/tmp/exports")).toBe(
-      "/tmp/exports/nested/chat.md"
+      resolve("/tmp/exports", "nested", "chat.md")
     );
   });
 

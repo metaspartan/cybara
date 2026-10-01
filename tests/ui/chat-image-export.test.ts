@@ -174,6 +174,100 @@ describe("saving a chat image", () => {
   });
 });
 
+describe("image export data and timing", () => {
+  test("starts the clipboard write synchronously without waiting for the fetch or conversion", async () => {
+    const sequence: string[] = [];
+    const pending = Promise.withResolvers<Blob>();
+    const task = copyChatImage(
+      "blob:delayed",
+      copyDeps({
+        fetchBlob: () => {
+          sequence.push("fetch");
+          return pending.promise;
+        },
+        toPng: async (blob) => {
+          sequence.push("convert");
+          return blob;
+        },
+        writePng: async (image) => {
+          sequence.push("clipboard");
+          await image;
+        },
+      })
+    );
+    expect(sequence).toEqual(["fetch", "clipboard"]);
+    pending.resolve(pngBlob());
+    await task;
+    expect(sequence).toEqual(["fetch", "clipboard", "convert"]);
+  });
+
+  test("exports retained authenticated bytes even if the display URL was revoked", async () => {
+    const blob = pngBlob();
+    let fetches = 0;
+    let copied: Blob | undefined;
+    await copyChatImage(
+      blob,
+      copyDeps({
+        fetchBlob: async () => {
+          fetches += 1;
+          throw new Error("Revoked URL");
+        },
+        writePng: async (value) => {
+          copied = await value;
+        },
+      })
+    );
+    const downloads: Array<{ blob: Blob; name: string }> = [];
+    expect(
+      await saveChatImage(
+        blob,
+        "shot",
+        saveDeps({
+          fetchBlob: async () => {
+            fetches += 1;
+            throw new Error("Revoked URL");
+          },
+          downloadBlob: (value, name) => downloads.push({ blob: value, name }),
+        })
+      )
+    ).toBe(true);
+    expect(fetches).toBe(0);
+    expect(copied).toBe(blob);
+    expect(downloads).toEqual([{ blob, name: "shot.png" }]);
+  });
+
+  test("web downloads avoid native dialogs and filesystem IPC", async () => {
+    let native = 0;
+    const blobs: Blob[] = [];
+    const result = await saveChatImage(
+      "/api/media?path=fixture.png",
+      "shot",
+      saveDeps({
+        pickPath: async () => {
+          native += 1;
+          return "/tmp/shot.png";
+        },
+        writeFile: async () => {
+          native += 1;
+        },
+        downloadBlob: (blob) => blobs.push(blob),
+      })
+    );
+    expect(result).toBe(true);
+    expect(native).toBe(0);
+    expect(blobs[0]?.type).toBe("image/png");
+  });
+
+  test("validates retained images and accepts MIME parameters", async () => {
+    expect(chatImageFileName("shot", "image/png; charset=binary")).toBe("shot.png");
+    await expect(copyChatImage(new Blob([], { type: "image/png" }), copyDeps())).rejects.toThrow(
+      "empty"
+    );
+    await expect(
+      saveChatImage(new Blob(["not image"], { type: "text/html" }), "shot", saveDeps())
+    ).rejects.toThrow("supported image");
+  });
+});
 describe("image context menu", () => {
   test("keeps the menu inside the viewport", () => {
     const viewport = { width: 800, height: 600 };
@@ -184,9 +278,9 @@ describe("image context menu", () => {
     expect(clampContextMenuPosition({ x: -20, y: -20 }, viewport)).toEqual({ x: 8, y: 8 });
   });
 
-  test("lightbox only replaces the native menu in the desktop shell", () => {
-    expect(lightboxSource).toContain("isTauriDesktopRuntime()");
-    expect(lightboxSource).toContain("if (!desktop) return;");
+  test("lightbox exposes authenticated copy and save in every window", () => {
+    expect(lightboxSource).not.toContain("if (!desktop) return;");
+    expect(lightboxSource).not.toContain("href={current.src}");
     expect(lightboxSource).toContain("onContextMenu={handleContextMenu}");
     expect(lightboxSource).toContain("<ChatImageContextMenu");
     expect(lightboxSource).toContain("contextMenuOpenRef.current");

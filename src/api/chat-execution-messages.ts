@@ -27,7 +27,10 @@ interface ReplayableToolCall {
   error?: unknown;
 }
 
-const toolResultPreviewCache = new WeakMap<object, string>();
+const toolResultPreviewCache = new WeakMap<
+  object,
+  { fingerprint: string; sessionId?: string; preview: string }
+>();
 
 function mergeSteeringContext(
   interruptedRequest: ChatMessage,
@@ -51,14 +54,15 @@ function mergeSteeringContext(
 }
 
 function previewToolResult(toolCall: ReplayableToolCall, sessionId?: string): string {
+  const fingerprint = JSON.stringify(toolCall.result ?? { error: toolCall.error });
   const cached = toolResultPreviewCache.get(toolCall);
-  if (cached !== undefined) return cached;
+  if (cached?.fingerprint === fingerprint && cached.sessionId === sessionId) return cached.preview;
   const preview = truncateToolResultContentForContext(
     toolCall.result ?? { error: toolCall.error },
     TOOL_RESULT_PROMPT_MAX_CHARS,
     sessionId ? { sessionId, toolName: toolCall.name, toolCallId: toolCall.id } : undefined
   );
-  toolResultPreviewCache.set(toolCall, preview);
+  toolResultPreviewCache.set(toolCall, { fingerprint, sessionId, preview });
   return preview;
 }
 

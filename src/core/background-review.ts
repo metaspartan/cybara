@@ -59,6 +59,8 @@ export async function maybeRunBackgroundReview(
 ): Promise<void> {
   if (process.env.CYBARA_DISABLE_BACKGROUND_REVIEW === "1") return;
   if (options.disabled) return;
+  const requester = context?.agentId ? agentManager.get(context.agentId) : undefined;
+  if (requester && !requester.memory_enabled) return;
   if (!context?.sessionId) return;
   if (!looksReviewable(lastAssistantText)) return;
 

@@ -36,6 +36,8 @@ import {
   wrapPlaywrightBrowser,
 } from "./automation-driver";
 import { findHermeticPlaywrightBrowserPath, getChromium } from "./playwright-loader";
+import { browserImportStore } from "./import-store";
+import type { BrowserImportCookie } from "../../../shared/browser-import";
 import {
   normalizePageCursor,
   pageCursorProbeScript,
@@ -472,6 +474,15 @@ async function getLegacyContext(): Promise<BrowserContext> {
         acceptDownloads: browserDownloadsAccepted(supervision.downloadPolicy),
         downloadPath,
       });
+      try {
+        if (legacyBrowserOwner === "local") {
+          const cookies = browserImportStore.cookies();
+          if (cookies.length > 0) await context.addCookies(cookies);
+        }
+      } catch (error) {
+        await context.close();
+        throw error;
+      }
       legacyContext = context;
       legacyDownloadPolicy = supervision.downloadPolicy;
       return context;
@@ -481,6 +492,22 @@ async function getLegacyContext(): Promise<BrowserContext> {
     }
   })();
   return legacyContextPromise;
+}
+
+export async function applyImportedBrowserCookies(cookies: BrowserImportCookie[]): Promise<void> {
+  const supervision = getBrowserSupervisionSettings({ redact: false });
+  if (
+    supervision.remoteRoutingEnabled ||
+    legacyBrowserOwner === "remote" ||
+    legacyBrowserOwner === "existing"
+  ) {
+    throw new Error("Cookie import is available only in a local Cybara-owned browser.");
+  }
+  const context = await getLegacyContext();
+  if (legacyBrowserOwner !== "local") {
+    throw new Error("Cookie import is available only in a local Cybara-owned browser.");
+  }
+  await context.addCookies(cookies);
 }
 
 export async function createBrowserProfile(config: BrowserProfileConfig): Promise<BrowserProfile> {

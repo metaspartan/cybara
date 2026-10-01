@@ -39,7 +39,14 @@ describe("macOS performance profiler", () => {
 
   test("profiler emits parseable bounded JSON", async () => {
     const proc = Bun.spawn({
-      cmd: ["bun", "run", "scripts/profile-cybara-macos.ts", "--duration", "0", "--json"],
+      cmd: [
+        process.execPath,
+        "run",
+        "scripts/profile-cybara-macos.ts",
+        "--duration",
+        "0",
+        "--json",
+      ],
       cwd: ROOT_DIR,
       stdout: "pipe",
       stderr: "pipe",
@@ -52,10 +59,22 @@ describe("macOS performance profiler", () => {
     expect(stderr.trim()).toBe("");
     expect(exitCode).toBe(0);
     const report = JSON.parse(stdout);
+    const expectedSource = process.platform === "win32" ? "cim" : "ps";
+    expect(report.metricsSource).toBe(expectedSource);
+    expect(typeof report.cpuPercentAvailable).toBe("boolean");
     expect(report.sampleCount).toBe(1);
     expect(report.durationSeconds).toBe(0);
+    expect(report.peakRssBytes).toBeGreaterThanOrEqual(0);
     expect(typeof report.peakRssBytes).toBe("number");
     expect(Array.isArray(report.samples)).toBe(true);
     expect(report.samples[0]).toHaveProperty("processes");
-  }, 30_000);
+    expect(report.samples[0].metricsSource).toBe(expectedSource);
+    expect(report.samples[0].sampledAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    for (const entry of report.samples[0].processes) {
+      expect(entry.pid).toBeGreaterThan(0);
+      expect(entry.rssBytes).toBeGreaterThanOrEqual(0);
+      expect(typeof entry.command).toBe("string");
+      expect(isCybaraProfileProcess(entry.command, ROOT_DIR)).toBe(true);
+    }
+  }, 60_000);
 });

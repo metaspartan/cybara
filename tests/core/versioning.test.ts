@@ -11,6 +11,7 @@ import {
   normalizeReleaseTag,
   replaceCargoTomlVersion,
   replaceJsonVersion,
+  resolveDefaultInstallPath,
   resolveReleaseAssetBasename,
   resolveReleaseBinaryFilename,
   resolveSelfUpdateDestination,
@@ -66,6 +67,19 @@ describe("versioning helpers", () => {
     );
     expect(resolveSelfUpdateDestination("/usr/bin/bun", "linux", "/tmp/home")).toBe(
       "/tmp/home/.local/bin/cybara"
+    );
+  });
+
+  test("uses the requested platform for install paths and executable names", () => {
+    expect(resolveDefaultInstallPath("linux", "/tmp/home")).toBe("/tmp/home/.local/bin/cybara");
+    expect(resolveDefaultInstallPath("windows", "C:\\Users\\tester")).toBe(
+      "C:\\Users\\tester\\AppData\\Local\\Programs\\Cybara\\cybara.exe"
+    );
+    expect(
+      resolveSelfUpdateDestination("C:\\tools\\cybara.exe", "win32", "C:\\Users\\tester")
+    ).toBe("C:\\tools\\cybara.exe");
+    expect(resolveSelfUpdateDestination("C:\\tools\\bun.exe", "windows", "C:\\Users\\tester")).toBe(
+      "C:\\Users\\tester\\AppData\\Local\\Programs\\Cybara\\cybara.exe"
     );
   });
 

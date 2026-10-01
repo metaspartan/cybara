@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync, statSync } from "fs";
+import { readFileSync, realpathSync, statSync } from "fs";
 import { extname, isAbsolute, resolve, sep } from "path";
 import { IMAGE_MIME_BY_EXTENSION, imageMimeForPath } from "../../../shared/image-formats";
 import { cybaraDir } from "../paths";
@@ -48,7 +48,12 @@ export async function serveMediaFile(
   const contentType = snapshot ? imageMimeForPath(snapshot) : undefined;
   if (!snapshot || !contentType) return { status: 415, error: "undecodable image" };
   try {
-    return { status: 200, contentType, bytes: readFileSync(snapshot), path: snapshot };
+    return {
+      status: 200,
+      contentType,
+      bytes: readFileSync(snapshot),
+      path: snapshot,
+    };
   } catch {
     return { status: 500, error: "read error" };
   }
@@ -68,20 +73,31 @@ export function resolveMediaFile(relPath: string): MediaFileResult {
   const contentType = MEDIA_MIME[extname(target).toLowerCase()];
   if (!contentType) return { status: 415, error: "unsupported media type" };
 
-  if (!existsSync(target) || statSync(target).isDirectory())
-    return { status: 404, error: "not found" };
-
   try {
     const realTarget = realpathSync.native(target);
-    const realRoots = roots.map((root) =>
-      existsSync(root) ? realpathSync.native(root) : resolve(root)
-    );
+    if (statSync(realTarget).isDirectory()) return { status: 404, error: "not found" };
+    const realRoots: string[] = [];
+    for (const root of roots) {
+      try {
+        realRoots.push(realpathSync.native(root));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+    }
     const realContained = realRoots.some(
       (root) => realTarget === root || realTarget.startsWith(root + sep)
     );
     if (!realContained) return { status: 403, error: "forbidden" };
-    return { status: 200, contentType, bytes: readFileSync(realTarget), path: realTarget };
-  } catch {
-    return { status: 500, error: "read error" };
+    return {
+      status: 200,
+      contentType,
+      bytes: readFileSync(realTarget),
+      path: realTarget,
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { status: 404, error: "not found" };
+    }
+    return { status: 403, error: "forbidden" };
   }
 }

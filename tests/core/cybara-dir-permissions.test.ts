@@ -3,8 +3,37 @@ import { chmodSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
+const WINDOWS = process.platform === "win32";
+
+const SHARED_PRINCIPALS = /everyone|authenticated users|builtin\\users|guests/i;
+
+function accessGrants(path: string): string {
+  const listed = Bun.spawnSync(["icacls", path]);
+  return `${listed.stdout.toString()}\n${listed.stderr.toString()}`;
+}
+
+function expectNoSharedAccess(path: string): void {
+  expect(SHARED_PRINCIPALS.test(accessGrants(path))).toBe(false);
+}
+
 function mode(path: string): string {
   return (statSync(path).mode & 0o777).toString(8).padStart(3, "0");
+}
+
+function expectPrivateDir(path: string): void {
+  if (WINDOWS) {
+    expectNoSharedAccess(path);
+    return;
+  }
+  expect(mode(path)).toBe("700");
+}
+
+function expectPrivateFile(path: string): void {
+  if (WINDOWS) {
+    expectNoSharedAccess(path);
+    return;
+  }
+  expect(mode(path)).toBe("600");
 }
 
 function bootPathsModule(home: string): { code: number; stderr: string } {
@@ -52,7 +81,7 @@ describe("cybara home permissions", () => {
     const booted = bootPathsModule(home);
     expect(booted.code).toBe(0);
 
-    expect(mode(home)).toBe("700");
+    expectPrivateDir(home);
     for (const dir of [
       "data",
       "memory",
@@ -69,14 +98,14 @@ describe("cybara home permissions", () => {
       "cache",
       "temp",
     ]) {
-      expect(`${dir}=${mode(join(home, dir))}`).toBe(`${dir}=700`);
+      expectPrivateDir(join(home, dir));
     }
 
-    expect(mode(join(home, "channels", "whatsapp-auth"))).toBe("700");
-    expect(mode(join(home, "browser", "profile-default"))).toBe("700");
+    expectPrivateDir(join(home, "channels", "whatsapp-auth"));
+    expectPrivateDir(join(home, "browser", "profile-default"));
 
-    expect(mode(join(home, "api_key"))).toBe("600");
-    expect(mode(join(home, "security.json"))).toBe("600");
+    expectPrivateFile(join(home, "api_key"));
+    expectPrivateFile(join(home, "security.json"));
   });
 
   test("creates a fresh install private from the start", () => {
@@ -85,9 +114,9 @@ describe("cybara home permissions", () => {
     const booted = bootPathsModule(home);
     expect(booted.code).toBe(0);
 
-    expect(mode(home)).toBe("700");
+    expectPrivateDir(home);
     for (const dir of ["data", "memory", "logs", "secure", "skills"]) {
-      expect(`${dir}=${mode(join(home, dir))}`).toBe(`${dir}=700`);
+      expectPrivateDir(join(home, dir));
     }
   });
 
@@ -96,9 +125,14 @@ describe("cybara home permissions", () => {
     mkdirSync(join(home, "channels"), { recursive: true, mode: 0o700 });
 
     expect(bootPathsModule(home).code).toBe(0);
-    const first = mode(join(home, "channels"));
+    const first = WINDOWS ? accessGrants(join(home, "channels")) : mode(join(home, "channels"));
     expect(bootPathsModule(home).code).toBe(0);
 
+    if (WINDOWS) {
+      expect(accessGrants(join(home, "channels"))).toBe(first);
+      expectNoSharedAccess(join(home, "channels"));
+      return;
+    }
     expect(mode(join(home, "channels"))).toBe(first);
     expect(first).toBe("700");
   });

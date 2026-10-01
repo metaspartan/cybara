@@ -1,4 +1,6 @@
 import type { agentManager } from "../core/agent";
+import { config } from "../core/config";
+import { shouldGenerateModelSessionTitle } from "../core/session-title-policy";
 import type { providerManager } from "../core/providers";
 import { deriveSessionTitleFromTurn } from "../core/session-title";
 import {
@@ -24,7 +26,11 @@ export function applySessionTitleWithBackgroundUpgrade(params: {
     deriveSessionTitleFromTurn(params.message)
   );
   session.title = derivedTitle;
-  if (params.skipModelUpgrade) return;
+  if (
+    params.skipModelUpgrade ||
+    !shouldGenerateModelSessionTitle(config.get("session_title_model_enabled"))
+  )
+    return;
   void generateSessionTitleViaModel({
     provider: params.provider,
     agent,

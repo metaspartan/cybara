@@ -1,3 +1,4 @@
+import { clearActiveContextUsage } from "../core/llm/session-active-context";
 import {
   AGENT_TRANSITION_AUTHORITY,
   type AgentInstructionUpdate,
@@ -131,6 +132,7 @@ export async function applyActiveAgentToSession(
   messages?: ChatAgentPromptMessage[],
   options: ChatAgentPromptOptions = {}
 ): Promise<void> {
+  if (session.id && session.agentId !== agent.id) clearActiveContextUsage(session.id);
   const prompt = await activeAgentSystemPrompt(
     agent,
     session.workspaceDir,

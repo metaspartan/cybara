@@ -42,6 +42,7 @@
         "notification:allow-show",
         "dialog:default",
         "dialog:allow-open",
+        "dialog:allow-save",
         "desktop-gateway",
         "desktop-updater",
         "native-recording",

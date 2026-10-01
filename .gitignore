@@ -23,3 +23,5 @@ apps/mobile/google-services.json
 artifacts/
 output/
 .claude/
+
+.scratch/

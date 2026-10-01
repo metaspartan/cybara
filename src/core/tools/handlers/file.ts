@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   existsSync,
   promises as fs,
@@ -6,7 +7,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "fs";
-import { dirname, extname, isAbsolute, join, sep } from "path";
+import { dirname, extname, isAbsolute, join, parse, sep } from "path";
 import { imageMimeForPath } from "../../../../shared/image-formats";
 import { config } from "../../config";
 import { redactRootDestructiveCommands } from "../../destructive-content";
@@ -20,6 +21,7 @@ import {
 } from "../../pdf-text";
 import { commandWorks, normalizePath } from "../../platform";
 import { readFileLines } from "../file-read";
+import { readBatchInOrder } from "../read-batch";
 import { searchFiles } from "../file-search";
 import type { ToolContext } from "../index";
 import { assertReadablePath, assertWritablePath } from "../path-policy";
@@ -65,8 +67,9 @@ function pathSegmentSimilarity(a: string, b: string): number {
 function suggestNearbyPath(target: string): string | undefined {
   try {
     if (!isAbsolute(target)) return undefined;
-    const segments = target.split(sep).filter(Boolean);
-    let current: string = sep;
+    const root = parse(target).root;
+    const segments = target.slice(root.length).split(/[\\/]/).filter(Boolean);
+    let current = root;
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
       const next = join(current, segment);
@@ -365,9 +368,10 @@ async function pdfFileContent(
   return selected.join("\n");
 }
 
-export async function handleRead(
+async function readSinglePath(
   args: Record<string, unknown>,
-  context?: ToolContext
+  context?: ToolContext,
+  maxChars = 2_000_000
 ): Promise<{ content: string; path: string }> {
   const rawPath =
     typeof args.path === "string"
@@ -446,6 +450,51 @@ export async function handleRead(
   };
 }
 
+interface BatchReadFile {
+  path: string;
+  content?: string;
+  error?: string;
+}
+
+export async function handleRead(
+  args: Record<string, unknown>,
+  context?: ToolContext
+): Promise<{ content: string; path: string } | { files: BatchReadFile[] }> {
+  if (!Array.isArray(args.path)) return readSinglePath(args, context);
+  const paths: unknown[] = args.path;
+  if (
+    paths.length < 1 ||
+    paths.length > 8 ||
+    paths.some((path) => typeof path !== "string" || !path.trim())
+  ) {
+    throw new Error("Validation error: read path arrays require 1 to 8 non-empty strings");
+  }
+  const maxChars = Math.floor(2_000_000 / paths.length);
+  const read = async (raw: unknown): Promise<BatchReadFile> => {
+    const path = typeof raw === "string" ? (expandTilde(raw) ?? "") : "";
+    try {
+      assertReadablePath(
+        path,
+        readablePathOptions({
+          workspaceRoot: context?.workspaceDir,
+          confineToWorkspace: context?.confineToWorkspace,
+        })
+      );
+      if (imageMimeForPath(path)) throw new Error("Use a single path to view an image");
+      const result = await readSinglePath({ ...args, path }, context, maxChars);
+      if (result.content.length > maxChars)
+        throw new Error(
+          "Batch read output limit exceeded; read this path separately with an explicit range"
+        );
+      return result;
+    } catch (error) {
+      return { path, error: error instanceof Error ? error.message : "Read failed" };
+    }
+  };
+  const files = await readBatchInOrder(paths, read, context?.abortSignal);
+  return { files };
+}
+
 export async function handleWrite(
   args: Record<string, unknown>,
   context?: ToolContext
@@ -454,6 +503,7 @@ export async function handleWrite(
   path: string;
   change: FileChangeMeta;
   safetyRedactions?: number;
+  verification: { contentMatches: true; bytes: number; sha256: string; jsonValid?: boolean };
 }> {
   const rawPath = typeof args.path === "string" ? args.path : undefined;
   const path = assertWritablePath(expandTilde(rawPath), {
@@ -477,6 +527,24 @@ export async function handleWrite(
   }
 
   writeFileSync(path, content, "utf-8");
+  const written = readFileSync(path);
+  if (!written.equals(Buffer.from(content, "utf8")))
+    throw new Error("Written file does not match the requested content");
+  let jsonValid: boolean | undefined;
+  if (extname(path).toLowerCase() === ".json") {
+    try {
+      JSON.parse(written.toString("utf8"));
+      jsonValid = true;
+    } catch {
+      jsonValid = false;
+    }
+  }
+  const verification = {
+    contentMatches: true as const,
+    bytes: written.length,
+    sha256: createHash("sha256").update(written).digest("hex"),
+    ...(jsonValid === undefined ? {} : { jsonValid }),
+  };
   const { addedLines, removedLines } = computeLineDelta(before, content);
 
   trackMetric("file_operation", "write", 1, { path, bytes: content.length });
@@ -485,6 +553,7 @@ export async function handleWrite(
   return {
     success: true,
     path,
+    verification,
     ...(sanitized.redactions > 0 ? { safetyRedactions: sanitized.redactions } : {}),
     change: {
       path,

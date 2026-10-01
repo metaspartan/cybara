@@ -14,13 +14,13 @@ describe("command availability probing", () => {
 
   test("commandWorks accepts a command that genuinely runs", () => {
     resetCommandWorksCache();
-    expect(commandWorks("node")).toBe(true);
+    expect(commandWorks(process.execPath)).toBe(true);
   });
 
   test("commandWorks caches within the TTL", () => {
     resetCommandWorksCache();
-    expect(commandWorks("node")).toBe(true);
-    expect(commandWorks("node")).toBe(true);
+    expect(commandWorks(process.execPath)).toBe(true);
+    expect(commandWorks(process.execPath)).toBe(true);
     resetCommandWorksCache();
   });
 });

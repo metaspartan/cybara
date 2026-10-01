@@ -1,3 +1,5 @@
+import { anchorActiveContextUsage } from "../core/llm/session-active-context";
+import { estimateMessagesRequestVisibleTokens } from "../core/session-context";
 import { type AgentExecutionFailure, agentManager } from "../core/agent";
 import { recordCompletedTrajectory } from "../core/agent-eval";
 import { emitAgentHook } from "../core/agent-hooks";
@@ -1546,7 +1548,7 @@ async function handleChatTurn(
         },
         responseContent,
         {
-          disabled: !memorySettings.backgroundReviewEnabled,
+          disabled: !memorySettings.backgroundReviewEnabled || !agent.memory_enabled,
           minIntervalMs: memorySettings.backgroundReviewMinIntervalMs,
           timeoutSeconds: memorySettings.backgroundReviewTimeoutSeconds,
         }
@@ -1766,6 +1768,11 @@ async function handleChatTurn(
     agentId: agent?.id,
   });
 
+  anchorActiveContextUsage(
+    session.id,
+    estimateMessagesRequestVisibleTokens(session.messages),
+    session.messages.filter((message) => message.role !== "system").length
+  );
   const responseContextWindowTokens = agent
     ? resolveTurnContextWindow(agent, requestedModelOverride || agent.model).contextWindowTokens
     : undefined;

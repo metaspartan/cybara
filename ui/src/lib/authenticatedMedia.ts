@@ -2,6 +2,7 @@ import { apiFetch } from "@/lib/auth";
 
 export interface LoadedAuthenticatedMediaSource {
   src: string;
+  blob?: Blob;
   revoke?: () => void;
 }
 
@@ -32,8 +33,9 @@ export async function loadAuthenticatedMediaSource(
   if (!contentType.toLowerCase().startsWith(expectedContentTypePrefix.toLowerCase())) {
     throw new Error(`${resourceName} request returned unsupported content`);
   }
-  const objectUrl = createObjectUrl(await response.blob());
-  return { src: objectUrl, revoke: () => revokeObjectUrl(objectUrl) };
+  const blob = await response.blob();
+  const objectUrl = createObjectUrl(blob);
+  return { src: objectUrl, blob, revoke: () => revokeObjectUrl(objectUrl) };
 }
 
 export function loadAuthenticatedAudioSource(

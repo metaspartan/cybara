@@ -172,8 +172,10 @@ export function resolveWindowsShellArgv(
   const pwsh = commandResolver("pwsh");
   if (pwsh) return windowsShellArgv(pwsh);
   const systemRoot = env.SystemRoot || env.SYSTEMROOT || "C:\\Windows";
-  const powershell = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-  if (existsSync(powershell)) {
+  const powershell = commandResolver(
+    win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+  );
+  if (powershell) {
     return windowsShellArgv(powershell);
   }
   return [env.COMSPEC || env.ComSpec || "cmd.exe", "/D", "/Q"];

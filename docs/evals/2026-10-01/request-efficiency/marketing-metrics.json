@@ -1,0 +1,42 @@
+{
+  "pct_fewer_input_tokens": 23.702251131943118,
+  "scope_note": "3-task input-token pilot only · Expanded suite favors OMP overall",
+  "verified": true,
+  "suite": "3 file-transform tasks, 2 rotated rounds",
+  "cybara_input_tokens": 95714,
+  "omp_input_tokens": 125448,
+  "cybara_runs": 6,
+  "cybara_passed": 6,
+  "omp_passed": 6,
+  "scope": "Input tokens only · 3-task pilot · No all-around superiority claim",
+  "date": "Oct 1, 2026",
+  "model": "Space Bunny Free",
+  "tiles": [
+    {
+      "verified": true,
+      "value": "6 / 6",
+      "label": "tasks passed, each harness",
+      "sub": "Cybara 6/6 · OMP 6/6"
+    },
+    {
+      "verified": true,
+      "value": "3 tasks",
+      "label": "matched file-transform pilot",
+      "sub": "2 rotated rounds · same model"
+    },
+    {
+      "verified": true,
+      "value": "14 / 14",
+      "label": "broader correctness, each",
+      "sub": "OMP faster on expanded suite"
+    }
+  ],
+  "source_receipt": "equal-budget.json",
+  "limitations": [
+    "Both observed maxoutput8192 and highreasoning; cache/sampling uncontrolled",
+    "Expanded suite reverses input-token advantage; claim does not generalize",
+    "Sampling/providercache uncontrolled",
+    "Cybara warm gateway vs OMP cold CLI",
+    "No paper33%localclaim"
+  ]
+}

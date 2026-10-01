@@ -1,3 +1,4 @@
+import type { SessionContextUsage } from "./session-context";
 import { stripReasoningTagTokens } from "./agent-internals";
 import { isMidLoopContextCompactionDetail } from "./llm/context-pressure";
 import { createLogger } from "./logger";
@@ -27,6 +28,7 @@ export type AgentStatus =
 export type ToolStatusPhase = "start" | "result" | "error" | "blocked";
 
 export interface StatusPayload {
+  contextUsage?: SessionContextUsage;
   status: AgentStatus;
   timestamp: number;
   detail?: string;

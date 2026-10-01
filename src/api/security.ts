@@ -1182,7 +1182,9 @@ export function securityCheck(
 
   const rootKeyRoute =
     (method === "GET" && path === "/api/auth/key") ||
-    (method === "POST" && path === "/api/auth/rotate-key");
+    (method === "POST" && path === "/api/auth/rotate-key") ||
+    path === "/api/browser/import" ||
+    path.startsWith("/api/browser/import/");
   if (rootKeyRoute && !usesRootApiKey(headers)) {
     return {
       passed: false,

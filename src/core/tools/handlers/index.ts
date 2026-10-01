@@ -468,6 +468,15 @@ function applyWorkspaceDefaults(
     setArg("path", normalizedWorkspaceDir);
   }
 
+  if (toolName === "read" && Array.isArray(args.path)) {
+    setArg(
+      "path",
+      args.path.map((path: unknown) =>
+        typeof path === "string" ? resolveWorkspacePath(path, normalizedWorkspaceDir) : path
+      )
+    );
+  }
+
   if (
     (toolName === "read" || toolName === "write" || toolName === "edit") &&
     hasNonEmptyString(args.path)

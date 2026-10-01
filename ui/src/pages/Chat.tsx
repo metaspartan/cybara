@@ -77,7 +77,6 @@ import {
   shouldShowSessionPlanInComposer,
 } from "./chat/chatModel";
 import { parseInitialChatRoute } from "./chat/chatRoute";
-import { FloatingBrowserPreview } from "./chat/FloatingBrowserPreview";
 import { FloatingComputerPreview } from "./chat/FloatingComputerPreview";
 import { shouldShowFloatingBrowserPreview } from "./chat/floatingBrowserPreviewModel";
 import { GoalPanel } from "./chat/GoalPanel";
@@ -491,14 +490,6 @@ export function Chat() {
       workspaceTabs.find((instance) => instance.kind === "browser"),
     [workspaceTabs]
   );
-  const floatingBrowserAvailable = !!floatingBrowserTab || floatingPreviewActivity.browserAvailable;
-  const floatingBrowserVisible = shouldShowFloatingBrowserPreview({
-    activeWorkspaceKind,
-    artifactOpen: !!artifactViewerTarget,
-    available: floatingBrowserAvailable,
-    sessionId,
-    workspacePanelOpen: showWorkspacePanel,
-  });
   const floatingComputerVisible = shouldShowFloatingBrowserPreview({
     activeWorkspaceKind,
     artifactOpen: !!artifactViewerTarget,
@@ -1869,14 +1860,6 @@ export function Chat() {
               ) : null}
             </>
           )}
-          {floatingBrowserVisible && sessionId ? (
-            <FloatingBrowserPreview
-              bottomInset={Math.max(82, composerHeight + 18)}
-              pageKey={floatingBrowserTab?.pageKey}
-              sessionId={sessionId}
-              onExpand={expandFloatingBrowser}
-            />
-          ) : null}
           {floatingComputerVisible && sessionId ? (
             <FloatingComputerPreview
               bottomInset={Math.max(82, composerHeight + 18)}

@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "image-files"
-description = "Allows the Cybara interface to save validated images chosen through a save dialog."
-commands.allow = ["save_image_file"]
+description = "Allows the Cybara interface to save validated images and copy validated PNG images to the system clipboard."
+commands.allow = ["save_image_file", "copy_image_to_clipboard"]

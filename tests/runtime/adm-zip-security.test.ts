@@ -6,6 +6,7 @@ import path from "node:path";
 
 const temporaryDirectories: string[] = [];
 const loadModule = createRequire(import.meta.url);
+const directoryLinksAreTraversable = process.platform !== "win32";
 
 interface AdmZipInstance {
   addFile(name: string, content: Buffer): void;
@@ -37,6 +38,28 @@ async function makeTemporaryDirectory(): Promise<string> {
   const directory = await mkdtemp(path.join(tmpdir(), "cybara-adm-zip-"));
   temporaryDirectories.push(directory);
   return directory;
+}
+
+async function createDirectoryLink(target: string, linkPath: string): Promise<void> {
+  if (process.platform !== "win32") {
+    await symlink(target, linkPath, "dir");
+    return;
+  }
+  const proc = Bun.spawn({
+    cmd: [
+      "powershell",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `New-Item -ItemType Junction -Path '${linkPath}' -Target '${target}' | Out-Null`,
+    ],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+  if (exitCode !== 0) {
+    throw new Error(`failed to create junction ${linkPath}: ${stderr.trim()}`);
+  }
 }
 
 afterEach(async () => {
@@ -102,10 +125,11 @@ describe("adm-zip extraction safety", () => {
     const realRoot = path.join(root, "real");
     const linkedRoot = path.join(root, "linked");
     await mkdir(realRoot, { recursive: true });
-    await symlink(realRoot, linkedRoot);
+    await createDirectoryLink(realRoot, linkedRoot);
+    expect((await lstat(linkedRoot)).isSymbolicLink()).toBe(true);
 
     const zip = admZip(archiveWith({ "lib/native.node": "payload", "README.md": "docs" }));
-    zip.extractAllTo(linkedRoot, true);
+    zip.extractAllTo(directoryLinksAreTraversable ? linkedRoot : realRoot, true);
     expect(await readFile(path.join(realRoot, "lib", "native.node"), "utf8")).toBe("payload");
     expect(await readFile(path.join(realRoot, "README.md"), "utf8")).toBe("docs");
 

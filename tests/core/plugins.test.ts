@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs";
+import { linkDirectory, linkFile } from "../helpers/fs-symlink";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -262,20 +263,51 @@ describe("plugin runtime", () => {
               skills: {
                 dirs: ["skills-link"],
               },
+              tools: { files: ["tools-link.json"] },
             },
           },
           null,
           2
         )
       );
-      symlinkSync(escapedSkillDir, join(unsafePluginDir, "skills-link"));
+      const skillLink = join(unsafePluginDir, "skills-link");
+      linkDirectory(escapedSkillDir, skillLink);
+      const escapedToolFile = join(tempRoot, "escaped-tools.json");
+      writeFileSync(escapedToolFile, "{}");
+      const toolLink = join(unsafePluginDir, "tools-link.json");
+      linkFile(escapedToolFile, toolLink);
+      let resolvable = true;
+      try {
+        realpathSync.native(skillLink);
+      } catch (error) {
+        expect(process.platform).toBe("win32");
+        expect((error as NodeJS.ErrnoException).code).toBe("EUNKNOWN");
+        resolvable = false;
+      }
 
       const unsafe = validatePluginAtPath(unsafePluginDir);
       expect(unsafe.valid).toBe(true);
       expect(unsafe.warnings.join(" ")).toContain(
-        "symlinked contribution path outside plugin root"
+        resolvable
+          ? "symlinked contribution path outside plugin root"
+          : "Ignoring unresolved contribution path: skills-link"
       );
       expect(unsafe.manifest?.contributions?.skills?.dirs).toEqual([]);
+      expect(unsafe.manifest?.contributions?.tools?.files).toEqual([]);
+      let toolResolvable = true;
+      try {
+        realpathSync.native(toolLink);
+      } catch (error) {
+        expect(process.platform).toBe("win32");
+        expect((error as NodeJS.ErrnoException).code).toBe("EUNKNOWN");
+        toolResolvable = false;
+      }
+      expect(unsafe.warnings.join(" ")).toContain(
+        toolResolvable
+          ? "symlinked contribution path outside plugin root: tools-link.json"
+          : "Ignoring unresolved contribution path: tools-link.json"
+      );
+      expect(validatePluginAtPath(sourcePluginDir).valid).toBe(true);
 
       const installed = installLocalPluginFromPath(sourcePluginDir);
       expect(installed.source).toBe("local");

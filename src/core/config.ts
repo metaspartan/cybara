@@ -919,6 +919,7 @@ class ConfigManager {
       port: 4269,
       dangerous_tool_policy: { ...DEFAULT_DANGEROUS_TOOL_POLICY },
       tool_approval_mode: DEFAULT_TOOL_APPROVAL_MODE,
+      session_title_model_enabled: false,
       follow_up_behavior_enabled: true,
       web_tool_url_policy: { ...DEFAULT_WEB_TOOL_URL_POLICY },
       sensitive_file_policy: { ...DEFAULT_SENSITIVE_FILE_POLICY },

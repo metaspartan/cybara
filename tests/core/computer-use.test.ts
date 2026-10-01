@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { PNG } from "pngjs";
 import {
   assertActionAllowed,
@@ -410,7 +411,7 @@ describe("cua-driver resolution", () => {
         "darwin"
       );
 
-      expect(resolved?.command).toBe(binary);
+      expect(resolved?.command?.replace(/\\/g, "/")).toBe(binary.replace(/\\/g, "/"));
       expect(resolved?.source).toBe("bundled");
     }));
 
@@ -584,7 +585,7 @@ describe("cua-driver resolution", () => {
 
 describe("computer_use driver vocabulary translation", () => {
   const source = readFileSync(
-    join(dirname(new URL(import.meta.url).pathname), "..", "..", "src", "core", "computer-use.ts"),
+    join(dirname(fileURLToPath(import.meta.url)), "..", "..", "src", "core", "computer-use.ts"),
     "utf8"
   );
 

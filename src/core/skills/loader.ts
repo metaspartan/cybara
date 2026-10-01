@@ -4,6 +4,7 @@ import { join, resolve, dirname } from "path";
 import { homedir } from "os";
 import { getBuiltinPluginForSkill, getPluginRoots, listInstalledPlugins } from "../plugins";
 import { getBuiltinSkillPacks } from "./builtin-packs";
+import { isCompiledRuntime } from "../runtime/runtime-mode";
 import { prewarmBinaryAvailability } from "./gating";
 import type {
   Skill,
@@ -230,7 +231,7 @@ export function getSkillDirectories(workspaceDir?: string): {
   local: string;
   workspace: string | null;
 } {
-  const isCompiledBinary = !process.execPath.endsWith("bun") && !process.execPath.includes("/bun");
+  const isCompiledBinary = isCompiledRuntime();
   let bundledPath: string;
 
   if (isCompiledBinary) {

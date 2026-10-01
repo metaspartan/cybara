@@ -1,4 +1,5 @@
 import { trackToolTranscriptCompaction } from "../metrics";
+import { recordActiveContextUsage } from "./session-active-context";
 import type { ToolContext } from "../tools";
 
 const CHARS_PER_TOKEN = 4;
@@ -54,6 +55,12 @@ export function recordMidLoopContextCompaction(input: {
       tokensAfter: measurement.afterTokens,
       model: input.model,
     });
+    recordActiveContextUsage(
+      sessionId,
+      measurement.afterTokens,
+      input.toolContext?.maxContextTokens,
+      input.messageCount
+    );
   }
 
   return measurement;

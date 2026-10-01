@@ -1,0 +1,26 @@
+{
+  "as_of": "2026-10-01",
+  "model": "space-bunny-free",
+  "provider": "https://opencode.ai/zen/v1/chat/completions",
+  "cybara_base_commit": "787d78c9",
+  "cybara_working_tree": "uncommitted compaction fixes plus existing browser import",
+  "runtime": "Bun 1.4.0",
+  "platform": "win32/x64",
+  "hermes_tag": "v2026.9.24",
+  "hermes_package_version": "0.21.5",
+  "hermes_sha": "f97608f178d1ffeca59860195ab7da295f7c8e5f",
+  "openclaw_package_version": "2026.9.7",
+  "openclaw_reported_revision": "c074824",
+  "openclaw_result": "infrastructure failure Windows/Bun SQLite snapshot cleanup; no accuracy score",
+  "protocol_mode": "buffered nonstream upstream with SSE replay",
+  "reasoning": "high requested, per-harness shaping not proven equal",
+  "cybara_measurement_mode": "warm isolated gateway, cold per-task agent/session/provider",
+  "hermes_measurement_mode": "cold per-task one-shot Python CLI",
+  "notes": [
+    "No official container benchmark run; Docker daemon unavailable",
+    "Small 3-task 2-round pilot, cannot prove accuracy superiority",
+    "Cybara policy always_allow on isolated fixture gateway only; live gateway unchanged",
+    "Cybara self-improving skill capture remained enabled and may influence request totals; all observed requests included",
+    "Hermes six HTTP400 responses have unknown usage; aggregate totals null"
+  ]
+}

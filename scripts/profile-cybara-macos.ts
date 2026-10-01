@@ -2,6 +2,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { isCybaraProfileProcess } from "./cybara-process-match";
 
+type MetricsSource = "ps" | "cim";
+
 interface ProcessSample {
   pid: number;
   ppid: number;
@@ -10,8 +12,18 @@ interface ProcessSample {
   command: string;
 }
 
+interface RawProcessMetrics {
+  pid: number;
+  ppid: number;
+  cpuPercent: number | null;
+  rssBytes: number;
+  command: string;
+}
+
 interface ProfileSample {
   sampledAt: string;
+  metricsSource: MetricsSource;
+  cpuPercentAvailable: boolean;
   totalCpuPercent: number;
   totalRssBytes: number;
   processes: ProcessSample[];
@@ -20,6 +32,8 @@ interface ProfileSample {
 interface ProfileReport {
   startedAt: string;
   endedAt: string;
+  metricsSource: MetricsSource;
+  cpuPercentAvailable: boolean;
   durationSeconds: number;
   sampleCount: number;
   peakRssBytes: number;
@@ -50,7 +64,34 @@ function outputPath(): string | null {
   return Bun.argv[index + 1] || null;
 }
 
-function parsePsLine(line: string): ProcessSample | null {
+const WINDOWS_METRICS_COMMAND = [
+  "$ErrorActionPreference = 'Stop'",
+  "$rows = Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,WorkingSetSize,CommandLine",
+  "$cpu = @{}",
+  "Get-Process | ForEach-Object { $cpu[$_.Id] = $_.CPU }",
+  "$out = foreach ($row in $rows) {",
+  "  [pscustomobject]@{",
+  "    pid = $row.ProcessId",
+  "    ppid = $row.ParentProcessId",
+  "    rss = $row.WorkingSetSize",
+  "    cpuSeconds = $cpu[$row.ProcessId]",
+  "    command = $row.CommandLine",
+  "  }",
+  "}",
+  "$out | ConvertTo-Json -Compress -Depth 3",
+].join("\n");
+
+interface WindowsProcessRow {
+  pid: number;
+  ppid: number;
+  rss: number;
+  cpuSeconds: number | null;
+  command: string | null;
+}
+
+const previousCpuSeconds = new Map<number, { seconds: number; at: number }>();
+
+function parsePsLine(line: string): RawProcessMetrics | null {
   const match = line.trim().match(/^(\d+)\s+(\d+)\s+([\d.]+)\s+(\d+)\s+(.+)$/);
   if (!match) return null;
   const pid = Number(match[1]);
@@ -61,21 +102,89 @@ function parsePsLine(line: string): ProcessSample | null {
   if (!Number.isFinite(pid) || !Number.isFinite(ppid) || !Number.isFinite(rssBytes)) {
     return null;
   }
-  if (!isCybaraProfileProcess(command, process.cwd())) return null;
   return { pid, ppid, cpuPercent, rssBytes, command };
 }
 
-async function sampleProcesses(): Promise<ProfileSample> {
+async function readPsMetrics(): Promise<RawProcessMetrics[]> {
   const result = await Bun.$`ps -axo pid=,ppid=,pcpu=,rss=,command=`.text();
-  const processes = result
+  return result
     .split("\n")
     .map(parsePsLine)
-    .filter((process): process is ProcessSample => process !== null)
-    .sort((a, b) => b.rssBytes - a.rssBytes);
+    .filter((entry): entry is RawProcessMetrics => entry !== null);
+}
+
+async function readWindowsMetrics(): Promise<RawProcessMetrics[]> {
+  const proc = Bun.spawn({
+    cmd: ["powershell", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_METRICS_COMMAND],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(`windows process metrics failed: ${stderr.trim()}`);
+  }
+  const parsed: unknown = stdout.trim() ? JSON.parse(stdout) : [];
+  const rows: WindowsProcessRow[] = Array.isArray(parsed) ? parsed : [parsed];
+  const sampledAt = Date.now();
+  return rows
+    .map((row) => {
+      const previous = previousCpuSeconds.get(Number(row.pid));
+      const cpuSeconds = typeof row.cpuSeconds === "number" ? row.cpuSeconds : null;
+      let cpuPercent: number | null = null;
+      if (cpuSeconds !== null && previous !== undefined) {
+        const elapsedSeconds = (sampledAt - previous.at) / 1000;
+        const deltaSeconds = cpuSeconds - previous.seconds;
+        if (elapsedSeconds > 0 && deltaSeconds >= 0) {
+          cpuPercent = (deltaSeconds / elapsedSeconds) * 100;
+        }
+      }
+      if (cpuSeconds !== null)
+        previousCpuSeconds.set(Number(row.pid), { seconds: cpuSeconds, at: sampledAt });
+      return {
+        pid: Number(row.pid),
+        ppid: Number(row.ppid),
+        cpuPercent,
+        rssBytes: Number(row.rss) || 0,
+        command: typeof row.command === "string" ? row.command : "",
+      };
+    })
+    .filter(
+      (entry) =>
+        Number.isFinite(entry.pid) &&
+        Number.isFinite(entry.ppid) &&
+        Number.isFinite(entry.rssBytes) &&
+        entry.command !== ""
+    );
+}
+
+function metricsSource(): MetricsSource {
+  return process.platform === "win32" ? "cim" : "ps";
+}
+
+async function sampleProcesses(): Promise<ProfileSample> {
+  const source = metricsSource();
+  const raw = source === "cim" ? await readWindowsMetrics() : await readPsMetrics();
+  const processes: ProcessSample[] = raw
+    .filter((entry) => isCybaraProfileProcess(entry.command, process.cwd()))
+    .sort((a, b) => b.rssBytes - a.rssBytes)
+    .map((entry) => ({
+      pid: entry.pid,
+      ppid: entry.ppid,
+      cpuPercent: entry.cpuPercent ?? 0,
+      rssBytes: entry.rssBytes,
+      command: entry.command,
+    }));
+  const cpuPercentAvailable = raw.some((entry) => entry.cpuPercent !== null);
   return {
     sampledAt: new Date().toISOString(),
-    totalCpuPercent: processes.reduce((sum, process) => sum + process.cpuPercent, 0),
-    totalRssBytes: processes.reduce((sum, process) => sum + process.rssBytes, 0),
+    metricsSource: source,
+    cpuPercentAvailable,
+    totalCpuPercent: processes.reduce((sum, entry) => sum + entry.cpuPercent, 0),
+    totalRssBytes: processes.reduce((sum, entry) => sum + entry.rssBytes, 0),
     processes,
   };
 }
@@ -103,8 +212,9 @@ async function main() {
     const sample = await sampleProcesses();
     samples.push(sample);
     if (!jsonOnly) {
+      const cpu = sample.cpuPercentAvailable ? `${sample.totalCpuPercent.toFixed(1)}%` : "n/a";
       console.log(
-        `${sample.sampledAt} rss=${formatBytes(sample.totalRssBytes)} cpu=${sample.totalCpuPercent.toFixed(1)}% processes=${sample.processes.length}`
+        `${sample.sampledAt} rss=${formatBytes(sample.totalRssBytes)} cpu=${cpu} processes=${sample.processes.length} source=${sample.metricsSource}`
       );
     }
     if (Date.now() >= deadline) break;
@@ -113,10 +223,14 @@ async function main() {
 
   const endedAt = new Date().toISOString();
   const rssValues = samples.map((sample) => sample.totalRssBytes);
-  const cpuValues = samples.map((sample) => sample.totalCpuPercent);
+  const cpuAvailableSamples = samples.filter((sample) => sample.cpuPercentAvailable);
+  const cpuValues = cpuAvailableSamples.map((sample) => sample.totalCpuPercent);
+  const cpuPercentAvailable = cpuAvailableSamples.length > 0;
   const report: ProfileReport = {
     startedAt,
     endedAt,
+    metricsSource: metricsSource(),
+    cpuPercentAvailable,
     durationSeconds,
     sampleCount: samples.length,
     peakRssBytes: Math.max(0, ...rssValues),
@@ -134,11 +248,16 @@ async function main() {
   if (jsonOnly) {
     console.log(json);
   } else {
+    const peakCpu = report.cpuPercentAvailable ? `${report.peakCpuPercent.toFixed(1)}%` : "n/a";
+    const averageCpu = report.cpuPercentAvailable
+      ? `${report.averageCpuPercent.toFixed(1)}%`
+      : "n/a";
     console.log("");
+    console.log(`Metrics source: ${report.metricsSource}`);
     console.log(`Peak RSS: ${formatBytes(report.peakRssBytes)}`);
     console.log(`Average RSS: ${formatBytes(report.averageRssBytes)}`);
-    console.log(`Peak CPU: ${report.peakCpuPercent.toFixed(1)}%`);
-    console.log(`Average CPU: ${report.averageCpuPercent.toFixed(1)}%`);
+    console.log(`Peak CPU: ${peakCpu}`);
+    console.log(`Average CPU: ${averageCpu}`);
     if (out) console.log(`Report: ${out}`);
   }
 }

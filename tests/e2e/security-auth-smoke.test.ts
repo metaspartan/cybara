@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "fs";
+import { linkDirectory } from "../helpers/fs-symlink";
 import { createServer } from "net";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
@@ -56,6 +57,8 @@ function startServer(
     env: {
       ...process.env,
       HOME: homeDir,
+      CYBARA_HOME: join(homeDir, ".cybara"),
+      CONFIG_DIR: join(homeDir, ".cybara"),
       USERPROFILE: homeDir,
       PORT: String(port),
       ...extraEnv,
@@ -524,20 +527,11 @@ describe("Security auth e2e", () => {
     const outsideFile = join(outsideDir, "outside.txt");
     const symlinkDir = join(homeDir, `ide-auth-link-${Date.now()}`);
     let proc: ReturnType<typeof Bun.spawn> | null = null;
-    let symlinkCreated = false;
 
     mkdirSync(outsideDir, { recursive: true });
     writeFileSync(insideFile, "inside-home-file", "utf8");
     writeFileSync(outsideFile, "outside-home-file", "utf8");
-    try {
-      symlinkSync(outsideDir, symlinkDir);
-      symlinkCreated = true;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "EPERM" && code !== "EACCES") {
-        throw error;
-      }
-    }
+    linkDirectory(outsideDir, symlinkDir);
 
     try {
       proc = startServer(port, {
@@ -614,18 +608,37 @@ describe("Security auth e2e", () => {
       expect(writeOutside.success).toBe(true);
       expect(readFileSync(outsideFile, "utf8")).toBe("written-outside-home");
 
-      if (symlinkCreated) {
-        const readViaSymlink = await request(
-          baseUrl,
-          `/api/ide/read?path=${encodeURIComponent(join(symlinkDir, "outside.txt"))}`,
-          {
-            Authorization: `Bearer ${apiKey}`,
-          }
-        );
-        expect(readViaSymlink.status).toBe(200);
-        expect(readViaSymlink.data.success).toBe(true);
-        expect(readViaSymlink.data.content).toContain("written-outside-home");
+      let resolvable = true;
+      try {
+        realpathSync.native(join(symlinkDir, "outside.txt"));
+      } catch (error) {
+        expect(process.platform).toBe("win32");
+        expect((error as NodeJS.ErrnoException).code).toBe("EUNKNOWN");
+        resolvable = false;
       }
+      const readViaSymlink = await request(
+        baseUrl,
+        `/api/ide/read?path=${encodeURIComponent(join(symlinkDir, "outside.txt"))}`,
+        {
+          Authorization: `Bearer ${apiKey}`,
+        }
+      );
+      expect(readViaSymlink.status).toBe(200);
+      expect(readViaSymlink.data.success).toBe(resolvable);
+      if (resolvable) {
+        expect(readViaSymlink.data.content).toContain("written-outside-home");
+      } else {
+        expect(readViaSymlink.data.error).toBe("File does not exist");
+        expect(readViaSymlink.data.content).toBeUndefined();
+      }
+      const readOriginal = await request(
+        baseUrl,
+        `/api/ide/read?path=${encodeURIComponent(outsideFile)}`,
+        { Authorization: `Bearer ${apiKey}` }
+      );
+      expect(readOriginal.status).toBe(200);
+      expect(readOriginal.data.success).toBe(true);
+      expect(readOriginal.data.content).toBe("written-outside-home");
     } finally {
       await stopServer(proc);
       rmSync(insideFile, { force: true });

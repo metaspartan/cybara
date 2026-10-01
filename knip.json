@@ -35,7 +35,8 @@
         "netstat",
         "lsof",
         "open",
-        "pgrep"
+        "pgrep",
+        "taskkill"
       ]
     },
     "ui": {

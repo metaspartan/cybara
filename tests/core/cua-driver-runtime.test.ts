@@ -62,7 +62,7 @@ describe("computer-use driver runtime", () => {
       )[0]
     ).toBe("/Applications/Cybara.app/Contents/Resources/cua-driver/cua-driver");
     expect(managedCuaDriverDir("/Users/tester")).toBe(
-      `/Users/tester/.cybara/runtime/cua-driver/${CUA_DRIVER_VERSION}`
+      join("/Users/tester", ".cybara", "runtime", "cua-driver", CUA_DRIVER_VERSION)
     );
   });
 

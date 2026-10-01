@@ -135,15 +135,67 @@ export class LSPClient extends EventEmitter {
   }
 
   async shutdown(): Promise<void> {
-    if (!this.process) return;
-
+    const child = this.process;
+    if (!child) return;
+    let closed = child.exitCode !== null || child.signalCode !== null;
+    const exited = new Promise<void>((resolve) => {
+      if (closed) resolve();
+      else
+        child.once("close", () => {
+          closed = true;
+          resolve();
+        });
+    });
+    const waitForExit = async (timeoutMs: number): Promise<boolean> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          exited,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, timeoutMs);
+          }),
+        ]);
+        return closed;
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    let requestTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await this.request("shutdown", null);
+      await Promise.race([
+        this.request("shutdown", null),
+        new Promise<void>((resolve) => {
+          requestTimer = setTimeout(resolve, 1_000);
+        }),
+      ]);
       this.notify("exit", null);
-    } catch {}
-
-    this.process.kill();
-    this.process = null;
+    } catch {
+    } finally {
+      clearTimeout(requestTimer);
+    }
+    if (!(await waitForExit(1_000))) {
+      if (process.platform === "win32" && child.pid) {
+        const killer = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+          stdio: "ignore",
+          windowsHide: true,
+        });
+        await new Promise<void>((resolve, reject) => {
+          killer.once("error", reject);
+          killer.once("close", () => resolve());
+        });
+      } else {
+        child.kill();
+      }
+      if (!(await waitForExit(1_000))) {
+        child.kill("SIGKILL");
+        if (!(await waitForExit(1_000)))
+          throw new Error(
+            "LSP process did not exit after shutdown: " + this.command + " (pid " + child.pid + ")"
+          );
+      }
+    }
+    this.rejectPending(new Error("LSP process shut down: " + this.command));
+    if (this.process === child) this.process = null;
     this.initialized = false;
   }
 

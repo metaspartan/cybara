@@ -231,7 +231,11 @@ describe("speech synthesis requests", () => {
     expect(report.elevenlabs.voice).toBe("voice-abc");
     expect(report.elevenlabs.model).toBe("eleven_flash_v2_5");
     expect(report.elevenlabs.audioPath).toContain(join(tempHome, ".cybara", "media"));
-    expect(report.elevenlabs.fileMode).toBe(0o600);
+    if (process.platform === "win32") {
+      expect(report.elevenlabs.fileMode & 0o111).toBe(0);
+    } else {
+      expect(report.elevenlabs.fileMode).toBe(0o600);
+    }
     expect(report.elevenlabs.url).toContain("/text-to-speech/voice-abc");
     expect(report.elevenlabs.apiKey).toBe("eleven-test");
     expect(report.elevenlabs.body.text).toBe("Hello Cybara");

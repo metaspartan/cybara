@@ -113,9 +113,16 @@ describe("Gemini CLI OAuth client config resolution", () => {
       "utf8"
     );
 
-    const shimPath = join(binDir, "gemini");
-    symlinkSync(realGeminiPath, shimPath);
-    chmodSync(shimPath, 0o755);
+    if (process.platform === "win32") {
+      writeFileSync(
+        join(binDir, "gemini.cmd"),
+        `@echo off\r\n"${process.execPath}" "${realGeminiPath}" %*\r\n`
+      );
+    } else {
+      const shimPath = join(binDir, "gemini");
+      symlinkSync(realGeminiPath, shimPath);
+      chmodSync(shimPath, 0o755);
+    }
 
     process.env[PATH_KEY] = binDir;
 
@@ -163,9 +170,16 @@ describe("Gemini CLI OAuth client config resolution", () => {
       "utf8"
     );
 
-    const shimPath = join(binDir, "gemini");
-    symlinkSync(realGeminiPath, shimPath);
-    chmodSync(shimPath, 0o755);
+    if (process.platform === "win32") {
+      writeFileSync(
+        join(binDir, "gemini.cmd"),
+        `@echo off\r\n"${process.execPath}" "${realGeminiPath}" %*\r\n`
+      );
+    } else {
+      const shimPath = join(binDir, "gemini");
+      symlinkSync(realGeminiPath, shimPath);
+      chmodSync(shimPath, 0o755);
+    }
 
     process.env[PATH_KEY] = join(tmpdir(), `cybara-empty-path-${Date.now()}`);
     process.env[BIN_HINTS_KEY] = binDir;

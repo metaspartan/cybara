@@ -14,6 +14,7 @@ import { ToolCapabilitySettings } from "./settings/ToolCapabilitySettings";
 import { DecisionModelSettings } from "./settings/DecisionModelSettings";
 import { ExternalTelemetrySettings } from "./settings/ExternalTelemetrySettings";
 import { BrowserSupervisionSettings } from "./settings/BrowserSupervisionSettings";
+import { BrowserDataImport } from "./chat/BrowserDataImport";
 import { MemoryBehaviorSettings } from "./settings/MemoryBehaviorSettings";
 import { LabSettingsSection } from "./settings/LabSettings";
 import {
@@ -1354,6 +1355,15 @@ export function Settings() {
             <WebResearchSettings />
             <WebToolPolicySettings />
             <SandboxBrowserSettings />
+            <Card variant="liquid">
+              <CardHeader>
+                <CardTitle>Browser data</CardTitle>
+                <CardDescription>Import and manage data for your embedded browser</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <BrowserDataImport entry="settings" />
+              </CardContent>
+            </Card>
             <BrowserSupervisionSettings />
             <ComputerUseSettings />
           </>

@@ -41,6 +41,7 @@ import {
   validateBrowserNavigationUrl,
 } from "../../core/tools/handlers/browser";
 import { isSessionStatusActive, type RouteHandler } from "./_shared";
+import { browserImportRoutes } from "./browser-import";
 
 function quotePosix(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -108,6 +109,7 @@ function buildRestartCommand(argv: string[], cwd: string): string[] {
 }
 
 export const runtimeRoutes: Record<string, RouteHandler> = {
+  ...browserImportRoutes,
   "POST /api/system/folder-dialog": async (body, _params, context) => {
     const forwardedIp = forwardedClientIp(context?.headers ?? {});
     const localClient =

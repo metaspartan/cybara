@@ -1,0 +1,698 @@
+[
+  {
+    "name": "omp-baseline",
+    "generated_at": "2026-10-01T10:05:21.949Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "n": 6,
+        "correct_outputs": 6,
+        "completed_correct": 6,
+        "timeouts": 0,
+        "mean_ms": 18838,
+        "median_ms": 17161,
+        "input": 173707,
+        "output": 4686,
+        "cached": 130816,
+        "uncached": 42891,
+        "cache_fraction": 0.7530842165255286,
+        "requests": 35,
+        "mean_upstream_ms": 19056.833333333332,
+        "system_chars": [],
+        "reasoning": [
+          null
+        ],
+        "tasks": [
+          {
+            "run_id": "r1-multi-file-ledger-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 19462
+          },
+          {
+            "run_id": "r1-exact-retrieval-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 25012
+          },
+          {
+            "run_id": "r1-boundary-transform-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 13457
+          },
+          {
+            "run_id": "r2-exact-retrieval-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 31257
+          },
+          {
+            "run_id": "r2-boundary-transform-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 14860
+          },
+          {
+            "run_id": "r2-multi-file-ledger-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 8980
+          }
+        ]
+      },
+      {
+        "id": "omp",
+        "n": 6,
+        "correct_outputs": 6,
+        "completed_correct": 6,
+        "timeouts": 0,
+        "mean_ms": 14310.666666666666,
+        "median_ms": 12986,
+        "input": 140324,
+        "output": 4046,
+        "cached": 113174,
+        "uncached": 27150,
+        "cache_fraction": 0.8065191984264987,
+        "requests": 27,
+        "mean_upstream_ms": 11925.166666666666,
+        "system_chars": [],
+        "reasoning": [
+          null
+        ],
+        "tasks": [
+          {
+            "run_id": "r1-multi-file-ledger-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 14266
+          },
+          {
+            "run_id": "r1-exact-retrieval-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 8573
+          },
+          {
+            "run_id": "r1-boundary-transform-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 19060
+          },
+          {
+            "run_id": "r2-exact-retrieval-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 10030
+          },
+          {
+            "run_id": "r2-boundary-transform-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 22229
+          },
+          {
+            "run_id": "r2-multi-file-ledger-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 11706
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "omp-candidate-1",
+    "generated_at": "2026-10-01T10:21:45.708Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "n": 6,
+        "correct_outputs": 6,
+        "completed_correct": 6,
+        "timeouts": 0,
+        "mean_ms": 16846.666666666668,
+        "median_ms": 17683.5,
+        "input": 187041,
+        "output": 5598,
+        "cached": 142541,
+        "uncached": 44500,
+        "cache_fraction": 0.7620842489079934,
+        "requests": 36,
+        "mean_upstream_ms": 17125.333333333332,
+        "system_chars": [
+          20618,
+          20614,
+          20620
+        ],
+        "reasoning": [
+          "high"
+        ],
+        "tasks": [
+          {
+            "run_id": "r1-multi-file-ledger-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 18748
+          },
+          {
+            "run_id": "r1-exact-retrieval-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 5582
+          },
+          {
+            "run_id": "r1-boundary-transform-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 17535
+          },
+          {
+            "run_id": "r2-exact-retrieval-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 17832
+          },
+          {
+            "run_id": "r2-boundary-transform-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 25728
+          },
+          {
+            "run_id": "r2-multi-file-ledger-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 15655
+          }
+        ]
+      },
+      {
+        "id": "omp",
+        "n": 6,
+        "correct_outputs": 6,
+        "completed_correct": 6,
+        "timeouts": 0,
+        "mean_ms": 17600,
+        "median_ms": 14053.5,
+        "input": 139979,
+        "output": 4594,
+        "cached": 102484,
+        "uncached": 37495,
+        "cache_fraction": 0.7321383921873995,
+        "requests": 27,
+        "mean_upstream_ms": 15061,
+        "system_chars": [
+          12702
+        ],
+        "reasoning": [
+          "high"
+        ],
+        "tasks": [
+          {
+            "run_id": "r1-multi-file-ledger-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 11612
+          },
+          {
+            "run_id": "r1-exact-retrieval-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 22251
+          },
+          {
+            "run_id": "r1-boundary-transform-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 37552
+          },
+          {
+            "run_id": "r2-exact-retrieval-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 8046
+          },
+          {
+            "run_id": "r2-boundary-transform-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 16495
+          },
+          {
+            "run_id": "r2-multi-file-ledger-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 9644
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "omp-scoped",
+    "generated_at": "2026-10-01T10:29:51.694Z",
+    "groups": [
+      {
+        "id": "cybara",
+        "n": 6,
+        "correct_outputs": 6,
+        "completed_correct": 6,
+        "timeouts": 0,
+        "mean_ms": 18196.333333333332,
+        "median_ms": 14595.5,
+        "input": 71227,
+        "output": 4125,
+        "cached": 46117,
+        "uncached": 25110,
+        "cache_fraction": 0.6474651466438289,
+        "requests": 30,
+        "mean_upstream_ms": 19456.666666666668,
+        "system_chars": [
+          6980,
+          6976,
+          6982
+        ],
+        "reasoning": [
+          "high"
+        ],
+        "tasks": [
+          {
+            "run_id": "r1-multi-file-ledger-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 45486
+          },
+          {
+            "run_id": "r1-exact-retrieval-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 10759
+          },
+          {
+            "run_id": "r1-boundary-transform-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 10526
+          },
+          {
+            "run_id": "r2-exact-retrieval-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 18432
+          },
+          {
+            "run_id": "r2-boundary-transform-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 19044
+          },
+          {
+            "run_id": "r2-multi-file-ledger-cybara",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 4931
+          }
+        ]
+      },
+      {
+        "id": "omp",
+        "n": 6,
+        "correct_outputs": 6,
+        "completed_correct": 6,
+        "timeouts": 0,
+        "mean_ms": 17682,
+        "median_ms": 11829,
+        "input": 121398,
+        "output": 3162,
+        "cached": 99910,
+        "uncached": 21488,
+        "cache_fraction": 0.8229954364981301,
+        "requests": 24,
+        "mean_upstream_ms": 15686.166666666666,
+        "system_chars": [
+          12702
+        ],
+        "reasoning": [
+          "high"
+        ],
+        "tasks": [
+          {
+            "run_id": "r1-multi-file-ledger-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 48708
+          },
+          {
+            "run_id": "r1-exact-retrieval-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 10063
+          },
+          {
+            "run_id": "r1-boundary-transform-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 16309
+          },
+          {
+            "run_id": "r2-exact-retrieval-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 8924
+          },
+          {
+            "run_id": "r2-boundary-transform-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 13595
+          },
+          {
+            "run_id": "r2-multi-file-ledger-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 8493
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "omp-paired",
+    "generated_at": "2026-10-01T10:39:48.795Z",
+    "groups": [
+      {
+        "id": "baseline",
+        "n": 6,
+        "correct_outputs": 6,
+        "completed_correct": 6,
+        "timeouts": 0,
+        "mean_ms": 16696,
+        "median_ms": 14081,
+        "input": 157937,
+        "output": 4837,
+        "cached": 117706,
+        "uncached": 40231,
+        "cache_fraction": 0.7452718489017773,
+        "requests": 33,
+        "mean_upstream_ms": 16332.833333333334,
+        "system_chars": [
+          19045,
+          19041,
+          19047
+        ],
+        "reasoning": [
+          "high"
+        ],
+        "tasks": [
+          {
+            "run_id": "r1-multi-file-ledger-baseline",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 13718
+          },
+          {
+            "run_id": "r1-exact-retrieval-baseline",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 6896
+          },
+          {
+            "run_id": "r1-boundary-transform-baseline",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 32265
+          },
+          {
+            "run_id": "r2-exact-retrieval-baseline",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 13734
+          },
+          {
+            "run_id": "r2-boundary-transform-baseline",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 14428
+          },
+          {
+            "run_id": "r2-multi-file-ledger-baseline",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 19135
+          }
+        ]
+      },
+      {
+        "id": "optimized",
+        "n": 6,
+        "correct_outputs": 6,
+        "completed_correct": 5,
+        "timeouts": 1,
+        "mean_ms": 53172.333333333336,
+        "median_ms": 21304,
+        "input": 94112,
+        "output": 4391,
+        "cached": 64547,
+        "uncached": 29565,
+        "cache_fraction": 0.6858530261815708,
+        "requests": 38,
+        "mean_upstream_ms": 68636.33333333333,
+        "system_chars": [
+          6986,
+          6982,
+          6988
+        ],
+        "reasoning": [
+          "high"
+        ],
+        "tasks": [
+          {
+            "run_id": "r1-multi-file-ledger-optimized",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 14653
+          },
+          {
+            "run_id": "r1-exact-retrieval-optimized",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 6679
+          },
+          {
+            "run_id": "r1-boundary-transform-optimized",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 23624
+          },
+          {
+            "run_id": "r2-exact-retrieval-optimized",
+            "status": "timeout",
+            "correct": true,
+            "elapsed_ms": 181489
+          },
+          {
+            "run_id": "r2-boundary-transform-optimized",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 73605
+          },
+          {
+            "run_id": "r2-multi-file-ledger-optimized",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 18984
+          }
+        ]
+      },
+      {
+        "id": "omp",
+        "n": 6,
+        "correct_outputs": 6,
+        "completed_correct": 6,
+        "timeouts": 0,
+        "mean_ms": 13219.5,
+        "median_ms": 12696.5,
+        "input": 154036,
+        "output": 4470,
+        "cached": 120724,
+        "uncached": 33312,
+        "cache_fraction": 0.783738866239061,
+        "requests": 31,
+        "mean_upstream_ms": 11969.666666666666,
+        "system_chars": [
+          12702
+        ],
+        "reasoning": [
+          "high"
+        ],
+        "tasks": [
+          {
+            "run_id": "r1-multi-file-ledger-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 12023
+          },
+          {
+            "run_id": "r1-exact-retrieval-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 13589
+          },
+          {
+            "run_id": "r1-boundary-transform-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 13002
+          },
+          {
+            "run_id": "r2-exact-retrieval-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 12391
+          },
+          {
+            "run_id": "r2-boundary-transform-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 18362
+          },
+          {
+            "run_id": "r2-multi-file-ledger-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 9950
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "omp-confirmation",
+    "generated_at": "2026-10-01T10:45:41.582Z",
+    "groups": [
+      {
+        "id": "optimized",
+        "n": 6,
+        "correct_outputs": 6,
+        "completed_correct": 6,
+        "timeouts": 0,
+        "mean_ms": 17932.5,
+        "median_ms": 16710.5,
+        "input": 108881,
+        "output": 5933,
+        "cached": 76585,
+        "uncached": 32296,
+        "cache_fraction": 0.7033825920041146,
+        "requests": 37,
+        "mean_upstream_ms": 17348,
+        "system_chars": [
+          6998,
+          6994,
+          7000
+        ],
+        "reasoning": [
+          "high"
+        ],
+        "tasks": [
+          {
+            "run_id": "r1-multi-file-ledger-optimized",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 9424
+          },
+          {
+            "run_id": "r1-exact-retrieval-optimized",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 19671
+          },
+          {
+            "run_id": "r1-boundary-transform-optimized",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 30711
+          },
+          {
+            "run_id": "r2-exact-retrieval-optimized",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 11499
+          },
+          {
+            "run_id": "r2-boundary-transform-optimized",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 13750
+          },
+          {
+            "run_id": "r2-multi-file-ledger-optimized",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 22540
+          }
+        ]
+      },
+      {
+        "id": "omp",
+        "n": 6,
+        "correct_outputs": 6,
+        "completed_correct": 6,
+        "timeouts": 0,
+        "mean_ms": 10990.666666666666,
+        "median_ms": 9679.5,
+        "input": 118707,
+        "output": 3422,
+        "cached": 89506,
+        "uncached": 29201,
+        "cache_fraction": 0.7540077670230062,
+        "requests": 21,
+        "mean_upstream_ms": 8164.666666666667,
+        "system_chars": [
+          12702
+        ],
+        "reasoning": [
+          "high"
+        ],
+        "tasks": [
+          {
+            "run_id": "r1-multi-file-ledger-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 7753
+          },
+          {
+            "run_id": "r1-exact-retrieval-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 12378
+          },
+          {
+            "run_id": "r1-boundary-transform-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 10879
+          },
+          {
+            "run_id": "r2-exact-retrieval-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 6820
+          },
+          {
+            "run_id": "r2-boundary-transform-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 19634
+          },
+          {
+            "run_id": "r2-multi-file-ledger-omp",
+            "status": "ok",
+            "correct": true,
+            "elapsed_ms": 8480
+          }
+        ]
+      }
+    ]
+  }
+]

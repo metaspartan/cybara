@@ -82,7 +82,7 @@ describe("Agent tool allowlist guardrails", () => {
     expect(advertisedTools).toHaveLength(1);
     expect(advertisedTools[0].function?.name).toBe("read");
     expect(advertisedTools[0].function?.description).toBe(
-      "Read file contents or list a directory. Reading a supported image attaches its pixels to the next turn for vision-capable models."
+      "Read files or list a directory. Use a path array to read up to 8 independent text inputs in one call, with ordered per-file results. Use a single path for images to attach pixels for vision-capable models."
     );
     expect(advertisedTools[0].function?.parameters?.required).toEqual(["path"]);
   });

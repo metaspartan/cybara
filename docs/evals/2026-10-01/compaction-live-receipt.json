@@ -1,0 +1,124 @@
+{
+  "session_id": "live-compaction-fcabd7e2-003c-4d9f-8e82-ed739e91a23a",
+  "agent_id": "986801a2-88bb-423d-b7bc-8dbd20c75c66",
+  "before": {
+    "usedTokens": 1084555,
+    "limitTokens": 1000000,
+    "remainingTokens": 0,
+    "usedPercent": 100,
+    "messageCount": 48,
+    "transcriptTokens": 1084555,
+    "metadataTokens": 0,
+    "compacted": false,
+    "compactionCount": 0,
+    "compactedTokens": 0,
+    "source": "estimated"
+  },
+  "after": {
+    "usedTokens": 115739,
+    "limitTokens": 1000000,
+    "remainingTokens": 884261,
+    "usedPercent": 11.6,
+    "messageCount": 11,
+    "transcriptTokens": 159104,
+    "metadataTokens": 39,
+    "compacted": true,
+    "compactionCount": 1,
+    "compactedTokens": 926060,
+    "source": "provider"
+  },
+  "next": {
+    "usedTokens": 116188,
+    "limitTokens": 1000000,
+    "remainingTokens": 883812,
+    "usedPercent": 11.6,
+    "messageCount": 14,
+    "transcriptTokens": 159725,
+    "metadataTokens": 39,
+    "compacted": true,
+    "compactionCount": 1,
+    "compactedTokens": 926060,
+    "source": "provider"
+  },
+  "before_label": "Active context: 1.1M of 1.0M tokens used (100%). 0 tokens remaining.",
+  "after_label": "Active context: 116k of 1.0M tokens used (11.6%). 884k tokens remaining. Compacted 1 time. 39 transcript metadata tokens are not replayed to the model.",
+  "reloaded_label": "Active context: 116k of 1.0M tokens used (11.6%). 884k tokens remaining. Compacted 1 time. 39 transcript metadata tokens are not replayed to the model.",
+  "code_preserved": true,
+  "events": [
+    {
+      "status": "compacting",
+      "sessionId": "live-compaction-fcabd7e2-003c-4d9f-8e82-ed739e91a23a",
+      "agentId": "986801a2-88bb-423d-b7bc-8dbd20c75c66",
+      "timestamp": 1790846118796,
+      "detail": "Summarizing earlier conversation to continue...",
+      "runId": "8baca908-2f8c-4bf0-b1f5-7d0c7e5eeb04",
+      "sequence": 3,
+      "type": "status"
+    },
+    {
+      "status": "thinking",
+      "sessionId": "live-compaction-fcabd7e2-003c-4d9f-8e82-ed739e91a23a",
+      "agentId": "986801a2-88bb-423d-b7bc-8dbd20c75c66",
+      "timestamp": 1790846150275,
+      "detail": "Context automatically compacted",
+      "contextUsage": {
+        "usedTokens": 159012,
+        "limitTokens": 1000000,
+        "remainingTokens": 840988,
+        "usedPercent": 15.9,
+        "messageCount": 10,
+        "transcriptTokens": 159012,
+        "metadataTokens": 0,
+        "compacted": true,
+        "compactionCount": 1,
+        "compactedTokens": 926060,
+        "source": "estimated"
+      },
+      "runId": "8baca908-2f8c-4bf0-b1f5-7d0c7e5eeb04",
+      "sequence": 4,
+      "type": "status"
+    },
+    {
+      "status": "thinking",
+      "sessionId": "live-compaction-fcabd7e2-003c-4d9f-8e82-ed739e91a23a",
+      "timestamp": 1790846156411,
+      "contextUsage": {
+        "usedTokens": 115739,
+        "limitTokens": 1000000,
+        "remainingTokens": 884261,
+        "usedPercent": 11.6,
+        "messageCount": 9,
+        "transcriptTokens": 115739,
+        "metadataTokens": 0,
+        "compacted": true,
+        "compactionCount": 1,
+        "compactedTokens": 926060,
+        "source": "provider"
+      },
+      "runId": "8baca908-2f8c-4bf0-b1f5-7d0c7e5eeb04",
+      "sequence": 7,
+      "type": "status"
+    },
+    {
+      "status": "thinking",
+      "sessionId": "live-compaction-fcabd7e2-003c-4d9f-8e82-ed739e91a23a",
+      "timestamp": 1790846166651,
+      "contextUsage": {
+        "usedTokens": 116188,
+        "limitTokens": 1000000,
+        "remainingTokens": 883812,
+        "usedPercent": 11.6,
+        "messageCount": 12,
+        "transcriptTokens": 116188,
+        "metadataTokens": 0,
+        "compacted": true,
+        "compactionCount": 1,
+        "compactedTokens": 926060,
+        "source": "provider"
+      },
+      "runId": "86c593d9-0e1f-4777-9892-55b8736406b8",
+      "sequence": 15,
+      "type": "status"
+    }
+  ]
+}

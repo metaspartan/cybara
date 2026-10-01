@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, posix, win32 } from "node:path";
 import { extractZipArchive } from "./archive";
 
 export const CUA_DRIVER_VERSION = "0.7.1";
@@ -114,11 +114,12 @@ export function packagedCuaDriverCandidates(
 ): string[] {
   const executableName = platform === "win32" ? "cua-driver.exe" : "cua-driver";
   const resourceDir = env.CYBARA_RESOURCE_DIR?.trim();
-  const executableDir = dirname(executablePath);
+  const paths = platform === "win32" ? win32 : posix;
+  const executableDir = paths.dirname(executablePath);
   const candidates = [
-    resourceDir && join(resourceDir, "cua-driver", executableName),
-    resourceDir && join(resourceDir, "bin", "cua-driver", executableName),
-    join(executableDir, "cua-driver", executableName),
+    resourceDir && paths.join(resourceDir, "cua-driver", executableName),
+    resourceDir && paths.join(resourceDir, "bin", "cua-driver", executableName),
+    paths.join(executableDir, "cua-driver", executableName),
   ];
   const seen = new Set<string>();
   return candidates.filter((candidate): candidate is string => {

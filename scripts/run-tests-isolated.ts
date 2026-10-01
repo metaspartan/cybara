@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync } from "fs";
+import { removeTestHome } from "./test-home-cleanup";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -16,6 +17,12 @@ try {
       ...process.env,
       HOME: root,
       USERPROFILE: root,
+      CONFIG_DIR: cybaraHome,
+      CYBARA_RESOURCE_DIR: undefined,
+      CYBARA_PLUGIN_DIR: undefined,
+      CYBARA_COMPILED: undefined,
+      CYBARA_UI_DIR: undefined,
+      CYBARA_API_KEY: undefined,
       CYBARA_HOME: cybaraHome,
       CYBARA_TEST_ISOLATED: "1",
       CYBARA_TEST_REAL_HOME: process.env.CYBARA_TEST_REAL_HOME || process.env.HOME || "",
@@ -26,5 +33,5 @@ try {
   });
   process.exitCode = await child.exited;
 } finally {
-  rmSync(root, { recursive: true, force: true });
+  await removeTestHome(root);
 }

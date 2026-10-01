@@ -263,8 +263,22 @@ describe("Tauri wiring", () => {
     expect(themePermission).toContain('"write_theme_file"');
     expect(themeFiles).toContain('invoke("write_theme_file", { path, content })');
     expect(themeFiles).toContain("document.body.appendChild(anchor)");
-    expect(imagePermission).toContain('commands.allow = ["save_image_file"]');
+    expect(imagePermission).toContain(
+      'commands.allow = ["save_image_file", "copy_image_to_clipboard"]'
+    );
+    expect(imagePermission).not.toContain("commands.deny");
+    expect(imageExport).toContain('invoke("copy_image_to_clipboard", {');
+    expect(tauriMain).toContain("image_export::copy_image_to_clipboard");
     expect(imageExport).toContain('invoke("save_image_file", { path, dataBase64 })');
     expect(tauriMain).toContain("image_export::save_image_file");
+    const capabilities = JSON.parse(
+      readFileSync(join(ROOT_DIR, "src-tauri", "capabilities", "default.json"), "utf8")
+    ) as { permissions: string[]; remote: { urls: string[] } };
+    expect(capabilities.permissions).toContain("dialog:allow-save");
+    expect(
+      capabilities.remote.urls.every((url) =>
+        /^http:\/\/(127\.0\.0\.1|localhost):\d+\/\*$/.test(url)
+      )
+    ).toBe(true);
   });
 });

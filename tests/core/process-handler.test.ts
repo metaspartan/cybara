@@ -175,14 +175,15 @@ describe("handleExec", () => {
 
   test("honors abort signals without blocking the process list", async () => {
     const controller = new AbortController();
+    const command = 'bun -e "await Bun.sleep(30000)"';
     const running = handleExec(
-      { command: "sleep 30" },
+      { command },
       { agentId: "test-agent", sessionId: "test-session", abortSignal: controller.signal }
     );
 
     const found = await waitFor(async () => {
       const list = (await handleProcess({ action: "list" })) as ProcListEntry[];
-      return list.find((p) => p.command.includes("sleep 30"));
+      return list.find((p) => p.command === command);
     });
     expect(found).toBeDefined();
 
@@ -237,14 +238,15 @@ describe("handleGit", () => {
 describe("handleProcess kill actually terminates the process", () => {
   test("list surfaces a running async process and kill stops it", async () => {
     let exitCode: number | undefined;
-    const running = handleExecAsync({ command: "sleep 30" });
+    const command = 'bun -e "await Bun.sleep(30000)"';
+    const running = handleExecAsync({ command });
     void running.then((r) => {
       exitCode = r.exitCode;
     });
 
     const found = await waitFor(async () => {
       const list = (await handleProcess({ action: "list" })) as ProcListEntry[];
-      return list.find((p) => p.command.includes("sleep 30"));
+      return list.find((p) => p.command === command);
     });
     expect(found).toBeDefined();
 
@@ -257,10 +259,8 @@ describe("handleProcess kill actually terminates the process", () => {
     const after = (await handleProcess({ action: "list" })) as ProcListEntry[];
     expect(after.find((p) => p.sessionId === found.sessionId)).toBeUndefined();
 
-    await waitFor(() => (exitCode !== undefined ? true : undefined), 4000).catch(() => undefined);
-    if (exitCode !== undefined) {
-      expect(exitCode).not.toBe(0);
-    }
+    await waitFor(() => (exitCode !== undefined ? true : undefined), 4000);
+    expect(exitCode).not.toBe(0);
   }, 15000);
 
   test("killing an unknown id fails cleanly", async () => {

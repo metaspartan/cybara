@@ -1,3 +1,4 @@
+import type { SessionContextUsage } from "@/types";
 import { createAuthenticatedWebSocket, withGatewayBasePath } from "@/lib/auth";
 import {
   consumeStatusStreamReplayEvents,
@@ -49,6 +50,7 @@ export interface StatusSessionSnapshot {
 }
 
 export interface StatusStreamStatusEvent {
+  contextUsage?: SessionContextUsage;
   type: "status";
   runId?: string;
   sequence?: number;

@@ -60,13 +60,25 @@ function checkpointPath(storeDir: string, checkpointId: string): string | null {
 }
 
 async function execGit(args: string[], cwd: string, env?: Record<string, string>): Promise<string> {
-  const proc = Bun.spawn(["git", ...args], {
-    cwd,
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-    env: buildSubprocessEnvironment(env),
-  });
+  const proc = Bun.spawn(
+    [
+      "git",
+      "-c",
+      "core.autocrlf=false",
+      "-c",
+      "core.eol=lf",
+      "-c",
+      "core.quotePath=false",
+      ...args,
+    ],
+    {
+      cwd,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: buildSubprocessEnvironment(env),
+    }
+  );
   const [stdout, stderr, exitCode] = await Promise.all([
     readSubprocessStreamAsText(proc.stdout),
     readSubprocessStreamAsText(proc.stderr),

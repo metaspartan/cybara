@@ -22,7 +22,7 @@ describe("image-size denial-of-service patch", () => {
 
   test("a zero-length ICNS entry terminates instead of looping forever", () => {
     const script = [
-      "const { imageSize } = require(process.argv[1]);",
+      "const { imageSize } = await import(process.argv[1]);",
       "const buffer = Buffer.alloc(32);",
       'buffer.write("icns", 0, "ascii");',
       "buffer.writeUInt32BE(32, 4);",
@@ -33,10 +33,16 @@ describe("image-size denial-of-service patch", () => {
     ].join("\n");
 
     const result = Bun.spawnSync(
-      ["node", "-e", script, `${process.cwd()}/apps/mobile/node_modules/image-size/dist/index.js`],
+      [
+        process.execPath,
+        "-e",
+        script,
+        `${process.cwd()}/apps/mobile/node_modules/image-size/dist/index.js`,
+      ],
       { timeout: 15_000 }
     );
 
+    expect(result.exitCode).toBe(0);
     expect(result.stdout.toString()).toContain("terminated");
   }, 20_000);
 });

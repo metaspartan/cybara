@@ -432,7 +432,7 @@ export interface SessionContextUsage {
   compacted?: boolean;
   compactionCount?: number;
   compactedTokens?: number;
-  source?: "estimated";
+  source?: "provider" | "estimated";
 }
 
 export type SessionGoalStatus = "active" | "paused" | "blocked" | "complete";

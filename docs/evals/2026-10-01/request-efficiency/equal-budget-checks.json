@@ -1,0 +1,54 @@
+{
+  "model": "space-bunny-free",
+  "input_count": 20,
+  "checks": [
+    {
+      "run_id": "r1-multi-file-ledger-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-multi-file-ledger-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-exact-retrieval-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-exact-retrieval-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-boundary-transform-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-boundary-transform-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-exact-retrieval-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-exact-retrieval-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-boundary-transform-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-boundary-transform-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-multi-file-ledger-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-multi-file-ledger-candidate",
+      "inputs_preserved": true
+    }
+  ]
+}
