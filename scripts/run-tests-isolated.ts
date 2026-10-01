@@ -1,10 +1,12 @@
 import { mkdtempSync } from "fs";
 import { removeTestHome } from "./test-home-cleanup";
-import { tmpdir } from "os";
+import { homedir, tmpdir } from "os";
+import { testBrowserCachePath } from "./test-browser-cache";
 import { join } from "path";
 
 const root = mkdtempSync(join(tmpdir(), "cybara-tests-"));
 const cybaraHome = join(root, ".cybara");
+const realHome = process.env.CYBARA_TEST_REAL_HOME || process.env.HOME || homedir();
 const timeoutMs = Number.parseInt(process.env.CYBARA_TEST_TIMEOUT_MS ?? "15000", 10);
 const boundedTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs >= 5000 ? timeoutMs : 15000;
 const testFlags = ["test", "--timeout", String(boundedTimeoutMs)];
@@ -24,8 +26,9 @@ try {
       CYBARA_UI_DIR: undefined,
       CYBARA_API_KEY: undefined,
       CYBARA_HOME: cybaraHome,
+      PLAYWRIGHT_BROWSERS_PATH: testBrowserCachePath(process.platform, process.env, realHome),
       CYBARA_TEST_ISOLATED: "1",
-      CYBARA_TEST_REAL_HOME: process.env.CYBARA_TEST_REAL_HOME || process.env.HOME || "",
+      CYBARA_TEST_REAL_HOME: realHome,
     },
     stdin: "inherit",
     stdout: "inherit",
