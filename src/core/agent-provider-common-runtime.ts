@@ -50,6 +50,11 @@ import {
   toNoToolChoiceRequestBody,
 } from "./llm/tool-choice-compat";
 import {
+  countUnserializableToolCallArguments,
+  shouldRetryByRepairingToolCallArguments,
+  toRepairedToolCallArgumentsRequestBody,
+} from "./llm/tool-call-argument-compat";
+import {
   compactOpenAIRequestMessagesForContext as compactOpenAIRequestMessages,
   isContextOverflowError,
 } from "./llm/tool-transcript";
@@ -812,6 +817,20 @@ export abstract class AgentProviderCommonRuntime {
     return toNoToolChoiceRequestBody(requestBody);
   }
 
+  protected shouldRetryByRepairingToolCallArguments(
+    status: number,
+    errorText: string,
+    requestBody: Record<string, unknown>
+  ): boolean {
+    return shouldRetryByRepairingToolCallArguments(status, errorText, requestBody);
+  }
+
+  protected toRepairedToolCallArgumentsRequestBody(
+    requestBody: Record<string, unknown>
+  ): Record<string, unknown> {
+    return toRepairedToolCallArgumentsRequestBody(requestBody);
+  }
+
   protected hasReasoningRequestControls(requestBody: Record<string, unknown>): boolean {
     return ["reasoning_effort", "reasoning", "thinking", "reasoning_split", "enable_thinking"].some(
       (key) => requestBody[key] !== undefined
@@ -1202,6 +1221,7 @@ export abstract class AgentProviderCommonRuntime {
     let attemptedReasoningRemovalRetry = false;
     let attemptedToolChoiceCompatibilityRetry = false;
     let attemptedToolChoiceRemovalRetry = false;
+    let attemptedToolCallArgumentRepairRetry = false;
     let attemptedTextOnlyRetry = false;
     let repeatedBlankImageRequest = false;
     let contextRetryCount = 0;
@@ -1366,6 +1386,18 @@ export abstract class AgentProviderCommonRuntime {
           "[Agent] Retrying OpenAI request without tool_choice due to thinking-mode incompatibility"
         );
         currentBody = this.toNoToolChoiceRequestBody(currentBody);
+        continue;
+      }
+
+      if (
+        !attemptedToolCallArgumentRepairRetry &&
+        this.shouldRetryByRepairingToolCallArguments(response.status, errorText, currentBody)
+      ) {
+        attemptedToolCallArgumentRepairRetry = true;
+        console.log(
+          `[Agent] Provider could not decode ${countUnserializableToolCallArguments(currentBody)} malformed tool call argument payload(s); retrying with repaired arguments`
+        );
+        currentBody = this.toRepairedToolCallArgumentsRequestBody(currentBody);
         continue;
       }
 

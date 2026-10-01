@@ -31,7 +31,7 @@ export interface LlmFailureContext {
 }
 
 const UPSTREAM_JSON_DECODE_PATTERN =
-  /expecting value|unexpected end of (?:json|input)|jsondecodeerror|json\.loads?\s*\(?\)?\s*failed|invalid \w*json/i;
+  /expecting value|expecting property name|unexpected end of (?:json|input)|jsondecodeerror|json\.loads?\s*\(?\)?\s*failed|invalid \w*json/i;
 
 function describeBadRequestRejection(
   detail: string | undefined,
@@ -40,7 +40,7 @@ function describeBadRequestRejection(
 ): string {
   const reported = detail ?? rawMessage;
   if (UPSTREAM_JSON_DECODE_PATTERN.test(reported)) {
-    return `Provider rejected the request (${status}) because its own server could not parse the request it received ("${detail ?? "malformed JSON"}"). This is a provider-side decoding fault, not a malformed tool call. Retry the turn; if it persists, switch provider or model, and check whether this model id is served by that endpoint.`;
+    return `The provider could not decode a tool call from earlier in this conversation, so this turn was not sent. Nothing was lost — send the message again and the agent will continue. If it repeats, start a new chat.`;
   }
   return detail
     ? `Provider rejected the request (${status}): ${detail}`
