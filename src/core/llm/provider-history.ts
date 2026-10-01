@@ -10,6 +10,7 @@ import {
   toOpenAIImageBlock,
 } from "./image-blocks";
 import { normalizeKimiCompatibleAssistantToolMessage } from "./kimi-wire";
+import { serializeToolCallArguments } from "./tool-call-argument-repair";
 
 export interface BedrockHistoryMessage {
   role: "user" | "assistant";
@@ -272,7 +273,7 @@ export function toOpenAIChatMessage(
         type: "function",
         function: {
           name: toolCall.name,
-          arguments: JSON.stringify(toolCall.arguments),
+          arguments: serializeToolCallArguments(toolCall.arguments),
         },
       })),
     };

@@ -1,3 +1,8 @@
+import {
+  isUpstreamJsonDecodeError,
+  unserializableToolCallArgumentCount,
+} from "./llm/tool-call-argument-repair";
+
 function extractLlmErrorDetail(message: string): string | undefined {
   const afterDash = message.replace(/^API error[^:]*:\s*\d+\s*-\s*/i, "");
   const candidate = afterDash !== message ? afterDash : message;
@@ -28,6 +33,24 @@ export interface LlmFailureContext {
   providerName?: string;
   baseUrl?: string | null;
   platform?: NodeJS.Platform;
+}
+
+function describeBadRequestRejection(
+  detail: string | undefined,
+  status: number,
+  rawMessage: string,
+  unserializableToolCallArguments: number
+): string {
+  const reported = detail ?? rawMessage;
+  if (unserializableToolCallArguments > 0) {
+    return `The provider could not decode ${unserializableToolCallArguments} tool call argument payload(s) replayed from earlier in this conversation, so this turn was not sent. Nothing was lost — resend the message and the agent will continue. If it repeats, start a new chat. Provider detail: ${reported}`;
+  }
+  if (isUpstreamJsonDecodeError(reported)) {
+    return `Provider rejected the request (${status}) because the provider could not decode part of the request it received. No malformed tool call from this conversation was found, so this is a provider-side decoding fault. Provider detail: ${reported}`;
+  }
+  return detail
+    ? `Provider rejected the request (${status}): ${detail}`
+    : `Provider rejected the request (${status}). The model may not support a sent parameter.`;
 }
 
 const CONNECTION_FAILURE_PATTERN =
@@ -140,9 +163,12 @@ export function formatLlmFailure(error: unknown, context?: LlmFailureContext): s
   const detail = extractLlmErrorDetail(message);
   if (lower.includes("400") || lower.includes("unsupported") || lower.includes("invalid")) {
     const status = extractedStatus ?? 400;
-    return detail
-      ? `Provider rejected the request (${status}): ${detail}`
-      : `Provider rejected the request (${status}). The model may not support a sent parameter.`;
+    return describeBadRequestRejection(
+      detail,
+      status,
+      message,
+      unserializableToolCallArgumentCount(error)
+    );
   }
   if (lower.includes("404")) {
     return detail
