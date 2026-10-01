@@ -83,6 +83,59 @@ describe("tool call argument repair", () => {
     expect(serializeToolCallArguments(serialized)).toBe(serialized);
   });
 
+  test("never rewrites a python literal inside string content", () => {
+    const code = "if x is None:\n    return True";
+    expect(parseToolCallArguments(`{'path': 'x.py', 'content': '${code}'}`)).toEqual({
+      path: "x.py",
+      content: code,
+    });
+    expect(
+      parseToolCallArguments(`{'path': 'x.py', 'content': 'if x is None:\\n    return True'}`)
+    ).toEqual({
+      path: "x.py",
+      content: code,
+    });
+  });
+
+  test("keeps multi-line string content instead of losing it to an invalid payload", () => {
+    const script = "def f():\n    if x is None:\n        return True\n";
+    expect(parseToolCallArguments(`{'path': 'a.py', 'content': '${script}'}`)).toEqual({
+      path: "a.py",
+      content: script,
+    });
+  });
+
+  test("never rewrites bare literals in strings before a colon or comma", () => {
+    expect(parseToolCallArguments("{code: 'if v: True then pass'}")).toEqual({
+      code: "if v: True then pass",
+    });
+    expect(parseToolCallArguments("{note: 'ratio: 3 means ok'}")).toEqual({
+      note: "ratio: 3 means ok",
+    });
+    expect(parseToolCallArguments("{note: 'status, None, False'}")).toEqual({
+      note: "status, None, False",
+    });
+  });
+
+  test("never strips a comma that looks like a trailing comma inside a string", () => {
+    expect(parseToolCallArguments("{content: 'x, }'}")).toEqual({ content: "x, }" });
+    expect(parseToolCallArguments("{content: 'a, ]'}")).toEqual({ content: "a, ]" });
+    expect(parseToolCallArguments("{content: 'drop the brace } and comma ,'}")).toEqual({
+      content: "drop the brace } and comma ,",
+    });
+  });
+
+  test("still repairs bare literals and trailing commas outside strings", () => {
+    expect(parseToolCallArguments("{dry: True, path: 'a', limit: None,}")).toEqual({
+      dry: true,
+      path: "a",
+      limit: null,
+    });
+    expect(parseToolCallArguments("{items: [1, 2, True,],}")).toEqual({
+      items: [1, 2, true],
+    });
+  });
+
   test("never corrupts already-valid arguments", () => {
     const valid = {
       path: "src/app.ts",

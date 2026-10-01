@@ -122,19 +122,94 @@ function normalizeQuotes(text: string): string {
   return out;
 }
 
-function replaceBareLiterals(text: string): string {
-  return text.replace(
-    /(^|[\s,[\]{}:])(-?\d*\.\d+|-?\d+|true|false|null|none|True|False|None|NaN|Infinity|undefined)(?=\s*[,}\]:]|$)/g,
-    (match, prefix: string, token: string) => {
-      const mapped = UNQUOTED_JSON_LITERALS[token];
-      if (mapped) return `${prefix}${mapped}`;
-      return match;
-    }
-  );
+const CONTROL_CHARACTER_ESCAPES: Record<string, string> = {
+  "\n": "\\n",
+  "\r": "\\r",
+  "\t": "\\t",
+  "\b": "\\b",
+  "\f": "\\f",
+};
+
+const BARE_VALUE_TOKEN =
+  /^-?(?:\d+\.\d+|\d+|true|false|null|none|True|False|None|NaN|Infinity|undefined)$/;
+
+function opensValuePosition(text: string, index: number): boolean {
+  for (let probe = index - 1; probe >= 0; probe -= 1) {
+    const char = text[probe] as string;
+    if (/\s/.test(char)) continue;
+    return char === "," || char === "[" || char === "{" || char === ":";
+  }
+  return true;
 }
 
-function stripTrailingCommas(text: string): string {
-  return text.replace(/,\s*([}\]])/g, "$1");
+function closesValuePosition(text: string, index: number): boolean {
+  for (let probe = index; probe < text.length; probe += 1) {
+    const char = text[probe] as string;
+    if (/\s/.test(char)) continue;
+    return char === "," || char === "}" || char === "]" || char === ":";
+  }
+  return true;
+}
+
+function rewriteStructureOutsideStrings(text: string): string {
+  let out = "";
+  let state: QuoteState = "outside";
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index] as string;
+
+    if (state !== "outside") {
+      if (char === "\\") {
+        out += char + (text[index + 1] ?? "");
+        index += 1;
+        continue;
+      }
+      if ((state === "double" && char === '"') || (state === "single" && char === "'")) {
+        state = "outside";
+      }
+      const escape = CONTROL_CHARACTER_ESCAPES[char];
+      out += escape ?? char;
+      continue;
+    }
+
+    if (char === '"') {
+      state = "double";
+      out += char;
+      continue;
+    }
+    if (char === "'") {
+      state = "single";
+      out += char;
+      continue;
+    }
+
+    if (char === ",") {
+      let probe = index + 1;
+      while (probe < text.length && /\s/.test(text[probe] as string)) probe += 1;
+      const next = text[probe];
+      if (next !== "}" && next !== "]") out += char;
+      continue;
+    }
+
+    if (/[A-Za-z0-9-]/.test(char)) {
+      let end = index + 1;
+      while (end < text.length && /[A-Za-z0-9._-]/.test(text[end] as string)) end += 1;
+      const token = text.slice(index, end);
+      const mapped =
+        BARE_VALUE_TOKEN.test(token) &&
+        opensValuePosition(text, index) &&
+        closesValuePosition(text, end)
+          ? UNQUOTED_JSON_LITERALS[token]
+          : undefined;
+      out += mapped ?? token;
+      index = end - 1;
+      continue;
+    }
+
+    out += char;
+  }
+
+  return out;
 }
 
 function quoteBareKeys(text: string): string {
@@ -220,7 +295,7 @@ function quoteBareKeys(text: string): string {
 }
 
 export function repairJsonLikeText(raw: string): string {
-  return stripTrailingCommas(replaceBareLiterals(quoteBareKeys(normalizeQuotes(raw))));
+  return rewriteStructureOutsideStrings(quoteBareKeys(normalizeQuotes(raw)));
 }
 
 export function parseToolCallArguments(raw: unknown): Record<string, unknown> | null {
