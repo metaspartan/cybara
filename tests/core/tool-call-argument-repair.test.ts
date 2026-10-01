@@ -45,6 +45,44 @@ describe("tool call argument repair", () => {
     expect(parseToolCallArguments("{path: 'a.ts',}")).toEqual({ path: "a.ts" });
   });
 
+  test("repairs every bare key, not only the first", () => {
+    expect(parseToolCallArguments("{path: 'a.ts', limit: 40}")).toEqual({
+      path: "a.ts",
+      limit: 40,
+    });
+    expect(
+      parseToolCallArguments("{path: 'a.ts', limit: 40, offset: 2, caseSensitive: True}")
+    ).toEqual({ path: "a.ts", limit: 40, offset: 2, caseSensitive: true });
+  });
+
+  test("re-arms bare key quoting after a nested object closes", () => {
+    expect(parseToolCallArguments("{outer: {path: 'x.ts'}, limit: 2}")).toEqual({
+      outer: { path: "x.ts" },
+      limit: 2,
+    });
+  });
+
+  test("never quotes array elements as if they were keys", () => {
+    expect(parseToolCallArguments("{items: ['a', 'b'], n: 1}")).toEqual({
+      items: ["a", "b"],
+      n: 1,
+    });
+    expect(parseToolCallArguments("{vals: [1, 2, 3], ok: True}")).toEqual({
+      vals: [1, 2, 3],
+      ok: true,
+    });
+    expect(parseToolCallArguments("{edits: [{path: 'a', text: 'x'}], dry: False}")).toEqual({
+      edits: [{ path: "a", text: "x" }],
+      dry: false,
+    });
+  });
+
+  test("preserves array elements inside valid JSON arguments", () => {
+    const valid = { items: ["a", "b"], nested: [{ k: "v" }], n: 1 };
+    const serialized = JSON.stringify(valid);
+    expect(serializeToolCallArguments(serialized)).toBe(serialized);
+  });
+
   test("never corrupts already-valid arguments", () => {
     const valid = {
       path: "src/app.ts",

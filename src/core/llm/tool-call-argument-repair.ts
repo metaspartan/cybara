@@ -141,6 +141,7 @@ function quoteBareKeys(text: string): string {
   let out = "";
   let state: QuoteState = "outside";
   let expectKeyPosition = false;
+  const containers: Array<"{" | "["> = [];
 
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index] as string;
@@ -170,16 +171,29 @@ function quoteBareKeys(text: string): string {
       continue;
     }
     if (char === "{") {
+      containers.push("{");
       expectKeyPosition = true;
       out += char;
       continue;
     }
-    if (isCloseDelimiter(char)) {
+    if (char === "[") {
+      containers.push("[");
       expectKeyPosition = false;
       out += char;
       continue;
     }
-    if (/\s/.test(char) || char === ",") {
+    if (isCloseDelimiter(char)) {
+      containers.pop();
+      expectKeyPosition = false;
+      out += char;
+      continue;
+    }
+    if (char === ",") {
+      expectKeyPosition = containers[containers.length - 1] === "{";
+      out += char;
+      continue;
+    }
+    if (/\s/.test(char)) {
       out += char;
       continue;
     }
