@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "fs";
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   chunkPackages,
+  hasVerifiedSignatureParserPatch,
   isAdvisoryOutage,
   isTransportKill,
   parseLockfilePackages,
@@ -162,4 +165,34 @@ describe("chunkPackages", () => {
   test("handles empty input", () => {
     expect(chunkPackages([], 500)).toEqual([]);
   });
+});
+
+test("signature-parser audit exception requires installed source and exact registered patch", () => {
+  const root = mkdtempSync(join(tmpdir(), "cybara-signature-audit-"));
+  try {
+    expect(hasVerifiedSignatureParserPatch(root)).toBe(false);
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({
+        patchedDependencies: { "node-forge@1.4.0": "patches/node-forge@1.4.0.patch" },
+      })
+    );
+    expect(hasVerifiedSignatureParserPatch(root)).toBe(false);
+    mkdirSync(join(root, "node_modules/node-forge/lib"), { recursive: true });
+    const source = join(root, "node_modules/node-forge/lib/rsa.js");
+    writeFileSync(source, "obj.value.length !== 2");
+    expect(hasVerifiedSignatureParserPatch(root)).toBe(false);
+    writeFileSync(
+      source,
+      "obj.value.length !== 2 || obj.value[0].value.length !== (('parameters' in capture) ? 2 : 1)"
+    );
+    expect(hasVerifiedSignatureParserPatch(root)).toBe(true);
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({ patchedDependencies: { "node-forge@1.4.0": "wrong.patch" } })
+    );
+    expect(hasVerifiedSignatureParserPatch(root)).toBe(false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
