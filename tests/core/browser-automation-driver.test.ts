@@ -39,7 +39,7 @@ describe("browser automation driver", () => {
     browser = await launchPuppeteerBrowser({
       executablePath,
       headless: true,
-      args: [],
+      args: process.env.CI === "true" && process.platform === "linux" ? ["--no-sandbox"] : [],
       timeout: 15_000,
     });
     const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
