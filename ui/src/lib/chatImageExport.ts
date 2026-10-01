@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
-import { bytesToBase64 } from "@/lib/chatImages";
+import { apiFetch } from "@/lib/auth";
+import { bytesToBase64, requiresAuthenticatedImageFetch } from "@/lib/chatImages";
 import { IMAGE_MIME_BY_EXTENSION } from "../../../shared/image-formats";
 
 const SAVEABLE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".bmp", ".svg"];
@@ -53,7 +54,7 @@ export function chatImageFileName(alt: string, mimeType: string): string {
 }
 
 async function fetchImageBlob(src: string): Promise<Blob> {
-  const response = await fetch(src);
+  const response = requiresAuthenticatedImageFetch(src) ? await apiFetch(src) : await fetch(src);
   if (!response.ok) throw new Error(`Image request failed with status ${response.status}`);
   return response.blob();
 }

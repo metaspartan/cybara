@@ -30,6 +30,23 @@ export interface LlmFailureContext {
   platform?: NodeJS.Platform;
 }
 
+const UPSTREAM_JSON_DECODE_PATTERN =
+  /expecting value|unexpected end of (?:json|input)|jsondecodeerror|json\.loads?\s*\(?\)?\s*failed|invalid \w*json/i;
+
+function describeBadRequestRejection(
+  detail: string | undefined,
+  status: number,
+  rawMessage: string
+): string {
+  const reported = detail ?? rawMessage;
+  if (UPSTREAM_JSON_DECODE_PATTERN.test(reported)) {
+    return `Provider rejected the request (${status}) because its own server could not parse the request it received ("${detail ?? "malformed JSON"}"). This is a provider-side decoding fault, not a malformed tool call. Retry the turn; if it persists, switch provider or model, and check whether this model id is served by that endpoint.`;
+  }
+  return detail
+    ? `Provider rejected the request (${status}): ${detail}`
+    : `Provider rejected the request (${status}). The model may not support a sent parameter.`;
+}
+
 const CONNECTION_FAILURE_PATTERN =
   /was there a typo in the url or port|unable to connect|econnrefused|ehostunreach|enetunreach|ehostdown|connectionrefused|failedtoopensocket|connection refused|host is unreachable|network is unreachable/i;
 
@@ -140,9 +157,7 @@ export function formatLlmFailure(error: unknown, context?: LlmFailureContext): s
   const detail = extractLlmErrorDetail(message);
   if (lower.includes("400") || lower.includes("unsupported") || lower.includes("invalid")) {
     const status = extractedStatus ?? 400;
-    return detail
-      ? `Provider rejected the request (${status}): ${detail}`
-      : `Provider rejected the request (${status}). The model may not support a sent parameter.`;
+    return describeBadRequestRejection(detail, status, message);
   }
   if (lower.includes("404")) {
     return detail
