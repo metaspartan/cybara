@@ -1,5 +1,5 @@
 import { homedir } from "os";
-import { basename, join } from "path";
+import { posix, win32 } from "path";
 
 export const DEFAULT_RELEASE_REPOSITORY = "metaspartan/cybara";
 export const TAURI_DEVELOPMENT_UPDATER_PUBLIC_KEY =
@@ -106,9 +106,9 @@ export function resolveReleaseBinaryFilename(
 export function resolveDefaultInstallPath(platformValue: string, homeDir = homedir()): string {
   const platform = platformValue.toLowerCase();
   if (platform === "win32" || platform === "windows") {
-    return join(homeDir, "AppData", "Local", "Programs", "Cybara", "cybara.exe");
+    return win32.join(homeDir, "AppData", "Local", "Programs", "Cybara", "cybara.exe");
   }
-  return join(homeDir, ".local", "bin", "cybara");
+  return posix.join(homeDir, ".local", "bin", "cybara");
 }
 
 export function resolveSelfUpdateDestination(
@@ -116,7 +116,9 @@ export function resolveSelfUpdateDestination(
   platformValue: string,
   homeDir = homedir()
 ): string {
-  const executableName = basename(execPath).toLowerCase();
+  const platform = platformValue.toLowerCase();
+  const paths = platform === "win32" || platform === "windows" ? win32 : posix;
+  const executableName = paths.basename(execPath).toLowerCase();
   if (executableName === "cybara" || executableName === "cybara.exe") {
     return execPath;
   }

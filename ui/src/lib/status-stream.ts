@@ -1,3 +1,4 @@
+import type { SessionContextUsage, SessionPlanSnapshot } from "@/types";
 import { createAuthenticatedWebSocket, withGatewayBasePath } from "@/lib/auth";
 import {
   consumeStatusStreamReplayEvents,
@@ -49,6 +50,7 @@ export interface StatusSessionSnapshot {
 }
 
 export interface StatusStreamStatusEvent {
+  contextUsage?: SessionContextUsage;
   type: "status";
   runId?: string;
   sequence?: number;
@@ -106,12 +108,22 @@ export interface StatusStreamSessionMessageEvent {
   timestamp: number;
 }
 
+export interface StatusStreamSessionPlanEvent {
+  type: "session_plan";
+  sessionId: string;
+  plan: SessionPlanSnapshot | null;
+  timestamp: number;
+  runId?: string;
+  sequence?: number;
+}
+
 export type StatusStreamEvent =
   | StatusStreamStatusEvent
   | StatusStreamTaskEvent
   | StatusStreamSnapshotEvent
   | StatusStreamTokenEvent
-  | StatusStreamSessionMessageEvent;
+  | StatusStreamSessionMessageEvent
+  | StatusStreamSessionPlanEvent;
 
 interface ConnectStatusStreamHandlers {
   onEvent: (event: StatusStreamEvent) => void;

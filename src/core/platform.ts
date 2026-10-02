@@ -74,11 +74,12 @@ export function resetCommandWorksCache(): void {
 
 export function getWindowsShellCommand(
   command: string,
-  commandAvailable: (cmd: string) => boolean = commandExists
+  commandAvailable: (cmd: string) => boolean | string | null = (cmd) => Bun.which(cmd)
 ): string[] {
-  if (commandAvailable("pwsh")) {
+  const pwsh = commandAvailable("pwsh");
+  if (pwsh) {
     return [
-      "pwsh",
+      typeof pwsh === "string" ? pwsh : "pwsh",
       "-NoLogo",
       "-NoProfile",
       "-NonInteractive",
@@ -88,9 +89,10 @@ export function getWindowsShellCommand(
       command,
     ];
   }
-  if (commandAvailable("powershell")) {
+  const powershell = commandAvailable("powershell");
+  if (powershell) {
     return [
-      "powershell",
+      typeof powershell === "string" ? powershell : "powershell",
       "-NoLogo",
       "-NoProfile",
       "-NonInteractive",

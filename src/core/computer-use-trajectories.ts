@@ -8,7 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from "fs";
-import { basename, join, resolve } from "path";
+import { basename, join, resolve, sep } from "path";
 import { cybaraDir } from "./paths";
 import { redactSecrets } from "./redaction";
 
@@ -88,7 +88,7 @@ function ensureRoot(): void {
 function trajectoryDir(id: string): string {
   if (!/^[a-zA-Z0-9_-]{8,120}$/.test(id)) throw new Error("Invalid trajectory ID");
   const target = resolve(rootDir, id);
-  if (target === rootDir || !target.startsWith(`${resolve(rootDir)}/`)) {
+  if (target === rootDir || !target.startsWith(`${resolve(rootDir)}${sep}`)) {
     throw new Error("Invalid trajectory path");
   }
   return target;

@@ -4,6 +4,7 @@ import {
   maybeRunBackgroundReview,
 } from "../../src/core/background-review";
 import type { ToolContext } from "../../src/core/tools";
+import { agentManager } from "../../src/core/agent";
 
 describe("background review", () => {
   test("restricts review workers to memory tools", () => {
@@ -60,4 +61,31 @@ describe("background review", () => {
     expect(capturedContext?.activeModel).toBe("gpt-5.5");
     expect(capturedContext?.allowedToolNames).toEqual(BACKGROUND_REVIEW_TOOL_NAMES);
   });
+});
+
+test("memory-disabled agents do not launch background reviews or reserve provider work", async () => {
+  const agent = agentManager.create({
+    name: "Memory-disabled review fixture",
+    model: "fixture",
+    memory_enabled: false,
+  });
+  let started = 0;
+  try {
+    await maybeRunBackgroundReview(
+      { sessionId: `memory-disabled-${crypto.randomUUID()}`, agentId: agent.id },
+      "This durable-looking text must not override the explicit memory-disabled agent contract. ".repeat(
+        6
+      ),
+      {
+        minIntervalMs: 0,
+        spawn: async () => {
+          started += 1;
+          return { status: "accepted", runId: "unexpected", childSessionKey: "unexpected" };
+        },
+      }
+    );
+    expect(started).toBe(0);
+  } finally {
+    agentManager.delete(agent.id);
+  }
 });

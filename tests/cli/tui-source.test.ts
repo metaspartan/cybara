@@ -3,35 +3,33 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 const root = join(import.meta.dir, "..", "..");
-const cliSource = readFileSync(join(root, "src", "cli", "index.tsx"), "utf8");
-const cliTuiAppSource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "app.tsx"),
-  "utf8"
+
+function readNormalizedSource(path: string): string {
+  return readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+}
+
+const cliSource = readNormalizedSource(join(root, "src", "cli", "index.tsx"));
+const cliTuiAppSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "app.tsx")
 );
-const cliChatSource = readFileSync(join(root, "src", "cli", "commands", "chat.ts"), "utf8");
-const cliTuiMenuSource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "menu.tsx"),
-  "utf8"
+const cliChatSource = readNormalizedSource(join(root, "src", "cli", "commands", "chat.ts"));
+const cliTuiMenuSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "menu.tsx")
 );
-const cliTuiPanelsSource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "panels.tsx"),
-  "utf8"
+const cliTuiPanelsSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "panels.tsx")
 );
-const cliEvalsSource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "evals.tsx"),
-  "utf8"
+const cliEvalsSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "evals.tsx")
 );
-const cliTuiOperationsPanelsSource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "operations-panels.tsx"),
-  "utf8"
+const cliTuiOperationsPanelsSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "operations-panels.tsx")
 );
-const cliTuiChatSource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "chat.tsx"),
-  "utf8"
+const cliTuiChatSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "chat.tsx")
 );
-const cliTuiChatChromeSource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "chat-chrome.tsx"),
-  "utf8"
+const cliTuiChatChromeSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "chat-chrome.tsx")
 );
 const cliTuiInteractiveChatSource = [
   join(root, "src", "cli", "tui", "components", "interactive-chat.tsx"),
@@ -41,38 +39,31 @@ const cliTuiInteractiveChatSource = [
   join(root, "src", "cli", "tui", "components", "interactive-chat-layout.tsx"),
   join(root, "src", "cli", "tui", "components", "interactive-chat-view.tsx"),
 ]
-  .map((file) => readFileSync(file, "utf8"))
+  .map((file) => readNormalizedSource(file))
   .join("\n");
-const cliTuiMarkdownRenderSource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "markdown-render.tsx"),
-  "utf8"
+const cliTuiMarkdownRenderSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "markdown-render.tsx")
 );
-const cliTuiCommandsSource = readFileSync(join(root, "src", "cli", "tui", "commands.ts"), "utf8");
-const cliTuiChatHistorySource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "chat-history.tsx"),
-  "utf8"
+const cliTuiCommandsSource = readNormalizedSource(join(root, "src", "cli", "tui", "commands.ts"));
+const cliTuiChatHistorySource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "chat-history.tsx")
 );
-const cliTuiChatEnvironmentSource = readFileSync(
-  join(root, "src", "cli", "tui", "chat-environment.ts"),
-  "utf8"
+const cliTuiChatEnvironmentSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "chat-environment.ts")
 );
-const cliTuiChatEnvironmentViewSource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "chat-environment-view.tsx"),
-  "utf8"
+const cliTuiChatEnvironmentViewSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "chat-environment-view.tsx")
 );
-const cliTuiSettingsSource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "settings.tsx"),
-  "utf8"
+const cliTuiSettingsSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "settings.tsx")
 );
-const cliTuiApprovalsSource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "approvals.tsx"),
-  "utf8"
+const cliTuiApprovalsSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "approvals.tsx")
 );
-const cliPluginsSource = readFileSync(
-  join(root, "src", "cli", "tui", "components", "connectors.tsx"),
-  "utf8"
+const cliPluginsSource = readNormalizedSource(
+  join(root, "src", "cli", "tui", "components", "connectors.tsx")
 );
-const cliDocs = readFileSync(join(root, "docs", "cli.md"), "utf8");
+const cliDocs = readNormalizedSource(join(root, "docs", "cli.md"));
 
 const tuiPanels = [
   { command: "status", component: "TUIStatusCommand", label: "Status" },

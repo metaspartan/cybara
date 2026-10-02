@@ -38,14 +38,48 @@ const runtimeConsole = {
   error: output,
   info: output
 };
+const invokeTool = (name, args = {}) => new Promise((resolve, reject) => {
+  const id = nextId++;
+  pending.set(id, { resolve, reject });
+  send({ type: "tool_call", id, name, args });
+});
+const normalizedJson = (value) => {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") { if (!Number.isFinite(value)) throw new Error("Structured verification requires finite JSON numbers"); return value; }
+  if (Array.isArray(value)) return value.map(normalizedJson);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, normalizedJson(value[key])]));
+  }
+  throw new Error("Structured verification requires JSON values");
+};
+const assertEqual = (actual, expected) => {
+  const left = JSON.stringify(normalizedJson(actual));
+  const right = JSON.stringify(normalizedJson(expected));
+  if (left !== right) throw new Error("Structured verification failed: actual and expected differ");
+  return true;
+};
+const readJson = async (args) => {
+  const response = await invokeTool("read", args);
+  if (!response || typeof response.content !== "string") throw new Error("readJson requires a single text file with complete JSON content");
+  return JSON.parse(response.content);
+};
+const writeJson = async (args) => {
+  if (!args || typeof args !== "object" || typeof args.path !== "string" || !("value" in args)) throw new Error("writeJson requires path and value");
+  normalizedJson(args.value);
+  const content = JSON.stringify(args.value);
+  if (typeof content !== "string") throw new Error("writeJson requires a serializable JSON value");
+  const receipt = await invokeTool("write", { path: args.path, content });
+  const saved = await readJson({ path: args.path });
+  assertEqual(saved, args.value);
+  return { verified: true, verification: receipt.verification };
+};
 const cybara = new Proxy(Object.create(null), {
   get(_target, property) {
+    if (property === "assertEqual") return assertEqual;
+    if (property === "readJson" && allowed.has("read")) return readJson;
+    if (property === "writeJson" && allowed.has("read") && allowed.has("write")) return writeJson;
     if (typeof property !== "string" || !allowed.has(property)) return undefined;
-    return (args = {}) => new Promise((resolve, reject) => {
-      const id = nextId++;
-      pending.set(id, { resolve, reject });
-      send({ type: "tool_call", id, name: property, args });
-    });
+    return (args = {}) => invokeTool(property, args);
   }
 });
 process.on("message", async (message) => {

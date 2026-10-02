@@ -32,6 +32,13 @@ describe("cross-platform terminal shell selection", () => {
     expect(argv).toEqual(["C:\\Program Files\\PowerShell\\7\\pwsh.exe", "-NoLogo", "-NoProfile"]);
   });
 
+  test("resolves system PowerShell through the supplied resolver", () => {
+    const powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+    expect(
+      resolveWindowsShellArgv({}, (value) => (value === powershell ? powershell : null))
+    ).toEqual([powershell, "-NoLogo", "-NoProfile"]);
+  });
+
   test("falls back to a quiet cmd session when PowerShell is unavailable", () => {
     const argv = resolveWindowsShellArgv({ COMSPEC: "C:\\Windows\\System32\\cmd.exe" }, () => null);
 

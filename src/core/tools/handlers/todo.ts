@@ -1,3 +1,5 @@
+import { recordSessionPlan, deleteSessionPlan } from "../../session-plan-store";
+import type { SessionPlanLifecycle } from "../../session-plan";
 import type { ToolContext } from "../index";
 
 export type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
@@ -48,9 +50,12 @@ export function hydrateTodoState(
   };
 }
 
-export function clearTodoState(sessionId: string): void {
+export function clearTodoState(sessionId: string, preservePlan = false): void {
   const key = sessionId.trim();
-  if (key) delete sessionTodos[key];
+  if (key) {
+    delete sessionTodos[key];
+    if (!preservePlan) deleteSessionPlan(key);
+  }
 }
 
 function identityKey(content: string): string {
@@ -88,8 +93,14 @@ export async function handleTodo(
     cancelled: number;
   };
   note?: string;
+  updatedAt?: string;
+  revision?: number;
+  lifecycle?: SessionPlanLifecycle;
+  runId?: string;
 }> {
-  const rawItems = Array.isArray(args.items) ? (args.items as unknown[]) : [];
+  if (context?.abortSignal?.aborted) throw new Error("Plan update cancelled");
+  if (!Array.isArray(args.items)) throw new Error("Plan items must be an array");
+  const rawItems: unknown[] = args.items;
   const items: TodoItem[] = [];
   const validStatuses: TodoStatus[] = ["pending", "in_progress", "completed", "cancelled"];
   const validPriorities = ["high", "medium", "low"] as const;
@@ -108,6 +119,8 @@ export async function handleTodo(
       : "medium";
     items.push({ content, status, priority });
   }
+
+  if (rawItems.length > 0 && items.length === 0) throw new Error("Plan update has no valid items");
 
   const isSettled = (status: TodoStatus) => status === "completed" || status === "cancelled";
 
@@ -216,9 +229,20 @@ export async function handleTodo(
     ? " Active agent changed, so this full list replaced the previous plan without restoring omitted work."
     : "";
 
+  const snapshot = context?.sessionId
+    ? recordSessionPlan(context.sessionId, items, state.lastWriterAgentId)
+    : undefined;
   return {
     items,
     summary,
+    ...(snapshot
+      ? {
+          updatedAt: snapshot.updatedAt,
+          revision: snapshot.revision,
+          lifecycle: snapshot.lifecycle,
+          ...(snapshot.runId ? { runId: snapshot.runId } : {}),
+        }
+      : {}),
     note:
       "Task list updated. Keep at most one item in_progress at a time. Use this list to track multi-step work and avoid drift. Mark items cancelled when they become obsolete or out of scope. When all work is done, send a final update with every remaining item marked completed or cancelled before giving your answer." +
       handoffNote +

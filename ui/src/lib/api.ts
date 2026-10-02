@@ -1457,8 +1457,10 @@ export const chatApi = {
       `/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}/tool-calls/${encodeURIComponent(toolCallId)}`,
       { signal }
     ),
-  getSessionPlan: (id: string) =>
-    fetchApi<{ sessionId: string; plan: SessionPlanSnapshot | null }>("/sessions/" + id + "/plan"),
+  getSessionPlan: (id: string, signal?: AbortSignal) =>
+    fetchApi<{ sessionId: string; plan: SessionPlanSnapshot | null }>("/sessions/" + id + "/plan", {
+      signal,
+    }),
   getSessionGoal: (sessionId: string) =>
     fetchApi<{ success: boolean; sessionId: string; goal: SessionGoal | null }>(
       "/sessions/" + sessionId + "/goal"

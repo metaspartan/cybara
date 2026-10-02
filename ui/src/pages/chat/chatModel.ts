@@ -1301,7 +1301,10 @@ export function summarizePlanItems(items: SessionPlanItem[]): SessionPlanSnapsho
 
 export function isSessionPlanComplete(plan: SessionPlanSnapshot): boolean {
   return (
-    plan.summary.total > 0 &&
+    (plan.summary.total > 0 ||
+      (plan.summary.cancelled ?? 0) > 0 ||
+      plan.lifecycle === "completed" ||
+      plan.lifecycle === "cleared") &&
     plan.summary.completed >= plan.summary.total &&
     plan.summary.inProgress === 0 &&
     plan.summary.pending === 0
@@ -1318,6 +1321,7 @@ export function shouldShowSessionPlanInComposer(
     plan.items.length === 0 ||
     plan.summary.total === 0 ||
     !sessionWorking ||
+    (plan.lifecycle !== undefined && plan.lifecycle !== "active") ||
     isSessionPlanComplete(plan)
   ) {
     return false;
@@ -1333,9 +1337,19 @@ export function parsePlanFromToolCall(
   sessionId?: string | null,
   updatedAt?: string
 ): SessionPlanSnapshot | null {
-  if (tool.name !== "todo") return null;
+  if (tool.name !== "todo" || (tool.status !== undefined && tool.status !== "completed")) {
+    return null;
+  }
   const result = tryParseJsonRecord(tool.result);
   const resultRecord = isRecord(result) ? result : null;
+  if (
+    resultRecord?.success === false ||
+    resultRecord?.error ||
+    resultRecord?.status === "failed" ||
+    resultRecord?.status === "error" ||
+    resultRecord?.status === "blocked"
+  )
+    return null;
   const args = tool.arguments || tool.args || {};
   const hasResultItems = Array.isArray(resultRecord?.items);
   const items = hasResultItems
@@ -1350,7 +1364,22 @@ export function parsePlanFromToolCall(
     sessionId: planSessionId,
     items,
     summary: summarizePlanItems(items),
-    ...(updatedAt ? { updatedAt } : {}),
+    ...(typeof resultRecord?.updatedAt === "string"
+      ? { updatedAt: resultRecord.updatedAt }
+      : updatedAt
+        ? { updatedAt }
+        : {}),
+    ...(typeof resultRecord?.revision === "number" && Number.isFinite(resultRecord.revision)
+      ? { revision: resultRecord.revision }
+      : {}),
+    ...(typeof resultRecord?.runId === "string" ? { runId: resultRecord.runId } : {}),
+    ...(resultRecord?.lifecycle === "active" ||
+    resultRecord?.lifecycle === "completed" ||
+    resultRecord?.lifecycle === "paused" ||
+    resultRecord?.lifecycle === "needs_update" ||
+    resultRecord?.lifecycle === "cleared"
+      ? { lifecycle: resultRecord.lifecycle }
+      : {}),
     source: "todo_tool",
   };
 }
@@ -1359,6 +1388,7 @@ export function extractLatestPlanFromMessages(
   messages: ChatMessage[],
   sessionId?: string | null
 ): SessionPlanSnapshot | null {
+  let latest: SessionPlanSnapshot | null = null;
   for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
     const message = messages[messageIndex];
     if (!message || !Array.isArray(message.tool_calls)) continue;
@@ -1368,10 +1398,16 @@ export function extractLatestPlanFromMessages(
         sessionId,
         message.timestamp
       );
-      if (plan) return plan;
+      if (!plan || (sessionId && plan.sessionId !== sessionId)) continue;
+      if (
+        !latest ||
+        (plan.revision !== undefined &&
+          (latest.revision === undefined || plan.revision > latest.revision))
+      )
+        latest = plan;
     }
   }
-  return null;
+  return latest;
 }
 
 export function collectPlanTimelineFromMessages(
@@ -1839,4 +1875,61 @@ export function stripStreamingReasoningForDisplay(text: string): string {
   }
 
   return result.replace(/^\s+/, "");
+}
+
+export interface SessionPlanState {
+  plan: SessionPlanSnapshot | null;
+  revision: number | null;
+  updatedAt: number;
+  authoritative: boolean;
+}
+
+export function mergeSessionPlanState(
+  current: SessionPlanState,
+  incoming: SessionPlanSnapshot | null,
+  timestamp = 0
+): SessionPlanState {
+  const parsedTime = incoming?.updatedAt ? Date.parse(incoming.updatedAt) : 0;
+  const updatedAt = Math.max(timestamp, Number.isFinite(parsedTime) ? parsedTime : 0);
+  const revision = incoming?.revision ?? null;
+  if (current.authoritative) {
+    if (revision !== null && current.revision !== null && revision < current.revision)
+      return current;
+    if (incoming && revision === null && current.revision !== null) return current;
+    if (
+      (revision === null || current.revision === null || revision === current.revision) &&
+      updatedAt < current.updatedAt
+    )
+      return current;
+  }
+  if (current.authoritative && JSON.stringify(current.plan) === JSON.stringify(incoming)) {
+    return updatedAt > current.updatedAt ? { ...current, updatedAt } : current;
+  }
+  return {
+    plan: incoming,
+    revision: revision ?? current.revision,
+    updatedAt,
+    authoritative: true,
+  };
+}
+
+export function sessionPlanProgressLabel(plan: SessionPlanSnapshot): string {
+  const remaining = plan.summary.pending + plan.summary.inProgress;
+  if (plan.lifecycle === "cleared") return "Plan cleared";
+  if (plan.summary.total === 0)
+    return (plan.summary.cancelled ?? 0) > 0 ? "Plan cancelled" : "No tasks";
+  if (plan.lifecycle === "paused") return "Paused · " + remaining + " tasks remain";
+  if (plan.lifecycle === "needs_update")
+    return "Turn ended · " + remaining + " tasks need an update";
+  return plan.summary.completed + "/" + plan.summary.total + " complete";
+}
+
+export function sessionPlanCurrentTask(plan: SessionPlanSnapshot): string {
+  if (plan.lifecycle === "cleared") return "No active task";
+  if (plan.lifecycle === "completed" || isSessionPlanComplete(plan)) return "No active task";
+  return (
+    plan.items.find((item) => item.status === "in_progress")?.content ||
+    plan.items.find((item) => item.status === "pending")?.content ||
+    "No active task"
+  );
 }

@@ -1,10 +1,14 @@
-import { existsSync, realpathSync } from "fs";
+import { lstatSync, realpathSync } from "fs";
 import { homedir } from "os";
 import { resolve, isAbsolute, dirname, join } from "path";
 import { runtimeHomeDir } from "../cybara-home";
 import { cybaraDir } from "../paths";
 
-export type PathPolicyDenialReason = "sensitive-path" | "outside-workspace" | "empty-path";
+export type PathPolicyDenialReason =
+  | "sensitive-path"
+  | "outside-workspace"
+  | "empty-path"
+  | "unresolved-path";
 
 export type SensitiveReadMode = "blocked" | "env-files" | "all";
 
@@ -65,37 +69,31 @@ function resolvePath(p: string): string {
 
 function realPolicyPath(p: string): string | undefined {
   const absolute = resolve(p);
-  try {
-    if (existsSync(absolute)) {
-      return realpathSync.native(absolute);
+  let candidate = absolute;
+  while (true) {
+    try {
+      const real = realpathSync.native(candidate);
+      const suffix = absolute.slice(candidate.length).replace(/^[\\/]+/, "");
+      return suffix ? join(real, suffix) : real;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
+      try {
+        lstatSync(candidate);
+        return undefined;
+      } catch (statError) {
+        if ((statError as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
+      }
+      const parent = dirname(candidate);
+      if (parent === candidate) return undefined;
+      candidate = parent;
     }
-  } catch {
-    return undefined;
-  }
-
-  let parent = dirname(absolute);
-  while (parent && parent !== dirname(parent) && !existsSync(parent)) {
-    parent = dirname(parent);
-  }
-  if (!existsSync(parent)) return undefined;
-
-  try {
-    const realParent = realpathSync.native(parent);
-    const suffix = absolute.slice(parent.length).replace(/^[\\/]+/, "");
-    return suffix ? join(realParent, suffix) : realParent;
-  } catch {
-    return undefined;
   }
 }
 
-function policyPaths(rawPath: string): string[] {
-  const paths = [normalize(rawPath)];
+function policyPaths(rawPath: string): string[] | undefined {
   const real = realPolicyPath(rawPath);
-  if (real) {
-    const normalizedReal = normalize(real);
-    if (!paths.includes(normalizedReal)) paths.push(normalizedReal);
-  }
-  return paths;
+  if (!real) return undefined;
+  return [...new Set([normalize(rawPath), normalize(real)])];
 }
 
 function basenameOf(resolvedPath: string): string {
@@ -177,49 +175,99 @@ export function checkWritePath(
   }
 
   const candidates = policyPaths(rawPath);
-
-  for (const candidate of candidates) {
-    if (matchesDenyPattern(candidate)) {
-      return { allowed: false, reason: "sensitive-path", resolvedPath: resolved };
-    }
-
-    if (isUnderCybaraDir(candidate)) {
-      return { allowed: false, reason: "sensitive-path", resolvedPath: resolved };
-    }
-
-    for (const segment of DENY_PATH_SEGMENTS) {
-      if (isUnderHomeSubdir(candidate, segment)) {
-        return { allowed: false, reason: "sensitive-path", resolvedPath: resolved };
-      }
-    }
-
-    for (const prefix of options.extraDenyPrefixes ?? []) {
-      const prefixCandidates = policyPaths(prefix);
-      if (
-        prefixCandidates.some(
-          (normalizedPrefix) =>
-            candidate === normalizedPrefix || candidate.startsWith(`${normalizedPrefix}/`)
-        )
-      ) {
-        return { allowed: false, reason: "sensitive-path", resolvedPath: resolved };
-      }
-    }
+  if (!candidates) {
+    return {
+      allowed: false,
+      reason: "unresolved-path",
+      resolvedPath: resolved,
+    };
   }
 
   if (options.confineToWorkspace) {
     if (!options.workspaceRoot) {
-      return { allowed: false, reason: "outside-workspace", resolvedPath: resolved };
+      return {
+        allowed: false,
+        reason: "outside-workspace",
+        resolvedPath: resolved,
+      };
     }
-    const roots = policyPaths(options.workspaceRoot).map((root) => root.replace(/\/$/, ""));
+    const workspacePaths = policyPaths(options.workspaceRoot);
+    if (!workspacePaths) {
+      return {
+        allowed: false,
+        reason: "unresolved-path",
+        resolvedPath: resolved,
+      };
+    }
+    const roots = workspacePaths.map((root) => root.replace(/\/$/, ""));
     if (roots.some((root) => !isAbsolute(root))) {
-      return { allowed: false, reason: "outside-workspace", resolvedPath: resolved };
+      return {
+        allowed: false,
+        reason: "outside-workspace",
+        resolvedPath: resolved,
+      };
     }
     for (const candidate of candidates) {
       const underWorkspace = roots.some(
         (root) => candidate === root || candidate.startsWith(`${root}/`)
       );
       if (!underWorkspace) {
-        return { allowed: false, reason: "outside-workspace", resolvedPath: resolved };
+        return {
+          allowed: false,
+          reason: "outside-workspace",
+          resolvedPath: resolved,
+        };
+      }
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (matchesDenyPattern(candidate)) {
+      return {
+        allowed: false,
+        reason: "sensitive-path",
+        resolvedPath: resolved,
+      };
+    }
+
+    if (isUnderCybaraDir(candidate)) {
+      return {
+        allowed: false,
+        reason: "sensitive-path",
+        resolvedPath: resolved,
+      };
+    }
+
+    for (const segment of DENY_PATH_SEGMENTS) {
+      if (isUnderHomeSubdir(candidate, segment)) {
+        return {
+          allowed: false,
+          reason: "sensitive-path",
+          resolvedPath: resolved,
+        };
+      }
+    }
+
+    for (const prefix of options.extraDenyPrefixes ?? []) {
+      const prefixCandidates = policyPaths(prefix);
+      if (!prefixCandidates) {
+        return {
+          allowed: false,
+          reason: "unresolved-path",
+          resolvedPath: resolved,
+        };
+      }
+      if (
+        prefixCandidates.some(
+          (normalizedPrefix) =>
+            candidate === normalizedPrefix || candidate.startsWith(`${normalizedPrefix}/`)
+        )
+      ) {
+        return {
+          allowed: false,
+          reason: "sensitive-path",
+          resolvedPath: resolved,
+        };
       }
     }
   }
@@ -233,6 +281,8 @@ export function describeDenial(reason: PathPolicyDenialReason): string {
       return "Refused: the path points at a sensitive credential or key file. Write to a non-sensitive location instead.";
     case "outside-workspace":
       return "Refused: the path is outside the configured workspace root.";
+    case "unresolved-path":
+      return "Refused: the path could not be safely resolved by the filesystem.";
     case "empty-path":
       return "Refused: no path was provided.";
   }
@@ -273,6 +323,7 @@ export function assertReadablePath(
   const decision = checkWritePath(rawPath, options);
   if (!decision.allowed && decision.reason === "sensitive-path" && rawPath) {
     const candidates = policyPaths(rawPath);
+    if (!candidates) throw new Error(describeDenial("unresolved-path"));
     if (permittedBySensitiveReadMode(candidates, options?.sensitiveReads)) {
       return decision.resolvedPath;
     }

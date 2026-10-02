@@ -6,9 +6,25 @@ import {
   assertReadablePath,
 } from "../../src/core/tools/path-policy";
 import { homedir, tmpdir } from "os";
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
-import { join } from "path";
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "fs";
+import { join, resolve } from "path";
 import { cybaraDir } from "../../src/core/paths";
+import { linkDirectory, linkFile } from "../helpers/fs-symlink";
+
+function linkResolves(path: string): boolean {
+  try {
+    realpathSync.native(path);
+    return true;
+  } catch (error) {
+    expect(process.platform).toBe("win32");
+    expect((error as NodeJS.ErrnoException).code).toBe("EUNKNOWN");
+    return false;
+  }
+}
+
+function projectPath(relativePath: string): string {
+  return resolve("/Users/dev/project", relativePath).replace(/\\/g, "/");
+}
 
 describe("checkWritePath", () => {
   test("allows a normal project file", () => {
@@ -41,22 +57,22 @@ describe("checkWritePath", () => {
       ".env.dist",
       ".env.local.example",
     ]) {
-      expect(checkWritePath(`/Users/dev/project/${name}`).allowed).toBe(true);
-      expect(assertReadablePath(`/Users/dev/project/${name}`)).toBe(`/Users/dev/project/${name}`);
+      const expected = projectPath(name);
+      expect(checkWritePath(expected).allowed).toBe(true);
+      expect(assertReadablePath(expected)).toBe(expected);
     }
-    expect(checkWritePath("/Users/dev/project/.env").allowed).toBe(false);
-    expect(checkWritePath("/Users/dev/project/.env.production").allowed).toBe(false);
+    expect(checkWritePath(projectPath(".env")).allowed).toBe(false);
+    expect(checkWritePath(projectPath(".env.production")).allowed).toBe(false);
   });
 
   test("sensitive read modes open .env files or everything except Cybara's own data", () => {
-    const envPath = "/Users/dev/project/.env";
-    const keyPath = "/Users/dev/project/id_rsa";
+    const envPath = projectPath(".env");
+    const envLocalPath = projectPath(".env.local");
+    const keyPath = projectPath("id_rsa");
     expect(() => assertReadablePath(envPath)).toThrow("Settings → Safety");
     expect(() => assertReadablePath(envPath, { sensitiveReads: "blocked" })).toThrow("Refused");
     expect(assertReadablePath(envPath, { sensitiveReads: "env-files" })).toBe(envPath);
-    expect(
-      assertReadablePath("/Users/dev/project/.env.local", { sensitiveReads: "env-files" })
-    ).toBe("/Users/dev/project/.env.local");
+    expect(assertReadablePath(envLocalPath, { sensitiveReads: "env-files" })).toBe(envLocalPath);
     expect(() => assertReadablePath(keyPath, { sensitiveReads: "env-files" })).toThrow("Refused");
     expect(assertReadablePath(keyPath, { sensitiveReads: "all" })).toBe(keyPath);
     expect(assertReadablePath(envPath, { sensitiveReads: "all" })).toBe(envPath);
@@ -68,8 +84,10 @@ describe("checkWritePath", () => {
     );
     expect(checkWritePath(join(cybaraDir, "data", "platform.db")).allowed).toBe(false);
     expect(
-      assertReadablePath(join(cybaraDir, "memory", "notes.md"), { sensitiveReads: "all" })
-    ).toBe(join(cybaraDir, "memory", "notes.md"));
+      assertReadablePath(join(cybaraDir, "memory", "notes.md"), {
+        sensitiveReads: "all",
+      })
+    ).toBe(join(cybaraDir, "memory", "notes.md").replace(/\\/g, "/"));
     expect(() => assertWritablePath(envPath, { sensitiveReads: "all" })).toThrow("Refused");
   });
 
@@ -108,14 +126,44 @@ describe("checkWritePath", () => {
   test("workspace confinement blocks paths outside the root", () => {
     const root = process.cwd();
     expect(
-      checkWritePath(`${root}/src/x.ts`, { confineToWorkspace: true, workspaceRoot: root }).allowed
+      checkWritePath(`${root}/src/x.ts`, {
+        confineToWorkspace: true,
+        workspaceRoot: root,
+      }).allowed
     ).toBe(true);
     expect(
-      checkWritePath("/etc/passwd", { confineToWorkspace: true, workspaceRoot: root }).allowed
+      checkWritePath("/etc/passwd", {
+        confineToWorkspace: true,
+        workspaceRoot: root,
+      }).allowed
     ).toBe(false);
     expect(
-      checkWritePath("/etc/passwd", { confineToWorkspace: true, workspaceRoot: root }).reason
+      checkWritePath("/etc/passwd", {
+        confineToWorkspace: true,
+        workspaceRoot: root,
+      }).reason
     ).toBe("outside-workspace");
+  });
+
+  test("sensitive read overrides cannot bypass workspace confinement", () => {
+    const root = mkdtempSync(join(tmpdir(), "cybara-policy-read-root-"));
+    const outside = mkdtempSync(join(tmpdir(), "cybara-policy-read-outside-"));
+    try {
+      const secret = join(outside, ".env");
+      writeFileSync(secret, "TOKEN=secret");
+      for (const sensitiveReads of ["env-files", "all"] as const) {
+        expect(() =>
+          assertReadablePath(secret, {
+            sensitiveReads,
+            confineToWorkspace: true,
+            workspaceRoot: root,
+          })
+        ).toThrow("outside the configured workspace");
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   test("workspace confinement follows symlink targets before allowing a path", () => {
@@ -128,22 +176,59 @@ describe("checkWritePath", () => {
       const insideLink = join(root, "inside-link.txt");
       writeFileSync(outsideFile, "outside", "utf8");
       writeFileSync(insideTarget, "inside", "utf8");
-      symlinkSync(outsideFile, outsideLink);
-      symlinkSync(insideTarget, insideLink);
+      linkFile(outsideFile, outsideLink);
+      linkFile(insideTarget, insideLink);
 
       const outsideDecision = checkWritePath(outsideLink, {
         confineToWorkspace: true,
         workspaceRoot: root,
       });
       expect(outsideDecision.allowed).toBe(false);
-      expect(outsideDecision.reason).toBe("outside-workspace");
+      expect(outsideDecision.reason).toBe(
+        linkResolves(outsideLink) ? "outside-workspace" : "unresolved-path"
+      );
 
       expect(
-        checkWritePath(insideLink, { confineToWorkspace: true, workspaceRoot: root }).allowed
+        checkWritePath(insideLink, {
+          confineToWorkspace: true,
+          workspaceRoot: root,
+        }).allowed
+      ).toBe(linkResolves(insideLink));
+      expect(
+        checkWritePath(insideTarget, {
+          confineToWorkspace: true,
+          workspaceRoot: root,
+        }).allowed
       ).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  test("unresolvable links never fall back to lexical workspace paths", () => {
+    const root = mkdtempSync(join(tmpdir(), "cybara-policy-dangling-"));
+    try {
+      const link = join(root, "ordinary.txt");
+      linkFile(join(root, "missing.txt"), link);
+      const decision = checkWritePath(link, {
+        confineToWorkspace: true,
+        workspaceRoot: root,
+      });
+      expect(decision.allowed).toBe(false);
+      expect(decision.reason).toBe("unresolved-path");
+      expect(() => assertReadablePath(link, { sensitiveReads: "all" })).toThrow(
+        "could not be safely resolved"
+      );
+      expect(() => assertWritablePath(link)).toThrow("could not be safely resolved");
+      expect(
+        checkWritePath(join(root, "new", "ordinary.txt"), {
+          confineToWorkspace: true,
+          workspaceRoot: root,
+        }).allowed
+      ).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
@@ -154,12 +239,36 @@ describe("checkWritePath", () => {
       const secret = join(outside, ".env");
       const link = join(root, "safe-name.txt");
       writeFileSync(secret, "TOKEN=secret", "utf8");
-      symlinkSync(secret, link);
+      linkFile(secret, link);
+      const envLink = join(root, ".env");
+      linkFile(secret, envLink);
 
       const decision = checkWritePath(link);
       expect(decision.allowed).toBe(false);
-      expect(decision.reason).toBe("sensitive-path");
-      expect(() => assertReadablePath(link)).toThrow("reading this path is blocked");
+      const resolvable = linkResolves(link);
+      if (linkResolves(envLink)) {
+        expect(assertReadablePath(envLink, { sensitiveReads: "env-files" })).toBe(
+          envLink.replace(/\\/g, "/")
+        );
+      } else {
+        expect(() => assertReadablePath(envLink, { sensitiveReads: "env-files" })).toThrow(
+          "could not be safely resolved"
+        );
+        expect(checkWritePath(envLink).allowed).toBe(false);
+      }
+      expect(decision.reason).toBe(resolvable ? "sensitive-path" : "unresolved-path");
+      expect(() => assertReadablePath(link)).toThrow(
+        resolvable ? "reading this path is blocked" : "could not be safely resolved"
+      );
+      expect(() => assertReadablePath(link, { sensitiveReads: "env-files" })).toThrow("Refused");
+      if (!resolvable) {
+        expect(() => assertReadablePath(link, { sensitiveReads: "all" })).toThrow(
+          "could not be safely resolved"
+        );
+      }
+      expect(assertReadablePath(secret, { sensitiveReads: "env-files" })).toBe(
+        secret.replace(/\\/g, "/")
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(outside, { recursive: true, force: true });
@@ -171,14 +280,20 @@ describe("checkWritePath", () => {
     const outside = mkdtempSync(join(tmpdir(), "cybara-policy-newfile-outside-"));
     try {
       const link = join(root, "generated");
-      symlinkSync(outside, link, "dir");
+      linkDirectory(outside, link);
 
       const decision = checkWritePath(join(link, "new-file.txt"), {
         confineToWorkspace: true,
         workspaceRoot: root,
       });
       expect(decision.allowed).toBe(false);
-      expect(decision.reason).toBe("outside-workspace");
+      expect(decision.reason).toBe(linkResolves(link) ? "outside-workspace" : "unresolved-path");
+      expect(() =>
+        assertWritablePath(join(link, "new-file.txt"), {
+          confineToWorkspace: true,
+          workspaceRoot: root,
+        })
+      ).toThrow("Refused");
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(outside, { recursive: true, force: true });
@@ -190,13 +305,14 @@ describe("checkWritePath", () => {
     const denied = mkdtempSync(join(tmpdir(), "cybara-policy-deny-target-"));
     try {
       const link = join(root, "notes");
-      symlinkSync(denied, link, "dir");
+      linkDirectory(denied, link);
 
       const decision = checkWritePath(join(link, "daily.md"), {
         extraDenyPrefixes: [denied],
       });
       expect(decision.allowed).toBe(false);
-      expect(decision.reason).toBe("sensitive-path");
+      expect(decision.reason).toBe(linkResolves(link) ? "sensitive-path" : "unresolved-path");
+      expect(checkWritePath(join(root, "ordinary.txt")).allowed).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(denied, { recursive: true, force: true });
@@ -271,11 +387,15 @@ describe("checkWritePath", () => {
     const root = mkdtempSync(join(screenshotRoot, "path-policy-"));
     const outside = mkdtempSync(join(tmpdir(), "cybara-screenshot-outside-"));
     try {
-      const target = join(outside, "ordinary.txt");
+      const outsideDir = join(outside, "capture-dir");
+      mkdirSync(outsideDir, { recursive: true });
+      const target = join(outsideDir, "ordinary.txt");
       const link = join(root, "capture.png");
       writeFileSync(target, "outside", "utf8");
-      symlinkSync(target, link);
-      expect(() => assertReadablePath(link)).toThrow("reading this path is blocked");
+      linkDirectory(outsideDir, link);
+      expect(() => assertReadablePath(link)).toThrow(
+        linkResolves(link) ? "reading this path is blocked" : "could not be safely resolved"
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(outside, { recursive: true, force: true });

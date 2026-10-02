@@ -1,9 +1,12 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { resolve } from "node:path";
 import {
   buildSecurityAgentArgs,
   runSecurityCommand,
   type SecurityCommandRuntime,
 } from "../../src/cli/commands/security";
+
+const WORKSPACE = resolve("/workspace");
 
 describe("security command", () => {
   test("dispatches scans through the selected Cybara agent", () => {
@@ -13,7 +16,7 @@ describe("security command", () => {
         "/workspace"
       )
     ).toEqual([
-      "/security /workspace/repo\nUse a deep, exhaustive, multi-pass assessment.\nFocus on staged and unstaged working-tree changes.",
+      `/security ${resolve(WORKSPACE, "repo")}\nUse a deep, exhaustive, multi-pass assessment.\nFocus on staged and unstaged working-tree changes.`,
       "--workspace",
       "/workspace",
       "--agent",
@@ -39,7 +42,7 @@ describe("security command", () => {
     };
 
     expect(await runSecurityCommand(["scan", "."], runtime, "/workspace")).toBe(0);
-    expect(calls).toEqual([["/security /workspace", "--workspace", "/workspace"]]);
+    expect(calls).toEqual([[`/security ${WORKSPACE}`, "--workspace", "/workspace"]]);
   });
 
   test("rejects unsupported scanner-specific options", async () => {

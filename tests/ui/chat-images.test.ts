@@ -8,6 +8,7 @@ import {
   isSupportedImageType,
   loadChatImageSource,
   peekChatImageSource,
+  peekChatImageBlob,
   requiresAuthenticatedImageFetch,
   resetChatImageSourceCacheForTests,
   screenshotMediaSrc,
@@ -239,6 +240,8 @@ describe("chat image source cache", () => {
       cache: true,
     });
     expect(first.src).toBe("blob:cached-3");
+    expect(await peekChatImageBlob(first.src)?.text()).toBe("png");
+    expect(peekChatImageBlob(source)).toBe(peekChatImageBlob(first.src));
     expect(peekChatImageSource(source)).toBe("blob:cached-3");
     expect(first.revoke).toBeUndefined();
     const second = await loadChatImageSource(source, fetcher, createObjectUrl, () => undefined, {
@@ -248,5 +251,6 @@ describe("chat image source cache", () => {
     expect(fetches).toBe(1);
     resetChatImageSourceCacheForTests();
     expect(peekChatImageSource(source)).toBeUndefined();
+    expect(peekChatImageBlob(first.src)).toBeUndefined();
   });
 });

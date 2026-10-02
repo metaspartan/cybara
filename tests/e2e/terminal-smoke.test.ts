@@ -88,6 +88,8 @@ describe("Terminal e2e smoke", () => {
         ...process.env,
         CYBARA_API_KEY: apiKey,
         HOME: homeDir,
+        CYBARA_HOME: join(homeDir, ".cybara"),
+        CONFIG_DIR: join(homeDir, ".cybara"),
         USERPROFILE: homeDir,
         PORT: String(port),
       },
@@ -150,18 +152,19 @@ describe("Terminal e2e smoke", () => {
       ws.send(String.fromCharCode(127).repeat(3));
       ws.send("OK\r");
 
-      await waitFor(() => output.includes(`${editMarker}_OK`), 20000, 100);
+      await waitFor(() => output.includes(`${editMarker}_OK`), 10000, 100);
 
       output = "";
       ws.send(`${String.fromCharCode(27)}[A\r`);
-      await waitFor(() => output.includes(`${editMarker}_OK`), 20000, 100);
+      await waitFor(() => output.includes(`${editMarker}_OK`), 10000, 100);
 
       output = "";
       ws.send(process.platform === "win32" ? "ping -n 30 127.0.0.1 >NUL\r" : "sleep 30\r");
       await sleep(300);
       ws.send(String.fromCharCode(3));
+      await sleep(300);
       ws.send(`echo ${interruptMarker}\r`);
-      await waitFor(() => output.includes(interruptMarker), 20000, 100);
+      await waitFor(() => output.includes(interruptMarker), 10000, 100);
 
       const sessionsRes = await fetch(`${baseUrl}/api/terminal/sessions`, {
         headers: authHeaders(),
@@ -183,5 +186,5 @@ describe("Terminal e2e smoke", () => {
       const sessions = (await sessionsRes.json()) as Array<{ id: string }>;
       return !sessions.some((s) => s.id === sessionId);
     });
-  });
+  }, 35000);
 });

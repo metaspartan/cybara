@@ -1,0 +1,126 @@
+{
+  "model": "space-bunny-free",
+  "input_count": 56,
+  "checks": [
+    {
+      "run_id": "r1-multi-file-ledger-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-multi-file-ledger-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-exact-retrieval-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-exact-retrieval-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-boundary-transform-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-boundary-transform-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-string-fidelity-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-string-fidelity-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-multi-file-join-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-multi-file-join-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-dependency-order-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-dependency-order-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r1-coding-repair-candidate",
+      "inputs_preserved": true,
+      "independent_repair_passed": true,
+      "property_cases": 121
+    },
+    {
+      "run_id": "r1-coding-repair-omp",
+      "inputs_preserved": true,
+      "independent_repair_passed": true,
+      "property_cases": 121
+    },
+    {
+      "run_id": "r2-exact-retrieval-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-exact-retrieval-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-boundary-transform-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-boundary-transform-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-string-fidelity-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-string-fidelity-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-multi-file-join-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-multi-file-join-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-dependency-order-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-dependency-order-candidate",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-coding-repair-candidate",
+      "inputs_preserved": true,
+      "independent_repair_passed": true,
+      "property_cases": 121
+    },
+    {
+      "run_id": "r2-coding-repair-omp",
+      "inputs_preserved": true,
+      "independent_repair_passed": true,
+      "property_cases": 121
+    },
+    {
+      "run_id": "r2-multi-file-ledger-omp",
+      "inputs_preserved": true
+    },
+    {
+      "run_id": "r2-multi-file-ledger-candidate",
+      "inputs_preserved": true
+    }
+  ]
+}

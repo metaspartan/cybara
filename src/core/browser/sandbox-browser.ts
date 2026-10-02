@@ -2,6 +2,7 @@ import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { readSubprocessStreamAsText } from "../subprocess-output";
+import { killSubprocessTree } from "../subprocess-tree";
 
 export const SANDBOX_BROWSER_IMAGE = "cybara-sandbox-browser:bookworm-slim";
 export const SANDBOX_BROWSER_CONTAINER = "cybara-sandbox-browser";
@@ -43,7 +44,8 @@ async function runDockerProbe(args: string[]): Promise<DockerProbeResult> {
   const outcome = await Promise.race([proc.exited, timeout]);
   if (timer) clearTimeout(timer);
   if (outcome === "timeout") {
-    proc.kill("SIGKILL");
+    killSubprocessTree(proc, "SIGKILL");
+    await Promise.race([proc.exited, Bun.sleep(250)]);
     return { exitCode: null, stdout: "", timedOut: true };
   }
   const stdout =

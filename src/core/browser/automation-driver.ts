@@ -8,6 +8,7 @@ import puppeteer, {
 } from "puppeteer-core";
 import { basename, join } from "node:path";
 import type * as Playwright from "playwright";
+import type { BrowserImportCookie } from "../../../shared/browser-import";
 
 export function browserDownloadDestination(
   downloadPath: string,
@@ -238,6 +239,7 @@ interface BrowserElementEvaluator {
 
 export interface AutomationContext {
   newPage(): Promise<AutomationPage>;
+  addCookies(cookies: BrowserImportCookie[]): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -522,6 +524,10 @@ class PlaywrightContextAdapter implements AutomationContext {
     private readonly context: Playwright.BrowserContext,
     private readonly downloadPath?: string
   ) {}
+
+  async addCookies(cookies: BrowserImportCookie[]): Promise<void> {
+    await this.context.addCookies(cookies);
+  }
 
   async newPage(): Promise<AutomationPage> {
     const page = await this.context.newPage();
@@ -958,6 +964,10 @@ class PuppeteerContextAdapter implements AutomationContext {
     private readonly context: PuppeteerBrowserContext,
     private readonly viewport: { width: number; height: number }
   ) {}
+
+  async addCookies(cookies: BrowserImportCookie[]): Promise<void> {
+    await this.context.setCookie(...cookies);
+  }
 
   async newPage(): Promise<AutomationPage> {
     const page = await this.context.newPage();

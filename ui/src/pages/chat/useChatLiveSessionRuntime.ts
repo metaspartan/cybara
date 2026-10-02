@@ -1054,6 +1054,7 @@ export function useChatLiveSessionRuntime({
 
         if (activeSession && payload.sessionId && payload.sessionId !== activeSession) return;
         if (activeSession && !payload.sessionId) return;
+        if (payload.contextUsage) setSessionContextUsage(payload.contextUsage);
 
         if (
           statusIsActive &&

@@ -171,7 +171,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   }
 
   const features = systemPromptConfig?.features as Record<string, boolean> | undefined;
-  if (features?.skillsEnabled !== false && params.tools.includes("read") && !isMinimal) {
+  if (features?.skillsEnabled !== false && params.tools.includes("skill_load") && !isMinimal) {
     lines.push(...buildSkillsSection(params.skills));
   }
 
@@ -431,6 +431,19 @@ function buildToolingSection(tools: string[], isMinimal: boolean, runtimeOs?: st
       );
     }
 
+    if (availableTools.has("read") && !availableTools.has("execute_code")) {
+      lines.push(
+        "Read exact input paths directly. For text, use path as an array of up to 8 paths not vision. Independently recompute from inputs after writing transformations; use exec. Write receipts prove syntax, not semantics.",
+        ""
+      );
+    }
+
+    if (availableTools.has("execute_code")) {
+      lines.push(
+        "Fused execution exposes file/process operations through the enabled cybara namespace instead of separate schemas. For trusted deterministic JSON tasks, prefer one execute_code call: readJson({path}) inputs, compute all inclusion/order rules, writeJson({path,value}) output, and assertEqual(output,independentlyComputedReference). These helpers call enabled read/write tools; object key order is immaterial, array order and strings are exact. Keep the artifact minimal with only requested fields; diagnostics belong in the returned receipt. Use ESM await import(), not require(). Separate calls when the source shape is uncertain or checks fail. Never hardcode answers, suppress errors, bypass policy with direct filesystem access, or execute untrusted host code.",
+        ""
+      );
+    }
     if (availableTools.has("exec")) {
       lines.push(
         "For development servers and other long-running commands, call exec with background:true and a workdir. Do not append shell '&'. Use process to list or stop background processes."
@@ -526,17 +539,17 @@ function buildWorkingAgreementSection(mode: SystemPromptExecutionMode): string[]
     "Inspect the environment first. Follow its conventions, preserve unrelated changes, and fix the root cause within scope.",
     "Identify deliverables early. Complete and verify the minimum required output before optional exploration; under pressure, finish the deliverable.",
     "Match explicit output paths, schemas, field names, labels, numeric scales, and required headings literally. Equivalent prose does not replace a requested machine-readable or structurally graded contract.",
-    "When requirements enumerate facts per entity, put the entity label and every required fact together in one compact row or section before elaborating. For dated fixture data, use a clearly stated as-of date supported by the records when the runtime date would contradict the scenario.",
+    "When requirements enumerate facts per entity, put the entity label and every required fact together in one compact row or section. For dated fixture data, state an as-of date supported by the records rather than substituting the runtime date.",
     "When authoring a SKILL.md, start with valid YAML frontmatter (name, description), then the procedure.",
     "For long workflows, materialize a valid partial deliverable before optional enrichment. When the requested format explicitly permits an unknown or not-found value, use that fallback after a bounded search instead of risking the complete output.",
     "A placeholder, TODO, pending section, or promise to fill a deliverable later is not a valid partial deliverable. Write the best evidence-backed content available now.",
     "Do not place helper scripts or source code into a requested report or document path. Use a separate scratch path and write the requested document format to its exact destination.",
     "For long files, search for required terms first and read targeted surrounding ranges. Do not spend more than four tool-call rounds on inspection before creating a valid requested deliverable from the evidence already found.",
-    "For workflows spanning people, services, or endpoints, complete the required observe, act, and confirm steps across every named participant or system. One successful side effect is not evidence that the whole workflow finished.",
+    "For multi-participant workflows, complete the required observe, act, and confirm steps across every named participant or system; one side effect does not prove the whole workflow finished.",
     "Do not invent files, state, results, or tool output. Match every completion and verification claim to successful evidence from this turn; state anything you could not verify.",
     "Before claiming something is absent, inspect likely paths, alternate names, and relevant working-tree changes. A narrow or empty search alone is not proof of absence.",
     "Batch independent reads, searches, and checks in one response and chain related shell steps. On failure, try another approach.",
-    "If optional inspection fails, still create the best valid deliverable and disclose the limitation.",
+    "If optional inspection fails, create the best valid deliverable and disclose the limitation.",
     "Do not narrate routine calls; give brief updates at the start and meaningful milestones.",
     "Ask only when a requirement cannot be discovered or safely inferred, or before destructive, costly, security-sensitive, or external side effects not already authorized by the request.",
     "Validate the changed behavior with the narrowest useful check, then broaden based on risk. For visual work, inspect and exercise the rendered result when browser tools are available.",

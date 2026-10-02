@@ -1,3 +1,5 @@
+import { estimateSessionContextUsage } from "../core/session-context";
+import { clearActiveContextUsage } from "../core/llm/session-active-context";
 import { readAgentContextWindowTokens } from "../core/agent-internals";
 import { agentManager } from "../core/agent";
 import { buildMemoryFlushMessages } from "../core/chat-token-optimization";
@@ -183,6 +185,7 @@ export async function prepareTurnContext(input: {
       contextWindowTokens,
     });
     if (compaction.wasCompacted) {
+      clearActiveContextUsage(session.id);
       session.messages = compaction.messages;
       session.compactionCount = (session.compactionCount || 0) + 1;
       persistActiveSessionContext(session);
@@ -208,6 +211,11 @@ export async function prepareTurnContext(input: {
         agentId: agent.id,
         timestamp: Date.now(),
         detail: "Context automatically compacted",
+        contextUsage: estimateSessionContextUsage(session.messages, effectiveModel, {
+          sessionId: session.id,
+          compactionCount: session.compactionCount,
+          contextWindowTokens,
+        }),
       });
     }
   }

@@ -7,7 +7,7 @@ import {
   getActiveSessionRunId,
   getActiveSessionRunStartedAtMs,
 } from "../core/session-event-ledger";
-import { extractLatestSessionPlan } from "../core/session-plan";
+import { readSessionPlan as extractLatestSessionPlan } from "../core/session-plan-store";
 import { broadcastStatus } from "../core/status";
 import { interruptionCategoryReason, interruptedResponseText } from "./chat-interruption";
 import { appendAssistantMessage } from "./chat-pending-state";

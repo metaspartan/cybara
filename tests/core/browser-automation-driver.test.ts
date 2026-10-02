@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import {
   automationDriverForPlatform,
   browserDownloadDestination,
@@ -23,10 +24,10 @@ describe("browser automation driver", () => {
 
   test("confines browser downloads to the configured directory", () => {
     expect(browserDownloadDestination("/tmp/cybara-downloads", "../../report.pdf")).toBe(
-      "/tmp/cybara-downloads/report.pdf"
+      join("/tmp/cybara-downloads", "report.pdf")
     );
     expect(browserDownloadDestination("/tmp/cybara-downloads", "..\\..\\report.pdf")).toBe(
-      "/tmp/cybara-downloads/report.pdf"
+      join("/tmp/cybara-downloads", "report.pdf")
     );
   });
 
@@ -38,7 +39,7 @@ describe("browser automation driver", () => {
     browser = await launchPuppeteerBrowser({
       executablePath,
       headless: true,
-      args: [],
+      args: process.env.CI === "true" && process.platform === "linux" ? ["--no-sandbox"] : [],
       timeout: 15_000,
     });
     const context = await browser.newContext({ viewport: { width: 800, height: 600 } });

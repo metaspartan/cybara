@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { join, sep } from "path";
 import { runIdeCommand } from "../../src/cli/commands/ide";
 
 describe("CLI IDE command", () => {
@@ -29,7 +29,10 @@ describe("CLI IDE command", () => {
         write: () => undefined,
       });
       expect(opened).toHaveLength(1);
-      expect(opened[0]).toContain("%2Fmain.ts");
+      expect(opened[0]).toStartWith("http://127.0.0.1:4269/ide?path=");
+      expect(opened[0]).toContain(encodeURIComponent(join(root, "main.ts")));
+      expect(opened[0]).toContain(encodeURIComponent(`${sep}main.ts`));
+      expect(decodeURIComponent(opened[0].split("path=")[1])).toBe(join(root, "main.ts"));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

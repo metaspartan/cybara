@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { dirname, join, sep } from "path";
+import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -10,6 +10,12 @@ const ARTIFACTS_MODULE = join(ROOT_DIR, "src", "core", "artifacts.ts").replace(/
 const WORKER_SOURCE = `
 import * as art from "${ARTIFACTS_MODULE}";
 import { getArtifactsRootDir } from "${ARTIFACTS_MODULE}";
+import { isAbsolute, relative, sep } from "path";
+
+const isUnderRoot = (root, candidate) => {
+  const path = relative(root, candidate);
+  return path.length > 0 && path !== ".." && !path.startsWith(".." + sep) && !isAbsolute(path);
+};
 
 function mulberry32(seed) {
   let a = seed >>> 0;
@@ -37,7 +43,7 @@ out.c1name = c1.artifact.name;
 out.c1created = c1.created;
 out.c1title = c1.artifact.title;
 out.c1file = c1.artifact.fileName;
-out.c1pathUnderRoot = c1.artifact.path.startsWith(out.root + "${sep}");
+out.c1pathUnderRoot = isUnderRoot(out.root, c1.artifact.path);
 
 // footer/metadata injection: footer added on create.
 const read1 = art.readArtifact({ sessionId: SID, name: "my-report" });
@@ -99,7 +105,7 @@ for (let i = 0; i < 200; i++) {
   try {
     const res = art.createArtifact({ sessionId: SID, name, content: "fuzz " + i });
     const p = res.artifact.path;
-    const contained = p.startsWith(out.root + "${sep}");
+    const contained = isUnderRoot(out.root, p);
     if (!contained) escapedPaths.push({ name, path: p });
     // The file name relative to root must have no extra path separators beyond
     // session dir + file (i.e. lands directly in the session directory).

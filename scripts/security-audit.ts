@@ -1,3 +1,4 @@
+import { readFileSync } from "fs";
 import { basename, join } from "path";
 
 interface PkgRef {
@@ -72,6 +73,27 @@ const LOCKED_VERSION_PREFIXES = [
   "github:",
   "git+",
 ];
+
+export function hasVerifiedSignatureParserPatch(cwd: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+    const manifest = parsed as Record<string, unknown>;
+    const patched = manifest.patchedDependencies;
+    if (!patched || typeof patched !== "object" || Array.isArray(patched)) return false;
+    if (
+      (patched as Record<string, unknown>)["node-forge@1.4.0"] !== "patches/node-forge@1.4.0.patch"
+    )
+      return false;
+    const source = readFileSync(join(cwd, "node_modules/node-forge/lib/rsa.js"), "utf8");
+    return (
+      source.includes("obj.value.length !== 2 ||") &&
+      source.includes("obj.value[0].value.length !== (('parameters' in capture) ? 2 : 1)")
+    );
+  } catch {
+    return false;
+  }
+}
 
 function extractPackagesSection(source: string): string {
   const marker = `"packages"`;
@@ -242,6 +264,15 @@ function runBunAuditAttempt(ws: Workspace): BunAuditResult {
 }
 
 export async function auditWorkspace(ws: Workspace): Promise<AuditOutcome> {
+  if (ws.label === "mobile" && !hasVerifiedSignatureParserPatch(ws.cwd)) {
+    return {
+      status: "failed",
+      source: "bun-audit",
+      detail: "signature parser security patch is missing or invalid",
+    };
+  }
+  const workspaceIgnored = new Set(ws.ignored);
+  if (ws.label === "mobile") workspaceIgnored.add("GHSA-86w9-cpqp-85rv");
   const result = runBunAuditAttempt(ws);
   if (result.exitCode === 0) return { status: "ok", source: "bun-audit" };
   if (!isTransportKill(result) && !isAdvisoryOutage(result.stderr)) {

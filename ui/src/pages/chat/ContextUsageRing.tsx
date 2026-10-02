@@ -45,7 +45,7 @@ function contextUsageDetailRows(usage?: SessionContextUsage | null): Array<strin
   }
   if ((usage.compactedTokens || 0) > 0) {
     rows.push(
-      `${formatTokenCount(usage.compactedTokens || 0)} tokens summarized out of the active window`
+      `${formatTokenCount(usage.compactedTokens || 0)} tokens removed from the active window by compaction`
     );
   }
   if ((usage.metadataTokens || 0) > 0 && (usage.transcriptTokens || 0) > usage.usedTokens) {

@@ -1,0 +1,45 @@
+{
+  "suite": "Three-task equal-budget fused-mode pilot",
+  "verified": true,
+  "source_receipt": "docs/evals/2026-10-01/efficiency-next/fused-mode.json",
+  "token_metric": "total",
+  "cybara_input_tokens": 51108,
+  "omp_input_tokens": 158924,
+  "cybara_total_tokens": 56214,
+  "omp_total_tokens": 163107,
+  "cybara_runs": 6,
+  "cybara_passed": 6,
+  "omp_passed": 6,
+  "pct_fewer_input_tokens": 67.84123228713095,
+  "pct_fewer_total_tokens": 65.53550736633007,
+  "date": "Oct 1, 2026",
+  "model": "Space Bunny Free",
+  "headline_first": "Measured faster.",
+  "headline_second": "Same task success.",
+  "scope_note": "3 tasks × 2 rounds · High reasoning · Equal 8,192-token cap · Pilot, not universal superiority",
+  "tiles": [
+    {
+      "verified": true,
+      "value": "6 / 6",
+      "label": "correct completion, both",
+      "sub": "Exact file-output assertions"
+    },
+    {
+      "verified": true,
+      "value": "17.2%",
+      "label": "lower mean completion time",
+      "sub": "12.52s Cybara · 15.13s OMP"
+    },
+    {
+      "verified": true,
+      "value": "28.6%",
+      "label": "fewer provider requests",
+      "sub": "20 Cybara · 28 OMP"
+    }
+  ],
+  "speed_percent": 17.245862623680562,
+  "request_percent": 28.57142857142857,
+  "startup_caveat": "Warm Cybara gateway / cold OMP native CLI",
+  "replication": "Both12/12 across main+repeat; OMP repeat token usage incomplete, not counted as token win",
+  "broader_check": "Cybara4/4 vs OMP3/4 on separate four-task check; exploratory, not headline accuracy superiority"
+}

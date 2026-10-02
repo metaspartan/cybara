@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { cybaraDir } from "../../src/core/paths";
 import { PNG } from "pngjs";
 import { resolveMediaFile, serveMediaFile } from "../../src/core/runtime/media-files";
 import { tinyBmp, tinyTiff } from "../helpers/image-fixtures";
+import { linkFile } from "../helpers/fs-symlink";
 import { snapshotViewedMedia } from "../../src/core/viewed-media";
 
 const screenshotsDir = join(cybaraDir, "screenshots");
@@ -82,9 +83,13 @@ describe("resolveMediaFile", () => {
     const outsidePath = join(cybaraDir, "test_media_files_private.png");
     const linkPath = join(screenshotsDir, "test_media_files_link.png");
     writeFileSync(outsidePath, pngBytes);
-    symlinkSync(outsidePath, linkPath);
+    linkFile(outsidePath, linkPath);
     try {
-      expect(resolveMediaFile(linkPath).status).toBe(403);
+      const result = resolveMediaFile(linkPath);
+      expect(result.status).toBe(403);
+      expect(result.error).toBe("forbidden");
+      expect(result.bytes).toBeUndefined();
+      expect(resolveMediaFile(samplePath).status).toBe(200);
     } finally {
       rmSync(linkPath, { force: true });
       rmSync(outsidePath, { force: true });

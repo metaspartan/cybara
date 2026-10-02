@@ -104,6 +104,13 @@ function rememberImageSource(source: string, loaded: LoadedChatImageSource): Loa
   return { src: loaded.src };
 }
 
+export function peekChatImageBlob(source: string): Blob | undefined {
+  for (const [original, loaded] of cachedImageSources) {
+    if (source === original || source === loaded.src) return loaded.blob;
+  }
+  return undefined;
+}
+
 export function peekChatImageSource(source: string): string | undefined {
   return cachedImageSources.get(source)?.src;
 }

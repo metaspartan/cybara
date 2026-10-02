@@ -1368,6 +1368,7 @@ fn main() {
             stop_native_recording,
             write_theme_file,
             image_export::save_image_file,
+            image_export::copy_image_to_clipboard,
             desktop_update::get_desktop_update_state,
             desktop_update::check_desktop_update,
             desktop_update::install_desktop_update

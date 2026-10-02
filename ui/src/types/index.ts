@@ -419,6 +419,9 @@ export interface SessionPlanSnapshot {
   summary: SessionPlanSummary;
   updatedAt?: string;
   source: "todo_tool";
+  revision?: number;
+  lifecycle?: "active" | "completed" | "paused" | "needs_update" | "cleared";
+  runId?: string;
 }
 
 export interface SessionContextUsage {
@@ -432,7 +435,7 @@ export interface SessionContextUsage {
   compacted?: boolean;
   compactionCount?: number;
   compactedTokens?: number;
-  source?: "estimated";
+  source?: "provider" | "estimated";
 }
 
 export type SessionGoalStatus = "active" | "paused" | "blocked" | "complete";

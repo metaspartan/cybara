@@ -32,14 +32,20 @@ export function trackOpenAIResponseUsage(
   const generationDurationMs = response.generation_duration_ms;
 
   if (response.usage) {
-    const hasIncludedCacheCount = response.usage.prompt_tokens_details?.cached_tokens !== undefined;
+    const includedCacheTokens =
+      response.usage.prompt_tokens_details?.cached_tokens ??
+      response.usage.input_tokens_details?.cached_tokens ??
+      response.usage.prompt_cache_hit_tokens ??
+      response.usage.cache_read_tokens;
+    const hasIncludedCacheCount = includedCacheTokens !== undefined;
     const usage = normalizeProviderTokenUsage({
       inputTokens: response.usage.prompt_tokens,
       outputTokens: response.usage.completion_tokens,
       cachedInputTokens: hasIncludedCacheCount
-        ? response.usage.prompt_tokens_details?.cached_tokens
-        : response.usage.cache_read_input_tokens,
-      cacheWriteTokens: response.usage.cache_creation_input_tokens,
+        ? includedCacheTokens
+        : (response.usage.cache_read_input_tokens ?? response.usage.cached_input_tokens),
+      cacheWriteTokens:
+        response.usage.cache_creation_input_tokens ?? response.usage.cache_write_tokens,
       cacheTokenAccounting: hasIncludedCacheCount ? "included" : "separate",
     });
 

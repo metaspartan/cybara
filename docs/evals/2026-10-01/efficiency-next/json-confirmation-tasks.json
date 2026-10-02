@@ -1,0 +1,91 @@
+{
+  "model": "space-bunny-free",
+  "tasks": [
+    {
+      "id": "multi-file-ledger",
+      "prompt": "Use the available file tools to read accounts.json and events.json in this workspace. Compute balances starting from accounts opening balances and applying each event once per id in file order; ignore duplicate event ids. Include only events whose status is posted. Amounts are integer cents; a transfer moves cents from from_account to to_account, a credit adds to account, a debit subtracts from account. Write answer.json with exactly {\"balances\":{\"a\":number,\"b\":number,\"c\":number},\"applied_ids\":[id strings in first-seen order]}. Do not edit the input files. Do not just describe the answer; create the file. Work only in this workspace. Reply briefly when done.",
+      "files": [
+        {
+          "path": "accounts.json",
+          "content": "{\"a\":1000,\"b\":2000,\"c\":500}"
+        },
+        {
+          "path": "events.json",
+          "content": "[{\"id\":\"e1\",\"type\":\"transfer\",\"from_account\":\"a\",\"to_account\":\"b\",\"amount\":125,\"status\":\"posted\"},{\"id\":\"e2\",\"type\":\"credit\",\"account\":\"c\",\"amount\":70,\"status\":\"pending\"},{\"id\":\"e3\",\"type\":\"debit\",\"account\":\"b\",\"amount\":50,\"status\":\"posted\"},{\"id\":\"e1\",\"type\":\"transfer\",\"from_account\":\"a\",\"to_account\":\"b\",\"amount\":125,\"status\":\"posted\"},{\"id\":\"e4\",\"type\":\"credit\",\"account\":\"c\",\"amount\":20,\"status\":\"posted\"}]"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": {
+            "balances": {
+              "a": 875,
+              "b": 2075,
+              "c": 520
+            },
+            "applied_ids": [
+              "e1",
+              "e3",
+              "e4"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "exact-retrieval",
+      "prompt": "Read inventory.json and changes.txt with available tools. Write answer.json with exactly {\"enabled\":[the SKU strings of items enabled after applying changes in file order, sorted lexicographically],\"total_cents\":sum of prices of enabled items}. Lines starting # in changes.txt are comments; each other line is enable SKU or disable SKU. Ignore commands for unknown SKUs. Do not modify inputs; create answer.json. Work only in this workspace. Reply briefly when done.",
+      "files": [
+        {
+          "path": "inventory.json",
+          "content": "[{\"sku\":\"K-10\",\"enabled\":true,\"cents\":145},{\"sku\":\"K-02\",\"enabled\":false,\"cents\":75},{\"sku\":\"Z-01\",\"enabled\":true,\"cents\":300},{\"sku\":\"A-09\",\"enabled\":false,\"cents\":40}]"
+        },
+        {
+          "path": "changes.txt",
+          "content": "# enable Z-01 is not a command\ndisable Z-01\nenable K-02\nenable UNKNOWN\nenable A-09\ndisable K-10\nenable K-10\n"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": {
+            "enabled": [
+              "A-09",
+              "K-02",
+              "K-10"
+            ],
+            "total_cents": 260
+          }
+        }
+      ]
+    },
+    {
+      "id": "boundary-transform",
+      "prompt": "Read samples.json with the available tools. For each record retain it only if value is a finite integer in [0,100] and label is a nonempty string after trimming. Normalize labels by trimming and lowercasing. Keep the last retained record per normalized label, then sort by normalized label. Write answer.json as an array of {label,value} objects. Invalid records must be ignored; input must stay unchanged. Create the output file in this workspace and reply briefly.",
+      "files": [
+        {
+          "path": "samples.json",
+          "content": "[{\"label\":\" Alpha \",\"value\":0},{\"label\":\"Beta\",\"value\":100},{\"label\":\"ALPHA\",\"value\":5},{\"label\":\"gamma\",\"value\":101},{\"label\":\"\",\"value\":9},{\"label\":\"Delta\",\"value\":3.5},{\"label\":\" beta \",\"value\":99},{\"label\":\"epsilon\",\"value\":\"7\"},{\"label\":\"zeta\",\"value\":-1}]"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": [
+            {
+              "label": "alpha",
+              "value": 5
+            },
+            {
+              "label": "beta",
+              "value": 99
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

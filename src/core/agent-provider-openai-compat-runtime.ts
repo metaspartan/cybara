@@ -248,7 +248,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         "API error",
         toolContext?.abortSignal,
         { providerId: options?.providerId, providerType: providerConfig },
-        { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
+        { sessionId: sessionIdForVisibleTokenUsage(toolContext), contextWindowTokens }
       );
     } catch (error) {
       const errorMessage = this.normalizeErrorMessage(error);
@@ -276,7 +276,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
         "API error",
         toolContext?.abortSignal,
         { providerId: options?.providerId, providerType: providerConfig },
-        { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
+        { sessionId: sessionIdForVisibleTokenUsage(toolContext), contextWindowTokens }
       );
     }
 
@@ -732,7 +732,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
           "API error in agentic loop",
           toolContext?.abortSignal,
           { providerId: options?.providerId, providerType: providerConfig },
-          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
+          { sessionId: sessionIdForVisibleTokenUsage(toolContext), contextWindowTokens }
         );
       } catch (error) {
         const errorMessage = this.normalizeErrorMessage(error);
@@ -772,7 +772,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
           "API error in agentic loop",
           toolContext?.abortSignal,
           { providerId: options?.providerId, providerType: providerConfig },
-          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
+          { sessionId: sessionIdForVisibleTokenUsage(toolContext), contextWindowTokens }
         );
       }
       trackOpenAIResponseUsage(loopData, {
@@ -857,7 +857,7 @@ export abstract class AgentProviderOpenAICompatRuntime extends AgentProviderComm
             "API error in agentic loop closing response",
             toolContext?.abortSignal,
             { providerId: options?.providerId, providerType: providerConfig },
-            { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
+            { sessionId: sessionIdForVisibleTokenUsage(toolContext), contextWindowTokens }
           );
           trackOpenAIResponseUsage(nudgeData, {
             model: modelId,

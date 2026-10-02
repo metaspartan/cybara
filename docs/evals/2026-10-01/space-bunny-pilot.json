@@ -1,0 +1,2086 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-01T09:06:55.080Z",
+  "model": "space-bunny-free",
+  "rounds": 2,
+  "seed": 0,
+  "planned_runs": 12,
+  "stream_mode": "buffered",
+  "proxy": {
+    "intercept_path": "/v1/chat/completions",
+    "upstream_stream": false,
+    "model_enforced": true,
+    "provider_key_env": "HARNESS_UPSTREAM_KEY"
+  },
+  "totals": {
+    "runs": 12,
+    "ok_runs": 12,
+    "passed_runs": 12,
+    "correctness_rate": 1,
+    "proxy_requests": 73,
+    "usage": {
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "total_tokens": null,
+      "prompt_cache_hit_tokens": null,
+      "prompt_cache_miss_tokens": null,
+      "cache_read_tokens": null,
+      "cache_write_tokens": null,
+      "reasoning_tokens": null,
+      "requests": 73,
+      "requests_with_usage": 67,
+      "complete": false
+    }
+  },
+  "harnesses": [
+    {
+      "harness_id": "cybara",
+      "harness_kind": "command",
+      "runs": 6,
+      "ok_runs": 6,
+      "passed_runs": 6,
+      "correctness_rate": 1,
+      "total_elapsed_ms": 111931,
+      "mean_elapsed_ms": 18655.167,
+      "median_elapsed_ms": 17370,
+      "p95_elapsed_ms": 33716,
+      "proxy_requests": 35,
+      "usage": {
+        "prompt_tokens": 170509,
+        "completion_tokens": 6072,
+        "total_tokens": 176581,
+        "prompt_cache_hit_tokens": 126953,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": 126953,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 35,
+        "requests_with_usage": 35,
+        "complete": true
+      }
+    },
+    {
+      "harness_id": "hermes",
+      "harness_kind": "command",
+      "runs": 6,
+      "ok_runs": 6,
+      "passed_runs": 6,
+      "correctness_rate": 1,
+      "total_elapsed_ms": 333704,
+      "mean_elapsed_ms": 55617.333,
+      "median_elapsed_ms": 55098,
+      "p95_elapsed_ms": 72843,
+      "proxy_requests": 38,
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "prompt_cache_hit_tokens": null,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": null,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 38,
+        "requests_with_usage": 32,
+        "complete": false
+      }
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "r1-multi-file-ledger-cybara",
+      "round": 1,
+      "sequence": 0,
+      "task_id": "multi-file-ledger",
+      "harness_id": "cybara",
+      "harness_kind": "command",
+      "status": "ok",
+      "started_at": "2026-10-01T08:59:29.234Z",
+      "ended_at": "2026-10-01T09:00:02.957Z",
+      "elapsed_ms": 33716,
+      "exit_code": 0,
+      "proxy_url": "http://127.0.0.1:53838/v1",
+      "requests": [
+        {
+          "index": 2,
+          "started_at": "2026-10-01T08:59:29.410Z",
+          "ended_at": "2026-10-01T08:59:30.930Z",
+          "latency_ms": 1520,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 949,
+          "usage": {
+            "prompt_tokens": 5479,
+            "completion_tokens": 127,
+            "total_tokens": 5606,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 1,
+          "started_at": "2026-10-01T08:59:29.381Z",
+          "ended_at": "2026-10-01T08:59:32.331Z",
+          "latency_ms": 2950,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 528,
+          "usage": {
+            "prompt_tokens": 365,
+            "completion_tokens": 32,
+            "total_tokens": 397,
+            "prompt_cache_hit_tokens": 256,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 256,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 26
+          }
+        },
+        {
+          "index": 3,
+          "started_at": "2026-10-01T08:59:31.003Z",
+          "ended_at": "2026-10-01T08:59:34.691Z",
+          "latency_ms": 3688,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1713,
+          "usage": {
+            "prompt_tokens": 5869,
+            "completion_tokens": 334,
+            "total_tokens": 6203,
+            "prompt_cache_hit_tokens": 5479,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5479,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 271
+          }
+        },
+        {
+          "index": 4,
+          "started_at": "2026-10-01T08:59:34.763Z",
+          "ended_at": "2026-10-01T08:59:37.258Z",
+          "latency_ms": 2495,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1051,
+          "usage": {
+            "prompt_tokens": 6243,
+            "completion_tokens": 185,
+            "total_tokens": 6428,
+            "prompt_cache_hit_tokens": 5869,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5869,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 83
+          }
+        },
+        {
+          "index": 5,
+          "started_at": "2026-10-01T08:59:37.284Z",
+          "ended_at": "2026-10-01T08:59:39.577Z",
+          "latency_ms": 2293,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1340,
+          "usage": {
+            "prompt_tokens": 6651,
+            "completion_tokens": 255,
+            "total_tokens": 6906,
+            "prompt_cache_hit_tokens": 6243,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6243,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 5
+          }
+        },
+        {
+          "index": 6,
+          "started_at": "2026-10-01T08:59:41.467Z",
+          "ended_at": "2026-10-01T09:00:02.891Z",
+          "latency_ms": 21424,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 693,
+          "usage": {
+            "prompt_tokens": 7086,
+            "completion_tokens": 114,
+            "total_tokens": 7200,
+            "prompt_cache_hit_tokens": 6651,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6651,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 31693,
+        "completion_tokens": 1047,
+        "total_tokens": 32740,
+        "prompt_cache_hit_tokens": 24626,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": 24626,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 6,
+        "requests_with_usage": 6,
+        "complete": true
+      },
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "all_passed": true,
+      "stdout_bytes": 76,
+      "stderr_bytes": 0,
+      "error": null
+    },
+    {
+      "run_id": "r1-multi-file-ledger-hermes",
+      "round": 1,
+      "sequence": 1,
+      "task_id": "multi-file-ledger",
+      "harness_id": "hermes",
+      "harness_kind": "command",
+      "status": "ok",
+      "started_at": "2026-10-01T09:00:02.975Z",
+      "ended_at": "2026-10-01T09:00:58.078Z",
+      "elapsed_ms": 55098,
+      "exit_code": 0,
+      "proxy_url": "http://127.0.0.1:53838/v1",
+      "requests": [
+        {
+          "index": 8,
+          "started_at": "2026-10-01T09:00:02.926Z",
+          "ended_at": "2026-10-01T09:00:04.223Z",
+          "latency_ms": 1297,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 516,
+          "usage": {
+            "prompt_tokens": 918,
+            "completion_tokens": 24,
+            "total_tokens": 942,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 19
+          }
+        },
+        {
+          "index": 7,
+          "started_at": "2026-10-01T09:00:02.924Z",
+          "ended_at": "2026-10-01T09:00:07.219Z",
+          "latency_ms": 4295,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 2019,
+          "usage": {
+            "prompt_tokens": 708,
+            "completion_tokens": 316,
+            "total_tokens": 1024,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 72
+          }
+        },
+        {
+          "index": 9,
+          "started_at": "2026-10-01T09:00:13.490Z",
+          "ended_at": "2026-10-01T09:00:21.561Z",
+          "latency_ms": 8071,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 712,
+          "usage": {
+            "prompt_tokens": 5711,
+            "completion_tokens": 57,
+            "total_tokens": 5768,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 0
+          }
+        },
+        {
+          "index": 10,
+          "started_at": "2026-10-01T09:00:35.465Z",
+          "ended_at": "2026-10-01T09:00:39.136Z",
+          "latency_ms": 3671,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1090,
+          "usage": {
+            "prompt_tokens": 6007,
+            "completion_tokens": 191,
+            "total_tokens": 6198,
+            "prompt_cache_hit_tokens": 5760,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5760,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 0
+          }
+        },
+        {
+          "index": 11,
+          "started_at": "2026-10-01T09:00:47.838Z",
+          "ended_at": "2026-10-01T09:00:56.053Z",
+          "latency_ms": 8215,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 548,
+          "usage": {
+            "prompt_tokens": 6219,
+            "completion_tokens": 62,
+            "total_tokens": 6281,
+            "prompt_cache_hit_tokens": 5888,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5888,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 0
+          }
+        },
+        {
+          "index": 12,
+          "started_at": "2026-10-01T09:00:56.336Z",
+          "ended_at": "2026-10-01T09:00:56.672Z",
+          "latency_ms": 336,
+          "status": 400,
+          "success": false,
+          "model": "space-bunny-free",
+          "requested_stream": false,
+          "response_bytes": 119,
+          "usage": null
+        }
+      ],
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "prompt_cache_hit_tokens": null,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": null,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 6,
+        "requests_with_usage": 5,
+        "complete": false
+      },
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "all_passed": true,
+      "stdout_bytes": 171,
+      "stderr_bytes": 38,
+      "error": null
+    },
+    {
+      "run_id": "r1-exact-retrieval-hermes",
+      "round": 1,
+      "sequence": 2,
+      "task_id": "exact-retrieval",
+      "harness_id": "hermes",
+      "harness_kind": "command",
+      "status": "ok",
+      "started_at": "2026-10-01T09:00:58.102Z",
+      "ended_at": "2026-10-01T09:01:45.254Z",
+      "elapsed_ms": 47149,
+      "exit_code": 0,
+      "proxy_url": "http://127.0.0.1:53838/v1",
+      "requests": [
+        {
+          "index": 13,
+          "started_at": "2026-10-01T09:01:07.499Z",
+          "ended_at": "2026-10-01T09:01:09.274Z",
+          "latency_ms": 1775,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 649,
+          "usage": {
+            "prompt_tokens": 5667,
+            "completion_tokens": 59,
+            "total_tokens": 5726,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 14,
+          "started_at": "2026-10-01T09:01:30.385Z",
+          "ended_at": "2026-10-01T09:01:33.670Z",
+          "latency_ms": 3285,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1261,
+          "usage": {
+            "prompt_tokens": 5932,
+            "completion_tokens": 229,
+            "total_tokens": 6161,
+            "prompt_cache_hit_tokens": 5667,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5667,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 170
+          }
+        },
+        {
+          "index": 15,
+          "started_at": "2026-10-01T09:01:42.527Z",
+          "ended_at": "2026-10-01T09:01:44.074Z",
+          "latency_ms": 1547,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 667,
+          "usage": {
+            "prompt_tokens": 6137,
+            "completion_tokens": 122,
+            "total_tokens": 6259,
+            "prompt_cache_hit_tokens": 5932,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5932,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 16,
+          "started_at": "2026-10-01T09:01:44.183Z",
+          "ended_at": "2026-10-01T09:01:44.467Z",
+          "latency_ms": 284,
+          "status": 400,
+          "success": false,
+          "model": "space-bunny-free",
+          "requested_stream": false,
+          "response_bytes": 119,
+          "usage": null
+        }
+      ],
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "prompt_cache_hit_tokens": null,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": null,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 4,
+        "requests_with_usage": 3,
+        "complete": false
+      },
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "all_passed": true,
+      "stdout_bytes": 330,
+      "stderr_bytes": 38,
+      "error": null
+    },
+    {
+      "run_id": "r1-exact-retrieval-cybara",
+      "round": 1,
+      "sequence": 3,
+      "task_id": "exact-retrieval",
+      "harness_id": "cybara",
+      "harness_kind": "command",
+      "status": "ok",
+      "started_at": "2026-10-01T09:01:45.270Z",
+      "ended_at": "2026-10-01T09:01:53.914Z",
+      "elapsed_ms": 8640,
+      "exit_code": 0,
+      "proxy_url": "http://127.0.0.1:53838/v1",
+      "requests": [
+        {
+          "index": 18,
+          "started_at": "2026-10-01T09:01:45.480Z",
+          "ended_at": "2026-10-01T09:01:46.471Z",
+          "latency_ms": 991,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 640,
+          "usage": {
+            "prompt_tokens": 5517,
+            "completion_tokens": 57,
+            "total_tokens": 5574,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 17,
+          "started_at": "2026-10-01T09:01:45.464Z",
+          "ended_at": "2026-10-01T09:01:46.605Z",
+          "latency_ms": 1141,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 567,
+          "usage": {
+            "prompt_tokens": 318,
+            "completion_tokens": 38,
+            "total_tokens": 356,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 29
+          }
+        },
+        {
+          "index": 19,
+          "started_at": "2026-10-01T09:01:46.579Z",
+          "ended_at": "2026-10-01T09:01:50.827Z",
+          "latency_ms": 4248,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1686,
+          "usage": {
+            "prompt_tokens": 5794,
+            "completion_tokens": 367,
+            "total_tokens": 6161,
+            "prompt_cache_hit_tokens": 5517,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5517,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 133
+          }
+        },
+        {
+          "index": 20,
+          "started_at": "2026-10-01T09:01:52.467Z",
+          "ended_at": "2026-10-01T09:01:53.860Z",
+          "latency_ms": 1393,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 574,
+          "usage": {
+            "prompt_tokens": 6159,
+            "completion_tokens": 76,
+            "total_tokens": 6235,
+            "prompt_cache_hit_tokens": 5794,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5794,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 17788,
+        "completion_tokens": 538,
+        "total_tokens": 18326,
+        "prompt_cache_hit_tokens": 11567,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": 11567,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 4,
+        "requests_with_usage": 4,
+        "complete": true
+      },
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "all_passed": true,
+      "stdout_bytes": 76,
+      "stderr_bytes": 0,
+      "error": null
+    },
+    {
+      "run_id": "r1-boundary-transform-cybara",
+      "round": 1,
+      "sequence": 4,
+      "task_id": "boundary-transform",
+      "harness_id": "cybara",
+      "harness_kind": "command",
+      "status": "ok",
+      "started_at": "2026-10-01T09:01:53.923Z",
+      "ended_at": "2026-10-01T09:02:23.447Z",
+      "elapsed_ms": 29520,
+      "exit_code": 0,
+      "proxy_url": "http://127.0.0.1:53838/v1",
+      "requests": [
+        {
+          "index": 22,
+          "started_at": "2026-10-01T09:01:54.082Z",
+          "ended_at": "2026-10-01T09:01:56.017Z",
+          "latency_ms": 1935,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 671,
+          "usage": {
+            "prompt_tokens": 322,
+            "completion_tokens": 62,
+            "total_tokens": 384,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 54
+          }
+        },
+        {
+          "index": 23,
+          "started_at": "2026-10-01T09:01:54.100Z",
+          "ended_at": "2026-10-01T09:01:56.748Z",
+          "latency_ms": 2648,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 737,
+          "usage": {
+            "prompt_tokens": 5516,
+            "completion_tokens": 78,
+            "total_tokens": 5594,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 24,
+          "started_at": "2026-10-01T09:01:58.463Z",
+          "ended_at": "2026-10-01T09:01:59.489Z",
+          "latency_ms": 1026,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 618,
+          "usage": {
+            "prompt_tokens": 5776,
+            "completion_tokens": 62,
+            "total_tokens": 5838,
+            "prompt_cache_hit_tokens": 5516,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5516,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 21,
+          "started_at": "2026-10-01T09:01:53.888Z",
+          "ended_at": "2026-10-01T09:02:03.543Z",
+          "latency_ms": 9655,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 499,
+          "usage": {
+            "prompt_tokens": 840,
+            "completion_tokens": 23,
+            "total_tokens": 863,
+            "prompt_cache_hit_tokens": 140,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 140,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 15
+          }
+        },
+        {
+          "index": 25,
+          "started_at": "2026-10-01T09:01:59.552Z",
+          "ended_at": "2026-10-01T09:02:05.727Z",
+          "latency_ms": 6175,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 3370,
+          "usage": {
+            "prompt_tokens": 5991,
+            "completion_tokens": 728,
+            "total_tokens": 6719,
+            "prompt_cache_hit_tokens": 5776,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5776,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 172
+          }
+        },
+        {
+          "index": 26,
+          "started_at": "2026-10-01T09:02:05.748Z",
+          "ended_at": "2026-10-01T09:02:07.058Z",
+          "latency_ms": 1310,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 647,
+          "usage": {
+            "prompt_tokens": 7439,
+            "completion_tokens": 74,
+            "total_tokens": 7513,
+            "prompt_cache_hit_tokens": 5991,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5991,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 27,
+          "started_at": "2026-10-01T09:02:08.111Z",
+          "ended_at": "2026-10-01T09:02:12.138Z",
+          "latency_ms": 4027,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1945,
+          "usage": {
+            "prompt_tokens": 7823,
+            "completion_tokens": 340,
+            "total_tokens": 8163,
+            "prompt_cache_hit_tokens": 7439,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 7439,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 18
+          }
+        },
+        {
+          "index": 28,
+          "started_at": "2026-10-01T09:02:13.634Z",
+          "ended_at": "2026-10-01T09:02:17.252Z",
+          "latency_ms": 3618,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1708,
+          "usage": {
+            "prompt_tokens": 8685,
+            "completion_tokens": 279,
+            "total_tokens": 8964,
+            "prompt_cache_hit_tokens": 7823,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 7823,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 184
+          }
+        },
+        {
+          "index": 29,
+          "started_at": "2026-10-01T09:02:18.647Z",
+          "ended_at": "2026-10-01T09:02:23.387Z",
+          "latency_ms": 4740,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1970,
+          "usage": {
+            "prompt_tokens": 8947,
+            "completion_tokens": 442,
+            "total_tokens": 9389,
+            "prompt_cache_hit_tokens": 8685,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 8685,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 51339,
+        "completion_tokens": 2088,
+        "total_tokens": 53427,
+        "prompt_cache_hit_tokens": 41626,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": 41626,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 9,
+        "requests_with_usage": 9,
+        "complete": true
+      },
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "all_passed": true,
+      "stdout_bytes": 76,
+      "stderr_bytes": 0,
+      "error": null
+    },
+    {
+      "run_id": "r1-boundary-transform-hermes",
+      "round": 1,
+      "sequence": 5,
+      "task_id": "boundary-transform",
+      "harness_id": "hermes",
+      "harness_kind": "command",
+      "status": "ok",
+      "started_at": "2026-10-01T09:02:23.459Z",
+      "ended_at": "2026-10-01T09:03:36.305Z",
+      "elapsed_ms": 72843,
+      "exit_code": 0,
+      "proxy_url": "http://127.0.0.1:53838/v1",
+      "requests": [
+        {
+          "index": 31,
+          "started_at": "2026-10-01T09:02:23.421Z",
+          "ended_at": "2026-10-01T09:02:25.269Z",
+          "latency_ms": 1848,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 552,
+          "usage": {
+            "prompt_tokens": 1566,
+            "completion_tokens": 36,
+            "total_tokens": 1602,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 28
+          }
+        },
+        {
+          "index": 32,
+          "started_at": "2026-10-01T09:02:32.377Z",
+          "ended_at": "2026-10-01T09:02:33.432Z",
+          "latency_ms": 1055,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 554,
+          "usage": {
+            "prompt_tokens": 5665,
+            "completion_tokens": 47,
+            "total_tokens": 5712,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 30,
+          "started_at": "2026-10-01T09:02:23.418Z",
+          "ended_at": "2026-10-01T09:02:39.419Z",
+          "latency_ms": 16001,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 2452,
+          "usage": {
+            "prompt_tokens": 715,
+            "completion_tokens": 387,
+            "total_tokens": 1102,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 174
+          }
+        },
+        {
+          "index": 33,
+          "started_at": "2026-10-01T09:02:45.391Z",
+          "ended_at": "2026-10-01T09:02:46.620Z",
+          "latency_ms": 1229,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 632,
+          "usage": {
+            "prompt_tokens": 5733,
+            "completion_tokens": 59,
+            "total_tokens": 5792,
+            "prompt_cache_hit_tokens": 5665,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5665,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 11
+          }
+        },
+        {
+          "index": 34,
+          "started_at": "2026-10-01T09:02:50.682Z",
+          "ended_at": "2026-10-01T09:02:52.692Z",
+          "latency_ms": 2010,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 582,
+          "usage": {
+            "prompt_tokens": 5801,
+            "completion_tokens": 41,
+            "total_tokens": 5842,
+            "prompt_cache_hit_tokens": 5733,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5733,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 9
+          }
+        },
+        {
+          "index": 35,
+          "started_at": "2026-10-01T09:02:54.356Z",
+          "ended_at": "2026-10-01T09:02:55.635Z",
+          "latency_ms": 1279,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 716,
+          "usage": {
+            "prompt_tokens": 6005,
+            "completion_tokens": 66,
+            "total_tokens": 6071,
+            "prompt_cache_hit_tokens": 5801,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5801,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 19
+          }
+        },
+        {
+          "index": 36,
+          "started_at": "2026-10-01T09:02:59.367Z",
+          "ended_at": "2026-10-01T09:03:10.691Z",
+          "latency_ms": 11324,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 3673,
+          "usage": {
+            "prompt_tokens": 6193,
+            "completion_tokens": 795,
+            "total_tokens": 6988,
+            "prompt_cache_hit_tokens": 6005,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6005,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 311
+          }
+        },
+        {
+          "index": 37,
+          "started_at": "2026-10-01T09:03:25.889Z",
+          "ended_at": "2026-10-01T09:03:29.031Z",
+          "latency_ms": 3142,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 791,
+          "usage": {
+            "prompt_tokens": 6856,
+            "completion_tokens": 117,
+            "total_tokens": 6973,
+            "prompt_cache_hit_tokens": 6193,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6193,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 38,
+          "started_at": "2026-10-01T09:03:32.443Z",
+          "ended_at": "2026-10-01T09:03:34.394Z",
+          "latency_ms": 1951,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 725,
+          "usage": {
+            "prompt_tokens": 7118,
+            "completion_tokens": 108,
+            "total_tokens": 7226,
+            "prompt_cache_hit_tokens": 6856,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6856,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 39,
+          "started_at": "2026-10-01T09:03:34.521Z",
+          "ended_at": "2026-10-01T09:03:35.614Z",
+          "latency_ms": 1093,
+          "status": 400,
+          "success": false,
+          "model": "space-bunny-free",
+          "requested_stream": false,
+          "response_bytes": 119,
+          "usage": null
+        }
+      ],
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "prompt_cache_hit_tokens": null,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": null,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 10,
+        "requests_with_usage": 9,
+        "complete": false
+      },
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "all_passed": true,
+      "stdout_bytes": 388,
+      "stderr_bytes": 38,
+      "error": null
+    },
+    {
+      "run_id": "r2-exact-retrieval-hermes",
+      "round": 2,
+      "sequence": 6,
+      "task_id": "exact-retrieval",
+      "harness_id": "hermes",
+      "harness_kind": "command",
+      "status": "ok",
+      "started_at": "2026-10-01T09:03:36.320Z",
+      "ended_at": "2026-10-01T09:04:15.764Z",
+      "elapsed_ms": 39441,
+      "exit_code": 0,
+      "proxy_url": "http://127.0.0.1:53838/v1",
+      "requests": [
+        {
+          "index": 40,
+          "started_at": "2026-10-01T09:03:44.725Z",
+          "ended_at": "2026-10-01T09:03:46.617Z",
+          "latency_ms": 1892,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 691,
+          "usage": {
+            "prompt_tokens": 5707,
+            "completion_tokens": 58,
+            "total_tokens": 5765,
+            "prompt_cache_hit_tokens": 143,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 143,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 41,
+          "started_at": "2026-10-01T09:04:00.530Z",
+          "ended_at": "2026-10-01T09:04:03.578Z",
+          "latency_ms": 3048,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1123,
+          "usage": {
+            "prompt_tokens": 5972,
+            "completion_tokens": 205,
+            "total_tokens": 6177,
+            "prompt_cache_hit_tokens": 1562,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 1562,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 149
+          }
+        },
+        {
+          "index": 42,
+          "started_at": "2026-10-01T09:04:11.572Z",
+          "ended_at": "2026-10-01T09:04:14.422Z",
+          "latency_ms": 2850,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 642,
+          "usage": {
+            "prompt_tokens": 6177,
+            "completion_tokens": 89,
+            "total_tokens": 6266,
+            "prompt_cache_hit_tokens": 5970,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5970,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 43,
+          "started_at": "2026-10-01T09:04:14.569Z",
+          "ended_at": "2026-10-01T09:04:14.828Z",
+          "latency_ms": 259,
+          "status": 400,
+          "success": false,
+          "model": "space-bunny-free",
+          "requested_stream": false,
+          "response_bytes": 119,
+          "usage": null
+        }
+      ],
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "prompt_cache_hit_tokens": null,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": null,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 4,
+        "requests_with_usage": 3,
+        "complete": false
+      },
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "all_passed": true,
+      "stdout_bytes": 283,
+      "stderr_bytes": 38,
+      "error": null
+    },
+    {
+      "run_id": "r2-exact-retrieval-cybara",
+      "round": 2,
+      "sequence": 7,
+      "task_id": "exact-retrieval",
+      "harness_id": "cybara",
+      "harness_kind": "command",
+      "status": "ok",
+      "started_at": "2026-10-01T09:04:15.779Z",
+      "ended_at": "2026-10-01T09:04:26.082Z",
+      "elapsed_ms": 10301,
+      "exit_code": 0,
+      "proxy_url": "http://127.0.0.1:53838/v1",
+      "requests": [
+        {
+          "index": 45,
+          "started_at": "2026-10-01T09:04:15.961Z",
+          "ended_at": "2026-10-01T09:04:17.292Z",
+          "latency_ms": 1331,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 639,
+          "usage": {
+            "prompt_tokens": 5596,
+            "completion_tokens": 57,
+            "total_tokens": 5653,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 44,
+          "started_at": "2026-10-01T09:04:15.945Z",
+          "ended_at": "2026-10-01T09:04:17.523Z",
+          "latency_ms": 1578,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 518,
+          "usage": {
+            "prompt_tokens": 318,
+            "completion_tokens": 30,
+            "total_tokens": 348,
+            "prompt_cache_hit_tokens": 317,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 317,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 21
+          }
+        },
+        {
+          "index": 46,
+          "started_at": "2026-10-01T09:04:17.352Z",
+          "ended_at": "2026-10-01T09:04:19.306Z",
+          "latency_ms": 1954,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1029,
+          "usage": {
+            "prompt_tokens": 5873,
+            "completion_tokens": 182,
+            "total_tokens": 6055,
+            "prompt_cache_hit_tokens": 5596,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5596,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 88
+          }
+        },
+        {
+          "index": 47,
+          "started_at": "2026-10-01T09:04:19.337Z",
+          "ended_at": "2026-10-01T09:04:22.197Z",
+          "latency_ms": 2860,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 920,
+          "usage": {
+            "prompt_tokens": 6206,
+            "completion_tokens": 143,
+            "total_tokens": 6349,
+            "prompt_cache_hit_tokens": 5873,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5873,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 8
+          }
+        },
+        {
+          "index": 48,
+          "started_at": "2026-10-01T09:04:23.145Z",
+          "ended_at": "2026-10-01T09:04:26.023Z",
+          "latency_ms": 2878,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 746,
+          "usage": {
+            "prompt_tokens": 6582,
+            "completion_tokens": 127,
+            "total_tokens": 6709,
+            "prompt_cache_hit_tokens": 6206,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6206,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 24575,
+        "completion_tokens": 539,
+        "total_tokens": 25114,
+        "prompt_cache_hit_tokens": 18120,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": 18120,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 5,
+        "requests_with_usage": 5,
+        "complete": true
+      },
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "all_passed": true,
+      "stdout_bytes": 76,
+      "stderr_bytes": 0,
+      "error": null
+    },
+    {
+      "run_id": "r2-boundary-transform-cybara",
+      "round": 2,
+      "sequence": 8,
+      "task_id": "boundary-transform",
+      "harness_id": "cybara",
+      "harness_kind": "command",
+      "status": "ok",
+      "started_at": "2026-10-01T09:04:26.091Z",
+      "ended_at": "2026-10-01T09:04:43.464Z",
+      "elapsed_ms": 17370,
+      "exit_code": 0,
+      "proxy_url": "http://127.0.0.1:53838/v1",
+      "requests": [
+        {
+          "index": 50,
+          "started_at": "2026-10-01T09:04:26.061Z",
+          "ended_at": "2026-10-01T09:04:26.856Z",
+          "latency_ms": 795,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 500,
+          "usage": {
+            "prompt_tokens": 943,
+            "completion_tokens": 26,
+            "total_tokens": 969,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 18
+          }
+        },
+        {
+          "index": 51,
+          "started_at": "2026-10-01T09:04:26.224Z",
+          "ended_at": "2026-10-01T09:04:27.429Z",
+          "latency_ms": 1205,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 579,
+          "usage": {
+            "prompt_tokens": 322,
+            "completion_tokens": 40,
+            "total_tokens": 362,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 34
+          }
+        },
+        {
+          "index": 52,
+          "started_at": "2026-10-01T09:04:26.237Z",
+          "ended_at": "2026-10-01T09:04:28.755Z",
+          "latency_ms": 2518,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1004,
+          "usage": {
+            "prompt_tokens": 5625,
+            "completion_tokens": 131,
+            "total_tokens": 5756,
+            "prompt_cache_hit_tokens": 138,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 138,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 49,
+          "started_at": "2026-10-01T09:04:26.060Z",
+          "ended_at": "2026-10-01T09:04:33.871Z",
+          "latency_ms": 7811,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 1819,
+          "usage": {
+            "prompt_tokens": 582,
+            "completion_tokens": 287,
+            "total_tokens": 869,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 0
+          }
+        },
+        {
+          "index": 53,
+          "started_at": "2026-10-01T09:04:28.828Z",
+          "ended_at": "2026-10-01T09:04:37.116Z",
+          "latency_ms": 8288,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 3373,
+          "usage": {
+            "prompt_tokens": 5977,
+            "completion_tokens": 753,
+            "total_tokens": 6730,
+            "prompt_cache_hit_tokens": 5754,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5754,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 432
+          }
+        },
+        {
+          "index": 54,
+          "started_at": "2026-10-01T09:04:38.608Z",
+          "ended_at": "2026-10-01T09:04:40.068Z",
+          "latency_ms": 1460,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 648,
+          "usage": {
+            "prompt_tokens": 6404,
+            "completion_tokens": 61,
+            "total_tokens": 6465,
+            "prompt_cache_hit_tokens": 5975,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5975,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 55,
+          "started_at": "2026-10-01T09:04:40.129Z",
+          "ended_at": "2026-10-01T09:04:43.419Z",
+          "latency_ms": 3290,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 965,
+          "usage": {
+            "prompt_tokens": 6646,
+            "completion_tokens": 184,
+            "total_tokens": 6830,
+            "prompt_cache_hit_tokens": 6463,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6463,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 26499,
+        "completion_tokens": 1482,
+        "total_tokens": 27981,
+        "prompt_cache_hit_tokens": 18714,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": 18714,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 7,
+        "requests_with_usage": 7,
+        "complete": true
+      },
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "all_passed": true,
+      "stdout_bytes": 76,
+      "stderr_bytes": 0,
+      "error": null
+    },
+    {
+      "run_id": "r2-boundary-transform-hermes",
+      "round": 2,
+      "sequence": 9,
+      "task_id": "boundary-transform",
+      "harness_id": "hermes",
+      "harness_kind": "command",
+      "status": "ok",
+      "started_at": "2026-10-01T09:04:43.473Z",
+      "ended_at": "2026-10-01T09:05:52.082Z",
+      "elapsed_ms": 68605,
+      "exit_code": 0,
+      "proxy_url": "http://127.0.0.1:53838/v1",
+      "requests": [
+        {
+          "index": 56,
+          "started_at": "2026-10-01T09:04:43.442Z",
+          "ended_at": "2026-10-01T09:04:44.454Z",
+          "latency_ms": 1012,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 569,
+          "usage": {
+            "prompt_tokens": 1061,
+            "completion_tokens": 32,
+            "total_tokens": 1093,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 27
+          }
+        },
+        {
+          "index": 57,
+          "started_at": "2026-10-01T09:04:52.063Z",
+          "ended_at": "2026-10-01T09:04:53.343Z",
+          "latency_ms": 1280,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 685,
+          "usage": {
+            "prompt_tokens": 5665,
+            "completion_tokens": 69,
+            "total_tokens": 5734,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 58,
+          "started_at": "2026-10-01T09:05:06.156Z",
+          "ended_at": "2026-10-01T09:05:13.573Z",
+          "latency_ms": 7417,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 2288,
+          "usage": {
+            "prompt_tokens": 5888,
+            "completion_tokens": 499,
+            "total_tokens": 6387,
+            "prompt_cache_hit_tokens": 5665,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5665,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 222
+          }
+        },
+        {
+          "index": 59,
+          "started_at": "2026-10-01T09:05:29.919Z",
+          "ended_at": "2026-10-01T09:05:31.216Z",
+          "latency_ms": 1297,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 543,
+          "usage": {
+            "prompt_tokens": 6307,
+            "completion_tokens": 49,
+            "total_tokens": 6356,
+            "prompt_cache_hit_tokens": 5888,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5888,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 60,
+          "started_at": "2026-10-01T09:05:35.027Z",
+          "ended_at": "2026-10-01T09:05:36.808Z",
+          "latency_ms": 1781,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 686,
+          "usage": {
+            "prompt_tokens": 6716,
+            "completion_tokens": 67,
+            "total_tokens": 6783,
+            "prompt_cache_hit_tokens": 6307,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6307,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 14
+          }
+        },
+        {
+          "index": 61,
+          "started_at": "2026-10-01T09:05:40.330Z",
+          "ended_at": "2026-10-01T09:05:42.293Z",
+          "latency_ms": 1963,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 859,
+          "usage": {
+            "prompt_tokens": 6890,
+            "completion_tokens": 95,
+            "total_tokens": 6985,
+            "prompt_cache_hit_tokens": 6716,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6716,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 60
+          }
+        },
+        {
+          "index": 62,
+          "started_at": "2026-10-01T09:05:44.666Z",
+          "ended_at": "2026-10-01T09:05:50.155Z",
+          "latency_ms": 5489,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 816,
+          "usage": {
+            "prompt_tokens": 6960,
+            "completion_tokens": 155,
+            "total_tokens": 7115,
+            "prompt_cache_hit_tokens": 6890,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6890,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 63,
+          "started_at": "2026-10-01T09:05:50.316Z",
+          "ended_at": "2026-10-01T09:05:50.621Z",
+          "latency_ms": 305,
+          "status": 400,
+          "success": false,
+          "model": "space-bunny-free",
+          "requested_stream": false,
+          "response_bytes": 119,
+          "usage": null
+        }
+      ],
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "prompt_cache_hit_tokens": null,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": null,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 8,
+        "requests_with_usage": 7,
+        "complete": false
+      },
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "all_passed": true,
+      "stdout_bytes": 473,
+      "stderr_bytes": 38,
+      "error": null
+    },
+    {
+      "run_id": "r2-multi-file-ledger-hermes",
+      "round": 2,
+      "sequence": 10,
+      "task_id": "multi-file-ledger",
+      "harness_id": "hermes",
+      "harness_kind": "command",
+      "status": "ok",
+      "started_at": "2026-10-01T09:05:52.096Z",
+      "ended_at": "2026-10-01T09:06:42.669Z",
+      "elapsed_ms": 50568,
+      "exit_code": 0,
+      "proxy_url": "http://127.0.0.1:53838/v1",
+      "requests": [
+        {
+          "index": 64,
+          "started_at": "2026-10-01T09:06:00.431Z",
+          "ended_at": "2026-10-01T09:06:02.791Z",
+          "latency_ms": 2360,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 561,
+          "usage": {
+            "prompt_tokens": 5751,
+            "completion_tokens": 43,
+            "total_tokens": 5794,
+            "prompt_cache_hit_tokens": 1412,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 1412,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 65,
+          "started_at": "2026-10-01T09:06:13.223Z",
+          "ended_at": "2026-10-01T09:06:15.214Z",
+          "latency_ms": 1991,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 793,
+          "usage": {
+            "prompt_tokens": 5816,
+            "completion_tokens": 79,
+            "total_tokens": 5895,
+            "prompt_cache_hit_tokens": 5792,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5792,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 12
+          }
+        },
+        {
+          "index": 66,
+          "started_at": "2026-10-01T09:06:20.725Z",
+          "ended_at": "2026-10-01T09:06:23.294Z",
+          "latency_ms": 2569,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 808,
+          "usage": {
+            "prompt_tokens": 6098,
+            "completion_tokens": 72,
+            "total_tokens": 6170,
+            "prompt_cache_hit_tokens": 1412,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 1412,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 23
+          }
+        },
+        {
+          "index": 67,
+          "started_at": "2026-10-01T09:06:30.337Z",
+          "ended_at": "2026-10-01T09:06:32.345Z",
+          "latency_ms": 2008,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 890,
+          "usage": {
+            "prompt_tokens": 6388,
+            "completion_tokens": 146,
+            "total_tokens": 6534,
+            "prompt_cache_hit_tokens": 6096,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6096,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 81
+          }
+        },
+        {
+          "index": 68,
+          "started_at": "2026-10-01T09:06:39.680Z",
+          "ended_at": "2026-10-01T09:06:41.153Z",
+          "latency_ms": 1473,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 527,
+          "usage": {
+            "prompt_tokens": 6600,
+            "completion_tokens": 68,
+            "total_tokens": 6668,
+            "prompt_cache_hit_tokens": 6386,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6386,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 69,
+          "started_at": "2026-10-01T09:06:41.276Z",
+          "ended_at": "2026-10-01T09:06:41.990Z",
+          "latency_ms": 714,
+          "status": 400,
+          "success": false,
+          "model": "space-bunny-free",
+          "requested_stream": false,
+          "response_bytes": 119,
+          "usage": null
+        }
+      ],
+      "usage": {
+        "prompt_tokens": null,
+        "completion_tokens": null,
+        "total_tokens": null,
+        "prompt_cache_hit_tokens": null,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": null,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 6,
+        "requests_with_usage": 5,
+        "complete": false
+      },
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "all_passed": true,
+      "stdout_bytes": 180,
+      "stderr_bytes": 38,
+      "error": null
+    },
+    {
+      "run_id": "r2-multi-file-ledger-cybara",
+      "round": 2,
+      "sequence": 11,
+      "task_id": "multi-file-ledger",
+      "harness_id": "cybara",
+      "harness_kind": "command",
+      "status": "ok",
+      "started_at": "2026-10-01T09:06:42.687Z",
+      "ended_at": "2026-10-01T09:06:55.075Z",
+      "elapsed_ms": 12384,
+      "exit_code": 0,
+      "proxy_url": "http://127.0.0.1:53838/v1",
+      "requests": [
+        {
+          "index": 71,
+          "started_at": "2026-10-01T09:06:42.991Z",
+          "ended_at": "2026-10-01T09:06:44.405Z",
+          "latency_ms": 1414,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 898,
+          "usage": {
+            "prompt_tokens": 5713,
+            "completion_tokens": 119,
+            "total_tokens": 5832,
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 128,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        },
+        {
+          "index": 70,
+          "started_at": "2026-10-01T09:06:42.955Z",
+          "ended_at": "2026-10-01T09:06:46.519Z",
+          "latency_ms": 3564,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 557,
+          "usage": {
+            "prompt_tokens": 365,
+            "completion_tokens": 40,
+            "total_tokens": 405,
+            "prompt_cache_hit_tokens": 364,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 364,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 30
+          }
+        },
+        {
+          "index": 72,
+          "started_at": "2026-10-01T09:06:44.494Z",
+          "ended_at": "2026-10-01T09:06:46.951Z",
+          "latency_ms": 2457,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 909,
+          "usage": {
+            "prompt_tokens": 6095,
+            "completion_tokens": 143,
+            "total_tokens": 6238,
+            "prompt_cache_hit_tokens": 5713,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 5713,
+            "cache_write_tokens": null,
+            "reasoning_tokens": 41
+          }
+        },
+        {
+          "index": 73,
+          "started_at": "2026-10-01T09:06:46.984Z",
+          "ended_at": "2026-10-01T09:06:55.011Z",
+          "latency_ms": 8027,
+          "status": 200,
+          "success": true,
+          "model": "space-bunny-free",
+          "requested_stream": true,
+          "response_bytes": 520,
+          "usage": {
+            "prompt_tokens": 6442,
+            "completion_tokens": 76,
+            "total_tokens": 6518,
+            "prompt_cache_hit_tokens": 6095,
+            "prompt_cache_miss_tokens": null,
+            "cache_read_tokens": 6095,
+            "cache_write_tokens": null,
+            "reasoning_tokens": null
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 18615,
+        "completion_tokens": 378,
+        "total_tokens": 18993,
+        "prompt_cache_hit_tokens": 12300,
+        "prompt_cache_miss_tokens": null,
+        "cache_read_tokens": 12300,
+        "cache_write_tokens": null,
+        "reasoning_tokens": null,
+        "requests": 4,
+        "requests_with_usage": 4,
+        "complete": true
+      },
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "passed": true,
+          "reason": "ok"
+        }
+      ],
+      "passed": 1,
+      "total": 1,
+      "all_passed": true,
+      "stdout_bytes": 76,
+      "stderr_bytes": 0,
+      "error": null
+    }
+  ]
+}

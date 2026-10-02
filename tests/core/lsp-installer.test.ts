@@ -69,10 +69,10 @@ describe("portable LSP installation", () => {
 
   test("tracks every Windows launcher form for cleanup and discovery", () => {
     expect(managedLSPPaths("C:\\lsp", "vtsls", "win32")).toEqual([
-      "C:\\lsp/vtsls",
-      "C:\\lsp/vtsls.exe",
-      "C:\\lsp/vtsls.cmd",
-      "C:\\lsp/vtsls.bat",
+      join("C:\\lsp", "vtsls"),
+      join("C:\\lsp", "vtsls.exe"),
+      join("C:\\lsp", "vtsls.cmd"),
+      join("C:\\lsp", "vtsls.bat"),
     ]);
   });
 

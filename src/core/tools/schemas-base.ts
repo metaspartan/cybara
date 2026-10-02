@@ -5,12 +5,18 @@ export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
   read: {
     name: "read",
     description:
-      "Read file contents or list a directory. Reading a supported image attaches its pixels to the next turn for vision-capable models.",
+      "Read files or list a directory. Use a path array to read up to 8 independent text inputs in one call, with ordered per-file results. Use a single path for images to attach pixels for vision-capable models.",
     category: "file",
     input_schema: {
       type: "object",
       properties: {
-        path: { type: "string", description: "Path to the file to read" },
+        path: {
+          anyOf: [
+            { type: "string" },
+            { type: "array", items: { type: "string" }, minItems: 1, maxItems: 8 },
+          ],
+          description: "File path or up to 8 independent file paths",
+        },
         limit: { type: "number", description: "Maximum number of lines to read" },
         offset: { type: "number", description: "Line number to start reading from (1-indexed)" },
       },
@@ -20,7 +26,8 @@ export const baseToolSchemas: Record<string, Omit<Tool, "handler">> = {
   },
   write: {
     name: "write",
-    description: "Create or overwrite a file with content",
+    description:
+      "Create or overwrite a file. Returns verified byte count, SHA256, read-back content match and JSON syntax status for .json. This does not verify semantics; independently recompute transformations against inputs after writing.",
     category: "file",
     input_schema: {
       type: "object",

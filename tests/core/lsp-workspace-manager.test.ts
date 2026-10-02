@@ -23,7 +23,9 @@ function createWorkspace(name: string): string {
 
 afterEach(async () => {
   await shutdownAllLSPManagers();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) {
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
 });
 
 describe("workspace-scoped LSP managers", () => {

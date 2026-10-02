@@ -1,3 +1,4 @@
+import { recordActiveContextUsage } from "./llm/session-active-context";
 import { codexServiceTier } from "../../shared/codex-fast-mode";
 import type { AgentMessage } from "./agent";
 import {
@@ -732,6 +733,13 @@ export abstract class AgentProviderCodexRuntime extends AgentProviderOpenAICompa
       const durationMs = Math.round(performance.now() - startTime);
 
       if (turn.usage) {
+        recordActiveContextUsage(
+          sessionIdForVisibleTokenUsage(toolContext),
+          turn.usage.inputTokens + turn.usage.outputTokens,
+          contextWindowTokens,
+          0,
+          "provider"
+        );
         trackTokenUsage(
           activeModelId,
           providerConfig || "openai-codex",

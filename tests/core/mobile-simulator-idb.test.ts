@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import {
   ensureIosSimulatorAutomation,
   getIosSimulatorAutomationStatus,
@@ -15,7 +15,7 @@ import {
 describe("managed iOS simulator automation", () => {
   test("requires both IDB components before reporting direct interaction", () => {
     const rootDir = "/cybara";
-    const client = "/home/test/.local/bin/idb";
+    const client = join("/home/test", ".local", "bin", "idb");
     const files = new Set([client, "/opt/homebrew/bin/brew"]);
     const options = {
       exists: (path: string) => files.has(path),
@@ -63,7 +63,7 @@ describe("managed iOS simulator automation", () => {
     const client = join(managedIdbRuntimeDir(rootDir), "bin", "idb");
     const companion = "/opt/homebrew/bin/idb_companion";
     const brew = "/opt/homebrew/bin/brew";
-    const uv = "/home/test/.local/bin/uv";
+    const uv = join("/home/test", ".local", "bin", "uv");
     const files = new Set([brew, uv]);
     const commands: Array<{ args: string[]; command: string; env: NodeJS.ProcessEnv }> = [];
     const options = {
@@ -121,6 +121,10 @@ describe("managed iOS simulator automation", () => {
       },
       { PATH: "/usr/bin" }
     );
-    expect(env.PATH?.split(":")).toEqual(["/cybara/idb/bin", "/opt/homebrew/bin", "/usr/bin"]);
+    expect(env.PATH?.split(delimiter)).toEqual([
+      "/cybara/idb/bin",
+      "/opt/homebrew/bin",
+      "/usr/bin",
+    ]);
   });
 });

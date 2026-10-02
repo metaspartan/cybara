@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, Download, Minus, Plus, RotateCcw, X } from "
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type MouseEvent,
@@ -10,7 +11,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { copyChatImage, saveChatImage } from "@/lib/chatImageExport";
-import { isTauriDesktopRuntime } from "@/lib/desktopHost";
+import { peekChatImageBlob } from "@/lib/chatImages";
 import { ChatImageContextMenu } from "./ChatImageContextMenu";
 import type { ChatImageContextMenuPosition } from "./imageContextMenuModel";
 import { clampLightboxZoom, LIGHTBOX_ZOOM_STEP, nextLightboxIndex } from "./imageLightboxModel";
@@ -49,9 +50,14 @@ export function ChatImageLightbox({
   const imageRef = useRef<HTMLImageElement>(null);
   const contextMenuOpenRef = useRef(false);
   const onCloseRef = useRef(onClose);
+  const exportBlobs = useMemo(
+    () => new Map(images.map((image) => [image.src, peekChatImageBlob(image.src)])),
+    [images]
+  );
   const current = images[index];
-  const desktop = isTauriDesktopRuntime();
-  onCloseRef.current = onClose;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     contextMenuOpenRef.current = contextMenu !== null;
@@ -70,7 +76,7 @@ export function ChatImageLightbox({
     if (!image) return;
     setContextMenu(null);
     try {
-      await copyChatImage(image.src);
+      await copyChatImage(exportBlobs.get(image.src) ?? image.src);
       setNotice({ tone: "success", text: "Image copied" });
     } catch (error) {
       setNotice({
@@ -78,14 +84,14 @@ export function ChatImageLightbox({
         text: error instanceof Error ? error.message : "Could not copy the image",
       });
     }
-  }, [images, index]);
+  }, [images, index, exportBlobs]);
 
   const saveCurrentImage = useCallback(async () => {
     const image = images[index];
     if (!image) return;
     setContextMenu(null);
     try {
-      if (await saveChatImage(image.src, image.alt)) {
+      if (await saveChatImage(exportBlobs.get(image.src) ?? image.src, image.alt)) {
         setNotice({ tone: "success", text: "Image saved" });
       }
     } catch (error) {
@@ -94,7 +100,7 @@ export function ChatImageLightbox({
         text: error instanceof Error ? error.message : "Could not save the image",
       });
     }
-  }, [images, index]);
+  }, [images, index, exportBlobs]);
 
   const resetView = useCallback(() => {
     setZoom(1);
@@ -111,12 +117,12 @@ export function ChatImageLightbox({
   );
 
   const changeZoom = useCallback((delta: number) => {
-    setZoom((currentZoom) => {
-      const nextZoom = clampLightboxZoom(currentZoom + delta);
-      if (nextZoom === 1) setPosition({ x: 0, y: 0 });
-      return nextZoom;
-    });
+    setZoom((currentZoom) => clampLightboxZoom(currentZoom + delta));
   }, []);
+
+  useEffect(() => {
+    if (zoom === 1) setPosition({ x: 0, y: 0 });
+  }, [zoom]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -168,7 +174,6 @@ export function ChatImageLightbox({
   };
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
-    if (!desktop) return;
     const bounds = imageRef.current?.getBoundingClientRect();
     const insideImage =
       bounds !== undefined &&
@@ -237,27 +242,15 @@ export function ChatImageLightbox({
           >
             <RotateCcw className="h-4 w-4" />
           </button>
-          {desktop ? (
-            <button
-              type="button"
-              onClick={() => void saveCurrentImage()}
-              className={LIGHTBOX_CONTROL_CLASS}
-              aria-label="Download image"
-              title="Download image"
-            >
-              <Download className="h-4 w-4" />
-            </button>
-          ) : (
-            <a
-              href={current.src}
-              download
-              className={LIGHTBOX_CONTROL_CLASS}
-              aria-label="Download image"
-              title="Download image"
-            >
-              <Download className="h-4 w-4" />
-            </a>
-          )}
+          <button
+            type="button"
+            onClick={() => void saveCurrentImage()}
+            className={LIGHTBOX_CONTROL_CLASS}
+            aria-label="Download image"
+            title="Download image"
+          >
+            <Download className="h-4 w-4" />
+          </button>
           <button
             ref={closeButtonRef}
             type="button"

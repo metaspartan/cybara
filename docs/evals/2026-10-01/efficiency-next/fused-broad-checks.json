@@ -1,0 +1,15 @@
+{
+  "inputs_preserved": 18,
+  "repairs": [
+    {
+      "run_id": "r1-coding-repair-omp",
+      "cases": 121,
+      "passed": true
+    },
+    {
+      "run_id": "r1-coding-repair-cybara",
+      "cases": 121,
+      "passed": true
+    }
+  ]
+}

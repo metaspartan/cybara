@@ -1,0 +1,8 @@
+{
+  "src/core/tools/handlers/file.ts": "a52c77f23a5c94b7fc19693addfda8a0d662209f180e1a5b26d68ab197cf0bc5",
+  "src/core/tools/schemas-base.ts": "f7b40b21d9b9b2d8f7e7780b66a3c1e451a6c02bdef4f8c21fb19b47ff59c563",
+  "src/core/tools/read-batch.ts": "146ef8d3989113706d87611323ead0ff614feedf81c7ffdfb430a5ac1795823a",
+  "src/core/system-prompt.ts": "653fab9aafa5c0e27b23a6c5f6ffc23950589c78632fce518eb18510b8c64557",
+  "src/core/background-review.ts": "1dbc483d57992aa0b3e7b8deef842a97657dbd45481d228506bc3af6b2863173",
+  "src/api/chat-session-title-upgrade.ts": "d0b955ea8ba06c353ab7470c4cd74106fc030364846845884f0d3ffb664af667"
+}

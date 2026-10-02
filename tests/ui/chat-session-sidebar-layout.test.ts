@@ -75,7 +75,7 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain('surface="bare"');
     expect(source).toContain('backdrop="subtle"');
     expect(source).toContain('role="searchbox"');
-    expect(source).not.toContain('type="search"');
+    expect(sessionSidebarSource()).not.toContain('type="search"');
     expect(source).toContain("!border-0");
     expect(source).toContain(
       "focus:!border-0 focus:!outline-none focus:!ring-0 focus:!shadow-none"

@@ -20,6 +20,7 @@ import {
   useState,
 } from "react";
 import { apiFetch } from "@/lib/auth";
+import { BrowserDataImport } from "./BrowserDataImport";
 import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { openExternal } from "@/utils/openExternal";
@@ -1055,6 +1056,13 @@ export function ChatWorkspaceBrowser({
       className="flex h-full min-h-0 flex-col bg-[var(--chat-environment-panel-bg)]"
       data-browser-session-id={browserSessionId}
     >
+      {thumbnail ? null : (
+        <BrowserDataImport
+          tabId={page?.id}
+          url={page?.url}
+          onNavigate={(url) => void navigateTo(url)}
+        />
+      )}
       {thumbnail ? null : (
         <div
           className={cn(

@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { loadActiveContextUsage, clearActiveContextUsage } from "./llm/session-active-context";
 import { existsSync, statSync } from "fs";
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
@@ -480,7 +481,9 @@ function cachedPerMessageEstimate(
     message.thinking,
     message.images,
     message.tool_calls,
+    safeJsonStringify(message.tool_calls),
     message.process_activities,
+    safeJsonStringify(message.process_activities),
   ];
   const cached = cache.get(message as unknown as object);
   if (
@@ -582,7 +585,7 @@ export interface SessionContextUsage {
   compacted: boolean;
   compactionCount: number;
   compactedTokens: number;
-  source: "estimated";
+  source: "provider" | "estimated";
 }
 
 export interface SessionTokenUsage {
@@ -722,23 +725,49 @@ export function estimateSessionContextUsage(
     contextWindowTokens?: number;
   }
 ): SessionContextUsage {
-  const usedTokens = Math.max(0, estimateMessagesRequestVisibleTokens(messages));
+  const visibleTokens = Math.max(0, estimateMessagesRequestVisibleTokens(messages));
+  const snapshot = loadActiveContextUsage(options?.sessionId);
+  const appendedTokens =
+    snapshot?.messagesAtObservation !== undefined
+      ? estimateMessagesRequestVisibleTokens(
+          messages
+            .filter((message) => message.role !== "system")
+            .slice(snapshot.messagesAtObservation)
+        )
+      : snapshot?.transcriptTokensAtObservation === undefined
+        ? 0
+        : Math.max(0, visibleTokens - snapshot.transcriptTokensAtObservation);
+  const usedTokens = snapshot ? snapshot.usedTokens + appendedTokens : visibleTokens;
   const transcriptTokens = Math.max(usedTokens, estimateMessagesTranscriptTokens(messages));
-  const limitTokens = Math.max(1, options?.contextWindowTokens ?? getContextWindow(model));
+  const limitTokens = Math.max(
+    1,
+    options?.contextWindowTokens ?? snapshot?.limitTokens ?? getContextWindow(model)
+  );
   const remainingTokens = Math.max(0, limitTokens - usedTokens);
   const usedPercent = Math.min(100, Math.round((usedTokens / limitTokens) * 1000) / 10);
   const persistedCompaction = loadSessionSummaryCompactionMetrics(options?.sessionId);
-  const persistedCompactedTokens = persistedCompaction.tokens;
-  const persistedCompactionCount = persistedCompaction.count;
+  const loopCompaction = options?.sessionId
+    ? db
+        .query<{ count: number; tokens: number }, [string]>(
+          "SELECT COUNT(*) AS count, COALESCE(SUM(value),0) AS tokens FROM metrics WHERE key=? AND type='tool_transcript_compaction'"
+        )
+        .get(options.sessionId)
+    : null;
+  const persistedCompactedTokens = persistedCompaction.tokens + (loopCompaction?.tokens ?? 0);
+  const persistedCompactionCount = persistedCompaction.count + (loopCompaction?.count ?? 0);
   const compactionCount = Math.max(
     0,
     Number.isFinite(options?.compactionCount) ? Math.floor(options?.compactionCount ?? 0) : 0,
     persistedCompactionCount,
-    messages.filter(
-      (message) =>
-        typeof message.content === "string" &&
-        /^\[Context Summary:|^Previous conversation summary:/i.test(message.content.trim())
-    ).length
+    new Set(
+      messages
+        .filter(
+          (message) =>
+            typeof message.content === "string" &&
+            /^\[Context Summary:|^Previous conversation summary:/i.test(message.content.trim())
+        )
+        .map((message) => message.content.trim())
+    ).size
   );
   const compactedTokens = Math.max(0, Math.round(persistedCompactedTokens));
   return {
@@ -748,11 +777,16 @@ export function estimateSessionContextUsage(
     usedPercent,
     messageCount: messages.length,
     transcriptTokens,
-    metadataTokens: Math.max(0, transcriptTokens - usedTokens),
+    metadataTokens: Math.max(0, transcriptTokens - visibleTokens),
     compacted: compactionCount > 0 || compactedTokens > 0,
     compactionCount,
     compactedTokens,
-    source: "estimated",
+    source:
+      snapshot?.source === "provider" &&
+      (snapshot.transcriptTokensAtObservation === undefined ||
+        visibleTokens <= snapshot.transcriptTokensAtObservation)
+        ? "provider"
+        : "estimated",
   };
 }
 
@@ -1380,6 +1414,7 @@ export function persistSessionContextState(
 }
 
 export function clearSessionContextState(sessionId: string): boolean {
+  clearActiveContextUsage(sessionId);
   if (!sessionId.trim()) return false;
   try {
     return (
@@ -1467,8 +1502,14 @@ export async function loadPersistedSession(
           )
         )
       : null;
-    if (restoredContext && instructions.length) {
-      restoredContext.splice(1, 0, ...contextState!.messages.filter(isContextSummaryMessage));
+    if (restoredContext && instructions.length && contextState) {
+      const restoredSummaries = new Set(
+        restoredContext.filter(isContextSummaryMessage).map((message) => message.content)
+      );
+      const missingSummaries = contextState.messages.filter(
+        (message) => isContextSummaryMessage(message) && !restoredSummaries.has(message.content)
+      );
+      restoredContext.splice(1, 0, ...missingSummaries);
     }
 
     log.debug("Loaded persisted session", {

@@ -1,3 +1,5 @@
+import type { SessionPlanSnapshot } from "./session-plan";
+import type { SessionContextUsage } from "./session-context";
 import { stripReasoningTagTokens } from "./agent-internals";
 import { isMidLoopContextCompactionDetail } from "./llm/context-pressure";
 import { createLogger } from "./logger";
@@ -27,6 +29,7 @@ export type AgentStatus =
 export type ToolStatusPhase = "start" | "result" | "error" | "blocked";
 
 export interface StatusPayload {
+  contextUsage?: SessionContextUsage;
   status: AgentStatus;
   timestamp: number;
   detail?: string;
@@ -86,7 +89,26 @@ export interface SessionMessageEventPayload {
   timestamp: number;
 }
 
+export interface SessionPlanStreamEvent {
+  type: "session_plan";
+  sessionId: string;
+  plan: SessionPlanSnapshot;
+  timestamp: number;
+  runId?: string;
+}
+
+export function broadcastSessionPlan(plan: SessionPlanSnapshot): void {
+  emitStatusStreamEvent({
+    type: "session_plan",
+    sessionId: plan.sessionId,
+    plan: redactSecrets(plan) as SessionPlanSnapshot,
+    timestamp: Date.now(),
+    ...(plan.runId ? { runId: plan.runId } : {}),
+  });
+}
+
 export type StatusStreamEvent =
+  | SessionPlanStreamEvent
   | ({ type: "status" } & StatusPayload)
   | TaskEventPayload
   | StatusSnapshotEventPayload

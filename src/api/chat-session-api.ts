@@ -1,3 +1,4 @@
+import { resetSessionPlanFromMessages } from "../core/session-plan-store";
 import { agentManager } from "../core/agent";
 import db, { tables } from "../core/database";
 import { logSessionMessage } from "../core/logging";
@@ -769,7 +770,8 @@ export async function revertSessionToMessage(
   }
 
   if (removedCount > 0) {
-    clearTodoState(sessionId);
+    clearTodoState(sessionId, true);
+    resetSessionPlanFromMessages(sessionId, keptMessages);
     clearSessionContextState(sessionId);
     await deletePersistedSession(sessionId);
     await persistSession(sessionId, agentId, keptMessages, workspaceDir, sessionTitle);

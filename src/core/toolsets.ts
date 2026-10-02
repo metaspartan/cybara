@@ -39,6 +39,7 @@ export interface AgentToolPolicy {
 }
 
 const exactToolsets: Partial<Record<ToolsetId, string[]>> = {
+  process: ["exec", "process", "git", "ssh", "scp", "sandbox_run", "execute_code"],
   sessions: [
     "sessions_spawn",
     "sessions_transfer",
@@ -152,6 +153,7 @@ const safeToolNames = new Set([
 ]);
 
 const directToolNames = new Set([
+  "execute_code",
   "read",
   "write",
   "edit",
@@ -323,7 +325,7 @@ export function resolveAgentToolPolicy(
   }
 
   const allowedToolNames = [...allowed].filter((name) => byName.has(name));
-  const offeredTools = explicitSelection
+  let offeredTools = explicitSelection
     ? allowedToolNames.flatMap((name) => {
         const tool = byName.get(name);
         return tool ? [tool] : [];
@@ -332,6 +334,29 @@ export function resolveAgentToolPolicy(
         const tool = directToolNames.has(name) ? byName.get(name) : undefined;
         return tool ? [tool] : [];
       });
+  const executionMode = config.tool_execution_mode;
+  if (executionMode !== undefined && executionMode !== "direct" && executionMode !== "fused")
+    return invalidPolicy("invalid tool execution mode");
+  if (executionMode === "fused") {
+    if (!allowedToolNames.includes("execute_code"))
+      return invalidPolicy("fused tool execution requires execute_code");
+    const fusedNames = new Set([
+      "read",
+      "write",
+      "edit",
+      "apply_patch",
+      "exec",
+      "process",
+      "git",
+      "grep",
+      "file_search",
+      "workspace_index_search",
+    ]);
+    offeredTools = offeredTools.filter((tool) => !fusedNames.has(tool.name));
+    const codeTool = byName.get("execute_code");
+    if (codeTool && !offeredTools.some((tool) => tool.name === "execute_code"))
+      offeredTools.push(codeTool);
+  }
   const dynamicSetting = config.allow_dynamic_tools ?? config.allowDynamicTools;
   if (dynamicSetting !== undefined && typeof dynamicSetting !== "boolean") {
     return invalidPolicy("invalid dynamic tool setting");

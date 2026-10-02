@@ -54,6 +54,9 @@ jobs:
           VERSION="$(bun -e 'const pkg = await Bun.file("package.json").json(); console.log(pkg.version);')"
           CYBARA_RELEASE_VERSION="$VERSION" bun run version:sync
 
+      - name: Install Chromium for browser integration tests
+        run: bun ./node_modules/playwright/cli.js install --with-deps chromium
+
       - name: Run CI checks
         run: bun run check:ci
         env:

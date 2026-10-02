@@ -128,6 +128,38 @@ describe("API security module", () => {
     expect(result.authenticated).toBe(true);
   });
 
+  test("browser imports always require the root key even from localhost", () => {
+    for (const [method, path] of [
+      ["GET", "/api/browser/import/sources"],
+      ["GET", "/api/browser/import/library"],
+      ["POST", "/api/browser/import"],
+      ["POST", "/api/browser/import/fill"],
+    ]) {
+      if (!method || !path) throw new Error("Missing route fixture");
+      const bypass = security.securityCheck(
+        method,
+        path,
+        { host: "localhost:4269", origin: "http://localhost:4269" },
+        "127.0.0.1"
+      );
+      expect(bypass.passed).toBe(false);
+      expect(bypass.statusCode).toBe(403);
+      const invalid = security.securityCheck(
+        method,
+        path,
+        { authorization: "Bearer wrong" },
+        "127.0.0.1"
+      );
+      expect(invalid.passed).toBe(false);
+      const allowed = security.securityCheck(
+        method,
+        path,
+        { authorization: "Bearer cybara_test_key_for_security_suite" },
+        "127.0.0.1"
+      );
+      expect(allowed.passed).toBe(true);
+    }
+  });
   test("gateway password adds a second factor for remote root API key requests", () => {
     security.setGatewayPassword("correct horse battery staple");
 

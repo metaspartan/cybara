@@ -85,7 +85,7 @@
     "@toon-format/toon": "2.3.1",
     "adm-zip": "0.6.1",
     "axios": "1.20.0",
-    "basic-ftp": "5.3.1",
+    "basic-ftp": "6.2.1",
     "bn.js": "5.2.4",
     "body-parser": "2.3.0",
     "brace-expansion": "1.1.21",
@@ -1243,7 +1243,7 @@
 
     "bash-language-server": ["bash-language-server@5.8.1", "", { "dependencies": { "editorconfig": "3.0.2", "fast-glob": "3.3.3", "fuzzy-search": "3.2.1", "turndown": "7.2.4", "vscode-languageserver": "10.1.1", "vscode-languageserver-textdocument": "1.0.14", "web-tree-sitter": "0.27.0", "zod": "3.25.76" }, "bin": { "bash-language-server": "out/cli.js" } }, "sha512-F3g0hKZhCiKbLUf9wkrST6+ZypsHvJqaJxw/+J7WK2ywhFyc8+7jSHSTU1UDYncZkyWgbKV6+eZy5qWTZtoXww=="],
 
-    "basic-ftp": ["basic-ftp@5.3.1", "", {}, "sha512-bopVNp6ugyA150DDuZfPFdt1KZ5a94ZDiwX4hMgZDzF+GttD80lEy8kj98kbyhLXnPvhtIo93mdnLIjpCAeeOw=="],
+    "basic-ftp": ["basic-ftp@6.2.1", "", {}, "sha512-bK67isD+lKq46AU8vNtjvMaT2ZqAOAmNCbxUHlFBRD4k15NWxyEjmaKtZPlgce58So4BNTjITGQOVTjL9y0ECA=="],
 
     "bcrypt-pbkdf": ["bcrypt-pbkdf@1.0.2", "", { "dependencies": { "tweetnacl": "^0.14.3" } }, "sha512-qeFIXtP4MSoi6NLqO12WfqARWWuCKi2Rn/9hJLEmtB5yTNr9DqFWkJRCf2qShWzPeAMRnOgCrq0sg/KLv5ES9w=="],
 

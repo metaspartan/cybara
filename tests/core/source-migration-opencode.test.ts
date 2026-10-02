@@ -131,6 +131,9 @@ function createOpenCodeDatabase(root: string): void {
     5_101,
     JSON.stringify({ type: "text", text: "Keep archived conversations too." })
   );
+  session.finalize();
+  message.finalize();
+  part.finalize();
   database.close();
 }
 

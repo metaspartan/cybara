@@ -67,3 +67,9 @@ reason = "image-size JXL/HEIF zero-size box infinite loop is patched in-tree via
 id = "GHSA-w3rx-r6r6-pgpr"
 ignoreUntil = 2026-12-31
 reason = "image-size ICNS zero-length entry infinite loop is patched in-tree via apps/mobile/patches/image-size@1.2.1.patch; upstream has no fixed release. Verified against the advisory proof of concept: unpatched 1.2.1 exhausts the heap, the patched build returns."
+
+
+[[IgnoredVulns]]
+id = "GHSA-86w9-cpqp-85rv"
+ignoreUntil = 2026-12-31
+reason = "Fixed by committed mobile node-forge@1.4.0 patch rejecting extra nested DigestAlgorithm elements. Runtime regression rejects all four previously accepted malformed signatures and retains valid/optional-parameter signatures; security-audit verifies patch registration and installed source before applying this version-only exception. No patched registry release exists as of 2026-10-01."

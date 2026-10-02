@@ -55,6 +55,7 @@ const browserMockState = {
 };
 
 mock.module("../../src/core/browser/pw-manager", () => ({
+  applyImportedBrowserCookies: async () => undefined,
   getStatus: async () => {
     browserMockState.statusCalls += 1;
     return { running: true, profile: "mock-profile", currentUrl: "https://example.com" };

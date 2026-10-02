@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
+import { tmpdir } from "os";
 import {
   buildDockerRunArgs,
   sandboxCdpUrl,
@@ -41,10 +42,10 @@ describe("sandbox browser launcher", () => {
     delete process.env.CYBARA_RESOURCE_DIR;
     delete process.env.CYBARA_SANDBOX_BROWSER_DIR;
     try {
-      const root = mkdtempSync("/tmp/cybara-sandbox-context-");
+      const root = mkdtempSync(join(tmpdir(), "cybara-sandbox-context-"));
       try {
-        const sourceContext = `${root}/checkout/docker/sandbox-browser`;
-        const bundledContext = `${root}/bundle/docker/sandbox-browser`;
+        const sourceContext = join(root, "checkout", "docker", "sandbox-browser");
+        const bundledContext = join(root, "bundle", "docker", "sandbox-browser");
         mkdirSync(sourceContext, { recursive: true });
         mkdirSync(bundledContext, { recursive: true });
         await Bun.write(`${sourceContext}/Dockerfile`, "FROM scratch\n");
@@ -78,9 +79,14 @@ describe("sandbox browser launcher", () => {
   test("a hanging docker CLI cannot block status checks or the event loop", async () => {
     const savedCommand = process.env.CYBARA_SANDBOX_DOCKER_CMD;
     const savedTimeout = process.env.CYBARA_SANDBOX_DOCKER_TIMEOUT_MS;
-    const directory = mkdtempSync(join(process.env.TMPDIR || "/tmp", "cybara-docker-hang-"));
-    const fakeDocker = join(directory, "docker");
-    writeFileSync(fakeDocker, "#!/bin/sh\nsleep 30\n");
+    const directory = mkdtempSync(join(tmpdir(), "cybara-docker-hang-"));
+    const fakeDocker = join(directory, process.platform === "win32" ? "docker.cmd" : "docker");
+    writeFileSync(
+      fakeDocker,
+      process.platform === "win32"
+        ? `@echo off\r\n"${process.execPath}" -e "await Bun.sleep(30000)"\r\n`
+        : `#!/bin/sh\nexec "${process.execPath}" -e 'await Bun.sleep(30000)'\n`
+    );
     chmodSync(fakeDocker, 0o755);
     process.env.CYBARA_SANDBOX_DOCKER_CMD = fakeDocker;
     process.env.CYBARA_SANDBOX_DOCKER_TIMEOUT_MS = "300";
