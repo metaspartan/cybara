@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   chunkPackages,
+  auditWorkspace,
   hasVerifiedSignatureParserPatch,
   isAdvisoryOutage,
   isTransportKill,
@@ -195,4 +196,60 @@ test("signature-parser audit exception requires installed source and exact regis
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("verified mobile patch exceptions reach the actual audit runner", async () => {
+  let received: ReadonlySet<string> = new Set();
+  const result = await auditWorkspace(
+    {
+      label: "mobile",
+      lockfile: "bun.lock",
+      cwd: join(process.cwd(), "apps/mobile"),
+      ignored: new Set(),
+    },
+    (workspace) => {
+      received = workspace.ignored;
+      return { exitCode: 0, signalCode: null, stderr: "" };
+    }
+  );
+  expect(result.status).toBe("ok");
+  expect(received.has("GHSA-86w9-cpqp-85rv")).toBe(true);
+  const root = await auditWorkspace(
+    { label: "root", lockfile: "bun.lock", cwd: process.cwd(), ignored: new Set() },
+    (workspace) => {
+      expect(workspace.ignored.has("GHSA-86w9-cpqp-85rv")).toBe(false);
+      return { exitCode: 0, signalCode: null, stderr: "" };
+    }
+  );
+  expect(root.status).toBe("ok");
+});
+
+test("audit failures preserve stdout findings and never pass an empty nonzero result", async () => {
+  const workspace = {
+    label: "root",
+    lockfile: "bun.lock",
+    cwd: process.cwd(),
+    ignored: new Set<string>(),
+  };
+  const finding = await auditWorkspace(workspace, () => ({
+    exitCode: 1,
+    signalCode: null,
+    stderr: "",
+    stdout: "fixture dependency HIGH signature finding",
+  }));
+  expect(finding).toEqual({
+    status: "failed",
+    source: "bun-audit",
+    detail: "fixture dependency HIGH signature finding",
+  });
+  const empty = await auditWorkspace(workspace, () => ({
+    exitCode: 1,
+    signalCode: null,
+    stderr: "",
+  }));
+  expect(empty).toEqual({
+    status: "failed",
+    source: "bun-audit",
+    detail: "Audit exited with code 1",
+  });
 });

@@ -1451,3 +1451,15 @@ initializeChannels().catch((error) => {
 agentManager.autostartConfiguredAgents().catch((error) => {
   console.error("[Agents] Auto-start pass failed:", error);
 });
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    void import("./core/mobile-simulator")
+      .then((module) => module.shutdownOwnedMobileSimulators())
+      .then(() => process.exit(0))
+      .catch((error) => {
+        console.error("Simulator shutdown failed", error);
+        process.exit(1);
+      });
+  });
+}

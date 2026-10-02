@@ -1,3 +1,4 @@
+import { releaseSessionMobileSimulators } from "../core/mobile-simulator";
 import { anchorActiveContextUsage } from "../core/llm/session-active-context";
 import { estimateMessagesRequestVisibleTokens } from "../core/session-context";
 import { type AgentExecutionFailure, agentManager } from "../core/agent";
@@ -726,6 +727,7 @@ export function runChatTurnWithQueueDrain(
         : handleChatTurn(request, effectiveSessionId, goalCommand, goalCommandSideEffectsApplied));
     } finally {
       finishSessionPlanTurn(effectiveSessionId, "paused");
+      await releaseSessionMobileSimulators(effectiveSessionId);
     }
   });
   const finalized = result.then(
