@@ -31,6 +31,7 @@ interface BunAuditResult {
   exitCode: number | null;
   signalCode: string | null;
   stderr: string;
+  stdout?: string;
 }
 
 export type AuditOutcome =
@@ -260,10 +261,14 @@ function runBunAuditAttempt(ws: Workspace): BunAuditResult {
     exitCode: proc.exitCode,
     signalCode: proc.signalCode ?? null,
     stderr: proc.stderr.toString(),
+    stdout: proc.stdout.toString(),
   };
 }
 
-export async function auditWorkspace(ws: Workspace): Promise<AuditOutcome> {
+export async function auditWorkspace(
+  ws: Workspace,
+  runAudit: (workspace: Workspace) => BunAuditResult = runBunAuditAttempt
+): Promise<AuditOutcome> {
   if (ws.label === "mobile" && !hasVerifiedSignatureParserPatch(ws.cwd)) {
     return {
       status: "failed",
@@ -273,13 +278,19 @@ export async function auditWorkspace(ws: Workspace): Promise<AuditOutcome> {
   }
   const workspaceIgnored = new Set(ws.ignored);
   if (ws.label === "mobile") workspaceIgnored.add("GHSA-86w9-cpqp-85rv");
-  const result = runBunAuditAttempt(ws);
+  const checkedWorkspace = { ...ws, ignored: workspaceIgnored };
+  const result = runAudit(checkedWorkspace);
   if (result.exitCode === 0) return { status: "ok", source: "bun-audit" };
-  if (!isTransportKill(result) && !isAdvisoryOutage(result.stderr)) {
-    return { status: "failed", source: "bun-audit", detail: result.stderr.trim() };
+  const detail = [result.stderr.trim(), result.stdout?.trim()].filter(Boolean).join("\n");
+  if (!isTransportKill(result) && !isAdvisoryOutage(detail)) {
+    return {
+      status: "failed",
+      source: "bun-audit",
+      detail: detail || `Audit exited with code ${result.exitCode}`,
+    };
   }
   try {
-    const findings = await auditViaOsv(ws);
+    const findings = await auditViaOsv(checkedWorkspace);
     return { status: findings.length === 0 ? "ok" : "failed", source: "osv-fallback", findings };
   } catch (err) {
     return {

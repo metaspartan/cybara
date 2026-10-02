@@ -1,3 +1,4 @@
+import { releaseSessionMobileSimulators } from "../core/mobile-simulator";
 import { resetSessionPlanFromMessages } from "../core/session-plan-store";
 import { agentManager } from "../core/agent";
 import db, { tables } from "../core/database";
@@ -557,6 +558,7 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
   }
   try {
     await chatTurnMutex.waitForIdle(key);
+    await releaseSessionMobileSimulators(key);
     const memoryDeleted = deleteResidentChatSession(key);
     const persistedDeleted = await deletePersistedSession(key);
     if (memoryDeleted || persistedDeleted) {

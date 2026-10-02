@@ -15,3 +15,15 @@ test("hosted CI installs Chromium before executing real browser integration chec
   expect(install).toBeLessThan(checks);
   expect(workflow.slice(install, checks)).not.toContain("continue-on-error");
 });
+
+test("release quality gate installs its pinned browser before the same integration tests", () => {
+  const workflow = readFileSync(
+    join(import.meta.dir, "../../.github/workflows/release.yml"),
+    "utf8"
+  );
+  const install = workflow.indexOf("bunx playwright install --with-deps chromium");
+  const checks = workflow.indexOf("bun run check:ci");
+  expect(install).toBeGreaterThan(0);
+  expect(install).toBeLessThan(checks);
+  expect(workflow.slice(install, checks)).not.toContain("continue-on-error");
+});

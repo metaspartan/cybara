@@ -261,7 +261,10 @@ async function main() {
       logDaemon("Daemon child process starting...");
     }
 
-    process.on("SIGINT", () => {
+    process.on("SIGINT", async () => {
+      await import("./core/mobile-simulator")
+        .then((module) => module.shutdownOwnedMobileSimulators())
+        .catch((error) => logDaemon(`Simulator shutdown failed: ${error}`));
       stopGatewayLogCapture();
       try {
         unlinkSync(PID_FILE);
@@ -270,7 +273,10 @@ async function main() {
       }
       process.exit(0);
     });
-    process.on("SIGTERM", () => {
+    process.on("SIGTERM", async () => {
+      await import("./core/mobile-simulator")
+        .then((module) => module.shutdownOwnedMobileSimulators())
+        .catch((error) => logDaemon(`Simulator shutdown failed: ${error}`));
       logDaemon("Received SIGTERM, shutting down...");
       stopGatewayLogCapture();
       try {

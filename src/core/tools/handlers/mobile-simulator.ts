@@ -1,5 +1,6 @@
 import {
   captureMobileSimulator,
+  retainSessionMobileSimulator,
   getMobileSimulatorStatus,
   isMobileSimulatorAction,
   summarizeMobileSimulatorStatus,
@@ -33,12 +34,20 @@ export async function handleMobileSimulator(
   const platform = simulatorPlatform(args.platform);
   const deviceId = optionalDeviceId(args.deviceId);
   if (action === "start") {
-    return { success: true, device: await startMobileSimulator(platform, deviceId) };
+    return {
+      success: true,
+      device: await startMobileSimulator(platform, deviceId, {
+        sessionId: context?.sessionId,
+        signal: context?.abortSignal,
+      }),
+    };
   }
   if (action === "stop") {
     await stopMobileSimulator(platform, deviceId);
     return { success: true };
   }
+  context?.abortSignal?.throwIfAborted();
+  if (context?.sessionId) await retainSessionMobileSimulator(context.sessionId, platform, deviceId);
   if (action === "screenshot") {
     const saved = await saveMobileSimulatorScreenshot(platform, deviceId);
     return {

@@ -40,6 +40,8 @@ jobs:
         run: cd apps/mobile && bash ../../scripts/ci-install.sh
       - name: Sync version metadata
         run: bun run version:sync
+      - name: Install Chromium for browser integration tests
+        run: bunx playwright install --with-deps chromium
       - name: Run CI checks
         run: bun run check:ci
       - name: Security audit

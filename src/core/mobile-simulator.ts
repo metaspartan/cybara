@@ -1,3 +1,5 @@
+import { MobileSimulatorLifecycle } from "./mobile-simulator-lifecycle";
+import { killSubprocessTree } from "./subprocess-tree";
 import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
@@ -236,36 +238,47 @@ function resolveXcrun(): string | null {
 async function runCommand(
   command: string,
   args: string[],
-  options: { env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}
+  options: { env?: NodeJS.ProcessEnv; timeoutMs?: number; signal?: AbortSignal } = {}
 ): Promise<CommandResult> {
-  const processHandle = Bun.spawn([command, ...args], {
+  options.signal?.throwIfAborted();
+  const child = Bun.spawn([command, ...args], {
     env: options.env,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
+    detached: process.platform !== "win32",
   });
-  const stdoutPromise = readSubprocessStream(processHandle.stdout);
-  const stderrPromise = readSubprocessStream(processHandle.stderr);
+  const stdout = readSubprocessStream(child.stdout);
+  const stderr = readSubprocessStream(child.stderr);
   const timeoutMs = options.timeoutMs ?? COMMAND_TIMEOUT_MS;
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cancel = (): void => {
+    child.kill();
+  };
+  options.signal?.addEventListener("abort", cancel, { once: true });
   try {
-    const exitCode = await Promise.race([
-      processHandle.exited,
+    return await Promise.race([
+      Promise.all([stdout, stderr, child.exited]).then(([output, errors, exitCode]) => {
+        options.signal?.throwIfAborted();
+        return { stdout: output, stderr: errors.toString("utf8").trim(), exitCode };
+      }),
       new Promise<never>((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error(`Command timed out after ${timeoutMs}ms`)),
+          () =>
+            reject(
+              new Error(`${basename(command)} ${args[0] ?? ""} timed out after ${timeoutMs}ms`)
+            ),
           timeoutMs
         );
         timer.unref?.();
       }),
     ]);
-    const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
-    return { stdout, stderr: stderr.toString("utf8").trim(), exitCode };
   } catch (error) {
-    processHandle.kill();
-    await processHandle.exited.catch(() => undefined);
+    child.kill();
+    await child.exited.catch(() => undefined);
     throw error;
   } finally {
+    options.signal?.removeEventListener("abort", cancel);
     if (timer) clearTimeout(timer);
   }
 }
@@ -273,7 +286,7 @@ async function runCommand(
 async function runChecked(
   command: string,
   args: string[],
-  options: { env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}
+  options: { env?: NodeJS.ProcessEnv; timeoutMs?: number; signal?: AbortSignal } = {}
 ): Promise<CommandResult> {
   const result = await runCommand(command, args, options);
   if (result.exitCode !== 0) {
@@ -488,81 +501,151 @@ function selectDevice(
   return device;
 }
 
-async function waitForAndroidBoot(adb: string, serial?: string): Promise<MobileSimulatorDevice> {
+async function waitForAndroidBoot(
+  adb: string,
+  serial?: string,
+  signal?: AbortSignal
+): Promise<MobileSimulatorDevice> {
   const deadline = Date.now() + BOOT_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const devices = await listMobileSimulatorDevices("android", true);
+    signal?.throwIfAborted();
+    const devices = await listMobileSimulatorDevices("android", true).catch((error) => {
+      signal?.throwIfAborted();
+      if (Date.now() >= deadline) throw error;
+      return [];
+    });
     const device = devices.find(
       (candidate) =>
         candidate.state === "booted" &&
         (!serial || candidate.id === serial || candidate.name === serial)
     );
     if (device) {
-      const result = await runCommand(adb, [
-        "-s",
-        device.id,
-        "shell",
-        "getprop",
-        "sys.boot_completed",
-      ]);
-      if (result.stdout.toString("utf8").trim() === "1") return device;
+      const result = await runCommand(
+        adb,
+        ["-s", device.id, "shell", "getprop", "sys.boot_completed"],
+        { signal, timeoutMs: 5_000 }
+      ).catch((error) => {
+        signal?.throwIfAborted();
+        if (Date.now() >= deadline) throw error;
+        return undefined;
+      });
+      if (result?.stdout.toString("utf8").trim() === "1") return device;
     }
     await Bun.sleep(750);
   }
   throw new Error("Android Emulator did not finish booting");
 }
 
-export async function startMobileSimulator(
-  platform: MobileSimulatorPlatform,
-  deviceId?: string
-): Promise<MobileSimulatorDevice> {
-  if (platform === "ios") {
+const launchedEmulators = new Map<string, ReturnType<typeof Bun.spawn>>();
+
+async function shutdownDevice(device: MobileSimulatorDevice): Promise<void> {
+  if (device.platform === "ios") {
     const xcrun = resolveXcrun();
     if (!xcrun) throw new Error("iOS Simulator requires macOS and Xcode");
-    const device = selectDevice(await listMobileSimulatorDevices("ios", true), deviceId);
-    if (device.state !== "booted") {
-      await runChecked(xcrun, ["simctl", "boot", device.id], { timeoutMs: BOOT_TIMEOUT_MS });
+    if (device.state === "booted") await runChecked(xcrun, ["simctl", "shutdown", device.id]);
+  } else {
+    const child = launchedEmulators.get(device.name);
+    const adb = resolveAndroidSdkExecutable("adb");
+    try {
+      if (adb && device.state === "booted") await runChecked(adb, ["-s", device.id, "emu", "kill"]);
+      else if (!child && device.state === "booted")
+        throw new Error("Android SDK Platform Tools are required");
+    } finally {
+      if (child) {
+        killSubprocessTree(child, "SIGKILL");
+        await child.exited;
+        launchedEmulators.delete(device.name);
+      }
+    }
+  }
+  clearDeviceFrames(device.platform, device.id);
+  clearDeviceCache(device.platform);
+}
+
+async function bootDevice(
+  device: MobileSimulatorDevice,
+  signal: AbortSignal
+): Promise<MobileSimulatorDevice> {
+  signal.throwIfAborted();
+  if (device.platform === "ios") {
+    const xcrun = resolveXcrun();
+    if (!xcrun) throw new Error("iOS Simulator requires macOS and Xcode");
+    try {
+      await runChecked(xcrun, ["simctl", "boot", device.id], {
+        timeoutMs: BOOT_TIMEOUT_MS,
+        signal,
+      });
       await runChecked(xcrun, ["simctl", "bootstatus", device.id, "-b"], {
         timeoutMs: BOOT_TIMEOUT_MS,
+        signal,
       });
+      signal.throwIfAborted();
+      clearDeviceCache("ios");
+      return selectDevice(await listMobileSimulatorDevices("ios", true), device.id, true);
+    } catch (error) {
+      await runChecked(xcrun, ["simctl", "shutdown", device.id]).catch(() => undefined);
+      clearDeviceCache("ios");
+      throw error;
     }
-    clearDeviceCache("ios");
-    return selectDevice(await listMobileSimulatorDevices("ios", true), device.id, true);
   }
   const adb = resolveAndroidSdkExecutable("adb");
   const emulator = resolveAndroidSdkExecutable("emulator");
   if (!adb || !emulator) throw new Error("Android SDK Platform Tools and Emulator are required");
-  const devices = await listMobileSimulatorDevices("android", true);
-  const selected = selectDevice(devices, deviceId);
-  if (selected.state === "booted") return selected;
   clearDeviceCache("android");
   const child = Bun.spawn(
-    [emulator, "-avd", selected.name, "-no-window", "-no-boot-anim", "-gpu", "auto"],
-    { stdin: "ignore", stdout: "ignore", stderr: "ignore" }
+    [emulator, "-avd", device.name, "-no-window", "-no-boot-anim", "-gpu", "auto"],
+    { stdin: "ignore", stdout: "ignore", stderr: "ignore", detached: process.platform !== "win32" }
   );
+  launchedEmulators.set(device.name, child);
   child.unref();
-  return await waitForAndroidBoot(adb, selected.name);
+  try {
+    return await waitForAndroidBoot(adb, device.name, signal);
+  } catch (error) {
+    killSubprocessTree(child, "SIGKILL");
+    await child.exited;
+    launchedEmulators.delete(device.name);
+    clearDeviceCache("android");
+    throw error;
+  }
+}
+
+const simulatorLifecycle = new MobileSimulatorLifecycle({
+  resolve: async (platform, deviceId) =>
+    selectDevice(await listMobileSimulatorDevices(platform, true), deviceId),
+  boot: bootDevice,
+  shutdown: shutdownDevice,
+});
+
+export async function startMobileSimulator(
+  platform: MobileSimulatorPlatform,
+  deviceId?: string,
+  options: { sessionId?: string; signal?: AbortSignal } = {}
+): Promise<MobileSimulatorDevice> {
+  return await simulatorLifecycle.start(platform, deviceId, options.sessionId, options.signal);
+}
+
+export async function releaseSessionMobileSimulators(sessionId: string): Promise<void> {
+  await simulatorLifecycle.release(sessionId);
+}
+
+export async function shutdownOwnedMobileSimulators(): Promise<void> {
+  await simulatorLifecycle.shutdown();
+}
+
+export async function retainSessionMobileSimulator(
+  sessionId: string,
+  platform: MobileSimulatorPlatform,
+  deviceId?: string
+): Promise<void> {
+  const device = selectDevice(await listMobileSimulatorDevices(platform, true), deviceId, true);
+  simulatorLifecycle.retain(sessionId, device);
 }
 
 export async function stopMobileSimulator(
   platform: MobileSimulatorPlatform,
   deviceId?: string
 ): Promise<void> {
-  if (platform === "ios") {
-    const xcrun = resolveXcrun();
-    if (!xcrun) throw new Error("iOS Simulator requires macOS and Xcode");
-    const device = selectDevice(await listMobileSimulatorDevices("ios", true), deviceId, true);
-    await runChecked(xcrun, ["simctl", "shutdown", device.id]);
-    clearDeviceFrames("ios", device.id);
-    clearDeviceCache("ios");
-    return;
-  }
-  const adb = resolveAndroidSdkExecutable("adb");
-  if (!adb) throw new Error("Android SDK Platform Tools are required");
-  const device = selectDevice(await listMobileSimulatorDevices("android", true), deviceId, true);
-  await runChecked(adb, ["-s", device.id, "emu", "kill"]);
-  clearDeviceFrames("android", device.id);
-  clearDeviceCache("android");
+  await simulatorLifecycle.stop(platform, deviceId);
 }
 
 function pngDimensions(bytes: Buffer): { width: number; height: number } | null {
