@@ -1,0 +1,536 @@
+[
+  {
+    "run_id": "r1-multi-file-ledger-cybara",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 3,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:18:36.397Z",
+      "warmup_ended_at": "2026-10-04T04:19:01.666Z",
+      "warmup_ms": 25268.6758,
+      "task_started_at": "2026-10-04T04:19:01.666Z",
+      "task_ended_at": "2026-10-04T04:19:13.847Z",
+      "task_elapsed_ms": 12181.677800000001,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": null,
+    "scored_usage": {
+      "requests": 3,
+      "failed_requests": 0,
+      "input": 12333,
+      "output": 932,
+      "total": 13265,
+      "cached": 9612,
+      "uncached": 2721,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 6,
+      "failed_requests": 0,
+      "input": 14279,
+      "output": 1516,
+      "total": 15795,
+      "cached": 11061,
+      "uncached": 3218,
+      "controls_match": true
+    }
+  },
+  {
+    "run_id": "r1-multi-file-ledger-hermes",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 3,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:19:21.452751+00:00",
+      "warmup_ended_at": "2026-10-04T04:19:39.110827+00:00",
+      "warmup_ms": 17657.85339998547,
+      "task_started_at": "2026-10-04T04:19:39.110827+00:00",
+      "task_ended_at": "2026-10-04T04:21:12.614183+00:00",
+      "task_elapsed_ms": 93503.76079999842,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": null,
+    "scored_usage": {
+      "requests": 6,
+      "failed_requests": 1,
+      "input": null,
+      "output": null,
+      "total": null,
+      "cached": null,
+      "uncached": null,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 2,
+      "failed_requests": 0,
+      "input": 12989,
+      "output": 399,
+      "total": 13388,
+      "cached": 6381,
+      "uncached": 6608,
+      "controls_match": true
+    }
+  },
+  {
+    "run_id": "r1-exact-retrieval-hermes",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 3,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:21:24.650761+00:00",
+      "warmup_ended_at": "2026-10-04T04:21:59.604208+00:00",
+      "warmup_ms": 34953.59180000378,
+      "task_started_at": "2026-10-04T04:21:59.604208+00:00",
+      "task_ended_at": "2026-10-04T04:22:24.626817+00:00",
+      "task_elapsed_ms": 25022.372799983714,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": null,
+    "scored_usage": {
+      "requests": 4,
+      "failed_requests": 0,
+      "input": 35312,
+      "output": 655,
+      "total": 35967,
+      "cached": 34317,
+      "uncached": 995,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 6,
+      "failed_requests": 0,
+      "input": 43391,
+      "output": 949,
+      "total": 44340,
+      "cached": 35936,
+      "uncached": 7455,
+      "controls_match": true
+    }
+  },
+  {
+    "run_id": "r1-exact-retrieval-cybara",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 3,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:22:28.068Z",
+      "warmup_ended_at": "2026-10-04T04:22:36.783Z",
+      "warmup_ms": 8714.2863,
+      "task_started_at": "2026-10-04T04:22:36.783Z",
+      "task_ended_at": "2026-10-04T04:22:50.736Z",
+      "task_elapsed_ms": 13952.955499999998,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": null,
+    "scored_usage": {
+      "requests": 4,
+      "failed_requests": 0,
+      "input": 14752,
+      "output": 1598,
+      "total": 16350,
+      "cached": 12111,
+      "uncached": 2641,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 3,
+      "failed_requests": 0,
+      "input": 7091,
+      "output": 675,
+      "total": 7766,
+      "cached": 4512,
+      "uncached": 2579,
+      "controls_match": true
+    }
+  },
+  {
+    "run_id": "r1-boundary-transform-cybara",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 2,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:22:50.931Z",
+      "warmup_ended_at": "2026-10-04T04:23:05.035Z",
+      "warmup_ms": 14103.8688,
+      "task_started_at": "2026-10-04T04:23:05.035Z",
+      "task_ended_at": "2026-10-04T04:23:22.131Z",
+      "task_elapsed_ms": 17095.2323,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": null,
+    "scored_usage": {
+      "requests": 4,
+      "failed_requests": 0,
+      "input": 16682,
+      "output": 1594,
+      "total": 18276,
+      "cached": 13350,
+      "uncached": 3332,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 4,
+      "failed_requests": 0,
+      "input": 10400,
+      "output": 1250,
+      "total": 11650,
+      "cached": 7358,
+      "uncached": 3042,
+      "controls_match": true
+    }
+  },
+  {
+    "run_id": "r1-boundary-transform-hermes",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 2,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:23:32.424709+00:00",
+      "warmup_ended_at": "2026-10-04T04:24:11.044554+00:00",
+      "warmup_ms": 38619.15750004118,
+      "task_started_at": "2026-10-04T04:24:11.044554+00:00",
+      "task_ended_at": "2026-10-04T04:24:34.123599+00:00",
+      "task_elapsed_ms": 23079.267399967648,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": null,
+    "scored_usage": {
+      "requests": 3,
+      "failed_requests": 0,
+      "input": 23748,
+      "output": 606,
+      "total": 24354,
+      "cached": 22973,
+      "uncached": 775,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 4,
+      "failed_requests": 0,
+      "input": 27397,
+      "output": 641,
+      "total": 28038,
+      "cached": 20559,
+      "uncached": 6838,
+      "controls_match": true
+    }
+  },
+  {
+    "run_id": "r1-multi-file-join-hermes",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": false,
+        "reason": "mismatch"
+      }
+    ],
+    "readonly_inputs": 5,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:24:46.687085+00:00",
+      "warmup_ended_at": "2026-10-04T04:25:10.395802+00:00",
+      "warmup_ms": 23708.372800028883,
+      "task_started_at": "2026-10-04T04:25:10.395802+00:00",
+      "task_ended_at": "2026-10-04T04:26:11.768702+00:00",
+      "task_elapsed_ms": 61373.15860000672,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": null,
+    "scored_usage": {
+      "requests": 6,
+      "failed_requests": 0,
+      "input": 49268,
+      "output": 1939,
+      "total": 51207,
+      "cached": 46474,
+      "uncached": 2794,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 3,
+      "failed_requests": 0,
+      "input": 19499,
+      "output": 484,
+      "total": 19983,
+      "cached": 13074,
+      "uncached": 6425,
+      "controls_match": true
+    }
+  },
+  {
+    "run_id": "r1-multi-file-join-cybara",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 5,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:26:15.119Z",
+      "warmup_ended_at": "2026-10-04T04:27:04.114Z",
+      "warmup_ms": 48995.0328,
+      "task_started_at": "2026-10-04T04:27:04.114Z",
+      "task_ended_at": "2026-10-04T04:27:42.786Z",
+      "task_elapsed_ms": 38672.11439999999,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": null,
+    "scored_usage": {
+      "requests": 3,
+      "failed_requests": 0,
+      "input": 10778,
+      "output": 1935,
+      "total": 12713,
+      "cached": 8430,
+      "uncached": 2348,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 4,
+      "failed_requests": 0,
+      "input": 9500,
+      "output": 630,
+      "total": 10130,
+      "cached": 6885,
+      "uncached": 2615,
+      "controls_match": true
+    }
+  },
+  {
+    "run_id": "r1-dependency-order-cybara",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 4,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:27:42.988Z",
+      "warmup_ended_at": "2026-10-04T04:28:00.290Z",
+      "warmup_ms": 17301.8264,
+      "task_started_at": "2026-10-04T04:28:00.290Z",
+      "task_ended_at": "2026-10-04T04:28:15.749Z",
+      "task_elapsed_ms": 15458.910500000002,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": null,
+    "scored_usage": {
+      "requests": 3,
+      "failed_requests": 0,
+      "input": 9037,
+      "output": 702,
+      "total": 9739,
+      "cached": 7424,
+      "uncached": 1613,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 3,
+      "failed_requests": 0,
+      "input": 6957,
+      "output": 833,
+      "total": 7790,
+      "cached": 4480,
+      "uncached": 2477,
+      "controls_match": true
+    }
+  },
+  {
+    "run_id": "r1-dependency-order-hermes",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 4,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:28:25.418321+00:00",
+      "warmup_ended_at": "2026-10-04T04:29:10.895141+00:00",
+      "warmup_ms": 45476.152000017464,
+      "task_started_at": "2026-10-04T04:29:10.895141+00:00",
+      "task_ended_at": "2026-10-04T04:29:58.633770+00:00",
+      "task_elapsed_ms": 47738.807299989276,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": null,
+    "scored_usage": {
+      "requests": 5,
+      "failed_requests": 0,
+      "input": 41393,
+      "output": 426,
+      "total": 41819,
+      "cached": 40304,
+      "uncached": 1089,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 7,
+      "failed_requests": 0,
+      "input": 48930,
+      "output": 813,
+      "total": 49743,
+      "cached": 41445,
+      "uncached": 7485,
+      "controls_match": true
+    }
+  },
+  {
+    "run_id": "r1-coding-repair-hermes",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 2,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:30:13.146836+00:00",
+      "warmup_ended_at": "2026-10-04T04:30:42.656930+00:00",
+      "warmup_ms": 29509.781899978407,
+      "task_started_at": "2026-10-04T04:30:42.656930+00:00",
+      "task_ended_at": "2026-10-04T04:32:11.148611+00:00",
+      "task_elapsed_ms": 88491.98890000116,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": {
+      "cases": 121,
+      "passed": true
+    },
+    "scored_usage": {
+      "requests": 8,
+      "failed_requests": 0,
+      "input": 61222,
+      "output": 956,
+      "total": 62178,
+      "cached": 51200,
+      "uncached": 10022,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 3,
+      "failed_requests": 0,
+      "input": 19366,
+      "output": 171,
+      "total": 19537,
+      "cached": 14080,
+      "uncached": 5286,
+      "controls_match": true
+    }
+  },
+  {
+    "run_id": "r1-coding-repair-cybara",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 2,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:32:14.745Z",
+      "warmup_ended_at": "2026-10-04T04:32:24.965Z",
+      "warmup_ms": 10219.8747,
+      "task_started_at": "2026-10-04T04:32:24.965Z",
+      "task_ended_at": "2026-10-04T04:34:09.874Z",
+      "task_elapsed_ms": 104909.0759,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": {
+      "cases": 121,
+      "passed": true
+    },
+    "scored_usage": {
+      "requests": 11,
+      "failed_requests": 0,
+      "input": 56988,
+      "output": 3479,
+      "total": 60467,
+      "cached": 50934,
+      "uncached": 6054,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 3,
+      "failed_requests": 0,
+      "input": 7188,
+      "output": 678,
+      "total": 7866,
+      "cached": 4526,
+      "uncached": 2662,
+      "controls_match": true
+    }
+  }
+]

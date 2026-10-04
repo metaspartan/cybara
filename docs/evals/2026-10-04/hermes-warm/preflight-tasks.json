@@ -1,0 +1,40 @@
+{
+  "tasks": [
+    {
+      "id": "multi-file-ledger",
+      "prompt": "Use the available file tools to read accounts.json and events.json in this workspace. Compute balances starting from accounts opening balances and applying each event once per id in file order; ignore duplicate event ids. Include only events whose status is posted. Amounts are integer cents; a transfer moves cents from from_account to to_account, a credit adds to account, a debit subtracts from account. Write answer.json with exactly {\"balances\":{\"a\":number,\"b\":number,\"c\":number},\"applied_ids\":[id strings in first-seen order]}. Do not edit the input files. Do not just describe the answer; create the file. Work only in this workspace. Reply briefly when done.",
+      "files": [
+        {
+          "path": "accounts.json",
+          "content": "{\"a\":1000,\"b\":2000,\"c\":500}"
+        },
+        {
+          "path": "events.json",
+          "content": "[{\"id\":\"e1\",\"type\":\"transfer\",\"from_account\":\"a\",\"to_account\":\"b\",\"amount\":125,\"status\":\"posted\"},{\"id\":\"e2\",\"type\":\"credit\",\"account\":\"c\",\"amount\":70,\"status\":\"pending\"},{\"id\":\"e3\",\"type\":\"debit\",\"account\":\"b\",\"amount\":50,\"status\":\"posted\"},{\"id\":\"e1\",\"type\":\"transfer\",\"from_account\":\"a\",\"to_account\":\"b\",\"amount\":125,\"status\":\"posted\"},{\"id\":\"e4\",\"type\":\"credit\",\"account\":\"c\",\"amount\":20,\"status\":\"posted\"}]"
+        },
+        {
+          "path": "warmup.json",
+          "content": "{\"values\":[4,-1,10]}"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": {
+            "balances": {
+              "a": 875,
+              "b": 2075,
+              "c": 520
+            },
+            "applied_ids": [
+              "e1",
+              "e3",
+              "e4"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

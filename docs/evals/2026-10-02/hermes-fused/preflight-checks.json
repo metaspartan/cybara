@@ -1,0 +1,40 @@
+{
+  "checks": [
+    {
+      "run_id": "r1-multi-file-ledger-cybara",
+      "correct": true,
+      "readonly_inputs": 2,
+      "expected": {
+        "balances": {
+          "a": 875,
+          "b": 2075,
+          "c": 520
+        },
+        "applied_ids": [
+          "e1",
+          "e3",
+          "e4"
+        ]
+      }
+    },
+    {
+      "run_id": "r1-multi-file-ledger-hermes",
+      "correct": true,
+      "readonly_inputs": 2,
+      "expected": {
+        "balances": {
+          "a": 875,
+          "b": 2075,
+          "c": 520
+        },
+        "applied_ids": [
+          "e1",
+          "e3",
+          "e4"
+        ]
+      }
+    }
+  ],
+  "readonly_inputs": 4,
+  "independent_trials": 2
+}

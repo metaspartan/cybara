@@ -1,0 +1,33 @@
+{
+  "as_of": "2026-10-02",
+  "cybara_commit": "2de80a6e141636fbcfc41d7090841ec8e118687c",
+  "hermes_release": "v2026.9.24",
+  "hermes_package_version": "0.21.5",
+  "hermes_commit": "f97608f178d1ffeca59860195ab7da295f7c8e5f",
+  "official_release": "https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.24",
+  "hermes_checkout": "unmodified",
+  "runtime": "1.4.2",
+  "hermes_python": "3.11.9",
+  "model": "space-bunny-free",
+  "provider": "https://opencode.ai/zen/v1/chat/completions",
+  "reasoning": "high",
+  "output_cap": 8192,
+  "timeout_ms": 180000,
+  "hermes_tools": [
+    "terminal",
+    "file",
+    "code_execution"
+  ],
+  "hermes_max_turns": 60,
+  "hermes_title_model_upgrade": false,
+  "hermes_unattended_approval_mode": "HERMES_YOLO_MODE=1 for replication/confirmation; main retained diagnostic restrictive default",
+  "cybara_fused": true,
+  "startup_caveat": "warm Cybara gateway / cold Hermes Python CLI",
+  "source_hashes": {
+    "src/core/system-prompt.ts": "54f5f0887b51c8d81579455330268124101db9595ae0693b3780c4f3c8caf051",
+    "src/core/toolsets.ts": "72fc5042002731970237fa9209789e487b8061d2ffae47a0636c72f470d7ebe2",
+    "src/core/tools/handlers/execute-code.ts": "9c2e8c079989f36f063511c00ef06c6a03245e933cd786e9d051e51d279c473c",
+    "scripts/harness-benchmark.ts": "b7a5066132f6d18dd5c34ea4192c55d6d4ba34a8da2c29e6947397ab33acf625",
+    "scripts/harness-benchmark-core.ts": "9dcff3690a3c178f4e11607aa8573393913fef9176207a4b7e173f24c87596c2"
+  }
+}

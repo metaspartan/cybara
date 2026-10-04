@@ -1,0 +1,342 @@
+[
+  {
+    "phase": "preflight",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 1,
+        "passed": 1,
+        "warmed_trials": 1,
+        "timing_missing": 0,
+        "mean_task_ms": 78320.3245,
+        "median_task_ms": 78320.3245,
+        "completed_warm_mean_ms": 78320.3245,
+        "scored_usage": {
+          "requests": 6,
+          "failed_requests": 1,
+          "input": null,
+          "output": null,
+          "total": null,
+          "cached": null,
+          "uncached": null,
+          "controls_match": true
+        },
+        "warmup_usage": {
+          "requests": 3,
+          "failed_requests": 0,
+          "input": 7249,
+          "output": 771,
+          "total": 8020,
+          "cached": 4561,
+          "uncached": 2688,
+          "controls_match": true
+        },
+        "full_lifecycle_usage": {
+          "requests": 9,
+          "failed_requests": 1,
+          "input": null,
+          "output": null,
+          "total": null,
+          "cached": null,
+          "uncached": null,
+          "controls_match": true
+        }
+      },
+      {
+        "id": "hermes",
+        "runs": 1,
+        "passed": 1,
+        "warmed_trials": 1,
+        "timing_missing": 0,
+        "mean_task_ms": 28872.55329999607,
+        "median_task_ms": 28872.55329999607,
+        "completed_warm_mean_ms": 28872.55329999607,
+        "scored_usage": {
+          "requests": 3,
+          "failed_requests": 0,
+          "input": 26565,
+          "output": 527,
+          "total": 27092,
+          "cached": 25344,
+          "uncached": 1221,
+          "controls_match": true
+        },
+        "warmup_usage": {
+          "requests": 5,
+          "failed_requests": 0,
+          "input": 37027,
+          "output": 1085,
+          "total": 38112,
+          "cached": 29184,
+          "uncached": 7843,
+          "controls_match": true
+        },
+        "full_lifecycle_usage": {
+          "requests": 8,
+          "failed_requests": 0,
+          "input": 63592,
+          "output": 1612,
+          "total": 65204,
+          "cached": 54528,
+          "uncached": 9064,
+          "controls_match": true
+        }
+      }
+    ]
+  },
+  {
+    "phase": "baseline",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 6,
+        "passed": 6,
+        "warmed_trials": 6,
+        "timing_missing": 0,
+        "mean_task_ms": 33711.66106666666,
+        "median_task_ms": 16277.0714,
+        "completed_warm_mean_ms": 33711.66106666666,
+        "scored_usage": {
+          "requests": 28,
+          "failed_requests": 0,
+          "input": 120570,
+          "output": 10240,
+          "total": 130810,
+          "cached": 101861,
+          "uncached": 18709,
+          "controls_match": true
+        },
+        "warmup_usage": {
+          "requests": 23,
+          "failed_requests": 0,
+          "input": 55415,
+          "output": 5582,
+          "total": 60997,
+          "cached": 38822,
+          "uncached": 16593,
+          "controls_match": true
+        },
+        "full_lifecycle_usage": {
+          "requests": 51,
+          "failed_requests": 0,
+          "input": 175985,
+          "output": 15822,
+          "total": 191807,
+          "cached": 140683,
+          "uncached": 35302,
+          "controls_match": true
+        }
+      },
+      {
+        "id": "hermes",
+        "runs": 6,
+        "passed": 5,
+        "warmed_trials": 6,
+        "timing_missing": 0,
+        "mean_task_ms": 56534.89263332449,
+        "median_task_ms": 54555.982949998,
+        "completed_warm_mean_ms": 56534.89263332449,
+        "scored_usage": {
+          "requests": 32,
+          "failed_requests": 1,
+          "input": null,
+          "output": null,
+          "total": null,
+          "cached": null,
+          "uncached": null,
+          "controls_match": true
+        },
+        "warmup_usage": {
+          "requests": 25,
+          "failed_requests": 0,
+          "input": 171572,
+          "output": 3457,
+          "total": 175029,
+          "cached": 131475,
+          "uncached": 40097,
+          "controls_match": true
+        },
+        "full_lifecycle_usage": {
+          "requests": 57,
+          "failed_requests": 1,
+          "input": null,
+          "output": null,
+          "total": null,
+          "cached": null,
+          "uncached": null,
+          "controls_match": true
+        }
+      }
+    ]
+  },
+  {
+    "phase": "candidate",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 12,
+        "passed": 12,
+        "warmed_trials": 12,
+        "timing_missing": 0,
+        "mean_task_ms": 24951.233391666665,
+        "median_task_ms": 19635.12585,
+        "completed_warm_mean_ms": 24951.233391666665,
+        "scored_usage": {
+          "requests": 44,
+          "failed_requests": 0,
+          "input": 171467,
+          "output": 15196,
+          "total": 186663,
+          "cached": 139987,
+          "uncached": 31480,
+          "controls_match": true
+        },
+        "warmup_usage": {
+          "requests": 45,
+          "failed_requests": 0,
+          "input": 112185,
+          "output": 9540,
+          "total": 121725,
+          "cached": 73816,
+          "uncached": 38369,
+          "controls_match": true
+        },
+        "full_lifecycle_usage": {
+          "requests": 89,
+          "failed_requests": 0,
+          "input": 283652,
+          "output": 24736,
+          "total": 308388,
+          "cached": 213803,
+          "uncached": 69849,
+          "controls_match": true
+        }
+      },
+      {
+        "id": "hermes",
+        "runs": 12,
+        "passed": 9,
+        "warmed_trials": 11,
+        "timing_missing": 1,
+        "mean_task_ms": null,
+        "median_task_ms": null,
+        "completed_warm_mean_ms": 49333.77724545161,
+        "scored_usage": {
+          "requests": 60,
+          "failed_requests": 0,
+          "input": 532292,
+          "output": 16182,
+          "total": 548474,
+          "cached": 506565,
+          "uncached": 25727,
+          "controls_match": true
+        },
+        "warmup_usage": {
+          "requests": 57,
+          "failed_requests": 1,
+          "input": null,
+          "output": null,
+          "total": null,
+          "cached": null,
+          "uncached": null,
+          "controls_match": true
+        },
+        "full_lifecycle_usage": {
+          "requests": 117,
+          "failed_requests": 1,
+          "input": null,
+          "output": null,
+          "total": null,
+          "cached": null,
+          "uncached": null,
+          "controls_match": true
+        }
+      }
+    ]
+  },
+  {
+    "phase": "confirmation",
+    "groups": [
+      {
+        "id": "cybara",
+        "runs": 6,
+        "passed": 6,
+        "warmed_trials": 6,
+        "timing_missing": 0,
+        "mean_task_ms": 25291.97148333333,
+        "median_task_ms": 10567.6133,
+        "completed_warm_mean_ms": 25291.97148333333,
+        "scored_usage": {
+          "requests": 19,
+          "failed_requests": 0,
+          "input": 69985,
+          "output": 8490,
+          "total": 78475,
+          "cached": 57153,
+          "uncached": 12832,
+          "controls_match": true
+        },
+        "warmup_usage": {
+          "requests": 17,
+          "failed_requests": 0,
+          "input": 40407,
+          "output": 3434,
+          "total": 43841,
+          "cached": 23167,
+          "uncached": 17240,
+          "controls_match": true
+        },
+        "full_lifecycle_usage": {
+          "requests": 36,
+          "failed_requests": 0,
+          "input": 110392,
+          "output": 11924,
+          "total": 122316,
+          "cached": 80320,
+          "uncached": 30072,
+          "controls_match": true
+        }
+      },
+      {
+        "id": "hermes",
+        "runs": 6,
+        "passed": 6,
+        "warmed_trials": 6,
+        "timing_missing": 0,
+        "mean_task_ms": 35808.55129998721,
+        "median_task_ms": 37322.76650000131,
+        "completed_warm_mean_ms": 35808.55129998721,
+        "scored_usage": {
+          "requests": 26,
+          "failed_requests": 0,
+          "input": 219306,
+          "output": 5569,
+          "total": 224875,
+          "cached": 211416,
+          "uncached": 7890,
+          "controls_match": true
+        },
+        "warmup_usage": {
+          "requests": 31,
+          "failed_requests": 0,
+          "input": 219510,
+          "output": 4399,
+          "total": 223909,
+          "cached": 175234,
+          "uncached": 44276,
+          "controls_match": true
+        },
+        "full_lifecycle_usage": {
+          "requests": 57,
+          "failed_requests": 0,
+          "input": 438816,
+          "output": 9968,
+          "total": 448784,
+          "cached": 386650,
+          "uncached": 52166,
+          "controls_match": true
+        }
+      }
+    ]
+  }
+]
