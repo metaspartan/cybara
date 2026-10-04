@@ -1,3 +1,8 @@
+import {
+  executeCodePerformedInspection,
+  executeCodePerformedMutation,
+  executeCodeProducedPath,
+} from "./tools/handlers/execute-code";
 import type { AgentMessage } from "./agent";
 import type { AgentToolCallResult } from "./agent-internals";
 
@@ -73,6 +78,7 @@ const DELIVERABLE_INSPECTION_PATTERNS = [
   /(?:分析|审计|查看|检查|诊断|调查|读取|根因|当前状态|现有配置)/i,
 ];
 const INITIAL_INSPECTION_TOOL_NAMES = new Set([
+  "execute_code",
   "exec",
   "image",
   "memory_search",
@@ -89,7 +95,22 @@ function execCallIsReadOnly(toolCall: AgentToolCallResult): boolean {
   return /^\s*(?:cat|file|grep|head|ls|pwd|rg|stat|tail|wc)\b/.test(command);
 }
 
+export function toolCallPerformedInspection(toolCall: AgentToolCallResult): boolean {
+  if (toolCall.name === "execute_code")
+    return toolCall.status !== "failed" && executeCodePerformedInspection(toolCall.result);
+  if (toolCall.result === undefined || toolCall.status === "failed") return false;
+  if (toolCall.result && typeof toolCall.result === "object") {
+    const result = toolCall.result as Record<string, unknown>;
+    if (result.success === false || typeof result.error === "string") return false;
+  }
+  return (
+    INITIAL_INSPECTION_TOOL_NAMES.has(toolCall.name) &&
+    (toolCall.name !== "exec" || execCallIsReadOnly(toolCall))
+  );
+}
+
 function toolCallCanMutate(toolCall: AgentToolCallResult): boolean {
+  if (toolCall.name === "execute_code") return executeCodePerformedMutation(toolCall.result);
   if (READ_ONLY_TOOL_NAMES.has(toolCall.name)) return false;
   if (toolCall.name === "exec") return !execCallIsReadOnly(toolCall);
   return true;
@@ -157,7 +178,9 @@ export function toolsForDeferredDeliverable<T extends { name: string }>(
   requestedPaths: string[]
 ): T[] {
   if (continuationAttempt === 0 || requestedPaths.length === 0) return tools;
-  const mutationTools = tools.filter((tool) => FILE_MUTATION_TOOL_NAMES.has(tool.name));
+  const mutationTools = tools.filter(
+    (tool) => FILE_MUTATION_TOOL_NAMES.has(tool.name) || tool.name === "execute_code"
+  );
   return mutationTools.length > 0 ? mutationTools : tools;
 }
 
@@ -186,6 +209,9 @@ function execCallProducedPath(toolCall: AgentToolCallResult, path: string): bool
 }
 
 export function toolCallProducedPath(toolCall: AgentToolCallResult, path: string): boolean {
+  if (toolCall.name === "execute_code") {
+    return toolCall.status !== "failed" && executeCodeProducedPath(toolCall.result, path);
+  }
   if (!toolCall.args || typeof toolCall.args !== "object") return false;
   if (toolCallContainsPlaceholder(toolCall)) return false;
   if (toolCall.result === undefined) return false;

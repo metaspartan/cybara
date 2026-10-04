@@ -1,3 +1,6 @@
+import { relative, resolve } from "node:path";
+import { redactSecrets } from "../../redaction";
+import { toolCallProducedPath } from "../../agent-deferred-continuation";
 import { findBunRuntime } from "../../bun-runtime";
 import { readSubprocessStreamAsText } from "../../subprocess-output";
 import { executeTool, toolSchemas } from "./index";
@@ -118,12 +121,51 @@ interface ExecuteWorkerMessage {
   error?: string;
 }
 
+export interface ExecuteCodeToolReceipt {
+  name: string;
+  args: Record<string, unknown>;
+  complete: boolean;
+  succeeded: boolean;
+}
+
+interface TrustedToolReceipt {
+  inspection: boolean;
+  producedPaths: readonly string[];
+}
+
+const MAX_TOOL_RECEIPTS = 64;
+const MAX_RECEIPT_CHARS = 16_384;
+const trustedToolReceipts = new WeakMap<object, readonly TrustedToolReceipt[]>();
+
+export function executeCodePerformedInspection(result: unknown): boolean {
+  if (!result || typeof result !== "object" || toToolArgs(result).ok !== true) return false;
+  return trustedToolReceipts.get(result)?.some((receipt) => receipt.inspection) ?? false;
+}
+
+export function executeCodeProducedPath(result: unknown, path: string): boolean {
+  if (!result || typeof result !== "object" || toToolArgs(result).ok !== true) return false;
+  const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
+  return (
+    trustedToolReceipts
+      .get(result)
+      ?.some((receipt) => receipt.producedPaths.includes(normalized)) ?? false
+  );
+}
+
+export function executeCodePerformedMutation(result: unknown): boolean {
+  if (!result || typeof result !== "object" || toToolArgs(result).ok !== true) return false;
+  return (
+    trustedToolReceipts.get(result)?.some((receipt) => receipt.producedPaths.length > 0) ?? false
+  );
+}
+
 export interface ExecuteCodeResult {
   ok: boolean;
   stdout: string;
   result?: unknown;
   error?: string;
   durationMs: number;
+  toolReceipts?: readonly ExecuteCodeToolReceipt[];
 }
 
 function isExecuteWorkerMessage(value: unknown): value is ExecuteWorkerMessage {
@@ -195,6 +237,8 @@ async function runInChild(
 
   const startedAt = Date.now();
   const stdout: string[] = [];
+  const toolReceipts: ExecuteCodeToolReceipt[] = [];
+  const trustedReceipts: TrustedToolReceipt[] = [];
   const toolAbort = new AbortController();
   const nestedContext = context ? { ...context, abortSignal: toolAbort.signal } : undefined;
   let settled = false;
@@ -213,11 +257,14 @@ async function runInChild(
     context?.abortSignal?.removeEventListener("abort", abortFromContext);
     toolAbort.abort(value.error || "Code execution finished");
     processHandle?.kill();
-    resolveResult({
+    const completed: ExecuteCodeResult = {
       ...value,
       stdout: stdout.join("\n"),
       durationMs: Date.now() - startedAt,
-    });
+      toolReceipts: Object.freeze(toolReceipts),
+    };
+    if (value.ok) trustedToolReceipts.set(completed, Object.freeze(trustedReceipts));
+    resolveResult(completed);
   };
 
   const stop = (error: string): void => {
@@ -261,14 +308,101 @@ async function runInChild(
       });
       return;
     }
-    void executeTool(raw.name, toToolArgs(raw.args), nestedContext).then(
+    const name = raw.name;
+    const args = toToolArgs(raw.args);
+    const recordReceipt = (toolResult: unknown, rejected: boolean): void => {
+      if (settled || toolReceipts.length >= MAX_TOOL_RECEIPTS) return;
+      const result = toToolArgs(toolResult);
+      const succeeded =
+        !rejected &&
+        result.success !== false &&
+        result.ok !== false &&
+        typeof result.error !== "string";
+      const relevantArgs: Record<string, unknown> = {};
+      for (const key of [
+        "path",
+        "content",
+        "newText",
+        "oldText",
+        "new_string",
+        "replacement",
+        "edits",
+        "patch",
+        "pattern",
+        "command",
+      ]) {
+        if (args[key] !== undefined) relevantArgs[key] = args[key];
+      }
+      const disclosedArgs = { ...relevantArgs };
+      for (const key of [
+        "content",
+        "oldText",
+        "newText",
+        "old_string",
+        "new_string",
+        "replacement",
+        "patch",
+        "command",
+      ]) {
+        if (typeof disclosedArgs[key] === "string") {
+          disclosedArgs[`${key}_chars`] = (disclosedArgs[key] as string).length;
+          delete disclosedArgs[key];
+        }
+      }
+      const serializedArgs = JSON.stringify(redactSecrets(disclosedArgs));
+      const complete = serializedArgs.length <= MAX_RECEIPT_CHARS;
+      const publicArgs = complete
+        ? toToolArgs(JSON.parse(serializedArgs))
+        : {
+            excerpt: serializedArgs.slice(0, MAX_RECEIPT_CHARS),
+          };
+      const receipt: ExecuteCodeToolReceipt = {
+        name,
+        args: Object.freeze(publicArgs),
+        complete,
+        succeeded,
+      };
+      toolReceipts.push(Object.freeze(receipt));
+      const producedPaths: string[] = [];
+      if (
+        succeeded &&
+        typeof result.path === "string" &&
+        typeof args.path === "string" &&
+        (name === "write" || name === "edit") &&
+        toolCallProducedPath({ name, args, result: toolResult }, args.path)
+      ) {
+        const actual = resolve(context?.workspaceDir ?? process.cwd(), result.path);
+        const requested = resolve(context?.workspaceDir ?? process.cwd(), args.path);
+        if (actual === requested && actual.length <= MAX_RECEIPT_CHARS) {
+          producedPaths.push(
+            actual.replace(/\\/g, "/"),
+            relative(context?.workspaceDir ?? process.cwd(), actual).replace(/\\/g, "/")
+          );
+        }
+      }
+      const inspection =
+        succeeded &&
+        name === "read" &&
+        (typeof result.content === "string" ||
+          (Array.isArray(result.files) &&
+            result.files.some((file: unknown) => {
+              const entry = toToolArgs(file);
+              return typeof entry.content === "string" && typeof entry.error !== "string";
+            })));
+      trustedReceipts.push(
+        Object.freeze({ inspection, producedPaths: Object.freeze(producedPaths) })
+      );
+    };
+    void executeTool(name, args, nestedContext).then(
       (toolResult) => {
         if (!settled) {
+          recordReceipt(toolResult, false);
           processHandle?.send({ type: "tool_result", id: raw.id, ok: true, result: toolResult });
         }
       },
       (error: unknown) => {
         if (!settled) {
+          recordReceipt(undefined, true);
           processHandle?.send({
             type: "tool_result",
             id: raw.id,
