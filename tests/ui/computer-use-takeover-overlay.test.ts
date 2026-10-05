@@ -23,7 +23,7 @@ describe("computer use takeover overlay", () => {
     expect(overlaySource).toContain('data-testid="computer-use-stop"');
   });
 
-  test("maps escape to stop so the surface is always escapable", () => {
+  test("maps focused escape to dismissal without cancelling unrelated work", () => {
     expect(overlaySource).toContain('event.key === "Escape"');
   });
 });

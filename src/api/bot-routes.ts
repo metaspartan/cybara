@@ -134,7 +134,7 @@ function botTeammates(
     });
   if (teammates.length === 0) return "You currently have no other bot teammates.";
   return [
-    "Your bot teammates are listed below. When delegation is useful, use sessions_spawn with the teammate's agentId and maxToolIterations 12, preserve the user's exact scope and limits in the child task, wait with sessions_wait, and incorporate the result.",
+    "Your bot teammates are listed below. When delegation is useful, use sessions_spawn with the teammate's agentId, preserve the user's exact scope and limits in the child task, wait with sessions_wait, and incorporate the result. Set maxToolIterations only when the child genuinely needs a tighter bound than the standard limit, and size it to the work you delegated; omitting it gives the child the standard budget.",
     ...teammates,
   ].join("\n");
 }

@@ -1,3 +1,5 @@
+import type { AgenticLoopLimitState } from "../agent-loop-limit-state";
+
 export interface ToolHandler {
   (args: Record<string, unknown>, context?: ToolContext): Promise<unknown>;
 }
@@ -44,6 +46,7 @@ export interface ToolContext {
   activeProviderName?: string;
   supportsImages?: boolean;
   maxToolCalls?: number;
+  loopLimitState?: AgenticLoopLimitState;
   maxOutputTokens?: number;
   maxContextTokens?: number;
   suppressStreaming?: boolean;

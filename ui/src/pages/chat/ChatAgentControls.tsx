@@ -96,7 +96,11 @@ export function ChatAgentControls({
               value={useModelRouter ? MODEL_ROUTER_SELECTOR_VALUE : selectedAgentId || ""}
               disabled={updating}
               onChange={(event) => onSelectAgent(event.target.value || undefined)}
-              title={routeTitle}
+              title={
+                updating
+                  ? "Agent change pending at the next turn boundary; current work continues"
+                  : routeTitle
+              }
               className="chat-agent-selector h-7 min-w-[104px] max-w-[196px] appearance-none truncate border-0 bg-transparent py-1 pl-2 pr-6 text-[11px] font-medium text-gray-300 outline-none ring-0 transition-colors hover:text-white focus:outline-none focus:ring-0 disabled:opacity-60"
             >
               {modelRouterEnabled ? (

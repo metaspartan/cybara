@@ -29,6 +29,11 @@ const jobs: SmokeTestJob[] = [
     name: "api",
     paths: [
       "tests/api/security.test.ts",
+      "tests/api/chat-nondisruptive-controls.test.ts",
+      "tests/api/chat-agent-switch-queue.test.ts",
+      "tests/api/computer-use-stop-focus.test.ts",
+      "tests/api/chat-session-serialization.test.ts",
+      "tests/api/chat-pending-durability.test.ts",
       "tests/api/browser-routes-mocked.test.ts",
       "tests/api/channel-security-routes-mocked.test.ts",
     ],

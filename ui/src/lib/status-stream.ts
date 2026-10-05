@@ -34,6 +34,7 @@ export interface PendingChatMessage {
   updatedAt: number;
   mode: "queued" | "steering";
   sequence: number;
+  imageCount?: number;
 }
 
 export interface StatusSessionSnapshot {

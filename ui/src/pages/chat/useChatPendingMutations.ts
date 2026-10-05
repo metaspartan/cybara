@@ -6,7 +6,7 @@ import {
   mergeActivityLists,
 } from "@/lib/chatActivities";
 import type { PendingChatMessage } from "@/lib/status-stream";
-import type { SessionContextUsage, SessionTokenUsage } from "@/types";
+import type { ChatImageAttachment, SessionContextUsage, SessionTokenUsage } from "@/types";
 import { type Dispatch, type RefObject, type SetStateAction, useCallback, useState } from "react";
 import {
   buildPreSteeringActivityMessage,
@@ -42,7 +42,11 @@ interface ChatPendingMutationsController {
   pendingMessageMutationId: string | null;
   handleSteerPendingMessage: (pendingMessageId: string) => Promise<void>;
   handleReorderPendingMessages: (orderedIds: string[]) => Promise<void>;
-  handleUpdatePendingMessage: (pendingMessageId: string, content: string) => Promise<void>;
+  handleUpdatePendingMessage: (
+    pendingMessageId: string,
+    content: string,
+    images?: ChatImageAttachment[]
+  ) => Promise<void>;
   handleDeletePendingMessage: (pendingMessageId: string) => Promise<void>;
 }
 
@@ -92,6 +96,7 @@ export function useChatPendingMutations({
         });
         if (response.success && response.data) {
           setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));
+          if (response.data.steeringQueued) return;
           if (response.data.pendingMessages.length === 0) {
             clearCachedOptimisticPendingMessages(sessionId);
           }
@@ -184,7 +189,7 @@ export function useChatPendingMutations({
   );
 
   const handleUpdatePendingMessage = useCallback(
-    async (pendingMessageId: string, content: string) => {
+    async (pendingMessageId: string, content: string, images?: ChatImageAttachment[]) => {
       if (!sessionId || pendingMessageId.startsWith("optimistic-")) return;
       const nextContent = content.trim();
       if (!nextContent) return;
@@ -194,7 +199,12 @@ export function useChatPendingMutations({
         normalizePendingChatMessages(
           current.map((message) =>
             message.id === pendingMessageId
-              ? { ...message, content: nextContent, updatedAt: now }
+              ? {
+                  ...message,
+                  content: nextContent,
+                  updatedAt: now,
+                  ...(images ? { imageCount: images.length } : {}),
+                }
               : message
           )
         )
@@ -204,7 +214,8 @@ export function useChatPendingMutations({
         const response = await chatApi.updatePendingMessage(
           sessionId,
           pendingMessageId,
-          nextContent
+          nextContent,
+          images
         );
         if (response.success && response.data?.success) {
           setPendingMessages(normalizePendingChatMessages(response.data.pendingMessages));

@@ -3,6 +3,7 @@ import {
   formatStructuredToolActivityDetail,
 } from "../../shared/tool-activity-detail";
 import { isImagePath } from "../../shared/image-formats";
+import type { AgenticLoopLimitState } from "./agent-loop-limit-state";
 
 export interface OpenAIToolCall {
   id: string;
@@ -173,6 +174,7 @@ export type AgenticLoopPolicy = {
   maxIterations?: number;
   maxRuntimeMs?: number;
   loopDetectionEnabled: boolean;
+  limitState?: AgenticLoopLimitState;
   warningThreshold: number;
   criticalThreshold: number;
   globalCircuitBreakerThreshold: number;

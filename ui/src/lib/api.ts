@@ -27,18 +27,17 @@ import type {
   Task,
 } from "@/types";
 import type { AgentGolden } from "@/lib/api/lab";
+import {
+  deletePendingMessage,
+  getPendingMessage,
+  listPendingMessages,
+  reorderPendingMessages,
+  steerPendingMessage,
+  stopSession,
+  updatePendingMessage,
+} from "@/lib/api/pendingChat";
 
 export { extractApiError } from "@/lib/api-client";
-
-type ChatProcessActivityPayload = Array<{
-  id?: string;
-  phase?: "start" | "result" | "error" | "blocked";
-  text?: string;
-  timestamp?: number | string;
-  toolName?: string;
-  toolCallId?: string;
-  sandboxProvider?: string;
-}>;
 
 export interface WorkspaceOpenTarget {
   id: string;
@@ -1138,6 +1137,13 @@ export interface ChatCapabilityOption {
 export { roomsApi, type RoomInput } from "@/lib/api/rooms";
 
 export const chatApi = {
+  deletePendingMessage,
+  getPendingMessage,
+  getPendingMessages: listPendingMessages,
+  reorderPendingMessages,
+  steerPendingMessage,
+  stopSession,
+  updatePendingMessage,
   capabilities: (workspaceDir?: string | null, sessionId?: string | null) => {
     const params = new URLSearchParams();
     if (workspaceDir) params.set("workspaceDir", workspaceDir);
@@ -1187,62 +1193,6 @@ export const chatApi = {
         ...(images && images.length ? { images } : {}),
       }),
       signal,
-    }),
-  steerPendingMessage: (
-    sessionId: string,
-    pendingMessageId: string,
-    options?: { processActivities?: ChatProcessActivityPayload }
-  ) =>
-    fetchApi<{
-      success: boolean;
-      message?: ChatMessage;
-      interruptedMessage?: ChatMessage;
-      pendingMessage?: PendingChatMessage;
-      pendingMessages?: PendingChatMessage[];
-      error?: string;
-    }>(`/chat/sessions/${sessionId}/pending/${pendingMessageId}/steer`, {
-      method: "POST",
-      body: JSON.stringify({
-        processActivities: options?.processActivities || [],
-      }),
-    }),
-  stopSession: (sessionId: string) =>
-    fetchApi<{
-      success: boolean;
-      stopped: boolean;
-      sessionId: string;
-      error?: string;
-    }>(`/chat/sessions/${sessionId}/stop`, { method: "POST" }),
-  getPendingMessages: (sessionId: string) =>
-    fetchApi<{ sessionId: string; pendingMessages: PendingChatMessage[] }>(
-      `/chat/sessions/${sessionId}/pending`
-    ),
-  reorderPendingMessages: (sessionId: string, pendingMessageIds: string[]) =>
-    fetchApi<{
-      success: boolean;
-      pendingMessages?: PendingChatMessage[];
-      error?: string;
-    }>(`/chat/sessions/${sessionId}/pending/reorder`, {
-      method: "POST",
-      body: JSON.stringify({ pendingMessageIds }),
-    }),
-  updatePendingMessage: (sessionId: string, pendingMessageId: string, content: string) =>
-    fetchApi<{
-      success: boolean;
-      pendingMessage?: PendingChatMessage;
-      pendingMessages?: PendingChatMessage[];
-      error?: string;
-    }>(`/chat/sessions/${sessionId}/pending/${pendingMessageId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ content }),
-    }),
-  deletePendingMessage: (sessionId: string, pendingMessageId: string) =>
-    fetchApi<{
-      success: boolean;
-      pendingMessages?: PendingChatMessage[];
-      error?: string;
-    }>(`/chat/sessions/${sessionId}/pending/${pendingMessageId}`, {
-      method: "DELETE",
     }),
   localSpeechModels: () =>
     fetchApi<{

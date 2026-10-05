@@ -79,7 +79,8 @@ describe("chat capability mentions", () => {
         expect.objectContaining({ kind: "bot", token: "@launch-researcher" }),
       ]);
       expect(resolved.instruction).toContain(`agentId ${JSON.stringify(bot.id)}`);
-      expect(resolved.instruction).toContain("maxToolIterations 12");
+      expect(resolved.instruction).not.toContain("maxToolIterations 12");
+      expect(resolved.instruction).toContain("omitting it gives the child the standard budget");
       expect(resolved.instruction).toContain("preserve explicit limits");
       expect(resolved.instruction).toContain("sessions_wait");
     } finally {

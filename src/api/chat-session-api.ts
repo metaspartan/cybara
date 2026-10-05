@@ -1,3 +1,5 @@
+import { endComputerUseFocus } from "../core/computer-use-focus";
+import { persistPendingChatItem } from "./chat-pending-store";
 import { releaseSessionMobileSimulators } from "../core/mobile-simulator";
 import { resetSessionPlanFromMessages } from "../core/session-plan-store";
 import { agentManager } from "../core/agent";
@@ -280,7 +282,6 @@ export async function updateSessionAgent(
   agentId?: string,
   useModelRouter = false
 ): Promise<ChatSessionAgentUpdate> {
-  activeChatTurnAbortControllers.get(sessionId)?.abort();
   return chatTurnMutex.run(sessionId, () =>
     updateSessionAgentAtTurnBoundary(sessionId, agentId, useModelRouter)
   );
@@ -309,6 +310,7 @@ async function updateSessionAgentAtTurnBoundary(
     throw new Error("Agent not found");
   }
 
+  const previousAgentId = session.agentId;
   if (!useModelRouter) {
     await applyActiveAgentToSession(session, agent, undefined, {
       useTools: sessionPromptUsesTools(session.messages),
@@ -316,6 +318,17 @@ async function updateSessionAgentAtTurnBoundary(
     });
   }
   session.useModelRouter = useModelRouter;
+  for (const item of pendingChatQueues.get(sessionId) ?? []) {
+    if (!item.request.agentId || item.request.agentId === previousAgentId) {
+      item.request = {
+        ...item.request,
+        agentId: useModelRouter ? undefined : agent.id,
+        useModelRouter,
+      };
+      item.updatedAt = Date.now();
+      persistPendingChatItem(item);
+    }
+  }
   const persistedRouting = await setPersistedSessionRouting(
     session.id,
     session.agentId,
@@ -544,6 +557,7 @@ export function markSessionRead(sessionId: string): {
 
 export async function deleteSession(sessionId: string): Promise<boolean> {
   const key = sessionId.trim();
+  endComputerUseFocus(key);
   if (!key) return false;
   deletingChatSessionIds.add(key);
   const controller = activeChatTurnAbortControllers.get(key);

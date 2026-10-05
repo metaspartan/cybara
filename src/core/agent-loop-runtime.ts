@@ -5,6 +5,7 @@ import {
   buildToolIterationFingerprint,
   LOOP_WARNING_BUCKET_SIZE,
 } from "./agent-internals";
+import { recordAgenticLoopLimit } from "./agent-loop-limit-state";
 
 export type AgenticLoopLimit = "maxIterations" | "runtime";
 
@@ -303,6 +304,7 @@ export function applyAgenticLoopLimitMessage(
   loopPolicy: AgenticLoopPolicy,
   finalContent: string
 ): string {
+  recordAgenticLoopLimit(loopPolicy.limitState, limitReason);
   if (limitReason === "maxIterations") {
     console.log(
       `[Agent] ${providerLabel} agentic loop reached configured max iterations (${loopPolicy.maxIterations})`

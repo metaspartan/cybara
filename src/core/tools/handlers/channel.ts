@@ -1,5 +1,8 @@
 import { agentManager } from "../../agent";
 import type { AgentToolCallResult } from "../../agent-internals";
+import { MAX_AGENTIC_CONFIGURED_ITERATIONS } from "../../agent-internals";
+import { createAgenticLoopLimitState } from "../../agent-loop-limit-state";
+import type { AgenticLoopLimitReason } from "../../agent-loop-limit-state";
 import { isBotProfileConfig } from "../../bot-profile";
 import {
   type AgentTransferEnvelope,
@@ -200,7 +203,7 @@ export async function handleSessionsSpawn(
   const requestedMaxToolIterations = readNonNegativeInteger(args.maxToolIterations);
   const maxToolIterations =
     requestedMaxToolIterations && requestedMaxToolIterations > 0
-      ? Math.min(requestedMaxToolIterations, 100)
+      ? Math.min(requestedMaxToolIterations, MAX_AGENTIC_CONFIGURED_ITERATIONS)
       : undefined;
   const runTimeoutSeconds = resolveRunTimeoutSeconds(args);
   const cleanup = args.cleanup === "delete" ? "delete" : "keep";
@@ -333,11 +336,12 @@ export async function handleSessionsSpawn(
 interface SubagentWaitResult {
   runId: string;
   childSessionKey: string;
-  status: "pending" | "running" | "completed" | "failed" | "timeout" | "killed";
+  status: "pending" | "running" | "completed" | "partial" | "failed" | "timeout" | "killed";
   label: string;
   task: string;
   result?: string;
   error?: string;
+  limitReason?: AgenticLoopLimitReason;
   activityCount: number;
   toolCallCount: number;
   endedAt?: number;
@@ -345,7 +349,9 @@ interface SubagentWaitResult {
 
 function subagentWaitStatus(run: SubagentRunRecord): SubagentWaitResult["status"] {
   if (!run.endedAt) return run.startedAt ? "running" : "pending";
-  if (run.outcome?.status === "ok") return "completed";
+  if (run.outcome?.status === "ok") {
+    return run.outcome.limitReason ? "partial" : "completed";
+  }
   if (run.outcome?.status === "timeout") return "timeout";
   if (run.outcome?.status === "killed") return "killed";
   return "failed";
@@ -360,6 +366,9 @@ function subagentWaitResult(run: SubagentRunRecord): SubagentWaitResult {
     task: run.task,
     result: run.outcome?.result,
     error: run.outcome?.error,
+    ...(run.outcome?.limitReason
+      ? { limitReason: run.outcome.limitReason as AgenticLoopLimitReason }
+      : {}),
     ...subagentRegistry.subagentRunCounts(run),
     endedAt: run.endedAt,
   };
@@ -628,6 +637,7 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
       `[Subagent] Executing ${sessionId} using agent ${agent.id}${session.model ? ` (model override: ${session.model})` : ""}`
     );
 
+    const loopLimitState = createAgenticLoopLimitState();
     const result = await agentManager.execute(agent.id, agentMessages, {
       useTools: true,
       sessionId,
@@ -640,6 +650,7 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
         : undefined,
       abortSignal: abortController.signal,
       allowedToolNames: session.allowedToolNames,
+      loopLimitState,
     });
 
     session.messages.push({
@@ -660,6 +671,7 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
         thinking: result.thinking,
         activities,
         toolCalls: result.tool_calls,
+        limitReason: loopLimitState.limitReason,
       });
     }
 

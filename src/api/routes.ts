@@ -9,6 +9,7 @@ import {
   deletePendingChatMessage,
   deleteSession,
   getChatRateLimitStatus,
+  getPendingChatMessageDetail,
   getSession,
   getSessionMessages,
   getSessionPinned,
@@ -847,9 +848,11 @@ const routes: Record<string, RouteHandler> = {
       Array.isArray(data.pendingMessageIds) ? data.pendingMessageIds : []
     );
   },
+  "GET /api/chat/sessions/:id/pending/:pendingId": (_body, params) =>
+    getPendingChatMessageDetail(params!.id, params!.pendingId),
   "PATCH /api/chat/sessions/:id/pending/:pendingId": (body, params) => {
-    const data = body as { content?: string };
-    return updatePendingChatMessage(params!.id, params!.pendingId, data.content || "");
+    const data = body as { content?: string; images?: unknown };
+    return updatePendingChatMessage(params!.id, params!.pendingId, data.content || "", data.images);
   },
   "DELETE /api/chat/sessions/:id/pending/:pendingId": (_body, params) =>
     deletePendingChatMessage(params!.id, params!.pendingId),

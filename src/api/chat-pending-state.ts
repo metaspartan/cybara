@@ -72,6 +72,7 @@ export function pendingChatSnapshot(item: PendingChatItem): PendingChatMessageSn
     updatedAt: item.updatedAt,
     mode: item.mode,
     sequence: item.sequence,
+    imageCount: hasImages(item.request.images) ? item.request.images.length : 0,
   };
 }
 

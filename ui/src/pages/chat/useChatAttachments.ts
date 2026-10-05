@@ -2,16 +2,15 @@ import type { ClipboardEvent, DragEvent } from "react";
 import { useCallback, useState } from "react";
 import {
   type ChatFileAttachment,
-  fileToChatImage,
-  fileToTextAttachment,
   formatAttachedFiles,
-  isSupportedImageType,
-  isTextLikeFile,
-  MAX_CHAT_IMAGE_BYTES,
   MAX_CHAT_IMAGES,
-  MAX_TEXT_FILE_BYTES,
   MAX_TEXT_FILES,
 } from "@/lib/chatImages";
+import {
+  type AttachmentFileResult,
+  hasAttachableFiles,
+  readAttachmentFile,
+} from "@/lib/chatAttachmentFiles";
 import { dataTransferHasFiles } from "@/lib/fileDrop";
 import { useUIStore } from "@/stores/uiStore";
 import type { ChatImageAttachment } from "@/types";
@@ -20,12 +19,6 @@ interface ConsumedChatAttachments {
   images: ChatImageAttachment[];
   message: string;
 }
-
-type AttachmentFileResult =
-  | { kind: "image"; value: ChatImageAttachment }
-  | { kind: "text"; value: ChatFileAttachment }
-  | { kind: "oversized"; name: string }
-  | { kind: "unsupported"; name: string };
 
 interface UseChatAttachmentsResult {
   addAttachmentFiles: (files: Iterable<File>) => Promise<void>;
@@ -38,24 +31,6 @@ interface UseChatAttachmentsResult {
   removePendingFile: (index: number) => void;
   removePendingImage: (index: number) => void;
   setImageDragActive: (active: boolean) => void;
-}
-
-function hasAttachableFiles(files: Iterable<File>): boolean {
-  return Array.from(files).some(
-    (file) => isSupportedImageType(file.type, file.name) || isTextLikeFile(file)
-  );
-}
-
-async function readAttachmentFile(file: File): Promise<AttachmentFileResult> {
-  if (isSupportedImageType(file.type, file.name)) {
-    if (file.size > MAX_CHAT_IMAGE_BYTES) return { kind: "oversized", name: file.name };
-    return { kind: "image", value: await fileToChatImage(file) };
-  }
-  if (isTextLikeFile(file)) {
-    if (file.size > MAX_TEXT_FILE_BYTES) return { kind: "oversized", name: file.name };
-    return { kind: "text", value: await fileToTextAttachment(file) };
-  }
-  return { kind: "unsupported", name: file.name };
 }
 
 export function useChatAttachments(): UseChatAttachmentsResult {

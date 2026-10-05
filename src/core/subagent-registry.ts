@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { cybaraDir } from "./paths";
+import type { AgenticLoopLimitReason } from "./agent-loop-limit-state";
 import { redactSecrets, redactSecretText } from "./redaction";
 import { formatRecoverableToolOutputPreview } from "./tool-output-recovery";
 
@@ -33,6 +34,7 @@ export interface SubagentRunDetails {
   toolCalls?: SubagentToolCall[];
   activityCount?: number;
   toolCallCount?: number;
+  limitReason?: AgenticLoopLimitReason;
 }
 
 export function subagentRunCounts(run: SubagentRunRecord): {
@@ -49,6 +51,7 @@ export type SubagentRunOutcome = {
   status: "ok" | "error" | "timeout" | "killed";
   error?: string;
   result?: string;
+  limitReason?: AgenticLoopLimitReason;
 };
 
 export type DeliveryContext = {
@@ -75,6 +78,7 @@ export interface SubagentRunRecord {
   startedAt?: number;
   endedAt?: number;
   outcome?: SubagentRunOutcome;
+  limitReason?: AgenticLoopLimitReason;
   thinking?: string;
   activities?: SubagentActivity[];
   toolCalls?: SubagentToolCall[];
@@ -551,7 +555,11 @@ export function markRunCompleted(
     requesterSessionKey: entry.requesterSessionKey,
     runId: entry.runId,
   });
-  entry.outcome = { status: "ok", result: normalizedResult };
+  entry.outcome = {
+    status: "ok",
+    result: normalizedResult,
+    ...(details?.limitReason ? { limitReason: details.limitReason } : {}),
+  };
   entry.thinking = normalizeSubagentThinking(details?.thinking);
   entry.activities = normalizeSubagentActivities(details?.activities);
   entry.toolCalls = normalizeSubagentToolCalls(details?.toolCalls, {
