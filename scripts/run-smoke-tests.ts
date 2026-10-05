@@ -19,6 +19,7 @@ const jobs: SmokeTestJob[] = [
       "tests/e2e/chat-logs-metrics-smoke.test.ts",
       "tests/e2e/terminal-smoke.test.ts",
       "tests/e2e/nearby-transfer-smoke.test.ts",
+      "tests/e2e/braces-glob-consumer.test.ts",
     ],
   },
   { name: "runtime", paths: ["tests/runtime"] },

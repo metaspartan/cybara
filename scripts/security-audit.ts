@@ -47,20 +47,26 @@ const OSV_ATTEMPTS = 2;
 const OSV_TIMEOUT_MS = 30_000;
 const OSV_RETRY_DELAY_MS = 3_000;
 const BUN_AUDIT_TIMEOUT_MS = 100_000;
+const BRACES_DEPTH_ADVISORY = "GHSA-vfj7-8cjw-p6xm";
 
 const WORKSPACES: readonly Workspace[] = [
   {
     label: "root",
     lockfile: "bun.lock",
     cwd: REPO_ROOT,
-    ignored: new Set(["GHSA-mh99-v99m-4gvg", "GHSA-jmr9-qjv8-65gv", "GHSA-7pqw-9j4j-h8q3"]),
+    ignored: new Set([
+      "GHSA-mh99-v99m-4gvg",
+      "GHSA-jmr9-qjv8-65gv",
+      "GHSA-7pqw-9j4j-h8q3",
+      BRACES_DEPTH_ADVISORY,
+    ]),
   },
   { label: "ui", lockfile: "ui/bun.lock", cwd: join(REPO_ROOT, "ui"), ignored: new Set() },
   {
     label: "mobile",
     lockfile: "apps/mobile/bun.lock",
     cwd: join(REPO_ROOT, "apps", "mobile"),
-    ignored: new Set(["GHSA-w3rx-r6r6-pgpr", "GHSA-5p2g-fcmc-qvqq"]),
+    ignored: new Set(["GHSA-w3rx-r6r6-pgpr", "GHSA-5p2g-fcmc-qvqq", BRACES_DEPTH_ADVISORY]),
   },
   { label: "site", lockfile: "site/bun.lock", cwd: join(REPO_ROOT, "site"), ignored: new Set() },
 ];
@@ -90,6 +96,26 @@ export function hasVerifiedSignatureParserPatch(cwd: string): boolean {
     return (
       source.includes("obj.value.length !== 2 ||") &&
       source.includes("obj.value[0].value.length !== (('parameters' in capture) ? 2 : 1)")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function hasVerifiedBracesDepthGuardPatch(cwd: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+    const manifest = parsed as Record<string, unknown>;
+    const patched = manifest.patchedDependencies;
+    if (!patched || typeof patched !== "object" || Array.isArray(patched)) return false;
+    if ((patched as Record<string, unknown>)["braces@3.0.3"] !== "patches/braces@3.0.3.patch")
+      return false;
+    const source = readFileSync(join(cwd, "node_modules/braces/lib/parse.js"), "utf8");
+    return (
+      source.includes("const MAX_DEPTH = 100;") &&
+      source.includes("if (depth > MAX_DEPTH) {") &&
+      source.includes("exceeds max depth (${MAX_DEPTH})")
     );
   } catch {
     return false;
@@ -278,6 +304,15 @@ export async function auditWorkspace(
   }
   const workspaceIgnored = new Set(ws.ignored);
   if (ws.label === "mobile") workspaceIgnored.add("GHSA-86w9-cpqp-85rv");
+  if (ws.label === "root" || ws.label === "mobile") {
+    if (!hasVerifiedBracesDepthGuardPatch(ws.cwd)) {
+      return {
+        status: "failed",
+        source: "bun-audit",
+        detail: "braces nesting-depth security patch is missing or invalid",
+      };
+    }
+  }
   const checkedWorkspace = { ...ws, ignored: workspaceIgnored };
   const result = runAudit(checkedWorkspace);
   if (result.exitCode === 0) return { status: "ok", source: "bun-audit" };
