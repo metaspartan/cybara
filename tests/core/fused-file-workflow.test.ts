@@ -36,6 +36,8 @@ test("one fused call reads actual inputs, computes and verifies exact output thr
   );
   expect(result.ok).toBe(true);
   expect(result.result).toEqual({ verified: true, sum: 3 });
+  expect(result.toolReceipts?.map((receipt) => receipt.name)).toEqual(["read", "write", "read"]);
+  expect(result.toolReceipts?.every((receipt) => receipt.succeeded && receipt.complete)).toBe(true);
   expect(JSON.parse(readFileSync(join(root, "answer.json"), "utf8"))).toEqual({
     ids: ["a", "b"],
     sum: 3,

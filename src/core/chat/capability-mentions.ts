@@ -111,7 +111,7 @@ function agentCapabilities(scope: ChatAgentCapabilityScope): ResolvedChatCapabil
         name,
         description: bot ? `Hand work to ${name}` : `Delegate to the ${name} agent`,
         source: bot ? "Bot teammate" : "Agent",
-        instruction: `For ${token}, delegate only the user's requested scope to ${JSON.stringify(name)} using sessions_spawn with agentId ${JSON.stringify(agentId)} and maxToolIterations 12, preserve explicit limits such as read-only or keep-it-tight in the child task, call sessions_wait with the returned runId, and incorporate the result.`,
+        instruction: `For ${token}, delegate only the user's requested scope to ${JSON.stringify(name)} using sessions_spawn with agentId ${JSON.stringify(agentId)}, preserve explicit limits such as read-only or keep-it-tight in the child task, call sessions_wait with the returned runId, and incorporate the result. Set maxToolIterations only when the child genuinely needs a tighter bound, and size it to the delegated work; omitting it gives the child the standard budget.`,
       };
     });
   } catch {

@@ -1,0 +1,186 @@
+{
+  "checks": [
+    {
+      "run_id": "r1-multi-file-ledger-cybara",
+      "correct": true,
+      "readonly_inputs": 2,
+      "expected": {
+        "balances": {
+          "a": 875,
+          "b": 2075,
+          "c": 520
+        },
+        "applied_ids": [
+          "e1",
+          "e3",
+          "e4"
+        ]
+      }
+    },
+    {
+      "run_id": "r1-multi-file-ledger-hermes",
+      "correct": true,
+      "readonly_inputs": 2,
+      "expected": {
+        "balances": {
+          "a": 875,
+          "b": 2075,
+          "c": 520
+        },
+        "applied_ids": [
+          "e1",
+          "e3",
+          "e4"
+        ]
+      }
+    },
+    {
+      "run_id": "r1-exact-retrieval-hermes",
+      "correct": true,
+      "readonly_inputs": 2,
+      "expected": {
+        "enabled": [
+          "A-09",
+          "K-02",
+          "K-10"
+        ],
+        "total_cents": 260
+      }
+    },
+    {
+      "run_id": "r1-exact-retrieval-cybara",
+      "correct": true,
+      "readonly_inputs": 2,
+      "expected": {
+        "enabled": [
+          "A-09",
+          "K-02",
+          "K-10"
+        ],
+        "total_cents": 260
+      }
+    },
+    {
+      "run_id": "r1-boundary-transform-cybara",
+      "correct": true,
+      "readonly_inputs": 1,
+      "expected": [
+        {
+          "label": "alpha",
+          "value": 5
+        },
+        {
+          "label": "beta",
+          "value": 99
+        }
+      ]
+    },
+    {
+      "run_id": "r1-boundary-transform-hermes",
+      "correct": true,
+      "readonly_inputs": 1,
+      "expected": [
+        {
+          "label": "alpha",
+          "value": 5
+        },
+        {
+          "label": "beta",
+          "value": 99
+        }
+      ]
+    },
+    {
+      "run_id": "r2-exact-retrieval-hermes",
+      "correct": true,
+      "readonly_inputs": 2,
+      "expected": {
+        "enabled": [
+          "A-09",
+          "K-02",
+          "K-10"
+        ],
+        "total_cents": 260
+      }
+    },
+    {
+      "run_id": "r2-exact-retrieval-cybara",
+      "correct": true,
+      "readonly_inputs": 2,
+      "expected": {
+        "enabled": [
+          "A-09",
+          "K-02",
+          "K-10"
+        ],
+        "total_cents": 260
+      }
+    },
+    {
+      "run_id": "r2-boundary-transform-cybara",
+      "correct": true,
+      "readonly_inputs": 1,
+      "expected": [
+        {
+          "label": "alpha",
+          "value": 5
+        },
+        {
+          "label": "beta",
+          "value": 99
+        }
+      ]
+    },
+    {
+      "run_id": "r2-boundary-transform-hermes",
+      "correct": true,
+      "readonly_inputs": 1,
+      "expected": [
+        {
+          "label": "alpha",
+          "value": 5
+        },
+        {
+          "label": "beta",
+          "value": 99
+        }
+      ]
+    },
+    {
+      "run_id": "r2-multi-file-ledger-hermes",
+      "correct": true,
+      "readonly_inputs": 2,
+      "expected": {
+        "balances": {
+          "a": 875,
+          "b": 2075,
+          "c": 520
+        },
+        "applied_ids": [
+          "e1",
+          "e3",
+          "e4"
+        ]
+      }
+    },
+    {
+      "run_id": "r2-multi-file-ledger-cybara",
+      "correct": true,
+      "readonly_inputs": 2,
+      "expected": {
+        "balances": {
+          "a": 875,
+          "b": 2075,
+          "c": 520
+        },
+        "applied_ids": [
+          "e1",
+          "e3",
+          "e4"
+        ]
+      }
+    }
+  ],
+  "readonly_inputs": 20,
+  "independent_trials": 12
+}

@@ -235,6 +235,7 @@ export abstract class AgentProviderCommonRuntime {
       agentConfig: parsedConfig,
       env: process.env,
       modelParams,
+      limitState: toolContext?.loopLimitState,
     });
   }
 

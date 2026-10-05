@@ -3,13 +3,19 @@ import {
   GripVertical,
   Loader2,
   MessageSquare,
+  Paperclip,
   Pencil,
   ShieldAlert,
   Trash2,
+  X,
 } from "lucide-react";
-import { type KeyboardEvent, useState } from "react";
+import { type ClipboardEvent, type KeyboardEvent, useCallback, useState } from "react";
+import { imageFilesFromTransfer, readAttachmentFile } from "@/lib/chatAttachmentFiles";
+import { MAX_CHAT_IMAGES } from "@/lib/chatImages";
 import type { PendingChatMessage } from "@/lib/status-stream";
 import { cn, formatRelativeTime } from "@/lib/utils";
+import { useUIStore } from "@/stores/uiStore";
+import type { ChatImageAttachment } from "@/types";
 
 export type ToolApprovalMode = "always_allow" | "ask";
 
@@ -70,7 +76,7 @@ export function PendingChatQueue({
   messages: PendingChatMessage[];
   onSteer: (id: string) => void;
   onReorder: (orderedIds: string[]) => void;
-  onUpdate: (id: string, content: string) => void;
+  onUpdate: (id: string, content: string, images?: ChatImageAttachment[]) => void;
   onDelete: (id: string) => void;
   steeringMessageId: string | null;
   mutatingMessageId: string | null;
@@ -78,25 +84,68 @@ export function PendingChatQueue({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
+  const [editingImages, setEditingImages] = useState<ChatImageAttachment[]>([]);
+  const [editingImagesTouched, setEditingImagesTouched] = useState(false);
+
+  const addEditImages = useCallback((files: File[]): void => {
+    if (files.length === 0) return;
+    void (async () => {
+      const added: ChatImageAttachment[] = [];
+      const oversized: string[] = [];
+      for (const file of files) {
+        const result = await readAttachmentFile(file);
+        if (result.kind === "image") added.push(result.value);
+        if (result.kind === "oversized") oversized.push(file.name);
+      }
+      if (oversized.length > 0) {
+        useUIStore
+          .getState()
+          .addToast("error", `Too large to attach: ${oversized.slice(0, 3).join(", ")}`);
+      }
+      if (added.length === 0) return;
+      setEditingImagesTouched(true);
+      setEditingImages((previous) => [...previous, ...added].slice(0, MAX_CHAT_IMAGES));
+    })();
+  }, []);
+
+  const handleEditPaste = useCallback(
+    (event: ClipboardEvent<HTMLInputElement>): void => {
+      const images = imageFilesFromTransfer(event.clipboardData?.files || []);
+      if (images.length === 0) return;
+      event.preventDefault();
+      addEditImages(images);
+    },
+    [addEditImages]
+  );
+
   if (messages.length === 0) return null;
 
   const beginEdit = (message: PendingChatMessage) => {
     setEditingId(message.id);
     setEditingContent(message.content);
+    setEditingImages([]);
+    setEditingImagesTouched(false);
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setEditingContent("");
+    setEditingImages([]);
+    setEditingImagesTouched(false);
   };
 
   const submitEdit = (message: PendingChatMessage) => {
     const nextContent = editingContent.trim();
-    if (!nextContent || nextContent === message.content.trim()) {
+    const contentChanged = nextContent !== message.content.trim() && !!nextContent;
+    if (!contentChanged && !editingImagesTouched) {
       cancelEdit();
       return;
     }
-    onUpdate(message.id, nextContent);
+    onUpdate(
+      message.id,
+      nextContent || message.content,
+      editingImagesTouched ? editingImages : undefined
+    );
     cancelEdit();
   };
 
@@ -145,7 +194,7 @@ export function PendingChatQueue({
               setDraggingId(null);
             }}
             className={cn(
-              "flex h-11 w-full min-w-0 select-none items-center gap-2 rounded-t-2xl rounded-b-lg border border-white/10 bg-white/[0.055] px-3 text-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.22)]",
+              "flex min-h-11 w-full min-w-0 select-none items-center gap-2 rounded-t-2xl rounded-b-lg border border-white/10 bg-white/[0.055] px-3 py-1.5 text-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.22)]",
               canDrag ? "cursor-grab active:cursor-grabbing" : "",
               draggingId === message.id ? "opacity-60" : ""
             )}
@@ -174,14 +223,56 @@ export function PendingChatQueue({
               {isSteering ? "Steering" : "Queued"}
             </span>
             {isEditing ? (
-              <input
-                autoFocus
-                value={editingContent}
-                onChange={(event) => setEditingContent(event.target.value)}
-                onBlur={() => submitEdit(message)}
-                onKeyDown={(event) => handleEditKeyDown(event, message)}
-                className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[12px] text-white outline-none focus:border-amber-400/40"
-              />
+              <span className="flex min-w-0 flex-1 flex-col gap-1">
+                <input
+                  autoFocus
+                  value={editingContent}
+                  onChange={(event) => setEditingContent(event.target.value)}
+                  onBlur={() => submitEdit(message)}
+                  onPaste={handleEditPaste}
+                  onKeyDown={(event) => handleEditKeyDown(event, message)}
+                  placeholder="Edit message (paste an image to attach)"
+                  aria-label="Edit queued message text"
+                  className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[12px] text-white outline-none focus:border-amber-400/40"
+                />
+                {editingImages.length > 0 || (editingImagesTouched && !editingImages.length) ? (
+                  <span
+                    data-testid="pending-edit-attachments"
+                    className="flex flex-wrap items-center gap-1"
+                  >
+                    {editingImages.map((image, index) => (
+                      <span
+                        key={`${image.url || image.path || "image"}-${index}`}
+                        className="relative inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded border border-white/15 bg-black/40"
+                      >
+                        {image.url ? (
+                          <img src={image.url} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <Paperclip className="h-3 w-3 text-gray-400" aria-hidden="true" />
+                        )}
+                        <button
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setEditingImagesTouched(true);
+                            setEditingImages((previous) =>
+                              previous.filter((_, itemIndex) => itemIndex !== index)
+                            );
+                          }}
+                          aria-label={`Remove attachment ${index + 1}`}
+                          title="Remove this attachment"
+                          className="absolute -top-1 -right-1 inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded-full bg-black/80 text-white hover:bg-rose-600"
+                        >
+                          <X className="h-2.5 w-2.5" aria-hidden="true" />
+                        </button>
+                      </span>
+                    ))}
+                    {editingImagesTouched && editingImages.length === 0 ? (
+                      <span className="text-[11px] text-rose-200">Attachments removed</span>
+                    ) : null}
+                  </span>
+                ) : null}
+              </span>
             ) : (
               <span
                 className="min-w-0 flex-1 truncate text-gray-300"
@@ -190,6 +281,19 @@ export function PendingChatQueue({
                 {message.content}
               </span>
             )}
+            {!isEditing && (message.imageCount ?? 0) > 0 ? (
+              <span
+                data-testid="pending-chat-attachments"
+                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/8 px-1.5 py-0.5 text-[10px] font-medium text-gray-300"
+                title={`${message.imageCount} image attachment${message.imageCount === 1 ? "" : "s"} will be sent with this message`}
+              >
+                <Paperclip className="h-2.5 w-2.5" aria-hidden="true" />
+                {message.imageCount}
+                <span className="sr-only">
+                  {` image${message.imageCount === 1 ? "" : "s"} attached`}
+                </span>
+              </span>
+            ) : null}
             {!isSteering && (
               <>
                 <button
@@ -218,6 +322,7 @@ export function PendingChatQueue({
               <button
                 type="button"
                 onClick={() => onSteer(message.id)}
+                title="Apply this follow-up at the next safe point without stopping current work or subagents"
                 disabled={isOptimistic || steeringMessageId === message.id || isMutating}
                 className="inline-flex h-7 shrink-0 items-center justify-center rounded-md px-2 text-[12px] font-medium text-gray-300 transition-colors hover:bg-white/[0.08] hover:text-white disabled:opacity-60"
               >
@@ -228,7 +333,12 @@ export function PendingChatQueue({
                     : "Steer"}
               </button>
             ) : (
-              <span className="shrink-0 text-[11px] text-emerald-300">Steering</span>
+              <span
+                className="shrink-0 text-[11px] text-emerald-300"
+                title="Current work continues; follow-up will be consumed at the next safe point"
+              >
+                Steering queued
+              </span>
             )}
           </div>
         );

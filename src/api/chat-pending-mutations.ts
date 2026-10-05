@@ -1,3 +1,4 @@
+import { normalizeChatImageAttachments } from "../core/chat/attachments";
 import type { PendingChatMessageSnapshot } from "../core/status";
 import {
   nextPendingChatSequence,
@@ -63,11 +64,30 @@ export function reorderPendingChatMessages(
   return { success: true, pendingMessages };
 }
 
-export function updatePendingChatMessage(
+export function getPendingChatMessageDetail(
+  sessionId: string,
+  pendingMessageId: string
+):
+  | { success: true; pendingMessage: PendingChatMessageSnapshot; images: unknown[] }
+  | { success: false; error: string } {
+  const key = sessionId.trim();
+  const item = (pendingChatQueues.get(key) || []).find(
+    (entry) => entry.id === pendingMessageId && entry.materialized !== true
+  );
+  if (!item) return { success: false, error: "Pending message not found" };
+  return {
+    success: true,
+    pendingMessage: pendingChatSnapshot(item),
+    images: item.request.images ? [...item.request.images] : [],
+  };
+}
+
+export async function updatePendingChatMessage(
   sessionId: string,
   pendingMessageId: string,
-  content: string
-):
+  content: string,
+  images?: unknown
+): Promise<
   | {
       success: true;
       pendingMessage: PendingChatMessageSnapshot;
@@ -77,7 +97,8 @@ export function updatePendingChatMessage(
       success: false;
       error: string;
       pendingMessages: PendingChatMessageSnapshot[];
-    } {
+    }
+> {
   const key = sessionId.trim();
   const nextContent = typeof content === "string" ? content.trim() : "";
   if (nextContent.length === 0) {
@@ -100,13 +121,38 @@ export function updatePendingChatMessage(
     };
   }
 
+  const existing = queue[index];
+  const replacesImages = images !== undefined;
+  if (replacesImages && images !== null && !Array.isArray(images)) {
+    return {
+      success: false,
+      error: "Pending message images must be an array",
+      pendingMessages: pendingChatSnapshots(key),
+    };
+  }
+  const requestedImages = replacesImages ? await normalizeChatImageAttachments(images) : null;
+  if (
+    replacesImages &&
+    Array.isArray(images) &&
+    images.length > 0 &&
+    (requestedImages?.length ?? 0) === 0
+  ) {
+    return {
+      success: false,
+      error: "No valid image attachments were provided",
+      pendingMessages: pendingChatSnapshots(key),
+    };
+  }
+
+  const baseRequest = {
+    ...existing.request,
+    message: nextContent,
+  };
+  if (requestedImages) delete baseRequest.images;
   const item = {
-    ...queue[index],
+    ...existing,
     content: nextContent,
-    request: {
-      ...queue[index].request,
-      message: nextContent,
-    },
+    request: requestedImages?.length ? { ...baseRequest, images: requestedImages } : baseRequest,
     updatedAt: Date.now(),
   };
   queue[index] = item;

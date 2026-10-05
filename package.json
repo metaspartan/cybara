@@ -198,6 +198,7 @@
     ]
   },
   "patchedDependencies": {
-    "extract-zip@2.0.1": "patches/extract-zip@2.0.1.patch"
+    "extract-zip@2.0.1": "patches/extract-zip@2.0.1.patch",
+    "braces@3.0.3": "patches/braces@3.0.3.patch"
   }
 }

@@ -1,0 +1,200 @@
+{
+  "tasks": [
+    {
+      "id": "multi-file-ledger",
+      "prompt": "Use the available file tools to read accounts.json and events.json in this workspace. Compute balances starting from accounts opening balances and applying each event once per id in file order; ignore duplicate event ids. Include only events whose status is posted. Amounts are integer cents; a transfer moves cents from from_account to to_account, a credit adds to account, a debit subtracts from account. Write answer.json with exactly {\"balances\":{\"a\":number,\"b\":number,\"c\":number},\"applied_ids\":[id strings in first-seen order]}. Do not edit the input files. Do not just describe the answer; create the file. Work only in this workspace. Reply briefly when done.",
+      "files": [
+        {
+          "path": "accounts.json",
+          "content": "{\"a\":1000,\"b\":2000,\"c\":500}"
+        },
+        {
+          "path": "events.json",
+          "content": "[{\"id\":\"e1\",\"type\":\"transfer\",\"from_account\":\"a\",\"to_account\":\"b\",\"amount\":125,\"status\":\"posted\"},{\"id\":\"e2\",\"type\":\"credit\",\"account\":\"c\",\"amount\":70,\"status\":\"pending\"},{\"id\":\"e3\",\"type\":\"debit\",\"account\":\"b\",\"amount\":50,\"status\":\"posted\"},{\"id\":\"e1\",\"type\":\"transfer\",\"from_account\":\"a\",\"to_account\":\"b\",\"amount\":125,\"status\":\"posted\"},{\"id\":\"e4\",\"type\":\"credit\",\"account\":\"c\",\"amount\":20,\"status\":\"posted\"}]"
+        },
+        {
+          "content": "{\"values\":[4,-1,10]}",
+          "path": "warmup.json"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": {
+            "balances": {
+              "a": 875,
+              "b": 2075,
+              "c": 520
+            },
+            "applied_ids": [
+              "e1",
+              "e3",
+              "e4"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "exact-retrieval",
+      "prompt": "Read inventory.json and changes.txt with available tools. Write answer.json with exactly {\"enabled\":[the SKU strings of items enabled after applying changes in file order, sorted lexicographically],\"total_cents\":sum of prices of enabled items}. Lines starting # in changes.txt are comments; each other line is enable SKU or disable SKU. Ignore commands for unknown SKUs. Do not modify inputs; create answer.json. Work only in this workspace. Reply briefly when done.",
+      "files": [
+        {
+          "path": "inventory.json",
+          "content": "[{\"sku\":\"K-10\",\"enabled\":true,\"cents\":145},{\"sku\":\"K-02\",\"enabled\":false,\"cents\":75},{\"sku\":\"Z-01\",\"enabled\":true,\"cents\":300},{\"sku\":\"A-09\",\"enabled\":false,\"cents\":40}]"
+        },
+        {
+          "path": "changes.txt",
+          "content": "# enable Z-01 is not a command\ndisable Z-01\nenable K-02\nenable UNKNOWN\nenable A-09\ndisable K-10\nenable K-10\n"
+        },
+        {
+          "content": "{\"values\":[4,-1,10]}",
+          "path": "warmup.json"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": {
+            "enabled": [
+              "A-09",
+              "K-02",
+              "K-10"
+            ],
+            "total_cents": 260
+          }
+        }
+      ]
+    },
+    {
+      "id": "boundary-transform",
+      "prompt": "Read samples.json with the available tools. For each record retain it only if value is a finite integer in [0,100] and label is a nonempty string after trimming. Normalize labels by trimming and lowercasing. Keep the last retained record per normalized label, then sort by normalized label. Write answer.json as an array of {label,value} objects. Invalid records must be ignored; input must stay unchanged. Create the output file in this workspace and reply briefly.",
+      "files": [
+        {
+          "path": "samples.json",
+          "content": "[{\"label\":\" Alpha \",\"value\":0},{\"label\":\"Beta\",\"value\":100},{\"label\":\"ALPHA\",\"value\":5},{\"label\":\"gamma\",\"value\":101},{\"label\":\"\",\"value\":9},{\"label\":\"Delta\",\"value\":3.5},{\"label\":\" beta \",\"value\":99},{\"label\":\"epsilon\",\"value\":\"7\"},{\"label\":\"zeta\",\"value\":-1}]"
+        },
+        {
+          "content": "{\"values\":[4,-1,10]}",
+          "path": "warmup.json"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": [
+            {
+              "label": "alpha",
+              "value": 5
+            },
+            {
+              "label": "beta",
+              "value": 99
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "multi-file-join",
+      "prompt": "Read products.json, rates.json, orders.json and policy.json. Write answer.json with total_cents by summing accepted order quantities times product cents after integer rounding per line with multiplier rates[product.category]; exclude products disabled or orders refunded. Order IDs process only once, using the first occurrence. applied_ids must retain original order. All values are integer cents. Preserve inputs and verify.",
+      "files": [
+        {
+          "path": "products.json",
+          "content": "{\"a\":{\"cents\":125,\"category\":\"x\",\"enabled\":true},\"b\":{\"cents\":230,\"category\":\"y\",\"enabled\":true},\"c\":{\"cents\":990,\"category\":\"x\",\"enabled\":false}}"
+        },
+        {
+          "path": "rates.json",
+          "content": "{\"x\":1.2,\"y\":0.5}"
+        },
+        {
+          "path": "orders.json",
+          "content": "[{\"id\":\"o1\",\"product\":\"a\",\"quantity\":2},{\"id\":\"o2\",\"product\":\"b\",\"quantity\":3},{\"id\":\"o1\",\"product\":\"a\",\"quantity\":9},{\"id\":\"o3\",\"product\":\"c\",\"quantity\":1},{\"id\":\"o4\",\"product\":\"a\",\"quantity\":1,\"refunded\":true}]"
+        },
+        {
+          "path": "policy.json",
+          "content": "{\"rounding\":\"round per line\",\"exclude_refunded\":true}"
+        },
+        {
+          "content": "{\"values\":[4,-1,10]}",
+          "path": "warmup.json"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": {
+            "total_cents": 645,
+            "applied_ids": [
+              "o1",
+              "o2"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "dependency-order",
+      "prompt": "Read pointer.json first. Its field next specifies the data file to read (do not guess which file is authoritative). Read that file, then write answer.json containing its secret_label and the sum of its values. Preserve inputs. Verify your output.",
+      "files": [
+        {
+          "path": "pointer.json",
+          "content": "{\"next\":\"actual.json\"}"
+        },
+        {
+          "path": "actual.json",
+          "content": "{\"secret_label\":\"ORCHID-942\",\"values\":[3,-7,19,0]}"
+        },
+        {
+          "path": "decoy.json",
+          "content": "{\"secret_label\":\"WRONG\",\"values\":[999]}"
+        },
+        {
+          "content": "{\"values\":[4,-1,10]}",
+          "path": "warmup.json"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": {
+            "secret_label": "ORCHID-942",
+            "sum": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "coding-repair",
+      "prompt": "Fix source.ts so apply(records) returns only unique enabled records with finite numeric amount, excluding booleans, null, strings and amounts <=0. Use first enabled valid occurrence per id, retain input order, and return {ids,total}. Run check.ts to verify the fix, then write answer.json {\"tests_passed\":true}. Do not alter check.ts or input fixtures. Do not simply hardcode expected ids. Retain the exported apply function.",
+      "files": [
+        {
+          "path": "source.ts",
+          "content": "export function apply(records: Array<{id:string;enabled:boolean;amount:unknown}>): {ids:string[];total:number} { const valid=records.filter(r=>r.enabled && Number(r.amount)>0); return {ids:valid.map(r=>r.id),total:valid.reduce((s,r)=>s+Number(r.amount),0)}; }"
+        },
+        {
+          "path": "check.ts",
+          "content": "import {apply} from \"./source\";const rows=[{id:\"a\",enabled:true,amount:5},{id:\"a\",enabled:true,amount:9},{id:\"b\",enabled:true,amount:\"7\"},{id:\"c\",enabled:false,amount:20},{id:\"d\",enabled:true,amount:3},{id:\"e\",enabled:true,amount:true},{id:\"f\",enabled:true,amount:null},{id:\"g\",enabled:true,amount:Infinity}];for(const [data,want] of [[rows,{ids:[\"a\",\"d\"],total:8}],[[],{ids:[],total:0}],[rows.slice().reverse(),{ids:[\"d\",\"a\"],total:12}]] as const){if(JSON.stringify(apply([...data]))!==JSON.stringify(want))throw Error(\"Mismatch\")}console.log(\"ALL TESTS PASSED\");"
+        },
+        {
+          "content": "{\"values\":[4,-1,10]}",
+          "path": "warmup.json"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "file_json",
+          "path": "answer.json",
+          "expected": {
+            "tests_passed": true
+          }
+        }
+      ]
+    }
+  ]
+}

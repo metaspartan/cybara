@@ -21,6 +21,7 @@ import {
   parseAgentConfig,
   readAgentContextWindowTokens,
 } from "./agent-internals";
+import type { AgenticLoopLimitState } from "./agent-loop-limit-state";
 import { resolveModelContextWindowTokens } from "./agent-model-limits";
 import { AgentProviderRuntime } from "./agent-provider-runtime";
 import { isBotProfileConfig } from "./bot-profile";
@@ -192,6 +193,7 @@ interface AgentExecutionOptions {
   useMemory?: boolean;
   modelParamsOverride?: Record<string, unknown>;
   maxToolCalls?: number;
+  loopLimitState?: AgenticLoopLimitState;
   maxOutputTokens?: number;
   orchestrationState?: ToolOrchestrationState;
 }
@@ -1391,6 +1393,7 @@ class AgentManager extends AgentProviderRuntime {
       modelParamsOverride: options?.modelParamsOverride,
       useModelRouter: options?.useModelRouter === true,
       maxToolCalls: options?.maxToolCalls,
+      loopLimitState: options?.loopLimitState,
       maxOutputTokens: options?.maxOutputTokens,
       maxContextTokens: readAgentContextWindowTokens(agent.config),
       confineToWorkspace: true,

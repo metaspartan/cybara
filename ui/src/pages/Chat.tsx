@@ -1874,7 +1874,10 @@ export function Chat() {
           ) : null}
           <ComputerUseTakeoverOverlay
             sessionId={sessionId}
-            onStop={() => void handleStopActive()}
+            active={currentSessionIsWorking}
+            runId={liveRunStartedAtMs?.toString()}
+            stopping={isStoppingSession}
+            onStop={handleStopActive}
           />
         </div>
 

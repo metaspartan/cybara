@@ -1,0 +1,30 @@
+diff --git a/lib/parse.js b/lib/parse.js
+index 3a6988e629f52aee6609dc5ec290a5e9ff47cecb..137f5711fb8963c7137d791278f96d0678fa1431 100644
+--- a/lib/parse.js
++++ b/lib/parse.js
+@@ -24,6 +24,14 @@ const {
+   CHAR_ZERO_WIDTH_NOBREAK_SPACE
+ } = require('./constants');
+ 
++/**
++ * Maximum brace nesting depth. Bounds the recursive AST walkers in
++ * compile.js and expand.js, which otherwise use one stack frame per
++ * nesting level and can exhaust the call stack on deeply nested input.
++ */
++
++const MAX_DEPTH = 100;
++
+ /**
+  * parse
+  */
+@@ -197,6 +205,10 @@ const parse = (input, options = {}) => {
+     if (value === CHAR_LEFT_CURLY_BRACE) {
+       depth++;
+ 
++      if (depth > MAX_DEPTH) {
++        throw new SyntaxError(`Input nesting depth (${depth}), exceeds max depth (${MAX_DEPTH})`);
++      }
++
+       const dollar = prev.value && prev.value.slice(-1) === '$' || block.dollar === true;
+       const brace = {
+         type: 'brace',

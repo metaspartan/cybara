@@ -1,0 +1,39 @@
+{
+  "verified": true,
+  "source_receipt": "replication.json",
+  "comparison": "Cybara fused / Hermes official v0.21.5",
+  "joint_win": false,
+  "speed_and_token_win": true,
+  "claims": [
+    {
+      "metric": "mean_wall_time",
+      "cybara": 27131.666666666668,
+      "hermes": 52572.666666666664,
+      "reduction_percent": 48.39206685349801
+    },
+    {
+      "metric": "provider_requests",
+      "cybara": 42,
+      "hermes": 31,
+      "reduction_percent": -35.48387096774193
+    },
+    {
+      "metric": "total_tokens",
+      "cybara": 160337,
+      "hermes": 223222,
+      "reduction_percent": 28.171506392739065
+    }
+  ],
+  "accuracy": {
+    "cybara": 6,
+    "hermes": 6,
+    "trials": 6
+  },
+  "scope": "Three tasks twice, high reasoning,8192 cap; warm/cold startup and Windows host",
+  "excluded_phases": [
+    "preflight",
+    "main"
+  ],
+  "token_metric": "input + completion including cached input, not price",
+  "confirmation_available": true
+}

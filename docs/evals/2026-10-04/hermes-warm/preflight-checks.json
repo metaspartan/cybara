@@ -1,0 +1,90 @@
+[
+  {
+    "run_id": "r1-multi-file-ledger-cybara",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 3,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:15:25.461Z",
+      "warmup_ended_at": "2026-10-04T04:15:35.789Z",
+      "warmup_ms": 10328.145199999999,
+      "task_started_at": "2026-10-04T04:15:35.789Z",
+      "task_ended_at": "2026-10-04T04:16:54.109Z",
+      "task_elapsed_ms": 78320.3245,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": null,
+    "scored_usage": {
+      "requests": 6,
+      "failed_requests": 1,
+      "input": null,
+      "output": null,
+      "total": null,
+      "cached": null,
+      "uncached": null,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 3,
+      "failed_requests": 0,
+      "input": 7249,
+      "output": 771,
+      "total": 8020,
+      "cached": 4561,
+      "uncached": 2688,
+      "controls_match": true
+    }
+  },
+  {
+    "run_id": "r1-multi-file-ledger-hermes",
+    "assertions": [
+      {
+        "kind": "file_json",
+        "path": "answer.json",
+        "passed": true,
+        "reason": "ok"
+      }
+    ],
+    "readonly_inputs": 3,
+    "timing": {
+      "warmup_started_at": "2026-10-04T04:17:04.657239+00:00",
+      "warmup_ended_at": "2026-10-04T04:17:41.460623+00:00",
+      "warmup_ms": 36803.22589998832,
+      "task_started_at": "2026-10-04T04:17:41.460623+00:00",
+      "task_ended_at": "2026-10-04T04:18:10.332846+00:00",
+      "task_elapsed_ms": 28872.55329999607,
+      "same_agent": true,
+      "warmup_verified": true,
+      "failed": false
+    },
+    "repair": null,
+    "scored_usage": {
+      "requests": 3,
+      "failed_requests": 0,
+      "input": 26565,
+      "output": 527,
+      "total": 27092,
+      "cached": 25344,
+      "uncached": 1221,
+      "controls_match": true
+    },
+    "warmup_usage": {
+      "requests": 5,
+      "failed_requests": 0,
+      "input": 37027,
+      "output": 1085,
+      "total": 38112,
+      "cached": 29184,
+      "uncached": 7843,
+      "controls_match": true
+    }
+  }
+]

@@ -316,6 +316,7 @@ export interface ComputerUsePreviewState {
 }
 
 interface ComputerUseContext {
+  abortSignal?: AbortSignal;
   sessionId?: string;
 }
 
@@ -1088,7 +1089,9 @@ export async function stopComputerUseTrajectoryForSession(
 ): Promise<boolean> {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) return false;
-  let stopped = false;
+  const hadFocus = !!getComputerUseFocusState(normalizedSessionId);
+  endComputerUseFocus(normalizedSessionId);
+  let stopped = hadFocus;
   await queueTrajectoryLifecycle(async () => {
     if (activeComputerUseTrajectory?.sessionId !== normalizedSessionId) return;
     await stopActiveComputerUseTrajectory(status, error);
@@ -1515,6 +1518,7 @@ export async function handleComputerUse(
   args: Record<string, unknown>,
   context?: ComputerUseContext
 ): Promise<ComputerUseResult> {
+  context?.abortSignal?.throwIfAborted();
   const requestedAction = typeof args.action === "string" ? args.action : "";
   if (!requestedAction) {
     throw new Error("Validation error: 'action' is required.");
@@ -1547,8 +1551,11 @@ export async function handleComputerUse(
     } catch (error) {
       if (!isFullDesktopCaptureRequest(typedArgs)) throw error;
     }
+    context?.abortSignal?.throwIfAborted();
     if (sessionId) await guardFocusSafeAction(typedArgs, sessionId);
+    context?.abortSignal?.throwIfAborted();
     if (sessionId) await ensureComputerUseTrajectoryRecording(sessionId, driverReady);
+    context?.abortSignal?.throwIfAborted();
     if (isFullDesktopCaptureRequest(typedArgs)) {
       const native = await nativeScreenCapture();
       if (native) {
@@ -1704,6 +1711,8 @@ export async function handleComputerUse(
       ok: false,
       error: error instanceof Error ? error.message : String(error),
     };
+  } finally {
+    if (sessionId && context?.abortSignal?.aborted) endComputerUseFocus(sessionId);
   }
 }
 

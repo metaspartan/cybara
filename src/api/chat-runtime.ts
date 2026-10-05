@@ -1,3 +1,4 @@
+import { endComputerUseFocus } from "../core/computer-use-focus";
 import { releaseSessionMobileSimulators } from "../core/mobile-simulator";
 import { anchorActiveContextUsage } from "../core/llm/session-active-context";
 import { estimateMessagesRequestVisibleTokens } from "../core/session-context";
@@ -121,11 +122,7 @@ import { appendToolImageReferences, maybeSaveAutomaticMemory } from "./chat-resp
 import { recoverAssistantResponse } from "./chat-response-recovery";
 import { awaitSpawnedSubagentResults } from "./chat-subagent-completion";
 import { resolveExplicitSubagentSpawnLimit } from "./chat-subagent-budget";
-import {
-  interruptActiveChatTurnForSteering,
-  isChatTurnInterrupted,
-  pendingChatDrainRetryDelay,
-} from "./chat-runtime-stability";
+import { isChatTurnInterrupted, pendingChatDrainRetryDelay } from "./chat-runtime-stability";
 import {
   activeChatTurnAbortControllers,
   buildLastMessagePreview,
@@ -164,7 +161,6 @@ import {
   collectAttachedProcessActivityIds,
   getSessionProcessActivities,
   materializeInterruptedAssistantBeforeSteering,
-  sanitizeObservedProcessActivities,
 } from "./chat-steering-activities";
 import { constrainToolsForMessage, messageDisallowsAllTools } from "./chat-tool-constraints";
 import { resolveToolResponseContent } from "./chat-tool-response";
@@ -186,6 +182,7 @@ import type {
 export { buildChatExecutionMessagesForAgent } from "./chat-execution-messages";
 export {
   deletePendingChatMessage,
+  getPendingChatMessageDetail,
   reorderPendingChatMessages,
   updatePendingChatMessage,
 } from "./chat-pending-mutations";
@@ -223,6 +220,7 @@ export async function stopActiveChatTurn(sessionId: string): Promise<{
   error?: string;
 }> {
   const key = sessionId.trim();
+  endComputerUseFocus(key);
   const controller = activeChatTurnAbortControllers.get(key);
   if (!key || !controller || controller.signal.aborted) {
     return {
@@ -726,6 +724,7 @@ export function runChatTurnWithQueueDrain(
         ? handleRoomChatTurn(request, effectiveSessionId)
         : handleChatTurn(request, effectiveSessionId, goalCommand, goalCommandSideEffectsApplied));
     } finally {
+      endComputerUseFocus(effectiveSessionId);
       finishSessionPlanTurn(effectiveSessionId, "paused");
       await releaseSessionMobileSimulators(effectiveSessionId);
     }
@@ -876,12 +875,13 @@ async function waitForPendingChatSession(sessionId: string): Promise<InMemoryCha
 export async function steerPendingChatMessage(
   sessionId: string,
   pendingMessageId: string,
-  options?: SteerPendingChatMessageOptions
+  _options?: SteerPendingChatMessageOptions
 ): Promise<
   | {
       success: true;
       message: ChatMessage;
       interruptedMessage?: ChatMessage;
+      steeringQueued?: boolean;
       pendingMessages: PendingChatMessageSnapshot[];
     }
   | {
@@ -898,15 +898,6 @@ export async function steerPendingChatMessage(
       pendingMessages: pendingChatSnapshots(key),
     };
   }
-  const queue = pendingChatQueues.get(key) || [];
-  const index = queue.findIndex((item) => item.id === pendingMessageId);
-  if (index < 0) {
-    return {
-      success: false,
-      error: "Pending message not found",
-      pendingMessages: pendingChatSnapshots(key),
-    };
-  }
 
   const session = await waitForPendingChatSession(key);
   if (!session) {
@@ -917,39 +908,29 @@ export async function steerPendingChatMessage(
     };
   }
 
+  const queue = pendingChatQueues.get(key) || [];
+  const index = queue.findIndex((item) => item.id === pendingMessageId);
+  if (index < 0)
+    return {
+      success: false,
+      error: "Pending message not found",
+      pendingMessages: pendingChatSnapshots(key),
+    };
+
   const item: PendingChatItem = {
     ...queue[index],
     mode: "steering",
     updatedAt: Date.now(),
-    materialized: true,
+    materialized: false,
   };
-  const materializedMessage = materializePendingMessage(session, item);
-  const interruptedMessage = materializeInterruptedAssistantBeforeSteering(
-    session,
-    sanitizeObservedProcessActivities(options?.processActivities),
-    {
-      pendingSteeringId: item.id,
-      createEmptyBoundary: true,
-    }
-  );
-  if (interruptedMessage) {
-    await upsertPersistedSessionMessage(session.id, session.agentId, interruptedMessage, {
-      stableKey: `interrupted:${item.id}`,
-      metadata: { source: "chat_steering_interrupted" },
-    });
-  }
-  await upsertPersistedSessionMessage(session.id, session.agentId, materializedMessage, {
-    stableKey: `pending:${item.id}`,
-    metadata: { source: "chat_steering" },
-  });
-  session.persisted = await persistSession(
-    session.id,
-    session.agentId,
-    session.messages,
-    session.workspaceDir,
-    session.title,
-    session.useModelRouter
-  );
+  const materializedMessage: ChatMessage = {
+    role: "user",
+    content: item.content,
+    timestamp: new Date(item.createdAt).toISOString(),
+    pending_chat_id: item.id,
+    ...(item.clientPendingId ? { client_pending_id: item.clientPendingId } : {}),
+    ...(hasImages(item.request.images) ? { images: item.request.images } : {}),
+  };
   queue[index] = item;
   pendingChatQueues.set(key, queue);
   persistPendingChatItem(item);
@@ -966,19 +947,11 @@ export async function steerPendingChatMessage(
     modelMetadata: resolveSessionModelMetadata(session.agentId),
   });
   const pendingMessages = syncPendingChatStatus(key);
-  const interrupted = interruptActiveChatTurnForSteering(key, item.id);
   schedulePendingChatDrain(key);
-  broadcastStatus({
-    status: "thinking",
-    timestamp: Date.now(),
-    detail: interrupted ? "Steering to follow-up..." : "Follow-up added",
-    sessionId: key,
-    agentId: session.agentId,
-  });
   return {
     success: true,
     message: materializedMessage,
-    ...(interruptedMessage ? { interruptedMessage } : {}),
+    steeringQueued: true,
     pendingMessages,
   };
 }

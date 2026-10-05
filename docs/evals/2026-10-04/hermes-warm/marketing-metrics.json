@@ -1,0 +1,51 @@
+{
+  "verified": true,
+  "source_receipt": "confirmation.json",
+  "comparison": "Cybara fused / Hermes official v0.21.5",
+  "primary_metrics_win": true,
+  "all_metrics_win": false,
+  "speed_and_token_win": true,
+  "claims": [
+    {
+      "metric": "mean_wall_time",
+      "cybara": 25291.97148333333,
+      "hermes": 35808.55129998721,
+      "reduction_percent": 29.368906126782168
+    },
+    {
+      "metric": "provider_requests",
+      "cybara": 19,
+      "hermes": 26,
+      "reduction_percent": 26.923076923076927
+    },
+    {
+      "metric": "total_tokens",
+      "cybara": 78475,
+      "hermes": 224875,
+      "reduction_percent": 65.10283490828238
+    }
+  ],
+  "accuracy": {
+    "cybara": 6,
+    "hermes": 6,
+    "trials": 6
+  },
+  "scope": "Six distinct local workflow tasks, high reasoning,8192 cap; both sessions warmed on Windows",
+  "historical_phases": [
+    "preflight",
+    "baseline",
+    "candidate"
+  ],
+  "tradeoffs": {
+    "completion_tokens": {
+      "cybara": 8490,
+      "hermes": 5569
+    },
+    "uncached_input": {
+      "cybara": 12832,
+      "hermes": 7890
+    }
+  },
+  "token_metric": "input + completion including cached input, not price",
+  "confirmation_available": true
+}

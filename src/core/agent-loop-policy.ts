@@ -8,11 +8,13 @@ import {
   MAX_AGENTIC_MAX_RUNTIME_MS,
   type AgenticLoopPolicy,
 } from "./agent-internals";
+import type { AgenticLoopLimitState } from "./agent-loop-limit-state";
 
 interface AgenticLoopPolicyInput {
   agentConfig: Record<string, unknown>;
   env?: Record<string, string | undefined>;
   modelParams: Record<string, unknown>;
+  limitState?: AgenticLoopLimitState;
 }
 
 function parsePositiveInt(value: unknown): number | undefined {
@@ -206,5 +208,6 @@ export function resolveAgenticLoopPolicyFromConfig(
     maxIterations,
     maxRuntimeMs,
     warningThreshold,
+    ...(input.limitState ? { limitState: input.limitState } : {}),
   };
 }

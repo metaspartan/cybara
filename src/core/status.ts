@@ -78,6 +78,7 @@ export interface PendingChatMessageSnapshot {
   updatedAt: number;
   mode: PendingChatMessageMode;
   sequence: number;
+  imageCount: number;
 }
 
 export interface SessionMessageEventPayload {
