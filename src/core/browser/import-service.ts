@@ -178,6 +178,11 @@ export async function importBrowserData(body: unknown): Promise<BrowserAutoImpor
     for (const category of request.categories) {
       const text = request.files[category];
       if (text === undefined) continue;
+      const parsed = parseBrowserImportFile(category, text);
+      if (category === "passwords") data.passwords = parsed.passwords;
+      else if (category === "cookies") data.cookies = parsed.cookies;
+      else if (category === "history") data.history = parsed.history;
+      else data.bookmarks = parsed.bookmarks;
     }
     const imported = await persist(data);
     return {

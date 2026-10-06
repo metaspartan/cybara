@@ -24,7 +24,7 @@ import type {
   ImportedLogin,
 } from "../../../shared/browser-import";
 import { BROWSER_IMPORT_MAX_BYTES, BROWSER_IMPORT_MAX_ENTRIES } from "./import-parsers";
-import { decryptChromiumValue, unwrapChromiumKey } from "./chromium-secrets";
+import { type ChromiumSecret, decryptChromiumValue, unwrapChromiumKey } from "./chromium-secrets";
 
 export interface BrowserImportDiscoveryOptions {
   platform?: NodeJS.Platform;
@@ -280,7 +280,7 @@ function selectCookies(db: Database): CookieRow[] {
 
 function readCookies(
   location: SourceLocation,
-  key: Buffer | undefined
+  key: ChromiumSecret | undefined
 ): { entries: BrowserImportCookie[]; notes: string[] } {
   const located = probe(
     location.root,
@@ -300,7 +300,7 @@ function readCookies(
       const encoded = row.encrypted_value ?? "";
       let value = row.value ?? "";
       if (encoded.length > 0) {
-        const outcome = decryptChromiumValue(encoded, key ?? Buffer.alloc(0));
+        const outcome = decryptChromiumValue(encoded, key);
         if (outcome.status === "decrypted" || outcome.status === "plaintext") value = outcome.value;
         else {
           if (locked < MAX_LOCKED_UNLOCKS) {
@@ -345,7 +345,7 @@ function loginId(origin: string, username: string): string {
 
 function readLogins(
   location: SourceLocation,
-  key: Buffer | undefined
+  key: ChromiumSecret | undefined
 ): {
   entries: ImportedLogin[];
   notes: string[];
@@ -374,7 +374,7 @@ function readLogins(
       if (!["http", "https"].includes(protocol)) continue;
       const origin = `${protocol}://${match[2]}`;
       if (origin.includes("@")) continue;
-      const outcome = decryptChromiumValue(row.password_value ?? "", key ?? Buffer.alloc(0));
+      const outcome = decryptChromiumValue(row.password_value ?? "", key);
       if (outcome.status === "skipped") {
         if (locked < MAX_LOCKED_UNLOCKS) {
           locked += 1;
@@ -400,7 +400,7 @@ function keychainAccount(browser: string): string {
   return "Chrome Safe Storage";
 }
 
-function loadEncryptionKey(location: SourceLocation): Buffer | undefined {
+function loadEncryptionKey(location: SourceLocation): ChromiumSecret | undefined {
   const stateFile = join(location.userData, "Local State");
   if (!existsSync(stateFile)) return undefined;
   try {
@@ -409,11 +409,9 @@ function loadEncryptionKey(location: SourceLocation): Buffer | undefined {
       os_crypt?: { encrypted_key?: string };
     };
     const encoded = state.os_crypt?.encrypted_key;
-    if (typeof encoded !== "string" || !encoded) return undefined;
-    const outcome = unwrapChromiumKey(
-      Buffer.from(encoded, "base64"),
-      keychainAccount(location.browser)
-    );
+    const wrapped =
+      typeof encoded === "string" && encoded ? Buffer.from(encoded, "base64") : undefined;
+    const outcome = unwrapChromiumKey(wrapped, keychainAccount(location.browser));
     return outcome.status === "unwrapped" ? outcome.secret : undefined;
   } catch {
     return undefined;

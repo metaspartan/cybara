@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
-import { createCipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, pbkdf2Sync, randomBytes } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -12,7 +12,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { decryptChromiumValue } from "../../src/core/browser/chromium-secrets";
+import {
+  type ChromiumSecret,
+  decryptChromiumValue,
+  deriveMacosKeychainKey,
+  unwrapChromiumKey,
+} from "../../src/core/browser/chromium-secrets";
 import {
   detectBrowserImportProfiles,
   readAllBrowserImportProfiles,
@@ -28,6 +33,8 @@ function aesEncrypt(key: Buffer, value: string): string {
   const body = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   return Buffer.concat([Buffer.from("v10"), iv, body]).toString("base64");
 }
+
+const WINDOWS_SECRET = (key: Buffer): ChromiumSecret => ({ key, cipher: "aes-256-cbc" });
 
 function fixture(): {
   home: string;
@@ -327,7 +334,7 @@ describe("chromium value decryption", () => {
   test("round-trips an AES-CBC value and strips padding", () => {
     const key = randomBytes(32);
     const encoded = aesEncrypt(key, "hello-value");
-    expect(decryptChromiumValue(encoded, key)).toEqual({
+    expect(decryptChromiumValue(encoded, WINDOWS_SECRET(key))).toEqual({
       status: "decrypted",
       value: "hello-value",
     });
@@ -335,24 +342,72 @@ describe("chromium value decryption", () => {
 
   test("passes through plaintext, rejects bad keys, and explains app-bound values", () => {
     expect(
-      decryptChromiumValue(Buffer.from("plain", "utf8").toString("base64"), randomBytes(32))
+      decryptChromiumValue(
+        Buffer.from("plain", "utf8").toString("base64"),
+        WINDOWS_SECRET(randomBytes(32))
+      )
     ).toEqual({ status: "plaintext", value: "plain" });
     const appBound = decryptChromiumValue(
       Buffer.concat([Buffer.from("v20"), randomBytes(64)]).toString("base64"),
-      randomBytes(32)
+      WINDOWS_SECRET(randomBytes(32))
     );
     expect(appBound.status).toBe("skipped");
     expect(appBound.status === "skipped" ? appBound.reason : "").toContain("app-bound");
-    const wrongKey = decryptChromiumValue(aesEncrypt(randomBytes(32), "x"), randomBytes(32));
+    const wrongKey = decryptChromiumValue(
+      aesEncrypt(randomBytes(32), "x"),
+      WINDOWS_SECRET(randomBytes(32))
+    );
     expect(wrongKey.status).toBe("skipped");
-    const missingKey = decryptChromiumValue(aesEncrypt(randomBytes(32), "x"), Buffer.alloc(0));
+    const missingKey = decryptChromiumValue(aesEncrypt(randomBytes(32), "x"), undefined);
     expect(missingKey.status === "skipped" ? missingKey.reason : "").toContain("encryption key");
   });
 
   test("rejects empty and truncated ciphertext", () => {
-    const key = randomBytes(32);
-    expect(decryptChromiumValue("", key).status).toBe("skipped");
+    const secret = WINDOWS_SECRET(randomBytes(32));
+    expect(decryptChromiumValue("", secret).status).toBe("skipped");
     const short = Buffer.concat([Buffer.from("v10"), randomBytes(4)]).toString("base64");
-    expect(decryptChromiumValue(short, key).status).toBe("skipped");
+    expect(decryptChromiumValue(short, secret).status).toBe("skipped");
+  });
+
+  test("a macOS keychain password yields an AES-128 key, never a raw 32-byte AES-256 key", () => {
+    const password = randomBytes(32);
+    const derived = deriveMacosKeychainKey(password);
+    expect(derived.cipher).toBe("aes-128-cbc");
+    expect(derived.key.length).toBe(16);
+    expect(derived.key.equals(password)).toBe(false);
+  });
+
+  test("the macOS derived key decrypts a Chromium AES-128-CBC value", () => {
+    const password = Buffer.from("stock-keychain-password", "utf8");
+    const derived = deriveMacosKeychainKey(password);
+    expect(derived.key).toEqual(pbkdf2Sync(password, "saltysalt", 1003, 16, "sha1"));
+    const iv = randomBytes(16);
+    const cipher = createCipheriv("aes-128-cbc", derived.key, iv);
+    const body = Buffer.concat([cipher.update("cookie-value", "utf8"), cipher.final()]);
+    const encoded = Buffer.concat([Buffer.from("v10"), iv, body]).toString("base64");
+    expect(decryptChromiumValue(encoded, derived)).toEqual({
+      status: "decrypted",
+      value: "cookie-value",
+    });
+  });
+
+  test("a 32-byte keychain password cannot silently decrypt an AES-128-CBC value", () => {
+    const password = randomBytes(32);
+    const derived = deriveMacosKeychainKey(password);
+    const iv = randomBytes(16);
+    const cipher = createCipheriv("aes-128-cbc", derived.key, iv);
+    const body = Buffer.concat([cipher.update("secret", "utf8"), cipher.final()]);
+    const encoded = Buffer.concat([Buffer.from("v10"), iv, body]).toString("base64");
+    expect(decryptChromiumValue(encoded, { key: password, cipher: "aes-256-cbc" }).status).toBe(
+      "skipped"
+    );
+  });
+
+  test("a plain 32-byte stored key still resolves to AES-256 on every platform", () => {
+    const outcome = unwrapChromiumKey(randomBytes(32), "Chrome Safe Storage");
+    expect(outcome.status).toBe("unwrapped");
+    if (outcome.status !== "unwrapped") return;
+    expect(outcome.secret.cipher).toBe("aes-256-cbc");
+    expect(outcome.secret.key.length).toBe(32);
   });
 });

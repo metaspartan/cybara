@@ -1,11 +1,21 @@
-import { createDecipheriv } from "node:crypto";
+import { createDecipheriv, pbkdf2Sync } from "node:crypto";
 
 const UNWRAP_TIMEOUT_MS = 20_000;
 const MAX_SECRET_BYTES = 1024;
 const DPAPI_MAGIC = "DPAPI";
+const MACOS_KEY_SALT = "saltysalt";
+const MACOS_KEY_ITERATIONS = 1003;
+const MACOS_KEY_BYTES = 16;
+
+export type ChromiumCipher = "aes-256-cbc" | "aes-128-cbc";
+
+export interface ChromiumSecret {
+  key: Buffer;
+  cipher: ChromiumCipher;
+}
 
 export type SecretUnwrapOutcome =
-  | { status: "unwrapped"; secret: Buffer }
+  | { status: "unwrapped"; secret: ChromiumSecret }
   | { status: "unsupported"; reason: string };
 
 interface CommandResult {
@@ -56,7 +66,14 @@ function windowsDpapiUnprotect(blob: Buffer): SecretUnwrapOutcome {
   const secret = decodeBase64Strict(result.stdout);
   if (!secret || secret.length > MAX_SECRET_BYTES)
     return { status: "unsupported", reason: "The browser key could not be decoded." };
-  return { status: "unwrapped", secret };
+  return { status: "unwrapped", secret: { key: secret, cipher: "aes-256-cbc" } };
+}
+
+export function deriveMacosKeychainKey(password: Buffer): ChromiumSecret {
+  return {
+    key: pbkdf2Sync(password, MACOS_KEY_SALT, MACOS_KEY_ITERATIONS, MACOS_KEY_BYTES, "sha1"),
+    cipher: "aes-128-cbc",
+  };
 }
 
 function macosKeychainSecret(account: string): SecretUnwrapOutcome {
@@ -70,13 +87,17 @@ function macosKeychainSecret(account: string): SecretUnwrapOutcome {
   const secret = Buffer.from(result.stdout, "utf8");
   if (secret.length === 0 || secret.length > MAX_SECRET_BYTES)
     return { status: "unsupported", reason: "The browser keychain key was empty." };
-  return { status: "unwrapped", secret };
+  return { status: "unwrapped", secret: deriveMacosKeychainKey(secret) };
 }
 
-export function unwrapChromiumKey(wrapped: Buffer, account: string): SecretUnwrapOutcome {
-  if (wrapped.subarray(0, DPAPI_MAGIC.length).toString("ascii") === DPAPI_MAGIC)
+export function unwrapChromiumKey(
+  wrapped: Buffer | undefined,
+  account: string
+): SecretUnwrapOutcome {
+  if (wrapped?.subarray(0, DPAPI_MAGIC.length).toString("ascii") === DPAPI_MAGIC)
     return windowsDpapiUnprotect(wrapped.subarray(DPAPI_MAGIC.length));
-  if (wrapped.length === 32) return { status: "unwrapped", secret: wrapped };
+  if (wrapped?.length === 32)
+    return { status: "unwrapped", secret: { key: wrapped, cipher: "aes-256-cbc" } };
   if (process.platform === "darwin") return macosKeychainSecret(account);
   return {
     status: "unsupported",
@@ -101,7 +122,12 @@ function stripPkcs7(buffer: Buffer): Buffer {
   return buffer.subarray(0, start);
 }
 
-export function decryptChromiumValue(encoded: string, key: Buffer): ChromiumValueDecrypt {
+const EMPTY_SECRET: ChromiumSecret = { key: Buffer.alloc(0), cipher: "aes-256-cbc" };
+
+export function decryptChromiumValue(
+  encoded: string,
+  secret: ChromiumSecret | undefined
+): ChromiumValueDecrypt {
   const blob = Buffer.from(encoded, "base64");
   if (blob.length === 0) return { status: "skipped", reason: "empty" };
   const prefix = blob.subarray(0, 3).toString("ascii");
@@ -112,13 +138,15 @@ export function decryptChromiumValue(encoded: string, key: Buffer): ChromiumValu
     };
   if (prefix !== "v10" && prefix !== "v11")
     return { status: "plaintext", value: blob.toString("utf8") };
-  if (key.length !== 32)
+  const { key, cipher } = secret ?? EMPTY_SECRET;
+  const expectedBytes = cipher === "aes-128-cbc" ? 16 : 32;
+  if (key.length !== expectedBytes)
     return { status: "skipped", reason: "the browser encryption key was unavailable" };
   if (blob.length < 19)
     return { status: "skipped", reason: "the stored value was too short to decrypt" };
   try {
     const iv = blob.subarray(3, 19);
-    const decipher = createDecipheriv("aes-256-cbc", key, iv);
+    const decipher = createDecipheriv(cipher, key, iv);
     const plain = Buffer.concat([decipher.update(blob.subarray(19)), decipher.final()]);
     const value = stripPkcs7(plain).toString("utf8");
     if (!value) return { status: "skipped", reason: "the decrypted value was empty" };
