@@ -10,6 +10,7 @@ import {
 import {
   type ClipboardEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type PointerEvent,
   type ReactElement,
   useCallback,
@@ -45,6 +46,11 @@ import {
   BROWSER_PREVIEW_STREAM_PROFILE,
   BROWSER_PREVIEW_THUMBNAIL_STREAM_PROFILE,
 } from "./browserPreviewTiming";
+import {
+  isPreviewPointerButton,
+  normalizeBrowserPointerButton,
+  type BrowserPointerButton,
+} from "../../../../shared/browser-preview-input";
 import { BrowserPreviewImage } from "./BrowserPreviewImage";
 import { BrowserViewportModeControl } from "./BrowserViewportModeControl";
 import {
@@ -319,6 +325,7 @@ export function ChatWorkspaceBrowser({
   const scrollBatcherRef = useRef<BrowserScrollBatcher | null>(null);
   const pointerMoveBatcherRef = useRef<BrowserPointerMoveBatcher | null>(null);
   const pointerPressedRef = useRef(false);
+  const pressedButtonRef = useRef<BrowserPointerButton>(0);
   const lastPointerPointRef = useRef<{ x: number; y: number } | null>(null);
   const streamConnectedRef = useRef(false);
   const streamInputRef = useRef<BrowserPreviewStreamSender | null>(null);
@@ -971,15 +978,17 @@ export function ChatWorkspaceBrowser({
 
   const handlePreviewPointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>): void => {
-      if (!page || event.button !== 0) return;
+      if (!page || !isPreviewPointerButton(event.button)) return;
+      const button = normalizeBrowserPointerButton(event.button);
       const point = previewPoint(event.clientX, event.clientY);
       if (!point) return;
       event.preventDefault();
-      event.currentTarget.focus();
+      if (button === 0) event.currentTarget.focus();
       event.currentTarget.setPointerCapture(event.pointerId);
       pointerPressedRef.current = true;
+      pressedButtonRef.current = button;
       lastPointerPointRef.current = point;
-      void sendPageInput(page, { type: "pointer_down", x: point.x, y: point.y });
+      void sendPageInput(page, { type: "pointer_down", x: point.x, y: point.y, button });
     },
     [page, previewPoint, sendPageInput]
   );
@@ -988,10 +997,29 @@ export function ChatWorkspaceBrowser({
     (event: PointerEvent<HTMLDivElement>): void => {
       if (!page || !pointerPressedRef.current) return;
       pointerPressedRef.current = false;
+      const button = normalizeBrowserPointerButton(pressedButtonRef.current);
+      pressedButtonRef.current = 0;
       const point = previewPoint(event.clientX, event.clientY) ?? lastPointerPointRef.current;
       if (!point) return;
       lastPointerPointRef.current = point;
-      void sendPageInput(page, { type: "pointer_up", x: point.x, y: point.y });
+      void sendPageInput(page, { type: "pointer_up", x: point.x, y: point.y, button });
+    },
+    [page, previewPoint, sendPageInput]
+  );
+
+  const handlePreviewContextMenu = useCallback(
+    (event: MouseEvent<HTMLDivElement>): void => {
+      if (!page) return;
+      event.preventDefault();
+      const point = previewPoint(event.clientX, event.clientY);
+      if (!point) return;
+      lastPointerPointRef.current = point;
+      void sendPageInput(page, {
+        type: "pointer_click",
+        x: point.x,
+        y: point.y,
+        button: 2,
+      });
     },
     [page, previewPoint, sendPageInput]
   );
@@ -1136,6 +1164,7 @@ export function ChatWorkspaceBrowser({
         onPointerMove={handlePreviewPointerMove}
         onPointerUp={handlePreviewPointerUp}
         onPointerCancel={handlePreviewPointerUp}
+        onContextMenu={handlePreviewContextMenu}
         role="application"
         tabIndex={0}
         aria-label="Interactive browser preview"

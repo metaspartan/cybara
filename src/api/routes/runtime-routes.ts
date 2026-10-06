@@ -12,6 +12,11 @@ import {
   startSandboxBrowser,
   stopSandboxBrowser,
 } from "../../core/browser/sandbox-browser";
+import {
+  attachToLocalChrome,
+  detachFromLocalChrome,
+  localChromeStatus,
+} from "../../core/browser/local-chrome";
 import { tables } from "../../core/database";
 import { commandExists, isWindows } from "../../core/platform";
 import {
@@ -40,8 +45,9 @@ import {
   releaseBrowserPage,
   validateBrowserNavigationUrl,
 } from "../../core/tools/handlers/browser";
-import { isSessionStatusActive, type RouteHandler } from "./_shared";
+import { isSessionStatusActive, type RouteContext, type RouteHandler } from "./_shared";
 import { browserImportRoutes } from "./browser-import";
+import { normalizeBrowserPointerButton } from "../../../shared/browser-preview-input";
 
 function quotePosix(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -57,6 +63,14 @@ function quoteCmd(value: string): string {
 
 function browserSessionId(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function localBrowserRemoteAccessError(context: RouteContext | undefined): string | null {
+  const forwardedIp = forwardedClientIp(context?.headers ?? {});
+  if (!isLoopbackIp(context?.clientIp) || (forwardedIp && !isLoopbackIp(forwardedIp))) {
+    return "Driving a local Chrome is available only from this device.";
+  }
+  return null;
 }
 
 function browserPointerCoordinates(body: unknown): { x: number; y: number } | null {
@@ -247,6 +261,29 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     await stopSandboxBrowser();
     return { success: true, status: await getSandboxBrowserStatus() };
   },
+  "GET /api/browser/local-chrome": async (_body, _params, context) => {
+    const denial = localBrowserRemoteAccessError(context);
+    if (denial) return { success: false, error: denial };
+    return { success: true, status: await localChromeStatus() };
+  },
+  "POST /api/browser/local-chrome/attach": async (body, _params, context) => {
+    const denial = localBrowserRemoteAccessError(context);
+    if (denial) return { success: false, error: denial };
+    const port = (body as { port?: unknown } | undefined)?.port;
+    try {
+      return { success: true, status: await attachToLocalChrome({ port }) };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  },
+  "POST /api/browser/local-chrome/detach": async (_body, _params, context) => {
+    const denial = localBrowserRemoteAccessError(context);
+    if (denial) return { success: false, error: denial };
+    return { success: true, status: await detachFromLocalChrome() };
+  },
   "GET /api/browser/tabs": async (_body, params) => {
     const sessionId = browserSessionId(params?.sessionId);
     if (sessionId) {
@@ -379,7 +416,12 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     if (!point) {
       return { error: "Finite pointer coordinates are required" };
     }
-    await pwManager.clickAt(params!.id, point.x, point.y);
+    await pwManager.clickAt(
+      params!.id,
+      point.x,
+      point.y,
+      normalizeBrowserPointerButton((body as { button?: unknown }).button)
+    );
     invalidateBrowserPreview(params!.id);
     return { success: true, message: "Clicked page" };
   },
@@ -393,14 +435,24 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
   "POST /api/browser/tabs/:id/pointer/down": async (body, params) => {
     const point = browserPointerCoordinates(body);
     if (!point) return { error: "Finite pointer coordinates are required" };
-    await pwManager.pointerDownAt(params!.id, point.x, point.y);
+    await pwManager.pointerDownAt(
+      params!.id,
+      point.x,
+      point.y,
+      normalizeBrowserPointerButton((body as { button?: unknown }).button)
+    );
     invalidateBrowserPreview(params!.id);
     return { success: true, message: "Pressed pointer" };
   },
   "POST /api/browser/tabs/:id/pointer/up": async (body, params) => {
     const point = browserPointerCoordinates(body);
     if (!point) return { error: "Finite pointer coordinates are required" };
-    await pwManager.pointerUpAt(params!.id, point.x, point.y);
+    await pwManager.pointerUpAt(
+      params!.id,
+      point.x,
+      point.y,
+      normalizeBrowserPointerButton((body as { button?: unknown }).button)
+    );
     invalidateBrowserPreview(params!.id);
     return { success: true, message: "Released pointer" };
   },

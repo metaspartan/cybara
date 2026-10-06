@@ -9,6 +9,7 @@ import {
   type BrowserSupervisionStatus,
 } from "@/lib/api";
 import { useUIStore } from "@/stores/uiStore";
+import { LocalChromePanel } from "../chat/LocalChromePanel";
 import { MonitorCog } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -88,6 +89,7 @@ export function BrowserSupervisionSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        <LocalChromePanel />
         <Switch
           label="Restart after unexpected exit"
           description="Recover an active browser preview when its process disconnects"

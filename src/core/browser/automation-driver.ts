@@ -76,11 +76,15 @@ export interface AutomationLocator {
 }
 
 export interface AutomationMouse {
-  click(x: number, y: number): Promise<void>;
+  click(x: number, y: number, options?: AutomationMouseButton): Promise<void>;
   move(x: number, y: number): Promise<void>;
   wheel(deltaX: number, deltaY: number): Promise<void>;
-  down(): Promise<void>;
-  up(): Promise<void>;
+  down(options?: AutomationMouseButton): Promise<void>;
+  up(options?: AutomationMouseButton): Promise<void>;
+}
+
+export interface AutomationMouseButton {
+  button: "left" | "middle" | "right";
 }
 
 export interface AutomationKeyboard {
@@ -239,6 +243,7 @@ interface BrowserElementEvaluator {
 
 export interface AutomationContext {
   newPage(): Promise<AutomationPage>;
+  pages(): Promise<AutomationPage[]>;
   addCookies(cookies: BrowserImportCookie[]): Promise<void>;
   close(): Promise<void>;
 }
@@ -251,9 +256,11 @@ export interface AutomationContextOptions {
 
 export interface AutomationBrowser {
   newContext(options: AutomationContextOptions): Promise<AutomationContext>;
+  pages(): Promise<AutomationPage[]>;
   onDisconnected(listener: () => void): void;
   isConnected(): boolean;
   close(): Promise<void>;
+  disconnect(): Promise<void>;
 }
 
 export type AutomationDriverName = "playwright" | "puppeteer";
@@ -378,11 +385,13 @@ class PlaywrightPageAdapter implements AutomationPage {
 
   constructor(private readonly page: Playwright.Page) {
     this.mouse = {
-      click: async (x, y) => await page.mouse.click(x, y),
+      click: async (x, y, options) =>
+        await page.mouse.click(x, y, options ? { button: options.button } : undefined),
       move: async (x, y) => await page.mouse.move(x, y),
       wheel: async (deltaX, deltaY) => await page.mouse.wheel(deltaX, deltaY),
-      down: async () => await page.mouse.down(),
-      up: async () => await page.mouse.up(),
+      down: async (options) =>
+        await page.mouse.down(options ? { button: options.button } : undefined),
+      up: async (options) => await page.mouse.up(options ? { button: options.button } : undefined),
     };
     this.keyboard = {
       insertText: async (text) => await page.keyboard.insertText(text),
@@ -546,6 +555,10 @@ class PlaywrightContextAdapter implements AutomationContext {
   close(): Promise<void> {
     return this.context.close();
   }
+
+  async pages(): Promise<AutomationPage[]> {
+    return this.context.pages().map((page) => new PlaywrightPageAdapter(page));
+  }
 }
 
 class PlaywrightBrowserAdapter implements AutomationBrowser {
@@ -569,8 +582,20 @@ class PlaywrightBrowserAdapter implements AutomationBrowser {
     return this.browser.isConnected();
   }
 
+  async pages(): Promise<AutomationPage[]> {
+    const found: AutomationPage[] = [];
+    for (const context of this.browser.contexts()) {
+      for (const page of context.pages()) found.push(new PlaywrightPageAdapter(page));
+    }
+    return found;
+  }
+
   close(): Promise<void> {
     return this.browser.close();
+  }
+
+  async disconnect(): Promise<void> {
+    await this.browser.close();
   }
 }
 
@@ -797,11 +822,13 @@ class PuppeteerPageAdapter implements AutomationPage {
 
   constructor(private readonly page: PuppeteerPage) {
     this.mouse = {
-      click: async (x, y) => await page.mouse.click(x, y),
+      click: async (x, y, options) =>
+        await page.mouse.click(x, y, options ? { button: options.button } : undefined),
       move: async (x, y) => await page.mouse.move(x, y),
       wheel: async (deltaX, deltaY) => await page.mouse.wheel({ deltaX, deltaY }),
-      down: async () => await page.mouse.down(),
-      up: async () => await page.mouse.up(),
+      down: async (options) =>
+        await page.mouse.down(options ? { button: options.button } : undefined),
+      up: async (options) => await page.mouse.up(options ? { button: options.button } : undefined),
     };
     this.keyboard = {
       insertText: async (text) => await page.keyboard.sendCharacter(text),
@@ -978,6 +1005,11 @@ class PuppeteerContextAdapter implements AutomationContext {
   close(): Promise<void> {
     return this.context.close();
   }
+
+  async pages(): Promise<AutomationPage[]> {
+    const found = await this.context.pages();
+    return found.map((page) => new PuppeteerPageAdapter(page));
+  }
 }
 
 class PuppeteerBrowserAdapter implements AutomationBrowser {
@@ -1001,8 +1033,16 @@ class PuppeteerBrowserAdapter implements AutomationBrowser {
     return this.browser.connected;
   }
 
+  async pages(): Promise<AutomationPage[]> {
+    return (await this.browser.pages()).map((page) => new PuppeteerPageAdapter(page));
+  }
+
   close(): Promise<void> {
     return this.browser.close();
+  }
+
+  async disconnect(): Promise<void> {
+    this.browser.disconnect();
   }
 }
 

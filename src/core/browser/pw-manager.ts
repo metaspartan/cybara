@@ -38,6 +38,8 @@ import {
 import { findHermeticPlaywrightBrowserPath, getChromium } from "./playwright-loader";
 import { browserImportStore } from "./import-store";
 import type { BrowserImportCookie } from "../../../shared/browser-import";
+import type { BrowserPointerButton } from "../../../shared/browser-preview-input";
+
 import {
   normalizePageCursor,
   pageCursorProbeScript,
@@ -68,6 +70,12 @@ import {
   startBrowser,
   stopBrowser,
 } from "./profiles";
+
+const PLAYWRIGHT_MOUSE_BUTTON: Record<BrowserPointerButton, "left" | "middle" | "right"> = {
+  0: "left",
+  1: "middle",
+  2: "right",
+};
 
 async function launchWithFallback(
   chromium: Awaited<ReturnType<typeof getChromium>>,
@@ -905,12 +913,19 @@ export async function click(
   setPointerAction(pageId, "click");
 }
 
-export async function clickAt(pageId: string, x: number, y: number): Promise<void> {
+export async function clickAt(
+  pageId: string,
+  x: number,
+  y: number,
+  button: BrowserPointerButton = 0
+): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
   const target = boundedPointerPosition(page, x, y);
   await movePagePointer(pageId, page, target.x, target.y, "user");
-  await page.mouse.click(target.x, target.y);
+  await page.mouse.click(target.x, target.y, {
+    button: PLAYWRIGHT_MOUSE_BUTTON[button],
+  });
   setPointerAction(pageId, "click", "user");
 }
 
@@ -937,21 +952,31 @@ export async function pageCursorAt(pageId: string, x: number, y: number): Promis
   return normalizePageCursor(await page.evaluate(pageCursorProbeScript(target.x, target.y)));
 }
 
-export async function pointerDownAt(pageId: string, x: number, y: number): Promise<void> {
+export async function pointerDownAt(
+  pageId: string,
+  x: number,
+  y: number,
+  button: BrowserPointerButton = 0
+): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
   const target = boundedPointerPosition(page, x, y);
   await movePagePointer(pageId, page, target.x, target.y, "user");
-  await page.mouse.down();
+  await page.mouse.down({ button: PLAYWRIGHT_MOUSE_BUTTON[button] });
   setPointerAction(pageId, "click", "user");
 }
 
-export async function pointerUpAt(pageId: string, x: number, y: number): Promise<void> {
+export async function pointerUpAt(
+  pageId: string,
+  x: number,
+  y: number,
+  button: BrowserPointerButton = 0
+): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
   const target = boundedPointerPosition(page, x, y);
   await movePagePointer(pageId, page, target.x, target.y, "user");
-  await page.mouse.up();
+  await page.mouse.up({ button: PLAYWRIGHT_MOUSE_BUTTON[button] });
   setPointerAction(pageId, "click", "user");
 }
 
