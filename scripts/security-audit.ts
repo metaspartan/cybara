@@ -48,6 +48,7 @@ const OSV_TIMEOUT_MS = 30_000;
 const OSV_RETRY_DELAY_MS = 3_000;
 const BUN_AUDIT_TIMEOUT_MS = 100_000;
 const BRACES_DEPTH_ADVISORY = "GHSA-vfj7-8cjw-p6xm";
+const SPRINTF_PRECISION_ADVISORY = "GHSA-hp3w-g68c-fv3c";
 
 const WORKSPACES: readonly Workspace[] = [
   {
@@ -59,6 +60,7 @@ const WORKSPACES: readonly Workspace[] = [
       "GHSA-jmr9-qjv8-65gv",
       "GHSA-7pqw-9j4j-h8q3",
       BRACES_DEPTH_ADVISORY,
+      SPRINTF_PRECISION_ADVISORY,
     ]),
   },
   { label: "ui", lockfile: "ui/bun.lock", cwd: join(REPO_ROOT, "ui"), ignored: new Set() },

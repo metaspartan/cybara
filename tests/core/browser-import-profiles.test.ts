@@ -2,7 +2,6 @@ import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { createCipheriv, randomBytes } from "node:crypto";
 import {
-  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -290,20 +289,37 @@ describe("automatic credential and cookie import", () => {
     expect(result.notes.join(" ")).toContain("app-bound");
   });
 
-  test("a locked database degrades to skipped data rather than failing the whole import", () => {
+  test("an unreadable database degrades to skipped data rather than failing the whole import", () => {
     const { directory, options } = fixture();
     const key = randomBytes(32);
     writeLocalState(join(directory, ".."), key);
     addCookies(directory, key);
     addLogins(directory, key);
-    chmodSync(join(directory, "Network", "Cookies"), 0o000);
+    writeFileSync(join(directory, "Network", "Cookies"), Buffer.from("not a sqlite database"));
 
     const profile = detectBrowserImportProfiles(options)[0];
     if (!profile) throw new Error("Missing profile");
     const result = readBrowserImportProfile(profile.id, options);
-    chmodSync(join(directory, "Network", "Cookies"), 0o600);
     expect(result.data.history.length).toBeGreaterThan(0);
-    expect(result.locked.includes("cookies") || result.data.cookies.length > 0).toBe(true);
+    expect(result.data.cookies).toEqual([]);
+    const reported =
+      result.locked.includes("cookies") || result.notes.some((note) => note.includes("cookies"));
+    expect(reported).toBe(true);
+  });
+
+  test("a missing category degrades instead of aborting the other categories", () => {
+    const { directory, options } = fixture();
+    const key = randomBytes(32);
+    writeLocalState(join(directory, ".."), key);
+    addCookies(directory, key);
+    rmSync(join(directory, "Bookmarks"));
+
+    const profile = detectBrowserImportProfiles(options)[0];
+    if (!profile) throw new Error("Missing profile");
+    const result = readBrowserImportProfile(profile.id, options);
+    expect(result.data.history.length).toBeGreaterThan(0);
+    expect(result.data.cookies.length).toBeGreaterThan(0);
+    expect(result.data.bookmarks).toEqual([]);
   });
 });
 
