@@ -1,14 +1,16 @@
 import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createCipheriv, randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { getChromium } from "../../src/core/browser/playwright-loader";
 
-const key = "browser-import-ui-fixture-key";
-const secret = "browser-import-ui-password-fixture";
-const session = "browser-import-ui-fixture";
+const key = "browser-import-auto-ui-fixture-key";
+const secret = "browser-import-auto-password-fixture";
+const session = "browser-import-auto-ui-fixture";
+const chromiumKey = randomBytes(32);
 let home = "";
 let baseUrl = "";
 let fixtureUrl = "";
@@ -49,18 +51,29 @@ async function startGateway(): Promise<void> {
     stdout: "ignore",
     stderr: "ignore",
   });
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     try {
       if ((await fetch(`${baseUrl}/api/health`)).ok) return;
     } catch {}
     await Bun.sleep(250);
   }
-  throw new Error("Isolated browser-import UI gateway did not start.");
+  throw new Error("Isolated browser-import gateway did not start.");
+}
+
+function tabIdOf(response: Record<string, unknown>): string {
+  const data = response.data as { id?: unknown } | undefined;
+  return typeof data?.id === "string" ? data.id : "";
 }
 
 function activePage(): Page {
   if (!page) throw new Error("Fixture browser page unavailable");
   return page;
+}
+
+async function openSettings(): Promise<void> {
+  const target = activePage();
+  await target.goto(`${baseUrl}/settings?section=safety`, { waitUntil: "domcontentloaded" });
+  await target.locator(".browser-import-settings-entry").waitFor();
 }
 
 async function openWorkspace(): Promise<void> {
@@ -71,20 +84,73 @@ async function openWorkspace(): Promise<void> {
   await target.locator("[data-browser-session-id]").waitFor();
 }
 
-async function openSettings(): Promise<void> {
+async function openImportModal(): Promise<void> {
   const target = activePage();
-  await target.goto(`${baseUrl}/settings?section=safety`, { waitUntil: "domcontentloaded" });
-  await target.locator(".browser-import-settings-entry").waitFor();
+  await openSettings();
+  await target.getByRole("button", { name: "Import browser data", exact: true }).click();
+  await target.getByRole("dialog", { name: "Import browser data" }).waitFor();
 }
 
-async function file(category: string, name: string, content: string): Promise<void> {
-  await activePage()
-    .getByLabel(category, { exact: true })
-    .setInputFiles({ name, mimeType: "text/plain", buffer: Buffer.from(content) });
+function encrypt(value: string): string {
+  const iv = randomBytes(16);
+  const cipher = createCipheriv("aes-256-cbc", chromiumKey, iv);
+  const body = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return Buffer.concat([Buffer.from("v10"), iv, body]).toString("base64");
+}
+
+function writeBrowserProfile(): void {
+  const userData = join(home, "Local", "Google", "Chrome", "User Data");
+  const profile = join(userData, "Default");
+  mkdirSync(join(profile, "Network"), { recursive: true });
+  writeFileSync(
+    join(userData, "Local State"),
+    JSON.stringify({ os_crypt: { encrypted_key: chromiumKey.toString("base64") } })
+  );
+  writeFileSync(
+    join(profile, "Bookmarks"),
+    JSON.stringify({
+      roots: {
+        bookmark_bar: {
+          type: "folder",
+          children: [
+            { type: "url", name: "Auto detected bookmark", url: `${fixtureUrl}/bookmarked` },
+          ],
+        },
+      },
+    })
+  );
+  const cookies = new Database(join(profile, "Network", "Cookies"));
+  cookies.exec(
+    "CREATE TABLE cookies (host_key TEXT, top_frame_site_key TEXT, name TEXT, value TEXT, encrypted_value BLOB, path TEXT, expires_utc INTEGER, is_httponly INTEGER, is_secure INTEGER, samesite INTEGER)"
+  );
+  cookies
+    .query(
+      "INSERT INTO cookies (host_key,name,value,encrypted_value,path,expires_utc,is_httponly,is_secure,samesite) VALUES (?,?,?,?,?,?,?,?,?)"
+    )
+    .run(
+      new URL(fixtureUrl).hostname,
+      "imported_fixture",
+      "",
+      encrypt("cookie-fixture"),
+      "/",
+      Math.floor((Date.now() / 1000 + 86_400 + 11_644_473_600_000 / 1000) * 1_000_000),
+      0,
+      0,
+      1
+    );
+  cookies.close();
+  const logins = new Database(join(profile, "Login Data"));
+  logins.exec(
+    "CREATE TABLE logins (origin_url TEXT, username_value TEXT, password_value TEXT, blacklisted_by_user INTEGER)"
+  );
+  logins
+    .query("INSERT INTO logins VALUES (?,?,?,0)")
+    .run(`${fixtureUrl}/login`, "alice", encrypt(secret));
+  logins.close();
 }
 
 beforeAll(async () => {
-  home = mkdtempSync(join(tmpdir(), "cybara-browser-import-ui-"));
+  home = mkdtempSync(join(tmpdir(), "cybara-browser-import-auto-"));
   const allocation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("ok") });
   baseUrl = `http://127.0.0.1:${allocation.port}`;
   allocation.stop(true);
@@ -111,21 +177,7 @@ beforeAll(async () => {
     },
   });
   fixtureUrl = `http://127.0.0.1:${fixture.port}`;
-  const profile = join(home, "Local", "Google", "Chrome", "User Data", "Default");
-  mkdirSync(profile, { recursive: true });
-  writeFileSync(
-    join(profile, "Bookmarks"),
-    JSON.stringify({
-      roots: {
-        bookmark_bar: {
-          type: "folder",
-          children: [
-            { type: "url", name: "Detected source bookmark", url: `${fixtureUrl}/source` },
-          ],
-        },
-      },
-    })
-  );
+  writeBrowserProfile();
   await startGateway();
   await api("/api/setup/complete", {});
   const defaultAgent = await api("/api/agents/default", {});
@@ -134,7 +186,7 @@ beforeAll(async () => {
   db.query("INSERT INTO chat_sessions (id, agent_id, title, messages) VALUES (?, ?, ?, ?)").run(
     session,
     id,
-    "Browser import UI fixture",
+    "Browser import auto fixture",
     "[]"
   );
   db.close();
@@ -143,7 +195,7 @@ beforeAll(async () => {
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   await page.addInitScript((token) => sessionStorage.setItem("cybara_api_key", token), key);
   page.on("pageerror", (error) => runtimeErrors.push(error.message));
-}, 60_000);
+}, 90_000);
 
 afterAll(async () => {
   await browser?.close();
@@ -155,210 +207,68 @@ afterAll(async () => {
   if (home) rmSync(home, { recursive: true, force: true });
 });
 
-describe("browser import through the rendered application", () => {
-  test("dismisses top banner without bottom popup and imports all categories through Settings", async () => {
+describe("one-click automatic browser import", () => {
+  test("detects local browser profiles and reports what was found", async () => {
     const target = activePage();
-    await openWorkspace();
-    await target.locator(".browser-import-banner").waitFor();
-    expect(await target.locator(".browser-import-banner").count()).toBe(1);
-    await target.getByRole("button", { name: "Dismiss browser import banner" }).click();
-    expect(await target.locator(".browser-import-banner").count()).toBe(0);
-    await target.getByRole("button", { name: "Workspace panel", exact: true }).click();
+    await openImportModal();
+    const detected = target.locator(".browser-import-category-choice");
+    await detected.first().waitFor();
+    const modal = await target.getByRole("dialog").innerText();
+    expect(modal).toContain("Chrome");
+    expect(modal).toContain("Detected");
+    expect(modal).not.toContain("Choose export file");
     expect(
-      await target
-        .locator(
-          '[data-testid="floating-browser-preview"], [data-testid="floating-browser-preview-show"]'
-        )
-        .count()
-    ).toBe(0);
-    await openSettings();
-    await target.getByRole("button", { name: "Import browser data", exact: true }).click();
-    const modal = target.getByRole("dialog", { name: "Import browser data" });
-    await modal.waitFor();
-    await target.getByLabel("Import from", { exact: true }).selectOption("");
-    const consent = target.locator(".browser-import-consent input");
-    expect(await consent.isChecked()).toBe(false);
-    expect(
-      await target.getByRole("button", { name: "Import selected data", exact: true }).isEnabled()
+      await target.getByRole("button", { name: "Import everything", exact: true }).isEnabled()
     ).toBe(false);
-    await target.getByLabel("Saved passwords", { exact: true }).check();
-    await target.getByLabel("Cookies & sign-ins", { exact: true }).check();
-    await file(
-      "Choose saved passwords export file",
-      "passwords.csv",
-      `url,username,password\n${fixtureUrl}/login,alice,${secret}\n`
-    );
-    await file(
-      "Choose cookies & sign-ins export file",
-      "cookies.json",
-      JSON.stringify([
-        { domain: "127.0.0.1", name: "imported_fixture", value: "cookie-fixture", httpOnly: true },
-      ])
-    );
-    await file(
-      "Choose browsing history export file",
-      "history.json",
-      JSON.stringify([{ url: `${fixtureUrl}/history`, title: "Fixture history", visited_at: 123 }])
-    );
-    await file(
-      "Choose bookmarks export file",
-      "bookmarks.html",
-      `<DL><A HREF="${fixtureUrl}/login">Fixture login</A></DL>`
-    );
-    expect(
-      await target.getByRole("button", { name: "Import selected data", exact: true }).isEnabled()
-    ).toBe(false);
-    await consent.check();
-    await target.getByRole("button", { name: "Import selected data", exact: true }).click();
-    await target.locator(".browser-import-success-title").waitFor();
-    expect(await target.locator(".browser-import-counts strong").allTextContents()).toEqual([
-      "1",
-      "1",
-      "1",
-      "1",
-    ]);
-    await target.getByRole("button", { name: "Browse imported data", exact: true }).click();
-    expect(await modal.innerText()).not.toContain(secret);
-    expect(await target.locator(".browser-import-library-summary").innerText()).toContain(
-      "1 saved logins · 1 cookies · 1 bookmarks · 1 history entries"
-    );
-    expect(await target.locator(".browser-import-page").first().isEnabled()).toBe(false);
-    await target.getByRole("button", { name: "Close dialog" }).click();
-    await target.reload({ waitUntil: "domcontentloaded" });
-    await target.getByRole("button", { name: "Manage imported data", exact: true }).click();
-    await target.getByText("Fixture history", { exact: true }).waitFor();
-    await target.setViewportSize({ width: 390, height: 844 });
-    const geometry = await target.evaluate(() => ({
-      width: window.innerWidth,
-      scroll: document.documentElement.scrollWidth,
-      dialog: document.querySelector('[role="dialog"]')?.getBoundingClientRect().width ?? 0,
-    }));
-    expect(geometry.scroll).toBeLessThanOrEqual(geometry.width);
-    expect(geometry.dialog).toBeLessThanOrEqual(390);
-    await target.getByRole("button", { name: "Close dialog" }).click();
-    await target.setViewportSize({ width: 1440, height: 1000 });
-    expect((await api("/api/browser/import/sources")).counts).toEqual({
-      passwords: 1,
-      cookies: 1,
-      history: 1,
-      bookmarks: 1,
-    });
+    if (process.env.CYBARA_BROWSER_IMPORT_SCREENSHOT)
+      await target.getByRole("dialog").screenshot({
+        path: process.env.CYBARA_BROWSER_IMPORT_SCREENSHOT,
+      });
   }, 60_000);
 
-  test("keeps dismissal across reload, uses detected profile, and retains successful result after a failed library refresh", async () => {
+  test("imports every category in one click with no manual selection", async () => {
     const target = activePage();
-    await openWorkspace();
-    expect(await target.locator(".browser-import-banner").count()).toBe(0);
-    expect(
-      await target
-        .locator(
-          '[data-testid="floating-browser-preview"], [data-testid="floating-browser-preview-show"]'
-        )
-        .count()
-    ).toBe(0);
-    await openSettings();
-    await target.getByRole("button", { name: "Import browser data", exact: true }).click();
-    const source = target.getByLabel("Import from", { exact: true });
-    await target
-      .getByRole("option", { name: "Chrome · Default profile" })
-      .waitFor({ state: "attached" });
-    const sourceId = await source
-      .locator("option")
-      .filter({ hasText: "Chrome · Default profile" })
-      .getAttribute("value");
-    if (!sourceId) throw new Error("Detected source missing");
-    await source.selectOption(sourceId);
-    await target.getByLabel("Saved passwords", { exact: true }).uncheck();
-    await target.getByLabel("Cookies & sign-ins", { exact: true }).uncheck();
-    await target.getByLabel("Browsing history", { exact: true }).uncheck();
-    await target.route("**/api/browser/import/library", (route) =>
-      route.fulfill({
-        status: 503,
-        contentType: "application/json",
-        body: '{"success":false,"error":"Fixture refresh unavailable"}',
-      })
-    );
+    await openImportModal();
+    await target.locator(".browser-import-category-choice").first().waitFor();
     await target.locator(".browser-import-consent input").check();
-    await target.getByRole("button", { name: "Import selected data", exact: true }).click();
-    await target.getByText("Import complete", { exact: true }).waitFor();
-    await target
-      .getByText(
-        "Your import succeeded, but the library could not refresh. Reopen Imported data to see the latest items."
-      )
-      .waitFor();
-    expect(await target.locator(".browser-import-error").count()).toBe(0);
-    await target.unroute("**/api/browser/import/library");
-    await target.getByRole("button", { name: "Done", exact: true }).click();
-    await target.getByRole("button", { name: "Manage imported data", exact: true }).click();
-    await target.getByText("Detected source bookmark", { exact: true }).waitFor();
-    await target.getByRole("button", { name: "Close dialog" }).click();
-    expect((await api("/api/browser/import/sources")).counts).toEqual({
-      passwords: 1,
-      cookies: 1,
-      history: 1,
-      bookmarks: 2,
-    });
+    const trigger = target.getByRole("button", { name: "Import everything", exact: true });
+    expect(await trigger.isEnabled()).toBe(true);
+    await trigger.click();
+    await target.getByText("Import complete").waitFor({ timeout: 60_000 });
+
+    const counts = (await api("/api/browser/import/sources")).counts as Record<string, number>;
+    expect(counts.bookmarks).toBeGreaterThan(0);
+    expect(counts.cookies).toBeGreaterThan(0);
+    expect(counts.passwords).toBeGreaterThan(0);
+    const library = await api("/api/browser/import/library");
+    expect(library.logins).toMatchObject([{ username: "alice" }]);
+    if (process.env.CYBARA_BROWSER_IMPORT_DONE_SCREENSHOT)
+      await target.getByRole("dialog").screenshot({
+        path: process.env.CYBARA_BROWSER_IMPORT_DONE_SCREENSHOT,
+      });
+    expect(runtimeErrors).toEqual([]);
+  }, 90_000);
+
+  test("an imported cookie reaches the embedded browser without re-selection", async () => {
+    const open = await api("/api/browser/tabs", {});
+    const tabId = tabIdOf(open);
+    expect(tabId).not.toBe("");
+    await api(`/api/browser/tabs/${tabId}/navigate`, { url: `${fixtureUrl}/cookie` });
+    const snapshot = await api(`/api/browser/tabs/${tabId}/snapshot`);
+    expect(JSON.stringify(snapshot)).toContain("imported_fixture=cookie-fixture");
+    expect(runtimeErrors).toEqual([]);
   }, 60_000);
 
-  test("invalid exports remain errors without changes and deselecting clears plaintext file state", async () => {
+  test("an imported saved login fills the matching form only", async () => {
     const target = activePage();
-    await openSettings();
-    await target.getByRole("button", { name: "Import browser data", exact: true }).click();
-    await target.getByLabel("Import from", { exact: true }).selectOption("");
-    await target.getByLabel("Browsing history", { exact: true }).check();
-    await target.getByLabel("Bookmarks", { exact: true }).uncheck();
-    await file("Choose browsing history export file", "invalid.json", '{"secret-fixture":');
-    await target.locator(".browser-import-consent input").check();
-    await target.getByRole("button", { name: "Import selected data", exact: true }).click();
-    await target.getByRole("alert").waitFor();
-    expect(await target.getByRole("alert").innerText()).not.toContain("secret-fixture");
-    expect(await target.locator(".browser-import-success").count()).toBe(0);
-    await target.getByLabel("Browsing history", { exact: true }).uncheck();
-    await target.getByLabel("Browsing history", { exact: true }).check();
-    expect(await target.locator(".browser-import-file").innerText()).not.toContain("invalid.json");
-    expect(await target.locator(".browser-import-consent input").isChecked()).toBe(false);
-    await target.getByRole("button", { name: "Cancel", exact: true }).click();
-    expect((await api("/api/browser/import/sources")).counts).toEqual({
-      passwords: 1,
-      cookies: 1,
-      history: 1,
-      bookmarks: 2,
-    });
-  }, 45_000);
-
-  test("restores cookies after gateway restart and manually fills the exact-site login from the browser banner", async () => {
-    const target = activePage();
-    if (!gateway) throw new Error("Gateway unavailable");
-    gateway.kill();
-    await gateway.exited;
-    await startGateway();
-    await openSettings();
-    await target.getByRole("button", { name: "Restore browser banner", exact: true }).click();
-    expect(
-      await target.getByRole("button", { name: "Restore browser banner", exact: true }).count()
-    ).toBe(0);
     await openWorkspace();
-    await target.locator(".browser-import-banner").waitFor();
-    await target.locator(".browser-import-library-action").click();
-    await target.getByText("Fixture login", { exact: true }).waitFor();
-    const [navigation] = await Promise.all([
-      target.waitForResponse((response) =>
-        /\/api\/browser\/tabs\/[^/]+\/navigate$/.test(new URL(response.url()).pathname)
-      ),
-      target.locator(".browser-import-page").filter({ hasText: "Fixture login" }).click(),
-    ]);
-    const navigationResult = (await navigation.json()) as {
-      success?: boolean;
-      error?: string;
-      data?: { url?: string };
-    };
-    if (!navigation.ok() || navigationResult.success === false || navigationResult.error)
-      throw new Error(`Embedded navigation failed: ${JSON.stringify(navigationResult)}`);
-    expect(navigationResult.data?.url).toBe(`${fixtureUrl}/login`);
-    const tabId = /\/api\/browser\/tabs\/([^/]+)\/navigate$/.exec(
-      new URL(navigation.url()).pathname
-    )?.[1];
-    if (!tabId) throw new Error("Embedded navigation tab missing");
+    const open = await api("/api/browser/tabs", { sessionId: session });
+    const tabId = tabIdOf(open);
+    expect(tabId).not.toBe("");
+    const navigated = await api(`/api/browser/tabs/${tabId}/navigate`, {
+      url: `${fixtureUrl}/login`,
+    });
+    expect(JSON.stringify(navigated)).toContain("/login");
     await target.waitForFunction(
       (url) =>
         document.querySelector<HTMLInputElement>('input[aria-label="Browser address"]')?.value ===

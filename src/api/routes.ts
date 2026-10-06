@@ -1597,6 +1597,7 @@ const routes: Record<string, RouteHandler> = {
       cleanup?: "keep" | "delete";
       workspaceDir?: string;
       maxActiveChildren?: number;
+      maxToolIterations?: number;
       requesterSessionId?: string;
     };
     if (!data.task) {
@@ -1613,6 +1614,7 @@ const routes: Record<string, RouteHandler> = {
       cleanup: data.cleanup,
       workspaceDir: data.workspaceDir,
       maxActiveChildren: data.maxActiveChildren,
+      maxToolIterations: data.maxToolIterations,
       _requesterSessionKey:
         typeof data.requesterSessionId === "string" && data.requesterSessionId.trim()
           ? data.requesterSessionId.trim()

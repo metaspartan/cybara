@@ -78,3 +78,8 @@ reason = "Fixed by committed mobile node-forge@1.4.0 patch rejecting extra neste
 id = "GHSA-vfj7-8cjw-p6xm"
 ignoreUntil = 2026-12-31
 reason = "braces 3.0.3 is the latest published release and the advisory range covers every version, so there is nothing to upgrade to. parse() bounds only character count (MAX_LENGTH = 10000) and not nesting depth, while the compile.js and expand.js AST walkers recurse once per nesting level; the advisory measures a crash at depth >= ~3500 under that cap. patches/braces@3.0.3.patch adds a MAX_DEPTH = 100 brace-nesting guard in parse(), which bounds every downstream walker at the source. Verified: a 4900-level pattern (9801 chars, under the character cap) is rejected with a SyntaxError instead of overflowing the stack, while legitimate patterns including {a,b}, a/{b,c}/d, src/**/*.{ts,tsx} and {a,{b,{c,d}}} still compile to identical output. security-audit verifies patch registration and installed source before applying this version-only exception. Remove once upstream ships a fix."
+
+[[IgnoredVulns]]
+id = "GHSA-hp3w-g68c-fv3c"
+ignoreUntil = 2026-12-31
+reason = "sprintf-js 1.1.3 is the newest published release; the registry exposes no 1.1.4 or later, so there is nothing to upgrade to. The advisory needs a caller-supplied format string carrying an unbounded precision specifier; the only path into this repository is @huggingface/transformers > onnxruntime-node > global-agent > roarr, whose sprintf format strings are fixed literals inside the logging library and never derived from model output, prompts, or tool arguments. Accepted as a version-only exception, not a patched one. Re-check and remove as soon as upstream publishes a fix or the onnxruntime dependency is dropped."

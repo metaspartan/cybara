@@ -15,6 +15,11 @@ import {
   resetSubagentRegistryForTests,
   getRun,
 } from "../../src/core/subagent-registry";
+import {
+  DEFAULT_AGENTIC_MAX_ITERATIONS,
+  MAX_AGENTIC_CONFIGURED_ITERATIONS,
+} from "../../src/core/agent-internals";
+import { toolSchemas } from "../../src/core/tools/registry";
 
 const root = join(import.meta.dir, "..", "..");
 const readSource = (relative: string): string => readFileSync(join(root, relative), "utf8");
@@ -108,5 +113,26 @@ describe("subagent tool budget", () => {
     const channel = readSource("src/core/tools/handlers/channel.ts");
     expect(channel).toContain("MAX_AGENTIC_CONFIGURED_ITERATIONS");
     expect(channel).not.toContain("Math.min(requestedMaxToolIterations, 100)");
+  });
+
+  test("the advertised maxToolIterations range matches the real clamp", () => {
+    const schema = toolSchemas.sessions_spawn.input_schema.properties.maxToolIterations as {
+      description?: string;
+    };
+    const advertised = /\((\d+)-(\d+)\)/.exec(schema.description ?? "");
+    expect(advertised).not.toBeNull();
+    expect(Number(advertised?.[2])).toBe(MAX_AGENTIC_CONFIGURED_ITERATIONS);
+    expect(Number(advertised?.[1])).toBe(1);
+  });
+
+  test("omitting maxToolIterations yields the standard budget, never an unlimited one", () => {
+    const policy = resolveAgenticLoopPolicyFromConfig({
+      agentConfig: {},
+      env: {},
+      modelParams: {},
+    });
+    expect(policy.maxIterations).toBe(DEFAULT_AGENTIC_MAX_ITERATIONS);
+    expect(typeof policy.maxIterations).toBe("number");
+    expect(policy.maxIterations).toBeLessThan(MAX_AGENTIC_CONFIGURED_ITERATIONS);
   });
 });

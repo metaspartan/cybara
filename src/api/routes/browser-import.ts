@@ -1,7 +1,11 @@
 import { forwardedClientIp, isLoopbackIp } from "../client-ip";
-import { detectBrowserImportSources } from "../../core/browser/import-sources";
 import { browserImportStore } from "../../core/browser/import-store";
-import { fillImportedBrowserLogin, importBrowserData } from "../../core/browser/import-service";
+import {
+  fillImportedBrowserLogin,
+  importAllBrowserData,
+  importBrowserData,
+  listBrowserImportProfiles,
+} from "../../core/browser/import-service";
 import { type RouteContext, type RouteHandler, makeRawHttpResponse } from "./_shared";
 
 export function browserImportAccessError(context: RouteContext | undefined): string | null {
@@ -49,10 +53,14 @@ function localImportRoute(action: (body: unknown) => Promise<unknown> | unknown)
 }
 
 export const browserImportRoutes: Record<string, RouteHandler> = {
-  "GET /api/browser/import/sources": localImportRoute(async () => ({
+  "GET /api/browser/import/sources": localImportRoute(() => ({
     success: true,
-    sources: await detectBrowserImportSources(),
+    profiles: listBrowserImportProfiles(),
     counts: browserImportStore.counts(),
+  })),
+  "POST /api/browser/import/auto": localImportRoute(async (body) => ({
+    success: true,
+    ...(await importAllBrowserData(body)),
   })),
   "POST /api/browser/import": localImportRoute(async (body) => ({
     success: true,

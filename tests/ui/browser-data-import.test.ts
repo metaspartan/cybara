@@ -26,22 +26,37 @@ describe("embedded browser import UI contracts", () => {
     expect(component).toContain("Imported data");
   });
 
-  test("requires category, file readiness and explicit consent before import", () => {
-    expect(component).toContain("useState(false)");
-    expect(component).toContain("!consent || !ready || reading > 0 || loading");
+  test("auto import needs no category selection and only explicit consent", () => {
+    expect(component).toContain('"/api/browser/import/auto"');
     expect(component).toContain("consent: true");
+    expect(component).toContain("useState(false)");
     expect(component).toContain("setConsent(false)");
+    expect(component).toContain("operation.current");
+    expect(component).toContain("!consent ||");
+    expect(component).not.toContain("available.sources?.[0]?.id");
+    expect(component).not.toContain("sourceId");
+  });
+
+  test("detected categories are shown read-only and unavailable data is explained", () => {
+    expect(component).toContain("Detected");
+    expect(component).toContain("Unavailable");
+    expect(component).toContain("Will be imported automatically");
+    expect(component).toContain("unavailableReason");
+    expect(component).toContain("Found on this device");
+  });
+
+  test("file import remains available as an explicit opt-in fallback", () => {
+    expect(component).toContain("FileImportPanel");
     expect(component).toContain("file.size > 8 * 1024 * 1024");
     expect(component).toContain("setFiles({})");
-    expect(component).toContain("operation.current");
-    expect(component).not.toContain("available.sources?.[0]?.id");
+    expect(component).toContain("Import from an exported file instead");
   });
 
   test("keeps passwords out of the library and fills only a matching-site login", () => {
     expect(component).toContain("login.origin === webOrigin(url)");
     expect(component).toContain('"/api/browser/import/fill"');
-    expect(component).toContain("Password CSV export");
-    expect(component).toContain("Cookie JSON or Netscape export");
+    expect(component).toContain("Saved passwords");
+    expect(component).toContain("Cookies & sign-ins");
     expect(component).toContain("Password");
     expect(component).not.toContain("login.password");
   });

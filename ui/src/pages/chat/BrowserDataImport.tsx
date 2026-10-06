@@ -4,6 +4,7 @@ import {
   Bookmark,
   Check,
   ChevronRight,
+  CircleSlash,
   Cookie,
   FolderInput,
   Globe2,
@@ -11,6 +12,7 @@ import {
   KeyRound,
   Loader2,
   ShieldCheck,
+  Wand2,
   X,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
@@ -19,7 +21,8 @@ import type {
   BrowserBookmark,
   BrowserHistoryEntry,
   BrowserImportCategory,
-  BrowserImportSource,
+  BrowserImportCategoryAvailability,
+  BrowserImportProfile,
 } from "../../../../shared/browser-import";
 import "./browserDataImport.css";
 
@@ -39,9 +42,9 @@ interface ImportLibrary {
   bookmarks: BrowserBookmark[];
   logins: SavedLogin[];
 }
-interface SourceResponse {
+interface SourcesResponse {
   success: boolean;
-  sources?: BrowserImportSource[];
+  profiles?: BrowserImportProfile[];
   counts?: ImportCounts;
   error?: string;
 }
@@ -53,6 +56,8 @@ interface ImportResponse {
   success: boolean;
   imported?: ImportCounts;
   warnings?: string[];
+  profiles?: number;
+  lockedCategories?: BrowserImportCategory[];
   error?: string;
 }
 interface SelectedFile {
@@ -65,40 +70,44 @@ interface BrowserDataImportProps {
   onNavigate?: (url: string) => void;
   entry?: "banner" | "settings";
 }
+interface DetectedCategoriesProps {
+  profiles: BrowserImportProfile[];
+}
+interface FileImportPanelProps {
+  selected: BrowserImportCategory[];
+  files: Partial<Record<BrowserImportCategory, SelectedFile>>;
+  consent: boolean;
+  busy: boolean;
+  reading: number;
+  onToggle: (category: BrowserImportCategory) => void;
+  onChoose: (category: BrowserImportCategory, file: File | undefined) => void;
+  onConsent: (value: boolean) => void;
+  intro: string;
+}
 
 const DISMISS_KEY = "cybara.browser.import.banner.dismissed";
 const EMPTY_COUNTS: ImportCounts = { passwords: 0, cookies: 0, history: 0, bookmarks: 0 };
 const EMPTY_LIBRARY: ImportLibrary = { history: [], bookmarks: [], logins: [] };
-const CATEGORY_DETAILS = [
-  {
-    id: "passwords",
-    label: "Saved passwords",
-    description: "Password CSV export",
-    icon: KeyRound,
-    accept: ".csv,text/csv",
-  },
-  {
-    id: "cookies",
+
+const CATEGORY_DETAILS: Record<
+  BrowserImportCategory,
+  { label: string; icon: typeof KeyRound; accept: string }
+> = {
+  passwords: { label: "Saved passwords", icon: KeyRound, accept: ".csv,text/csv" },
+  cookies: {
     label: "Cookies & sign-ins",
-    description: "Cookie JSON or Netscape export",
     icon: Cookie,
     accept: ".json,.txt,application/json,text/plain",
   },
-  {
-    id: "history",
-    label: "Browsing history",
-    description: "Recent pages and visited sites",
-    icon: History,
-    accept: ".json,application/json",
-  },
-  {
-    id: "bookmarks",
+  history: { label: "Browsing history", icon: History, accept: ".json,application/json" },
+  bookmarks: {
     label: "Bookmarks",
-    description: "Your saved links",
     icon: Bookmark,
     accept: ".html,.htm,.json,text/html,application/json",
   },
-] as const;
+};
+
+const CATEGORY_ORDER: BrowserImportCategory[] = ["passwords", "cookies", "history", "bookmarks"];
 
 function dismissed(): boolean {
   try {
@@ -134,6 +143,125 @@ function webOrigin(url: string | undefined): string | null {
   }
 }
 
+function unavailableReason(
+  profiles: BrowserImportProfile[],
+  category: BrowserImportCategory
+): string | undefined {
+  for (const profile of profiles) {
+    const entry: BrowserImportCategoryAvailability | undefined = profile.availability.find(
+      (value) => value.category === category && !value.available
+    );
+    if (entry?.reason) return entry.reason;
+  }
+  return undefined;
+}
+
+function DetectedCategories({ profiles }: DetectedCategoriesProps): React.JSX.Element {
+  const detected = new Set(profiles.flatMap((profile) => profile.categories));
+  const inUse = new Set(
+    profiles.flatMap((profile) =>
+      profile.availability.filter((entry) => !entry.available).map((entry) => entry.category)
+    )
+  );
+  return (
+    <div className="browser-import-categories" aria-label="Data that will be imported">
+      {CATEGORY_ORDER.map((id) => {
+        const { label, icon: Icon } = CATEGORY_DETAILS[id];
+        const found = detected.has(id);
+        const reason = unavailableReason(profiles, id);
+        const subtitle = found
+          ? inUse.has(id)
+            ? "Browser is open — imports what it allows"
+            : "Will be imported automatically"
+          : (reason ?? "Not available on this device");
+        return (
+          <div className={`browser-import-category ${found ? "selected" : ""}`} key={id}>
+            <span className="browser-import-category-choice">
+              {found ? <Icon size={19} /> : <CircleSlash size={19} />}
+              <span>
+                <strong>{label}</strong>
+                <small>{subtitle}</small>
+              </span>
+              <span
+                className={`browser-import-native-tag ${found ? "" : "browser-import-native-missing"}`}
+              >
+                {found ? "Detected" : "Unavailable"}
+              </span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FileImportPanel({
+  selected,
+  files,
+  consent,
+  busy,
+  reading,
+  onToggle,
+  onChoose,
+  onConsent,
+  intro,
+}: FileImportPanelProps): React.JSX.Element {
+  return (
+    <section className="browser-import-advanced">
+      <p>{intro}</p>
+      <div className="browser-import-categories">
+        {CATEGORY_ORDER.map((id) => {
+          const { label, icon: Icon, accept } = CATEGORY_DETAILS[id];
+          const checked = selected.includes(id);
+          return (
+            <div className={`browser-import-category ${checked ? "selected" : ""}`} key={id}>
+              <label className="browser-import-category-choice">
+                <input
+                  type="checkbox"
+                  aria-label={label}
+                  checked={checked}
+                  disabled={busy || reading > 0}
+                  onChange={() => onToggle(id)}
+                />
+                <Icon size={19} />
+                <span>
+                  <strong>{label}</strong>
+                  <small>{files[id]?.name ?? "No file chosen"}</small>
+                </span>
+              </label>
+              {checked && (
+                <label className="browser-import-file">
+                  <FolderInput size={13} />
+                  <span>{files[id]?.name ?? "Choose export file"}</span>
+                  <input
+                    type="file"
+                    accept={accept}
+                    aria-label={`Choose ${label.toLowerCase()} export file`}
+                    disabled={busy || reading > 0}
+                    onChange={(event) => {
+                      onChoose(id, event.target.files?.[0]);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <label className="browser-import-consent">
+        <input
+          type="checkbox"
+          checked={consent}
+          disabled={busy || reading > 0}
+          onChange={(event) => onConsent(event.target.checked)}
+        />
+        <span>I agree to import these files into Cybara.</span>
+      </label>
+    </section>
+  );
+}
+
 export function BrowserDataImport({
   tabId,
   url,
@@ -143,10 +271,7 @@ export function BrowserDataImport({
   const [bannerHidden, setBannerHidden] = useState(dismissed);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<"import" | "library">("import");
-  const [sourceId, setSourceId] = useState("");
-  const [sources, setSources] = useState<BrowserImportSource[]>([]);
-  const [selected, setSelected] = useState<BrowserImportCategory[]>(["history", "bookmarks"]);
-  const [files, setFiles] = useState<Partial<Record<BrowserImportCategory, SelectedFile>>>({});
+  const [profiles, setProfiles] = useState<BrowserImportProfile[]>([]);
   const [counts, setCounts] = useState<ImportCounts>(EMPTY_COUNTS);
   const [library, setLibrary] = useState<ImportLibrary>(EMPTY_LIBRARY);
   const [consent, setConsent] = useState(false);
@@ -157,11 +282,15 @@ export function BrowserDataImport({
   const [result, setResult] = useState<ImportResponse | null>(null);
   const [fillMessage, setFillMessage] = useState("");
   const [filter, setFilter] = useState("");
+  const [advanced, setAdvanced] = useState(false);
+  const [selected, setSelected] = useState<BrowserImportCategory[]>([]);
+  const [files, setFiles] = useState<Partial<Record<BrowserImportCategory, SelectedFile>>>({});
   const operation = useRef(false);
   const mountedOpen = useRef(false);
   const fileVersions = useRef<Partial<Record<BrowserImportCategory, number>>>({});
   const loadVersion = useRef(0);
   const [refreshWarning, setRefreshWarning] = useState("");
+
   useEffect(
     () => () => {
       mountedOpen.current = false;
@@ -169,11 +298,31 @@ export function BrowserDataImport({
     },
     []
   );
-  const source = sources.find((entry) => entry.id === sourceId);
+
   const matchingLogins = library.logins.filter((login) => login.origin === webOrigin(url));
-  const ready =
-    selected.length > 0 &&
-    selected.every((category) => files[category] || source?.categories.includes(category));
+  const advancedReady =
+    selected.length > 0 && selected.every((category) => files[category] !== undefined);
+  const hasProfiles = profiles.length > 0;
+
+  async function refreshLibrary(): Promise<void> {
+    try {
+      const [imported, available] = await Promise.all([
+        request<LibraryResponse>("/api/browser/import/library"),
+        request<SourcesResponse>("/api/browser/import/sources"),
+      ]);
+      setLibrary({
+        history: imported.history ?? [],
+        bookmarks: imported.bookmarks ?? [],
+        logins: imported.logins ?? [],
+      });
+      setCounts(available.counts ?? EMPTY_COUNTS);
+      setProfiles(available.profiles ?? []);
+    } catch {
+      setRefreshWarning(
+        "Your import succeeded, but the library could not refresh. Reopen Imported data to see the latest items."
+      );
+    }
+  }
 
   async function show(target: "import" | "library" = "import"): Promise<void> {
     if (operation.current || reading > 0) return;
@@ -189,23 +338,22 @@ export function BrowserDataImport({
     setRefreshWarning("");
     try {
       const [available, imported] = await Promise.all([
-        request<SourceResponse>("/api/browser/import/sources"),
+        request<SourcesResponse>("/api/browser/import/sources"),
         request<LibraryResponse>("/api/browser/import/library"),
       ]);
       if (!mountedOpen.current || loadVersion.current !== version) return;
-      setSources(available.sources ?? []);
+      setProfiles(available.profiles ?? []);
       setCounts(available.counts ?? EMPTY_COUNTS);
       setLibrary({
         history: imported.history ?? [],
         bookmarks: imported.bookmarks ?? [],
         logins: imported.logins ?? [],
       });
-      setSourceId((current) =>
-        (available.sources ?? []).some((source) => source.id === current) ? current : ""
-      );
     } catch (failure) {
       if (mountedOpen.current && loadVersion.current === version)
-        setError(failure instanceof Error ? failure.message : "Could not load browser profiles.");
+        setError(
+          failure instanceof Error ? failure.message : "Could not look for browsers on this device."
+        );
     } finally {
       if (mountedOpen.current && loadVersion.current === version) setLoading(false);
     }
@@ -223,10 +371,9 @@ export function BrowserDataImport({
   }
 
   async function readFile(category: BrowserImportCategory, file: File | undefined): Promise<void> {
-    if (!file) return;
-    setConsent(false);
-    setResult(null);
+    if (!file || operation.current) return;
     setError("");
+    setResult(null);
     const version = (fileVersions.current[category] ?? 0) + 1;
     fileVersions.current[category] = version;
     setFiles((previous) => {
@@ -266,8 +413,28 @@ export function BrowserDataImport({
     setResult(null);
   }
 
-  async function runImport(): Promise<void> {
-    if (operation.current || !consent || !ready || reading > 0 || loading) return;
+  async function runAutoImport(): Promise<void> {
+    if (operation.current || !consent || busy || loading) return;
+    operation.current = true;
+    setBusy(true);
+    setError("");
+    setResult(null);
+    try {
+      setResult(await request<ImportResponse>("/api/browser/import/auto", { consent: true }));
+      setConsent(false);
+      await refreshLibrary();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "Import failed. No completion was confirmed."
+      );
+    } finally {
+      operation.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function runFileImport(): Promise<void> {
+    if (operation.current || !consent || !advancedReady || busy || reading > 0 || loading) return;
     operation.current = true;
     setBusy(true);
     setError("");
@@ -278,29 +445,16 @@ export function BrowserDataImport({
         const file = files[category];
         if (file) payload[category] = file.text;
       }
-      const imported = await request<ImportResponse>("/api/browser/import", {
-        source_id: sourceId || undefined,
-        categories: selected,
-        files: payload,
-        consent: true,
-      });
-      setResult(imported);
+      setResult(
+        await request<ImportResponse>("/api/browser/import", {
+          categories: selected,
+          files: payload,
+          consent: true,
+        })
+      );
       setFiles({});
       setConsent(false);
-      try {
-        const refreshed = await request<LibraryResponse>("/api/browser/import/library");
-        setLibrary({
-          history: refreshed.history ?? [],
-          bookmarks: refreshed.bookmarks ?? [],
-          logins: refreshed.logins ?? [],
-        });
-        const refreshedSources = await request<SourceResponse>("/api/browser/import/sources");
-        setCounts(refreshedSources.counts ?? EMPTY_COUNTS);
-      } catch {
-        setRefreshWarning(
-          "Your import succeeded, but the library could not refresh. Reopen Imported data to see the latest items."
-        );
-      }
+      await refreshLibrary();
     } catch (failure) {
       setError(
         failure instanceof Error ? failure.message : "Import failed. No completion was confirmed."
@@ -335,8 +489,8 @@ export function BrowserDataImport({
 
   const search = filter.toLowerCase();
   const librarySections = [
-    { label: "Bookmarks", entries: library.bookmarks, icon: Bookmark },
-    { label: "Browsing history", entries: library.history, icon: History },
+    { id: "history", label: "History", icon: History, entries: library.history },
+    { id: "bookmarks", label: "Bookmarks", icon: Bookmark, entries: library.bookmarks },
   ];
 
   return (
@@ -346,8 +500,8 @@ export function BrowserDataImport({
           <div className="browser-import-settings-copy">
             <strong>Your embedded browser, personalized</strong>
             <p>
-              Bring bookmarks, browsing history, cookies and saved logins into the embedded browser.
-              You can import here even after dismissing its banner.
+              Cybara finds Chrome, Edge, Brave and Chromium on this device and imports everything
+              they hold. You can import here even after dismissing its banner.
             </p>
             {!bannerHidden && (
               <p className="browser-import-help" role="status">
@@ -361,7 +515,7 @@ export function BrowserDataImport({
               className="browser-import-banner-action"
               onClick={() => void show()}
             >
-              <ArrowDownToLine size={14} />
+              <Wand2 size={14} />
               Import browser data
             </button>
             <button
@@ -395,15 +549,15 @@ export function BrowserDataImport({
           </span>
           <div className="browser-import-banner-copy">
             <strong>Make this browser yours</strong>
-            <span>Bring your bookmarks, history and sign-ins with you.</span>
+            <span>One click imports your bookmarks, history, cookies and sign-ins.</span>
           </div>
           <button
             type="button"
             className="browser-import-banner-action"
             onClick={() => void show()}
           >
-            <ArrowDownToLine size={14} />
-            Import browser data
+            <Wand2 size={14} />
+            Import everything
           </button>
           <button
             type="button"
@@ -434,11 +588,11 @@ export function BrowserDataImport({
         <div className="browser-import-modal">
           <div className="browser-import-intro">
             <span className="browser-import-hero-icon">
-              <FolderInput size={25} />
+              <Wand2 size={25} />
             </span>
             <div>
               <h3>Your browser, ready for Cybara</h3>
-              <p>Choose what to bring over. Your existing browser stays untouched.</p>
+              <p>Everything is detected for you. Nothing to pick.</p>
             </div>
           </div>
           <div className="browser-import-tabs" role="tablist" aria-label="Browser data sections">
@@ -464,7 +618,7 @@ export function BrowserDataImport({
           {loading ? (
             <div className="browser-import-loading" role="status">
               <Loader2 size={18} className="animate-spin" />
-              Finding browser profiles…
+              Finding your browsers…
             </div>
           ) : view === "import" ? (
             <>
@@ -473,129 +627,175 @@ export function BrowserDataImport({
                   <span className="browser-import-success-title">
                     <Check size={18} />
                     Import complete
+                    {result.profiles ? ` · ${result.profiles} profile(s)` : ""}
                   </span>
                   <div className="browser-import-counts">
-                    {CATEGORY_DETAILS.map(({ id, label }) => (
+                    {CATEGORY_ORDER.map((id) => (
                       <div key={id}>
                         <strong>{result.imported?.[id] ?? 0}</strong>
-                        <span>{label}</span>
+                        <span>{CATEGORY_DETAILS[id].label}</span>
                       </div>
                     ))}
                   </div>
                   {result.warnings?.map((warning) => (
                     <p key={warning}>{warning}</p>
                   ))}
-                  <button type="button" onClick={() => setView("library")}>
-                    Browse imported data <ChevronRight size={14} />
+                  <button
+                    type="button"
+                    className="browser-import-secondary"
+                    onClick={() => setView("library")}
+                  >
+                    Browse imported data
                   </button>
                 </div>
               ) : (
                 <>
-                  <label className="browser-import-source-label" htmlFor="browser-import-source">
-                    Import from
-                  </label>
-                  <select
-                    id="browser-import-source"
-                    className="browser-import-source"
-                    value={sourceId}
-                    disabled={busy || reading > 0}
-                    onChange={(event) => {
-                      setSourceId(event.target.value);
-                      setConsent(false);
-                    }}
-                  >
-                    <option value="">Exported files</option>
-                    {sources.map((profile) => (
-                      <option value={profile.id} key={profile.id}>
-                        {profile.browser} · {profile.profile}
-                      </option>
-                    ))}
-                  </select>
-                  {!sources.length && (
-                    <p className="browser-import-help">
-                      No supported browser profile was found on this device. You can still import
-                      exported files.
-                    </p>
-                  )}
-                  <div className="browser-import-categories">
-                    {CATEGORY_DETAILS.map(({ id, label, description, icon: Icon, accept }) => {
-                      const checked = selected.includes(id);
-                      const native = source?.categories.includes(id) ?? false;
-                      return (
-                        <div
-                          className={`browser-import-category ${checked ? "selected" : ""}`}
-                          key={id}
-                        >
-                          <label className="browser-import-category-choice">
-                            <input
-                              type="checkbox"
-                              aria-label={label}
-                              checked={checked}
-                              disabled={busy || reading > 0}
-                              onChange={() => toggle(id)}
-                            />
-                            <Icon size={19} />
-                            <span>
-                              <strong>{label}</strong>
-                              <small>
-                                {native && !files[id] ? `From ${source?.browser}` : description}
-                              </small>
-                            </span>
-                            {native && <span className="browser-import-native-tag">Available</span>}
-                          </label>
-                          {checked && (
-                            <label className="browser-import-file">
-                              <FolderInput size={13} />
+                  {hasProfiles ? (
+                    <>
+                      <section className="browser-import-detected">
+                        <h4>Found on this device</h4>
+                        <ul>
+                          {profiles.map((profile) => (
+                            <li key={profile.id}>
+                              <strong>
+                                {profile.browser} · {profile.profile}
+                              </strong>
                               <span>
-                                {files[id]?.name ??
-                                  (native ? "Or choose an export file" : "Choose export file")}
+                                {profile.availability
+                                  .filter((entry) => entry.available)
+                                  .map((entry) => CATEGORY_DETAILS[entry.category].label)
+                                  .join(", ") || "No readable data"}
                               </span>
-                              <input
-                                type="file"
-                                accept={accept}
-                                aria-label={`Choose ${label.toLowerCase()} export file`}
-                                disabled={busy || reading > 0}
-                                onChange={(event) => {
-                                  void readFile(id, event.target.files?.[0]);
-                                  event.target.value = "";
-                                }}
-                              />
-                            </label>
-                          )}
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                      <DetectedCategories profiles={profiles} />
+                      <div className="browser-import-privacy">
+                        <ShieldCheck size={17} />
+                        <div>
+                          <strong>Private by design</strong>
+                          <p>
+                            Everything is detected from your browsers automatically and stored
+                            encrypted on this device. Anything a browser keeps sealed is marked
+                            Unavailable rather than silently skipped. Extensions, payment details
+                            and synced accounts are never imported.
+                          </p>
                         </div>
-                      );
-                    })}
-                  </div>
-                  <div className="browser-import-privacy">
-                    <ShieldCheck size={17} />
-                    <div>
-                      <strong>Private by design</strong>
-                      <p>
-                        Stored encrypted on this device. Chrome and Edge protect passwords and
-                        cookies; use an export file for those. Extensions, payment details and
-                        synced accounts aren’t imported.
-                      </p>
+                      </div>
+                      <label className="browser-import-consent">
+                        <input
+                          type="checkbox"
+                          checked={consent}
+                          disabled={busy}
+                          onChange={(event) => setConsent(event.target.checked)}
+                        />
+                        <span>
+                          Import everything detected into Cybara. Imported cookies may let agents
+                          access signed-in accounts. Passwords are filled only when I choose a saved
+                          login.
+                        </span>
+                      </label>
+                    </>
+                  ) : (
+                    <div className="browser-import-privacy">
+                      <ShieldCheck size={17} />
+                      <div>
+                        <strong>No supported browser found</strong>
+                        <p>
+                          Cybara looks for Chrome, Edge, Brave and Chromium in the standard profile
+                          locations. Open one of them, or import an exported file below.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <label className="browser-import-consent">
-                    <input
-                      type="checkbox"
-                      checked={consent}
-                      disabled={busy || reading > 0}
-                      onChange={(event) => setConsent(event.target.checked)}
+                  )}
+                  <button
+                    type="button"
+                    className="browser-import-advanced-toggle"
+                    aria-expanded={advanced}
+                    onClick={() => setAdvanced((value) => !value)}
+                  >
+                    <FolderInput size={13} />
+                    {advanced ? "Hide file import" : "Import from an exported file instead"}
+                  </button>
+                  {advanced && (
+                    <FileImportPanel
+                      selected={selected}
+                      files={files}
+                      consent={consent}
+                      busy={busy}
+                      reading={reading}
+                      onToggle={toggle}
+                      onChoose={(category, file) => void readFile(category, file)}
+                      onConsent={setConsent}
+                      intro={
+                        hasProfiles
+                          ? "Use an export file from your browser when a value is sealed or the browser is running."
+                          : "Cybara found no browser profile, so import from a file your browser exported."
+                      }
                     />
-                    <span>
-                      I agree to import the selected data into Cybara. Imported cookies may let
-                      agents access signed-in accounts. Passwords are filled only when I choose a
-                      saved login.
-                    </span>
-                  </label>
+                  )}
                 </>
               )}
+              {refreshWarning && (
+                <div role="status" className="browser-import-help">
+                  {refreshWarning}
+                </div>
+              )}
+              {error && (
+                <div role="alert" className="browser-import-error">
+                  {error}
+                </div>
+              )}
+              <div className="browser-import-footer">
+                <span>
+                  <ShieldCheck size={13} />
+                  Local import · original data unchanged
+                </span>
+                <div>
+                  <button
+                    type="button"
+                    className="browser-import-secondary"
+                    disabled={busy || reading > 0}
+                    onClick={close}
+                  >
+                    {result ? "Done" : "Cancel"}
+                  </button>
+                  {!result && (
+                    <button
+                      type="button"
+                      className="browser-import-primary"
+                      disabled={
+                        !consent ||
+                        busy ||
+                        reading > 0 ||
+                        loading ||
+                        (advanced ? !advancedReady : !hasProfiles)
+                      }
+                      onClick={() => void (advanced ? runFileImport() : runAutoImport())}
+                    >
+                      {busy || reading > 0 ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : advanced ? (
+                        <ArrowDownToLine size={15} />
+                      ) : (
+                        <Wand2 size={15} />
+                      )}
+                      {busy
+                        ? "Importing…"
+                        : reading > 0
+                          ? "Reading file…"
+                          : advanced
+                            ? "Import selected files"
+                            : "Import everything"}
+                    </button>
+                  )}
+                </div>
+              </div>
             </>
           ) : (
-            <div className="browser-import-library">
-              {!onNavigate && (
+            <>
+              {!tabId && (
                 <p className="browser-import-help">
                   Open the Browser workspace to visit imported pages or fill saved logins.
                 </p>
@@ -635,95 +835,70 @@ export function BrowserDataImport({
                     </button>
                   ))
                 ) : (
-                  <p>
-                    Open a matching website to use an imported login. Passwords are never shown here
-                    or submitted automatically.
-                  </p>
+                  <p>No saved login for this website yet.</p>
                 )}
                 {fillMessage && (
-                  <p role="status" className="browser-import-fill-success">
+                  <p className="browser-import-help" role="status">
                     {fillMessage}
                   </p>
                 )}
               </div>
-              {librarySections.map(({ label, entries, icon: Icon }) => (
-                <section key={label}>
-                  <h4>
-                    <Icon size={14} />
-                    {label}
-                  </h4>
-                  {entries
-                    .filter((entry) => `${entry.title} ${entry.url}`.toLowerCase().includes(search))
-                    .slice(0, 80)
-                    .map((entry) => (
-                      <button
-                        type="button"
-                        className="browser-import-page"
-                        key={entry.url}
-                        disabled={busy || !onNavigate}
-                        title={
-                          onNavigate
-                            ? "Open in embedded browser"
-                            : "Open the Browser workspace to visit this page"
-                        }
-                        onClick={() => {
-                          onNavigate?.(entry.url);
-                          close();
-                        }}
-                      >
-                        <span>
-                          <strong>{entry.title || entry.url}</strong>
-                          <small>{entry.url}</small>
-                        </span>
-                        <ChevronRight size={14} />
-                      </button>
-                    ))}
-                  {!entries.length && <p className="browser-import-help">Nothing imported yet.</p>}
-                </section>
-              ))}
-            </div>
-          )}
-          {refreshWarning && (
-            <div role="status" className="browser-import-help">
-              {refreshWarning}
-            </div>
-          )}
-          {error && (
-            <div role="alert" className="browser-import-error">
-              {error}
-            </div>
-          )}
-          <div className="browser-import-footer">
-            <span>
-              <ShieldCheck size={13} />
-              Local import · original data unchanged
-            </span>
-            <div>
-              <button
-                type="button"
-                className="browser-import-secondary"
-                disabled={busy || reading > 0}
-                onClick={close}
-              >
-                {result ? "Done" : "Cancel"}
-              </button>
-              {view === "import" && !result && (
+              <div className="browser-import-library">
+                {librarySections.map(({ id, label, icon: Icon, entries }) => {
+                  const visible = entries.filter((entry) => {
+                    if (!search) return true;
+                    return `${entry.url} ${entry.title}`.toLowerCase().includes(search);
+                  });
+                  return (
+                    <section key={id}>
+                      <h4>
+                        <Icon size={14} />
+                        {label} ({visible.length})
+                      </h4>
+                      {visible.length ? (
+                        <ul>
+                          {visible.slice(0, 40).map((entry, index) => (
+                            <li key={`${entry.url}-${index}`}>
+                              <button type="button" onClick={() => onNavigate?.(entry.url)}>
+                                <span>{entry.title || entry.url}</span>
+                                <small>{entry.url}</small>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p>Nothing imported yet.</p>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+              {refreshWarning && (
+                <div role="status" className="browser-import-help">
+                  {refreshWarning}
+                </div>
+              )}
+              {error && (
+                <div role="alert" className="browser-import-error">
+                  {error}
+                </div>
+              )}
+              <div className="browser-import-footer">
+                <span>
+                  <ShieldCheck size={13} />
+                  Local import · original data unchanged
+                </span>
                 <button
                   type="button"
-                  className="browser-import-primary"
-                  disabled={!ready || !consent || busy || reading > 0 || loading}
-                  onClick={() => void runImport()}
+                  className="browser-import-secondary"
+                  disabled={busy || reading > 0}
+                  onClick={close}
                 >
-                  {busy || reading > 0 ? (
-                    <Loader2 size={15} className="animate-spin" />
-                  ) : (
-                    <ArrowDownToLine size={15} />
-                  )}
-                  {busy ? "Importing…" : reading > 0 ? "Reading file…" : "Import selected data"}
+                  Done
                 </button>
-              )}
-            </div>
-          </div>
+              </div>
+            </>
+          )}
         </div>
       </Modal>
     </>

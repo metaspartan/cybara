@@ -42,3 +42,14 @@ export interface BrowserImportSource {
   profile: string;
   categories: BrowserImportCategory[];
 }
+
+export interface BrowserImportCategoryAvailability {
+  category: BrowserImportCategory;
+  available: boolean;
+  reason?: string;
+}
+
+export interface BrowserImportProfile extends BrowserImportSource {
+  availability: BrowserImportCategoryAvailability[];
+  locked: BrowserImportCategory[];
+}
