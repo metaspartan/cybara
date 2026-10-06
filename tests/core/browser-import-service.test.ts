@@ -43,20 +43,17 @@ describe("browser import consent and boundaries", () => {
         categories: ["history"],
       })
     ).toThrow("Invalid browser source");
-    expect(() =>
+    expect(
       validateBrowserImportRequest({
         consent: true,
         source_id: "a".repeat(64),
-        categories: ["passwords"],
+        categories: ["passwords", "cookies"],
       })
-    ).toThrow("exported passwords");
-    expect(() =>
-      validateBrowserImportRequest({
-        consent: true,
-        source_id: "a".repeat(64),
-        categories: ["cookies"],
-      })
-    ).toThrow("exported cookies");
+    ).toEqual({
+      categories: ["passwords", "cookies"],
+      source_id: "a".repeat(64),
+      files: {},
+    });
   });
 
   test("rejects unselected files and oversized total content", () => {

@@ -655,7 +655,7 @@ The child result is not inserted into the parent transcript automatically. Call 
         maxToolIterations: {
           type: "number",
           description:
-            "Optional maximum tool iterations for this child run (1-100). Use a small bound for focused review or lookup work.",
+            "Optional maximum tool iterations for this child run (1-10000). Omit it so the child gets the standard budget, and set it only to tighten a deliberately narrow task; a child cut short reports itself as partial so you can retry with a larger bound.",
         },
         runTimeoutSeconds: {
           type: "number",
