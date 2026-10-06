@@ -1,11 +1,8 @@
-export type BrowserPreviewStreamInput =
-  | { type: "scroll"; deltaX: number; deltaY: number }
-  | { type: "pointer_click"; x: number; y: number }
-  | { type: "pointer_move"; x: number; y: number }
-  | { type: "pointer_down"; x: number; y: number }
-  | { type: "pointer_up"; x: number; y: number }
-  | { type: "keyboard"; key: string }
-  | { type: "text"; text: string };
+import type { BrowserPreviewInput } from "../../../../shared/browser-preview-input";
+
+export type { BrowserPointerButton } from "../../../../shared/browser-preview-input";
+
+export type BrowserPreviewStreamInput = BrowserPreviewInput;
 
 export type BrowserPreviewStreamSender = (input: BrowserPreviewStreamInput) => boolean;
 

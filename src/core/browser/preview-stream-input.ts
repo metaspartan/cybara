@@ -1,21 +1,25 @@
 import * as pwManager from "./pw-manager";
 import { invalidateBrowserPreview } from "./preview-cache";
+import {
+  type BrowserPointerButton,
+  normalizeBrowserPointerButton,
+} from "../../../shared/browser-preview-input";
 
 export type BrowserPreviewInput =
   | { type: "scroll"; deltaX: number; deltaY: number }
-  | { type: "pointer_click"; x: number; y: number }
+  | { type: "pointer_click"; x: number; y: number; button?: BrowserPointerButton }
   | { type: "pointer_move"; x: number; y: number }
-  | { type: "pointer_down"; x: number; y: number }
-  | { type: "pointer_up"; x: number; y: number }
+  | { type: "pointer_down"; x: number; y: number; button?: BrowserPointerButton }
+  | { type: "pointer_up"; x: number; y: number; button?: BrowserPointerButton }
   | { type: "keyboard"; key: string }
   | { type: "text"; text: string };
 
 export interface BrowserPreviewInputHandlers {
   scroll(pageId: string, deltaX: number, deltaY: number): Promise<void>;
-  click(pageId: string, x: number, y: number): Promise<void>;
+  click(pageId: string, x: number, y: number, button: BrowserPointerButton): Promise<void>;
   move(pageId: string, x: number, y: number): Promise<void>;
-  pointerDown(pageId: string, x: number, y: number): Promise<void>;
-  pointerUp(pageId: string, x: number, y: number): Promise<void>;
+  pointerDown(pageId: string, x: number, y: number, button: BrowserPointerButton): Promise<void>;
+  pointerUp(pageId: string, x: number, y: number, button: BrowserPointerButton): Promise<void>;
   keyboard(pageId: string, key: string): Promise<void>;
   text(pageId: string, text: string): Promise<void>;
   invalidate(pageId: string): void;
@@ -131,9 +135,15 @@ export function parseBrowserPreviewInput(value: unknown): BrowserPreviewInput | 
   ) {
     const x = finiteNumber(input.x);
     const y = finiteNumber(input.y);
-    return x === null || y === null || x < 0 || y < 0 || x > 10_000 || y > 10_000
-      ? null
-      : { type: input.type, x, y };
+    if (x === null || y === null || x < 0 || y < 0 || x > 10_000 || y > 10_000) return null;
+    if (input.type === "pointer_move") return { type: "pointer_move", x, y };
+    if (input.button === undefined) return { type: input.type, x, y };
+    return {
+      type: input.type,
+      x,
+      y,
+      button: normalizeBrowserPointerButton(input.button),
+    };
   }
   if (input.type === "keyboard") {
     const key = typeof input.key === "string" ? input.key : "";
@@ -152,10 +162,18 @@ export async function executeBrowserPreviewInput(
   handlers: BrowserPreviewInputHandlers = defaultHandlers
 ): Promise<void> {
   if (input.type === "scroll") await handlers.scroll(pageId, input.deltaX, input.deltaY);
-  else if (input.type === "pointer_click") await handlers.click(pageId, input.x, input.y);
+  else if (input.type === "pointer_click")
+    await handlers.click(pageId, input.x, input.y, normalizeBrowserPointerButton(input.button));
   else if (input.type === "pointer_move") await handlers.move(pageId, input.x, input.y);
-  else if (input.type === "pointer_down") await handlers.pointerDown(pageId, input.x, input.y);
-  else if (input.type === "pointer_up") await handlers.pointerUp(pageId, input.x, input.y);
+  else if (input.type === "pointer_down")
+    await handlers.pointerDown(
+      pageId,
+      input.x,
+      input.y,
+      normalizeBrowserPointerButton(input.button)
+    );
+  else if (input.type === "pointer_up")
+    await handlers.pointerUp(pageId, input.x, input.y, normalizeBrowserPointerButton(input.button));
   else if (input.type === "keyboard") await handlers.keyboard(pageId, input.key);
   else await handlers.text(pageId, input.text);
   handlers.invalidate(pageId);
