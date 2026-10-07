@@ -1,4 +1,5 @@
 import * as pwManager from "./pw-manager";
+import { describeJpegFrameDefect, isCompleteJpegFrame } from "./screencast-frame-integrity";
 
 export interface BrowserPreviewStreamOptions {
   quality: number;
@@ -145,6 +146,12 @@ export class BrowserPreviewStreamBroker {
     if (!base64Frame) return;
     const frame = Buffer.from(base64Frame, "base64");
     if (frame.length === 0) return;
+    if (!isCompleteJpegFrame(frame)) {
+      console.warn(
+        `[Browser] Dropped a corrupt screencast frame: ${describeJpegFrameDefect(frame)}`
+      );
+      return;
+    }
     state.lastFrameAt = Date.now();
     state.latest = frame;
     for (const subscriber of state.listeners) subscriber(frame);

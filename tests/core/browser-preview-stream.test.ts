@@ -4,6 +4,18 @@ import {
   BrowserPreviewStreamBroker,
 } from "../../src/core/browser/preview-stream";
 
+function jpegFrame(label: string): Buffer {
+  return Buffer.concat([
+    Buffer.from([0xff, 0xd8]),
+    Buffer.from(label, "utf8"),
+    Buffer.from([0xff, 0xd9]),
+  ]);
+}
+
+function frameLabel(frame: Buffer): string {
+  return frame.subarray(2, frame.length - 2).toString("utf8");
+}
+
 describe("browser preview stream", () => {
   test("paces the production stream at display refresh cadence", () => {
     expect(BROWSER_PREVIEW_STREAM_FRAME_MS).toBe(16);
@@ -29,11 +41,11 @@ describe("browser preview stream", () => {
     const firstFrames: string[] = [];
     const secondFrames: string[] = [];
     const unsubscribeFirst = await broker.subscribe("page-1", options, (frame) => {
-      firstFrames.push(frame.toString());
+      firstFrames.push(frameLabel(frame));
     });
-    emit?.(Buffer.from("frame-1").toString("base64"));
+    emit?.(jpegFrame("frame-1").toString("base64"));
     const unsubscribeSecond = await broker.subscribe("page-1", options, (frame) => {
-      secondFrames.push(frame.toString());
+      secondFrames.push(frameLabel(frame));
     });
 
     expect(starts).toBe(1);
@@ -77,8 +89,8 @@ describe("browser preview stream", () => {
     const frames: string[] = [];
     const broker = new BrowserPreviewStreamBroker(async (_pageId, _options, listener) => {
       emit = listener;
-      listener(Buffer.from("frame-1").toString("base64"));
-      listener(Buffer.from("frame-2").toString("base64"));
+      listener(jpegFrame("frame-1").toString("base64"));
+      listener(jpegFrame("frame-2").toString("base64"));
       throw new Error("startup failed");
     }, 20);
     const options = {
@@ -89,9 +101,9 @@ describe("browser preview stream", () => {
     };
 
     await expect(
-      broker.subscribe("page-1", options, (frame) => frames.push(frame.toString()))
+      broker.subscribe("page-1", options, (frame) => frames.push(frameLabel(frame)))
     ).rejects.toThrow("startup failed");
-    emit?.(Buffer.from("frame-3").toString("base64"));
+    emit?.(jpegFrame("frame-3").toString("base64"));
     await Bun.sleep(30);
 
     expect(frames).toEqual(["frame-1"]);
@@ -112,12 +124,12 @@ describe("browser preview stream", () => {
     };
     const frames: string[] = [];
     const unsubscribe = await broker.subscribe("page-1", options, (frame) => {
-      frames.push(frame.toString());
+      frames.push(frameLabel(frame));
     });
 
-    emit?.(Buffer.from("frame-1").toString("base64"));
-    emit?.(Buffer.from("frame-2").toString("base64"));
-    emit?.(Buffer.from("frame-3").toString("base64"));
+    emit?.(jpegFrame("frame-1").toString("base64"));
+    emit?.(jpegFrame("frame-2").toString("base64"));
+    emit?.(jpegFrame("frame-3").toString("base64"));
     expect(frames).toEqual(["frame-1"]);
     await Bun.sleep(30);
     expect(frames).toEqual(["frame-1", "frame-3"]);
@@ -142,13 +154,13 @@ describe("browser preview stream", () => {
     };
     const frames: string[] = [];
     const unsubscribe = await broker.subscribe("page-1", options, (frame) => {
-      frames.push(frame.toString());
+      frames.push(frameLabel(frame));
     });
 
     const refreshed = await broker.refresh("page-1", async (captureOptions) => {
       captures += 1;
       expect(captureOptions).toEqual(options);
-      return Buffer.from("resized-frame");
+      return jpegFrame("resized-frame");
     });
 
     expect(refreshed).toBe(1);

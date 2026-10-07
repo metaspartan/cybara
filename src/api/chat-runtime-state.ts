@@ -13,6 +13,7 @@ import {
   type SessionContextUsage,
   type SessionModelMetadata,
   type SessionTokenUsage,
+  syncPersistedSessionMessageOrder,
 } from "../core/session-context";
 import {
   deriveSessionTitleFromMessages,
@@ -298,6 +299,7 @@ export async function persistChatSessionSnapshot(
   session: InMemoryChatSession,
   lastMessage?: ChatMessage
 ): Promise<boolean> {
+  syncPersistedSessionMessageOrder(session.id, session.messages);
   const modelMetadata = resolveSessionModelMetadata(session.agentId);
   session.persisted = await persistSession(
     session.id,

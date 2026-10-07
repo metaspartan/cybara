@@ -488,6 +488,12 @@ try {
   } catch {}
 
   try {
+    db.exec("ALTER TABLE session_messages ADD COLUMN ordinal INTEGER");
+    db.exec("UPDATE session_messages SET ordinal = rowid WHERE ordinal IS NULL");
+    console.error("[Database] Migration: Added logical ordinal to session_messages");
+  } catch {}
+
+  try {
     db.exec("ALTER TABLE chat_sessions ADD COLUMN use_model_router INTEGER NOT NULL DEFAULT 0");
     console.error("[Database] Migration: Added use_model_router column to chat_sessions");
   } catch {}
@@ -976,7 +982,9 @@ const stmts = {
     ),
   },
   sessionMessages: {
-    getBySession: prepare("SELECT * FROM session_messages WHERE session_id = ? ORDER BY rowid ASC"),
+    getBySession: prepare(
+      "SELECT * FROM session_messages WHERE session_id = ? ORDER BY COALESCE(ordinal, rowid) ASC, rowid ASC"
+    ),
     add: prepare(
       "INSERT INTO session_messages (id, session_id, agent_id, channel_type, channel_id, role, content, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))"
     ),
