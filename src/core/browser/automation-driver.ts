@@ -127,12 +127,14 @@ async function startCdpScreencast(
   };
   session.on("Page.screencastFrame", handleFrame);
   try {
+    await session.send("Page.enable");
     await session.send("Page.startScreencast", {
       format: "jpeg",
       quality: options.quality,
       maxWidth: options.maxWidth,
       maxHeight: options.maxHeight,
       everyNthFrame: options.everyNthFrame,
+      optimizeForSpeed: false,
     });
   } catch (error) {
     session.off("Page.screencastFrame", handleFrame);
