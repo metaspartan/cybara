@@ -373,3 +373,25 @@ export function describesMissingToolCallArguments(errorText: string): boolean {
   if (!lower.includes("field required")) return false;
   return lower.includes("arguments");
 }
+
+/**
+ * Providers that reject replayed tool calls with a generic message (for example
+ * "invalid tool call arguments") do not always use Python's JSON decode wording.
+ * The request still fails because a tool call argument payload could not be
+ * decoded, so it must reach the repair-and-retry path.
+ */
+export function describesInvalidToolCallArguments(errorText: string): boolean {
+  const lower = errorText.toLowerCase();
+  if (!lower.includes("tool call")) return false;
+  return (
+    lower.includes("invalid") ||
+    lower.includes("malformed") ||
+    lower.includes("could not decode") ||
+    lower.includes("cannot decode") ||
+    lower.includes("unable to decode") ||
+    lower.includes("unparsable") ||
+    lower.includes("parse error") ||
+    lower.includes("not valid json") ||
+    lower.includes("failed to decode")
+  );
+}

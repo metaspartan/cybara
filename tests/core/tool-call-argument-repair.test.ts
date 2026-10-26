@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  describesInvalidToolCallArguments,
   isUpstreamJsonDecodeError,
   parseToolCallArguments,
   repairJsonLikeText,
@@ -303,5 +304,48 @@ describe("wire serialization never emits unparseable arguments", () => {
       tool_calls: Array<{ function: { arguments: string } }>;
     };
     expect(JSON.parse(converted.tool_calls[0]!.function.arguments)).toEqual({ path: "a.ts" });
+  });
+
+  test("recognizes the generic provider rejection used by MiniMax", () => {
+    expect(
+      describesInvalidToolCallArguments(
+        "invalid tool call arguments (ref: 113f4141-e6b5-4557-83b2-f744a4f4c39c)"
+      )
+    ).toBe(true);
+    expect(describesInvalidToolCallArguments("rate limit exceeded")).toBe(false);
+    expect(describesInvalidToolCallArguments("model not found")).toBe(false);
+  });
+
+  test("retries and repairs after a generic invalid tool call arguments rejection", () => {
+    const body = {
+      model: "minimax-m3.1-flash:cloud",
+      messages: [
+        { role: "user", content: "hi" },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [
+            {
+              id: "c1",
+              type: "function",
+              function: {
+                name: "read",
+                arguments: "[compacted: earlier tool call arguments elided to free context]",
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const errorText = "invalid tool call arguments (ref: 113f4141-e6b5-4557-83b2-f744a4f4c39c)";
+    expect(shouldRetryByRepairingToolCallArguments(400, errorText, body)).toBe(true);
+    const repaired = toRepairedToolCallArgumentsRequestBody(body);
+    const messages = repaired.messages as Array<Record<string, unknown>>;
+    const assistant = messages[1] as {
+      tool_calls: Array<{ function: { arguments: string } }>;
+    };
+    const call = assistant.tool_calls[0];
+    expect(call).toBeDefined();
+    expect(() => JSON.parse(call?.function.arguments ?? "")).not.toThrow();
   });
 });
