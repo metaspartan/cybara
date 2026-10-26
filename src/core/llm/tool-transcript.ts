@@ -9,19 +9,21 @@ export const TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE =
   "[compacted: earlier tool call arguments elided to free context]";
 
 const ELIDED_TOOL_CALL_ARGUMENTS_FLAG = "compacted";
+const ELIDED_TOOL_CALL_ARGUMENTS_NOTE = "tool call arguments elided";
 const MINIMAL_ELIDED_ARGUMENTS_PAYLOAD = "{}";
 
 /**
  * OpenAI-compatible providers require `function.arguments` to be a JSON string.
  * A bare compaction notice is not valid JSON, so replaying one makes the whole
  * request fail with "invalid tool call arguments" and drops the turn.
- * Elided arguments are therefore encoded as a JSON object that still carries
- * the notice so the model can tell the call was elided.
+ * Elided arguments are therefore encoded as a JSON object that still tells the
+ * model the call was elided. The marker stays shorter than the bare notice it
+ * replaces so compaction always shrinks the payload it rewrites.
  */
 export function elidedToolCallArgumentsPayload(preview?: string): string {
   const payload: Record<string, unknown> = {
     [ELIDED_TOOL_CALL_ARGUMENTS_FLAG]: true,
-    notice: TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE,
+    note: ELIDED_TOOL_CALL_ARGUMENTS_NOTE,
   };
   if (preview) payload.preview = preview;
   return JSON.stringify(payload);
@@ -136,11 +138,15 @@ function collapseToolCallPayload(message: Record<string, unknown>): boolean {
     if (typeof args !== "string" || isElidedToolCallArguments(args)) {
       return toolCall;
     }
+    const marker = elidedToolCallArgumentsPayload();
     if (args.length <= TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE.length) {
       return toolCall;
     }
+    if (marker.length >= args.length) {
+      return toolCall;
+    }
     changed = true;
-    return { ...typed, function: { ...fnTyped, arguments: elidedToolCallArgumentsPayload() } };
+    return { ...typed, function: { ...fnTyped, arguments: marker } };
   });
   return changed;
 }
@@ -154,8 +160,9 @@ export function isElidedToolCallArguments(value: unknown): boolean {
     const parsed: unknown = JSON.parse(trimmed);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
     const record = parsed as Record<string, unknown>;
+    if (record[ELIDED_TOOL_CALL_ARGUMENTS_FLAG] !== true) return false;
     return (
-      record[ELIDED_TOOL_CALL_ARGUMENTS_FLAG] === true &&
+      record.note === ELIDED_TOOL_CALL_ARGUMENTS_NOTE ||
       record.notice === TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE
     );
   } catch {
@@ -167,6 +174,7 @@ function compactToolCallArgumentsString(value: string, maxChars: number): string
   if (value.length <= maxChars || isElidedToolCallArguments(value)) return value;
   const base = elidedToolCallArgumentsPayload();
   if (base.length > maxChars) return MINIMAL_ELIDED_ARGUMENTS_PAYLOAD;
+  if (base.length >= value.length) return value;
   let budget = maxChars - base.length;
   while (budget > 0) {
     const preview = value.trim().slice(0, budget);

@@ -209,6 +209,69 @@ describe("tool call argument compaction", () => {
     expect(isElidedToolCallArguments('{"path":"a.ts"}')).toBe(false);
   });
 
+  test("keeps the elided marker shorter than the notice it replaces", () => {
+    // The marker must be strictly shorter than the bare notice, otherwise
+    // collapsing a payload between the two lengths grows the message instead
+    // of shrinking it and the request can ratchet upward.
+    expect(elidedToolCallArgumentsPayload().length).toBeLessThan(
+      TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE.length
+    );
+  });
+
+  test("never grows a message when collapsing arguments near the marker length", () => {
+    // Regression guard: the elided marker must be shorter than the bare notice
+    // it replaces, otherwise collapsing a message can make it larger.
+    const markerLength = elidedToolCallArgumentsPayload().length;
+    const originalLength = TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE.length + 1;
+    const older = assistantWithCalls(250, originalLength, "grow");
+    const messages = [
+      { role: "user", content: "go" },
+      older,
+      { role: "user", content: "again" },
+      assistantWithCalls(1, 50, "newest"),
+      { role: "user", content: "next" },
+    ];
+    const before = size(messages);
+    compactOpenAIChatTranscriptInPlace(messages, 20_000, {
+      aggressive: true,
+      maxToolCallPayloadChars: 1_000,
+    });
+    const after = size(messages);
+    expect(after).toBeLessThan(before);
+    for (const value of argsOf(older)) {
+      expect(() => JSON.parse(value)).not.toThrow();
+      expect(value.length).toBeLessThan(originalLength);
+      expect(value.length).toBeLessThanOrEqual(markerLength);
+    }
+  });
+
+  test("keeps the collapsed payload shorter than the original it replaces", () => {
+    const originalLength = TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE.length + 1;
+    const original = "y".repeat(originalLength);
+    const older = {
+      role: "assistant",
+      content: "working",
+      tool_calls: [
+        { id: "edge_0", type: "function", function: { name: "read", arguments: original } },
+      ],
+    };
+    const messages = [
+      { role: "user", content: "go" },
+      older,
+      { role: "user", content: "again" },
+      assistantWithCalls(1, 50, "newest"),
+      { role: "user", content: "next" },
+    ];
+    compactOpenAIChatTranscriptInPlace(messages, 20_000, {
+      aggressive: true,
+      maxToolCallPayloadChars: 10,
+    });
+    const collapsed = argsOf(older)[0];
+    expect(collapsed.length).toBeLessThan(original.length);
+    expect(() => JSON.parse(collapsed)).not.toThrow();
+    expect(isElidedToolCallArguments(collapsed)).toBe(true);
+  });
+
   test("does not elide arguments that are already shorter than the payload", () => {
     const shorter = JSON.stringify({ path: "C:/a" });
     const older = {
