@@ -610,6 +610,14 @@ export const foundationProviderCatalog = {
     authType: "api_key",
     models: [
       {
+        id: "gemini-4-argon",
+        name: "Gemini 4 Argon",
+        context: 1048576,
+        maxTokens: 65536,
+        reasoning: true,
+        input: ["text", "image", "audio", "video"],
+      },
+      {
         id: "gemini-3.8-flash",
         name: "Gemini 3.8 Flash",
         context: 1048576,
@@ -861,6 +869,14 @@ export const foundationProviderCatalog = {
         name: "Claude Sonnet 5.5 (Antigravity)",
         context: 1000000,
         maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "gemini-4-argon",
+        name: "Gemini 4 Argon (Antigravity)",
+        context: 1048576,
+        maxTokens: 65536,
         reasoning: true,
         input: ["text", "image"],
       },
