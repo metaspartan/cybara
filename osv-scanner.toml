@@ -69,10 +69,6 @@ ignoreUntil = 2026-12-31
 reason = "image-size ICNS zero-length entry infinite loop is patched in-tree via apps/mobile/patches/image-size@1.2.1.patch; upstream has no fixed release. Verified against the advisory proof of concept: unpatched 1.2.1 exhausts the heap, the patched build returns."
 
 
-[[IgnoredVulns]]
-id = "GHSA-86w9-cpqp-85rv"
-ignoreUntil = 2026-12-31
-reason = "Fixed by committed mobile node-forge@1.4.0 patch rejecting extra nested DigestAlgorithm elements. Runtime regression rejects all four previously accepted malformed signatures and retains valid/optional-parameter signatures; security-audit verifies patch registration and installed source before applying this version-only exception. No patched registry release exists as of 2026-10-01."
 
 [[IgnoredVulns]]
 id = "GHSA-vfj7-8cjw-p6xm"
@@ -113,3 +109,8 @@ reason = "Unmaintained notice, not a vulnerability: zbus_names was folded into z
 id = "RUSTSEC-2026-0372"
 ignoreUntil = 2026-12-31
 reason = "Unmaintained notice, not a vulnerability: zvariant_derive was folded into zbus 6. It is pulled in by zbus 5 through notify-rust and tauri-plugin-single-instance on Linux, and every published release of both still requires zbus ^5, so there is no upgrade path yet. Remove once they move to zbus 6."
+
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+ignoreUntil = 2026-12-31
+reason = "deepmerge 4.3.1 is the latest published release and the advisory lists no patched version. In this repository it is only a transitive dependency of @expo/config in the mobile build toolchain and is not shipped in the gateway or desktop app. Unreviewed whether @expo/config ever passes it untrusted input. Remove once a patched deepmerge ships."

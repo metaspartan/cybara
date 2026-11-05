@@ -40,9 +40,9 @@ describe("TypeScript toolchain", () => {
     const rootPackage = readJson<PackageManifest>("package.json");
     const uiPackage = readJson<PackageManifest>("ui/package.json");
 
-    expect(rootPackage.devDependencies?.["@typescript-eslint/eslint-plugin"]).toBe("8.72.0");
-    expect(rootPackage.devDependencies?.["@typescript-eslint/parser"]).toBe("8.72.0");
-    expect(uiPackage.devDependencies?.["typescript-eslint"]).toBe("8.72.0");
+    expect(rootPackage.devDependencies?.["@typescript-eslint/eslint-plugin"]).toBe("8.72.1");
+    expect(rootPackage.devDependencies?.["@typescript-eslint/parser"]).toBe("8.72.1");
+    expect(uiPackage.devDependencies?.["typescript-eslint"]).toBe("8.72.1");
   });
 
   test("uses TypeScript 7 compatible path and Bun type configuration", () => {

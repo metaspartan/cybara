@@ -77,7 +77,7 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["check:ci"]).toContain("bun run deadcode");
     expect(pkg.devDependencies?.["@biomejs/biome"]).toMatch(/^\d+\.\d+\.\d+/);
     expect(pkg.devDependencies?.["knip"]).toMatch(/^\d+\.\d+\.\d+/);
-    expect(pkg.devDependencies?.["react-doctor"]).toBe("0.9.18");
+    expect(pkg.devDependencies?.["react-doctor"]).toBe("0.9.22");
     const knipConfig = JSON.parse(readFileSync(KNIP_CONFIG, "utf8")) as {
       workspaces?: Record<string, { ignoreDependencies?: string[] }>;
     };
