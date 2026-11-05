@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
+  fetchLiveProviderUsage,
   parseAntigravityUsageResponse,
   parseAnthropicUsageResponse,
   parseCodexUsageResponse,
@@ -685,5 +686,106 @@ describe("parseOpenCodeUsageResponse", () => {
     expect(result?.weekly?.usedPercent).toBe(44);
     expect(result?.weekly?.resetsAt).toBe("2026-07-14T00:00:00Z");
     expect(result?.monthly?.usedPercent).toBe(65);
+  });
+});
+
+describe("Antigravity live quota", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const quotaSummary = {
+    groups: [
+      {
+        buckets: [
+          {
+            bucketId: "3p-weekly",
+            displayName: "Weekly Limit Remaining",
+            window: "weekly",
+            resetTime: "2026-11-12T10:05:16Z",
+            remainingFraction: 0.9,
+          },
+          {
+            bucketId: "3p-5h",
+            displayName: "Five Hour Limit Remaining",
+            window: "5h",
+            resetTime: "2026-11-05T15:05:16Z",
+            remainingFraction: 0.75,
+          },
+        ],
+        displayName: "Claude and GPT models",
+        description: "Models within this group: Claude Opus, Claude Sonnet, GPT-OSS",
+      },
+    ],
+  };
+
+  test("labels each window with the quota group it was measured on", () => {
+    const result = parseAntigravityUsageResponse(quotaSummary, 900);
+    expect(result?.fiveHour).toEqual({
+      usedPercent: 25,
+      resetsAt: "2026-11-05T15:05:16Z",
+      title: "Claude and GPT models",
+    });
+    expect(result?.weekly?.usedPercent).toBeCloseTo(10, 5);
+    expect(result?.weekly?.title).toBe("Claude and GPT models");
+  });
+
+  test("routes Anthropic Subscription OAuth accounts to the Anthropic usage endpoint", async () => {
+    const requested: string[] = [];
+    globalThis.fetch = Object.assign(
+      async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+        requested.push(String(input));
+        return Response.json({
+          subscriptionType: "max",
+          five_hour: { utilization: 12, resets_at: "2026-11-05T15:00:00Z" },
+          seven_day: { utilization: 34, resets_at: "2026-11-10T00:00:00Z" },
+        });
+      },
+      { preconnect: originalFetch.preconnect }
+    );
+    const usage = await fetchLiveProviderUsage({
+      id: `anthropic-oauth-${crypto.randomUUID()}`,
+      providerType: "anthropic-oauth",
+      accessToken: "sk-ant-oat01-".padEnd(60, "x"),
+    });
+    expect(requested).toEqual(["https://api.anthropic.com/api/oauth/usage"]);
+    expect(usage?.planLabel).toBe("Claude max");
+    expect(usage?.fiveHour?.usedPercent).toBe(12);
+    expect(usage?.weekly?.usedPercent).toBe(34);
+  });
+
+  async function usageForLoadCodeAssist(loadCodeAssist: Record<string, unknown>) {
+    globalThis.fetch = Object.assign(
+      async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+        const url = String(input);
+        if (url.endsWith("v1internal:loadCodeAssist")) return Response.json(loadCodeAssist);
+        if (url.endsWith("v1internal:retrieveUserQuotaSummary")) return Response.json(quotaSummary);
+        return new Response("unexpected", { status: 500 });
+      },
+      { preconnect: originalFetch.preconnect }
+    );
+    return fetchLiveProviderUsage({
+      id: `antigravity-${crypto.randomUUID()}`,
+      providerType: "antigravity",
+      accessToken: "ya29.".padEnd(60, "x"),
+    });
+  }
+
+  test("reports the paid subscription tier rather than the free tier name", async () => {
+    const usage = await usageForLoadCodeAssist({
+      currentTier: { id: "free-tier", name: "Antigravity" },
+      paidTier: { id: "g1-pro-tier", name: "Google AI Pro" },
+      cloudaicompanionProject: "aicode-consumers",
+    });
+    expect(usage?.planLabel).toBe("Antigravity Google AI Pro");
+  });
+
+  test("does not repeat the product name when only the free tier is present", async () => {
+    const usage = await usageForLoadCodeAssist({
+      currentTier: { id: "free-tier", name: "Antigravity" },
+      cloudaicompanionProject: "aicode-consumers",
+    });
+    expect(usage?.planLabel).toBe("Antigravity");
   });
 });

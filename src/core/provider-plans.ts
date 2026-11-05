@@ -150,6 +150,7 @@ const CONFIG_KEY = "provider_plan_monitoring";
 
 const CODING_PLAN_PROVIDER_TYPES = new Set<string>([
   "anthropic",
+  "anthropic-oauth",
   "openai-codex",
   "minimax",
   "github_copilot",
@@ -172,6 +173,7 @@ const CODING_PLAN_PROVIDER_TYPES = new Set<string>([
 
 const AUTOMATIC_PLAN_PROVIDER_TYPES = new Set<string>([
   "anthropic",
+  "anthropic-oauth",
   "openai-codex",
   "antigravity",
   "google-gemini-cli",

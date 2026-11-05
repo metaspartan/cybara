@@ -313,14 +313,16 @@ function parseAntigravityQuotaSummary(
 
   for (const group of antigravityQuotaGroups(body)) {
     const record = asRecord(group);
+    const groupName = nonEmptyString(record?.displayName ?? record?.display_name);
     const buckets = Array.isArray(record?.buckets) ? record.buckets : [];
     for (const bucket of buckets) {
       const bucketRecord = asRecord(bucket);
       if (!bucketRecord || bucketRecord.disabled === true) continue;
-      const window = remainingFractionWindow(
+      const measured = remainingFractionWindow(
         remainingFractionValue(bucketRecord),
         bucketRecord.resetTime ?? bucketRecord.reset_time
       );
+      const window = measured && groupName ? { ...measured, title: groupName } : measured;
       const kind = antigravityBucketKind(bucketRecord);
       if (kind === "fiveHour") fiveHour = chooseMoreUsed(fiveHour, window);
       if (kind === "weekly") weekly = chooseMoreUsed(weekly, window);
@@ -383,17 +385,24 @@ function antigravityModelWindow(
   };
 }
 
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 function antigravityPlanLabel(body: unknown): string | undefined {
   const record = asRecord(body);
   const planInfo = asRecord(record?.planInfo ?? record?.plan_info);
+  const paidTier = asRecord(record?.paidTier ?? record?.paid_tier);
   const tier = asRecord(record?.currentTier ?? record?.current_tier);
   const raw =
-    (typeof planInfo?.planType === "string" && planInfo.planType) ||
-    (typeof planInfo?.plan_type === "string" && planInfo.plan_type) ||
-    (typeof tier?.name === "string" && tier.name) ||
-    (typeof tier?.id === "string" && tier.id) ||
-    undefined;
-  return raw ? `Antigravity ${raw}` : undefined;
+    nonEmptyString(paidTier?.name) ??
+    nonEmptyString(planInfo?.planType) ??
+    nonEmptyString(planInfo?.plan_type) ??
+    nonEmptyString(tier?.name) ??
+    nonEmptyString(paidTier?.id) ??
+    nonEmptyString(tier?.id);
+  if (!raw || raw.toLowerCase() === "antigravity") return "Antigravity";
+  return `Antigravity ${raw}`;
 }
 
 function antigravityProjectId(body: unknown): string | undefined {
@@ -1452,7 +1461,10 @@ export async function fetchLiveProviderUsage(
         value = looksLikeOAuthToken(provider.accessToken)
           ? await fetchCodexUsage(provider.accessToken)
           : null;
-      } else if (provider.providerType === "anthropic") {
+      } else if (
+        provider.providerType === "anthropic" ||
+        provider.providerType === "anthropic-oauth"
+      ) {
         value = looksLikeOAuthToken(provider.accessToken)
           ? await fetchAnthropicUsage(provider.accessToken)
           : null;

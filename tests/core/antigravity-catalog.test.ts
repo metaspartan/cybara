@@ -14,6 +14,12 @@ const liveVerifiedModels: ReadonlyArray<Pick<CatalogModel, "id" | "context" | "m
   { id: "claude-sonnet-5-5-medium", context: 1_000_000, maxTokens: 128_000 },
   { id: "gemini-3.8-flash-tiered", context: 1_048_576, maxTokens: 65_536 },
   { id: "gemini-3.5-flash-lite", context: 1_048_576, maxTokens: 65_535 },
+  { id: "claude-opus-5-5-low", context: 1_000_000, maxTokens: 128_000 },
+  { id: "claude-opus-5-5-high", context: 1_000_000, maxTokens: 128_000 },
+  { id: "claude-sonnet-5-5-low", context: 1_000_000, maxTokens: 128_000 },
+  { id: "claude-sonnet-5-5-high", context: 1_000_000, maxTokens: 128_000 },
+  { id: "gemini-3-flash", context: 1_048_576, maxTokens: 65_536 },
+  { id: "gemini-3.1-flash-lite", context: 1_048_576, maxTokens: 65_535 },
   { id: "gpt-oss-120b-medium", context: 131_072, maxTokens: 32_768 },
 ];
 
