@@ -1,5 +1,6 @@
 import { MINIMAX_OAUTH_CLIENT_ID, MINIMAX_OAUTH_SCOPE } from "./minimax-oauth";
 import { KIMI_CODE_BASE_URL, kimiCodeModels } from "./kimi-code";
+import { ANTIGRAVITY_CLOUDCODE_BASE_URL } from "../llm/antigravity-cloudcode";
 
 const miniMaxPortalModels = [
   {
@@ -725,7 +726,7 @@ export const foundationProviderCatalog = {
   },
   antigravity: {
     name: "Antigravity",
-    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    baseUrl: ANTIGRAVITY_CLOUDCODE_BASE_URL,
     api: "google-generative-ai",
     authType: "oauth",
     oauthFlow: "redirect" as const,

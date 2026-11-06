@@ -7,6 +7,7 @@ import {
   parseCommandCodeCredits,
   parseCommandCodeSubscription,
 } from "./provider-commandcode-usage";
+import { antigravityProjectIdFrom } from "./llm/antigravity-cloudcode";
 import { kimiCodeIdentityHeaders } from "./providers/kimi-code";
 
 const log = createLogger("ProviderUsage");
@@ -405,20 +406,6 @@ function antigravityPlanLabel(body: unknown): string | undefined {
   return `Antigravity ${raw}`;
 }
 
-function antigravityProjectId(body: unknown): string | undefined {
-  const record = asRecord(body);
-  const project =
-    record?.cloudaicompanionProject ??
-    record?.cloudAiCompanionProject ??
-    record?.project ??
-    record?.projectId ??
-    record?.project_id;
-  if (typeof project === "string" && project.trim()) return project.trim();
-  const projectRecord = asRecord(project);
-  const value = projectRecord?.id ?? projectRecord?.projectId ?? projectRecord?.project_id;
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
 export function parseAntigravityUsageResponse(
   body: unknown,
   now: number
@@ -470,7 +457,7 @@ async function fetchAntigravityUsage(token: string): Promise<LiveProviderUsage |
     },
   });
   const planLabel = antigravityPlanLabel(codeAssist);
-  const projectId = antigravityProjectId(codeAssist);
+  const projectId = antigravityProjectIdFrom(codeAssist);
   const bodies = [antigravityQuotaBody(projectId)];
 
   for (const body of bodies) {

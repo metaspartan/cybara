@@ -37,6 +37,14 @@ import {
   bedrockAnthropicReasoningFields,
   collectBedrockReasoningText,
 } from "./llm/bedrock-reasoning";
+import {
+  antigravityGenerateContentUrl,
+  bearerTokenFromHeaders,
+  isAntigravityCloudCodeBaseUrl,
+  resolveAntigravityProject,
+  unwrapAntigravityResponse,
+  wrapAntigravityRequest,
+} from "./llm/antigravity-cloudcode";
 import { googleFunctionDeclaration } from "./llm/google-tool-schema";
 import { applyBedrockPromptCache } from "./llm/bedrock-prompt-cache";
 import { toBedrockImageBlock, toGoogleImagePart } from "./llm/image-blocks";
@@ -70,7 +78,8 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
     tool_calls?: AgentToolCallResult[];
   }> {
     const systemMessage = messages.find((message) => message.role === "system");
-    const contents = toGoogleHistory(messages);
+    const cloudCode = !vertex && isAntigravityCloudCodeBaseUrl(baseUrl);
+    const contents = toGoogleHistory(messages, { includeToolCallIds: cloudCode });
 
     const headers: Record<string, string> = vertex
       ? {
@@ -78,10 +87,17 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
           Authorization: `Bearer ${auth.trim()}`,
         }
       : parseGoogleAuthHeaders(auth, providerAuthType).headers;
-    const normalizedModelId = normalizeGoogleModelId(modelId);
+    const normalizedModelId = normalizeGoogleModelId(modelId, { publicAliases: !cloudCode });
 
     const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
-    const endpoint = `${normalizedBaseUrl}/models/${encodeURIComponent(normalizedModelId)}:generateContent`;
+    const endpoint = cloudCode
+      ? antigravityGenerateContentUrl(normalizedBaseUrl)
+      : `${normalizedBaseUrl}/models/${encodeURIComponent(normalizedModelId)}:generateContent`;
+    if (cloudCode) headers["User-Agent"] = "antigravity";
+    const cloudCodeToken = cloudCode ? bearerTokenFromHeaders(headers) : undefined;
+    if (cloudCode && !cloudCodeToken) {
+      throw new Error("Antigravity requires an OAuth sign-in; reconnect the provider.");
+    }
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
     const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
@@ -136,11 +152,20 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
       if (tools.length > 0 && !closingResponseRequested) {
         requestBody.tools = [
           {
-            functionDeclarations: tools.map(googleFunctionDeclaration),
+            functionDeclarations: tools.map((tool) =>
+              googleFunctionDeclaration(tool, { forceJsonSchema: cloudCode })
+            ),
           },
         ];
       }
 
+      const outgoingBody = cloudCodeToken
+        ? wrapAntigravityRequest(
+            await resolveAntigravityProject(bearerTokenFromHeaders(headers) ?? cloudCodeToken),
+            normalizedModelId,
+            requestBody
+          )
+        : requestBody;
       const startTime = performance.now();
       let response: Response | null = null;
       let transientRetryCount = 0;
@@ -150,7 +175,7 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
           response = await fetch(endpoint, {
             method: "POST",
             headers,
-            body: JSON.stringify(requestBody),
+            body: JSON.stringify(outgoingBody),
             signal: withLlmRequestTimeout(toolContext?.abortSignal),
           });
         } catch (error) {
@@ -209,7 +234,8 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
         throw new Error(`API error: ${response.status} - ${errorText}`);
       }
 
-      const data = (await response.json()) as GoogleResponse;
+      const rawData: unknown = await response.json();
+      const data = (cloudCode ? unwrapAntigravityResponse(rawData) : rawData) as GoogleResponse;
       const durationMs = Math.round(performance.now() - startTime);
       const usage = data.usageMetadata;
       if (usage) {
@@ -253,6 +279,7 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
           ): functionCall is {
             name: string;
             args?: unknown;
+            id?: string;
           } =>
             !!functionCall && typeof functionCall.name === "string" && functionCall.name.length > 0
         );
@@ -303,6 +330,7 @@ export abstract class AgentProviderCloudRuntime extends AgentProviderCodexRuntim
             : { result: executed.result };
         toolResponses.push({
           functionResponse: {
+            ...(cloudCode && toolCall.id ? { id: toolCall.id } : {}),
             name: toolCall.name,
             response: responsePayload,
           },

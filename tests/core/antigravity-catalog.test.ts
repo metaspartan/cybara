@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { providers } from "../../src/core/providers";
+import { getDefaultModel, providers } from "../../src/core/providers";
 
 interface CatalogModel {
   id: string;
@@ -59,6 +59,14 @@ describe("Antigravity model catalog", () => {
     ]) {
       expect(ids).toContain(id);
     }
+  });
+});
+
+describe("Antigravity default model", () => {
+  test("defaults to a model served to consumer Antigravity accounts", () => {
+    const ids = (providers.antigravity.models as readonly CatalogModel[]).map((model) => model.id);
+    expect(ids).toContain(getDefaultModel("antigravity"));
+    expect(getDefaultModel("antigravity")).toBe("gemini-3.8-flash-tiered");
   });
 });
 
