@@ -233,6 +233,7 @@ export const accountOAuthProviders = {
       deviceCodeUrl: KIMI_CODE_DEVICE_CODE_URL,
       tokenUrl: KIMI_CODE_TOKEN_URL,
       refreshMode: "standard" as const,
+      refreshSkewMs: 300_000,
       identityHeaders: "kimi-code" as const,
     },
     models: kimiCodeModels,

@@ -365,4 +365,54 @@ describe("OAuth token refresh (openai-codex)", () => {
     expect(refreshed?.access_token).toBe("fresh-kimi-token");
     expect(refreshed?.refresh_token).toBe("fresh-kimi-refresh");
   });
+
+  test("refreshes Kimi tokens that expire within the five minute window", async () => {
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Code Window Test",
+      access_token: "soon-expiring-kimi-token",
+      refresh_token: "kimi-window-refresh",
+      expires_at: Date.now() + 240_000,
+    });
+    createdProviderIds.push(provider.id);
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json({
+        access_token: "window-fresh-token",
+        refresh_token: "window-fresh-refresh",
+        expires_in: 3600,
+      });
+    }) as typeof fetch;
+
+    const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
+      providerManager.getWithCredentials(provider.id)
+    );
+
+    expect(calls).toBe(1);
+    expect(refreshed?.access_token).toBe("window-fresh-token");
+  });
+
+  test("leaves Kimi tokens alone when more than five minutes remain", async () => {
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Code Fresh Test",
+      access_token: "healthy-kimi-token",
+      refresh_token: "kimi-healthy-refresh",
+      expires_at: Date.now() + 360_000,
+    });
+    createdProviderIds.push(provider.id);
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json({});
+    }) as typeof fetch;
+
+    const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
+      providerManager.getWithCredentials(provider.id)
+    );
+
+    expect(calls).toBe(0);
+    expect(refreshed).toBeUndefined();
+  });
 });

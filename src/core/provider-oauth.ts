@@ -19,6 +19,7 @@ export interface ProviderOAuthConfig {
   refreshHeaders?: Record<string, string>;
   tokenHeaders?: Record<string, string>;
   fallbackExpiresIn?: number;
+  refreshSkewMs?: number;
   deviceCodeUrl?: string;
   discoveryUrl?: string;
   deviceCodeDiscoveryUrl?: string;

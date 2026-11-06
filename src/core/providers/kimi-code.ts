@@ -17,7 +17,7 @@ export const kimiCodeModels = [
     context: 1_048_576,
     maxTokens: 32_768,
     reasoning: true,
-    input: ["text"] as const,
+    input: ["text", "image"] as const,
   },
   {
     id: "k3-256k",
@@ -37,7 +37,7 @@ export const kimiCodeModels = [
   },
   {
     id: "k3.1-pro-highspeed",
-    name: "Kimi K3.1 Pro Highspeed",
+    name: "Kimi K3.1 Pro Highspeed (2x usage)",
     context: 1_048_576,
     maxTokens: 131_072,
     reasoning: true,
@@ -45,15 +45,15 @@ export const kimiCodeModels = [
   },
   {
     id: "kimi-for-coding",
-    name: "Kimi K2.7 Code",
-    context: 262_144,
+    name: "Kimi K2.8 Preview",
+    context: 1_048_576,
     maxTokens: 32_768,
     reasoning: true,
     input: ["text", "image"] as const,
   },
   {
     id: "kimi-for-coding-highspeed",
-    name: "Kimi K2.7 Code High Speed",
+    name: "Kimi K2.7 Code Highspeed",
     context: 262_144,
     maxTokens: 32_768,
     reasoning: true,

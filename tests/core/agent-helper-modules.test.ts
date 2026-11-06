@@ -116,7 +116,14 @@ describe("agent helper modules", () => {
     expect(resolveModelContextWindowTokens("kimi-code-oauth", undefined, "k3")).toBe(1_048_576);
     expect(resolveModelMaxOutputTokens("kimi-code-oauth", undefined, "k3")).toBe(32_768);
     expect(resolveModelContextWindowTokens("kimi-code-oauth", undefined, "kimi-for-coding")).toBe(
-      262_144
+      1_048_576
+    );
+    expect(
+      resolveModelContextWindowTokens("kimi-code-oauth", undefined, "kimi-for-coding-highspeed")
+    ).toBe(262_144);
+    expect(resolveModelContextWindowTokens("kimi-code-oauth", undefined, "k3-256k")).toBe(262_144);
+    expect(resolveModelContextWindowTokens("kimi-code-oauth", undefined, "k3.1-pro")).toBe(
+      1_048_576
     );
   });
 

@@ -258,7 +258,7 @@ class ProviderManager {
     if (!provider.refresh_token) return undefined;
 
     const now = Date.now();
-    const skewMs = 120_000;
+    const skewMs = oauth.refreshSkewMs ?? 120_000;
     const expiresAt = typeof provider.expires_at === "number" ? provider.expires_at : 0;
     if (options?.force !== true && expiresAt > 0 && expiresAt - skewMs > now) return undefined;
     if (options?.force !== true && expiresAt === 0) {
