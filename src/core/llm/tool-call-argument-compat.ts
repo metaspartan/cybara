@@ -1,4 +1,5 @@
 import {
+  describesInvalidToolCallArguments,
   describesMissingToolCallArguments,
   isUpstreamJsonDecodeError,
   serializeToolCallArguments,
@@ -37,7 +38,11 @@ export function shouldRetryByRepairingToolCallArguments(
   requestBody: Record<string, unknown>
 ): boolean {
   if (status !== 400 && status !== 422) return false;
-  if (!isUpstreamJsonDecodeError(errorText) && !describesMissingToolCallArguments(errorText)) {
+  if (
+    !isUpstreamJsonDecodeError(errorText) &&
+    !describesMissingToolCallArguments(errorText) &&
+    !describesInvalidToolCallArguments(errorText)
+  ) {
     return false;
   }
   return countUnserializableToolCallArguments(requestBody) > 0;

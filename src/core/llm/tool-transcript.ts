@@ -8,6 +8,24 @@ export const MESSAGE_CONTENT_COMPACTION_NOTICE =
 export const TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE =
   "[compacted: earlier tool call arguments elided to free context]";
 
+// Elided tool-call arguments must still be a JSON document: providers decode
+// the arguments field before the tool runs, and a bare notice string fails
+// that decode and rejects the whole request.
+export const ELIDED_TOOL_CALL_ARGUMENTS_FLAG = "__cybara_elided_tool_call_arguments";
+const MINIMAL_ELIDED_ARGUMENTS_PAYLOAD = JSON.stringify({
+  [ELIDED_TOOL_CALL_ARGUMENTS_FLAG]: true,
+  notice: TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE,
+});
+
+function elidedToolCallArgumentsPayload(preview?: string): string {
+  const record: Record<string, unknown> = {
+    [ELIDED_TOOL_CALL_ARGUMENTS_FLAG]: true,
+    notice: TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE,
+  };
+  if (preview) record.preview = preview;
+  return JSON.stringify(record);
+}
+
 export const MAX_TOOL_CALL_ARGUMENT_CHARS = 6_000;
 export const MAX_TOOL_CALL_PAYLOAD_CHARS_PER_MESSAGE = 20_000;
 export const TOOL_CALL_RESULT_COMPACTION_NOTICE =
@@ -118,19 +136,44 @@ function collapseToolCallPayload(message: Record<string, unknown>): boolean {
       return toolCall;
     }
     changed = true;
-    return { ...typed, function: { ...fnTyped, arguments: TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE } };
+    return {
+      ...typed,
+      function: { ...fnTyped, arguments: elidedToolCallArgumentsPayload() },
+    };
   });
   return changed;
 }
 
 export function isElidedToolCallArguments(value: unknown): boolean {
-  return typeof value === "string" && value.startsWith(TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE);
+  if (typeof value !== "string") return false;
+  if (value.startsWith(TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE)) return true;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{")) return false;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+    const record = parsed as Record<string, unknown>;
+    return (
+      record[ELIDED_TOOL_CALL_ARGUMENTS_FLAG] === true &&
+      record.notice === TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE
+    );
+  } catch {
+    return false;
+  }
 }
 
 function compactToolCallArgumentsString(value: string, maxChars: number): string {
   if (value.length <= maxChars || isElidedToolCallArguments(value)) return value;
-  const budget = Math.max(0, maxChars - TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE.length - 1);
-  return `${TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE} ${value.slice(0, budget)}`;
+  const base = elidedToolCallArgumentsPayload();
+  if (base.length > maxChars) return MINIMAL_ELIDED_ARGUMENTS_PAYLOAD;
+  let budget = maxChars - base.length;
+  while (budget > 0) {
+    const preview = value.trim().slice(0, budget);
+    const payload = elidedToolCallArgumentsPayload(preview);
+    if (payload.length <= maxChars) return payload;
+    budget = Math.floor(budget / 2);
+  }
+  return base;
 }
 
 function elideOpenAIToolCallArguments(message: Record<string, unknown>, maxChars: number): boolean {
