@@ -249,6 +249,38 @@ export const cloudProviderCatalog = {
       },
     ],
   },
+  cheaperinference: {
+    name: "Cheaper Inference",
+    baseUrl: "https://api.cheaperinference.com/v1",
+    api: "openai-completions",
+    authType: "api_key",
+    models: [
+      {
+        id: "gpt-5.4-mini",
+        name: "GPT-5.4 Mini",
+        context: 400000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "claude-sonnet-5",
+        name: "Claude Sonnet 5",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "deepseek-v4-flash",
+        name: "DeepSeek V4 Flash",
+        context: 1000000,
+        maxTokens: 384000,
+        reasoning: true,
+        input: ["text"],
+      },
+    ],
+  },
   ds4: {
     name: "ds4",
     baseUrl: "http://127.0.0.1:18000/v1",

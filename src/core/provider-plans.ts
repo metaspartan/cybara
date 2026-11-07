@@ -150,6 +150,7 @@ const CONFIG_KEY = "provider_plan_monitoring";
 
 const CODING_PLAN_PROVIDER_TYPES = new Set<string>([
   "anthropic",
+  "anthropic-oauth",
   "openai-codex",
   "minimax",
   "github_copilot",
@@ -166,12 +167,14 @@ const CODING_PLAN_PROVIDER_TYPES = new Set<string>([
   "opencode-go",
   "kilocode",
   "commandcode",
+  "cursor",
   "xai",
   "xai-oauth",
 ]);
 
 const AUTOMATIC_PLAN_PROVIDER_TYPES = new Set<string>([
   "anthropic",
+  "anthropic-oauth",
   "openai-codex",
   "antigravity",
   "google-gemini-cli",
@@ -181,6 +184,7 @@ const AUTOMATIC_PLAN_PROVIDER_TYPES = new Set<string>([
   "z.ai-coding",
   "kimi-code",
   "kimi-code-oauth",
+  "cursor",
   "xai-oauth",
 ]);
 
@@ -1463,14 +1467,43 @@ function applyLiveUsageToSnapshot(
   const others = snapshot.windows.filter(
     (window) => !["5h", "weekly", "billing_month"].includes(window.id)
   );
-  const windows = [fiveHour, weekly, monthly, ...others].filter(
+  const poolKind: ProviderPlanWindowKind = live.monthly ? "billing_month" : "rolling_week";
+  const pools = (live.windows ?? []).map((window, index) =>
+    liveUsageWindow(
+      undefined,
+      `pool-${index}`,
+      window.title ?? "Usage pool",
+      poolKind,
+      window,
+      "Resets"
+    )
+  );
+  const onDemandWindow = live.onDemand
+    ? liveUsageWindow(
+        undefined,
+        "on-demand",
+        live.onDemand.title ?? "On-demand",
+        poolKind,
+        live.onDemand,
+        "Resets"
+      )
+    : null;
+  const included = [fiveHour, weekly, monthly, ...others, ...pools].filter(
     (window): window is ProviderPlanUsageWindow => Boolean(window)
   );
-  const worst = windows.reduce((max, window) => Math.max(max, window.usedPercent ?? 0), 0);
+  const windows = onDemandWindow ? [...included, onDemandWindow] : included;
+  const worst = included.reduce((max, window) => Math.max(max, window.usedPercent ?? 0), 0);
   const warning = snapshot.warningThresholdPct;
   const hardStop = snapshot.hardStopPct;
+  const onDemandPercent = live.onDemand?.usedPercent ?? 0;
+  const onDemandHasRoom =
+    live.onDemand !== undefined && (live.onDemand.unlimited === true || onDemandPercent < 100);
   const status: ProviderPlanStatus =
-    worst >= hardStop ? "exhausted" : worst >= warning ? "warning" : "ok";
+    onDemandPercent >= hardStop || (worst >= hardStop && !onDemandHasRoom)
+      ? "exhausted"
+      : Math.max(worst, onDemandPercent) >= warning
+        ? "warning"
+        : "ok";
   return {
     ...snapshot,
     windows,

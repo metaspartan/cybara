@@ -32,6 +32,7 @@ import {
 } from "./llm/agent-provider-transports";
 import { estimateOpenAIRequestTokens } from "./llm/context-estimate";
 import { prepareAgentMessagesForProvider } from "./llm/provider-image-input";
+import { antigravityTransportBaseUrl } from "./llm/antigravity-cloudcode";
 import { normalizeProviderMessages } from "./llm/provider-messages";
 import { resolveProviderModelApiFamily } from "./llm/provider-model-transport";
 import { normalizeLlmTimeoutError, withLlmRequestTimeout } from "./llm/request-timeout";
@@ -555,7 +556,10 @@ export abstract class AgentProviderCommonRuntime {
       settings?: Record<string, unknown>;
     };
     const providerConfig = providerInfo.provider;
-    const baseUrl = providerInfo.base_url || getProviderBaseUrl(providerConfig);
+    const baseUrl = antigravityTransportBaseUrl(
+      providerConfig,
+      providerInfo.base_url || getProviderBaseUrl(providerConfig)
+    );
     const auth = providerInfo.api_key || providerInfo.access_token;
     const catalogProviderDefinition = providerCatalog[providerConfig as ProviderType] as
       | {

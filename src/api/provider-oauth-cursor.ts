@@ -1,4 +1,5 @@
 import { createPkcePair, jwtExpiresAt } from "../core/provider-oauth";
+import { CURSOR_LOGIN_URL, CURSOR_POLL_URL } from "../core/providers/cursor-models";
 
 interface CursorOAuthSession {
   uuid: string;
@@ -6,8 +7,6 @@ interface CursorOAuthSession {
   expiresAt: number;
 }
 
-const CURSOR_LOGIN_URL = "https://cursor.com/loginDeepControl";
-const CURSOR_POLL_URL = "https://api2.cursor.sh/auth/poll";
 const SESSION_TTL_MS = 15 * 60_000;
 const MAX_SESSIONS = 100;
 const sessions = new Map<string, CursorOAuthSession>();
@@ -61,16 +60,16 @@ export async function pollCursorOAuth(deviceCode: string): Promise<Record<string
   }
   const value = (await response.json()) as Record<string, unknown>;
   const accessToken = value.accessToken;
-  const refreshToken = value.refreshToken;
   if (typeof accessToken !== "string" || accessToken.length === 0) {
     return { status: "error", error: "Cursor login returned an incomplete token response" };
   }
   sessions.delete(deviceCode);
+  const refreshToken = value.refreshToken;
   return {
     status: "success",
     access_token: accessToken,
     refresh_token:
-      typeof refreshToken === "string" && refreshToken.length > 0 ? refreshToken : accessToken,
+      typeof refreshToken === "string" && refreshToken.length > 0 ? refreshToken : undefined,
     expires_at: jwtExpiresAt(accessToken),
   };
 }

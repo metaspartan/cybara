@@ -8,12 +8,19 @@ function hasAdditionalProperties(value: unknown): boolean {
   return Object.values(record).some(hasAdditionalProperties);
 }
 
-export function googleFunctionDeclaration(tool: ToolDefinition): Record<string, unknown> {
+export interface GoogleFunctionDeclarationOptions {
+  forceJsonSchema?: boolean;
+}
+
+export function googleFunctionDeclaration(
+  tool: ToolDefinition,
+  options: GoogleFunctionDeclarationOptions = {}
+): Record<string, unknown> {
   const schema = tool.input_schema || { type: "object", properties: {} };
   return {
     name: tool.name,
     description: tool.description || "",
-    ...(hasAdditionalProperties(schema)
+    ...(options.forceJsonSchema === true || hasAdditionalProperties(schema)
       ? { parametersJsonSchema: schema }
       : { parameters: schema }),
   };

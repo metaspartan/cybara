@@ -111,11 +111,13 @@ export interface GooglePartFunctionCall {
   functionCall?: {
     name?: string;
     args?: unknown;
+    id?: string;
   };
 }
 
 export interface GooglePartFunctionResponse {
   functionResponse?: {
+    id?: string;
     name?: string;
     response?: Record<string, unknown>;
   };
@@ -197,7 +199,14 @@ export interface AgentToolCallResult {
   timeline_index?: number;
 }
 
-export function normalizeGoogleModelId(modelId: string): string {
+export interface GoogleModelIdOptions {
+  publicAliases?: boolean;
+}
+
+export function normalizeGoogleModelId(
+  modelId: string,
+  options: GoogleModelIdOptions = {}
+): string {
   let normalized = modelId.trim();
   if (!normalized) return modelId;
 
@@ -210,6 +219,7 @@ export function normalizeGoogleModelId(modelId: string): string {
     normalized = normalized.replace(providerPrefix, "");
   }
 
+  if (options.publicAliases === false) return normalized;
   if (normalized === "gemini-3-pro") return "gemini-3-pro-preview";
   if (normalized === "gemini-3-flash") return "gemini-3-flash-preview";
   return normalized;

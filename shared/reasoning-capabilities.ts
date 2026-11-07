@@ -128,10 +128,12 @@ function resolveGoogleModelEfforts(modelId: string): ReasoningEffort[] {
   return [...GOOGLE_25_EFFORTS];
 }
 
+const KIMI_EFFORT_MODEL_PATTERN = /(?:^|\/)(?:(?:kimi-)?k3(?:[.-][a-z0-9.-]+)?|kimi-for-coding)$/;
+
 function isKimiK3(provider: string, model: string | null | undefined): boolean {
   return (
     KIMI_CODE_PROVIDERS.has(provider) &&
-    /(?:^|\/)(?:kimi-)?k3$/.test(normalizeReasoningModelId(model))
+    KIMI_EFFORT_MODEL_PATTERN.test(normalizeReasoningModelId(model))
   );
 }
 

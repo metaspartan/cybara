@@ -4,6 +4,7 @@ import {
   pollCursorOAuth,
   startCursorOAuth,
 } from "../../src/api/provider-oauth-cursor";
+import { providers } from "../../src/core/providers";
 
 const originalFetch = globalThis.fetch;
 
@@ -40,10 +41,27 @@ describe("Cursor browser OAuth", () => {
     expect(await pollCursorOAuth(String(successLogin.device_code))).toEqual({ status: "expired" });
   });
 
+  test("does not invent a refresh token when Cursor sends none", async () => {
+    const login = await startCursorOAuth();
+    globalThis.fetch = (async () => Response.json({ accessToken: "access" })) as typeof fetch;
+    const result = await pollCursorOAuth(String(login.device_code));
+    expect(result.status).toBe("success");
+    expect(result.access_token).toBe("access");
+    expect(result.refresh_token).toBeUndefined();
+  });
+
   test("rejects incomplete successful responses", async () => {
     const login = await startCursorOAuth();
     globalThis.fetch = (async () => Response.json({ refreshToken: "refresh" })) as typeof fetch;
     const result = await pollCursorOAuth(String(login.device_code));
     expect(result.status).toBe("error");
+  });
+});
+
+describe("Cursor OAuth refresh", () => {
+  test("never refreshes, because Cursor's sign-in has nothing to renew it with", () => {
+    const oauthConfig = providers.cursor.oauthConfig;
+    expect(oauthConfig?.refreshMode).toBe("none");
+    expect(oauthConfig?.tokenUrl).toBeUndefined();
   });
 });
