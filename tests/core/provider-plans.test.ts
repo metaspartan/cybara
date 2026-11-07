@@ -292,6 +292,61 @@ describe("provider plan monitoring", () => {
     expect(status.summary.warnings).toBeGreaterThanOrEqual(1);
   });
 
+  test("keeps a Cursor account usable when its on-demand budget can still pay", async () => {
+    const payload = Buffer.from(JSON.stringify({ sub: "google-oauth2|user_123" })).toString(
+      "base64url"
+    );
+    const cursorToken = `header.${payload}.signature`;
+    const providerId = createProvider("cursor", cursorToken, "https://api2.cursor.sh");
+    globalThis.fetch = Object.assign(
+      async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+        const url = String(input);
+        if (url.includes("GetPlanInfo")) {
+          return Response.json({
+            planInfo: {
+              planName: "Premium",
+              includedUsagePeriod: "INCLUDED_USAGE_PERIOD_WEEKLY",
+              includedUsageResetsAt: "1794634669708",
+            },
+            isMerged: true,
+          });
+        }
+        if (url.includes("GetCurrentPeriodUsage")) {
+          return Response.json({
+            billingCycleStart: "1794029869708",
+            billingCycleEnd: "1794634669708",
+            planUsage: { autoPercentUsed: 100, totalPercentUsed: 100 },
+            spendLimitUsage: { limitType: "user" },
+          });
+        }
+        if (url.includes("GetHardLimit")) return Response.json({ hardLimit: 2147483647 });
+        if (url.includes("usage-summary")) {
+          return Response.json({
+            billingCycleEnd: "2026-12-01T00:00:00.000Z",
+            membershipType: "premium",
+            individualUsage: {
+              plan: { enabled: true, used: 4615, limit: 4615, remaining: 0 },
+              onDemand: { enabled: true, used: 2500, limit: 10000, remaining: 7500 },
+            },
+          });
+        }
+        return new Response("unexpected", { status: 500 });
+      },
+      { preconnect: originalFetch.preconnect }
+    );
+    setProviderPlanMonitoringConfig({ enabled: true, providers: {} });
+
+    const status = await enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus());
+    const snapshot = status.providers.find(
+      (provider) => provider.configuredProviderId === providerId
+    );
+
+    expect(snapshot?.planName).toBe("Premium");
+    expect(snapshot?.status).not.toBe("exhausted");
+    expect(snapshot?.windows.find((window) => window.id === "weekly")?.usedPercent).toBe(100);
+    expect(snapshot?.windows.find((window) => window.id === "on-demand")?.usedPercent).toBe(25);
+  });
+
   test("usage-aware routing selects the configured account with more live quota", async () => {
     const exhaustedToken = "a".repeat(64);
     const availableToken = "b".repeat(64);

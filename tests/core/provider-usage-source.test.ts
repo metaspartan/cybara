@@ -64,6 +64,32 @@ describe("parseCodexUsageResponse", () => {
     expect(result?.weekly?.resetsAt).toBe(new Date(1783665881 * 1000).toISOString());
   });
 
+  test("maps a thirty-day primary window to the monthly window, not the weekly one", () => {
+    const result = parseCodexUsageResponse(
+      {
+        plan_type: "free",
+        rate_limit: {
+          allowed: true,
+          limit_reached: false,
+          primary_window: {
+            used_percent: 12,
+            limit_window_seconds: 2592000,
+            reset_after_seconds: 2592000,
+            reset_at: 1796635849,
+          },
+          secondary_window: null,
+        },
+      },
+      2000
+    );
+
+    expect(result?.planLabel).toBe("Codex Free");
+    expect(result?.weekly).toBeUndefined();
+    expect(result?.monthly?.usedPercent).toBe(12);
+    expect(result?.monthly?.windowSeconds).toBe(2592000);
+    expect(result?.monthly?.resetsAt).toBe(new Date(1796635849 * 1000).toISOString());
+  });
+
   test("returns null when rate_limit is absent", () => {
     expect(parseCodexUsageResponse({ plan_type: "pro" }, 1)).toBeNull();
     expect(parseCodexUsageResponse(null, 1)).toBeNull();
@@ -601,6 +627,38 @@ describe("parseKimiUsageResponse", () => {
 
     expect(result?.weekly?.usedPercent).toBe(12);
     expect(result?.fiveHour?.usedPercent).toBe(22);
+  });
+
+  test("reads the monthly coding-plan quotas from the usages map", () => {
+    const result = parseKimiUsageResponse(
+      {
+        limits: [
+          {
+            window: { duration: 300, timeUnit: "TIME_UNIT_MINUTE" },
+            detail: {
+              limit: "100",
+              used: "26",
+              remaining: "74",
+              resetTime: "2026-11-07T10:46:45.211225Z",
+            },
+          },
+        ],
+        usages: {
+          limit_5h: { used_ratio: 0.2575, reset_time: "2026-11-07T10:46:44Z" },
+          limit_month_total: { used_ratio: 0.014, reset_time: "2026-12-08T00:00:00Z" },
+          limit_month_code: { used_ratio: 0.42, reset_time: "2026-12-08T00:00:00Z" },
+        },
+      },
+      903
+    );
+
+    expect(result?.fiveHour?.usedPercent).toBe(26);
+    expect(result?.monthly?.usedPercent).toBe(42);
+    expect(result?.monthly?.title).toBe("Monthly code");
+    expect(result?.monthly?.resetsAt).toBe("2026-12-08T00:00:00Z");
+    expect(result?.windows?.map((window) => [window.title, window.usedPercent])).toEqual([
+      ["Monthly total", 1.4000000000000001],
+    ]);
   });
 });
 

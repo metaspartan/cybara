@@ -11,6 +11,9 @@ export const CURSOR_PLAN_INFO_URL =
   "https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo";
 export const CURSOR_CURRENT_PERIOD_USAGE_URL =
   "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage";
+export const CURSOR_HARD_LIMIT_URL =
+  "https://api2.cursor.sh/aiserver.v1.DashboardService/GetHardLimit";
+export const CURSOR_USAGE_SUMMARY_URL = "https://cursor.com/api/usage-summary";
 
 export const CURSOR_PICKER_SKIP = new Set([
   "claude-4.5-haiku",

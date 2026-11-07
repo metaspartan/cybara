@@ -9,8 +9,20 @@ import {
 } from "./provider-commandcode-usage";
 import { antigravityProjectIdFrom } from "./llm/antigravity-cloudcode";
 import { kimiCodeIdentityHeaders } from "./providers/kimi-code";
-import { CURSOR_CURRENT_PERIOD_USAGE_URL, CURSOR_PLAN_INFO_URL } from "./providers/cursor-models";
-import { parseCursorPlanInfo, parseCursorUsage } from "./providers/cursor-usage";
+import {
+  CURSOR_CURRENT_PERIOD_USAGE_URL,
+  CURSOR_HARD_LIMIT_URL,
+  CURSOR_PLAN_INFO_URL,
+  CURSOR_USAGE_SUMMARY_URL,
+} from "./providers/cursor-models";
+import {
+  buildCursorUsage,
+  parseCursorHardLimit,
+  parseCursorPeriodUsage,
+  parseCursorPlanInfo,
+  parseCursorUsageSummary,
+  type CursorUsageWindowValue,
+} from "./providers/cursor-usage";
 
 const log = createLogger("ProviderUsage");
 
@@ -27,6 +39,8 @@ export interface LiveProviderUsage {
   fiveHour?: LiveUsageWindow;
   weekly?: LiveUsageWindow;
   monthly?: LiveUsageWindow;
+  windows?: LiveUsageWindow[];
+  onDemand?: LiveUsageWindow;
   source: "oauth_api" | "provider_api" | "browser_cookie" | "cli";
   fetchedAt: number;
 }
@@ -106,12 +120,16 @@ export function parseCodexUsageResponse(body: unknown, now: number): LiveProvide
   if (!rateLimit) return null;
   const primary = parseCodexWindow(rateLimit.primary_window);
   const secondary = parseCodexWindow(rateLimit.secondary_window);
+  const windows = [primary, secondary].filter((window): window is LiveUsageWindow =>
+    Boolean(window)
+  );
+  const monthly = windows.find((window) => (window.windowSeconds ?? 0) >= 28 * 24 * 60 * 60);
   const weekly =
-    [primary, secondary].find(
-      (window) => window?.windowSeconds !== undefined && window.windowSeconds >= 6 * 24 * 60 * 60
-    ) ??
-    secondary ??
-    primary;
+    windows.find(
+      (window) =>
+        (window.windowSeconds ?? 0) >= 6 * 24 * 60 * 60 &&
+        (window.windowSeconds ?? 0) < 28 * 24 * 60 * 60
+    ) ?? (monthly ? undefined : (secondary ?? primary));
   const planType = typeof json?.plan_type === "string" ? json.plan_type : undefined;
   const planLabel = planType
     ? `Codex ${planType.charAt(0).toUpperCase()}${planType.slice(1)}`
@@ -120,6 +138,7 @@ export function parseCodexUsageResponse(body: unknown, now: number): LiveProvide
     planLabel,
     fiveHour: { usedPercent: 0, unlimited: true },
     weekly,
+    monthly,
     source: "oauth_api",
     fetchedAt: now,
   };
@@ -848,15 +867,45 @@ export function parseKimiUsageResponse(body: unknown, now: number): LiveProvider
     });
   }
 
+  const monthlyPools = kimiMonthlyPools(root);
+  if (!windows.monthly && monthlyPools.length > 0) {
+    windows.monthly = monthlyPools[0];
+  }
+
   if (!windows.fiveHour && !windows.weekly && !windows.monthly) return null;
+  const extras = monthlyPools
+    .filter((pool) => pool !== windows.monthly)
+    .map((pool) => ({ ...pool }));
   return {
     planLabel: "Kimi Coding Plan",
     fiveHour: windows.fiveHour,
     weekly: windows.weekly,
     monthly: windows.monthly,
+    windows: extras.length > 0 ? extras : undefined,
     source: "provider_api",
     fetchedAt: now,
   };
+}
+
+function kimiMonthlyPools(root: Record<string, unknown>): LiveUsageWindow[] {
+  const usages = asRecord(root.usages) ?? asRecord(root.usage);
+  if (!usages) return [];
+  const pools: LiveUsageWindow[] = [];
+  for (const [key, title] of [
+    ["limit_month_total", "Monthly total"],
+    ["limit_month_code", "Monthly code"],
+  ] as const) {
+    const entry = asRecord(usages[key]);
+    if (!entry) continue;
+    const ratio = toNumber(entry.used_ratio ?? entry.usedRatio);
+    if (ratio === undefined) continue;
+    const usedPercent = Math.max(0, Math.min(100, ratio * 100));
+    const window: LiveUsageWindow = { usedPercent, title };
+    const reset = resetToIso(entry.reset_time, entry.resetTime, entry.reset_at);
+    if (reset) window.resetsAt = reset;
+    pools.push(window);
+  }
+  return pools.sort((left, right) => right.usedPercent - left.usedPercent);
 }
 
 function moneyValue(raw: unknown): number | undefined {
@@ -1448,26 +1497,71 @@ async function cursorApiPost(url: string, token: string): Promise<unknown | null
   return (await res.json().catch(() => null)) as unknown;
 }
 
+function cursorSessionCookie(token: string): string | undefined {
+  const parts = token.split(".");
+  if (parts.length < 2) return undefined;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as {
+      sub?: unknown;
+    };
+    const subject = typeof payload.sub === "string" ? payload.sub : "";
+    const user = subject.split("|").filter(Boolean).at(-1) ?? "";
+    if (!user || !/^[a-zA-Z0-9._-]+$/.test(user)) return undefined;
+    return `WorkosCursorSessionToken=${encodeURIComponent(`${user}::${token}`)}`;
+  } catch {
+    return undefined;
+  }
+}
+
+async function cursorUsageSummary(token: string): Promise<unknown | null> {
+  const cookie = cursorSessionCookie(token);
+  if (!cookie) return null;
+  try {
+    const res = await fetch(CURSOR_USAGE_SUMMARY_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Origin: "https://cursor.com",
+        Cookie: cookie,
+      },
+      body: "{}",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return null;
+    return (await res.json().catch(() => null)) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchCursorUsage(token: string): Promise<LiveProviderUsage | null> {
-  const plan = parseCursorPlanInfo(await cursorApiPost(CURSOR_PLAN_INFO_URL, token));
-  const usage = parseCursorUsage(await cursorApiPost(CURSOR_CURRENT_PERIOD_USAGE_URL, token));
-  if (!plan && !usage) return null;
+  const [plan, usage, summary, hardLimit] = await Promise.all([
+    cursorApiPost(CURSOR_PLAN_INFO_URL, token).then(parseCursorPlanInfo),
+    cursorApiPost(CURSOR_CURRENT_PERIOD_USAGE_URL, token).then(parseCursorPeriodUsage),
+    cursorUsageSummary(token).then(parseCursorUsageSummary),
+    cursorApiPost(CURSOR_HARD_LIMIT_URL, token).then(parseCursorHardLimit),
+  ]);
+  const built = buildCursorUsage({ plan, usage, summary, hardLimitCents: hardLimit ?? undefined });
+  if (!built?.primary) return null;
   const value: LiveProviderUsage = {
-    planLabel: plan?.planLabel || undefined,
+    planLabel: built.planLabel,
     source: "provider_api",
     fetchedAt: Date.now(),
   };
-  const window = usage?.window;
-  if (window) {
-    const live: LiveUsageWindow = {
-      usedPercent: window.usedPercent,
-      resetsAt: window.resetsAt ? new Date(window.resetsAt).toISOString() : undefined,
-      windowSeconds: window.windowSeconds,
-      title: plan?.usagePeriod === "monthly" ? "Monthly" : "Weekly",
-    };
-    if (plan?.usagePeriod === "monthly") value.monthly = live;
-    else value.weekly = live;
-  }
+  const toLive = (window: CursorUsageWindowValue): LiveUsageWindow => {
+    const live: LiveUsageWindow = { usedPercent: window.usedPercent };
+    if (window.resetsAt !== undefined) live.resetsAt = new Date(window.resetsAt).toISOString();
+    if (window.windowSeconds !== undefined) live.windowSeconds = window.windowSeconds;
+    if (window.unlimited !== undefined) live.unlimited = window.unlimited;
+    if (window.title !== undefined) live.title = window.title;
+    return live;
+  };
+  const primary = toLive(built.primary);
+  if (built.period === "monthly") value.monthly = primary;
+  else value.weekly = primary;
+  if (built.extras.length > 0) value.windows = built.extras.map(toLive);
+  if (built.onDemand) value.onDemand = toLive(built.onDemand);
   return value;
 }
 
