@@ -92,9 +92,9 @@ describe("elided tool call arguments stay decodable", () => {
 describe("invalid tool call argument rejections reach the repair path", () => {
   test("recognizes generic provider rejections", () => {
     expect(describesInvalidToolCallArguments("invalid tool call arguments")).toBe(true);
-    expect(
-      describesInvalidToolCallArguments("invalid tool call arguments (ref: 113f4141)")
-    ).toBe(true);
+    expect(describesInvalidToolCallArguments("invalid tool call arguments (ref: 113f4141)")).toBe(
+      true
+    );
     expect(describesInvalidToolCallArguments("malformed tool call arguments")).toBe(true);
     expect(describesInvalidToolCallArguments("rate limit exceeded")).toBe(false);
     expect(describesInvalidToolCallArguments("model not found")).toBe(false);
