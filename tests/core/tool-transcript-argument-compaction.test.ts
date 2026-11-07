@@ -81,7 +81,10 @@ describe("tool call argument compaction", () => {
       Array.from({ length: 60 }, (_, index) => `b_${index}`)
     );
     for (const value of argsOf(older)) {
-      expect(value).toBe(TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE);
+      // The elided payload stays valid JSON so the provider can decode it.
+      expect(() => JSON.parse(value)).not.toThrow();
+      expect(isElidedToolCallArguments(value)).toBe(true);
+      expect(JSON.parse(value).notice).toBe(TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE);
     }
   });
 
@@ -98,7 +101,10 @@ describe("tool call argument compaction", () => {
       maxToolCallPayloadChars: 1_000,
     });
     for (const value of argsOf(older)) {
-      expect(value).toBe(TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE);
+      // The elided payload stays valid JSON so the provider can decode it.
+      expect(() => JSON.parse(value)).not.toThrow();
+      expect(isElidedToolCallArguments(value)).toBe(true);
+      expect(JSON.parse(value).notice).toBe(TOOL_CALL_ARGUMENTS_COMPACTION_NOTICE);
     }
   });
 

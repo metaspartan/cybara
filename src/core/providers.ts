@@ -258,7 +258,7 @@ class ProviderManager {
     if (!provider.refresh_token) return undefined;
 
     const now = Date.now();
-    const skewMs = 120_000;
+    const skewMs = oauth.refreshSkewMs ?? 120_000;
     const expiresAt = typeof provider.expires_at === "number" ? provider.expires_at : 0;
     if (options?.force !== true && expiresAt > 0 && expiresAt - skewMs > now) return undefined;
     if (options?.force !== true && expiresAt === 0) {
@@ -285,8 +285,7 @@ class ProviderManager {
     oauth: ProviderOAuthConfig
   ): Promise<Provider | undefined> {
     try {
-      const cursor = oauth.refreshMode === "cursor";
-      const json = oauth.tokenRequestFormat === "json" || cursor;
+      const json = oauth.tokenRequestFormat === "json";
       let credentialSource = this.getWithCredentials(provider.id) ?? provider;
       if (
         credentialSource.access_token &&
@@ -311,11 +310,10 @@ class ProviderManager {
             headers: {
               Accept: "application/json",
               "Content-Type": json ? "application/json" : "application/x-www-form-urlencoded",
-              ...(cursor ? { Authorization: `Bearer ${credentialSource.refresh_token}` } : {}),
               ...oauth.refreshHeaders,
               ...(oauth.identityHeaders === "kimi-code" ? kimiCodeIdentityHeaders() : {}),
             },
-            body: json ? JSON.stringify(cursor ? {} : fields) : new URLSearchParams(fields),
+            body: json ? JSON.stringify(fields) : new URLSearchParams(fields),
             signal: AbortSignal.timeout(30_000),
           });
         } catch (error) {
@@ -683,6 +681,7 @@ export function getProviderBaseUrl(providerType: string): string {
 export function getDefaultModel(providerType: string): string {
   const defaults: Record<string, string> = {
     atlascloud: "qwen/qwen3.5-397b-a17b",
+    cheaperinference: "gpt-5.4-mini",
     openai: "gpt-5.6-sol",
     meta: "muse-spark-1.1",
     elevenlabs: "eleven_multilingual_v2",
@@ -697,8 +696,8 @@ export function getDefaultModel(providerType: string): string {
     "minimax-portal-cn": "MiniMax-M3",
     google: "gemini-3.1-pro-preview",
     google_vertex: "gemini-3.6-flash",
-    antigravity: "gemini-3.1-pro-preview",
-    "google-antigravity": "gemini-3.1-pro-preview",
+    antigravity: "gemini-3.8-flash-tiered",
+    "google-antigravity": "gemini-3.8-flash-tiered",
     "google-gemini-cli": "gemini-3.1-pro-preview",
     "gemini-cli": "gemini-3.1-pro-preview",
     groq: "llama-3.3-70b-versatile",

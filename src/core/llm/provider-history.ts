@@ -138,7 +138,15 @@ export function toAnthropicHistory(messages: AgentMessage[]): AnthropicMessage[]
   return history;
 }
 
-export function toGoogleHistory(messages: AgentMessage[]): GoogleContent[] {
+export interface GoogleHistoryOptions {
+  includeToolCallIds?: boolean;
+}
+
+export function toGoogleHistory(
+  messages: AgentMessage[],
+  options: GoogleHistoryOptions = {}
+): GoogleContent[] {
+  const includeIds = options.includeToolCallIds === true;
   const history: GoogleContent[] = [];
   const toolNames = toolNamesById(messages);
 
@@ -160,6 +168,7 @@ export function toGoogleHistory(messages: AgentMessage[]): GoogleContent[] {
           functionCall: {
             name: toolCall.name,
             args: toolCall.arguments,
+            ...(includeIds && toolCall.id ? { id: toolCall.id } : {}),
           },
         });
       }
@@ -173,6 +182,7 @@ export function toGoogleHistory(messages: AgentMessage[]): GoogleContent[] {
         appendGoogleContent(history, "user", [
           {
             functionResponse: {
+              ...(includeIds && message.tool_call_id ? { id: message.tool_call_id } : {}),
               name: toolName,
               response: objectToolResponse(message.content),
             },

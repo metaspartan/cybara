@@ -353,7 +353,7 @@ describe("Agent provider Google and compatible routing", () => {
     }) as typeof fetch;
 
     const provider = providerManager.create({
-      provider: "antigravity",
+      provider: "google-gemini-cli",
       name: "Google OAuth Provider",
       access_token: "ya29.test-oauth-token",
     });

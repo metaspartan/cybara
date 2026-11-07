@@ -1023,6 +1023,7 @@ export function resolveModelAlias(modelId: string, provider?: string): string {
     "gemini-2-flash": "gemini-2.0-flash-exp",
     "gemini-3-pro": "gemini-3-pro-preview",
     "gemini-3-flash": "gemini-3-flash-preview",
+    "antigravity/gemini-3-flash": "gemini-3-flash",
 
     "alibaba/qwen3.8-next-flash": "qwen3.8-flash",
     "alibaba/qwen3.8-flash-next": "qwen3.8-flash",

@@ -45,15 +45,22 @@ test("signature verification rejects unconsumed nested algorithm elements but ac
   expect(parsed.malformed_results).toEqual([false, false, false, false]);
 });
 
-test("mobile signature-parser patch is pinned to the installed dependency", async () => {
+test("mobile resolves a node-forge release that includes the signature-parser fix without a local patch", async () => {
   const manifest = (await Bun.file(
     join(import.meta.dir, "../../apps/mobile/package.json")
   ).json()) as {
     patchedDependencies?: Record<string, string>;
+    overrides?: Record<string, string>;
   };
-  expect(manifest.patchedDependencies?.["node-forge@1.4.0"]).toBe("patches/node-forge@1.4.0.patch");
-  const source = await Bun.file(
-    join(import.meta.dir, "../../apps/mobile/node_modules/node-forge/lib/rsa.js")
-  ).text();
-  expect(source).toContain("obj.value[0].value.length");
+  expect(
+    Object.keys(manifest.patchedDependencies ?? {}).some((key) => key.startsWith("node-forge@"))
+  ).toBe(false);
+  const installed = (await Bun.file(
+    join(import.meta.dir, "../../apps/mobile/node_modules/node-forge/package.json")
+  ).json()) as {
+    version: string;
+  };
+  const [major, minor, patch] = installed.version.split(".").map(Number);
+  expect(major).toBe(1);
+  expect(minor > 4 || (minor === 4 && patch >= 3)).toBe(true);
 });
