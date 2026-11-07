@@ -9,6 +9,8 @@ import {
 } from "./provider-commandcode-usage";
 import { antigravityProjectIdFrom } from "./llm/antigravity-cloudcode";
 import { kimiCodeIdentityHeaders } from "./providers/kimi-code";
+import { CURSOR_CURRENT_PERIOD_USAGE_URL, CURSOR_PLAN_INFO_URL } from "./providers/cursor-models";
+import { parseCursorPlanInfo, parseCursorUsage } from "./providers/cursor-usage";
 
 const log = createLogger("ProviderUsage");
 
@@ -1429,6 +1431,46 @@ function looksLikeCredential(token?: string): token is string {
   return typeof token === "string" && token.trim().length >= 8;
 }
 
+async function cursorApiPost(url: string, token: string): Promise<unknown | null> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Connect-Protocol-Version": "1",
+      Authorization: `Bearer ${token}`,
+      "x-cursor-client-type": "cli",
+    },
+    body: "{}",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) return null;
+  return (await res.json().catch(() => null)) as unknown;
+}
+
+async function fetchCursorUsage(token: string): Promise<LiveProviderUsage | null> {
+  const plan = parseCursorPlanInfo(await cursorApiPost(CURSOR_PLAN_INFO_URL, token));
+  const usage = parseCursorUsage(await cursorApiPost(CURSOR_CURRENT_PERIOD_USAGE_URL, token));
+  if (!plan && !usage) return null;
+  const value: LiveProviderUsage = {
+    planLabel: plan?.planLabel || undefined,
+    source: "provider_api",
+    fetchedAt: Date.now(),
+  };
+  const window = usage?.window;
+  if (window) {
+    const live: LiveUsageWindow = {
+      usedPercent: window.usedPercent,
+      resetsAt: window.resetsAt ? new Date(window.resetsAt).toISOString() : undefined,
+      windowSeconds: window.windowSeconds,
+      title: plan?.usagePeriod === "monthly" ? "Monthly" : "Weekly",
+    };
+    if (plan?.usagePeriod === "monthly") value.monthly = live;
+    else value.weekly = live;
+  }
+  return value;
+}
+
 export async function fetchLiveProviderUsage(
   provider: LiveUsageProviderInput
 ): Promise<LiveProviderUsage | null> {
@@ -1482,6 +1524,10 @@ export async function fetchLiveProviderUsage(
         value = await fetchGrokCliUsage();
       } else if (provider.providerType === "commandcode") {
         value = await fetchCommandCodeUsage(credential, provider.baseUrl);
+      } else if (provider.providerType === "cursor") {
+        value = looksLikeOAuthToken(provider.accessToken)
+          ? await fetchCursorUsage(provider.accessToken)
+          : null;
       }
     } catch (error) {
       log.debug(`live usage fetch failed for ${provider.providerType}: ${error}`);

@@ -285,8 +285,7 @@ class ProviderManager {
     oauth: ProviderOAuthConfig
   ): Promise<Provider | undefined> {
     try {
-      const cursor = oauth.refreshMode === "cursor";
-      const json = oauth.tokenRequestFormat === "json" || cursor;
+      const json = oauth.tokenRequestFormat === "json";
       let credentialSource = this.getWithCredentials(provider.id) ?? provider;
       if (
         credentialSource.access_token &&
@@ -311,11 +310,10 @@ class ProviderManager {
             headers: {
               Accept: "application/json",
               "Content-Type": json ? "application/json" : "application/x-www-form-urlencoded",
-              ...(cursor ? { Authorization: `Bearer ${credentialSource.refresh_token}` } : {}),
               ...oauth.refreshHeaders,
               ...(oauth.identityHeaders === "kimi-code" ? kimiCodeIdentityHeaders() : {}),
             },
-            body: json ? JSON.stringify(cursor ? {} : fields) : new URLSearchParams(fields),
+            body: json ? JSON.stringify(fields) : new URLSearchParams(fields),
             signal: AbortSignal.timeout(30_000),
           });
         } catch (error) {

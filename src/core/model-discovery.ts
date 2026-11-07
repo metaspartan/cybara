@@ -1,6 +1,7 @@
 import { type ProviderModel, tables } from "./database";
 import { discoverModelsDev, type ModelsDevModel, PROVIDER_TO_MODELS_DEV } from "./models-dev";
 import { discoverOpenAICodexModels } from "./openai-codex-models";
+import { discoverCursorModels } from "./cursor-models";
 import { type ProviderType, providerManager, providers, resolveProviderType } from "./providers";
 import {
   DISCOVERY_PLACEHOLDER_CONTEXT_WINDOW,
@@ -251,6 +252,34 @@ async function runProviderDiscovery(
       }
     } catch {
       return discoverViaModelsDev(providerId, providerType, discoverCatalog);
+    }
+  }
+
+  if (providerType === "cursor" && auth) {
+    try {
+      const found = await discoverCursorModels(auth, request);
+      if (found.length > 0) {
+        const persisted = persistModels(providerId, providerType, found);
+        providerManager.setAuthoritativeModels(
+          providerId,
+          persisted.models.map((model) => model.id)
+        );
+        return {
+          providerId,
+          discovered: persisted.models.length,
+          added: persisted.added,
+          models: persisted.models,
+          source: "cursor",
+        };
+      }
+    } catch {
+      return {
+        providerId,
+        discovered: 0,
+        added: 0,
+        models: [],
+        error: "Cursor model discovery failed",
+      };
     }
   }
 

@@ -211,7 +211,11 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers["anthropic-oauth"].oauthFlow).toBe("redirect");
     expect(providers["anthropic-oauth"].models.length).toBe(providers.anthropic.models.length);
     expect(providers.cursor.oauthFlow).toBe("device_code");
-    expect(providers.cursor.models.length).toBe(42);
+    expect(providers.cursor.models.length).toBeGreaterThan(300);
+    expect(providers.cursor.models.some((model) => model.id === "claude-opus-5")).toBe(true);
+    expect(providers.cursor.models.some((model) => model.id === "gpt-5.6-sol")).toBe(true);
+    expect(providers.cursor.models.some((model) => model.id === "kimi-k3")).toBe(true);
+    expect(providers.cursor.models.some((model) => model.id === "composer-1")).toBe(false);
     expect(providers.devin.authType).toBe("api_key");
     expect(providers.devin.oauthFlow).toBeUndefined();
     expect(providers.devin.models.length).toBe(59);

@@ -167,6 +167,7 @@ const CODING_PLAN_PROVIDER_TYPES = new Set<string>([
   "opencode-go",
   "kilocode",
   "commandcode",
+  "cursor",
   "xai",
   "xai-oauth",
 ]);
@@ -183,6 +184,7 @@ const AUTOMATIC_PLAN_PROVIDER_TYPES = new Set<string>([
   "z.ai-coding",
   "kimi-code",
   "kimi-code-oauth",
+  "cursor",
   "xai-oauth",
 ]);
 

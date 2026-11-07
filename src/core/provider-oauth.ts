@@ -1,5 +1,5 @@
 export type OAuthTokenRequestFormat = "form" | "json";
-export type OAuthRefreshMode = "standard" | "cursor" | "none";
+export type OAuthRefreshMode = "standard" | "none";
 
 export interface ProviderOAuthConfig {
   authorizeUrl?: string;
@@ -23,7 +23,6 @@ export interface ProviderOAuthConfig {
   deviceCodeUrl?: string;
   discoveryUrl?: string;
   deviceCodeDiscoveryUrl?: string;
-  specialFlow?: "cursor";
   identityHeaders?: "kimi-code";
 }
 
