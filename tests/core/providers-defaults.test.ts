@@ -12,6 +12,7 @@ import {
 describe("Provider model defaults and API-family parity", () => {
   test("uses updated defaults for newly added providers", () => {
     expect(getDefaultModel("atlascloud")).toBe("qwen/qwen3.5-397b-a17b");
+    expect(getDefaultModel("cheaperinference")).toBe("gpt-5.4-mini");
     expect(getDefaultModel("openai")).toBe("gpt-5.6-sol");
     expect(getDefaultModel("meta")).toBe("muse-spark-1.1");
     expect(getDefaultModel("ds4")).toBe("deepseek-v4-flash");
@@ -31,8 +32,8 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("z.ai")).toBe("glm-5.2");
     expect(getDefaultModel("zai")).toBe("glm-5.2");
     expect(getDefaultModel("z.ai-coding")).toBe("glm-5.3");
-    expect(getDefaultModel("antigravity")).toBe("gemini-3.1-pro-preview");
-    expect(getDefaultModel("google-antigravity")).toBe("gemini-3.1-pro-preview");
+    expect(getDefaultModel("antigravity")).toBe("gemini-3.8-flash-tiered");
+    expect(getDefaultModel("google-antigravity")).toBe("gemini-3.8-flash-tiered");
     expect(getDefaultModel("google-gemini-cli")).toBe("gemini-3.1-pro-preview");
     expect(getDefaultModel("gemini-cli")).toBe("gemini-3.1-pro-preview");
     expect(getDefaultModel("opencode_zen")).toBe("claude-opus-5");
@@ -80,6 +81,7 @@ describe("Provider model defaults and API-family parity", () => {
 
   test("declares expected API-family names for compatibility methods", () => {
     expect(providers.atlascloud.api).toBe("openai-completions");
+    expect(providers.cheaperinference.api).toBe("openai-completions");
     expect(providers.ollama.api).toBe("ollama");
     expect(providers["openai-codex"].api).toBe("openai-codex-responses");
     expect(providers.vllm.api).toBe("openai-completions");
@@ -211,7 +213,11 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers["anthropic-oauth"].oauthFlow).toBe("redirect");
     expect(providers["anthropic-oauth"].models.length).toBe(providers.anthropic.models.length);
     expect(providers.cursor.oauthFlow).toBe("device_code");
-    expect(providers.cursor.models.length).toBe(42);
+    expect(providers.cursor.models.length).toBeGreaterThan(300);
+    expect(providers.cursor.models.some((model) => model.id === "claude-opus-5")).toBe(true);
+    expect(providers.cursor.models.some((model) => model.id === "gpt-5.6-sol")).toBe(true);
+    expect(providers.cursor.models.some((model) => model.id === "kimi-k3")).toBe(true);
+    expect(providers.cursor.models.some((model) => model.id === "composer-1")).toBe(false);
     expect(providers.devin.authType).toBe("api_key");
     expect(providers.devin.oauthFlow).toBeUndefined();
     expect(providers.devin.models.length).toBe(59);
@@ -220,11 +226,21 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers["kimi-code-oauth"].oauthConfig.clientId).toBe(
       "17e5f671-d194-4dfb-9706-5516cb48c098"
     );
-    expect(providers["kimi-code-oauth"].models.map((model) => model.id)).toEqual([
-      "k3",
-      "kimi-for-coding",
-      "kimi-for-coding-highspeed",
-    ]);
+    for (const kimiProvider of ["kimi-code", "kimi-code-oauth"] as const) {
+      expect(providers[kimiProvider].models.map((model) => model.id)).toEqual([
+        "k3",
+        "k3-256k",
+        "k3.1-pro",
+        "k3.1-pro-highspeed",
+        "kimi-for-coding",
+        "kimi-for-coding-highspeed",
+      ]);
+      const k31 = providers[kimiProvider].models.find((model) => model.id === "k3.1-pro");
+      expect(k31?.context).toBe(1_048_576);
+      expect(k31?.maxTokens).toBe(131_072);
+      const k3Compact = providers[kimiProvider].models.find((model) => model.id === "k3-256k");
+      expect(k3Compact?.context).toBe(262_144);
+    }
     expect(providers["kimi-code-oauth"].models[0]?.context).toBe(1_048_576);
     expect(providers.meta.models.some((model) => model.id === "muse-spark-1.1")).toBe(true);
     expect(providers.ds4.models.some((model) => model.id === "deepseek-v4-flash")).toBe(true);

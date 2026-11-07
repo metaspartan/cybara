@@ -1,4 +1,5 @@
 import { foundationProviderCatalog } from "./catalog-foundation";
+import { CURSOR_BASE_URL, cursorModels } from "./cursor-models";
 import {
   KIMI_CODE_BASE_URL,
   KIMI_CODE_DEVICE_CODE_URL,
@@ -6,72 +7,7 @@ import {
   KIMI_CODE_TOKEN_URL,
   kimiCodeModels,
 } from "./kimi-code";
-
-type SubscriptionInput = "text" | "image";
-type SubscriptionModelTuple = readonly [
-  id: string,
-  name: string,
-  context: number,
-  maxTokens: number,
-  reasoning: boolean,
-  input: readonly SubscriptionInput[],
-];
-
-function subscriptionModels(entries: readonly SubscriptionModelTuple[]) {
-  return entries.map(([id, name, context, maxTokens, reasoning, input]) => ({
-    id,
-    name,
-    context,
-    maxTokens,
-    reasoning,
-    input: [...input],
-  }));
-}
-
-const cursorModels = subscriptionModels([
-  ["default", "Auto", 200000, 64000, false, ["text", "image"]],
-  ["composer-1", "Composer 1", 200000, 64000, false, ["text"]],
-  ["composer-1.5", "Composer 1.5", 200000, 64000, false, ["text"]],
-  ["claude-4.5-opus-high", "Claude 4.5 Opus", 200000, 64000, true, ["text", "image"]],
-  ["claude-4.5-sonnet", "Claude 4.5 Sonnet", 200000, 64000, true, ["text", "image"]],
-  ["claude-4.6-opus-high", "Claude 4.6 Opus", 200000, 64000, true, ["text"]],
-  ["claude-4.6-sonnet-medium", "Claude 4.6 Sonnet", 200000, 64000, true, ["text"]],
-  ["gemini-3-flash", "Gemini 3 Flash", 1048576, 65536, true, ["text", "image"]],
-  ["gemini-3-pro", "Gemini 3 Pro", 1048576, 65536, true, ["text", "image"]],
-  ["gemini-3.1-pro", "Gemini 3.1 Pro", 1048576, 65536, true, ["text", "image"]],
-  ["gpt-5.1-codex-max", "GPT-5.1 Codex Max", 272000, 128000, true, ["text", "image"]],
-  ["gpt-5.1-codex-max-high", "GPT-5.1 Codex Max High", 272000, 128000, true, ["text", "image"]],
-  ["gpt-5.1-codex-mini", "GPT-5.1 Codex Mini", 272000, 128000, true, ["text", "image"]],
-  ["gpt-5.1-high", "GPT-5.1 High", 200000, 64000, false, ["text"]],
-  ["gpt-5.2", "GPT-5.2", 400000, 128000, true, ["text", "image"]],
-  ["gpt-5.2-codex", "GPT-5.2 Codex", 272000, 128000, true, ["text", "image"]],
-  ["gpt-5.2-codex-fast", "GPT-5.2 Codex Fast", 272000, 64000, false, ["text"]],
-  ["gpt-5.2-codex-high", "GPT-5.2 Codex High", 272000, 64000, false, ["text"]],
-  ["gpt-5.2-codex-high-fast", "GPT-5.2 Codex High Fast", 272000, 64000, false, ["text"]],
-  ["gpt-5.2-codex-low", "GPT-5.2 Codex Low", 272000, 64000, false, ["text"]],
-  ["gpt-5.2-codex-low-fast", "GPT-5.2 Codex Low Fast", 272000, 64000, false, ["text"]],
-  ["gpt-5.2-codex-xhigh", "GPT-5.2 Codex Extra High", 272000, 64000, false, ["text"]],
-  ["gpt-5.2-codex-xhigh-fast", "GPT-5.2 Codex Extra High Fast", 272000, 64000, false, ["text"]],
-  ["gpt-5.2-high", "GPT-5.2 High", 400000, 128000, true, ["text", "image"]],
-  ["gpt-5.3-codex", "GPT-5.3 Codex", 272000, 128000, true, ["text", "image"]],
-  ["gpt-5.3-codex-fast", "GPT-5.3 Codex Fast", 272000, 64000, false, ["text"]],
-  ["gpt-5.3-codex-high", "GPT-5.3 Codex High", 272000, 64000, false, ["text"]],
-  ["gpt-5.3-codex-high-fast", "GPT-5.3 Codex High Fast", 272000, 64000, false, ["text"]],
-  ["gpt-5.3-codex-low", "GPT-5.3 Codex Low", 272000, 64000, false, ["text"]],
-  ["gpt-5.3-codex-low-fast", "GPT-5.3 Codex Low Fast", 272000, 64000, false, ["text"]],
-  ["gpt-5.3-codex-spark-preview", "GPT-5.3 Codex Spark", 200000, 64000, false, ["text"]],
-  ["gpt-5.3-codex-xhigh", "GPT-5.3 Codex Extra High", 272000, 64000, false, ["text"]],
-  ["gpt-5.3-codex-xhigh-fast", "GPT-5.3 Codex Extra High Fast", 272000, 64000, false, ["text"]],
-  ["gpt-5.4-high", "GPT-5.4 High", 200000, 64000, false, ["text"]],
-  ["gpt-5.4-high-fast", "GPT-5.4 High Fast", 200000, 64000, false, ["text"]],
-  ["gpt-5.4-low", "GPT-5.4 Low", 200000, 64000, false, ["text"]],
-  ["gpt-5.4-medium", "GPT-5.4", 200000, 64000, false, ["text"]],
-  ["gpt-5.4-medium-fast", "GPT-5.4 Fast", 200000, 64000, false, ["text"]],
-  ["gpt-5.4-xhigh", "GPT-5.4 Extra High", 200000, 64000, false, ["text"]],
-  ["gpt-5.4-xhigh-fast", "GPT-5.4 Extra High Fast", 200000, 64000, false, ["text"]],
-  ["grok-code-fast-1", "Grok Code Fast 1", 256000, 10000, true, ["text"]],
-  ["kimi-k2.5", "Kimi K2.5", 262144, 65536, true, ["text", "image"]],
-]);
+import { subscriptionModels } from "./subscription-models";
 
 const devinModels = subscriptionModels([
   ["claude-5-fable-high", "Claude Fable 5 High", 1000000, 64000, true, ["text", "image"]],
@@ -183,16 +119,12 @@ export const accountOAuthProviders = {
   },
   cursor: {
     name: "Cursor Subscription",
-    baseUrl: "https://api2.cursor.sh",
+    baseUrl: CURSOR_BASE_URL,
     api: "cursor-agent",
     authType: "oauth",
     oauthFlow: "device_code" as const,
     oauthConfig: {
-      specialFlow: "cursor" as const,
-      tokenUrl: "https://api2.cursor.sh/auth/exchange_user_api_key",
-      tokenAccessField: "accessToken" as const,
-      tokenRefreshField: "refreshToken" as const,
-      refreshMode: "cursor" as const,
+      refreshMode: "none" as const,
     },
     models: cursorModels,
   },
@@ -233,6 +165,7 @@ export const accountOAuthProviders = {
       deviceCodeUrl: KIMI_CODE_DEVICE_CODE_URL,
       tokenUrl: KIMI_CODE_TOKEN_URL,
       refreshMode: "standard" as const,
+      refreshSkewMs: 300_000,
       identityHeaders: "kimi-code" as const,
     },
     models: kimiCodeModels,

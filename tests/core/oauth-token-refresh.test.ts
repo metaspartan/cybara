@@ -196,7 +196,7 @@ describe("OAuth token refresh (openai-codex)", () => {
     expect(refreshed?.refresh_token).toBe("fresh-refresh");
   });
 
-  test("refreshes Cursor tokens with bearer authentication", async () => {
+  test("never refreshes Cursor tokens, because Cursor's sign-in has nothing to renew it with", async () => {
     const provider = providerManager.create({
       provider: "cursor",
       name: "Cursor OAuth Test",
@@ -205,20 +205,17 @@ describe("OAuth token refresh (openai-codex)", () => {
       expires_at: Date.now() - 1000,
     });
     createdProviderIds.push(provider.id);
-    let request: RequestInit | undefined;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(input)).toBe("https://api2.cursor.sh/auth/exchange_user_api_key");
-      request = init;
-      return Response.json({ accessToken: "fresh-token", refreshToken: "fresh-refresh" });
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json({ accessToken: "fresh-token" });
     }) as typeof fetch;
 
     const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
       providerManager.getWithCredentials(provider.id)
     );
-    expect(request?.headers).toMatchObject({ Authorization: "Bearer cursor-refresh" });
-    expect(request?.body).toBe("{}");
-    expect(refreshed?.access_token).toBe("fresh-token");
-    expect(refreshed?.refresh_token).toBe("fresh-refresh");
+    expect(calls).toBe(0);
+    expect(refreshed).toBeUndefined();
   });
 
   test("refreshes Grok OAuth without widening scope and retries one transient failure", async () => {
@@ -364,5 +361,55 @@ describe("OAuth token refresh (openai-codex)", () => {
     expect(headers.get("X-Msh-Device-Id")).toMatch(/^[0-9a-f-]{36}$/);
     expect(refreshed?.access_token).toBe("fresh-kimi-token");
     expect(refreshed?.refresh_token).toBe("fresh-kimi-refresh");
+  });
+
+  test("refreshes Kimi tokens that expire within the five minute window", async () => {
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Code Window Test",
+      access_token: "soon-expiring-kimi-token",
+      refresh_token: "kimi-window-refresh",
+      expires_at: Date.now() + 240_000,
+    });
+    createdProviderIds.push(provider.id);
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json({
+        access_token: "window-fresh-token",
+        refresh_token: "window-fresh-refresh",
+        expires_in: 3600,
+      });
+    }) as typeof fetch;
+
+    const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
+      providerManager.getWithCredentials(provider.id)
+    );
+
+    expect(calls).toBe(1);
+    expect(refreshed?.access_token).toBe("window-fresh-token");
+  });
+
+  test("leaves Kimi tokens alone when more than five minutes remain", async () => {
+    const provider = providerManager.create({
+      provider: "kimi-code-oauth",
+      name: "Kimi Code Fresh Test",
+      access_token: "healthy-kimi-token",
+      refresh_token: "kimi-healthy-refresh",
+      expires_at: Date.now() + 360_000,
+    });
+    createdProviderIds.push(provider.id);
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return Response.json({});
+    }) as typeof fetch;
+
+    const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
+      providerManager.getWithCredentials(provider.id)
+    );
+
+    expect(calls).toBe(0);
+    expect(refreshed).toBeUndefined();
   });
 });

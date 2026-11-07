@@ -26,8 +26,10 @@ function cleanPageText(page: string): string {
     .trim();
 }
 
-function metaString(info: Record<string, unknown> | undefined, key: string): string | undefined {
-  const value = info?.[key];
+type PdfMetaInfo = { Title?: string; Author?: string };
+
+function metaString(info: PdfMetaInfo | undefined, key: keyof PdfMetaInfo): string | undefined {
+  const value: unknown = info?.[key];
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed && !/^(untitled|unknown|none|n\/a|anonymous|\w+\.tmp|\w+\.pdf)$/i.test(trimmed)
@@ -61,9 +63,9 @@ export async function extractPdfText(
     .map((page, index) => (pages.length > 1 && page ? `[Page ${index + 1}]\n${page}` : page))
     .filter(Boolean)
     .join("\n\n");
-  let info: Record<string, unknown> | undefined;
+  let info: PdfMetaInfo | undefined;
   try {
-    info = (await getMeta(pdf)).info as Record<string, unknown> | undefined;
+    info = (await getMeta(pdf)).info;
   } catch {
     info = undefined;
   }
