@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Cybara Browser Bridge",
   "short_name": "Cybara",
-  "version": "1.0.2573",
+  "version": "1.0.2577",
   "description": "Lets your local Cybara agents work in the Chrome tabs you share, with your own signed-in sessions.",
   "minimum_chrome_version": "125",
   "permissions": [
