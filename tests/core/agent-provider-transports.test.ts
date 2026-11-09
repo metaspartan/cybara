@@ -3,9 +3,11 @@ import type { AgentMessage } from "../../src/core/agent";
 import type { Provider } from "../../src/core/database";
 import {
   callCursorAgentTransport,
+  callCursorTransport,
   callDevinAgentTransport,
   callGitLabDuoTransport,
 } from "../../src/core/llm/agent-provider-transports";
+import { callCursorSdkTransport, cursorSdkPrompt } from "../../src/core/llm/cursor-sdk-transport";
 
 const originalFetch = globalThis.fetch;
 
@@ -143,5 +145,164 @@ describe("native account-provider transports", () => {
         { fetch: originalFetch, wait: async () => {} }
       )
     ).rejects.toThrow("organization ID");
+  });
+
+  test("maps Cursor SDK prompt roles, tool output, and image attachments", () => {
+    const prompt = cursorSdkPrompt([
+      { role: "system", content: "Follow the project rules" },
+      { role: "tool", content: "Ran tests: 10 passed" },
+      {
+        role: "user",
+        content: "What is in this screenshot?",
+        images: [{ data: "aGVsbG8=", mimeType: "image/jpeg" }],
+      },
+      { role: "assistant", content: "A chart" },
+    ]);
+
+    expect(prompt).toEqual([
+      { role: "system", content: "Follow the project rules" },
+      { role: "user", content: [{ type: "text", text: "TOOL\nRan tests: 10 passed" }] },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "What is in this screenshot?" },
+          { type: "file", data: "aGVsbG8=", mediaType: "image/jpeg" },
+        ],
+      },
+      { role: "assistant", content: [{ type: "text", text: "A chart" }] },
+    ]);
+  });
+
+  test("runs Cursor through the SDK transport without spawning the CLI", async () => {
+    let spawned = false;
+    let capturedPrompt: unknown[] = [];
+    let capturedModel = "";
+    let capturedCredential: Record<string, string | undefined> = {};
+    const sdk = ((options: Record<string, unknown>) => {
+      capturedCredential = {
+        accessToken: options.accessToken as string | undefined,
+        apiKey: options.apiKey as string | undefined,
+      };
+      return {
+        languageModel: (modelId: string) => {
+          capturedModel = modelId;
+          return {
+            doGenerate: async (callOptions: { prompt: unknown[] }) => {
+              capturedPrompt = callOptions.prompt;
+              return {
+                content: [
+                  { type: "text", text: "SDK repository inspection" },
+                  { type: "reasoning", text: "thinking" },
+                ],
+                finishReason: "stop",
+              };
+            },
+          };
+        },
+      };
+    }) as unknown as Parameters<typeof callCursorSdkTransport>[3]["sdk"];
+
+    const result = await callCursorSdkTransport(
+      provider({ access_token: "cursor-oauth-token" }),
+      "grok-4.7",
+      messages,
+      { sdk }
+    );
+
+    expect(result.content).toBe("SDK repository inspection");
+    expect(capturedCredential.accessToken).toBe("cursor-oauth-token");
+    expect(capturedCredential.apiKey).toBeUndefined();
+    expect(capturedModel).toBe("grok-4.7");
+    expect(capturedPrompt).toEqual([
+      { role: "system", content: "Follow the project rules" },
+      { role: "user", content: [{ type: "text", text: "Inspect the repository" }] },
+    ]);
+    expect(spawned).toBe(false);
+  });
+
+  test("uses an API key credential through the SDK when no access token exists", async () => {
+    let capturedCredential: Record<string, string | undefined> = {};
+    const sdk = ((options: Record<string, unknown>) => {
+      capturedCredential = {
+        accessToken: options.accessToken as string | undefined,
+        apiKey: options.apiKey as string | undefined,
+      };
+      return {
+        languageModel: () => ({
+          doGenerate: async () => ({
+            content: [{ type: "text", text: "ok" }],
+            finishReason: "stop",
+          }),
+        }),
+      };
+    }) as unknown as Parameters<typeof callCursorSdkTransport>[3]["sdk"];
+
+    const result = await callCursorSdkTransport(
+      provider({ api_key: "crsr_key" }),
+      "default",
+      messages,
+      { sdk }
+    );
+    expect(result.content).toBe("ok");
+    expect(capturedCredential.apiKey).toBe("crsr_key");
+    expect(capturedCredential.accessToken).toBeUndefined();
+  });
+
+  test("raises Cursor SDK errors instead of silently falling back to the CLI", async () => {
+    let spawned = false;
+    await expect(
+      callCursorTransport(
+        provider({ access_token: "cursor-oauth-token" }),
+        "grok-4.7",
+        messages,
+        undefined,
+        {
+          commandAvailable: () => true,
+          run: async () => {
+            spawned = true;
+            return { stdout: "", stderr: "", exitCode: 0 };
+          },
+          loadSdk: async () => ({
+            createCursor: () => {
+              throw new Error("Cursor session expired");
+            },
+          }),
+        }
+      )
+    ).rejects.toThrow("Cursor session expired");
+    expect(spawned).toBe(false);
+  });
+
+  test("prefers the SDK transport even when the CLI is installed", async () => {
+    let spawned = false;
+    const result = await callCursorTransport(
+      provider({ access_token: "cursor-oauth-token" }),
+      "grok-4.7",
+      messages,
+      undefined,
+      {
+        commandAvailable: () => true,
+        run: async () => {
+          spawned = true;
+          return { stdout: "", stderr: "", exitCode: 0 };
+        },
+        loadSdk: async () =>
+          ({
+            createCursor: () => ({
+              languageModel: () => ({
+                doGenerate: async () => ({
+                  content: [{ type: "text", text: "SDK preferred" }],
+                  finishReason: "stop",
+                }),
+              }),
+            }),
+          }) as unknown as Awaited<
+            ReturnType<NonNullable<Parameters<typeof callCursorTransport>[4]["loadSdk"]>>
+          >,
+      }
+    );
+
+    expect(result.content).toBe("SDK preferred");
+    expect(spawned).toBe(false);
   });
 });

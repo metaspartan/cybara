@@ -70,6 +70,7 @@
     "native:macos:package": "bun run scripts/package-native-macos.ts"
   },
   "dependencies": {
+    "@ai-sdk/provider": "3.0.15",
     "@anthropic-ai/sdk": "1.5.0",
     "@aws-sdk/client-bedrock-runtime": "3.1162.0",
     "@huggingface/transformers": "4.3.2",
@@ -90,6 +91,7 @@
     "bitcoinjs-lib": "7.0.5",
     "bonjour-service": "1.4.4",
     "chromium-bidi": "159.0.8144-0",
+    "cursor-opencode-provider": "0.8.6",
     "discord.js": "14.28.1",
     "e2b": "2.63.0",
     "ecpair": "3.0.2",

@@ -4,6 +4,8 @@ import { commandExists } from "../platform";
 import { readDevinProviderSettings } from "../provider-settings";
 import { readSubprocessStreamAsText } from "../subprocess-output";
 import type { ToolContext } from "../tools";
+import { callCursorSdkTransport, type CursorSdkFactory } from "./cursor-sdk-transport";
+import { createCursor } from "cursor-opencode-provider";
 
 export interface AgentProviderTransportResult {
   content: string;
@@ -110,6 +112,34 @@ export async function callCursorAgentTransport(
   const content = result.stdout.trim();
   if (!content) throw new Error("Cursor CLI returned an empty response");
   return { content };
+}
+
+type CursorSdkLoader = () => Promise<CursorSdkModule>;
+export interface CursorSdkModule {
+  createCursor: CursorSdkFactory;
+}
+
+export interface CursorTransportSelectorDependencies extends CursorTransportDependencies {
+  loadSdk?: CursorSdkLoader;
+}
+
+const defaultCursorSdkLoader: CursorSdkLoader = async () => ({ createCursor });
+
+export async function callCursorTransport(
+  provider: Provider,
+  model: string,
+  messages: AgentMessage[],
+  context?: ToolContext,
+  dependencies: CursorTransportSelectorDependencies = {
+    ...defaultCursorDependencies,
+    loadSdk: defaultCursorSdkLoader,
+  }
+): Promise<AgentProviderTransportResult> {
+  const sdk = await (dependencies.loadSdk ?? defaultCursorSdkLoader)();
+  return callCursorSdkTransport(provider, model, messages, {
+    sdk: sdk.createCursor,
+    abortSignal: context?.abortSignal,
+  });
 }
 
 export async function callGitLabDuoTransport(

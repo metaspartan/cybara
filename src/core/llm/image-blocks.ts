@@ -22,7 +22,7 @@ export function parseDataUri(value: string): { data: string; mimeType?: string }
   return { data: value };
 }
 
-function resolveImage(image: AgentImage): { data?: string; url?: string; mimeType: string } {
+export function resolveImage(image: AgentImage): { data?: string; url?: string; mimeType: string } {
   let data = image.data;
   let mimeType = image.mimeType;
   if (!data && image.url && image.url.startsWith("data:")) {

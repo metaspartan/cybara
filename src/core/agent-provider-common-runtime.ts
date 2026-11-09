@@ -26,7 +26,7 @@ import { config } from "./config";
 import type { Agent, Provider, ToolDefinition } from "./database";
 import { classifyApiError, isBlankUpstreamError } from "./error-classifier";
 import {
-  callCursorAgentTransport,
+  callCursorTransport,
   callDevinAgentTransport,
   callGitLabDuoTransport,
 } from "./llm/agent-provider-transports";
@@ -626,7 +626,7 @@ export abstract class AgentProviderCommonRuntime {
       resolveModelContextWindowTokens(providerConfig, providerInfo.id, modelId);
 
     if (apiFamily === "cursor-agent") {
-      return callCursorAgentTransport(providerInfo as Provider, modelId, messages, toolContext);
+      return callCursorTransport(providerInfo as Provider, modelId, messages, toolContext);
     }
 
     if (apiFamily === "devin-agent") {
