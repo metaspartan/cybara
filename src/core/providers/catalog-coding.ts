@@ -366,6 +366,14 @@ export const codingProviderCatalog = {
         input: ["text", "image", "pdf"],
       },
       {
+        id: "anthropic/claude-fable-5.2",
+        name: "Claude Fable 5.2",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image", "pdf"],
+      },
+      {
         id: "google/gemini-3.7-flash",
         name: "Gemini 3.7 Flash",
         context: 1048576,

@@ -62,6 +62,7 @@ const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["anthropic", "claude-mythos-5-1", 10.0, 50.0, 0.25, 12.5],
   ["anthropic", "claude-sonnet-5", 2.0, 10.0, 0.2, 2.5],
   ["anthropic", "claude-fable-5-1", 10.0, 50.0, 0.25, 12.5],
+  ["anthropic", "claude-fable-5-2", 8.0, 40.0, 0.2, 10.0],
   ["anthropic", "claude-fable-5", 10.0, 50.0, 1.0, 12.5],
   ["anthropic", "claude-mythos-5", 10.0, 50.0, 1.0, 12.5],
 

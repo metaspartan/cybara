@@ -452,6 +452,14 @@ export const commandcodeProvider = {
       input: ["text", "image", "pdf"],
     },
     {
+      id: "anthropic/claude-fable-5.2",
+      name: "Claude Fable 5.2",
+      context: 1000000,
+      maxTokens: 128000,
+      reasoning: true,
+      input: ["text", "image", "pdf"],
+    },
+    {
       id: "tencent/hy4-preview",
       name: "HunYuan4 Preview",
       context: 1048576,
