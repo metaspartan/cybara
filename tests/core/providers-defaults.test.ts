@@ -488,6 +488,7 @@ describe("Provider model defaults and API-family parity", () => {
 
   test("keeps Qwen Token Plan regions and supported models distinct", () => {
     const expectedIds = [
+      "qwen4-max-preview",
       "qwen3.8-flash",
       "qwen3.8-max",
       "qwen3.7-max",
@@ -506,12 +507,66 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers["qwen-token-plan-cn"].models.map((model) => model.id)).toEqual(expectedIds);
     expect(providers["qwen-token-plan"].authType).toBe("api_key");
     expect(providers["qwen-token-plan"].models[0]).toMatchObject({
+      id: "qwen4-max-preview",
+      context: 1000000,
+      maxTokens: 65536,
+      reasoning: true,
+      input: ["text", "image"],
+    });
+    expect(providers["qwen-token-plan"].models[1]).toMatchObject({
       id: "qwen3.8-flash",
       context: 1000000,
       maxTokens: 131072,
       reasoning: true,
       input: ["text", "image", "video"],
     });
+  });
+
+  test("adds QwenCloud token plan and pay-as-you-go providers with documented endpoints", () => {
+    expect(providers["qwencloud-token-plan"].baseUrl).toBe(
+      "https://token-plan.maas.qwencloudapi.com/compatible-mode/v1"
+    );
+    expect(providers["qwencloud-token-plan"].authType).toBe("api_key");
+    expect(providers["qwencloud-payg"].baseUrl).toBe(
+      "https://maas.qwencloudapi.com/compatible-mode/v1"
+    );
+    expect(providers["qwencloud-payg"].authType).toBe("api_key");
+
+    const tokenPlanIds = providers["qwencloud-token-plan"].models.map((model) => model.id);
+    expect(tokenPlanIds).toEqual([
+      "qwen4-max-preview",
+      "qwen3.8-flash",
+      "qwen3.7-max",
+      "qwen3.7-plus",
+      "qwen3.6-plus",
+      "qwen3.6-flash",
+      "glm-5.3",
+      "glm-5.2",
+      "deepseek-v4-pro",
+      "deepseek-v4.1-flash",
+      "auto",
+    ]);
+
+    const paygIds = providers["qwencloud-payg"].models.map((model) => model.id);
+    expect(paygIds).toEqual([
+      "qwen3.7-plus",
+      "qwen3.8-flash",
+      "qwen3.8-omni-flash",
+      "glm-5.3",
+      "kimi-k3",
+      "deepseek-v4-pro-0813",
+      "deepseek-v4.1-flash-1017",
+    ]);
+    expect(paygIds).not.toContain("qwen4-max-preview");
+    expect(tokenPlanIds).not.toContain("qwen3.8-omni-flash");
+  });
+
+  test("resolves the qwencloud alias to the QwenCloud pay-as-you-go provider", () => {
+    expect(resolveProviderType("qwencloud")).toBe("qwencloud-payg");
+    expect(resolveProviderType("qwencloud-payg")).toBe("qwencloud-payg");
+    expect(resolveProviderType("qwencloud-token-plan")).toBe("qwencloud-token-plan");
+    expect(getDefaultModel("qwencloud-payg")).toBe("qwen3.7-plus");
+    expect(getDefaultModel("qwencloud-token-plan")).toBe("qwen3.7-plus");
   });
 
   test("advertises DeepSeek V4 Flash Vision with native image input", () => {
