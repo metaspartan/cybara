@@ -70,6 +70,7 @@ import {
 } from "./wallet-types";
 import { assertPublicHttpUrl, assertResolvedPublicHttpUrl } from "./wallet-url-guard";
 import { buildPumpSwapTransaction } from "./pump-swap";
+import { verifySwapBeforeSign } from "./solana-presign";
 
 export abstract class WalletOperations extends WalletBase {
   async send(input: WalletSendInput): Promise<WalletSendResult> {
@@ -833,6 +834,17 @@ export abstract class WalletOperations extends WalletBase {
     const versionedTx = VersionedTransaction.deserialize(
       Buffer.from(swapPayload.swapTransaction, "base64")
     );
+    const presign = await verifySwapBeforeSign({
+      connection,
+      transaction: versionedTx,
+      owner: from,
+      expected: { inputMint, outputMint, minAmountOutRaw: minAmountOutRaw.toString() },
+    });
+    if (!presign.ok) {
+      throw new Error(
+        `Validation error: Pre-sign check blocked the Jupiter swap: ${presign.violations.join("; ")}`
+      );
+    }
     versionedTx.sign([signer]);
 
     const signature = await connection.sendRawTransaction(versionedTx.serialize(), {
@@ -930,6 +942,17 @@ export abstract class WalletOperations extends WalletBase {
     const versionedTx = VersionedTransaction.deserialize(
       Buffer.from(pumpSwap.transaction, "base64")
     );
+    const pumpPresign = await verifySwapBeforeSign({
+      connection,
+      transaction: versionedTx,
+      owner: from,
+      expected: { inputMint, outputMint, minAmountOutRaw: minAmountOutRaw.toString() },
+    });
+    if (!pumpPresign.ok) {
+      throw new Error(
+        `Validation error: Pre-sign check blocked the Pump swap: ${pumpPresign.violations.join("; ")}`
+      );
+    }
     versionedTx.sign([signer]);
     const signature = await connection.sendRawTransaction(versionedTx.serialize(), {
       skipPreflight: input.skipPreflight === true,
