@@ -820,6 +820,14 @@ export const integrationProviderCatalog = {
         input: ["text", "image", "pdf"],
       },
       {
+        id: "claude-fable-5-2",
+        name: "Claude Fable 5.2",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image", "pdf"],
+      },
+      {
         id: "claude-opus-5@default",
         name: "Claude Opus 5",
         context: 1000000,

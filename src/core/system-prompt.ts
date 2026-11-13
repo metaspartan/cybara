@@ -1034,6 +1034,10 @@ export function resolveModelAlias(modelId: string, provider?: string): string {
     "qwen3.8-next-flash": "Qwen/Qwen3.8-Flash-Next",
     "qwen3.8-flash-next": "Qwen/Qwen3.8-Flash-Next",
 
+    "qwen4-max": "qwen4-max-preview",
+    "qwen-token-plan/qwen4-max": "qwen4-max-preview",
+    "qwen-token-plan-cn/qwen4-max": "qwen4-max-preview",
+
     default: "MiniMax-M2.5",
     fast: "MiniMax-M2.5-highspeed",
     smart: "claude-opus-5",

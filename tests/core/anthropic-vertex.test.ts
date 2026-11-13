@@ -60,6 +60,7 @@ describe("vertex provider entries", () => {
       "claude-sonnet-5-5",
       "claude-haiku-5-5",
       "claude-fable-5-1",
+      "claude-fable-5-2",
       "claude-opus-5@default",
       "claude-sonnet-5@default",
     ]);

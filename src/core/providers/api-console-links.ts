@@ -40,6 +40,8 @@ const providerApiConsoleUrls: Readonly<Record<string, string>> = {
   "alibaba-coding-plan": "https://bailian.console.aliyun.com/",
   "qwen-token-plan": "https://bailian.console.aliyun.com/",
   "qwen-token-plan-cn": "https://bailian.console.aliyun.com/",
+  "qwencloud-token-plan": "https://home.qwencloud.com/analytics/token-plan",
+  "qwencloud-payg": "https://home.qwencloud.com/analytics/api-keys",
   cerebras: "https://cloud.cerebras.ai/platform/",
   cohere: "https://dashboard.cohere.com/api-keys",
   mistral: "https://console.mistral.ai/api-keys/",

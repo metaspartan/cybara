@@ -523,6 +523,14 @@ export const foundationProviderCatalog = {
         input: ["text", "image", "pdf"],
       },
       {
+        id: "claude-fable-5-2",
+        name: "Claude Fable 5.2",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image", "pdf"],
+      },
+      {
         id: "claude-opus-4-8",
         name: "Claude Opus 4.8",
         context: 1000000,
@@ -613,6 +621,14 @@ export const foundationProviderCatalog = {
       {
         id: "gemini-4-argon",
         name: "Gemini 4 Argon",
+        context: 1048576,
+        maxTokens: 65536,
+        reasoning: true,
+        input: ["text", "image", "audio", "video"],
+      },
+      {
+        id: "gemini-4-carbon",
+        name: "Gemini 4 Carbon",
         context: 1048576,
         maxTokens: 65536,
         reasoning: true,

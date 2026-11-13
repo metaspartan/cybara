@@ -1,5 +1,9 @@
 import { getAppVersion } from "../build-info";
-import { QWEN_TOKEN_PLAN_MODELS } from "./catalog-qwen";
+import {
+  QWEN_TOKEN_PLAN_MODELS,
+  QWENCLOUD_TOKEN_PLAN_MODELS,
+  QWENCLOUD_PAYG_MODELS,
+} from "./catalog-qwen";
 import { commandcodeProvider } from "./catalog-commandcode";
 import { gmiProvider } from "./catalog-gmi";
 
@@ -864,6 +868,20 @@ export const cloudProviderCatalog = {
     api: "openai-completions",
     authType: "api_key",
     models: QWEN_TOKEN_PLAN_MODELS,
+  },
+  "qwencloud-token-plan": {
+    name: "QwenCloud Token Plan",
+    baseUrl: "https://token-plan.maas.qwencloudapi.com/compatible-mode/v1",
+    api: "openai-completions",
+    authType: "api_key",
+    models: QWENCLOUD_TOKEN_PLAN_MODELS,
+  },
+  "qwencloud-payg": {
+    name: "QwenCloud",
+    baseUrl: "https://maas.qwencloudapi.com/compatible-mode/v1",
+    api: "openai-completions",
+    authType: "api_key",
+    models: QWENCLOUD_PAYG_MODELS,
   },
   cerebras: {
     name: "Cerebras",
