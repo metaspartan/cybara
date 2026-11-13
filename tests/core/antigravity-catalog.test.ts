@@ -84,3 +84,18 @@ describe("Gemini 4 Argon catalog coverage", () => {
     }
   });
 });
+
+describe("Gemini 4 Hydrogen catalog coverage", () => {
+  test("is offered by the Google AI and Antigravity providers with the published limits", () => {
+    for (const provider of ["google", "antigravity"] as const) {
+      const model = (providers[provider].models as readonly CatalogModel[]).find(
+        (entry) => entry.id === "gemini-4-hydrogen"
+      );
+      expect(model, provider).toBeDefined();
+      expect(model?.context).toBe(1_048_576);
+      expect(model?.maxTokens).toBe(65_536);
+      expect(model?.reasoning).toBe(true);
+      expect(model?.input).toEqual(expect.arrayContaining(["text", "image"]));
+    }
+  });
+});
