@@ -38,6 +38,8 @@ import {
 import { agentManager, getBuiltinTools } from "../core/agent";
 import { getResidentChatSession } from "./chat-runtime-state";
 import { buildSessionUsageFields, sessionAgentContextWindowTokens } from "./session-usage-fields";
+import { getCircuitBreakersStatus } from "./circuit-breaker-status";
+import { resolveSessionAgentSelectionView } from "./session-agent-selection";
 import { resolveTurnContextWindow } from "./chat-turn-context";
 import { sessionGoalRoutes } from "./session-goal-routes";
 import { forkSession } from "../core/agent-eval";
@@ -140,7 +142,6 @@ import {
 } from "../core/tools/handlers/channel";
 import { executeTool, hasTool } from "../core/tools/handlers/index";
 import {
-  getCircuitState,
   getDangerousToolNames,
   getToolSchemasForLLM,
   isToolEnabledForAgent,
@@ -1317,8 +1318,10 @@ const routes: Record<string, RouteHandler> = {
       timestamp: normalizeTimestamp(m.timestamp),
     }));
 
+    const agentSelection = resolveSessionAgentSelectionView(session);
+
     const detailModelMetadata = sessionModelMetadata(
-      session.agentId,
+      agentSelection.agentId,
       sessionModelMetadataSnapshot(
         (session as { modelMetadata?: SessionModelMetadata | null }).modelMetadata
       ) || latestSessionModelMetadata(sanitizedMessages)
@@ -1326,8 +1329,9 @@ const routes: Record<string, RouteHandler> = {
 
     return {
       id: session.id,
-      agent_id: session.agentId,
-      use_model_router: "useModelRouter" in session && session.useModelRouter === true,
+      agent_id: agentSelection.agentId,
+      use_model_router: agentSelection.useModelRouter,
+      agent_switch_pending: agentSelection.agentSwitchPending,
       ...detailModelMetadata,
       title:
         "title" in session && typeof session.title === "string" && session.title.trim()
@@ -1786,23 +1790,6 @@ const routes: Record<string, RouteHandler> = {
 cacheMetricsRoutes(routes);
 prewarmMetricsRoutes(routes);
 const routeMatcher = createRouteMatcher(Object.keys(routes));
-
-function getCircuitBreakersStatus(): Record<string, { state: string; failureCount?: number }> {
-  const breakers: Record<string, { state: string; failureCount?: number }> = {};
-
-  const providers = providerManager.list();
-  for (const provider of providers) {
-    const state = getCircuitState(`llm:${provider.id}`);
-    if (state) {
-      breakers[`llm:${provider.id}`] = {
-        state: state.state,
-        failureCount: state.failureCount,
-      };
-    }
-  }
-
-  return breakers;
-}
 
 export async function handleRequest(req: {
   method: string;

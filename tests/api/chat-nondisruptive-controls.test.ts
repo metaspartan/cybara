@@ -126,7 +126,7 @@ for (const children of [0, 1, 2])
         return value;
       });
       await Bun.sleep(5);
-      expect(selected).toBe(false);
+      expect(selected).toBe(true);
       expect(parentSignal?.aborted).toBe(false);
       expect(childSignals.every((signal) => !signal.aborted)).toBe(true);
       parentRelease.resolve();

@@ -284,12 +284,10 @@ export async function updateSessionAgent(
   agentId?: string,
   useModelRouter = false
 ): Promise<ChatSessionAgentUpdate> {
-  return chatTurnMutex.run(sessionId, () =>
-    updateSessionAgentAtTurnBoundary(sessionId, agentId, useModelRouter)
-  );
+  return updateSessionAgentSelection(sessionId, agentId, useModelRouter);
 }
 
-async function updateSessionAgentAtTurnBoundary(
+async function updateSessionAgentSelection(
   sessionId: string,
   agentId?: string,
   useModelRouter = false
@@ -313,15 +311,29 @@ async function updateSessionAgentAtTurnBoundary(
   }
 
   const previousAgentId = session.agentId;
-  if (!useModelRouter) {
-    await applyActiveAgentToSession(session, agent, undefined, {
-      useTools: sessionPromptUsesTools(session.messages),
-      pendingTransition: true,
-    });
+  const previousPendingAgentId = session.pendingAgentId;
+  const turnActive = chatTurnMutex.isLocked(sessionId);
+  if (turnActive) {
+    session.pendingAgentId = useModelRouter ? undefined : agent.id;
+    session.pendingUseModelRouter = useModelRouter;
+  } else {
+    session.pendingAgentId = undefined;
+    session.pendingUseModelRouter = undefined;
+    if (!useModelRouter) {
+      await applyActiveAgentToSession(session, agent, undefined, {
+        useTools: sessionPromptUsesTools(session.messages),
+        pendingTransition: true,
+      });
+    }
+    session.useModelRouter = useModelRouter;
   }
-  session.useModelRouter = useModelRouter;
   for (const item of pendingChatQueues.get(sessionId) ?? []) {
-    if (!item.request.agentId || item.request.agentId === previousAgentId) {
+    const inheritedAgentId = item.request.agentId;
+    const inheritsSelection =
+      !inheritedAgentId ||
+      inheritedAgentId === previousAgentId ||
+      inheritedAgentId === previousPendingAgentId;
+    if (inheritsSelection) {
       item.request = {
         ...item.request,
         agentId: useModelRouter ? undefined : agent.id,
@@ -331,19 +343,20 @@ async function updateSessionAgentAtTurnBoundary(
       persistPendingChatItem(item);
     }
   }
+  const persistedAgentId = turnActive ? agent.id : session.agentId;
   const persistedRouting = await setPersistedSessionRouting(
     session.id,
-    session.agentId,
-    useModelRouter
+    persistedAgentId,
+    turnActive ? useModelRouter : session.useModelRouter
   );
   if (!persistedRouting) {
     session.persisted = await persistSession(
       session.id,
-      session.agentId,
+      persistedAgentId,
       session.messages,
       session.workspaceDir,
       session.title,
-      session.useModelRouter
+      turnActive ? useModelRouter : session.useModelRouter
     );
   }
   persistActiveSessionContext(session);
@@ -352,8 +365,8 @@ async function updateSessionAgentAtTurnBoundary(
   const { contextWindowTokens } = resolveTurnContextWindow(agent, agent.model);
   upsertPersistedSessionIndex({
     id: session.id,
-    agentId: session.agentId,
-    useModelRouter: session.useModelRouter,
+    agentId: persistedAgentId,
+    useModelRouter: turnActive ? useModelRouter : session.useModelRouter,
     title: session.title,
     messageCount: countVisibleSessionMessages(session.messages),
     createdAt: session.createdAt,
@@ -368,7 +381,8 @@ async function updateSessionAgentAtTurnBoundary(
     sessionId: session.id,
     agentId: agent.id,
     agentName: agent.name,
-    useModelRouter: session.useModelRouter,
+    useModelRouter: turnActive ? useModelRouter : session.useModelRouter,
+    appliesNextTurn: turnActive,
     provider: modelMetadata?.provider,
     providerId: modelMetadata?.provider_id,
     providerName: modelMetadata?.provider_name,

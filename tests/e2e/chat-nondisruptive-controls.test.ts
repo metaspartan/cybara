@@ -174,7 +174,12 @@ test("rendered steering and agent selection leave an active chat and independent
     expect(await page.getByRole("button", { name: /Stop/ }).first().isVisible()).toBe(true);
     const selector = page.getByLabel("Chat agent", { exact: true });
     await selector.selectOption(String(second.id));
-    expect(await selector.isDisabled()).toBe(true);
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if ((await selector.inputValue()) === String(second.id)) break;
+      await Bun.sleep(25);
+    }
+    expect(await selector.inputValue()).toBe(String(second.id));
+    expect(await selector.isDisabled()).toBe(false);
     expect(aborted).toBe(0);
     expect(models).toEqual(["ui-agent-a"]);
     expect(await page.getByRole("button", { name: /Stop/ }).first().isVisible()).toBe(true);

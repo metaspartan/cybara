@@ -2,7 +2,7 @@ import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
 import { expandPromptCommand } from "../../../core/prompt-commands";
-import { resolveAgentIdentifier } from "../../commands/agent-resolution";
+import { handleAgentCommand } from "./agent-command";
 import {
   approvalDecisionForInput,
   approvalsFromResponse,
@@ -608,54 +608,16 @@ export function InteractiveChatTUI({
         return true;
       }
       if (normalizedCommand === "agent" || normalizedCommand === "transfer") {
-        if (!argument) {
-          setNotice("Usage: /agent <id|name|default|router>");
-          return true;
-        }
-        const availableAgents = agents.length
-          ? agents
-          : (await loadControlPlane()).agents;
-        if (argument === "router") {
-          setUseModelRouter(true);
-          setNotice("Model router selected for future sends.");
-          return true;
-        }
-        if (argument === "default") {
-          setUseModelRouter(false);
-          setSelectedAgentId("");
-          setNotice("Gateway default selected for new sessions.");
-          return true;
-        }
-        const agentId = resolveAgentIdentifier(argument, availableAgents);
-        if (!agentId) {
-          setNotice("Agent not found. Use /agents to list available agents.");
-          return true;
-        }
-        setUseModelRouter(false);
-        setSelectedAgentId(agentId);
-        if (localSessionId) {
-          const response = await fetchAPI<unknown>(
-            `/api/sessions/${encodeURIComponent(localSessionId)}/agent`,
-            {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ agentId }),
-            },
-          );
-          if (isRecord(response) && response.success === false) {
-            setNotice(
-              typeof response.error === "string"
-                ? response.error
-                : "Failed to update session agent.",
-            );
-            return true;
-          }
-        }
-        const nextAgent = availableAgents.find((agent) => agent.id === agentId);
-        setNotice(
-          `Agent selected: ${nextAgent ? agentLine(nextAgent) : agentId}`,
-        );
-        return true;
+        return handleAgentCommand({
+          argument,
+          agents,
+          localSessionId,
+          loadControlPlane,
+          fetchAPI,
+          setUseModelRouter,
+          setSelectedAgentId,
+          setNotice,
+        });
       }
       if (normalizedCommand === "model") {
         const value = argument.trim();

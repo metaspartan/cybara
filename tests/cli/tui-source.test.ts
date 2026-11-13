@@ -38,6 +38,7 @@ const cliTuiInteractiveChatSource = [
   join(root, "src", "cli", "tui", "interactive-chat-data.ts"),
   join(root, "src", "cli", "tui", "components", "interactive-chat-layout.tsx"),
   join(root, "src", "cli", "tui", "components", "interactive-chat-view.tsx"),
+  join(root, "src", "cli", "tui", "components", "agent-command.ts"),
 ]
   .map((file) => readNormalizedSource(file))
   .join("\n");
