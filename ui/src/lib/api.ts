@@ -1453,6 +1453,7 @@ export const chatApi = {
       model?: string;
       contextUsage?: SessionContextUsage;
       tokenUsage?: SessionTokenUsage;
+      appliesNextTurn?: boolean;
       error?: string;
     }>("/sessions/" + id + "/agent", {
       method: "PUT",

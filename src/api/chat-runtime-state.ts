@@ -38,6 +38,8 @@ export interface InMemoryChatSession {
   id: string;
   agentId: string;
   useModelRouter: boolean;
+  pendingAgentId?: string;
+  pendingUseModelRouter?: boolean;
   title: string | null;
   messages: ChatMessage[];
   createdAt: string;
@@ -66,6 +68,7 @@ export interface ChatSessionAgentUpdate {
   model?: string;
   contextUsage: SessionContextUsage;
   tokenUsage: SessionTokenUsage;
+  appliesNextTurn?: boolean;
 }
 
 interface SessionLastMessagePreview {
@@ -100,6 +103,27 @@ export const persistedSessionIndex = new Map<string, PersistedSessionIndexEntry>
 export const chatTurnMutex = new KeyedMutex();
 setSessionStatusLivenessResolver((sessionId) => chatTurnMutex.isLocked(sessionId));
 export const MAX_PENDING_CHAT_MESSAGES_PER_SESSION = 20;
+
+export interface SessionAgentSelection {
+  agentId?: string;
+  useModelRouter: boolean;
+}
+
+export function pendingSessionSelection(
+  session: InMemoryChatSession
+): SessionAgentSelection | undefined {
+  if (session.pendingAgentId === undefined && session.pendingUseModelRouter === undefined) {
+    return undefined;
+  }
+  const useModelRouter =
+    session.pendingUseModelRouter === undefined
+      ? session.useModelRouter === true
+      : session.pendingUseModelRouter;
+  return {
+    agentId: useModelRouter ? undefined : (session.pendingAgentId ?? session.agentId),
+    useModelRouter,
+  };
+}
 
 export interface PendingChatItem {
   id: string;

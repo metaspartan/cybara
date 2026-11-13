@@ -36,6 +36,7 @@ import {
   resolveSessionModelMetadata,
   type SessionModelMetadata,
   setPersistedSessionAgent,
+  setPersistedSessionRouting,
   summarizeSessionTokenUsage,
   upsertPersistedSessionMessage,
 } from "../core/session-context";
@@ -147,6 +148,7 @@ import {
   pendingChatDrainScheduled,
   pendingChatDrainTimers,
   pendingChatQueues,
+  pendingSessionSelection,
   persistActiveSessionContext,
   persistChatSessionSnapshot,
   rejectPendingChatCompletion,
@@ -401,12 +403,25 @@ export function enqueuePendingChatMessage(
     typeof request.clientPendingId === "string" && request.clientPendingId.trim().length > 0
       ? request.clientPendingId.trim()
       : undefined;
+  const session = getResidentChatSession(sessionId);
+  const pendingSelection = session ? pendingSessionSelection(session) : undefined;
+  const inheritsPendingSelection =
+    pendingSelection !== undefined &&
+    session !== undefined &&
+    (!request.agentId || request.agentId === session.agentId);
+  const queuedRequest: ChatRequest = inheritsPendingSelection
+    ? {
+        ...request,
+        agentId: pendingSelection.agentId,
+        useModelRouter: pendingSelection.useModelRouter,
+      }
+    : request;
   const item: PendingChatItem = {
     id: `pending_${crypto.randomUUID()}`,
     sessionId,
     clientPendingId,
     request: {
-      ...request,
+      ...queuedRequest,
       sessionId,
       queueMode: "queue",
     },
@@ -760,6 +775,7 @@ export function runChatTurnWithQueueDrain(
         ? handleRoomChatTurn(request, effectiveSessionId)
         : handleChatTurn(request, effectiveSessionId, goalCommand, goalCommandSideEffectsApplied));
     } finally {
+      await persistPendingSessionAgentRouting(effectiveSessionId);
       endComputerUseFocus(effectiveSessionId);
       finishSessionPlanTurn(effectiveSessionId, "paused");
       await releaseSessionMobileSimulators(effectiveSessionId);
@@ -819,6 +835,19 @@ export function applyGoalCommandSideEffects(
   ) {
     kickOffGoalLoop(sessionId, goal);
   }
+}
+
+async function persistPendingSessionAgentRouting(sessionId: string): Promise<void> {
+  const session = getResidentChatSession(sessionId);
+  if (!session) return;
+  const pendingAgentId = session.pendingAgentId;
+  const pendingUseModelRouter = session.pendingUseModelRouter;
+  if (pendingAgentId === undefined && pendingUseModelRouter === undefined) return;
+  await setPersistedSessionRouting(
+    sessionId,
+    pendingAgentId ?? session.agentId,
+    pendingUseModelRouter ?? session.useModelRouter === true
+  );
 }
 
 export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
@@ -1107,6 +1136,31 @@ async function handleChatTurn(
       agentPromptOptions
     );
     await setPersistedSessionAgent(session.id, requestedAgent.id);
+  }
+
+  const pendingAgentId = session.pendingAgentId;
+  const pendingUseModelRouter = session.pendingUseModelRouter;
+  if (pendingAgentId !== undefined || pendingUseModelRouter !== undefined) {
+    session.pendingAgentId = undefined;
+    session.pendingUseModelRouter = undefined;
+    const pendingTarget = pendingUseModelRouter
+      ? agentManager.get(pendingAgentId ?? session.agentId)
+      : pendingAgentId
+        ? agentManager.get(pendingAgentId)
+        : undefined;
+    if (pendingTarget && pendingTarget.id !== session.agentId && !isBotSessionId(session.id)) {
+      await applyActiveAgentToSession(
+        session,
+        pendingTarget,
+        [...session.messages, { role: "user", content: message }],
+        agentPromptOptions
+      );
+      await setPersistedSessionAgent(session.id, pendingTarget.id);
+    }
+    if (pendingUseModelRouter !== undefined) {
+      session.useModelRouter = pendingUseModelRouter;
+      useModelRouter = pendingUseModelRouter;
+    }
   }
 
   let agent = agentManager.get(session.agentId);
@@ -1811,7 +1865,7 @@ async function handleChatTurn(
     : undefined;
   const response: ChatResponse = {
     sessionId: session.id,
-    session_agent_id: session.agentId,
+    session_agent_id: session.pendingAgentId ?? session.agentId,
     workspaceDir: session.workspaceDir ?? null,
     contextUsage: estimateSessionContextUsage(
       session.messages,

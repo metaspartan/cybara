@@ -259,15 +259,24 @@ describe("durable instruction transitions", () => {
       await deletePersistedSession(id);
     }
   });
-  test("external switches abort and serialize with active turns", () => {
+  test("external switches resolve immediately without aborting or serializing behind active turns", () => {
     const source = readFileSync(
       new URL("../../src/api/chat-session-api.ts", import.meta.url),
       "utf8"
     );
     const start = source.indexOf("export async function updateSessionAgent(");
-    const end = source.indexOf("async function updateSessionAgentAtTurnBoundary(", start);
-    const entrypoint = source.slice(start, end);
-    expect(entrypoint).toContain("activeChatTurnAbortControllers.get(sessionId)?.abort()");
-    expect(entrypoint).toContain("chatTurnMutex.run(sessionId");
+    const end = source.indexOf("\nasync function ", start + 1);
+    const entrypoint = source.slice(start, end < 0 ? undefined : end);
+    expect(entrypoint).toContain("updateSessionAgentSelection");
+    expect(entrypoint).not.toContain("activeChatTurnAbortControllers");
+    expect(entrypoint).not.toContain("chatTurnMutex.run(");
+    expect(entrypoint).not.toContain("waitForIdle");
+
+    const selectionStart = source.indexOf("async function updateSessionAgentSelection(");
+    expect(selectionStart).toBeGreaterThan(start);
+    const selection = source.slice(selectionStart);
+    expect(selection).toContain("chatTurnMutex.isLocked(sessionId)");
+    expect(selection).toContain("session.pendingAgentId =");
+    expect(selection).toContain("session.pendingUseModelRouter =");
   });
 });

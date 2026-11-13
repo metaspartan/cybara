@@ -1080,14 +1080,20 @@ async function rawChat(options: CliChatOptions): Promise<void> {
       }
       agentId = await resolveAgentId(argument);
       useModelRouter = false;
+      let appliesNextTurn = false;
       if (sessionId && agentId) {
-        await chatContext().fetchAPI(`/api/sessions/${encodeURIComponent(sessionId)}/agent`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentId }),
-        });
+        const response = await chatContext().fetchAPI<{ appliesNextTurn?: boolean }>(
+          `/api/sessions/${encodeURIComponent(sessionId)}/agent`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId }),
+          }
+        );
+        appliesNextTurn = response?.appliesNextTurn === true;
       }
-      console.log(agentId ? `  Agent set to ${agentId}` : "  Agent reset to default");
+      const suffix = appliesNextTurn ? " (takes effect on your next message)" : "";
+      console.log(agentId ? `  Agent set to ${agentId}${suffix}` : "  Agent reset to default");
       return true;
     }
     if (command === "model") {
