@@ -52,3 +52,8 @@ reason = "Unmaintained notice, not a vulnerability: zvariant_derive was folded i
 id = "GHSA-gcqx-w48m-w2h4"
 ignoreUntil = 2026-12-31
 reason = "deepmerge 4.3.1 is the latest published release and the advisory lists no patched version. In this repository it is only a transitive dependency of @expo/config in the mobile build toolchain and is not shipped in the gateway or desktop app. Unreviewed whether @expo/config ever passes it untrusted input. Remove once a patched deepmerge ships."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0543"
+ignoreUntil = 2026-12-31
+reason = "Unmaintained notice, not a vulnerability: chrono 0.4.45 is a transitive dependency of the desktop (Tauri) build and all published chrono releases are affected, so there is no patched upgrade path. Remove once chrono resumes maintenance or Tauri drops it."
