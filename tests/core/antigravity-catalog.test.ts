@@ -13,6 +13,8 @@ const liveVerifiedModels: ReadonlyArray<Pick<CatalogModel, "id" | "context" | "m
   { id: "claude-opus-5-5-medium", context: 1_000_000, maxTokens: 128_000 },
   { id: "claude-sonnet-5-5-medium", context: 1_000_000, maxTokens: 128_000 },
   { id: "gemini-4-argon", context: 1_048_576, maxTokens: 65_536 },
+  { id: "gemini-4-hydrogen", context: 1_048_576, maxTokens: 65_536 },
+  { id: "gemini-4-neon", context: 1_048_576, maxTokens: 65_536 },
   { id: "gemini-3.8-flash-tiered", context: 1_048_576, maxTokens: 65_536 },
   { id: "gemini-3.5-flash-lite", context: 1_048_576, maxTokens: 65_535 },
   { id: "claude-opus-5-5-low", context: 1_000_000, maxTokens: 128_000 },
@@ -75,6 +77,36 @@ describe("Gemini 4 Argon catalog coverage", () => {
     for (const provider of ["google", "antigravity"] as const) {
       const model = (providers[provider].models as readonly CatalogModel[]).find(
         (entry) => entry.id === "gemini-4-argon"
+      );
+      expect(model, provider).toBeDefined();
+      expect(model?.context).toBe(1_048_576);
+      expect(model?.maxTokens).toBe(65_536);
+      expect(model?.reasoning).toBe(true);
+      expect(model?.input).toEqual(expect.arrayContaining(["text", "image"]));
+    }
+  });
+});
+
+describe("Gemini 4 Hydrogen catalog coverage", () => {
+  test("is offered by the Google AI and Antigravity providers with the published limits", () => {
+    for (const provider of ["google", "antigravity"] as const) {
+      const model = (providers[provider].models as readonly CatalogModel[]).find(
+        (entry) => entry.id === "gemini-4-hydrogen"
+      );
+      expect(model, provider).toBeDefined();
+      expect(model?.context).toBe(1_048_576);
+      expect(model?.maxTokens).toBe(65_536);
+      expect(model?.reasoning).toBe(true);
+      expect(model?.input).toEqual(expect.arrayContaining(["text", "image"]));
+    }
+  });
+});
+
+describe("Gemini 4 Neon catalog coverage", () => {
+  test("is offered by the Google AI and Antigravity providers with the published limits", () => {
+    for (const provider of ["google", "antigravity"] as const) {
+      const model = (providers[provider].models as readonly CatalogModel[]).find(
+        (entry) => entry.id === "gemini-4-neon"
       );
       expect(model, provider).toBeDefined();
       expect(model?.context).toBe(1_048_576);
