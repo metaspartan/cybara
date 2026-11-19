@@ -643,6 +643,14 @@ export const foundationProviderCatalog = {
         input: ["text", "image", "audio", "video"],
       },
       {
+        id: "gemini-4-neon",
+        name: "Gemini 4 Neon",
+        context: 1048576,
+        maxTokens: 65536,
+        reasoning: true,
+        input: ["text", "image", "audio", "video"],
+      },
+      {
         id: "gemini-3.8-flash",
         name: "Gemini 3.8 Flash",
         context: 1048576,
@@ -908,6 +916,14 @@ export const foundationProviderCatalog = {
       {
         id: "gemini-4-hydrogen",
         name: "Gemini 4 Hydrogen (Antigravity)",
+        context: 1048576,
+        maxTokens: 65536,
+        reasoning: true,
+        input: ["text", "image"],
+      },
+      {
+        id: "gemini-4-neon",
+        name: "Gemini 4 Neon (Antigravity)",
         context: 1048576,
         maxTokens: 65536,
         reasoning: true,
