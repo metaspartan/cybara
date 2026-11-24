@@ -29,9 +29,9 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("google_vertex")).toBe("gemini-3.6-flash");
     expect(getDefaultModel("bedrock")).toBe("anthropic.claude-opus-4-8");
     expect(getDefaultModel("litellm")).toBe("gpt-4o");
-    expect(getDefaultModel("z.ai")).toBe("glm-5.2");
-    expect(getDefaultModel("zai")).toBe("glm-5.2");
-    expect(getDefaultModel("z.ai-coding")).toBe("glm-5.3");
+    expect(getDefaultModel("z.ai")).toBe("glm-5.4");
+    expect(getDefaultModel("zai")).toBe("glm-5.4");
+    expect(getDefaultModel("z.ai-coding")).toBe("glm-5.4");
     expect(getDefaultModel("antigravity")).toBe("gemini-3.8-flash-tiered");
     expect(getDefaultModel("google-antigravity")).toBe("gemini-3.8-flash-tiered");
     expect(getDefaultModel("google-gemini-cli")).toBe("gemini-3.1-pro-preview");

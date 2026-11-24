@@ -358,6 +358,14 @@ export const codingProviderCatalog = {
         input: ["text", "image", "video"],
       },
       {
+        id: "z-ai/glm-5.4",
+        name: "GLM-5.4",
+        context: 1000000,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image", "video"],
+      },
+      {
         id: "anthropic/claude-fable-5.1",
         name: "Claude Fable 5.1",
         context: 1000000,
@@ -1150,6 +1158,15 @@ export const codingProviderCatalog = {
         maxTokens: 131072,
         reasoning: true,
         input: ["text"],
+        code: true,
+      },
+      {
+        id: "glm-5.4",
+        name: "GLM-5.4 (Coding)",
+        context: 1000000,
+        maxTokens: 131072,
+        reasoning: true,
+        input: ["text", "image", "video"],
         code: true,
       },
       {
